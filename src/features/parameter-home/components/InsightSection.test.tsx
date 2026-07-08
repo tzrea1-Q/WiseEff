@@ -16,6 +16,14 @@ const summary: DashboardSummary = {
     highRiskParameters: 2
   },
   trend: [{ bucketStart: "2026-07-01T00:00:00Z", label: "7/1", changeCount: 2, workflowEventCount: 1 }],
+  personalKpis: {
+    contributionCount: 0,
+    workflowCount: 0,
+    openItemCount: 0,
+    pendingTodoCount: 0,
+    highRiskTouchCount: 0
+  },
+  personalTrend: [],
   riskBuckets: [
     {
       projectId: "aurora",
@@ -46,8 +54,12 @@ const hotspot = {
   statusLabel: "需要关注",
   statusLevel: "watch" as const,
   score: 180,
-  scoreBreakdown: { frequency: 30, risk: 30, impact: 30, workflow: 30, drift: 60 },
-  evidence: ["高风险参数 2 项"],
+  scoreBreakdown: { frequency: 30, scope: 40, workflow: 25, collaboration: 15 },
+  evidence: [
+    "累计修改 12 / 200 个参数（6%）",
+    "窗口内 8 次参数变更",
+    "待处理流程 2 项 · 窗口内 3 项请求"
+  ],
   trendDelta: 0,
   trendDirection: "flat" as const,
   suggestedPath: "/parameters?project=aurora"
@@ -58,13 +70,12 @@ describe("InsightSection", () => {
     render(
       <InsightSection
         emphasis="action-first"
-        dimension="overall"
+        dimension="project"
         hotspotsStatus="ready"
         summary={summary}
         hotspots={[hotspot]}
         state={initialState}
         onHotspotsRetry={vi.fn()}
-        onNavigate={vi.fn()}
       />
     );
     expect(screen.queryByText("热榜")).not.toBeInTheDocument();
@@ -76,13 +87,12 @@ describe("InsightSection", () => {
     render(
       <InsightSection
         emphasis="insight-first"
-        dimension="overall"
+        dimension="project"
         hotspotsStatus="ready"
         summary={summary}
         hotspots={[hotspot]}
         state={initialState}
         onHotspotsRetry={vi.fn()}
-        onNavigate={vi.fn()}
       />
     );
     expect(screen.getByText("热榜")).toBeInTheDocument();
@@ -93,14 +103,13 @@ describe("InsightSection", () => {
     render(
       <InsightSection
         emphasis="insight-first"
-        dimension="overall"
+        dimension="project"
         hotspotsStatus="error"
         summary={summary}
         hotspots={[]}
         hotspotsError="热榜失败"
         state={initialState}
         onHotspotsRetry={onHotspotsRetry}
-        onNavigate={vi.fn()}
       />
     );
     expect(screen.getByText("热榜失败")).toBeInTheDocument();

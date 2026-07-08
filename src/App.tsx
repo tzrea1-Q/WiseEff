@@ -2145,6 +2145,7 @@ function AppShell({
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.search);
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
+  const [topBarLeadingActions, setTopBarLeadingActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
   const [debuggingRuntimeReady, setDebuggingRuntimeReady] = useState(runtimeMode !== "api");
   const [apiAuthStatus, setApiAuthStatus] = useState<ApiAuthStatus>(runtimeMode === "api" ? "checking" : "authenticated");
@@ -2154,7 +2155,10 @@ function AppShell({
   const page = getPageByPath(path);
   const pageKeyRef = useRef(page.key);
   const xiaozeContextSummary = useMemo(() => getXiaozeContextSummary(path), [path]);
-  const topBarActionsContextValue = useMemo(() => ({ setActions: setTopBarActions }), []);
+  const topBarActionsContextValue = useMemo(
+    () => ({ setActions: setTopBarActions, setLeadingActions: setTopBarLeadingActions }),
+    []
+  );
   const isPlatformHome = page.key === "home";
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
@@ -2353,13 +2357,14 @@ function AppShell({
       return;
     }
     const projectId = dashboardState.projectScope ?? undefined;
-    void dashboardRuntime.loadSummary({ projectId, window: dashboardState.window });
+    const perspectiveRoleId = migrateLegacyRoleId(state.activeRoleId);
+    void dashboardRuntime.loadSummary({ projectId, window: dashboardState.window, perspectiveRoleId });
     void dashboardRuntime.loadHotspots({
       projectId,
       window: dashboardState.window,
       dimension: dashboardState.dimension
     });
-  }, [page.key, dashboardState.projectScope, dashboardState.window, dashboardState.dimension, dashboardRuntime]);
+  }, [page.key, dashboardState.projectScope, dashboardState.window, dashboardState.dimension, dashboardRuntime, state.activeRoleId]);
 
   useEffect(() => {
     pageKeyRef.current = page.key;
@@ -2509,7 +2514,12 @@ function AppShell({
 
   const handleLogout = useCallback(async () => {
     const client = authClient ?? createAuthClient();
-    await client.logout?.();
+    try {
+      await client.logout?.();
+    } catch {
+      // A failed server-side logout must not trap the user in the app;
+      // always clear the local session and return to the login screen.
+    }
     clearLocalAuthToken();
     setApiAuthStatus("unauthenticated");
     setApiAuthError("");
@@ -2579,6 +2589,7 @@ function AppShell({
             search={search}
             onNavigate={navigate}
             pageActions={topBarActions}
+            pageLeadingActions={topBarLeadingActions}
             onNewProject={() => setProjectInitOpen(true)}
             onLogout={handleLogout}
             onUpdateCurrentUserProfile={handleUpdateCurrentUserProfile}
@@ -2608,6 +2619,9 @@ function AppShell({
                 onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
                 onDashboardDimensionChange={(dimension) =>
                   dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
+                }
+                onDashboardOverviewScopeChange={(scope) =>
+                  dashboardDispatch({ type: "DASHBOARD_SET_OVERVIEW_SCOPE", scope })
                 }
                 onDashboardProjectChange={(projectId) =>
                   dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
@@ -2642,6 +2656,9 @@ function AppShell({
                 onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
                 onDashboardDimensionChange={(dimension) =>
                   dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
+                }
+                onDashboardOverviewScopeChange={(scope) =>
+                  dashboardDispatch({ type: "DASHBOARD_SET_OVERVIEW_SCOPE", scope })
                 }
                 onDashboardProjectChange={(projectId) =>
                   dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
@@ -3299,6 +3316,7 @@ function TopBar({
   search,
   onNavigate,
   pageActions,
+  pageLeadingActions,
   onNewProject,
   onLogout,
   onUpdateCurrentUserProfile,
@@ -3310,6 +3328,7 @@ function TopBar({
   search: string;
   onNavigate: (path: string) => void;
   pageActions?: ReactNode;
+  pageLeadingActions?: ReactNode;
   onNewProject: () => void;
   onLogout?: () => Promise<void> | void;
   onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
@@ -3342,8 +3361,11 @@ function TopBar({
   return (
     <header className="topbar">
       <div className="topbar-page">
-        <div className="topbar-title">{page.title}</div>
-        <div className="topbar-subtitle">{page.subtitle}</div>
+        <div className="topbar-page-head">
+          <div className="topbar-title">{page.title}</div>
+          {pageLeadingActions ? <div className="topbar-page-leading">{pageLeadingActions}</div> : null}
+        </div>
+        {page.subtitle ? <div className="topbar-subtitle">{page.subtitle}</div> : null}
       </div>
       <div className="topbar-actions">
         {showProjectInitAction || pageActions ? (

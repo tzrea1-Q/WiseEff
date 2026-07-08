@@ -377,6 +377,22 @@ describe("local auth service", () => {
     await expect(service.resolveSession(`Bearer ${registered.session.token}`)).rejects.toThrow("Session is not active.");
   });
 
+  it("logs out without an authorization token (development auto-auth)", async () => {
+    const { db } = createMemoryLocalAuthDb();
+    const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
+    const registered = expectAuthenticatedRegistration(await service.register(
+      {
+        organization: "软件部",
+        name: "Pilot Admin",
+        username: "pilot.admin",
+        password: "strong-password"
+      },
+      { requestId: "request-1" }
+    ));
+
+    await expect(service.logout(undefined, registered.auth, { requestId: "request-2" })).resolves.toBeUndefined();
+  });
+
   it("updates the current user profile without adding email or changing roles", async () => {
     const { db } = createMemoryLocalAuthDb();
     const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });

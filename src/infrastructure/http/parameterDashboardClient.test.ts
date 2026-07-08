@@ -21,6 +21,14 @@ describe("http parameter dashboard repository", () => {
             highRiskParameters: 1
           },
           trend: [],
+          personalKpis: {
+            contributionCount: 0,
+            workflowCount: 0,
+            openItemCount: 0,
+            pendingTodoCount: 0,
+            highRiskTouchCount: 0
+          },
+          personalTrend: [],
           riskBuckets: [],
           workbenchSignals: {
             reviewQueue: 0,

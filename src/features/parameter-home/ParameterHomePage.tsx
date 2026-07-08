@@ -1,14 +1,17 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { DashboardState } from "@/application/parameters/dashboardState";
-import type { DashboardWindow, HotspotDimension, WorkbenchSignals } from "@/domain/parameters/dashboardTypes";
+import type { DashboardWindow, HotspotDimension, OverviewScope, WorkbenchSignals } from "@/domain/parameters/dashboardTypes";
 import type { PrototypeState } from "@/mockData";
-import { useTopBarActions } from "@/components/layout";
+import { migrateLegacyRoleId } from "@/domain/users/types";
+import { useTopBarLeadingActions } from "@/components/layout";
 import { AnalysisContextControls } from "./components/AnalysisContextControls";
 import { InsightSection } from "./components/InsightSection";
 import { OverviewRow } from "./components/OverviewRow";
+import { WorkbenchPageToggle } from "./components/WorkbenchPageToggle";
 import { WorkbenchPrimary } from "./components/WorkbenchPrimary";
 import { derivePersonalWorkbench } from "./workbench/derivePersonalWorkbench";
+import { DEFAULT_WORKBENCH_PAGE, type WorkbenchPage } from "./workbenchPage";
 import "./parameter-home.css";
 
 const EMPTY_SIGNALS: WorkbenchSignals = {
@@ -26,6 +29,7 @@ export type ParameterHomePageProps = {
   dashboardRuntime: ReturnType<typeof createParameterDashboardRuntime>;
   onDashboardWindowChange: (window: DashboardWindow) => void;
   onDashboardDimensionChange: (dimension: HotspotDimension) => void;
+  onDashboardOverviewScopeChange: (scope: OverviewScope) => void;
   onDashboardProjectChange: (projectId: string | null) => void;
   onNavigate: (path: string) => void;
   onNewProject?: () => void;
@@ -37,11 +41,23 @@ export function ParameterHomePage({
   dashboardRuntime,
   onDashboardWindowChange,
   onDashboardDimensionChange,
+  onDashboardOverviewScopeChange,
   onDashboardProjectChange,
   onNavigate,
   onNewProject
 }: ParameterHomePageProps) {
-  useTopBarActions(null, []);
+  const [workbenchPage, setWorkbenchPage] = useState<WorkbenchPage>(DEFAULT_WORKBENCH_PAGE);
+
+  const hotspotCount = dashboardState.hotspots.data?.length ?? 0;
+  useTopBarLeadingActions(
+    <WorkbenchPageToggle
+      placement="bar"
+      page={workbenchPage}
+      hotspotCount={hotspotCount}
+      onPageChange={setWorkbenchPage}
+    />,
+    [workbenchPage, hotspotCount]
+  );
 
   const projectId = dashboardState.projectScope ?? undefined;
   const projectOptions = useMemo(
@@ -66,9 +82,20 @@ export function ParameterHomePage({
       }),
     [state.activeRoleId, state.changeRequests, state.parameterDrafts, state.configDraft.projects, summary?.workbenchSignals, hotspots]
   );
+  const previousRoleViewRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (previousRoleViewRef.current === workbench.roleView) return;
+    previousRoleViewRef.current = workbench.roleView;
+    onDashboardOverviewScopeChange(workbench.roleView === "guest" ? "overall" : "personal");
+  }, [workbench.roleView, onDashboardOverviewScopeChange]);
 
   const reloadSummary = () => {
-    void dashboardRuntime.loadSummary({ projectId, window: dashboardState.window });
+    void dashboardRuntime.loadSummary({
+      projectId,
+      window: dashboardState.window,
+      perspectiveRoleId: migrateLegacyRoleId(state.activeRoleId)
+    });
   };
 
   const reloadHotspots = () => {
@@ -84,6 +111,9 @@ export function ParameterHomePage({
       summaryStatus={dashboardState.summary.status}
       summary={summary}
       kpis={summary?.kpis ?? null}
+      overviewScope={dashboardState.overviewScope}
+      roleView={workbench.roleView}
+      onOverviewScopeChange={onDashboardOverviewScopeChange}
       summaryError={dashboardState.summary.error}
       onSummaryRetry={reloadSummary}
     />
@@ -102,8 +132,8 @@ export function ParameterHomePage({
       hotspots={hotspots}
       hotspotsError={dashboardState.hotspots.error}
       state={state}
+      layout="page"
       onHotspotsRetry={reloadHotspots}
-      onNavigate={onNavigate}
     />
   );
 
@@ -115,15 +145,23 @@ export function ParameterHomePage({
           dimension={dashboardState.dimension}
           projectScope={dashboardState.projectScope}
           projectOptions={projectOptions}
+          showHotspotDimension={workbenchPage === "hotspots"}
           onWindowChange={onDashboardWindowChange}
           onDimensionChange={onDashboardDimensionChange}
           onProjectChange={onDashboardProjectChange}
         />
       </div>
 
-      {overviewRow}
-      {workbenchPrimary}
-      {insightSection}
+      {workbenchPage === "overview" ? (
+        <div className="parameter-home__page parameter-home__page--overview" role="tabpanel" aria-label="工作台">
+          {overviewRow}
+          {workbenchPrimary}
+        </div>
+      ) : (
+        <div className="parameter-home__page parameter-home__page--hotspots" role="tabpanel" aria-label="热榜">
+          {insightSection}
+        </div>
+      )}
     </section>
   );
 }

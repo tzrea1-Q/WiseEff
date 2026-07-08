@@ -3,9 +3,8 @@ import { useRef } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import type { DashboardHotspot } from "@/domain/parameters/dashboardTypes";
 import type { PrototypeState } from "@/mockData";
-import { computeEyebrow, generateHotspotActions } from "@/hotspotPresentation";
-import { canAccessPage } from "@/app/permissions";
-import { getPageByPath } from "@/appConfig";
+import { computeEyebrow } from "@/hotspotPresentation";
+import { cn } from "@/lib/utils";
 import { HotspotScorePanel } from "./HotspotScorePanel";
 
 const SCORE_CEILING = 250;
@@ -13,35 +12,49 @@ const SCORE_CEILING = 250;
 type HotspotLeaderboardProps = {
   hotspots: DashboardHotspot[];
   selectedId: string | null;
+  expandedIds: string[];
   sectionId: string;
   state: PrototypeState;
   isAccordionMode: boolean;
-  onNavigate: (path: string) => void;
-  onSelectionChange: (id: string) => void;
+  onSelectionChange: (id: string | null) => void;
+  onToggleExpanded: (id: string) => void;
 };
 
 export function HotspotLeaderboard({
   hotspots,
   selectedId,
+  expandedIds,
   sectionId,
   state,
   isAccordionMode,
-  onNavigate,
-  onSelectionChange
+  onSelectionChange,
+  onToggleExpanded
 }: HotspotLeaderboardProps) {
   const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const effectiveSelected = hotspots.find((hotspot) => hotspot.id === selectedId) ?? hotspots[0] ?? null;
+  const selectedHotspot = selectedId ? hotspots.find((hotspot) => hotspot.id === selectedId) ?? null : null;
+  const effectiveSelected = isAccordionMode ? selectedHotspot : selectedHotspot ?? hotspots[0] ?? null;
   const dimensionCeiling = getDimensionCeiling(hotspots);
 
-  if (!effectiveSelected) {
+  if (!isAccordionMode && !effectiveSelected) {
+    return <div className="parameter-home__hotspot-empty">暂无可展示的热区。</div>;
+  }
+
+  if (isAccordionMode && hotspots.length === 0) {
     return <div className="parameter-home__hotspot-empty">暂无可展示的热区。</div>;
   }
 
   const selectByIndex = (index: number) => {
     const hotspot = hotspots[index];
-    if (hotspot) {
-      onSelectionChange(hotspot.id);
+    if (!hotspot) {
+      return;
     }
+
+    if (isAccordionMode) {
+      onToggleExpanded(hotspot.id);
+      return;
+    }
+
+    onSelectionChange(hotspot.id);
   };
 
   const onKeyDownFor =
@@ -70,17 +83,30 @@ export function HotspotLeaderboard({
   return (
     <div className="parameter-home__hotspot-layout" data-accordion={isAccordionMode ? "true" : "false"}>
       <div className="parameter-home__hotspot-leaderboard">
-        <div className="parameter-home__hotspot-list-head" role="presentation">
-          <span>排名</span>
-          <span>对象</span>
-          <span>状态</span>
-          <span>热度</span>
-          <span>趋势</span>
-        </div>
-        <ul className="parameter-home__hotspot-list" role="list">
+        <div className="parameter-home__hotspot-board">
+          <div className="parameter-home__hotspot-list-head" role="presentation">
+            <span className="parameter-home__hotspot-col-rank">
+              <span className="parameter-home__hotspot-rank-dot parameter-home__hotspot-rank-dot--placeholder" aria-hidden="true" />
+              排名
+            </span>
+            <span className="parameter-home__hotspot-col-identity">对象</span>
+            <span className="parameter-home__hotspot-col-status">状态</span>
+            <span className="parameter-home__hotspot-col-score">热度</span>
+            <span className="parameter-home__hotspot-col-trend">
+              趋势
+              {isAccordionMode ? (
+                <ChevronRight
+                  aria-hidden="true"
+                  className="parameter-home__hotspot-row-chevron parameter-home__hotspot-row-chevron--placeholder"
+                  size={16}
+                />
+              ) : null}
+            </span>
+          </div>
+          <ul className="parameter-home__hotspot-list" role="list">
           {hotspots.map((hotspot, index) => {
-            const selected = hotspot.id === effectiveSelected.id;
-            const panelId = `${sectionId}-panel`;
+            const expanded = isAccordionMode ? expandedIds.includes(hotspot.id) : hotspot.id === effectiveSelected?.id;
+            const panelId = `${sectionId}-panel-${hotspot.id}`;
 
             return (
               <HotspotRow
@@ -88,40 +114,36 @@ export function HotspotLeaderboard({
                 hotspot={hotspot}
                 rank={index + 1}
                 eyebrow={computeEyebrow(hotspot, state)}
-                selected={selected}
+                expanded={expanded}
                 panelId={panelId}
                 isAccordionMode={isAccordionMode}
-                tabIndex={selected ? 0 : -1}
+                tabIndex={expanded || (!isAccordionMode && hotspot.id === effectiveSelected?.id) ? 0 : -1}
                 rowSelectRef={(element) => {
                   rowRefs.current[index] = element;
                 }}
-                onSelect={() => onSelectionChange(hotspot.id)}
-                onNavigate={onNavigate}
+                onSelect={() => selectByIndex(index)}
                 onKeyDown={onKeyDownFor(index)}
               >
-                {isAccordionMode && selected ? (
+                {isAccordionMode && expanded ? (
                   <HotspotScorePanel
                     hotspot={hotspot}
                     dimensionCeiling={dimensionCeiling}
-                    sectionId={sectionId}
+                    sectionId={`${sectionId}-${hotspot.id}`}
                     variant="accordion"
-                    roleId={state.activeRoleId}
-                    onNavigate={onNavigate}
                   />
                 ) : null}
               </HotspotRow>
             );
           })}
-        </ul>
+          </ul>
+        </div>
       </div>
-      {!isAccordionMode ? (
+      {!isAccordionMode && effectiveSelected ? (
         <HotspotScorePanel
           hotspot={effectiveSelected}
           dimensionCeiling={dimensionCeiling}
           sectionId={sectionId}
           variant="desktop"
-          roleId={state.activeRoleId}
-          onNavigate={onNavigate}
         />
       ) : null}
     </div>
@@ -132,41 +154,41 @@ function HotspotRow({
   hotspot,
   rank,
   eyebrow,
-  selected,
+  expanded,
   panelId,
   isAccordionMode,
   tabIndex,
   rowSelectRef,
   onSelect,
-  onNavigate,
   onKeyDown,
   children
 }: {
   hotspot: DashboardHotspot;
   rank: number;
   eyebrow: string;
-  selected: boolean;
+  expanded: boolean;
   panelId: string;
   isAccordionMode: boolean;
   tabIndex: number;
   rowSelectRef: (element: HTMLButtonElement | null) => void;
   onSelect: () => void;
-  onNavigate: (path: string) => void;
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   children?: ReactNode;
 }) {
-  const navigationLabel = hotspot.kind === "project" ? hotspot.projectCode : hotspot.title;
-
   return (
-    <li className="parameter-home__hotspot-row" data-selected={selected ? "true" : "false"} data-rank={rank}>
+    <li className="parameter-home__hotspot-row" data-selected={expanded ? "true" : "false"} data-rank={rank}>
       <button
         ref={rowSelectRef}
         type="button"
         className="parameter-home__hotspot-row-select"
-        aria-current={selected ? "true" : undefined}
-        aria-controls={panelId}
-        aria-expanded={isAccordionMode ? selected : undefined}
-        aria-label={`选择热区 #${rank} ${hotspot.title}`}
+        aria-current={!isAccordionMode && expanded ? "true" : undefined}
+        aria-controls={isAccordionMode ? panelId : undefined}
+        aria-expanded={isAccordionMode ? expanded : undefined}
+        aria-label={
+          isAccordionMode
+            ? `${expanded ? "收起" : "展开"}热区 #${rank} ${hotspot.title}`
+            : `选择热区 #${rank} ${hotspot.title}`
+        }
         tabIndex={tabIndex}
         onClick={onSelect}
         onKeyDown={onKeyDown}
@@ -185,15 +207,14 @@ function HotspotRow({
         </span>
         <span className="parameter-home__hotspot-col-trend">
           <TrendIndicator hotspot={hotspot} />
+          {isAccordionMode ? (
+            <ChevronRight
+              aria-hidden="true"
+              className={cn("parameter-home__hotspot-row-chevron", expanded && "parameter-home__hotspot-row-chevron--expanded")}
+              size={16}
+            />
+          ) : null}
         </span>
-      </button>
-      <button
-        type="button"
-        className="parameter-home__hotspot-row-enter"
-        aria-label={`进入 ${navigationLabel}`}
-        onClick={() => onNavigate(hotspot.suggestedPath)}
-      >
-        <ChevronRight size={16} aria-hidden="true" />
       </button>
       {children}
     </li>
@@ -247,52 +268,4 @@ function TrendIndicator({ hotspot }: { hotspot: DashboardHotspot }) {
 function getDimensionCeiling(hotspots: DashboardHotspot[]) {
   const maxValue = Math.max(10, ...hotspots.flatMap((hotspot) => Object.values(hotspot.scoreBreakdown)));
   return Math.ceil(maxValue * 1.1);
-}
-
-export function hotspotForActions(hotspot: DashboardHotspot) {
-  return {
-    module: hotspot.module,
-    projectCode: hotspot.projectCode,
-    highRiskCount: hotspot.statusLevel === "watch" ? 3 : hotspot.scoreBreakdown.risk > 20 ? 2 : 0,
-    changeCount: Math.max(0, Math.round(hotspot.scoreBreakdown.frequency / 4)),
-    title: hotspot.title,
-    scoreBreakdown: hotspot.scoreBreakdown
-  };
-}
-
-export function RecommendedHotspotActions({
-  hotspot,
-  roleId,
-  onNavigate
-}: {
-  hotspot: DashboardHotspot;
-  roleId: string;
-  onNavigate: (path: string) => void;
-}) {
-  const actions = generateHotspotActions(hotspotForActions(hotspot));
-  const visibleActions = [actions.primary, actions.secondary].flatMap((action) => {
-    if (!action) {
-      return [];
-    }
-    const page = getPageByPath(action.path.split("?")[0]);
-    return canAccessPage(roleId, page.key) ? [action] : [];
-  });
-  const [primaryAction, secondaryAction] = visibleActions;
-
-  if (!primaryAction) {
-    return null;
-  }
-
-  return (
-    <div className="parameter-home__hotspot-actions">
-      <button type="button" className="parameter-home__action-btn parameter-home__action-btn--primary" onClick={() => onNavigate(primaryAction.path)}>
-        {primaryAction.label} <ArrowRight size={14} aria-hidden="true" />
-      </button>
-      {secondaryAction ? (
-        <button type="button" className="parameter-home__action-btn parameter-home__action-btn--secondary" onClick={() => onNavigate(secondaryAction.path)}>
-          {secondaryAction.label}
-        </button>
-      ) : null}
-    </div>
-  );
 }

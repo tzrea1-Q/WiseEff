@@ -58,7 +58,7 @@ export const navigationItems: PageConfig[] = [
     group: "参数管理",
     icon: Home,
     title: "我的工作台",
-    subtitle: "待办事项 · 主要功能 · 热榜"
+    subtitle: ""
   },
   {
     key: "parameters",

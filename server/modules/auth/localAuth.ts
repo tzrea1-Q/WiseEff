@@ -105,6 +105,12 @@ function bearerToken(authorization: string | string[] | undefined) {
   return match[1];
 }
 
+function optionalBearerToken(authorization: string | string[] | undefined) {
+  const header = Array.isArray(authorization) ? authorization[0] : authorization;
+  const match = /^Bearer\s+(.+)$/i.exec(header ?? "");
+  return match ? match[1] : undefined;
+}
+
 function assignedRoleForRegistration(roleId: BackendRoleId): BackendRoleId {
   if (roleId === "admin") {
     throw new ApiError("VALIDATION_FAILED", "Admin registration is not allowed.", 400, { roleId });
@@ -410,16 +416,18 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
     },
 
     async logout(authorization: string | string[] | undefined, auth: AuthContext, context: { requestId: string }) {
-      const token = bearerToken(authorization);
+      const token = optionalBearerToken(authorization);
       await db.transaction(async (tx) => {
-        await tx.query(
-          `
-          update auth_sessions
-          set revoked_at = $2
-          where token_hash = $1 and revoked_at is null
-          `,
-          [hashToken(token), now().toISOString()]
-        );
+        if (token) {
+          await tx.query(
+            `
+            update auth_sessions
+            set revoked_at = $2
+            where token_hash = $1 and revoked_at is null
+            `,
+            [hashToken(token), now().toISOString()]
+          );
+        }
         await auditAuthEvent(tx, {
           organizationId: auth.organization.id,
           userId: auth.user.id,

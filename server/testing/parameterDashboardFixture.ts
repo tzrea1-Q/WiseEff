@@ -193,4 +193,17 @@ export async function seedParameterDashboardFixture(db: Database) {
      ) values ($1, $2, $3, $4, 'fixture-import.csv', 'previewed', '{}'::jsonb, '[]'::jsonb)`,
     ["import-batch-unapplied", ORG_ID, "aurora", ACTIVE_USER_ID]
   );
+
+  await db.query(
+    `insert into parameter_review_decisions (
+       id, organization_id, request_id, reviewer_user_id, decision, from_status, to_status, created_at
+     ) values ($1, $2, $3, $4, 'advance', 'hardware_review', 'software_review', $5)`,
+    ["review-decision-1", ORG_ID, "cr-merged", ACTIVE_USER_ID, daysAgo(10)]
+  );
+  await db.query(
+    `insert into parameter_review_decisions (
+       id, organization_id, request_id, reviewer_user_id, decision, from_status, to_status, created_at
+     ) values ($1, $2, $3, $4, 'reject', 'hardware_review', 'rejected', $5)`,
+    ["review-decision-2", ORG_ID, "cr-rejected", ACTIVE_USER_ID, daysAgo(5)]
+  );
 }

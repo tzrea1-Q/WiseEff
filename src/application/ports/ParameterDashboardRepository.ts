@@ -6,7 +6,11 @@ import type {
 } from "@/domain/parameters/dashboardTypes";
 
 export interface ParameterDashboardRepository {
-  listDashboardSummary(input: { projectId?: string; window: DashboardWindow }): Promise<DashboardSummary>;
+  listDashboardSummary(input: {
+    projectId?: string;
+    window: DashboardWindow;
+    perspectiveRoleId?: string;
+  }): Promise<DashboardSummary>;
   listDashboardHotspots(input: {
     projectId?: string;
     window: DashboardWindow;
