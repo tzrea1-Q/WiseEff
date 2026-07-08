@@ -380,6 +380,8 @@ body {
 }
 
 .topbar-title {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 18px;
   font-weight: 800;
   letter-spacing: 0;
@@ -388,8 +390,9 @@ body {
 .topbar-page-head {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
+  flex-wrap: nowrap;
+  gap: 12px;
+  min-width: 0;
 }
 
 .topbar-page-leading {
@@ -11236,8 +11239,10 @@ td small {
   }
 
   .topbar-page-head {
+    flex-wrap: nowrap;
     gap: 10px;
-    width: 100%;
+    width: auto;
+    max-width: 100%;
   }
 
   .topbar-subtitle,

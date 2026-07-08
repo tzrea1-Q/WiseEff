@@ -35,6 +35,8 @@
 }
 
 .parameter-home__view-switcher {
+  display: inline-flex;
+  flex-shrink: 0;
   gap: 0.15rem;
   padding: 0.22rem;
   border: 1px solid color-mix(in srgb, var(--outline) 55%, transparent);
@@ -48,9 +50,9 @@
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  min-width: 5.75rem;
-  height: 2.2rem;
-  padding-inline: 0.9rem;
+  min-width: 4.75rem;
+  height: 2rem;
+  padding-inline: 0.75rem;
   border: none !important;
   border-radius: 0.55rem !important;
   background: transparent !important;
