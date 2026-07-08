@@ -19,6 +19,7 @@ import type { createParameterDashboardRuntime } from "@/application/parameters/p
 import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingRuntime";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
+import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
 import type { AppAction } from "@/App";
 import type { DashboardWindow, HotspotDimension, OverviewScope } from "@/domain/parameters/dashboardTypes";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
@@ -30,6 +31,7 @@ import { NodeDebuggingPage } from "@/NodeDebuggingPage";
 import { ParameterAdminPage } from "@/ParameterAdminPage";
 import { ParameterAdminProjectsPage } from "@/ParameterAdminProjectsPage";
 import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
+import { FeedbackAdminPage } from "@/features/product-feedback/FeedbackAdminPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import { UserPermissionsPage } from "@/UserPermissionsPage";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
@@ -64,6 +66,7 @@ export type PageProps = {
   debuggingRuntimeReady?: boolean;
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
+  productFeedbackRepository?: ProductFeedbackRepository;
   userGovernanceActions?: UserGovernanceActions;
   runtimeMode?: WiseEffRuntimeMode;
   dashboardState?: DashboardState;
@@ -97,6 +100,7 @@ export function PageRouter({
   debuggingRuntimeReady = true,
   logActions,
   parameterActions,
+  productFeedbackRepository,
   userGovernanceActions,
   runtimeMode,
   dashboardState,
@@ -205,6 +209,8 @@ export function PageRouter({
       return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} parameterActions={parameterActions} />;
     case "log-admin":
       return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} />;
+    case "feedback-admin":
+      return productFeedbackRepository ? <FeedbackAdminPage productFeedbackRepository={productFeedbackRepository} /> : null;
     case "debugging":
       return (
         <NoEntryPage

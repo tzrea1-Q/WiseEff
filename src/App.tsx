@@ -2615,6 +2615,7 @@ function AppShell({
                 debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
+                productFeedbackRepository={productFeedbackRepositoryClient}
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
                 search={search}
@@ -2652,6 +2653,7 @@ function AppShell({
                 debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
+                productFeedbackRepository={productFeedbackRepositoryClient}
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
                 search={search}

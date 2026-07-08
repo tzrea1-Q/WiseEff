@@ -27,6 +27,7 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   "node-debugging": "hardware-user",
   "debugging-admin": "admin",
   "user-permissions": "admin",
+  "feedback-admin": "admin",
   audit: "admin"
 };
 

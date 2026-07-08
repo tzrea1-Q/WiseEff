@@ -103,6 +103,7 @@ function attachmentFromDto(dto: ProductFeedbackAttachmentDto): ProductFeedbackAt
 function productFeedbackFromDto(dto: ProductFeedbackDto): ProductFeedback {
   return {
     id: dto.id,
+    submitterUserId: dto.submitterUserId,
     pagePath: dto.pagePath,
     pageTitle: dto.pageTitle,
     feedbackType: dto.feedbackType,

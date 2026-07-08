@@ -6,6 +6,7 @@ import {
   Gauge,
   Home,
   LucideIcon,
+  MessageSquareText,
   ScrollText,
   Settings2,
   ShieldCheck,
@@ -29,6 +30,7 @@ export type PageKey =
   | "node-debugging"
   | "debugging-admin"
   | "user-permissions"
+  | "feedback-admin"
   | "audit";
 
 export type PageConfig = {
@@ -136,6 +138,7 @@ export const navigationItems: PageConfig[] = [
 
 export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: string }> = [
   { label: "审计中心", icon: ScrollText, path: "/audit" },
+  { label: "反馈管理", icon: MessageSquareText, path: "/feedback-admin" },
   { label: "用户管理", icon: Settings2, path: "/user-permissions" }
 ];
 
@@ -173,6 +176,18 @@ export function getPageByPath(path: string): PageConfig {
       icon: ScrollText,
       title: "审计中心",
       subtitle: "跨模块检索参数、日志、调试、Agent 与用户治理操作证据"
+    };
+  }
+
+  if (path === "/feedback-admin") {
+    return {
+      key: "feedback-admin",
+      path: "/feedback-admin",
+      label: "反馈管理",
+      group: "平台总览",
+      icon: MessageSquareText,
+      title: "产品反馈管理",
+      subtitle: "内测反馈分诊、截图核查、处理备注和状态闭环"
     };
   }
 
@@ -253,6 +268,8 @@ export function getXiaozeContextSummary(path: string): string {
       return "正在关注分析吞吐、失败记录、权限覆盖和使用趋势。";
     case "debugging-admin":
       return "正在关注设备在线率、可调节点目录覆盖和节点访问策略。";
+    case "feedback-admin":
+      return "正在关注内测产品反馈、待处理问题、截图证据和分诊闭环。";
     default:
       return "正在跨充电参数、日志、调试三个场景识别效率提升机会。";
   }
