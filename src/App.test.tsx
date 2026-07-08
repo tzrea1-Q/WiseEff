@@ -1300,7 +1300,7 @@ describe("WiseEff app shell", () => {
     expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
     expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
     expect(screen.getByText("参数更新趋势")).toBeInTheDocument();
-    expect(screen.getByText("各项目参数风险分布")).toBeInTheDocument();
+    expect(screen.queryByText("各项目参数风险分布")).not.toBeInTheDocument();
     expect(screen.queryByText("关键参数变化")).not.toBeInTheDocument();
     expect(screen.queryByText("审核合入情况")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
@@ -2712,7 +2712,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-home",
-        present: ["热榜", "参数更新趋势", "各项目参数风险分布", "参数修改", "参数审阅"],
+        present: ["热榜", "参数更新趋势", "参数修改", "参数审阅"],
         absent: [
           "推荐依据",
           "保留原看板指标，用来解释工作台行动排序",
@@ -2827,7 +2827,7 @@ describe("WiseEff app shell", () => {
   });
 
   it("shows the project selector only on parameter-management routes", () => {
-    ["/parameters", "/parameter-review", "/parameter-admin", "/parameter-home"].forEach((path) => {
+    ["/parameters", "/parameter-review", "/parameter-admin"].forEach((path) => {
       cleanup();
       window.history.replaceState(null, "", path);
       renderAppForCurrentPath();
@@ -2837,7 +2837,7 @@ describe("WiseEff app shell", () => {
       expect(within(topbar as HTMLElement).getByRole("combobox", { name: "项目" })).toBeInTheDocument();
     });
 
-    ["/logs", "/log-admin", "/node-debugging", "/debugging-admin"].forEach((path) => {
+    ["/parameter-home", "/logs", "/log-admin", "/node-debugging", "/debugging-admin"].forEach((path) => {
       cleanup();
       window.history.replaceState(null, "", path);
       renderAppForCurrentPath();

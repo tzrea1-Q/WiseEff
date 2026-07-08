@@ -1,5 +1,6 @@
-import { ArrowRight, ListChecks, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import type { WorkbenchAction, WorkbenchScenarioEntry, PersonalWorkbenchViewModel } from "../workbench/derivePersonalWorkbench";
+import { getNextActionPresentation } from "./nextActionPresentation";
 import "../parameter-home.css";
 
 type WorkbenchPrimaryProps = {
@@ -16,18 +17,9 @@ export function WorkbenchPrimary({ workbench, onNavigate, onNewProject }: Workbe
 
   return (
     <section className="parameter-home__workbench" aria-label="个人工作台">
-      <div className="parameter-home__workbench-grid" data-emphasis={workbench.emphasis}>
-        {workbench.emphasis === "action-first" ? (
-          <>
-            {actionPanel}
-            {scenarioPanel}
-          </>
-        ) : (
-          <>
-            {scenarioPanel}
-            {actionPanel}
-          </>
-        )}
+      <div className="parameter-home__workbench-grid">
+        {scenarioPanel}
+        {actionPanel}
       </div>
     </section>
   );
@@ -48,23 +40,21 @@ function NextActionList({
         </div>
       </div>
       <div className="parameter-home__next-action-list">
-        {actions.map((action) => (
+        {actions.map((action) => {
+          const { Icon, tone } = getNextActionPresentation(action);
+          return (
           <button
             key={action.id}
             type="button"
             className="parameter-home__next-action-card"
             data-priority={action.priority}
             data-kind={action.kind}
+            data-source={action.source}
+            data-icon-tone={tone}
             onClick={() => onNavigate(action.path)}
           >
             <span className="parameter-home__next-action-icon" aria-hidden="true">
-              {action.kind === "todo" ? (
-                <ListChecks size={18} />
-              ) : action.kind === "recommendation" ? (
-                <Sparkles size={18} />
-              ) : (
-                <ShieldCheck size={18} />
-              )}
+              <Icon size={18} />
             </span>
             <span className="parameter-home__next-action-body">
               <strong>{action.title}</strong>
@@ -73,7 +63,8 @@ function NextActionList({
             </span>
             <ArrowRight size={16} aria-hidden="true" />
           </button>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

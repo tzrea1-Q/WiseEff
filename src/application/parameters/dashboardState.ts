@@ -5,6 +5,7 @@ export type SectionStatus = "idle" | "loading" | "ready" | "empty" | "error";
 export type DashboardState = {
   window: DashboardWindow;
   dimension: HotspotDimension;
+  projectScope: string | null;
   summary: { status: SectionStatus; data: DashboardSummary | null; error: string | null };
   hotspots: { status: SectionStatus; data: DashboardHotspot[]; error: string | null };
 };
@@ -12,6 +13,7 @@ export type DashboardState = {
 export const initialDashboardState: DashboardState = {
   window: "30d",
   dimension: "overall",
+  projectScope: null,
   summary: { status: "idle", data: null, error: null },
   hotspots: { status: "idle", data: [], error: null }
 };
@@ -19,6 +21,7 @@ export const initialDashboardState: DashboardState = {
 export type DashboardAction =
   | { type: "DASHBOARD_SET_WINDOW"; window: DashboardWindow }
   | { type: "DASHBOARD_SET_DIMENSION"; dimension: HotspotDimension }
+  | { type: "DASHBOARD_SET_PROJECT"; projectId: string | null }
   | { type: "DASHBOARD_SUMMARY_LOADING" }
   | { type: "DASHBOARD_SUMMARY_READY"; data: DashboardSummary }
   | { type: "DASHBOARD_SUMMARY_ERROR"; error: string }
@@ -32,6 +35,8 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
       return { ...state, window: action.window };
     case "DASHBOARD_SET_DIMENSION":
       return { ...state, dimension: action.dimension };
+    case "DASHBOARD_SET_PROJECT":
+      return { ...state, projectScope: action.projectId };
     case "DASHBOARD_SUMMARY_LOADING":
       return { ...state, summary: { ...state.summary, status: "loading", error: null } };
     case "DASHBOARD_SUMMARY_READY": {

@@ -58,6 +58,7 @@ function buildDashboardState(over: Partial<DashboardState> = {}): DashboardState
   return {
     window: "30d",
     dimension: "overall",
+    projectScope: null,
     summary: { status: "ready", data: summary, error: null },
     hotspots: { status: "ready", data: [hotspot], error: null },
     ...over
@@ -79,6 +80,7 @@ function renderPage(over: {
       dashboardRuntime={{ loadSummary, loadHotspots }}
       onDashboardWindowChange={vi.fn()}
       onDashboardDimensionChange={vi.fn()}
+      onDashboardProjectChange={vi.fn()}
       onNavigate={vi.fn()}
       onNewProject={vi.fn()}
     />
@@ -88,18 +90,26 @@ function renderPage(over: {
 }
 
 describe("ParameterHomePage", () => {
-  it("renders workbench first for user role with collapsed insight", () => {
+  it("renders workbench above hotspot for user role with collapsed insight", () => {
     renderPage({ roleId: "hardware-user" });
-    const sections = Array.from(document.querySelectorAll(".parameter-home > section, .parameter-home > div + section"));
-    expect(screen.getByRole("region", { name: "个人工作台" })).toBeInTheDocument();
+    const workbench = screen.getByRole("region", { name: "个人工作台" });
+    const insight = screen.getByRole("region", { name: "洞察分析" });
     expect(screen.getByRole("button", { name: "展开洞察" })).toBeInTheDocument();
-    expect(sections[0]).toHaveAttribute("aria-label", "个人工作台");
+    expect(screen.getByRole("img", { name: /参数更新趋势/ })).toBeInTheDocument();
+    expect(
+      workbench.compareDocumentPosition(insight) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   it("renders insight prominently for admin role", () => {
     renderPage({ roleId: "admin" });
+    const workbench = screen.getByRole("region", { name: "个人工作台" });
+    const insight = screen.getByRole("region", { name: "洞察分析" });
     expect(screen.getByRole("img", { name: /参数更新趋势/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "展开洞察" })).not.toBeInTheDocument();
+    expect(
+      workbench.compareDocumentPosition(insight) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   it("shows situation skeleton while summary is loading", () => {
@@ -118,7 +128,7 @@ describe("ParameterHomePage", () => {
       })
     });
     fireEvent.click(screen.getAllByRole("button", { name: "重试" })[0]);
-    expect(loadSummary).toHaveBeenCalledWith({ projectId: initialState.activeProjectId, window: "30d" });
+    expect(loadSummary).toHaveBeenCalledWith({ projectId: undefined, window: "30d" });
   });
 
   it("shows independent hotspot error", () => {
@@ -134,5 +144,18 @@ describe("ParameterHomePage", () => {
   it("does not show review todos for guest", () => {
     renderPage({ roleId: "guest" });
     expect(screen.queryByText(/处理待审阅参数变更/)).not.toBeInTheDocument();
+  });
+
+  it("renders a single in-page context control bar", () => {
+    renderPage({ roleId: "admin" });
+    expect(screen.getAllByRole("group", { name: "时间窗口" })).toHaveLength(1);
+    expect(screen.getAllByRole("group", { name: "热榜维度" })).toHaveLength(1);
+  });
+
+  it("lays out situation overview beside update trend", () => {
+    renderPage({ roleId: "admin" });
+    expect(document.querySelector(".parameter-home__overview-row")).not.toBeNull();
+    expect(screen.getByText("概览")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "参数更新趋势" })).toBeInTheDocument();
   });
 });

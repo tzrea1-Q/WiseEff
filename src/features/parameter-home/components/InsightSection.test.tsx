@@ -58,68 +58,51 @@ describe("InsightSection", () => {
     render(
       <InsightSection
         emphasis="action-first"
-        window="30d"
         dimension="overall"
-        summaryStatus="ready"
         hotspotsStatus="ready"
         summary={summary}
         hotspots={[hotspot]}
         state={initialState}
-        onWindowChange={vi.fn()}
-        onDimensionChange={vi.fn()}
-        onSummaryRetry={vi.fn()}
         onHotspotsRetry={vi.fn()}
         onNavigate={vi.fn()}
       />
     );
-    expect(screen.queryByRole("img", { name: /参数更新趋势/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("热榜")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "展开洞察" }));
-    expect(screen.getByRole("img", { name: /参数更新趋势/ })).toBeInTheDocument();
+    expect(screen.getByText("热榜")).toBeInTheDocument();
   });
 
   it("is expanded by default for insight-first emphasis", () => {
     render(
       <InsightSection
         emphasis="insight-first"
-        window="30d"
         dimension="overall"
-        summaryStatus="ready"
         hotspotsStatus="ready"
         summary={summary}
         hotspots={[hotspot]}
         state={initialState}
-        onWindowChange={vi.fn()}
-        onDimensionChange={vi.fn()}
-        onSummaryRetry={vi.fn()}
         onHotspotsRetry={vi.fn()}
         onNavigate={vi.fn()}
       />
     );
-    expect(screen.getByRole("img", { name: /参数更新趋势/ })).toBeInTheDocument();
+    expect(screen.getByText("热榜")).toBeInTheDocument();
   });
 
   it("renders skeleton and error states per section status", () => {
-    const onSummaryRetry = vi.fn();
     const onHotspotsRetry = vi.fn();
     render(
       <InsightSection
         emphasis="insight-first"
-        window="30d"
         dimension="overall"
-        summaryStatus="loading"
         hotspotsStatus="error"
-        summary={null}
+        summary={summary}
         hotspots={[]}
         hotspotsError="热榜失败"
         state={initialState}
-        onWindowChange={vi.fn()}
-        onDimensionChange={vi.fn()}
-        onSummaryRetry={onSummaryRetry}
         onHotspotsRetry={onHotspotsRetry}
         onNavigate={vi.fn()}
       />
     );
-    expect(screen.getByText("加载趋势", { selector: ".sr-only" })).toBeInTheDocument();
     expect(screen.getByText("热榜失败")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(onHotspotsRetry).toHaveBeenCalledOnce();

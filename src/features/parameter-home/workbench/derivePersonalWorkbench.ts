@@ -24,6 +24,7 @@ export type WorkbenchAction = {
   meta: string;
   path: string;
   source: "submission" | "review" | "initialization" | "admin" | "hotspot" | "readonly";
+  visualKey?: string;
 };
 
 export type WorkbenchScenarioEntry = {
@@ -226,7 +227,7 @@ function buildRecommendationActions(hotspots: DashboardHotspot[], roleView: Work
     ];
   }
 
-  return hotspots.slice(0, 3).map((hotspot) => ({
+  return hotspots.slice(0, 3).map((hotspot, index) => ({
     id: `hotspot-${hotspot.id}`,
     kind: "recommendation" as const,
     priority: "secondary" as const,
@@ -234,7 +235,8 @@ function buildRecommendationActions(hotspots: DashboardHotspot[], roleView: Work
     description: hotspot.evidence[0] ?? hotspot.statusLabel,
     meta: `${hotspot.statusLabel} · 热度 ${hotspot.score.toFixed(1)}`,
     path: recommendationPathFor(roleView, hotspot),
-    source: "hotspot" as const
+    source: "hotspot" as const,
+    visualKey: `hotspot-variant-${index % 3}`
   }));
 }
 

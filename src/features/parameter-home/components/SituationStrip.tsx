@@ -16,24 +16,37 @@ type SituationStripProps = {
   kpis: DashboardKpis | null;
   error?: string | null;
   onRetry?: () => void;
+  variant?: "sidebar" | "strip";
 };
 
-export function SituationStrip({ status, kpis, error, onRetry }: SituationStripProps) {
+export function SituationStrip({
+  status,
+  kpis,
+  error,
+  onRetry,
+  variant = "strip"
+}: SituationStripProps) {
+  const isSidebar = variant === "sidebar";
+
   return (
-    <Panel title="态势概览" subtitle="参数库关键指标">
+    <Panel
+      title="概览"
+      subtitle="参数库关键指标"
+      className={isSidebar ? "parameter-home__panel--situation parameter-home__panel--situation-sidebar" : "parameter-home__panel--situation"}
+    >
       {status === "loading" || status === "idle" ? <SectionSkeleton label="加载态势指标" /> : null}
       {status === "error" ? (
         <SectionError message={error ?? "态势指标加载失败"} onRetry={onRetry ?? (() => undefined)} />
       ) : null}
       {status === "ready" && kpis ? (
-        <div className="parameter-home__kpi-grid">
+        <dl className={isSidebar ? "parameter-home__situation-stats parameter-home__situation-stats--sidebar" : "parameter-home__situation-stats"}>
           {KPI_ITEMS.map((item) => (
-            <div key={item.key} className="parameter-home__kpi-tile">
-              <div className="parameter-home__kpi-label">{item.label}</div>
-              <div className="parameter-home__kpi-value">{kpis[item.key]}</div>
+            <div key={item.key} className="parameter-home__situation-stat" data-kpi={item.key}>
+              <dt className="parameter-home__situation-stat-label">{item.label}</dt>
+              <dd className="parameter-home__situation-stat-value">{kpis[item.key]}</dd>
             </div>
           ))}
-        </div>
+        </dl>
       ) : null}
       {status === "empty" ? <p className="parameter-home__section-empty">当前时间窗口暂无参数活动数据。</p> : null}
     </Panel>

@@ -46,6 +46,8 @@ describe("WorkbenchPrimary", () => {
     expect(screen.getByRole("region", { name: "待办事项" })).toBeInTheDocument();
     expect(screen.getByText("处理待审阅参数变更")).toBeInTheDocument();
     expect(screen.getByText("处理审阅")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /处理待审阅参数变更/ })).toHaveAttribute("data-source", "review");
+    expect(screen.getByRole("button", { name: /处理待审阅参数变更/ })).toHaveAttribute("data-icon-tone", "review");
   });
 
   it("fires navigation callbacks with context paths", () => {
