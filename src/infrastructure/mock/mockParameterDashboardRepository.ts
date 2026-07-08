@@ -4,10 +4,12 @@ import type {
   DashboardSummary,
   DashboardWindow,
   HotspotDimension,
+  PersonalDashboardKpis,
   ProjectRiskBucket,
   TrendPoint
 } from "@/domain/parameters/dashboardTypes";
 import { mapHotspotStatus, scoreHotspotGroup, WINDOW_PROFILES } from "@/domain/parameters/hotspotScoring";
+import { getPlatformRole, migrateLegacyRoleId } from "@/domain/users/types";
 import type { ChangeRequest, ParameterRecord, PrototypeState, RiskLevel } from "@/mockData";
 
 const windowLabels: Record<DashboardWindow, string> = {
@@ -60,6 +62,122 @@ function driftScore(parameter: ParameterRecord) {
   }
   const baseline = Math.max(Math.abs(current), Math.abs(recommended), 1);
   return (Math.abs(current - recommended) / baseline) * 100;
+}
+
+function matchesCurrentUser(actor: string, userId: string, userName?: string) {
+  return actor === userId || actor === userName;
+}
+
+function buildPersonalTrend(
+  state: PrototypeState,
+  window: DashboardWindow,
+  projectId: string | undefined,
+  userId: string
+): TrendPoint[] {
+  const user = state.users.find((entry) => entry.id === userId);
+  const { windowStart, granularity, days } = resolveWindowBounds(window);
+  const bucketCount = granularity === "week" ? Math.ceil(days / 7) : days;
+  const stepMs = granularity === "week" ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+  const buckets: TrendPoint[] = [];
+
+  for (let index = 0; index < bucketCount; index += 1) {
+    const bucketStart = new Date(windowStart.getTime() + index * stepMs);
+    const bucketEnd = new Date(bucketStart.getTime() + stepMs);
+    const changeCount = state.parameters.reduce((total, parameter) => {
+      if (projectId && parameter.projectId !== projectId) return total;
+      return (
+        total +
+        parameter.history.filter(
+          (entry) =>
+            matchesCurrentUser(entry.changedBy, userId, user?.name) &&
+            inWindow(entry.changedAt, bucketStart, bucketEnd)
+        ).length
+      );
+    }, 0);
+    const workflowEventCount = state.changeRequests.filter(
+      (request) =>
+        (!projectId || request.projectId === projectId) &&
+        matchesCurrentUser(request.submitter, userId, user?.name) &&
+        inWindow(request.createdAtTs, bucketStart, bucketEnd)
+    ).length;
+    const label =
+      granularity === "week"
+        ? `第${index + 1}周`
+        : `${bucketStart.getUTCMonth() + 1}/${bucketStart.getUTCDate()}`;
+    buckets.push({
+      bucketStart: bucketStart.toISOString(),
+      label,
+      changeCount,
+      workflowEventCount
+    });
+  }
+
+  return buckets;
+}
+
+function buildPersonalKpis(
+  state: PrototypeState,
+  window: DashboardWindow,
+  projectId: string | undefined,
+  roleLevel: "guest" | "user" | "committer" | "admin"
+): PersonalDashboardKpis {
+  const user = state.users.find((entry) => entry.id === state.currentUserId);
+  const { windowStart } = resolveWindowBounds(window);
+  const windowEnd = new Date();
+  const signals = buildWorkbenchSignals(state, state.currentUserId, projectId);
+  const parameters = filterParameters(state, projectId);
+
+  const contributionCount = parameters.reduce(
+    (total, parameter) =>
+      total +
+      parameter.history.filter(
+        (entry) =>
+          matchesCurrentUser(entry.changedBy, state.currentUserId, user?.name) &&
+          inWindow(entry.changedAt, windowStart, windowEnd)
+      ).length,
+    0
+  );
+  const workflowCount = state.changeRequests.filter(
+    (request) =>
+      (!projectId || request.projectId === projectId) &&
+      matchesCurrentUser(request.submitter, state.currentUserId, user?.name) &&
+      inWindow(request.createdAtTs, windowStart, windowEnd)
+  ).length;
+  const highRiskTouchCount = parameters.reduce((total, parameter) => {
+    if (parameter.risk !== "High") return total;
+    return (
+      total +
+      parameter.history.filter(
+        (entry) =>
+          matchesCurrentUser(entry.changedBy, state.currentUserId, user?.name) &&
+          inWindow(entry.changedAt, windowStart, windowEnd)
+      ).length
+    );
+  }, 0);
+  const openItemCount =
+    roleLevel === "user"
+      ? signals.myDrafts
+      : roleLevel === "committer"
+        ? signals.reviewQueue
+        : roleLevel === "admin"
+          ? signals.unappliedImportBatches
+          : 0;
+  const pendingTodoCount =
+    roleLevel === "user"
+      ? signals.returnedChanges + signals.waitingMerge
+      : roleLevel === "committer"
+        ? signals.reviewQueue
+        : roleLevel === "admin"
+          ? signals.inactiveAccounts
+          : 0;
+
+  return {
+    contributionCount,
+    workflowCount,
+    openItemCount,
+    pendingTodoCount,
+    highRiskTouchCount
+  };
 }
 
 function buildTrend(state: PrototypeState, window: DashboardWindow, projectId?: string): TrendPoint[] {
@@ -307,6 +425,7 @@ export function createMockParameterDashboardRepository(getState: () => Prototype
         windowedRequests.map((request) => request.submitter).filter(Boolean)
       );
 
+      const roleLevel = getPlatformRole(migrateLegacyRoleId(state.activeRoleId)).level;
       const summary: DashboardSummary = {
         window: input.window,
         windowLabel: windowLabels[input.window],
@@ -321,14 +440,8 @@ export function createMockParameterDashboardRepository(getState: () => Prototype
           highRiskParameters: parameters.filter((parameter) => parameter.risk === "High").length
         },
         trend: buildTrend(state, input.window, input.projectId),
-        personalKpis: {
-          contributionCount: 0,
-          workflowCount: 0,
-          openItemCount: 0,
-          pendingTodoCount: 0,
-          highRiskTouchCount: 0
-        },
-        personalTrend: [],
+        personalKpis: buildPersonalKpis(state, input.window, input.projectId, roleLevel),
+        personalTrend: buildPersonalTrend(state, input.window, input.projectId, state.currentUserId),
         riskBuckets: buildRiskBuckets(state, input.projectId),
         workbenchSignals: buildWorkbenchSignals(state, state.currentUserId, input.projectId)
       };
