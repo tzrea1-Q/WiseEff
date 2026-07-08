@@ -164,7 +164,7 @@ describe("product feedback repository", () => {
     });
   });
 
-  it("listFeedback always filters by organization and supports filters plus cursor pagination", async () => {
+  it("listFeedback fetches one extra row and omits nextCursor when the page is not full", async () => {
     const { db, calls } = createFakeDb([[feedbackRow({ id: "feedback-2" })]]);
 
     const result = await listFeedback(db, auth(), {
@@ -198,9 +198,38 @@ describe("product feedback repository", () => {
       "2026-07-08T23:59:59.000Z",
       "2026-07-08T09:00:00.000Z",
       "feedback-1",
-      20
+      21
     ]);
     expect(result.items).toHaveLength(1);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it("listFeedback omits nextCursor when rows exactly match the limit", async () => {
+    const { db } = createFakeDb([
+      [
+        feedbackRow({ id: "feedback-2", created_at: "2026-07-08T09:00:00.000Z" }),
+        feedbackRow({ id: "feedback-1", created_at: "2026-07-08T08:00:00.000Z" })
+      ]
+    ]);
+
+    const result = await listFeedback(db, auth(), { limit: 2 });
+
+    expect(result.items.map((item) => item.id)).toEqual(["feedback-2", "feedback-1"]);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it("listFeedback returns nextCursor only when more rows exist and slices the extra row", async () => {
+    const { db } = createFakeDb([
+      [
+        feedbackRow({ id: "feedback-3", created_at: "2026-07-08T10:00:00.000Z" }),
+        feedbackRow({ id: "feedback-2", created_at: "2026-07-08T09:00:00.000Z" }),
+        feedbackRow({ id: "feedback-1", created_at: "2026-07-08T08:00:00.000Z" })
+      ]
+    ]);
+
+    const result = await listFeedback(db, auth(), { limit: 2 });
+
+    expect(result.items.map((item) => item.id)).toEqual(["feedback-3", "feedback-2"]);
     expect(result.nextCursor).toEqual({ createdAt: "2026-07-08T09:00:00.000Z", id: "feedback-2" });
   });
 

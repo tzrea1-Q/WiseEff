@@ -218,7 +218,7 @@ export async function listFeedback(db: Queryable, auth: AuthContext, query: List
   }
 
   const limit = query.limit ?? 50;
-  values.push(limit);
+  values.push(limit + 1);
   const result = await db.query<ProductFeedbackRow>(
     `
     select *
@@ -230,11 +230,12 @@ export async function listFeedback(db: Queryable, auth: AuthContext, query: List
     values
   );
 
-  const items = result.rows.map((row) => toFeedbackDto(row));
+  const hasMore = result.rows.length > limit;
+  const items = result.rows.slice(0, limit).map((row) => toFeedbackDto(row));
   const last = items.at(-1);
   return {
     items,
-    nextCursor: last ? { createdAt: last.createdAt, id: last.id } : null
+    nextCursor: hasMore && last ? { createdAt: last.createdAt, id: last.id } : null
   };
 }
 
