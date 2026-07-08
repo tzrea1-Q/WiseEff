@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { DashboardState } from "@/application/parameters/dashboardState";
 import type { DashboardWindow, HotspotDimension, OverviewScope, WorkbenchSignals } from "@/domain/parameters/dashboardTypes";
@@ -68,6 +68,13 @@ export function ParameterHomePage({
       }),
     [state.activeRoleId, state.changeRequests, state.parameterDrafts, state.configDraft.projects, summary?.workbenchSignals, hotspots]
   );
+  const previousRoleViewRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (previousRoleViewRef.current === workbench.roleView) return;
+    previousRoleViewRef.current = workbench.roleView;
+    onDashboardOverviewScopeChange(workbench.roleView === "guest" ? "overall" : "personal");
+  }, [workbench.roleView, onDashboardOverviewScopeChange]);
 
   const reloadSummary = () => {
     void dashboardRuntime.loadSummary({ projectId, window: dashboardState.window });
