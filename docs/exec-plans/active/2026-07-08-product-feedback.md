@@ -8,7 +8,7 @@
 
 **Tech Stack:** PostgreSQL migration, TypeScript API (Vitest), React + Radix Dialog/Sheet, Vite frontend ports/clients, Playwright acceptance / `playwright-cli` UI verification.
 
-**Design spec:** [`docs/superpowers/specs/2026-07-08-product-feedback-design.md`](../superpowers/specs/2026-07-08-product-feedback-design.md)
+**Design spec:** [`docs/superpowers/specs/2026-07-08-product-feedback-design.md`](../../superpowers/specs/2026-07-08-product-feedback-design.md)
 
 ---
 

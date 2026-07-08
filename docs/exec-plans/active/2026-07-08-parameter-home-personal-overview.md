@@ -888,6 +888,23 @@ No TBD/TODO placeholders in this plan.
 
 ---
 
+## Documentation Impact Matrix
+
+| Document | Impact | Required update |
+| --- | --- | --- |
+| `docs/design-docs/api-contract.md` | Dashboard summary DTO adds personal KPI/trend fields. | Update if the English contract documents dashboard response fields in detail. |
+| `docs/zh-CN/design-docs/api-contract.md` | Chinese API contract already documents `personalKpis`, `personalTrend`, and `perspectiveRoleId`. | Keep in sync with any future English contract expansion. |
+| `docs/FRONTEND.md` / `docs/zh-CN/FRONTEND.md` | Frontend dashboard behavior adds overview-scope state and UI. | Update if the feature becomes a durable frontend behavior beyond the plan/spec. |
+| `docs/generated/openapi.json` | Route shape is unchanged; response schemas are governed by contract generation if schema registry changes. | Run `npm run contract:check` when backend contract files change. |
+
+## Documentation Update Gate
+
+- Run `npm run docs:check` before marking this plan complete.
+- Run `npm run contract:check` if dashboard route metadata, schemas, or OpenAPI artifacts change.
+- Do not move this plan to `docs/exec-plans/completed/` until the parent PR merge/sync step confirms documentation gates passed.
+
+---
+
 ## Execution Handoff
 
 Plan saved to `docs/exec-plans/active/2026-07-08-parameter-home-personal-overview.md`.

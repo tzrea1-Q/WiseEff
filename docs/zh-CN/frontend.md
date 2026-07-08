@@ -15,6 +15,7 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 - `src/infrastructure/http/`：HTTP API client、DTO、auth client、runtime mode。
 - `src/components/`：复用 UI、表格、弹窗、过滤器、图表。
 - `src/features/agent/`：Xiaoze（小泽）CopilotKit 表面（`XiaozeProvider`、`useXiaozePageContext`、`XiaozeApprovalCard`、前端工具）。
+- `src/features/product-feedback/`：侧边栏 `FeedbackDialog` 与 `/feedback-admin` 反馈处理 UI。
 - `src/test/setup.ts`：Vitest DOM 初始化。
 
 ## Runtime 模式
@@ -47,6 +48,7 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 - 参数管理：`ParameterRepository`
 - 参数看板：`ParameterDashboardRepository`
 - 日志分析：`LogAnalysisRepository`
+- 产品反馈：`ProductFeedbackRepository`
 - 设备调试：`DebuggingGateway`
 每个 port 通常有两类实现：
 
@@ -66,6 +68,12 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 
 - `/logs`：上传日志、轮询任务、展示报告和证据。
 - `/log-admin`：反馈、归档、重跑、治理操作。
+
+产品反馈：
+
+- 全局「问题反馈」入口打开 `FeedbackDialog`，通过 `ProductFeedbackRepository.submit` 提交当前 `pagePath`、`pageTitle`、反馈类型、描述和图片文件。
+- `/feedback-admin`：Admin-only 反馈处理页，通过同一 port 列表/搜索/筛选、查看详情与附件、填写 `adminNote`，并按 `open -> in_progress -> closed` 推进状态。
+- mock mode 使用 `src/infrastructure/mock/mockProductFeedbackRepository.ts`；API mode 使用 `src/infrastructure/http/productFeedbackClient.ts`，对接 `/api/v1/product-feedback` 及附件内容路由。
 
 设备调试：
 

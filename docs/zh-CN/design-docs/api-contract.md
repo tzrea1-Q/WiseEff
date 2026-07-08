@@ -293,7 +293,47 @@ GET  /api/v1/jobs/:jobId/events
 }
 ```
 
-## 7. Jobs 与进度
+## 7. Product Feedback
+
+Internal Beta「问题反馈」与日志分析反馈分离，按认证用户的 `organization_id` 隔离。活跃登录用户可以从侧边栏 `FeedbackDialog` 提交；列表、详情、状态流转和附件读取只开放给具备 `admin:access` 的管理员。
+
+```text
+POST  /api/v1/product-feedback
+GET   /api/v1/product-feedback
+GET   /api/v1/product-feedback/:id
+PATCH /api/v1/product-feedback/:id
+GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
+```
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/v1/product-feedback` | 创建问题反馈，可带图片附件；返回 `201 { item }`。 |
+| `GET` | `/api/v1/product-feedback` | Admin 列表；支持 `status`、`feedbackType`、`q`、`pagePath`、`createdFrom`、`createdTo`、`cursor`、`limit`。 |
+| `GET` | `/api/v1/product-feedback/:id` | Admin 详情，包含按顺序排列的附件 metadata。 |
+| `PATCH` | `/api/v1/product-feedback/:id` | Admin 处理反馈，更新 `status` 和/或 `adminNote`。 |
+| `GET` | `/api/v1/product-feedback/:id/attachments/:attachmentId/content` | Admin 读取单个图片附件内容。 |
+
+创建反馈：
+
+```json
+{
+  "pagePath": "/parameters",
+  "pageTitle": "项目参数用户工作台",
+  "feedbackType": "experience",
+  "description": "移动端提交按钮不明显。",
+  "attachments": [
+    {
+      "fileName": "mobile-layout.png",
+      "contentType": "image/png",
+      "contentBase64": "iVBORw0KGgo="
+    }
+  ]
+}
+```
+
+`feedbackType` 可为 `experience`、`data`、`export_submit`、`feature`。`status` 可为 `open`、`in_progress`、`closed`，状态流转为 `open -> in_progress -> closed`；`closed` 后不允许继续更新。附件只接受 `image/png`、`image/jpeg`、`image/webp`，最多 5 张，单张 5 MB，总量 15 MB。
+
+## 8. Jobs 与进度
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -316,7 +356,7 @@ GET  /api/v1/jobs/:jobId/events
 }
 ```
 
-## 8. Debugging
+## 9. Debugging
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -351,7 +391,7 @@ GET  /api/v1/jobs/:jobId/events
 }
 ```
 
-## 9. Agent (Xiaoze)
+## 10. Agent (Xiaoze)
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -378,7 +418,7 @@ Agent-specific errors：
 - `FORBIDDEN`：缺少权限、项目访问或 active user 状态。
 - `VALIDATION_FAILED`：请求体、未知 tool 或 payload 校验失败。
 
-## 10. Audit
+## 11. Audit
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |

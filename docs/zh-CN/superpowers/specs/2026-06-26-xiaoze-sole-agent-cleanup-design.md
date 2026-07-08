@@ -1,6 +1,6 @@
 # 小泽作为唯一 Agent — WiseAgent 清理设计
 
-> English: [English](../../../superpowers/specs/2026-06-26-xiaoze-sole-agent-cleanup-design.md)
+> English: not available
 
 日期：2026-06-26  
 状态：已认可，可进入实施计划

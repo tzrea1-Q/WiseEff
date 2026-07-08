@@ -14,13 +14,39 @@ The product model separates prototype display data into durable, auditable busin
 - Projects group modules, members, and workflow state.
 - Parameter management centers on definitions, project values, drafts, submission rounds, change requests, review decisions, imports, history, and audit.
 - Log analysis separates uploaded object references, business records, analysis runs, stages, evidence, archive state, and feedback. Log records and file objects are scoped by `organization_id` only; optional `related_parameter_id` is a soft link to M1 definitions without FK.
+- Product feedback persists Internal Beta sidebar reports and optional image attachments as an organization-scoped triage queue. It is separate from log-analysis feedback and uses admin-only review.
 - Debugging separates devices, detected targets, debug parameters, sessions, snapshots, node operations, and events.
 - Agent state separates sessions, messages, tool calls, approvals, and run traces.
 - Audit events connect cross-domain writes through actor, target, action, severity, metadata, and trace ID.
 
 ## State Machines
 
-Parameter requests, log analysis runs, debugging sessions, and Agent approvals should move through explicit states. Tests and browser acceptance should verify invalid transitions, terminal-state behavior, and audit invariants.
+Parameter requests, log analysis runs, product feedback triage, debugging sessions, and Agent approvals should move through explicit states. Tests and browser acceptance should verify invalid transitions, terminal-state behavior, and audit invariants.
+
+### Product Feedback
+
+| Entity | Description |
+| --- | --- |
+| `ProductFeedback` | One Internal Beta sidebar report with page context, type, description, submitter, triage status, and admin note. |
+| `ProductFeedbackAttachment` | Ordered image attachment metadata linked to a feedback item and shared object-store content. |
+
+Rules:
+
+- `ProductFeedback` and `ProductFeedbackAttachment` are scoped by `organization_id`; list/detail queries must filter by the authenticated organization.
+- Submit is available to any active authenticated user. Admin list, detail, status updates, notes, and attachment content require `admin:access`.
+- Attachments are metadata rows plus object-store bytes. Metadata stores `storage_key`, `file_name`, `content_type`, `size_bytes`, `checksum`, and `sort_order`.
+- Feedback creation writes `product-feedback-create` audit; admin triage writes `product-feedback-update` audit with previous and next status.
+
+Status machine:
+
+```mermaid
+stateDiagram-v2
+  [*] --> open
+  open --> in_progress
+  in_progress --> closed
+```
+
+`closed` is terminal for the MVP. Reopening or skipping directly from `open` to `closed` is intentionally not part of the shipped state machine.
 
 ## Debugging Catalog Scope
 

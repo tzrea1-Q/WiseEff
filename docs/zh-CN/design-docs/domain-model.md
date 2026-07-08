@@ -13,6 +13,7 @@
 - 参数定义与项目参数值分离。
 - 提交轮次与单条变更请求分离。
 - 日志文件、分析任务、阶段和证据分离。
+- 产品反馈与日志分析反馈分离，按组织保存 Internal Beta 问题反馈、图片附件和 Admin 处理状态。
 - 设备、调试参数、调试会话和节点操作分离。
 - Agent 会话、消息、工具调用和审批分离。
 - 所有跨域操作通过审计事件串联。
@@ -209,7 +210,31 @@ M3 implementation notes:
 - `audit_events` is the cross-domain audit stream for debugging target detection, session creation, node reads, node writes, and snapshot rollback.
 - M5 adds an HDC gateway seam behind the same debugging contract. Simulator/fake-runner tests cover command normalization and failure behavior, while real device-lab evidence remains an acceptance artifact.
 
-### 2.6 Agent
+### 2.6 产品反馈
+
+| 实体 | 说明 |
+| --- | --- |
+| `ProductFeedback` | 一条 Internal Beta「问题反馈」，包含页面上下文、反馈类型、描述、提交人、处理状态和 Admin 备注。 |
+| `ProductFeedbackAttachment` | 反馈附件 metadata，按顺序关联图片对象存储内容。 |
+
+状态机：
+
+```mermaid
+stateDiagram-v2
+  [*] --> open
+  open --> in_progress
+  in_progress --> closed
+```
+
+规则：
+
+- `ProductFeedback` 和 `ProductFeedbackAttachment` 都以 `organization_id` 做组织隔离；列表、详情和附件读取必须按认证组织过滤。
+- 任何 active 登录用户都可以提交反馈；列表、详情、状态更新、备注和附件内容读取要求 `admin:access`。
+- 附件只保存 metadata 和对象存储引用，字段包括 `storage_key`、`file_name`、`content_type`、`size_bytes`、`checksum`、`sort_order`。
+- `closed` 是 MVP 终态；当前不支持 reopen，也不支持从 `open` 直接跳到 `closed`。
+- 创建反馈写 `product-feedback-create` 审计；Admin 处理写 `product-feedback-update` 审计，并记录前后状态。
+
+### 2.7 Agent
 
 | 实体 | 说明 |
 | --- | --- |
@@ -244,7 +269,7 @@ stateDiagram-v2
 - 变更型工具调用未审批前不能执行。
 - 工具执行结果必须关联审计事件。
 
-### 2.7 审计
+### 2.8 审计
 
 | 实体 | 说明 |
 | --- | --- |

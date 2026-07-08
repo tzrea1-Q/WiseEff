@@ -8,6 +8,12 @@ This document describes the prototype behavior that should remain understandable
 
 The frontend can run in mock mode for demos and component tests or API mode for productized workflows. Mock data is not a production business data source.
 
+## Internal Beta Product Feedback
+
+The global sidebar feedback entry opens `FeedbackDialog` so authenticated beta users can report product issues from their current page. The dialog preserves page path and page title, accepts one of four feedback types (`experience`, `data`, `export_submit`, `feature`), requires a description, and supports multiple image attachments for UI or data-quality evidence.
+
+The `/feedback-admin` page is an Admin-only triage workspace. Operators can filter and search feedback, inspect page context and ordered attachments, add an admin note, and move items through `open -> in_progress -> closed`. This feedback loop is product-level beta feedback and must remain separate from log-analysis feedback on `/logs` and `/log-admin`.
+
 ## Parameter Prototype
 
 The prototype supports parameter browsing, filtering, detail/history inspection, draft editing, submission, review, admin governance, import/export affordances, and audit-oriented UI patterns. API-mode work should preserve these user expectations while moving durable writes to backend routes.

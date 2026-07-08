@@ -13,6 +13,7 @@ WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backe
 - `src/infrastructure/http/`: API client, DTOs, auth client, runtime mode.
 - `src/components/`: reusable UI, layout, tables, dialogs, filters, charts.
 - `src/features/agent/`: Xiaoze CopilotKit surface (`XiaozeProvider`, `useXiaozePageContext`, `XiaozeApprovalCard`, frontend tools).
+- `src/features/product-feedback/`: sidebar `FeedbackDialog` and Admin triage UI for `/feedback-admin`.
 - `src/test/setup.ts`: Vitest DOM setup.
 
 ## Runtime Modes
@@ -88,6 +89,14 @@ In `mock` mode, uploads use the reducer's simulated log path: supported `.log`, 
 In `api` mode, `src/infrastructure/http/logClient.ts` maps the port to `/api/v1/log-files`, `/api/v1/logs`, `/api/v1/jobs`, archive/unarchive, rerun, and feedback endpoints. Uploads send base64 file content without `projectId` (organization inferred from auth), hydrate the created `LogRecord`, poll the job until a terminal state, then refresh the completed report and evidence. Archive and feedback actions refresh active logs afterward, so default `/logs` excludes archived records.
 
 The M2 API smoke lives in `e2e/log-analysis.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m2`.
+
+## Product Feedback Repository
+
+`ProductFeedbackRepository` is the frontend port for Internal Beta product feedback. `FeedbackDialog` submits the current page path/title, feedback type, description, and selected image files through this port. Mock mode uses `src/infrastructure/mock/mockProductFeedbackRepository.ts`; API mode uses `src/infrastructure/http/productFeedbackClient.ts`.
+
+In API mode, submit maps to `POST /api/v1/product-feedback`, list/detail/update map to the Admin triage routes, and attachment previews use `GET /api/v1/product-feedback/:id/attachments/:attachmentId/content` to create object URLs. The HTTP client base64-encodes image files, mirrors the server attachment limits, and preserves API error envelopes through `WiseEffApiError`.
+
+`/feedback-admin` is a utility Admin page mounted from `src/features/product-feedback/FeedbackAdminPage.tsx`. It uses the same port to filter and search feedback, inspect details in `FeedbackAdminDrawer`, view attachments, write `adminNote`, and move status through `open -> in_progress -> closed`. The route is gated by the frontend Admin role for UX, while backend routes remain the security boundary.
 
 ## Debugging Gateway
 

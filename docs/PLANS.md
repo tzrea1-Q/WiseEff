@@ -24,7 +24,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 - `exec-plans/active/2026-07-06-wiseeff-notification-center.md`: TopBar notification center — replace static bell placeholder with durable inbox APIs, unread badge, workflow producers, and phased queue-backed delivery.
 - `exec-plans/active/2026-07-06-parameter-batch-import-wizard.md`: Parameter admin batch import wizard — multi-format parse (xlsx/csv/json/DTS fragment), Step 1 target project selection, per-row review, new-parameter prefill, existing import batch API apply.
 - `exec-plans/active/2026-07-07-wiseeff-debug-logs-org-scope-decoupling.md`: Decouple log analysis and debugging from parameter-management projects — organization-scoped M2/M3, migration 0037, API/frontend/Agent/e2e updates.
-- `exec-plans/active/2026-07-08-product-feedback.md`: Internal Beta 问题反馈 — persist sidebar feedback with multi-image ObjectStore attachments and admin triage at `/feedback-admin`.
+- `exec-plans/active/2026-07-08-product-feedback.md`: Internal Beta product feedback — persist sidebar feedback with multi-image ObjectStore attachments and admin triage at `/feedback-admin`.
 
 ## Completed Plans
 

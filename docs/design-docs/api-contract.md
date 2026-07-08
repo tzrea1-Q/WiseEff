@@ -22,6 +22,7 @@ Rules:
 - Projects and modules: project metadata and module lookup.
 - Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, and dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`).
 - Logs: upload/file records, analysis records, runs, rerun, archive, feedback.
+- Product feedback: Internal Beta sidebar feedback submission, admin triage, and attachment content.
 - Jobs: status and progress events.
 - Debugging: devices, target detection, sessions, node reads/writes, snapshots, rollback.
 - Agent: Xiaoze AG-UI run, proactive suggest, and thread persistence under `/api/v1/agent/xiaoze`.
@@ -96,6 +97,38 @@ Response envelopes:
 - `hotspots` returns `{ items: DashboardHotspot[] }`
 
 `DashboardHotspot.scoreBreakdown` is deterministic server-side scoring (frequency, risk, impact, workflow, drift). Frontend presentation helpers in `src/hotspotPresentation.ts` map breakdown dominance to action templates but do not compute business aggregates.
+
+## Product Feedback
+
+Internal Beta feedback is organization-scoped and separate from log-analysis feedback. Any active authenticated user can submit feedback from the sidebar `FeedbackDialog`; admin triage and attachment reads require `admin:access`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/product-feedback` | Create product feedback with optional image attachments. Returns `201 { item }`. |
+| `GET` | `/api/v1/product-feedback` | Admin list with optional `status`, `feedbackType`, `q`, `pagePath`, `createdFrom`, `createdTo`, `cursor`, and `limit` filters. |
+| `GET` | `/api/v1/product-feedback/:id` | Admin detail for one feedback record and ordered attachments. |
+| `PATCH` | `/api/v1/product-feedback/:id` | Admin triage update for `status` and/or `adminNote`. |
+| `GET` | `/api/v1/product-feedback/:id/attachments/:attachmentId/content` | Admin image content response for one attachment. |
+
+Create body:
+
+```json
+{
+  "pagePath": "/parameters",
+  "pageTitle": "项目参数用户工作台",
+  "feedbackType": "experience",
+  "description": "The submit button is hard to find on mobile.",
+  "attachments": [
+    {
+      "fileName": "mobile-layout.png",
+      "contentType": "image/png",
+      "contentBase64": "iVBORw0KGgo="
+    }
+  ]
+}
+```
+
+`feedbackType` is one of `experience`, `data`, `export_submit`, or `feature`. `status` is `open`, `in_progress`, or `closed`; the service allows `open -> in_progress -> closed` and rejects updates after `closed`. Attachments accept `image/png`, `image/jpeg`, and `image/webp`, with up to 5 images, 5 MB per image, and 15 MB total.
 
 ## Governance
 

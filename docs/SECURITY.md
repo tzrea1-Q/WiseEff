@@ -60,6 +60,14 @@ For M2 log analysis:
 - Archive and unarchive require active-user `logs:archive`; default log lists exclude archived records unless `includeArchived=true`.
 - Feedback requires active-user `logs:feedback` and stores only the rating/note needed for quality review.
 
+For product feedback:
+
+- Product feedback submit requires an active authenticated user; it does not require Admin because Internal Beta users need a low-friction report path.
+- Admin review routes (`GET/PATCH /api/v1/product-feedback*`) and attachment content reads require `admin:access`.
+- `product_feedback` and `product_feedback_attachments` are organization-scoped and every repository read/write filters by the authenticated `organization_id`.
+- Attachments are limited to `image/png`, `image/jpeg`, or `image/webp`, up to 5 images, 5 MB per image, and 15 MB total. The database stores metadata and object-store keys, not inline image bytes.
+- Product feedback is product-level beta feedback and must remain separate from M2 log-analysis feedback and its `logs:feedback` permission.
+
 For M3 debugging:
 
 - Device and parameter reads require `debugging:view` and `debugging:read`.
@@ -88,6 +96,8 @@ Audit should cover login/security events, parameter writes, review decisions, lo
 M1 parameter-management writes emit audit events from the backend for `parameter-submit`, `parameter-review-advance`, `parameter-review-reject`, `parameter-merge`, and `batch-import`. The frontend audit drawer is not the security boundary; audit creation happens server-side with the authenticated actor and request trace id.
 
 M2 log-analysis writes emit backend audit events for `log-upload`, `log-upload-failed`, `log-rerun`, `log-archive`, `log-unarchive`, and `log-feedback`. The UI may hide or disable actions by role, but the server permission check and audit write are the authoritative boundary.
+
+Product feedback writes emit backend audit events for `product-feedback-create` and `product-feedback-update`. Audit metadata includes feedback type, status, page path, attachment count, and previous/next status for admin triage updates; attachment object bytes are not copied into audit metadata.
 
 M3 debugging emits backend audit events for target detection, session creation, node reads, node writes, and snapshot rollback. Write audit metadata includes the session, operation, node path, requested value, previous value, readback value, verification result, failure reason, and snapshot id when applicable.
 

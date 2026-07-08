@@ -62,6 +62,8 @@ WiseEff is an AI-assisted enterprise efficiency platform prototype. It centers o
 - Log analysis: log upload, staged analysis progress, evidence, history, and admin governance.
 - Debugging: device or node connection, safe parameter reads/writes, rollback preparation, and operation history.
 
+Internal Beta product feedback is a cross-cutting utility: users submit sidebar feedback with image attachments, while Admins triage it from `/feedback-admin`.
+
 The current codebase has a React/Vite frontend prototype plus a modular M0-M5 backend baseline. Mock mode remains useful for demos and component tests. Production-oriented work should move through the port/API seams documented in `docs/FRONTEND.md` and `ARCHITECTURE.md`.
 
 ## Commands

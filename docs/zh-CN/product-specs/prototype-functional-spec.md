@@ -33,6 +33,7 @@ Implementation note: the mock prototype remains available for demos and componen
 | `/node-debugging` | 节点调试平台 | 连接调试样机、通过 HDC/ADB 读写设备节点、生成快照与操作历史（当前调试主入口） |
 | `/debugging` | 参数调试平台（暂时下线） | 路由保留但不在导航展示；因设备参数重载未实现，显示不可用页并引导至节点调试 |
 | `/debugging-admin` | 参数调试 Admin | 查看设备接入、可调参数目录、指标与权限管理 |
+| `/feedback-admin` | 反馈管理 | Admin 处理 Internal Beta「问题反馈」，查看附件、备注并推进状态 |
 
 ## 3. 全局能力覆盖
 
@@ -44,6 +45,7 @@ Implementation note: the mock prototype remains available for demos and componen
 - 当前项目上下文：通过项目选择器切换当前项目，影响参数、日志等页面的数据视角。
 - 当前角色上下文：通过角色选择器切换硬件开发、项目开发、参数管理员、Admin 等演示身份。
 - 页面标题与路由高亮：帮助演示时快速说明当前所在业务场景。
+- 全局「问题反馈」入口：从当前页面打开 `FeedbackDialog`，带入页面路径和标题，支持图片附件。
 - 统一视觉语言：所有页面共用布局、卡片、表格、状态、时间线、按钮和 Agent 悬浮入口。
 
 ### 3.2 统一数据与状态模型
@@ -60,6 +62,12 @@ Implementation note: the mock prototype remains available for demos and componen
 - 可调参数：包含参数释义、范围、当前值、推荐值、调试风险和下发状态。
 - 用户与权限：用于 Admin 页面展示角色、权限范围和应用治理。
 - 使用指标与审计事件：用于展示平台运行数据和关键行为留痕。
+
+### 3.3 Internal Beta 问题反馈
+
+Internal Beta 用户可以从侧边栏「问题反馈」提交产品级反馈。弹窗要求选择反馈类型（`experience`、`data`、`export_submit`、`feature`）并填写描述，可附加多张图片作为界面或数据问题证据。提交时记录当前 `pagePath` 和 `pageTitle`，方便后续定位问题。
+
+`/feedback-admin` 是 Admin-only 处理页面。管理员可以筛选、搜索、查看详情与附件，填写处理备注，并按 `open -> in_progress -> closed` 推进状态。该反馈闭环服务于产品内测，不等同于日志分析页面里的分析质量反馈。
 
 ## 4. 首页功能覆盖
 

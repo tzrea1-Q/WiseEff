@@ -52,6 +52,7 @@ Rules:
 - `server/modules/audit/`: audit write/query boundary.
 - `server/modules/parameters/`: M1 parameter workflow routes and services.
 - `server/modules/logs/`: M2 log upload, analysis records, object storage, and worker boundary.
+- `server/modules/product-feedback/`: Internal Beta feedback submission, image attachment metadata, and Admin triage routes.
 - `server/modules/debugging/`: M3 simulator/HDC gateway boundary and debugging routes.
 - `server/modules/agent/`: Xiaoze AG-UI endpoint, LangGraph planning agent, tool registry, orchestrator approval bridge, and persisted thread metadata (`server/modules/agent/xiaoze/`).
 - `server/modules/operations/`: liveness, readiness, and pilot readiness checks for release operations.

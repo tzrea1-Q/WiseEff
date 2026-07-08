@@ -1,6 +1,6 @@
 # 调试管理后台 HDC/ADB 目录 CRUD 设计
 
-> English: [English](../../../superpowers/specs/2026-06-22-debugging-admin-hdc-adb-crud-design.md)
+> English: not available
 
 日期：2026-06-22
 状态：已认可，可进入实施计划
