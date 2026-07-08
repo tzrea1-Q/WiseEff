@@ -31,6 +31,7 @@ import type { ObjectStore, ObjectStoreHealthCheck } from "./modules/logs/objectS
 import type { LogAnalysisQueue } from "./modules/logs/logAnalysisQueue";
 import { registerParameterRoutes } from "./modules/parameters/routes";
 import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard/routes";
+import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
 import { registerUserRoutes } from "./modules/users/routes";
 import { createHttpServer } from "./shared/http/server";
 import { createRouter, type RouteRequest } from "./shared/http/router";
@@ -136,6 +137,11 @@ export function createWiseEffServer(
     db: options.db,
     objectStore: options.objectStore,
     logAnalysisQueue: options.logAnalysisQueue,
+    getCurrentAuthContext: authResolver
+  });
+  registerProductFeedbackRoutes(router, {
+    db: options.db,
+    objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
   registerJobRoutes(router, {

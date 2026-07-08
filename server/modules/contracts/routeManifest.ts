@@ -1,6 +1,17 @@
 import type { HttpMethod } from "../../shared/http/router";
 
-export type RouteModule = "auth" | "audit" | "notifications" | "users" | "parameters" | "logs" | "jobs" | "debugging" | "operations" | "agent";
+export type RouteModule =
+  | "auth"
+  | "audit"
+  | "notifications"
+  | "users"
+  | "parameters"
+  | "logs"
+  | "product-feedback"
+  | "jobs"
+  | "debugging"
+  | "operations"
+  | "agent";
 export type RouteStability = "mvp" | "commercial-readiness" | "deprecated";
 
 export type RouteManifestEntry = {
@@ -168,6 +179,18 @@ export const routeManifest = [
   { id: "logs.archive", method: "POST", path: "/api/v1/logs/:logId/archive", module: "logs", stability: "mvp" },
   { id: "logs.unarchive", method: "POST", path: "/api/v1/logs/:logId/unarchive", module: "logs", stability: "mvp" },
   { id: "logs.feedback", method: "POST", path: "/api/v1/logs/:logId/feedback", module: "logs", stability: "mvp" },
+
+  { id: "productFeedback.create", method: "POST", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.list", method: "GET", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.get", method: "GET", path: "/api/v1/product-feedback/:id", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.patch", method: "PATCH", path: "/api/v1/product-feedback/:id", module: "product-feedback", stability: "mvp" },
+  {
+    id: "productFeedback.attachmentContent",
+    method: "GET",
+    path: "/api/v1/product-feedback/:id/attachments/:attachmentId/content",
+    module: "product-feedback",
+    stability: "mvp"
+  },
 
   { id: "jobs.get", method: "GET", path: "/api/v1/jobs/:jobId", module: "jobs", stability: "mvp" },
   { id: "jobs.events", method: "GET", path: "/api/v1/jobs/:jobId/events", module: "jobs", stability: "mvp" },

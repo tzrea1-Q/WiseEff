@@ -1794,6 +1794,216 @@
         }
       }
     },
+    "/api/v1/product-feedback": {
+      "post": {
+        "operationId": "productFeedback.create",
+        "summary": "Create product feedback",
+        "tags": [
+          "product-feedback"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductFeedbackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "get": {
+        "operationId": "productFeedback.list",
+        "summary": "List product feedback",
+        "tags": [
+          "product-feedback"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductFeedbackListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/product-feedback/{id}": {
+      "get": {
+        "operationId": "productFeedback.get",
+        "summary": "Get product feedback",
+        "tags": [
+          "product-feedback"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductFeedbackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "productFeedback.patch",
+        "summary": "Update product feedback",
+        "tags": [
+          "product-feedback"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchProductFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductFeedbackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/product-feedback/{id}/attachments/{attachmentId}/content": {
+      "get": {
+        "operationId": "productFeedback.attachmentContent",
+        "summary": "Get product feedback attachment content",
+        "tags": [
+          "product-feedback"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "attachmentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductFeedbackAttachmentContentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/jobs/{jobId}": {
       "get": {
         "operationId": "jobs.get",
@@ -3837,6 +4047,26 @@
       "LogFeedbackResponse": {
         "type": "object",
         "x-wiseeff-schema": "LogFeedbackResponse"
+      },
+      "CreateProductFeedbackRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateProductFeedbackRequest"
+      },
+      "ProductFeedbackResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProductFeedbackResponse"
+      },
+      "ProductFeedbackListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProductFeedbackListResponse"
+      },
+      "PatchProductFeedbackRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "PatchProductFeedbackRequest"
+      },
+      "ProductFeedbackAttachmentContentResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProductFeedbackAttachmentContentResponse"
       },
       "JobResponse": {
         "type": "object",

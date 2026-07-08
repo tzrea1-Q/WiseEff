@@ -257,6 +257,39 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "LogFeedbackResponse"
   },
 
+  "productFeedback.create": {
+    summary: "Create product feedback",
+    tags: ["product-feedback"],
+    requestBody: "CreateProductFeedbackRequest",
+    responseBody: "ProductFeedbackResponse",
+    successStatus: 201
+  },
+  "productFeedback.list": {
+    summary: "List product feedback",
+    tags: ["product-feedback"],
+    responseBody: "ProductFeedbackListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "productFeedback.get": {
+    summary: "Get product feedback",
+    tags: ["product-feedback"],
+    responseBody: "ProductFeedbackResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "productFeedback.patch": {
+    summary: "Update product feedback",
+    tags: ["product-feedback"],
+    requestBody: "PatchProductFeedbackRequest",
+    responseBody: "ProductFeedbackResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "productFeedback.attachmentContent": {
+    summary: "Get product feedback attachment content",
+    tags: ["product-feedback"],
+    responseBody: "ProductFeedbackAttachmentContentResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+
   "jobs.get": { summary: "Get job status", tags: ["jobs"], responseBody: "JobResponse" },
   "jobs.events": { summary: "List job events", tags: ["jobs"], responseBody: "JobEventListResponse" },
 
