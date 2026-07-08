@@ -20,7 +20,7 @@ import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingR
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { AppAction } from "@/App";
-import type { DashboardWindow, HotspotDimension } from "@/domain/parameters/dashboardTypes";
+import type { DashboardWindow, HotspotDimension, OverviewScope } from "@/domain/parameters/dashboardTypes";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { AuditCenterPage } from "@/AuditCenterPage";
@@ -70,6 +70,7 @@ export type PageProps = {
   dashboardRuntime?: ReturnType<typeof createParameterDashboardRuntime>;
   onDashboardWindowChange?: (window: DashboardWindow) => void;
   onDashboardDimensionChange?: (dimension: HotspotDimension) => void;
+  onDashboardOverviewScopeChange?: (scope: OverviewScope) => void;
   onDashboardProjectChange?: (projectId: string | null) => void;
 };
 
@@ -102,6 +103,7 @@ export function PageRouter({
   dashboardRuntime,
   onDashboardWindowChange,
   onDashboardDimensionChange,
+  onDashboardOverviewScopeChange,
   onDashboardProjectChange,
   HomePage,
   ParameterSubmissionsPage,
@@ -165,6 +167,7 @@ export function PageRouter({
           dashboardRuntime={dashboardRuntime!}
           onDashboardWindowChange={onDashboardWindowChange!}
           onDashboardDimensionChange={onDashboardDimensionChange!}
+          onDashboardOverviewScopeChange={onDashboardOverviewScopeChange!}
           onDashboardProjectChange={onDashboardProjectChange!}
           onNavigate={onNavigate}
           onNewProject={onNewProject}

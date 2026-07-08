@@ -51,8 +51,13 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
     case "DASHBOARD_SUMMARY_LOADING":
       return { ...state, summary: { ...state.summary, status: "loading", error: null } };
     case "DASHBOARD_SUMMARY_READY": {
+      const isTrendEmpty = (point: { changeCount: number; workflowEventCount: number }) =>
+        point.changeCount === 0 && point.workflowEventCount === 0;
       const empty =
-        action.data.kpis.totalParameters === 0 && action.data.trend.every((point) => point.changeCount === 0);
+        state.overviewScope === "personal"
+          ? Object.values(action.data.personalKpis).every((value) => value === 0) &&
+            action.data.personalTrend.every(isTrendEmpty)
+          : action.data.kpis.totalParameters === 0 && action.data.trend.every(isTrendEmpty);
       return { ...state, summary: { status: empty ? "empty" : "ready", data: action.data, error: null } };
     }
     case "DASHBOARD_SUMMARY_ERROR":

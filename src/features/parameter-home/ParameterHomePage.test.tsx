@@ -89,6 +89,7 @@ function renderPage(over: {
       dashboardRuntime={{ loadSummary, loadHotspots }}
       onDashboardWindowChange={vi.fn()}
       onDashboardDimensionChange={vi.fn()}
+      onDashboardOverviewScopeChange={vi.fn()}
       onDashboardProjectChange={vi.fn()}
       onNavigate={vi.fn()}
       onNewProject={vi.fn()}
@@ -165,6 +166,6 @@ describe("ParameterHomePage", () => {
     renderPage({ roleId: "admin" });
     expect(document.querySelector(".parameter-home__overview-row")).not.toBeNull();
     expect(screen.getByText("概览")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "参数更新趋势" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "我的变更趋势" })).toBeInTheDocument();
   });
 });
