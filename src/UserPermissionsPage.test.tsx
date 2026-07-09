@@ -79,6 +79,10 @@ function registrationRoleRequest(overrides: Partial<RegistrationRoleRequest> = {
   };
 }
 
+async function openApprovalsWorkspace() {
+  await userEvent.click(screen.getByRole("tab", { name: /注册申请/ }));
+}
+
 describe("UserPermissionsPage", () => {
   it("renders user permissions, role names, and platform users", () => {
     renderPage();
@@ -152,6 +156,7 @@ describe("UserPermissionsPage", () => {
     render(<UserPermissionsPage state={{ ...createPrototypeState(), activeRoleId: "admin" }} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
 
     expect(document.querySelector(".user-permissions-page")).toBeInTheDocument();
+    expect(document.querySelector(".user-permissions-toolbar")).toBeInTheDocument();
     expect(document.querySelector(".user-permissions-grid")).toBeInTheDocument();
     expect(document.querySelector(".user-permissions-table-card")).toBeInTheDocument();
   });
@@ -171,18 +176,28 @@ describe("UserPermissionsPage", () => {
   });
 
   it("keeps fixed user permissions copy localized", async () => {
-    renderPage();
+    renderPageWithActions({
+      listUsers: vi.fn(async () => []),
+      createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => undefined),
+      setUserActive: vi.fn(async () => undefined),
+      listRegistrationRoleRequests: vi.fn(async () => [])
+    });
 
     const page = document.querySelector(".user-permissions-page") as HTMLElement;
 
     expect(page).toHaveTextContent("添加用户");
     expect(page).toHaveTextContent("搜索");
-    expect(page).toHaveTextContent("角色申请");
+    expect(page).toHaveTextContent("账号库");
     expect(page).toHaveTextContent("平台用户");
     expect(page).toHaveTextContent("硬件开发");
     expect(page).toHaveTextContent("软件开发");
     expect(page).toHaveTextContent("硬件MDE");
     expect(page).toHaveTextContent("软件MDE");
+
+    await openApprovalsWorkspace();
+
+    expect(page).toHaveTextContent("角色申请");
     expect(page).not.toHaveTextContent("Add user");
     expect(page).not.toHaveTextContent("Search users");
     expect(page).not.toHaveTextContent("All roles");
@@ -441,7 +456,9 @@ describe("UserPermissionsPage", () => {
     };
     renderPageWithActions(userGovernanceActions);
 
-    const queue = await screen.findByRole("region", { name: "注册角色申请" });
+    await openApprovalsWorkspace();
+
+    const queue = await screen.findByRole("tabpanel", { name: /注册申请/ });
     expect(within(queue).getByText("Committer Candidate")).toBeInTheDocument();
     expect(within(queue).getByText("committer.candidate")).toBeInTheDocument();
     expect(within(queue).getByText("软件开发")).toBeInTheDocument();
@@ -461,6 +478,31 @@ describe("UserPermissionsPage", () => {
 
     await userEvent.click(within(rejectRequest).getByRole("button", { name: "拒绝" }));
     expect(userGovernanceActions.rejectRegistrationRoleRequest).toHaveBeenCalledWith("registration-role-request-2");
+  });
+
+  it("switches between account and approval workspaces instead of stacking both sections", async () => {
+    renderPageWithActions({
+      listUsers: vi.fn(async () => []),
+      createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => undefined),
+      setUserActive: vi.fn(async () => undefined),
+      listRegistrationRoleRequests: vi.fn(async () => [registrationRoleRequest()])
+    });
+
+    expect(screen.getByRole("tab", { name: /账号库/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("search", { name: "用户筛选" })).toBeInTheDocument();
+    expect(screen.queryByRole("tabpanel", { name: /注册申请/ })).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText(/当前有.*条注册角色申请待处理/)).toBeInTheDocument();
+    });
+
+    await openApprovalsWorkspace();
+
+    expect(screen.getByRole("tab", { name: /注册申请/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel", { name: /注册申请/ })).toBeInTheDocument();
+    expect(screen.queryByRole("search", { name: "用户筛选" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "平台用户" })).not.toBeInTheDocument();
   });
 
   it("uses compact table styling for row role selectors", () => {
@@ -513,10 +555,20 @@ describe("UserPermissionsPage", () => {
   });
 
   it("keeps role selectors wide enough for split committer role names", () => {
+    const tableCardStyles = readCssBlock(".user-permissions-table-card");
     const roleCellStyles = readCssBlock(".user-permissions-role-cell");
     const roleSelectStyles = readCssBlock(".user-permissions-role-select");
     const roleTooltipStyles = readLastCssBlock(".user-permissions-role-tooltip");
 
+    expect(tableCardStyles).toContain("overflow-x: auto;");
+    expect(tableCardStyles).toContain("max-width: 100%;");
+    const approvalItemStyles = readCssBlock(".user-permissions-approval-item");
+    const approvalUserStyles = readCssBlock(".user-permissions-approval-user strong");
+    expect(approvalItemStyles).toContain("grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;");
+    const narrowApprovalItemStyles = readLastCssBlock("@media (max-width: 1100px) {\n  .user-permissions-approval-item");
+    expect(narrowApprovalItemStyles).toContain("grid-template-areas:");
+    expect(narrowApprovalItemStyles).toContain("\"user actions\"");
+    expect(approvalUserStyles).toContain("text-overflow: ellipsis;");
     expect(roleCellStyles).toContain("width: 204px;");
     expect(roleSelectStyles).toContain("min-width: 180px;");
     expect(roleSelectStyles).toContain("width: 180px;");

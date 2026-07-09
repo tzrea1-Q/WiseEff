@@ -118,12 +118,22 @@ function productFeedbackFromDto(dto: ProductFeedbackDto): ProductFeedback {
 
 async function attachmentsBody(files: File[]): Promise<ProductFeedbackAttachmentBody[]> {
   return Promise.all(
-    files.map(async (file) => ({
-      fileName: file.name,
-      contentType: (file.type || "image/png") as ProductFeedbackAttachmentContentType,
+    files.map(async (file, index) => ({
+      fileName: file.name.trim() || `screenshot-${index + 1}.png`,
+      contentType: normalizeAttachmentContentType(file.type),
       contentBase64: await fileToBase64(file)
     }))
   );
+}
+
+function normalizeAttachmentContentType(type: string): ProductFeedbackAttachmentContentType {
+  if (type === "image/jpg") {
+    return "image/jpeg";
+  }
+  if (type === "image/png" || type === "image/jpeg" || type === "image/webp") {
+    return type;
+  }
+  return "image/png";
 }
 
 async function submitBody(input: ProductFeedbackSubmitInput) {

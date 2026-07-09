@@ -97,6 +97,10 @@ describe("WiseEff prototype configuration", () => {
     expect(userManagement?.path).toBe("/user-permissions");
   });
 
+  it("places feedback admin directly after the sidebar feedback entry", () => {
+    expect(utilityItems.map((item) => item.label)).toEqual(["反馈管理", "审计中心", "用户管理"]);
+  });
+
   it("does not expose a disabled Agent utility item", () => {
     expect(utilityItems.map((item) => item.label)).not.toContain("Agent 能力");
   });

@@ -74,6 +74,39 @@ function toFeedbackDto(row: ProductFeedbackRow, attachments: ProductFeedbackAtta
   };
 }
 
+async function loadAttachmentsForFeedback(
+  db: Queryable,
+  auth: AuthContext,
+  items: ProductFeedbackDto[]
+): Promise<ProductFeedbackDto[]> {
+  if (items.length === 0) {
+    return items;
+  }
+
+  const attachmentResult = await db.query<ProductFeedbackAttachmentRow>(
+    `
+    select *
+    from product_feedback_attachments
+    where organization_id = $1
+      and feedback_id = any($2::uuid[])
+    order by feedback_id, sort_order asc, id asc
+    `,
+    [auth.organization.id, items.map((item) => item.id)]
+  );
+
+  const attachmentsByFeedbackId = new Map<string, ProductFeedbackAttachmentDto[]>();
+  for (const row of attachmentResult.rows) {
+    const bucket = attachmentsByFeedbackId.get(row.feedback_id) ?? [];
+    bucket.push(toAttachmentDto(row));
+    attachmentsByFeedbackId.set(row.feedback_id, bucket);
+  }
+
+  return items.map((item) => ({
+    ...item,
+    attachments: attachmentsByFeedbackId.get(item.id) ?? []
+  }));
+}
+
 function addCondition(parts: string[], values: unknown[], condition: (placeholder: string) => string, value: unknown) {
   values.push(value);
   parts.push(condition(`$${values.length}`));
@@ -231,7 +264,11 @@ export async function listFeedback(db: Queryable, auth: AuthContext, query: List
   );
 
   const hasMore = result.rows.length > limit;
-  const items = result.rows.slice(0, limit).map((row) => toFeedbackDto(row));
+  const items = await loadAttachmentsForFeedback(
+    db,
+    auth,
+    result.rows.slice(0, limit).map((row) => toFeedbackDto(row))
+  );
   const last = items.at(-1);
   return {
     items,
@@ -269,5 +306,9 @@ export async function updateFeedback(
     values
   );
 
-  return result.rows[0] ? toFeedbackDto(result.rows[0]) : null;
+  if (!result.rows[0]) {
+    return null;
+  }
+
+  return getFeedbackById(db, auth, id);
 }

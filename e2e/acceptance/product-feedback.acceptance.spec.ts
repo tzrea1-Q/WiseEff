@@ -343,9 +343,9 @@ test.describe("Product feedback browser acceptance", () => {
     await expect(page.getByRole("heading", { name: "参数工作台" })).toBeVisible();
     await page.getByLabel("处理备注").fill(adminNote);
     await page.getByRole("button", { name: "开始处理" }).click();
-    await expect(page.getByRole("button", { name: "关闭", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "关闭反馈", exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "关闭", exact: true }).click();
+    await page.getByRole("button", { name: "关闭反馈", exact: true }).click();
     await expect(page.getByText("已关闭的反馈仅可查看。")).toBeVisible();
 
     const detailResponse = await page.request.get(apiRoute(`/api/v1/product-feedback/${created.item.id}`), {

@@ -53,6 +53,11 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  const hideDefaultCloseButton =
+    showCloseButton === false ||
+    className?.includes("feedback-attachment-preview-dialog") ||
+    className?.includes("feedback-dialog")
+
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -65,7 +70,7 @@ function DialogContent({
         {...props}
       >
         {children}
-        {showCloseButton && (
+        {!hideDefaultCloseButton && (
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
             <Button
               variant="ghost"

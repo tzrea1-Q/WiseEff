@@ -137,8 +137,8 @@ export const navigationItems: PageConfig[] = [
 ];
 
 export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: string }> = [
-  { label: "审计中心", icon: ScrollText, path: "/audit" },
   { label: "反馈管理", icon: MessageSquareText, path: "/feedback-admin" },
+  { label: "审计中心", icon: ScrollText, path: "/audit" },
   { label: "用户管理", icon: Settings2, path: "/user-permissions" }
 ];
 

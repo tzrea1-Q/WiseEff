@@ -165,7 +165,7 @@ describe("product feedback repository", () => {
   });
 
   it("listFeedback fetches one extra row and omits nextCursor when the page is not full", async () => {
-    const { db, calls } = createFakeDb([[feedbackRow({ id: "feedback-2" })]]);
+    const { db, calls } = createFakeDb([[feedbackRow({ id: "feedback-2" })], []]);
 
     const result = await listFeedback(db, auth(), {
       status: "open",
@@ -188,6 +188,8 @@ describe("product feedback repository", () => {
     expect(calls[0].text).toContain("(created_at, id) < ($8, $9)");
     expect(calls[0].text).toContain("order by created_at desc, id desc");
     expect(calls[0].text).toContain("limit $10");
+    expect(calls[1].text).toContain("from product_feedback_attachments");
+    expect(calls[1].text).toContain("feedback_id = any($2::uuid[])");
     expect(calls[0].values).toEqual([
       "org-1",
       "open",
@@ -209,7 +211,8 @@ describe("product feedback repository", () => {
       [
         feedbackRow({ id: "feedback-2", created_at: "2026-07-08T09:00:00.000Z" }),
         feedbackRow({ id: "feedback-1", created_at: "2026-07-08T08:00:00.000Z" })
-      ]
+      ],
+      []
     ]);
 
     const result = await listFeedback(db, auth(), { limit: 2 });
@@ -224,7 +227,8 @@ describe("product feedback repository", () => {
         feedbackRow({ id: "feedback-3", created_at: "2026-07-08T10:00:00.000Z" }),
         feedbackRow({ id: "feedback-2", created_at: "2026-07-08T09:00:00.000Z" }),
         feedbackRow({ id: "feedback-1", created_at: "2026-07-08T08:00:00.000Z" })
-      ]
+      ],
+      []
     ]);
 
     const result = await listFeedback(db, auth(), { limit: 2 });
@@ -233,8 +237,29 @@ describe("product feedback repository", () => {
     expect(result.nextCursor).toEqual({ createdAt: "2026-07-08T09:00:00.000Z", id: "feedback-2" });
   });
 
+  it("listFeedback hydrates attachments for each feedback row", async () => {
+    const { db } = createFakeDb([
+      [feedbackRow({ id: "feedback-2" }), feedbackRow({ id: "feedback-1" })],
+      [
+        attachmentRow({ id: "attachment-2", feedback_id: "feedback-2", sort_order: 0 }),
+        attachmentRow({ id: "attachment-1", feedback_id: "feedback-1", sort_order: 0 })
+      ]
+    ]);
+
+    const result = await listFeedback(db, auth(), { limit: 10 });
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items[0].attachments).toHaveLength(1);
+    expect(result.items[0].attachments[0].id).toBe("attachment-2");
+    expect(result.items[1].attachments[0].id).toBe("attachment-1");
+  });
+
   it("updateFeedback updates status and admin note with organization scoping", async () => {
-    const { db, calls } = createFakeDb([[feedbackRow({ status: "in_progress", admin_note: "Triaged by support." })]]);
+    const { db, calls } = createFakeDb([
+      [feedbackRow({ status: "in_progress", admin_note: "Triaged by support." })],
+      [feedbackRow({ status: "in_progress", admin_note: "Triaged by support." })],
+      []
+    ]);
 
     const feedback = await updateFeedback(db, auth(), "feedback-1", {
       status: "in_progress",
@@ -242,6 +267,8 @@ describe("product feedback repository", () => {
     });
 
     expect(calls[0].text).toContain("update product_feedback");
+    expect(calls[1].text).toContain("from product_feedback");
+    expect(calls[2].text).toContain("from product_feedback_attachments");
     expect(calls[0].text).toContain("status = $3");
     expect(calls[0].text).toContain("admin_note = $4");
     expect(calls[0].text).toContain("updated_at = now()");
