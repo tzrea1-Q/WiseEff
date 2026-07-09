@@ -60,17 +60,20 @@ import {
   countDebugNodesForModule,
   createDebugNode,
   createDebugNodeModule,
-  deleteDebugNodeModule,
   getDebugNode,
   getDebugNodeBinding,
-  getDebugNodeModule,
+  getDebugNodeModuleById,
+  getDebugNodeModuleByName,
   listDebugNodeBindings,
   listDebugNodeModules,
   listDebugNodes,
   listRuntimeDebugNodes,
+  moveDebugNodeModule,
   renameDebugNodeModuleReferences,
   updateDebugNode,
   updateDebugNodeModule,
+  deleteDebugNodeModuleById,
+  countDebugNodesForModuleId,
   upsertDebugNodeBinding
 } from "./catalogSplitRepository";
 import { defaultDebugConnectionProtocol, type DebugConnectionProtocol } from "./protocol";
@@ -124,6 +127,8 @@ type ServiceOptions = {
 
 type ParameterListQuery = {
   module?: string;
+  moduleId?: string;
+  includeDescendants?: boolean;
   risk?: string[];
   protocol?: DebugConnectionProtocol;
 };
@@ -208,6 +213,7 @@ type AdminNodeWriteInput = {
   writeFormatExample?: string;
   writeFormatHint?: string;
   module?: string;
+  moduleId?: string;
   valueKind?: DebugParameterRecord["valueKind"];
   valueFormat?: DebugParameterRecord["valueFormat"];
   normalizationMode?: DebugParameterRecord["normalizationMode"];
@@ -232,12 +238,19 @@ type AdminNodeBindingArchiveInput = {
 
 type AdminDebugModuleWriteInput = {
   name: string;
+  parentId?: string | null;
   description?: string;
   scope?: string;
+  sortOrder?: number;
 };
 
-type AdminDebugModulePatchInput = Partial<AdminDebugModuleWriteInput> & {
-  moduleName: string;
+type AdminDebugModulePatchInput = Partial<Omit<AdminDebugModuleWriteInput, "parentId">> & {
+  moduleId: string;
+};
+
+type AdminDebugModuleMoveInput = {
+  moduleId: string;
+  parentId: string | null;
 };
 
 type RuntimeNodeSource = DebugRuntimeNodeRecord | { node: DebugNodeRecord; binding: DebugNodeBindingRecord };
@@ -282,6 +295,28 @@ type ServiceContext = AuditCorrelationContext;
 
 function organizationIdFor(auth: AuthContext) {
   return auth.organization.id || auth.user.organizationId;
+}
+
+async function resolveDebugNodeModuleAssignment(
+  db: Database,
+  organizationId: string,
+  input: { module?: string; moduleId?: string }
+) {
+  if (input.moduleId) {
+    const module = await getDebugNodeModuleById(db, { organizationId, moduleId: input.moduleId });
+    if (!module) {
+      throw notFound("Debug module was not found.");
+    }
+    return { module: module.name, moduleId: module.id };
+  }
+
+  const moduleName = input.module?.trim();
+  if (!moduleName) {
+    throw new ApiError("VALIDATION_FAILED", "Either module or moduleId is required.", 400);
+  }
+
+  const module = await getDebugNodeModuleByName(db, { organizationId, name: moduleName, parentId: null });
+  return { module: moduleName, moduleId: module?.id ?? null };
 }
 
 function auditInput(
@@ -844,12 +879,17 @@ export function createDebuggingService(options: ServiceOptions) {
       return attachParameterBindings(parameters, bindings, query.protocol).filter((parameter) => parameter.selectedBinding?.enabled === true);
     },
 
-    async listRuntimeNodes(auth: AuthContext, query: { protocol?: DebugConnectionProtocol } = {}) {
+    async listRuntimeNodes(
+      auth: AuthContext,
+      query: { protocol?: DebugConnectionProtocol; moduleId?: string; includeDescendants?: boolean } = {}
+    ) {
       requireDebugView(auth);
       const organizationId = organizationIdFor(auth);
       return listRuntimeDebugNodes(db, {
         organizationId,
-        protocol: query.protocol
+        protocol: query.protocol,
+        moduleId: query.moduleId,
+        includeDescendants: query.includeDescendants
       });
     },
 
@@ -1192,13 +1232,15 @@ export function createDebuggingService(options: ServiceOptions) {
 
     async listAdminDebugNodes(
       auth: AuthContext,
-      query: { includeArchived?: boolean } = {}
+      query: { includeArchived?: boolean; moduleId?: string; includeDescendants?: boolean } = {}
     ): Promise<DebugNodeWithBindingsRecord[]> {
       requireDebugAdmin(auth);
       const organizationId = organizationIdFor(auth);
       const nodes = await listDebugNodes(db, {
         organizationId,
-        includeArchived: query.includeArchived
+        includeArchived: query.includeArchived,
+        moduleId: query.moduleId,
+        includeDescendants: query.includeDescendants
       });
       if (nodes.length === 0) {
         return [];
@@ -1216,6 +1258,7 @@ export function createDebuggingService(options: ServiceOptions) {
     async createAdminDebugNode(auth: AuthContext, input: AdminNodeWriteInput, context: ServiceContext = {}): Promise<DebugNodeWithBindingsRecord> {
       requireDebugAdmin(auth);
       const organizationId = organizationIdFor(auth);
+      const moduleAssignment = await resolveDebugNodeModuleAssignment(db, organizationId, input);
 
       return db.transaction(async (tx) => {
         const node = await createDebugNode(tx, {
@@ -1225,7 +1268,8 @@ export function createDebuggingService(options: ServiceOptions) {
           detailedDescription: input.detailedDescription ?? "",
           writeFormatExample: input.writeFormatExample ?? "",
           writeFormatHint: input.writeFormatHint ?? "",
-          module: input.module ?? "",
+          module: moduleAssignment.module,
+          moduleId: moduleAssignment.moduleId,
           valueKind: input.valueKind,
           valueFormat: input.valueFormat,
           normalizationMode: input.normalizationMode,
@@ -1275,6 +1319,13 @@ export function createDebuggingService(options: ServiceOptions) {
     async updateAdminDebugNode(auth: AuthContext, input: AdminNodePatchInput, context: ServiceContext = {}): Promise<DebugNodeWithBindingsRecord> {
       requireDebugAdmin(auth);
       const organizationId = organizationIdFor(auth);
+      const moduleAssignment =
+        input.module !== undefined || input.moduleId !== undefined
+          ? await resolveDebugNodeModuleAssignment(db, organizationId, {
+              module: input.module,
+              moduleId: input.moduleId
+            })
+          : null;
 
       return db.transaction(async (tx) => {
         const current = await getDebugNode(tx, { organizationId, nodeId: input.nodeId, includeArchived: true });
@@ -1289,7 +1340,8 @@ export function createDebuggingService(options: ServiceOptions) {
           detailedDescription: input.detailedDescription ?? current.detailedDescription,
           writeFormatExample: input.writeFormatExample ?? current.writeFormatExample,
           writeFormatHint: input.writeFormatHint ?? current.writeFormatHint,
-          module: input.module ?? current.module,
+          module: moduleAssignment?.module ?? current.module,
+          moduleId: moduleAssignment?.moduleId ?? current.moduleId ?? null,
           valueKind: input.valueKind ?? current.valueKind,
           valueFormat: input.valueFormat ?? current.valueFormat,
           normalizationMode: input.normalizationMode ?? current.normalizationMode,
@@ -1338,17 +1390,27 @@ export function createDebuggingService(options: ServiceOptions) {
         throw new ApiError("VALIDATION_FAILED", "Module name is required.", 400);
       }
 
-      const existing = await getDebugNodeModule(db, { organizationId, name });
+      const parentId = input.parentId ?? null;
+      if (parentId) {
+        const parent = await getDebugNodeModuleById(db, { organizationId, moduleId: parentId });
+        if (!parent) {
+          throw notFound("Target parent debug module was not found.");
+        }
+      }
+
+      const existing = await getDebugNodeModuleByName(db, { organizationId, name, parentId });
       if (existing) {
-        throw new ApiError("CONFLICT", "Debug module already exists.", 409, { name });
+        throw new ApiError("CONFLICT", "Debug module already exists.", 409, { name, parentId });
       }
 
       return db.transaction(async (tx) => {
         const module = await createDebugNodeModule(tx, {
           organizationId,
           name,
+          parentId,
           description: input.description?.trim() ?? "",
-          scope: input.scope?.trim() ?? ""
+          scope: input.scope?.trim() ?? "",
+          sortOrder: input.sortOrder
         });
 
         await writeAudit(
@@ -1361,8 +1423,8 @@ export function createDebuggingService(options: ServiceOptions) {
               action: "create",
               severity: "Low",
               targetType: "debug-node-module",
-              targetId: module.name,
-              metadata: { name: module.name, scope: module.scope }
+              targetId: module.id,
+              metadata: { name: module.name, parentId: module.parentId, scope: module.scope }
             },
             context
           )
@@ -1375,7 +1437,7 @@ export function createDebuggingService(options: ServiceOptions) {
     async updateAdminDebugModule(auth: AuthContext, input: AdminDebugModulePatchInput, context: ServiceContext = {}): Promise<DebugNodeModuleRecord> {
       requireDebugAdmin(auth);
       const organizationId = organizationIdFor(auth);
-      const current = await getDebugNodeModule(db, { organizationId, name: input.moduleName });
+      const current = await getDebugNodeModuleById(db, { organizationId, moduleId: input.moduleId });
       if (!current) {
         throw notFound("Debug module was not found.");
       }
@@ -1385,8 +1447,12 @@ export function createDebuggingService(options: ServiceOptions) {
         throw new ApiError("VALIDATION_FAILED", "Module name is required.", 400);
       }
       if (nextName !== current.name) {
-        const conflict = await getDebugNodeModule(db, { organizationId, name: nextName });
-        if (conflict) {
+        const conflict = await getDebugNodeModuleByName(db, {
+          organizationId,
+          name: nextName,
+          parentId: current.parentId
+        });
+        if (conflict && conflict.id !== current.id) {
           throw new ApiError("CONFLICT", "Debug module already exists.", 409, { name: nextName });
         }
       }
@@ -1402,10 +1468,11 @@ export function createDebuggingService(options: ServiceOptions) {
 
         const module = await updateDebugNodeModule(tx, {
           organizationId,
-          moduleName: current.name,
+          moduleId: current.id,
           name: nextName,
           description: input.description?.trim() ?? current.description,
-          scope: input.scope?.trim() ?? current.scope
+          scope: input.scope?.trim() ?? current.scope,
+          sortOrder: input.sortOrder
         });
         if (!module) {
           throw notFound("Debug module was not found.");
@@ -1421,7 +1488,7 @@ export function createDebuggingService(options: ServiceOptions) {
               action: "update",
               severity: "Low",
               targetType: "debug-node-module",
-              targetId: module.name,
+              targetId: module.id,
               metadata: {
                 previousName: current.name,
                 name: module.name,
@@ -1436,45 +1503,122 @@ export function createDebuggingService(options: ServiceOptions) {
       });
     },
 
-    async deleteAdminDebugModule(auth: AuthContext, moduleName: string, context: ServiceContext = {}): Promise<void> {
+    async moveAdminDebugModule(auth: AuthContext, input: AdminDebugModuleMoveInput, context: ServiceContext = {}): Promise<DebugNodeModuleRecord> {
       requireDebugAdmin(auth);
       const organizationId = organizationIdFor(auth);
-      const current = await getDebugNodeModule(db, { organizationId, name: moduleName });
+      const current = await getDebugNodeModuleById(db, { organizationId, moduleId: input.moduleId });
       if (!current) {
         throw notFound("Debug module was not found.");
       }
 
-      const nodeCount = await countDebugNodesForModule(db, { organizationId, moduleName });
+      const parentId = input.parentId;
+      if (parentId) {
+        const parent = await getDebugNodeModuleById(db, { organizationId, moduleId: parentId });
+        if (!parent) {
+          throw notFound("Target parent debug module was not found.");
+        }
+      }
+
+      if (parentId === current.parentId) {
+        return current;
+      }
+
+      const conflict = await getDebugNodeModuleByName(db, {
+        organizationId,
+        name: current.name,
+        parentId
+      });
+      if (conflict && conflict.id !== current.id) {
+        throw new ApiError("CONFLICT", "Debug module already exists under the target parent.", 409, {
+          name: current.name,
+          parentId
+        });
+      }
+
+      try {
+        return await db.transaction(async (tx) => {
+          const module = await moveDebugNodeModule(tx, {
+            organizationId,
+            moduleId: input.moduleId,
+            parentId
+          });
+          if (!module) {
+            throw notFound("Debug module was not found.");
+          }
+
+          await writeAudit(
+            tx,
+            auditInput(
+              auth,
+              {
+                projectId: null,
+                kind: "debug-node-module-admin-move",
+                action: "move",
+                severity: "Low",
+                targetType: "debug-node-module",
+                targetId: module.id,
+                metadata: { previousParentId: current.parentId, parentId: module.parentId }
+              },
+              context
+            )
+          );
+
+          return module;
+        });
+      } catch (error) {
+        if (error instanceof Error && /cycle/i.test(error.message)) {
+          throw new ApiError("CONFLICT", error.message, 409, { moduleId: input.moduleId, parentId });
+        }
+        throw error;
+      }
+    },
+
+    async deleteAdminDebugModule(auth: AuthContext, moduleId: string, context: ServiceContext = {}): Promise<void> {
+      requireDebugAdmin(auth);
+      const organizationId = organizationIdFor(auth);
+      const current = await getDebugNodeModuleById(db, { organizationId, moduleId });
+      if (!current) {
+        throw notFound("Debug module was not found.");
+      }
+
+      const nodeCount = await countDebugNodesForModuleId(db, { organizationId, moduleId });
       if (nodeCount > 0) {
         throw new ApiError("CONFLICT", "Cannot delete a debug module that still has nodes.", 409, {
-          moduleName,
+          moduleId,
           nodeCount
         });
       }
 
-      await db.transaction(async (tx) => {
-        const deleted = await deleteDebugNodeModule(tx, { organizationId, moduleName });
-        if (!deleted) {
-          throw notFound("Debug module was not found.");
-        }
+      try {
+        await db.transaction(async (tx) => {
+          const deleted = await deleteDebugNodeModuleById(tx, { organizationId, moduleId });
+          if (!deleted) {
+            throw notFound("Debug module was not found.");
+          }
 
-        await writeAudit(
-          tx,
-          auditInput(
-            auth,
-            {
-              projectId: null,
-              kind: "debug-node-module-admin-delete",
-              action: "delete",
-              severity: "Low",
-              targetType: "debug-node-module",
-              targetId: moduleName,
-              metadata: { name: moduleName }
-            },
-            context
-          )
-        );
-      });
+          await writeAudit(
+            tx,
+            auditInput(
+              auth,
+              {
+                projectId: null,
+                kind: "debug-node-module-admin-delete",
+                action: "delete",
+                severity: "Low",
+                targetType: "debug-node-module",
+                targetId: moduleId,
+                metadata: { name: current.name }
+              },
+              context
+            )
+          );
+        });
+      } catch (error) {
+        if (error instanceof Error && /child modules|referenced by debug nodes/i.test(error.message)) {
+          throw new ApiError("CONFLICT", error.message, 409, { moduleId });
+        }
+        throw error;
+      }
     },
 
     async upsertAdminDebugNodeBinding(auth: AuthContext, input: AdminNodeBindingWriteInput, context: ServiceContext = {}) {

@@ -38,7 +38,7 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 
 新增后端业务路由时，必须把前端 capability 映射到服务端授权检查，并补 forbidden 用户的负向测试。
 
-参数管理写入需要服务端权限和审计：草稿、提交、审阅、merge 和 import 不能只依赖前端禁用按钮。日志上传、重跑、归档、反馈也必须由后端校验权限并记录审计。产品级「问题反馈」提交要求 active 登录用户；Admin 列表、详情、状态更新、备注和附件读取要求 `admin:access`。`debugging:admin` 只管理调试 catalog metadata 和 HDC/ADB node bindings；调试节点写入仍必须走 runtime path，并具备调试写权限、项目访问、有效 session、可写 access mode、范围校验、设备 lease、写前快照和必要的高风险确认。
+参数管理写入需要服务端权限和审计：草稿、提交、审阅、merge 和 import 不能只依赖前端禁用按钮。参数模块树 CRUD（`/api/v1/parameter-modules*`）要求 `admin:access`；非 Admin 在具备 `parameter:view` 时可列表。删除非空模块或循环移动返回 `409`。日志上传、重跑、归档、反馈也必须由后端校验权限并记录审计。产品级「问题反馈」提交要求 active 登录用户；Admin 列表、详情、状态更新、备注和附件读取要求 `admin:access`。`debugging:admin` 管理调试 catalog metadata、HDC/ADB node bindings 与调试节点模块树（`/api/v1/debugging/admin/modules*`）；调试节点写入仍必须走 runtime path，并具备调试写权限、项目访问、有效 session、可写 access mode、范围校验、设备 lease、写前快照和必要的高风险确认。
 
 产品反馈以 `organization_id` 做隔离，`product_feedback` 与 `product_feedback_attachments` 的读写都必须按认证组织过滤。附件只允许 `image/png`、`image/jpeg`、`image/webp`，最多 5 张，单张 5 MB，总量 15 MB；数据库只保存 metadata 和对象存储 key，不在行内保存图片 bytes。该反馈属于 Internal Beta 产品反馈，不能混用日志分析的 `logs:feedback` 权限和数据模型。
 

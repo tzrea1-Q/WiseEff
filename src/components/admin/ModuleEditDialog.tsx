@@ -1,7 +1,13 @@
 import { CircleX } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { ParameterModuleDraft, PowerManagementParameterModule } from "@/powerManagementConfig";
+import type { ParameterModuleDraft } from "@/powerManagementConfig";
 import { canSubmitModuleDraft, ModuleDefinitionForm } from "./ModuleDefinitionForm";
+
+type EditableModule = {
+  name: string;
+  description?: string;
+  scope?: string;
+};
 
 export function ModuleEditDialog({
   module,
@@ -9,15 +15,23 @@ export function ModuleEditDialog({
   onSave,
   onCancel
 }: {
-  module: PowerManagementParameterModule;
+  module: EditableModule;
   existingNames: readonly string[];
   onSave: (patch: ParameterModuleDraft) => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState<ParameterModuleDraft>({ ...module });
+  const [draft, setDraft] = useState<ParameterModuleDraft>({
+    name: module.name,
+    description: module.description ?? "",
+    scope: module.scope ?? ""
+  });
 
   useEffect(() => {
-    setDraft({ ...module });
+    setDraft({
+      name: module.name,
+      description: module.description ?? "",
+      scope: module.scope ?? ""
+    });
   }, [module]);
 
   useEffect(() => {

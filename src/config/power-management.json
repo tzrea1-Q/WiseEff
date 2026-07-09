@@ -18,34 +18,57 @@
   ],
   "parameterModules": [
     {
+      "name": "Power",
+      "description": "电源域顶层分类，聚合电池与充电子树。",
+      "scope": "跨域电源治理"
+    },
+    {
+      "name": "Battery",
+      "description": "电池相关子域：估计、健康、保护与热安全。",
+      "scope": "电池生命周期与状态",
+      "parent": "Power"
+    },
+    {
       "name": "Battery Estimation",
       "description": "电池状态估计、平滑与算法调参相关模块。",
-      "scope": "跨项目 SOC/SOH 估计与状态平滑"
+      "scope": "跨项目 SOC/SOH 估计与状态平滑",
+      "parent": "Battery"
     },
     {
       "name": "Battery Health",
       "description": "电池健康度与容量保留策略。",
-      "scope": "健康容量与寿命治理"
+      "scope": "健康容量与寿命治理",
+      "parent": "Battery"
     },
     {
       "name": "Battery Protection",
       "description": "低电量保护与关机策略。",
-      "scope": "关机阈值与保护边界"
+      "scope": "关机阈值与保护边界",
+      "parent": "Battery"
     },
     {
       "name": "Battery Safety",
       "description": "电池温度与安全边界参数。",
-      "scope": "温度目标与热安全策略"
+      "scope": "温度目标与热安全策略",
+      "parent": "Battery"
+    },
+    {
+      "name": "Charging",
+      "description": "充电策略与协议子域。",
+      "scope": "有线/协议充电治理",
+      "parent": "Power"
     },
     {
       "name": "Charging Policy",
       "description": "充电策略、电流电压与快充控制。",
-      "scope": "快充/恒压/策略矩阵"
+      "scope": "快充/恒压/策略矩阵",
+      "parent": "Charging"
     },
     {
       "name": "Charging Protocol",
       "description": "USB PD 等充电协议能力配置。",
-      "scope": "协议功率档位与协商"
+      "scope": "协议功率档位与协商",
+      "parent": "Charging"
     },
     {
       "name": "Power IC",

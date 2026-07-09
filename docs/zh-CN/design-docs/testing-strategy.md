@@ -86,6 +86,8 @@ M5.10 之后，浏览器 E2E 还承担审计级证据生成职责。每个自动
 
 调试管理 catalog 变更由 `e2e/acceptance/debugging-admin.acceptance.spec.ts` 中的 `DEBUG-ADMIN-001` 覆盖。该验收流程覆盖管理界面、API、数据库持久化和审计证据，验证参数新增、编辑、归档、恢复、HDC/ADB binding 管理，以及复杂值元数据编辑。
 
+多层级模块树由 `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` 中的 `MOD-TREE-PARAM-001/002`、`MOD-TREE-DEBUG-001`、`MOD-TREE-AUTHZ-001` 覆盖（嵌套创建、子树筛选、移动/循环守卫、authz、非空删除 409）。
+
 模拟器调试由 `e2e/acceptance/debugging-simulator.acceptance.spec.ts` 中的 `DEBUG-SIM-001` 覆盖，包含复杂 JSON 写入路径，并在 `node_operations` 中记录 `valueKind`、digest 和 preview 元数据，同时避免在 operation evidence 中泄露完整 payload。
 
 定向单元测试覆盖 `server/modules/debugging/valueCodec.test.ts`、gateway 保真测试、管理端/运行时 UI 测试，以及 legacy 标量默认值的 DTO mapper 测试。

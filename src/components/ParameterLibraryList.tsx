@@ -1,16 +1,13 @@
 import { Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { ParamAdminSearch } from "../hooks/useParamAdminSearch";
-import { getCoverage, type ParameterCoverage } from "../parameterAdminAnalytics";
+import { groupParametersByModuleTree, modulePathLabelForTemplate } from "../parameterAdminLibrary";
+import { filterParameterLibrary, sortParameterLibrary } from "../parameterAdminLibraryFilters";
 import type { PowerManagementParameterTemplate, PowerManagementProject } from "../powerManagementConfig";
+import type { ParameterCoverage } from "../parameterAdminAnalytics";
+import { ModuleTreeSelect } from "./common/ModuleTreeSelect";
 import { FilterChipGroup } from "./FilterChipGroup";
-import { MultiSelectDropdown } from "./MultiSelectDropdown";
-
-const RISK_TO_FILTER = {
-  High: "high",
-  Medium: "medium",
-  Low: "low"
-} as const;
 
 const RISK_LABEL = {
   High: "高",
@@ -35,6 +32,7 @@ const COLLAPSED_GROUPS_KEY = "parameter-admin.collapsed-groups";
 export function ParameterLibraryList({
   parameters,
   projects,
+  moduleNodes,
   selectedId,
   onSelect,
   search,
@@ -42,6 +40,7 @@ export function ParameterLibraryList({
 }: {
   parameters: PowerManagementParameterTemplate[];
   projects: readonly PowerManagementProject[];
+  moduleNodes: readonly FlatModuleNode[];
   selectedId?: string;
   onSelect: (id: string) => void;
   search: ParamAdminSearch;
@@ -56,56 +55,29 @@ export function ParameterLibraryList({
       return new Set();
     }
   });
-  const moduleOptions = Array.from(new Set(parameters.map((parameter) => parameter.module))).map((moduleName) => ({
-    value: moduleName,
-    label: moduleName
-  }));
 
   useEffect(() => {
     sessionStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify(Array.from(collapsedGroups)));
   }, [collapsedGroups]);
 
-  const filtered = parameters.filter((parameter) => {
-    if (search.q) {
-      const needle = search.q.toLowerCase();
-      const haystack = `${parameter.name} ${parameter.module} ${parameter.description} ${parameter.explanation}`.toLowerCase();
-      if (!haystack.includes(needle)) {
-        return false;
-      }
-    }
-
-    if (search.risk !== "all" && RISK_TO_FILTER[parameter.risk] !== search.risk) {
-      return false;
-    }
-
-    if (search.modules.length > 0 && !search.modules.includes(parameter.module)) {
-      return false;
-    }
-
-    if (search.coverage !== "all" && getCoverage(parameter, projects) !== search.coverage) {
-      return false;
-    }
-
-    return true;
-  });
-  const sorted = sortParameters(filtered, search.sort);
+  const filtered = useMemo(
+    () => sortParameterLibrary(filterParameterLibrary(parameters, projects, search, moduleNodes), search.sort),
+    [moduleNodes, parameters, projects, search]
+  );
   const forceExpandGroups = search.q.trim().length > 0;
   const filtersActive = search.q.trim().length > 0 || search.risk !== "all" || search.modules.length > 0 || search.coverage !== "all";
-  const grouped = new Map<string, PowerManagementParameterTemplate[]>();
-  for (const parameter of sorted) {
-    const group = grouped.get(parameter.module) ?? [];
-    group.push(parameter);
-    grouped.set(parameter.module, group);
-  }
-  const groupedEntries = Array.from(grouped.entries());
+  const groupedEntries = useMemo(
+    () => groupParametersByModuleTree(filtered, moduleNodes).filter(({ parameters: items }) => items.length > 0),
+    [filtered, moduleNodes]
+  );
 
-  const toggleGroup = (moduleName: string) => {
+  const toggleGroup = (moduleId: string) => {
     setCollapsedGroups((current) => {
       const next = new Set(current);
-      if (next.has(moduleName)) {
-        next.delete(moduleName);
+      if (next.has(moduleId)) {
+        next.delete(moduleId);
       } else {
-        next.add(moduleName);
+        next.add(moduleId);
       }
       return next;
     });
@@ -140,11 +112,12 @@ export function ParameterLibraryList({
           onChange={(risk) => onUpdateSearch({ risk: risk as ParamAdminSearch["risk"] })}
         />
         <div className="library-filter-row">
-          <MultiSelectDropdown
+          <ModuleTreeSelect
             label="模块"
-            options={moduleOptions}
+            mode="multi-filter"
+            nodes={moduleNodes}
             value={search.modules}
-            onChange={(modules) => onUpdateSearch({ modules })}
+            onChange={(modules) => onUpdateSearch({ modules: Array.isArray(modules) ? modules : [modules] })}
           />
           <div className="dropdown-root">
             <button
@@ -201,22 +174,23 @@ export function ParameterLibraryList({
 
       {filtered.length > 0 ? (
         <div className="library-list" role="region" aria-label="项目共享参数库">
-          {groupedEntries.map(([moduleName, items]) => {
-            const collapsed = !forceExpandGroups && collapsedGroups.has(moduleName);
+          {groupedEntries.map(({ node, parameters: items }) => {
+            const collapsed = !forceExpandGroups && collapsedGroups.has(node.id);
             return (
-              <section className="param-group" key={moduleName}>
+              <section className="param-group param-group--tree" data-depth={node.depth} key={node.id}>
                 <button
                   aria-expanded={!collapsed}
                   className="param-group-header"
+                  style={{ paddingLeft: `${Math.max(node.depth - 1, 0) * 12 + 8}px` }}
                   type="button"
-                  onClick={() => toggleGroup(moduleName)}
+                  onClick={() => toggleGroup(node.id)}
                 >
                   <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
-                  <strong>{moduleName}</strong>
+                  <strong>{node.name}</strong>
                   <span className="param-group-count">({items.length})</span>
                 </button>
                 {collapsed ? null : (
-                  <ul className="param-group-list" aria-label={moduleName}>
+                  <ul className="param-group-list" aria-label={node.name}>
                     {items.map((parameter) => (
                       <li className={selectedId === parameter.id ? "library-row selected" : "library-row"} key={parameter.id}>
                         <button
@@ -227,7 +201,7 @@ export function ParameterLibraryList({
                         >
                           <span className="library-row-main">
                             <strong>{parameter.name}</strong>
-                            <small>{parameter.module}</small>
+                            <small>{modulePathLabelForTemplate(parameter, moduleNodes)}</small>
                           </span>
                           <span className={`risk-badge ${parameter.risk.toLowerCase()}`}>{RISK_LABEL[parameter.risk]}</span>
                         </button>
@@ -245,40 +219,5 @@ export function ParameterLibraryList({
         </div>
       )}
     </div>
-  );
-}
-
-function sortParameters(parameters: PowerManagementParameterTemplate[], sort: string) {
-  const sorted = [...parameters];
-  switch (sort) {
-    case "name-asc":
-      sorted.sort((a, b) => a.name.localeCompare(b.name));
-      break;
-    case "risk-desc":
-      sorted.sort((a, b) => riskWeight(b.risk) - riskWeight(a.risk) || a.name.localeCompare(b.name));
-      break;
-    case "updatedAt-desc":
-    default:
-      sorted.sort((a, b) => latestUpdatedAt(b) - latestUpdatedAt(a) || a.name.localeCompare(b.name));
-      break;
-  }
-  return sorted;
-}
-
-function riskWeight(risk: PowerManagementParameterTemplate["risk"]) {
-  return risk === "High" ? 3 : risk === "Medium" ? 2 : 1;
-}
-
-function latestUpdatedAt(parameter: PowerManagementParameterTemplate) {
-  return Math.max(
-    ...Object.values(parameter.values).map((value) => {
-      if (!value) {
-        return 0;
-      }
-
-      const parsed = new Date(value.updatedAt).getTime();
-      return Number.isFinite(parsed) ? parsed : 0;
-    }),
-    0
   );
 }

@@ -1,7 +1,7 @@
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { LibraryRiskFilter } from "@/components/admin/LibraryRiskFilter";
-import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
+import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import {
   filterDebugParameterLibrary,
   sortDebugParameterLibrary,
@@ -10,6 +10,7 @@ import {
 } from "@/debugAdminLibraryFilters";
 import { coverageLabel, isArchivedDebugParameter } from "@/debugAdminDraft";
 import { getDebugValueFormatLabel } from "@/debugValueKind";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { DebugParameter as DomainDebugParameter } from "@/domain/debugging/types";
 
 const RISK_LABEL = {
@@ -35,6 +36,7 @@ const COVERAGE_LABEL = Object.fromEntries(COVERAGE_OPTIONS.map((option) => [opti
 
 export type DebugParameterLibraryTableProps = {
   parameters: readonly DebugParameterLibraryRow[];
+  moduleNodes: readonly FlatModuleNode[];
   runtimeMode: "mock" | "api";
   search: DebugAdminSearch;
   onUpdateSearch: (patch: Partial<DebugAdminSearch>) => void;
@@ -48,6 +50,7 @@ export type DebugParameterLibraryTableProps = {
 
 export function DebugParameterLibraryTable({
   parameters,
+  moduleNodes,
   runtimeMode,
   search,
   onUpdateSearch,
@@ -60,11 +63,7 @@ export function DebugParameterLibraryTable({
 }: DebugParameterLibraryTableProps) {
   const [coverageOpen, setCoverageOpen] = useState(false);
   const mockMode = runtimeMode === "mock";
-  const filtered = sortDebugParameterLibrary(filterDebugParameterLibrary(parameters, search), search.sort);
-  const moduleOptions = Array.from(new Set(parameters.map((parameter) => parameter.module))).map((moduleName) => ({
-    value: moduleName,
-    label: moduleName
-  }));
+  const filtered = sortDebugParameterLibrary(filterDebugParameterLibrary(parameters, search, moduleNodes), search.sort);
   const filtersActive =
     search.q.trim().length > 0 ||
     search.risk !== "all" ||
@@ -117,11 +116,13 @@ export function DebugParameterLibraryTable({
             disabled={loading}
             onChange={(risk) => onUpdateSearch({ risk: risk as DebugAdminSearch["risk"] })}
           />
-          <MultiSelectDropdown
+          <ModuleTreeSelect
             label="模块"
-            options={moduleOptions}
+            mode="multi-filter"
+            nodes={moduleNodes}
             value={search.modules}
-            onChange={(modules) => onUpdateSearch({ modules })}
+            onChange={(modules) => onUpdateSearch({ modules: typeof modules === "string" ? [modules] : modules })}
+            disabled={loading}
           />
           {!mockMode ? (
             <div className="dropdown-root">

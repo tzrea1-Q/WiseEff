@@ -130,6 +130,40 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["parameters"],
     responseBody: "ProjectModuleListResponse"
   },
+  "parameters.listModules": {
+    summary: "List parameter module tree",
+    tags: ["parameters"],
+    responseBody: "ParameterModuleListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameters.createModule": {
+    summary: "Create parameter module",
+    tags: ["parameters"],
+    requestBody: "CreateParameterModuleRequest",
+    responseBody: "ParameterModuleResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameters.updateModule": {
+    summary: "Update parameter module",
+    tags: ["parameters"],
+    requestBody: "UpdateParameterModuleRequest",
+    responseBody: "ParameterModuleResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameters.moveModule": {
+    summary: "Move parameter module to a new parent",
+    tags: ["parameters"],
+    requestBody: "MoveParameterModuleRequest",
+    responseBody: "ParameterModuleResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameters.deleteModule": {
+    summary: "Delete parameter module",
+    tags: ["parameters"],
+    responseBody: "DeleteResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameters.admin.listProjects": {
     summary: "List projects for parameter admin",
     tags: ["parameters"],
@@ -429,6 +463,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "Update debug node module registry entry",
     tags: ["debugging"],
     requestBody: "DebugNodeModulePatchRequest",
+    responseBody: "DebugNodeModuleResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "debugging.admin.moveModule": {
+    summary: "Move debug node module to a new parent",
+    tags: ["debugging"],
+    requestBody: "MoveDebugNodeModuleRequest",
     responseBody: "DebugNodeModuleResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },

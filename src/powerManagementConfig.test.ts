@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { legacyModuleIdFromName } from "@/domain/modules/moduleTree";
 import {
   bundledPowerManagementConfig,
+  buildPowerManagementModuleTree,
   clonePowerManagementConfig,
   flattenDebugParameters,
   flattenProjectParameters,
@@ -203,6 +205,33 @@ describe("powerManagementConfig", () => {
     expect(next.projects.some((project) => project.id === "empty-test")).toBe(false);
     expect(next.parameterLibrary.every((parameter) => parameter.values["empty-test"] === undefined)).toBe(true);
     expect(next.projects).toHaveLength(draft.projects.length);
+  });
+
+  it("derives hierarchical module metadata for flattened runtime records", () => {
+    const tree = buildPowerManagementModuleTree(bundledPowerManagementConfig.parameterModules);
+    const chargingPolicy = tree.find((node) => node.name === "Charging Policy");
+    const battery = tree.find((node) => node.name === "Battery");
+    expect(chargingPolicy?.parentId).toBe(legacyModuleIdFromName("Charging"));
+    expect(battery?.parentId).toBe(legacyModuleIdFromName("Power"));
+
+    const flattened = flattenProjectParameters(bundledPowerManagementConfig);
+    const fastCharge = flattened.find((parameter) => parameter.name === "fast_charge_current_limit_ma");
+    expect(fastCharge?.modulePath).toEqual(["Power", "Charging", "Charging Policy"]);
+    expect(fastCharge?.moduleId).toBe(legacyModuleIdFromName("Charging Policy"));
+
+    const debugFlat = flattenDebugParameters(bundledPowerManagementConfig);
+    expect(debugFlat.every((parameter) => parameter.moduleId && parameter.modulePath?.length)).toBe(true);
+  });
+
+  it("builds nested module tree from parent links", () => {
+    const tree = buildPowerManagementModuleTree([
+      { name: "Power", description: "", scope: "" },
+      { name: "Battery", description: "", scope: "", parent: "Power" },
+      { name: "Battery Health", description: "", scope: "", parent: "Battery" }
+    ]);
+    const health = tree.find((node) => node.name === "Battery Health");
+    expect(health?.depth).toBe(3);
+    expect(health?.path).toContain(legacyModuleIdFromName("Battery"));
   });
 });
 

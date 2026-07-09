@@ -31,11 +31,44 @@ const parameterImportSourceItemSchema = z
     path: ["currentValue"]
   });
 
+const booleanQuerySchema = z
+  .union([z.boolean(), z.enum(["true", "false"])])
+  .transform((value) => value === true || value === "true");
+
 export const listParametersQuerySchema = z.object({
   projectId: nonEmptyString.optional(),
   module: nonEmptyString.optional(),
+  moduleId: nonEmptyString.optional(),
+  includeDescendants: booleanQuerySchema.optional(),
   risk: z.union([z.enum(parameterRiskLevels), z.array(z.enum(parameterRiskLevels))]).optional(),
   q: nonEmptyString.optional()
+});
+
+export const parameterModuleParamsSchema = z.object({
+  moduleId: nonEmptyString
+});
+
+export const createParameterModuleBodySchema = z.object({
+  name: nonEmptyString,
+  parentId: nonEmptyString.nullable().optional(),
+  description: z.string().optional(),
+  scope: z.string().optional(),
+  sortOrder: z.number().int().optional()
+});
+
+export const updateParameterModuleBodySchema = z
+  .object({
+    name: nonEmptyString.optional(),
+    description: z.string().optional(),
+    scope: z.string().optional(),
+    sortOrder: z.number().int().optional()
+  })
+  .refine((body) => Object.values(body).some((value) => value !== undefined), {
+    message: "At least one field is required."
+  });
+
+export const moveParameterModuleBodySchema = z.object({
+  parentId: nonEmptyString.nullable()
 });
 
 export const saveDraftBodySchema = z.object({
@@ -98,7 +131,17 @@ export const updateProjectBodySchema = z
     message: "At least one field is required."
   });
 
-export type ListParametersQuery = z.infer<typeof listParametersQuerySchema>;
+export type ListParametersQuery = {
+  projectId?: string;
+  module?: string;
+  moduleId?: string;
+  includeDescendants?: boolean;
+  risk?: z.infer<typeof listParametersQuerySchema>["risk"];
+  q?: string;
+};
+export type CreateParameterModuleBody = z.infer<typeof createParameterModuleBodySchema>;
+export type UpdateParameterModuleBody = z.infer<typeof updateParameterModuleBodySchema>;
+export type MoveParameterModuleBody = z.infer<typeof moveParameterModuleBodySchema>;
 export type SaveDraftBody = z.infer<typeof saveDraftBodySchema>;
 export type SubmitRoundBody = z.infer<typeof submitRoundBodySchema>;
 export type ReviewChangeBody = z.infer<typeof reviewChangeBodySchema>;

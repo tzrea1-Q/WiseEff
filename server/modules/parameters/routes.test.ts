@@ -25,13 +25,20 @@ vi.mock("./repository", () => ({
 vi.mock("./service", () => ({
   applyImportBatch: vi.fn(),
   createImportPreview: vi.fn(),
+  createParameterModuleForAuth: vi.fn(),
   deleteDraft: vi.fn(),
+  deleteParameterModuleForAuth: vi.fn(),
   listChangeRequests: vi.fn(),
   listDrafts: vi.fn(),
+  listParameterModulesForAuth: vi.fn(),
   listSubmissionRounds: vi.fn(),
+  moveParameterModuleForAuth: vi.fn(),
+  resolveParameterListQuery: vi.fn(),
   reviewChange: vi.fn(),
   saveDraft: vi.fn(),
-  submitParameterChanges: vi.fn()
+  submitParameterChanges: vi.fn(),
+  updateParameterModuleForAuth: vi.fn(),
+  withdrawSubmissionRound: vi.fn()
 }));
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
@@ -87,6 +94,12 @@ describe("parameter routes", () => {
   it("GET /api/v1/parameters passes filters", async () => {
     const db = makeDb();
     vi.mocked(repository.listParameters).mockResolvedValue([]);
+    vi.mocked(service.resolveParameterListQuery).mockResolvedValue({
+      organizationId: "org-1",
+      projectId: "aurora",
+      risk: "High",
+      q: "charge"
+    });
 
     const response = await requestJson(
       makeServer({ db }),
@@ -95,11 +108,37 @@ describe("parameter routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [] });
+    expect(service.resolveParameterListQuery).toHaveBeenCalledWith(db, "org-1", {
+      projectId: "aurora",
+      risk: "High",
+      q: "charge"
+    });
     expect(repository.listParameters).toHaveBeenCalledWith(db, {
       organizationId: "org-1",
       projectId: "aurora",
       risk: "High",
       q: "charge"
+    });
+  });
+
+  it("GET /api/v1/parameters accepts moduleId and includeDescendants", async () => {
+    const db = makeDb();
+    vi.mocked(repository.listParameters).mockResolvedValue([]);
+    vi.mocked(service.resolveParameterListQuery).mockResolvedValue({
+      organizationId: "org-1",
+      moduleId: "pm-a",
+      includeDescendants: false
+    });
+
+    const response = await requestJson(
+      makeServer({ db }),
+      "/api/v1/parameters?moduleId=pm-a&includeDescendants=false"
+    );
+
+    expect(response.status).toBe(200);
+    expect(service.resolveParameterListQuery).toHaveBeenCalledWith(db, "org-1", {
+      moduleId: "pm-a",
+      includeDescendants: false
     });
   });
 
@@ -508,5 +547,133 @@ describe("parameter routes", () => {
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("GET /api/v1/parameter-modules returns tree items for viewers", async () => {
+    const db = makeDb();
+    const module = {
+      id: "pm-a",
+      parentId: null,
+      name: "Power",
+      path: "pm-a",
+      depth: 1,
+      sortOrder: 0,
+      description: "",
+      scope: ""
+    };
+    vi.mocked(service.listParameterModulesForAuth).mockResolvedValue([module]);
+
+    const response = await requestJson<{ items: typeof module[] }>(makeServer({ db }), "/api/v1/parameter-modules");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [module] });
+    expect(service.listParameterModulesForAuth).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ organization: expect.objectContaining({ id: "org-1" }) })
+    );
+  });
+
+  it("POST /api/v1/parameter-modules requires admin permission", async () => {
+    const db = makeDb();
+    vi.mocked(service.createParameterModuleForAuth).mockRejectedValue(
+      new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403)
+    );
+
+    const response = await requestJson<{ error: { code: string } }>(
+      makeServer({ db }),
+      "/api/v1/parameter-modules",
+      {
+        method: "POST",
+        body: JSON.stringify({ name: "Battery" })
+      }
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("POST /api/v1/parameter-modules creates a module for admin", async () => {
+    const db = makeDb();
+    const item = {
+      id: "pm-b",
+      parentId: "pm-a",
+      name: "Battery",
+      path: "pm-a/pm-b",
+      depth: 2,
+      sortOrder: 0,
+      description: "",
+      scope: ""
+    };
+    vi.mocked(service.createParameterModuleForAuth).mockResolvedValue(item);
+
+    const response = await requestJson<{ item: typeof item }>(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
+      "/api/v1/parameter-modules",
+      {
+        method: "POST",
+        body: JSON.stringify({ name: "Battery", parentId: "pm-a" })
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ item });
+    expect(service.createParameterModuleForAuth).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ organization: expect.objectContaining({ id: "org-1" }) }),
+      { name: "Battery", parentId: "pm-a" },
+      expect.objectContaining({ requestId: "test-request" })
+    );
+  });
+
+  it("POST /api/v1/parameter-modules/:moduleId/move reparents a module", async () => {
+    const db = makeDb();
+    const item = {
+      id: "pm-b",
+      parentId: "pm-x",
+      name: "Battery",
+      path: "pm-x/pm-b",
+      depth: 2,
+      sortOrder: 0,
+      description: "",
+      scope: ""
+    };
+    vi.mocked(service.moveParameterModuleForAuth).mockResolvedValue(item);
+
+    const response = await requestJson<{ item: typeof item }>(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
+      "/api/v1/parameter-modules/pm-b/move",
+      {
+        method: "POST",
+        body: JSON.stringify({ parentId: "pm-x" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(service.moveParameterModuleForAuth).toHaveBeenCalledWith(
+      db,
+      expect.any(Object),
+      "pm-b",
+      { parentId: "pm-x" },
+      expect.any(Object)
+    );
+  });
+
+  it("DELETE /api/v1/parameter-modules/:moduleId returns 204 for admin", async () => {
+    const db = makeDb();
+    vi.mocked(service.deleteParameterModuleForAuth).mockResolvedValue(undefined);
+
+    const response = await requestJson(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
+      "/api/v1/parameter-modules/pm-empty",
+      { method: "DELETE" }
+    );
+
+    expect(response.status).toBe(204);
+    expect(service.deleteParameterModuleForAuth).toHaveBeenCalledWith(
+      db,
+      expect.any(Object),
+      "pm-empty",
+      expect.any(Object)
+    );
   });
 });

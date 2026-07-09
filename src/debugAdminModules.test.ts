@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildDebugModulesFromNodes, buildModuleSelectOptions, countDebugNodesByModule, debugNodesInModule } from "./debugAdminModules";
+import {
+  buildDebugModuleTree,
+  buildDebugModulesFromNodes,
+  buildModuleSelectOptions,
+  countDebugNodesByModuleId,
+  debugNodeModuleId,
+  debugNodesInModuleId,
+  filterDebugNodesByModuleTree
+} from "./debugAdminModules";
+import { legacyModuleIdFromName } from "@/domain/modules/moduleTree";
 import { createEmptyParameterModule } from "./powerManagementConfig";
 
 const nodes = [
@@ -40,9 +49,29 @@ describe("debugAdminModules", () => {
     ]);
   });
 
-  it("counts and lists nodes by module", () => {
-    expect(countDebugNodesByModule(nodes, "Battery Charging")).toBe(1);
-    expect(debugNodesInModule(nodes, "Battery Health").map((node) => node.id)).toEqual(["node-2"]);
+  it("builds flat module tree nodes from nodes", () => {
+    const tree = buildDebugModuleTree(nodes);
+    expect(tree).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: legacyModuleIdFromName("Battery Charging"), name: "Battery Charging", parentId: null })
+      ])
+    );
+  });
+
+  it("counts and lists nodes by module id", () => {
+    const chargingId = legacyModuleIdFromName("Battery Charging");
+    expect(countDebugNodesByModuleId(nodes, chargingId)).toBe(1);
+    expect(debugNodesInModuleId(nodes, legacyModuleIdFromName("Battery Health")).map((node) => node.id)).toEqual(["node-2"]);
+  });
+
+  it("filters nodes by subtree module ids", () => {
+    const moduleNodes = buildDebugModuleTree(nodes);
+    const chargingId = legacyModuleIdFromName("Battery Charging");
+    expect(filterDebugNodesByModuleTree(nodes, moduleNodes, [chargingId]).map((node) => node.id)).toEqual(["node-1"]);
+  });
+
+  it("resolves debug node module id from legacy name", () => {
+    expect(debugNodeModuleId(nodes[0])).toBe(legacyModuleIdFromName("Battery Charging"));
   });
 
   it("builds module select options and keeps the current module when missing from registry", () => {

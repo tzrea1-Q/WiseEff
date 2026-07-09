@@ -96,6 +96,11 @@ export const routeManifest = [
 
   { id: "parameters.listProjects", method: "GET", path: "/api/v1/projects", module: "parameters", stability: "mvp" },
   { id: "parameters.listProjectModules", method: "GET", path: "/api/v1/projects/:projectId/modules", module: "parameters", stability: "mvp" },
+  { id: "parameters.listModules", method: "GET", path: "/api/v1/parameter-modules", module: "parameters", stability: "mvp" },
+  { id: "parameters.createModule", method: "POST", path: "/api/v1/parameter-modules", module: "parameters", stability: "mvp" },
+  { id: "parameters.updateModule", method: "PATCH", path: "/api/v1/parameter-modules/:moduleId", module: "parameters", stability: "mvp" },
+  { id: "parameters.moveModule", method: "POST", path: "/api/v1/parameter-modules/:moduleId/move", module: "parameters", stability: "mvp" },
+  { id: "parameters.deleteModule", method: "DELETE", path: "/api/v1/parameter-modules/:moduleId", module: "parameters", stability: "mvp" },
   { id: "parameters.admin.listProjects", method: "GET", path: "/api/v1/parameters/admin/projects", module: "parameters", stability: "mvp" },
   { id: "parameters.admin.getProject", method: "GET", path: "/api/v1/parameters/admin/projects/:projectId", module: "parameters", stability: "mvp" },
   { id: "parameters.admin.createProject", method: "POST", path: "/api/v1/parameters/admin/projects", module: "parameters", stability: "mvp" },
@@ -257,14 +262,21 @@ export const routeManifest = [
   {
     id: "debugging.admin.updateModule",
     method: "PATCH",
-    path: "/api/v1/debugging/admin/modules/:moduleName",
+    path: "/api/v1/debugging/admin/modules/:moduleId",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
+    id: "debugging.admin.moveModule",
+    method: "POST",
+    path: "/api/v1/debugging/admin/modules/:moduleId/move",
     module: "debugging",
     stability: "mvp"
   },
   {
     id: "debugging.admin.deleteModule",
     method: "DELETE",
-    path: "/api/v1/debugging/admin/modules/:moduleName",
+    path: "/api/v1/debugging/admin/modules/:moduleId",
     module: "debugging",
     stability: "mvp"
   },

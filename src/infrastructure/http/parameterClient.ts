@@ -24,6 +24,7 @@ import {
   type ParameterSubmissionRoundDto,
   type ProjectDto
 } from "./parameterDtos";
+import type { ParameterModuleNode } from "@/application/ports/ParameterRepository";
 import { createDefaultApiClient } from "./defaultApiClient";
 
 type ItemsEnvelope<T> = { items: T[] };
@@ -57,7 +58,9 @@ function appendQuery(path: string, params: URLSearchParams) {
 function buildParametersPath(query?: ParameterListQuery) {
   const params = new URLSearchParams();
   if (query?.projectId) params.set("projectId", query.projectId);
+  if (query?.moduleId) params.set("moduleId", query.moduleId);
   if (query?.module) params.set("module", query.module);
+  if (query?.includeDescendants === false) params.set("includeDescendants", "false");
   for (const risk of query?.risk ?? []) params.append("risk", risk);
   return appendQuery("/api/v1/parameters", params);
 }
@@ -102,6 +105,10 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
     async listProjects() {
       const response = await apiClient.get<ItemsEnvelope<ProjectDto>>("/api/v1/projects");
       return response.items.map(projectFromDto);
+    },
+    async listParameterModules() {
+      const response = await apiClient.get<ItemsEnvelope<ParameterModuleNode>>("/api/v1/parameter-modules");
+      return response.items;
     },
     async listParameters(query?: ParameterListQuery) {
       const response = await apiClient.get<ItemsEnvelope<ParameterRecordDto>>(buildParametersPath(query));

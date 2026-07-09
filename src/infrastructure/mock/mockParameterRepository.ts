@@ -21,10 +21,19 @@ import { roleSupportsWorkflowSlot } from "@/domain/users/types";
 import { projects, roles, type PrototypeState } from "@/mockData";
 import { buildAISuggestion, buildImpactItems, REVIEW_MOCK_NOW } from "@/reviewMockData";
 import { type MockRuntimeState, readMockState, writeMockState } from "./mockState";
+import { buildPowerManagementModuleTree } from "@/powerManagementConfig";
+import { collectSubtreeModuleIds, parameterModuleId, type FlatModuleNode } from "@/domain/modules/moduleTree";
 
-function matchesQuery(parameter: ParameterRecord, query?: ParameterListQuery) {
+function matchesQuery(parameter: ParameterRecord, query: ParameterListQuery | undefined, moduleNodes: readonly FlatModuleNode[]) {
   if (!query) return true;
   if (query.projectId && parameter.projectId !== query.projectId) return false;
+  if (query.moduleId) {
+    const allowed =
+      query.includeDescendants === false
+        ? new Set([query.moduleId])
+        : collectSubtreeModuleIds(moduleNodes, [query.moduleId]);
+    if (!allowed.has(parameterModuleId(parameter))) return false;
+  }
   if (query.module && parameter.module !== query.module) return false;
   if (query.risk && query.risk.length > 0 && !query.risk.includes(parameter.risk)) return false;
   return true;
@@ -396,8 +405,20 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
     async listProjects(): Promise<ProjectSummary[]> {
       return [...projects];
     },
+    async listParameterModules() {
+      const state = readMockState(runtime);
+      return buildPowerManagementModuleTree(
+        state.configDraft.parameterModules,
+        state.parameters.map((parameter) => parameter.module)
+      );
+    },
     async listParameters(query?: ParameterListQuery): Promise<ParameterRecord[]> {
-      return readMockState(runtime).parameters.filter((parameter) => matchesQuery(parameter, query)).map(cloneParameterRecord);
+      const state = readMockState(runtime);
+      const moduleNodes = buildPowerManagementModuleTree(
+        state.configDraft.parameterModules,
+        state.parameters.map((parameter) => parameter.module)
+      );
+      return state.parameters.filter((parameter) => matchesQuery(parameter, query, moduleNodes)).map(cloneParameterRecord);
     },
     async getParameter(parameterId: string): Promise<ParameterRecord> {
       const parameter = readMockState(runtime).parameters.find((row) => row.id === parameterId);

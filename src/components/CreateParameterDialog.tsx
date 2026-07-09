@@ -1,5 +1,6 @@
 import { CircleX } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { PowerManagementParameterTemplate, PowerManagementProject, PowerManagementRisk } from "../powerManagementConfig";
 import { ParameterDefinitionForm } from "./ParameterDefinitionForm";
 
@@ -20,10 +21,11 @@ export interface CreateParameterDraft {
 
 function buildDraftParameter(
   projects: readonly PowerManagementProject[],
-  modules: readonly string[],
+  moduleNodes: readonly FlatModuleNode[],
   existingParameters: readonly PowerManagementParameterTemplate[]
 ): PowerManagementParameterTemplate {
-  const defaultModule = modules[0] ?? [...new Set(existingParameters.map((parameter) => parameter.module))].sort()[0] ?? "";
+  const defaultModule =
+    moduleNodes[0]?.name ?? [...new Set(existingParameters.map((parameter) => parameter.module))].sort()[0] ?? "";
   const values = projects.reduce<PowerManagementParameterTemplate["values"]>((acc, project) => {
     acc[project.id] = { currentValue: "", recommendedValue: "", updatedAt: "" };
     return acc;
@@ -64,19 +66,21 @@ function getCreateValidationErrors(
 export function CreateParameterDialog({
   open,
   projects,
-  modules,
+  moduleNodes,
   existingParameters,
   onConfirm,
   onCancel
 }: {
   open: boolean;
   projects: readonly PowerManagementProject[];
-  modules: readonly string[];
+  moduleNodes: readonly FlatModuleNode[];
   existingParameters: readonly PowerManagementParameterTemplate[];
   onConfirm: (draft: CreateParameterDraft) => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState<PowerManagementParameterTemplate>(() => buildDraftParameter(projects, modules, existingParameters));
+  const [draft, setDraft] = useState<PowerManagementParameterTemplate>(() =>
+    buildDraftParameter(projects, moduleNodes, existingParameters)
+  );
 
   useEffect(() => {
     if (!open) {
@@ -95,9 +99,9 @@ export function CreateParameterDialog({
 
   useEffect(() => {
     if (open) {
-      setDraft(buildDraftParameter(projects, modules, existingParameters));
+      setDraft(buildDraftParameter(projects, moduleNodes, existingParameters));
     }
-  }, [open, projects, modules, existingParameters]);
+  }, [open, projects, moduleNodes, existingParameters]);
 
   if (!open) {
     return null;
@@ -158,7 +162,7 @@ export function CreateParameterDialog({
         <div className="param-admin-editor-dialog-body">
           <ParameterDefinitionForm
             allParameters={existingParameters}
-            modules={modules}
+            moduleNodes={moduleNodes}
             parameter={draft}
             projects={projects}
             onMetadataChange={handleMetadataChange}

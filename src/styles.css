@@ -14647,6 +14647,81 @@ body.xiaoze-popup-resize-active {
   margin: 0;
 }
 
+.param-admin-module-move {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 8px;
+  background: var(--surface-muted, #f8fafc);
+}
+
+.param-admin-module-add-context {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted, #64748b);
+}
+
+.param-group--tree .param-group-header {
+  width: 100%;
+  text-align: left;
+}
+
+.module-tree-select .module-tree-menu {
+  max-height: 280px;
+  overflow: auto;
+}
+
+.module-tree-option-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2rem;
+}
+
+.module-tree-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.module-tree-expand--spacer {
+  display: inline-block;
+}
+
+.module-tree-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.module-tree-label--single {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.module-tree-label--single.is-selected {
+  font-weight: 600;
+}
+
+.module-tree-empty {
+  padding: 0.5rem 0.75rem;
+  color: var(--text-muted, #64748b);
+  font-size: 0.875rem;
+}
+
 .param-admin-library-filters {
   flex: 1 1 auto;
 }

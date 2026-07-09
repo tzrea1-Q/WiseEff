@@ -323,13 +323,20 @@ export async function seedM3Debugging(db: Database): Promise<void> {
 
     const moduleNames = [...new Set(parameters.map((parameter) => parameter.module.trim()).filter(Boolean))];
     for (const moduleName of moduleNames) {
+      const moduleId = `dmod-${organizationId}-${moduleName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
       await tx.query(
         `
-        insert into debug_node_modules (id, organization_id, name, description, scope)
-        values ($1, $2, $3, '', '')
-        on conflict (organization_id, name) do nothing
+        insert into debug_node_modules (id, organization_id, name, description, scope, path, depth)
+        select $1, $2, $3, '', '', $1, 1
+        where not exists (
+          select 1
+          from debug_node_modules
+          where organization_id = $2
+            and parent_id is null
+            and name = $3
+        )
         `,
-        [`dmod-${organizationId}-${moduleName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, organizationId, moduleName]
+        [moduleId, organizationId, moduleName]
       );
     }
   });

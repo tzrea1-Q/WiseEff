@@ -14,6 +14,23 @@ import type {
   ProjectDto,
   ProjectModuleDto
 } from "./types";
+import {
+  buildParameterModuleSubtreeFilter
+} from "./parameterModuleRepository";
+
+export {
+  buildParameterModuleSubtreeFilter,
+  countParameterModuleChildren,
+  countParametersForModule,
+  createParameterModule,
+  deleteParameterModule,
+  getParameterModuleById,
+  getParameterModuleByName,
+  listParameterModules,
+  moveParameterModule,
+  resolveParameterModulePathNames,
+  updateParameterModule
+} from "./parameterModuleRepository";
 import type { BackendRoleId } from "../auth/types";
 import {
   getMostAdvancedActiveParameterStatus,
@@ -62,6 +79,10 @@ type ProjectModuleRow = {
   project_id: string;
   name: string;
   sort_order: number;
+  parent_id?: string | null;
+  path?: string | null;
+  depth?: number | string | null;
+  parameter_module_id?: string | null;
 };
 
 type ParameterRow = {
@@ -73,6 +94,8 @@ type ParameterRow = {
   config_format: string;
   value_kind?: string | null;
   module: string;
+  parameter_module_id?: string | null;
+  module_path?: string | null;
   default_range: string;
   unit: string;
   risk: ParameterRiskLevel;
@@ -287,6 +310,8 @@ export type ListParametersQuery = {
   organizationId: string;
   projectId?: string;
   module?: string;
+  moduleId?: string;
+  includeDescendants?: boolean;
   risk?: ParameterRiskLevel | ParameterRiskLevel[];
   q?: string;
   limit?: number;
@@ -334,12 +359,28 @@ function toProjectModuleDto(row: ProjectModuleRow): ProjectModuleDto {
     id: row.id,
     projectId: row.project_id,
     name: row.name,
-    sortOrder: row.sort_order
+    sortOrder: row.sort_order,
+    parentId: row.parent_id ?? null,
+    path: row.path ?? undefined,
+    depth: row.depth === null || row.depth === undefined ? undefined : Number(row.depth),
+    parameterModuleId: row.parameter_module_id ?? null
   };
+}
+
+function parseModulePathNames(modulePath: string | null | undefined): string[] | undefined {
+  if (!modulePath) {
+    return undefined;
+  }
+  const trimmed = modulePath.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.split("/").filter(Boolean);
 }
 
 function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] = []): ParameterRecordDto {
   const updatedAt = dateTimeToIso(row.updated_at);
+  const modulePath = parseModulePathNames(row.module_path);
 
   return {
     id: row.id,
@@ -349,6 +390,8 @@ function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] =
     configFormat: row.config_format,
     valueKind: resolveParameterValueKind(row),
     module: row.module,
+    moduleId: row.parameter_module_id ?? undefined,
+    modulePath,
     projectId: row.project_id,
     currentValue: row.current_value,
     recommendedValue: row.recommended_value,
@@ -875,7 +918,7 @@ export async function deleteProject(
 export async function listProjectModules(db: Queryable, query: { organizationId: string; projectId: string }) {
   const result = await db.query<ProjectModuleRow>(
     `
-    select id, project_id, name, sort_order
+    select id, project_id, name, sort_order, parent_id, path, depth, parameter_module_id
     from project_modules
     where organization_id = $1
       and project_id = $2
@@ -897,6 +940,12 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
 
   if (query.module) {
     addCondition(where, values, (placeholder) => `pd.module = ${placeholder}`, query.module);
+  }
+
+  if (query.moduleId) {
+    where.push(
+      buildParameterModuleSubtreeFilter(values, query.moduleId, query.includeDescendants !== false)
+    );
   }
 
   if (query.risk) {
@@ -928,6 +977,13 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
       pd.config_format,
       pd.value_kind,
       pd.module,
+      pd.parameter_module_id,
+      (
+        select string_agg(pm_seg.name, '/' order by pm_seg.depth)
+        from parameter_modules pm_seg
+        where pm_seg.organization_id = pd.organization_id
+          and pm_seg.id = any(string_to_array(coalesce(pm.path, ''), '/'))
+      ) as module_path,
       pd.default_range,
       pd.unit,
       pd.risk,
@@ -936,6 +992,7 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
       ppv.updated_at
     from project_parameter_values ppv
     inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
+    left join parameter_modules pm on pm.id = pd.parameter_module_id and pm.organization_id = pd.organization_id
     where ${where.join("\n      and ")}
     order by ppv.updated_at desc, pd.name asc
     limit $${values.length}

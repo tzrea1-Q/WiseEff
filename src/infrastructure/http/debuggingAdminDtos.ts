@@ -15,7 +15,8 @@ import type {
   DebugValueKind
 } from "@/debugValueKind";
 import type { RiskLevel } from "@/domain/parameters/types";
-import type { ParameterModuleDraft, PowerManagementParameterModule } from "@/powerManagementConfig";
+import { legacyModuleIdFromName, type FlatModuleNode } from "@/domain/modules/moduleTree";
+import type { ParameterModuleDraft } from "@/powerManagementConfig";
 
 export type DebugAdminBindingDto = {
   protocol: DebugConnectionProtocol;
@@ -32,6 +33,8 @@ export type DebugAdminParameterDto = {
   key: string;
   description: string;
   module: string;
+  moduleId?: string;
+  modulePath?: string[];
   nodePath?: string;
   accessMode?: DebugParameterAccessMode;
   unit: string;
@@ -104,6 +107,8 @@ export function debugAdminParameterFromDto(dto: DebugAdminParameterDto): DebugPa
     key: dto.key,
     description: dto.description,
     module: dto.module,
+    moduleId: dto.moduleId,
+    modulePath: dto.modulePath,
     currentValue: dto.currentValue,
     targetValue: dto.targetValue,
     unit: dto.unit,
@@ -181,6 +186,8 @@ export type DebugAdminNodeDto = {
   writeFormatExample?: string;
   writeFormatHint?: string;
   module: string;
+  moduleId?: string;
+  modulePath?: string[];
   enabled: boolean;
   archivedAt: string | null;
   archivedBy: string | null;
@@ -194,30 +201,34 @@ export type DebugAdminNodeWriteDto = {
   detailedDescription?: string;
   writeFormatExample?: string;
   writeFormatHint?: string;
-  module: string;
+  module?: string;
+  moduleId?: string;
   enabled: boolean;
   bindings?: DebugAdminParameterBindingWriteDto[];
 };
 
-export type DebugAdminModuleDto = {
-  name: string;
-  description: string;
-  scope: string;
-};
+export type DebugAdminModuleDto = FlatModuleNode;
 
-export function debugAdminModuleFromDto(dto: DebugAdminModuleDto): PowerManagementParameterModule {
+export function debugAdminModuleFromDto(dto: DebugAdminModuleDto): FlatModuleNode {
+  const id = dto.id ?? legacyModuleIdFromName(dto.name);
   return {
-    name: dto.name,
-    description: dto.description,
-    scope: dto.scope
+    ...dto,
+    id,
+    parentId: dto.parentId ?? null,
+    path: dto.path ?? id,
+    depth: dto.depth ?? (dto.parentId ? 1 : 0)
   };
 }
 
-export function debugAdminModuleToDto(draft: ParameterModuleDraft): DebugAdminModuleDto {
+export function debugAdminModuleToDto(
+  draft: ParameterModuleDraft & { parentId?: string | null; sortOrder?: number }
+): Pick<DebugAdminModuleDto, "name" | "description" | "scope" | "parentId" | "sortOrder"> {
   return {
     name: draft.name.trim(),
     description: draft.description.trim(),
-    scope: draft.scope.trim()
+    scope: draft.scope.trim(),
+    parentId: draft.parentId ?? null,
+    sortOrder: draft.sortOrder
   };
 }
 
@@ -264,6 +275,8 @@ export function debugAdminNodeFromDto(dto: DebugAdminNodeDto): DebugNodeRegistry
     writeFormatExample: dto.writeFormatExample ?? "",
     writeFormatHint: dto.writeFormatHint ?? "",
     module: dto.module,
+    moduleId: dto.moduleId,
+    modulePath: dto.modulePath,
     enabled: dto.enabled,
     bindings: dto.bindings?.map(debugAdminNodeBindingFromDto) ?? []
   };

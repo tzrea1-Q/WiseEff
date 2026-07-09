@@ -3,12 +3,13 @@ import { useEffect } from "react";
 import { ParameterDefinitionForm } from "@/components/ParameterDefinitionForm";
 import type { ParameterEditorDraft } from "@/App";
 import { isComplexParameter } from "@/parameterValueKind";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { PowerManagementParameterTemplate, PowerManagementProject } from "@/powerManagementConfig";
 
 export type ParameterDefinitionDialogProps = {
   parameter: PowerManagementParameterTemplate;
   projects: readonly PowerManagementProject[];
-  modules: readonly string[];
+  moduleNodes: readonly FlatModuleNode[];
   allParameters: readonly PowerManagementParameterTemplate[];
   onMetadataChange: (patch: Partial<ParameterEditorDraft>) => void;
   onRecommendedValueChange: (value: string) => void;
@@ -18,7 +19,7 @@ export type ParameterDefinitionDialogProps = {
 export function ParameterDefinitionDialog({
   parameter,
   projects,
-  modules,
+  moduleNodes,
   allParameters,
   onMetadataChange,
   onRecommendedValueChange,
@@ -66,7 +67,7 @@ export function ParameterDefinitionDialog({
         <div className="param-admin-editor-dialog-body">
           <ParameterDefinitionForm
             allParameters={allParameters}
-            modules={modules}
+            moduleNodes={moduleNodes}
             parameter={parameter}
             projects={projects}
             onMetadataChange={onMetadataChange}

@@ -37,6 +37,8 @@ export type DebugParameter = {
   description: string;
   detailedDescription?: string;
   module: string;
+  moduleId?: string;
+  modulePath?: string[];
   currentValue: string;
   targetValue: string;
   unit: string;
@@ -128,6 +130,8 @@ export type DebugNodeRegistryEntry = {
   writeFormatExample: string;
   writeFormatHint: string;
   module: string;
+  moduleId?: string;
+  modulePath?: string[];
   enabled: boolean;
   bindings: DebugNodeProtocolBinding[];
 };

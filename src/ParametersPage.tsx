@@ -22,6 +22,14 @@ import {
   formatOpenChangeRequestBlockerMessage
 } from "./application/parameters/parameterRuntime";
 import { exportProjectParametersAsExcel } from "./application/parameters/exportProjectParametersExcel";
+import { ModuleTreeSelect } from "./components/common/ModuleTreeSelect";
+import {
+  buildParameterModuleTree
+} from "./parameterAdminLibrary";
+import {
+  collectSubtreeModuleIds,
+  parameterModuleId
+} from "@/domain/modules/moduleTree";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 
@@ -118,9 +126,13 @@ export function ParametersPage({
   );
   const [selectedId, setSelectedId] = useState<string>(firstProjectParameterId);
   const [focusedId, setFocusedId] = useState<string | null>(firstProjectParameterId || null);
-  const moduleOptions = useMemo(
-    () => Array.from(new Set(projectParameters.map((parameter) => parameter.module))),
-    [projectParameters]
+  const moduleNodes = useMemo(
+    () => buildParameterModuleTree(projectParameters, state.configDraft?.parameterModules ?? []),
+    [projectParameters, state.configDraft?.parameterModules]
+  );
+  const allowedModuleIds = useMemo(
+    () => collectSubtreeModuleIds(moduleNodes, Array.from(moduleFilters)),
+    [moduleFilters, moduleNodes]
   );
   const parameterById = useMemo(
     () => new Map(state.parameters.map((parameter) => [parameter.id, parameter])),
@@ -138,10 +150,11 @@ export function ParametersPage({
           !normalizedSearchQuery ||
           [parameter.name, parameter.description, parameter.module].some((value) => value.toLowerCase().includes(normalizedSearchQuery));
         const matchesRisk = riskFilters.size === 0 || riskFilters.has(parameter.risk);
-        const matchesModule = moduleFilters.size === 0 || moduleFilters.has(parameter.module);
+        const matchesModule =
+          moduleFilters.size === 0 || allowedModuleIds.has(parameterModuleId(parameter));
         return matchesSearch && matchesRisk && matchesModule;
       }),
-    [moduleFilters, normalizedSearchQuery, projectParameters, riskFilters]
+    [allowedModuleIds, moduleFilters.size, normalizedSearchQuery, projectParameters, riskFilters]
   );
   const searchParameters = useMemo(
     () => filteredParameters.filter((parameter) => !modifiedIds.has(parameter.id)),
@@ -321,10 +334,16 @@ export function ParametersPage({
     if (!contextQuery.module) {
       return;
     }
-    if (moduleOptions.includes(contextQuery.module)) {
-      setModuleFilters(new Set([contextQuery.module]));
+    const byId = moduleNodes.find((node) => node.id === contextQuery.module);
+    if (byId) {
+      setModuleFilters(new Set([byId.id]));
+      return;
     }
-  }, [contextQuery.module, moduleOptions]);
+    const byName = moduleNodes.find((node) => node.name === contextQuery.module);
+    if (byName) {
+      setModuleFilters(new Set([byName.id]));
+    }
+  }, [contextQuery.module, moduleNodes]);
 
   useEffect(() => {
     if (!contextQuery.parameterId) {
@@ -787,26 +806,16 @@ export function ParametersPage({
               searchQuery={searchQuery}
               onSearchQueryChange={setSearchQuery}
               onClearFilters={clearFilters}
+              filters={
+                <ModuleTreeSelect
+                  label="模块"
+                  mode="multi-filter"
+                  nodes={moduleNodes}
+                  value={Array.from(moduleFilters)}
+                  onChange={(next) => setModuleFilters(new Set(Array.isArray(next) ? next : [next]))}
+                />
+              }
               columnFilters={[
-                {
-                  key: "module",
-                  label: "模块",
-                  groupLabel: "模块筛选",
-                  values: moduleOptions,
-                  selectedValues: Array.from(moduleFilters),
-                  onToggle: (module) => {
-                    setModuleFilters((current) => {
-                      const next = new Set(current);
-                      if (next.has(module)) {
-                        next.delete(module);
-                      } else {
-                        next.add(module);
-                      }
-                      return next;
-                    });
-                  },
-                  onClear: () => setModuleFilters(new Set())
-                },
                 {
                   key: "risk",
                   label: "重要性",

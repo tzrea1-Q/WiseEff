@@ -48,6 +48,7 @@ const serviceMocks = vi.hoisted(() => ({
   listAdminDebugModules: vi.fn(),
   createAdminDebugModule: vi.fn(),
   updateAdminDebugModule: vi.fn(),
+  moveAdminDebugModule: vi.fn(),
   deleteAdminDebugModule: vi.fn()
 }));
 
@@ -737,7 +738,12 @@ describe("debugging routes", () => {
     const db = makeDb();
     const gateway = makeGateway();
     const moduleItem = {
+      id: "dm-1",
+      parentId: null,
       name: "Battery Charging",
+      path: "dm-1",
+      depth: 1,
+      sortOrder: 0,
       description: "Charge policy nodes",
       scope: "Aurora",
       createdAt: timestamp,
@@ -746,6 +752,7 @@ describe("debugging routes", () => {
     serviceMocks.listAdminDebugModules.mockResolvedValue([moduleItem]);
     serviceMocks.createAdminDebugModule.mockResolvedValue(moduleItem);
     serviceMocks.updateAdminDebugModule.mockResolvedValue({ ...moduleItem, name: "Charge Policy" });
+    serviceMocks.moveAdminDebugModule.mockResolvedValue({ ...moduleItem, parentId: "dm-parent" });
     serviceMocks.deleteAdminDebugModule.mockResolvedValue(undefined);
 
     const listResponse = await requestJson<{ items: typeof moduleItem[] }>(
@@ -766,15 +773,23 @@ describe("debugging routes", () => {
     );
     const updateResponse = await requestJson<{ item: typeof moduleItem }>(
       makeServer({ db, gateway }),
-      "/api/v1/debugging/admin/modules/Battery%20Charging",
+      "/api/v1/debugging/admin/modules/dm-1",
       {
         method: "PATCH",
         body: JSON.stringify({ name: "Charge Policy" })
       }
     );
+    const moveResponse = await requestJson<{ item: typeof moduleItem }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/modules/dm-1/move",
+      {
+        method: "POST",
+        body: JSON.stringify({ parentId: "dm-parent" })
+      }
+    );
     const deleteResponse = await requestJson<null>(
       makeServer({ db, gateway }),
-      "/api/v1/debugging/admin/modules/Unused%20Module",
+      "/api/v1/debugging/admin/modules/dm-unused",
       { method: "DELETE" }
     );
 
@@ -784,6 +799,8 @@ describe("debugging routes", () => {
     expect(createResponse.body).toEqual({ item: moduleItem });
     expect(updateResponse.status).toBe(200);
     expect(updateResponse.body.item.name).toBe("Charge Policy");
+    expect(moveResponse.status).toBe(200);
+    expect(moveResponse.body.item.parentId).toBe("dm-parent");
     expect(deleteResponse.status).toBe(204);
     expect(serviceMocks.createAdminDebugModule).toHaveBeenCalledWith(
       makeAuth(),
@@ -796,10 +813,15 @@ describe("debugging routes", () => {
     );
     expect(serviceMocks.updateAdminDebugModule).toHaveBeenCalledWith(
       makeAuth(),
-      { moduleName: "Battery Charging", name: "Charge Policy" },
+      { moduleId: "dm-1", name: "Charge Policy" },
       { requestId: "test-request" }
     );
-    expect(serviceMocks.deleteAdminDebugModule).toHaveBeenCalledWith(makeAuth(), "Unused Module", { requestId: "test-request" });
+    expect(serviceMocks.moveAdminDebugModule).toHaveBeenCalledWith(
+      makeAuth(),
+      { moduleId: "dm-1", parentId: "dm-parent" },
+      { requestId: "test-request" }
+    );
+    expect(serviceMocks.deleteAdminDebugModule).toHaveBeenCalledWith(makeAuth(), "dm-unused", { requestId: "test-request" });
   });
 
   it("archive and restore admin parameter routes use route params", async () => {

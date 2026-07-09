@@ -42,6 +42,10 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PERM-MATRIX-001` | P0 | permissions | automated | `core routes` | Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin | ui | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
 | `PERM-MATRIX-002` | P0 | permissions | automated | `/api/v1/parameter-submission-rounds` | Hardware User, Hardware Committer, Software Committer, Software User, Admin | api | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
 | `PERM-USER-MGMT-001` | P1 | permissions | automated | `/user-permissions` | Admin | ui, api, db, audit | `e2e/acceptance/permissions.acceptance.spec.ts` |
+| `MOD-TREE-PARAM-001` | P0 | parameters | automated | `/parameter-admin` | Admin | api, db | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
+| `MOD-TREE-PARAM-002` | P0 | parameters | automated | `/parameter-admin` | Admin | api | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
+| `MOD-TREE-DEBUG-001` | P0 | debugging | automated | `/debugging-admin` | Admin | api | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
+| `MOD-TREE-AUTHZ-001` | P0 | parameters | automated | `/parameter-admin` | Hardware User, Admin | api | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
 
 ## Deferred Or Conditional Operations
 

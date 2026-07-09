@@ -47,11 +47,28 @@ import {
   updateSubmissionRoundStatus,
   updateSubmissionRoundStatusFromRequests,
   upsertDraft,
-  withdrawOpenChangeRequestsForRound
+  withdrawOpenChangeRequestsForRound,
+  countParameterModuleChildren,
+  countParametersForModule,
+  createParameterModule,
+  deleteParameterModule,
+  getParameterModuleById,
+  getParameterModuleByName,
+  listParameterModules,
+  moveParameterModule,
+  updateParameterModule,
+  type ListParametersQuery as RepositoryListParametersQuery
 } from "./repository";
-import { applyImportBatchBodySchema, createImportBatchBodySchema } from "./schemas";
+import {
+  applyImportBatchBodySchema,
+  createImportBatchBodySchema,
+  type CreateParameterModuleBody,
+  type ListParametersQuery,
+  type MoveParameterModuleBody,
+  type UpdateParameterModuleBody
+} from "./schemas";
 import { getNextParameterStatus, parameterStatusLabels, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
-import type { ChangeRequestDto, ParameterImportSourceItemDto, ParameterImportSummaryDto } from "./types";
+import type { ChangeRequestDto, ParameterImportSourceItemDto, ParameterImportSummaryDto, ParameterModuleDto } from "./types";
 import { buildSubmissionWorkflowTrail } from "../../../src/domain/parameters/submissionWorkflowTrail";
 import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeline";
 
@@ -1349,5 +1366,331 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     }
 
     return updated;
+  });
+}
+
+function requireParameterAdmin(auth: AuthContext) {
+  if (!canAdminParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+  }
+}
+
+async function createParameterModuleAudit(
+  db: Queryable,
+  auth: AuthContext,
+  input: {
+    kind: "parameter-module-admin-create" | "parameter-module-admin-update" | "parameter-module-admin-move" | "parameter-module-admin-delete";
+    action: "create" | "update" | "move" | "delete";
+    module: Pick<ParameterModuleDto, "id" | "name" | "path" | "parentId">;
+    metadata?: Record<string, unknown>;
+  },
+  context: ServiceContext = {}
+) {
+  await createAuditEvent(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId: null,
+    actorUserId: auth.user.id,
+    actorType: "user",
+    app: "parameter-management",
+    kind: input.kind,
+    action: input.action,
+    severity: "Low",
+    targetType: "parameter-module",
+    targetId: input.module.id,
+    metadata: {
+      name: input.module.name,
+      path: input.module.path,
+      parentId: input.module.parentId,
+      ...input.metadata
+    },
+    traceId: context.requestId ?? randomUUID()
+  });
+}
+
+export async function resolveParameterListQuery(
+  db: Queryable,
+  organizationId: string,
+  query: ListParametersQuery
+): Promise<RepositoryListParametersQuery> {
+  const includeDescendants = query.includeDescendants !== false;
+
+  if (query.moduleId) {
+    return {
+      organizationId,
+      projectId: query.projectId,
+      moduleId: query.moduleId,
+      includeDescendants,
+      risk: query.risk,
+      q: query.q
+    };
+  }
+
+  if (query.module) {
+    const resolved = await getParameterModuleByName(db, {
+      organizationId,
+      name: query.module.trim(),
+      parentId: null
+    });
+    if (resolved) {
+      return {
+        organizationId,
+        projectId: query.projectId,
+        moduleId: resolved.id,
+        includeDescendants,
+        risk: query.risk,
+        q: query.q
+      };
+    }
+
+    return {
+      organizationId,
+      projectId: query.projectId,
+      module: query.module,
+      includeDescendants,
+      risk: query.risk,
+      q: query.q
+    };
+  }
+
+  return {
+    organizationId,
+    projectId: query.projectId,
+    risk: query.risk,
+    q: query.q
+  };
+}
+
+export async function listParameterModulesForAuth(db: Database, auth: AuthContext): Promise<ParameterModuleDto[]> {
+  if (!canViewParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+  }
+
+  return listParameterModules(db, { organizationId: auth.organization.id });
+}
+
+export async function createParameterModuleForAuth(
+  db: Database,
+  auth: AuthContext,
+  body: CreateParameterModuleBody,
+  context: ServiceContext = {}
+): Promise<ParameterModuleDto> {
+  requireParameterAdmin(auth);
+  const organizationId = auth.organization.id;
+  const name = body.name.trim();
+  const parentId = body.parentId ?? null;
+
+  if (parentId) {
+    const parent = await getParameterModuleById(db, { organizationId, moduleId: parentId });
+    if (!parent) {
+      throw new ApiError("NOT_FOUND", "Parent parameter module was not found.", 404, { parentId });
+    }
+  }
+
+  const existing = await getParameterModuleByName(db, { organizationId, name, parentId });
+  if (existing) {
+    throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", 409, { name, parentId });
+  }
+
+  return db.transaction(async (tx) => {
+    const module = await createParameterModule(tx, {
+      organizationId,
+      name,
+      parentId,
+      description: body.description?.trim(),
+      scope: body.scope?.trim(),
+      sortOrder: body.sortOrder
+    });
+
+    await createParameterModuleAudit(
+      tx,
+      auth,
+      {
+        kind: "parameter-module-admin-create",
+        action: "create",
+        module
+      },
+      context
+    );
+
+    return module;
+  });
+}
+
+export async function updateParameterModuleForAuth(
+  db: Database,
+  auth: AuthContext,
+  moduleId: string,
+  body: UpdateParameterModuleBody,
+  context: ServiceContext = {}
+): Promise<ParameterModuleDto> {
+  requireParameterAdmin(auth);
+  const organizationId = auth.organization.id;
+  const current = await getParameterModuleById(db, { organizationId, moduleId });
+  if (!current) {
+    throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+  }
+
+  const nextName = body.name?.trim() ?? current.name;
+  if (!nextName) {
+    throw new ApiError("VALIDATION_FAILED", "Module name is required.", 400);
+  }
+
+  if (nextName !== current.name) {
+    const conflict = await getParameterModuleByName(db, {
+      organizationId,
+      name: nextName,
+      parentId: current.parentId
+    });
+    if (conflict && conflict.id !== current.id) {
+      throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", 409, {
+        name: nextName,
+        parentId: current.parentId
+      });
+    }
+  }
+
+  return db.transaction(async (tx) => {
+    const module = await updateParameterModule(tx, {
+      organizationId,
+      moduleId,
+      name: body.name?.trim(),
+      description: body.description?.trim(),
+      scope: body.scope?.trim(),
+      sortOrder: body.sortOrder
+    });
+    if (!module) {
+      throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+    }
+
+    await createParameterModuleAudit(
+      tx,
+      auth,
+      {
+        kind: "parameter-module-admin-update",
+        action: "update",
+        module,
+        metadata: { previousName: current.name }
+      },
+      context
+    );
+
+    return module;
+  });
+}
+
+export async function moveParameterModuleForAuth(
+  db: Database,
+  auth: AuthContext,
+  moduleId: string,
+  body: MoveParameterModuleBody,
+  context: ServiceContext = {}
+): Promise<ParameterModuleDto> {
+  requireParameterAdmin(auth);
+  const organizationId = auth.organization.id;
+  const current = await getParameterModuleById(db, { organizationId, moduleId });
+  if (!current) {
+    throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+  }
+
+  const parentId = body.parentId;
+  if (parentId) {
+    const parent = await getParameterModuleById(db, { organizationId, moduleId: parentId });
+    if (!parent) {
+      throw new ApiError("NOT_FOUND", "Target parent parameter module was not found.", 404, { parentId });
+    }
+  }
+
+  if (parentId === current.parentId) {
+    return current;
+  }
+
+  const nextName = current.name;
+  const conflict = await getParameterModuleByName(db, { organizationId, name: nextName, parentId });
+  if (conflict && conflict.id !== current.id) {
+    throw new ApiError("CONFLICT", "Parameter module already exists under the target parent.", 409, {
+      name: nextName,
+      parentId
+    });
+  }
+
+  try {
+    return await db.transaction(async (tx) => {
+      const module = await moveParameterModule(tx, {
+        organizationId,
+        moduleId,
+        parentId
+      });
+      if (!module) {
+        throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+      }
+
+      await createParameterModuleAudit(
+        tx,
+        auth,
+        {
+          kind: "parameter-module-admin-move",
+          action: "move",
+          module,
+          metadata: { previousParentId: current.parentId }
+        },
+        context
+      );
+
+      return module;
+    });
+  } catch (error) {
+    if (error instanceof Error && /cycle/i.test(error.message)) {
+      throw new ApiError("CONFLICT", error.message, 409, { moduleId, parentId });
+    }
+    throw error;
+  }
+}
+
+export async function deleteParameterModuleForAuth(
+  db: Database,
+  auth: AuthContext,
+  moduleId: string,
+  context: ServiceContext = {}
+): Promise<void> {
+  requireParameterAdmin(auth);
+  const organizationId = auth.organization.id;
+  const current = await getParameterModuleById(db, { organizationId, moduleId });
+  if (!current) {
+    throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+  }
+
+  const childCount = await countParameterModuleChildren(db, { organizationId, moduleId });
+  if (childCount > 0) {
+    throw new ApiError("CONFLICT", "Cannot delete a parameter module that still has child modules.", 409, {
+      moduleId,
+      childCount
+    });
+  }
+
+  const parameterCount = await countParametersForModule(db, { organizationId, moduleId });
+  if (parameterCount > 0) {
+    throw new ApiError("CONFLICT", "Cannot delete a parameter module referenced by parameters.", 409, {
+      moduleId,
+      parameterCount
+    });
+  }
+
+  await db.transaction(async (tx) => {
+    const deleted = await deleteParameterModule(tx, { organizationId, moduleId });
+    if (!deleted) {
+      throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+    }
+
+    await createParameterModuleAudit(
+      tx,
+      auth,
+      {
+        kind: "parameter-module-admin-delete",
+        action: "delete",
+        module: current
+      },
+      context
+    );
   });
 }

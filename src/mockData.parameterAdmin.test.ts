@@ -43,6 +43,7 @@ describe("parameter admin data contracts", () => {
     expect(initialState._undoStack).toBeNull();
     expect(initialState.insightDismissedIds).toEqual([]);
     expect(initialState.aiFlaggedImportIds).toEqual([]);
+    expect(initialState.parameters.some((parameter) => parameter.modulePath && parameter.modulePath.length > 1)).toBe(true);
   });
 
   it("supports classified audit events with expanded metadata", () => {

@@ -1,10 +1,11 @@
 import { CircleX } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ParameterDefinitionForm } from "@/components/ParameterDefinitionForm";
 import { RiskPicker } from "@/components/RiskPicker";
 import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameters/import/types";
 import type { Project } from "@/mockData";
-import type { PowerManagementParameterTemplate } from "@/powerManagementConfig";
+import { buildParameterModuleTree } from "@/parameterAdminLibrary";
+import { createEmptyParameterModule, type PowerManagementParameterTemplate } from "@/powerManagementConfig";
 
 export type ImportReviewCardProps = {
   row: ReviewedImportRow;
@@ -402,6 +403,14 @@ function NewParameterPrefillDialog({
   onConfirm: (patch: Partial<ParsedImportRow>) => void;
 }) {
   const [draftParameter, setDraftParameter] = useState<PowerManagementParameterTemplate>(() => buildTemplateFromRow(row, projects));
+  const moduleNodes = useMemo(
+    () =>
+      buildParameterModuleTree(
+        [],
+        buildModuleOptions(moduleNames, draftParameter.module).map((name) => createEmptyParameterModule(name))
+      ),
+    [draftParameter.module, moduleNames]
+  );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -468,7 +477,7 @@ function NewParameterPrefillDialog({
           <ParameterDefinitionForm
             parameter={draftParameter}
             projects={projects}
-            modules={moduleNames}
+            moduleNodes={moduleNodes}
             allParameters={libraryParameters}
             onMetadataChange={handleMetadataChange}
             onRecommendedValueChange={handleRecommendedValueChange}

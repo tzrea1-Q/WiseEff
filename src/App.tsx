@@ -170,12 +170,14 @@ import {
   addParameterModule,
   updateParameterModule,
   deleteParameterModule,
+  clonePowerManagementConfig,
   deleteDebugParameter,
   deleteAdminProject,
   deleteProjectParameter,
   updateDebugParameter,
   updateProjectParameter,
   updateProjectParameterMetadata,
+  syncConfigDraftDebugParameterModuleMetadata,
   type PowerManagementRisk
 } from "./powerManagementConfig";
 import { Button } from "@/components/ui/button";
@@ -1691,7 +1693,9 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       if (!canPerform(activeRoleId, "admin.access")) return state;
       return {
         ...state,
-        persistedConfigSnapshot: JSON.parse(JSON.stringify(state.configDraft)) as typeof state.configDraft,
+        persistedConfigSnapshot: clonePowerManagementConfig(
+          syncConfigDraftDebugParameterModuleMetadata(state.configDraft)
+        ),
         notifications: [
           `已持久化 ${state.configDraft.debugParameters.length} 项调试参数到配置文件`,
           ...state.notifications

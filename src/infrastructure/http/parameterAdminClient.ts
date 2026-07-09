@@ -1,5 +1,8 @@
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
+
+export type ParameterModuleDto = FlatModuleNode;
 
 export type ProjectAdminSummaryDto = {
   id: string;
@@ -34,6 +37,25 @@ export type UpdateProjectAdminInput = {
   status?: string;
 };
 
+export type CreateParameterModuleAdminInput = {
+  name: string;
+  parentId?: string | null;
+  description?: string;
+  scope?: string;
+  sortOrder?: number;
+};
+
+export type UpdateParameterModuleAdminInput = {
+  name?: string;
+  description?: string;
+  scope?: string;
+  sortOrder?: number;
+};
+
+export type MoveParameterModuleAdminInput = {
+  parentId: string | null;
+};
+
 type ItemsEnvelope<T> = { items: T[] };
 type ItemEnvelope<T> = { item: T };
 
@@ -62,6 +84,31 @@ export function createParameterAdminClient(client: ApiClient = createDefaultApiC
     },
     async deleteProject(projectId: string) {
       await client.delete<{ ok: true }>(`/api/v1/parameters/admin/projects/${encodeURIComponent(projectId)}`);
+    },
+    async listModules() {
+      const response = await client.get<ItemsEnvelope<ParameterModuleDto>>("/api/v1/parameter-modules");
+      return response.items;
+    },
+    async createModule(input: CreateParameterModuleAdminInput) {
+      const response = await client.post<ItemEnvelope<ParameterModuleDto>>("/api/v1/parameter-modules", input);
+      return response.item;
+    },
+    async updateModule(moduleId: string, input: UpdateParameterModuleAdminInput) {
+      const response = await client.patch<ItemEnvelope<ParameterModuleDto>>(
+        `/api/v1/parameter-modules/${encodeURIComponent(moduleId)}`,
+        input
+      );
+      return response.item;
+    },
+    async moveModule(moduleId: string, input: MoveParameterModuleAdminInput) {
+      const response = await client.post<ItemEnvelope<ParameterModuleDto>>(
+        `/api/v1/parameter-modules/${encodeURIComponent(moduleId)}/move`,
+        input
+      );
+      return response.item;
+    },
+    async deleteModule(moduleId: string) {
+      await client.delete<null>(`/api/v1/parameter-modules/${encodeURIComponent(moduleId)}`);
     }
   };
 }

@@ -14,6 +14,7 @@ import { existsSync, readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
 import App, { appReducer } from "./App";
 import { initialState } from "./mockData";
+import { selectModuleTreeFilter } from "./test/moduleTreeTestHelpers";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
@@ -1543,8 +1544,7 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    fireEvent.click(screen.getByRole("button", { name: "筛选模块" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Charging Policy" }));
+    selectModuleTreeFilter("Charging Policy", ["Power", "Charging"]);
     fireEvent.click(screen.getByRole("button", { name: "导出 Excel" }));
 
     const exportedBlob = createObjectUrl.mock.calls[0]?.[0] as Blob;
@@ -1594,7 +1594,7 @@ describe("WiseEff app shell", () => {
     const projectSelect = screen.getByRole("combobox", { name: "项目" });
 
     expectSelectValue(projectSelect, "nebula");
-    expect(screen.getByRole("button", { name: "筛选模块" })).toHaveClass("active");
+    expect(screen.getByRole("button", { name: /模块 \(1\)/ })).toBeInTheDocument();
     expect(within(screen.getByRole("table")).getByText("battery_temp_target_c")).toBeInTheDocument();
     expect(within(screen.getByRole("table")).queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
   });

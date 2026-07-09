@@ -217,5 +217,29 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     workflow: "H",
     title: "Admin user-management mutation is covered with non-Admin denial and audit evidence.",
     required: true
+  },
+  {
+    id: "MOD-TREE-PARAM-001",
+    workflow: "C",
+    title: "Admin creates nested parameter modules, assigns a parameter, and parent filtering includes the child subtree.",
+    required: true
+  },
+  {
+    id: "MOD-TREE-PARAM-002",
+    workflow: "C",
+    title: "Admin moves a parameter module to a new parent and cycle moves are rejected.",
+    required: true
+  },
+  {
+    id: "MOD-TREE-DEBUG-001",
+    workflow: "E",
+    title: "Admin creates nested debug node modules and parent filtering includes assigned child nodes.",
+    required: true
+  },
+  {
+    id: "MOD-TREE-AUTHZ-001",
+    workflow: "C",
+    title: "Non-admin cannot mutate module trees and deleting non-empty modules returns 409.",
+    required: true
   }
 ];

@@ -3,7 +3,9 @@ import {
   coverageLabel,
   isArchivedDebugParameter
 } from "@/debugAdminDraft";
+import { debugNodeModuleId } from "@/debugAdminModules";
 import type { DebugParameter, DebugParameterNodeBinding } from "@/domain/debugging/types";
+import { collectSubtreeModuleIds, type FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { RiskLevel } from "@/domain/parameters/types";
 import type { DebugNormalizationMode, DebugValueFormat, DebugValueKind } from "@/debugValueKind";
 
@@ -23,6 +25,7 @@ export type DebugParameterLibraryRow = {
   name: string;
   key: string;
   module: string;
+  moduleId?: string;
   description?: string;
   risk: RiskLevel;
   bindings?: DebugParameterNodeBinding[];
@@ -60,7 +63,14 @@ function getDebugParameterCoverage(row: DebugParameterLibraryRow): Exclude<Debug
   return "missing-binding";
 }
 
-export function filterDebugParameterLibrary(rows: readonly DebugParameterLibraryRow[], search: DebugAdminSearch) {
+export function filterDebugParameterLibrary(
+  rows: readonly DebugParameterLibraryRow[],
+  search: DebugAdminSearch,
+  moduleNodes: readonly FlatModuleNode[] = []
+) {
+  const allowedModuleIds =
+    search.modules.length > 0 ? collectSubtreeModuleIds(moduleNodes, search.modules) : null;
+
   return rows.filter((row) => {
     if (search.q) {
       const needle = search.q.toLowerCase();
@@ -74,7 +84,7 @@ export function filterDebugParameterLibrary(rows: readonly DebugParameterLibrary
       return false;
     }
 
-    if (search.modules.length > 0 && !search.modules.includes(row.module)) {
+    if (allowedModuleIds && !allowedModuleIds.has(debugNodeModuleId(row))) {
       return false;
     }
 

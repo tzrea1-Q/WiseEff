@@ -16,7 +16,7 @@ WiseEff is an AI-assisted enterprise efficiency platform for governed engineerin
 
 ### Parameter Management
 
-Developers can browse project parameters, inspect current/recommended values, create drafts, submit rounds, route reviews, merge approved changes, import/export governed data, and inspect history/audit evidence.
+Developers can browse project parameters, inspect current/recommended values, create drafts, submit rounds, route reviews, merge approved changes, import/export governed data, and inspect history/audit evidence. Parameter and debugging **module taxonomies** are multi-level trees per domain; parent module filters include descendant assignments.
 
 ### Log Analysis
 

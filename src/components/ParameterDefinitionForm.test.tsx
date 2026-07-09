@@ -1,18 +1,20 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildParameterModuleTree } from "../parameterAdminLibrary";
 import { initialState } from "../mockData";
-import { listParameterModuleNames } from "../powerManagementConfig";
 import { ParameterDefinitionForm } from "./ParameterDefinitionForm";
 
 afterEach(() => {
   cleanup();
 });
 
+const moduleNodes = buildParameterModuleTree([], initialState.configDraft.parameterModules);
+
 function build(overrides: Partial<Parameters<typeof ParameterDefinitionForm>[0]> = {}) {
   return {
     parameter: initialState.configDraft.parameterLibrary[0],
     projects: initialState.configDraft.projects,
-    modules: listParameterModuleNames(initialState.configDraft.parameterModules),
+    moduleNodes,
     allParameters: initialState.configDraft.parameterLibrary,
     onMetadataChange: vi.fn(),
     onRecommendedValueChange: vi.fn(),
@@ -31,16 +33,12 @@ describe("ParameterDefinitionForm", () => {
     expect(screen.getByRole("radiogroup", { name: "风险" })).toBeInTheDocument();
   });
 
-  it("renders module as a select with options from the parameter library", () => {
+  it("renders module tree select with the current module selected", () => {
     const props = build();
     render(<ParameterDefinitionForm {...props} />);
 
-    const moduleSelect = screen.getByLabelText("模块");
-    expect(moduleSelect.tagName).toBe("SELECT");
-    expect(moduleSelect).toHaveValue(props.parameter.module);
-    expect(Array.from(moduleSelect.querySelectorAll("option")).map((option) => option.value)).toEqual(
-      props.modules
-    );
+    const moduleTrigger = screen.getByRole("button", { name: /模块/ });
+    expect(moduleTrigger).toHaveTextContent(props.parameter.module);
   });
 
   it("shows the recommended value global-effect hint", () => {

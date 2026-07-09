@@ -4,6 +4,7 @@ import {
   clonePowerManagementConfig,
   flattenDebugParameters,
   flattenProjectParameters,
+  syncConfigDraftDebugParameterModuleMetadata,
   PowerManagementConfig,
   PowerManagementDebugParameter,
   PowerManagementProjectId,
@@ -127,6 +128,8 @@ export type ParameterRecord = {
   explanation: string;
   configFormat: string;
   module: string;
+  moduleId?: string;
+  modulePath?: string[];
   projectId: string;
   currentValue: string;
   recommendedValue: string;
@@ -1095,7 +1098,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     pushedDebugIds: [],
     debuggingSessionStartedAt: null,
     debuggingActiveSessionId: null,
-    persistedConfigSnapshot: clonePowerManagementConfig(configDraft),
+    persistedConfigSnapshot: clonePowerManagementConfig(syncConfigDraftDebugParameterModuleMetadata(configDraft)),
     users,
     currentUserId,
     lastExportedSnapshot: JSON.stringify(configDraft),

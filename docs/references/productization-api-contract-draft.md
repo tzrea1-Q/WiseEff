@@ -84,7 +84,7 @@ Tool Governance: agent tool calls must be scoped by page context, user role, and
 
 ## Index Guidance
 
-- Index `ParameterRecord.projectId`, `ParameterRecord.module`, and `ParameterRecord.risk` for parameter workbench filtering.
+- Index `ParameterRecord.projectId`, `ParameterRecord.moduleId` (and legacy `ParameterRecord.module` during transition), and `ParameterRecord.risk` for parameter workbench filtering.
 - Index `ChangeRequest.submissionRoundId`, `ChangeRequest.projectId`, `ChangeRequest.parameterId`, and `ChangeRequest.status` for review queues.
 - Index `ParameterSubmissionRound.projectId`, `ParameterSubmissionRound.createdAt`, and `ParameterSubmissionRound.status` for submission timelines.
 - Index `LogRecord.projectId`, `LogRecord.status`, `LogRecord.severity`, `LogRecord.capturedAt`, and `LogRecord.updatedAtIso` for log dashboards.

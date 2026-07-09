@@ -6,6 +6,9 @@ import {
   isComplexParameter
 } from "../parameterValueKind";
 import type { PowerManagementParameterTemplate, PowerManagementProject } from "../powerManagementConfig";
+import { ModuleTreeSelect } from "./common/ModuleTreeSelect";
+import { templateModuleId } from "../parameterAdminLibrary";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import { RiskPicker } from "./RiskPicker";
 
 const NAME_RE = /^[a-z][a-z0-9_]*$/;
@@ -13,14 +16,14 @@ const NAME_RE = /^[a-z][a-z0-9_]*$/;
 export function ParameterDefinitionForm({
   parameter,
   projects,
-  modules,
+  moduleNodes,
   allParameters,
   onMetadataChange,
   onRecommendedValueChange
 }: {
   parameter: PowerManagementParameterTemplate;
   projects: readonly PowerManagementProject[];
-  modules: readonly string[];
+  moduleNodes: readonly FlatModuleNode[];
   allParameters: readonly PowerManagementParameterTemplate[];
   onMetadataChange: (patch: Partial<Omit<PowerManagementParameterTemplate, "id" | "values">>) => void;
   onRecommendedValueChange: (value: string) => void;
@@ -30,7 +33,7 @@ export function ParameterDefinitionForm({
   const recommendedValue = firstProjectId ? parameter.values[firstProjectId]?.recommendedValue ?? "" : "";
   const nameError = getNameError(parameter, allParameters);
   const isComplex = isComplexParameter(parameter);
-  const moduleOptions = buildModuleOptions(modules, parameter.module);
+  const selectedModuleId = templateModuleId(parameter);
 
   const updateRange = (patch: { min?: string; max?: string }) => {
     const min = (patch.min ?? String(range.min ?? "")).trim();
@@ -63,11 +66,19 @@ export function ParameterDefinitionForm({
             </label>
             <label>
               模块
-              <select aria-label="模块" value={parameter.module} onChange={(event) => onMetadataChange({ module: event.target.value })}>
-                {moduleOptions.map((moduleName) => (
-                  <option key={moduleName} value={moduleName}>{moduleName}</option>
-                ))}
-              </select>
+              <ModuleTreeSelect
+                label="选择模块"
+                mode="single"
+                nodes={moduleNodes}
+                value={selectedModuleId}
+                onChange={(moduleId) => {
+                  const next = typeof moduleId === "string" ? moduleId : moduleId[0];
+                  const node = moduleNodes.find((item) => item.id === next);
+                  if (node) {
+                    onMetadataChange({ module: node.name });
+                  }
+                }}
+              />
             </label>
             <label>
               单位
@@ -158,14 +169,6 @@ export function ParameterDefinitionForm({
       </form>
     </section>
   );
-}
-
-function buildModuleOptions(modules: readonly string[], currentModule: string) {
-  const moduleSet = new Set(modules.map((moduleName) => moduleName.trim()).filter(Boolean));
-  if (currentModule.trim()) {
-    moduleSet.add(currentModule.trim());
-  }
-  return Array.from(moduleSet).sort((left, right) => left.localeCompare(right));
 }
 
 function getNameError(parameter: PowerManagementParameterTemplate, allParameters: readonly PowerManagementParameterTemplate[]) {
