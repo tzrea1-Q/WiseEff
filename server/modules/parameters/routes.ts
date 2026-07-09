@@ -18,24 +18,34 @@ import {
 import {
   applyImportBatch,
   createImportPreview,
+  createParameterModuleForAuth,
   deleteDraft,
+  deleteParameterModuleForAuth,
   listChangeRequests,
   listDrafts,
+  listParameterModulesForAuth,
   listSubmissionRounds,
+  moveParameterModuleForAuth,
+  resolveParameterListQuery,
   reviewChange,
   saveDraft,
   submitParameterChanges,
+  updateParameterModuleForAuth,
   withdrawSubmissionRound
 } from "./service";
 import {
   applyImportBatchBodySchema,
   createImportBatchBodySchema,
+  createParameterModuleBodySchema,
   createProjectBodySchema,
   listParametersQuerySchema,
+  moveParameterModuleBodySchema,
+  parameterModuleParamsSchema,
   paramsWithRoundIdSchema,
   reviewChangeBodySchema,
   saveDraftBodySchema,
   submitRoundBodySchema,
+  updateParameterModuleBodySchema,
   updateProjectBodySchema
 } from "./schemas";
 import { canAdminParameters, canMergeParameters, canReviewParameters, canViewParameters } from "./policy";
@@ -246,15 +256,59 @@ export function registerParameterRoutes(
     return { status: 200, body: { items } };
   });
 
+  router.get("/api/v1/parameter-modules", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const items = await listParameterModulesForAuth(db, auth);
+
+    return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v1/parameter-modules", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(createParameterModuleBodySchema, request.body, "Invalid parameter module create payload.");
+    const item = await createParameterModuleForAuth(db, auth, body, { requestId: request.requestId });
+
+    return { status: 201, body: { item } };
+  });
+
+  router.patch("/api/v1/parameter-modules/:moduleId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(parameterModuleParamsSchema, request.params);
+    const body = parseWithSchema(updateParameterModuleBodySchema, request.body, "Invalid parameter module update payload.");
+    const item = await updateParameterModuleForAuth(db, auth, params.moduleId, body, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/parameter-modules/:moduleId/move", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(parameterModuleParamsSchema, request.params);
+    const body = parseWithSchema(moveParameterModuleBodySchema, request.body, "Invalid parameter module move payload.");
+    const item = await moveParameterModuleForAuth(db, auth, params.moduleId, body, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.delete("/api/v1/parameter-modules/:moduleId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(parameterModuleParamsSchema, request.params);
+    await deleteParameterModuleForAuth(db, auth, params.moduleId, { requestId: request.requestId });
+
+    return { status: 204, body: null };
+  });
+
   router.get("/api/v1/parameters", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
     const query = parseWithSchema(listParametersQuerySchema, request.query);
-    const items = await listParameters(db, {
-      organizationId: auth.organization.id,
-      ...query
-    });
+    const resolved = await resolveParameterListQuery(db, auth.organization.id, query);
+    const items = await listParameters(db, resolved);
 
     return { status: 200, body: { items } };
   });

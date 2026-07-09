@@ -800,6 +800,236 @@
         }
       }
     },
+    "/api/v1/parameter-modules": {
+      "get": {
+        "operationId": "parameters.listModules",
+        "summary": "List parameter module tree",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterModuleListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "parameters.createModule",
+        "summary": "Create parameter module",
+        "tags": [
+          "parameters"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateParameterModuleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterModuleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameter-modules/{moduleId}": {
+      "patch": {
+        "operationId": "parameters.updateModule",
+        "summary": "Update parameter module",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "moduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateParameterModuleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterModuleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "parameters.deleteModule",
+        "summary": "Delete parameter module",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "moduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameter-modules/{moduleId}/move": {
+      "post": {
+        "operationId": "parameters.moveModule",
+        "summary": "Move parameter module to a new parent",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "moduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveParameterModuleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterModuleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/parameters/admin/projects": {
       "get": {
         "operationId": "parameters.admin.listProjects",
@@ -3921,6 +4151,30 @@
         "type": "object",
         "x-wiseeff-schema": "ProjectModuleListResponse"
       },
+      "ParameterModuleListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterModuleListResponse"
+      },
+      "CreateParameterModuleRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateParameterModuleRequest"
+      },
+      "ParameterModuleResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterModuleResponse"
+      },
+      "UpdateParameterModuleRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "UpdateParameterModuleRequest"
+      },
+      "MoveParameterModuleRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "MoveParameterModuleRequest"
+      },
+      "DeleteResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DeleteResponse"
+      },
       "ProjectAdminListResponse": {
         "type": "object",
         "x-wiseeff-schema": "ProjectAdminListResponse"
@@ -3964,10 +4218,6 @@
       "ParameterDraftListResponse": {
         "type": "object",
         "x-wiseeff-schema": "ParameterDraftListResponse"
-      },
-      "DeleteResponse": {
-        "type": "object",
-        "x-wiseeff-schema": "DeleteResponse"
       },
       "SubmitParameterRoundRequest": {
         "type": "object",
