@@ -49,6 +49,8 @@ function debugNodeRow(overrides: Partial<Record<string, unknown>> = {}) {
     write_format_example: "",
     write_format_hint: "",
     module: "Battery",
+    debug_node_module_id: "dm-1",
+    module_path: "Battery",
     value_kind: "scalar",
     value_format: "raw",
     normalization_mode: "trim",
@@ -252,13 +254,31 @@ describe("catalogSplitRepository", () => {
 
   it("creates, lists, updates, renames references, and deletes debug node modules", async () => {
     const moduleRow = {
+      id: "dm-1",
+      organization_id: "org-1",
+      parent_id: null,
       name: "Battery",
+      path: "dm-1",
+      depth: 1,
+      sort_order: 0,
       description: "Battery nodes",
       scope: "Lab",
       created_at: timestamp,
       updated_at: timestamp
     };
-    const { db, calls } = createFakeDb([[moduleRow], [moduleRow], [{ count: "2" }], [moduleRow], [], []]);
+    const renamedRow = { ...moduleRow, name: "Battery Charging" };
+    const { db, calls } = createFakeDb([
+      [moduleRow],
+      [moduleRow],
+      [{ count: "2" }],
+      [moduleRow],
+      [moduleRow],
+      [renamedRow],
+      [],
+      [{ count: "0" }],
+      [{ count: "0" }],
+      []
+    ]);
 
     await createDebugNodeModule(db, {
       organizationId: "org-1",
@@ -283,8 +303,7 @@ describe("catalogSplitRepository", () => {
     expect(calls[0].text).toContain("insert into debug_node_modules");
     expect(listed).toHaveLength(1);
     expect(nodeCount).toBe(2);
-    expect(calls[3].values).toEqual(expect.arrayContaining(["org-1", "Battery", "Battery Charging"]));
-    expect(calls[4].text).toContain("update debug_nodes");
-    expect(calls[5].text).toContain("delete from debug_node_modules");
+    expect(calls.some((call) => call.text.includes("update debug_nodes"))).toBe(true);
+    expect(calls.some((call) => call.text.includes("delete from debug_node_modules"))).toBe(true);
   });
 });

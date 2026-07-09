@@ -210,7 +210,12 @@ export type NodeOperationRecord = {
 };
 
 export type DebugNodeModuleRecord = {
+  id: string;
+  parentId: string | null;
   name: string;
+  path: string;
+  depth: number;
+  sortOrder: number;
   description: string;
   scope: string;
   createdAt: string;
@@ -226,6 +231,8 @@ export type DebugNodeRecord = {
   writeFormatExample: string;
   writeFormatHint: string;
   module: string;
+  moduleId?: string;
+  modulePath?: string[];
   valueKind: DebugValueKind;
   valueFormat: DebugValueFormat;
   normalizationMode: DebugNormalizationMode;

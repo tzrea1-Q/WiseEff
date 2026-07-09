@@ -15,6 +15,14 @@ import {
   DEBUG_VALUE_FORMAT_RAW,
   DEBUG_VALUE_KIND_SCALAR
 } from "./types";
+import {
+  buildDebugNodeModuleSubtreeFilter,
+  createDebugNodeModule as createDebugNodeModuleRecord,
+  deleteDebugNodeModuleById,
+  getDebugNodeModuleByName,
+  listDebugNodeModules as listDebugNodeModuleRecords,
+  updateDebugNodeModule as updateDebugNodeModuleRecord
+} from "./debugNodeModuleRepository";
 
 type DebugNodeRow = {
   id: string;
@@ -25,6 +33,8 @@ type DebugNodeRow = {
   write_format_example: string;
   write_format_hint: string;
   module: string;
+  debug_node_module_id: string | null;
+  module_path: string | null;
   value_kind: DebugValueKind;
   value_format: DebugValueFormat;
   normalization_mode: DebugNormalizationMode;
@@ -65,6 +75,17 @@ function debugNodeBindingId(nodeId: string, protocol: DebugConnectionProtocol) {
   return `${nodeId}:${protocol}`;
 }
 
+function parseModulePathNames(modulePath: string | null | undefined): string[] | undefined {
+  if (!modulePath) {
+    return undefined;
+  }
+  const trimmed = modulePath.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.split("/").filter(Boolean);
+}
+
 function toDebugNodeRecord(row: DebugNodeRow): DebugNodeRecord {
   return {
     id: row.id,
@@ -75,6 +96,8 @@ function toDebugNodeRecord(row: DebugNodeRow): DebugNodeRecord {
     writeFormatExample: row.write_format_example,
     writeFormatHint: row.write_format_hint,
     module: row.module,
+    moduleId: row.debug_node_module_id ?? undefined,
+    modulePath: parseModulePathNames(row.module_path),
     valueKind: row.value_kind,
     valueFormat: row.value_format,
     normalizationMode: row.normalization_mode,
@@ -121,6 +144,13 @@ const debugNodeColumns = `
   n.write_format_example,
   n.write_format_hint,
   n.module,
+  n.debug_node_module_id,
+  (
+    select string_agg(dm_seg.name, '/' order by dm_seg.depth)
+    from debug_node_modules dm_seg
+    where dm_seg.organization_id = n.organization_id
+      and dm_seg.id = any(string_to_array(coalesce(dm.path, ''), '/'))
+  ) as module_path,
   n.value_kind,
   n.value_format,
   n.normalization_mode,
@@ -157,21 +187,39 @@ const debugNodeBindingColumns = `
 
 export async function listDebugNodes(
   db: Queryable,
-  input: { organizationId: string; includeArchived?: boolean }
+  input: {
+    organizationId: string;
+    includeArchived?: boolean;
+    module?: string;
+    moduleId?: string;
+    includeDescendants?: boolean;
+  }
 ): Promise<DebugNodeRecord[]> {
-  const conditions = ["organization_id = $1"];
+  const conditions = ["n.organization_id = $1"];
   const values: unknown[] = [input.organizationId];
 
   if (!input.includeArchived) {
-    conditions.push("archived_at is null");
+    conditions.push("n.archived_at is null");
+  }
+
+  if (input.module) {
+    values.push(input.module);
+    conditions.push(`n.module = $${values.length}`);
+  }
+
+  if (input.moduleId) {
+    conditions.push(
+      buildDebugNodeModuleSubtreeFilter(values, input.moduleId, input.includeDescendants !== false)
+    );
   }
 
   const result = await db.query<DebugNodeRow>(
     `
-    select ${debugNodeOnlyColumns}
-    from debug_nodes
+    select ${debugNodeColumns}
+    from debug_nodes n
+    left join debug_node_modules dm on dm.id = n.debug_node_module_id and dm.organization_id = n.organization_id
     where ${conditions.join(" and ")}
-    order by name asc
+    order by n.name asc
     `,
     values
   );
@@ -185,11 +233,12 @@ export async function getDebugNode(
 ): Promise<DebugNodeRecord | null> {
   const result = await db.query<DebugNodeRow>(
     `
-    select ${debugNodeOnlyColumns}
-    from debug_nodes
-    where organization_id = $1
-      and id = $2
-      ${input.includeArchived ? "" : "and archived_at is null"}
+    select ${debugNodeColumns}
+    from debug_nodes n
+    left join debug_node_modules dm on dm.id = n.debug_node_module_id and dm.organization_id = n.organization_id
+    where n.organization_id = $1
+      and n.id = $2
+      ${input.includeArchived ? "" : "and n.archived_at is null"}
     limit 1
     `,
     [input.organizationId, input.nodeId]
@@ -200,7 +249,12 @@ export async function getDebugNode(
 
 export async function listRuntimeDebugNodes(
   db: Queryable,
-  input: { organizationId: string; protocol?: DebugConnectionProtocol }
+  input: {
+    organizationId: string;
+    protocol?: DebugConnectionProtocol;
+    moduleId?: string;
+    includeDescendants?: boolean;
+  }
 ): Promise<DebugRuntimeNodeRecord[]> {
   const conditions = [
     "n.organization_id = $1",
@@ -215,6 +269,13 @@ export async function listRuntimeDebugNodes(
   if (input.protocol) {
     conditions.push(`b.protocol = $${index}`);
     values.push(input.protocol);
+    index += 1;
+  }
+
+  if (input.moduleId) {
+    conditions.push(
+      buildDebugNodeModuleSubtreeFilter(values, input.moduleId, input.includeDescendants !== false)
+    );
   }
 
   const result = await db.query<DebugRuntimeNodeRow>(
@@ -222,6 +283,7 @@ export async function listRuntimeDebugNodes(
     select ${debugRuntimeNodeColumns}
     from debug_nodes n
     inner join debug_node_bindings b on b.node_id = n.id
+    left join debug_node_modules dm on dm.id = n.debug_node_module_id and dm.organization_id = n.organization_id
     where ${conditions.join(" and ")}
     order by n.name asc
     `,
@@ -467,51 +529,12 @@ export async function archiveDebugNodeBinding(
   return result.rows[0] ? toDebugNodeBindingRecord(result.rows[0]) : null;
 }
 
-type DebugNodeModuleRow = {
-  name: string;
-  description: string;
-  scope: string;
-  created_at: string | Date;
-  updated_at: string | Date;
-};
-
-function toDebugNodeModuleRecord(row: DebugNodeModuleRow) {
-  return {
-    name: row.name,
-    description: row.description,
-    scope: row.scope,
-    createdAt: dateTimeToIso(row.created_at) ?? "",
-    updatedAt: dateTimeToIso(row.updated_at) ?? ""
-  };
-}
-
 export async function listDebugNodeModules(db: Queryable, input: { organizationId: string }) {
-  const result = await db.query<DebugNodeModuleRow>(
-    `
-    select name, description, scope, created_at, updated_at
-    from debug_node_modules
-    where organization_id = $1
-    order by name asc
-    `,
-    [input.organizationId]
-  );
-
-  return result.rows.map(toDebugNodeModuleRecord);
+  return listDebugNodeModuleRecords(db, input);
 }
 
 export async function getDebugNodeModule(db: Queryable, input: { organizationId: string; name: string }) {
-  const result = await db.query<DebugNodeModuleRow>(
-    `
-    select name, description, scope, created_at, updated_at
-    from debug_node_modules
-    where organization_id = $1
-      and name = $2
-    limit 1
-    `,
-    [input.organizationId, input.name]
-  );
-
-  return result.rows[0] ? toDebugNodeModuleRecord(result.rows[0]) : null;
+  return getDebugNodeModuleByName(db, { organizationId: input.organizationId, name: input.name });
 }
 
 export async function countDebugNodesForModule(db: Queryable, input: { organizationId: string; moduleName: string }) {
@@ -535,24 +558,10 @@ export async function createDebugNodeModule(
     name: string;
     description?: string;
     scope?: string;
+    parentId?: string | null;
   }
 ) {
-  const result = await db.query<DebugNodeModuleRow>(
-    `
-    insert into debug_node_modules (id, organization_id, name, description, scope)
-    values ($1, $2, $3, $4, $5)
-    returning name, description, scope, created_at, updated_at
-    `,
-    [
-      randomUUID(),
-      input.organizationId,
-      input.name,
-      input.description ?? "",
-      input.scope ?? ""
-    ]
-  );
-
-  return toDebugNodeModuleRecord(result.rows[0]);
+  return createDebugNodeModuleRecord(db, input);
 }
 
 export async function updateDebugNodeModule(
@@ -565,29 +574,21 @@ export async function updateDebugNodeModule(
     scope?: string;
   }
 ) {
-  const nextName = input.name?.trim();
-  const result = await db.query<DebugNodeModuleRow>(
-    `
-    update debug_node_modules
-    set
-      name = coalesce($3, name),
-      description = coalesce($4, description),
-      scope = coalesce($5, scope),
-      updated_at = now()
-    where organization_id = $1
-      and name = $2
-    returning name, description, scope, created_at, updated_at
-    `,
-    [
-      input.organizationId,
-      input.moduleName,
-      nextName ?? null,
-      input.description ?? null,
-      input.scope ?? null
-    ]
-  );
+  const current = await getDebugNodeModuleByName(db, {
+    organizationId: input.organizationId,
+    name: input.moduleName
+  });
+  if (!current) {
+    return null;
+  }
 
-  return result.rows[0] ? toDebugNodeModuleRecord(result.rows[0]) : null;
+  return updateDebugNodeModuleRecord(db, {
+    organizationId: input.organizationId,
+    moduleId: current.id,
+    name: input.name,
+    description: input.description,
+    scope: input.scope
+  });
 }
 
 export async function renameDebugNodeModuleReferences(
@@ -607,14 +608,24 @@ export async function renameDebugNodeModuleReferences(
 }
 
 export async function deleteDebugNodeModule(db: Queryable, input: { organizationId: string; moduleName: string }) {
-  const result = await db.query(
-    `
-    delete from debug_node_modules
-    where organization_id = $1
-      and name = $2
-    `,
-    [input.organizationId, input.moduleName]
-  );
+  const current = await getDebugNodeModuleByName(db, {
+    organizationId: input.organizationId,
+    name: input.moduleName
+  });
+  if (!current) {
+    return false;
+  }
 
-  return (result.rowCount ?? 0) > 0;
+  return deleteDebugNodeModuleById(db, {
+    organizationId: input.organizationId,
+    moduleId: current.id
+  });
 }
+
+export {
+  countDebugNodesForModuleId,
+  deleteDebugNodeModuleById,
+  getDebugNodeModuleById,
+  getDebugNodeModuleByName,
+  moveDebugNodeModule
+} from "./debugNodeModuleRepository";
