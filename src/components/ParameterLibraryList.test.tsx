@@ -4,6 +4,7 @@ import type { ParamAdminSearch } from "../hooks/useParamAdminSearch";
 import { buildParameterModuleTree } from "../parameterAdminLibrary";
 import { initialState } from "../mockData";
 import { ParameterLibraryList } from "./ParameterLibraryList";
+import { selectModuleTreeFilter } from "../test/moduleTreeTestHelpers";
 
 afterEach(() => {
   cleanup();
@@ -107,8 +108,7 @@ describe("ParameterLibraryList search and risk filters", () => {
     const props = defaultProps();
     render(<ParameterLibraryList {...props} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /模块/ }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Charging Policy" }));
+    selectModuleTreeFilter("Charging Policy", ["Power", "Charging"]);
 
     expect(props.onUpdateSearch).toHaveBeenCalledWith({ modules: [chargingModuleId] });
   });
