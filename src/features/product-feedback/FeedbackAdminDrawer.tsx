@@ -1,9 +1,10 @@
-import { CheckCircle2, ImageIcon, PlayCircle } from "lucide-react";
+import { CheckCircle2, CircleX, ImageIcon, PlayCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ProductFeedback, ProductFeedbackStatus } from "@/domain/productFeedback/types";
 import { productFeedbackStatusLabels, productFeedbackTypeLabels } from "@/domain/productFeedback/types";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 
 export type FeedbackAdminDrawerProps = {
@@ -31,7 +32,7 @@ function formatDateTime(value: string) {
 
 function nextStatusAction(status: ProductFeedbackStatus) {
   if (status === "open") return { label: "开始处理", status: "in_progress" as const, icon: PlayCircle };
-  if (status === "in_progress") return { label: "关闭", status: "closed" as const, icon: CheckCircle2 };
+  if (status === "in_progress") return { label: "关闭反馈", status: "closed" as const, icon: CheckCircle2 };
   return null;
 }
 
@@ -44,13 +45,21 @@ export function FeedbackAdminDrawer({
 }: FeedbackAdminDrawerProps) {
   const [adminNote, setAdminNote] = useState("");
   const [previews, setPreviews] = useState<AttachmentPreview[]>([]);
+  const [expandedPreview, setExpandedPreview] = useState<AttachmentPreview | null>(null);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     setAdminNote(feedback?.adminNote ?? "");
     setErrorMessage("");
+    setExpandedPreview(null);
   }, [feedback?.id, feedback?.adminNote]);
+
+  useEffect(() => {
+    if (!open) {
+      setExpandedPreview(null);
+    }
+  }, [open]);
 
   useEffect(() => {
     let active = true;
@@ -107,19 +116,27 @@ export function FeedbackAdminDrawer({
   };
 
   return (
-    <Sheet
-      open={open}
-      onOpenChange={(isOpen) => {
-        if (!isOpen) onClose();
-      }}
-    >
-      <SheetContent side="right" className="flex w-full gap-0 p-0 sm:max-w-[560px]">
-        <SheetHeader className="gap-1 border-b border-border p-4">
-          <span className="text-xs font-medium text-primary">{productFeedbackStatusLabels[feedback.status]}</span>
-          <SheetTitle className="truncate text-base">{feedback.pageTitle}</SheetTitle>
-          <SheetDescription className="text-xs">
-            {productFeedbackTypeLabels[feedback.feedbackType]} · {feedback.pagePath} · {formatDateTime(feedback.createdAt)}
-          </SheetDescription>
+    <>
+      <Sheet
+        open={open}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) onClose();
+        }}
+      >
+        <SheetContent side="right" className="flex w-full gap-0 p-0 sm:max-w-[560px]" showCloseButton={false}>
+        <SheetHeader className="flex flex-row items-start gap-3 border-b border-border p-4">
+          <div className="min-w-0 flex-1 space-y-1">
+            <span className="text-xs font-medium text-primary">{productFeedbackStatusLabels[feedback.status]}</span>
+            <SheetTitle className="truncate text-base">{feedback.pageTitle}</SheetTitle>
+            <SheetDescription className="text-xs">
+              {productFeedbackTypeLabels[feedback.feedbackType]} · {feedback.pagePath} · {formatDateTime(feedback.createdAt)}
+            </SheetDescription>
+          </div>
+          <SheetClose asChild>
+            <button type="button" className="audit-dialog-close-icon" aria-label="关闭">
+              <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          </SheetClose>
         </SheetHeader>
 
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
@@ -147,7 +164,14 @@ export function FeedbackAdminDrawer({
               <div className="mt-2 grid grid-cols-2 gap-2">
                 {previews.map((preview) => (
                   <figure key={preview.id} className="overflow-hidden rounded-lg border border-border bg-card">
-                    <img src={preview.objectUrl} alt={`反馈截图 ${preview.fileName}`} className="h-32 w-full object-cover" />
+                    <button
+                      type="button"
+                      className="block w-full cursor-zoom-in transition-opacity hover:opacity-90"
+                      aria-label={`放大查看 ${preview.fileName}`}
+                      onClick={() => setExpandedPreview(preview)}
+                    >
+                      <img src={preview.objectUrl} alt={`反馈截图 ${preview.fileName}`} className="h-32 w-full object-cover" />
+                    </button>
                     <figcaption className="truncate px-2 py-1.5 text-xs text-muted-foreground">{preview.fileName}</figcaption>
                   </figure>
                 ))}
@@ -179,18 +203,48 @@ export function FeedbackAdminDrawer({
           {errorMessage ? <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{errorMessage}</p> : null}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-border p-4">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            关闭面板
-          </Button>
-          {action && ActionIcon ? (
+        {action && ActionIcon ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border p-4">
             <Button size="sm" onClick={handleStatusAction} disabled={pending} aria-busy={pending || undefined}>
               <ActionIcon data-icon="inline-start" />
               {pending ? "处理中..." : action.label}
             </Button>
+          </div>
+        ) : null}
+        </SheetContent>
+      </Sheet>
+
+      <Dialog open={expandedPreview !== null} onOpenChange={(isOpen) => !isOpen && setExpandedPreview(null)}>
+        <DialogContent
+          className="feedback-attachment-preview-dialog sm:max-w-[min(1100px,calc(100vw-48px))]"
+          showCloseButton={false}
+        >
+          <div className="feedback-attachment-preview-dialog-head">
+            <div className="feedback-attachment-preview-dialog-head-text">
+              <DialogTitle>反馈截图预览</DialogTitle>
+              <DialogDescription>{expandedPreview?.fileName ?? "反馈截图"}</DialogDescription>
+            </div>
+            <button
+              type="button"
+              className="audit-dialog-close-icon"
+              aria-label="关闭"
+              onClick={() => setExpandedPreview(null)}
+            >
+              <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          </div>
+          {expandedPreview ? (
+            <div className="feedback-attachment-preview-dialog-body">
+              <img
+                src={expandedPreview.objectUrl}
+                alt={`反馈截图 ${expandedPreview.fileName}`}
+                className="max-h-[min(78vh,calc(100vh-180px))] w-full rounded-md object-contain"
+              />
+              <p className="truncate text-center text-xs text-muted-foreground">{expandedPreview.fileName}</p>
+            </div>
           ) : null}
-        </div>
-      </SheetContent>
-    </Sheet>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

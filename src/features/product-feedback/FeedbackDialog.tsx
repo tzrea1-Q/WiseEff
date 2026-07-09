@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent as ReactClipboardEvent, ReactNode } from "react";
-import { Trash2, Upload } from "lucide-react";
+import { CircleX, Trash2, Upload } from "lucide-react";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
 import type { ProductFeedbackType } from "@/domain/productFeedback/types";
 import { Button } from "@/components/ui/button";
@@ -175,7 +175,7 @@ export function FeedbackDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="feedback-dialog">
+      <DialogContent className="feedback-dialog" showCloseButton={false}>
         <form onSubmit={handleSubmit}>
           <DialogHeader className="feedback-dialog-header">
             <div>
@@ -183,6 +183,9 @@ export function FeedbackDialog({
               <DialogTitle>问题反馈</DialogTitle>
               <DialogDescription>反馈会携带页面路径、类型、描述和可选截图，方便内测团队定位问题。</DialogDescription>
             </div>
+            <button type="button" className="audit-dialog-close-icon" aria-label="关闭" onClick={() => onOpenChange(false)}>
+              <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
+            </button>
           </DialogHeader>
           <div className="feedback-context">
             <div>

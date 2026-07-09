@@ -82,6 +82,8 @@ const permissionLabels: Record<PermissionKey, string> = {
 
 type UserColumnFilterKey = "user" | "title" | "role" | "status" | "lastActive";
 
+type UserPermissionsWorkspace = "accounts" | "approvals";
+
 type RoleHintState = {
   userId: string;
   x: number;
@@ -162,6 +164,10 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
   const [registrationRoleRequestError, setRegistrationRoleRequestError] = useState("");
   const [decidingRequestId, setDecidingRequestId] = useState("");
   const [activeRoleHint, setActiveRoleHint] = useState<RoleHintState | null>(null);
+  const [workspace, setWorkspace] = useState<UserPermissionsWorkspace>("accounts");
+
+  const approvalWorkflowEnabled = Boolean(userGovernanceActions?.listRegistrationRoleRequests);
+  const pendingApprovalCount = registrationRoleRequests.length;
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredUsers = useMemo(
@@ -236,6 +242,12 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
   function hideRoleHint(userId: string) {
     setActiveRoleHint((current) => (current?.userId === userId ? null : current));
   }
+
+  useEffect(() => {
+    if (!approvalWorkflowEnabled && workspace === "approvals") {
+      setWorkspace("accounts");
+    }
+  }, [approvalWorkflowEnabled, workspace]);
 
   useEffect(() => {
     if (!userGovernanceActions?.listRegistrationRoleRequests) {
@@ -337,176 +349,235 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
 
   return (
     <section className="user-permissions-page" aria-label="用户权限">
-      <div className="user-permissions-summary">
+      <div className="user-permissions-toolbar">
+        {approvalWorkflowEnabled ? (
+          <div className="user-permissions-workspace-tabs" role="tablist" aria-label="用户权限工作区">
+            <button
+              type="button"
+              role="tab"
+              id="user-permissions-workspace-accounts"
+              aria-selected={workspace === "accounts"}
+              aria-controls="user-permissions-workspace-accounts-panel"
+              className={workspace === "accounts" ? "user-permissions-workspace-tab active" : "user-permissions-workspace-tab"}
+              onClick={() => setWorkspace("accounts")}
+            >
+              账号库
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="user-permissions-workspace-approvals"
+              aria-selected={workspace === "approvals"}
+              aria-controls="user-permissions-workspace-approvals-panel"
+              className={workspace === "approvals" ? "user-permissions-workspace-tab active" : "user-permissions-workspace-tab"}
+              onClick={() => setWorkspace("approvals")}
+            >
+              <span>注册申请</span>
+              {pendingApprovalCount > 0 ? (
+                <span className="user-permissions-workspace-tab-count">{pendingApprovalCount}</span>
+              ) : null}
+            </button>
+          </div>
+        ) : (
+          <div className="user-permissions-workspace-heading">
+            <span className="eyebrow">用户治理</span>
+            <h2>账号库</h2>
+          </div>
+        )}
         <button className="button primary user-permissions-primary-action" type="button" onClick={() => setAddUserOpen(true)}>
           <UserPlus size={16} aria-hidden="true" />
           <span>添加用户</span>
         </button>
       </div>
 
-      <div className="user-permissions-filters" role="search" aria-label="用户筛选">
-        <label className="user-permissions-filter-field user-permissions-filter-field--search">
-          <span className="user-permissions-filter-label">搜索</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索用户" />
-        </label>
-        <label className="user-permissions-filter-field">
-          <span className="user-permissions-filter-label">角色</span>
-          <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as PlatformRoleId | "all")}>
-            <option value="all">全部角色</option>
-            {platformRoles.map((role) => (
-              <option key={role.id} value={role.id}>
-                {roleLabelOf(role.id)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="user-permissions-filter-field">
-          <span className="user-permissions-filter-label">状态</span>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
-            {statusOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      {approvalWorkflowEnabled && workspace === "accounts" && pendingApprovalCount > 0 ? (
+        <p className="user-permissions-pending-hint">
+          当前有 <strong>{pendingApprovalCount}</strong> 条注册角色申请待处理。
+          <button type="button" className="user-permissions-pending-hint__action" onClick={() => setWorkspace("approvals")}>
+            前往处理
+          </button>
+        </p>
+      ) : null}
 
-      <section className="user-permissions-approval-queue" aria-label="注册角色申请">
-        <div className="user-permissions-approval-queue__header">
-          <div>
-            <span className="eyebrow">注册申请</span>
-            <h3>角色申请</h3>
+      {workspace === "accounts" ? (
+        <>
+          <div className="user-permissions-filters" role="search" aria-label="用户筛选">
+            <label className="user-permissions-filter-field user-permissions-filter-field--search">
+              <span className="user-permissions-filter-label">搜索</span>
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索用户" />
+            </label>
+            <label className="user-permissions-filter-field">
+              <span className="user-permissions-filter-label">角色</span>
+              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as PlatformRoleId | "all")}>
+                <option value="all">全部角色</option>
+                {platformRoles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {roleLabelOf(role.id)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="user-permissions-filter-field">
+              <span className="user-permissions-filter-label">状态</span>
+              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
-          <span className="user-permissions-approval-count">{registrationRoleRequests.length} 条待处理</span>
-        </div>
-        {registrationRoleRequestError ? (
-          <p role="alert" className="user-permissions-modal-error">{registrationRoleRequestError}</p>
-        ) : null}
-        {registrationRoleRequests.length > 0 ? (
-          <div className="user-permissions-approval-list">
-            {registrationRoleRequests.map((request) => (
-              <article className="user-permissions-approval-item" key={request.id}>
-                <div className="user-permissions-approval-user">
-                  <strong>{request.userName}</strong>
-                  <span>{request.username ?? request.userId}</span>
-                </div>
-                <div className="user-permissions-approval-role-change">
-                  <span>{roleLabelOf(request.currentRoleId)}</span>
-                  <span aria-hidden="true">→</span>
-                  <span>{roleLabelOf(request.requestedRoleId)}</span>
-                </div>
-                <div className="user-permissions-approval-actions">
-                  <button
-                    className="button primary"
-                    type="button"
-                    disabled={decidingRequestId === request.id}
-                    onClick={() => void decideRegistrationRoleRequest(request, "approve")}
-                  >
-                    通过
-                  </button>
-                  <button
-                    className="button"
-                    type="button"
-                    disabled={decidingRequestId === request.id}
-                    onClick={() => void decideRegistrationRoleRequest(request, "reject")}
-                  >
-                    拒绝
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p className="user-permissions-approval-empty">暂无待处理角色申请。</p>
-        )}
-      </section>
 
-      <div className="user-permissions-grid">
-        <div className="user-permissions-table-card">
-          <table aria-label="平台用户">
-            <caption className="sr-only">平台用户</caption>
-            <thead>
-              <tr>
-                <th scope="col">{renderHeader("user", "用户")}</th>
-                <th scope="col">{renderHeader("title", "职务")}</th>
-                <th scope="col" className="user-permissions-role-header">{renderHeader("role", "角色")}</th>
-                <th scope="col">{renderHeader("status", "状态")}</th>
-                <th scope="col">{renderHeader("lastActive", "最近活跃")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map((user) => {
-                const isCurrentUser = user.id === state.currentUserId;
-                const normalizedRoleId = migrateLegacyRoleId(user.roleId);
-
-                return (
-                  <tr key={user.id}>
-                    <td>
-                      <strong>{user.name}</strong>
-                      <div>{userAccountIdentifier(user)}</div>
-                    </td>
-                    <td>{user.title}</td>
-                    <td
-                      className="user-permissions-role-cell"
-                      onMouseEnter={(event) => showRoleHint(user.id, event.currentTarget)}
-                      onMouseLeave={() => hideRoleHint(user.id)}
-                    >
-                      <div className="user-permissions-role-control">
-                        <select
-                          className="user-permissions-role-select"
-                          aria-label={`调整 ${user.name} 的角色`}
-                          value={normalizedRoleId}
-                          disabled={isCurrentUser}
-                          onFocus={(event) => showRoleHint(user.id, event.currentTarget)}
-                          onBlur={() => hideRoleHint(user.id)}
-                          onChange={async (event) => {
-                            const roleId = event.target.value as PlatformRoleId;
-                            await userGovernanceActions?.assignUserRole(user.id, roleId);
-                            dispatch({
-                              type: "ASSIGN_USER_ROLE",
-                              userId: user.id,
-                              roleId
-                            });
-                          }}
-                        >
-                          {platformRoles.map((role) => (
-                            <option key={role.id} value={role.id}>
-                              {roleLabelOf(role.id)}
-                            </option>
-                          ))}
-                        </select>
-                        {activeRoleHint?.userId === user.id ? (
-                          <RoleCapabilityTooltip roleId={normalizedRoleId} position={activeRoleHint} />
-                        ) : null}
-                      </div>
-                    </td>
-                    <td>
-                      <button
-                        className="button"
-                        type="button"
-                        disabled={isCurrentUser}
-                        onClick={async () => {
-                          const isActive = !user.isActive;
-                          await userGovernanceActions?.setUserActive(user.id, isActive);
-                          dispatch({
-                            type: "TOGGLE_USER_ACTIVE",
-                            userId: user.id,
-                            isActive
-                          });
-                        }}
-                      >
-                        {user.isActive ? "停用" : "启用"}
-                      </button>
-                    </td>
-                    <td>{user.lastActive}</td>
+          <div
+            className="user-permissions-grid"
+            role="tabpanel"
+            id="user-permissions-workspace-accounts-panel"
+            aria-labelledby={approvalWorkflowEnabled ? "user-permissions-workspace-accounts" : undefined}
+          >
+            <div className="user-permissions-table-card">
+              <table aria-label="平台用户">
+                <caption className="sr-only">平台用户</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">{renderHeader("user", "用户")}</th>
+                    <th scope="col">{renderHeader("title", "职务")}</th>
+                    <th scope="col" className="user-permissions-role-header">{renderHeader("role", "角色")}</th>
+                    <th scope="col">{renderHeader("status", "状态")}</th>
+                    <th scope="col">{renderHeader("lastActive", "最近活跃")}</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </thead>
+                <tbody>
+                  {filteredUsers.map((user) => {
+                    const isCurrentUser = user.id === state.currentUserId;
+                    const normalizedRoleId = migrateLegacyRoleId(user.roleId);
+
+                    return (
+                      <tr key={user.id}>
+                        <td>
+                          <strong>{user.name}</strong>
+                          <div>{userAccountIdentifier(user)}</div>
+                        </td>
+                        <td>{user.title}</td>
+                        <td
+                          className="user-permissions-role-cell"
+                          onMouseEnter={(event) => showRoleHint(user.id, event.currentTarget)}
+                          onMouseLeave={() => hideRoleHint(user.id)}
+                        >
+                          <div className="user-permissions-role-control">
+                            <select
+                              className="user-permissions-role-select"
+                              aria-label={`调整 ${user.name} 的角色`}
+                              value={normalizedRoleId}
+                              disabled={isCurrentUser}
+                              onFocus={(event) => showRoleHint(user.id, event.currentTarget)}
+                              onBlur={() => hideRoleHint(user.id)}
+                              onChange={async (event) => {
+                                const roleId = event.target.value as PlatformRoleId;
+                                await userGovernanceActions?.assignUserRole(user.id, roleId);
+                                dispatch({
+                                  type: "ASSIGN_USER_ROLE",
+                                  userId: user.id,
+                                  roleId
+                                });
+                              }}
+                            >
+                              {platformRoles.map((role) => (
+                                <option key={role.id} value={role.id}>
+                                  {roleLabelOf(role.id)}
+                                </option>
+                              ))}
+                            </select>
+                            {activeRoleHint?.userId === user.id ? (
+                              <RoleCapabilityTooltip roleId={normalizedRoleId} position={activeRoleHint} />
+                            ) : null}
+                          </div>
+                        </td>
+                        <td>
+                          <button
+                            className="button"
+                            type="button"
+                            disabled={isCurrentUser}
+                            onClick={async () => {
+                              const isActive = !user.isActive;
+                              await userGovernanceActions?.setUserActive(user.id, isActive);
+                              dispatch({
+                                type: "TOGGLE_USER_ACTIVE",
+                                userId: user.id,
+                                isActive
+                              });
+                            }}
+                          >
+                            {user.isActive ? "停用" : "启用"}
+                          </button>
+                        </td>
+                        <td>{user.lastActive}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : (
+        <section
+          className="user-permissions-approval-queue"
+          role="tabpanel"
+          id="user-permissions-workspace-approvals-panel"
+          aria-labelledby="user-permissions-workspace-approvals"
+          aria-label="注册角色申请"
+        >
+          <div className="user-permissions-approval-queue__header">
+            <div>
+              <span className="eyebrow">注册申请</span>
+              <h3>角色申请</h3>
+              <p className="user-permissions-approval-queue__hint">处理新用户注册时提交的角色升级申请，通过后立即生效。</p>
+            </div>
+            <span className="user-permissions-approval-count">{registrationRoleRequests.length} 条待处理</span>
+          </div>
+          {registrationRoleRequestError ? (
+            <p role="alert" className="user-permissions-modal-error">{registrationRoleRequestError}</p>
+          ) : null}
+          {registrationRoleRequests.length > 0 ? (
+            <div className="user-permissions-approval-list">
+              {registrationRoleRequests.map((request) => (
+                <article className="user-permissions-approval-item" key={request.id}>
+                  <div className="user-permissions-approval-user">
+                    <strong>{request.userName}</strong>
+                    <span>{request.username ?? request.userId}</span>
+                  </div>
+                  <div className="user-permissions-approval-role-change">
+                    <span>{roleLabelOf(request.currentRoleId)}</span>
+                    <span aria-hidden="true">→</span>
+                    <span>{roleLabelOf(request.requestedRoleId)}</span>
+                  </div>
+                  <div className="user-permissions-approval-actions">
+                    <button
+                      className="button primary"
+                      type="button"
+                      disabled={decidingRequestId === request.id}
+                      onClick={() => void decideRegistrationRoleRequest(request, "approve")}
+                    >
+                      通过
+                    </button>
+                    <button
+                      className="button"
+                      type="button"
+                      disabled={decidingRequestId === request.id}
+                      onClick={() => void decideRegistrationRoleRequest(request, "reject")}
+                    >
+                      拒绝
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="user-permissions-approval-empty">暂无待处理角色申请。</p>
+          )}
+        </section>
+      )}
 
       {addUserOpen && (
         <div role="dialog" aria-modal="true" aria-labelledby="add-user-title" className="user-permissions-modal">

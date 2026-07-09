@@ -250,7 +250,14 @@ describe("product feedback service", () => {
   });
 
   it("allows open to in_progress and rejects skip or closed updates", async () => {
-    const openDb = createFakeDb([[feedbackRow({ status: "open" })], [], [feedbackRow({ status: "in_progress" })], []]);
+    const openDb = createFakeDb([
+      [feedbackRow({ status: "open" })],
+      [],
+      [feedbackRow({ status: "in_progress" })],
+      [feedbackRow({ status: "in_progress" })],
+      [],
+      []
+    ]);
 
     const updated = await updateProductFeedback(openDb.db, adminAuth(), "feedback-1", { status: "in_progress", adminNote: null });
 
@@ -282,7 +289,14 @@ describe("product feedback service", () => {
   });
 
   it("writes update audit events", async () => {
-    const { db, txCalls } = createFakeDb([[feedbackRow({ status: "in_progress" })], [], [feedbackRow({ status: "closed" })], []]);
+    const { db, txCalls } = createFakeDb([
+      [feedbackRow({ status: "in_progress" })],
+      [],
+      [feedbackRow({ status: "closed" })],
+      [feedbackRow({ status: "closed" })],
+      [],
+      []
+    ]);
 
     await updateProductFeedback(
       db,

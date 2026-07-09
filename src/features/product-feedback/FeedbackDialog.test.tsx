@@ -95,6 +95,17 @@ describe("FeedbackDialog", () => {
     expect(within(dialog).queryByAltText("feedback-2.png")).not.toBeInTheDocument();
   });
 
+  it("uses the platform circular close icon in the header", () => {
+    renderDialog();
+
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    const header = dialog.querySelector(".feedback-dialog-header");
+
+    expect(header).not.toBeNull();
+    expect(within(header as HTMLElement).getByRole("button", { name: "关闭" })).toHaveClass("audit-dialog-close-icon");
+    expect(within(dialog).queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
+  });
+
   it("disables submit when the description is empty", () => {
     renderDialog();
 
