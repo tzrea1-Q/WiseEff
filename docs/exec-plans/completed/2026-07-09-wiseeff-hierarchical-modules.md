@@ -403,4 +403,4 @@ Changes: module filters (flat → tree with subtree include), grouping, module m
 
 ---
 
-**Plan status:** Active — ready for implementation on `feat/hierarchical-modules`.
+**Plan status:** Completed — implemented on `feat/hierarchical-modules` (Tasks 0–10). Follow-ups tracked in TD-037: drop transitional `module` text columns; reconcile `project_modules` vs org `parameter_modules` source-of-truth; hierarchical dashboard hotspot rollups.

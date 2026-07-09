@@ -18,6 +18,7 @@ The `/feedback-admin` page is an Admin-only triage workspace. Operators can filt
 
 The prototype supports parameter browsing, filtering, detail/history inspection, draft editing, submission, review, admin governance, import/export affordances, and audit-oriented UI patterns. API-mode work should preserve these user expectations while moving durable writes to backend routes.
 
+- **Hierarchical modules:** Parameter and debugging admin surfaces manage nested module trees (create child, move, guarded delete). Filters and grouping treat a selected parent module as a subtree root (`moduleId` + include descendants).
 - **Parameter admin import wizard:** Five-step flow on `/parameter-admin` — Step 1 requires a target project (including create-project); Step 2 accepts `.xlsx`, `.csv`, JSON, or DTS fragments with a parse report; Step 3 provides per-row review (diff, edit, skip); Steps 4–5 batch preview and confirm apply.
 
 ## Log Prototype

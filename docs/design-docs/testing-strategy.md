@@ -29,6 +29,8 @@ Browser acceptance covers requirement IDs and operation IDs from `docs/developer
 
 Debugging admin catalog changes are covered by `DEBUG-ADMIN-001` in `e2e/acceptance/debugging-admin.acceptance.spec.ts`. The acceptance flow exercises Admin UI, API, DB persistence, and audit evidence for parameter create/edit/archive/restore plus HDC/ADB binding management and complex value metadata editing.
 
+Hierarchical module trees are covered by `MOD-TREE-PARAM-001/002`, `MOD-TREE-DEBUG-001`, and `MOD-TREE-AUTHZ-001` in `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` (nested create, subtree filter, move/cycle guard, authz, and non-empty delete guards).
+
 Simulator debugging is covered by `DEBUG-SIM-001` in `e2e/acceptance/debugging-simulator.acceptance.spec.ts`, including a complex JSON write path that records `valueKind`, digest, and preview metadata in `node_operations` without leaking full payloads into operation evidence.
 
 Targeted unit coverage includes `server/modules/debugging/valueCodec.test.ts`, gateway preservation tests, admin/runtime UI tests, and DTO mapper tests for legacy scalar defaults.

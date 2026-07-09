@@ -12,7 +12,9 @@ The product model separates prototype display data into durable, auditable busin
 
 - Organization and users define tenant boundaries, identity source bindings, role bindings, and disabled-user behavior.
 - Projects group modules, members, and workflow state.
+- `ParameterModule` (org-scoped tree) is the source of truth for parameter taxonomy; `ProjectModule` mirrors per-project module metadata for governance counts.
 - Parameter management centers on definitions, project values, drafts, submission rounds, change requests, review decisions, imports, history, and audit.
+- Parameter and debugging **module taxonomies** are independent org-scoped trees (`parameter_modules`, `debug_node_modules`) with `parent_id` and materialized `path`. Parameters and logical debug nodes attach by `module_id` FK; filters accept `moduleId` with subtree include (parent selection returns descendants). Legacy flat `module` text columns remain transitional (TD-037 follow-up).
 - Log analysis separates uploaded object references, business records, analysis runs, stages, evidence, archive state, and feedback. Log records and file objects are scoped by `organization_id` only; optional `related_parameter_id` is a soft link to M1 definitions without FK.
 - Product feedback persists Internal Beta sidebar reports and optional image attachments as an organization-scoped triage queue. It is separate from log-analysis feedback and uses admin-only review.
 - Debugging separates devices, detected targets, debug parameters, sessions, snapshots, node operations, and events.

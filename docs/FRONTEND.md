@@ -57,6 +57,16 @@ Page action flow:
 - `/parameter-review` lists pending and merged requests, advances or rejects workflow steps through `reviewChange`, and refreshes state after each server response.
 - `/parameter-admin` keeps direct library editing in mock mode; in API mode, parameter writes go through import batches or review flows instead of mutating client state directly.
 
+## Hierarchical Module Trees
+
+Parameter and debugging domains each maintain an independent org-scoped module tree. Shared picker UI lives in `src/components/common/ModuleTreeSelect.tsx` (expand/collapse, breadcrumb labels, single- and multi-select modes).
+
+- `/parameters` — module filter and library grouping use `moduleId` with subtree include (parent selection returns descendant parameters). Deep links use `?module=<moduleId>`.
+- `/parameter-admin` — `ModuleManagementDialog` supports create-child, rename, move (reparent), and delete guards; library filters and import preview use `ModuleTreeSelect`.
+- `/debugging-admin` — `DebugModuleManagementDialog` governs the debug node module tree; `DebugNodeLibraryTable`, `DebugParameterLibraryTable`, and `DebugNodeEditorDialog` pick modules via `ModuleTreeSelect`.
+
+API mode loads trees from `/api/v1/parameter-modules` and `/api/v1/debugging/admin/modules`. Mock mode derives trees from nested `parent`/`path` fields in `src/config/power-management.json` through `buildPowerManagementModuleTree()` in `src/powerManagementConfig.ts`.
+
 The M1 API smoke lives in `e2e/parameter-management.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, and `db:seed:m1`.
 
 ## Parameter Dashboard
@@ -130,8 +140,9 @@ Bridge management (rename/revoke, multi-bridge target picker) behavior is unchan
 
 Page shell lives in `src/DebuggingAdminPage.tsx`. The main surface is a full-width **node directory** table; create/edit/archive flows open modal dialogs.
 
-- `DebugNodeLibraryTable` — toolbar search, protocol coverage filters, and row actions (edit node, edit bindings, archive).
-- `DebugNodeEditorDialog` — logical node metadata only (name, description, sort order, enabled).
+- `DebugNodeLibraryTable` — toolbar search, module tree filter (`ModuleTreeSelect`), protocol coverage filters, and row actions (edit node, edit bindings, archive).
+- `DebugNodeEditorDialog` — logical node metadata (name, description, sort order, enabled, module tree assignment).
+- `DebugModuleManagementDialog` — nested debug node module CRUD (create-child, move, delete guards).
 - `DebugNodeBindingsDialog` — per-protocol binding editor (HDC / ADB node path, access mode, enabled, notes).
 - `ArchiveDebugNodeDialog` — confirm archive from a row action.
 

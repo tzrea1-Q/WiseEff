@@ -19,9 +19,11 @@
 
 ## 进行中
 
-- **TD-037（多层级模块）：** 参数域与调试域的 module 从扁平字符串升级为独立树形分类（`parameter_modules` / `debug_node_modules` 树、`module_id` 外键、子树筛选、树形选择 UI）。实现计划：`docs/exec-plans/active/2026-07-09-wiseeff-hierarchical-modules.md`，分支 `feat/hierarchical-modules`。后续：删除过渡 `module` 文本列；收敛 `project_modules` 与组织级 `parameter_modules` 单一真相源。
+- **TD-038（模块树后续）：** 多层级模块已落地后，仍需删除过渡 `module` 文本列、收敛 `project_modules` 与组织级 `parameter_modules` 单一真相源，并评估 dashboard 热榜的层级聚合。
 
 ## 近期关闭项
+
+- **TD-037（多层级模块）：** 已于 2026-07-09 在 `feat/hierarchical-modules` 分支关闭。参数域与调试域独立模块树、`module_id` 外键、子树筛选、`ModuleTreeSelect` UI 与 MOD-TREE 验收已交付。计划归档：`docs/exec-plans/completed/2026-07-09-wiseeff-hierarchical-modules.md`。
 
 - **TD-029（小泽 checkpoint 持久化）：** 已于 2026-06-29 关闭。生产/自托管使用 `XIAOZE_CHECKPOINTER=postgres`；证据见 `docs/generated/xiaoze-checkpointer-evidence.md`。详情见英文版 Completed 表。
 - **TD-030（小泽聊天历史）：** 已于 2026-06-30 关闭。API 模式通过 `/api/v1/agent/xiaoze/threads` 与 `XiaozeThreadContext` 持久化线程；mock 模式仍用浏览器 localStorage。

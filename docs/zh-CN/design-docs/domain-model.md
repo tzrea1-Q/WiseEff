@@ -41,7 +41,9 @@
 | 实体 | 说明 |
 | --- | --- |
 | `Project` | 项目基础信息 |
-| `ProjectModule` | 项目或参数模块 |
+| `ProjectModule` | 项目或参数模块（按项目镜像组织级 `parameter_modules` 元数据） |
+
+组织级 `parameter_modules` 与调试域 `debug_node_modules` 为**独立树**；父级筛选默认包含子树。过渡期内仍保留扁平 `module` 文本列（TD-037 后续删除）。
 | `ProjectMember` | 项目成员和角色 |
 | `ProjectInitializationDraft` | 项目参数初始化草稿 |
 | `ProjectInitializationReview` | 初始化审阅记录 |
@@ -55,7 +57,7 @@
 
 | 实体 | 说明 |
 | --- | --- |
-| `ParameterDefinition` | 参数定义，包含名称、说明、格式、模块、默认范围和风险 |
+| `ParameterDefinition` | 参数定义，包含名称、说明、格式、模块、默认范围和风险；通过 `parameter_module_id` 挂到组织级 `parameter_modules` 树 |
 | `ProjectParameterValue` | 某项目下某参数的当前值、推荐值、范围和单位 |
 | `ParameterHistoryEntry` | 参数值历史版本 |
 | `ParameterDraft` | 用户未提交草稿 |

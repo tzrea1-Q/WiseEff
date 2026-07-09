@@ -128,6 +128,32 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 
 节点操作 DTO 可包含 `valueKind`、`valueFormat`、`normalizationMode`、`valuePreview` 以及值 digest，用于复杂写入的列表视图，而不返回完整大 payload。
 
+## 参数模块树
+
+组织级参数模块为独立于调试模块树的层级分类。列表要求 `parameter:view`；创建/更新/移动/删除要求 `admin:access`。删除非空模块（仍有子模块或已挂参数）返回 `409`；循环移动返回 `409`。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/v1/parameter-modules` | 列出组织参数模块树节点。 |
+| `POST` | `/api/v1/parameter-modules` | 创建模块（`name`，可选 `parentId`）。 |
+| `PATCH` | `/api/v1/parameter-modules/:moduleId` | 更新模块元数据。 |
+| `POST` | `/api/v1/parameter-modules/:moduleId/move` | 重新挂载父节点（`parentId`，根节点可为 null）。 |
+| `DELETE` | `/api/v1/parameter-modules/:moduleId` | 删除空叶子模块。 |
+
+`GET /api/v1/parameters` 支持 `moduleId` 与可选 `includeDescendants`（默认包含子树）。参数 DTO 提供 `moduleId` 与 `modulePath`。
+
+调试管理 catalog 表补充：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/v1/debugging/admin/modules` | 列出调试节点模块树。 |
+| `POST` | `/api/v1/debugging/admin/modules` | 创建调试模块。 |
+| `PATCH` | `/api/v1/debugging/admin/modules/:moduleId` | 更新调试模块。 |
+| `POST` | `/api/v1/debugging/admin/modules/:moduleId/move` | 移动调试模块（循环 → `409`）。 |
+| `DELETE` | `/api/v1/debugging/admin/modules/:moduleId` | 删除空模块（否则 `409`）。 |
+
+`GET /api/v1/debugging/admin/nodes` 支持 `moduleId` 与 `includeDescendants` 子树筛选。
+
 ## 3. Auth 与用户
 
 | 方法 | 路径 | 说明 |

@@ -20,7 +20,7 @@ Rules:
 
 - Auth and users: `/me`, user listing, user creation, activation, role replacement.
 - Projects and modules: project metadata and module lookup.
-- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, and dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`).
+- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), and org module tree CRUD (`/parameter-modules`).
 - Logs: upload/file records, analysis records, runs, rerun, archive, feedback.
 - Product feedback: Internal Beta sidebar feedback submission, admin triage, and attachment content.
 - Jobs: status and progress events.
@@ -49,12 +49,17 @@ Read/write node APIs resolve protocol-specific `nodePath` from `debug_node_bindi
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/v1/debugging/admin/nodes` | List logical debug nodes, including disabled or archived rows when `includeArchived=true`. |
+| `GET` | `/api/v1/debugging/admin/nodes` | List logical debug nodes, including disabled or archived rows when `includeArchived=true`. Optional `moduleId` + `includeDescendants` subtree filter. |
 | `POST` | `/api/v1/debugging/admin/nodes` | Create a logical debug node and optional initial bindings. |
 | `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId` | Update logical node metadata. |
 | `PUT` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` | Upsert the HDC or ADB binding for a logical node. |
 | `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` | Update the HDC or ADB binding for a logical node. |
 | `POST` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol/archive` | Disable one protocol binding without affecting the logical node or other protocols. |
+| `GET` | `/api/v1/debugging/admin/modules` | List org debug node module tree nodes. |
+| `POST` | `/api/v1/debugging/admin/modules` | Create a debug module (`name`, optional `parentId`). |
+| `PATCH` | `/api/v1/debugging/admin/modules/:moduleId` | Update debug module metadata. |
+| `POST` | `/api/v1/debugging/admin/modules/:moduleId/move` | Reparent a debug module (cycle → `409`). |
+| `DELETE` | `/api/v1/debugging/admin/modules/:moduleId` | Delete when no child modules or assigned nodes remain (`409` otherwise). |
 | `GET` | `/api/v1/debugging/admin/parameters` | List the legacy debugging catalog, including disabled or archived rows when `includeArchived=true`. |
 | `POST` | `/api/v1/debugging/admin/parameters` | Create a debugging parameter and optional HDC/ADB bindings. |
 | `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId` | Update debugging parameter metadata. |
@@ -76,6 +81,20 @@ Runtime and admin debugging parameter DTOs include optional value metadata:
 Admin `POST`/`PATCH` validates combinations: scalar defaults to `raw`/`trim`; `json-canonical` requires `valueFormat=json`; complex JSON targets must parse. Node write requests keep `value: string`; the service resolves format, normalization, digest, preview, and comparison from parameter metadata.
 
 Node operation DTOs may include `valueKind`, `valueFormat`, `normalizationMode`, `valuePreview`, and value digests for complex writes without returning full large payloads in list views.
+
+## Parameter Module Tree
+
+Org-scoped parameter modules are a hierarchical taxonomy independent from the debugging module tree. List routes require `parameter:view`; create/update/move/delete require `admin:access` (`canAdminParameters`). Deletes reject non-empty modules (`409 CONFLICT` when child modules or assigned parameters remain). Move rejects cycles (`409 CONFLICT`).
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/parameter-modules` | List org parameter module tree nodes. |
+| `POST` | `/api/v1/parameter-modules` | Create a module (`name`, optional `parentId`). |
+| `PATCH` | `/api/v1/parameter-modules/:moduleId` | Update module metadata (`name`, `description`, `scope`, `sortOrder`). |
+| `POST` | `/api/v1/parameter-modules/:moduleId/move` | Reparent a module (`parentId`, nullable for root). |
+| `DELETE` | `/api/v1/parameter-modules/:moduleId` | Delete an empty leaf module. |
+
+`GET /api/v1/parameters` accepts `moduleId` and optional `includeDescendants` (defaults to including descendants). Parameter DTOs expose `moduleId` and `modulePath` (materialized name segments).
 
 ## Parameter Dashboard
 

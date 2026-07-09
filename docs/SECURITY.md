@@ -51,6 +51,7 @@ For M1 parameter management:
 - Drafts and submission rounds require project-scoped `parameter:edit`.
 - Review advancement and rejection require the matching hardware/software workflow role or admin privilege.
 - Merge writes require the software-user workflow slot or admin privilege and re-check high-risk review evidence before updating the current value.
+- Parameter module tree CRUD (`/api/v1/parameter-modules*`) requires `admin:access` (`canAdminParameters`). Non-admin users may still list modules when they have `parameter:view`. Deletes return `409` when child modules or assigned parameters remain; moves reject cycles with `409`.
 
 For M2 log analysis:
 
@@ -71,7 +72,7 @@ For product feedback:
 For M3 debugging:
 
 - Device and parameter reads require `debugging:view` and `debugging:read`.
-- Debugging catalog administration requires `debugging:admin`; this governs parameter metadata and HDC/ADB node-binding changes only.
+- Debugging catalog administration requires `debugging:admin`; this governs parameter metadata, HDC/ADB node-binding changes, and debug node module tree CRUD (`/api/v1/debugging/admin/modules*`).
 - Node writes require `debugging:write`, project access, an active session, a writable access mode, range validation, an active device lease for the session, and a pre-write snapshot.
 - High-risk writes require `confirm-high-risk-write` or a future approval id.
 - Snapshot rollback requires `debugging:rollback`, `confirm-rollback`, and an active device lease for the session.
