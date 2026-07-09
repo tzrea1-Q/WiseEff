@@ -33,14 +33,13 @@ const parameterImportSourceItemSchema = z
 
 const booleanQuerySchema = z
   .union([z.boolean(), z.enum(["true", "false"])])
-  .optional()
-  .transform((value) => (value === undefined ? undefined : value === true || value === "true"));
+  .transform((value) => value === true || value === "true");
 
 export const listParametersQuerySchema = z.object({
   projectId: nonEmptyString.optional(),
   module: nonEmptyString.optional(),
   moduleId: nonEmptyString.optional(),
-  includeDescendants: booleanQuerySchema,
+  includeDescendants: booleanQuerySchema.optional(),
   risk: z.union([z.enum(parameterRiskLevels), z.array(z.enum(parameterRiskLevels))]).optional(),
   q: nonEmptyString.optional()
 });
@@ -132,7 +131,14 @@ export const updateProjectBodySchema = z
     message: "At least one field is required."
   });
 
-export type ListParametersQuery = z.infer<typeof listParametersQuerySchema>;
+export type ListParametersQuery = {
+  projectId?: string;
+  module?: string;
+  moduleId?: string;
+  includeDescendants?: boolean;
+  risk?: z.infer<typeof listParametersQuerySchema>["risk"];
+  q?: string;
+};
 export type CreateParameterModuleBody = z.infer<typeof createParameterModuleBodySchema>;
 export type UpdateParameterModuleBody = z.infer<typeof updateParameterModuleBodySchema>;
 export type MoveParameterModuleBody = z.infer<typeof moveParameterModuleBodySchema>;

@@ -48,6 +48,7 @@ import {
   updateParameterModuleBodySchema,
   updateProjectBodySchema
 } from "./schemas";
+import type { ListParametersQuery } from "./schemas";
 import { canAdminParameters, canMergeParameters, canReviewParameters, canViewParameters } from "./policy";
 import { parameterChangeRequestStatuses, parameterSubmissionRoundStatuses } from "./status";
 
@@ -306,7 +307,7 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
-    const query = parseWithSchema(listParametersQuerySchema, request.query);
+    const query = parseWithSchema(listParametersQuerySchema, request.query) as ListParametersQuery;
     const resolved = await resolveParameterListQuery(db, auth.organization.id, query);
     const items = await listParameters(db, resolved);
 

@@ -17,6 +17,8 @@ export type ParameterRecord = {
   explanation: string;
   configFormat: string;
   module: string;
+  moduleId?: string;
+  modulePath?: string[];
   projectId: string;
   currentValue: string;
   recommendedValue: string;

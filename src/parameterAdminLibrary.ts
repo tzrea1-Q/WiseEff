@@ -1,4 +1,5 @@
 import type { ParameterRecord } from "@/domain/parameters/types";
+import { legacyModuleIdFromName, type FlatModuleNode } from "@/domain/modules/moduleTree";
 import {
   createEmptyParameterModule,
   resolveLibraryParameterId,
@@ -47,10 +48,10 @@ export function buildParameterLibraryFromRecords(
   return Array.from(byLibraryId.values()).sort((left, right) => left.name.localeCompare(right.name));
 }
 
-export function buildParameterModulesFromRecords(
+export function buildParameterModuleTree(
   parameters: readonly ParameterRecord[],
   existingModules: readonly PowerManagementParameterModule[] = []
-): PowerManagementParameterModule[] {
+): FlatModuleNode[] {
   const byName = new Map<string, PowerManagementParameterModule>();
   existingModules.forEach((module) => {
     if (module.name.trim()) {
@@ -65,5 +66,31 @@ export function buildParameterModulesFromRecords(
     }
   });
 
-  return Array.from(byName.values()).sort((left, right) => left.name.localeCompare(right.name));
+  return Array.from(byName.values())
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((module, index) => {
+      const id = legacyModuleIdFromName(module.name);
+      return {
+        id,
+        name: module.name,
+        parentId: null,
+        path: id,
+        depth: 1,
+        sortOrder: index,
+        description: module.description ?? "",
+        scope: module.scope ?? ""
+      };
+    });
+}
+
+/** @deprecated Use buildParameterModuleTree for hierarchical module metadata. */
+export function buildParameterModulesFromRecords(
+  parameters: readonly ParameterRecord[],
+  existingModules: readonly PowerManagementParameterModule[] = []
+): PowerManagementParameterModule[] {
+  return buildParameterModuleTree(parameters, existingModules).map((node) => ({
+    name: node.name,
+    description: node.description ?? "",
+    scope: node.scope ?? ""
+  }));
 }

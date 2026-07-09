@@ -21,10 +21,19 @@ import { roleSupportsWorkflowSlot } from "@/domain/users/types";
 import { projects, roles, type PrototypeState } from "@/mockData";
 import { buildAISuggestion, buildImpactItems, REVIEW_MOCK_NOW } from "@/reviewMockData";
 import { type MockRuntimeState, readMockState, writeMockState } from "./mockState";
+import { legacyModuleIdFromName, parameterModuleId } from "@/domain/modules/moduleTree";
 
 function matchesQuery(parameter: ParameterRecord, query?: ParameterListQuery) {
   if (!query) return true;
   if (query.projectId && parameter.projectId !== query.projectId) return false;
+  if (query.moduleId) {
+    const id = parameterModuleId(parameter);
+    if (query.includeDescendants === false) {
+      if (id !== query.moduleId) return false;
+    } else if (id !== query.moduleId) {
+      return false;
+    }
+  }
   if (query.module && parameter.module !== query.module) return false;
   if (query.risk && query.risk.length > 0 && !query.risk.includes(parameter.risk)) return false;
   return true;
@@ -395,6 +404,22 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
   return {
     async listProjects(): Promise<ProjectSummary[]> {
       return [...projects];
+    },
+    async listParameterModules() {
+      const names = Array.from(
+        new Set(readMockState(runtime).parameters.map((parameter) => parameter.module.trim()).filter(Boolean))
+      ).sort((left, right) => left.localeCompare(right));
+      return names.map((name, index) => {
+        const id = legacyModuleIdFromName(name);
+        return {
+          id,
+          name,
+          parentId: null,
+          path: id,
+          depth: 1,
+          sortOrder: index
+        };
+      });
     },
     async listParameters(query?: ParameterListQuery): Promise<ParameterRecord[]> {
       return readMockState(runtime).parameters.filter((parameter) => matchesQuery(parameter, query)).map(cloneParameterRecord);

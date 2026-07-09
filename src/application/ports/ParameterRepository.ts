@@ -1,4 +1,5 @@
 import type { ChangeRequest, ParameterHistoryEntry, ParameterRecord, ParameterSubmissionRound } from "@/domain/parameters/types";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 
 export type ProjectSummary = {
   id: string;
@@ -6,9 +7,13 @@ export type ProjectSummary = {
   code: string;
 };
 
+export type ParameterModuleNode = FlatModuleNode;
+
 export type ParameterListQuery = {
   projectId?: string;
   module?: string;
+  moduleId?: string;
+  includeDescendants?: boolean;
   risk?: Array<ParameterRecord["risk"]>;
 };
 
@@ -110,8 +115,28 @@ export type DiscardParameterDraftsInput = {
   parameterIds: string[];
 };
 
+export type CreateParameterModuleInput = {
+  name: string;
+  parentId?: string | null;
+  description?: string;
+  scope?: string;
+  sortOrder?: number;
+};
+
+export type UpdateParameterModuleInput = {
+  name?: string;
+  description?: string;
+  scope?: string;
+  sortOrder?: number;
+};
+
+export type MoveParameterModuleInput = {
+  parentId: string | null;
+};
+
 export interface ParameterRepository {
   listProjects(): Promise<ProjectSummary[]>;
+  listParameterModules(): Promise<ParameterModuleNode[]>;
   listParameters(query?: ParameterListQuery): Promise<ParameterRecord[]>;
   getParameter(parameterId: string): Promise<ParameterRecord>;
   listParameterHistory(parameterId: string): Promise<ParameterHistoryEntry[]>;
