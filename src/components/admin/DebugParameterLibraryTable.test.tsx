@@ -1,23 +1,39 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { buildDebugModuleTree } from "@/debugAdminModules";
 import { DebugParameterLibraryTable } from "./DebugParameterLibraryTable";
+
+const parameters = [
+  {
+    id: "p1",
+    name: "Fast charge",
+    key: "debug.fast",
+    module: "Battery",
+    risk: "High" as const,
+    bindings: [],
+    enabled: true,
+    archivedAt: null
+  }
+];
 
 describe("DebugParameterLibraryTable", () => {
   it("renders catalog table with row actions", () => {
     render(
       <DebugParameterLibraryTable
-        parameters={[
+        parameters={parameters}
+        moduleNodes={buildDebugModuleTree([
           {
             id: "p1",
             name: "Fast charge",
-            key: "debug.fast",
+            description: "",
+            detailedDescription: "",
+            writeFormatExample: "",
+            writeFormatHint: "",
             module: "Battery",
-            risk: "High",
-            bindings: [],
             enabled: true,
-            archivedAt: null
+            bindings: []
           }
-        ]}
+        ])}
         runtimeMode="api"
         search={{ q: "", risk: "all", modules: [], coverage: "all", sort: "name-asc" }}
         onUpdateSearch={vi.fn()}

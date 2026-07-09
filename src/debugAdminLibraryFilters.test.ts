@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { buildDebugModuleTree } from "./debugAdminModules";
+import { legacyModuleIdFromName } from "@/domain/modules/moduleTree";
 import {
   filterDebugParameterLibrary,
   sortDebugParameterLibrary,
@@ -71,15 +73,34 @@ const rows: DebugParameterLibraryRow[] = [
   }
 ];
 
+const moduleNodes = buildDebugModuleTree(
+  rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    description: "",
+    detailedDescription: "",
+    writeFormatExample: "",
+    writeFormatHint: "",
+    module: row.module,
+    enabled: true,
+    bindings: []
+  }))
+);
+const batteryModuleId = legacyModuleIdFromName("Battery");
+
 describe("filterDebugParameterLibrary", () => {
   it("filters by query, risk, and module", () => {
-    const result = filterDebugParameterLibrary(rows, {
-      q: "alpha",
-      risk: "high",
-      modules: ["Battery"],
-      coverage: "all",
-      sort: "name-asc"
-    });
+    const result = filterDebugParameterLibrary(
+      rows,
+      {
+        q: "alpha",
+        risk: "high",
+        modules: [batteryModuleId],
+        coverage: "all",
+        sort: "name-asc"
+      },
+      moduleNodes
+    );
 
     expect(result.map((row) => row.id)).toEqual(["a"]);
   });

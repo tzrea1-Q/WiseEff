@@ -12,7 +12,6 @@ import type { ParameterReloadTargetDto } from "./debuggingDtos";
 import {
   debugAdminBindingFromDto,
   debugAdminModuleFromDto,
-  debugAdminModuleToDto,
   debugAdminNodeBindingFromDto,
   debugAdminNodeFromDto,
   debugAdminParameterFromDto,
@@ -29,7 +28,7 @@ import {
   type DebugAdminReloadBindingWriteDto
 } from "./debuggingAdminDtos";
 import { createDefaultApiClient } from "./defaultApiClient";
-import type { ParameterModuleDraft } from "@/powerManagementConfig";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 
 type ApiClient = ReturnType<typeof createApiClient>;
 type ItemsEnvelope<T> = { items: T[] };
@@ -45,6 +44,8 @@ export type DebugAdminCoverageFilter =
 
 export type DebugAdminListQuery = {
   module?: string;
+  moduleId?: string;
+  includeDescendants?: boolean;
   risk?: string | string[];
   protocol?: DebugConnectionProtocol;
   coverage?: DebugAdminCoverageFilter;
@@ -53,6 +54,25 @@ export type DebugAdminListQuery = {
 
 export type DebugAdminParameterPatch = Partial<Omit<DebugAdminParameterDraft, "bindings">> & {
   bindings?: DebugAdminParameterBindingWriteDto[];
+};
+
+export type CreateDebugNodeModuleAdminInput = {
+  name: string;
+  parentId?: string | null;
+  description?: string;
+  scope?: string;
+  sortOrder?: number;
+};
+
+export type UpdateDebugNodeModuleAdminInput = {
+  name?: string;
+  description?: string;
+  scope?: string;
+  sortOrder?: number;
+};
+
+export type MoveDebugNodeModuleAdminInput = {
+  parentId: string | null;
 };
 
 type DebugAdminBindingInput = DebugAdminBindingWriteDto & {
@@ -66,7 +86,14 @@ function appendQuery(path: string, params: URLSearchParams) {
 
 function adminParametersPath(query?: DebugAdminListQuery) {
   const params = new URLSearchParams();
-  if (query?.module) params.set("module", query.module);
+  if (query?.moduleId) {
+    params.set("moduleId", query.moduleId);
+    if (query.includeDescendants === false) {
+      params.set("includeDescendants", "false");
+    }
+  } else if (query?.module) {
+    params.set("module", query.module);
+  }
   const risks = Array.isArray(query?.risk) ? query.risk : query?.risk ? [query.risk] : [];
   risks.forEach((risk) => params.append("risk", risk));
   if (query?.protocol) params.set("protocol", query.protocol);
@@ -83,6 +110,19 @@ function adminBindingPath(parameterId: string, protocol: DebugConnectionProtocol
   return `${adminParameterPath(parameterId)}/bindings/${protocol}`;
 }
 
+function adminNodesPath(query?: { protocol?: DebugConnectionProtocol; includeArchived?: boolean; moduleId?: string; includeDescendants?: boolean }) {
+  const params = new URLSearchParams();
+  if (query?.protocol) params.set("protocol", query.protocol);
+  if (query?.includeArchived) params.set("includeArchived", "true");
+  if (query?.moduleId) {
+    params.set("moduleId", query.moduleId);
+    if (query.includeDescendants === false) {
+      params.set("includeDescendants", "false");
+    }
+  }
+  return appendQuery("/api/v1/debugging/admin/nodes", params);
+}
+
 function adminNodePath(nodeId: string) {
   return `/api/v1/debugging/admin/nodes/${encodeURIComponent(nodeId)}`;
 }
@@ -91,8 +131,8 @@ function adminNodeBindingPath(nodeId: string, protocol: DebugConnectionProtocol)
   return `${adminNodePath(nodeId)}/bindings/${protocol}`;
 }
 
-function adminModulePath(moduleName: string) {
-  return `/api/v1/debugging/admin/modules/${encodeURIComponent(moduleName)}`;
+function adminModulePath(moduleId: string) {
+  return `/api/v1/debugging/admin/modules/${encodeURIComponent(moduleId)}`;
 }
 
 function appendReloadTargetsQuery(path: string, query?: { protocol?: DebugConnectionProtocol }) {
@@ -193,11 +233,13 @@ export function createDebuggingAdminClient(apiClient: ApiClient = createDefaultA
       const response = await apiClient.post<ItemEnvelope<DebugAdminBindingDto>>(`${adminBindingPath(parameterId, protocol)}/archive`, {});
       return debugAdminBindingFromDto(response.item);
     },
-    async listNodes(query?: { protocol?: DebugConnectionProtocol; includeArchived?: boolean }) {
-      const params = new URLSearchParams();
-      if (query?.protocol) params.set("protocol", query.protocol);
-      if (query?.includeArchived) params.set("includeArchived", "true");
-      const response = await apiClient.get<ItemsEnvelope<DebugAdminNodeDto>>(appendQuery("/api/v1/debugging/admin/nodes", params));
+    async listNodes(query?: {
+      protocol?: DebugConnectionProtocol;
+      includeArchived?: boolean;
+      moduleId?: string;
+      includeDescendants?: boolean;
+    }) {
+      const response = await apiClient.get<ItemsEnvelope<DebugAdminNodeDto>>(adminNodesPath(query));
       return response.items.map(debugAdminNodeFromDto);
     },
     async createNode(draft: DebugAdminNodeWriteDto): Promise<DebugNodeRegistryEntry> {
@@ -219,27 +261,30 @@ export function createDebuggingAdminClient(apiClient: ApiClient = createDefaultA
       const response = await apiClient.post<ItemEnvelope<DebugAdminBindingDto>>(`${adminNodeBindingPath(nodeId, protocol)}/archive`, {});
       return debugAdminNodeBindingFromDto(response.item);
     },
-    async listModules() {
+    async listModules(): Promise<FlatModuleNode[]> {
       const response = await apiClient.get<ItemsEnvelope<DebugAdminModuleDto>>("/api/v1/debugging/admin/modules");
       return response.items.map(debugAdminModuleFromDto);
     },
-    async createModule(draft: ParameterModuleDraft) {
+    async createModule(input: CreateDebugNodeModuleAdminInput) {
       const response = await apiClient.post<ItemEnvelope<DebugAdminModuleDto>>(
         "/api/v1/debugging/admin/modules",
-        debugAdminModuleToDto(draft)
+        input
       );
       return debugAdminModuleFromDto(response.item);
     },
-    async updateModule(moduleName: string, patch: Partial<ParameterModuleDraft>) {
-      const response = await apiClient.patch<ItemEnvelope<DebugAdminModuleDto>>(adminModulePath(moduleName), debugAdminModuleToDto({
-        name: patch.name ?? moduleName,
-        description: patch.description ?? "",
-        scope: patch.scope ?? ""
-      }));
+    async updateModule(moduleId: string, patch: UpdateDebugNodeModuleAdminInput) {
+      const response = await apiClient.patch<ItemEnvelope<DebugAdminModuleDto>>(adminModulePath(moduleId), patch);
       return debugAdminModuleFromDto(response.item);
     },
-    async deleteModule(moduleName: string) {
-      await apiClient.delete(adminModulePath(moduleName));
+    async moveModule(moduleId: string, input: MoveDebugNodeModuleAdminInput) {
+      const response = await apiClient.post<ItemEnvelope<DebugAdminModuleDto>>(
+        `${adminModulePath(moduleId)}/move`,
+        input
+      );
+      return debugAdminModuleFromDto(response.item);
+    },
+    async deleteModule(moduleId: string) {
+      await apiClient.delete(adminModulePath(moduleId));
     },
     async listReloadBindings() {
       const response = await apiClient.get<ItemsEnvelope<DebugAdminReloadBindingDto>>("/api/v1/debugging/admin/reload-bindings");

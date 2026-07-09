@@ -1,5 +1,7 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { legacyModuleIdFromName } from "@/domain/modules/moduleTree";
+import { buildDebugModuleTree } from "@/debugAdminModules";
 import { DebugNodeLibraryTable } from "./DebugNodeLibraryTable";
 
 const nodes = [
@@ -27,11 +29,15 @@ const nodes = [
   }
 ];
 
+const moduleNodes = buildDebugModuleTree(nodes);
+const chargingModuleId = legacyModuleIdFromName("Battery Charging");
+
 describe("DebugNodeLibraryTable", () => {
   it("renders module filter and narrows rows by selected modules", () => {
     render(
       <DebugNodeLibraryTable
         nodes={nodes}
+        moduleNodes={moduleNodes}
         search={{ q: "", protocol: "all", modules: [], sort: "name-asc" }}
         onUpdateSearch={vi.fn()}
         onEdit={vi.fn()}
@@ -49,7 +55,8 @@ describe("DebugNodeLibraryTable", () => {
     render(
       <DebugNodeLibraryTable
         nodes={nodes}
-        search={{ q: "", protocol: "all", modules: ["Battery Charging"], sort: "name-asc" }}
+        moduleNodes={moduleNodes}
+        search={{ q: "", protocol: "all", modules: [chargingModuleId], sort: "name-asc" }}
         onUpdateSearch={vi.fn()}
         onEdit={vi.fn()}
         onEditBindings={vi.fn()}
@@ -67,6 +74,7 @@ describe("DebugNodeLibraryTable", () => {
     render(
       <DebugNodeLibraryTable
         nodes={nodes}
+        moduleNodes={moduleNodes}
         search={{ q: "", protocol: "all", modules: [], sort: "name-asc" }}
         onUpdateSearch={onUpdateSearch}
         onEdit={vi.fn()}
@@ -76,8 +84,8 @@ describe("DebugNodeLibraryTable", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /模块/ }));
-    fireEvent.click(within(screen.getByRole("listbox")).getByLabelText("Battery Charging"));
+    fireEvent.click(screen.getByLabelText("Battery Charging"));
 
-    expect(onUpdateSearch).toHaveBeenCalledWith({ modules: ["Battery Charging"] });
+    expect(onUpdateSearch).toHaveBeenCalledWith({ modules: [chargingModuleId] });
   });
 });

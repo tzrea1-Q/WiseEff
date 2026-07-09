@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { DebugNodeEditorDialog, type DebugNodeDraft } from "@/components/admin/DebugNodeEditorDialog";
 import { ReloadBindingEditorDialog, type ReloadBindingDraft } from "@/components/admin/ReloadBindingEditorDialog";
-import { buildModuleSelectOptions } from "@/debugAdminModules";
+import { buildDebugModuleTree } from "@/debugAdminModules";
 import { nodeBindingStatus, nodeBindingStatusLabel } from "@/debugAdminDraft";
 import type { DebugNodeRegistryEntry, ParameterReloadBinding } from "@/domain/debugging/types";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import {
   formatDebugAdminBindingSaveError,
   getBindingNodePathValidationError,
@@ -21,9 +22,22 @@ type DebugAdminSplitCatalogProps = {
   canEdit: boolean;
 };
 
+function nodeWriteBodyFromDraft(draft: DebugNodeDraft) {
+  return {
+    name: draft.name,
+    description: draft.description,
+    detailedDescription: draft.detailedDescription,
+    writeFormatExample: draft.writeFormatExample,
+    writeFormatHint: draft.writeFormatHint,
+    moduleId: draft.moduleId,
+    module: draft.module,
+    enabled: draft.enabled
+  };
+}
+
 export function DebugAdminSplitCatalog({ view, client, canEdit }: DebugAdminSplitCatalogProps) {
   const [nodes, setNodes] = useState<DebugNodeRegistryEntry[]>([]);
-  const [moduleNames, setModuleNames] = useState<string[]>([]);
+  const [moduleNodes, setModuleNodes] = useState<FlatModuleNode[]>([]);
   const [bindings, setBindings] = useState<ParameterReloadBinding[]>([]);
   const [reloadCandidates, setReloadCandidates] = useState<ParameterReloadTargetDto[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,12 +72,9 @@ export function DebugAdminSplitCatalog({ view, client, canEdit }: DebugAdminSpli
       .then((items) => {
         if (cancelled) return;
         if (view === "nodes") {
-          const [loadedNodes, loadedModules] = items as [DebugNodeRegistryEntry[], { name: string }[]];
+          const [loadedNodes, loadedModules] = items as [DebugNodeRegistryEntry[], FlatModuleNode[]];
           setNodes(loadedNodes);
-          setModuleNames(buildModuleSelectOptions([
-            ...loadedModules.map((module) => module.name),
-            ...loadedNodes.map((node) => node.module)
-          ]));
+          setModuleNodes(loadedModules.length > 0 ? loadedModules : buildDebugModuleTree(loadedNodes));
         } else {
           setBindings(items as ParameterReloadBinding[]);
         }
@@ -123,17 +134,9 @@ export function DebugAdminSplitCatalog({ view, client, canEdit }: DebugAdminSpli
     setError("");
     try {
       if (nodeDialog?.mode === "edit" && nodeDialog.node) {
-        await client.updateNode(nodeDialog.node.id, draft);
+        await client.updateNode(nodeDialog.node.id, nodeWriteBodyFromDraft(draft));
       } else {
-        await client.createNode({
-          name: draft.name,
-          description: draft.description,
-          detailedDescription: draft.detailedDescription,
-          writeFormatExample: draft.writeFormatExample,
-          writeFormatHint: draft.writeFormatHint,
-          module: draft.module,
-          enabled: draft.enabled
-        });
+        await client.createNode(nodeWriteBodyFromDraft(draft));
       }
       setNodeDialog(null);
       reloadCatalog();
@@ -175,9 +178,9 @@ export function DebugAdminSplitCatalog({ view, client, canEdit }: DebugAdminSpli
     }
   };
 
-  const nodeModuleOptions = useMemo(
-    () => buildModuleSelectOptions([...moduleNames, ...nodes.map((node) => node.module)]),
-    [moduleNames, nodes]
+  const editorModuleNodes = useMemo(
+    () => (moduleNodes.length > 0 ? moduleNodes : buildDebugModuleTree(nodes)),
+    [moduleNodes, nodes]
   );
 
   if (view === "legacy") {
@@ -248,7 +251,7 @@ export function DebugAdminSplitCatalog({ view, client, canEdit }: DebugAdminSpli
           open={Boolean(nodeDialog)}
           mode={nodeDialog?.mode ?? "create"}
           node={nodeDialog?.node}
-          modules={nodeModuleOptions}
+          moduleNodes={editorModuleNodes}
           loading={saveLoading}
           canEdit={canEdit}
           onSave={(draft) => void saveNode(draft)}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PageProps } from "@/app/routes";
 import { KpiStrip, type KpiItem } from "@/components/KpiStrip";
 import { ArchiveDebugNodeDialog } from "@/components/admin/ArchiveDebugNodeDialog";
@@ -8,8 +8,9 @@ import { DebugNodeEditorDialog, type DebugNodeDraft } from "@/components/admin/D
 import { DebugNodeLibraryTable, type DebugNodeLibrarySearch } from "@/components/admin/DebugNodeLibraryTable";
 import { useTopBarActions } from "@/components/layout";
 import { bindingForProtocol } from "@/debugAdminDraft";
-import { buildDebugModulesFromNodes, countDebugNodesByModule } from "@/debugAdminModules";
+import { buildDebugModuleTree, countDebugNodesByModuleId } from "@/debugAdminModules";
 import type { DebugConnectionProtocol, DebugNodeProtocolBinding, DebugNodeRegistryEntry, DebugParameter } from "@/domain/debugging/types";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import {
   formatDebugAdminBindingSaveError,
   getBindingNodePathValidationError,
@@ -17,7 +18,20 @@ import {
 } from "@/domain/debugging/bindingNodePath";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
-import type { ParameterModuleDraft, PowerManagementParameterModule } from "@/powerManagementConfig";
+import type { ParameterModuleDraft } from "@/powerManagementConfig";
+
+function nodeWriteBodyFromDraft(draft: DebugNodeDraft) {
+  return {
+    name: draft.name,
+    description: draft.description,
+    detailedDescription: draft.detailedDescription,
+    writeFormatExample: draft.writeFormatExample,
+    writeFormatHint: draft.writeFormatHint,
+    moduleId: draft.moduleId,
+    module: draft.module,
+    enabled: draft.enabled
+  };
+}
 
 function mockNodesFromParameters(parameters: readonly DebugParameter[]): DebugNodeRegistryEntry[] {
   return parameters.map((parameter) => ({
@@ -28,6 +42,8 @@ function mockNodesFromParameters(parameters: readonly DebugParameter[]): DebugNo
     writeFormatExample: parameter.writeFormatExample ?? "",
     writeFormatHint: parameter.writeFormatHint ?? "",
     module: parameter.module,
+    moduleId: parameter.moduleId,
+    modulePath: parameter.modulePath,
     enabled: parameter.enabled !== false && !parameter.archivedAt,
     bindings:
       parameter.bindings && parameter.bindings.length > 0
@@ -84,7 +100,7 @@ export function DebuggingAdminPage({
   const [bindingsDraft, setBindingsDraft] = useState<DebugNodeProtocolBinding[]>([]);
   const [disableNodeId, setDisableNodeId] = useState<string | null>(null);
   const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
-  const [adminModules, setAdminModules] = useState<PowerManagementParameterModule[]>([]);
+  const [adminModuleNodes, setAdminModuleNodes] = useState<FlatModuleNode[]>([]);
   const editorNodeRef = useRef<DebugNodeRegistryEntry | null>(null);
   const bindingsNodeRef = useRef<DebugNodeRegistryEntry | null>(null);
 
@@ -98,10 +114,25 @@ export function DebuggingAdminPage({
     return nodes.map((node) => (mockDisabledNodeIds.has(node.id) ? { ...node, enabled: false } : node));
   }, [adminNodes, isApiMode, mockDisabledNodeIds, state.configDraft.debugParameters]);
 
-  const modules = useMemo(() => {
-    const existing = isApiMode ? adminModules : state.configDraft.parameterModules;
-    return buildDebugModulesFromNodes(library, existing);
-  }, [adminModules, isApiMode, library, state.configDraft.parameterModules]);
+  const moduleNodes = useMemo(() => {
+    if (isApiMode && adminModuleNodes.length > 0) {
+      return adminModuleNodes;
+    }
+    return buildDebugModuleTree(library, state.configDraft.parameterModules);
+  }, [adminModuleNodes, isApiMode, library, state.configDraft.parameterModules]);
+
+  const reloadAdminModules = useCallback(async () => {
+    if (!debuggingAdminClient) {
+      return;
+    }
+    const items = await debuggingAdminClient.listModules();
+    setAdminModuleNodes(items);
+  }, [debuggingAdminClient]);
+
+  const resolveModuleName = useCallback(
+    (moduleId: string) => moduleNodes.find((node) => node.id === moduleId)?.name ?? moduleId,
+    [moduleNodes]
+  );
 
   useEffect(() => {
     if (!isApiMode || !debuggingAdminClient) {
@@ -118,7 +149,7 @@ export function DebuggingAdminPage({
       .then(([nodes, loadedModules]) => {
         if (cancelled) return;
         setAdminNodes(nodes);
-        setAdminModules(loadedModules);
+        setAdminModuleNodes(loadedModules);
       })
       .catch(() => {
         if (!cancelled) {
@@ -253,16 +284,8 @@ export function DebuggingAdminPage({
       try {
         const saved =
           editorMode === "edit" && existingNode
-            ? await debuggingAdminClient.updateNode(existingNode.id, draft)
-            : await debuggingAdminClient.createNode({
-                name: draft.name,
-                description: draft.description,
-                detailedDescription: draft.detailedDescription,
-                writeFormatExample: draft.writeFormatExample,
-                writeFormatHint: draft.writeFormatHint,
-                module: draft.module,
-                enabled: draft.enabled
-              });
+            ? await debuggingAdminClient.updateNode(existingNode.id, nodeWriteBodyFromDraft(draft))
+            : await debuggingAdminClient.createNode(nodeWriteBodyFromDraft(draft));
         replaceAdminNode(saved);
         setEditorMode(null);
         setEditorNodeId(null);
@@ -347,7 +370,7 @@ export function DebuggingAdminPage({
     flashSaved("已保存");
   };
 
-  const addDebugModule = async (draft: ParameterModuleDraft) => {
+  const addDebugModule = async (draft: ParameterModuleDraft, parentId?: string | null) => {
     if (isApiMode) {
       if (!debuggingAdminClient || !canEditAdminCatalog) {
         return;
@@ -355,8 +378,13 @@ export function DebuggingAdminPage({
       setAdminLoading(true);
       setAdminError("");
       try {
-        const saved = await debuggingAdminClient.createModule(draft);
-        setAdminModules((current) => [...current.filter((module) => module.name !== saved.name), saved]);
+        await debuggingAdminClient.createModule({
+          name: draft.name,
+          description: draft.description,
+          scope: draft.scope,
+          parentId: parentId ?? null
+        });
+        await reloadAdminModules();
         flashSaved("模块已创建");
       } catch {
         setAdminError("创建模块失败。");
@@ -365,11 +393,11 @@ export function DebuggingAdminPage({
       }
       return;
     }
-    dispatch({ type: "ADD_PARAMETER_MODULE", module: draft });
+    dispatch({ type: "ADD_PARAMETER_MODULE", module: { ...draft, ...(parentId ? { parent: resolveModuleName(parentId) } : {}) } });
     flashSaved("模块已创建");
   };
 
-  const updateDebugModule = async (moduleName: string, patch: ParameterModuleDraft) => {
+  const updateDebugModule = async (moduleId: string, patch: ParameterModuleDraft) => {
     const nextName = patch.name.trim();
     if (!nextName) {
       return;
@@ -383,16 +411,14 @@ export function DebuggingAdminPage({
       setAdminLoading(true);
       setAdminError("");
       try {
-        const saved = await debuggingAdminClient.updateModule(moduleName, patch);
-        setAdminModules((current) => {
-          const withoutOld = current.filter((module) => module.name !== moduleName && module.name !== saved.name);
-          return [...withoutOld, saved];
+        await debuggingAdminClient.updateModule(moduleId, {
+          name: patch.name,
+          description: patch.description,
+          scope: patch.scope
         });
-        if (saved.name !== moduleName) {
-          setAdminNodes((nodes) =>
-            nodes.map((node) => (node.module === moduleName ? { ...node, module: saved.name } : node))
-          );
-        }
+        await reloadAdminModules();
+        const nodes = await debuggingAdminClient.listNodes({ includeArchived: true });
+        setAdminNodes(nodes);
         flashSaved("模块已更新");
       } catch {
         setAdminError("更新模块失败。");
@@ -402,12 +428,29 @@ export function DebuggingAdminPage({
       return;
     }
 
-    dispatch({ type: "UPDATE_PARAMETER_MODULE", moduleName, patch });
+    dispatch({ type: "UPDATE_PARAMETER_MODULE", moduleName: resolveModuleName(moduleId), patch });
     flashSaved("模块已更新");
   };
 
-  const deleteDebugModule = async (moduleName: string) => {
-    if (countDebugNodesByModule(library, moduleName) > 0) {
+  const moveDebugModule = async (moduleId: string, parentId: string | null) => {
+    if (!isApiMode || !debuggingAdminClient || !canEditAdminCatalog) {
+      return;
+    }
+    setAdminLoading(true);
+    setAdminError("");
+    try {
+      await debuggingAdminClient.moveModule(moduleId, { parentId });
+      await reloadAdminModules();
+      flashSaved("模块已移动");
+    } catch {
+      setAdminError("移动模块失败。");
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const deleteDebugModule = async (moduleId: string) => {
+    if (countDebugNodesByModuleId(library, moduleId) > 0) {
       return;
     }
     if (isApiMode) {
@@ -417,8 +460,8 @@ export function DebuggingAdminPage({
       setAdminLoading(true);
       setAdminError("");
       try {
-        await debuggingAdminClient.deleteModule(moduleName);
-        setAdminModules((current) => current.filter((module) => module.name !== moduleName));
+        await debuggingAdminClient.deleteModule(moduleId);
+        await reloadAdminModules();
         flashSaved("模块已删除");
       } catch {
         setAdminError("删除模块失败。");
@@ -427,7 +470,7 @@ export function DebuggingAdminPage({
       }
       return;
     }
-    dispatch({ type: "DELETE_PARAMETER_MODULE", moduleName });
+    dispatch({ type: "DELETE_PARAMETER_MODULE", moduleName: resolveModuleName(moduleId) });
     flashSaved("模块已删除");
   };
 
@@ -486,6 +529,7 @@ export function DebuggingAdminPage({
         {isApiMode && !canEditAdminCatalog ? <p className="debug-admin-error">缺少 debugging:admin 权限，目录仅可查看。</p> : null}
         <DebugNodeLibraryTable
           nodes={library}
+          moduleNodes={moduleNodes}
           search={nodeSearch}
           onUpdateSearch={(patch) => setNodeSearch((current) => ({ ...current, ...patch }))}
           onEdit={(nodeId) => {
@@ -508,7 +552,7 @@ export function DebuggingAdminPage({
         open={editorMode !== null}
         mode={editorMode === "create" ? "create" : "edit"}
         node={editorNode}
-        modules={modules.map((module) => module.name)}
+        moduleNodes={moduleNodes}
         loading={adminLoading}
         canEdit={canEditAdminCatalog}
         onSave={(draft) => void saveNode(draft)}
@@ -548,12 +592,13 @@ export function DebuggingAdminPage({
 
       <DebugModuleManagementDialog
         open={moduleDialogOpen}
-        modules={modules}
+        moduleNodes={moduleNodes}
         nodes={library}
         onClose={() => setModuleDialogOpen(false)}
         onAddModule={addDebugModule}
-        onUpdateModule={(moduleName, patch) => void updateDebugModule(moduleName, patch)}
-        onDeleteModule={deleteDebugModule}
+        onUpdateModule={(moduleId, patch) => void updateDebugModule(moduleId, patch)}
+        onMoveModule={moveDebugModule}
+        onDeleteModule={(moduleId) => void deleteDebugModule(moduleId)}
         onEditNode={openNodeEditorFromModule}
       />
     </div>

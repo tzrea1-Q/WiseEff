@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { buildModuleSelectOptions } from "@/debugAdminModules";
+import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
+import { debugNodeModuleId } from "@/debugAdminModules";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { DebugNodeRegistryEntry } from "@/domain/debugging/types";
 
 export type DebugNodeDraft = {
@@ -14,6 +16,7 @@ export type DebugNodeDraft = {
   writeFormatExample: string;
   writeFormatHint: string;
   module: string;
+  moduleId?: string;
   enabled: boolean;
 };
 
@@ -21,21 +24,23 @@ export type DebugNodeEditorDialogProps = {
   open: boolean;
   mode: "create" | "edit";
   node?: DebugNodeRegistryEntry | null;
-  modules: readonly string[];
+  moduleNodes: readonly FlatModuleNode[];
   loading: boolean;
   canEdit: boolean;
   onSave: (draft: DebugNodeDraft) => void;
   onClose: () => void;
 };
 
-function emptyDraft(): DebugNodeDraft {
+function emptyDraft(moduleNodes: readonly FlatModuleNode[]): DebugNodeDraft {
+  const defaultNode = moduleNodes[0];
   return {
     name: "",
     description: "",
     detailedDescription: "",
     writeFormatExample: "",
     writeFormatHint: "",
-    module: "",
+    module: defaultNode?.name ?? "",
+    moduleId: defaultNode?.id,
     enabled: true
   };
 }
@@ -48,6 +53,7 @@ function draftFromNode(node: DebugNodeRegistryEntry): DebugNodeDraft {
     writeFormatExample: node.writeFormatExample,
     writeFormatHint: node.writeFormatHint,
     module: node.module,
+    moduleId: debugNodeModuleId(node),
     enabled: node.enabled
   };
 }
@@ -56,13 +62,13 @@ export function DebugNodeEditorDialog({
   open,
   mode,
   node,
-  modules,
+  moduleNodes,
   loading,
   canEdit,
   onSave,
   onClose
 }: DebugNodeEditorDialogProps) {
-  const [draft, setDraft] = useState<DebugNodeDraft>(() => emptyDraft());
+  const [draft, setDraft] = useState<DebugNodeDraft>(() => emptyDraft(moduleNodes));
 
   useEffect(() => {
     if (!open) {
@@ -81,17 +87,17 @@ export function DebugNodeEditorDialog({
 
   useEffect(() => {
     if (open) {
-      setDraft(mode === "edit" && node ? draftFromNode(node) : emptyDraft());
+      setDraft(mode === "edit" && node ? draftFromNode(node) : emptyDraft(moduleNodes));
     }
-  }, [mode, node, open]);
+  }, [mode, moduleNodes, node, open]);
 
   if (!open) {
     return null;
   }
 
   const fieldsDisabled = !canEdit || loading;
-  const moduleOptions = buildModuleSelectOptions(modules, draft.module);
-  const canSubmit = draft.name.trim().length > 0 && draft.module.trim().length > 0 && !fieldsDisabled;
+  const selectedModuleId = draft.moduleId ?? "";
+  const canSubmit = draft.name.trim().length > 0 && selectedModuleId.length > 0 && !fieldsDisabled;
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={mode === "create" ? "创建调试节点" : "编辑调试节点"}>
@@ -115,21 +121,21 @@ export function DebugNodeEditorDialog({
             </label>
             <label className="debug-admin-field">
               <span className="debug-admin-field-label">模块</span>
-              <select
-                aria-label="模块"
-                value={draft.module}
-                disabled={fieldsDisabled || moduleOptions.length === 0}
-                onChange={(event) => setDraft((current) => ({ ...current, module: event.target.value }))}
-              >
-                <option value="" disabled>
-                  {moduleOptions.length === 0 ? "请先在模块管理中创建模块" : "请选择模块"}
-                </option>
-                {moduleOptions.map((moduleName) => (
-                  <option key={moduleName} value={moduleName}>
-                    {moduleName}
-                  </option>
-                ))}
-              </select>
+              <ModuleTreeSelect
+                label="选择模块"
+                mode="single"
+                nodes={moduleNodes}
+                value={selectedModuleId}
+                disabled={fieldsDisabled || moduleNodes.length === 0}
+                placeholder={moduleNodes.length === 0 ? "请先在模块管理中创建模块" : "请选择模块"}
+                onChange={(moduleId) => {
+                  const next = typeof moduleId === "string" ? moduleId : moduleId[0];
+                  const treeNode = moduleNodes.find((item) => item.id === next);
+                  if (treeNode) {
+                    setDraft((current) => ({ ...current, moduleId: treeNode.id, module: treeNode.name }));
+                  }
+                }}
+              />
             </label>
             <label className="debug-admin-field">
               <span className="debug-admin-field-label">简述</span>

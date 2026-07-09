@@ -1,6 +1,8 @@
 import { Search } from "lucide-react";
 import { nodeBindingStatus } from "@/debugAdminDraft";
-import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
+import { filterDebugNodesByModuleTree, modulePathLabelForDebugNode } from "@/debugAdminModules";
+import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { DebugConnectionProtocol, DebugNodeRegistryEntry } from "@/domain/debugging/types";
 
 export type DebugNodeLibrarySearch = {
@@ -21,8 +23,14 @@ function nodeSearchHaystack(node: DebugNodeRegistryEntry) {
   return `${node.name} ${node.description} ${node.detailedDescription} ${node.module} ${bindingPaths}`.toLowerCase();
 }
 
-function filterNodes(nodes: readonly DebugNodeRegistryEntry[], search: DebugNodeLibrarySearch) {
-  return nodes.filter((node) => {
+function filterNodes(
+  nodes: readonly DebugNodeRegistryEntry[],
+  search: DebugNodeLibrarySearch,
+  moduleNodes: readonly FlatModuleNode[]
+) {
+  const byModule = filterDebugNodesByModuleTree(nodes, moduleNodes, search.modules);
+
+  return byModule.filter((node) => {
     if (search.q.trim()) {
       const needle = search.q.trim().toLowerCase();
       if (!nodeSearchHaystack(node).includes(needle)) {
@@ -31,10 +39,6 @@ function filterNodes(nodes: readonly DebugNodeRegistryEntry[], search: DebugNode
     }
 
     if (search.protocol !== "all" && nodeBindingStatus(node.bindings, search.protocol) === "missing") {
-      return false;
-    }
-
-    if (search.modules.length > 0 && !search.modules.includes(node.module)) {
       return false;
     }
 
@@ -52,6 +56,7 @@ function sortNodes(nodes: DebugNodeRegistryEntry[], sort: DebugNodeLibrarySearch
 
 export type DebugNodeLibraryTableProps = {
   nodes: readonly DebugNodeRegistryEntry[];
+  moduleNodes: readonly FlatModuleNode[];
   search: DebugNodeLibrarySearch;
   onUpdateSearch: (patch: Partial<DebugNodeLibrarySearch>) => void;
   onEdit: (nodeId: string) => void;
@@ -65,6 +70,7 @@ export type DebugNodeLibraryTableProps = {
 
 export function DebugNodeLibraryTable({
   nodes,
+  moduleNodes,
   search,
   onUpdateSearch,
   onEdit,
@@ -75,13 +81,7 @@ export function DebugNodeLibraryTable({
   canEdit = true,
   loading = false
 }: DebugNodeLibraryTableProps) {
-  const filtered = sortNodes(filterNodes(nodes, search), search.sort);
-  const moduleOptions = Array.from(new Set(nodes.map((node) => node.module).filter(Boolean)))
-    .sort((left, right) => left.localeCompare(right, "zh-CN"))
-    .map((moduleName) => ({
-      value: moduleName,
-      label: moduleName
-    }));
+  const filtered = sortNodes(filterNodes(nodes, search, moduleNodes), search.sort);
   const filtersActive = search.q.trim().length > 0 || search.protocol !== "all" || search.modules.length > 0;
 
   const clearFilters = () => {
@@ -139,11 +139,13 @@ export function DebugNodeLibraryTable({
               </option>
             ))}
           </select>
-          <MultiSelectDropdown
+          <ModuleTreeSelect
             label="模块"
-            options={moduleOptions}
+            mode="multi-filter"
+            nodes={moduleNodes}
             value={search.modules}
-            onChange={(modules) => onUpdateSearch({ modules })}
+            onChange={(modules) => onUpdateSearch({ modules: typeof modules === "string" ? [modules] : modules })}
+            disabled={loading}
           />
           <select
             aria-label="排序"
@@ -198,7 +200,7 @@ export function DebugNodeLibraryTable({
                       <strong>{node.name}</strong>
                       {node.description ? <small>{node.description}</small> : null}
                     </td>
-                    <td data-label="模块">{node.module || "—"}</td>
+                    <td data-label="模块">{modulePathLabelForDebugNode(node, moduleNodes) || "—"}</td>
                     <td data-label="状态">
                       <span className={`debug-admin-coverage-badge${node.enabled ? "" : " disabled"}`}>
                         {node.enabled ? "启用" : "已禁用"}
