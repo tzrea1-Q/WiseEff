@@ -100,7 +100,6 @@ describe("/debugging-admin API mode", () => {
     fireEvent.click(screen.getByRole("button", { name: "新增节点" }));
 
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Thermal throttle limit" } });
-    fireEvent.change(screen.getByLabelText("模块"), { target: { value: "Battery Charging" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() =>
@@ -109,6 +108,7 @@ describe("/debugging-admin API mode", () => {
         expect.objectContaining({
           name: "Thermal throttle limit",
           module: "Battery Charging",
+          moduleId: "legacy:Battery Charging",
           enabled: true
         })
       )

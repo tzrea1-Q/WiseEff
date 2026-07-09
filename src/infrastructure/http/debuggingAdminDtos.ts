@@ -15,7 +15,7 @@ import type {
   DebugValueKind
 } from "@/debugValueKind";
 import type { RiskLevel } from "@/domain/parameters/types";
-import type { FlatModuleNode } from "@/domain/modules/moduleTree";
+import { legacyModuleIdFromName, type FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
 
 export type DebugAdminBindingDto = {
@@ -210,7 +210,14 @@ export type DebugAdminNodeWriteDto = {
 export type DebugAdminModuleDto = FlatModuleNode;
 
 export function debugAdminModuleFromDto(dto: DebugAdminModuleDto): FlatModuleNode {
-  return { ...dto };
+  const id = dto.id ?? legacyModuleIdFromName(dto.name);
+  return {
+    ...dto,
+    id,
+    parentId: dto.parentId ?? null,
+    path: dto.path ?? id,
+    depth: dto.depth ?? (dto.parentId ? 1 : 0)
+  };
 }
 
 export function debugAdminModuleToDto(
