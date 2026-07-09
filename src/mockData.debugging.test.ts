@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createPrototypeState, initialState } from "./mockData";
 import {
   bundledPowerManagementConfig,
-  clonePowerManagementConfig
+  clonePowerManagementConfig,
+  syncConfigDraftDebugParameterModuleMetadata
 } from "./powerManagementConfig";
 
 describe("调试会话状态字段", () => {
@@ -30,7 +31,9 @@ describe("调试会话状态字段", () => {
 describe("debugging-admin 基础设施", () => {
   it("initialState 带有 persistedConfigSnapshot，初始值等于 bundledPowerManagementConfig", () => {
     expect(initialState.persistedConfigSnapshot).toBeDefined();
-    expect(initialState.persistedConfigSnapshot).toEqual(bundledPowerManagementConfig);
+    expect(initialState.persistedConfigSnapshot).toEqual(
+      syncConfigDraftDebugParameterModuleMetadata(bundledPowerManagementConfig)
+    );
   });
 
   it("persistedConfigSnapshot 是深拷贝，修改它不影响 bundledPowerManagementConfig", () => {
@@ -48,5 +51,6 @@ describe("debugging-admin 基础设施", () => {
 
     expect(state.persistedConfigSnapshot.debugParameters[0].currentValue).toBe("999");
     expect(state.persistedConfigSnapshot).not.toBe(customConfig);
+    expect(state.persistedConfigSnapshot.debugParameters[0].moduleId).toBeDefined();
   });
 });

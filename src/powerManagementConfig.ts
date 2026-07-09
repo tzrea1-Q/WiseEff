@@ -355,6 +355,27 @@ export function flattenDebugParameters(config: PowerManagementConfig) {
   return config.debugParameters.map((parameter) => enrichWithModuleMetadata({ ...parameter }, moduleNodes));
 }
 
+/** Keep configDraft.debugParameters aligned with flattenDebugParameters module metadata for snapshots. */
+export function syncConfigDraftDebugParameterModuleMetadata(config: PowerManagementConfig): PowerManagementConfig {
+  const enrichedById = new Map(flattenDebugParameters(config).map((parameter) => [parameter.id, parameter]));
+
+  return {
+    ...config,
+    debugParameters: config.debugParameters.map((parameter) => {
+      const enriched = enrichedById.get(parameter.id);
+      if (!enriched) {
+        return parameter;
+      }
+
+      return {
+        ...parameter,
+        moduleId: enriched.moduleId,
+        modulePath: enriched.modulePath
+      };
+    })
+  };
+}
+
 export function updateProjectParameter(
   config: PowerManagementConfig,
   projectId: PowerManagementProjectId,
