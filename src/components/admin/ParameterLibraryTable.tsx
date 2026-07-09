@@ -1,9 +1,11 @@
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { LibraryRiskFilter } from "@/components/admin/LibraryRiskFilter";
-import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
+import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { ParamAdminSearch } from "@/hooks/useParamAdminSearch";
 import { getCoverage, type ParameterCoverage } from "@/parameterAdminAnalytics";
+import { modulePathLabelForTemplate } from "@/parameterAdminLibrary";
 import {
   filterParameterLibrary,
   getParameterRecommendedValue,
@@ -29,6 +31,7 @@ const COVERAGE_OPTIONS: Array<{ value: ParamAdminSearch["coverage"]; label: stri
 export type ParameterLibraryTableProps = {
   parameters: readonly PowerManagementParameterTemplate[];
   projects: readonly PowerManagementProject[];
+  moduleNodes: readonly FlatModuleNode[];
   search: ParamAdminSearch;
   onUpdateSearch: (patch: Partial<ParamAdminSearch>) => void;
   onEditDefinition: (parameterId: string) => void;
@@ -41,6 +44,7 @@ export type ParameterLibraryTableProps = {
 export function ParameterLibraryTable({
   parameters,
   projects,
+  moduleNodes,
   search,
   onUpdateSearch,
   onEditDefinition,
@@ -50,11 +54,7 @@ export function ParameterLibraryTable({
   onDeleteParameter
 }: ParameterLibraryTableProps) {
   const [coverageOpen, setCoverageOpen] = useState(false);
-  const filtered = sortParameterLibrary(filterParameterLibrary(parameters, projects, search), search.sort);
-  const moduleOptions = Array.from(new Set(parameters.map((parameter) => parameter.module))).map((moduleName) => ({
-    value: moduleName,
-    label: moduleName
-  }));
+  const filtered = sortParameterLibrary(filterParameterLibrary(parameters, projects, search, moduleNodes), search.sort);
   const filtersActive =
     search.q.trim().length > 0 || search.risk !== "all" || search.modules.length > 0 || search.coverage !== "all";
 
@@ -95,11 +95,12 @@ export function ParameterLibraryTable({
             value={search.risk}
             onChange={(risk) => onUpdateSearch({ risk: risk as ParamAdminSearch["risk"] })}
           />
-          <MultiSelectDropdown
+          <ModuleTreeSelect
             label="模块"
-            options={moduleOptions}
+            mode="multi-filter"
+            nodes={moduleNodes}
             value={search.modules}
-            onChange={(modules) => onUpdateSearch({ modules })}
+            onChange={(modules) => onUpdateSearch({ modules: Array.isArray(modules) ? modules : [modules] })}
           />
           <div className="dropdown-root">
             <button
@@ -171,6 +172,7 @@ export function ParameterLibraryTable({
           <tbody>
             {filtered.map((parameter, index) => {
               const coverage = getCoverage(parameter, projects);
+              const moduleLabel = modulePathLabelForTemplate(parameter, moduleNodes);
               return (
                 <tr key={parameter.id}>
                   <td data-label="#">{index + 1}</td>
@@ -178,7 +180,9 @@ export function ParameterLibraryTable({
                     <strong>{parameter.name}</strong>
                     {parameter.description ? <small>{parameter.description}</small> : null}
                   </td>
-                  <td data-label="模块">{parameter.module}</td>
+                  <td data-label="模块" title={moduleLabel}>
+                    {moduleLabel}
+                  </td>
                   <td data-label="风险">
                     <span className={`risk-badge ${parameter.risk.toLowerCase()}`}>{RISK_LABEL[parameter.risk]}</span>
                   </td>

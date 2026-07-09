@@ -1,6 +1,8 @@
 import type { ParamAdminSearch } from "./hooks/useParamAdminSearch";
 import { getCoverage, type ParameterCoverage } from "./parameterAdminAnalytics";
 import type { PowerManagementParameterTemplate, PowerManagementProject } from "./powerManagementConfig";
+import { collectSubtreeModuleIds, type FlatModuleNode } from "@/domain/modules/moduleTree";
+import { templateModuleId } from "./parameterAdminLibrary";
 
 export const PARAMETER_COVERAGE_LABEL: Record<ParameterCoverage | "all", string> = {
   all: "全部",
@@ -12,13 +14,17 @@ export const PARAMETER_COVERAGE_LABEL: Record<ParameterCoverage | "all", string>
 export function filterParameterLibrary(
   parameters: readonly PowerManagementParameterTemplate[],
   projects: readonly PowerManagementProject[],
-  search: ParamAdminSearch
+  search: ParamAdminSearch,
+  moduleNodes: readonly FlatModuleNode[] = []
 ) {
   const riskToFilter = {
     High: "high",
     Medium: "medium",
     Low: "low"
   } as const;
+
+  const allowedModuleIds =
+    search.modules.length > 0 ? collectSubtreeModuleIds(moduleNodes, search.modules) : null;
 
   return parameters.filter((parameter) => {
     if (search.q) {
@@ -33,7 +39,7 @@ export function filterParameterLibrary(
       return false;
     }
 
-    if (search.modules.length > 0 && !search.modules.includes(parameter.module)) {
+    if (allowedModuleIds && !allowedModuleIds.has(templateModuleId(parameter))) {
       return false;
     }
 

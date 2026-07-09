@@ -1,7 +1,7 @@
 import { Info, Upload } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { listParameterModuleNames } from "./powerManagementConfig";
-import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "./parameterAdminLibrary";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
+import { buildParameterLibraryFromRecords, buildParameterModuleTree } from "./parameterAdminLibrary";
 import type { AppAction, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import type { PageProps } from "./app/routes";
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
@@ -17,7 +17,9 @@ import { ParameterImportWizard } from "./components/ParameterImportWizard/Parame
 import { UndoableToast } from "./components/UndoableToast";
 import { useTopBarActions } from "./components/layout";
 import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
+import { createParameterAdminClient } from "./infrastructure/http/parameterAdminClient";
 import { getCoverage } from "./parameterAdminAnalytics";
+import type { ParameterModuleDraft } from "./powerManagementConfig";
 
 function buildParameterAuditCenterPath(projectId: string) {
   const params = new URLSearchParams({ app: "parameter" });
@@ -41,10 +43,12 @@ export function ParameterAdminPage({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
   const [importWizardOpen, setImportWizardOpen] = useState(false);
+  const [adminModuleNodes, setAdminModuleNodes] = useState<FlatModuleNode[]>([]);
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
   const isApiMode = runtimeMode === "api";
+  const parameterAdminClient = useMemo(() => (isApiMode ? createParameterAdminClient() : null), [isApiMode]);
   const projects = state.configDraft.projects;
   const library = useMemo(() => {
     if (isApiMode) {
@@ -52,13 +56,89 @@ export function ParameterAdminPage({
     }
     return state.configDraft.parameterLibrary;
   }, [isApiMode, projects, state.configDraft.parameterLibrary, state.parameters]);
-  const modules = useMemo(() => {
-    if (isApiMode) {
-      return buildParameterModulesFromRecords(state.parameters, state.configDraft.parameterModules);
+  const moduleNodes = useMemo(() => {
+    if (isApiMode && adminModuleNodes.length > 0) {
+      return adminModuleNodes;
     }
-    return state.configDraft.parameterModules;
-  }, [isApiMode, state.configDraft.parameterModules, state.parameters]);
-  const moduleNames = useMemo(() => listParameterModuleNames(modules), [modules]);
+    return buildParameterModuleTree(state.parameters, state.configDraft.parameterModules);
+  }, [adminModuleNodes, isApiMode, state.configDraft.parameterModules, state.parameters]);
+
+  const reloadAdminModules = useCallback(async () => {
+    if (!parameterAdminClient) {
+      return;
+    }
+    const items = await parameterAdminClient.listModules();
+    setAdminModuleNodes(items);
+  }, [parameterAdminClient]);
+
+  useEffect(() => {
+    if (!parameterAdminClient) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    reloadAdminModules().catch(() => {
+      if (!cancelled) {
+        setAdminModuleNodes([]);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [parameterAdminClient, reloadAdminModules]);
+
+  const resolveModuleName = useCallback(
+    (moduleId: string) => moduleNodes.find((node) => node.id === moduleId)?.name ?? moduleId,
+    [moduleNodes]
+  );
+
+  const handleAddModule = async (module: ParameterModuleDraft, parentId?: string | null) => {
+    if (isApiMode && parameterAdminClient) {
+      await parameterAdminClient.createModule({
+        name: module.name,
+        description: module.description,
+        scope: module.scope,
+        parentId: parentId ?? null
+      });
+      await reloadAdminModules();
+      await parameterActions?.refresh();
+      return;
+    }
+    dispatch({ type: "ADD_PARAMETER_MODULE", module });
+  };
+
+  const handleUpdateModule = async (moduleId: string, patch: ParameterModuleDraft) => {
+    if (isApiMode && parameterAdminClient) {
+      await parameterAdminClient.updateModule(moduleId, {
+        name: patch.name,
+        description: patch.description,
+        scope: patch.scope
+      });
+      await reloadAdminModules();
+      await parameterActions?.refresh();
+      return;
+    }
+    dispatch({ type: "UPDATE_PARAMETER_MODULE", moduleName: resolveModuleName(moduleId), patch });
+  };
+
+  const handleMoveModule = async (moduleId: string, parentId: string | null) => {
+    if (isApiMode && parameterAdminClient) {
+      await parameterAdminClient.moveModule(moduleId, { parentId });
+      await reloadAdminModules();
+      await parameterActions?.refresh();
+    }
+  };
+
+  const handleDeleteModule = async (moduleId: string) => {
+    if (isApiMode && parameterAdminClient) {
+      await parameterAdminClient.deleteModule(moduleId);
+      await reloadAdminModules();
+      await parameterActions?.refresh();
+      return;
+    }
+    dispatch({ type: "DELETE_PARAMETER_MODULE", moduleName: resolveModuleName(moduleId) });
+  };
   const definitionParameter = library.find((parameter) => parameter.id === definitionDialogParameterId) ?? null;
   const valuesParameter = library.find((parameter) => parameter.id === valuesDialogParameterId) ?? null;
   const highRiskCount = library.filter((parameter) => parameter.risk === "High").length;
@@ -221,6 +301,7 @@ export function ParameterAdminPage({
           <ParameterLibraryTable
             parameters={library}
             projects={projects}
+            moduleNodes={moduleNodes}
             search={search}
             onUpdateSearch={updateSearch}
             onEditDefinition={setDefinitionDialogParameterId}
@@ -241,7 +322,7 @@ export function ParameterAdminPage({
       <CreateParameterDialog
         open={createDialogOpen}
         projects={projects}
-        modules={moduleNames}
+        moduleNodes={moduleNodes}
         existingParameters={library}
         onCancel={() => setCreateDialogOpen(false)}
         onConfirm={(draft) => {
@@ -251,12 +332,13 @@ export function ParameterAdminPage({
       />
       <ModuleManagementDialog
         open={moduleDialogOpen}
-        modules={modules}
+        moduleNodes={moduleNodes}
         parameters={library}
         onClose={() => setModuleDialogOpen(false)}
-        onAddModule={(module) => dispatch({ type: "ADD_PARAMETER_MODULE", module })}
-        onUpdateModule={(moduleName, patch) => dispatch({ type: "UPDATE_PARAMETER_MODULE", moduleName, patch })}
-        onDeleteModule={(moduleName) => dispatch({ type: "DELETE_PARAMETER_MODULE", moduleName })}
+        onAddModule={handleAddModule}
+        onUpdateModule={handleUpdateModule}
+        onMoveModule={handleMoveModule}
+        onDeleteModule={handleDeleteModule}
         onEditParameterDefinition={(parameterId) => {
           setModuleDialogOpen(false);
           setDefinitionDialogParameterId(parameterId);
@@ -277,7 +359,7 @@ export function ParameterAdminPage({
         <ParameterDefinitionDialog
           parameter={definitionParameter}
           projects={projects}
-          modules={moduleNames}
+          moduleNodes={moduleNodes}
           allParameters={library}
           onMetadataChange={(patch) => updateMetadata(definitionParameter.id, patch)}
           onRecommendedValueChange={(value) => updateRecommendedValue(definitionParameter.id, value)}

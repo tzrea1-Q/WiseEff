@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParamAdminSearch } from "../hooks/useParamAdminSearch";
+import { buildParameterModuleTree } from "../parameterAdminLibrary";
 import { initialState } from "../mockData";
 import { ParameterLibraryList } from "./ParameterLibraryList";
 
@@ -17,10 +18,14 @@ const baseSearch: ParamAdminSearch = {
   sort: "updatedAt-desc"
 };
 
+const moduleNodes = buildParameterModuleTree([], initialState.configDraft.parameterModules);
+const chargingModuleId = moduleNodes.find((node) => node.name === "Charging Policy")?.id ?? "legacy:Charging Policy";
+
 function defaultProps(overrides: Partial<Parameters<typeof ParameterLibraryList>[0]> = {}) {
   return {
     parameters: initialState.configDraft.parameterLibrary,
     projects: initialState.configDraft.projects,
+    moduleNodes,
     selectedId: undefined,
     onSelect: vi.fn(),
     search: baseSearch,
@@ -91,7 +96,7 @@ describe("ParameterLibraryList search and risk filters", () => {
   });
 
   it("filters by selected modules", () => {
-    render(<ParameterLibraryList {...defaultProps({ search: { ...baseSearch, modules: ["Charging Policy"] } })} />);
+    render(<ParameterLibraryList {...defaultProps({ search: { ...baseSearch, modules: [chargingModuleId] } })} />);
 
     const rows = getLibraryRows();
     expect(rows.length).toBeGreaterThan(0);
@@ -105,7 +110,7 @@ describe("ParameterLibraryList search and risk filters", () => {
     fireEvent.click(screen.getByRole("button", { name: /模块/ }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Charging Policy" }));
 
-    expect(props.onUpdateSearch).toHaveBeenCalledWith({ modules: ["Charging Policy"] });
+    expect(props.onUpdateSearch).toHaveBeenCalledWith({ modules: [chargingModuleId] });
   });
 
   it("filters by coverage", () => {
@@ -149,7 +154,7 @@ describe("ParameterLibraryList search and risk filters", () => {
 
   it("resets filters when clear filters is clicked", () => {
     const props = defaultProps({
-      search: { ...baseSearch, q: "xx", risk: "high", modules: ["Charging Policy"], coverage: "orphan" }
+      search: { ...baseSearch, q: "xx", risk: "high", modules: [chargingModuleId], coverage: "orphan" }
     });
     render(<ParameterLibraryList {...props} />);
 
@@ -158,11 +163,12 @@ describe("ParameterLibraryList search and risk filters", () => {
     expect(props.onUpdateSearch).toHaveBeenCalledWith(expect.objectContaining({ q: "", risk: "all", modules: [], coverage: "all" }));
   });
 
-  it("sorts by name ascending", () => {
+  it("sorts by name ascending within each module group", () => {
     render(<ParameterLibraryList {...defaultProps({ search: { ...baseSearch, sort: "name-asc" } })} />);
 
-    const names = getLibraryRows().map((row) => row.textContent?.match(/[a-z_]+/)?.[0] ?? "");
-
-    expect(names).toEqual([...names].sort());
+    document.querySelectorAll(".param-group-list").forEach((group) => {
+      const names = Array.from(group.querySelectorAll(".library-row-button strong")).map((element) => element.textContent ?? "");
+      expect(names).toEqual([...names].sort());
+    });
   });
 });

@@ -1,6 +1,10 @@
 import { CircleX, Plus, Search } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
-import type { ParameterModuleDraft, PowerManagementParameterModule, PowerManagementParameterTemplate } from "@/powerManagementConfig";
+import type { FlatModuleNode, ModuleTreeNode } from "@/domain/modules/moduleTree";
+import { buildModuleTree } from "@/domain/modules/moduleTree";
+import { templateModuleId } from "@/parameterAdminLibrary";
+import type { ParameterModuleDraft, PowerManagementParameterTemplate } from "@/powerManagementConfig";
+import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import { ModuleDefinitionForm, canSubmitModuleDraft } from "./ModuleDefinitionForm";
 import { ModuleEditDialog } from "./ModuleEditDialog";
 
@@ -10,64 +14,211 @@ const emptyModuleDraft = (): ParameterModuleDraft => ({
   scope: ""
 });
 
-function countParametersByModule(parameters: readonly PowerManagementParameterTemplate[], moduleName: string) {
-  return parameters.filter((parameter) => parameter.module === moduleName).length;
+function countParametersByModule(parameters: readonly PowerManagementParameterTemplate[], moduleId: string) {
+  return parameters.filter((parameter) => templateModuleId(parameter) === moduleId).length;
 }
 
-function parametersInModule(parameters: readonly PowerManagementParameterTemplate[], moduleName: string) {
+function parametersInModule(parameters: readonly PowerManagementParameterTemplate[], moduleId: string) {
   return parameters
-    .filter((parameter) => parameter.module === moduleName)
+    .filter((parameter) => templateModuleId(parameter) === moduleId)
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function moduleMatchesQuery(module: PowerManagementParameterModule, query: string) {
+function moduleMatchesQuery(node: FlatModuleNode, query: string) {
   if (!query) {
     return true;
   }
-  const haystack = [module.name, module.description, module.scope].join(" ").toLowerCase();
+  const haystack = [node.name, node.description ?? "", node.scope ?? ""].join(" ").toLowerCase();
   return haystack.includes(query);
+}
+
+function siblingNames(moduleNodes: readonly FlatModuleNode[], parentId: string | null, excludeId?: string) {
+  return moduleNodes
+    .filter((node) => (node.parentId ?? null) === parentId && node.id !== excludeId)
+    .map((node) => node.name);
+}
+
+function filterTreeNodes(tree: readonly ModuleTreeNode[], query: string): ModuleTreeNode[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return [...tree];
+  }
+
+  const walk = (node: ModuleTreeNode): ModuleTreeNode | null => {
+    const children = node.children.map(walk).filter((item): item is ModuleTreeNode => item !== null);
+    if (moduleMatchesQuery(node, normalized) || children.length > 0) {
+      return { ...node, children };
+    }
+    return null;
+  };
+
+  return tree.map(walk).filter((item): item is ModuleTreeNode => item !== null);
+}
+
+function ModuleTreeRows({
+  node,
+  depth,
+  moduleNodes,
+  parameters,
+  expandedModuleId,
+  onToggleExpanded,
+  onEdit,
+  onDelete,
+  onAddChild,
+  onMove,
+  onEditParameterDefinition
+}: {
+  node: ModuleTreeNode;
+  depth: number;
+  moduleNodes: readonly FlatModuleNode[];
+  parameters: readonly PowerManagementParameterTemplate[];
+  expandedModuleId: string | null;
+  onToggleExpanded: (moduleId: string) => void;
+  onEdit: (moduleId: string) => void;
+  onDelete: (moduleId: string) => void;
+  onAddChild: (parentId: string) => void;
+  onMove: (moduleId: string) => void;
+  onEditParameterDefinition: (parameterId: string) => void;
+}) {
+  const parameterCount = countParametersByModule(parameters, node.id);
+  const moduleParameters = parametersInModule(parameters, node.id);
+
+  return (
+    <Fragment key={node.id}>
+      <tr>
+        <td>
+          <div className="param-admin-module-name-cell" style={{ paddingLeft: `${depth * 16}px` }}>
+            <span className="param-admin-module-name">{node.name}</span>
+            {node.description ? <span className="param-admin-module-desc">{node.description}</span> : null}
+          </div>
+        </td>
+        <td>
+          <button
+            className="param-admin-module-count-button"
+            type="button"
+            disabled={parameterCount === 0}
+            aria-expanded={expandedModuleId === node.id}
+            onClick={() => onToggleExpanded(node.id)}
+          >
+            {parameterCount}
+          </button>
+        </td>
+        <td>
+          <div className="param-admin-module-row-actions">
+            <button className="button subtle" type="button" onClick={() => onAddChild(node.id)}>
+              添加子模块
+            </button>
+            <button
+              className="button subtle"
+              type="button"
+              disabled={parameterCount === 0}
+              aria-expanded={expandedModuleId === node.id}
+              onClick={() => onToggleExpanded(node.id)}
+            >
+              查看参数
+            </button>
+            <button className="button subtle" type="button" onClick={() => onEdit(node.id)}>
+              修改
+            </button>
+            <button className="button subtle" type="button" onClick={() => onMove(node.id)}>
+              移动
+            </button>
+            <button
+              className="button ghost danger"
+              type="button"
+              disabled={parameterCount > 0 || node.children.length > 0}
+              title={parameterCount > 0 || node.children.length > 0 ? "仍有子模块或参数引用，无法删除" : undefined}
+              onClick={() => onDelete(node.id)}
+            >
+              删除
+            </button>
+          </div>
+        </td>
+      </tr>
+      {expandedModuleId === node.id ? (
+        <tr className="param-admin-module-parameters-row">
+          <td colSpan={3}>
+            <div className="param-admin-module-parameters" aria-label={`${node.name} 参数列表`}>
+              <div className="param-admin-module-parameters-head">
+                <strong>{node.name}</strong>
+                <span>{parameterCount} 个参数</span>
+              </div>
+              <ul className="param-admin-module-parameter-list">
+                {moduleParameters.map((parameter) => (
+                  <li key={parameter.id}>
+                    <div className="param-admin-module-parameter-meta">
+                      <code>{parameter.name}</code>
+                      {parameter.description ? <span>{parameter.description}</span> : null}
+                    </div>
+                    <button
+                      className="button subtle"
+                      type="button"
+                      onClick={() => onEditParameterDefinition(parameter.id)}
+                    >
+                      修改定义
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+      {node.children.map((child) => (
+        <ModuleTreeRows
+          key={child.id}
+          depth={depth + 1}
+          expandedModuleId={expandedModuleId}
+          moduleNodes={moduleNodes}
+          node={child}
+          parameters={parameters}
+          onAddChild={onAddChild}
+          onDelete={onDelete}
+          onEdit={onEdit}
+          onMove={onMove}
+          onEditParameterDefinition={onEditParameterDefinition}
+          onToggleExpanded={onToggleExpanded}
+        />
+      ))}
+    </Fragment>
+  );
 }
 
 export function ModuleManagementDialog({
   open,
-  modules,
+  moduleNodes,
   parameters,
   onClose,
   onAddModule,
   onUpdateModule,
+  onMoveModule,
   onDeleteModule,
   onEditParameterDefinition
 }: {
   open: boolean;
-  modules: readonly PowerManagementParameterModule[];
+  moduleNodes: readonly FlatModuleNode[];
   parameters: readonly PowerManagementParameterTemplate[];
   onClose: () => void;
-  onAddModule: (module: ParameterModuleDraft) => void;
-  onUpdateModule: (moduleName: string, patch: ParameterModuleDraft) => void;
-  onDeleteModule: (moduleName: string) => void;
+  onAddModule: (module: ParameterModuleDraft, parentId?: string | null) => void;
+  onUpdateModule: (moduleId: string, patch: ParameterModuleDraft) => void;
+  onMoveModule?: (moduleId: string, parentId: string | null) => void;
+  onDeleteModule: (moduleId: string) => void;
   onEditParameterDefinition: (parameterId: string) => void;
 }) {
   const [moduleQuery, setModuleQuery] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
+  const [addParentId, setAddParentId] = useState<string | null>(null);
   const [addDraft, setAddDraft] = useState<ParameterModuleDraft>(emptyModuleDraft());
-  const [editingModuleName, setEditingModuleName] = useState<string | null>(null);
-  const [expandedModule, setExpandedModule] = useState<string | null>(null);
+  const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
+  const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
+  const [moveModuleId, setMoveModuleId] = useState<string | null>(null);
+  const [moveParentId, setMoveParentId] = useState<string>("");
   const [formError, setFormError] = useState("");
 
-  const moduleNames = useMemo(() => modules.map((module) => module.name), [modules]);
-  const editingModule = modules.find((module) => module.name === editingModuleName) ?? null;
-
-  const moduleRows = useMemo(() => {
-    const query = moduleQuery.trim().toLowerCase();
-    return modules
-      .filter((module) => moduleMatchesQuery(module, query))
-      .map((module) => ({
-        module,
-        parameterCount: countParametersByModule(parameters, module.name),
-        parameters: parametersInModule(parameters, module.name)
-      }))
-      .sort((left, right) => left.module.name.localeCompare(right.module.name));
-  }, [modules, moduleQuery, parameters]);
+  const moduleTree = useMemo(() => buildModuleTree(moduleNodes), [moduleNodes]);
+  const filteredTree = useMemo(() => filterTreeNodes(moduleTree, moduleQuery), [moduleQuery, moduleTree]);
+  const editingModule = moduleNodes.find((module) => module.id === editingModuleId) ?? null;
+  const moveTarget = moduleNodes.find((module) => module.id === moveModuleId) ?? null;
 
   useEffect(() => {
     if (!open) {
@@ -75,55 +226,58 @@ export function ModuleManagementDialog({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !editingModuleName) {
+      if (event.key === "Escape" && !editingModuleId && !moveModuleId) {
         onClose();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [editingModuleName, onClose, open]);
+  }, [editingModuleId, moveModuleId, onClose, open]);
 
   useEffect(() => {
     if (open) {
       setModuleQuery("");
       setShowAddForm(false);
+      setAddParentId(null);
       setAddDraft(emptyModuleDraft());
-      setEditingModuleName(null);
-      setExpandedModule(null);
+      setEditingModuleId(null);
+      setExpandedModuleId(null);
+      setMoveModuleId(null);
+      setMoveParentId("");
       setFormError("");
     }
   }, [open]);
-
-  useEffect(() => {
-    if (expandedModule && !moduleRows.some((row) => row.module.name === expandedModule)) {
-      setExpandedModule(null);
-    }
-  }, [expandedModule, moduleRows]);
 
   if (!open) {
     return null;
   }
 
-  const canCreate = canSubmitModuleDraft(addDraft, moduleNames);
+  const canCreate = canSubmitModuleDraft(addDraft, siblingNames(moduleNodes, addParentId));
 
   const handleAddModule = () => {
     if (!canCreate) {
       setFormError("请填写有效的模块名称");
       return;
     }
-    onAddModule({
-      name: addDraft.name.trim(),
-      description: addDraft.description.trim(),
-      scope: addDraft.scope.trim()
-    });
+    onAddModule(
+      {
+        name: addDraft.name.trim(),
+        description: addDraft.description.trim(),
+        scope: addDraft.scope.trim()
+      },
+      addParentId
+    );
     setAddDraft(emptyModuleDraft());
     setFormError("");
     setShowAddForm(false);
+    setAddParentId(null);
   };
 
-  const toggleExpanded = (moduleName: string) => {
-    setExpandedModule((current) => (current === moduleName ? null : moduleName));
+  const startAddChild = (parentId: string) => {
+    setAddParentId(parentId);
+    setShowAddForm(true);
+    setAddDraft(emptyModuleDraft());
     setFormError("");
   };
 
@@ -134,7 +288,7 @@ export function ModuleManagementDialog({
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">参数库治理</span>
             <h2 id="module-management-title">模块管理</h2>
-            <p>维护模块分类与元信息。修改模块名称会同步更新共享参数库归属；删除仅适用于未被参数引用的模块。</p>
+            <p>维护多层级模块分类。可添加子模块、移动、重命名；删除仅适用于无子节点且无参数引用的模块。</p>
           </div>
           <button type="button" className="audit-dialog-close-icon" onClick={onClose} aria-label="关闭">
             <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
@@ -156,21 +310,27 @@ export function ModuleManagementDialog({
             <button
               className="button subtle"
               type="button"
-              aria-expanded={showAddForm}
+              aria-expanded={showAddForm && addParentId === null}
               onClick={() => {
+                setAddParentId(null);
                 setShowAddForm((current) => !current);
                 setFormError("");
               }}
             >
               <Plus size={16} aria-hidden="true" />
-              新增模块
+              新增根模块
             </button>
           </div>
 
           {showAddForm ? (
             <div className="param-admin-module-add param-admin-module-add--inline">
+              {addParentId ? (
+                <p className="param-admin-module-add-context">
+                  在「{moduleNodes.find((node) => node.id === addParentId)?.name ?? addParentId}」下创建子模块
+                </p>
+              ) : null}
               <ModuleDefinitionForm
-                existingNames={moduleNames}
+                existingNames={siblingNames(moduleNodes, addParentId)}
                 module={addDraft}
                 onChange={(patch) => {
                   setAddDraft((current) => ({ ...current, ...patch }));
@@ -188,6 +348,7 @@ export function ModuleManagementDialog({
                   type="button"
                   onClick={() => {
                     setShowAddForm(false);
+                    setAddParentId(null);
                     setAddDraft(emptyModuleDraft());
                     setFormError("");
                   }}
@@ -198,12 +359,44 @@ export function ModuleManagementDialog({
             </div>
           ) : null}
 
+          {moveTarget && onMoveModule ? (
+            <div className="param-admin-module-move">
+              <p>
+                移动模块「{moveTarget.name}」到：
+              </p>
+              <ModuleTreeSelect
+                label="目标父模块"
+                mode="single"
+                nodes={moduleNodes.filter((node) => node.id !== moveTarget.id && !node.path.startsWith(`${moveTarget.path}/`))}
+                placeholder="根级（无父模块）"
+                value={moveParentId}
+                onChange={(next) => setMoveParentId(typeof next === "string" ? next : next[0] ?? "")}
+              />
+              <div className="param-admin-module-add-actions">
+                <button
+                  className="button primary"
+                  type="button"
+                  onClick={() => {
+                    onMoveModule(moveTarget.id, moveParentId || null);
+                    setMoveModuleId(null);
+                    setMoveParentId("");
+                  }}
+                >
+                  确认移动
+                </button>
+                <button className="button ghost" type="button" onClick={() => setMoveModuleId(null)}>
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {formError ? <p className="field-error param-admin-module-error">{formError}</p> : null}
 
           <div className="param-admin-module-table-wrap" aria-label="模块列表">
-            {moduleRows.length === 0 ? (
+            {filteredTree.length === 0 ? (
               <p className="param-admin-module-empty">
-                {modules.length === 0 ? "还没有模块，点击「新增模块」创建。" : "没有匹配的模块，请调整筛选条件。"}
+                {moduleNodes.length === 0 ? "还没有模块，点击「新增根模块」创建。" : "没有匹配的模块，请调整筛选条件。"}
               </p>
             ) : (
               <table className="param-admin-module-table">
@@ -220,82 +413,21 @@ export function ModuleManagementDialog({
                   </tr>
                 </thead>
                 <tbody>
-                  {moduleRows.map((row) => (
-                    <Fragment key={row.module.name}>
-                      <tr>
-                        <td>
-                          <div className="param-admin-module-name-cell">
-                            <span className="param-admin-module-name">{row.module.name}</span>
-                            {row.module.description ? <span className="param-admin-module-desc">{row.module.description}</span> : null}
-                          </div>
-                        </td>
-                        <td>
-                          <button
-                            className="param-admin-module-count-button"
-                            type="button"
-                            disabled={row.parameterCount === 0}
-                            aria-expanded={expandedModule === row.module.name}
-                            onClick={() => toggleExpanded(row.module.name)}
-                          >
-                            {row.parameterCount}
-                          </button>
-                        </td>
-                        <td>
-                          <div className="param-admin-module-row-actions">
-                            <button
-                              className="button subtle"
-                              type="button"
-                              disabled={row.parameterCount === 0}
-                              aria-expanded={expandedModule === row.module.name}
-                              onClick={() => toggleExpanded(row.module.name)}
-                            >
-                              查看参数
-                            </button>
-                            <button className="button subtle" type="button" onClick={() => setEditingModuleName(row.module.name)}>
-                              修改
-                            </button>
-                            <button
-                              className="button ghost danger"
-                              type="button"
-                              disabled={row.parameterCount > 0}
-                              title={row.parameterCount > 0 ? "仍有参数引用该模块，无法删除" : undefined}
-                              onClick={() => onDeleteModule(row.module.name)}
-                            >
-                              删除
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {expandedModule === row.module.name ? (
-                        <tr className="param-admin-module-parameters-row">
-                          <td colSpan={3}>
-                            <div className="param-admin-module-parameters" aria-label={`${row.module.name} 参数列表`}>
-                              <div className="param-admin-module-parameters-head">
-                                <strong>{row.module.name}</strong>
-                                <span>{row.parameterCount} 个参数</span>
-                              </div>
-                              <ul className="param-admin-module-parameter-list">
-                                {row.parameters.map((parameter) => (
-                                  <li key={parameter.id}>
-                                    <div className="param-admin-module-parameter-meta">
-                                      <code>{parameter.name}</code>
-                                      {parameter.description ? <span>{parameter.description}</span> : null}
-                                    </div>
-                                    <button
-                                      className="button subtle"
-                                      type="button"
-                                      onClick={() => onEditParameterDefinition(parameter.id)}
-                                    >
-                                      修改定义
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
+                  {filteredTree.map((node) => (
+                    <ModuleTreeRows
+                      key={node.id}
+                      depth={0}
+                      expandedModuleId={expandedModuleId}
+                      moduleNodes={moduleNodes}
+                      node={node}
+                      parameters={parameters}
+                      onAddChild={startAddChild}
+                      onDelete={onDeleteModule}
+                      onEdit={setEditingModuleId}
+                      onMove={setMoveModuleId}
+                      onEditParameterDefinition={onEditParameterDefinition}
+                      onToggleExpanded={(moduleId) => setExpandedModuleId((current) => (current === moduleId ? null : moduleId))}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -312,15 +444,12 @@ export function ModuleManagementDialog({
 
       {editingModule ? (
         <ModuleEditDialog
-          existingNames={moduleNames}
+          existingNames={siblingNames(moduleNodes, editingModule.parentId ?? null, editingModule.id)}
           module={editingModule}
-          onCancel={() => setEditingModuleName(null)}
+          onCancel={() => setEditingModuleId(null)}
           onSave={(patch) => {
-            onUpdateModule(editingModule.name, patch);
-            if (expandedModule === editingModule.name && patch.name !== editingModule.name) {
-              setExpandedModule(patch.name);
-            }
-            setEditingModuleName(null);
+            onUpdateModule(editingModule.id, patch);
+            setEditingModuleId(null);
           }}
         />
       ) : null}

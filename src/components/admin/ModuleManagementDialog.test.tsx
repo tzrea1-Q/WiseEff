@@ -1,11 +1,14 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildParameterModuleTree } from "@/parameterAdminLibrary";
 import { initialState } from "@/mockData";
 import { ModuleManagementDialog } from "./ModuleManagementDialog";
 
 afterEach(() => {
   cleanup();
 });
+
+const moduleNodes = buildParameterModuleTree([], initialState.configDraft.parameterModules);
 
 describe("ModuleManagementDialog", () => {
   it("lists modules and dispatches add, update, and delete actions", () => {
@@ -16,7 +19,7 @@ describe("ModuleManagementDialog", () => {
     render(
       <ModuleManagementDialog
         open
-        modules={initialState.configDraft.parameterModules}
+        moduleNodes={moduleNodes}
         parameters={initialState.configDraft.parameterLibrary}
         onClose={vi.fn()}
         onAddModule={onAddModule}
@@ -29,15 +32,18 @@ describe("ModuleManagementDialog", () => {
     expect(screen.getByRole("dialog", { name: "模块管理" })).toBeInTheDocument();
     expect(screen.getByText("Charging Policy")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "新增模块" }));
+    fireEvent.click(screen.getByRole("button", { name: "新增根模块" }));
     fireEvent.change(screen.getByLabelText("模块名称"), { target: { value: "Custom Power" } });
     fireEvent.change(screen.getByLabelText("模块展示描述"), { target: { value: "自定义电源模块" } });
     fireEvent.click(screen.getByRole("button", { name: "创建" }));
-    expect(onAddModule).toHaveBeenCalledWith({
-      name: "Custom Power",
-      description: "自定义电源模块",
-      scope: ""
-    });
+    expect(onAddModule).toHaveBeenCalledWith(
+      {
+        name: "Custom Power",
+        description: "自定义电源模块",
+        scope: ""
+      },
+      null
+    );
 
     const standbyRow = screen.getByText("Standby Power").closest("tr");
     expect(standbyRow).not.toBeNull();
@@ -46,7 +52,9 @@ describe("ModuleManagementDialog", () => {
     fireEvent.change(within(editDialog).getByLabelText("模块名称"), { target: { value: "Standby Energy" } });
     fireEvent.change(within(editDialog).getByLabelText("模块展示描述"), { target: { value: "待机能耗治理" } });
     fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
-    expect(onUpdateModule).toHaveBeenCalledWith("Standby Power", {
+    const standbyModule = moduleNodes.find((module) => module.name === "Standby Power");
+    expect(standbyModule).toBeDefined();
+    expect(onUpdateModule).toHaveBeenCalledWith(standbyModule!.id, {
       name: "Standby Energy",
       description: "待机能耗治理",
       scope: "待机场景功耗治理"
@@ -63,7 +71,7 @@ describe("ModuleManagementDialog", () => {
     render(
       <ModuleManagementDialog
         open
-        modules={initialState.configDraft.parameterModules}
+        moduleNodes={moduleNodes}
         parameters={initialState.configDraft.parameterLibrary}
         onClose={vi.fn()}
         onAddModule={vi.fn()}
