@@ -466,6 +466,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "DebugNodeModuleResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "debugging.admin.moveModule": {
+    summary: "Move debug node module to a new parent",
+    tags: ["debugging"],
+    requestBody: "MoveDebugNodeModuleRequest",
+    responseBody: "DebugNodeModuleResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "debugging.admin.deleteModule": {
     summary: "Delete debug node module registry entry",
     tags: ["debugging"],

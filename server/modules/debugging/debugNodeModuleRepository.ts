@@ -355,3 +355,43 @@ export function buildDebugNodeModuleSubtreeFilter(
   values.push(moduleId);
   return `${debugNodeModuleIdColumn} = $${values.length}`;
 }
+
+export function buildDebugNodeModuleNameSubtreeFilter(
+  values: unknown[],
+  moduleId: string,
+  includeDescendants: boolean,
+  moduleNameColumn = "module",
+  organizationIdColumn = "organization_id"
+) {
+  if (includeDescendants) {
+    values.push(moduleId);
+    const moduleIdPlaceholder = `$${values.length}`;
+    return `
+      exists (
+        select 1
+        from debug_node_modules dm_sel
+        inner join debug_node_modules dm_node
+          on dm_node.organization_id = ${organizationIdColumn}
+          and dm_node.name = ${moduleNameColumn}
+        where dm_sel.id = ${moduleIdPlaceholder}
+          and dm_sel.organization_id = ${organizationIdColumn}
+          and (
+            dm_node.id = dm_sel.id
+            or dm_node.path like dm_sel.path || '/%'
+          )
+      )
+    `;
+  }
+
+  values.push(moduleId);
+  const moduleIdPlaceholder = `$${values.length}`;
+  return `
+    exists (
+      select 1
+      from debug_node_modules dm_leaf
+      where dm_leaf.id = ${moduleIdPlaceholder}
+        and dm_leaf.organization_id = ${organizationIdColumn}
+        and dm_leaf.name = ${moduleNameColumn}
+    )
+  `;
+}

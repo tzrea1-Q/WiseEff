@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
+import { buildDebugNodeModuleNameSubtreeFilter } from "./debugNodeModuleRepository";
 import type {
   DebugDeviceRecord,
   DebugDeviceLeaseRecord,
@@ -456,13 +457,26 @@ export async function getDebugDevice(
 
 export async function listDebugParameters(
   db: Queryable,
-  input: { organizationId: string; module?: string; risk?: string[]; includeArchived?: boolean }
+  input: {
+    organizationId: string;
+    module?: string;
+    moduleId?: string;
+    includeDescendants?: boolean;
+    risk?: string[];
+    includeArchived?: boolean;
+  }
 ): Promise<DebugParameterRecord[]> {
   const values: unknown[] = [input.organizationId];
   const where = ["organization_id = $1"];
 
   if (input.module) {
     addCondition(where, values, (placeholder) => `module = ${placeholder}`, input.module);
+  }
+
+  if (input.moduleId) {
+    where.push(
+      buildDebugNodeModuleNameSubtreeFilter(values, input.moduleId, input.includeDescendants !== false)
+    );
   }
   if (input.risk?.length) {
     addCondition(where, values, (placeholder) => `risk = any(${placeholder}::text[])`, input.risk);

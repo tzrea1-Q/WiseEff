@@ -25,6 +25,7 @@ import {
   debugAdminModuleParamsSchema,
   patchDebugNodeAdminBodySchema,
   patchDebugNodeModuleAdminBodySchema,
+  moveDebugNodeModuleBodySchema,
   patchDebugParameterAdminBodySchema,
   readNodeBodySchema,
   rollbackSnapshotBodySchema,
@@ -293,25 +294,39 @@ export function registerDebuggingRoutes(
     return { status: 201, body: { item } };
   });
 
-  router.patch("/api/v1/debugging/admin/modules/:moduleName", async (request) => {
+  router.patch("/api/v1/debugging/admin/modules/:moduleId", async (request) => {
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(debugAdminModuleParamsSchema, request.params);
     const body = parseWithSchema(patchDebugNodeModuleAdminBodySchema, request.body);
     const item = await service.updateAdminDebugModule(
       auth,
-      { moduleName: params.moduleName, ...body },
+      { moduleId: params.moduleId, ...body },
       { requestId: request.requestId }
     );
 
     return { status: 200, body: { item } };
   });
 
-  router.delete("/api/v1/debugging/admin/modules/:moduleName", async (request) => {
+  router.post("/api/v1/debugging/admin/modules/:moduleId/move", async (request) => {
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(debugAdminModuleParamsSchema, request.params);
-    await service.deleteAdminDebugModule(auth, params.moduleName, { requestId: request.requestId });
+    const body = parseWithSchema(moveDebugNodeModuleBodySchema, request.body, "Invalid debug module move payload.");
+    const item = await service.moveAdminDebugModule(
+      auth,
+      { moduleId: params.moduleId, parentId: body.parentId },
+      { requestId: request.requestId }
+    );
+
+    return { status: 200, body: { item } };
+  });
+
+  router.delete("/api/v1/debugging/admin/modules/:moduleId", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminModuleParamsSchema, request.params);
+    await service.deleteAdminDebugModule(auth, params.moduleId, { requestId: request.requestId });
 
     return { status: 204, body: null };
   });

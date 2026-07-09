@@ -165,6 +165,29 @@ const debugNodeColumns = `
 
 const debugNodeOnlyColumns = debugNodeColumns.replace(/\bn\./g, "");
 
+const debugNodeReturningColumns = `
+  id,
+  organization_id,
+  name,
+  description,
+  detailed_description,
+  write_format_example,
+  write_format_hint,
+  module,
+  debug_node_module_id,
+  null::text as module_path,
+  value_kind,
+  value_format,
+  normalization_mode,
+  max_value_bytes,
+  enabled,
+  archived_at,
+  archived_by,
+  archive_reason,
+  created_at,
+  updated_at
+`;
+
 const debugRuntimeNodeColumns = `
   ${debugNodeColumns},
   b.protocol,
@@ -303,6 +326,7 @@ export async function createDebugNode(
     writeFormatExample?: string;
     writeFormatHint?: string;
     module?: string;
+    moduleId?: string | null;
     valueKind?: DebugValueKind;
     valueFormat?: DebugValueFormat;
     normalizationMode?: DebugNormalizationMode;
@@ -314,11 +338,11 @@ export async function createDebugNode(
     `
     insert into debug_nodes (
       id, organization_id, name, description, detailed_description,
-      write_format_example, write_format_hint, module,
+      write_format_example, write_format_hint, module, debug_node_module_id,
       value_kind, value_format, normalization_mode, max_value_bytes, enabled
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-    returning ${debugNodeOnlyColumns}
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    returning ${debugNodeReturningColumns}
     `,
     [
       randomUUID(),
@@ -329,6 +353,7 @@ export async function createDebugNode(
       input.writeFormatExample ?? "",
       input.writeFormatHint ?? "",
       input.module ?? "",
+      input.moduleId ?? null,
       input.valueKind ?? DEBUG_VALUE_KIND_SCALAR,
       input.valueFormat ?? DEBUG_VALUE_FORMAT_RAW,
       input.normalizationMode ?? DEBUG_NORMALIZATION_MODE_TRIM,
@@ -351,6 +376,7 @@ export async function updateDebugNode(
     writeFormatExample?: string;
     writeFormatHint?: string;
     module?: string;
+    moduleId?: string | null;
     valueKind?: DebugValueKind;
     valueFormat?: DebugValueFormat;
     normalizationMode?: DebugNormalizationMode;
@@ -371,17 +397,18 @@ export async function updateDebugNode(
       write_format_example = coalesce($6, write_format_example),
       write_format_hint = coalesce($7, write_format_hint),
       module = coalesce($8, module),
-      value_kind = coalesce($9, value_kind),
-      value_format = coalesce($10, value_format),
-      normalization_mode = coalesce($11, normalization_mode),
-      max_value_bytes = coalesce($12, max_value_bytes),
-      enabled = coalesce($13, enabled),
-      archived_at = coalesce($14, archived_at),
-      archived_by = coalesce($15, archived_by),
-      archive_reason = coalesce($16, archive_reason),
+      debug_node_module_id = coalesce($9, debug_node_module_id),
+      value_kind = coalesce($10, value_kind),
+      value_format = coalesce($11, value_format),
+      normalization_mode = coalesce($12, normalization_mode),
+      max_value_bytes = coalesce($13, max_value_bytes),
+      enabled = coalesce($14, enabled),
+      archived_at = coalesce($15, archived_at),
+      archived_by = coalesce($16, archived_by),
+      archive_reason = coalesce($17, archive_reason),
       updated_at = now()
     where organization_id = $1 and id = $2
-    returning ${debugNodeOnlyColumns}
+    returning ${debugNodeReturningColumns}
     `,
     [
       input.organizationId,
@@ -392,6 +419,7 @@ export async function updateDebugNode(
       input.writeFormatExample ?? null,
       input.writeFormatHint ?? null,
       input.module ?? null,
+      input.moduleId ?? null,
       input.valueKind ?? null,
       input.valueFormat ?? null,
       input.normalizationMode ?? null,
@@ -559,6 +587,7 @@ export async function createDebugNodeModule(
     description?: string;
     scope?: string;
     parentId?: string | null;
+    sortOrder?: number;
   }
 ) {
   return createDebugNodeModuleRecord(db, input);
@@ -568,27 +597,14 @@ export async function updateDebugNodeModule(
   db: Queryable,
   input: {
     organizationId: string;
-    moduleName: string;
+    moduleId: string;
     name?: string;
     description?: string;
     scope?: string;
+    sortOrder?: number;
   }
 ) {
-  const current = await getDebugNodeModuleByName(db, {
-    organizationId: input.organizationId,
-    name: input.moduleName
-  });
-  if (!current) {
-    return null;
-  }
-
-  return updateDebugNodeModuleRecord(db, {
-    organizationId: input.organizationId,
-    moduleId: current.id,
-    name: input.name,
-    description: input.description,
-    scope: input.scope
-  });
+  return updateDebugNodeModuleRecord(db, input);
 }
 
 export async function renameDebugNodeModuleReferences(

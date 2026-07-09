@@ -262,14 +262,21 @@ export const routeManifest = [
   {
     id: "debugging.admin.updateModule",
     method: "PATCH",
-    path: "/api/v1/debugging/admin/modules/:moduleName",
+    path: "/api/v1/debugging/admin/modules/:moduleId",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
+    id: "debugging.admin.moveModule",
+    method: "POST",
+    path: "/api/v1/debugging/admin/modules/:moduleId/move",
     module: "debugging",
     stability: "mvp"
   },
   {
     id: "debugging.admin.deleteModule",
     method: "DELETE",
-    path: "/api/v1/debugging/admin/modules/:moduleName",
+    path: "/api/v1/debugging/admin/modules/:moduleId",
     module: "debugging",
     stability: "mvp"
   },

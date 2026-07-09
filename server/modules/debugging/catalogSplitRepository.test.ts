@@ -104,6 +104,7 @@ describe("catalogSplitRepository", () => {
       "",
       "",
       "",
+      null,
       "scalar",
       "raw",
       "trim",
@@ -290,7 +291,7 @@ describe("catalogSplitRepository", () => {
     const nodeCount = await countDebugNodesForModule(db, { organizationId: "org-1", moduleName: "Battery" });
     await updateDebugNodeModule(db, {
       organizationId: "org-1",
-      moduleName: "Battery",
+      moduleId: "dm-1",
       name: "Battery Charging"
     });
     await renameDebugNodeModuleReferences(db, {

@@ -91,8 +91,14 @@ const debugParameterAdminBaseSchema = z.object({
   ...debugValueMetadataFields
 });
 
+const moduleTreeQueryFields = {
+  moduleId: nonEmptyString.optional(),
+  includeDescendants: booleanQuerySchema.optional()
+};
+
 export const listDebuggingParametersQuerySchema = z.object({
   module: nonEmptyString.optional(),
+  ...moduleTreeQueryFields,
   risk: z.union([nonEmptyString, z.array(nonEmptyString)]).optional(),
   protocol: protocolSchema.optional()
 });
@@ -108,6 +114,7 @@ export const debugAdminCoverageFilters = [
 
 export const listDebuggingAdminParametersQuerySchema = z.object({
   module: nonEmptyString.optional(),
+  ...moduleTreeQueryFields,
   risk: z.union([nonEmptyString, z.array(nonEmptyString)]).optional(),
   protocol: z.enum(debugConnectionProtocols).optional(),
   coverage: z.enum(debugAdminCoverageFilters).optional(),
@@ -203,12 +210,14 @@ export const rollbackSnapshotBodySchema = z.object({
 });
 
 export const listRuntimeDebugNodesQuerySchema = z.object({
-  protocol: protocolSchema.optional()
+  protocol: protocolSchema.optional(),
+  ...moduleTreeQueryFields
 });
 
 export const listDebugNodesAdminQuerySchema = z.object({
   protocol: protocolSchema.optional(),
-  includeArchived: booleanQuerySchema
+  includeArchived: booleanQuerySchema,
+  ...moduleTreeQueryFields
 });
 
 export const debugNodeBindingWriteSchema = z.object({
@@ -227,13 +236,14 @@ export const debugAdminNodeBindingParamsSchema = z.object({
   protocol: z.enum(debugConnectionProtocols)
 });
 
-export const writeDebugNodeAdminBodySchema = z.object({
+const writeDebugNodeAdminBodyBaseSchema = z.object({
   name: nonEmptyString,
   description: optionalTrimmedString.default(""),
   detailedDescription: optionalTrimmedString.default(""),
   writeFormatExample: optionalTrimmedString.default(""),
   writeFormatHint: optionalTrimmedString.default(""),
-  module: nonEmptyString,
+  module: nonEmptyString.optional(),
+  moduleId: nonEmptyString.optional(),
   valueKind: debugValueKindSchema.default(DEBUG_VALUE_KIND_SCALAR),
   valueFormat: debugValueFormatSchema.default(DEBUG_VALUE_FORMAT_RAW),
   normalizationMode: debugNormalizationModeSchema.default(DEBUG_NORMALIZATION_MODE_TRIM),
@@ -242,16 +252,41 @@ export const writeDebugNodeAdminBodySchema = z.object({
   bindings: z.array(debugParameterNodeBindingSchema).optional()
 });
 
-export const patchDebugNodeAdminBodySchema = writeDebugNodeAdminBodySchema.partial();
+export const writeDebugNodeAdminBodySchema = writeDebugNodeAdminBodyBaseSchema.refine(
+  (value) => Boolean(value.module ?? value.moduleId),
+  {
+    message: "Either module or moduleId is required.",
+    path: ["module"]
+  }
+);
+
+export const patchDebugNodeAdminBodySchema = writeDebugNodeAdminBodyBaseSchema.partial();
 
 export const debugAdminModuleParamsSchema = z.object({
-  moduleName: nonEmptyString
+  moduleId: nonEmptyString
 });
 
 export const writeDebugNodeModuleAdminBodySchema = z.object({
   name: nonEmptyString,
+  parentId: nonEmptyString.nullable().optional(),
   description: optionalTrimmedString.default(""),
-  scope: optionalTrimmedString.default("")
+  scope: optionalTrimmedString.default(""),
+  sortOrder: z.number().int().optional()
 });
 
-export const patchDebugNodeModuleAdminBodySchema = writeDebugNodeModuleAdminBodySchema.partial();
+export const patchDebugNodeModuleAdminBodySchema = writeDebugNodeModuleAdminBodySchema
+  .omit({ parentId: true })
+  .partial()
+  .refine((body) => Object.values(body).some((value) => value !== undefined), {
+    message: "At least one field is required."
+  });
+
+export const moveDebugNodeModuleBodySchema = z.object({
+  parentId: nonEmptyString.nullable()
+});
+
+export type MoveDebugNodeModuleBody = z.infer<typeof moveDebugNodeModuleBodySchema>;
+export type ListDebuggingParametersQuery = z.infer<typeof listDebuggingParametersQuerySchema>;
+export type ListDebuggingAdminParametersQuery = z.infer<typeof listDebuggingAdminParametersQuerySchema>;
+export type ListRuntimeDebugNodesQuery = z.infer<typeof listRuntimeDebugNodesQuerySchema>;
+export type ListDebugNodesAdminQuery = z.infer<typeof listDebugNodesAdminQuerySchema>;

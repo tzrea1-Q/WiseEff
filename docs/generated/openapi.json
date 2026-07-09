@@ -3013,7 +3013,7 @@
         }
       }
     },
-    "/api/v1/debugging/admin/modules/{moduleName}": {
+    "/api/v1/debugging/admin/modules/{moduleId}": {
       "patch": {
         "operationId": "debugging.admin.updateModule",
         "summary": "Update debug node module registry entry",
@@ -3022,7 +3022,7 @@
         ],
         "parameters": [
           {
-            "name": "moduleName",
+            "name": "moduleId",
             "in": "path",
             "required": true,
             "schema": {
@@ -3076,7 +3076,7 @@
         ],
         "parameters": [
           {
-            "name": "moduleName",
+            "name": "moduleId",
             "in": "path",
             "required": true,
             "schema": {
@@ -3091,6 +3091,62 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DeleteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/modules/{moduleId}/move": {
+      "post": {
+        "operationId": "debugging.admin.moveModule",
+        "summary": "Move debug node module to a new parent",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "moduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveDebugNodeModuleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugNodeModuleResponse"
                 }
               }
             }
@@ -4411,6 +4467,10 @@
       "DebugNodeModulePatchRequest": {
         "type": "object",
         "x-wiseeff-schema": "DebugNodeModulePatchRequest"
+      },
+      "MoveDebugNodeModuleRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "MoveDebugNodeModuleRequest"
       },
       "ParameterReloadBindingListResponse": {
         "type": "object",
