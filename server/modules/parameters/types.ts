@@ -31,6 +31,21 @@ export type ProjectModuleDto = {
   projectId: string;
   name: string;
   sortOrder: number;
+  parentId?: string | null;
+  path?: string;
+  depth?: number;
+  parameterModuleId?: string | null;
+};
+
+export type ParameterModuleDto = {
+  id: string;
+  parentId: string | null;
+  name: string;
+  path: string;
+  depth: number;
+  sortOrder: number;
+  description: string;
+  scope: string;
 };
 
 export type ParameterHistoryEntryDto = {
@@ -49,6 +64,8 @@ export type ParameterRecordDto = {
   configFormat: string;
   valueKind?: "scalar" | "complex";
   module: string;
+  moduleId?: string;
+  modulePath?: string[];
   projectId: string;
   currentValue: string;
   recommendedValue: string;
