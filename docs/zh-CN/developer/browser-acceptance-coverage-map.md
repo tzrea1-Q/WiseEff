@@ -34,6 +34,10 @@
 - `XIAOZE-PERCEPTION-AUTHZ-001`：越权项目问题返回安全、不泄露数据的回答。
 - `XIAOZE-PLAN-MULTISTEP-001`：多步计划在批准后 checkpoint resume，并报告观察到的执行结果（`e2e/acceptance/xiaoze-planning.acceptance.spec.ts`）。
 - `XIAOZE-PROACTIVE-001`：opt-in 主动建议为只读、受 authz 限制；关闭时不展示（`e2e/acceptance/xiaoze-planning.acceptance.spec.ts`）。
+- `MOD-TREE-PARAM-001`：Admin 创建嵌套参数模块、将参数挂到子模块，并按父模块筛选时包含子树（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
+- `MOD-TREE-PARAM-002`：Admin 移动参数模块到新父节点，循环移动被拒绝（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
+- `MOD-TREE-DEBUG-001`：Admin 创建嵌套调试节点模块，父模块筛选包含子模块下的节点（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
+- `MOD-TREE-AUTHZ-001`：非 Admin 不能变更模块树；删除非空模块返回 409（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 
 ## 同类中文文档
 

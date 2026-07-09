@@ -39,6 +39,10 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `PFB-SUBMIT-001` | I | Yes | Active user submits feedback from the sidebar with description and optional images; API persists the item; success UI is shown. | `e2e/acceptance/product-feedback.acceptance.spec.ts` |
 | `PFB-ADMIN-001` | I | Yes | Admin lists `/feedback-admin`, opens detail, advances open to in_progress to closed, and sets an admin note. | `e2e/acceptance/product-feedback.acceptance.spec.ts` |
 | `PFB-AUTHZ-001` | I | Yes | Non-Admin users cannot access product feedback admin APIs or the feedback-admin page. | `e2e/acceptance/product-feedback.acceptance.spec.ts` |
+| `MOD-TREE-PARAM-001` | C | Yes | Admin creates nested parameter modules, assigns a parameter, and parent filtering includes the child subtree. | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
+| `MOD-TREE-PARAM-002` | C | Yes | Admin moves a parameter module to a new parent and cycle moves are rejected. | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
+| `MOD-TREE-DEBUG-001` | E | Yes | Admin creates nested debug node modules and parent filtering includes assigned child nodes. | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
+| `MOD-TREE-AUTHZ-001` | C | Yes | Non-admin cannot mutate module trees and deleting non-empty modules returns 409. | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
 
 ## Interpretation
 

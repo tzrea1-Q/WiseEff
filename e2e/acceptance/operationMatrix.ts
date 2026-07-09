@@ -451,5 +451,53 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["PERM-USER-MGMT-001"],
     specFiles: ["e2e/acceptance/permissions.acceptance.spec.ts"],
     assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "MOD-TREE-PARAM-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action: "Create nested parameter modules, assign a parameter to a child module, and filter by parent with subtree include.",
+    coverage: "automated",
+    acceptanceIds: ["MOD-TREE-PARAM-001"],
+    specFiles: ["e2e/acceptance/hierarchical-modules.acceptance.spec.ts"],
+    assertions: ["api", "db"]
+  },
+  {
+    id: "MOD-TREE-PARAM-002",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action: "Move a parameter module to a new parent and reject cycle moves.",
+    coverage: "automated",
+    acceptanceIds: ["MOD-TREE-PARAM-002"],
+    specFiles: ["e2e/acceptance/hierarchical-modules.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "MOD-TREE-DEBUG-001",
+    priority: "P0",
+    area: "debugging",
+    route: "/debugging-admin",
+    roles: ["Admin"],
+    action: "Create nested debug node modules, assign a node to a child module, and filter by parent with subtree include.",
+    coverage: "automated",
+    acceptanceIds: ["MOD-TREE-DEBUG-001"],
+    specFiles: ["e2e/acceptance/hierarchical-modules.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "MOD-TREE-AUTHZ-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Hardware User", "Admin"],
+    action: "Reject non-admin module tree mutations and block deleting modules that still have children or assigned parameters.",
+    coverage: "automated",
+    acceptanceIds: ["MOD-TREE-AUTHZ-001"],
+    specFiles: ["e2e/acceptance/hierarchical-modules.acceptance.spec.ts"],
+    assertions: ["api"]
   }
 ];
