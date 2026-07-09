@@ -1,4 +1,8 @@
 import powerManagementConfigJson from "./config/power-management.json";
+import {
+  legacyModuleIdFromName,
+  type FlatModuleNode
+} from "@/domain/modules/moduleTree";
 
 export type PowerManagementRisk = "High" | "Medium" | "Low";
 
@@ -34,6 +38,8 @@ export type ProjectParameterRecord = Omit<PowerManagementParameterTemplate, "val
     id: string;
     projectId: PowerManagementProjectId;
     values: PowerManagementParameterTemplate["values"];
+    moduleId?: string;
+    modulePath?: string[];
   };
 
 export type PowerManagementDebugParameter = {
@@ -43,6 +49,8 @@ export type PowerManagementDebugParameter = {
   description: string;
   detailedDescription?: string;
   module: string;
+  moduleId?: string;
+  modulePath?: string[];
   currentValue: string;
   targetValue: string;
   unit: string;
@@ -71,6 +79,10 @@ export type PowerManagementParameterModule = {
   name: string;
   description: string;
   scope: string;
+  /** Parent module name; omitted or empty means root-level (back-compat). */
+  parent?: string;
+  /** Optional explicit breadcrumb path in seed JSON (informational; tree uses `parent`). */
+  path?: string[];
 };
 
 export type ParameterModuleDraft = PowerManagementParameterModule;
@@ -105,11 +117,19 @@ export function createEmptyParameterModule(name: string): PowerManagementParamet
 function normalizeParameterModuleRecord(
   record: Partial<PowerManagementParameterModule> & { name: string }
 ): PowerManagementParameterModule {
-  return {
+  const normalized: PowerManagementParameterModule = {
     name: record.name.trim(),
     description: record.description?.trim() ?? "",
     scope: record.scope?.trim() ?? ""
   };
+  const parent = record.parent?.trim();
+  if (parent) {
+    normalized.parent = parent;
+  }
+  if (record.path && record.path.length > 0) {
+    normalized.path = record.path.map((segment) => segment.trim()).filter(Boolean);
+  }
+  return normalized;
 }
 
 function normalizeParameterModulesInput(raw: unknown): PowerManagementParameterModule[] {
@@ -176,6 +196,118 @@ function collectParameterModules(config: PowerManagementConfig): PowerManagement
   return Array.from(byName.values()).sort((left, right) => left.name.localeCompare(right.name));
 }
 
+/** Build hierarchical flat module nodes from config modules plus derived leaf names. */
+export function buildPowerManagementModuleTree(
+  modules: readonly PowerManagementParameterModule[],
+  extraModuleNames: readonly string[] = []
+): FlatModuleNode[] {
+  const byName = new Map<string, PowerManagementParameterModule>();
+  modules.forEach((module) => {
+    if (module.name.trim()) {
+      byName.set(module.name, { ...module });
+    }
+  });
+  extraModuleNames.forEach((moduleName) => {
+    const trimmed = moduleName.trim();
+    if (trimmed && !byName.has(trimmed)) {
+      byName.set(trimmed, createEmptyParameterModule(trimmed));
+    }
+  });
+
+  const records = Array.from(byName.values()).sort((left, right) => left.name.localeCompare(right.name));
+  const idForName = (name: string) => legacyModuleIdFromName(name);
+
+  const nodes: FlatModuleNode[] = records.map((record, index) => {
+    const id = idForName(record.name);
+    const parentName = record.parent?.trim();
+    const parentId = parentName && byName.has(parentName) ? idForName(parentName) : null;
+    return {
+      id,
+      name: record.name,
+      parentId,
+      path: id,
+      depth: 1,
+      sortOrder: index,
+      description: record.description,
+      scope: record.scope
+    };
+  });
+
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+
+  const computePath = (node: FlatModuleNode, visiting = new Set<string>()): string => {
+    if (visiting.has(node.id)) {
+      return node.id;
+    }
+    if (!node.parentId) {
+      return node.id;
+    }
+    const parent = byId.get(node.parentId);
+    if (!parent) {
+      return node.id;
+    }
+    visiting.add(node.id);
+    return `${computePath(parent, visiting)}/${node.id}`;
+  };
+
+  const computeDepth = (node: FlatModuleNode, visiting = new Set<string>()): number => {
+    if (visiting.has(node.id)) {
+      return 1;
+    }
+    if (!node.parentId) {
+      return 1;
+    }
+    const parent = byId.get(node.parentId);
+    if (!parent) {
+      return 1;
+    }
+    visiting.add(node.id);
+    return computeDepth(parent, visiting) + 1;
+  };
+
+  return nodes.map((node) => ({
+    ...node,
+    path: computePath(node),
+    depth: computeDepth(node)
+  }));
+}
+
+export function modulePathLabelsForModuleName(moduleName: string, moduleNodes: readonly FlatModuleNode[]) {
+  const byName = new Map(moduleNodes.map((node) => [node.name, node]));
+  const byId = new Map(moduleNodes.map((node) => [node.id, node]));
+  const node = byName.get(moduleName.trim());
+  if (!node) {
+    return [moduleName.trim()].filter(Boolean);
+  }
+  const segments: string[] = [];
+  let current: FlatModuleNode | undefined = node;
+  const visiting = new Set<string>();
+  while (current) {
+    if (visiting.has(current.id)) {
+      break;
+    }
+    visiting.add(current.id);
+    segments.unshift(current.name);
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  return segments;
+}
+
+function enrichWithModuleMetadata<T extends { module: string }>(record: T, moduleNodes: readonly FlatModuleNode[]) {
+  const byName = new Map(moduleNodes.map((node) => [node.name, node]));
+  const trimmed = record.module.trim();
+  const node = byName.get(trimmed);
+  return {
+    ...record,
+    moduleId: node?.id ?? legacyModuleIdFromName(trimmed),
+    modulePath: modulePathLabelsForModuleName(trimmed, moduleNodes)
+  };
+}
+
+export function countChildParameterModules(config: PowerManagementConfig, moduleName: string) {
+  return config.parameterModules.filter((module) => module.parent?.trim() === moduleName).length;
+}
+
 export function listParameterModuleNames(modules: readonly PowerManagementParameterModule[]) {
   return modules.map((module) => module.name);
 }
@@ -185,6 +317,11 @@ export function clonePowerManagementConfig(config: PowerManagementConfig): Power
 }
 
 export function flattenProjectParameters(config: PowerManagementConfig): ProjectParameterRecord[] {
+  const moduleNodes = buildPowerManagementModuleTree(
+    config.parameterModules,
+    config.parameterLibrary.map((parameter) => parameter.module)
+  );
+
   return config.projects.flatMap((project) =>
     config.parameterLibrary.flatMap((parameter) => {
       const value = parameter.values[project.id];
@@ -192,20 +329,30 @@ export function flattenProjectParameters(config: PowerManagementConfig): Project
         return [];
       }
 
-      return [{
-        ...parameter,
-        id: `${project.id}-${parameter.id}`,
-        projectId: project.id,
-        currentValue: value.currentValue,
-        recommendedValue: value.recommendedValue,
-        updatedAt: value.updatedAt
-      }];
+      return [
+        enrichWithModuleMetadata(
+          {
+            ...parameter,
+            id: `${project.id}-${parameter.id}`,
+            projectId: project.id,
+            currentValue: value.currentValue,
+            recommendedValue: value.recommendedValue,
+            updatedAt: value.updatedAt
+          },
+          moduleNodes
+        )
+      ];
     })
   );
 }
 
 export function flattenDebugParameters(config: PowerManagementConfig) {
-  return config.debugParameters.map((parameter) => ({ ...parameter }));
+  const moduleNodes = buildPowerManagementModuleTree(
+    config.parameterModules,
+    config.debugParameters.map((parameter) => parameter.module)
+  );
+
+  return config.debugParameters.map((parameter) => enrichWithModuleMetadata({ ...parameter }, moduleNodes));
 }
 
 export function updateProjectParameter(
@@ -392,11 +539,20 @@ export function updateParameterModule(config: PowerManagementConfig, moduleName:
   const nextModule: PowerManagementParameterModule = {
     name: nextName,
     description: patch.description ?? existing.description,
-    scope: patch.scope ?? existing.scope
+    scope: patch.scope ?? existing.scope,
+    ...(existing.parent ? { parent: existing.parent } : {})
   };
 
   const parameterModules = config.parameterModules
-    .map((module) => (module.name === moduleName ? nextModule : module))
+    .map((module) => {
+      if (module.name === moduleName) {
+        return nextModule;
+      }
+      if (nextName !== moduleName && module.parent === moduleName) {
+        return { ...module, parent: nextName };
+      }
+      return module;
+    })
     .sort((left, right) => left.name.localeCompare(right.name));
 
   if (nextName === moduleName) {
@@ -424,6 +580,9 @@ export function renameParameterModule(config: PowerManagementConfig, fromModule:
 
 export function deleteParameterModule(config: PowerManagementConfig, moduleName: string) {
   if (countParametersByModule(config, moduleName) > 0) {
+    return config;
+  }
+  if (countChildParameterModules(config, moduleName) > 0) {
     return config;
   }
 

@@ -1,12 +1,13 @@
 import type { ParameterRecord } from "@/domain/parameters/types";
-import { legacyModuleIdFromName, buildModuleTree, type FlatModuleNode, type ModuleTreeNode } from "@/domain/modules/moduleTree";
+import { buildModuleTree, type FlatModuleNode, type ModuleTreeNode } from "@/domain/modules/moduleTree";
 import {
-  createEmptyParameterModule,
+  buildPowerManagementModuleTree,
   resolveLibraryParameterId,
   type PowerManagementParameterModule,
   type PowerManagementParameterTemplate,
   type PowerManagementProject
 } from "./powerManagementConfig";
+import { legacyModuleIdFromName } from "@/domain/modules/moduleTree";
 
 export function buildParameterLibraryFromRecords(
   parameters: readonly ParameterRecord[],
@@ -96,35 +97,10 @@ export function buildParameterModuleTree(
   parameters: readonly ParameterRecord[],
   existingModules: readonly PowerManagementParameterModule[] = []
 ): FlatModuleNode[] {
-  const byName = new Map<string, PowerManagementParameterModule>();
-  existingModules.forEach((module) => {
-    if (module.name.trim()) {
-      byName.set(module.name, { ...module });
-    }
-  });
-
-  parameters.forEach((parameter) => {
-    const trimmed = parameter.module.trim();
-    if (trimmed && !byName.has(trimmed)) {
-      byName.set(trimmed, createEmptyParameterModule(trimmed));
-    }
-  });
-
-  return Array.from(byName.values())
-    .sort((left, right) => left.name.localeCompare(right.name))
-    .map((module, index) => {
-      const id = legacyModuleIdFromName(module.name);
-      return {
-        id,
-        name: module.name,
-        parentId: null,
-        path: id,
-        depth: 1,
-        sortOrder: index,
-        description: module.description ?? "",
-        scope: module.scope ?? ""
-      };
-    });
+  return buildPowerManagementModuleTree(
+    existingModules,
+    parameters.map((parameter) => parameter.module)
+  );
 }
 
 /** @deprecated Use buildParameterModuleTree for hierarchical module metadata. */

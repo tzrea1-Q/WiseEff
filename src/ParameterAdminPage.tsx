@@ -105,7 +105,7 @@ export function ParameterAdminPage({
       await parameterActions?.refresh();
       return;
     }
-    dispatch({ type: "ADD_PARAMETER_MODULE", module });
+    dispatch({ type: "ADD_PARAMETER_MODULE", module: { ...module, ...(parentId ? { parent: resolveModuleName(parentId) } : {}) } });
   };
 
   const handleUpdateModule = async (moduleId: string, patch: ParameterModuleDraft) => {
