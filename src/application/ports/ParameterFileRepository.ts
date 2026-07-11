@@ -52,6 +52,8 @@ export type ParameterFileSyncConflict = {
   projectId: string;
   projectParameterValueId: string;
   parameterDefinitionId: string;
+  parameterName?: string;
+  parameterModule?: string;
   fileVersionId: string;
   fileDraftId: string;
   uiDraftId: string;

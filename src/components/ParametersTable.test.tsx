@@ -446,9 +446,10 @@ describe("ParametersTable", () => {
   it("right-aligns the importance filter menu away from row actions", () => {
     setup();
 
-    const headers = screen.getAllByRole("columnheader");
-    expect(headers[2].querySelector(".parameters-column-filter")).toHaveClass("parameters-column-filter--left");
-    expect(headers[5].querySelector(".parameters-column-filter")).toHaveClass("parameters-column-filter--right");
+    const moduleHeader = screen.getByRole("columnheader", { name: /模块/ });
+    const riskHeader = screen.getByRole("columnheader", { name: /重要性/ });
+    expect(moduleHeader.querySelector(".parameters-column-filter")).toHaveClass("parameters-column-filter--left");
+    expect(riskHeader.querySelector(".parameters-column-filter")).toHaveClass("parameters-column-filter--right");
   });
 
   it("keeps provided column filter identity separate from React props", () => {
