@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
+import type { ObjectStore } from "../logs/objectStore";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -153,7 +154,11 @@ function normalizeArray<T>(value: T | T[] | undefined) {
 
 export function registerParameterRoutes(
   router: WiseEffRouter,
-  options: { db?: Database; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
+  options: {
+    db?: Database;
+    objectStore?: ObjectStore;
+    getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
+  }
 ) {
   router.get("/api/v1/projects", async (request) => {
     const db = requireDb(options.db);
@@ -420,7 +425,7 @@ export function registerParameterRoutes(
     const params = parseWithSchema(paramsWithRequestIdSchema, request.params);
     const body = parseWithSchema(reviewChangeBodySchema, withRouteField(request.body, "requestId", params.requestId));
     requireCanReviewOrMerge(auth);
-    const item = await reviewChange(db, auth, body, { requestId: request.requestId });
+    const item = await reviewChange(db, auth, body, { requestId: request.requestId, objectStore: options.objectStore });
 
     return { status: 200, body: { item } };
   });
