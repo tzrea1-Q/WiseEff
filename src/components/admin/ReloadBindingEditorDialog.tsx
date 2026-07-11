@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import type { DebugConnectionProtocol, DebugParameterAccessMode, ParameterReloadBinding } from "@/domain/debugging/types";
 import { getBindingNodePathValidationError } from "@/domain/debugging/bindingNodePath";
 import type { ParameterReloadTargetDto } from "@/infrastructure/http/debuggingDtos";
+import { shouldShowFieldError } from "@/components/common/fieldValidation";
 
 export type ReloadBindingDraft = {
   parameterDefinitionId: string;
@@ -63,6 +64,7 @@ export function ReloadBindingEditorDialog({
   onClose
 }: ReloadBindingEditorDialogProps) {
   const [draft, setDraft] = useState<ReloadBindingDraft>(() => emptyDraft());
+  const [pathTouched, setPathTouched] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -82,6 +84,7 @@ export function ReloadBindingEditorDialog({
   useEffect(() => {
     if (open) {
       setDraft(mode === "edit" && binding ? draftFromBinding(binding) : emptyDraft());
+      setPathTouched(false);
     }
   }, [binding, mode, open]);
 
@@ -100,6 +103,7 @@ export function ReloadBindingEditorDialog({
 
   const fieldsDisabled = !canEdit || loading;
   const pathError = getBindingNodePathValidationError(draft.nodePath);
+  const visiblePathError = shouldShowFieldError(pathError, { touched: pathTouched });
   const canSubmit =
     draft.parameterDefinitionId.trim().length > 0 && !pathError && !fieldsDisabled;
 
@@ -144,12 +148,13 @@ export function ReloadBindingEditorDialog({
             <label className="debug-admin-field">
               <span className="debug-admin-field-label">节点路径</span>
               <Input
-                aria-invalid={pathError ? "true" : "false"}
+                aria-invalid={visiblePathError ? "true" : "false"}
                 value={draft.nodePath}
                 disabled={fieldsDisabled}
+                onBlur={() => setPathTouched(true)}
                 onChange={(event) => setDraft((current) => ({ ...current, nodePath: event.target.value }))}
               />
-              {pathError ? <span className="field-error">{pathError}</span> : null}
+              {visiblePathError ? <span className="field-error">{pathError}</span> : null}
             </label>
             <label className="debug-admin-field">
               <span className="debug-admin-field-label">访问模式</span>

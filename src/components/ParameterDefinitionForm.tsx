@@ -5,7 +5,9 @@ import {
   getComplexParameterKindLabel,
   isComplexParameter
 } from "../parameterValueKind";
-import type { PowerManagementParameterTemplate, PowerManagementProject } from "../powerManagementConfig";
+import { modulePathLabelsForModuleName, type PowerManagementParameterTemplate, type PowerManagementProject } from "../powerManagementConfig";
+import { useState } from "react";
+import { shouldShowFieldError } from "@/components/common/fieldValidation";
 import { ModuleTreeSelect } from "./common/ModuleTreeSelect";
 import { templateModuleId } from "../parameterAdminLibrary";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
@@ -19,7 +21,8 @@ export function ParameterDefinitionForm({
   moduleNodes,
   allParameters,
   onMetadataChange,
-  onRecommendedValueChange
+  onRecommendedValueChange,
+  showErrors = false
 }: {
   parameter: PowerManagementParameterTemplate;
   projects: readonly PowerManagementProject[];
@@ -27,13 +30,16 @@ export function ParameterDefinitionForm({
   allParameters: readonly PowerManagementParameterTemplate[];
   onMetadataChange: (patch: Partial<Omit<PowerManagementParameterTemplate, "id" | "values">>) => void;
   onRecommendedValueChange: (value: string) => void;
+  showErrors?: boolean;
 }) {
+  const [nameTouched, setNameTouched] = useState(false);
   const range = migrateParameterRange(parameter.range);
   const firstProjectId = projects[0]?.id;
   const recommendedValue = firstProjectId ? parameter.values[firstProjectId]?.recommendedValue ?? "" : "";
   const nameError = getNameError(parameter, allParameters);
+  const visibleNameError = shouldShowFieldError(nameError, { touched: nameTouched, submitted: showErrors });
   const isComplex = isComplexParameter(parameter);
-  const selectedModuleId = templateModuleId(parameter);
+  const selectedModuleId = templateModuleId(parameter, moduleNodes);
 
   const updateRange = (patch: { min?: string; max?: string }) => {
     const min = (patch.min ?? String(range.min ?? "")).trim();
@@ -61,13 +67,22 @@ export function ParameterDefinitionForm({
           <div className="def-group-fields">
             <label>
               参数名
-              <input aria-invalid={nameError ? "true" : "false"} aria-label="参数名" value={parameter.name} onChange={(event) => onMetadataChange({ name: event.target.value })} />
-              {nameError ? <span className="field-error">{nameError}</span> : null}
+              <input
+                aria-invalid={visibleNameError ? "true" : "false"}
+                aria-label="参数名"
+                value={parameter.name}
+                onBlur={() => setNameTouched(true)}
+                onChange={(event) => onMetadataChange({ name: event.target.value })}
+              />
+              {visibleNameError ? <span className="field-error">{nameError}</span> : null}
             </label>
-            <label>
-              模块
+            <div className="param-field param-field--module">
+              <span className="param-field-label" id="param-def-module-label">
+                模块
+              </span>
               <ModuleTreeSelect
                 label="选择模块"
+                labelledBy="param-def-module-label"
                 mode="single"
                 nodes={moduleNodes}
                 value={selectedModuleId}
@@ -75,11 +90,15 @@ export function ParameterDefinitionForm({
                   const next = typeof moduleId === "string" ? moduleId : moduleId[0];
                   const node = moduleNodes.find((item) => item.id === next);
                   if (node) {
-                    onMetadataChange({ module: node.name });
+                    onMetadataChange({
+                      module: node.name,
+                      moduleId: node.id,
+                      modulePath: modulePathLabelsForModuleName(node.name, moduleNodes)
+                    });
                   }
                 }}
               />
-            </label>
+            </div>
             <label>
               单位
               <input aria-label="单位" value={parameter.unit} onChange={(event) => onMetadataChange({ unit: event.target.value })} />

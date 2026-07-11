@@ -1,9 +1,10 @@
 import { Search } from "lucide-react";
-import { nodeBindingStatus } from "@/debugAdminDraft";
-import { filterDebugNodesByModuleTree, modulePathLabelForDebugNode } from "@/debugAdminModules";
+import { LibrarySelectFilter } from "@/components/admin/LibrarySelectFilter";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { DebugConnectionProtocol, DebugNodeRegistryEntry } from "@/domain/debugging/types";
+import { nodeBindingStatus } from "@/debugAdminDraft";
+import { filterDebugNodesByModuleTree, modulePathLabelForDebugNode } from "@/debugAdminModules";
 
 export type DebugNodeLibrarySearch = {
   q: string;
@@ -13,10 +14,12 @@ export type DebugNodeLibrarySearch = {
 };
 
 const PROTOCOL_OPTIONS: Array<{ value: DebugNodeLibrarySearch["protocol"]; label: string }> = [
-  { value: "all", label: "全部" },
-  { value: "hdc", label: "HDC" },
-  { value: "adb", label: "ADB" }
+  { value: "all", label: "协议 · 全部" },
+  { value: "hdc", label: "协议 · HDC" },
+  { value: "adb", label: "协议 · ADB" }
 ];
+
+const SORT_OPTIONS = [{ value: "name-asc", label: "名称 A-Z" }] as const;
 
 function nodeSearchHaystack(node: DebugNodeRegistryEntry) {
   const bindingPaths = (node.bindings ?? []).map((binding) => binding.nodePath).join(" ");
@@ -126,19 +129,13 @@ export function DebugNodeLibraryTable({
           />
         </label>
         <div className="parameters-table-filters param-admin-library-filters">
-          <select
-            aria-label="协议筛选"
-            className="library-sort"
-            value={search.protocol}
-            onChange={(event) => onUpdateSearch({ protocol: event.target.value as DebugNodeLibrarySearch["protocol"] })}
+          <LibrarySelectFilter
+            ariaLabel="协议筛选"
             disabled={loading}
-          >
-            {PROTOCOL_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                协议 · {option.label}
-              </option>
-            ))}
-          </select>
+            options={PROTOCOL_OPTIONS}
+            value={search.protocol}
+            onChange={(protocol) => onUpdateSearch({ protocol })}
+          />
           <ModuleTreeSelect
             label="模块"
             mode="multi-filter"
@@ -147,15 +144,13 @@ export function DebugNodeLibraryTable({
             onChange={(modules) => onUpdateSearch({ modules: typeof modules === "string" ? [modules] : modules })}
             disabled={loading}
           />
-          <select
-            aria-label="排序"
-            className="library-sort"
-            value={search.sort}
-            onChange={(event) => onUpdateSearch({ sort: event.target.value })}
+          <LibrarySelectFilter
+            ariaLabel="排序"
             disabled={loading}
-          >
-            <option value="name-asc">名称 A-Z</option>
-          </select>
+            options={SORT_OPTIONS}
+            value={search.sort}
+            onChange={(sort) => onUpdateSearch({ sort })}
+          />
           {filtersActive ? (
             <button aria-label="清除筛选" className="clear-filters" type="button" onClick={clearFilters}>
               清除筛选

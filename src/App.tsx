@@ -461,6 +461,8 @@ export type ParameterEditorDraft = {
   explanation: string;
   configFormat: string;
   module: string;
+  moduleId?: string;
+  modulePath?: string[];
   range: string;
   unit: string;
   risk: DebugParameter["risk"];

@@ -36,6 +36,8 @@ export function buildParameterLibraryFromRecords(
       explanation: record.explanation,
       configFormat: record.configFormat,
       module: record.module,
+      moduleId: record.moduleId,
+      modulePath: record.modulePath,
       range: record.range,
       unit: record.unit,
       risk: record.risk,
@@ -50,8 +52,23 @@ export function buildParameterLibraryFromRecords(
 }
 
 /** Resolve the module id used for tree filters from a library template row. */
-export function templateModuleId(template: { module: string; moduleId?: string }) {
-  return template.moduleId ?? legacyModuleIdFromName(template.module);
+export function templateModuleId(
+  template: { module: string; moduleId?: string },
+  moduleNodes?: readonly FlatModuleNode[]
+) {
+  if (template.moduleId) {
+    return template.moduleId;
+  }
+
+  const trimmed = template.module.trim();
+  if (moduleNodes) {
+    const match = moduleNodes.find((node) => node.name === trimmed);
+    if (match) {
+      return match.id;
+    }
+  }
+
+  return legacyModuleIdFromName(trimmed);
 }
 
 export function modulePathLabelForTemplate(template: { module: string; modulePath?: string[] }, moduleNodes: readonly FlatModuleNode[]) {
@@ -81,7 +98,7 @@ export function groupParametersByModuleTree(
 
   const walk = (nodes: readonly ModuleTreeNode[]) => {
     for (const node of nodes) {
-      const items = parameters.filter((parameter) => templateModuleId(parameter) === node.id);
+      const items = parameters.filter((parameter) => templateModuleId(parameter, moduleNodes) === node.id);
       if (items.length > 0 || node.children.length > 0) {
         groups.push({ node, parameters: items });
       }
