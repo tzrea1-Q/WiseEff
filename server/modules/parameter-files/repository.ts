@@ -62,6 +62,7 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
     versionNumber: Number(row.version_number),
     checksum: row.checksum,
     sizeBytes: Number(row.size_bytes),
+    parsedIndex: row.parsed_index ?? {},
     origin: row.origin,
     createdAt: dateTimeToIso(row.created_at),
     createdByUserId: row.created_by_user_id ?? undefined

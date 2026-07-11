@@ -9,6 +9,7 @@ import { canAdminParameters } from "../parameters/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
+import { syncFileVersion } from "./syncService";
 import {
   getProjectParameterFileByName,
   insertFileVersion,
@@ -156,6 +157,9 @@ export async function uploadProjectParameterFile(
     });
 
     await setCurrentVersion(tx, { fileId: file.id, versionId: version.id });
+    if (version.origin === "upload") {
+      await syncFileVersion(tx, auth, { fileId: file.id, versionId: version.id });
+    }
     await createParameterFileUploadAudit(
       tx,
       auth,

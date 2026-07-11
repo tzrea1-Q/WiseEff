@@ -26,6 +26,7 @@ export type ProjectParameterFileVersionDto = {
   versionNumber: number;
   checksum: string;
   sizeBytes: number;
+  parsedIndex: ParsedIndex;
   origin: ParameterFileVersionOrigin;
   createdAt: string;
   createdByUserId?: string;

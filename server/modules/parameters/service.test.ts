@@ -332,7 +332,7 @@ describe("parameter service", () => {
       ],
       [],
       [],
-      [{ id: "request-open" }],
+      [changeRequestRow({ id: "request-open" })],
       (call) => [
         importBatchRow({
           summary: JSON.parse(call.values[6] as string),
@@ -1122,7 +1122,9 @@ describe("parameter service", () => {
       "param-1",
       "user-1",
       "3100",
-      "Reduce thermal risk."
+      "Reduce thermal risk.",
+      "manual",
+      null
     ]);
     expect(calls[2].text).toContain("user_id = $2");
     expect(calls[2].values).toEqual(["org-1", "user-1", "project-1"]);

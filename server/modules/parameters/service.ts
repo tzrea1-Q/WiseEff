@@ -779,7 +779,8 @@ export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDra
     parameterId: input.parameterId,
     userId: auth.user.id,
     targetValue: input.targetValue,
-    reason: input.reason
+    reason: input.reason,
+    origin: "manual"
   });
 }
 

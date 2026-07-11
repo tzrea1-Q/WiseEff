@@ -265,7 +265,9 @@ describe("parameter repository", () => {
       "param-1",
       "user-1",
       "3100",
-      "Reduce thermal risk."
+      "Reduce thermal risk.",
+      "manual",
+      null
     ]);
     expect(draft).toMatchObject({ id: "draft-1", parameterId: "param-1", targetValue: "3100" });
   });

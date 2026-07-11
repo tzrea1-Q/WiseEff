@@ -5,6 +5,11 @@ import type { ObjectStore, StoredObject } from "../logs/objectStore";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { MAX_FILE_BYTES, uploadProjectParameterFile } from "./service";
+import { syncFileVersion } from "./syncService";
+
+vi.mock("./syncService", () => ({
+  syncFileVersion: vi.fn(async () => ({ draftsCreated: 0, unchanged: 0, unmatched: 0, skipped: false }))
+}));
 
 type QueryCall = {
   text: string;
@@ -101,6 +106,23 @@ function versionRow(overrides: Record<string, unknown> = {}) {
 }
 
 describe("project parameter file upload service", () => {
+  it("upload wires syncFileVersion for upload-origin versions", async () => {
+    const { db } = createFakeDb([[], [fileRow()], [versionRow()], [], []]);
+    const { objectStore } = makeObjectStore();
+    const bytes = Buffer.from('{"battery":{"temp_max":85}}', "utf8");
+
+    const result = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "config.json",
+      bytes
+    });
+
+    expect(syncFileVersion).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
+      fileId: result.file.id,
+      versionId: result.version.id
+    });
+  });
+
   it("upload new json file creates file + v1 with parsed_index", async () => {
     const { db, txCalls } = createFakeDb([[], [fileRow()], [versionRow()], [], []]);
     const { objectStore, put } = makeObjectStore();
