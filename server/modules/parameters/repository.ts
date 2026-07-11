@@ -101,6 +101,8 @@ type ParameterRow = {
   risk: ParameterRiskLevel;
   current_value: string;
   recommended_value: string;
+  source_file_name?: string | null;
+  source_node_path?: string | null;
   updated_at: string | Date;
 };
 
@@ -464,6 +466,8 @@ function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] =
     range: row.default_range,
     unit: row.unit,
     risk: row.risk,
+    sourceFileName: row.source_file_name ?? undefined,
+    sourceNodePath: row.source_node_path ?? undefined,
     updatedAt,
     updatedAtTs: updatedAt,
     history
@@ -1098,6 +1102,8 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
       pd.risk,
       ppv.current_value,
       ppv.recommended_value,
+      ppv.source_file_name,
+      ppv.source_node_path,
       ppv.updated_at
     from project_parameter_values ppv
     inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
@@ -1129,6 +1135,8 @@ export async function getParameterById(db: Queryable, query: { organizationId: s
       pd.risk,
       ppv.current_value,
       ppv.recommended_value,
+      ppv.source_file_name,
+      ppv.source_node_path,
       ppv.updated_at
     from project_parameter_values ppv
     inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id

@@ -140,6 +140,8 @@ describe("parameter repository", () => {
         risk: "High",
         current_value: "3200",
         recommended_value: "3000",
+        source_file_name: "config.json",
+        source_node_path: "battery/temp_max",
         updated_at: updatedAt
       }
     ]);
@@ -153,6 +155,8 @@ describe("parameter repository", () => {
       limit: 25
     });
 
+    expect(calls[0].text).toContain("ppv.source_file_name");
+    expect(calls[0].text).toContain("ppv.source_node_path");
     expect(calls[0].text).toContain("ppv.project_id = $2");
     expect(calls[0].text).toContain("pd.module = $3");
     expect(calls[0].text).toContain("pd.risk = any($4::text[])");
@@ -172,9 +176,50 @@ describe("parameter repository", () => {
       name: "fast_charge_current_limit_ma",
       currentValue: "3200",
       recommendedValue: "3000",
+      sourceFileName: "config.json",
+      sourceNodePath: "battery/temp_max",
       risk: "High",
       updatedAt: "2026-05-25T02:00:00.000Z",
       updatedAtTs: "2026-05-25T02:00:00.000Z",
+      history: []
+    });
+  });
+
+  it("getParameterById maps source fields and loads history", async () => {
+    const updatedAt = new Date("2026-05-25T02:00:00.000Z");
+    const { db, calls } = createFakeDb([
+      {
+        id: "aurora-fast-charge-current",
+        project_id: "aurora",
+        name: "fast_charge_current_limit_ma",
+        description: "Limit fast charge current.",
+        explanation: "Controls fast charging current.",
+        config_format: "ENV: FAST_CHARGE_CURRENT=number",
+        module: "Charging Policy",
+        default_range: "1000 - 5000",
+        unit: "mA",
+        risk: "High",
+        current_value: "3200",
+        recommended_value: "3000",
+        source_file_name: "config.json",
+        source_node_path: "battery/temp_max",
+        updated_at: updatedAt
+      },
+      []
+    ]);
+
+    const row = await getParameterById(db, {
+      organizationId: "org-chargelab",
+      parameterId: "aurora-fast-charge-current"
+    });
+
+    expect(calls[0].text).toContain("ppv.source_file_name");
+    expect(calls[0].text).toContain("ppv.source_node_path");
+    expect(calls[0].values).toEqual(["org-chargelab", "aurora-fast-charge-current"]);
+    expect(row).toMatchObject({
+      id: "aurora-fast-charge-current",
+      sourceFileName: "config.json",
+      sourceNodePath: "battery/temp_max",
       history: []
     });
   });

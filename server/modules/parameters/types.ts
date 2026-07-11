@@ -72,6 +72,8 @@ export type ParameterRecordDto = {
   range: string;
   unit: string;
   risk: ParameterRiskLevel;
+  sourceFileName?: string;
+  sourceNodePath?: string;
   updatedAt: string;
   updatedAtTs: string;
   history: ParameterHistoryEntryDto[];
