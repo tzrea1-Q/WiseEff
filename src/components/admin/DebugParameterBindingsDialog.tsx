@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { bindingForProtocol } from "@/debugAdminDraft";
 import type { DebugConnectionProtocol, DebugParameterNodeBinding } from "@/domain/debugging/types";
 import { getBindingNodePathValidationError } from "@/domain/debugging/bindingNodePath";
+import { shouldShowFieldError } from "@/components/common/fieldValidation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DebugAdminSelectControl } from "@/components/admin/DebugAdminSelectControl";
@@ -35,6 +36,12 @@ export function DebugParameterBindingsDialog({
   onArchiveBinding,
   onClose
 }: DebugParameterBindingsDialogProps) {
+  const [touchedPaths, setTouchedPaths] = useState<Partial<Record<DebugConnectionProtocol, boolean>>>({});
+
+  useEffect(() => {
+    setTouchedPaths({});
+  }, [parameterId, parameterName]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -68,19 +75,21 @@ export function DebugParameterBindingsDialog({
                 const binding = bindingForProtocol(draft, protocol);
                 const label = protocol.toUpperCase();
                 const pathError = getBindingNodePathValidationError(binding.nodePath);
+                const visiblePathError = shouldShowFieldError(pathError, { touched: touchedPaths[protocol] });
                 return (
                   <div className="debug-admin-binding-panel" key={protocol}>
                     <h4>{label}</h4>
                     <div className="debug-admin-field">
                       <span className="debug-admin-field-label">{label} 节点路径</span>
                       <Input
-                        aria-invalid={pathError ? "true" : "false"}
+                        aria-invalid={visiblePathError ? "true" : "false"}
                         aria-label={`${label} 节点路径`}
                         value={binding.nodePath}
                         disabled={fieldsDisabled}
+                        onBlur={() => setTouchedPaths((current) => ({ ...current, [protocol]: true }))}
                         onChange={(event) => onBindingChange(protocol, { nodePath: event.target.value })}
                       />
-                      {pathError ? <span className="field-error">{pathError}</span> : null}
+                      {visiblePathError ? <span className="field-error">{pathError}</span> : null}
                     </div>
                     <div className="debug-admin-field">
                       <span className="debug-admin-field-label">{label} 访问模式</span>

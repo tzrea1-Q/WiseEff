@@ -1,7 +1,8 @@
 import { Search } from "lucide-react";
-import { useState } from "react";
 import { LibraryRiskFilter } from "@/components/admin/LibraryRiskFilter";
+import { LibrarySelectFilter } from "@/components/admin/LibrarySelectFilter";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
+import { RadioDropdownFilter } from "@/components/common/RadioDropdownFilter";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { ParamAdminSearch } from "@/hooks/useParamAdminSearch";
 import { getCoverage, type ParameterCoverage } from "@/parameterAdminAnalytics";
@@ -28,6 +29,12 @@ const COVERAGE_OPTIONS: Array<{ value: ParamAdminSearch["coverage"]; label: stri
   { value: "orphan", label: PARAMETER_COVERAGE_LABEL.orphan }
 ];
 
+const SORT_OPTIONS = [
+  { value: "updatedAt-desc", label: "更新时间 ↓" },
+  { value: "name-asc", label: "名称 A-Z" },
+  { value: "risk-desc", label: "风险 ↓" }
+] as const;
+
 export type ParameterLibraryTableProps = {
   parameters: readonly PowerManagementParameterTemplate[];
   projects: readonly PowerManagementProject[];
@@ -53,7 +60,6 @@ export function ParameterLibraryTable({
   onManageModules,
   onDeleteParameter
 }: ParameterLibraryTableProps) {
-  const [coverageOpen, setCoverageOpen] = useState(false);
   const filtered = sortParameterLibrary(filterParameterLibrary(parameters, projects, search, moduleNodes), search.sort);
   const filtersActive =
     search.q.trim().length > 0 || search.risk !== "all" || search.modules.length > 0 || search.coverage !== "all";
@@ -102,46 +108,19 @@ export function ParameterLibraryTable({
             value={search.modules}
             onChange={(modules) => onUpdateSearch({ modules: Array.isArray(modules) ? modules : [modules] })}
           />
-          <div className="dropdown-root">
-            <button
-              aria-expanded={coverageOpen}
-              aria-haspopup="listbox"
-              className="dropdown-trigger"
-              type="button"
-              onClick={() => setCoverageOpen((current) => !current)}
-            >
-              覆盖{search.coverage !== "all" ? ` · ${PARAMETER_COVERAGE_LABEL[search.coverage]}` : ""} ▾
-            </button>
-            {coverageOpen ? (
-              <div className="dropdown-menu" role="listbox">
-                {COVERAGE_OPTIONS.map((option) => (
-                  <label className="dropdown-item" key={option.value}>
-                    <input
-                      aria-label={option.label}
-                      checked={search.coverage === option.value}
-                      name="coverage"
-                      type="radio"
-                      onChange={() => {
-                        onUpdateSearch({ coverage: option.value as ParameterCoverage });
-                        setCoverageOpen(false);
-                      }}
-                    />
-                    <span>{option.label}</span>
-                  </label>
-                ))}
-              </div>
-            ) : null}
-          </div>
-          <select
-            aria-label="排序"
-            className="library-sort"
+          <RadioDropdownFilter
+            allValue="all"
+            label="覆盖"
+            options={COVERAGE_OPTIONS}
+            value={search.coverage}
+            onChange={(coverage) => onUpdateSearch({ coverage: coverage as ParameterCoverage })}
+          />
+          <LibrarySelectFilter
+            ariaLabel="排序"
+            options={SORT_OPTIONS}
             value={search.sort}
-            onChange={(event) => onUpdateSearch({ sort: event.target.value })}
-          >
-            <option value="updatedAt-desc">更新时间 ↓</option>
-            <option value="name-asc">名称 A-Z</option>
-            <option value="risk-desc">风险 ↓</option>
-          </select>
+            onChange={(sort) => onUpdateSearch({ sort })}
+          />
           {filtersActive ? (
             <button
               aria-label="清除筛选"

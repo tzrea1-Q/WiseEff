@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ParameterRecord } from "@/domain/parameters/types";
-import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "./parameterAdminLibrary";
+import {
+  buildParameterLibraryFromRecords,
+  buildParameterModulesFromRecords,
+  templateModuleId
+} from "./parameterAdminLibrary";
 
 const auroraRecord: ParameterRecord = {
   id: "aurora-fast-charge-current",
@@ -47,5 +51,41 @@ describe("parameterAdminLibrary", () => {
     expect(buildParameterModulesFromRecords([auroraRecord])).toEqual([
       expect.objectContaining({ name: "Charging Policy" })
     ]);
+  });
+
+  it("preserves moduleId and modulePath when grouping API records into library definitions", () => {
+    const nebulaRecord: ParameterRecord = {
+      ...auroraRecord,
+      id: "nebula-fast-charge-current",
+      projectId: "nebula",
+      currentValue: "3600"
+    };
+    const withModule: ParameterRecord = {
+      ...auroraRecord,
+      moduleId: "pm-charging",
+      modulePath: ["Power", "Charging Policy"]
+    };
+
+    const library = buildParameterLibraryFromRecords([withModule, nebulaRecord], [{ id: "aurora" }, { id: "nebula" }]);
+
+    expect(library[0]).toEqual(
+      expect.objectContaining({
+        moduleId: "pm-charging",
+        modulePath: ["Power", "Charging Policy"]
+      })
+    );
+  });
+
+  it("resolves template module id from module name when API moduleId is missing", () => {
+    const moduleNodes = [
+      { id: "pm-charging", name: "Charging Policy", parentId: null, path: "pm-charging", depth: 1 }
+    ];
+
+    expect(
+      templateModuleId(
+        { module: "Charging Policy" },
+        moduleNodes
+      )
+    ).toBe("pm-charging");
   });
 });

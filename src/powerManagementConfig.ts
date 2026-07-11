@@ -26,6 +26,8 @@ export type PowerManagementParameterTemplate = {
   explanation: string;
   configFormat: string;
   module: string;
+  moduleId?: string;
+  modulePath?: string[];
   range: string;
   unit: string;
   risk: PowerManagementRisk;
@@ -293,9 +295,22 @@ export function modulePathLabelsForModuleName(moduleName: string, moduleNodes: r
   return segments;
 }
 
-function enrichWithModuleMetadata<T extends { module: string }>(record: T, moduleNodes: readonly FlatModuleNode[]) {
-  const byName = new Map(moduleNodes.map((node) => [node.name, node]));
+function enrichWithModuleMetadata<T extends { module: string; moduleId?: string; modulePath?: string[] }>(
+  record: T,
+  moduleNodes: readonly FlatModuleNode[]
+) {
   const trimmed = record.module.trim();
+  if (record.moduleId && !record.moduleId.startsWith("legacy:")) {
+    return {
+      ...record,
+      modulePath:
+        record.modulePath && record.modulePath.length > 0
+          ? record.modulePath
+          : modulePathLabelsForModuleName(trimmed, moduleNodes)
+    };
+  }
+
+  const byName = new Map(moduleNodes.map((node) => [node.name, node]));
   const node = byName.get(trimmed);
   return {
     ...record,

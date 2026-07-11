@@ -1,187 +1,36 @@
 import { CircleX, Plus, Search } from "lucide-react";
-import { Fragment, useEffect, useMemo, useState } from "react";
-import type { FlatModuleNode, ModuleTreeNode } from "@/domain/modules/moduleTree";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import { buildModuleTree } from "@/domain/modules/moduleTree";
 import { templateModuleId } from "@/parameterAdminLibrary";
 import type { ParameterModuleDraft, PowerManagementParameterTemplate } from "@/powerManagementConfig";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
-import { ModuleDefinitionForm, canSubmitModuleDraft } from "./ModuleDefinitionForm";
+import { ModuleCreateDialog } from "./ModuleCreateDialog";
 import { ModuleEditDialog } from "./ModuleEditDialog";
+import { ModuleManagementTreeRows } from "./ModuleManagementTreeRows";
+import {
+  buildDefaultExpandedTreeIds,
+  collectExpandedIdsForFilteredTree,
+  filterTreeNodes,
+  siblingNames
+} from "./moduleManagementTreeUtils";
 
-const emptyModuleDraft = (): ParameterModuleDraft => ({
-  name: "",
-  description: "",
-  scope: ""
-});
-
-function countParametersByModule(parameters: readonly PowerManagementParameterTemplate[], moduleId: string) {
-  return parameters.filter((parameter) => templateModuleId(parameter) === moduleId).length;
+function countParametersByModule(
+  parameters: readonly PowerManagementParameterTemplate[],
+  moduleId: string,
+  moduleNodes: readonly FlatModuleNode[]
+) {
+  return parameters.filter((parameter) => templateModuleId(parameter, moduleNodes) === moduleId).length;
 }
 
-function parametersInModule(parameters: readonly PowerManagementParameterTemplate[], moduleId: string) {
+function parametersInModule(
+  parameters: readonly PowerManagementParameterTemplate[],
+  moduleId: string,
+  moduleNodes: readonly FlatModuleNode[]
+) {
   return parameters
-    .filter((parameter) => templateModuleId(parameter) === moduleId)
+    .filter((parameter) => templateModuleId(parameter, moduleNodes) === moduleId)
     .sort((left, right) => left.name.localeCompare(right.name));
-}
-
-function moduleMatchesQuery(node: FlatModuleNode, query: string) {
-  if (!query) {
-    return true;
-  }
-  const haystack = [node.name, node.description ?? "", node.scope ?? ""].join(" ").toLowerCase();
-  return haystack.includes(query);
-}
-
-function siblingNames(moduleNodes: readonly FlatModuleNode[], parentId: string | null, excludeId?: string) {
-  return moduleNodes
-    .filter((node) => (node.parentId ?? null) === parentId && node.id !== excludeId)
-    .map((node) => node.name);
-}
-
-function filterTreeNodes(tree: readonly ModuleTreeNode[], query: string): ModuleTreeNode[] {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) {
-    return [...tree];
-  }
-
-  const walk = (node: ModuleTreeNode): ModuleTreeNode | null => {
-    const children = node.children.map(walk).filter((item): item is ModuleTreeNode => item !== null);
-    if (moduleMatchesQuery(node, normalized) || children.length > 0) {
-      return { ...node, children };
-    }
-    return null;
-  };
-
-  return tree.map(walk).filter((item): item is ModuleTreeNode => item !== null);
-}
-
-function ModuleTreeRows({
-  node,
-  depth,
-  moduleNodes,
-  parameters,
-  expandedModuleId,
-  onToggleExpanded,
-  onEdit,
-  onDelete,
-  onAddChild,
-  onMove,
-  onEditParameterDefinition
-}: {
-  node: ModuleTreeNode;
-  depth: number;
-  moduleNodes: readonly FlatModuleNode[];
-  parameters: readonly PowerManagementParameterTemplate[];
-  expandedModuleId: string | null;
-  onToggleExpanded: (moduleId: string) => void;
-  onEdit: (moduleId: string) => void;
-  onDelete: (moduleId: string) => void;
-  onAddChild: (parentId: string) => void;
-  onMove: (moduleId: string) => void;
-  onEditParameterDefinition: (parameterId: string) => void;
-}) {
-  const parameterCount = countParametersByModule(parameters, node.id);
-  const moduleParameters = parametersInModule(parameters, node.id);
-
-  return (
-    <Fragment key={node.id}>
-      <tr>
-        <td>
-          <div className="param-admin-module-name-cell" style={{ paddingLeft: `${depth * 16}px` }}>
-            <span className="param-admin-module-name">{node.name}</span>
-            {node.description ? <span className="param-admin-module-desc">{node.description}</span> : null}
-          </div>
-        </td>
-        <td>
-          <button
-            className="param-admin-module-count-button"
-            type="button"
-            disabled={parameterCount === 0}
-            aria-expanded={expandedModuleId === node.id}
-            onClick={() => onToggleExpanded(node.id)}
-          >
-            {parameterCount}
-          </button>
-        </td>
-        <td>
-          <div className="param-admin-module-row-actions">
-            <button className="button subtle" type="button" onClick={() => onAddChild(node.id)}>
-              添加子模块
-            </button>
-            <button
-              className="button subtle"
-              type="button"
-              disabled={parameterCount === 0}
-              aria-expanded={expandedModuleId === node.id}
-              onClick={() => onToggleExpanded(node.id)}
-            >
-              查看参数
-            </button>
-            <button className="button subtle" type="button" onClick={() => onEdit(node.id)}>
-              修改
-            </button>
-            <button className="button subtle" type="button" onClick={() => onMove(node.id)}>
-              移动
-            </button>
-            <button
-              className="button ghost danger"
-              type="button"
-              disabled={parameterCount > 0 || node.children.length > 0}
-              title={parameterCount > 0 || node.children.length > 0 ? "仍有子模块或参数引用，无法删除" : undefined}
-              onClick={() => onDelete(node.id)}
-            >
-              删除
-            </button>
-          </div>
-        </td>
-      </tr>
-      {expandedModuleId === node.id ? (
-        <tr className="param-admin-module-parameters-row">
-          <td colSpan={3}>
-            <div className="param-admin-module-parameters" aria-label={`${node.name} 参数列表`}>
-              <div className="param-admin-module-parameters-head">
-                <strong>{node.name}</strong>
-                <span>{parameterCount} 个参数</span>
-              </div>
-              <ul className="param-admin-module-parameter-list">
-                {moduleParameters.map((parameter) => (
-                  <li key={parameter.id}>
-                    <div className="param-admin-module-parameter-meta">
-                      <code>{parameter.name}</code>
-                      {parameter.description ? <span>{parameter.description}</span> : null}
-                    </div>
-                    <button
-                      className="button subtle"
-                      type="button"
-                      onClick={() => onEditParameterDefinition(parameter.id)}
-                    >
-                      修改定义
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </td>
-        </tr>
-      ) : null}
-      {node.children.map((child) => (
-        <ModuleTreeRows
-          key={child.id}
-          depth={depth + 1}
-          expandedModuleId={expandedModuleId}
-          moduleNodes={moduleNodes}
-          node={child}
-          parameters={parameters}
-          onAddChild={onAddChild}
-          onDelete={onDelete}
-          onEdit={onEdit}
-          onMove={onMove}
-          onEditParameterDefinition={onEditParameterDefinition}
-          onToggleExpanded={onToggleExpanded}
-        />
-      ))}
-    </Fragment>
-  );
 }
 
 export function ModuleManagementDialog({
@@ -206,19 +55,19 @@ export function ModuleManagementDialog({
   onEditParameterDefinition: (parameterId: string) => void;
 }) {
   const [moduleQuery, setModuleQuery] = useState("");
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [addParentId, setAddParentId] = useState<string | null>(null);
-  const [addDraft, setAddDraft] = useState<ParameterModuleDraft>(emptyModuleDraft());
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
-  const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
+  const [expandedDetailId, setExpandedDetailId] = useState<string | null>(null);
+  const [expandedTreeIds, setExpandedTreeIds] = useState<Set<string>>(() => new Set());
   const [moveModuleId, setMoveModuleId] = useState<string | null>(null);
   const [moveParentId, setMoveParentId] = useState<string>("");
-  const [formError, setFormError] = useState("");
 
   const moduleTree = useMemo(() => buildModuleTree(moduleNodes), [moduleNodes]);
   const filteredTree = useMemo(() => filterTreeNodes(moduleTree, moduleQuery), [moduleQuery, moduleTree]);
   const editingModule = moduleNodes.find((module) => module.id === editingModuleId) ?? null;
   const moveTarget = moduleNodes.find((module) => module.id === moveModuleId) ?? null;
+  const createParentName = addParentId ? moduleNodes.find((node) => node.id === addParentId)?.name ?? addParentId : null;
 
   useEffect(() => {
     if (!open) {
@@ -226,59 +75,81 @@ export function ModuleManagementDialog({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !editingModuleId && !moveModuleId) {
+      if (event.key === "Escape" && !editingModuleId && !moveModuleId && !showCreateDialog) {
         onClose();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [editingModuleId, moveModuleId, onClose, open]);
+  }, [editingModuleId, moveModuleId, onClose, open, showCreateDialog]);
 
   useEffect(() => {
-    if (open) {
-      setModuleQuery("");
-      setShowAddForm(false);
-      setAddParentId(null);
-      setAddDraft(emptyModuleDraft());
-      setEditingModuleId(null);
-      setExpandedModuleId(null);
-      setMoveModuleId(null);
-      setMoveParentId("");
-      setFormError("");
+    if (!open) {
+      return;
     }
-  }, [open]);
+    setModuleQuery("");
+    setShowCreateDialog(false);
+    setAddParentId(null);
+    setEditingModuleId(null);
+    setExpandedDetailId(null);
+    setMoveModuleId(null);
+    setMoveParentId("");
+    setExpandedTreeIds(buildDefaultExpandedTreeIds(moduleTree));
+  }, [open, moduleTree]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const defaults = buildDefaultExpandedTreeIds(moduleTree);
+    if (!moduleQuery.trim()) {
+      setExpandedTreeIds(defaults);
+      return;
+    }
+    const searchExpanded = collectExpandedIdsForFilteredTree(filteredTree);
+    setExpandedTreeIds(new Set([...defaults, ...searchExpanded]));
+  }, [filteredTree, moduleQuery, moduleTree, open]);
+
+  const getItemCount = useCallback(
+    (moduleId: string) => countParametersByModule(parameters, moduleId, moduleNodes),
+    [moduleNodes, parameters]
+  );
+
+  const getItems = useCallback(
+    (moduleId: string) => parametersInModule(parameters, moduleId, moduleNodes),
+    [moduleNodes, parameters]
+  );
+
+  const toggleTree = useCallback((moduleId: string) => {
+    setExpandedTreeIds((current) => {
+      const next = new Set(current);
+      if (next.has(moduleId)) {
+        next.delete(moduleId);
+      } else {
+        next.add(moduleId);
+      }
+      return next;
+    });
+  }, []);
 
   if (!open) {
     return null;
   }
 
-  const canCreate = canSubmitModuleDraft(addDraft, siblingNames(moduleNodes, addParentId));
-
-  const handleAddModule = () => {
-    if (!canCreate) {
-      setFormError("请填写有效的模块名称");
-      return;
-    }
-    onAddModule(
-      {
-        name: addDraft.name.trim(),
-        description: addDraft.description.trim(),
-        scope: addDraft.scope.trim()
-      },
-      addParentId
-    );
-    setAddDraft(emptyModuleDraft());
-    setFormError("");
-    setShowAddForm(false);
+  const startAddRoot = () => {
     setAddParentId(null);
+    setShowCreateDialog(true);
   };
 
   const startAddChild = (parentId: string) => {
     setAddParentId(parentId);
-    setShowAddForm(true);
-    setAddDraft(emptyModuleDraft());
-    setFormError("");
+    setShowCreateDialog(true);
+  };
+
+  const closeCreateDialog = () => {
+    setShowCreateDialog(false);
+    setAddParentId(null);
   };
 
   return (
@@ -307,57 +178,11 @@ export function ModuleManagementDialog({
                 onChange={(event) => setModuleQuery(event.target.value)}
               />
             </label>
-            <button
-              className="button subtle"
-              type="button"
-              aria-expanded={showAddForm && addParentId === null}
-              onClick={() => {
-                setAddParentId(null);
-                setShowAddForm((current) => !current);
-                setFormError("");
-              }}
-            >
+            <button className="button subtle" type="button" onClick={startAddRoot}>
               <Plus size={16} aria-hidden="true" />
               新增根模块
             </button>
           </div>
-
-          {showAddForm ? (
-            <div className="param-admin-module-add param-admin-module-add--inline">
-              {addParentId ? (
-                <p className="param-admin-module-add-context">
-                  在「{moduleNodes.find((node) => node.id === addParentId)?.name ?? addParentId}」下创建子模块
-                </p>
-              ) : null}
-              <ModuleDefinitionForm
-                existingNames={siblingNames(moduleNodes, addParentId)}
-                module={addDraft}
-                onChange={(patch) => {
-                  setAddDraft((current) => ({ ...current, ...patch }));
-                  if (formError) {
-                    setFormError("");
-                  }
-                }}
-              />
-              <div className="param-admin-module-add-actions">
-                <button className="button primary" type="button" disabled={!canCreate} onClick={handleAddModule}>
-                  创建
-                </button>
-                <button
-                  className="button ghost"
-                  type="button"
-                  onClick={() => {
-                    setShowAddForm(false);
-                    setAddParentId(null);
-                    setAddDraft(emptyModuleDraft());
-                    setFormError("");
-                  }}
-                >
-                  取消
-                </button>
-              </div>
-            </div>
-          ) : null}
 
           {moveTarget && onMoveModule ? (
             <div className="param-admin-module-move">
@@ -391,8 +216,6 @@ export function ModuleManagementDialog({
             </div>
           ) : null}
 
-          {formError ? <p className="field-error param-admin-module-error">{formError}</p> : null}
-
           <div className="param-admin-module-table-wrap" aria-label="模块列表">
             {filteredTree.length === 0 ? (
               <p className="param-admin-module-empty">
@@ -414,19 +237,34 @@ export function ModuleManagementDialog({
                 </thead>
                 <tbody>
                   {filteredTree.map((node) => (
-                    <ModuleTreeRows
+                    <ModuleManagementTreeRows
                       key={node.id}
                       depth={0}
-                      expandedModuleId={expandedModuleId}
+                      deleteDisabledReason="仍有子模块或参数引用，无法删除"
+                      detailCountLabel={(count) => `${count} 个参数`}
+                      detailListLabel={(moduleName) => `${moduleName} 参数列表`}
+                      editItemLabel="修改定义"
+                      expandedDetailId={expandedDetailId}
+                      expandedTreeIds={expandedTreeIds}
+                      getItemCount={getItemCount}
+                      getItemId={(parameter) => parameter.id}
+                      getItems={getItems}
                       moduleNodes={moduleNodes}
                       node={node}
-                      parameters={parameters}
+                      renderItemMeta={(parameter) => (
+                        <div className="param-admin-module-parameter-meta">
+                          <code>{parameter.name}</code>
+                          {parameter.description ? <span>{parameter.description}</span> : null}
+                        </div>
+                      )}
+                      viewItemsLabel="查看参数"
                       onAddChild={startAddChild}
                       onDelete={onDeleteModule}
                       onEdit={setEditingModuleId}
+                      onEditItem={onEditParameterDefinition}
                       onMove={setMoveModuleId}
-                      onEditParameterDefinition={onEditParameterDefinition}
-                      onToggleExpanded={(moduleId) => setExpandedModuleId((current) => (current === moduleId ? null : moduleId))}
+                      onToggleDetail={(moduleId) => setExpandedDetailId((current) => (current === moduleId ? null : moduleId))}
+                      onToggleTree={toggleTree}
                     />
                   ))}
                 </tbody>
@@ -441,6 +279,18 @@ export function ModuleManagementDialog({
           </button>
         </div>
       </div>
+
+      {showCreateDialog ? (
+        <ModuleCreateDialog
+          existingNames={siblingNames(moduleNodes, addParentId)}
+          parentName={createParentName}
+          onCancel={closeCreateDialog}
+          onCreate={(draft) => {
+            onAddModule(draft, addParentId);
+            closeCreateDialog();
+          }}
+        />
+      ) : null}
 
       {editingModule ? (
         <ModuleEditDialog

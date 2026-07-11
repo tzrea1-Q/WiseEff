@@ -33,9 +33,10 @@ describe("ModuleManagementDialog", () => {
     expect(screen.getByText("Charging Policy")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "新增根模块" }));
-    fireEvent.change(screen.getByLabelText("模块名称"), { target: { value: "Custom Power" } });
-    fireEvent.change(screen.getByLabelText("模块展示描述"), { target: { value: "自定义电源模块" } });
-    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+    const createDialog = screen.getByRole("dialog", { name: "新增根模块" });
+    fireEvent.change(within(createDialog).getByLabelText("模块名称"), { target: { value: "Custom Power" } });
+    fireEvent.change(within(createDialog).getByLabelText("模块展示描述"), { target: { value: "自定义电源模块" } });
+    fireEvent.click(within(createDialog).getByRole("button", { name: "创建" }));
     expect(onAddModule).toHaveBeenCalledWith(
       {
         name: "Custom Power",
@@ -94,5 +95,52 @@ describe("ModuleManagementDialog", () => {
     expect(parameterItem).not.toBeNull();
     fireEvent.click(within(parameterItem as HTMLElement).getByRole("button", { name: "修改定义" }));
     expect(onEditParameterDefinition).toHaveBeenCalledWith(chargingParameter!.id);
+  });
+
+  it("opens a create dialog when adding a child module", () => {
+    render(
+      <ModuleManagementDialog
+        open
+        moduleNodes={moduleNodes}
+        parameters={initialState.configDraft.parameterLibrary}
+        onClose={vi.fn()}
+        onAddModule={vi.fn()}
+        onUpdateModule={vi.fn()}
+        onDeleteModule={vi.fn()}
+        onEditParameterDefinition={vi.fn()}
+      />
+    );
+
+    const estimationRow = screen.getByText("Battery Estimation").closest("tr");
+    expect(estimationRow).not.toBeNull();
+    fireEvent.click(within(estimationRow!).getByRole("button", { name: "Battery Estimation 更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "添加子模块" }));
+
+    expect(screen.getByRole("dialog", { name: "在 Battery Estimation 下创建子模块" })).toBeInTheDocument();
+  });
+
+  it("collapses child modules behind the parent expand toggle", () => {
+    render(
+      <ModuleManagementDialog
+        open
+        moduleNodes={moduleNodes}
+        parameters={initialState.configDraft.parameterLibrary}
+        onClose={vi.fn()}
+        onAddModule={vi.fn()}
+        onUpdateModule={vi.fn()}
+        onDeleteModule={vi.fn()}
+        onEditParameterDefinition={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Charging Policy")).toBeInTheDocument();
+    const powerRow = screen.getByText("Power").closest("tr");
+    expect(powerRow).not.toBeNull();
+
+    fireEvent.click(within(powerRow!).getByRole("button", { name: "折叠子模块" }));
+    expect(screen.queryByText("Charging Policy")).not.toBeInTheDocument();
+
+    fireEvent.click(within(powerRow!).getByRole("button", { name: "展开子模块" }));
+    expect(screen.getByText("Charging Policy")).toBeInTheDocument();
   });
 });

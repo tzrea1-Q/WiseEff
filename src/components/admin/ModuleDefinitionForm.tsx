@@ -1,29 +1,36 @@
+import { useState } from "react";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
+import { shouldShowFieldError } from "@/components/common/fieldValidation";
 
 export function ModuleDefinitionForm({
   module,
   existingNames,
   currentName,
-  onChange
+  onChange,
+  showErrors = false
 }: {
   module: ParameterModuleDraft;
   existingNames: readonly string[];
   currentName?: string;
   onChange: (patch: Partial<ParameterModuleDraft>) => void;
+  showErrors?: boolean;
 }) {
+  const [nameTouched, setNameTouched] = useState(false);
   const nameError = getModuleNameError(module.name, existingNames, currentName);
+  const visibleNameError = shouldShowFieldError(nameError, { touched: nameTouched, submitted: showErrors });
 
   return (
     <form className="param-module-def-form" onSubmit={(event) => event.preventDefault()}>
       <label>
         模块名称
         <input
-          aria-invalid={nameError ? "true" : "false"}
+          aria-invalid={visibleNameError ? "true" : "false"}
           aria-label="模块名称"
           value={module.name}
+          onBlur={() => setNameTouched(true)}
           onChange={(event) => onChange({ name: event.target.value })}
         />
-        {nameError ? <span className="field-error">{nameError}</span> : null}
+        {visibleNameError ? <span className="field-error">{nameError}</span> : null}
       </label>
       <label>
         展示描述

@@ -1,3 +1,5 @@
+import { LibrarySelectFilter } from "@/components/admin/LibrarySelectFilter";
+
 export const LIBRARY_RISK_FILTER_OPTIONS = [
   { value: "all", label: "全部风险" },
   { value: "high", label: "高" },
@@ -15,18 +17,12 @@ export type LibraryRiskFilterProps = {
 
 export function LibraryRiskFilter({ value, onChange, disabled = false }: LibraryRiskFilterProps) {
   return (
-    <select
-      aria-label="风险等级"
-      className="library-sort"
+    <LibrarySelectFilter
+      ariaLabel="风险等级"
       disabled={disabled}
+      options={LIBRARY_RISK_FILTER_OPTIONS}
       value={value}
-      onChange={(event) => onChange(event.target.value as LibraryRiskFilterValue)}
-    >
-      {LIBRARY_RISK_FILTER_OPTIONS.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+    />
   );
 }

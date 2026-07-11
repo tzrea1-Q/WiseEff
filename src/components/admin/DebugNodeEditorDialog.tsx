@@ -1,7 +1,6 @@
 import { CircleX } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
@@ -101,7 +100,7 @@ export function DebugNodeEditorDialog({
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={mode === "create" ? "创建调试节点" : "编辑调试节点"}>
-      <div className="submission-dialog param-admin-editor-dialog">
+      <div className="submission-dialog param-admin-editor-dialog debug-admin-definition-dialog">
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">节点注册表</span>
@@ -113,16 +112,20 @@ export function DebugNodeEditorDialog({
           </button>
         </div>
 
-        <div className="debug-admin-form-section">
-          <div className="debug-admin-form-fields">
+        <div className="param-admin-editor-dialog-body">
+          <div className="debug-admin-form-section">
+            <div className="debug-admin-form-fields">
             <label className="debug-admin-field">
               <span className="debug-admin-field-label">名称</span>
               <Input value={draft.name} disabled={fieldsDisabled} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
             </label>
-            <label className="debug-admin-field">
-              <span className="debug-admin-field-label">模块</span>
+            <div className="debug-admin-field">
+              <span className="debug-admin-field-label" id="debug-node-module-label">
+                模块
+              </span>
               <ModuleTreeSelect
                 label="选择模块"
+                labelledBy="debug-node-module-label"
                 mode="single"
                 nodes={moduleNodes}
                 value={selectedModuleId}
@@ -136,7 +139,7 @@ export function DebugNodeEditorDialog({
                   }
                 }}
               />
-            </label>
+            </div>
             <label className="debug-admin-field">
               <span className="debug-admin-field-label">简述</span>
               <Input
@@ -190,14 +193,15 @@ export function DebugNodeEditorDialog({
             </label>
           </div>
         </div>
+        </div>
 
         <div className="dialog-actions">
-          <Button variant="secondary" onClick={onClose} disabled={loading}>
+          <button className="button subtle" type="button" onClick={onClose} disabled={loading}>
             取消
-          </Button>
-          <Button disabled={!canSubmit} onClick={() => onSave(draft)}>
+          </button>
+          <button className="button primary" disabled={!canSubmit} type="button" onClick={() => onSave(draft)}>
             {loading ? "保存中…" : "保存"}
-          </Button>
+          </button>
         </div>
       </div>
     </div>

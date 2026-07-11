@@ -39,7 +39,7 @@ export function filterParameterLibrary(
       return false;
     }
 
-    if (allowedModuleIds && !allowedModuleIds.has(templateModuleId(parameter))) {
+    if (allowedModuleIds && !allowedModuleIds.has(templateModuleId(parameter, moduleNodes))) {
       return false;
     }
 
