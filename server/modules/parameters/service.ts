@@ -10,8 +10,10 @@ import {
 } from "../notifications/producers";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
+import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { writebackMergedParameterValue } from "../parameter-files/writebackService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import {
   applyAddedImportItem,
@@ -73,7 +75,9 @@ import type { ChangeRequestDto, ParameterImportSourceItemDto, ParameterImportSum
 import { buildSubmissionWorkflowTrail } from "../../../src/domain/parameters/submissionWorkflowTrail";
 import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeline";
 
-type ServiceContext = AuditCorrelationContext;
+type ServiceContext = AuditCorrelationContext & {
+  objectStore?: ObjectStore;
+};
 
 export type SaveDraftInput = {
   projectId: string;
@@ -1357,6 +1361,19 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       changeRequest: request,
       participants
     }, context);
+    if (context.objectStore) {
+      await writebackMergedParameterValue(
+        tx,
+        context.objectStore,
+        auth,
+        {
+          projectId: request.projectId,
+          parameterDefinitionId: merged.parameterDefinitionId,
+          mergedValue: merged.targetValue
+        },
+        context
+      );
+    }
 
     if (request.submitterUserId && request.projectId) {
       const project = await getProjectById(tx, {
