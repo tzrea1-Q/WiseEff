@@ -10,6 +10,7 @@ type ProjectAdminTableProps = {
   onCreateProject: () => void;
   onEditProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
+  onManageFiles: (projectId: string) => void;
 };
 
 const statusOptions = [
@@ -49,7 +50,15 @@ function sortRows(rows: ParameterAdminProjectRow[], sort: string) {
   return next;
 }
 
-export function ProjectAdminTable({ rows, search, onUpdateSearch, onCreateProject, onEditProject, onDeleteProject }: ProjectAdminTableProps) {
+export function ProjectAdminTable({
+  rows,
+  search,
+  onUpdateSearch,
+  onCreateProject,
+  onEditProject,
+  onDeleteProject,
+  onManageFiles
+}: ProjectAdminTableProps) {
   const filteredRows = useMemo(() => sortRows(filterRows(rows, search), search.sort), [rows, search]);
   const filtersActive = search.q.trim().length > 0 || search.status !== "all";
 
@@ -156,6 +165,15 @@ export function ProjectAdminTable({ rows, search, onUpdateSearch, onCreateProjec
                 </td>
                 <td data-label="操作">
                   <div className="param-admin-row-actions project-admin-row-actions">
+                    <button
+                      type="button"
+                      className="button subtle project-admin-row-manage-files"
+                      aria-label={`管理文件 ${row.name}`}
+                      title={`管理文件 ${row.name}`}
+                      onClick={() => onManageFiles(row.id)}
+                    >
+                      管理文件
+                    </button>
                     <button
                       type="button"
                       className="icon-button project-admin-row-edit"
