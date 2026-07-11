@@ -1361,7 +1361,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       changeRequest: request,
       participants
     }, context);
-    if (context.objectStore) {
+    if (context.objectStore && request.projectId) {
       await writebackMergedParameterValue(
         tx,
         context.objectStore,

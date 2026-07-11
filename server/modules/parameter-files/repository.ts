@@ -60,6 +60,7 @@ function toVersionDto(row: ProjectParameterFileVersionRow): ProjectParameterFile
     id: row.id,
     fileId: row.file_id,
     versionNumber: Number(row.version_number),
+    storageKey: row.storage_key,
     checksum: row.checksum,
     sizeBytes: Number(row.size_bytes),
     parsedIndex: row.parsed_index ?? {},

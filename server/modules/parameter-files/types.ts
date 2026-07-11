@@ -24,6 +24,7 @@ export type ProjectParameterFileVersionDto = {
   id: string;
   fileId: string;
   versionNumber: number;
+  storageKey: string;
   checksum: string;
   sizeBytes: number;
   parsedIndex: ParsedIndex;
