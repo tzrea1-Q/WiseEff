@@ -20,6 +20,7 @@
 ## 进行中
 
 - **TD-038（模块树后续）：** 多层级模块已落地后，仍需删除过渡 `module` 文本列、收敛 `project_modules` 与组织级 `parameter_modules` 单一真相源，并评估 dashboard 热榜的层级聚合。
+- **TD-039（项目参数文件 P2）：** P1 已交付 fragment 级 DTS 同步与文本 patch 写回；P2 需完整 DTS 解析与 AST 写回。详见 `docs/superpowers/specs/2026-07-11-project-parameter-files-design.md` P2 与英文版 Open 表；与 TD-035 对齐。
 
 ## 近期关闭项
 

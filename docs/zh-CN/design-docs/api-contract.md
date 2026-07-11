@@ -359,6 +359,44 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 
 `feedbackType` 可为 `experience`、`data`、`export_submit`、`feature`。`status` 可为 `open`、`in_progress`、`closed`，状态流转为 `open -> in_progress -> closed`；`closed` 后不允许继续更新。附件只接受 `image/png`、`image/jpeg`、`image/webp`，最多 5 张，单张 5 MB，总量 15 MB。
 
+## 项目参数文件
+
+每项目可托管多个 DTS/JSON 文件，字节存对象存储，元数据与 `parsed_index` 存 PostgreSQL。上传请求体为 JSON `contentBase64`（非 multipart）。P1 单文件上限 2 MB。参数列表/详情 DTO 对已绑定项目值暴露可选 `sourceFileName`、`sourceNodePath`。
+
+查看要求 `canViewParameters`；上传、新版本、同步与冲突裁决要求 `canAdminParameters`。裁决服务层另校验 `canReviewParameters`。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/v1/projects/:projectId/parameter-files` | 列出项目托管文件及当前版本元数据。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-files` | 上传新文件或首版。返回 `201 { item, version }`。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | 上传下一版本。返回 `201 { item }`（版本 DTO）。 |
+| `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | 单文件版本历史。 |
+| `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/content` | 下载指定版本原始字节。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/sync` | 对当前或指定版本与 DB diff 并 upsert `file_sync` 草稿。返回 `{ item: syncSummary }`。 |
+| `GET` | `/api/v1/projects/:projectId/parameter-file-conflicts` | 列出项目内 open 冲突。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve` | 裁决冲突。请求体：`{ "resolution": "file" \| "ui" }`。 |
+
+上传请求体：
+
+```json
+{
+  "fileName": "battery.dtsi",
+  "contentBase64": "YmF0dGVyeSB7IHRlbXBf..."
+}
+```
+
+同步请求体（可选）：
+
+```json
+{
+  "versionId": "ppfv_123"
+}
+```
+
+省略 `versionId` 时使用文件 `currentVersionId`。`origin=writeback` 的版本在同步时不生成新草稿。
+
+审计动作：`parameter-file-upload`、`parameter-file-sync`、`parameter-file-conflict-open`、`parameter-file-conflict-resolve`、`parameter-writeback-to-file`。
+
 ## 8. Jobs 与进度
 
 | 方法 | 路径 | 说明 |
