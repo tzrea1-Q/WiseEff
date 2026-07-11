@@ -28,6 +28,7 @@ import {
   getProjectParameterForUpdate,
   getSubmissionRoundById,
   getSubmissionRoundSubmitterUserId,
+  hasOpenFileSyncConflict,
   hasEligibleWorkflowAssignee,
   insertImportBatch,
   insertReviewDecision,
@@ -817,6 +818,14 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         throw new ApiError("CONFLICT", "Parameter already has an open change request.", 409, {
           parameterId: item.parameterId,
           requestId: openRequest.id
+        });
+      }
+      const hasConflict = await hasOpenFileSyncConflict(tx, {
+        projectParameterValueId: parameter.id
+      });
+      if (hasConflict) {
+        throw new ApiError("CONFLICT", "Parameter has an open file sync conflict.", 409, {
+          parameterId: item.parameterId
         });
       }
 

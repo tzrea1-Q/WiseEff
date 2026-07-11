@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import { syncFileVersion } from "./syncService";
+import { detectFileUiDraftConflict } from "./conflictService";
 import { getFileVersionById, getProjectParameterFileById } from "./repository";
 import {
   bindParameterSource,
@@ -13,6 +14,10 @@ import {
 vi.mock("./repository", () => ({
   getProjectParameterFileById: vi.fn(),
   getFileVersionById: vi.fn()
+}));
+
+vi.mock("./conflictService", () => ({
+  detectFileUiDraftConflict: vi.fn()
 }));
 
 vi.mock("../parameters/repository", () => ({
@@ -28,6 +33,7 @@ const mockedFindProjectValueBySource = vi.mocked(findProjectValueBySource);
 const mockedFindProjectValueByDefinition = vi.mocked(findProjectValueByDefinition);
 const mockedBindParameterSource = vi.mocked(bindParameterSource);
 const mockedUpsertFileSyncDraft = vi.mocked(upsertFileSyncDraft);
+const mockedDetectFileUiDraftConflict = vi.mocked(detectFileUiDraftConflict);
 
 const fakeDb = {
   query: vi.fn()
@@ -59,6 +65,14 @@ describe("syncFileVersion", () => {
       format: "json",
       enabled: true,
       updatedAt: "2026-07-11T09:00:00.000Z"
+    });
+    mockedUpsertFileSyncDraft.mockResolvedValue({
+      id: "ppv-1-user-1-file-sync",
+      projectId: "project-1",
+      parameterId: "ppv-1",
+      targetValue: "85",
+      reason: "Synced from config.json:battery/temp_max",
+      updatedAt: "2026-07-11T09:02:00.000Z"
     });
   });
 
@@ -107,6 +121,15 @@ describe("syncFileVersion", () => {
       projectParameterValueId: "ppv-1",
       sourceFileName: "config.json",
       sourceNodePath: "battery/temp_max"
+    });
+    expect(mockedDetectFileUiDraftConflict).toHaveBeenCalledWith(fakeDb, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      projectParameterValueId: "ppv-1",
+      parameterDefinitionId: "pd-1",
+      fileVersionId: "version-1",
+      fileDraftId: "ppv-1-user-1-file-sync",
+      fileValue: "85"
     });
   });
 

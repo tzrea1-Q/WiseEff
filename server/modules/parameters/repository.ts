@@ -176,9 +176,57 @@ type DraftRow = {
   id: string;
   project_id: string;
   project_parameter_value_id: string;
+  user_id?: string;
   target_value: string;
   reason: string;
+  origin?: "manual" | "file_sync";
+  origin_file_version_id?: string | null;
   updated_at: string | Date;
+};
+
+export type ParameterDraftWithOrigin = {
+  id: string;
+  userId: string;
+  projectId: string;
+  projectParameterValueId: string;
+  targetValue: string;
+  origin: "manual" | "file_sync";
+  originFileVersionId?: string;
+  updatedAt: string;
+};
+
+type FileSyncConflictRow = {
+  id: string;
+  organization_id: string;
+  project_id: string;
+  project_parameter_value_id: string;
+  parameter_definition_id: string;
+  file_version_id: string;
+  file_draft_id: string;
+  ui_draft_id: string;
+  file_value: string;
+  ui_draft_value: string;
+  status: "open" | "resolved_file" | "resolved_ui";
+  resolved_by_user_id: string | null;
+  resolved_at: string | Date | null;
+  created_at: string | Date;
+};
+
+export type FileSyncConflictRecord = {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  projectParameterValueId: string;
+  parameterDefinitionId: string;
+  fileVersionId: string;
+  fileDraftId: string;
+  uiDraftId: string;
+  fileValue: string;
+  uiDraftValue: string;
+  status: "open" | "resolved_file" | "resolved_ui";
+  resolvedByUserId?: string;
+  resolvedAt?: string;
+  createdAt: string;
 };
 
 type SubmissionRoundRow = {
@@ -440,6 +488,38 @@ function toDraftDto(row: DraftRow): ParameterDraftDto {
     targetValue: row.target_value,
     reason: row.reason,
     updatedAt: dateTimeToIso(row.updated_at)
+  };
+}
+
+function toDraftWithOrigin(row: DraftRow): ParameterDraftWithOrigin {
+  return {
+    id: row.id,
+    userId: row.user_id ?? "",
+    projectId: row.project_id,
+    projectParameterValueId: row.project_parameter_value_id,
+    targetValue: row.target_value,
+    origin: row.origin ?? "manual",
+    originFileVersionId: row.origin_file_version_id ?? undefined,
+    updatedAt: dateTimeToIso(row.updated_at)
+  };
+}
+
+function toFileSyncConflictRecord(row: FileSyncConflictRow): FileSyncConflictRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    projectId: row.project_id,
+    projectParameterValueId: row.project_parameter_value_id,
+    parameterDefinitionId: row.parameter_definition_id,
+    fileVersionId: row.file_version_id,
+    fileDraftId: row.file_draft_id,
+    uiDraftId: row.ui_draft_id,
+    fileValue: row.file_value,
+    uiDraftValue: row.ui_draft_value,
+    status: row.status,
+    resolvedByUserId: row.resolved_by_user_id ?? undefined,
+    resolvedAt: row.resolved_at ? dateTimeToIso(row.resolved_at) : undefined,
+    createdAt: dateTimeToIso(row.created_at)
   };
 }
 
@@ -1116,6 +1196,23 @@ export async function listDraftsForUser(
   return result.rows.map(toDraftDto);
 }
 
+export async function listDraftsForParameterValue(
+  db: Queryable,
+  query: { projectParameterValueId: string }
+) {
+  const result = await db.query<DraftRow>(
+    `
+    select id, user_id, project_id, project_parameter_value_id, target_value, origin, origin_file_version_id, updated_at
+    from parameter_drafts
+    where project_parameter_value_id = $1
+    order by updated_at desc, id asc
+    `,
+    [query.projectParameterValueId]
+  );
+
+  return result.rows.map(toDraftWithOrigin);
+}
+
 export async function upsertDraft(
   db: Queryable,
   input: {
@@ -1216,6 +1313,126 @@ export async function deleteDraftForParameter(
     `,
     [input.organizationId, input.userId, input.projectId, input.parameterId]
   );
+}
+
+export async function hasOpenFileSyncConflict(
+  db: Queryable,
+  query: { projectParameterValueId: string }
+) {
+  const result = await db.query<{ id: string }>(
+    `
+    select id
+    from parameter_file_sync_conflicts
+    where project_parameter_value_id = $1
+      and status = 'open'
+    limit 1
+    `,
+    [query.projectParameterValueId]
+  );
+
+  return result.rows.length > 0;
+}
+
+export async function insertFileSyncConflict(
+  db: Queryable,
+  input: {
+    id: string;
+    organizationId: string;
+    projectId: string;
+    projectParameterValueId: string;
+    parameterDefinitionId: string;
+    fileVersionId: string;
+    fileDraftId: string;
+    uiDraftId: string;
+    fileValue: string;
+    uiDraftValue: string;
+  }
+) {
+  const result = await db.query<FileSyncConflictRow>(
+    `
+    insert into parameter_file_sync_conflicts (
+      id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
+      file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open')
+    returning *
+    `,
+    [
+      input.id,
+      input.organizationId,
+      input.projectId,
+      input.projectParameterValueId,
+      input.parameterDefinitionId,
+      input.fileVersionId,
+      input.fileDraftId,
+      input.uiDraftId,
+      input.fileValue,
+      input.uiDraftValue
+    ]
+  );
+
+  return toFileSyncConflictRecord(result.rows[0]);
+}
+
+export async function listOpenConflicts(
+  db: Queryable,
+  query: { organizationId: string; projectParameterValueId?: string; projectId?: string; conflictId?: string }
+) {
+  const values: unknown[] = [query.organizationId];
+  const where = ["organization_id = $1", "status = 'open'"];
+  if (query.projectParameterValueId) {
+    addCondition(
+      where,
+      values,
+      (placeholder) => `project_parameter_value_id = ${placeholder}`,
+      query.projectParameterValueId
+    );
+  }
+  if (query.projectId) {
+    addCondition(where, values, (placeholder) => `project_id = ${placeholder}`, query.projectId);
+  }
+  if (query.conflictId) {
+    addCondition(where, values, (placeholder) => `id = ${placeholder}`, query.conflictId);
+  }
+
+  const result = await db.query<FileSyncConflictRow>(
+    `
+    select *
+    from parameter_file_sync_conflicts
+    where ${where.join("\n      and ")}
+    order by created_at desc, id desc
+    `,
+    values
+  );
+
+  return result.rows.map(toFileSyncConflictRecord);
+}
+
+export async function resolveConflict(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    conflictId: string;
+    status: "resolved_file" | "resolved_ui";
+    resolvedByUserId: string;
+  }
+) {
+  const result = await db.query<FileSyncConflictRow>(
+    `
+    update parameter_file_sync_conflicts
+    set status = $3,
+      resolved_by_user_id = $4,
+      resolved_at = now()
+    where organization_id = $1
+      and id = $2
+      and status = 'open'
+    returning *
+    `,
+    [input.organizationId, input.conflictId, input.status, input.resolvedByUserId]
+  );
+
+  const row = result.rows[0];
+  return row ? toFileSyncConflictRecord(row) : null;
 }
 
 export async function createSubmissionRound(

@@ -7,6 +7,7 @@ import {
 } from "../parameters/repository";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { detectFileUiDraftConflict } from "./conflictService";
 import { getFileVersionById, getProjectParameterFileById } from "./repository";
 import { nodePathToParameterIdentity } from "./pathMapper";
 
@@ -21,10 +22,6 @@ export type FileSyncSummary = {
   unmatched: number;
   skipped: boolean;
 };
-
-export async function detectFileUiDraftConflict(): Promise<null> {
-  return null;
-}
 
 export async function syncFileVersion(
   db: Queryable,
@@ -92,7 +89,7 @@ export async function syncFileVersion(
       continue;
     }
 
-    await upsertFileSyncDraft(db, {
+    const fileDraft = await upsertFileSyncDraft(db, {
       organizationId: auth.organization.id,
       projectId: file.projectId,
       projectParameterValueId: resolved.id,
@@ -108,7 +105,15 @@ export async function syncFileVersion(
       sourceFileName: file.fileName,
       sourceNodePath: nodePath
     });
-    await detectFileUiDraftConflict();
+    await detectFileUiDraftConflict(db, {
+      organizationId: auth.organization.id,
+      projectId: file.projectId,
+      projectParameterValueId: resolved.id,
+      parameterDefinitionId: resolved.parameterDefinitionId,
+      fileVersionId: version.id,
+      fileDraftId: fileDraft.id,
+      fileValue: targetValue
+    });
   }
 
   return { draftsCreated, unchanged, unmatched, skipped: false };

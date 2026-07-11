@@ -12,11 +12,15 @@ import {
   getParameterById,
   getProjectById,
   getProjectParameterForUpdate,
+  hasOpenFileSyncConflict,
   hasEligibleWorkflowAssignee,
+  insertFileSyncConflict,
   insertReviewDecision,
   insertImportBatch,
   listChangeRequests,
+  listDraftsForParameterValue,
   listDraftsForUser,
+  listOpenConflicts,
   listParameterHistory,
   listParameters,
   listParameterDefinitionsForImport,
@@ -27,6 +31,7 @@ import {
   applyAddedImportItem,
   applyUpdatedImportItem,
   markImportBatchApplied,
+  resolveConflict,
   updateChangeRequestStatus,
   updateSubmissionRoundStatusFromRequests,
   upsertDraft
@@ -1092,5 +1097,156 @@ describe("parameter repository", () => {
     expect(updated).toBeNull();
     expect(calls[0].text).toContain("on conflict (id) do nothing");
     expect(calls[1].text).toContain("where parameter_definitions.organization_id = $1");
+  });
+
+  it("lists drafts by parameter value with origin metadata", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "draft-file",
+          user_id: "user-sync",
+          project_id: "project-1",
+          project_parameter_value_id: "param-1",
+          target_value: "85",
+          origin: "file_sync",
+          origin_file_version_id: "version-1",
+          updated_at: "2026-07-11T10:00:00.000Z"
+        },
+        {
+          id: "draft-ui",
+          user_id: "user-ui",
+          project_id: "project-1",
+          project_parameter_value_id: "param-1",
+          target_value: "82",
+          origin: "manual",
+          origin_file_version_id: null,
+          updated_at: "2026-07-11T10:01:00.000Z"
+        }
+      ]
+    ]);
+
+    const drafts = await listDraftsForParameterValue(db, { projectParameterValueId: "param-1" });
+
+    expect(calls[0].text).toContain("from parameter_drafts");
+    expect(calls[0].text).toContain("project_parameter_value_id = $1");
+    expect(calls[0].values).toEqual(["param-1"]);
+    expect(drafts).toEqual([
+      {
+        id: "draft-file",
+        userId: "user-sync",
+        projectId: "project-1",
+        projectParameterValueId: "param-1",
+        targetValue: "85",
+        origin: "file_sync",
+        originFileVersionId: "version-1",
+        updatedAt: "2026-07-11T10:00:00.000Z"
+      },
+      {
+        id: "draft-ui",
+        userId: "user-ui",
+        projectId: "project-1",
+        projectParameterValueId: "param-1",
+        targetValue: "82",
+        origin: "manual",
+        originFileVersionId: undefined,
+        updatedAt: "2026-07-11T10:01:00.000Z"
+      }
+    ]);
+  });
+
+  it("handles file sync conflict repository CRUD", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "conflict-1",
+          organization_id: "org-chargelab",
+          project_id: "project-1",
+          project_parameter_value_id: "param-1",
+          parameter_definition_id: "definition-1",
+          file_version_id: "version-1",
+          file_draft_id: "draft-file",
+          ui_draft_id: "draft-ui",
+          file_value: "85",
+          ui_draft_value: "82",
+          status: "open",
+          resolved_by_user_id: null,
+          resolved_at: null,
+          created_at: "2026-07-11T10:02:00.000Z"
+        }
+      ],
+      [
+        {
+          id: "conflict-1",
+          organization_id: "org-chargelab",
+          project_id: "project-1",
+          project_parameter_value_id: "param-1",
+          parameter_definition_id: "definition-1",
+          file_version_id: "version-1",
+          file_draft_id: "draft-file",
+          ui_draft_id: "draft-ui",
+          file_value: "85",
+          ui_draft_value: "82",
+          status: "open",
+          resolved_by_user_id: null,
+          resolved_at: null,
+          created_at: "2026-07-11T10:02:00.000Z"
+        }
+      ],
+      [{ id: "conflict-1" }],
+      [
+        {
+          id: "conflict-1",
+          organization_id: "org-chargelab",
+          project_id: "project-1",
+          project_parameter_value_id: "param-1",
+          parameter_definition_id: "definition-1",
+          file_version_id: "version-1",
+          file_draft_id: "draft-file",
+          ui_draft_id: "draft-ui",
+          file_value: "85",
+          ui_draft_value: "82",
+          status: "resolved_file",
+          resolved_by_user_id: "reviewer-1",
+          resolved_at: "2026-07-11T10:03:00.000Z",
+          created_at: "2026-07-11T10:02:00.000Z"
+        }
+      ]
+    ]);
+
+    const inserted = await insertFileSyncConflict(db, {
+      id: "conflict-1",
+      organizationId: "org-chargelab",
+      projectId: "project-1",
+      projectParameterValueId: "param-1",
+      parameterDefinitionId: "definition-1",
+      fileVersionId: "version-1",
+      fileDraftId: "draft-file",
+      uiDraftId: "draft-ui",
+      fileValue: "85",
+      uiDraftValue: "82"
+    });
+    const openConflicts = await listOpenConflicts(db, {
+      organizationId: "org-chargelab",
+      projectParameterValueId: "param-1"
+    });
+    const hasOpen = await hasOpenFileSyncConflict(db, {
+      projectParameterValueId: "param-1"
+    });
+    const resolved = await resolveConflict(db, {
+      organizationId: "org-chargelab",
+      conflictId: "conflict-1",
+      status: "resolved_file",
+      resolvedByUserId: "reviewer-1"
+    });
+
+    expect(calls[0].text).toContain("insert into parameter_file_sync_conflicts");
+    expect(calls[1].text).toContain("from parameter_file_sync_conflicts");
+    expect(calls[1].text).toContain("status = 'open'");
+    expect(calls[2].text).toContain("status = 'open'");
+    expect(calls[3].text).toContain("update parameter_file_sync_conflicts");
+    expect(inserted.status).toBe("open");
+    expect(openConflicts).toHaveLength(1);
+    expect(hasOpen).toBe(true);
+    expect(resolved?.status).toBe("resolved_file");
   });
 });
