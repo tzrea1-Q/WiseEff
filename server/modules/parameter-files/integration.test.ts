@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
@@ -127,6 +127,7 @@ describe("parameter file integration", () => {
   });
 
   it("upload + sync creates file_sync draft for battery/temp_max: 80 -> 85", async () => {
+    const fileName = `config-${randomUUID()}.json`;
     const router = createRouter();
     registerParameterFileRoutes(router, {
       db,
@@ -142,7 +143,7 @@ describe("parameter file integration", () => {
     }>(server, "/api/v1/projects/project-pf-int/parameter-files", {
       method: "POST",
       body: JSON.stringify({
-        fileName: "config.json",
+        fileName,
         contentBase64: bytes.toString("base64")
       })
     });
@@ -190,7 +191,7 @@ describe("parameter file integration", () => {
         origin_file_version_id: uploadResponse.body.version.id
       })
     );
-    expect(drafts.rows[0].reason).toContain("Synced from config.json:battery/temp_max");
+    expect(drafts.rows[0].reason).toContain(`Synced from ${fileName}:battery/temp_max`);
 
     const parameter = await db.query<{
       current_value: string;
@@ -205,7 +206,7 @@ describe("parameter file integration", () => {
     );
     expect(parameter.rows[0]).toEqual({
       current_value: "80",
-      source_file_name: "config.json",
+      source_file_name: fileName,
       source_node_path: "battery/temp_max"
     });
   });
