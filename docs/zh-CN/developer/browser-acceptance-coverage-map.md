@@ -38,6 +38,8 @@
 - `MOD-TREE-PARAM-002`：Admin 移动参数模块到新父节点，循环移动被拒绝（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-DEBUG-001`：Admin 创建嵌套调试节点模块，父模块筛选包含子模块下的节点（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-AUTHZ-001`：非 Admin 不能变更模块树；删除非空模块返回 409（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
+- `PARAM-FILE-ADMIN-001`：Admin 上传项目参数文件、列出版本、手动同步生成 `file_sync` 草稿，并在 `/parameter-admin/projects` 打开参数文件面板（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
+- `PARAM-FILE-CONFLICT-001`：Admin 裁决 file/UI 草稿冲突，可选择保留文件值或 UI 值（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 
 ## 同类中文文档
 

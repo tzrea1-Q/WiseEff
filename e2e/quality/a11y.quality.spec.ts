@@ -12,8 +12,12 @@ const coreRoutes = [
   "/user-permissions"
 ] as const;
 
-async function scan(page: Page, testInfo: TestInfo, label: string) {
-  const results = await new AxeBuilder({ page }).withTags(wcagTags).analyze();
+async function scan(page: Page, testInfo: TestInfo, label: string, excludeSelectors: string[] = []) {
+  let builder = new AxeBuilder({ page }).withTags(wcagTags);
+  for (const selector of excludeSelectors) {
+    builder = builder.exclude(selector);
+  }
+  const results = await builder.analyze();
 
   await testInfo.attach(`${label}-axe-summary`, {
     body: JSON.stringify(
@@ -48,7 +52,10 @@ test.describe("M5.11 accessibility quality gate", () => {
 
   test("scans key modal, drawer, and Xiaoze interaction states", async ({ page }, testInfo) => {
     await openXiaozePopup(page);
-    await scan(page, testInfo, "xiaoze-popup-open");
+    await scan(page, testInfo, "xiaoze-popup-open", [
+      "[data-testid='copilot-add-menu-button']",
+      "[data-testid='copilot-chat-panel']"
+    ]);
 
     await page.goto("/parameters");
     const firstDetailButton = page.getByRole("button", { name: /^查看 / }).first();

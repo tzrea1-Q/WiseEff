@@ -9,6 +9,33 @@ import { requestJson } from "../../test/testClient";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { registerParameterFileRoutes } from "./routes";
+import { registerParameterRoutes } from "../parameters/routes";
+
+function makeServer(db: InMemoryTestDatabase, objectStore: ObjectStore) {
+  const router = createRouter();
+  const auth = makeAuth();
+  const routeOptions = {
+    db,
+    objectStore,
+    getCurrentAuthContext: () => auth
+  };
+  registerParameterFileRoutes(router, routeOptions);
+  registerParameterRoutes(router, routeOptions);
+  return createHttpServer(router);
+}
+
+async function advanceReview(server: ReturnType<typeof createHttpServer>, requestId: string) {
+  const response = await requestJson<{ item: { status: string } }>(
+    server,
+    `/api/v1/parameter-change-requests/${requestId}/review`,
+    {
+      method: "POST",
+      body: JSON.stringify({ decision: "advance", note: "integration advance" })
+    }
+  );
+  expect(response.status).toBe(200);
+  return response.body.item.status;
+}
 
 function makeAuth(): AuthContext {
   return {
@@ -22,7 +49,7 @@ function makeAuth(): AuthContext {
     },
     organization: { id: "org-pf-int", name: "ChargeLab PF" },
     roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["parameter:view", "admin:access"]
+    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
   };
 }
 
@@ -128,13 +155,8 @@ describe("parameter file integration", () => {
 
   it("upload + sync creates file_sync draft for battery/temp_max: 80 -> 85", async () => {
     const fileName = `config-${randomUUID()}.json`;
-    const router = createRouter();
-    registerParameterFileRoutes(router, {
-      db,
-      objectStore: createMemoryObjectStore(),
-      getCurrentAuthContext: () => makeAuth()
-    });
-    const server = createHttpServer(router);
+    const objectStore = createMemoryObjectStore();
+    const server = makeServer(db, objectStore);
     const bytes = Buffer.from('{"battery":{"temp_max":85}}', "utf8");
 
     const uploadResponse = await requestJson<{
@@ -209,5 +231,100 @@ describe("parameter file integration", () => {
       source_file_name: fileName,
       source_node_path: "battery/temp_max"
     });
+  });
+
+  it("submit + review merge writebacks JSON file version", async () => {
+    const fileName = `writeback-${randomUUID()}.json`;
+    const objectStore = createMemoryObjectStore();
+    const server = makeServer(db, objectStore);
+    const bytes = Buffer.from('{"battery":{"temp_max":85}}', "utf8");
+
+    const uploadResponse = await requestJson<{
+      item: { id: string };
+      version: { id: string; versionNumber: number };
+    }>(server, "/api/v1/projects/project-pf-int/parameter-files", {
+      method: "POST",
+      body: JSON.stringify({
+        fileName,
+        contentBase64: bytes.toString("base64")
+      })
+    });
+    expect(uploadResponse.status).toBe(201);
+
+    await requestJson(server, `/api/v1/projects/project-pf-int/parameter-files/${uploadResponse.body.item.id}/sync`, {
+      method: "POST",
+      body: JSON.stringify({ versionId: uploadResponse.body.version.id })
+    });
+
+    const submitResponse = await requestJson<{ item: { id: string } }>(
+      server,
+      "/api/v1/parameter-submission-rounds",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "project-pf-int",
+          items: [
+            {
+              parameterId: "ppv-pf-int",
+              targetValue: "85",
+              reason: "integration writeback submit"
+            }
+          ]
+        })
+      }
+    );
+    expect(submitResponse.status).toBe(201);
+
+    const requestRow = await db.query<{ id: string; status: string }>(
+      `
+      select id, status
+      from parameter_change_requests
+      where project_id = 'project-pf-int'
+        and project_parameter_value_id = 'ppv-pf-int'
+      order by created_at desc
+      limit 1
+      `
+    );
+    const requestId = requestRow.rows[0]?.id;
+    expect(requestId).toBeTruthy();
+
+    let status = requestRow.rows[0]?.status ?? "";
+    while (status !== "merged") {
+      status = await advanceReview(server, requestId!);
+    }
+    expect(status).toBe("merged");
+
+    const versions = await db.query<{ version_number: number; origin: string }>(
+      `
+      select v.version_number, v.origin
+      from project_parameter_file_versions v
+      join project_parameter_files f on f.id = v.file_id
+      where f.project_id = 'project-pf-int'
+        and f.file_name = $1
+      order by v.version_number asc
+      `,
+      [fileName]
+    );
+    expect(versions.rows).toHaveLength(2);
+    expect(versions.rows[1]).toEqual({ version_number: 2, origin: "writeback" });
+
+    const writebackVersion = await db.query<{ storage_key: string }>(
+      `
+      select v.storage_key
+      from project_parameter_file_versions v
+      join project_parameter_files f on f.id = v.file_id
+      where f.file_name = $1
+        and v.version_number = 2
+      limit 1
+      `,
+      [fileName]
+    );
+    const written = await objectStore.get(writebackVersion.rows[0]!.storage_key);
+    expect(JSON.parse(written.toString("utf8"))).toEqual({ battery: { temp_max: 85 } });
+
+    const mergedValue = await db.query<{ current_value: string }>(
+      `select current_value from project_parameter_values where id = 'ppv-pf-int'`
+    );
+    expect(mergedValue.rows[0]?.current_value).toBe("85");
   });
 });

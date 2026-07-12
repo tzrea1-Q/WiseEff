@@ -11,7 +11,7 @@
     "dev:all": "tsx scripts/run-dev-all.ts",
     "dev:api": "tsx watch server/index.ts",
     "worker:logs": "tsx server/modules/logs/workerRunner.ts",
-    "build": "NODE_OPTIONS='--max-old-space-size=1024' tsc -b && NODE_OPTIONS='--max-old-space-size=1024' vite build",
+    "build": "NODE_OPTIONS='--max-old-space-size=1024' tsc -b && NODE_OPTIONS='--max-old-space-size=2048' vite build",
     "test": "NODE_OPTIONS='--max-old-space-size=768' tsx scripts/run-vitest.ts",
     "test:server": "NODE_OPTIONS='--max-old-space-size=768' vitest run --config vitest.server.config.ts",
     "test:all": "npm test && npm run test:server",
