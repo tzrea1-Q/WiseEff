@@ -144,7 +144,9 @@ export function ProjectParameterFilesPanel({ projectId, runtimeMode = "mock" }: 
       }
 
       const result = await client.downloadVersion(projectId, fileId, targetVersionId);
-      const blob = new Blob([result.bytes], { type: result.contentType || "application/octet-stream" });
+      const blob = new Blob([Uint8Array.from(result.bytes)], {
+        type: result.contentType || "application/octet-stream"
+      });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;

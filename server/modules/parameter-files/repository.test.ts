@@ -196,8 +196,10 @@ describe("parameter-files repository", () => {
       id: "ver-1",
       fileId: "file-1",
       versionNumber: 1,
+      storageKey: "org-1/files/battery.dtsi",
       checksum: "abc123",
       sizeBytes: 1024,
+      parsedIndex: { "battery/temp_max": { value: "85" } },
       origin: "upload",
       createdAt: "2026-07-11T09:00:00.000Z",
       createdByUserId: "user-1"
