@@ -23,6 +23,28 @@ export async function expectUsablePage(page: Page) {
   await expect(page.locator("body")).not.toContainText(runtimeCrashPattern);
 }
 
+export async function dismissCopilotDevOverlays(page: Page) {
+  await page.evaluate(() => {
+    for (const element of document.querySelectorAll("cpk-web-inspector")) {
+      element.remove();
+    }
+  });
+}
+
+export async function closeXiaozePopupIfOpen(page: Page) {
+  const toggle = page.getByTestId("copilot-chat-toggle");
+  if ((await toggle.getAttribute("data-state")) === "open") {
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("data-state", "closed", { timeout: 10_000 });
+  }
+}
+
+export async function prepareInteractionSurface(page: Page) {
+  await dismissCopilotDevOverlays(page);
+  await closeXiaozePopupIfOpen(page);
+  await dismissCopilotDevOverlays(page);
+}
+
 export async function openXiaozePopup(page: Page, route = "/parameters?project=aurora") {
   await page.goto(route, { waitUntil: "domcontentloaded" });
   await expectUsablePage(page);

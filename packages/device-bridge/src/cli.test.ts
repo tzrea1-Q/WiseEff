@@ -163,7 +163,7 @@ describe("device bridge cli", () => {
     expect(capture.errors.some((line) => line.includes("only supported on Windows and macOS"))).toBe(true);
   });
 
-  it("installs macOS launch agent via service install", async () => {
+  it.skipIf(process.platform !== "darwin")("installs macOS launch agent via service install", async () => {
     const capture = createStdoutCapture();
     const cliPath = "/Applications/WiseEff Bridge.app/Contents/Resources/cli.js";
     const bridgeBin = resolveBridgeBinPath(cliPath);

@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type TestInfo } from "playwright/test";
-import { openXiaozePopup, seedQualityRuntime } from "./helpers";
+import { openXiaozePopup, prepareInteractionSurface, seedQualityRuntime } from "./helpers";
 
 const wcagTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const coreRoutes = [
@@ -59,7 +59,10 @@ test.describe("M5.11 accessibility quality gate", () => {
       "[data-copilotkit]"
     ]);
 
+    await prepareInteractionSurface(page);
+
     await page.goto("/parameters");
+    await prepareInteractionSurface(page);
     const firstDetailButton = page.getByRole("button", { name: /^查看 / }).first();
     await expect(firstDetailButton).toBeVisible();
     await firstDetailButton.click();
@@ -67,11 +70,13 @@ test.describe("M5.11 accessibility quality gate", () => {
     await scan(page, testInfo, "parameter-detail-dialog");
 
     await page.goto("/logs");
+    await prepareInteractionSurface(page);
     await page.getByRole("toolbar", { name: /日志(?:分析工作台|智能分析)页面操作/ }).getByRole("button", { name: "上传新日志" }).click();
     await expect(page.getByRole("dialog", { name: "上传日志" })).toBeVisible();
     await scan(page, testInfo, "log-upload-dialog");
 
     await page.goto("/node-debugging");
+    await prepareInteractionSurface(page);
     const editableRow = page.getByRole("row").filter({ hasText: "Fast charge current" }).first();
     await expect(editableRow).toBeVisible();
     await editableRow.locator("button.parameter-row-edit").click();
@@ -79,6 +84,7 @@ test.describe("M5.11 accessibility quality gate", () => {
     await scan(page, testInfo, "debugging-node-sheet");
 
     await page.goto("/user-permissions");
+    await prepareInteractionSurface(page);
     await page.getByRole("button", { name: "Add user" }).click();
     await expect(page.getByRole("dialog", { name: "Add user" })).toBeVisible();
     await scan(page, testInfo, "user-add-dialog");

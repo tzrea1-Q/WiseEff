@@ -1,6 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as macosUrlScheme from "./macosUrlScheme";
+const fsMockState = vi.hoisted(() => ({
+  passthroughExistsSync: null as null | typeof import("node:fs").existsSync,
+  existsSyncMock: vi.fn<(target: string) => boolean>()
+}));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  fsMockState.passthroughExistsSync = actual.existsSync;
+  fsMockState.existsSyncMock.mockImplementation((target) => actual.existsSync(target));
+  return {
+    ...actual,
+    existsSync: (target: string) => fsMockState.existsSyncMock(target)
+  };
+});
+
 import {
   buildLauncherInfoPlist,
   buildLauncherScript,
@@ -65,11 +79,16 @@ describe("macosUrlScheme helpers", () => {
 
 describe("macosUrlScheme register/unregister", () => {
   beforeEach(() => {
-    vi.spyOn(macosUrlScheme, "resolveLsRegisterPath").mockReturnValue("/usr/bin/lsregister");
+    fsMockState.existsSyncMock.mockImplementation((target) => {
+      if (target.includes("lsregister")) {
+        return true;
+      }
+      return fsMockState.passthroughExistsSync!(target);
+    });
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    fsMockState.existsSyncMock.mockImplementation((target) => fsMockState.passthroughExistsSync!(target));
   });
 
   it("rejects register on non-macOS platforms", async () => {
