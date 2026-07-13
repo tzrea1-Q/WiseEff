@@ -111,6 +111,14 @@ async function cleanupParameterFileAcceptanceArtifacts(fileName: string) {
   await withPgClient(async (client) => {
     await client.query(
       `
+      update project_parameter_files
+      set current_version_id = null
+      where organization_id = $1 and project_id = $2 and file_name = $3
+      `,
+      [organizationId, projectId, fileName]
+    );
+    await client.query(
+      `
       delete from project_parameter_file_versions
       where file_id in (
         select id from project_parameter_files

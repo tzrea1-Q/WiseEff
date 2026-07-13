@@ -14,7 +14,8 @@ const apiAuthorization =
   process.env.VITE_WISEEFF_API_AUTHORIZATION?.trim() ||
   process.env.M5_SMOKE_AUTHORIZATION?.trim() ||
   process.env.WISEEFF_SMOKE_AUTHORIZATION?.trim();
-const createdAcceptanceUserEmail = `chen.rui.acceptance.${Date.now()}@chargelab.cn`;
+const createdAcceptanceUsername = `chen.rui.acceptance.${Date.now()}`;
+const acceptanceUserPassword = "WiseEff@2026";
 
 function runNpmScript(script: string) {
   const invocation =
@@ -118,7 +119,8 @@ async function apiExposesPermissionAudit(page: Page, userName: string, roleId: s
 type GovernedUserApiItem = {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
+  username: string | null;
   isActive: boolean;
   roles: Array<{ projectId: string | null; roleId: string }>;
 };
@@ -140,26 +142,26 @@ async function expectSuccessfulApiGet<T>(page: Page, route: string) {
   return { response, body: (await response.json()) as T };
 }
 
-async function userGovernanceDbSummary(input: { userId: string; email: string; roleId: string }) {
+async function userGovernanceDbSummary(input: { userId: string; roleId: string }) {
   return withPgClient(async (client) => {
     const result = await client.query<{ user_count: string; role_count: string; active: boolean | null }>(
       `
       select
-        (select count(*)::text from users where id = $1 and email = $2) as user_count,
+        (select count(*)::text from users where id = $1) as user_count,
         (
           select count(*)::text
           from user_role_bindings
-          where user_id = $1 and role_id = $3
+          where user_id = $1 and role_id = $2
         ) as role_count,
         (select is_active from users where id = $1) as active
       `,
-      [input.userId, input.email, input.roleId]
+      [input.userId, input.roleId]
     );
     const row = result.rows[0];
 
     return {
       table: "users,user_role_bindings",
-      predicate: `userId=${input.userId}; email=${input.email}; roleId=${input.roleId}`,
+      predicate: `userId=${input.userId}; roleId=${input.roleId}`,
       observed: `users=${row?.user_count ?? 0}; roles=${row?.role_count ?? 0}; active=${row?.active ?? "missing"}`,
       rowCount: Number(row?.user_count ?? 0)
     };
@@ -190,21 +192,21 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     // @operation PERM-GOV-001
     await page.goto("/user-permissions");
 
-    await expect(page.getByRole("heading", { name: "User permissions" })).toBeVisible();
-    const table = page.getByRole("table", { name: "Platform users" });
+    await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
+    const table = page.getByRole("table", { name: "平台用户" });
     await expect(table).toBeVisible();
     await expect(table.getByRole("row").filter({ hasText: "Xu Yun" })).toBeVisible();
     await expect(table.getByRole("row").filter({ hasText: "Tao Lin" })).toBeVisible();
 
     const liuRow = table.getByRole("row").filter({ hasText: "Liu Min" });
-    await expect(liuRow.getByRole("combobox", { name: "Role for Liu Min" })).toHaveValue("software-user");
-    await expect(table.getByRole("row").filter({ hasText: "Tao Lin" }).getByRole("button", { name: "Enable Tao Lin" })).toBeVisible();
+    await expect(liuRow.getByRole("combobox", { name: "调整 Liu Min 的角色" })).toHaveValue("software-user");
+    await expect(table.getByRole("row").filter({ hasText: "Tao Lin" }).getByRole("button", { name: "启用" })).toBeVisible();
 
     const currentAdminRow = table.getByRole("row").filter({ hasText: "Xu Yun" });
-    await expect(currentAdminRow.getByRole("combobox", { name: "Role for Xu Yun" })).toBeDisabled();
-    await expect(currentAdminRow.getByRole("button", { name: "Disable Xu Yun" })).toBeDisabled();
+    await expect(currentAdminRow.getByRole("combobox", { name: "调整 Xu Yun 的角色" })).toBeDisabled();
+    await expect(currentAdminRow.getByRole("button", { name: "停用" })).toBeDisabled();
 
-    const wangRole = table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("combobox", { name: "Role for Wang Jie" });
+    const wangRole = table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("combobox", { name: "调整 Wang Jie 的角色" });
     await wangRole.selectOption("software-committer");
     await expect(wangRole).toHaveValue("software-committer");
 
@@ -226,10 +228,10 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
     await expect(page.getByText("Current role: Hardware User")).toBeVisible();
     await expect(page.getByText("Required role: Admin")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "User permissions" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "用户权限" })).toHaveCount(0);
 
     await setPrototypeRole(page, "Admin");
-    await expect(page.getByRole("heading", { name: "User permissions" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
 
     await recordOperationEvidence({
       operationId: "PERM-GOV-001",
@@ -246,35 +248,37 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     // @operation PERM-USER-MGMT-001
     await page.goto("/user-permissions");
 
-    await expect(page.getByRole("heading", { name: "User permissions" })).toBeVisible();
-    const table = page.getByRole("table", { name: "Platform users" });
-    const wangRole = table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("combobox", { name: "Role for Wang Jie" });
+    await expect(page.getByRole("region", { name: "用户权限" })).toBeVisible();
+    const table = page.getByRole("table", { name: "平台用户" });
+    const wangRole = table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("combobox", { name: "调整 Wang Jie 的角色" });
 
     await wangRole.selectOption("software-committer");
     await expect(wangRole).toHaveValue("software-committer");
 
-    await page.getByRole("button", { name: "Add user" }).click();
-    const addUserDialog = page.getByRole("dialog", { name: "Add user" });
+    await page.getByRole("button", { name: "添加用户" }).click();
+    const addUserDialog = page.getByRole("dialog", { name: "添加用户" });
     await expect(addUserDialog).toBeVisible();
-    await addUserDialog.getByLabel("Name").fill("Chen Rui");
-    await addUserDialog.getByLabel("Email").fill(createdAcceptanceUserEmail);
-    await addUserDialog.getByLabel("Title").fill("Acceptance Test Engineer");
-    await addUserDialog.getByLabel("Initial role").selectOption("software-user");
-    await addUserDialog.getByRole("button", { name: "Create user" }).click();
+    await addUserDialog.getByLabel("姓名").fill("Chen Rui");
+    await addUserDialog.getByLabel("用户名").fill(createdAcceptanceUsername);
+    await addUserDialog.getByLabel("职务").fill("Acceptance Test Engineer");
+    await addUserDialog.getByLabel("初始密码").fill(acceptanceUserPassword);
+    await addUserDialog.getByLabel("确认密码").fill(acceptanceUserPassword);
+    await addUserDialog.getByLabel("初始角色").selectOption("software-user");
+    await addUserDialog.getByRole("button", { name: "创建用户" }).click();
     await expect(addUserDialog).not.toBeVisible();
 
-    const chenRow = table.getByRole("row").filter({ hasText: createdAcceptanceUserEmail });
+    const chenRow = table.getByRole("row").filter({ hasText: createdAcceptanceUsername });
     await expect(chenRow).toBeVisible();
-    await expect(chenRow).toContainText(createdAcceptanceUserEmail);
-    await expect(chenRow.getByRole("combobox", { name: "Role for Chen Rui" })).toHaveValue("software-user");
-    await expect(chenRow.getByRole("button", { name: "Disable Chen Rui" })).toBeVisible();
+    await expect(chenRow).toContainText(createdAcceptanceUsername);
+    await expect(chenRow.getByRole("combobox", { name: "调整 Chen Rui 的角色" })).toHaveValue("software-user");
+    await expect(chenRow.getByRole("button", { name: "停用" })).toBeVisible();
 
     const usersApi = await expectSuccessfulApiGet<{ items: GovernedUserApiItem[] }>(page, "/api/v1/users");
-    const createdUser = usersApi.body.items.find((user) => user.email === createdAcceptanceUserEmail);
+    const createdUser = usersApi.body.items.find((user) => user.username === createdAcceptanceUsername);
     expect(createdUser).toBeTruthy();
     expect(createdUser).toMatchObject({
       name: "Chen Rui",
-      email: createdAcceptanceUserEmail,
+      username: createdAcceptanceUsername,
       isActive: true
     });
     expect(createdUser?.roles).toEqual(expect.arrayContaining([expect.objectContaining({ roleId: "software-user" })]));
@@ -299,7 +303,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
     await expect(page.getByText("Current role: Software User")).toBeVisible();
     await expect(page.getByText("Required role: Admin")).toBeVisible();
-    await expect(page.getByRole("table", { name: "Platform users" })).toHaveCount(0);
+    await expect(page.getByRole("table", { name: "平台用户" })).toHaveCount(0);
 
     await recordOperationEvidence({
       operationId: "PERM-USER-MGMT-001",
@@ -322,7 +326,6 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       db: [
         await userGovernanceDbSummary({
           userId: createdUser!.id,
-          email: createdAcceptanceUserEmail,
           roleId: "software-user"
         })
       ],
