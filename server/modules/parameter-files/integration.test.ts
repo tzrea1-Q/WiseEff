@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
-import { createInMemoryTestDatabase } from "../../testing/testDatabase";
+import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
@@ -141,8 +141,10 @@ async function seedBaseline(db: InMemoryTestDatabase) {
   );
 }
 
-describe("parameter file integration", () => {
-  let db: InMemoryTestDatabase;
+const databaseAvailable = await isTestDatabaseAvailable();
+
+describe.skipIf(!databaseAvailable)("parameter file integration", () => {
+  let db: InMemoryTestDatabase | undefined;
 
   beforeEach(async () => {
     db = await createInMemoryTestDatabase();
@@ -150,7 +152,7 @@ describe("parameter file integration", () => {
   });
 
   afterEach(async () => {
-    await db.rollback();
+    await db?.rollback();
   });
 
   it("upload + sync creates file_sync draft for battery/temp_max: 80 -> 85", async () => {

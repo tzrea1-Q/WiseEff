@@ -21,6 +21,22 @@ function resolveTestDatabaseUrl() {
   );
 }
 
+export async function isTestDatabaseAvailable(): Promise<boolean> {
+  const client = new pg.Client({
+    connectionString: resolveTestDatabaseUrl(),
+    connectionTimeoutMillis: 2_000
+  });
+
+  try {
+    await client.connect();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
 async function ensureMigrations() {
   if (migrationsApplied) return;
   const client = new pg.Client({ connectionString: resolveTestDatabaseUrl() });

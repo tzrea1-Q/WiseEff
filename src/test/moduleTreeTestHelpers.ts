@@ -10,7 +10,7 @@ export function expandModuleTreeNode(moduleName: string) {
   const option = checkbox.closest(".module-tree-option");
   const expandButton = option?.querySelector("button.module-tree-expand");
 
-  if (expandButton) {
+  if (expandButton?.getAttribute("aria-label") === "展开") {
     fireEvent.click(expandButton);
   }
 }

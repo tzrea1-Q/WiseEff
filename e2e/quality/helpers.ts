@@ -24,16 +24,23 @@ export async function expectUsablePage(page: Page) {
 }
 
 export async function openXiaozePopup(page: Page, route = "/parameters?project=aurora") {
-  await page.goto(route);
-  const popup = page.getByTestId("xiaoze-popup-layer");
+  await page.goto(route, { waitUntil: "domcontentloaded" });
+  await expectUsablePage(page);
+
   const toggle = page.getByTestId("copilot-chat-toggle");
   await expect(toggle).toBeVisible();
 
-  if (!(await popup.isVisible())) {
+  const popup = page.getByTestId("xiaoze-popup-layer");
+  if ((await toggle.getAttribute("data-state")) !== "open") {
+    const hintDismiss = page.locator(".xiaoze-toggle-hint__dismiss");
+    if (await hintDismiss.isVisible().catch(() => false)) {
+      await hintDismiss.click();
+    }
     await toggle.click();
   }
 
-  await expect(popup).toBeVisible();
+  await expect(toggle).toHaveAttribute("data-state", "open", { timeout: 15_000 });
+  await expect(popup).toBeVisible({ timeout: 15_000 });
   return popup;
 }
 
