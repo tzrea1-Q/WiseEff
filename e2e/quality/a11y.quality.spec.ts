@@ -85,8 +85,8 @@ test.describe("M5.11 accessibility quality gate", () => {
 
     await page.goto("/user-permissions");
     await prepareInteractionSurface(page);
-    await page.getByRole("button", { name: "Add user" }).click();
-    await expect(page.getByRole("dialog", { name: "Add user" })).toBeVisible();
+    await page.getByRole("button", { name: "添加用户" }).click();
+    await expect(page.getByRole("dialog", { name: "添加用户" })).toBeVisible();
     await scan(page, testInfo, "user-add-dialog");
   });
 });
