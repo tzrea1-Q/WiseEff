@@ -261,7 +261,8 @@ describe("operations routes", () => {
           HDC_SMOKE_TARGET_REF: "Aurora Simulator 1",
           HDC_SMOKE_PARAMETER_ID: "fast-charge-current",
           HDC_SMOKE_NODE_PATH: "/power/fast-charge-current",
-          HDC_SMOKE_WRITE_VALUE: "3100"
+          HDC_SMOKE_WRITE_VALUE: "3100",
+          M5_CONTRACT_CHECK_PASSED: true
         }),
         getCurrentAuthContext: async () => createAdminAuth()
       });

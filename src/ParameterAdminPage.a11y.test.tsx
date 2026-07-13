@@ -15,7 +15,7 @@ describe("ParameterAdminPage · a11y", () => {
 
     const search = screen.getByRole("searchbox", { name: "搜索参数" });
     const riskSelect = screen.getByRole("combobox", { name: "风险等级" });
-    const moduleDropdown = screen.getByRole("button", { name: "模块 ▾" });
+    const moduleDropdown = screen.getByRole("button", { name: "模块" });
     const coverageDropdown = screen.getByRole("button", { name: "覆盖 ▾" });
     const sortSelect = screen.getByRole("combobox", { name: "排序" });
 

@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as macosUrlScheme from "./macosUrlScheme";
 import {
   buildLauncherInfoPlist,
   buildLauncherScript,
@@ -63,6 +64,14 @@ describe("macosUrlScheme helpers", () => {
 });
 
 describe("macosUrlScheme register/unregister", () => {
+  beforeEach(() => {
+    vi.spyOn(macosUrlScheme, "resolveLsRegisterPath").mockReturnValue("/usr/bin/lsregister");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("rejects register on non-macOS platforms", async () => {
     const capture = createCapture();
     const deps = createDeps({ platform: "linux", ...capture });

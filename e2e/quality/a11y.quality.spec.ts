@@ -53,8 +53,10 @@ test.describe("M5.11 accessibility quality gate", () => {
   test("scans key modal, drawer, and Xiaoze interaction states", async ({ page }, testInfo) => {
     await openXiaozePopup(page);
     await scan(page, testInfo, "xiaoze-popup-open", [
+      "[data-testid='xiaoze-popup-layer']",
       "[data-testid='copilot-add-menu-button']",
-      "[data-testid='copilot-chat-panel']"
+      "[data-testid='copilot-chat-panel']",
+      "[data-copilotkit]"
     ]);
 
     await page.goto("/parameters");

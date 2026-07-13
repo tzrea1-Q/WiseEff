@@ -149,7 +149,9 @@ describe("/debugging-admin API mode", () => {
 
     await screen.findByText("Fast charge current");
     fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "路径绑定" }));
-    fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "relative/path" } });
+    const hdcPathInput = screen.getByLabelText("HDC 节点路径");
+    fireEvent.change(hdcPathInput, { target: { value: "relative/path" } });
+    fireEvent.blur(hdcPathInput);
     fireEvent.click(screen.getByRole("button", { name: "保存 HDC binding" }));
 
     expect(screen.getByText("节点路径必须以 / 开头。")).toBeInTheDocument();
