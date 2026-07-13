@@ -29,6 +29,7 @@ test.describe("parameter-home production dashboard", () => {
     await page.goto("/parameter-home");
     await expect(page.getByRole("main", { name: "参数管理首页" })).toBeVisible();
     await expect(page.getByText("热榜")).toBeVisible();
+    await page.getByRole("radio", { name: /热榜/ }).first().click();
     await expect(page.getByRole("group", { name: "时间窗口" }).first()).toBeVisible();
     await expect(page.getByRole("group", { name: "热榜维度" }).first()).toBeVisible();
 

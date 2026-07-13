@@ -5,6 +5,7 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { prepareInteractionSurface } from "./helpers/interactionSurface";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
 useBrowserDiagnostics(test);
@@ -217,6 +218,7 @@ function auditSummaryFor(
 }
 
 async function uploadLogThroughUi(page: Page, filePath: string, question?: string) {
+  await prepareInteractionSurface(page);
   await page.getByRole("toolbar", { name: /日志(?:分析工作台|智能分析)页面操作/ }).getByRole("button", { name: "上传新日志" }).click();
   const dialog = page.getByRole("dialog", { name: "上传日志" });
   await dialog.getByLabel("选择日志文件").setInputFiles(filePath);
@@ -245,6 +247,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     // @acceptance LOG-HAPPY-001
     // @operation LOG-HAPPY-001
     await page.goto("/logs");
+    await prepareInteractionSurface(page);
 
     await uploadLogThroughUi(page, supportedFixture, analysisQuestion);
 

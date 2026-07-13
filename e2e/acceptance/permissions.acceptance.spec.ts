@@ -4,6 +4,8 @@ import { expect, test, type Page } from "playwright/test";
 
 import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
+import { signInBrowserAsRoleLabel } from "./helpers/bearerAuth";
+import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
@@ -80,14 +82,7 @@ async function preparePermissionsAcceptanceState() {
 }
 
 async function setPrototypeRole(page: Page, roleName: string) {
-  const topbar = page.locator(".topbar");
-  const roleSwitcher = topbar.getByRole("combobox", { name: "Prototype role" });
-
-  if ((await roleSwitcher.count()) === 0) {
-    await topbar.getByRole("button", { name: "Open user role switcher" }).click();
-  }
-
-  await topbar.getByRole("combobox", { name: "Prototype role" }).selectOption({ label: roleName });
+  await signInBrowserAsRoleLabel(page, roleName, page.url() || "/user-permissions");
 }
 
 async function apiExposesPermissionAudit(page: Page, userName: string, roleId: string) {
@@ -185,6 +180,11 @@ function userAuditSummaryFor(items: AuditApiItem[], match: { kind: string; targe
 test.describe("M5.4 manual flow H - permissions and user governance", () => {
   test.beforeAll(async () => {
     await preparePermissionsAcceptanceState();
+    await seedAcceptanceRoleMatrix();
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await signInBrowserAsRoleLabel(page, "Admin", "/user-permissions");
   });
 
   test("loads users, shows role/status, and gates user governance to Admin", async ({ page }, testInfo) => {

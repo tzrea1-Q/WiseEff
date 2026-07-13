@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { expect, test, type Page } from "playwright/test";
 
 import { withPgClient } from "./helpers/database";
+import { authHeadersForUser, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
@@ -71,10 +72,10 @@ function runNpmScript(script: string) {
 }
 
 function authHeaders(userId?: string) {
-  return {
-    ...smokeHeaders(),
-    ...(userId ? { "x-wiseeff-user": userId } : {})
-  };
+  if (userId === submitterUserId) {
+    return authHeadersForUser(submitterUserId, "pfb.acceptance@chargelab.cn", "PFB Acceptance User");
+  }
+  return smokeHeaders();
 }
 
 async function seedProductFeedbackAcceptanceUser() {
@@ -218,29 +219,7 @@ async function feedbackAuditSummaries(feedbackId: string) {
 }
 
 async function loadPageAsHardwareUser(page: Page, route: string) {
-  await page.route("**/api/v1/me", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        user: {
-          id: submitterUserId,
-          organizationId,
-          name: "PFB Acceptance User",
-          email: "pfb.acceptance@chargelab.cn",
-          title: "Hardware Beta User",
-          isActive: true
-        },
-        organization: {
-          id: organizationId,
-          name: "ChargeLab"
-        },
-        roles: [{ projectId: null, roleId: "hardware-user" }],
-        permissions: ["parameter:view", "debugging:use", "debugging:view", "debugging:read"]
-      })
-    });
-  });
-  await page.goto(route);
+  await signInBrowserAsUser(page, submitterUserId, "pfb.acceptance@chargelab.cn", "PFB Acceptance User", route);
 }
 
 test.describe("Product feedback browser acceptance", () => {

@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { expect, test, type APIRequestContext } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
+import { authHeadersForUser } from "./helpers/bearerAuth";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 
@@ -56,10 +57,10 @@ function runSeedScript(script: string) {
 }
 
 function authHeaders(userId?: string) {
-  return {
-    ...smokeHeaders(),
-    ...(userId ? { "x-wiseeff-user": userId } : {})
-  };
+  if (userId === hardwareUserId) {
+    return authHeadersForUser(hardwareUserId, "modtree.acceptance@chargelab.cn", "ModTree Acceptance Hardware User");
+  }
+  return smokeHeaders();
 }
 
 async function seedHardwareUser() {

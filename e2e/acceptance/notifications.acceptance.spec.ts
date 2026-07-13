@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { expect, test } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { prepareInteractionSurface } from "./helpers/interactionSurface";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 
@@ -21,6 +22,7 @@ test.describe("Notification center acceptance", () => {
     expect(listResponse.ok()).toBe(true);
 
     await page.goto("/parameters?project=aurora");
+    await prepareInteractionSurface(page);
     await page.getByRole("button", { name: /通知/ }).click();
     await expect(page.getByRole("dialog", { name: "通知面板" })).toBeVisible();
 

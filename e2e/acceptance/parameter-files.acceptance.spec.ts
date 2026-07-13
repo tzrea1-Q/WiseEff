@@ -3,9 +3,10 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "playwright/test";
 
 import { withPgClient } from "./helpers/database";
+import { authHeadersForRole, authHeadersForUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence } from "./helpers/operationEvidence";
-import { apiRoute, smokeHeaders } from "./helpers/runtime";
+import { apiRoute } from "./helpers/runtime";
 
 useBrowserDiagnostics(test);
 
@@ -18,10 +19,13 @@ const hardwareUserId = "acceptance-param-file-hardware-user";
 const descriptionPrefix = "PARAM-FILE acceptance";
 
 function authHeaders(userId = adminUserId) {
-  return {
-    ...smokeHeaders(),
-    "X-WiseEff-User": userId
-  };
+  if (userId === adminUserId) {
+    return authHeadersForRole("admin");
+  }
+  if (userId === hardwareUserId) {
+    return authHeadersForUser(hardwareUserId, "param-file.hw@chargelab.cn", "PF File Hardware User");
+  }
+  return authHeadersForUser(userId, `${userId}@chargelab.cn`, "Acceptance User");
 }
 
 async function dismissXiaozeHint(page: Page) {
@@ -109,31 +113,78 @@ async function seedParameterFileAcceptanceFixture() {
 
 async function cleanupParameterFileAcceptanceArtifacts(fileName: string) {
   await withPgClient(async (client) => {
-    await client.query(
+    const files = await client.query<{ id: string }>(
       `
-      update project_parameter_files
-      set current_version_id = null
+      select id
+      from project_parameter_files
       where organization_id = $1 and project_id = $2 and file_name = $3
       `,
       [organizationId, projectId, fileName]
     );
-    await client.query(
-      `
-      delete from project_parameter_file_versions
-      where file_id in (
-        select id from project_parameter_files
-        where organization_id = $1 and project_id = $2 and file_name = $3
-      )
-      `,
-      [organizationId, projectId, fileName]
-    );
-    await client.query(
-      `
-      delete from project_parameter_files
-      where organization_id = $1 and project_id = $2 and file_name = $3
-      `,
-      [organizationId, projectId, fileName]
-    );
+    const fileIds = files.rows.map((row) => row.id);
+
+    if (fileIds.length > 0) {
+      const versions = await client.query<{ id: string }>(
+        `
+        select id
+        from project_parameter_file_versions
+        where file_id = any($1::text[])
+        `,
+        [fileIds]
+      );
+      const versionIds = versions.rows.map((row) => row.id);
+
+      await client.query(
+        `
+        delete from parameter_file_sync_conflicts
+        where project_parameter_value_id = $1
+           or file_version_id = any($2::text[])
+        `,
+        [parameterValueId, versionIds]
+      );
+
+      if (versionIds.length > 0) {
+        await client.query(
+          `
+          update parameter_drafts
+          set origin_file_version_id = null
+          where origin_file_version_id = any($1::text[])
+          `,
+          [versionIds]
+        );
+        await client.query(
+          `
+          delete from parameter_drafts
+          where origin_file_version_id = any($1::text[])
+          `,
+          [versionIds]
+        );
+      }
+
+      await client.query(
+        `
+        update project_parameter_files
+        set current_version_id = null
+        where id = any($1::text[])
+        `,
+        [fileIds]
+      );
+      await client.query(
+        `
+        delete from project_parameter_file_versions
+        where file_id = any($1::text[])
+        `,
+        [fileIds]
+      );
+      await client.query(
+        `
+        delete from project_parameter_files
+        where id = any($1::text[])
+        `,
+        [fileIds]
+      );
+    }
+
     await client.query(
       `
       delete from parameter_drafts
@@ -153,8 +204,28 @@ async function cleanupParameterFileAcceptanceArtifacts(fileName: string) {
   });
 }
 
+async function cleanupAllParameterFileAcceptanceArtifacts() {
+  await withPgClient(async (client) => {
+    const files = await client.query<{ file_name: string }>(
+      `
+      select file_name
+      from project_parameter_files
+      where organization_id = $1
+        and project_id = $2
+        and file_name like 'acceptance-%'
+      `,
+      [organizationId, projectId]
+    );
+
+    for (const row of files.rows) {
+      await cleanupParameterFileAcceptanceArtifacts(row.file_name);
+    }
+  });
+}
+
 test.describe("project parameter files browser acceptance", () => {
   test.beforeEach(async () => {
+    await cleanupAllParameterFileAcceptanceArtifacts();
     await seedParameterFileAcceptanceFixture();
   });
 

@@ -3,6 +3,9 @@ import { createHmac } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { expect, test, type Locator, type Page } from "playwright/test";
 import type { Client } from "pg";
+import { signInBrowserAsRole, signInBrowserAsRoleLabel } from "./helpers/bearerAuth";
+import { prepareInteractionSurface } from "./helpers/interactionSurface";
+import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
@@ -275,6 +278,8 @@ async function prepareSimulatorAcceptanceState() {
   runSeedScript("db:seed:m1");
   runSeedScript("db:seed:m3");
 
+  await seedAcceptanceRoleMatrix();
+
   await withPgClient(async (client) => {
     await seedM3DebuggingPermissions(client);
     await seedReadOnlyDebuggingUser(client);
@@ -450,7 +455,8 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
   test("reads, writes, detects mismatch, rolls back, and records audit evidence", async ({ page }, testInfo) => {
     // @acceptance DEBUG-SIM-001
     // @operation DEBUG-SIM-001
-    await page.goto("/node-debugging");
+    await signInBrowserAsRole(page, "admin", "/node-debugging");
+    await prepareInteractionSurface(page);
     await expectSimulatorOnline(page);
 
     const fastChargeRow = parameterRow(page, "Fast charge current");
@@ -483,7 +489,8 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
     const fastChargeSnapshotId = await latestWriteSnapshotId(page, fastChargeParameterId);
     const rollbackResponse = await rollbackSnapshotViaApi(page, fastChargeSnapshotId);
 
-    await page.goto("/node-debugging");
+    await signInBrowserAsRole(page, "admin", "/node-debugging");
+    await prepareInteractionSurface(page);
     await expectSimulatorOnline(page);
     await expect(parameterRow(page, "Fast charge current")).toContainText("3000", { timeout: 30_000 });
 
@@ -540,15 +547,9 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
   test("blocks node writes for non-writer roles in UI and forced API calls", async ({ page }, testInfo) => {
     // @acceptance DEBUG-PERM-001
     // @operation DEBUG-PERM-001
-    await page.goto("/node-debugging");
+    await signInBrowserAsRoleLabel(page, "Hardware User", "/node-debugging");
+    await prepareInteractionSurface(page);
     await expectSimulatorOnline(page);
-
-    const topbar = page.locator(".topbar");
-    const roleSwitcher = topbar.getByRole("combobox", { name: "Prototype role" });
-    if ((await roleSwitcher.count()) === 0) {
-      await topbar.getByRole("button", { name: "Open user role switcher" }).click();
-    }
-    await topbar.getByRole("combobox", { name: "Prototype role" }).selectOption({ label: "Hardware User" });
 
     const writableSheet = await openParameterSheet(page, "Fast charge current");
     await expect(writableSheet).toContainText("Fast charge current");

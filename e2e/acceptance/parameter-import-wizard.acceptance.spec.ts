@@ -44,7 +44,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     await expect(wizard.getByRole("combobox", { name: "目标项目" })).toBeVisible();
     await wizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();
     const pasteDialog = page.getByRole("dialog", { name: "粘贴导入内容" });
-    await pasteDialog.getByLabelText("导入内容").fill(importPayload);
+    await pasteDialog.getByLabel("导入内容").fill(importPayload);
     await pasteDialog.getByRole("button", { name: "确认" }).click();
     await wizard.getByRole("button", { name: "下一步" }).click();
 
