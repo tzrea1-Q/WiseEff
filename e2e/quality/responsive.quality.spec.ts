@@ -1,5 +1,5 @@
 import { expect, test } from "playwright/test";
-import { expectNoHorizontalOverflow, expectUsablePage, seedQualityRuntime } from "./helpers";
+import { expectNoHorizontalOverflow, expectUsablePage, prepareInteractionSurface, seedQualityRuntime } from "./helpers";
 
 const viewports = [
   { name: "desktop", width: 1440, height: 900 },
@@ -40,6 +40,7 @@ test.describe("M5.11 responsive quality gate", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/logs");
     await expectUsablePage(page);
+    await prepareInteractionSurface(page);
     await page.getByRole("button", { name: /上传新日志/ }).click();
 
     const uploadDialog = page.getByRole("dialog", { name: "上传日志" });
@@ -48,9 +49,10 @@ test.describe("M5.11 responsive quality gate", () => {
 
     await page.goto("/user-permissions");
     await expectUsablePage(page);
-    await page.getByRole("button", { name: "Add user" }).click();
+    await prepareInteractionSurface(page);
+    await page.getByRole("button", { name: "添加用户" }).click();
 
-    const userDialog = page.getByRole("dialog", { name: "Add user" });
+    const userDialog = page.getByRole("dialog", { name: "添加用户" });
     await expect(userDialog).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
