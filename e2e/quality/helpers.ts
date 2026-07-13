@@ -32,11 +32,13 @@ export async function dismissCopilotDevOverlays(page: Page) {
 }
 
 export async function closeXiaozePopupIfOpen(page: Page) {
-  const toggle = page.getByTestId("copilot-chat-toggle");
-  if ((await toggle.getAttribute("data-state")) === "open") {
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("data-state", "closed", { timeout: 10_000 });
+  const popup = page.getByTestId("xiaoze-popup-layer");
+  if (!(await popup.isVisible().catch(() => false))) {
+    return;
   }
+
+  await page.keyboard.press("Escape");
+  await expect(popup).toBeHidden({ timeout: 10_000 });
 }
 
 export async function prepareInteractionSurface(page: Page) {

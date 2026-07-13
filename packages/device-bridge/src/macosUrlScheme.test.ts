@@ -101,7 +101,7 @@ describe("macosUrlScheme register/unregister", () => {
     expect(capture.errors).toContain("register is only available on macOS.");
   });
 
-  it("registers launcher app and calls lsregister", async () => {
+  it.skipIf(process.platform !== "darwin")("registers launcher app and calls lsregister", async () => {
     const capture = createCapture();
     const execFile = vi.fn(async () => ({ stdout: "", stderr: "" }));
     const writeFile = vi.fn(async () => undefined);
@@ -142,7 +142,7 @@ describe("macosUrlScheme register/unregister", () => {
     expect(access).toHaveBeenCalledWith("/Users/operator/.wiseeff/WiseEffBridgeLauncher.app");
   });
 
-  it("unregisters launcher app and removes bundle", async () => {
+  it.skipIf(process.platform !== "darwin")("unregisters launcher app and removes bundle", async () => {
     const capture = createCapture();
     const execFile = vi.fn(async () => ({ stdout: "", stderr: "" }));
     const rm = vi.fn(async () => undefined);
