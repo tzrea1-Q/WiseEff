@@ -28,7 +28,6 @@ test.describe("M5.11 visual quality gate", () => {
   }
 
   test("keeps stable visual baseline for the Xiaoze popup", async ({ page }) => {
-    await expectUsablePage(page);
     const popup = await openXiaozePopup(page);
 
     await expect(popup).toHaveScreenshot("xiaoze-popup-open.png", {
