@@ -1,10 +1,34 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ParameterAdminProjectsPage } from "./ParameterAdminProjectsPage";
 import { initialState } from "./mockData";
 
+const listFilesMock = vi.fn().mockResolvedValue([]);
+
+vi.mock("@/infrastructure/http/parameterFileClient", () => ({
+  createParameterFileClient: () => ({
+    listFiles: listFilesMock,
+    uploadFile: vi.fn(),
+    uploadVersion: vi.fn(),
+    listVersions: vi.fn(),
+    downloadVersion: vi.fn(),
+    syncFile: vi.fn(),
+    listConflicts: vi.fn(),
+    resolveConflict: vi.fn()
+  })
+}));
+
 const resolveDtsStructuredRepository = vi.fn(() => ({
-  listConfigSets: vi.fn().mockResolvedValue([]),
+  listConfigSets: vi.fn().mockResolvedValue([
+    {
+      id: "cs-1",
+      organizationId: "org-1",
+      projectId: "atlas",
+      name: "board-a",
+      createdAt: "2026-07-14T08:00:00.000Z",
+      updatedAt: "2026-07-14T08:00:00.000Z"
+    }
+  ]),
   createConfigSet: vi.fn(),
   addConfigSetFile: vi.fn(),
   removeConfigSetFile: vi.fn(),
@@ -25,6 +49,8 @@ vi.mock("@/application/parameters/dtsStructuredRuntime", () => ({
 describe("ParameterAdminProjectsPage", () => {
   beforeEach(() => {
     resolveDtsStructuredRepository.mockClear();
+    listFilesMock.mockReset();
+    listFilesMock.mockResolvedValue([]);
   });
 
   it("renders project management workspace with sub navigation", () => {
@@ -224,4 +250,49 @@ describe("ParameterAdminProjectsPage", () => {
 
     expect(resolveDtsStructuredRepository).toHaveBeenCalledWith("api");
   });
+
+  it("passes project parameter files into ConfigSetBaselinePanel as availableFiles", async () => {
+    window.history.replaceState(null, "", "/parameter-admin/projects");
+    const atlasProject = initialState.configDraft.projects.find((project) => project.id === "atlas");
+    listFilesMock.mockResolvedValue([
+      {
+        id: "file-engine",
+        projectId: "atlas",
+        fileName: "engine.dts",
+        format: "dts",
+        enabled: true,
+        updatedAt: "2026-07-14T08:00:00.000Z"
+      },
+      {
+        id: "file-board",
+        projectId: "atlas",
+        fileName: "board.dts",
+        format: "dts",
+        enabled: true,
+        updatedAt: "2026-07-14T08:01:00.000Z"
+      }
+    ]);
+
+    render(
+      <ParameterAdminProjectsPage
+        state={initialState}
+        dispatch={vi.fn()}
+        onNavigate={vi.fn()}
+        search=""
+        runtimeMode="mock"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: `管理文件 ${atlasProject?.name ?? "atlas"}` }));
+    fireEvent.click(screen.getByRole("tab", { name: "配置集 / 基线" }));
+
+    const panel = await screen.findByRole("region", { name: "配置集 / 基线" });
+    await waitFor(() => expect(listFilesMock).toHaveBeenCalledWith("atlas"));
+
+    const fileSelect = within(panel).getByLabelText("成员文件");
+    expect(within(fileSelect).getByRole("option", { name: "engine.dts" })).toBeInTheDocument();
+    expect(within(fileSelect).getByRole("option", { name: "board.dts" })).toBeInTheDocument();
+  });
 });
+
+

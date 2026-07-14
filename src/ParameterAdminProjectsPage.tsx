@@ -11,6 +11,7 @@ import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
 import { KpiStrip, type KpiItem } from "@/components/KpiStrip";
 import { useParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
+import { createParameterFileClient } from "@/infrastructure/http/parameterFileClient";
 import {
   buildParameterAdminProjectsFromState,
   isEditableProjectStatus,
@@ -22,6 +23,8 @@ import {
 
 type ManageFilesTab = "files" | "config-sets";
 
+type AvailableParameterFile = { id: string; fileName: string };
+
 export function ParameterAdminProjectsPage({
   state,
   dispatch,
@@ -32,6 +35,7 @@ export function ParameterAdminProjectsPage({
 }: PageProps & { onNewProject?: () => void }) {
   const isApiMode = runtimeMode === "api";
   const adminClient = useMemo(() => createParameterAdminClient(), []);
+  const parameterFileClient = useMemo(() => createParameterFileClient(), []);
   const dtsRepo = useMemo(() => resolveDtsStructuredRepository(runtimeMode), [runtimeMode]);
   const canAdmin = canPerform(state.activeRoleId, "admin.access");
   const { search, updateSearch } = useParamAdminProjectsSearch();
@@ -42,6 +46,7 @@ export function ParameterAdminProjectsPage({
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [manageFilesProjectId, setManageFilesProjectId] = useState<string | null>(null);
   const [manageFilesTab, setManageFilesTab] = useState<ManageFilesTab>("files");
+  const [availableFiles, setAvailableFiles] = useState<AvailableParameterFile[]>([]);
   const [formPending, setFormPending] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [formError, setFormError] = useState("");
@@ -73,6 +78,31 @@ export function ParameterAdminProjectsPage({
   useEffect(() => {
     void loadProjects();
   }, [isApiMode]);
+
+  useEffect(() => {
+    if (!manageFilesProjectId) {
+      setAvailableFiles([]);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const items = await parameterFileClient.listFiles(manageFilesProjectId);
+        if (!cancelled) {
+          setAvailableFiles(items.map((item) => ({ id: item.id, fileName: item.fileName })));
+        }
+      } catch {
+        if (!cancelled) {
+          setAvailableFiles([]);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [manageFilesProjectId, parameterFileClient]);
 
   const kpiItems: KpiItem[] = [
     { id: "total", label: "项目总数", value: summary.total },
@@ -287,6 +317,7 @@ export function ParameterAdminProjectsPage({
                   projectId={manageFilesTarget.id}
                   repository={dtsRepo}
                   canAdmin={canAdmin}
+                  availableFiles={availableFiles}
                 />
               )}
             </div>
