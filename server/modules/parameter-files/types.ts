@@ -108,3 +108,47 @@ export type FileConfigSetMembershipDto = {
   configSetRole?: ConfigSetRole;
   configSetSortOrder: number;
 };
+
+export type BaselineStatus = "draft" | "released";
+
+export type ReleaseBaselineDto = {
+  id: string;
+  organizationId: string;
+  configSetId: string;
+  name: string;
+  notes?: string;
+  status: BaselineStatus;
+  createdBy?: string;
+  createdAt: string;
+};
+
+export type ReleaseBaselineMemberDto = {
+  baselineId: string;
+  fileId: string;
+  fileVersionId: string;
+  versionNumber: number;
+};
+
+export type InsertReleaseBaselineInput = {
+  id: string;
+  organizationId: string;
+  configSetId: string;
+  name: string;
+  notes?: string;
+  createdByUserId?: string;
+};
+
+export type InsertReleaseBaselineMemberInput = {
+  id: string;
+  baselineId: string;
+  fileId: string;
+  fileVersionId: string;
+  versionNumber: number;
+};
+
+export type ConfigSetMemberFileDto = {
+  fileId: string;
+  fileName: string;
+  currentVersionId?: string;
+  currentVersionNumber?: number;
+};
