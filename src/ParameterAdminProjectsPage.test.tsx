@@ -4,6 +4,7 @@ import { ParameterAdminProjectsPage } from "./ParameterAdminProjectsPage";
 import { initialState } from "./mockData";
 
 const listFilesMock = vi.fn().mockResolvedValue([]);
+const listProjectsMock = vi.fn().mockResolvedValue([]);
 
 vi.mock("@/infrastructure/http/parameterFileClient", () => ({
   createParameterFileClient: () => ({
@@ -15,6 +16,16 @@ vi.mock("@/infrastructure/http/parameterFileClient", () => ({
     syncFile: vi.fn(),
     listConflicts: vi.fn(),
     resolveConflict: vi.fn()
+  })
+}));
+
+vi.mock("@/infrastructure/http/parameterAdminClient", () => ({
+  createParameterAdminClient: () => ({
+    listProjects: listProjectsMock,
+    getProject: vi.fn(),
+    createProject: vi.fn(),
+    updateProject: vi.fn(),
+    deleteProject: vi.fn()
   })
 }));
 
@@ -51,6 +62,8 @@ describe("ParameterAdminProjectsPage", () => {
     resolveDtsStructuredRepository.mockClear();
     listFilesMock.mockReset();
     listFilesMock.mockResolvedValue([]);
+    listProjectsMock.mockReset();
+    listProjectsMock.mockResolvedValue([]);
   });
 
   it("renders project management workspace with sub navigation", () => {
@@ -311,9 +324,48 @@ describe("ParameterAdminProjectsPage", () => {
     expect(resolveDtsStructuredRepository).toHaveBeenCalledWith("api");
   });
 
-  it("passes project parameter files into ConfigSetBaselinePanel as availableFiles", async () => {
+  it("in mock mode uses teaching availableFiles without calling the parameter file client", async () => {
     window.history.replaceState(null, "", "/parameter-admin/projects");
     const atlasProject = initialState.configDraft.projects.find((project) => project.id === "atlas");
+
+    render(
+      <ParameterAdminProjectsPage
+        state={initialState}
+        dispatch={vi.fn()}
+        onNavigate={vi.fn()}
+        search=""
+        runtimeMode="mock"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: `管理文件 ${atlasProject?.name ?? "atlas"}` }));
+    fireEvent.click(screen.getByRole("tab", { name: "配置集 / 基线" }));
+
+    const panel = await screen.findByRole("region", { name: "配置集 / 基线" });
+    await waitFor(() => {
+      expect(within(panel).getByLabelText("成员文件")).toBeInTheDocument();
+    });
+
+    expect(listFilesMock).not.toHaveBeenCalled();
+
+    const fileSelect = within(panel).getByLabelText("成员文件");
+    expect(within(fileSelect).getByRole("option", { name: "teaching-sample.dts" })).toBeInTheDocument();
+    expect(within(fileSelect).getByRole("option", { name: "board-sample.dts" })).toBeInTheDocument();
+  });
+
+  it("in api mode loads availableFiles via parameter file client for ConfigSetBaselinePanel", async () => {
+    window.history.replaceState(null, "", "/parameter-admin/projects");
+    listProjectsMock.mockResolvedValue([
+      {
+        id: "atlas",
+        name: "Atlas",
+        code: "ATL",
+        status: "initialized",
+        moduleCount: 1,
+        parameterCount: 1,
+        updatedAt: "2026-07-14T08:00:00.000Z"
+      }
+    ]);
     listFilesMock.mockResolvedValue([
       {
         id: "file-engine",
@@ -339,11 +391,11 @@ describe("ParameterAdminProjectsPage", () => {
         dispatch={vi.fn()}
         onNavigate={vi.fn()}
         search=""
-        runtimeMode="mock"
+        runtimeMode="api"
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: `管理文件 ${atlasProject?.name ?? "atlas"}` }));
+    fireEvent.click(await screen.findByRole("button", { name: "管理文件 Atlas" }));
     fireEvent.click(screen.getByRole("tab", { name: "配置集 / 基线" }));
 
     const panel = await screen.findByRole("region", { name: "配置集 / 基线" });

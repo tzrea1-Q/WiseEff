@@ -28,6 +28,12 @@ type ManageFilesTab = "files" | "config-sets" | "structure";
 
 type AvailableParameterFile = { id: string; fileName: string };
 
+/** Mock teaching files aligned with mockDtsStructuredRepository for config-set picker demos. */
+const MOCK_AVAILABLE_PARAMETER_FILES: AvailableParameterFile[] = [
+  { id: "file-teaching-dts", fileName: "teaching-sample.dts" },
+  { id: "file-teaching-board", fileName: "board-sample.dts" }
+];
+
 export function ParameterAdminProjectsPage({
   state,
   dispatch,
@@ -89,6 +95,11 @@ export function ParameterAdminProjectsPage({
       return;
     }
 
+    if (!isApiMode) {
+      setAvailableFiles(MOCK_AVAILABLE_PARAMETER_FILES);
+      return;
+    }
+
     let cancelled = false;
     void (async () => {
       try {
@@ -106,7 +117,7 @@ export function ParameterAdminProjectsPage({
     return () => {
       cancelled = true;
     };
-  }, [manageFilesProjectId, parameterFileClient]);
+  }, [isApiMode, manageFilesProjectId, parameterFileClient]);
 
   const kpiItems: KpiItem[] = [
     { id: "total", label: "项目总数", value: summary.total },
