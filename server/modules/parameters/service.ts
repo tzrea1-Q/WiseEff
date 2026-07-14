@@ -840,6 +840,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           organizationId: auth.organization.id,
           projectId: input.projectId,
           nodePath: parameter.sourceNodePath,
+          sourceFileName: parameter.sourceFileName,
           actorType: context.actorType ?? "user",
           requestId: context.requestId
         });

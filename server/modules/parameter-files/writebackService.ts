@@ -231,6 +231,7 @@ export async function writebackMergedParameterValue(
     organizationId: auth.organization.id,
     projectId: input.projectId,
     nodePath: source.sourceNodePath,
+    sourceFileName: source.sourceFileName,
     actorType: "user",
     requestId: context.requestId
   });

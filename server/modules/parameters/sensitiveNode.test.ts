@@ -198,4 +198,57 @@ describe("assertSensitiveNodeWriteAllowed", () => {
       })
     );
   });
+
+  it("resolves compatible from dts_nodes and blocks writes matching compatible rules", async () => {
+    const db: Queryable = {
+      query: vi.fn(async (text: string) => {
+        if (text.includes("from dts_sensitive_node_rules")) {
+          return {
+            rows: [
+              {
+                id: "rule-compat",
+                organization_id: "org-1",
+                project_id: null,
+                match_type: "compatible",
+                pattern: "vendor,watchdog*",
+                risk_tier: "high",
+                required_capability: "parameter:edit-critical",
+                enabled: true
+              }
+            ],
+            rowCount: 1
+          };
+        }
+        if (text.includes("dts_nodes")) {
+          return {
+            rows: [{ compatible: "vendor,watchdog-v2" }],
+            rowCount: 1
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      })
+    };
+
+    await expect(
+      assertSensitiveNodeWriteAllowed(db, auth({ permissions: ["parameter:view", "parameter:edit"] }), {
+        organizationId: "org-1",
+        projectId: "project-1",
+        nodePath: "amba/wdt@0/status",
+        sourceFileName: "board.dts",
+        actorType: "user"
+      })
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+      details: expect.objectContaining({
+        requiredCapability: "parameter:edit-critical",
+        riskTier: "high"
+      })
+    });
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringMatching(/dts_nodes/),
+      expect.arrayContaining(["project-1", "board.dts"])
+    );
+  });
 });

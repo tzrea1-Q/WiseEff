@@ -114,6 +114,29 @@ async function listSensitiveNodeRules(
   return result.rows.map(toRule);
 }
 
+/** Resolve dts_nodes.compatible for a parameter source when structural model is available. */
+export async function resolveDtsNodeCompatible(
+  db: Queryable,
+  input: { projectId: string; sourceFileName: string; sourceNodePath: string }
+): Promise<string | null> {
+  const nodePath = nodePathFromSourceNodePath(input.sourceNodePath.trim());
+  const result = await db.query<{ compatible: string | null }>(
+    `
+    select n.compatible
+    from project_parameter_files f
+    inner join project_parameter_file_versions v on v.id = f.current_version_id
+    inner join dts_nodes n on n.file_version_id = v.id
+    where f.project_id = $1
+      and f.file_name = $2
+      and (n.node_path = $3 or n.node_path = $4)
+    order by case when n.node_path = $3 then 0 else 1 end
+    limit 1
+    `,
+    [input.projectId, input.sourceFileName, nodePath, input.sourceNodePath.trim()]
+  );
+  return result.rows[0]?.compatible ?? null;
+}
+
 function hasRequiredCapability(auth: AuthContext, capability: BackendPermission) {
   if (capability === "parameter:edit-critical") {
     return canEditCriticalParameters(auth);
@@ -128,6 +151,7 @@ export async function assertSensitiveNodeWriteAllowed(
     organizationId: string;
     projectId: string;
     nodePath: string;
+    sourceFileName?: string | null;
     compatible?: string | null;
     actorType: SensitiveWriteActorType;
     requestId?: string;
@@ -136,13 +160,23 @@ export async function assertSensitiveNodeWriteAllowed(
   const nodePath = input.nodePath.trim();
   if (!nodePath) return;
 
+  let compatible = input.compatible?.trim() || null;
+  const sourceFileName = input.sourceFileName?.trim() || null;
+  if (!compatible && sourceFileName) {
+    compatible = await resolveDtsNodeCompatible(db, {
+      projectId: input.projectId,
+      sourceFileName,
+      sourceNodePath: nodePath
+    });
+  }
+
   const rules = await listSensitiveNodeRules(db, {
     organizationId: input.organizationId,
     projectId: input.projectId
   });
   const matched = matchSensitiveRules(rules, {
     nodePath,
-    compatible: input.compatible,
+    compatible,
     projectId: input.projectId
   });
   if (!matched) return;

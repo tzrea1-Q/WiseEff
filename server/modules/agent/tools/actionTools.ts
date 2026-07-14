@@ -50,6 +50,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
             organizationId: context.auth.organization.id,
             projectId,
             nodePath: parameter.sourceNodePath,
+            sourceFileName: parameter.sourceFileName,
             actorType: "agent",
             requestId: context.requestId
           });

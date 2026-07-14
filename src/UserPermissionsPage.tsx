@@ -73,6 +73,7 @@ const roleCapabilityDescriptions: Record<PlatformRoleId, string> = {
 const permissionLabels: Record<PermissionKey, string> = {
   "parameter:view": "查看参数",
   "parameter:edit": "修改参数",
+  "parameter:edit-critical": "修改安全关键参数",
   "debugging:use": "使用调试平台",
   "logs:upload": "上传日志智能分析",
   "parameter:review": "审阅参数提交",
