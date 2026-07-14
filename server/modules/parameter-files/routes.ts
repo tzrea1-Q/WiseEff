@@ -32,12 +32,21 @@ import { exportConfigSet } from "./exportService";
 import {
   addConfigSetFileBody,
   createBaselineBody,
-  createConfigSetBody
+  createConfigSetBody,
+  dtsSearchQuerySchema
 } from "./schemas";
 import { getProjectParameterFileContent, uploadProjectParameterFile } from "./service";
+import { searchProjectDts } from "./dtsSearchService";
 import { getParameterFileVersionStructure } from "./structuralReadService";
 import { syncFileVersion } from "./syncService";
 import type { ParameterFileFormat } from "./types";
+
+function firstQueryValue(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}
 
 const paramsWithProjectIdSchema = z.object({
   projectId: z.string().min(1)
@@ -298,6 +307,29 @@ export function registerParameterFileRoutes(
       });
     }
     const body = await getParameterFileVersionStructure(db, version.id);
+
+    return { status: 200, body };
+  });
+
+  router.get("/api/v1/projects/:projectId/dts-search", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const query = parseWithSchema(
+      dtsSearchQuerySchema,
+      {
+        q: firstQueryValue(request.query.q) ?? "",
+        by: firstQueryValue(request.query.by)
+      },
+      "Invalid DTS search query."
+    );
+    const body = await searchProjectDts(db, {
+      organizationId: auth.organization.id,
+      projectId: params.projectId,
+      q: query.q,
+      by: query.by ?? "path"
+    });
 
     return { status: 200, body };
   });

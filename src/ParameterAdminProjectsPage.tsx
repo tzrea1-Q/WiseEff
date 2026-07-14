@@ -8,6 +8,7 @@ import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
 import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterFilesPanel";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
+import { DtsSearchPanel } from "@/components/parameters/DtsSearchPanel";
 import { KpiStrip, type KpiItem } from "@/components/KpiStrip";
 import { useParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
@@ -311,7 +312,10 @@ export function ParameterAdminProjectsPage({
             </div>
             <div className="project-parameter-files-dialog-body">
               {manageFilesTab === "files" ? (
-                <ProjectParameterFilesPanel projectId={manageFilesTarget.id} runtimeMode={runtimeMode} />
+                <>
+                  <DtsSearchPanel projectId={manageFilesTarget.id} repository={dtsRepo} />
+                  <ProjectParameterFilesPanel projectId={manageFilesTarget.id} runtimeMode={runtimeMode} />
+                </>
               ) : (
                 <ConfigSetBaselinePanel
                   projectId={manageFilesTarget.id}

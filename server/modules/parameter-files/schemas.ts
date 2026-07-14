@@ -88,3 +88,27 @@ export const structuralReadResponseSchema = z.object({
 });
 
 export type StructuralReadResponse = z.infer<typeof structuralReadResponseSchema>;
+
+export const dtsSearchBySchema = z.enum(["path", "address", "label", "compatible", "value"]);
+
+export type DtsSearchBy = z.infer<typeof dtsSearchBySchema>;
+
+export const dtsSearchQuerySchema = z.object({
+  q: z.string(),
+  by: dtsSearchBySchema.default("path")
+});
+
+export const dtsSearchHitSchema = z.object({
+  fileId: nonEmptyString,
+  fileName: nonEmptyString,
+  versionId: nonEmptyString,
+  nodePath: z.string(),
+  propertyName: nonEmptyString.optional(),
+  snippet: z.string().optional()
+});
+
+export const dtsSearchResponseSchema = z.object({
+  hits: z.array(dtsSearchHitSchema)
+});
+
+export type DtsSearchResponse = z.infer<typeof dtsSearchResponseSchema>;

@@ -14310,6 +14310,85 @@ body.xiaoze-popup-resize-active {
   overflow: auto;
 }
 
+.dts-search-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--outline);
+}
+
+.dts-search-panel__head h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.dts-search-panel__head p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--app-muted);
+}
+
+.dts-search-panel__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
+.dts-search-panel__field {
+  display: grid;
+  gap: 4px;
+  font-size: 0.875rem;
+  color: var(--app-muted);
+}
+
+.dts-search-panel__field input,
+.dts-search-panel__field select {
+  min-width: 160px;
+  padding: 6px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  font: inherit;
+  background: #fff;
+}
+
+.dts-search-panel__hits {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.dts-search-panel__hit-button {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: #fff;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dts-search-panel__hit-button:hover {
+  background: #f8fbff;
+}
+
+.dts-search-panel__path {
+  font-size: 0.875rem;
+}
+
+.dts-search-panel__meta,
+.dts-search-panel__empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--app-muted);
+}
+
 .config-set-baseline-panel {
   display: grid;
   gap: 16px;
