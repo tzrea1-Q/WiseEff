@@ -113,13 +113,22 @@ export function lexDts(source: string): DtsToken[] {
       continue;
     }
 
-    // Digits, or bare hex unit-address tokens like 6E / 77 (may include A-F).
+    // Negative integers (e.g. <-1>) and digits / bare hex unit addresses (6E, 77).
+    if (ch === "-" && i + 1 < text.length && isDigit(text[i + 1])) {
+      let j = i + 1;
+      while (j < text.length && isDigit(text[j])) {
+        j += 1;
+      }
+      push("number", i, j);
+      i = j;
+      continue;
+    }
+
     if (isDigit(ch)) {
       let j = i + 1;
       while (j < text.length && isHexDigit(text[j])) {
         j += 1;
       }
-      // Stop before name-continuation that is not hex (rare); keep hex run as number.
       push("number", i, j);
       i = j;
       continue;

@@ -53,6 +53,11 @@ describe("lexDts", () => {
     expect(kinds(tokens).filter((k) => k === "number")).toHaveLength(3);
   });
 
+  it("tokenizes negative integers", () => {
+    const tokens = lexDts("<-1>");
+    expect(values(tokens)).toEqual(["<", "-1", ">"]);
+  });
+
   it("tokenizes strings with escapes and internal comment-like text", () => {
     const tokens = lexDts(`path = "a/*not*/b\\n";`);
     const str = tokens.find((t) => t.kind === "string");
