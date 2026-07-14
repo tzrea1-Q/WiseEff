@@ -56,3 +56,55 @@ export type InsertFileVersionInput = {
   origin: ParameterFileVersionOrigin;
   createdByUserId?: string;
 };
+
+export type ConfigSetRole = "base" | "overlay" | "charging" | "thermal" | "misc";
+
+export type ConfigSetDto = {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  name: string;
+  description?: string;
+  derivedFromId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ConfigSetFileDto = {
+  configSetId: string;
+  fileId: string;
+  role: ConfigSetRole;
+  sortOrder: number;
+};
+
+export type InsertConfigSetInput = {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  name: string;
+  description?: string;
+  derivedFromId?: string;
+};
+
+export type UpdateConfigSetInput = {
+  id: string;
+  name: string;
+  description?: string;
+  derivedFromId?: string;
+};
+
+export type SetFileConfigSetMembershipInput = {
+  fileId: string;
+  configSetId: string;
+  role: ConfigSetRole;
+  sortOrder: number;
+};
+
+export type FileConfigSetMembershipDto = {
+  fileId: string;
+  organizationId: string;
+  projectId: string;
+  configSetId?: string;
+  configSetRole?: ConfigSetRole;
+  configSetSortOrder: number;
+};
