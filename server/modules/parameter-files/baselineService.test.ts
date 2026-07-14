@@ -3,7 +3,15 @@ import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
-import { compareBaseline, createBaseline, getBaseline, listBaselines, rollbackToBaseline } from "./baselineService";
+import { createStubDtcValidator } from "./dtcValidator";
+import {
+  compareBaseline,
+  createBaseline,
+  getBaseline,
+  listBaselines,
+  releaseBaseline,
+  rollbackToBaseline
+} from "./baselineService";
 
 type QueryCall = {
   text: string;
@@ -507,5 +515,110 @@ describe("rollbackToBaseline", () => {
 
     expect(txCalls.find((call) => call.text.includes("insert into project_parameter_file_versions"))).toBeFalsy();
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))).toBeFalsy();
+  });
+});
+
+describe("releaseBaseline", () => {
+  it("rejects non-admin auth with 403", async () => {
+    const { db } = createFakeDb();
+
+    await expect(
+      releaseBaseline(db, viewerAuth(), "baseline-1", { objectStore: fakeObjectStore({}) })
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+  });
+
+  it("returns 404 when the baseline does not exist", async () => {
+    const { db } = createFakeDb([[]]);
+
+    await expect(
+      releaseBaseline(db, adminAuth(), "missing", { objectStore: fakeObjectStore({}) })
+    ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+  });
+
+  it("blocks release when validation gate fails in block mode", async () => {
+    const validator = createStubDtcValidator(() => ({
+      ok: false,
+      mode: "block",
+      compiler: "dtc",
+      diagnostics: [{ file: "board-a.dts", severity: "error", message: "syntax error" }]
+    }));
+
+    const { db, txCalls } = createFakeDb([
+      [baselineRow()],
+      [configSetRow()],
+      [memberFileRow()],
+      [fileRow()],
+      [fileVersionRow()],
+      []
+    ]);
+
+    await expect(
+      releaseBaseline(
+        db,
+        adminAuth(),
+        "baseline-1",
+        { objectStore: fakeObjectStore({ "sk-1": "/dts-v1/; / { };" }), validator },
+        { requestId: "req-1" }
+      )
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: { code: "dts-validation-failed" }
+    });
+
+    expect(txCalls.find((call) => call.text.includes("update dts_release_baseline") && call.text.includes("released"))).toBeFalsy();
+
+    const gateAudit = txCalls.find(
+      (call) => call.text.includes("insert into audit_events") && call.values[6] === "validation.gate"
+    );
+    expect(gateAudit).toBeTruthy();
+  });
+
+  it("releases a draft baseline when validation passes and writes released audit", async () => {
+    const validator = createStubDtcValidator(() => ({
+      ok: true,
+      mode: "block",
+      compiler: "dtc",
+      diagnostics: []
+    }));
+
+    const { db, txCalls } = createFakeDb([
+      [baselineRow()],
+      [configSetRow()],
+      [memberFileRow()],
+      [fileRow()],
+      [fileVersionRow()],
+      [],
+      [configSetRow()],
+      [baselineRow({ status: "released" })],
+      []
+    ]);
+
+    const result = await releaseBaseline(
+      db,
+      adminAuth(),
+      "baseline-1",
+      { objectStore: fakeObjectStore({ "sk-1": "/dts-v1/; / { };" }), validator },
+      { requestId: "req-1" }
+    );
+
+    expect(result.baseline.status).toBe("released");
+    expect(result.gate.ok).toBe(true);
+    expect(result.gate.requiresConfirmation).toBe(false);
+
+    const statusUpdate = txCalls.find(
+      (call) => call.text.includes("update dts_release_baseline") && call.text.includes("status")
+    );
+    expect(statusUpdate).toBeTruthy();
+    expect(statusUpdate?.values).toEqual(expect.arrayContaining(["released", "baseline-1"]));
+
+    const releasedAudit = txCalls.find(
+      (call) =>
+        call.text.includes("insert into audit_events") &&
+        call.values[6] === "baseline" &&
+        call.values[7] === "released"
+    );
+    expect(releasedAudit).toBeTruthy();
+    expect(releasedAudit?.values[10]).toBe("baseline-1");
   });
 });

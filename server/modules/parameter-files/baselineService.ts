@@ -15,11 +15,13 @@ import {
   insertReleaseBaselineMember,
   listConfigSetMemberFiles,
   listReleaseBaselineMembers,
-  listReleaseBaselinesByConfigSet
+  listReleaseBaselinesByConfigSet,
+  updateBaselineStatus
 } from "./baselineRepository";
 import { getConfigSetById } from "./configSetRepository";
 import { getFileVersionById, getProjectParameterFileById, insertFileVersion, setCurrentVersion } from "./repository";
 import type { ReleaseBaselineDto, ReleaseBaselineMemberDto } from "./types";
+import { runValidationGate, type ValidationGateDeps, type ValidationGateResult } from "./validationGate";
 
 export type BaselineServiceContext = AuditCorrelationContext;
 
@@ -415,5 +417,89 @@ export async function rollbackToBaseline(
     );
 
     return { baselineId, restored };
+  });
+}
+
+async function writeBaselineReleasedAudit(
+  db: Queryable,
+  auth: AuthContext,
+  input: {
+    projectId: string | null;
+    baselineId: string;
+    configSetId: string;
+    gate: ValidationGateResult;
+  },
+  context: BaselineServiceContext = {}
+) {
+  await createAuditEvent(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    actorUserId: auth.user.id,
+    actorType: "user",
+    app: "parameters",
+    kind: "baseline",
+    action: "released",
+    severity: "High",
+    targetType: "dts-release-baseline",
+    targetId: input.baselineId,
+    metadata: {
+      configSetId: input.configSetId,
+      validationOk: input.gate.ok,
+      validationMode: input.gate.mode,
+      requiresConfirmation: input.gate.requiresConfirmation
+    },
+    traceId: context.requestId ?? randomUUID()
+  });
+}
+
+export type ReleaseBaselineDeps = ValidationGateDeps;
+
+export type ReleaseBaselineResult = {
+  baseline: ReleaseBaselineDto;
+  gate: ValidationGateResult;
+};
+
+/**
+ * Runs the DTS validation gate against the config set's current member contents,
+ * then marks a draft baseline as released when validation passes (or warn-mode allows).
+ */
+export async function releaseBaseline(
+  db: Database,
+  auth: AuthContext,
+  baselineId: string,
+  deps: ReleaseBaselineDeps,
+  context: BaselineServiceContext = {}
+): Promise<ReleaseBaselineResult> {
+  requireParameterFileAdmin(auth);
+
+  const baseline = await getReleaseBaselineById(db, { organizationId: auth.organization.id, baselineId });
+  if (!baseline) {
+    throw new ApiError("NOT_FOUND", "Baseline not found.", 404, { baselineId });
+  }
+
+  const gate = await runValidationGate(db, auth, { configSetId: baseline.configSetId }, deps, context);
+
+  return db.transaction(async (tx) => {
+    const configSet = await getConfigSetById(tx, {
+      organizationId: auth.organization.id,
+      configSetId: baseline.configSetId
+    });
+
+    const updated = await updateBaselineStatus(tx, { baselineId, status: "released" });
+
+    await writeBaselineReleasedAudit(
+      tx,
+      auth,
+      {
+        projectId: configSet?.projectId ?? null,
+        baselineId,
+        configSetId: baseline.configSetId,
+        gate
+      },
+      context
+    );
+
+    return { baseline: updated, gate };
   });
 }

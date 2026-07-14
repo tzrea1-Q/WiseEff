@@ -199,3 +199,20 @@ export async function listConfigSetMemberFiles(
 
   return result.rows.map(toConfigSetMemberFileDto);
 }
+
+export async function updateBaselineStatus(
+  db: Queryable,
+  input: { baselineId: string; status: "draft" | "released" }
+): Promise<ReleaseBaselineDto> {
+  const result = await db.query<ReleaseBaselineRow>(
+    `
+    update dts_release_baseline
+    set status = $2
+    where id = $1
+    returning *
+    `,
+    [input.baselineId, input.status]
+  );
+
+  return toReleaseBaselineDto(result.rows[0]);
+}
