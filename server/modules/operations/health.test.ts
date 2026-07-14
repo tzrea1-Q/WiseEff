@@ -378,7 +378,8 @@ describe("operations health", () => {
       await expect(
         buildReadyHealth({
           db,
-          objectStore
+          objectStore,
+          env: {}
         })
       ).resolves.toMatchObject({
         status: 200,

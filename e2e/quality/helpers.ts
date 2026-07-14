@@ -23,17 +23,48 @@ export async function expectUsablePage(page: Page) {
   await expect(page.locator("body")).not.toContainText(runtimeCrashPattern);
 }
 
-export async function openXiaozePopup(page: Page, route = "/parameters?project=aurora") {
-  await page.goto(route);
+export async function dismissCopilotDevOverlays(page: Page) {
+  await page.evaluate(() => {
+    for (const element of document.querySelectorAll("cpk-web-inspector")) {
+      element.remove();
+    }
+  });
+}
+
+export async function closeXiaozePopupIfOpen(page: Page) {
   const popup = page.getByTestId("xiaoze-popup-layer");
+  if (!(await popup.isVisible().catch(() => false))) {
+    return;
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(popup).toBeHidden({ timeout: 10_000 });
+}
+
+export async function prepareInteractionSurface(page: Page) {
+  await dismissCopilotDevOverlays(page);
+  await closeXiaozePopupIfOpen(page);
+  await dismissCopilotDevOverlays(page);
+}
+
+export async function openXiaozePopup(page: Page, route = "/parameters?project=aurora") {
+  await page.goto(route, { waitUntil: "domcontentloaded" });
+  await expectUsablePage(page);
+
   const toggle = page.getByTestId("copilot-chat-toggle");
   await expect(toggle).toBeVisible();
 
-  if (!(await popup.isVisible())) {
+  const popup = page.getByTestId("xiaoze-popup-layer");
+  if ((await toggle.getAttribute("data-state")) !== "open") {
+    const hintDismiss = page.locator(".xiaoze-toggle-hint__dismiss");
+    if (await hintDismiss.isVisible().catch(() => false)) {
+      await hintDismiss.click();
+    }
     await toggle.click();
   }
 
-  await expect(popup).toBeVisible();
+  await expect(toggle).toHaveAttribute("data-state", "open", { timeout: 15_000 });
+  await expect(popup).toBeVisible({ timeout: 15_000 });
   return popup;
 }
 

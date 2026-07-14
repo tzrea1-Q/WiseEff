@@ -10,8 +10,10 @@ import {
 } from "../notifications/producers";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
+import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { writebackMergedParameterValue } from "../parameter-files/writebackService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import {
   applyAddedImportItem,
@@ -28,6 +30,7 @@ import {
   getProjectParameterForUpdate,
   getSubmissionRoundById,
   getSubmissionRoundSubmitterUserId,
+  hasOpenFileSyncConflict,
   hasEligibleWorkflowAssignee,
   insertImportBatch,
   insertReviewDecision,
@@ -72,7 +75,9 @@ import type { ChangeRequestDto, ParameterImportSourceItemDto, ParameterImportSum
 import { buildSubmissionWorkflowTrail } from "../../../src/domain/parameters/submissionWorkflowTrail";
 import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeline";
 
-type ServiceContext = AuditCorrelationContext;
+type ServiceContext = AuditCorrelationContext & {
+  objectStore?: ObjectStore;
+};
 
 export type SaveDraftInput = {
   projectId: string;
@@ -779,7 +784,8 @@ export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDra
     parameterId: input.parameterId,
     userId: auth.user.id,
     targetValue: input.targetValue,
-    reason: input.reason
+    reason: input.reason,
+    origin: "manual"
   });
 }
 
@@ -816,6 +822,14 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         throw new ApiError("CONFLICT", "Parameter already has an open change request.", 409, {
           parameterId: item.parameterId,
           requestId: openRequest.id
+        });
+      }
+      const hasConflict = await hasOpenFileSyncConflict(tx, {
+        projectParameterValueId: parameter.id
+      });
+      if (hasConflict) {
+        throw new ApiError("CONFLICT", "Parameter has an open file sync conflict.", 409, {
+          parameterId: item.parameterId
         });
       }
 
@@ -1347,6 +1361,19 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       changeRequest: request,
       participants
     }, context);
+    if (context.objectStore && request.projectId) {
+      await writebackMergedParameterValue(
+        tx,
+        context.objectStore,
+        auth,
+        {
+          projectId: request.projectId,
+          parameterDefinitionId: merged.parameterDefinitionId,
+          mergedValue: merged.targetValue
+        },
+        context
+      );
+    }
 
     if (request.submitterUserId && request.projectId) {
       const project = await getProjectById(tx, {

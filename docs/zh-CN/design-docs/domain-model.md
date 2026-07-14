@@ -65,6 +65,38 @@
 | `ChangeRequest` | 单条参数变更请求 |
 | `ReviewDecision` | 审阅意见和推进记录 |
 | `ImportBatch` | 批量导入批次 |
+| `ProjectParameterFile` | 项目托管的 DTS/JSON 参数文件（项目内 `file_name` 唯一） |
+| `ProjectParameterFileVersion` | 不可变文件版本；对象存储字节 + `parsed_index` + `origin`（`upload` / `writeback`） |
+| `ParameterFileSyncConflict` | 同一项目值上 `file_sync` 草稿与 `manual` 草稿目标值冲突时的裁决队列 |
+
+`ProjectParameterValue` 扩展字段：
+
+- `source_file_name`：来源文件名，如 `battery.dtsi`
+- `source_node_path`：解析节点路径，如 `battery/temp_max`
+
+来源挂在**项目值**而非定义：同一定义在不同项目可绑定不同文件；无来源表示手动维护。
+
+`ParameterDraft` 扩展字段：
+
+- `origin`：`manual`（默认）或 `file_sync`
+- `origin_file_version_id`：产生同步草稿的文件版本
+
+#### 文件同步与回写
+
+上传或新版本（`origin=upload`）会解析 `parsed_index`，与 DB 当前值 diff，为有差异的参数 upsert `file_sync` 草稿。匹配优先 `source_file_name` + `source_node_path`，回退 `name` + `module`。首次绑定写入来源字段。草稿不自动提交，仍走现有提交与审阅流。
+
+审阅合入（`software_merge → merged`）后，若参数有来源字段，`WritebackService` 回写当前文件并生成 `origin=writeback` 新版本；写回版本**不触发**新一轮自动草稿。
+
+禁用文件后不再参与自动同步；已绑定来源保留。
+
+#### 文件同步冲突
+
+同一 `project_parameter_value_id` 同时存在 `file_sync` 与 `manual` 草稿且 `target_value` 不同时，创建 `parameter_file_sync_conflicts`，双方草稿冻结不可提交，直至 Committer 裁决：
+
+- `resolved_file`：删除 UI 草稿，保留文件草稿
+- `resolved_ui`：删除文件草稿，保留 UI 草稿
+
+裁决写 `parameter-file-conflict-resolve` 审计。P1 上传上限 2 MB；完整 DTS AST 解析与写回见 TD-039（P2）。
 
 参数变更状态机：
 

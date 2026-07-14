@@ -101,6 +101,8 @@ type ParameterRow = {
   risk: ParameterRiskLevel;
   current_value: string;
   recommended_value: string;
+  source_file_name?: string | null;
+  source_node_path?: string | null;
   updated_at: string | Date;
 };
 
@@ -133,6 +135,15 @@ export type ProjectParameterForUpdate = {
   valueVersion: number;
 };
 
+export type ProjectParameterValueMatch = {
+  id: string;
+  projectId: string;
+  parameterDefinitionId: string;
+  name: string;
+  module: string;
+  currentValue: string;
+};
+
 type ProjectParameterForUpdateRow = {
   id: string;
   project_id: string;
@@ -144,6 +155,15 @@ type ProjectParameterForUpdateRow = {
   current_value: string;
   recommended_value: string;
   value_version: number | string;
+};
+
+type ProjectParameterValueMatchRow = {
+  id: string;
+  project_id: string;
+  parameter_definition_id: string;
+  name: string;
+  module: string;
+  current_value: string;
 };
 
 type ParameterHistoryRow = {
@@ -158,9 +178,57 @@ type DraftRow = {
   id: string;
   project_id: string;
   project_parameter_value_id: string;
+  user_id?: string;
   target_value: string;
   reason: string;
+  origin?: "manual" | "file_sync";
+  origin_file_version_id?: string | null;
   updated_at: string | Date;
+};
+
+export type ParameterDraftWithOrigin = {
+  id: string;
+  userId: string;
+  projectId: string;
+  projectParameterValueId: string;
+  targetValue: string;
+  origin: "manual" | "file_sync";
+  originFileVersionId?: string;
+  updatedAt: string;
+};
+
+type FileSyncConflictRow = {
+  id: string;
+  organization_id: string;
+  project_id: string;
+  project_parameter_value_id: string;
+  parameter_definition_id: string;
+  file_version_id: string;
+  file_draft_id: string;
+  ui_draft_id: string;
+  file_value: string;
+  ui_draft_value: string;
+  status: "open" | "resolved_file" | "resolved_ui";
+  resolved_by_user_id: string | null;
+  resolved_at: string | Date | null;
+  created_at: string | Date;
+};
+
+export type FileSyncConflictRecord = {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  projectParameterValueId: string;
+  parameterDefinitionId: string;
+  fileVersionId: string;
+  fileDraftId: string;
+  uiDraftId: string;
+  fileValue: string;
+  uiDraftValue: string;
+  status: "open" | "resolved_file" | "resolved_ui";
+  resolvedByUserId?: string;
+  resolvedAt?: string;
+  createdAt: string;
 };
 
 type SubmissionRoundRow = {
@@ -398,6 +466,8 @@ function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] =
     range: row.default_range,
     unit: row.unit,
     risk: row.risk,
+    sourceFileName: row.source_file_name ?? undefined,
+    sourceNodePath: row.source_node_path ?? undefined,
     updatedAt,
     updatedAtTs: updatedAt,
     history
@@ -425,6 +495,38 @@ function toDraftDto(row: DraftRow): ParameterDraftDto {
   };
 }
 
+function toDraftWithOrigin(row: DraftRow): ParameterDraftWithOrigin {
+  return {
+    id: row.id,
+    userId: row.user_id ?? "",
+    projectId: row.project_id,
+    projectParameterValueId: row.project_parameter_value_id,
+    targetValue: row.target_value,
+    origin: row.origin ?? "manual",
+    originFileVersionId: row.origin_file_version_id ?? undefined,
+    updatedAt: dateTimeToIso(row.updated_at)
+  };
+}
+
+function toFileSyncConflictRecord(row: FileSyncConflictRow): FileSyncConflictRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    projectId: row.project_id,
+    projectParameterValueId: row.project_parameter_value_id,
+    parameterDefinitionId: row.parameter_definition_id,
+    fileVersionId: row.file_version_id,
+    fileDraftId: row.file_draft_id,
+    uiDraftId: row.ui_draft_id,
+    fileValue: row.file_value,
+    uiDraftValue: row.ui_draft_value,
+    status: row.status,
+    resolvedByUserId: row.resolved_by_user_id ?? undefined,
+    resolvedAt: row.resolved_at ? dateTimeToIso(row.resolved_at) : undefined,
+    createdAt: dateTimeToIso(row.created_at)
+  };
+}
+
 function toProjectParameterForUpdate(row: ProjectParameterForUpdateRow): ProjectParameterForUpdate {
   return {
     id: row.id,
@@ -437,6 +539,17 @@ function toProjectParameterForUpdate(row: ProjectParameterForUpdateRow): Project
     currentValue: row.current_value,
     recommendedValue: row.recommended_value,
     valueVersion: Number(row.value_version)
+  };
+}
+
+function toProjectParameterValueMatch(row: ProjectParameterValueMatchRow): ProjectParameterValueMatch {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    parameterDefinitionId: row.parameter_definition_id,
+    name: row.name,
+    module: row.module,
+    currentValue: row.current_value
   };
 }
 
@@ -989,6 +1102,8 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
       pd.risk,
       ppv.current_value,
       ppv.recommended_value,
+      ppv.source_file_name,
+      ppv.source_node_path,
       ppv.updated_at
     from project_parameter_values ppv
     inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
@@ -1020,6 +1135,8 @@ export async function getParameterById(db: Queryable, query: { organizationId: s
       pd.risk,
       ppv.current_value,
       ppv.recommended_value,
+      ppv.source_file_name,
+      ppv.source_node_path,
       ppv.updated_at
     from project_parameter_values ppv
     inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
@@ -1087,6 +1204,23 @@ export async function listDraftsForUser(
   return result.rows.map(toDraftDto);
 }
 
+export async function listDraftsForParameterValue(
+  db: Queryable,
+  query: { projectParameterValueId: string }
+) {
+  const result = await db.query<DraftRow>(
+    `
+    select id, user_id, project_id, project_parameter_value_id, target_value, origin, origin_file_version_id, updated_at
+    from parameter_drafts
+    where project_parameter_value_id = $1
+    order by updated_at desc, id asc
+    `,
+    [query.projectParameterValueId]
+  );
+
+  return result.rows.map(toDraftWithOrigin);
+}
+
 export async function upsertDraft(
   db: Queryable,
   input: {
@@ -1097,26 +1231,65 @@ export async function upsertDraft(
     userId: string;
     targetValue: string;
     reason: string;
+    origin?: "manual" | "file_sync";
+    originFileVersionId?: string;
   }
 ) {
   const result = await db.query<DraftRow>(
     `
     insert into parameter_drafts (
       id, organization_id, project_id, project_parameter_value_id, user_id,
-      target_value, reason
+      target_value, reason, origin, origin_file_version_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     on conflict (project_id, project_parameter_value_id, user_id)
     do update set
       target_value = excluded.target_value,
       reason = excluded.reason,
+      origin = excluded.origin,
+      origin_file_version_id = excluded.origin_file_version_id,
       updated_at = now()
     returning id, project_id, project_parameter_value_id, target_value, reason, updated_at
     `,
-    [input.id, input.organizationId, input.projectId, input.parameterId, input.userId, input.targetValue, input.reason]
+    [
+      input.id,
+      input.organizationId,
+      input.projectId,
+      input.parameterId,
+      input.userId,
+      input.targetValue,
+      input.reason,
+      input.origin ?? "manual",
+      input.originFileVersionId ?? null
+    ]
   );
 
   return toDraftDto(result.rows[0]);
+}
+
+export async function upsertFileSyncDraft(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    projectParameterValueId: string;
+    userId: string;
+    targetValue: string;
+    reason: string;
+    originFileVersionId: string;
+  }
+) {
+  return upsertDraft(db, {
+    id: `${input.projectParameterValueId}-${input.userId}-file-sync`,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    parameterId: input.projectParameterValueId,
+    userId: input.userId,
+    targetValue: input.targetValue,
+    reason: input.reason,
+    origin: "file_sync",
+    originFileVersionId: input.originFileVersionId
+  });
 }
 
 export async function deleteDraft(
@@ -1148,6 +1321,126 @@ export async function deleteDraftForParameter(
     `,
     [input.organizationId, input.userId, input.projectId, input.parameterId]
   );
+}
+
+export async function hasOpenFileSyncConflict(
+  db: Queryable,
+  query: { projectParameterValueId: string }
+) {
+  const result = await db.query<{ id: string }>(
+    `
+    select id
+    from parameter_file_sync_conflicts
+    where project_parameter_value_id = $1
+      and status = 'open'
+    limit 1
+    `,
+    [query.projectParameterValueId]
+  );
+
+  return result.rows.length > 0;
+}
+
+export async function insertFileSyncConflict(
+  db: Queryable,
+  input: {
+    id: string;
+    organizationId: string;
+    projectId: string;
+    projectParameterValueId: string;
+    parameterDefinitionId: string;
+    fileVersionId: string;
+    fileDraftId: string;
+    uiDraftId: string;
+    fileValue: string;
+    uiDraftValue: string;
+  }
+) {
+  const result = await db.query<FileSyncConflictRow>(
+    `
+    insert into parameter_file_sync_conflicts (
+      id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
+      file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open')
+    returning *
+    `,
+    [
+      input.id,
+      input.organizationId,
+      input.projectId,
+      input.projectParameterValueId,
+      input.parameterDefinitionId,
+      input.fileVersionId,
+      input.fileDraftId,
+      input.uiDraftId,
+      input.fileValue,
+      input.uiDraftValue
+    ]
+  );
+
+  return toFileSyncConflictRecord(result.rows[0]);
+}
+
+export async function listOpenConflicts(
+  db: Queryable,
+  query: { organizationId: string; projectParameterValueId?: string; projectId?: string; conflictId?: string }
+) {
+  const values: unknown[] = [query.organizationId];
+  const where = ["organization_id = $1", "status = 'open'"];
+  if (query.projectParameterValueId) {
+    addCondition(
+      where,
+      values,
+      (placeholder) => `project_parameter_value_id = ${placeholder}`,
+      query.projectParameterValueId
+    );
+  }
+  if (query.projectId) {
+    addCondition(where, values, (placeholder) => `project_id = ${placeholder}`, query.projectId);
+  }
+  if (query.conflictId) {
+    addCondition(where, values, (placeholder) => `id = ${placeholder}`, query.conflictId);
+  }
+
+  const result = await db.query<FileSyncConflictRow>(
+    `
+    select *
+    from parameter_file_sync_conflicts
+    where ${where.join("\n      and ")}
+    order by created_at desc, id desc
+    `,
+    values
+  );
+
+  return result.rows.map(toFileSyncConflictRecord);
+}
+
+export async function resolveConflict(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    conflictId: string;
+    status: "resolved_file" | "resolved_ui";
+    resolvedByUserId: string;
+  }
+) {
+  const result = await db.query<FileSyncConflictRow>(
+    `
+    update parameter_file_sync_conflicts
+    set status = $3,
+      resolved_by_user_id = $4,
+      resolved_at = now()
+    where organization_id = $1
+      and id = $2
+      and status = 'open'
+    returning *
+    `,
+    [input.organizationId, input.conflictId, input.status, input.resolvedByUserId]
+  );
+
+  const row = result.rows[0];
+  return row ? toFileSyncConflictRecord(row) : null;
 }
 
 export async function createSubmissionRound(
@@ -1971,6 +2264,92 @@ export async function getProjectParameterForUpdate(
   );
 
   return result.rows[0] ? toProjectParameterForUpdate(result.rows[0]) : null;
+}
+
+export async function findProjectValueBySource(
+  db: Queryable,
+  query: {
+    organizationId: string;
+    projectId: string;
+    sourceFileName: string;
+    sourceNodePath: string;
+  }
+) {
+  const result = await db.query<ProjectParameterValueMatchRow>(
+    `
+    select
+      ppv.id,
+      ppv.project_id,
+      ppv.parameter_definition_id,
+      pd.name,
+      pd.module,
+      ppv.current_value
+    from project_parameter_values ppv
+    inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
+    where ppv.organization_id = $1
+      and pd.organization_id = $1
+      and ppv.project_id = $2
+      and ppv.source_file_name = $3
+      and ppv.source_node_path = $4
+    limit 1
+    `,
+    [query.organizationId, query.projectId, query.sourceFileName, query.sourceNodePath]
+  );
+
+  return result.rows[0] ? toProjectParameterValueMatch(result.rows[0]) : null;
+}
+
+export async function findProjectValueByDefinition(
+  db: Queryable,
+  query: {
+    organizationId: string;
+    projectId: string;
+    name: string;
+    module: string;
+  }
+) {
+  const result = await db.query<ProjectParameterValueMatchRow>(
+    `
+    select
+      ppv.id,
+      ppv.project_id,
+      ppv.parameter_definition_id,
+      pd.name,
+      pd.module,
+      ppv.current_value
+    from project_parameter_values ppv
+    inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
+    where ppv.organization_id = $1
+      and pd.organization_id = $1
+      and ppv.project_id = $2
+      and pd.name = $3
+      and pd.module = $4
+    limit 1
+    `,
+    [query.organizationId, query.projectId, query.name, query.module]
+  );
+
+  return result.rows[0] ? toProjectParameterValueMatch(result.rows[0]) : null;
+}
+
+export async function bindParameterSource(
+  db: Queryable,
+  input: {
+    projectParameterValueId: string;
+    sourceFileName: string;
+    sourceNodePath: string;
+  }
+) {
+  await db.query(
+    `
+    update project_parameter_values
+    set source_file_name = $2,
+      source_node_path = $3,
+      updated_at = now()
+    where id = $1
+    `,
+    [input.projectParameterValueId, input.sourceFileName, input.sourceNodePath]
+  );
 }
 
 export async function listParameterDefinitionsForImport(

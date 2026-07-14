@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PageProps } from "@/app/routes";
 import { ParameterAdminSubNav } from "@/components/admin/ParameterAdminSubNav";
 import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
+import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterFilesPanel";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
 import { KpiStrip, type KpiItem } from "@/components/KpiStrip";
@@ -32,6 +33,7 @@ export function ParameterAdminProjectsPage({
   const [error, setError] = useState("");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [manageFilesProjectId, setManageFilesProjectId] = useState<string | null>(null);
   const [formPending, setFormPending] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [formError, setFormError] = useState("");
@@ -42,6 +44,7 @@ export function ParameterAdminProjectsPage({
   const summary = useMemo(() => summarizeParameterAdminProjects(rows), [rows]);
   const editingProject = rows.find((row) => row.id === editingProjectId) ?? null;
   const deleteTarget = rows.find((row) => row.id === deleteTargetId) ?? null;
+  const manageFilesTarget = rows.find((row) => row.id === manageFilesProjectId) ?? null;
 
   const loadProjects = async () => {
     if (!isApiMode) {
@@ -98,6 +101,13 @@ export function ParameterAdminProjectsPage({
     }
     setDeleteError("");
     setDeleteTargetId(projectId);
+  }, [rows]);
+
+  const openManageFiles = useCallback((projectId: string) => {
+    if (!rows.some((row) => row.id === projectId)) {
+      return;
+    }
+    setManageFilesProjectId(projectId);
   }, [rows]);
 
   const submitForm = async (input: { name: string; code: string; status?: string }) => {
@@ -181,6 +191,7 @@ export function ParameterAdminProjectsPage({
           onCreateProject={openCreate}
           onEditProject={openEdit}
           onDeleteProject={openDelete}
+          onManageFiles={openManageFiles}
         />
       </main>
 
@@ -219,6 +230,37 @@ export function ParameterAdminProjectsPage({
           void confirmDelete();
         }}
       />
+
+      {manageFilesTarget ? (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="project-parameter-files-title"
+          onClick={() => setManageFilesProjectId(null)}
+        >
+          <div className="submission-dialog project-parameter-files-dialog" onClick={(event) => event.stopPropagation()}>
+            <div className="submission-dialog-head">
+              <div>
+                <span className="eyebrow">项目文件</span>
+                <h2 id="project-parameter-files-title">管理文件 · {manageFilesTarget.name}</h2>
+                <p>在「参数文件」标签中维护该项目的参数文件与版本。</p>
+              </div>
+              <button type="button" className="button subtle" onClick={() => setManageFilesProjectId(null)}>
+                关闭
+              </button>
+            </div>
+            <div className="project-parameter-files-tabs" role="tablist" aria-label="项目详情标签">
+              <button type="button" role="tab" aria-selected="true" className="project-parameter-files-tab is-active">
+                参数文件
+              </button>
+            </div>
+            <div className="project-parameter-files-dialog-body">
+              <ProjectParameterFilesPanel projectId={manageFilesTarget.id} runtimeMode={runtimeMode} />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

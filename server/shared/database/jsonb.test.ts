@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createPostgresDatabase } from "./client";
+import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { sanitizeForJson, serializePostgresJsonb, stripLoneSurrogates } from "./jsonb";
+
+const databaseAvailable = await isTestDatabaseAvailable();
 
 describe("postgres jsonb serialization", () => {
   it("preserves valid surrogate pairs such as emoji", () => {
@@ -33,7 +36,7 @@ describe("postgres jsonb serialization", () => {
     expect(serializePostgresJsonb(undefined, "array")).toBe("[]");
   });
 
-  it("accepts serialized json in postgres jsonb casts", async () => {
+  it.skipIf(!databaseAvailable)("accepts serialized json in postgres jsonb casts", async () => {
     const databaseUrl = process.env.DATABASE_URL ?? "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff";
     const db = createPostgresDatabase(databaseUrl);
     const payload = serializePostgresJsonb([{ snippet: "\uD800" }], "array");

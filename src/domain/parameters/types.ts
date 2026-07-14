@@ -26,6 +26,8 @@ export type ParameterRecord = {
   unit: string;
   risk: RiskLevel;
   valueKind: ParameterValueKind;
+  sourceFileName?: string;
+  sourceNodePath?: string;
   updatedAt: string;
   updatedAtTs: string;
   history: ParameterHistoryEntry[];

@@ -6,7 +6,7 @@ import { getParameterValueSummary, shouldSummarizeComplexParameter } from "@/par
 import { ColumnFilter } from "./ColumnFilter";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./tableFilterUtils";
 
-type SortKey = "name" | "module" | "valueDiff" | "range" | "risk" | "updatedAtTs";
+type SortKey = "name" | "module" | "source" | "valueDiff" | "range" | "risk" | "updatedAtTs";
 type SortState = { key: SortKey; dir: "asc" | "desc" };
 type FilterableColumnKey = Extract<SortKey, "module" | "risk">;
 
@@ -66,6 +66,7 @@ function getSortableHeaders(valueColumnLabel: string): Array<{ key: SortKey; lab
   return [
     { key: "name", label: "参数名称" },
     { key: "module", label: "模块" },
+    { key: "source", label: "来源" },
     { key: "valueDiff", label: valueColumnLabel },
     { key: "range", label: "范围 / 单位" },
     { key: "risk", label: "重要性" },
@@ -73,7 +74,17 @@ function getSortableHeaders(valueColumnLabel: string): Array<{ key: SortKey; lab
   ];
 }
 
+function formatParameterSource(row: ParameterRecord) {
+  if (row.sourceFileName && row.sourceNodePath) {
+    return `${row.sourceFileName} → ${row.sourceNodePath}`;
+  }
+  return "手动";
+}
+
 function getColumnFilterValue(row: ParameterRecord, key: SortKey) {
+  if (key === "source") {
+    return formatParameterSource(row);
+  }
   if (key === "valueDiff") {
     return `${row.currentValue} → ${row.recommendedValue}`;
   }
@@ -91,7 +102,7 @@ function matchesQuery(row: ParameterRecord, query: string) {
     return true;
   }
 
-  return [row.name, row.description, row.module].some((value) => value.toLowerCase().includes(query));
+  return [row.name, row.description, row.module, formatParameterSource(row)].some((value) => value.toLowerCase().includes(query));
 }
 
 function getValueDiffMagnitude(row: ParameterRecord) {
@@ -152,6 +163,9 @@ function sortValue(row: ParameterRecord, key: SortKey) {
 
   if (key === "valueDiff") {
     return getValueDiffMagnitude(row);
+  }
+  if (key === "source") {
+    return formatParameterSource(row);
   }
 
   return row[key];
@@ -434,6 +448,9 @@ export function ParametersTable({
                 </td>
                 <td data-label="模块">
                   <span className={`module-badge module-tone-${getModuleToneIndex(row.module)}`}>{row.module}</span>
+                </td>
+                <td data-label="来源">
+                  <span className="parameter-source-text">{formatParameterSource(row)}</span>
                 </td>
                 <td className="mono" data-label={valueColumnLabel}>
                   {hasComplexValue ? (

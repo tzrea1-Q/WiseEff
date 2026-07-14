@@ -1,4 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const fsMockState = vi.hoisted(() => ({
+  passthroughExistsSync: null as null | typeof import("node:fs").existsSync,
+  existsSyncMock: vi.fn<(target: string) => boolean>()
+}));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  fsMockState.passthroughExistsSync = actual.existsSync;
+  fsMockState.existsSyncMock.mockImplementation((target) => actual.existsSync(target));
+  return {
+    ...actual,
+    existsSync: (target: string) => fsMockState.existsSyncMock(target)
+  };
+});
 
 import {
   buildLauncherInfoPlist,
@@ -63,6 +78,19 @@ describe("macosUrlScheme helpers", () => {
 });
 
 describe("macosUrlScheme register/unregister", () => {
+  beforeEach(() => {
+    fsMockState.existsSyncMock.mockImplementation((target) => {
+      if (target.includes("lsregister")) {
+        return true;
+      }
+      return fsMockState.passthroughExistsSync!(target);
+    });
+  });
+
+  afterEach(() => {
+    fsMockState.existsSyncMock.mockImplementation((target) => fsMockState.passthroughExistsSync!(target));
+  });
+
   it("rejects register on non-macOS platforms", async () => {
     const capture = createCapture();
     const deps = createDeps({ platform: "linux", ...capture });
@@ -73,7 +101,7 @@ describe("macosUrlScheme register/unregister", () => {
     expect(capture.errors).toContain("register is only available on macOS.");
   });
 
-  it("registers launcher app and calls lsregister", async () => {
+  it.skipIf(process.platform !== "darwin")("registers launcher app and calls lsregister", async () => {
     const capture = createCapture();
     const execFile = vi.fn(async () => ({ stdout: "", stderr: "" }));
     const writeFile = vi.fn(async () => undefined);
@@ -114,7 +142,7 @@ describe("macosUrlScheme register/unregister", () => {
     expect(access).toHaveBeenCalledWith("/Users/operator/.wiseeff/WiseEffBridgeLauncher.app");
   });
 
-  it("unregisters launcher app and removes bundle", async () => {
+  it.skipIf(process.platform !== "darwin")("unregisters launcher app and removes bundle", async () => {
     const capture = createCapture();
     const execFile = vi.fn(async () => ({ stdout: "", stderr: "" }));
     const rm = vi.fn(async () => undefined);

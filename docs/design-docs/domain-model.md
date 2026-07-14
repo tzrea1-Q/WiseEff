@@ -13,13 +13,54 @@ The product model separates prototype display data into durable, auditable busin
 - Organization and users define tenant boundaries, identity source bindings, role bindings, and disabled-user behavior.
 - Projects group modules, members, and workflow state.
 - `ParameterModule` (org-scoped tree) is the source of truth for parameter taxonomy; `ProjectModule` mirrors per-project module metadata for governance counts.
-- Parameter management centers on definitions, project values, drafts, submission rounds, change requests, review decisions, imports, history, and audit.
+- Parameter management centers on definitions, project values, drafts, submission rounds, change requests, review decisions, imports, history, audit, and per-project DTS/JSON parameter files with bidirectional sync.
 - Parameter and debugging **module taxonomies** are independent org-scoped trees (`parameter_modules`, `debug_node_modules`) with `parent_id` and materialized `path`. Parameters and logical debug nodes attach by `module_id` FK; filters accept `moduleId` with subtree include (parent selection returns descendants). Legacy flat `module` text columns remain transitional (TD-037 follow-up).
 - Log analysis separates uploaded object references, business records, analysis runs, stages, evidence, archive state, and feedback. Log records and file objects are scoped by `organization_id` only; optional `related_parameter_id` is a soft link to M1 definitions without FK.
 - Product feedback persists Internal Beta sidebar reports and optional image attachments as an organization-scoped triage queue. It is separate from log-analysis feedback and uses admin-only review.
 - Debugging separates devices, detected targets, debug parameters, sessions, snapshots, node operations, and events.
 - Agent state separates sessions, messages, tool calls, approvals, and run traces.
 - Audit events connect cross-domain writes through actor, target, action, severity, metadata, and trace ID.
+
+## Project Parameter Files
+
+Project parameter files are first-class project-scoped entities that host DTS/JSON configuration bytes in object storage with immutable version history. File versions carry a `parsed_index` (`nodePath` → value) used to diff against database state, generate `file_sync` drafts, and patch nodes after review merge.
+
+| Entity | Description |
+| --- | --- |
+| `ProjectParameterFile` | One hosted `.dts` or `.json` file per project (`file_name` unique per project), optional `module_hint`, `enabled` flag, and `current_version_id`. |
+| `ProjectParameterFileVersion` | Immutable file bytes in object storage with `version_number`, `checksum`, `parsed_index`, and `origin` (`upload` or `writeback`). |
+| `ParameterFileSyncConflict` | Open queue row when the same project value has competing `file_sync` and `manual` drafts with different target values. |
+
+`ProjectParameterValue` extensions:
+
+- `source_file_name`: hosted file name such as `battery.dtsi`
+- `source_node_path`: parsed node path such as `battery/temp_max`
+
+Source fields live on project values, not definitions: the same definition can bind to different files per project. Null source fields mean manually maintained values.
+
+`ParameterDraft` extensions:
+
+- `origin`: `manual` (default) or `file_sync`
+- `origin_file_version_id`: file version that produced a sync draft
+
+### File Sync and Writeback
+
+Upload or version upload with `origin=upload` parses the file, diffs each `parsed_index` entry against the matched project value, and upserts `file_sync` drafts when values differ. Matching prefers `source_file_name` + `source_node_path`, then falls back to `name` + `module`. First bind writes source fields on the project value. Drafts are not auto-submitted; users still run the existing submission and review workflow.
+
+`origin=writeback` versions are created after `software_merge → merged` when the merged parameter has source fields. Writeback patches the current file bytes (JSON path set or DTS property text replace) and must not trigger another sync pass.
+
+Disabled files stop participating in automatic sync; existing source bindings remain.
+
+### File Sync Conflicts
+
+A conflict opens when one `project_parameter_value_id` has both a `file_sync` draft and a `manual` draft with different `target_value`. Both drafts are blocked from submission until a reviewer resolves the conflict:
+
+- `resolved_file`: delete the UI draft, keep the file draft
+- `resolved_ui`: delete the file draft, keep the UI draft
+
+Terminal conflict statuses are `resolved_file` and `resolved_ui`. Resolution writes `parameter-file-conflict-resolve` audit.
+
+P1 limits uploads to 2 MB. Full DTS AST parse and writeback remain P2 (TD-039).
 
 ## State Machines
 

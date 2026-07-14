@@ -20,6 +20,7 @@ vi.mock("node:fs", async (importOriginal) => {
 import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 
 import { isCliEntryPoint, resolveCliEntryPath, runCli } from "./cli";
+import { resolveBridgeBinPath } from "./macosLaunchAgent";
 import type { BridgeConfig } from "./config";
 
 function createStdoutCapture() {
@@ -42,7 +43,7 @@ describe("device bridge cli", () => {
     expect(isCliEntryPoint(["node"])).toBe(false);
   });
 
-  it("detects CLI entry across macOS /tmp and /private/tmp aliases", () => {
+  it.skipIf(process.platform !== "darwin")("detects CLI entry across macOS /tmp and /private/tmp aliases", () => {
     const dir = "/tmp/wiseeff-cli-entry-test";
     mkdirSync(dir, { recursive: true });
     const entryPath = path.join(dir, "cli.js");
@@ -162,15 +163,16 @@ describe("device bridge cli", () => {
     expect(capture.errors.some((line) => line.includes("only supported on Windows and macOS"))).toBe(true);
   });
 
-  it("installs macOS launch agent via service install", async () => {
+  it.skipIf(process.platform !== "darwin")("installs macOS launch agent via service install", async () => {
     const capture = createStdoutCapture();
-    const bridgeBin = "/Applications/WiseEff Bridge.app/Contents/Resources/wiseeff-bridge";
+    const cliPath = "/Applications/WiseEff Bridge.app/Contents/Resources/cli.js";
+    const bridgeBin = resolveBridgeBinPath(cliPath);
     fsMockState.existsSyncMock.mockImplementation((target) => target === bridgeBin);
 
     const exitCode = await runCli(["service", "install"], {
       stdout: capture.stdout,
       platform: "darwin",
-      cliPath: "/Applications/WiseEff Bridge.app/Contents/Resources/cli.js",
+      cliPath,
       execFile: vi.fn(async () => ({ stdout: "", stderr: "" })),
       mkdir: vi.fn(async () => undefined),
       writeFile: vi.fn(async () => undefined)

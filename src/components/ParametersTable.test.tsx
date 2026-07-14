@@ -245,19 +245,24 @@ describe("ParametersTable", () => {
   });
 
   it("formats API ISO update timestamps for the table column", () => {
+    const isoTimestamp = "2026-06-14T12:27:58.378Z";
     setup({
       rows: [
         {
           ...rows[0],
           id: "p-api-time",
-          updatedAt: "2026-06-14T12:27:58.378Z",
-          updatedAtTs: "2026-06-14T12:27:58.378Z"
+          updatedAt: isoTimestamp,
+          updatedAtTs: isoTimestamp
         }
       ]
     });
 
-    expect(screen.getByText("06-14 20:27")).toBeInTheDocument();
-    expect(screen.queryByText("2026-06-14T12:27:58.378Z")).not.toBeInTheDocument();
+    const date = new Date(Date.parse(isoTimestamp));
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const expected = `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+
+    expect(screen.getByText(expected)).toBeInTheDocument();
+    expect(screen.queryByText(isoTimestamp)).not.toBeInTheDocument();
   });
 
   it("selects one row without focusing the row", () => {
@@ -446,9 +451,10 @@ describe("ParametersTable", () => {
   it("right-aligns the importance filter menu away from row actions", () => {
     setup();
 
-    const headers = screen.getAllByRole("columnheader");
-    expect(headers[2].querySelector(".parameters-column-filter")).toHaveClass("parameters-column-filter--left");
-    expect(headers[5].querySelector(".parameters-column-filter")).toHaveClass("parameters-column-filter--right");
+    const moduleHeader = screen.getByRole("columnheader", { name: /模块/ });
+    const riskHeader = screen.getByRole("columnheader", { name: /重要性/ });
+    expect(moduleHeader.querySelector(".parameters-column-filter")).toHaveClass("parameters-column-filter--left");
+    expect(riskHeader.querySelector(".parameters-column-filter")).toHaveClass("parameters-column-filter--right");
   });
 
   it("keeps provided column filter identity separate from React props", () => {

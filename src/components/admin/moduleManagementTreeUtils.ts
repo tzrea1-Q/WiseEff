@@ -68,7 +68,7 @@ export function collectExpandedIdsForFilteredTree(tree: readonly ModuleTreeNode[
 export function modulePathSegments(node: Pick<FlatModuleNode, "id" | "name" | "parentId">, moduleNodes: readonly FlatModuleNode[]): string[] {
   const byId = new Map(moduleNodes.map((item) => [item.id, item]));
   const segments: string[] = [];
-  let current: FlatModuleNode | undefined = node;
+  let current: Pick<FlatModuleNode, "id" | "name" | "parentId"> | undefined = node;
 
   while (current) {
     segments.unshift(current.name);

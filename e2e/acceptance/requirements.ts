@@ -241,5 +241,17 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     workflow: "C",
     title: "Non-admin cannot mutate module trees and deleting non-empty modules returns 409.",
     required: true
+  },
+  {
+    id: "PARAM-FILE-ADMIN-001",
+    workflow: "C",
+    title: "Admin uploads a project parameter file, lists versions, and manual sync creates a file_sync draft with source binding.",
+    required: true
+  },
+  {
+    id: "PARAM-FILE-CONFLICT-001",
+    workflow: "C",
+    title: "Admin resolves an open file/UI draft conflict by keeping the file or UI value.",
+    required: true
   }
 ];

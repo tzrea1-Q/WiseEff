@@ -8,6 +8,7 @@ import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
 import { CreateParameterDialog } from "./components/CreateParameterDialog";
 import { DeleteParameterDialog } from "./components/DeleteParameterDialog";
 import { ParameterAdminSubNav } from "./components/admin/ParameterAdminSubNav";
+import { ParameterFileConflictPanel } from "./components/admin/ParameterFileConflictPanel";
 import { KpiStrip, type KpiItem } from "./components/KpiStrip";
 import { ModuleManagementDialog } from "./components/admin/ModuleManagementDialog";
 import { ParameterDefinitionDialog } from "./components/admin/ParameterDefinitionDialog";
@@ -18,6 +19,7 @@ import { UndoableToast } from "./components/UndoableToast";
 import { useTopBarActions } from "./components/layout";
 import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
 import { createParameterAdminClient } from "./infrastructure/http/parameterAdminClient";
+import { createParameterFileClient } from "./infrastructure/http/parameterFileClient";
 import { getCoverage } from "./parameterAdminAnalytics";
 import type { ParameterModuleDraft } from "./powerManagementConfig";
 
@@ -43,12 +45,15 @@ export function ParameterAdminPage({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
   const [importWizardOpen, setImportWizardOpen] = useState(false);
+  const [conflictPanelOpen, setConflictPanelOpen] = useState(false);
+  const [openConflictCount, setOpenConflictCount] = useState(0);
   const [adminModuleNodes, setAdminModuleNodes] = useState<FlatModuleNode[]>([]);
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
   const isApiMode = runtimeMode === "api";
   const parameterAdminClient = useMemo(() => (isApiMode ? createParameterAdminClient() : null), [isApiMode]);
+  const parameterFileClient = useMemo(() => (isApiMode ? createParameterFileClient() : null), [isApiMode]);
   const projects = state.configDraft.projects;
   const library = useMemo(() => {
     if (isApiMode) {
@@ -87,6 +92,30 @@ export function ParameterAdminPage({
       cancelled = true;
     };
   }, [parameterAdminClient, reloadAdminModules]);
+
+  useEffect(() => {
+    if (!parameterFileClient) {
+      setOpenConflictCount(0);
+      return undefined;
+    }
+
+    let cancelled = false;
+    parameterFileClient.listConflicts(state.activeProjectId)
+      .then((items) => {
+        if (!cancelled) {
+          setOpenConflictCount(items.filter((item) => item.status === "open").length);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOpenConflictCount(0);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [parameterFileClient, state.activeProjectId]);
 
   const resolveModuleName = useCallback(
     (moduleId: string) => moduleNodes.find((node) => node.id === moduleId)?.name ?? moduleId,
@@ -264,12 +293,16 @@ export function ParameterAdminPage({
 
   useTopBarActions(
     <>
+      <button className="button subtle parameter-file-conflict-trigger" type="button" onClick={() => setConflictPanelOpen(true)}>
+        参数文件冲突
+        {openConflictCount > 0 ? <span className="parameter-file-conflict-badge">{openConflictCount}</span> : null}
+      </button>
       <button className="button primary" type="button" onClick={openImportDialog}>
         <Upload size={16} />
         批量参数导入
       </button>
     </>,
-    [onNavigate, state.activeProjectId]
+    [openConflictCount, onNavigate, state.activeProjectId]
   );
 
   return (
@@ -354,6 +387,13 @@ export function ParameterAdminPage({
         dispatch={dispatch}
         onNavigate={onNavigate}
         runtimeMode={runtimeMode}
+      />
+      <ParameterFileConflictPanel
+        open={conflictPanelOpen}
+        projectId={state.activeProjectId}
+        runtimeMode={runtimeMode}
+        onClose={() => setConflictPanelOpen(false)}
+        onOpenConflictCountChange={setOpenConflictCount}
       />
       {definitionParameter ? (
         <ParameterDefinitionDialog

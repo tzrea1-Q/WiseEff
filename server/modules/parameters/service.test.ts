@@ -12,14 +12,23 @@ type QueryCall = {
 
 type QueuedResult = unknown[] | ((call: QueryCall) => unknown[]);
 
-function createFakeDb(results: QueuedResult[] = []) {
+function createFakeDb(
+  results: QueuedResult[] = [],
+  options: {
+    readConflictChecksFromQueue?: boolean;
+  } = {}
+) {
   const calls: QueryCall[] = [];
   const txCalls: QueryCall[] = [];
   const transactions: QueryCall[][] = [];
+  const readConflictChecksFromQueue = options.readConflictChecksFromQueue ?? false;
 
   const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
     const call = { text, values };
     target.push(call);
+    if (!readConflictChecksFromQueue && text.includes("from parameter_file_sync_conflicts")) {
+      return { rows: [] as Row[], rowCount: 0 };
+    }
     const next = results.shift() ?? [];
     const rows = typeof next === "function" ? next(call) : next;
     return { rows: rows as Row[], rowCount: rows.length };
@@ -332,7 +341,7 @@ describe("parameter service", () => {
       ],
       [],
       [],
-      [{ id: "request-open" }],
+      [changeRequestRow({ id: "request-open" })],
       (call) => [
         importBatchRow({
           summary: JSON.parse(call.values[6] as string),
@@ -1122,7 +1131,9 @@ describe("parameter service", () => {
       "param-1",
       "user-1",
       "3100",
-      "Reduce thermal risk."
+      "Reduce thermal risk.",
+      "manual",
+      null
     ]);
     expect(calls[2].text).toContain("user_id = $2");
     expect(calls[2].values).toEqual(["org-1", "user-1", "project-1"]);
@@ -1485,6 +1496,27 @@ describe("parameter service", () => {
         items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }]
       })
     ).rejects.toMatchObject(new ApiError("CONFLICT", "Parameter already has an open change request.", 409));
+  });
+
+  it("submitParameterChanges blocks when file sync conflict is open", async () => {
+    const { db, txCalls } = createFakeDb(
+      [
+        [parameterRow()],
+        [],
+        [{ id: "conflict-open" }]
+      ],
+      { readConflictChecksFromQueue: true }
+    );
+
+    await expect(
+      submitParameterChanges(db, makeAuth(), {
+        projectId: "project-1",
+        items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }]
+      })
+    ).rejects.toMatchObject(new ApiError("CONFLICT", "Parameter has an open file sync conflict.", 409));
+
+    expect(txCalls.some((call) => call.text.includes("from parameter_file_sync_conflicts"))).toBe(true);
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_submission_rounds"))).toBe(false);
   });
 
   it("submitting duplicate parameter ids rejects before write inserts", async () => {

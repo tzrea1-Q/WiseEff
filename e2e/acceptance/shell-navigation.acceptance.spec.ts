@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from "playwright/test";
+import { signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence } from "./helpers/operationEvidence";
 
@@ -38,7 +39,7 @@ async function expectUsableShell(page: Page, testInfo: TestInfo, route: string) 
 test.describe("M5.4 manual flow A - shell navigation", () => {
   for (const route of routes) {
     test(`loads ${route} without a runtime crash`, async ({ page }, testInfo) => {
-      await page.goto(route);
+      await signInBrowserAsRole(page, "admin", route);
       await expectUsableShell(page, testInfo, route);
 
       await recordOperationEvidence({

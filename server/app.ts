@@ -29,6 +29,7 @@ import { createMetricsRegistry, type MetricsRegistry } from "./observability/met
 import { defaultTracingBoundary, type TracingBoundary } from "./observability/tracing";
 import type { ObjectStore, ObjectStoreHealthCheck } from "./modules/logs/objectStore";
 import type { LogAnalysisQueue } from "./modules/logs/logAnalysisQueue";
+import { registerParameterFileRoutes } from "./modules/parameter-files/routes";
 import { registerParameterRoutes } from "./modules/parameters/routes";
 import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard/routes";
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
@@ -127,6 +128,12 @@ export function createWiseEffServer(
   });
   registerParameterRoutes(router, {
     db: options.db,
+    objectStore: options.objectStore,
+    getCurrentAuthContext: authResolver
+  });
+  registerParameterFileRoutes(router, {
+    db: options.db,
+    objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
   registerParameterDashboardRoutes(router, {

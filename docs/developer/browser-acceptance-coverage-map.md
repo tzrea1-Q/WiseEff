@@ -43,6 +43,8 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `MOD-TREE-PARAM-002` | C | Yes | Admin moves a parameter module to a new parent and cycle moves are rejected. | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
 | `MOD-TREE-DEBUG-001` | E | Yes | Admin creates nested debug node modules and parent filtering includes assigned child nodes. | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
 | `MOD-TREE-AUTHZ-001` | C | Yes | Non-admin cannot mutate module trees and deleting non-empty modules returns 409. | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
+| `PARAM-FILE-ADMIN-001` | C | Yes | Admin uploads a project parameter file, lists versions, manual sync creates a `file_sync` draft, and the project files panel renders in `/parameter-admin/projects`. | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
+| `PARAM-FILE-CONFLICT-001` | C | Yes | Admin resolves an open file/UI draft conflict by keeping the file or UI value. | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
 
 ## Interpretation
 

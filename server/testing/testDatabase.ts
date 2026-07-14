@@ -21,6 +21,22 @@ function resolveTestDatabaseUrl() {
   );
 }
 
+export async function isTestDatabaseAvailable(): Promise<boolean> {
+  const client = new pg.Client({
+    connectionString: resolveTestDatabaseUrl(),
+    connectionTimeoutMillis: 2_000
+  });
+
+  try {
+    await client.connect();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
 async function ensureMigrations() {
   if (migrationsApplied) return;
   const client = new pg.Client({ connectionString: resolveTestDatabaseUrl() });
@@ -45,15 +61,18 @@ export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase
   await client.connect();
   await client.query("begin");
 
-  const db = createDatabase({
-    query: async (text, values = []) => {
+  const queryable = {
+    query: async (text: string, values: unknown[] = []) => {
       const result = await client.query(text, values);
       return { rows: result.rows, rowCount: result.rowCount };
     }
-  });
+  };
 
+  // Keep all writes inside the outer BEGIN so afterEach rollback isolates tests.
+  // createDatabase().transaction() issues COMMIT and would persist nested service writes.
   return {
-    ...db,
+    query: queryable.query,
+    transaction: async <T,>(fn: (tx: typeof queryable) => Promise<T>) => fn(queryable),
     rollback: async () => {
       await client.query("rollback");
       await client.end();

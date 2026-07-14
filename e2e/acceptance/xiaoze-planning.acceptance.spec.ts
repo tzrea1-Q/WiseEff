@@ -181,6 +181,40 @@ test.beforeEach(async () => {
   await resetOpenChangeRequestsForParameter();
 });
 
+async function ensureOpenChangeRequestForSuggest() {
+  await withPgClient(async (client) => {
+    const existing = await client.query<{ count: string }>(
+      `
+      select count(*)::text as count
+      from parameter_change_requests
+      where organization_id = 'org-chargelab'
+        and project_id = $1
+        and project_parameter_value_id = $2
+        and status not in ('merged', 'rejected', 'withdrawn')
+      `,
+      [projectId, parameterId]
+    );
+    if (Number(existing.rows[0]?.count ?? 0) > 0) {
+      return;
+    }
+
+    await client.query(
+      `
+      insert into parameter_change_requests (
+        id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
+        base_version, current_value, target_value, status, submitter_user_id
+      )
+      values ($1, 'org-chargelab', $2, $3, $4, 1, '3000', '3100', 'submitted', $5)
+      on conflict (id) do update set
+        status = 'submitted',
+        reject_reason = null,
+        updated_at = now()
+      `,
+      [`acceptance-xiaoze-suggest-${parameterId}`, projectId, parameterId, parameterId, actorUserId]
+    );
+  });
+}
+
 test.describe("Xiaoze P2 planning", () => {
   test("completes a multi-step task through approval and observe loop", async ({ request }, testInfo) => {
     // @acceptance XIAOZE-PLAN-MULTISTEP-001
@@ -252,6 +286,8 @@ test.describe("Xiaoze P2 planning", () => {
 
   test("returns grounded proactive suggestions when enabled and nothing for unauthorized scope", async ({ request }, testInfo) => {
     // @acceptance XIAOZE-PROACTIVE-001
+    await ensureOpenChangeRequestForSuggest();
+
     const enabledResponse = await request.post(apiRoute("/api/v1/agent/xiaoze/suggest"), {
       headers: jsonAdminHeaders(),
       data: {

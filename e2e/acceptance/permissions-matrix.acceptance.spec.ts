@@ -1,8 +1,10 @@
 import "dotenv/config";
 import { expect, test } from "playwright/test";
+import { signInBrowserAsRoleLabel } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
+import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 
 useBrowserDiagnostics(test);
@@ -19,24 +21,7 @@ const visibleRoleExpectations = [
 ] as const;
 
 async function setPrototypeRole(page: import("playwright/test").Page, roleName: string) {
-  await page.goto("/parameter-home");
-  const roleSwitcherButton = page.getByRole("button", { name: "Open user role switcher" });
-  if ((await page.getByRole("combobox", { name: "Prototype role" }).count()) === 0) {
-    await roleSwitcherButton.click();
-  }
-  await page.getByRole("combobox", { name: "Prototype role" }).selectOption({ label: roleName });
-  await expect(page.getByRole("combobox", { name: "Prototype role" })).toHaveValue(roleValueByName(roleName));
-}
-
-async function navigateWithinApp(page: import("playwright/test").Page, path: string) {
-  await page.evaluate((nextPath) => {
-    window.history.pushState(null, "", nextPath);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  }, path);
-}
-
-function roleValueByName(roleName: string) {
-  return roleName.toLowerCase().replace(/\s+/g, "-");
+  await signInBrowserAsRoleLabel(page, roleName, "/parameter-home");
 }
 
 async function cleanupPermissionsEligibilityRequests() {
@@ -77,7 +62,18 @@ async function cleanupPermissionsEligibilityRequests() {
   });
 }
 
+async function navigateWithinApp(page: import("playwright/test").Page, path: string) {
+  await page.evaluate((nextPath) => {
+    window.history.pushState(null, "", nextPath);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, path);
+}
+
 test.describe("M5.5 permissions matrix browser acceptance", () => {
+  test.beforeAll(async () => {
+    await seedAcceptanceRoleMatrix();
+  });
+
   for (const expectation of visibleRoleExpectations) {
     test(`enforces visible route permissions for ${expectation.role}`, async ({ page }, testInfo) => {
       // @acceptance PERM-MATRIX-001

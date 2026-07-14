@@ -96,6 +96,9 @@ describe("DebugNodeBindingsDialog", () => {
       />
     );
 
+    const hdcPathInput = screen.getByLabelText("HDC 节点路径");
+    fireEvent.blur(hdcPathInput);
+
     expect(screen.getByText("节点路径必须以 / 开头。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存 HDC binding" })).toBeDisabled();
   });

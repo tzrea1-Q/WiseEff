@@ -499,5 +499,41 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["MOD-TREE-AUTHZ-001"],
     specFiles: ["e2e/acceptance/hierarchical-modules.acceptance.spec.ts"],
     assertions: ["api"]
+  },
+  {
+    id: "PARAM-FILE-UPLOAD-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects",
+    roles: ["Admin"],
+    action: "Upload a JSON project parameter file and list it with version metadata.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-FILE-ADMIN-001"],
+    specFiles: ["e2e/acceptance/parameter-files.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db"]
+  },
+  {
+    id: "PARAM-FILE-SYNC-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/api/v1/projects/:projectId/parameter-files/:fileId/sync",
+    roles: ["Admin"],
+    action: "Manual file sync creates a file_sync draft when parsed file value differs from the current DB value.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-FILE-ADMIN-001"],
+    specFiles: ["e2e/acceptance/parameter-files.acceptance.spec.ts"],
+    assertions: ["api", "db"]
+  },
+  {
+    id: "PARAM-FILE-RESOLVE-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve",
+    roles: ["Admin"],
+    action: "Resolve an open file/UI draft conflict by keeping the file or UI draft value.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-FILE-CONFLICT-001"],
+    specFiles: ["e2e/acceptance/parameter-files.acceptance.spec.ts"],
+    assertions: ["api", "db"]
   }
 ];
