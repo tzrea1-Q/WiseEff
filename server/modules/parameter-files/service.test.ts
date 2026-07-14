@@ -196,4 +196,72 @@ describe("project parameter file upload service", () => {
     ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Unsupported parameter file extension.", 400));
     expect(put).not.toHaveBeenCalled();
   });
+
+  it("rejects DTS with /include/ before storage or version insert", async () => {
+    const { db, txCalls } = createFakeDb();
+    const { objectStore, put } = makeObjectStore();
+    const bytes = Buffer.from('/include/ "pin.dtsi"\n/ { board_id = <0>; };\n', "utf8");
+
+    await expect(
+      uploadProjectParameterFile(db, objectStore, adminAuth(), {
+        projectId: "project-1",
+        fileName: "board.dts",
+        bytes
+      })
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: { code: "dts-include-unsupported" }
+    });
+    expect(put).not.toHaveBeenCalled();
+    expect(txCalls.find((call) => call.text.includes("insert into project_parameter_files"))).toBeFalsy();
+  });
+
+  it("uploads DTS with unsupported constructs but skips sync and returns warnings", async () => {
+    const { db } = createFakeDb([
+      [],
+      [fileRow({ file_name: "overlay.dts", format: "dts" })],
+      [versionRow({ id: "ver-dts-1", storage_key: "org-1/stored-overlay.dts", size_bytes: 64 })],
+      [],
+      []
+    ]);
+    const { objectStore, put } = makeObjectStore();
+    const bytes = Buffer.from("&demo {\n\tchip@6E {\n\t\treg = <0x6e>;\n\t};\n};\n", "utf8");
+    vi.mocked(syncFileVersion).mockClear();
+
+    const result = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "overlay.dts",
+      bytes
+    });
+
+    expect(put).toHaveBeenCalled();
+    expect(result.file.currentVersionNumber).toBe(1);
+    expect(result.unsupportedConstructs?.length).toBeGreaterThan(0);
+    expect(result.unsupportedConstructs?.some((f) => f.code === "unit-address-node" || f.code === "overlay-ref")).toBe(
+      true
+    );
+    expect(syncFileVersion).not.toHaveBeenCalled();
+  });
+
+  it("uploads clean simple DTS and still syncs", async () => {
+    const { db } = createFakeDb([
+      [],
+      [fileRow({ file_name: "simple.dts", format: "dts" })],
+      [versionRow({ id: "ver-dts-clean", storage_key: "org-1/stored-simple.dts", size_bytes: 32 })],
+      [],
+      []
+    ]);
+    const { objectStore } = makeObjectStore();
+    const bytes = Buffer.from("/ {\n\tboard_id = <0>;\n};\n", "utf8");
+    vi.mocked(syncFileVersion).mockClear();
+
+    const result = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "simple.dts",
+      bytes
+    });
+
+    expect(result.unsupportedConstructs).toBeUndefined();
+    expect(syncFileVersion).toHaveBeenCalled();
+  });
 });

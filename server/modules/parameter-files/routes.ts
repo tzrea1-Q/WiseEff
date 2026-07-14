@@ -163,7 +163,14 @@ export function registerParameterFileRoutes(
       { requestId: request.requestId }
     );
 
-    return { status: 201, body: { item: result.file, version: result.version } };
+    return {
+      status: 201,
+      body: {
+        item: result.file,
+        version: result.version,
+        ...(result.unsupportedConstructs ? { unsupportedConstructs: result.unsupportedConstructs } : {})
+      }
+    };
   });
 
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/versions", async (request) => {
@@ -193,7 +200,13 @@ export function registerParameterFileRoutes(
       { requestId: request.requestId }
     );
 
-    return { status: 201, body: { item: result.version } };
+    return {
+      status: 201,
+      body: {
+        item: result.version,
+        ...(result.unsupportedConstructs ? { unsupportedConstructs: result.unsupportedConstructs } : {})
+      }
+    };
   });
 
   router.get("/api/v1/projects/:projectId/parameter-files/:fileId/versions", async (request) => {

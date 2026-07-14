@@ -19,6 +19,7 @@ import {
 } from "./repository";
 import { uploadProjectParameterFileInputSchema, type UploadProjectParameterFileInput } from "./schemas";
 import type { ParameterFileFormat, ProjectParameterFileDto, ProjectParameterFileVersionDto } from "./types";
+import { detectUnsupportedDtsConstructs, type UnsupportedConstruct } from "./unsupported";
 
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
@@ -107,7 +108,11 @@ export async function uploadProjectParameterFile(
   auth: AuthContext,
   input: UploadProjectParameterFileInput,
   context: ParameterFileServiceContext = {}
-): Promise<{ file: ProjectParameterFileDto; version: ProjectParameterFileVersionDto }> {
+): Promise<{
+  file: ProjectParameterFileDto;
+  version: ProjectParameterFileVersionDto;
+  unsupportedConstructs?: UnsupportedConstruct[];
+}> {
   requireParameterFileAdmin(auth);
   const normalized = parseUploadInput(input);
   const format = detectFormat(normalized.fileName);
@@ -117,6 +122,18 @@ export async function uploadProjectParameterFile(
       maxBytes: MAX_FILE_BYTES,
       sizeBytes
     });
+  }
+
+  const source = normalized.bytes.toString("utf8");
+  const unsupportedConstructs =
+    format === "dts" ? detectUnsupportedDtsConstructs(source) : [];
+  if (unsupportedConstructs.some((finding) => finding.code === "include")) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "DTS /include/ 暂不支持，请提供展开后的文件。",
+      400,
+      { code: "dts-include-unsupported" }
+    );
   }
 
   const parsedIndex = buildParsedIndex(format, normalized.bytes);
@@ -157,7 +174,7 @@ export async function uploadProjectParameterFile(
     });
 
     await setCurrentVersion(tx, { fileId: file.id, versionId: version.id });
-    if (version.origin === "upload") {
+    if (version.origin === "upload" && unsupportedConstructs.length === 0) {
       await syncFileVersion(tx, auth, { fileId: file.id, versionId: version.id });
     }
     await createParameterFileUploadAudit(
@@ -173,7 +190,8 @@ export async function uploadProjectParameterFile(
 
     return {
       file: { ...file, currentVersionId: version.id, currentVersionNumber: version.versionNumber },
-      version
+      version,
+      ...(unsupportedConstructs.length > 0 ? { unsupportedConstructs } : {})
     };
   });
 }
