@@ -15,13 +15,33 @@ class Parser {
   parse(): DtsDocument {
     const directives: DtsDirective[] = [];
     const topLevel: DtsNodeCst[] = [];
+    const orphanProperties: import("./types").DtsPropertyCst[] = [];
 
     while (!this.check("eof")) {
       if (this.check("directive")) {
         directives.push(this.parseDirective());
         continue;
       }
-      topLevel.push(this.parseNode());
+      if (this.looksLikeNode() || this.check("slash") || this.check("amp")) {
+        topLevel.push(this.parseNode());
+        continue;
+      }
+      // Top-level properties (fragment-style) attach to a synthetic root for indexing.
+      orphanProperties.push(this.parseProperty());
+    }
+
+    if (orphanProperties.length > 0) {
+      topLevel.unshift({
+        kind: "node",
+        name: "/",
+        labels: [],
+        isOverlayRoot: true,
+        children: orphanProperties,
+        span: {
+          start: orphanProperties[0].span.start,
+          end: orphanProperties[orphanProperties.length - 1].span.end,
+        },
+      });
     }
 
     return { directives, topLevel, source: this.source };
