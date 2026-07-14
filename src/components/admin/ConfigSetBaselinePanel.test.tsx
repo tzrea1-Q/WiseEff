@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
+  DtsCompareBaselineResult,
   DtsConfigSet,
   DtsExportConfigSetResult,
   DtsReleaseBaseline,
@@ -250,4 +251,40 @@ describe("ConfigSetBaselinePanel", () => {
     expect(screen.getByText("board-a")).toBeInTheDocument();
     expect(screen.getByText(/仅管理员可管理配置集与基线/)).toBeInTheDocument();
   });
+
+  it("compares a baseline and renders StructuredDiffView from compareBaseline result", async () => {
+    const comparison: DtsCompareBaselineResult = {
+      baselineId: "bl-1",
+      members: [
+        {
+          fileId: "file-1",
+          fileName: "engine.dts",
+          status: "version_changed",
+          structuralDiff: [
+            {
+              kind: "prop_changed",
+              nodePath: "demo_integer",
+              prop: "single_value",
+              before: "<42>",
+              after: "<43>"
+            }
+          ]
+        }
+      ]
+    };
+    const repository = createRepository({
+      compareBaseline: vi.fn().mockResolvedValue(comparison)
+    });
+    await renderPanel(repository);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择 board-a" }));
+    fireEvent.click(await screen.findByRole("button", { name: "对比 v1-draft" }));
+
+    await waitFor(() => expect(repository.compareBaseline).toHaveBeenCalledWith(PROJECT_ID, "bl-1"));
+    const diffRegion = await screen.findByRole("region", { name: /结构化差异/i });
+    expect(within(diffRegion).getByText("engine.dts")).toBeInTheDocument();
+    expect(within(diffRegion).getByText(/属性变更/)).toBeInTheDocument();
+    expect(within(diffRegion).getByText("<43>")).toBeInTheDocument();
+  });
 });
+

@@ -14394,6 +14394,73 @@ body.xiaoze-popup-resize-active {
   font-size: 0.875rem;
 }
 
+.config-set-baseline-panel__compare {
+  display: grid;
+  gap: 8px;
+}
+
+.structured-diff-view {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.structured-diff-view__empty {
+  margin: 0;
+  color: var(--app-muted);
+}
+
+.structured-diff-view__members,
+.structured-diff-view__changes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.structured-diff-view__file,
+.structured-diff-view__changeset h4 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+
+.structured-diff-view__change {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.875rem;
+}
+
+.structured-diff-view__kind {
+  font-weight: 600;
+  color: var(--app-primary);
+}
+
+.structured-diff-view__changeset {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--outline);
+}
+
+.structured-diff-view__changeset ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 0.875rem;
+}
+
 .project-parameter-files {
   display: grid;
   gap: 12px;

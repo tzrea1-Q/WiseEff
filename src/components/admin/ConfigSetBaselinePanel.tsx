@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import type {
   ConfigSetRole,
+  DtsCompareBaselineResult,
   DtsConfigSet,
   DtsConfigSetFile,
   DtsReleaseBaseline,
   DtsStructuredRepository,
   DtsValidationGateResult
 } from "@/application/ports/DtsStructuredRepository";
+import { aggregateStructuredChangeSet } from "@/application/parameters/structuredChangeSet";
+import { StructuredDiffView } from "@/components/parameters/StructuredDiffView";
 
 export type ConfigSetBaselinePanelProps = {
   projectId: string;
@@ -47,6 +50,7 @@ export function ConfigSetBaselinePanel({
   const [memberFileId, setMemberFileId] = useState(availableFiles[0]?.id ?? "");
   const [memberRole, setMemberRole] = useState<ConfigSetRole>("base");
   const [gateResult, setGateResult] = useState<DtsValidationGateResult | null>(null);
+  const [compareResult, setCompareResult] = useState<DtsCompareBaselineResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -125,6 +129,7 @@ export function ConfigSetBaselinePanel({
     setSelectedConfigSetId(configSetId);
     setMembers([]);
     setGateResult(null);
+    setCompareResult(null);
   };
 
   const addMember = async () => {
@@ -202,6 +207,19 @@ export function ConfigSetBaselinePanel({
       downloadExportBundle(selectedConfigSet.name, result.files);
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "导出配置集失败。");
+    }
+  };
+
+  const compareBaseline = async (baselineId: string) => {
+    if (!canAdmin) {
+      return;
+    }
+    setError("");
+    try {
+      const result = await repository.compareBaseline(projectId, baselineId);
+      setCompareResult(result);
+    } catch (compareError) {
+      setError(compareError instanceof Error ? compareError.message : "基线对比失败。");
     }
   };
 
@@ -339,6 +357,16 @@ export function ConfigSetBaselinePanel({
                 <li key={item.id}>
                   <span>{item.name}</span>
                   <span>{item.status}</span>
+                  {canAdmin ? (
+                    <button
+                      type="button"
+                      className="button subtle"
+                      aria-label={`对比 ${item.name}`}
+                      onClick={() => void compareBaseline(item.id)}
+                    >
+                      对比
+                    </button>
+                  ) : null}
                   {canAdmin && item.status === "draft" ? (
                     <button
                       type="button"
@@ -354,6 +382,15 @@ export function ConfigSetBaselinePanel({
             </ul>
           </div>
         </>
+      ) : null}
+
+      {compareResult ? (
+        <div className="config-set-baseline-panel__compare">
+          <StructuredDiffView
+            result={compareResult}
+            changeSet={aggregateStructuredChangeSet(compareResult, [])}
+          />
+        </div>
       ) : null}
 
       {gateResult ? (
