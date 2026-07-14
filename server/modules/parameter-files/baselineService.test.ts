@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
+import type { ObjectStore } from "../logs/objectStore";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
-import { createBaseline, getBaseline, listBaselines } from "./baselineService";
+import { compareBaseline, createBaseline, getBaseline, listBaselines, rollbackToBaseline } from "./baselineService";
 
 type QueryCall = {
   text: string;
@@ -102,6 +103,56 @@ function baselineMemberRow(overrides: Record<string, unknown> = {}) {
     file_version_id: "fv-1",
     version_number: 3,
     ...overrides
+  };
+}
+
+function fileRow(overrides: Record<string, unknown> = {}) {
+  const timestamp = "2026-07-14T09:00:00.000Z";
+  return {
+    id: "file-1",
+    organization_id: "org-1",
+    project_id: "project-1",
+    file_name: "board-a.dts",
+    format: "dts",
+    module_hint: null,
+    current_version_id: "fv-1",
+    enabled: true,
+    created_at: timestamp,
+    updated_at: timestamp,
+    current_version_number: 3,
+    ...overrides
+  };
+}
+
+function fileVersionRow(overrides: Record<string, unknown> = {}) {
+  const timestamp = "2026-07-14T09:00:00.000Z";
+  return {
+    id: "fv-1",
+    file_id: "file-1",
+    version_number: 1,
+    storage_key: "sk-1",
+    checksum: "checksum-1",
+    size_bytes: 100,
+    parsed_index: {},
+    origin: "upload",
+    created_by_user_id: null,
+    created_at: timestamp,
+    ...overrides
+  };
+}
+
+function fakeObjectStore(contents: Record<string, string>): ObjectStore {
+  return {
+    put: async () => {
+      throw new Error("not used in these tests");
+    },
+    get: async (storageKey: string) => {
+      const content = contents[storageKey];
+      if (content === undefined) {
+        throw new Error(`no fake content for storage key ${storageKey}`);
+      }
+      return Buffer.from(content, "utf8");
+    }
   };
 }
 
@@ -243,5 +294,218 @@ describe("listBaselines", () => {
     expect(baselines).toHaveLength(2);
     expect(txCalls[0].text).toContain("from dts_release_baseline");
     expect(txCalls[0].values).toEqual(["dcs-1"]);
+  });
+});
+
+describe("compareBaseline", () => {
+  it("rejects non-admin auth with 403", async () => {
+    const { db } = createFakeDb();
+
+    await expect(compareBaseline(db, viewerAuth(), "baseline-1")).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403
+    });
+  });
+
+  it("returns 404 when the baseline does not exist", async () => {
+    const { db } = createFakeDb([[]]);
+
+    await expect(compareBaseline(db, adminAuth(), "missing")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404
+    });
+  });
+
+  it("classifies members as unchanged, file_removed, and file_added", async () => {
+    const { db, txCalls } = createFakeDb([
+      [baselineRow()],
+      [baselineMemberRow(), baselineMemberRow({ id: "bm-2", file_id: "file-2", file_version_id: "fv-2", version_number: 1 })],
+      [
+        memberFileRow(),
+        memberFileRow({ file_id: "file-3", file_name: "board-a.charging.dts", current_version_id: "fv-3", version_number: 1 })
+      ]
+    ]);
+
+    const result = await compareBaseline(db, adminAuth(), "baseline-1");
+
+    expect(result.baselineId).toBe("baseline-1");
+    expect(result.members).toEqual([
+      {
+        fileId: "file-1",
+        fileName: "board-a.dts",
+        status: "unchanged",
+        baselineVersionId: "fv-1",
+        currentVersionId: "fv-1"
+      },
+      {
+        fileId: "file-2",
+        status: "file_removed",
+        baselineVersionId: "fv-2"
+      },
+      {
+        fileId: "file-3",
+        fileName: "board-a.charging.dts",
+        status: "file_added",
+        currentVersionId: "fv-3"
+      }
+    ]);
+    expect(txCalls[0].text).toContain("from dts_release_baseline");
+    expect(txCalls[1].text).toContain("from dts_release_baseline_members");
+    expect(txCalls[2].text).toContain("from project_parameter_files ppf");
+  });
+
+  it("does not attempt a structural diff when no objectStore is injected", async () => {
+    const { db } = createFakeDb([
+      [baselineRow()],
+      [baselineMemberRow()],
+      [memberFileRow({ current_version_id: "fv-2", version_number: 2 })]
+    ]);
+
+    const result = await compareBaseline(db, adminAuth(), "baseline-1");
+
+    expect(result.members).toEqual([
+      {
+        fileId: "file-1",
+        fileName: "board-a.dts",
+        status: "version_changed",
+        baselineVersionId: "fv-1",
+        currentVersionId: "fv-2"
+      }
+    ]);
+  });
+
+  it("computes a structural diff for a changed dts member using normalizedValue", async () => {
+    const objectStore = fakeObjectStore({
+      "sk-1": "&demo_integer {\n\tsingle_value = <42>;\n};\n",
+      "sk-2": "&demo_integer {\n\tsingle_value = <43>;\n};\n"
+    });
+
+    const { db } = createFakeDb([
+      [baselineRow()],
+      [baselineMemberRow()],
+      [memberFileRow({ current_version_id: "fv-2", version_number: 2 })],
+      [fileRow({ current_version_id: "fv-2", current_version_number: 2 })],
+      [fileVersionRow({ id: "fv-1", storage_key: "sk-1" })],
+      [fileVersionRow({ id: "fv-2", storage_key: "sk-2", version_number: 2 })]
+    ]);
+
+    const result = await compareBaseline(db, adminAuth(), "baseline-1", { objectStore });
+
+    expect(result.members).toEqual([
+      {
+        fileId: "file-1",
+        fileName: "board-a.dts",
+        status: "version_changed",
+        baselineVersionId: "fv-1",
+        currentVersionId: "fv-2",
+        structuralDiff: [
+          { kind: "prop_changed", nodePath: "demo_integer", prop: "single_value", before: "<42>", after: "<43>" }
+        ]
+      }
+    ]);
+  });
+
+  it("reports an empty structural diff when normalized content is equivalent despite a version bump", async () => {
+    const objectStore = fakeObjectStore({
+      "sk-1": "&demo_byte_array {\n\treg_config = /bits/ 8 <0x4B>;\n};\n",
+      "sk-2": "&demo_byte_array {\n\treg_config = /bits/ 8 <0x4b>;\n};\n"
+    });
+
+    const { db } = createFakeDb([
+      [baselineRow()],
+      [baselineMemberRow()],
+      [memberFileRow({ current_version_id: "fv-2", version_number: 2 })],
+      [fileRow({ current_version_id: "fv-2", current_version_number: 2 })],
+      [fileVersionRow({ id: "fv-1", storage_key: "sk-1" })],
+      [fileVersionRow({ id: "fv-2", storage_key: "sk-2", version_number: 2 })]
+    ]);
+
+    const result = await compareBaseline(db, adminAuth(), "baseline-1", { objectStore });
+
+    expect(result.members[0].status).toBe("version_changed");
+    expect(result.members[0].structuralDiff).toEqual([]);
+  });
+});
+
+describe("rollbackToBaseline", () => {
+  it("rejects non-admin auth with 403", async () => {
+    const { db } = createFakeDb();
+
+    await expect(rollbackToBaseline(db, viewerAuth(), "baseline-1")).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403
+    });
+  });
+
+  it("returns 404 when the baseline does not exist", async () => {
+    const { db } = createFakeDb([[]]);
+
+    await expect(rollbackToBaseline(db, adminAuth(), "missing")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404
+    });
+  });
+
+  it("skips members already pinned to the baseline version and restores drifted members atomically", async () => {
+    const { db, txCalls } = createFakeDb([
+      [baselineRow()],
+      [configSetRow()],
+      [
+        baselineMemberRow(),
+        baselineMemberRow({ id: "bm-2", file_id: "file-2", file_version_id: "fv-2", version_number: 1 })
+      ],
+      [fileRow()],
+      [
+        fileRow({
+          id: "file-2",
+          file_name: "board-a.overlay.dts",
+          current_version_id: "fv-2-new",
+          current_version_number: 2
+        })
+      ],
+      [fileVersionRow({ id: "fv-2", file_id: "file-2", storage_key: "sk-2", checksum: "checksum-2", size_bytes: 55 })],
+      [{ id: "fv-2-rollback", file_id: "file-2", version_number: 3, storage_key: "sk-2", checksum: "checksum-2", size_bytes: 55, parsed_index: {}, origin: "rollback", created_by_user_id: "user-1", created_at: "2026-07-14T09:00:00.000Z" }],
+      [],
+      []
+    ]);
+
+    const result = await rollbackToBaseline(db, adminAuth(), "baseline-1");
+
+    expect(result).toEqual({ baselineId: "baseline-1", restored: 1 });
+
+    const versionInserts = txCalls.filter((call) => call.text.includes("insert into project_parameter_file_versions"));
+    expect(versionInserts).toHaveLength(1);
+    expect(versionInserts[0].values).toEqual(
+      expect.arrayContaining(["file-2", 3, "sk-2", "checksum-2", 55, "rollback", "user-1"])
+    );
+
+    const currentVersionUpdates = txCalls.filter(
+      (call) => call.text.includes("update project_parameter_files") && call.text.includes("current_version_id")
+    );
+    expect(currentVersionUpdates).toHaveLength(1);
+    expect(currentVersionUpdates[0].values).toEqual(["file-2", "fv-2-rollback"]);
+
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(auditCall).toBeTruthy();
+    expect(auditCall?.values[6]).toBe("baseline");
+    expect(auditCall?.values[7]).toBe("rolled_back");
+    expect(auditCall?.values[10]).toBe("baseline-1");
+  });
+
+  it("fails the whole rollback atomically when a pinned file no longer exists", async () => {
+    const { db, txCalls } = createFakeDb([
+      [baselineRow()],
+      [configSetRow()],
+      [baselineMemberRow(), baselineMemberRow({ id: "bm-2", file_id: "file-2", file_version_id: "fv-2", version_number: 1 })],
+      [], // getProjectParameterFileById for file-1 returns no row: file was deleted entirely
+    ]);
+
+    await expect(rollbackToBaseline(db, adminAuth(), "baseline-1")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404
+    });
+
+    expect(txCalls.find((call) => call.text.includes("insert into project_parameter_file_versions"))).toBeFalsy();
+    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))).toBeFalsy();
   });
 });

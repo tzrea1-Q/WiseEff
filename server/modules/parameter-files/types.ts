@@ -1,5 +1,5 @@
 export type ParameterFileFormat = "dts" | "json";
-export type ParameterFileVersionOrigin = "upload" | "writeback";
+export type ParameterFileVersionOrigin = "upload" | "writeback" | "rollback";
 
 export type { UnsupportedConstruct, UnsupportedConstructCode } from "./unsupported";
 
