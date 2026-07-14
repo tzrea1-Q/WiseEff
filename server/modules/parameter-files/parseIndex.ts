@@ -1,3 +1,4 @@
+import { stripDtsComments } from "./preprocess";
 import type { ParsedIndex } from "./types";
 
 const IDENTIFIER_PATTERN = /[a-zA-Z0-9_-]+/;
@@ -151,5 +152,5 @@ function parseDtsProperties(source: string, pathPrefix: string[] = []): ParsedIn
 }
 
 export function buildDtsParsedIndex(source: string): ParsedIndex {
-  return parseDtsProperties(source);
+  return parseDtsProperties(stripDtsComments(source));
 }
