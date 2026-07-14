@@ -30,7 +30,10 @@ const MODULE_IMPACT_TEMPLATES: Record<string, ImpactItem[]> = {
     { kind: "module", name: "Charging UI Display", note: "显示端需刷新快充档位文案", risk: "Low" },
     { kind: "test", name: "test_charging_policy_fast_mode", note: "自动回归已通过", risk: "Low" },
     { kind: "test", name: "test_thermal_throttle_activation", note: "压力测试已通过", risk: "Low" },
-    { kind: "parameter", name: "thermal.predicted_load_offset", note: "建议同步评估 +/-5% 变化", risk: "Medium" }
+    { kind: "parameter", name: "thermal.predicted_load_offset", note: "建议同步评估 +/-5% 变化", risk: "Medium" },
+    { kind: "phandle", name: "amba/charger_consumer", note: "通过 charger-handle 引用变更节点", risk: "Medium" },
+    { kind: "compatible", name: "amba/i2c@2/charger@10", note: "同 compatible 绑定节点", risk: "Low" },
+    { kind: "config-set", name: "board-overlay.dts", note: "同配置集变体文件", risk: "Medium" }
   ],
   "battery-safety": [
     { kind: "module", name: "Battery Health Monitor", note: "电池安全阈值变更影响健康度判定", risk: "High" },

@@ -113,6 +113,7 @@ function isStaticDownloadPath(pathname: string) {
 import { TopBarActionsContext, useTopBarActions } from "./components/layout";
 import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
 import { ColumnFilter } from "./components/ColumnFilter";
+import { ReviewImpactList } from "./components/parameters/ReviewImpactList";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./components/tableFilterUtils";
 import { deriveSubmissionTimeline } from "./parameterSubmissionTimeline";
 import { SubmissionWorkflowTimeline } from "./components/SubmissionWorkflowTimeline";
@@ -3810,6 +3811,7 @@ function ReviewDetailSummary({
           ))}
         </ul>
       ) : null}
+      <ReviewImpactList items={request.impact} />
     </div>
   );
 }

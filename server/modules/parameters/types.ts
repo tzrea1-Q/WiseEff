@@ -107,7 +107,7 @@ export type AIReviewSuggestionDto = {
 };
 
 export type ImpactItemDto = {
-  kind: "module" | "test" | "parameter";
+  kind: "module" | "test" | "parameter" | "phandle" | "compatible" | "config-set";
   name: string;
   note: string;
   risk: ParameterRiskLevel;

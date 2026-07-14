@@ -25,13 +25,16 @@ describe("buildAISuggestion", () => {
 });
 
 describe("buildImpactItems", () => {
-  it("generates impact items covering module, test, and parameter kinds", () => {
+  it("generates impact items covering module, test, parameter, and structural kinds", () => {
     const items = buildImpactItems("charging");
     const kinds = new Set(items.map((item) => item.kind));
 
     expect(kinds.has("module")).toBe(true);
     expect(kinds.has("test")).toBe(true);
     expect(kinds.has("parameter")).toBe(true);
+    expect(kinds.has("phandle")).toBe(true);
+    expect(kinds.has("compatible")).toBe(true);
+    expect(kinds.has("config-set")).toBe(true);
   });
 
   it("gives every impact item a name, note, and risk", () => {

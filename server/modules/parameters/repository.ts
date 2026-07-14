@@ -39,6 +39,7 @@ import {
   type ParameterRiskLevel,
   type ParameterSubmissionRoundStatus
 } from "./status";
+import { buildChangeRequestImpact } from "./impact";
 
 export type ImportPreviewClassification = "added" | "updated" | "unchanged" | "conflict";
 
@@ -268,6 +269,8 @@ type ChangeRequestRow = {
   fast_track: boolean;
   value_kind?: string | null;
   config_format?: string;
+  source_file_name?: string | null;
+  source_node_path?: string | null;
 };
 
 type WorkflowAssigneesRow = {
@@ -629,10 +632,21 @@ function buildChangeRequestSummary(row: ChangeRequestRow): string {
   return `${row.title} 从 ${row.current_value.trim()} 调整为 ${row.target_value.trim()}。`;
 }
 
-function toChangeRequestDto(row: ChangeRequestRow): ChangeRequestDto {
+async function toChangeRequestDto(db: Queryable, row: ChangeRequestRow): Promise<ChangeRequestDto> {
   const createdAt = dateTimeToIso(row.created_at);
   const updatedAt = dateTimeToIso(row.updated_at);
   const summary = buildChangeRequestSummary(row);
+  const impact = await buildChangeRequestImpact(db, {
+    projectId: row.project_id,
+    projectParameterValueId: row.project_parameter_value_id,
+    title: row.title,
+    module: row.module,
+    currentValue: row.current_value,
+    targetValue: row.target_value,
+    risk: row.risk,
+    sourceFileName: row.source_file_name,
+    sourceNodePath: row.source_node_path
+  });
 
   return {
     id: row.id,
@@ -660,20 +674,7 @@ function toChangeRequestDto(row: ChangeRequestRow): ChangeRequestDto {
       reasons: [`Risk level: ${row.risk}`, `Module: ${row.module}`],
       similarRequests: []
     },
-    impact: [
-      {
-        kind: "parameter",
-        name: row.title,
-        note: `Changes ${row.module} parameter from ${row.current_value} to ${row.target_value}.`,
-        risk: row.risk
-      },
-      {
-        kind: "module",
-        name: row.module,
-        note: `${row.risk} risk module review recommended.`,
-        risk: row.risk
-      }
-    ],
+    impact,
     assignedTo: row.assigned_to_user_id ?? row.assigned_to ?? undefined,
     workflowAssignees: workflowAssigneesFromRow(row),
     fastTrack: row.fast_track,
@@ -1534,11 +1535,14 @@ export async function createChangeRequest(
       assignee.name as assigned_to,
       inserted.reviewer_note,
       inserted.reject_reason,
-      inserted.fast_track
+      inserted.fast_track,
+      ppv.source_file_name,
+      ppv.source_node_path
     from inserted
     inner join parameter_definitions pd on pd.id = inserted.parameter_definition_id
     inner join users on users.id = inserted.submitter_user_id
     left join users assignee on assignee.id = inserted.assigned_to_user_id
+    left join project_parameter_values ppv on ppv.id = inserted.project_parameter_value_id
     `,
     [
       input.id,
@@ -1559,7 +1563,7 @@ export async function createChangeRequest(
     ]
   );
 
-  return toChangeRequestDto(result.rows[0]);
+  return toChangeRequestDto(db, result.rows[0]);
 }
 
 export async function hasEligibleWorkflowAssignee(
@@ -1835,18 +1839,25 @@ export async function listChangeRequests(
       assignee.name as assigned_to,
       pcr.reviewer_note,
       pcr.reject_reason,
-      pcr.fast_track
+      pcr.fast_track,
+      ppv.source_file_name,
+      ppv.source_node_path
     from parameter_change_requests pcr
     inner join parameter_definitions pd on pd.id = pcr.parameter_definition_id
     inner join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
+    left join project_parameter_values ppv on ppv.id = pcr.project_parameter_value_id
     where ${where.join("\n      and ")}
     order by pcr.updated_at desc
     `,
     values
   );
 
-  return result.rows.map(toChangeRequestDto);
+  const items: ChangeRequestDto[] = [];
+  for (const row of result.rows) {
+    items.push(await toChangeRequestDto(db, row));
+  }
+  return items;
 }
 
 export async function findOpenChangeRequest(
@@ -1880,11 +1891,14 @@ export async function findOpenChangeRequest(
       assignee.name as assigned_to,
       pcr.reviewer_note,
       pcr.reject_reason,
-      pcr.fast_track
+      pcr.fast_track,
+      ppv.source_file_name,
+      ppv.source_node_path
     from parameter_change_requests pcr
     inner join parameter_definitions pd on pd.id = pcr.parameter_definition_id
     inner join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
+    left join project_parameter_values ppv on ppv.id = pcr.project_parameter_value_id
     where pcr.organization_id = $1
       and pcr.project_id = $2
       and pcr.project_parameter_value_id = $3
@@ -1894,7 +1908,7 @@ export async function findOpenChangeRequest(
     [query.organizationId, query.projectId, query.parameterId]
   );
 
-  return result.rows[0] ? toChangeRequestDto(result.rows[0]) : null;
+  return result.rows[0] ? toChangeRequestDto(db, result.rows[0]) : null;
 }
 
 export async function getChangeRequestById(
@@ -1929,11 +1943,14 @@ export async function getChangeRequestById(
       assignee.name as assigned_to,
       pcr.reviewer_note,
       pcr.reject_reason,
-      pcr.fast_track
+      pcr.fast_track,
+      ppv.source_file_name,
+      ppv.source_node_path
     from parameter_change_requests pcr
     inner join parameter_definitions pd on pd.id = pcr.parameter_definition_id
     inner join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
+    left join project_parameter_values ppv on ppv.id = pcr.project_parameter_value_id
     where pcr.organization_id = $1
       and pcr.id = $2
     for update of pcr
@@ -1941,7 +1958,7 @@ export async function getChangeRequestById(
     [query.organizationId, query.requestId]
   );
 
-  return result.rows[0] ? toChangeRequestDto(result.rows[0]) : null;
+  return result.rows[0] ? toChangeRequestDto(db, result.rows[0]) : null;
 }
 
 export async function listReviewDecisions(
@@ -2121,12 +2138,14 @@ export async function updateChangeRequestStatus(
       (select name from users where id = parameter_change_requests.assigned_to_user_id) as assigned_to,
       reviewer_note,
       reject_reason,
-      fast_track
+      fast_track,
+      (select source_file_name from project_parameter_values where id = parameter_change_requests.project_parameter_value_id) as source_file_name,
+      (select source_node_path from project_parameter_values where id = parameter_change_requests.project_parameter_value_id) as source_node_path
     `,
     [input.organizationId, input.requestId, input.status, input.note ?? null, rejectReason]
   );
 
-  return result.rows[0] ? toChangeRequestDto(result.rows[0]) : null;
+  return result.rows[0] ? toChangeRequestDto(db, result.rows[0]) : null;
 }
 
 export async function mergeChangeRequest(
