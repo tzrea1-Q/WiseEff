@@ -35,6 +35,7 @@ import {
   createConfigSetBody
 } from "./schemas";
 import { getProjectParameterFileContent, uploadProjectParameterFile } from "./service";
+import { getParameterFileVersionStructure } from "./structuralReadService";
 import { syncFileVersion } from "./syncService";
 import type { ParameterFileFormat } from "./types";
 
@@ -281,6 +282,24 @@ export function registerParameterFileRoutes(
       contentType: contentTypeForFormat(file.format),
       fileName: file.fileName
     };
+  });
+
+  router.get("/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(paramsWithVersionIdSchema, request.params);
+    const file = await requireProjectFile(db, auth, params.projectId, params.fileId);
+    const version = await getFileVersionById(db, { versionId: params.versionId });
+    if (!version || version.fileId !== file.id) {
+      throw new ApiError("NOT_FOUND", "Project parameter file version was not found.", 404, {
+        fileId: params.fileId,
+        versionId: params.versionId
+      });
+    }
+    const body = await getParameterFileVersionStructure(db, version.id);
+
+    return { status: 200, body };
   });
 
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/sync", async (request) => {

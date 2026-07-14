@@ -47,3 +47,44 @@ export const createBaselineBody = z.object({
   name: nonEmptyString,
   notes: z.string().optional()
 });
+
+export const dtsValueTypeSchema = z.enum([
+  "u32-array",
+  "bytes",
+  "string-list",
+  "phandle-list",
+  "mixed",
+  "bool",
+  "empty"
+]);
+
+export const structuralPropertySchema = z.object({
+  name: nonEmptyString,
+  valueType: dtsValueTypeSchema,
+  rawText: z.string(),
+  normalizedValue: z.string()
+});
+
+export const structuralPhandleRefSchema = z.object({
+  fromProperty: nonEmptyString,
+  targetLabel: nonEmptyString,
+  resolvedTargetPath: z.string().min(1).optional()
+});
+
+export const structuralNodeSchema = z.object({
+  // Overlay root uses empty nodePath in the resolved/ingest model.
+  nodePath: z.string(),
+  name: nonEmptyString,
+  unitAddress: z.string().min(1).optional(),
+  labels: z.array(z.string()),
+  compatible: z.string().min(1).optional(),
+  status: z.string().min(1).optional(),
+  properties: z.array(structuralPropertySchema),
+  phandleRefs: z.array(structuralPhandleRefSchema)
+});
+
+export const structuralReadResponseSchema = z.object({
+  nodes: z.array(structuralNodeSchema)
+});
+
+export type StructuralReadResponse = z.infer<typeof structuralReadResponseSchema>;
