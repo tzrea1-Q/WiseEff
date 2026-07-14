@@ -53,6 +53,14 @@ To exercise the productized local login/register UI, keep the default `AUTH_MODE
 | `OBJECT_STORAGE_HEALTH_PREFIX` | `.health/` | readiness probe | Prefix for write/read/head/delete health probe objects. |
 | `OBJECT_STORAGE_RETENTION_CLASS` | `pilot-default` | log metadata | Stored as object metadata for retention evidence. |
 
+## DTS Config Set Validation Gate
+
+| Variable | Local default | Required for | Notes |
+| --- | --- | --- | --- |
+| `DTS_VALIDATION_MODE` | `block` (code default; unset in `.env.example`) | P2 config-set baseline release gate | `block` fails `releaseBaseline` with `409` when `dtc` reports an error or the `dtc` binary is unavailable. `warn` always passes but marks the result `requiresConfirmation: true`. `off` skips validation entirely (never spawns `dtc`). Set `warn` on self-hosted targets that do not ship a `dtc` binary. |
+
+`DtcValidator` (`server/modules/parameter-files/dtcValidator.ts`) runs the system `dtc` compiler in a restricted subprocess: an isolated temp directory, a minimal `PATH`-only environment, and a hard timeout that kills the child on expiry. When `dtc` is not on `PATH`, the validator degrades instead of hanging: `block` reports `ok:false` (release stays blocked pending a human decision to switch to `warn`), `warn` reports `ok:true` with a diagnostic noting validation was skipped, and `off` never calls `dtc` at all. Every gate run — pass, fail, or degraded — writes a `validation.gate` audit event.
+
 ## Durable Queue
 
 | Variable | Local default | Required for | Notes |

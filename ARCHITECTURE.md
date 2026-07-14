@@ -51,7 +51,7 @@ Rules:
 - `server/modules/users/`: durable backend user-governance routes, role replacement, activation, and audit.
 - `server/modules/audit/`: audit write/query boundary.
 - `server/modules/parameters/`: M1 parameter workflow routes and services.
-- `server/modules/parameter-files/`: project DTS/JSON parameter file upload, sync, conflicts, and writeback.
+- `server/modules/parameter-files/`: project DTS/JSON parameter file upload, sync, conflicts, and writeback; P2 adds board-level config sets grouping files into a buildable unit (`project → dts_config_set → files`), immutable release baselines for compare/rollback/release, a `dtc`-backed validation gate, and lossless export — server/API only, no UI yet (structured management UI is P3).
 - `server/modules/dts/`: pure DTS lexer/parser (CST), value typing, overlay/label resolver, and lossless serializer (no `src/` imports).
 - `server/modules/logs/`: M2 log upload, analysis records, object storage, and worker boundary.
 - `server/modules/product-feedback/`: Internal Beta feedback submission, image attachment metadata, and Admin triage routes.

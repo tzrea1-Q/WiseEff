@@ -103,6 +103,44 @@
 
 裁决写 `parameter-file-conflict-resolve` 审计。上传上限仍为 2 MB。
 
+#### 配置集、发布基线与校验门禁（P2）
+
+`DtsConfigSet` 是文件之上的顶层可构建单元：一个项目把一组 `ProjectParameterFile` 成员（各带 `role`）聚合成一个配置集，可选 `derived_from_id` 表达板级变体的派生关系。`ReleaseBaseline` 把配置集当前所有成员的版本冻结成一份不可变、可对比、可回滚的快照。`DtcValidator` 在基线从 `draft` 变为 `released` 前，对 dtc 编译结果（或降级模式）做门禁。
+
+| 实体 | 说明 |
+| --- | --- |
+| `DtsConfigSet` | 项目级可构建单元（`dts_config_set`）：`name`（项目内唯一）、可选 `description`、可选 `derived_from_id`（板级变体血缘）。 |
+| `ProjectParameterFile`（扩展） | 新增 `config_set_id`、`config_set_role`（`base`\|`overlay`\|`charging`\|`thermal`\|`misc`）、`config_set_sort_order`。一个文件同一时间至多属于一个配置集。 |
+| `ReleaseBaseline` | 配置集的具名不可变快照（`dts_release_baseline`）：`status`（`draft`\|`released`）、可选 `notes`、`created_by`。 |
+| `ReleaseBaselineMember` | 快照时刻钉住的每个成员 `(file_id, file_version_id, version_number)`（`dts_release_baseline_members`）。钉住只引用既有不可变文件版本，从不复制对象存储字节。 |
+
+规则：
+
+- 每个项目都有一个隐式**默认配置集**，保证现有单文件上传/同步/回写 API 行为不变；迁移 `0043` 为迁移执行时已存在的项目回填一个默认配置集并重挂其文件。迁移之后新建的项目必须显式调用 `ensureDefaultConfigSet` 或 `createConfigSet`——运行时不会自动创建。
+- `createBaseline` 在一个事务内快照所有成员的当前版本；某成员无当前版本会阻止建基线（`409`）；同配置集内基线重名报 `409` 冲突。
+- `compareBaseline(baselineId)` 通过对比钉住的 `file_version_id` 与配置集当前 `current_version_id`，把每个成员分类为 `unchanged`、`version_changed`、`file_added` 或 `file_removed`。对 `version_changed` 的 dts 成员，额外基于 `resolveDts().normalizedValue` 计算**结构化差异**（`node_added`/`node_removed`/`prop_added`/`prop_removed`/`prop_changed`），等价重排（十六进制大小写、多组展平）不会产生假 diff。
+- `rollbackToBaseline(baselineId)` 是原子的：在一个事务内把每个已漂移成员的 `current_version_id` 指回钉住的版本。它不删除历史，也不会让文件的线性版本指针悄悄倒退——而是插入一条新的 `origin='rollback'` 版本，把钉住版本的字节带到最新指针，保持版本历史单调可追溯。任一被钉住的文件已不存在会让整个回滚失败。因为回滚总会为漂移成员创建一个新版本 id，回滚后立刻 `compareBaseline` 仍会把该成员报为 `version_changed`（id 与基线钉住的 id 不同），但其结构化差异为空，证明内容本身完全一致。
+- `releaseBaseline(baselineId)` 对配置集**当前**成员内容运行校验门禁（见下），仅当门禁放行时才把 `draft` 基线翻转为 `released`。
+
+**校验门禁：** `DtcValidator.validate(files, { mode })` 在受限子进程（独立临时目录、仅含 `PATH` 的环境、硬超时）中用系统 `dtc` 二进制编译配置集的 dts 成员，返回 `{ ok, mode, diagnostics, compiler }`。`mode` 读取自 `DTS_VALIDATION_MODE`（默认 `block`，可选 `warn` 或 `off`；见 `docs/zh-CN/developer/environment-variables.md`）。
+
+- `mode=block`：只要有 `error` 级诊断，或 `dtc` 二进制不可用，就 `ok=false`；`releaseBaseline` 抛出 `ApiError('CONFLICT', ..., 409, { code: 'dts-validation-failed', diagnostics })`，基线保持 `draft`。
+- `mode=warn`：始终 `ok=true`，但 `requiresConfirmation=true`——放行发布并显式标记「未校验」。
+- `mode=off`：从不调用 `dtc`；始终 `ok=true`、`requiresConfirmation=false`。
+- 每次门禁运行都写 `validation.gate` 审计事件（mode、compiler、诊断计数、`requiresConfirmation`），无论通过与否。
+
+**无损导出：** `exportFile`/`exportConfigSet` 对每个成员的权威 CST 重新序列化（`serializeDts(parseDts(源))`），对可往返内容做到导出字节与源逐字节等价。`exportConfigSet` 返回 `manifest`（配置集、各成员的 role/sortOrder/versionNumber/format，以及导出时刻的校验门禁结果）及各成员导出内容，供软件人员手动把 bundle 提交到 Git。
+
+发布基线状态机：
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft
+  draft --> released: releaseBaseline（门禁通过）
+```
+
+`released` 只是状态标记，不是锁：配置集成员发布后仍可继续变化，后续 `compareBaseline`/`rollbackToBaseline` 仍可对同一基线 id 操作。
+
 参数变更状态机：
 
 ```mermaid

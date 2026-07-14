@@ -170,6 +170,19 @@ Local device bridge connectivity uses short-lived pairing codes and scoped bridg
 
 Bridge rename (`PATCH /api/v1/device-bridges/:bridgeId`) and revoke (`POST /api/v1/device-bridges/:bridgeId/revoke`) require `debugging:use`, must target a user-owned bridge, and revoke immediately invalidates the bridge token for new WebSocket connections. Renaming updates display metadata only; it does not rotate credentials or grant additional scopes.
 
+## Untrusted Subprocess Execution (DTS Validation Gate)
+
+The P2 config-set baseline validation gate compiles user-supplied DTS content with the system `dtc` binary (`server/modules/parameter-files/dtcValidator.ts`). DTS content is untrusted input (uploaded/edited by project members), so the subprocess boundary must stay restricted:
+
+- **Isolated temp directory**: each validation run writes files into a fresh `mkdtemp` directory that is removed in a `finally` block, including on spawn error, timeout, or an unexpected exception; validation never writes into a shared or predictable path.
+- **Minimal environment**: the child process receives only `PATH` (`minimalEnv()`), stripping API keys, database URLs, and other process secrets from the environment `dtc` would otherwise inherit.
+- **Hard timeout**: every `dtc` invocation runs under a timeout (`DtcValidateOptions.timeoutMs`, default 10s) that sends `SIGKILL` to the child if exceeded, so a malformed or adversarial `.dts` file cannot hang the release/export path indefinitely.
+- **No network assumption**: the sandbox does not provision or expect outbound network access for `dtc`; treat any future validator implementation that needs network access as a new threat-model review, not an incremental change.
+- **Fixed argv, no shell interpolation**: file names and paths are passed as `spawn` argv elements, never interpolated into a shell string, so DTS file names cannot inject shell metacharacters.
+- **Auditable degrade path**: when `dtc` is not on `PATH`, the validator degrades according to `DTS_VALIDATION_MODE` (`block` fails closed, `warn`/`off` pass with a recorded diagnostic) rather than silently skipping validation; every gate run, including degraded ones, writes a `validation.gate` audit event (see `docs/developer/environment-variables.md`).
+
+**Export data classification:** `exportFile`/`exportConfigSet` return the same DTS/JSON parameter content that is already stored per-project (not credentials, tokens, or cross-tenant data), so export responses carry the same project-scoped sensitivity as the source parameter files and require `admin:access` like the rest of the config-set/baseline surface. Export bundles are returned in the HTTP response body for the caller to hand-commit to Git; they are not written to a shared or public location by the backend, and callers that persist exported bundles are responsible for applying the same access control as the source repository.
+
 ## References
 
 - `design-docs/security-governance.md`

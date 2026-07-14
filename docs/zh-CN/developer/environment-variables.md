@@ -47,6 +47,14 @@
 | `OBJECT_STORAGE_TLS_POLICY` | 自托管 profile 为 `required` | M6.3 evidence | 目标证据必须使用 TLS，除非记录明确的本地实验例外。 |
 | `OBJECT_STORAGE_PATH_STYLE` | `true` | S3-compatible self-hosting | 自托管 provider 不支持 virtual-host bucket 时使用 path-style。 |
 
+## DTS 配置集校验门禁
+
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `DTS_VALIDATION_MODE` | `block`（代码默认；`.env.example` 未设置） | P2 配置集基线发布门禁 | `block`：`dtc` 报错或 `dtc` 二进制不可用时，`releaseBaseline` 返回 `409` 阻断发布。`warn`：始终放行，但标记 `requiresConfirmation: true`。`off`：完全跳过校验（不会调用 `dtc`）。自托管目标未安装 `dtc` 时可设为 `warn`。 |
+
+`DtcValidator`（`server/modules/parameter-files/dtcValidator.ts`）在受限子进程中运行系统 `dtc` 编译器：独立临时目录、仅含 `PATH` 的最小环境变量，以及到期即杀进程的硬超时。当 `dtc` 不在 `PATH` 上时校验器会降级而不是挂起：`block` 返回 `ok:false`（发布保持阻断，直到人工决定切到 `warn`），`warn` 返回 `ok:true` 并附带「校验已跳过」诊断，`off` 完全不调用 `dtc`。每次门禁运行——通过、失败或降级——都会写入 `validation.gate` 审计事件。
+
 ## 设备调试
 
 | 变量 | 本地默认值 | 用途 | 说明 |

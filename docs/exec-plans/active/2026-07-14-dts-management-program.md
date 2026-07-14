@@ -56,7 +56,7 @@
 | --- | --- | --- | --- | --- | --- |
 | **P0** 解析止血 | [dts-p0-parser-safety](2026-07-14-dts-p0-parser-safety.md) | 让解析器「诚实」：剥注释（真修）、对无法忠实表达的构造**检测并拦截/告警**（不再静默产错）、回写多行/多组值**安全失败**而非损坏 | 无 | 无 | ✅ 已评审通过，合并本地 `main`（待 push） |
 | **P1** 结构化核心 | [dts-p1-structural-model](2026-07-14-dts-p1-structural-model.md) | 真 DTS 解析器（CST）+ 节点树/类型化属性/phandle schema + 迁移 + 结构化同步/无损回写 + 身份解耦 | 新表 | P0 合并 | ✅ 已评审通过，合并本地 `main`（待 push） |
-| **P2** 配置集·基线·校验门禁 | [dts-p2-config-set-baseline-gate](2026-07-14-dts-p2-config-set-baseline-gate.md) | 板级配置集 + 发布基线 + dtc/schema 校验沙箱 + 无损导出 | 新表 | P1 合并 | 计划就绪，可执行 |
+| **P2** 配置集·基线·校验门禁 | [dts-p2-config-set-baseline-gate](2026-07-14-dts-p2-config-set-baseline-gate.md) | 板级配置集 + 发布基线 + dtc/schema 校验沙箱 + 无损导出 | 新表（迁移 `0043`） | P1 合并 | ✅ 已在 `feat/dts-config-set-baseline` 分支实现（含端到端集成测试），待架构师评审、开 PR、合并。**无可见 UI 变更**——纯 API/服务端交付；结构化管理 UI 是 P3。 |
 | **P3** 产品功能闭环 | 待撰写（P2 合并后由架构师产出） | 结构化值编辑器 + 结构化变更集/差异 + 路径/label/compatible 检索 + 影响分析 + 节点级 RBAC | 少量 | P2 合并 | 边界见下 |
 
 > **为何 P2/P3 暂不细化到任务级：** 它们的任务细节强依赖 P1 落地后的实际 schema 与解析器契约，提前细化会大概率返工。架构师将在前一阶段合并后，基于真实产物撰写下一阶段的任务级计划。本主计划锁定其**范围边界**，避免范围漂移。

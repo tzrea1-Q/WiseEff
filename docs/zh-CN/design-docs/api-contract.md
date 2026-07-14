@@ -397,6 +397,39 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 
 审计动作：`parameter-file-upload`、`parameter-file-sync`、`parameter-file-conflict-open`、`parameter-file-conflict-resolve`、`parameter-writeback-to-file`。
 
+## 配置集、发布基线与校验门禁（P2）
+
+板级配置集把项目下的参数文件聚合为一个可构建单元；发布基线对配置集做快照，支持对比/回滚/发布；校验门禁在基线发布前运行 `dtc`。以下路由均要求 `canAdminParameters`（`admin:access`）；非 Admin 调用返回 `403`。当前**没有可见 UI**——结构化管理 UI 在 P3（本期为纯 API/服务端交付）。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/v1/projects/:projectId/config-sets` | 列出项目的配置集。 |
+| `POST` | `/api/v1/projects/:projectId/config-sets` | 创建配置集。请求体：`{ name, description?, derivedFromId? }`。返回 `201 { item }`；同项目内 `name` 重复报 `409`。 |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/files` | 把参数文件加入配置集成员。请求体：`{ fileId, role, sortOrder? }`（`role` 为 `base`\|`overlay`\|`charging`\|`thermal`\|`misc`）。返回 `201 { item }`；文件已属于另一配置集报 `409`。 |
+| `DELETE` | `/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId` | 从配置集移除文件。返回 `200 {}`。 |
+| `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/baselines` | 列出配置集的基线。 |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/baselines` | 把配置集当前所有成员版本快照为新的 `draft` 基线。请求体：`{ name, notes? }`。返回 `201 { item }`；成员无当前版本或基线重名报 `409`。 |
+| `GET` | `/api/v1/projects/:projectId/baselines/:baselineId/compare` | 对比基线钉住的版本与配置集当前版本。返回 `200 { item: { baselineId, members } }`；每个成员为 `unchanged`\|`version_changed`\|`file_added`\|`file_removed`；`version_changed` 的 dts 成员附带节点/属性级、类型感知的 `structuralDiff`。 |
+| `POST` | `/api/v1/projects/:projectId/baselines/:baselineId/rollback` | 原子地把每个已漂移成员指回钉住版本（不删历史；漂移成员会得到一个新的 `origin=rollback` 版本）。返回 `200 { item: { baselineId, restored } }`。 |
+| `POST` | `/api/v1/projects/:projectId/baselines/:baselineId/release` | 对当前成员内容运行校验门禁，门禁放行后把基线标记 `released`。返回 `200 { item: baseline, gate }`。**门禁阻断 → `409`**，`error.details = { code: 'dts-validation-failed', diagnostics, mode, compiler }`。 |
+| `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/export` | 导出无损 bundle：每个 dts 成员为 `serializeDts(parseDts(源))`。返回 `200 { manifest, files }`；`manifest.validation` 携带导出时刻的门禁结果（导出不会因门禁失败而阻断，这一点与 release 不同）。 |
+
+校验门禁结果结构（`gate` / `manifest.validation`）：
+
+```json
+{
+  "ok": true,
+  "mode": "warn",
+  "requiresConfirmation": true,
+  "compiler": "dtc",
+  "diagnostics": [{ "file": "board.dts", "line": 12, "severity": "error", "message": "syntax error" }]
+}
+```
+
+`mode` 为 `block`（默认）、`warn` 或 `off`（`DTS_VALIDATION_MODE`；见 `docs/zh-CN/developer/environment-variables.md`）。`compiler` 为 `dtc` 或 `unavailable`（`PATH` 上找不到 `dtc` 二进制）。只要结果不是一次硬性 `dtc` 通过（即 `warn` 模式，或 `block`/`off` 下因编译器不可用而软放行），`requiresConfirmation` 就为 `true`。
+
+审计 kind 与 action：`config-set`（`created`、`updated`、`member_changed`）、`baseline`（`created`、`rolled_back`、`released`）、`validation.gate`（`run`）、`export`（`file`、`config-set`）。
+
 ## 8. Jobs 与进度
 
 | 方法 | 路径 | 说明 |

@@ -67,6 +67,44 @@ Terminal conflict statuses are `resolved_file` and `resolved_ui`. Resolution wri
 
 Upload size limit remains 2 MB.
 
+### Config Sets, Release Baselines, and the Validation Gate (P2)
+
+A `DtsConfigSet` is the top-level buildable unit above individual files: a project groups a set of `ProjectParameterFile` members (each with a `role`) into one config set, optionally derived from another config set to express board variants. A `ReleaseBaseline` freezes a config set's current member versions into an immutable, comparable, and reversible snapshot. `DtcValidator` gates baseline release on a `dtc` compile pass (or a configured degrade mode) before a baseline can move from `draft` to `released`.
+
+| Entity | Description |
+| --- | --- |
+| `DtsConfigSet` | A project-scoped buildable unit (`dts_config_set`): `name` (unique per project), optional `description`, optional `derived_from_id` for board-variant lineage. |
+| `ProjectParameterFile` (extended) | Adds `config_set_id`, `config_set_role` (`base`\|`overlay`\|`charging`\|`thermal`\|`misc`), and `config_set_sort_order`. A file belongs to at most one config set at a time. |
+| `ReleaseBaseline` | A named, immutable snapshot of a config set (`dts_release_baseline`): `status` (`draft`\|`released`), optional `notes`, `created_by`. |
+| `ReleaseBaselineMember` | One pinned `(file_id, file_version_id, version_number)` row per config-set member at snapshot time (`dts_release_baseline_members`). Pinning references an existing immutable file version; it never copies object-store bytes. |
+
+Rules:
+
+- Every project has an implicit **default config set** so existing single-file upload/sync/writeback APIs keep working unchanged; migration `0043` backfills one default config set per pre-existing project and repoints its files. Projects created after that migration must call `ensureDefaultConfigSet` or `createConfigSet` explicitly — there is no runtime auto-provisioning.
+- `createBaseline` snapshots every current member version in one transaction; a member with no current version blocks baseline creation (`409`), and a duplicate baseline name for the same config set is a `409` conflict.
+- `compareBaseline(baselineId)` classifies each member as `unchanged`, `version_changed`, `file_added`, or `file_removed` by comparing the pinned `file_version_id` against the config set's current `current_version_id`. For a `version_changed` DTS member, it additionally computes a **structural diff** (`node_added`/`node_removed`/`prop_added`/`prop_removed`/`prop_changed`) from `resolveDts().normalizedValue`, so equivalent reorderings (hex case, multi-group flattening) never appear as noise.
+- `rollbackToBaseline(baselineId)` is atomic: inside one transaction it repoints every drifted member's `current_version_id` back toward the pinned version. It never deletes history, and it never silently rewinds a file's linear version pointer — instead it inserts a new `origin='rollback'` version that carries the pinned version's bytes forward, so the version history stays monotonic and auditable. A member whose file no longer exists aborts the whole rollback. Because rollback always mints a fresh version id for a drifted member, a `compareBaseline` immediately after rollback still reports that member as `version_changed` (the id differs from the id pinned in the baseline), but its structural diff is empty, confirming the content itself matches exactly.
+- `releaseBaseline(baselineId)` runs the validation gate (below) against the config set's **current** member contents, then flips a `draft` baseline to `released` only when the gate allows it.
+
+**Validation gate:** `DtcValidator.validate(files, { mode })` compiles a config set's DTS members with the system `dtc` binary in a restricted subprocess (isolated temp dir, `PATH`-only environment, hard timeout) and returns `{ ok, mode, diagnostics, compiler }`. `mode` is read from `DTS_VALIDATION_MODE` (`block` default, `warn`, or `off`; see `docs/developer/environment-variables.md`).
+
+- `mode=block`: any `error`-severity diagnostic, or an unavailable `dtc` binary, makes `ok=false`; `releaseBaseline` then throws `ApiError('CONFLICT', ..., 409, { code: 'dts-validation-failed', diagnostics })` and the baseline stays `draft`.
+- `mode=warn`: always `ok=true`, but `requiresConfirmation=true` — release proceeds with a human-visible "unvalidated" flag.
+- `mode=off`: never spawns `dtc`; always `ok=true`, `requiresConfirmation=false`.
+- Every gate run writes a `validation.gate` audit event (mode, compiler, diagnostic count, `requiresConfirmation`), independent of pass/fail.
+
+**Lossless export:** `exportFile`/`exportConfigSet` re-serialize each member's authoritative CST (`serializeDts(parseDts(source))`) so exported bytes are byte-for-byte equivalent to the source for round-trippable content. `exportConfigSet` returns a `manifest` (config set, members with role/sortOrder/versionNumber/format, and the validation-gate result at export time) plus each member's exported content, so software engineers can hand-commit the bundle to Git.
+
+Release baseline state machine:
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft
+  draft --> released: releaseBaseline (gate passes)
+```
+
+`released` is a status marker, not a lock: a config set's members can keep changing after release, and a later `compareBaseline`/`rollbackToBaseline` call still operates against the same baseline id.
+
 ## State Machines
 
 Parameter requests, log analysis runs, product feedback triage, debugging sessions, and Agent approvals should move through explicit states. Tests and browser acceptance should verify invalid transitions, terminal-state behavior, and audit invariants.

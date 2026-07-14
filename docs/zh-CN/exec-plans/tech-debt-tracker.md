@@ -20,7 +20,8 @@
 ## 进行中
 
 - **TD-038（模块树后续）：** 多层级模块已落地后，仍需删除过渡 `module` 文本列、收敛 `project_modules` 与组织级 `parameter_modules` 单一真相源，并评估 dashboard 热榜的层级聚合。
-- **TD-039（项目参数文件 P2）：** P1 已交付 fragment 级 DTS 同步与文本 patch 写回；P2 需完整 DTS 解析与 AST 写回。详见 `docs/superpowers/specs/2026-07-11-project-parameter-files-design.md` P2 与英文版 Open 表；与 TD-035 对齐。
+- **TD-039（项目参数文件 P1+P2）：** P1（结构化 DTS 核心，`feat/dts-structural-model`）与 P2（配置集/发布基线/`dtc` 校验门禁，`feat/dts-config-set-baseline`，待评审合并）均已落地。仍待办：source-path 绑定证明后移除 `(name, module)` 兼容 fallback；结构化管理 UI 是 P3——当前没有可见 UI。详见英文版 Open 表；P2 专属后续见 TD-040；与 TD-035 对齐。
+- **TD-040（DTS 配置集/门禁后续，P2）：** 四项已知后续：(1) 默认配置集回填只对迁移 `0043` 执行时已存在的项目生效，之后新建项目必须显式调用 `ensureDefaultConfigSet`/`createConfigSet`；(2) 门禁目前只跑 `dtc` 编译检查，尚未实现 `dt-schema`（`.yaml` binding）校验；(3) `dtc` 目前以受限子进程方式运行（临时目录、最小环境、超时；见 `docs/SECURITY.md`），而非容器化沙箱；(4) `dts_config_set.project_id` 外键没有 `on delete cascade`，回填后几乎每个项目都会有配置集，导致 `deleteProject` 删除仍有配置集/基线的项目时可能抛出外键错误。详见英文版 Open 表。
 
 ## 近期关闭项
 

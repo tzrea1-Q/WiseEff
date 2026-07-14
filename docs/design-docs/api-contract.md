@@ -20,7 +20,7 @@ Rules:
 
 - Auth and users: `/me`, user listing, user creation, activation, role replacement.
 - Projects and modules: project metadata and module lookup.
-- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), and per-project parameter file hosting with sync and conflict resolution (`/projects/:projectId/parameter-files*`).
+- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), per-project parameter file hosting with sync and conflict resolution (`/projects/:projectId/parameter-files*`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
 - Logs: upload/file records, analysis records, runs, rerun, archive, feedback.
 - Product feedback: Internal Beta sidebar feedback submission, admin triage, and attachment content.
 - Jobs: status and progress events.
@@ -186,6 +186,39 @@ Sync body (optional):
 When `versionId` is omitted, sync uses the file's `currentVersionId`. Versions with `origin=writeback` skip automatic draft generation during sync.
 
 Audit actions: `parameter-file-upload`, `parameter-file-sync`, `parameter-file-conflict-open`, `parameter-file-conflict-resolve`, `parameter-writeback-to-file`.
+
+## Config Sets, Release Baselines, and the Validation Gate (P2)
+
+Board-level config sets aggregate a project's parameter files into one buildable unit; release baselines snapshot a config set for compare/rollback/release; the validation gate runs `dtc` before a baseline can be released. All routes below require `canAdminParameters` (`admin:access`); non-admin callers get `403`. There is no visible UI for this surface yet — structured management UI is P3 (pure API/server delivery).
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/projects/:projectId/config-sets` | List config sets for a project. |
+| `POST` | `/api/v1/projects/:projectId/config-sets` | Create a config set. Body: `{ name, description?, derivedFromId? }`. Returns `201 { item }`. Duplicate `name` in the same project is `409`. |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/files` | Add a parameter file as a config-set member. Body: `{ fileId, role, sortOrder? }` (`role` is `base`\|`overlay`\|`charging`\|`thermal`\|`misc`). Returns `201 { item }`. A file already owned by another config set is `409`. |
+| `DELETE` | `/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId` | Remove a file from the config set. Returns `200 {}`. |
+| `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/baselines` | List baselines for a config set. |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/baselines` | Snapshot the config set's current member versions into a new `draft` baseline. Body: `{ name, notes? }`. Returns `201 { item }`. A member with no current version, or a duplicate baseline name, is `409`. |
+| `GET` | `/api/v1/projects/:projectId/baselines/:baselineId/compare` | Compare the baseline's pinned versions against the config set's current versions. Returns `200 { item: { baselineId, members } }`; each member reports `unchanged`\|`version_changed`\|`file_added`\|`file_removed`, and `version_changed` DTS members include a `structuralDiff` (node/property level, type-aware). |
+| `POST` | `/api/v1/projects/:projectId/baselines/:baselineId/rollback` | Atomically repoint every drifted member back to its pinned version (never deletes history; drifted members get a new `origin=rollback` version). Returns `200 { item: { baselineId, restored } }`. |
+| `POST` | `/api/v1/projects/:projectId/baselines/:baselineId/release` | Run the validation gate against current member contents, then mark the baseline `released` if the gate allows it. Returns `200 { item: baseline, gate }`. **Blocked by the gate → `409`** with `error.details = { code: 'dts-validation-failed', diagnostics, mode, compiler }`. |
+| `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/export` | Export a lossless bundle: `serializeDts(parseDts(source))` per DTS member. Returns `200 { manifest, files }`; `manifest.validation` carries the gate result computed at export time (export never blocks on a failing gate, unlike release). |
+
+Validation gate result shape (`gate` / `manifest.validation`):
+
+```json
+{
+  "ok": true,
+  "mode": "warn",
+  "requiresConfirmation": true,
+  "compiler": "dtc",
+  "diagnostics": [{ "file": "board.dts", "line": 12, "severity": "error", "message": "syntax error" }]
+}
+```
+
+`mode` is `block` (default), `warn`, or `off` (`DTS_VALIDATION_MODE`; see `docs/developer/environment-variables.md`). `compiler` is `dtc` or `unavailable` (no `dtc` binary on `PATH`). `requiresConfirmation` is `true` whenever the result was not a hard `dtc` pass (`warn` mode, or `block`/`off` with an unavailable compiler that fell back to a soft pass).
+
+Audit kinds and actions: `config-set` (`created`, `updated`, `member_changed`), `baseline` (`created`, `rolled_back`, `released`), `validation.gate` (`run`), `export` (`file`, `config-set`).
 
 ## Governance
 
