@@ -1,5 +1,6 @@
 import { lexDts, type DtsToken } from "./lexer";
-import type { DtsDirective, DtsDocument, DtsNodeCst, DtsPropertyCst, DtsValueType } from "./types";
+import type { DtsDirective, DtsDocument, DtsNodeCst, DtsPropertyCst } from "./types";
+import { classifyDtsValue } from "./valueTyping";
 
 class Parser {
   private readonly tokens: DtsToken[];
@@ -183,25 +184,25 @@ class Parser {
       this.advance();
       const { rawText, span } = this.parsePropertyValue();
       this.expect("semi");
-      const valueType = placeholderValueType(rawText, name);
+      const classified = classifyDtsValue(rawText, name);
       return {
         kind: "property",
         name,
-        valueType,
+        valueType: classified.valueType,
         rawText,
-        normalizedValue: rawText.trim(),
+        normalizedValue: classified.normalizedValue,
         span,
       };
     }
 
     const semi = this.expect("semi", `Expected ';' after property ${name}`);
-    const valueType = placeholderValueType("", name);
+    const classified = classifyDtsValue("", name);
     return {
       kind: "property",
       name,
-      valueType,
+      valueType: classified.valueType,
       rawText: "",
-      normalizedValue: "",
+      normalizedValue: classified.normalizedValue,
       // Span covers the name (presence/empty marker); value body is empty.
       span: { start: nameTok.span.start, end: semi.span.start },
     };
@@ -228,14 +229,6 @@ class Parser {
     const rawText = this.source.slice(startTok.span.start, end);
     return { rawText, span: { start: startTok.span.start, end } };
   }
-}
-
-/** Placeholder typing until Task 3 wires valueTyping. */
-function placeholderValueType(rawText: string, name: string): DtsValueType {
-  if (rawText.trim() === "") {
-    return name === "ranges" || name === "dma-ranges" ? "empty" : "bool";
-  }
-  return "mixed";
 }
 
 export function parseDts(source: string): DtsDocument {
