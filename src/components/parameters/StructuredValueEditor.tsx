@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { DtsValueType } from "@/application/ports/DtsStructuredRepository";
 import { shouldShowFieldError } from "@/components/common/fieldValidation";
 import {
@@ -20,6 +20,8 @@ export type StructuredValueChange = {
   normalizedValue: string;
   valid: boolean;
   error?: string;
+  /** Bool property presence; false means omit/delete the property (syntax remains valid). */
+  present?: boolean;
 };
 
 export type StructuredValueEditorProps = {
@@ -31,6 +33,8 @@ export type StructuredValueEditorProps = {
   disabled?: boolean;
   showErrors?: boolean;
   id?: string;
+  /** Controlled presence for bool properties. Defaults to true when rawText is empty. */
+  present?: boolean;
 };
 
 export function StructuredValueEditor({
@@ -42,6 +46,7 @@ export function StructuredValueEditor({
   disabled = false,
   showErrors = false,
   id,
+  present,
 }: StructuredValueEditorProps) {
   const reactId = useId();
   const baseId = id ?? `dts-value-${reactId}`;
@@ -62,6 +67,7 @@ export function StructuredValueEditor({
       normalizedValue: override?.normalizedValue ?? validated.normalizedValue,
       valid: override?.valid ?? validated.valid,
       error: override?.error ?? validated.error,
+      ...(typeof override?.present === "boolean" ? { present: override.present } : {}),
     });
   };
 
@@ -114,22 +120,14 @@ export function StructuredValueEditor({
         <BoolEditor
           baseId={baseId}
           rawText={rawText}
+          present={present}
           disabled={disabled}
-          onChangePresent={(present) => {
-            if (present) {
-              emit("", {
-                valueType: "bool",
-                normalizedValue: "true",
-                valid: true,
-              });
-              return;
-            }
-            onChange({
-              rawText: "",
+          onChangePresent={(nextPresent) => {
+            emit("", {
               valueType: "bool",
               normalizedValue: "true",
-              valid: false,
-              error: "布尔属性已关闭（需保留空 RHS 才表示 true）",
+              valid: true,
+              present: nextPresent,
             });
           }}
         />
@@ -381,19 +379,30 @@ function PhandleListEditor({
   );
 }
 
+function resolveBoolPresent(present: boolean | undefined, rawText: string): boolean {
+  if (typeof present === "boolean") return present;
+  return rawText.trim() === "";
+}
+
 function BoolEditor({
   baseId,
   rawText,
+  present: presentProp,
   disabled,
   onChangePresent,
 }: {
   baseId: string;
   rawText: string;
+  present?: boolean;
   disabled: boolean;
   onChangePresent: (present: boolean) => void;
 }) {
-  // Track local present state: starts true when rawText is empty (bool property present).
-  const [present, setPresent] = useState(rawText.trim() === "");
+  const resolved = resolveBoolPresent(presentProp, rawText);
+  const [present, setPresent] = useState(resolved);
+
+  useEffect(() => {
+    setPresent(resolveBoolPresent(presentProp, rawText));
+  }, [presentProp, rawText]);
 
   return (
     <label className="structured-value-bool">

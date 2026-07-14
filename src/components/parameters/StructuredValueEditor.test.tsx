@@ -10,15 +10,21 @@ import {
 function ControlledEditor({
   onChange,
   rawText: initialRaw,
+  present: initialPresent,
   ...rest
 }: StructuredValueEditorProps) {
   const [rawText, setRawText] = useState(initialRaw);
+  const [present, setPresent] = useState(initialPresent);
   return (
     <StructuredValueEditor
       {...rest}
       rawText={rawText}
+      present={present}
       onChange={(next: StructuredValueChange) => {
         setRawText(next.rawText);
+        if (typeof next.present === "boolean") {
+          setPresent(next.present);
+        }
         onChange(next);
       }}
     />
@@ -140,13 +146,14 @@ describe("StructuredValueEditor", () => {
     expect(last.valid).toBe(true);
   });
 
-  it("renders bool as a switch with empty rawText semantics", () => {
+  it("expresses bool presence separately from validity", () => {
     const onChange = vi.fn();
     render(
       <ControlledEditor
         propertyName="weak_source_sleep_enabled"
         valueType="bool"
         rawText=""
+        present
         onChange={onChange}
       />
     );
@@ -159,16 +166,47 @@ describe("StructuredValueEditor", () => {
     expect(onChange.mock.calls.at(-1)?.[0]).toMatchObject({
       rawText: "",
       valueType: "bool",
-      valid: false,
+      present: false,
+      valid: true,
     });
+    expect(toggle).not.toBeChecked();
 
     fireEvent.click(screen.getByRole("checkbox", { name: /布尔|bool|开关/i }));
     expect(onChange.mock.calls.at(-1)?.[0]).toMatchObject({
       rawText: "",
       valueType: "bool",
+      present: true,
       normalizedValue: "true",
       valid: true,
     });
+    expect(screen.getByRole("checkbox", { name: /布尔|bool|开关/i })).toBeChecked();
+  });
+
+  it("syncs bool present from controlled props when parent updates", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <StructuredValueEditor
+        propertyName="weak_source_sleep_enabled"
+        valueType="bool"
+        rawText=""
+        present
+        onChange={onChange}
+      />
+    );
+
+    expect(screen.getByRole("checkbox", { name: /布尔|bool|开关/i })).toBeChecked();
+
+    rerender(
+      <StructuredValueEditor
+        propertyName="weak_source_sleep_enabled"
+        valueType="bool"
+        rawText=""
+        present={false}
+        onChange={onChange}
+      />
+    );
+
+    expect(screen.getByRole("checkbox", { name: /布尔|bool|开关/i })).not.toBeChecked();
   });
 
   it("renders empty as a readonly note without editable controls", () => {
