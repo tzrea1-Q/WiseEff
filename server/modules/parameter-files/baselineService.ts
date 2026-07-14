@@ -272,6 +272,27 @@ export async function compareBaseline(
       continue;
     }
 
+    // Decision C rollback pointers reuse the pinned blob storageKey under a new
+    // version id. Treat that as unchanged so post-rollback compare is clean.
+    if (currentMember.currentVersionId) {
+      const baselineVersion = await getFileVersionById(db, { versionId: baselineMember.fileVersionId });
+      const currentVersion = await getFileVersionById(db, { versionId: currentMember.currentVersionId });
+      if (
+        baselineVersion &&
+        currentVersion &&
+        baselineVersion.storageKey === currentVersion.storageKey
+      ) {
+        members.push({
+          fileId,
+          fileName: currentMember.fileName,
+          status: "unchanged",
+          baselineVersionId: baselineMember.fileVersionId,
+          currentVersionId: currentMember.currentVersionId
+        });
+        continue;
+      }
+    }
+
     const comparison: BaselineMemberComparison = {
       fileId,
       fileName: currentMember.fileName,

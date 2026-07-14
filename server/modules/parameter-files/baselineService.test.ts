@@ -388,13 +388,19 @@ describe("compareBaseline", () => {
       "sk-2": "&demo_integer {\n\tsingle_value = <43>;\n};\n"
     });
 
+    const pinned = fileVersionRow({ id: "fv-1", storage_key: "sk-1" });
+    const changed = fileVersionRow({ id: "fv-2", storage_key: "sk-2", version_number: 2 });
     const { db } = createFakeDb([
       [baselineRow()],
       [baselineMemberRow()],
       [memberFileRow({ current_version_id: "fv-2", version_number: 2 })],
+      // storageKey equivalence check
+      [pinned],
+      [changed],
+      // structural diff load
       [fileRow({ current_version_id: "fv-2", current_version_number: 2 })],
-      [fileVersionRow({ id: "fv-1", storage_key: "sk-1" })],
-      [fileVersionRow({ id: "fv-2", storage_key: "sk-2", version_number: 2 })]
+      [pinned],
+      [changed]
     ]);
 
     const result = await compareBaseline(db, adminAuth(), "baseline-1", { objectStore });
@@ -419,19 +425,52 @@ describe("compareBaseline", () => {
       "sk-2": "&demo_byte_array {\n\treg_config = /bits/ 8 <0x4b>;\n};\n"
     });
 
+    const pinned = fileVersionRow({ id: "fv-1", storage_key: "sk-1" });
+    const rewritten = fileVersionRow({ id: "fv-2", storage_key: "sk-2", version_number: 2 });
     const { db } = createFakeDb([
       [baselineRow()],
       [baselineMemberRow()],
       [memberFileRow({ current_version_id: "fv-2", version_number: 2 })],
+      [pinned],
+      [rewritten],
       [fileRow({ current_version_id: "fv-2", current_version_number: 2 })],
-      [fileVersionRow({ id: "fv-1", storage_key: "sk-1" })],
-      [fileVersionRow({ id: "fv-2", storage_key: "sk-2", version_number: 2 })]
+      [pinned],
+      [rewritten]
     ]);
 
     const result = await compareBaseline(db, adminAuth(), "baseline-1", { objectStore });
 
     expect(result.members[0].status).toBe("version_changed");
     expect(result.members[0].structuralDiff).toEqual([]);
+  });
+
+  it("treats a rollback pointer that reuses the baseline blob storageKey as unchanged", async () => {
+    const { db } = createFakeDb([
+      [baselineRow()],
+      [baselineMemberRow({ file_version_id: "fv-1" })],
+      [memberFileRow({ current_version_id: "fv-3-rollback", version_number: 3 })],
+      [fileVersionRow({ id: "fv-1", storage_key: "sk-pinned", version_number: 1 })],
+      [
+        fileVersionRow({
+          id: "fv-3-rollback",
+          storage_key: "sk-pinned",
+          version_number: 3,
+          origin: "rollback"
+        })
+      ]
+    ]);
+
+    const result = await compareBaseline(db, adminAuth(), "baseline-1");
+
+    expect(result.members).toEqual([
+      {
+        fileId: "file-1",
+        fileName: "board-a.dts",
+        status: "unchanged",
+        baselineVersionId: "fv-1",
+        currentVersionId: "fv-3-rollback"
+      }
+    ]);
   });
 });
 

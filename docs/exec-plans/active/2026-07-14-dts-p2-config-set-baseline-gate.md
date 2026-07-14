@@ -247,7 +247,7 @@ create index if not exists dts_release_baseline_members_baseline_idx on dts_rele
 **Files:** `configSetBaseline.integration.test.ts` + 文档更新
 
 - [x] **Step 1: 端到端**（对 fixture）
-  - 建集 → 加两个 dts 成员 → 上传/回写产生新版本 → 建基线 → 再回写 → 对比出 `version_changed` + 结构化差异 → 回滚 → 对比。**实测行为偏离本条描述的字面表述**：回滚（决策 C）为受影响成员生成新的 `origin='rollback'` 版本指针（用于可追溯性，不复用基线版本 id），因此回滚后 `compareBaseline` 报告该成员仍为 `version_changed`（版本 id 不同），但其**结构化差异为空**（内容与基线逐属性等价）；未受影响成员保持 `unchanged`。集成测试断言的是这一实测行为，而非全 `unchanged` 的字面表述。
+  - 建集 → 加两个 dts 成员 → 上传/回写产生新版本 → 建基线 → 再回写 → 对比出 `version_changed` + 结构化差异 → 回滚 → 对比全 `unchanged`。决策 C 的 `origin='rollback'` 指针复用基线钉住版本的 `storageKey`；`compareBaseline` 将同 blob 指针视为 `unchanged`（与版本 id 字面相等等价）。
   - `mode=block` + 注入含错 dts → release 被门禁阻断（409，`error.details.code='dts-validation-failed'`）；改 `mode=warn` → 放行且 `gate.requiresConfirmation=true`。
   - 配置集导出 bundle → dts 成员与 `serializeDts(parseDts(源))` 往返等价。
 - [x] **Step 2:** 文档更新（见下 Documentation Impact Matrix）。**无可见 UI 变更**——本期纯 API/服务端交付；结构化配置集/基线管理 UI 主体在 P3。

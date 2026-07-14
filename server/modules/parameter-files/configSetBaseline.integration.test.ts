@@ -194,23 +194,11 @@ describe.skipIf(!databaseAvailable)("DTS config set / baseline / gate integratio
     expect(rollback).toEqual({ baselineId: baseline.id, restored: 1 });
 
     const comparedAfterRollback = await compareBaseline(db!, auth, baseline.id, { objectStore });
-    const boardAfterRollback = comparedAfterRollback.members.find((m) => m.fileId === boardUpload1.file.id);
-    const overlayAfterRollback = comparedAfterRollback.members.find((m) => m.fileId === overlayUpload.file.id);
-
-    // Decision C: rollback never silently repoints to an older version id — it creates a
-    // fresh origin='rollback' version pointer that carries the pinned content forward for
-    // traceability. So the member's *status* still reads "version_changed" (its current
-    // version id differs from the id pinned in the baseline), but the *content* is byte-for-
-    // byte identical, which the structural diff confirms as empty (no real drift remains).
-    expect(boardAfterRollback?.status).toBe("version_changed");
-    expect(boardAfterRollback?.structuralDiff).toEqual([]);
-    expect(overlayAfterRollback).toEqual({
-      fileId: overlayUpload.file.id,
-      fileName: "overlay.dts",
-      status: "unchanged",
-      baselineVersionId: overlayUpload.version.id,
-      currentVersionId: overlayUpload.version.id
-    });
+    // Decision C creates origin='rollback' pointer versions that reuse the pinned blob
+    // storageKey. compareBaseline treats same-storageKey pointers as unchanged so the
+    // post-rollback workspace matches the baseline snapshot.
+    expect(comparedAfterRollback.members.every((m) => m.status === "unchanged")).toBe(true);
+    expect(comparedAfterRollback.members).toHaveLength(2);
   });
 
   it("release gate blocks on dts errors in mode=block, then passes with requiresConfirmation in mode=warn", async () => {
