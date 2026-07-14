@@ -9,7 +9,9 @@ import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterF
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
 import { DtsSearchPanel } from "@/components/parameters/DtsSearchPanel";
+import { DtsStructureBrowserPanel } from "@/components/parameters/DtsStructureBrowserPanel";
 import { KpiStrip, type KpiItem } from "@/components/KpiStrip";
+import { roleHasPermission } from "@/domain/users/types";
 import { useParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import { createParameterFileClient } from "@/infrastructure/http/parameterFileClient";
@@ -22,7 +24,7 @@ import {
   type ParameterAdminProjectRow
 } from "@/parameterAdminProjects";
 
-type ManageFilesTab = "files" | "config-sets";
+type ManageFilesTab = "files" | "config-sets" | "structure";
 
 type AvailableParameterFile = { id: string; fileName: string };
 
@@ -39,6 +41,7 @@ export function ParameterAdminProjectsPage({
   const parameterFileClient = useMemo(() => createParameterFileClient(), []);
   const dtsRepo = useMemo(() => resolveDtsStructuredRepository(runtimeMode), [runtimeMode]);
   const canAdmin = canPerform(state.activeRoleId, "admin.access");
+  const canEditCritical = roleHasPermission(state.activeRoleId, "parameter:edit-critical");
   const { search, updateSearch } = useParamAdminProjectsSearch();
   const [apiRows, setApiRows] = useState<ParameterAdminProjectRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -284,7 +287,7 @@ export function ParameterAdminProjectsPage({
               <div>
                 <span className="eyebrow">项目文件</span>
                 <h2 id="project-parameter-files-title">管理文件 · {manageFilesTarget.name}</h2>
-                <p>在「参数文件」与「配置集 / 基线」标签中维护该项目的文件与发布单元。</p>
+                <p>在「参数文件」「配置集 / 基线」与「结构浏览」标签中维护该项目的文件、发布单元与结构化预览。</p>
               </div>
               <button type="button" className="button subtle" onClick={() => setManageFilesProjectId(null)}>
                 关闭
@@ -309,6 +312,15 @@ export function ParameterAdminProjectsPage({
               >
                 配置集 / 基线
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={manageFilesTab === "structure"}
+                className={`project-parameter-files-tab${manageFilesTab === "structure" ? " is-active" : ""}`}
+                onClick={() => setManageFilesTab("structure")}
+              >
+                结构浏览
+              </button>
             </div>
             <div className="project-parameter-files-dialog-body">
               {manageFilesTab === "files" ? (
@@ -316,14 +328,22 @@ export function ParameterAdminProjectsPage({
                   <DtsSearchPanel projectId={manageFilesTarget.id} repository={dtsRepo} />
                   <ProjectParameterFilesPanel projectId={manageFilesTarget.id} runtimeMode={runtimeMode} />
                 </>
-              ) : (
+              ) : null}
+              {manageFilesTab === "config-sets" ? (
                 <ConfigSetBaselinePanel
                   projectId={manageFilesTarget.id}
                   repository={dtsRepo}
                   canAdmin={canAdmin}
                   availableFiles={availableFiles}
                 />
-              )}
+              ) : null}
+              {manageFilesTab === "structure" ? (
+                <DtsStructureBrowserPanel
+                  projectId={manageFilesTarget.id}
+                  repository={dtsRepo}
+                  canEditCritical={canEditCritical}
+                />
+              ) : null}
             </div>
           </div>
         </div>

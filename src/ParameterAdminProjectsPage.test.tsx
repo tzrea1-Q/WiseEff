@@ -235,6 +235,66 @@ describe("ParameterAdminProjectsPage", () => {
     expect(resolveDtsStructuredRepository).toHaveBeenCalledWith("mock");
   });
 
+  it("opens structure browser tab and loads teaching structure for value editing", async () => {
+    window.history.replaceState(null, "", "/parameter-admin/projects");
+    const atlasProject = initialState.configDraft.projects.find((project) => project.id === "atlas");
+    const getStructure = vi.fn().mockResolvedValue({
+      nodes: [
+        {
+          nodePath: "demo_bool",
+          name: "demo_bool",
+          labels: ["demo_bool"],
+          properties: [
+            {
+              name: "weak_source_sleep_enabled",
+              valueType: "bool",
+              rawText: "",
+              normalizedValue: "true"
+            }
+          ],
+          phandleRefs: []
+        }
+      ]
+    });
+    resolveDtsStructuredRepository.mockReturnValueOnce({
+      listConfigSets: vi.fn().mockResolvedValue([]),
+      createConfigSet: vi.fn(),
+      addConfigSetFile: vi.fn(),
+      removeConfigSetFile: vi.fn(),
+      listBaselines: vi.fn().mockResolvedValue([]),
+      createBaseline: vi.fn(),
+      compareBaseline: vi.fn(),
+      rollbackBaseline: vi.fn(),
+      releaseBaseline: vi.fn(),
+      exportConfigSet: vi.fn(),
+      getStructure,
+      search: vi.fn()
+    });
+
+    render(
+      <ParameterAdminProjectsPage
+        state={initialState}
+        dispatch={vi.fn()}
+        onNavigate={vi.fn()}
+        search=""
+        runtimeMode="mock"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: `管理文件 ${atlasProject?.name ?? "atlas"}` }));
+    const dialog = screen.getByRole("dialog", { name: new RegExp(`管理文件 · ${atlasProject?.name ?? "atlas"}`) });
+    fireEvent.click(within(dialog).getByRole("tab", { name: "结构浏览" }));
+
+    const panel = await within(dialog).findByRole("region", { name: "结构浏览" });
+    await waitFor(() => {
+      expect(getStructure).toHaveBeenCalledWith("atlas", "file-teaching-dts", "version-teaching-1");
+    });
+
+    fireEvent.click(within(panel).getByRole("treeitem", { name: "demo_bool" }));
+    fireEvent.click(within(panel).getByRole("button", { name: /编辑属性 weak_source_sleep_enabled/ }));
+    expect(within(panel).getByRole("checkbox", { name: "布尔开关" })).toBeInTheDocument();
+  });
+
   it("resolves the http dts repository when runtimeMode is api", () => {
     window.history.replaceState(null, "", "/parameter-admin/projects");
 

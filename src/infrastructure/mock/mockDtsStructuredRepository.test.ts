@@ -15,6 +15,9 @@ describe("createMockDtsStructuredRepository (DtsStructuredRepository contract)",
   it("getStructure returns teaching fixture-derived nodes with path, bool, and phandle refs", async () => {
     const repo = createRepo();
     const { nodes } = await repo.getStructure(PROJECT_ID, FILE_ID, VERSION_ID);
+    const anyIds = await repo.getStructure("any-project", "any-file", "any-version");
+    expect(anyIds.nodes.length).toBe(nodes.length);
+    expect(anyIds.nodes.some((item) => item.nodePath === "demo_regulator")).toBe(true);
 
     const chip = nodes.find((node) => node.nodePath === "amba/i2c@XXXX0000/chip@6E");
     expect(chip).toMatchObject({

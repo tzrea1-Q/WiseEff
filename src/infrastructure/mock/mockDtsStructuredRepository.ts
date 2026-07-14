@@ -111,6 +111,20 @@ export function createTeachingStructureNodes(): DtsStructuralNode[] {
       status: "ok",
       properties: [{ name: "status", valueType: "string-list", rawText: '"ok"', normalizedValue: "ok" }],
       phandleRefs: []
+    },
+    {
+      nodePath: "demo_regulator",
+      name: "demo_regulator",
+      labels: ["demo_regulator"],
+      properties: [
+        {
+          name: "regulator-min-microvolt",
+          valueType: "u32-array",
+          rawText: "<1000000>",
+          normalizedValue: "1000000"
+        }
+      ],
+      phandleRefs: []
     }
   ];
 }
@@ -244,14 +258,9 @@ export function createMockDtsStructuredRepository(
   }
 
   return {
-    async getStructure(requestedProjectId, requestedFileId, requestedVersionId) {
-      if (
-        requestedProjectId !== projectId ||
-        requestedFileId !== fileId ||
-        requestedVersionId !== versionId
-      ) {
-        return { nodes: [] };
-      }
+    async getStructure(_requestedProjectId, _requestedFileId, _requestedVersionId) {
+      // Teaching convenience: return the fixture-derived structure for any / default ids
+      // so structure browse can open from unrelated project manage-files dialogs.
       return { nodes: cloneNodes(state.nodes) };
     },
 
