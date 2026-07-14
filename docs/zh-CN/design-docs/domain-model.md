@@ -67,14 +67,17 @@
 | `ImportBatch` | 批量导入批次 |
 | `ProjectParameterFile` | 项目托管的 DTS/JSON 参数文件（项目内 `file_name` 唯一） |
 | `ProjectParameterFileVersion` | 不可变文件版本；对象存储字节 + `parsed_index` + `origin`（`upload` / `writeback`） |
+| `DtsNode` | 文件版本上的结构化节点：`node_path`（含 `@unitAddress`）、labels、可选 `compatible`/`status`、父节点 |
+| `DtsProperty` | 节点上的类型化属性：`value_type`、`raw_text`、`normalized_value` |
+| `DtsPhandleRef` | 属性到目标 label 的 phandle 边（可选解析后的节点 id） |
 | `ParameterFileSyncConflict` | 同一项目值上 `file_sync` 草稿与 `manual` 草稿目标值冲突时的裁决队列 |
 
 `ProjectParameterValue` 扩展字段：
 
 - `source_file_name`：来源文件名，如 `battery.dtsi`
-- `source_node_path`：解析节点路径，如 `battery/temp_max`
+- `source_node_path`：结构化节点路径，如 `amba/i2c@XXXX0000/chip@6E/reg`（优先身份）
 
-来源挂在**项目值**而非定义：同一定义在不同项目可绑定不同文件；无来源表示手动维护。
+来源挂在**项目值**而非定义：同一定义在不同项目可绑定不同文件；无来源表示手动维护。`parsed_index` 对 DTS 是结构化模型的**派生兼容视图**（特性开关 `DTS_STRUCTURAL_INGEST`，默认开启）。
 
 `ParameterDraft` 扩展字段：
 
@@ -83,9 +86,9 @@
 
 #### 文件同步与回写
 
-上传或新版本（`origin=upload`）会解析 `parsed_index`，与 DB 当前值 diff，为有差异的参数 upsert `file_sync` 草稿。匹配优先 `source_file_name` + `source_node_path`，回退 `name` + `module`。首次绑定写入来源字段。草稿不自动提交，仍走现有提交与审阅流。
+上传或新版本（`origin=upload`）会解析 `parsed_index`，与 DB 当前值 diff，为有差异的参数 upsert `file_sync` 草稿。匹配优先 `source_file_name` + `source_node_path`（结构化 `nodePath`），回退 `name` + `module`（兼容路径；同步摘要计 `identityFallbackUses`）。首次绑定写入来源字段。草稿不自动提交，仍走现有提交与审阅流。
 
-**P0 解析止血（无 schema 变更）：** 解析前剥离注释；`/include/` 上传硬拒绝；当前扁平解析器无法忠实表达的构造（带地址节点、`&label` 覆盖、内联 label、布尔属性、多 `<>` 组）跳过 sync 并回传 `unsupportedConstructs`；不安全的 DTS 回写（多行 / 多组 / 带地址节点路径）抛 `CONFLICT`（`dts-writeback-unsafe`）而非部分文本替换。完整结构化解析与无损回写仍属 P1（TD-039）。
+**DTS 结构化核心（P1）：** `server/modules/dts/` 提供 lexer → CST → 值类型/规范化 → overlay/label resolver → 无损 CST 序列化。上传（开关开启时）落 `dts_nodes` / `dts_properties` / `dts_phandle_refs`，并由合并模型派生 `parsed_index`。`/include/` 仍硬拒绝。回写通过 CST 属性 `rawText` 替换并序列化（多行 / 多组 / `@address` 已支持）。
 
 审阅合入（`software_merge → merged`）后，若参数有来源字段，`WritebackService` 回写当前文件并生成 `origin=writeback` 新版本；写回版本**不触发**新一轮自动草稿。
 

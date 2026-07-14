@@ -21,6 +21,8 @@ export type FileSyncSummary = {
   unchanged: number;
   unmatched: number;
   skipped: boolean;
+  /** Times identity fell back from structural source_node_path to (name, module). */
+  identityFallbackUses: number;
 };
 
 export async function syncFileVersion(
@@ -42,15 +44,17 @@ export async function syncFileVersion(
   }
 
   if (version.origin === "writeback") {
-    return { draftsCreated: 0, unchanged: 0, unmatched: 0, skipped: true };
+    return { draftsCreated: 0, unchanged: 0, unmatched: 0, skipped: true, identityFallbackUses: 0 };
   }
 
   let draftsCreated = 0;
   let unchanged = 0;
   let unmatched = 0;
+  let identityFallbackUses = 0;
   const entries = Object.entries(version.parsedIndex);
 
   for (const [nodePath, entry] of entries) {
+    // Prefer structural source identity (nodePath including @address).
     let resolved = await findProjectValueBySource(db, {
       organizationId: auth.organization.id,
       projectId: file.projectId,
@@ -60,6 +64,7 @@ export async function syncFileVersion(
 
     if (!resolved) {
       try {
+        // Compatibility fallback: (name, module) from pathMapper — transitional (TD-039).
         const identity = nodePathToParameterIdentity(nodePath);
         resolved = await findProjectValueByDefinition(db, {
           organizationId: auth.organization.id,
@@ -67,6 +72,9 @@ export async function syncFileVersion(
           name: identity.name,
           module: identity.module
         });
+        if (resolved) {
+          identityFallbackUses += 1;
+        }
       } catch {
         unmatched += 1;
         continue;
@@ -116,5 +124,5 @@ export async function syncFileVersion(
     });
   }
 
-  return { draftsCreated, unchanged, unmatched, skipped: false };
+  return { draftsCreated, unchanged, unmatched, skipped: false, identityFallbackUses };
 }

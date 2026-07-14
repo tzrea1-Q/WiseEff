@@ -9,7 +9,13 @@ import { syncFileVersion } from "./syncService";
 import { ingestDtsFileVersion } from "./structuralIngest";
 
 vi.mock("./syncService", () => ({
-  syncFileVersion: vi.fn(async () => ({ draftsCreated: 0, unchanged: 0, unmatched: 0, skipped: false }))
+  syncFileVersion: vi.fn(async () => ({
+    draftsCreated: 0,
+    unchanged: 0,
+    unmatched: 0,
+    skipped: false,
+    identityFallbackUses: 0
+  }))
 }));
 
 vi.mock("./structuralIngest", () => ({

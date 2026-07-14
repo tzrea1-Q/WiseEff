@@ -51,6 +51,8 @@ Rules:
 - `server/modules/users/`: durable backend user-governance routes, role replacement, activation, and audit.
 - `server/modules/audit/`: audit write/query boundary.
 - `server/modules/parameters/`: M1 parameter workflow routes and services.
+- `server/modules/parameter-files/`: project DTS/JSON parameter file upload, sync, conflicts, and writeback.
+- `server/modules/dts/`: pure DTS lexer/parser (CST), value typing, overlay/label resolver, and lossless serializer (no `src/` imports).
 - `server/modules/logs/`: M2 log upload, analysis records, object storage, and worker boundary.
 - `server/modules/product-feedback/`: Internal Beta feedback submission, image attachment metadata, and Admin triage routes.
 - `server/modules/debugging/`: M3 simulator/HDC gateway boundary and debugging routes.

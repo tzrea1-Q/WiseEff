@@ -9,6 +9,8 @@ import { ApiError } from "../../shared/http/errors";
 import { parseDts, resolveDts, serializeDts, classifyDtsValue } from "../dts";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
+import { isDtsStructuralIngestEnabled } from "./structuralFlag";
+import { ingestDtsFileVersion } from "./structuralIngest";
 import type { ParameterFileFormat } from "./types";
 
 type WritebackSource = {
@@ -273,6 +275,9 @@ export async function writebackMergedParameterValue(
   });
 
   await setCurrentVersion(db, { fileId: file.id, versionId: version.id });
+  if (file.format === "dts" && isDtsStructuralIngestEnabled()) {
+    await ingestDtsFileVersion(db, version.id, patchedBytes.toString("utf8"));
+  }
   await createWritebackAudit(
     db,
     auth,

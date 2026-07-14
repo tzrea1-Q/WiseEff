@@ -92,8 +92,8 @@ DtsPropertyCst{ kind:"property"; name:string; valueType:DtsValueType;
 
 **Files:** `server/modules/dts/lexer.ts` + test
 
-- [ ] **Step 1: 失败测试** — 覆盖 token：标识符（含 `-`/`,` 如 `vendor,led-type`）、`@`、`&`、`:`、数字/十六进制、字符串（含转义与内部 `/*`）、`<` `>` `{` `}` `;` `,`、`/bits/`、`/dts-v1/` `/plugin/` `/include/` 指令 token。
-- [ ] **Step 2: FAIL** → **Step 3: 实现**（先经 P0 `stripDtsComments`，再产 token 流，保留每 token 的 `span`）→ **Step 4: PASS** → 提交。
+- [x] **Step 1: 失败测试** — 覆盖 token：标识符（含 `-`/`,` 如 `vendor,led-type`）、`@`、`&`、`:`、数字/十六进制、字符串（含转义与内部 `/*`）、`<` `>` `{` `}` `;` `,`、`/bits/`、`/dts-v1/` `/plugin/` `/include/` 指令 token。
+- [x] **Step 2: FAIL** → **Step 3: 实现**（先经 P0 `stripDtsComments`，再产 token 流，保留每 token 的 `span`）→ **Step 4: PASS** → 提交。
 
 ---
 
@@ -101,11 +101,11 @@ DtsPropertyCst{ kind:"property"; name:string; valueType:DtsValueType;
 
 **Files:** `server/modules/dts/parser.ts` + test
 
-- [ ] **Step 1: 失败测试**（对 fixture 与最小样例）
+- [x] **Step 1: 失败测试**（对 fixture 与最小样例）
   - 节点 `name@addr {}`、`label:name {}`、`&label {}`、根 `/ {}`。
   - 属性：整数/多行矩阵、字符串列表、`/bits/ 8 <..>`、phandle `<&x 1 0>`、多组 `<..>,<..>`、布尔（无 `=`）、`ranges;`（empty）。
   - 指令 `/dts-v1/` `/plugin/`；`/include/` **解析为 directive 节点并标记 unsupported**（不展开）。
-- [ ] **Step 2: FAIL** → **Step 3: 实现递归下降**，产 `DtsDocument`；每节点/属性带 `span`；属性 `valueType`/`normalizedValue` 交 Task 3（先占位，Task 3 后接线）。→ **Step 4: PASS** → 提交。
+- [x] **Step 2: FAIL** → **Step 3: 实现递归下降**，产 `DtsDocument`；每节点/属性带 `span`；属性 `valueType`/`normalizedValue` 交 Task 3（先占位，Task 3 后接线）。→ **Step 4: PASS** → 提交。
 
 ---
 
@@ -113,11 +113,11 @@ DtsPropertyCst{ kind:"property"; name:string; valueType:DtsValueType;
 
 **Files:** `server/modules/dts/valueTyping.ts` + test
 
-- [ ] **Step 1: 失败测试** — 断言各 RHS → 正确 `DtsValueType` 与 `normalizedValue`：
+- [x] **Step 1: 失败测试** — 断言各 RHS → 正确 `DtsValueType` 与 `normalizedValue`：
   - `<0xB 0x4b>` 与 `<0xb 0x4B>` → 同一 `normalizedValue`（十六进制小写、去空白）。
   - `<1 2>,<3 4>` 与 `<1 2 3 4>` → 同一展平 `normalizedValue`，`valueType="mixed"`（分组信息留 CST）。
   - `"a", "b"` → `string-list`；`<&a &b>` → `phandle-list`；`/bits/ 8 <..>` → `bytes`；无值 → `bool`。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS**，接线进 parser → 提交。
+- [x] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS**，接线进 parser → 提交。
 
 ---
 
@@ -125,12 +125,12 @@ DtsPropertyCst{ kind:"property"; name:string; valueType:DtsValueType;
 
 **Files:** `server/modules/dts/resolver.ts` + test
 
-- [ ] **Step 1: 失败测试**
+- [x] **Step 1: 失败测试**
   - `&demo_multi_ref` 两次覆盖（#26）→ 合并为一个逻辑节点，属性并集。
   - 内联 `my_batt:batt_cell` + 之后 `&my_batt {..}`（#27）→ 同一逻辑节点（路径以 `batt_cell` 为准，label `my_batt` 记于 `labels`）。
   - `battery_checker@0` / `@1`、`bypass_chip@77` / `@75` → **不同** `nodePath`，不碰撞。
   - phandle：`<&demo_ic_a &demo_ic_b>` 收集为两条 `phandle_ref`，`target_label` 为 `demo_ic_a`/`demo_ic_b`。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** resolver：遍历 CST，按 label/路径建逻辑节点图，合并覆盖，产 `{ nodes:[{nodePath, name, unitAddress, labels, compatible?, status?, properties:[{name,valueType,rawText,normalizedValue}], phandleRefs:[...] }] }`。→ **Step 4: PASS** → 提交。
+- [x] **Step 2: FAIL** → **Step 3: 实现** resolver：遍历 CST，按 label/路径建逻辑节点图，合并覆盖，产 `{ nodes:[{nodePath, name, unitAddress, labels, compatible?, status?, properties:[{name,valueType,rawText,normalizedValue}], phandleRefs:[...] }] }`。→ **Step 4: PASS** → 提交。
 
 ---
 
@@ -138,8 +138,8 @@ DtsPropertyCst{ kind:"property"; name:string; valueType:DtsValueType;
 
 **Files:** `server/modules/dts/serialize.ts` + test
 
-- [ ] **Step 1: 失败测试** — `serializeDts(parseDts(sample)) === sample`（对教学范例逐字节幂等）。另测「编辑单个属性 `normalizedValue`/`rawText` 后仅该属性文本变化，其余逐字节不变」。
-- [ ] **Step 2: FAIL** → **Step 3: 实现**（基于 `span`：未编辑段直接切片原文；编辑段用新 `rawText` 替换）→ **Step 4: PASS** → 提交。
+- [x] **Step 1: 失败测试** — `serializeDts(parseDts(sample)) === sample`（对教学范例逐字节幂等）。另测「编辑单个属性 `normalizedValue`/`rawText` 后仅该属性文本变化，其余逐字节不变」。
+- [x] **Step 2: FAIL** → **Step 3: 实现**（基于 `span`：未编辑段直接切片原文；编辑段用新 `rawText` 替换）→ **Step 4: PASS** → 提交。
 
 ---
 
@@ -147,7 +147,7 @@ DtsPropertyCst{ kind:"property"; name:string; valueType:DtsValueType;
 
 **Files:** `server/migrations/0042_dts_structural_model.sql` + `migration.test.ts`
 
-- [ ] **Step 1: 写迁移**
+- [x] **Step 1: 写迁移**
 
 ```sql
 create table if not exists dts_nodes (
@@ -186,7 +186,7 @@ create index if not exists dts_nodes_compatible_idx on dts_nodes(file_version_id
 create index if not exists dts_phandle_refs_target_idx on dts_phandle_refs(target_label);
 ```
 
-- [ ] **Step 2: smoke test**（读文件断言含表名/关键列）→ **Step 3:** `npm run db:migrate` → **Step 4: PASS** → 提交。
+- [x] **Step 2: smoke test**（读文件断言含表名/关键列）→ **Step 3:** `npm run db:migrate` → **Step 4: PASS** → 提交。
 
 ---
 
@@ -194,15 +194,15 @@ create index if not exists dts_phandle_refs_target_idx on dts_phandle_refs(targe
 
 **Files:** `structuralRepository.ts`, `structuralIngest.ts`, `parseIndex.ts` + tests
 
-- [ ] **Step 1: 失败测试**
+- [x] **Step 1: 失败测试**
   - `ingestDtsFileVersion(db, versionId, source)`：对 fixture 落 `dts_nodes`/`dts_properties`/`dts_phandle_refs`，节点数/属性数/phandle 数符合预期，`node_path` 含 `@address`。
   - `buildDtsParsedIndex(source)`（改造后）：键为**合并模型的 `nodePath`**，值为 `normalizedValue`；**不含**布尔属性误判、**不再**因 `@address` 碰撞；十六进制/多组等价不产生不同键值。
-- [ ] **Step 2: FAIL**
-- [ ] **Step 3: 实现**
+- [x] **Step 2: FAIL**
+- [x] **Step 3: 实现**
   - `structuralRepository`：批量插入节点树/属性/phandle（事务）。
   - `structuralIngest`：`parseDts → resolveDts →` 落库；返回派生的 `parsed_index`（供现有 sync）。
   - `parseIndex.ts` 的 `buildDtsParsedIndex` 改为：`resolveDts(source)` → 遍历逻辑节点/属性 → `{ [nodePath+"/"+propName]: { value: normalizedValue } }`。保留 JSON 分支不变。
-- [ ] **Step 4: PASS** → 提交。
+- [x] **Step 4: PASS** → 提交。
 
 ---
 
@@ -210,8 +210,8 @@ create index if not exists dts_phandle_refs_target_idx on dts_phandle_refs(targe
 
 **Files:** `service.ts` + test
 
-- [ ] **Step 1: 失败测试** — 上传 fixture（不含 include）：落文件版本后，`DTS_STRUCTURAL_INGEST` 开启时结构化表被填充；派生 `parsed_index` 用于 `syncFileVersion`。include 仍按 P0 拒绝。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** — 在 `uploadProjectParameterFile` 事务内，`format=dts` 且开关开启时调用 `ingestDtsFileVersion(tx, version.id, source)`；`parsed_index` 来源改为结构化派生。P0 的 unsupported 检测：`@address`/`&label`/布尔/多组现已被结构化支持 → **从 unsupported 列表移除**，仅保留 `include`（硬拒绝）。→ **Step 4: PASS** → 提交。
+- [x] **Step 1: 失败测试** — 上传 fixture（不含 include）：落文件版本后，`DTS_STRUCTURAL_INGEST` 开启时结构化表被填充；派生 `parsed_index` 用于 `syncFileVersion`。include 仍按 P0 拒绝。
+- [x] **Step 2: FAIL** → **Step 3: 实现** — 在 `uploadProjectParameterFile` 事务内，`format=dts` 且开关开启时调用 `ingestDtsFileVersion(tx, version.id, source)`；`parsed_index` 来源改为结构化派生。P0 的 unsupported 检测：`@address`/`&label`/布尔/多组现已被结构化支持 → **从 unsupported 列表移除**，仅保留 `include`（硬拒绝）。→ **Step 4: PASS** → 提交。
 
 > 注：P0 的 `detectUnsupportedDtsConstructs` 在 P1 收敛为「仅 include」，其余构造转由结构化解析处理；更新 P0 相关测试。
 
@@ -221,11 +221,11 @@ create index if not exists dts_phandle_refs_target_idx on dts_phandle_refs(targe
 
 **Files:** `writebackService.ts` + test
 
-- [ ] **Step 1: 失败测试**
+- [x] **Step 1: 失败测试**
   - 回写多行矩阵属性 → 成功且仅该属性变化，文件其余逐字节不变（对 fixture）。
   - 回写 `@address` 节点内属性（如 `chip@6E/reg`）→ 成功（P0 的护栏解除）。
   - 多组值属性回写 → 成功。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** — `patchDtsProperty` 改为：`parseDts(content) → resolveDts` 定位目标（按 `nodePath` + 属性名）→ 修改对应 CST 属性 `rawText` → `serializeDts`。移除正则实现与 P0 护栏。JSON 分支不变。→ **Step 4: PASS** → 提交。
+- [x] **Step 2: FAIL** → **Step 3: 实现** — `patchDtsProperty` 改为：`parseDts(content) → resolveDts` 定位目标（按 `nodePath` + 属性名）→ 修改对应 CST 属性 `rawText` → `serializeDts`。移除正则实现与 P0 护栏。JSON 分支不变。→ **Step 4: PASS** → 提交。
 
 ---
 
@@ -233,12 +233,12 @@ create index if not exists dts_phandle_refs_target_idx on dts_phandle_refs(targe
 
 **Files:** `structural.integration.test.ts` + `syncService.test.ts` 增补
 
-- [ ] **Step 1: 端到端**（对 fixture）
+- [x] **Step 1: 端到端**（对 fixture）
   - 上传 → 结构化落库 → 派生 index → sync 产草稿（同名多实例不再碰撞：`@0`/`@1` 各自独立命中）。
   - 十六进制/多组等价重排的新版本上传 → **不产生**假 diff 草稿。
   - 合入 → CST 回写 → 新版本 → 再解析幂等。
-- [ ] **Step 2:** 身份：`findProjectValueBySource` 用结构化 `nodePath` 优先；`(name,module)` 回退保留但记录为兼容路径。
-- [ ] **Step 3:** `npm run test:server -- server/modules/dts server/modules/parameter-files --run` → PASS → 提交。
+- [x] **Step 2:** 身份：`findProjectValueBySource` 用结构化 `nodePath` 优先；`(name,module)` 回退保留但记录为兼容路径。
+- [x] **Step 3:** `npm run test:server -- server/modules/dts server/modules/parameter-files --run` → PASS → 提交。
 
 ---
 
@@ -273,11 +273,11 @@ create index if not exists dts_phandle_refs_target_idx on dts_phandle_refs(targe
 ## Documentation Update Gate
 
 移入 `completed/` 前：
-- [ ] domain-model 已更新结构化实体与身份规则
-- [ ] db-schema 已重生成（或记录无脚本）
-- [ ] tech-debt-tracker 记录特性开关/回退与 TD-039 进展
-- [ ] `docs/PLANS.md` 与 `docs/zh-CN/PLANS.md` 一致
-- [ ] `npm run docs:check` 通过
+- [x] domain-model 已更新结构化实体与身份规则
+- [x] db-schema 已重生成（或记录无脚本）
+- [x] tech-debt-tracker 记录特性开关/回退与 TD-039 进展
+- [x] `docs/PLANS.md` 与 `docs/zh-CN/PLANS.md` 一致
+- [x] `npm run docs:check` 通过
 
 > **UI 交互自动化规则：** P1 为纯服务端结构化改造，不改变用户可见交互（前端仍读派生 `parsed_index`）。无需新增 `e2e/acceptance/` 覆盖；结构化编辑/差异/检索的可见 UI 在 P3 引入并补 requirement/operation ID。
 

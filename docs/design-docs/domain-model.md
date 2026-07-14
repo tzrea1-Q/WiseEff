@@ -23,18 +23,21 @@ The product model separates prototype display data into durable, auditable busin
 
 ## Project Parameter Files
 
-Project parameter files are first-class project-scoped entities that host DTS/JSON configuration bytes in object storage with immutable version history. File versions carry a `parsed_index` (`nodePath` → value) used to diff against database state, generate `file_sync` drafts, and patch nodes after review merge.
+Project parameter files are first-class project-scoped entities that host DTS/JSON configuration bytes in object storage with immutable version history. File versions carry a `parsed_index` (`nodePath` → normalized value) used to diff against database state, generate `file_sync` drafts, and patch nodes after review merge. For DTS, `parsed_index` is a **derived compatibility view** of the structural model (feature flag `DTS_STRUCTURAL_INGEST`, default on).
 
 | Entity | Description |
 | --- | --- |
 | `ProjectParameterFile` | One hosted `.dts` or `.json` file per project (`file_name` unique per project), optional `module_hint`, `enabled` flag, and `current_version_id`. |
 | `ProjectParameterFileVersion` | Immutable file bytes in object storage with `version_number`, `checksum`, `parsed_index`, and `origin` (`upload` or `writeback`). |
+| `DtsNode` | Structural node for a file version: `node_path` (includes `@unitAddress`), labels, optional `compatible`/`status`, parent link. |
+| `DtsProperty` | Typed property on a node: `value_type` (`u32-array` \| `bytes` \| `string-list` \| `phandle-list` \| `mixed` \| `bool` \| `empty`), `raw_text`, `normalized_value`. |
+| `DtsPhandleRef` | Phandle edge from a property to a target label (optional resolved node id). |
 | `ParameterFileSyncConflict` | Open queue row when the same project value has competing `file_sync` and `manual` drafts with different target values. |
 
 `ProjectParameterValue` extensions:
 
 - `source_file_name`: hosted file name such as `battery.dtsi`
-- `source_node_path`: parsed node path such as `battery/temp_max`
+- `source_node_path`: structural node path such as `amba/i2c@XXXX0000/chip@6E/reg` (preferred identity)
 
 Source fields live on project values, not definitions: the same definition can bind to different files per project. Null source fields mean manually maintained values.
 
@@ -45,11 +48,11 @@ Source fields live on project values, not definitions: the same definition can b
 
 ### File Sync and Writeback
 
-Upload or version upload with `origin=upload` parses the file, diffs each `parsed_index` entry against the matched project value, and upserts `file_sync` drafts when values differ. Matching prefers `source_file_name` + `source_node_path`, then falls back to `name` + `module`. First bind writes source fields on the project value. Drafts are not auto-submitted; users still run the existing submission and review workflow.
+Upload or version upload with `origin=upload` parses the file, diffs each `parsed_index` entry against the matched project value, and upserts `file_sync` drafts when values differ. Matching prefers `source_file_name` + `source_node_path` (structural `nodePath`), then falls back to `name` + `module` (compatibility path; counted as `identityFallbackUses` on sync summary). First bind writes source fields on the project value. Drafts are not auto-submitted; users still run the existing submission and review workflow.
 
-**P0 parser safety (no schema change):** comments are stripped before parse; `/include/` uploads are rejected; other constructs the flat parser cannot faithfully express (unit-address nodes, `&label` overlays, inline labels, boolean properties, multi `<>` groups) skip sync and return `unsupportedConstructs` warnings; unsafe DTS writeback (multiline / multi-group / addressed node paths) throws `CONFLICT` (`dts-writeback-unsafe`) instead of partial text replace. Full structured parse and lossless writeback remain P1 (TD-039).
+**DTS structural core (P1):** `server/modules/dts/` provides lexer → CST parser → value typing/normalization → overlay/label resolver → lossless CST serializer. Upload (when `DTS_STRUCTURAL_INGEST` is on) persists `dts_nodes` / `dts_properties` / `dts_phandle_refs` and derives `parsed_index` from the merged model. `/include/` remains hard-rejected. Writeback mutates CST property `rawText` and serializes with byte-stable remainder (multiline / multi-group / `@address` supported).
 
-`origin=writeback` versions are created after `software_merge → merged` when the merged parameter has source fields. Writeback patches the current file bytes (JSON path set or DTS property text replace) and must not trigger another sync pass.
+`origin=writeback` versions are created after `software_merge → merged` when the merged parameter has source fields. Writeback patches the current file bytes (JSON path set or DTS CST property splice) and must not trigger another sync pass.
 
 Disabled files stop participating in automatic sync; existing source bindings remain.
 

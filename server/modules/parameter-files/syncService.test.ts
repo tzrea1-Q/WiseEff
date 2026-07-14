@@ -106,7 +106,8 @@ describe("syncFileVersion", () => {
       draftsCreated: 1,
       unchanged: 0,
       unmatched: 0,
-      skipped: false
+      skipped: false,
+      identityFallbackUses: 1
     });
     expect(mockedUpsertFileSyncDraft).toHaveBeenCalledWith(fakeDb, {
       organizationId: "org-1",
@@ -162,7 +163,8 @@ describe("syncFileVersion", () => {
       draftsCreated: 0,
       unchanged: 1,
       unmatched: 0,
-      skipped: false
+      skipped: false,
+      identityFallbackUses: 0
     });
     expect(mockedUpsertFileSyncDraft).not.toHaveBeenCalled();
     expect(mockedBindParameterSource).toHaveBeenCalledTimes(1);
@@ -189,7 +191,8 @@ describe("syncFileVersion", () => {
       draftsCreated: 0,
       unchanged: 0,
       unmatched: 0,
-      skipped: true
+      skipped: true,
+      identityFallbackUses: 0
     });
     expect(mockedFindProjectValueBySource).not.toHaveBeenCalled();
     expect(mockedFindProjectValueByDefinition).not.toHaveBeenCalled();
