@@ -1,8 +1,10 @@
 import { createHmac } from "node:crypto";
 import type { Page } from "playwright/test";
 
-import { LOCAL_AUTH_TOKEN_STORAGE_KEY } from "../../../src/infrastructure/http/authClient";
 import { smokeHeaders } from "./runtime";
+
+/** Keep in sync with src/infrastructure/http/authClient.ts — do not import frontend modules here (import.meta.env breaks Playwright Node). */
+const LOCAL_AUTH_TOKEN_STORAGE_KEY = "wiseeff.localAuthToken";
 
 const organizationId = "org-chargelab";
 
