@@ -198,6 +198,23 @@ export function patchDtsProperty(content: string, nodePath: string, newValue: st
     throw new ApiError("VALIDATION_FAILED", "DTS writeback requires module/property node path.", 400, { nodePath });
   }
 
+  if (pathSegments.some((segment) => segment.includes("@"))) {
+    throw new ApiError("CONFLICT", "带地址节点回写需 P1 结构化支持", 409, {
+      code: "dts-writeback-unsafe",
+      nodePath,
+      reason: "unit-address"
+    });
+  }
+
+  const multiGroupPattern = />\s*,\s*</;
+  if (multiGroupPattern.test(newValue)) {
+    throw new ApiError("CONFLICT", "多组 cell 值回写需 P1 结构化支持", 409, {
+      code: "dts-writeback-unsafe",
+      nodePath,
+      reason: "multi-cell-group"
+    });
+  }
+
   const propertyName = pathSegments[pathSegments.length - 1];
   const modulePath = pathSegments.slice(0, -1);
 
@@ -217,17 +234,58 @@ export function patchDtsProperty(content: string, nodePath: string, newValue: st
 
   const blockContent = content.slice(scopeStart, scopeEnd);
   const escapedProperty = propertyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const propertyPattern = new RegExp(`(\\b${escapedProperty}\\b\\s*=\\s*)([^;\\n\\r]*)(\\s*;?)`);
-  if (!propertyPattern.test(blockContent)) {
+  const assignMatch = new RegExp(`\\b${escapedProperty}\\b\\s*=\\s*`).exec(blockContent);
+  if (!assignMatch || assignMatch.index === undefined) {
     throw new ApiError("CONFLICT", "Unable to locate DTS property for writeback.", 409, {
       nodePath,
       propertyName
     });
   }
 
-  const updatedBlock = blockContent.replace(propertyPattern, (_full, prefix: string, _oldValue: string, suffix: string) => {
-    return `${prefix}${newValue}${suffix}`;
-  });
+  const valueStart = assignMatch.index + assignMatch[0].length;
+  let valueEnd = valueStart;
+  let inString: string | null = null;
+  while (valueEnd < blockContent.length) {
+    const ch = blockContent[valueEnd];
+    if (inString) {
+      if (ch === "\\" && valueEnd + 1 < blockContent.length) {
+        valueEnd += 2;
+        continue;
+      }
+      if (ch === inString) {
+        inString = null;
+      }
+      valueEnd += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = ch;
+      valueEnd += 1;
+      continue;
+    }
+    if (ch === ";") {
+      break;
+    }
+    valueEnd += 1;
+  }
+
+  if (valueEnd >= blockContent.length || blockContent[valueEnd] !== ";") {
+    throw new ApiError("CONFLICT", "Unable to locate DTS property for writeback.", 409, {
+      nodePath,
+      propertyName
+    });
+  }
+
+  const oldValue = blockContent.slice(valueStart, valueEnd);
+  if (/[\n\r]/.test(oldValue) || multiGroupPattern.test(oldValue)) {
+    throw new ApiError("CONFLICT", "多行或多组属性回写需 P1 结构化支持", 409, {
+      code: "dts-writeback-unsafe",
+      nodePath,
+      reason: /[\n\r]/.test(oldValue) ? "multiline" : "multi-cell-group"
+    });
+  }
+
+  const updatedBlock = `${blockContent.slice(0, valueStart)}${newValue}${blockContent.slice(valueEnd)}`;
   return Buffer.from(`${content.slice(0, scopeStart)}${updatedBlock}${content.slice(scopeEnd)}`, "utf8");
 }
 

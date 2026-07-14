@@ -81,6 +81,64 @@ describe("writebackService patches", () => {
     expect(output).toContain("max = 85;");
     expect(output).not.toContain("max = 80;");
   });
+
+  it("rejects multiline property values as unsafe writeback", () => {
+    const source = `
+demo {
+  multi_line_matrix = <
+    16 100 100
+    6  15  100>;
+};
+`;
+    expect(() => patchDtsProperty(source, "demo/multi_line_matrix", "<0 0 0>")).toThrow(
+      expect.objectContaining({
+        code: "CONFLICT",
+        details: expect.objectContaining({ code: "dts-writeback-unsafe" })
+      })
+    );
+  });
+
+  it("rejects multi-cell-group old or new values as unsafe writeback", () => {
+    const source = `
+demo {
+  combined_para = <1 2600>,<2 2800>;
+};
+`;
+    expect(() => patchDtsProperty(source, "demo/combined_para", "<1 2600>")).toThrow(
+      expect.objectContaining({
+        code: "CONFLICT",
+        details: expect.objectContaining({ code: "dts-writeback-unsafe" })
+      })
+    );
+
+    const single = `
+demo {
+  combined_para = <1 2600>;
+};
+`;
+    expect(() => patchDtsProperty(single, "demo/combined_para", "<1 2600>,<2 2800>")).toThrow(
+      expect.objectContaining({
+        code: "CONFLICT",
+        details: expect.objectContaining({ code: "dts-writeback-unsafe" })
+      })
+    );
+  });
+
+  it("rejects node paths with unit-address segments", () => {
+    const source = `
+amba {
+  chip@6E {
+    reg = <0x6e>;
+  };
+};
+`;
+    expect(() => patchDtsProperty(source, "amba/chip@6E/reg", "<0x6f>")).toThrow(
+      expect.objectContaining({
+        code: "CONFLICT",
+        details: expect.objectContaining({ code: "dts-writeback-unsafe" })
+      })
+    );
+  });
 });
 
 describe("writebackMergedParameterValue", () => {
