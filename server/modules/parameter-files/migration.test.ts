@@ -6,6 +6,12 @@ import { describe, expect, it } from "vitest";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const migrationPath = path.join(root, "server", "migrations", "0041_project_parameter_files.sql");
 const structuralMigrationPath = path.join(root, "server", "migrations", "0042_dts_structural_model.sql");
+const configSetBaselineMigrationPath = path.join(
+  root,
+  "server",
+  "migrations",
+  "0043_dts_config_set_baseline.sql"
+);
 
 describe("0041_project_parameter_files migration", () => {
   it("defines required tables, columns, and indexes", () => {
@@ -81,5 +87,65 @@ describe("0042_dts_structural_model migration", () => {
     expect(sql).toContain("dts_properties_node_idx");
     expect(sql).toContain("dts_nodes_compatible_idx");
     expect(sql).toContain("dts_phandle_refs_target_idx");
+  });
+});
+
+describe("0043_dts_config_set_baseline migration", () => {
+  it("defines dts_config_set, project_parameter_files config-set columns, and key indexes", () => {
+    const sql = readFileSync(configSetBaselineMigrationPath, "utf8");
+
+    expect(sql).toContain("create table if not exists dts_config_set");
+    expect(sql).toContain("organization_id");
+    expect(sql).toContain("project_id");
+    expect(sql).toContain("derived_from_id");
+    expect(sql).toContain("unique (project_id, name)");
+
+    expect(sql).toContain("alter table project_parameter_files");
+    expect(sql).toContain("add column if not exists config_set_id text references dts_config_set(id)");
+    expect(sql).toContain("add column if not exists config_set_role text");
+    expect(sql).toContain("add column if not exists config_set_sort_order integer not null default 0");
+
+    expect(sql).toContain("create table if not exists dts_release_baseline");
+    expect(sql).toContain("config_set_id text not null references dts_config_set(id) on delete cascade");
+    expect(sql).toContain("status text not null default 'draft' check (status in ('draft', 'released'))");
+    expect(sql).toContain("created_by_user_id");
+    expect(sql).toContain("unique (config_set_id, name)");
+
+    expect(sql).toContain("create table if not exists dts_release_baseline_members");
+    expect(sql).toContain("file_id text not null references project_parameter_files(id)");
+    expect(sql).toContain("file_version_id text not null references project_parameter_file_versions(id)");
+    expect(sql).toContain("version_number integer not null");
+    expect(sql).toContain("unique (baseline_id, file_id)");
+
+    expect(sql).toContain("dts_config_set_project_idx");
+    expect(sql).toContain("project_parameter_files_config_set_idx");
+    expect(sql).toContain("dts_release_baseline_set_idx");
+    expect(sql).toContain("dts_release_baseline_members_baseline_idx");
+  });
+
+  it("backfills a default config set per project idempotently and links orphan parameter files", () => {
+    const sql = readFileSync(configSetBaselineMigrationPath, "utf8");
+
+    // Creates a default config set for every project that doesn't already have one.
+    expect(sql).toContain("insert into dts_config_set");
+    expect(sql).toContain("from projects p");
+    expect(sql).toContain("'default'");
+    expect(sql).toMatch(/where not exists \(\s*select 1\s*from dts_config_set dcs\s*where dcs\.project_id = p\.id/);
+
+    // Re-entrant: only updates parameter files that don't already have a config set.
+    expect(sql).toContain("update project_parameter_files ppf");
+    expect(sql).toContain("set config_set_id = dcs.id");
+    expect(sql).toContain("ppf.config_set_id is null");
+  });
+
+  it("widens project_parameter_file_versions.origin to allow 'rollback' idempotently", () => {
+    const sql = readFileSync(configSetBaselineMigrationPath, "utf8");
+
+    expect(sql).toContain("project_parameter_file_versions");
+    expect(sql).toContain("con.contype = 'c'");
+    expect(sql).toContain("pg_get_constraintdef(con.oid) ilike '%origin%'");
+    expect(sql).toContain("drop constraint %I");
+    expect(sql).toContain("project_parameter_file_versions_origin_check");
+    expect(sql).toContain("check (origin in ('upload', 'writeback', 'rollback'))");
   });
 });
