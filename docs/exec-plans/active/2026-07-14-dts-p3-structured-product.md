@@ -100,8 +100,8 @@ SensitiveNodeRule { id, org, projectId?, matchType:"path"|"compatible", pattern,
 
 **Files:** `structuralReadRepository.ts`, `structuralReadService.ts`, `routes.ts`（增补）, `schemas.ts` + tests
 
-- [ ] **Step 1: 失败测试** — 对已 ingest 的教学 fixture 版本：读取返回节点/属性/phandle，`nodePath` 含 `@address`，`valueType`/`normalizedValue` 正确；`canViewParameters` 可读、越权 403。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** — 只查 `dts_*` 表组装（决策 A），新增 `GET .../versions/:versionId/structure`，Zod 出参。→ **Step 4: PASS** → 提交。
+- [x] **Step 1: 失败测试** — 对已 ingest 的教学 fixture 版本：读取返回节点/属性/phandle，`nodePath` 含 `@address`，`valueType`/`normalizedValue` 正确；`canViewParameters` 可读、越权 403。
+- [x] **Step 2: FAIL** → **Step 3: 实现** — 只查 `dts_*` 表组装（决策 A），新增 `GET .../versions/:versionId/structure`，Zod 出参。→ **Step 4: PASS** → 提交。
 
 ---
 
@@ -109,8 +109,8 @@ SensitiveNodeRule { id, org, projectId?, matchType:"path"|"compatible", pattern,
 
 **Files:** `DtsStructuredRepository.ts`, `dtsStructuredClient.ts`, `mockDtsStructuredRepository.ts`, `dtsStructuredRuntime.ts` + tests
 
-- [ ] **Step 1: 失败测试** — port 契约测试；mock 返回教学 fixture 派生的结构（结构/检索/配置集/基线）；`runtimeMode=mock` 用 mock、`api` 用 http（复用 `runtimeMode.ts`）。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** — 定义 port（结构读取/检索/配置集 CRUD/基线/对比/回滚/发布/导出，映射 P2 路由）+ 两套实现 + runtime 接线。→ **Step 4: PASS** → 提交。
+- [x] **Step 1: 失败测试** — port 契约测试；mock 返回教学 fixture 派生的结构（结构/检索/配置集/基线）；`runtimeMode=mock` 用 mock、`api` 用 http（复用 `runtimeMode.ts`）。
+- [x] **Step 2: FAIL** → **Step 3: 实现** — 定义 port（结构读取/检索/配置集 CRUD/基线/对比/回滚/发布/导出，映射 P2 路由）+ 两套实现 + runtime 接线。→ **Step 4: PASS** → 提交。
 
 > 修正 TD-039：新能力经 Port 注入，不再直连 client；旧面板暂不动。
 
@@ -120,8 +120,8 @@ SensitiveNodeRule { id, org, projectId?, matchType:"path"|"compatible", pattern,
 
 **Files:** `StructuredValueEditor.tsx`, `dtsValueClient.ts`（前端值校验，镜像 `valueTyping`）+ tests
 
-- [ ] **Step 1: 失败测试** — 各 `valueType` 渲染对应控件：`u32-array`（多 cell/矩阵表）、`bytes`（`/bits/` 字节）、`string-list`、`phandle-list`（label 选择）、`bool`（开关）、`mixed`/枚举；编辑产出 `rawText`，即时校验非法输入，`normalizedValue` 预览与后端一致（对齐用例）。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS** → 提交。**（前端可见：本任务及其后需 playwright-cli 验证，见 Task 9）**
+- [x] **Step 1: 失败测试** — 各 `valueType` 渲染对应控件：`u32-array`（多 cell/矩阵表）、`bytes`（`/bits/` 字节）、`string-list`、`phandle-list`（label 选择）、`bool`（开关）、`mixed`/枚举；编辑产出 `rawText`，即时校验非法输入，`normalizedValue` 预览与后端一致（对齐用例）。
+- [x] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS** → 提交。**（前端可见：本任务及其后需 playwright-cli 验证，见 Task 9）**
 
 ---
 
@@ -129,8 +129,8 @@ SensitiveNodeRule { id, org, projectId?, matchType:"path"|"compatible", pattern,
 
 **Files:** `ConfigSetBaselinePanel.tsx`（挂 `ParameterAdminProjectsPage.tsx`）+ tests
 
-- [ ] **Step 1: 失败测试** — 列/建配置集、加/移成员并设角色、建基线、列基线、触发发布（展示门禁 `block/warn requiresConfirmation` 结果）、导出下载入口；mock 模式可交互，api 模式打真实路由；非管理员不可见/禁用。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS** → 提交。**（前端可见）**
+- [x] **Step 1: 失败测试** — 列/建配置集、加/移成员并设角色、建基线、列基线、触发发布（展示门禁 `block/warn requiresConfirmation` 结果）、导出下载入口；mock 模式可交互，api 模式打真实路由；非管理员不可见/禁用。
+- [x] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS** → 提交。**（前端可见）**
 
 ---
 
@@ -138,8 +138,8 @@ SensitiveNodeRule { id, org, projectId?, matchType:"path"|"compatible", pattern,
 
 **Files:** `StructuredDiffView.tsx`, 变更集聚合（前端 + 复用后端 `compareBaseline`）+ tests
 
-- [ ] **Step 1: 失败测试** — 基线对比渲染**节点/属性级**增删改（非纯文本 diff），等价重排（hex/多组）不显示为变更；跨多节点/多文件的一次逻辑改动聚为一个变更集单元，映射到现有变更请求流（决策 D）。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS** → 提交。**（前端可见）**
+- [x] **Step 1: 失败测试** — 基线对比渲染**节点/属性级**增删改（非纯文本 diff），等价重排（hex/多组）不显示为变更；跨多节点/多文件的一次逻辑改动聚为一个变更集单元，映射到现有变更请求流（决策 D）。
+- [x] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS** → 提交。**（前端可见）**
 
 ---
 
@@ -147,8 +147,8 @@ SensitiveNodeRule { id, org, projectId?, matchType:"path"|"compatible", pattern,
 
 **Files:** `dtsSearchRepository.ts` + service/route（后端）、`DtsSearchPanel.tsx`（前端）+ tests
 
-- [ ] **Step 1: 失败测试** — 后端按 `path/@address/label/compatible/value` 查 `dts_*` 命中正确、org 隔离、`canViewParameters`；前端检索面板展示命中并可跳转节点。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS** → 提交。**（前端可见）**
+- [x] **Step 1: 失败测试** — 后端按 `path/@address/label/compatible/value` 查 `dts_*` 命中正确、org 隔离、`canViewParameters`；前端检索面板展示命中并可跳转节点。
+- [x] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS** → 提交。**（前端可见）**
 
 ---
 
@@ -156,8 +156,8 @@ SensitiveNodeRule { id, org, projectId?, matchType:"path"|"compatible", pattern,
 
 **Files:** `server/modules/parameters/impact.ts` + `repository.ts` 接线 + tests
 
-- [ ] **Step 1: 失败测试** — 改动某节点属性 → impact 含：引用它的 phandle 来源、同 `compatible` 绑定、配置集变体波及；无结构化信息时退回模板兜底（现有行为不回归）。前端审阅页展示新 `impact` 分类。
-- [ ] **Step 2: FAIL** → **Step 3: 实现**（`toChangeRequestDto` 改为调用 `impact.ts`）→ **Step 4: PASS** → 提交。
+- [x] **Step 1: 失败测试** — 改动某节点属性 → impact 含：引用它的 phandle 来源、同 `compatible` 绑定、配置集变体波及；无结构化信息时退回模板兜底（现有行为不回归）。前端审阅页展示新 `impact` 分类。
+- [x] **Step 2: FAIL** → **Step 3: 实现**（`toChangeRequestDto` 改为调用 `impact.ts`）→ **Step 4: PASS** → 提交。
 
 ---
 
@@ -165,11 +165,11 @@ SensitiveNodeRule { id, org, projectId?, matchType:"path"|"compatible", pattern,
 
 **Files:** `0045_dts_sensitive_node_rules.sql`, `sensitiveNode.ts`, `policy.ts`（增补）, 写路径接入 + tests
 
-- [ ] **Step 1: 失败测试**
+- [x] **Step 1: 失败测试**
   - 迁移 smoke；规则匹配（path/compatible 模式 → riskTier + requiredCapability）。
   - 无 `parameter:edit-critical` 的用户写安全关键节点 → 403；有则放行。
   - `actorType=agent` 命中 `critical` → **拒绝**并要求人工，写审计（决策 G）。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** — 在合入/回写（`service.ts reviewChange` → `writebackMergedParameterValue`）与结构化编辑提交路径接入匹配与鉴权；小择 orchestrator 写工具接入同一守卫。→ **Step 4: PASS** → 提交。
+- [x] **Step 2: FAIL** → **Step 3: 实现** — 在合入/回写（`service.ts reviewChange` → `writebackMergedParameterValue`）与结构化编辑提交路径接入匹配与鉴权；小择 orchestrator 写工具接入同一守卫。→ **Step 4: PASS** → 提交。
 
 ---
 
@@ -178,7 +178,7 @@ SensitiveNodeRule { id, org, projectId?, matchType:"path"|"compatible", pattern,
 **Files:** `requirements.ts`/`operationMatrix.ts`/`dts-structured.acceptance.spec.ts` + 文档
 
 - [x] **Step 1:** 登记新验收 `PARAM-DTS-*`（结构读取、值编辑、配置集/基线、差异/变更集、检索、影响、RBAC），扩 acceptance spec + `recordOperationEvidence`。
-- [ ] **Step 2: 真实浏览器验证（强制，AGENTS.md 规则）** — 用 `playwright-cli` 走每个前端可见页面/面板：
+- [x] **Step 2: 真实浏览器验证（强制，AGENTS.md 规则）** — 用 `playwright-cli` 走每个前端可见页面/面板：
   - 视口 `1440x900` / `768x1024` / `390x844` 均验证；每页 `snapshot` + `screenshot`（存 `work/ui-checks/`）。
   - 真实交互：编辑各类型值、建配置集/基线、发布触发门禁、看结构化 diff、检索、影响展示、RBAC 禁用态。
   - `console error` 检查；数据流相关看 network。
@@ -221,8 +221,8 @@ SensitiveNodeRule { id, org, projectId?, matchType:"path"|"compatible", pattern,
 - [x] FRONTEND / domain-model（中英）/ api-contract（中英）/ SECURITY（中英）已更新
 - [x] db-schema 已手写更新（迁移 `0044`/`0045`；仓库无 regenerate script）
 - [x] tech-debt-tracker 记录 TD-039 前端 Port 化闭环与回退处置
-- [x] 新 `PARAM-DTS-*` 验收已登记（`requirements`/`operationMatrix`/`dts-structured.acceptance.spec.ts`）；`missingRequiredIds` 已清空 — 完整 `acceptance:coverage` 仍受既有 unknownId 影响；`acceptance:e2e` + evidence 待跑
-- [ ] playwright-cli 三视口验证证据已附（URL/交互/截图/console/network）
+- [x] 新 `PARAM-DTS-*` 验收已登记（`requirements`/`operationMatrix`/`dts-structured.acceptance.spec.ts`）；`acceptance:e2e`：`dts-structured.acceptance.spec.ts` 3 passed；evidence recorded；`acceptance:coverage` missingRequiredIds empty（unknownIds BRIDGE/XIAOZE pre-existing）
+- [x] playwright-cli 三视口验证证据已附（URL/交互/截图/console/network）
 - [x] `docs/PLANS.md` 与 `docs/zh-CN/PLANS.md` 一致（P2/P3 状态纠偏）
 - [x] `npm run docs:check` 通过（本提交验证）
 
