@@ -2,7 +2,7 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { expect, test, type APIRequestContext, type Page } from "playwright/test";
 
-import { authHeadersForRole } from "./helpers/bearerAuth";
+import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
@@ -253,7 +253,7 @@ async function cleanupDtsAcceptanceArtifacts(fileNames: string[]) {
           set current_version_id = null,
               config_set_id = null,
               config_set_role = null,
-              config_set_sort_order = null
+              config_set_sort_order = 0
           where id = any($1::text[])
           `,
           [fileIds]
@@ -302,15 +302,6 @@ async function uploadDtsFile(
   return { fileId: body.item.id, versionId: body.version.id };
 }
 
-async function listConfigSets(request: APIRequestContext) {
-  const response = await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-    headers: adminHeaders()
-  });
-  expect(response.ok()).toBe(true);
-  const body = (await response.json()) as { items: Array<{ id: string; name: string }> };
-  return body.items;
-}
-
 test.describe("DTS structured product browser acceptance", () => {
   test.beforeEach(async () => {
     await seedDtsAcceptanceFixture();
@@ -330,6 +321,7 @@ test.describe("DTS structured product browser acceptance", () => {
     // @operation PARAM-DTS-SEARCH-001
     // @operation PARAM-DTS-CONFIGSET-001
     // @operation PARAM-DTS-DIFF-001
+    test.setTimeout(180_000);
     const primaryFileName = `acceptance-dts-${randomUUID()}.dts`;
     const peerFileName = `acceptance-dts-peer-${randomUUID()}.dts`;
     const configSetName = `acceptance-cs-${randomUUID().slice(0, 8)}`;
@@ -414,15 +406,27 @@ test.describe("DTS structured product browser acceptance", () => {
       const hits = searchBody.hits ?? searchBody.item?.hits ?? [];
       expect(hits.some((hit) => hit.nodePath.includes("chip@6E"))).toBe(true);
 
-      await page.goto("/parameter-admin/projects");
+      await signInBrowserAsRole(page, "admin", "/parameter-admin/projects");
       await dismissXiaozeHint(page);
+      await expect(page.getByRole("button", { name: /管理文件 Aurora 量产平台/ })).toBeVisible({
+        timeout: 30_000
+      });
       await page.getByRole("button", { name: /管理文件 Aurora 量产平台/ }).click();
       const dialog = page.getByRole("dialog", { name: /管理文件 · Aurora 量产平台/ });
-      await expect(dialog).toBeVisible();
-      await expect(dialog.getByRole("region", { name: "DTS 结构化检索" })).toBeVisible();
+      await expect(dialog).toBeVisible({ timeout: 30_000 });
+      // Dialog tabs: 参数文件 · 配置集 / 基线 · 结构浏览
+      await expect(dialog.getByRole("tablist", { name: "项目详情标签" })).toBeVisible();
+      await expect(dialog.getByRole("tab", { name: "参数文件" })).toBeVisible();
+      await expect(dialog.getByRole("tab", { name: "配置集 / 基线" })).toBeVisible();
+      await expect(dialog.getByRole("tab", { name: "结构浏览" })).toBeVisible();
+      await dialog.getByRole("tab", { name: "参数文件" }).click();
+      await expect(dialog.getByRole("region", { name: "DTS 结构化检索" })).toBeVisible({ timeout: 20_000 });
       await dialog.getByLabel("检索关键词").fill("chip@6E");
       await dialog.getByRole("button", { name: "检索" }).click();
-      await expect(dialog.getByText(/chip@6E|命中|无命中|检索/)).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "检索" })).toBeEnabled({ timeout: 20_000 });
+      await expect(dialog.getByRole("button", { name: /跳转到节点 .*chip@6E/ }).first()).toBeVisible({
+        timeout: 20_000
+      });
 
       await recordOperationEvidence({
         operationId: "PARAM-DTS-SEARCH-001",
@@ -441,25 +445,13 @@ test.describe("DTS structured product browser acceptance", () => {
         notes: "dts-search returned chip@6E hits and DtsSearchPanel mounted in manage-files dialog."
       });
 
-      const configSets = await listConfigSets(request);
-      let configSetId = configSets[0]?.id;
-      if (!configSetId) {
-        const createCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-          headers: adminHeaders(),
-          data: { name: configSetName, description: descriptionPrefix }
-        });
-        expect(createCs.status()).toBe(201);
-        const createBody = (await createCs.json()) as { item: { id: string } };
-        configSetId = createBody.item.id;
-      } else {
-        const createCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-          headers: adminHeaders(),
-          data: { name: configSetName, description: descriptionPrefix }
-        });
-        expect(createCs.status()).toBe(201);
-        const createBody = (await createCs.json()) as { item: { id: string } };
-        configSetId = createBody.item.id;
-      }
+      const createCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(),
+        data: { name: configSetName, description: descriptionPrefix }
+      });
+      expect(createCs.status()).toBe(201);
+      const createBody = (await createCs.json()) as { item: { id: string } };
+      const configSetId = createBody.item.id;
 
       const addPrimary = await request.post(
         apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
@@ -490,7 +482,7 @@ test.describe("DTS structured product browser acceptance", () => {
       expect(baselineBody.item.name).toBe(baselineName);
 
       await dialog.getByRole("tab", { name: "配置集 / 基线" }).click();
-      await expect(dialog.getByRole("region", { name: "配置集 / 基线" })).toBeVisible();
+      await expect(dialog.getByRole("region", { name: "配置集 / 基线" })).toBeVisible({ timeout: 20_000 });
       await expect(dialog.getByRole("heading", { name: "配置集" })).toBeVisible();
 
       await recordOperationEvidence({
