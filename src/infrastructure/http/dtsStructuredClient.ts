@@ -77,7 +77,8 @@ export function createDtsStructuredClient(client: ApiClient = createDefaultApiCl
       return client.get<DtsStructureResult>(routeStructure(projectId, fileId, versionId));
     },
     async search(projectId, query) {
-      return client.get<DtsSearchResult>(routeSearch(projectId, query));
+      const response = await client.get<DtsSearchResult>(routeSearch(projectId, query));
+      return { hits: response.hits };
     },
     async listConfigSets(projectId) {
       const response = await client.get<ItemsEnvelope<DtsConfigSet>>(routeConfigSets(projectId));

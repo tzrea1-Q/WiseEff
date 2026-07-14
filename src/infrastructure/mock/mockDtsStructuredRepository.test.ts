@@ -45,17 +45,40 @@ describe("createMockDtsStructuredRepository (DtsStructuredRepository contract)",
     expect(unresolved?.resolvedTargetPath).toBeUndefined();
   });
 
-  it("search filters teaching structure by path/label/compatible", async () => {
+  it("search returns hits shaped for path/address/label/compatible/value", async () => {
     const repo = createRepo();
 
     const byPath = await repo.search(PROJECT_ID, { q: "chip@6E", by: "path" });
-    expect(byPath.items.some((hit) => hit.nodePath === "amba/i2c@XXXX0000/chip@6E")).toBe(true);
+    expect(byPath.hits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileId: FILE_ID,
+          fileName: "teaching-sample.dts",
+          versionId: VERSION_ID,
+          nodePath: "amba/i2c@XXXX0000/chip@6E"
+        })
+      ])
+    );
+
+    const byAddress = await repo.search(PROJECT_ID, { q: "6E", by: "address" });
+    expect(byAddress.hits.some((hit) => hit.nodePath === "amba/i2c@XXXX0000/chip@6E")).toBe(true);
 
     const byCompatible = await repo.search(PROJECT_ID, { q: "vendor,chip123", by: "compatible" });
-    expect(byCompatible.items.some((hit) => hit.nodePath === "amba/i2c@XXXX0000/chip@6E")).toBe(true);
+    expect(byCompatible.hits.some((hit) => hit.nodePath === "amba/i2c@XXXX0000/chip@6E")).toBe(true);
 
     const byLabel = await repo.search(PROJECT_ID, { q: "demo_bool", by: "label" });
-    expect(byLabel.items.some((hit) => hit.nodePath === "demo_bool")).toBe(true);
+    expect(byLabel.hits.some((hit) => hit.nodePath === "demo_bool")).toBe(true);
+
+    const byValue = await repo.search(PROJECT_ID, { q: "true", by: "value" });
+    expect(byValue.hits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          nodePath: "demo_bool",
+          propertyName: "weak_source_sleep_enabled",
+          snippet: expect.any(String)
+        })
+      ])
+    );
   });
 
   it("supports interactive config-set membership CRUD", async () => {

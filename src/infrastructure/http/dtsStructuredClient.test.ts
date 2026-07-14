@@ -3,15 +3,25 @@ import { describe, expect, it, vi } from "vitest";
 import { createDtsStructuredClient } from "./dtsStructuredClient";
 
 describe("createDtsStructuredClient", () => {
-  it("maps structure and search endpoints with path encoding", async () => {
+  it("maps structure and search endpoints with path encoding and unwraps hits", async () => {
     const get = vi
       .fn()
       .mockResolvedValueOnce({ nodes: [] })
-      .mockResolvedValueOnce({ items: [] });
+      .mockResolvedValueOnce({
+        hits: [
+          {
+            fileId: "file/1",
+            fileName: "board.dts",
+            versionId: "version/1",
+            nodePath: "amba/i2c@XXXX0000/chip@6E",
+            snippet: "chip@6E"
+          }
+        ]
+      });
     const client = createDtsStructuredClient({ get } as never);
 
     await client.getStructure("project/1", "file/with spaces", "version/1");
-    await client.search("project/1", { q: "chip@6E", by: "path" });
+    const searchResult = await client.search("project/1", { q: "chip@6E", by: "path" });
 
     expect(get).toHaveBeenNthCalledWith(
       1,
@@ -21,6 +31,24 @@ describe("createDtsStructuredClient", () => {
       2,
       "/api/v1/projects/project%2F1/dts-search?q=chip%406E&by=path"
     );
+    expect(searchResult.hits).toEqual([
+      {
+        fileId: "file/1",
+        fileName: "board.dts",
+        versionId: "version/1",
+        nodePath: "amba/i2c@XXXX0000/chip@6E",
+        snippet: "chip@6E"
+      }
+    ]);
+  });
+
+  it("maps search by=address query param", async () => {
+    const get = vi.fn().mockResolvedValueOnce({ hits: [] });
+    const client = createDtsStructuredClient({ get } as never);
+
+    await client.search("project/1", { q: "6E", by: "address" });
+
+    expect(get).toHaveBeenCalledWith("/api/v1/projects/project%2F1/dts-search?q=6E&by=address");
   });
 
   it("maps config-set CRUD and export, unwrapping envelopes", async () => {

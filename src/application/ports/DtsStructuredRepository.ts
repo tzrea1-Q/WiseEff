@@ -35,7 +35,7 @@ export type DtsStructureResult = {
   nodes: DtsStructuralNode[];
 };
 
-export type DtsSearchBy = "path" | "label" | "compatible" | "value" | "all";
+export type DtsSearchBy = "path" | "address" | "label" | "compatible" | "value";
 
 export type DtsSearchQuery = {
   q: string;
@@ -43,14 +43,16 @@ export type DtsSearchQuery = {
 };
 
 export type DtsSearchHit = {
+  fileId: string;
+  fileName: string;
+  versionId: string;
   nodePath: string;
-  name: string;
-  matchField: DtsSearchBy | "unitAddress";
+  propertyName?: string;
   snippet?: string;
 };
 
 export type DtsSearchResult = {
-  items: DtsSearchHit[];
+  hits: DtsSearchHit[];
 };
 
 export type ConfigSetRole = "base" | "overlay" | "charging" | "thermal" | "misc";
