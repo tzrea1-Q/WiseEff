@@ -1,6 +1,5 @@
-import { parseDts, resolveDts } from "../dts";
+import { parseDts, resolveDts, type ResolvedDts } from "../dts";
 import type { ParsedIndex } from "./types";
-import { derivedParsedIndexFromResolved } from "./structuralIngest";
 
 function stringifyLeaf(value: unknown): string {
   if (typeof value === "string") {
@@ -26,6 +25,17 @@ export function buildJsonParsedIndex(source: string): ParsedIndex {
   const root = JSON.parse(source) as unknown;
   const index: ParsedIndex = {};
   walkJson(root, [], index);
+  return index;
+}
+
+export function derivedParsedIndexFromResolved(resolved: ResolvedDts): ParsedIndex {
+  const index: ParsedIndex = {};
+  for (const node of resolved.nodes) {
+    for (const prop of node.properties) {
+      const key = node.nodePath ? `${node.nodePath}/${prop.name}` : prop.name;
+      index[key] = { value: prop.normalizedValue };
+    }
+  }
   return index;
 }
 

@@ -18,6 +18,8 @@ import {
   setCurrentVersion
 } from "./repository";
 import { uploadProjectParameterFileInputSchema, type UploadProjectParameterFileInput } from "./schemas";
+import { isDtsStructuralIngestEnabled } from "./structuralFlag";
+import { ingestDtsFileVersion } from "./structuralIngest";
 import type { ParameterFileFormat, ProjectParameterFileDto, ProjectParameterFileVersionDto } from "./types";
 import { detectUnsupportedDtsConstructs, type UnsupportedConstruct } from "./unsupported";
 
@@ -174,6 +176,9 @@ export async function uploadProjectParameterFile(
     });
 
     await setCurrentVersion(tx, { fileId: file.id, versionId: version.id });
+    if (format === "dts" && isDtsStructuralIngestEnabled()) {
+      await ingestDtsFileVersion(tx, version.id, source);
+    }
     if (version.origin === "upload" && unsupportedConstructs.length === 0) {
       await syncFileVersion(tx, auth, { fileId: file.id, versionId: version.id });
     }

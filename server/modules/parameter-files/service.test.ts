@@ -6,9 +6,17 @@ import type { Database, QueryResult, Queryable } from "../../shared/database/cli
 import { ApiError } from "../../shared/http/errors";
 import { MAX_FILE_BYTES, uploadProjectParameterFile } from "./service";
 import { syncFileVersion } from "./syncService";
+import { ingestDtsFileVersion } from "./structuralIngest";
 
 vi.mock("./syncService", () => ({
   syncFileVersion: vi.fn(async () => ({ draftsCreated: 0, unchanged: 0, unmatched: 0, skipped: false }))
+}));
+
+vi.mock("./structuralIngest", () => ({
+  ingestDtsFileVersion: vi.fn(async () => ({
+    parsedIndex: {},
+    counts: { nodes: 0, properties: 0, phandleRefs: 0 }
+  }))
 }));
 
 type QueryCall = {
@@ -216,7 +224,7 @@ describe("project parameter file upload service", () => {
     expect(txCalls.find((call) => call.text.includes("insert into project_parameter_files"))).toBeFalsy();
   });
 
-  it("uploads DTS with unsupported constructs but skips sync and returns warnings", async () => {
+  it("uploads DTS with @address/&label overlays and syncs (supported by structural parse)", async () => {
     const { db } = createFakeDb([
       [],
       [fileRow({ file_name: "overlay.dts", format: "dts" })],
@@ -236,11 +244,8 @@ describe("project parameter file upload service", () => {
 
     expect(put).toHaveBeenCalled();
     expect(result.file.currentVersionNumber).toBe(1);
-    expect(result.unsupportedConstructs?.length).toBeGreaterThan(0);
-    expect(result.unsupportedConstructs?.some((f) => f.code === "unit-address-node" || f.code === "overlay-ref")).toBe(
-      true
-    );
-    expect(syncFileVersion).not.toHaveBeenCalled();
+    expect(result.unsupportedConstructs).toBeUndefined();
+    expect(syncFileVersion).toHaveBeenCalled();
   });
 
   it("uploads clean simple DTS and still syncs", async () => {
@@ -254,6 +259,7 @@ describe("project parameter file upload service", () => {
     const { objectStore } = makeObjectStore();
     const bytes = Buffer.from("/ {\n\tboard_id = <0>;\n};\n", "utf8");
     vi.mocked(syncFileVersion).mockClear();
+    vi.mocked(ingestDtsFileVersion).mockClear();
 
     const result = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
       projectId: "project-1",
@@ -262,6 +268,34 @@ describe("project parameter file upload service", () => {
     });
 
     expect(result.unsupportedConstructs).toBeUndefined();
+    expect(ingestDtsFileVersion).toHaveBeenCalled();
     expect(syncFileVersion).toHaveBeenCalled();
+  });
+
+  it("skips structural ingest when DTS_STRUCTURAL_INGEST is disabled", async () => {
+    const prev = process.env.DTS_STRUCTURAL_INGEST;
+    process.env.DTS_STRUCTURAL_INGEST = "0";
+    try {
+      const { db } = createFakeDb([
+        [],
+        [fileRow({ file_name: "simple.dts", format: "dts" })],
+        [versionRow({ id: "ver-dts-off", storage_key: "org-1/stored-simple.dts", size_bytes: 32 })],
+        [],
+        []
+      ]);
+      const { objectStore } = makeObjectStore();
+      vi.mocked(ingestDtsFileVersion).mockClear();
+
+      await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+        projectId: "project-1",
+        fileName: "simple.dts",
+        bytes: Buffer.from("/ {\n\tboard_id = <0>;\n};\n", "utf8")
+      });
+
+      expect(ingestDtsFileVersion).not.toHaveBeenCalled();
+    } finally {
+      if (prev === undefined) delete process.env.DTS_STRUCTURAL_INGEST;
+      else process.env.DTS_STRUCTURAL_INGEST = prev;
+    }
   });
 });

@@ -8,32 +8,30 @@ const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__"
 const sample = readFileSync(fixturePath, "utf8");
 
 describe("detectUnsupportedDtsConstructs", () => {
-  it("detects the six unsupported construct codes in the teaching sample", () => {
+  it("only flags /include/ after structured parsing support (P1)", () => {
     const findings = detectUnsupportedDtsConstructs(sample);
-    const codes = findings.map((f) => f.code);
-
-    expect(codes).toContain("include");
-    expect(codes).toContain("unit-address-node");
-    expect(codes).toContain("overlay-ref");
-    expect(codes).toContain("inline-label");
-    expect(codes).toContain("boolean-property");
-    expect(codes).toContain("multi-cell-group");
+    expect(findings.map((f) => f.code)).toEqual(["include"]);
   });
 
-  it("returns structured warnings with message and sample, deduped by code", () => {
+  it("returns empty when include is absent even with @address and &label", () => {
+    const findings = detectUnsupportedDtsConstructs(`&demo {
+	chip@6E {
+		reg = <0x6e>;
+		okay;
+	};
+};
+`);
+    expect(findings).toEqual([]);
+  });
+
+  it("returns structured warning with message and sample", () => {
     const findings = detectUnsupportedDtsConstructs(sample);
-    expect(findings.length).toBeGreaterThan(0);
-
-    for (const finding of findings) {
-      expect(finding).toMatchObject({
-        code: expect.any(String),
-        message: expect.any(String),
-        sample: expect.any(String),
-      });
-      expect(finding.sample.length).toBeGreaterThan(0);
-    }
-
-    const codes = findings.map((f) => f.code);
-    expect(new Set(codes).size).toBe(codes.length);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      code: "include",
+      message: expect.any(String),
+      sample: expect.any(String),
+    });
+    expect(findings[0].sample.length).toBeGreaterThan(0);
   });
 });

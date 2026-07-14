@@ -1,18 +1,8 @@
 import type { Queryable } from "../../shared/database/client";
 import { parseDts, resolveDts } from "../dts";
+import { derivedParsedIndexFromResolved } from "./parseIndex";
 import type { ParsedIndex } from "./types";
 import { replaceDtsStructuralModel, type StructuralInsertCounts } from "./structuralRepository";
-
-export function derivedParsedIndexFromResolved(resolved: ReturnType<typeof resolveDts>): ParsedIndex {
-  const index: ParsedIndex = {};
-  for (const node of resolved.nodes) {
-    for (const prop of node.properties) {
-      const key = node.nodePath ? `${node.nodePath}/${prop.name}` : prop.name;
-      index[key] = { value: prop.normalizedValue };
-    }
-  }
-  return index;
-}
 
 export async function ingestDtsFileVersion(
   db: Queryable,

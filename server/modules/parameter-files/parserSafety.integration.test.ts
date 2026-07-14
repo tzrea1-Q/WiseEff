@@ -30,17 +30,8 @@ describe("DTS parser safety integration (teaching sample)", () => {
     expect(Object.keys(synthetic)).toEqual(["alive"]);
   });
 
-  it("detectUnsupportedDtsConstructs covers the six P0 construct codes", () => {
+  it("detectUnsupportedDtsConstructs only reports include after P1 structural support", () => {
     const codes = detectUnsupportedDtsConstructs(sample).map((finding) => finding.code);
-    expect(codes).toEqual(
-      expect.arrayContaining([
-        "include",
-        "unit-address-node",
-        "overlay-ref",
-        "inline-label",
-        "boolean-property",
-        "multi-cell-group"
-      ])
-    );
+    expect(codes).toEqual(["include"]);
   });
 });
