@@ -19,6 +19,10 @@ describe("auth policy", () => {
     expect(canPerform("software-user", "parameter:review")).toBe(false);
     expect(canPerform("hardware-committer", "parameter:review")).toBe(true);
     expect(canPerform("admin", "users:manage")).toBe(true);
+    expect(canPerform("admin", "parameter:edit-critical")).toBe(true);
+    expect(canPerform("hardware-committer", "parameter:edit-critical")).toBe(true);
+    expect(canPerform("software-committer", "parameter:edit-critical")).toBe(true);
+    expect(canPerform("hardware-user", "parameter:edit-critical")).toBe(false);
   });
 
   it("grants M2 log permissions by role", () => {

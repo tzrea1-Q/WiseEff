@@ -41,6 +41,7 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
     [
       "parameter:view",
       "parameter:edit",
+      "parameter:edit-critical",
       "debugging:use",
       "debugging:view",
       "debugging:read",
@@ -59,6 +60,7 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
     [
       "parameter:view",
       "parameter:edit",
+      "parameter:edit-critical",
       "debugging:use",
       "debugging:view",
       "debugging:read",
@@ -77,6 +79,7 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
     [
       "parameter:view",
       "parameter:edit",
+      "parameter:edit-critical",
       "debugging:use",
       "debugging:view",
       "debugging:read",

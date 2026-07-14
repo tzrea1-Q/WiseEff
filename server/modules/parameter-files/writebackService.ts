@@ -11,6 +11,7 @@ import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
+import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
 import type { ParameterFileFormat } from "./types";
 
 type WritebackSource = {
@@ -225,6 +226,14 @@ export async function writebackMergedParameterValue(
   if (!source.sourceFileName || !source.sourceNodePath) {
     return { skipped: true };
   }
+
+  await assertSensitiveNodeWriteAllowed(db, auth, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    nodePath: source.sourceNodePath,
+    actorType: "user",
+    requestId: context.requestId
+  });
 
   const file = await getProjectParameterFileByName(db, {
     organizationId: auth.organization.id,

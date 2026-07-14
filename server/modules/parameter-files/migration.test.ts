@@ -12,6 +12,12 @@ const configSetBaselineMigrationPath = path.join(
   "migrations",
   "0043_dts_config_set_baseline.sql"
 );
+const sensitiveNodeRulesMigrationPath = path.join(
+  root,
+  "server",
+  "migrations",
+  "0045_dts_sensitive_node_rules.sql"
+);
 
 describe("0041_project_parameter_files migration", () => {
   it("defines required tables, columns, and indexes", () => {
@@ -147,5 +153,28 @@ describe("0043_dts_config_set_baseline migration", () => {
     expect(sql).toContain("drop constraint %I");
     expect(sql).toContain("project_parameter_file_versions_origin_check");
     expect(sql).toContain("check (origin in ('upload', 'writeback', 'rollback'))");
+  });
+});
+
+describe("0045_dts_sensitive_node_rules migration", () => {
+  it("defines sensitive node rules table, columns, and indexes", () => {
+    const sql = readFileSync(sensitiveNodeRulesMigrationPath, "utf8");
+
+    expect(sql).toContain("create table if not exists dts_sensitive_node_rules");
+    expect(sql).toContain("organization_id");
+    expect(sql).toContain("project_id");
+    expect(sql).toContain("match_type");
+    expect(sql).toContain("path");
+    expect(sql).toContain("compatible");
+    expect(sql).toContain("pattern");
+    expect(sql).toContain("risk_tier");
+    expect(sql).toContain("high");
+    expect(sql).toContain("critical");
+    expect(sql).toContain("required_capability");
+    expect(sql).toContain("parameter:edit-critical");
+    expect(sql).toContain("enabled");
+    expect(sql).toContain("created_at");
+    expect(sql).toContain("updated_at");
+    expect(sql).toContain("dts_sensitive_node_rules_org_project_idx");
   });
 });

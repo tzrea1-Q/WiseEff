@@ -15,6 +15,7 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { writebackMergedParameterValue } from "../parameter-files/writebackService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
+import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
 import {
   applyAddedImportItem,
   applyUpdatedImportItem,
@@ -77,6 +78,7 @@ import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeli
 
 type ServiceContext = AuditCorrelationContext & {
   objectStore?: ObjectStore;
+  actorType?: "user" | "agent" | "system";
 };
 
 export type SaveDraftInput = {
@@ -830,6 +832,16 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       if (hasConflict) {
         throw new ApiError("CONFLICT", "Parameter has an open file sync conflict.", 409, {
           parameterId: item.parameterId
+        });
+      }
+
+      if (parameter.sourceNodePath) {
+        await assertSensitiveNodeWriteAllowed(tx, auth, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          nodePath: parameter.sourceNodePath,
+          actorType: context.actorType ?? "user",
+          requestId: context.requestId
         });
       }
 

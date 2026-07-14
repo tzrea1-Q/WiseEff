@@ -9,6 +9,7 @@ export type BackendRoleId =
 export type BackendPermission =
   | "parameter:view"
   | "parameter:edit"
+  | "parameter:edit-critical"
   | "debugging:use"
   | "debugging:view"
   | "debugging:read"

@@ -134,6 +134,8 @@ export type ProjectParameterForUpdate = {
   currentValue: string;
   recommendedValue: string;
   valueVersion: number;
+  sourceFileName?: string;
+  sourceNodePath?: string;
 };
 
 export type ProjectParameterValueMatch = {
@@ -156,6 +158,8 @@ type ProjectParameterForUpdateRow = {
   current_value: string;
   recommended_value: string;
   value_version: number | string;
+  source_file_name?: string | null;
+  source_node_path?: string | null;
 };
 
 type ProjectParameterValueMatchRow = {
@@ -541,7 +545,9 @@ function toProjectParameterForUpdate(row: ProjectParameterForUpdateRow): Project
     risk: row.risk,
     currentValue: row.current_value,
     recommendedValue: row.recommended_value,
-    valueVersion: Number(row.value_version)
+    valueVersion: Number(row.value_version),
+    sourceFileName: row.source_file_name ?? undefined,
+    sourceNodePath: row.source_node_path ?? undefined
   };
 }
 
@@ -2270,7 +2276,9 @@ export async function getProjectParameterForUpdate(
       pd.risk,
       ppv.current_value,
       ppv.recommended_value,
-      ppv.value_version
+      ppv.value_version,
+      ppv.source_file_name,
+      ppv.source_node_path
     from project_parameter_values ppv
     inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
     where ppv.organization_id = $1

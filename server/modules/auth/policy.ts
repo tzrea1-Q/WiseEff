@@ -34,6 +34,7 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
   "hardware-committer": [
     "parameter:view",
     "parameter:edit",
+    "parameter:edit-critical",
     "debugging:use",
     "debugging:view",
     "debugging:read",
@@ -47,6 +48,7 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
   "software-committer": [
     "parameter:view",
     "parameter:edit",
+    "parameter:edit-critical",
     "debugging:use",
     "debugging:view",
     "debugging:read",
@@ -60,6 +62,7 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
   admin: [
     "parameter:view",
     "parameter:edit",
+    "parameter:edit-critical",
     "debugging:use",
     "debugging:view",
     "debugging:read",
