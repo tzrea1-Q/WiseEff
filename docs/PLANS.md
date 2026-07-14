@@ -25,6 +25,9 @@ Execution plans are first-class repository artifacts. Use them for work that has
 - `exec-plans/active/2026-07-06-parameter-batch-import-wizard.md`: Parameter admin batch import wizard — multi-format parse (xlsx/csv/json/DTS fragment), Step 1 target project selection, per-row review, new-parameter prefill, existing import batch API apply.
 - `exec-plans/active/2026-07-07-wiseeff-debug-logs-org-scope-decoupling.md`: Decouple log analysis and debugging from parameter-management projects — organization-scoped M2/M3, migration 0037, API/frontend/Agent/e2e updates.
 - `exec-plans/active/2026-07-08-product-feedback.md`: Internal Beta product feedback — persist sidebar feedback with multi-image ObjectStore attachments and admin triage at `/feedback-admin`.
+- `exec-plans/active/2026-07-14-dts-management-program.md`: DTS parameter management structural refactor program plan — target architecture, phase boundaries (P0-P3), sequencing, locked positioning decisions, and risk register.
+- `exec-plans/active/2026-07-14-dts-p0-parser-safety.md`: DTS parser safety (P0) — strip comments, detect and block unsupported constructs, reject `/include/`, and fail-safe writeback (no schema change).
+- `exec-plans/active/2026-07-14-dts-p1-structural-model.md`: DTS structural core (P1) — real DTS parser/CST, node-tree/typed-property/phandle schema, migration `0042`, structural ingest, type-aware sync, and lossless CST writeback.
 
 ## Completed Plans
 

@@ -85,6 +85,8 @@
 
 上传或新版本（`origin=upload`）会解析 `parsed_index`，与 DB 当前值 diff，为有差异的参数 upsert `file_sync` 草稿。匹配优先 `source_file_name` + `source_node_path`，回退 `name` + `module`。首次绑定写入来源字段。草稿不自动提交，仍走现有提交与审阅流。
 
+**P0 解析止血（无 schema 变更）：** 解析前剥离注释；`/include/` 上传硬拒绝；当前扁平解析器无法忠实表达的构造（带地址节点、`&label` 覆盖、内联 label、布尔属性、多 `<>` 组）跳过 sync 并回传 `unsupportedConstructs`；不安全的 DTS 回写（多行 / 多组 / 带地址节点路径）抛 `CONFLICT`（`dts-writeback-unsafe`）而非部分文本替换。完整结构化解析与无损回写仍属 P1（TD-039）。
+
 审阅合入（`software_merge → merged`）后，若参数有来源字段，`WritebackService` 回写当前文件并生成 `origin=writeback` 新版本；写回版本**不触发**新一轮自动草稿。
 
 禁用文件后不再参与自动同步；已绑定来源保留。
@@ -96,7 +98,7 @@
 - `resolved_file`：删除 UI 草稿，保留文件草稿
 - `resolved_ui`：删除文件草稿，保留 UI 草稿
 
-裁决写 `parameter-file-conflict-resolve` 审计。P1 上传上限 2 MB；完整 DTS AST 解析与写回见 TD-039（P2）。
+裁决写 `parameter-file-conflict-resolve` 审计。上传上限仍为 2 MB。
 
 参数变更状态机：
 

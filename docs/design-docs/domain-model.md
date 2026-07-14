@@ -47,6 +47,8 @@ Source fields live on project values, not definitions: the same definition can b
 
 Upload or version upload with `origin=upload` parses the file, diffs each `parsed_index` entry against the matched project value, and upserts `file_sync` drafts when values differ. Matching prefers `source_file_name` + `source_node_path`, then falls back to `name` + `module`. First bind writes source fields on the project value. Drafts are not auto-submitted; users still run the existing submission and review workflow.
 
+**P0 parser safety (no schema change):** comments are stripped before parse; `/include/` uploads are rejected; other constructs the flat parser cannot faithfully express (unit-address nodes, `&label` overlays, inline labels, boolean properties, multi `<>` groups) skip sync and return `unsupportedConstructs` warnings; unsafe DTS writeback (multiline / multi-group / addressed node paths) throws `CONFLICT` (`dts-writeback-unsafe`) instead of partial text replace. Full structured parse and lossless writeback remain P1 (TD-039).
+
 `origin=writeback` versions are created after `software_merge → merged` when the merged parameter has source fields. Writeback patches the current file bytes (JSON path set or DTS property text replace) and must not trigger another sync pass.
 
 Disabled files stop participating in automatic sync; existing source bindings remain.
@@ -60,7 +62,7 @@ A conflict opens when one `project_parameter_value_id` has both a `file_sync` dr
 
 Terminal conflict statuses are `resolved_file` and `resolved_ui`. Resolution writes `parameter-file-conflict-resolve` audit.
 
-P1 limits uploads to 2 MB. Full DTS AST parse and writeback remain P2 (TD-039).
+Upload size limit remains 2 MB.
 
 ## State Machines
 
