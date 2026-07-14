@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { canPerform } from "@/app/permissions";
 import type { PageProps } from "@/app/routes";
+import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
+import { ConfigSetBaselinePanel } from "@/components/admin/ConfigSetBaselinePanel";
 import { ParameterAdminSubNav } from "@/components/admin/ParameterAdminSubNav";
 import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
 import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterFilesPanel";
@@ -17,6 +20,8 @@ import {
   type ParameterAdminProjectRow
 } from "@/parameterAdminProjects";
 
+type ManageFilesTab = "files" | "config-sets";
+
 export function ParameterAdminProjectsPage({
   state,
   dispatch,
@@ -27,6 +32,8 @@ export function ParameterAdminProjectsPage({
 }: PageProps & { onNewProject?: () => void }) {
   const isApiMode = runtimeMode === "api";
   const adminClient = useMemo(() => createParameterAdminClient(), []);
+  const dtsRepo = useMemo(() => resolveDtsStructuredRepository(runtimeMode), [runtimeMode]);
+  const canAdmin = canPerform(state.activeRoleId, "admin.access");
   const { search, updateSearch } = useParamAdminProjectsSearch();
   const [apiRows, setApiRows] = useState<ParameterAdminProjectRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -34,6 +41,7 @@ export function ParameterAdminProjectsPage({
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [manageFilesProjectId, setManageFilesProjectId] = useState<string | null>(null);
+  const [manageFilesTab, setManageFilesTab] = useState<ManageFilesTab>("files");
   const [formPending, setFormPending] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [formError, setFormError] = useState("");
@@ -107,6 +115,7 @@ export function ParameterAdminProjectsPage({
     if (!rows.some((row) => row.id === projectId)) {
       return;
     }
+    setManageFilesTab("files");
     setManageFilesProjectId(projectId);
   }, [rows]);
 
@@ -244,19 +253,42 @@ export function ParameterAdminProjectsPage({
               <div>
                 <span className="eyebrow">项目文件</span>
                 <h2 id="project-parameter-files-title">管理文件 · {manageFilesTarget.name}</h2>
-                <p>在「参数文件」标签中维护该项目的参数文件与版本。</p>
+                <p>在「参数文件」与「配置集 / 基线」标签中维护该项目的文件与发布单元。</p>
               </div>
               <button type="button" className="button subtle" onClick={() => setManageFilesProjectId(null)}>
                 关闭
               </button>
             </div>
             <div className="project-parameter-files-tabs" role="tablist" aria-label="项目详情标签">
-              <button type="button" role="tab" aria-selected="true" className="project-parameter-files-tab is-active">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={manageFilesTab === "files"}
+                className={`project-parameter-files-tab${manageFilesTab === "files" ? " is-active" : ""}`}
+                onClick={() => setManageFilesTab("files")}
+              >
                 参数文件
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={manageFilesTab === "config-sets"}
+                className={`project-parameter-files-tab${manageFilesTab === "config-sets" ? " is-active" : ""}`}
+                onClick={() => setManageFilesTab("config-sets")}
+              >
+                配置集 / 基线
               </button>
             </div>
             <div className="project-parameter-files-dialog-body">
-              <ProjectParameterFilesPanel projectId={manageFilesTarget.id} runtimeMode={runtimeMode} />
+              {manageFilesTab === "files" ? (
+                <ProjectParameterFilesPanel projectId={manageFilesTarget.id} runtimeMode={runtimeMode} />
+              ) : (
+                <ConfigSetBaselinePanel
+                  projectId={manageFilesTarget.id}
+                  repository={dtsRepo}
+                  canAdmin={canAdmin}
+                />
+              )}
             </div>
           </div>
         </div>

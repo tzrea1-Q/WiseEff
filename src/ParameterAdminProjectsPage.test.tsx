@@ -1,9 +1,32 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ParameterAdminProjectsPage } from "./ParameterAdminProjectsPage";
 import { initialState } from "./mockData";
 
+const resolveDtsStructuredRepository = vi.fn(() => ({
+  listConfigSets: vi.fn().mockResolvedValue([]),
+  createConfigSet: vi.fn(),
+  addConfigSetFile: vi.fn(),
+  removeConfigSetFile: vi.fn(),
+  listBaselines: vi.fn().mockResolvedValue([]),
+  createBaseline: vi.fn(),
+  compareBaseline: vi.fn(),
+  rollbackBaseline: vi.fn(),
+  releaseBaseline: vi.fn(),
+  exportConfigSet: vi.fn(),
+  getStructure: vi.fn(),
+  search: vi.fn()
+}));
+
+vi.mock("@/application/parameters/dtsStructuredRuntime", () => ({
+  resolveDtsStructuredRepository: (...args: unknown[]) => resolveDtsStructuredRepository(...args)
+}));
+
 describe("ParameterAdminProjectsPage", () => {
+  beforeEach(() => {
+    resolveDtsStructuredRepository.mockClear();
+  });
+
   it("renders project management workspace with sub navigation", () => {
     window.history.replaceState(null, "", "/parameter-admin/projects");
 
@@ -159,5 +182,46 @@ describe("ParameterAdminProjectsPage", () => {
       type: "DELETE_PARAMETER_ADMIN_PROJECT",
       projectId: "empty-test"
     });
+  });
+
+  it("opens manage-files dialog with config-set / baseline tab wired to dts repository", async () => {
+    window.history.replaceState(null, "", "/parameter-admin/projects");
+    const atlasProject = initialState.configDraft.projects.find((project) => project.id === "atlas");
+
+    render(
+      <ParameterAdminProjectsPage
+        state={initialState}
+        dispatch={vi.fn()}
+        onNavigate={vi.fn()}
+        search=""
+        runtimeMode="mock"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: `管理文件 ${atlasProject?.name ?? "atlas"}` }));
+
+    const dialog = screen.getByRole("dialog", { name: new RegExp(`管理文件 · ${atlasProject?.name ?? "atlas"}`) });
+    expect(within(dialog).getByRole("tab", { name: "参数文件" })).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("tab", { name: "配置集 / 基线" }));
+
+    expect(await within(dialog).findByRole("region", { name: "配置集 / 基线" })).toBeInTheDocument();
+    expect(resolveDtsStructuredRepository).toHaveBeenCalledWith("mock");
+  });
+
+  it("resolves the http dts repository when runtimeMode is api", () => {
+    window.history.replaceState(null, "", "/parameter-admin/projects");
+
+    render(
+      <ParameterAdminProjectsPage
+        state={initialState}
+        dispatch={vi.fn()}
+        onNavigate={vi.fn()}
+        search=""
+        runtimeMode="api"
+      />
+    );
+
+    expect(resolveDtsStructuredRepository).toHaveBeenCalledWith("api");
   });
 });

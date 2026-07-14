@@ -14310,6 +14310,90 @@ body.xiaoze-popup-resize-active {
   overflow: auto;
 }
 
+.config-set-baseline-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.config-set-baseline-panel__section {
+  display: grid;
+  gap: 10px;
+}
+
+.config-set-baseline-panel__section h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.config-set-baseline-panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+}
+
+.config-set-baseline-panel__row label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.875rem;
+  color: var(--app-muted);
+}
+
+.config-set-baseline-panel__row input,
+.config-set-baseline-panel__row select {
+  min-width: 160px;
+  padding: 6px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  font: inherit;
+  background: #fff;
+}
+
+.config-set-baseline-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.config-set-baseline-panel__list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.config-set-baseline-panel__list button.is-active {
+  color: var(--app-primary);
+  font-weight: 600;
+}
+
+.config-set-baseline-panel__error {
+  margin: 0;
+  color: var(--danger, #b42318);
+}
+
+.config-set-baseline-panel__hint,
+.config-set-baseline-panel__loading {
+  margin: 0;
+  color: var(--app-muted);
+}
+
+.config-set-baseline-panel__gate {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: #fff8f0;
+  font-size: 0.875rem;
+}
+
 .project-parameter-files {
   display: grid;
   gap: 12px;
