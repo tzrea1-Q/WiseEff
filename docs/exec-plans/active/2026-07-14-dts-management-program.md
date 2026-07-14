@@ -57,7 +57,7 @@
 | **P0** 解析止血 | [dts-p0-parser-safety](2026-07-14-dts-p0-parser-safety.md) | 让解析器「诚实」：剥注释（真修）、对无法忠实表达的构造**检测并拦截/告警**（不再静默产错）、回写多行/多组值**安全失败**而非损坏 | 无 | 无 | ✅ 已评审通过，合并本地 `main`（待 push） |
 | **P1** 结构化核心 | [dts-p1-structural-model](2026-07-14-dts-p1-structural-model.md) | 真 DTS 解析器（CST）+ 节点树/类型化属性/phandle schema + 迁移 + 结构化同步/无损回写 + 身份解耦 | 新表 | P0 合并 | ✅ 已评审通过，合并本地 `main`（待 push） |
 | **P2** 配置集·基线·校验门禁 | [dts-p2-config-set-baseline-gate](2026-07-14-dts-p2-config-set-baseline-gate.md) | 板级配置集 + 发布基线 + dtc/schema 校验沙箱 + 无损导出 | 新表（迁移 `0043`/`0044`） | P1 合并 | ✅ 已评审通过（修复 TD-040 项目删除回归，迁移 `0044`），合并本地 `main`（待 push）。纯 API/服务端交付，无可见 UI。 |
-| **P3** 产品功能闭环 | [dts-p3-structured-product](2026-07-14-dts-p3-structured-product.md) | 结构化值编辑器 + 结构化变更集/差异 + 路径/label/compatible 检索 + 影响分析 + 节点级 RBAC | 少量 | P2 合并 | 计划就绪，可执行 |
+| **P3** 产品功能闭环 | [dts-p3-structured-product](2026-07-14-dts-p3-structured-product.md) | 结构化值编辑器 + 结构化变更集/差异 + 路径/label/compatible 检索 + 影响分析 + 节点级 RBAC | 少量 | P2 合并 | ⏳ 实现中（`feat/dts-structured-product`）：Port/UI/RBAC 已落地；验收 ID `PARAM-DTS-*` 与文档更新进行中；playwright-cli 三视口证据待补 |
 
 > **为何 P2/P3 暂不细化到任务级：** 它们的任务细节强依赖 P1 落地后的实际 schema 与解析器契约，提前细化会大概率返工。架构师将在前一阶段合并后，基于真实产物撰写下一阶段的任务级计划。本主计划锁定其**范围边界**，避免范围漂移。
 

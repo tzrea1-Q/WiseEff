@@ -105,6 +105,23 @@ stateDiagram-v2
 
 `released` is a status marker, not a lock: a config set's members can keep changing after release, and a later `compareBaseline`/`rollbackToBaseline` call still operates against the same baseline id.
 
+### Structured impact, change sets, and sensitive nodes (P3)
+
+`ChangeRequest.impact` is computed server-side. When a project value has `source_file_name` + `source_node_path` bound to the structural model, impact includes real DTS facts in addition to the direct `parameter` item:
+
+| Kind | Meaning |
+| --- | --- |
+| `parameter` | Always present for the changed project value (risk/audit consumers). |
+| `phandle` | Other nodes whose properties reference this node via phandle. |
+| `compatible` | Sibling nodes sharing the same `compatible` string in the version. |
+| `config-set` | Peer files in the same `dts_config_set` as the bound file. |
+
+When structural facts are unavailable (unbound / non-DTS), impact falls back to the legacy two-item template (`parameter` + `module`).
+
+A **structured change set** aggregates node/property-level diffs from baseline compare (`node_added` / `node_removed` / `prop_*`) into one reviewable unit that still maps onto existing `parameter_change_requests` (no parallel approval system). Frontend rendering lives in `StructuredDiffView` + `aggregateStructuredChangeSet`.
+
+**Sensitive node RBAC:** org/project rules in `dts_sensitive_node_rules` match `path` or `compatible` patterns to a risk tier (`high` \| `critical`) and required capability (default `parameter:edit-critical`). Writes that hit a rule without the capability return `403`. Agent (`actorType=agent`) writes that hit `critical` are always denied and audited as `parameter-sensitive-node-denied` with `requireHuman: true` — a human must perform the change.
+
 ## State Machines
 
 Parameter requests, log analysis runs, product feedback triage, debugging sessions, and Agent approvals should move through explicit states. Tests and browser acceptance should verify invalid transitions, terminal-state behavior, and audit invariants.

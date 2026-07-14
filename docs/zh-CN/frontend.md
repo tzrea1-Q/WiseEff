@@ -47,6 +47,7 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 
 - 参数管理：`ParameterRepository`
 - 参数看板：`ParameterDashboardRepository`
+- DTS 结构化产品面：`DtsStructuredRepository`（`resolveDtsStructuredRepository` → mock / `dtsStructuredClient`）
 - 日志分析：`LogAnalysisRepository`
 - 产品反馈：`ProductFeedbackRepository`
 - 设备调试：`DebuggingGateway`
@@ -54,6 +55,15 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 
 - `src/infrastructure/mock/*`：本地演示和单测。
 - `src/infrastructure/http/*`：API runtime，负责 `/api/v1` 请求和 DTO 映射。
+
+P3 新表面（均走 `DtsStructuredRepository`，勿在新面板里直接 new HTTP client）：
+
+- `StructuredValueEditor`：按 `valueType` 编辑 `rawText`（与后端值类型对齐的客户端校验）。
+- `DtsSearchPanel`：路径 / `@地址` / 标签 / compatible / 值检索，挂在 `/parameter-admin/projects` 管理文件对话框。
+- `ConfigSetBaselinePanel`：配置集 / 基线 / 对比 / 发布 / 导出，同对话框「配置集 / 基线」标签。
+- `StructuredDiffView`：基线结构化差异与变更集行。
+
+旧的 `ProjectParameterFilesPanel` / 冲突面板仍直连 `parameterFileClient`（TD-039 残留）；上述新表面已 Port 闭环。
 
 ## 主要页面流
 

@@ -57,6 +57,19 @@ Page action flow:
 - `/parameter-review` lists pending and merged requests, advances or rejects workflow steps through `reviewChange`, and refreshes state after each server response.
 - `/parameter-admin` keeps direct library editing in mock mode; in API mode, parameter writes go through import batches or review flows instead of mutating client state directly.
 
+## DtsStructuredRepository (P3)
+
+`DtsStructuredRepository` is the frontend port for structured DTS product surfaces (read, search, config sets/baselines, compare/export). New P3 UI must consume this port through `resolveDtsStructuredRepository(runtimeMode)` in `src/application/parameters/dtsStructuredRuntime.ts` — mock via `createMockDtsStructuredRepository`, API via `createDtsStructuredClient`. Do not call HTTP clients directly from new panels.
+
+Key UI:
+
+- `StructuredValueEditor` (`src/components/parameters/StructuredValueEditor.tsx`) — type-aware editor driven by `valueType` / `rawText` from structure (u32-array, bytes, string-list, phandle-list, bool, empty, mixed). Client-side validation mirrors backend typing; authoritative values still come from review merge + CST writeback.
+- `DtsSearchPanel` — project-scoped search by path / `@address` / label / compatible / value; mounts on the manage-files dialog of `/parameter-admin/projects`.
+- `ConfigSetBaselinePanel` — list/create config sets and baselines, add members, compare/release/export; mounts on the config-set/baseline tab of the same dialog.
+- `StructuredDiffView` — renders baseline compare `structuralDiff` plus optional aggregated change-set rows (node/property kinds).
+
+Legacy `ProjectParameterFilesPanel` / conflict panels still talk to `parameterFileClient` directly (TD-039 residual). New structured surfaces above are port-closed.
+
 ## Hierarchical Module Trees
 
 Parameter and debugging domains each maintain an independent org-scoped module tree. Shared picker UI lives in `src/components/common/ModuleTreeSelect.tsx` (expand/collapse, breadcrumb labels, single- and multi-select modes).

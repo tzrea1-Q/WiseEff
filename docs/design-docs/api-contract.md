@@ -20,7 +20,7 @@ Rules:
 
 - Auth and users: `/me`, user listing, user creation, activation, role replacement.
 - Projects and modules: project metadata and module lookup.
-- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), per-project parameter file hosting with sync and conflict resolution (`/projects/:projectId/parameter-files*`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
+- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), per-project parameter file hosting with sync and conflict resolution (`/projects/:projectId/parameter-files*`), structured DTS read/search (`.../structure`, `/projects/:projectId/dts-search`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
 - Logs: upload/file records, analysis records, runs, rerun, archive, feedback.
 - Product feedback: Internal Beta sidebar feedback submission, admin triage, and attachment content.
 - Jobs: status and progress events.
@@ -187,9 +187,22 @@ When `versionId` is omitted, sync uses the file's `currentVersionId`. Versions w
 
 Audit actions: `parameter-file-upload`, `parameter-file-sync`, `parameter-file-conflict-open`, `parameter-file-conflict-resolve`, `parameter-writeback-to-file`.
 
+### Structured read and DTS search (P3)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure` | Read the persisted structural model for one file version from `dts_*` (no re-parse). Returns `{ nodes }`; each node includes typed `properties` (`valueType`, `rawText`, `normalizedValue`) and `phandleRefs`. Requires `parameter:view`. |
+| `GET` | `/api/v1/projects/:projectId/dts-search` | Search current file versions' `dts_*` rows. Query: `q` (required), `by` = `path`\|`address`\|`label`\|`compatible`\|`value` (default `path`). Returns `{ hits }`. Requires `parameter:view`. |
+
+### Change-request impact extensions (P3)
+
+`GET /api/v1/parameter-change-requests` (and related detail payloads) expose `impact[]` with kinds `module` \| `test` \| `parameter` \| `phandle` \| `compatible` \| `config-set`. When the project value is structurally bound, the server appends phandle / compatible / config-set peers; otherwise it keeps the legacy template.
+
+Sensitive-node guards apply on submit/merge/writeback paths: missing `parameter:edit-critical` → `403`; agent writes to `critical` rules → `403` with `requireHuman: true` and audit `parameter-sensitive-node-denied`.
+
 ## Config Sets, Release Baselines, and the Validation Gate (P2)
 
-Board-level config sets aggregate a project's parameter files into one buildable unit; release baselines snapshot a config set for compare/rollback/release; the validation gate runs `dtc` before a baseline can be released. All routes below require `canAdminParameters` (`admin:access`); non-admin callers get `403`. There is no visible UI for this surface yet — structured management UI is P3 (pure API/server delivery).
+Board-level config sets aggregate a project's parameter files into one buildable unit; release baselines snapshot a config set for compare/rollback/release; the validation gate runs `dtc` before a baseline can be released. All routes below require `canAdminParameters` (`admin:access`); non-admin callers get `403`. Admin UI for this surface ships in P3 (`ConfigSetBaselinePanel` on `/parameter-admin/projects`).
 
 | Method | Path | Purpose |
 | --- | --- | --- |

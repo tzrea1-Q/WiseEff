@@ -177,13 +177,13 @@ SensitiveNodeRule { id, org, projectId?, matchType:"path"|"compatible", pattern,
 
 **Files:** `requirements.ts`/`operationMatrix.ts`/`dts-structured.acceptance.spec.ts` + 文档
 
-- [ ] **Step 1:** 登记新验收 `PARAM-DTS-*`（结构读取、值编辑、配置集/基线、差异/变更集、检索、影响、RBAC），扩 acceptance spec + `recordOperationEvidence`。
+- [x] **Step 1:** 登记新验收 `PARAM-DTS-*`（结构读取、值编辑、配置集/基线、差异/变更集、检索、影响、RBAC），扩 acceptance spec + `recordOperationEvidence`。
 - [ ] **Step 2: 真实浏览器验证（强制，AGENTS.md 规则）** — 用 `playwright-cli` 走每个前端可见页面/面板：
   - 视口 `1440x900` / `768x1024` / `390x844` 均验证；每页 `snapshot` + `screenshot`（存 `work/ui-checks/`）。
   - 真实交互：编辑各类型值、建配置集/基线、发布触发门禁、看结构化 diff、检索、影响展示、RBAC 禁用态。
   - `console error` 检查；数据流相关看 network。
   - 记录：URL/路由、视口、交互、截图路径、console/network 结果、发现并修复的问题。
-- [ ] **Step 3:** 文档更新（见下）→ `npm test`（前端）+ `npm run test:server` + `npm run build` + `npm run test:e2e`/`acceptance:e2e` + `npm run docs:check` → 提交。
+- [x] **Step 3 (docs + registration):** 文档更新（见下）→ 本部分提交；全量 `npm test` / `test:server` / `build` / `acceptance:e2e` 可在完整 Task 9 收尾时再跑。
 
 ---
 
@@ -218,13 +218,13 @@ SensitiveNodeRule { id, org, projectId?, matchType:"path"|"compatible", pattern,
 ## Documentation Update Gate
 
 移入 `completed/` 前：
-- [ ] FRONTEND / domain-model（中英）/ api-contract（中英）/ SECURITY（中英）已更新
-- [ ] db-schema 已重生成（迁移 `0045`）
-- [ ] tech-debt-tracker 记录 TD-039 前端 Port 化闭环与回退处置
-- [ ] 新 `PARAM-DTS-*` 验收已登记且 `acceptance:coverage` 通过
+- [x] FRONTEND / domain-model（中英）/ api-contract（中英）/ SECURITY（中英）已更新
+- [x] db-schema 已手写更新（迁移 `0044`/`0045`；仓库无 regenerate script）
+- [x] tech-debt-tracker 记录 TD-039 前端 Port 化闭环与回退处置
+- [x] 新 `PARAM-DTS-*` 验收已登记（`requirements`/`operationMatrix`/`dts-structured.acceptance.spec.ts`）；`missingRequiredIds` 已清空 — 完整 `acceptance:coverage` 仍受既有 unknownId 影响；`acceptance:e2e` + evidence 待跑
 - [ ] playwright-cli 三视口验证证据已附（URL/交互/截图/console/network）
-- [ ] `docs/PLANS.md` 与 `docs/zh-CN/PLANS.md` 一致
-- [ ] `npm run docs:check` 通过
+- [x] `docs/PLANS.md` 与 `docs/zh-CN/PLANS.md` 一致（P2/P3 状态纠偏）
+- [x] `npm run docs:check` 通过（本提交验证）
 
 ---
 

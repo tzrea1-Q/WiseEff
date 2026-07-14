@@ -31,6 +31,7 @@ Current frontend permissions include:
 
 - `parameter:view`
 - `parameter:edit`
+- `parameter:edit-critical` (safety-critical / sensitive-node writes; Hardware/Software Committer and Admin have it by default)
 - `debugging:use`
 - `logs:upload`
 - `parameter:review`
@@ -38,6 +39,8 @@ Current frontend permissions include:
 - `users:manage`
 
 When adding backend business routes, map frontend capabilities to server-side authorization checks and include negative tests for forbidden users.
+
+**Node-level sensitive rules (P3):** `dts_sensitive_node_rules` match org/optional-project `path` or `compatible` patterns to `high`/`critical` risk tiers and a required capability (default `parameter:edit-critical`). Writes that hit a rule without the capability return `403`. Agent actors (`actorType=agent`, including Xiaoze `action.submitParameterChange`) that hit `critical` are always denied, audited as `parameter-sensitive-node-denied` with `requireHuman: true`, and must be completed by a human.
 
 Development auth is limited to local development and tests. `x-wiseeff-user` and the seeded development user are convenience inputs only when `AUTH_MODE=development`; production startup requires `AUTH_MODE=production`. Target self-hosted identity should use `AUTH_PROVIDER=oidc` with `AUTH_OIDC_ISSUER` and `AUTH_OIDC_AUDIENCE`; the verifier checks OIDC access tokens through discovery/JWKS and then reloads effective active state, role bindings, and permissions from WiseEff PostgreSQL. WiseEff-owned local accounts use `AUTH_PROVIDER=local`; the API resolves `we_local_*` bearer session tokens from PostgreSQL and still reloads active state, role bindings, and permissions. Local HMAC smoke uses `AUTH_PROVIDER=hmac`, `AUTH_TOKEN_ISSUER`, and `AUTH_TOKEN_HMAC_SECRET`. Production routes must not fall back to the development user or trust token role claims as final authorization.
 
@@ -132,7 +135,7 @@ M4 Agent tools run only through the backend registry. Read tools still require s
 
 **Xiaoze P0 perception:** `perception.*` tools are read-only (`kind: read`, `requiresApproval: false`) and must pass the same `ToolRegistry.authorize` boundary as other Agent tools. Cross-page reads are bounded to the caller's project scope and permissions; out-of-scope tool calls return `FORBIDDEN` and the agent must answer with a safe non-data response. The AG-UI endpoint rejects unauthenticated requests before streaming events.
 
-**Xiaoze P1 action:** `action.submitParameterChange` is mutating and approval-gated. The AG-UI runtime persists orchestrator tool-call + approval records, emits an interrupt, and resumes only through `approveToolCall` / `rejectToolCall` with transactional re-authorization and audit `actorType=agent`. `editedArgs` fully replaces the tool payload before approval. Device write guards remain outside Xiaoze in P1.
+**Xiaoze P1 action:** `action.submitParameterChange` is mutating and approval-gated. The AG-UI runtime persists orchestrator tool-call + approval records, emits an interrupt, and resumes only through `approveToolCall` / `rejectToolCall` with transactional re-authorization and audit `actorType=agent`. `editedArgs` fully replaces the tool payload before approval. Before submit, the tool runs the same sensitive-node guard as human writes: critical rule hits are denied immediately (`403`, `requireHuman: true`) and never create a production change request. Device write guards remain outside Xiaoze in P1.
 
 **Xiaoze P2 planning:** Multi-step plans use a LangGraph `StateGraph` with a per-`threadId` checkpointer so approved mutating steps resume mid-plan without restarting perceived context. When `XIAOZE_CHECKPOINTER=postgres`, checkpoint payloads (including tool arguments and perceived context) persist at rest in PostgreSQL and must be protected by the same database access controls as other Agent tables; they are separate from user-visible chat history (TD-030). Proactive suggestions are read-only, authz-bounded, and opt-in (`XIAOZE_PROACTIVE_ENABLED` / `VITE_XIAOZE_PROACTIVE_ENABLED`, default off). The suggest pass uses only `perception.*` tools via `POST /api/v1/agent/xiaoze/suggest` and never writes or proposes data outside the caller's permissions. Mutating writes in a plan still require per-step human approval through the existing orchestrator chain; rejecting a step halts the plan without mutation.
 

@@ -253,5 +253,47 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     workflow: "C",
     title: "Admin resolves an open file/UI draft conflict by keeping the file or UI value.",
     required: true
+  },
+  {
+    id: "PARAM-DTS-STRUCTURE-001",
+    workflow: "C",
+    title: "Admin can read the structured DTS model (nodes/properties/phandles) for a file version.",
+    required: true
+  },
+  {
+    id: "PARAM-DTS-EDIT-001",
+    workflow: "C",
+    title: "Structured value editor contract is served by typed structure properties (value_type / rawText).",
+    required: true
+  },
+  {
+    id: "PARAM-DTS-CONFIGSET-001",
+    workflow: "C",
+    title: "Admin can manage config sets and release baselines from the projects file dialog (workflow C).",
+    required: true
+  },
+  {
+    id: "PARAM-DTS-DIFF-001",
+    workflow: "C",
+    title: "Baseline compare returns structured diffs that render as a change-set view.",
+    required: true
+  },
+  {
+    id: "PARAM-DTS-SEARCH-001",
+    workflow: "C",
+    title: "Project DTS structured search returns hits by path/address/label/compatible/value and the search panel mounts.",
+    required: true
+  },
+  {
+    id: "PARAM-DTS-IMPACT-001",
+    workflow: "B",
+    title: "Change-request impact includes structural kinds (phandle/compatible/config-set) when DTS bindings exist.",
+    required: true
+  },
+  {
+    id: "PARAM-DTS-RBAC-001",
+    workflow: "C",
+    title: "Sensitive-node writes without parameter:edit-critical return 403; agent writes to critical nodes are denied.",
+    required: true
   }
 ];

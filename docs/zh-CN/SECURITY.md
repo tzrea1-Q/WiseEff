@@ -30,6 +30,7 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 
 - `parameter:view`
 - `parameter:edit`
+- `parameter:edit-critical`（敏感/安全关键节点写；Hardware/Software Committer 与 Admin 默认具备）
 - `debugging:use`
 - `logs:upload`
 - `parameter:review`
@@ -37,6 +38,8 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 - `users:manage`
 
 新增后端业务路由时，必须把前端 capability 映射到服务端授权检查，并补 forbidden 用户的负向测试。
+
+**节点级敏感规则（P3）：** `dts_sensitive_node_rules` 按组织/可选项目匹配 `path` 或 `compatible` 模式，映射到 `high`/`critical` 与所需能力（默认 `parameter:edit-critical`）。命中规则但缺少能力的提交/合入/回写返回 `403`。Agent（`actorType=agent`，含小择 `action.submitParameterChange`）对 `critical` 一律拒绝，写审计 `parameter-sensitive-node-denied`（`requireHuman: true`），须由人工完成变更。
 
 参数管理写入需要服务端权限和审计：草稿、提交、审阅、merge 和 import 不能只依赖前端禁用按钮。参数模块树 CRUD（`/api/v1/parameter-modules*`）要求 `admin:access`；非 Admin 在具备 `parameter:view` 时可列表。删除非空模块或循环移动返回 `409`。日志上传、重跑、归档、反馈也必须由后端校验权限并记录审计。产品级「问题反馈」提交要求 active 登录用户；Admin 列表、详情、状态更新、备注和附件读取要求 `admin:access`。`debugging:admin` 管理调试 catalog metadata、HDC/ADB node bindings 与调试节点模块树（`/api/v1/debugging/admin/modules*`）；调试节点写入仍必须走 runtime path，并具备调试写权限、项目访问、有效 session、可写 access mode、范围校验、设备 lease、写前快照和必要的高风险确认。
 
@@ -62,7 +65,7 @@ Agent tool 分为：
 
 **Xiaoze P0 感知：** `perception.*` 工具为只读（`kind: read`，`requiresApproval: false`），必须通过与其他 Agent 工具相同的 `ToolRegistry.authorize` 边界。跨页面读取受调用方项目 scope 与权限限制；越权 tool call 返回 `FORBIDDEN`，Agent 必须给出安全的非数据回答。AG-UI 端点在流式事件前拒绝未认证请求。
 
-**Xiaoze P1 行动：** `action.submitParameterChange` 为 mutating 且 approval-gated。AG-UI runtime 持久化 orchestrator tool-call + approval 记录、发出 interrupt，且仅通过 `approveToolCall` / `rejectToolCall` 恢复，并在事务内重新鉴权、审计 `actorType=agent`。`editedArgs` 在批准前完整替换 tool payload。设备写闸门在 P1 仍由调试界面与后端拥有，不在小泽内执行。
+**Xiaoze P1 行动：** `action.submitParameterChange` 为 mutating 且 approval-gated。AG-UI runtime 持久化 orchestrator tool-call + approval 记录、发出 interrupt，且仅通过 `approveToolCall` / `rejectToolCall` 恢复，并在事务内重新鉴权、审计 `actorType=agent`。`editedArgs` 在批准前完整替换 tool payload。提交前走与人工相同的敏感节点守卫：命中 `critical` 规则立即拒绝（`403`、`requireHuman: true`），不会创建生产变更请求。设备写闸门在 P1 仍由调试界面与后端拥有，不在小泽内执行。
 
 **Xiaoze P2 规划：** 多步计划使用 LangGraph `StateGraph` 与按 `threadId` 的 checkpointer，使 mutating 步骤在批准后能从计划中途恢复而不丢失已感知上下文。当 `XIAOZE_CHECKPOINTER=postgres` 时，checkpoint 载荷（含 tool 参数与感知上下文）静态保存在 PostgreSQL 中，须与 Agent 业务表一样受数据库访问控制保护；与用户可见聊天历史（TD-030）分离。主动建议为只读、受 authz 限制且 opt-in（`XIAOZE_PROACTIVE_ENABLED` / `VITE_XIAOZE_PROACTIVE_ENABLED`，默认关闭）。suggest 通道仅通过 `POST /api/v1/agent/xiaoze/suggest` 调用 `perception.*` 工具，不写库且不提出调用方权限外的数据。计划中的 mutating 写入仍须逐步经 orchestrator approval 链人工批准；拒绝某步则安全终止计划且不产生 mutation。
 

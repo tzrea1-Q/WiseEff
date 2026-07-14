@@ -15,7 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- 当前活跃计划清单以英文版 `docs/PLANS.md` 为准（含 DTS 参数管理主计划与 P0/P1/P2 阶段计划：`2026-07-14-dts-management-program.md`、`2026-07-14-dts-p0-parser-safety.md`、`2026-07-14-dts-p1-structural-model.md`、`2026-07-14-dts-p2-config-set-baseline-gate.md`、`2026-07-14-dts-p3-structured-product.md`）；多层级模块（`2026-07-09-wiseeff-hierarchical-modules.md`）已完成并归档至 `docs/exec-plans/completed/`。
+- 当前活跃计划清单以英文版 `docs/PLANS.md` 为准（含 DTS 参数管理主计划与 P0–P3 阶段计划：`2026-07-14-dts-management-program.md`、`2026-07-14-dts-p0-parser-safety.md`、`2026-07-14-dts-p1-structural-model.md`、`2026-07-14-dts-p2-config-set-baseline-gate.md`、`2026-07-14-dts-p3-structured-product.md`；P2 为已落地的 API/服务端交付，P3 在 `feat/dts-structured-product` 实现中）；多层级模块（`2026-07-09-wiseeff-hierarchical-modules.md`）已完成并归档至 `docs/exec-plans/completed/`。
 - **分支与 PR：** 实现型子智能体只在从 `main` 切出的 feature branch 上开发并本地 commit；不得 push `main`、不得开/合 GitHub PR。由父智能体 review 后提 PR、合并，再 `git pull` 同步本地 `main`。细则见英文版 `docs/PLANS.md` § Git Branch & PR Workflow。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 

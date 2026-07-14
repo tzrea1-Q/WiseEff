@@ -141,6 +141,23 @@ stateDiagram-v2
 
 `released` 只是状态标记，不是锁：配置集成员发布后仍可继续变化，后续 `compareBaseline`/`rollbackToBaseline` 仍可对同一基线 id 操作。
 
+#### 结构化影响、变更集与敏感节点（P3）
+
+`ChangeRequest.impact` 由服务端计算。当项目值绑定了 `source_file_name` + `source_node_path` 且能落到结构化模型时，除直接的 `parameter` 项外还会加入真实 DTS 事实：
+
+| kind | 含义 |
+| --- | --- |
+| `parameter` | 变更的项目参数值（风险/审计消费者始终依赖） |
+| `phandle` | 通过 phandle 引用该节点的其它节点 |
+| `compatible` | 同版本中共享同一 `compatible` 的对等节点 |
+| `config-set` | 与绑定文件同属一个 `dts_config_set` 的对等文件 |
+
+无结构化信息（未绑定 / 非 DTS）时回退为遗留的两项模板（`parameter` + `module`）。
+
+**结构化变更集**把基线对比中的节点/属性级差异（`node_added` / `node_removed` / `prop_*`）聚成可审阅单元，仍映射到现有 `parameter_change_requests`（不平行建设审批体系）。前端由 `StructuredDiffView` + `aggregateStructuredChangeSet` 渲染。
+
+**敏感节点 RBAC：** `dts_sensitive_node_rules` 按 `path` / `compatible` 模式匹配到风险层级（`high` \| `critical`）与所需能力（默认 `parameter:edit-critical`）。命中规则但缺少能力返回 `403`。Agent（`actorType=agent`）对 `critical` 一律拒绝，审计为 `parameter-sensitive-node-denied` 且 `requireHuman: true`，须由人工完成。
+
 参数变更状态机：
 
 ```mermaid

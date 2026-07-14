@@ -397,9 +397,22 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 
 审计动作：`parameter-file-upload`、`parameter-file-sync`、`parameter-file-conflict-open`、`parameter-file-conflict-resolve`、`parameter-writeback-to-file`。
 
+### 结构化读取与 DTS 检索（P3）
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure` | 从 `dts_*` 读取某一文件版本的结构化模型（请求内不重解析）。返回 `{ nodes }`；节点含类型化 `properties`（`valueType`/`rawText`/`normalizedValue`）与 `phandleRefs`。需要 `parameter:view`。 |
+| `GET` | `/api/v1/projects/:projectId/dts-search` | 在项目当前文件版本的 `dts_*` 上检索。查询：`q`（必填），`by` = `path`\|`address`\|`label`\|`compatible`\|`value`（默认 `path`）。返回 `{ hits }`。需要 `parameter:view`。 |
+
+### 变更请求 impact 扩展（P3）
+
+`GET /api/v1/parameter-change-requests`（及相关详情）暴露 `impact[]`，kind 为 `module` \| `test` \| `parameter` \| `phandle` \| `compatible` \| `config-set`。项目值结构化绑定时，服务端附加 phandle / compatible / config-set 对等项；否则保留遗留模板。
+
+敏感节点守卫作用于提交/合入/回写：缺少 `parameter:edit-critical` → `403`；Agent 写 `critical` 规则 → `403` 且 `requireHuman: true`，审计 `parameter-sensitive-node-denied`。
+
 ## 配置集、发布基线与校验门禁（P2）
 
-板级配置集把项目下的参数文件聚合为一个可构建单元；发布基线对配置集做快照，支持对比/回滚/发布；校验门禁在基线发布前运行 `dtc`。以下路由均要求 `canAdminParameters`（`admin:access`）；非 Admin 调用返回 `403`。当前**没有可见 UI**——结构化管理 UI 在 P3（本期为纯 API/服务端交付）。
+板级配置集把项目下的参数文件聚合为一个可构建单元；发布基线对配置集做快照，支持对比/回滚/发布；校验门禁在基线发布前运行 `dtc`。以下路由均要求 `canAdminParameters`（`admin:access`）；非 Admin 调用返回 `403`。Admin UI 在 P3 提供（`/parameter-admin/projects` 的 `ConfigSetBaselinePanel`）。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
