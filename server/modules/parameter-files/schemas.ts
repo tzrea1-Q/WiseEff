@@ -28,3 +28,22 @@ export const uploadProjectParameterFileResponseSchema = z.object({
   version: z.record(z.string(), z.unknown()),
   unsupportedConstructs: z.array(unsupportedConstructSchema).optional()
 });
+
+export const configSetRoleSchema = z.enum(["base", "overlay", "charging", "thermal", "misc"]);
+
+export const createConfigSetBody = z.object({
+  name: nonEmptyString,
+  description: z.string().optional(),
+  derivedFromId: nonEmptyString.optional()
+});
+
+export const addConfigSetFileBody = z.object({
+  fileId: nonEmptyString,
+  role: configSetRoleSchema,
+  sortOrder: z.number().int().optional()
+});
+
+export const createBaselineBody = z.object({
+  name: nonEmptyString,
+  notes: z.string().optional()
+});
