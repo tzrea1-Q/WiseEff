@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import type { AuthContext } from "../auth/types";
@@ -5,6 +8,9 @@ import type { ObjectStore } from "../logs/objectStore";
 import { createAuditEvent } from "../audit/repository";
 import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
 import { patchDtsProperty, patchJsonValue, writebackMergedParameterValue } from "./writebackService";
+
+const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "dts-teaching-sample.dts");
+const teachingSample = readFileSync(fixturePath, "utf8");
 
 vi.mock("./repository", () => ({
   getProjectParameterFileByName: vi.fn(),
@@ -82,62 +88,33 @@ describe("writebackService patches", () => {
     expect(output).not.toContain("max = 80;");
   });
 
-  it("rejects multiline property values as unsafe writeback", () => {
-    const source = `
-demo {
-  multi_line_matrix = <
-    16 100 100
-    6  15  100>;
-};
-`;
-    expect(() => patchDtsProperty(source, "demo/multi_line_matrix", "<0 0 0>")).toThrow(
-      expect.objectContaining({
-        code: "CONFLICT",
-        details: expect.objectContaining({ code: "dts-writeback-unsafe" })
-      })
-    );
+  it("writes multiline matrix properties and keeps the rest of the fixture byte-identical", () => {
+    const patched = patchDtsProperty(teachingSample, "demo_integer/multi_line_matrix", "<0 0 0>");
+    const output = patched.toString("utf8");
+    expect(output).toContain("multi_line_matrix = <0 0 0>;");
+    expect(output).not.toBe(teachingSample);
+    // Comments, other properties, and other nodes stay byte-identical around the splice.
+    expect(output).toContain("/* ── 5. 整数属性 ── */");
+    expect(output).toContain("single_value = <42>;");
+    const withoutMatrix = (s: string) =>
+      s.replace(/multi_line_matrix\s*=\s*<[\s\S]*?>;/, "multi_line_matrix = <PLACEHOLDER>;");
+    expect(withoutMatrix(output)).toBe(withoutMatrix(teachingSample));
   });
 
-  it("rejects multi-cell-group old or new values as unsafe writeback", () => {
+  it("writes multi-cell-group property values", () => {
     const source = `
 demo {
   combined_para = <1 2600>,<2 2800>;
 };
 `;
-    expect(() => patchDtsProperty(source, "demo/combined_para", "<1 2600>")).toThrow(
-      expect.objectContaining({
-        code: "CONFLICT",
-        details: expect.objectContaining({ code: "dts-writeback-unsafe" })
-      })
-    );
-
-    const single = `
-demo {
-  combined_para = <1 2600>;
-};
-`;
-    expect(() => patchDtsProperty(single, "demo/combined_para", "<1 2600>,<2 2800>")).toThrow(
-      expect.objectContaining({
-        code: "CONFLICT",
-        details: expect.objectContaining({ code: "dts-writeback-unsafe" })
-      })
-    );
+    const patched = patchDtsProperty(source, "demo/combined_para", "<1 2600>,<2 2900>");
+    expect(patched.toString("utf8")).toContain("combined_para = <1 2600>,<2 2900>;");
   });
 
-  it("rejects node paths with unit-address segments", () => {
-    const source = `
-amba {
-  chip@6E {
-    reg = <0x6e>;
-  };
-};
-`;
-    expect(() => patchDtsProperty(source, "amba/chip@6E/reg", "<0x6f>")).toThrow(
-      expect.objectContaining({
-        code: "CONFLICT",
-        details: expect.objectContaining({ code: "dts-writeback-unsafe" })
-      })
-    );
+  it("writes properties under @address nodes", () => {
+    const patched = patchDtsProperty(teachingSample, "amba/i2c@XXXX0000/chip@6E/reg", "<0x6f>");
+    expect(patched.toString("utf8")).toContain("reg = <0x6f>;");
+    expect(patched.toString("utf8")).toContain("chip@6E");
   });
 });
 

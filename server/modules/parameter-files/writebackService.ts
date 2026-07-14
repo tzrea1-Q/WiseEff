@@ -6,6 +6,7 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { parseDts, resolveDts, serializeDts, classifyDtsValue } from "../dts";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
 import type { ParameterFileFormat } from "./types";
@@ -59,46 +60,6 @@ function setNestedJsonLeaf(target: Record<string, unknown>, pathSegments: string
   }
 
   cursor[pathSegments[pathSegments.length - 1]] = value;
-}
-
-function findMatchingBrace(source: string, startAt: number): number {
-  let depth = 0;
-  for (let index = startAt; index < source.length; index += 1) {
-    const ch = source[index];
-    if (ch === "{") depth += 1;
-    if (ch === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return index;
-      }
-    }
-  }
-  return -1;
-}
-
-function findNamedBlock(source: string, blockName: string, fromIndex: number, toIndex: number) {
-  const escaped = blockName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`\\b${escaped}\\b\\s*\\{`, "g");
-  pattern.lastIndex = fromIndex;
-
-  while (true) {
-    const match = pattern.exec(source);
-    if (!match || match.index >= toIndex) {
-      return null;
-    }
-    const openBraceIndex = pattern.lastIndex - 1;
-    if (openBraceIndex >= toIndex) {
-      return null;
-    }
-    const closeBraceIndex = findMatchingBrace(source, openBraceIndex);
-    if (closeBraceIndex === -1 || closeBraceIndex >= toIndex) {
-      return null;
-    }
-    return {
-      contentStart: openBraceIndex + 1,
-      contentEnd: closeBraceIndex
-    };
-  }
 }
 
 function patchByFormat(content: string, format: ParameterFileFormat, nodePath: string, newValue: string): Buffer {
@@ -192,101 +153,57 @@ export function patchJsonValue(content: string, nodePath: string, newValue: stri
   return Buffer.from(JSON.stringify(parsed, null, 2), "utf8");
 }
 
+/** Patch a DTS property via CST locate → replace rawText → lossless serialize. */
 export function patchDtsProperty(content: string, nodePath: string, newValue: string): Buffer {
   const pathSegments = splitNodePath(nodePath);
   if (pathSegments.length < 2) {
     throw new ApiError("VALIDATION_FAILED", "DTS writeback requires module/property node path.", 400, { nodePath });
   }
 
-  if (pathSegments.some((segment) => segment.includes("@"))) {
-    throw new ApiError("CONFLICT", "带地址节点回写需 P1 结构化支持", 409, {
-      code: "dts-writeback-unsafe",
-      nodePath,
-      reason: "unit-address"
-    });
-  }
-
-  const multiGroupPattern = />\s*,\s*</;
-  if (multiGroupPattern.test(newValue)) {
-    throw new ApiError("CONFLICT", "多组 cell 值回写需 P1 结构化支持", 409, {
-      code: "dts-writeback-unsafe",
-      nodePath,
-      reason: "multi-cell-group"
-    });
-  }
-
   const propertyName = pathSegments[pathSegments.length - 1];
-  const modulePath = pathSegments.slice(0, -1);
+  const targetNodePath = pathSegments.slice(0, -1).join("/");
 
-  let scopeStart = 0;
-  let scopeEnd = content.length;
-  for (const segment of modulePath) {
-    const block = findNamedBlock(content, segment, scopeStart, scopeEnd);
-    if (!block) {
-      throw new ApiError("CONFLICT", "Unable to locate DTS module path for writeback.", 409, {
-        nodePath,
-        missingSegment: segment
-      });
-    }
-    scopeStart = block.contentStart;
-    scopeEnd = block.contentEnd;
+  let doc;
+  try {
+    doc = parseDts(content);
+  } catch (error) {
+    throw new ApiError("VALIDATION_FAILED", "Failed to parse DTS content for writeback.", 400, {
+      nodePath,
+      cause: error instanceof Error ? error.message : String(error)
+    });
   }
 
-  const blockContent = content.slice(scopeStart, scopeEnd);
-  const escapedProperty = propertyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const assignMatch = new RegExp(`\\b${escapedProperty}\\b\\s*=\\s*`).exec(blockContent);
-  if (!assignMatch || assignMatch.index === undefined) {
+  const resolved = resolveDts(doc);
+  const node = resolved.nodes.find((entry) => entry.nodePath === targetNodePath);
+  if (!node) {
+    throw new ApiError("CONFLICT", "Unable to locate DTS module path for writeback.", 409, {
+      nodePath,
+      missingSegment: targetNodePath
+    });
+  }
+
+  const property = node.properties.find((entry) => entry.name === propertyName);
+  if (!property) {
     throw new ApiError("CONFLICT", "Unable to locate DTS property for writeback.", 409, {
       nodePath,
       propertyName
     });
   }
 
-  const valueStart = assignMatch.index + assignMatch[0].length;
-  let valueEnd = valueStart;
-  let inString: string | null = null;
-  while (valueEnd < blockContent.length) {
-    const ch = blockContent[valueEnd];
-    if (inString) {
-      if (ch === "\\" && valueEnd + 1 < blockContent.length) {
-        valueEnd += 2;
-        continue;
-      }
-      if (ch === inString) {
-        inString = null;
-      }
-      valueEnd += 1;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      inString = ch;
-      valueEnd += 1;
-      continue;
-    }
-    if (ch === ";") {
-      break;
-    }
-    valueEnd += 1;
-  }
-
-  if (valueEnd >= blockContent.length || blockContent[valueEnd] !== ";") {
-    throw new ApiError("CONFLICT", "Unable to locate DTS property for writeback.", 409, {
+  if (property.valueType === "bool" || property.valueType === "empty") {
+    throw new ApiError("CONFLICT", "Cannot write a value onto a boolean/empty DTS property.", 409, {
       nodePath,
-      propertyName
+      propertyName,
+      valueType: property.valueType
     });
   }
 
-  const oldValue = blockContent.slice(valueStart, valueEnd);
-  if (/[\n\r]/.test(oldValue) || multiGroupPattern.test(oldValue)) {
-    throw new ApiError("CONFLICT", "多行或多组属性回写需 P1 结构化支持", 409, {
-      code: "dts-writeback-unsafe",
-      nodePath,
-      reason: /[\n\r]/.test(oldValue) ? "multiline" : "multi-cell-group"
-    });
-  }
+  const classified = classifyDtsValue(newValue, propertyName);
+  property.cst.rawText = newValue;
+  property.cst.valueType = classified.valueType;
+  property.cst.normalizedValue = classified.normalizedValue;
 
-  const updatedBlock = `${blockContent.slice(0, valueStart)}${newValue}${blockContent.slice(valueEnd)}`;
-  return Buffer.from(`${content.slice(0, scopeStart)}${updatedBlock}${content.slice(scopeEnd)}`, "utf8");
+  return Buffer.from(serializeDts(doc), "utf8");
 }
 
 export async function writebackMergedParameterValue(
