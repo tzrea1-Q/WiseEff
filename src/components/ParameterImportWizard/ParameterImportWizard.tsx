@@ -376,6 +376,7 @@ export function ParameterImportWizard({
               sourceName={sourceName}
               previewBatch={previewBatch}
               selectedItemIds={selectedItemIds}
+              reviewedRows={reviewedRows}
               parameterActions={parameterActions}
               dispatch={dispatch}
               onBack={() => setStep(4)}

@@ -18883,6 +18883,16 @@ body.xiaoze-popup-resize-active {
   font-size: 13px;
 }
 
+.parameter-import-wizard .parameter-import-wizard-server-parse-hint {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 13px;
+}
+
 .parameter-import-wizard .parameter-import-wizard-errors ul {
   margin: 8px 0 0;
   padding-left: 18px;

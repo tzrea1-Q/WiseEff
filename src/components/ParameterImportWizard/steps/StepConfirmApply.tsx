@@ -3,12 +3,15 @@ import type { AppAction } from "@/App";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterImportBatchDto } from "@/application/ports/ParameterRepository";
 import type { Project } from "@/mockData";
+import { buildImportReviewMetadata } from "@/application/parameters/import/buildImportReviewMetadata";
+import type { ReviewedImportRow } from "@/application/parameters/import/types";
 
 export type StepConfirmApplyProps = {
   project?: Project;
   sourceName: string;
   previewBatch: ParameterImportBatchDto | null;
   selectedItemIds: Set<string>;
+  reviewedRows: ReviewedImportRow[];
   parameterActions?: ParameterPageActions;
   dispatch: Dispatch<AppAction>;
   onBack: () => void;
@@ -20,6 +23,7 @@ export function StepConfirmApply({
   sourceName,
   previewBatch,
   selectedItemIds,
+  reviewedRows,
   parameterActions,
   dispatch,
   onBack,
@@ -38,7 +42,8 @@ export function StepConfirmApply({
     try {
       const result = await parameterActions.applyImportBatch({
         batchId: previewBatch.id,
-        selectedItemIds: Array.from(selectedItemIds)
+        selectedItemIds: Array.from(selectedItemIds),
+        reviewMetadata: buildImportReviewMetadata(reviewedRows)
       });
       if (result && "notification" in result) {
         if (!result.alreadyNotified) {
