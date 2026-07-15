@@ -208,7 +208,8 @@ export async function resolveStructuredEditToParameter(
             fallbackName: identity.name,
             fallbackModule: identity.module,
             fileId: file.id
-          }
+          },
+          traceId: randomUUID()
         });
       }
       return byDefinition;

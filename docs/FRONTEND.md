@@ -71,7 +71,12 @@ Key UI:
 - `ConfigSetBaselinePanel` — list/create config sets and baselines, add members, compare/release/export; mounts on the config-set/baseline tab of the same dialog. Baseline compare change-set rows map to real parameters and can submit structured edits through the same port.
 - `StructuredDiffView` — renders baseline compare `structuralDiff` plus optional aggregated change-set rows (node/property kinds).
 
-Legacy `ProjectParameterFilesPanel` / conflict panels still talk to `parameterFileClient` directly (TD-039 residual). New structured surfaces above are port-closed.
+## ParameterFileRepository (legacy file / conflict panels)
+
+`ParameterFileRepository` is the frontend port for project parameter-file list/upload/version/sync and sync-conflict resolve. Admin surfaces must inject it through `resolveParameterFileRepository(runtimeMode)` in `src/application/parameters/parameterFileRuntime.ts` — mock via `createMockParameterFileRepository`, API via `createParameterFileClient`.
+
+- `ProjectParameterFilesPanel` and `ParameterFileConflictPanel` accept a `repository` prop only; they must **not** call `createParameterFileClient()` inside the component.
+- `/parameter-admin/projects` and `/parameter-admin` resolve the port once and pass it down (including mock mode demos that list teaching files / open conflicts without HTTP).
 
 ## Hierarchical Module Trees
 

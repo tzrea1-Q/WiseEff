@@ -113,7 +113,8 @@ export async function syncFileVersion(
                 fallbackName: identity.name,
                 fallbackModule: identity.module,
                 projectParameterValueId: resolved.id
-              }
+              },
+              traceId: randomUUID()
             });
           }
         }

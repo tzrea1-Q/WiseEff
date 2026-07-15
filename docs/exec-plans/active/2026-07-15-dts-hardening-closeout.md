@@ -137,10 +137,10 @@
 
 ## Documentation Update Gate
 
-- [ ] FRONTEND / env / SECURITY（中英）已更新
-- [ ] TD-039 / TD-040 状态与实现一致
-- [ ] `docs:check` 通过
-- [ ] 前端可见改动有 playwright-cli 证据
+- [x] FRONTEND / env / SECURITY（中英）已更新
+- [x] TD-039 / TD-040 状态与实现一致
+- [x] `docs:check` 通过
+- [x] 前端可见改动有 playwright-cli 证据
 
 ---
 
