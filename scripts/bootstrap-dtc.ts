@@ -97,6 +97,11 @@ async function main() {
     throw new Error(`dtc installation completed but the compiler is still unavailable: ${after.error}`);
   }
   console.log(`dtc ready: ${after.version}`);
+  console.log(
+    "Next: ensure fdtoverlay is on PATH (same device-tree-compiler package) and install dtschema:\n" +
+      "  python3 -m pip install -r tools/dts-toolchain/requirements.txt\n" +
+      "Then verify with: npm run dts:toolchain:check -- --required"
+  );
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

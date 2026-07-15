@@ -9,7 +9,9 @@ export const requiredSelfHostedScripts = [
   "backup:check",
   "queue:check",
   "dtc:check",
-  "dtc:seed:compile"
+  "dtc:seed:compile",
+  "dts:toolchain:check",
+  "dts:config:validate"
 ] as const;
 
 export const requiredSelfHostedServices = ["postgres", "redis", "api", "worker", "web", "proxy"] as const;
@@ -40,8 +42,10 @@ export const requiredDockerfileTokens = [
   "ARG VITE_WISEEFF_API_BASE_URL",
   "ENV VITE_WISEEFF_RUNTIME_MODE=$VITE_WISEEFF_RUNTIME_MODE",
   "ENV VITE_WISEEFF_API_BASE_URL=$VITE_WISEEFF_API_BASE_URL",
-  "RUN apk add --no-cache curl dtc",
-  "RUN dtc --version",
+  "ARG DTC_COMMIT=8f48565e5cfedc74d3f7512f1e0188e9d85dc1de",
+  "pip3 install --break-system-packages --no-cache-dir -r /tmp/dts-toolchain-requirements.txt",
+  "COPY --from=dtc-builder /opt/dtc /opt/dtc",
+  "RUN dtc --version && fdtoverlay --version && dt-validate --version",
   "npx tsc -b",
   "npx vite build"
 ] as const;

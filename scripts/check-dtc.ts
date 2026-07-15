@@ -40,7 +40,10 @@ async function main() {
   const result = probeDtc();
   console.log(JSON.stringify(result, null, 2));
   if (required && !result.available) {
-    console.error("dtc is required. Run `npm run dtc:bootstrap`, then retry.");
+    console.error(
+      "dtc is required. Run `npm run dtc:bootstrap`, then retry.\n" +
+        "For the full toolchain (dtc + fdtoverlay + dt-validate), use `npm run dts:toolchain:check`."
+    );
     process.exitCode = 1;
   }
 }

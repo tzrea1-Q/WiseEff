@@ -54,6 +54,8 @@
     "dtc:check": "tsx scripts/check-dtc.ts",
     "dtc:bootstrap": "tsx scripts/bootstrap-dtc.ts",
     "dtc:seed:compile": "tsx scripts/compile-dts-seed.ts",
+    "dts:toolchain:check": "tsx scripts/check-dts-toolchain.ts --required",
+    "dts:config:validate": "tsx scripts/validate-dts-config-set.ts",
     "xiaoze:eval": "tsx scripts/run-xiaoze-eval.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "reset:quality-runtime": "tsx scripts/reset-quality-runtime.ts",
