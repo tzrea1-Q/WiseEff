@@ -2,9 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   DtsStructuralNode,
   DtsStructuralProperty,
-  DtsStructuredRepository
+  DtsStructuredRepository,
+  DtsStructuredSubmissionRound
 } from "@/application/ports/DtsStructuredRepository";
+import {
+  aggregateLocalStructuredEdits,
+  type ParameterSourceLookup
+} from "@/application/parameters/structuredChangeSet";
 import { DtsNodeTreeView } from "@/components/parameters/DtsNodeTreeView";
+import { StructuredDiffView } from "@/components/parameters/StructuredDiffView";
 import {
   StructuredValueEditor,
   type StructuredValueChange
@@ -19,8 +25,12 @@ export type DtsStructureBrowserPanelProps = {
   repository: DtsStructuredRepository;
   fileId?: string;
   versionId?: string;
+  /** When false, the value editor and submit entry are disabled. */
+  canEdit?: boolean;
   /** When false, critical nodes (regulator/thermal path) disable the value editor. */
   canEditCritical?: boolean;
+  /** Optional source bindings so the local change-set can map to real parameter ids. */
+  parameterSources?: ParameterSourceLookup[];
 };
 
 type LocalPropertyDraft = {
@@ -43,20 +53,25 @@ export function DtsStructureBrowserPanel({
   repository,
   fileId,
   versionId,
-  canEditCritical = true
+  canEdit = true,
+  canEditCritical = true,
+  parameterSources = []
 }: DtsStructureBrowserPanelProps) {
   const [nodes, setNodes] = useState<DtsStructuralNode[]>([]);
   const [selectedNodePath, setSelectedNodePath] = useState<string | undefined>();
   const [selectedPropertyName, setSelectedPropertyName] = useState<string | undefined>();
   const [drafts, setDrafts] = useState<Record<string, LocalPropertyDraft>>({});
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [submitResult, setSubmitResult] = useState<DtsStructuredSubmissionRound | null>(null);
   const [loadedWith, setLoadedWith] = useState<{ fileId: string; versionId: string } | null>(null);
 
   const loadStructure = useCallback(
     async (nextFileId: string, nextVersionId: string) => {
       setLoading(true);
       setError("");
+      setSubmitResult(null);
       try {
         const result = await repository.getStructure(projectId, nextFileId, nextVersionId);
         setNodes(result.nodes);
@@ -109,6 +124,7 @@ export function DtsStructureBrowserPanel({
 
   const criticalLocked =
     Boolean(selectedNode) && !canEditCritical && isCriticalDtsNodePath(selectedNode!.nodePath);
+  const editorLocked = !canEdit || criticalLocked;
 
   const activeDraft =
     selectedNode && selectedProperty
@@ -120,7 +136,7 @@ export function DtsStructureBrowserPanel({
   const editorPresent = activeDraft?.present;
 
   const onEditorChange = (next: StructuredValueChange) => {
-    if (!selectedNode || !selectedProperty) {
+    if (!selectedNode || !selectedProperty || editorLocked) {
       return;
     }
     const key = propertyKey(selectedNode.nodePath, selectedProperty.name);
@@ -132,14 +148,76 @@ export function DtsStructureBrowserPanel({
         ...(typeof next.present === "boolean" ? { present: next.present } : {})
       }
     }));
+    setSubmitResult(null);
   };
+
+  const localAggregate = useMemo(() => {
+    if (!loadedWith) {
+      return null;
+    }
+    const draftRows = [];
+    for (const node of nodes) {
+      for (const property of node.properties) {
+        const draft = drafts[propertyKey(node.nodePath, property.name)];
+        if (!draft) continue;
+        draftRows.push({
+          nodePath: node.nodePath,
+          propertyName: property.name,
+          beforeRawText: property.rawText,
+          rawText: draft.rawText,
+          normalizedValue: draft.normalizedValue
+        });
+      }
+    }
+    return aggregateLocalStructuredEdits({
+      fileId: loadedWith.fileId,
+      fileName: loadedWith.fileId === DTS_TEACHING_FILE_ID ? "teaching-sample.dts" : loadedWith.fileId,
+      drafts: draftRows,
+      parameters: parameterSources
+    });
+  }, [drafts, loadedWith, nodes, parameterSources]);
+
+  const submitChangeRequest = async () => {
+    if (!localAggregate || localAggregate.edits.length === 0 || !canEdit) {
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      const round = await repository.submitStructuredEdits(projectId, {
+        edits: localAggregate.edits,
+        reason: "Structured DTS edits from structure browser"
+      });
+      setSubmitResult(round);
+      setDrafts({});
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "提交变更请求失败。");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const compareResultForDiff = localAggregate
+    ? {
+        baselineId: localAggregate.changeSet.baselineId,
+        members: [
+          {
+            fileId: loadedWith?.fileId ?? "local",
+            fileName:
+              loadedWith?.fileId === DTS_TEACHING_FILE_ID ? "teaching-sample.dts" : loadedWith?.fileId,
+            status: "version_changed" as const,
+            structuralDiff: localAggregate.changeSet.changes.map((entry) => entry.change)
+          }
+        ]
+      }
+    : null;
 
   return (
     <section className="dts-structure-browser-panel" aria-label="结构浏览">
       <div className="dts-structure-browser-panel__head">
         <div>
           <h3>结构浏览</h3>
-          <p>浏览节点树、查看属性并用结构化编辑器做本地预览（本面板不写回）。</p>
+          <p>浏览节点树、编辑结构化属性值，聚成变更集后提交为变更请求（回写载荷使用 rawText）。</p>
         </div>
         <button
           type="button"
@@ -222,6 +300,11 @@ export function DtsStructureBrowserPanel({
             {selectedProperty ? (
               <div className="dts-structure-browser-panel__editor" aria-label="属性值编辑">
                 <h4>编辑 · {selectedProperty.name}</h4>
+                {!canEdit ? (
+                  <p className="field-error" role="alert">
+                    需要 parameter:edit 权限才能编辑结构化属性。
+                  </p>
+                ) : null}
                 {criticalLocked ? (
                   <p className="field-error" role="alert">
                     需要 parameter:edit-critical 权限才能编辑安全关键节点。
@@ -233,7 +316,7 @@ export function DtsStructureBrowserPanel({
                   rawText={editorRawText}
                   present={editorPresent}
                   availableLabels={availableLabels}
-                  disabled={criticalLocked || selectedProperty.valueType === "empty"}
+                  disabled={editorLocked || selectedProperty.valueType === "empty"}
                   onChange={onEditorChange}
                 />
                 <p className="dts-structure-browser-panel__preview-note">
@@ -243,6 +326,36 @@ export function DtsStructureBrowserPanel({
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {canEdit && localAggregate && localAggregate.edits.length > 0 && compareResultForDiff ? (
+        <div className="dts-structure-browser-panel__changeset">
+          <StructuredDiffView result={compareResultForDiff} changeSet={localAggregate.changeSet} />
+          <p>
+            待提交 {localAggregate.edits.length} 项 · 已映射 {localAggregate.changeSet.items.length} 项 ·
+            未映射 {localAggregate.changeSet.unmapped.length} 项
+          </p>
+          <button
+            type="button"
+            className="button"
+            disabled={submitting}
+            onClick={() => void submitChangeRequest()}
+          >
+            提交变更请求
+          </button>
+        </div>
+      ) : null}
+
+      {submitResult ? (
+        <p className="dts-structure-browser-panel__submit-success" role="status">
+          已提交变更请求 <code>{submitResult.id}</code>
+          {submitResult.items.map((item) => (
+            <span key={item.parameterId}>
+              {" · "}
+              <code>{item.parameterId}</code>
+            </span>
+          ))}
+        </p>
       ) : null}
     </section>
   );

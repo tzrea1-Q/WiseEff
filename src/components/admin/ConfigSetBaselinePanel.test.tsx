@@ -84,6 +84,7 @@ function createRepository(overrides: Partial<DtsStructuredRepository> = {}): Dts
       gate: gate()
     } satisfies DtsReleaseBaselineResult),
     exportConfigSet: vi.fn().mockResolvedValue(exportResult()),
+    submitStructuredEdits: vi.fn(),
     ...overrides
   };
 }

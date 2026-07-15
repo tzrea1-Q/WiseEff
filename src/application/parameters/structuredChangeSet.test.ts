@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DtsCompareBaselineResult, DtsStructuralChange } from "@/application/ports/DtsStructuredRepository";
 import {
+  aggregateLocalStructuredEdits,
   aggregateStructuredChangeSet,
   sourceNodePathForChange,
   type ParameterSourceLookup
@@ -192,5 +193,73 @@ describe("aggregateStructuredChangeSet", () => {
     expect(result.items).toEqual([]);
     expect(result.unmapped).toEqual([]);
     expect(result.changes).toEqual([]);
+  });
+});
+
+describe("aggregateLocalStructuredEdits", () => {
+  it("builds Port submit edits from local drafts using rawText and maps without unmapped when lookups match", () => {
+    const result = aggregateLocalStructuredEdits({
+      fileId: "file-board",
+      fileName: "board.dts",
+      drafts: [
+        {
+          nodePath: "amba/i2c@XXXX0000",
+          propertyName: "mixed_case_reg",
+          beforeRawText: "/bits/ 8 <0xab 0xcd>",
+          rawText: "/bits/ 8 <0xAB 0xCD>",
+          normalizedValue: "/bits/ 8 <0xab 0xcd>"
+        }
+      ],
+      parameters: [lookup("ppv-hex", "board.dts", "amba/i2c@XXXX0000/mixed_case_reg")]
+    });
+
+    expect(result.edits).toEqual([
+      {
+        fileId: "file-board",
+        nodePath: "amba/i2c@XXXX0000",
+        propertyName: "mixed_case_reg",
+        rawText: "/bits/ 8 <0xAB 0xCD>",
+        reason: expect.stringContaining("amba/i2c@XXXX0000/mixed_case_reg")
+      }
+    ]);
+    expect(result.changeSet.items).toEqual([
+      {
+        parameterId: "ppv-hex",
+        targetValue: "/bits/ 8 <0xAB 0xCD>",
+        reason: expect.any(String)
+      }
+    ]);
+    expect(result.changeSet.unmapped).toEqual([]);
+  });
+
+  it("skips unchanged drafts and does not invent unmapped for pending creates without lookup", () => {
+    const result = aggregateLocalStructuredEdits({
+      fileId: "file-board",
+      fileName: "board.dts",
+      drafts: [
+        {
+          nodePath: "demo_integer",
+          propertyName: "single_value",
+          beforeRawText: "<42>",
+          rawText: "<42>",
+          normalizedValue: "<42>"
+        },
+        {
+          nodePath: "demo_integer",
+          propertyName: "spare",
+          beforeRawText: "<1>",
+          rawText: "<2>",
+          normalizedValue: "<2>"
+        }
+      ],
+      parameters: []
+    });
+
+    expect(result.edits).toHaveLength(1);
+    expect(result.edits[0]?.rawText).toBe("<2>");
+    // Pending create: still submitable via Port (backend ensure); provisional mapped by synthetic id.
+    expect(result.changeSet.items).toHaveLength(1);
+    expect(result.changeSet.items[0]?.parameterId).toMatch(/^pending:/);
+    expect(result.changeSet.unmapped).toEqual([]);
   });
 });

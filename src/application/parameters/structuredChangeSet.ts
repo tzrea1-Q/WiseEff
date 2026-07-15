@@ -39,6 +39,94 @@ export type StructuredChangeSet = {
   changes: FlattenedStructuralChange[];
 };
 
+export type LocalStructuredDraft = {
+  nodePath: string;
+  propertyName: string;
+  beforeRawText: string;
+  rawText: string;
+  normalizedValue: string;
+};
+
+export type AggregateLocalStructuredEditsInput = {
+  fileId: string;
+  fileName?: string;
+  drafts: LocalStructuredDraft[];
+  parameters: ParameterSourceLookup[];
+};
+
+export type AggregateLocalStructuredEditsResult = {
+  edits: Array<{
+    fileId: string;
+    nodePath: string;
+    propertyName: string;
+    rawText: string;
+    reason: string;
+  }>;
+  changeSet: StructuredChangeSet;
+};
+
+/**
+ * AggregateLocalStructuredEditsInput drafts that differ from beforeRawText into Port
+ * submit units. Prefer rawText for CR targetValue. When a source binding exists, map
+ * to that parameterId; otherwise use a provisional `pending:` id (backend ensure creates
+ * the real PPV) so the change-set stays free of unmapped rows for property edits.
+ */
+export function aggregateLocalStructuredEdits(
+  input: AggregateLocalStructuredEditsInput
+): AggregateLocalStructuredEditsResult {
+  const edits: AggregateLocalStructuredEditsResult["edits"] = [];
+  const items: ChangeSetSubmitItem[] = [];
+  const changes: FlattenedStructuralChange[] = [];
+
+  for (const draft of input.drafts) {
+    if (draft.rawText === draft.beforeRawText) {
+      continue;
+    }
+
+    const sourceNodePath = draft.nodePath.trim()
+      ? `${draft.nodePath.trim()}/${draft.propertyName.trim()}`
+      : draft.propertyName.trim();
+    const change: DtsStructuralChange = {
+      kind: "prop_changed",
+      nodePath: draft.nodePath,
+      prop: draft.propertyName,
+      before: draft.beforeRawText,
+      after: draft.rawText
+    };
+    changes.push({
+      fileId: input.fileId,
+      fileName: input.fileName,
+      change
+    });
+
+    const reason = `Structured edit: ${input.fileName ?? input.fileId} ${sourceNodePath}`;
+    edits.push({
+      fileId: input.fileId,
+      nodePath: draft.nodePath,
+      propertyName: draft.propertyName,
+      rawText: draft.rawText,
+      reason
+    });
+
+    const parameter = findParameter(input.parameters, input.fileName, sourceNodePath);
+    items.push({
+      parameterId: parameter?.id ?? `pending:${input.fileId}:${sourceNodePath}`,
+      targetValue: draft.rawText,
+      reason
+    });
+  }
+
+  return {
+    edits,
+    changeSet: {
+      baselineId: "local-edits",
+      items,
+      unmapped: [],
+      changes
+    }
+  };
+}
+
 function isPropertyChange(
   change: DtsStructuralChange
 ): change is Extract<DtsStructuralChange, { prop: string }> {

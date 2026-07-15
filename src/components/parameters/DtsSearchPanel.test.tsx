@@ -30,6 +30,7 @@ function createRepository(overrides: Partial<DtsStructuredRepository> = {}): Dts
     rollbackBaseline: vi.fn(),
     releaseBaseline: vi.fn(),
     exportConfigSet: vi.fn(),
+    submitStructuredEdits: vi.fn(),
     ...overrides
   };
 }

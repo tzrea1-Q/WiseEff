@@ -47,6 +47,7 @@ export function ParameterAdminProjectsPage({
   const parameterFileClient = useMemo(() => createParameterFileClient(), []);
   const dtsRepo = useMemo(() => resolveDtsStructuredRepository(runtimeMode), [runtimeMode]);
   const canAdmin = canPerform(state.activeRoleId, "admin.access");
+  const canEdit = roleHasPermission(state.activeRoleId, "parameter:edit");
   const canEditCritical = roleHasPermission(state.activeRoleId, "parameter:edit-critical");
   const { search, updateSearch } = useParamAdminProjectsSearch();
   const [apiRows, setApiRows] = useState<ParameterAdminProjectRow[]>([]);
@@ -352,6 +353,7 @@ export function ParameterAdminProjectsPage({
                 <DtsStructureBrowserPanel
                   projectId={manageFilesTarget.id}
                   repository={dtsRepo}
+                  canEdit={canEdit}
                   canEditCritical={canEditCritical}
                 />
               ) : null}

@@ -73,6 +73,18 @@ function createRepository(overrides: Partial<DtsStructuredRepository> = {}): Dts
     rollbackBaseline: vi.fn(),
     releaseBaseline: vi.fn(),
     exportConfigSet: vi.fn(),
+    submitStructuredEdits: vi.fn().mockResolvedValue({
+      id: "round-1",
+      projectId: PROJECT_ID,
+      status: "submitted",
+      items: [
+        {
+          parameterId: "ppv-bool",
+          targetValue: "",
+          reason: "structured edit"
+        }
+      ]
+    }),
     ...overrides
   };
 }
@@ -173,5 +185,104 @@ describe("DtsStructureBrowserPanel", () => {
     });
 
     expect(await screen.findByRole("treeitem", { name: "demo_bool" })).toBeInTheDocument();
+  });
+
+  it("aggregates local edits into a change-set and submits via Port with rawText", async () => {
+    const nodes: DtsStructuralNode[] = [
+      node({
+        nodePath: "amba/i2c@XXXX0000",
+        properties: [
+          {
+            name: "mixed_case_reg",
+            valueType: "bytes",
+            rawText: "/bits/ 8 <0xab 0xcd>",
+            normalizedValue: "/bits/ 8 <0xab 0xcd>"
+          }
+        ]
+      })
+    ];
+    const submitStructuredEdits = vi.fn().mockResolvedValue({
+      id: "round-hex",
+      projectId: PROJECT_ID,
+      status: "submitted",
+      items: [
+        {
+          parameterId: "ppv-hex",
+          targetValue: "/bits/ 8 <0xAB 0xCD>",
+          reason: "structured edit"
+        }
+      ]
+    });
+    const repository = createRepository({
+      getStructure: vi.fn().mockResolvedValue({ nodes }),
+      submitStructuredEdits
+    });
+
+    render(
+      <DtsStructureBrowserPanel
+        projectId={PROJECT_ID}
+        repository={repository}
+        fileId="file-board"
+        versionId="ver-1"
+        canEdit
+        canEditCritical
+      />
+    );
+
+    const panel = await screen.findByRole("region", { name: "结构浏览" });
+    fireEvent.click(within(panel).getByRole("treeitem", { name: "amba/i2c@XXXX0000" }));
+    fireEvent.click(within(panel).getByRole("button", { name: /编辑属性 mixed_case_reg/ }));
+
+    const byte1 = within(panel).getByLabelText("byte 1");
+    fireEvent.change(byte1, { target: { value: "0xAB" } });
+    const byte2 = within(panel).getByLabelText("byte 2");
+    fireEvent.change(byte2, { target: { value: "0xCD" } });
+
+    const changeSet = await within(panel).findByRole("region", { name: "变更集" });
+    expect(within(changeSet).getByText(/已映射|待提交/)).toBeInTheDocument();
+    expect(within(changeSet).queryByText(/未映射 0 项|未映射变更/)).toBeTruthy();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "提交变更请求" }));
+
+    await waitFor(() => {
+      expect(submitStructuredEdits).toHaveBeenCalledWith(
+        PROJECT_ID,
+        expect.objectContaining({
+          edits: [
+            expect.objectContaining({
+              fileId: "file-board",
+              nodePath: "amba/i2c@XXXX0000",
+              propertyName: "mixed_case_reg",
+              rawText: expect.stringMatching(/0xAB/i)
+            })
+          ]
+        })
+      );
+    });
+
+    expect(await within(panel).findByText(/已提交变更请求/)).toBeInTheDocument();
+    expect(within(panel).getByText(/ppv-hex/)).toBeInTheDocument();
+  });
+
+  it("disables submit when canEdit is false", async () => {
+    const repository = createRepository();
+
+    render(
+      <DtsStructureBrowserPanel
+        projectId={PROJECT_ID}
+        repository={repository}
+        canEdit={false}
+        canEditCritical={false}
+      />
+    );
+
+    const panel = await screen.findByRole("region", { name: "结构浏览" });
+    fireEvent.click(within(panel).getByRole("treeitem", { name: "demo_bool" }));
+    fireEvent.click(
+      within(panel).getByRole("button", { name: /编辑属性 weak_source_sleep_enabled/ })
+    );
+
+    expect(within(panel).getByRole("checkbox", { name: "布尔开关" })).toBeDisabled();
+    expect(within(panel).queryByRole("button", { name: "提交变更请求" })).not.toBeInTheDocument();
   });
 });

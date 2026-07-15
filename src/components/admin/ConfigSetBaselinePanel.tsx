@@ -8,7 +8,7 @@ import type {
   DtsStructuredRepository,
   DtsValidationGateResult
 } from "@/application/ports/DtsStructuredRepository";
-import { aggregateStructuredChangeSet } from "@/application/parameters/structuredChangeSet";
+import { aggregateStructuredChangeSet, type ParameterSourceLookup } from "@/application/parameters/structuredChangeSet";
 import { StructuredDiffView } from "@/components/parameters/StructuredDiffView";
 
 export type ConfigSetBaselinePanelProps = {
@@ -16,6 +16,8 @@ export type ConfigSetBaselinePanelProps = {
   repository: DtsStructuredRepository;
   canAdmin?: boolean;
   availableFiles?: { id: string; fileName: string }[];
+  /** Source bindings used to map baseline structural diffs onto real parameters (no unmapped). */
+  parameterSources?: ParameterSourceLookup[];
 };
 
 const CONFIG_SET_ROLES: ConfigSetRole[] = ["base", "overlay", "charging", "thermal", "misc"];
@@ -39,7 +41,8 @@ export function ConfigSetBaselinePanel({
   projectId,
   repository,
   canAdmin = true,
-  availableFiles = []
+  availableFiles = [],
+  parameterSources = []
 }: ConfigSetBaselinePanelProps) {
   const [configSets, setConfigSets] = useState<DtsConfigSet[]>([]);
   const [selectedConfigSetId, setSelectedConfigSetId] = useState<string | null>(null);
@@ -51,6 +54,7 @@ export function ConfigSetBaselinePanel({
   const [memberRole, setMemberRole] = useState<ConfigSetRole>("base");
   const [gateResult, setGateResult] = useState<DtsValidationGateResult | null>(null);
   const [compareResult, setCompareResult] = useState<DtsCompareBaselineResult | null>(null);
+  const [submitMessage, setSubmitMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -215,6 +219,7 @@ export function ConfigSetBaselinePanel({
       return;
     }
     setError("");
+    setSubmitMessage("");
     try {
       const result = await repository.compareBaseline(projectId, baselineId);
       setCompareResult(result);
@@ -223,11 +228,74 @@ export function ConfigSetBaselinePanel({
     }
   };
 
+  const changeSet = compareResult
+    ? aggregateStructuredChangeSet(compareResult, parameterSources)
+    : null;
+
+  const submitMappedChangeSet = async () => {
+    if (!canAdmin || !changeSet || changeSet.items.length === 0 || !compareResult) {
+      return;
+    }
+    setError("");
+    setSubmitMessage("");
+    try {
+      const mappedEdits = [];
+      for (const entry of changeSet.changes) {
+        const change = entry.change;
+        if (
+          change.kind !== "prop_changed" &&
+          change.kind !== "prop_added" &&
+          change.kind !== "prop_removed"
+        ) {
+          continue;
+        }
+        const sourcePath = change.nodePath ? `${change.nodePath}/${change.prop}` : change.prop;
+        const parameter = parameterSources.find(
+          (candidate) =>
+            candidate.sourceFileName === (entry.fileName ?? "") &&
+            candidate.sourceNodePath === sourcePath
+        );
+        if (!parameter) {
+          continue;
+        }
+        const item = changeSet.items.find((candidate) => candidate.parameterId === parameter.id);
+        if (!item) {
+          continue;
+        }
+        mappedEdits.push({
+          fileId: entry.fileId,
+          nodePath: change.nodePath,
+          propertyName: change.prop,
+          rawText: item.targetValue,
+          reason: item.reason
+        });
+      }
+
+      if (mappedEdits.length === 0) {
+        setError("变更集没有可提交的已映射属性项。");
+        return;
+      }
+
+      const round = await repository.submitStructuredEdits(projectId, {
+        edits: mappedEdits,
+        reason: `Baseline change-set ${compareResult.baselineId}`
+      });
+      setSubmitMessage(`已提交变更请求 ${round.id}（${round.items.length} 项）`);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "提交变更请求失败。");
+    }
+  };
+
   return (
     <section className="config-set-baseline-panel" aria-label="配置集 / 基线">
       {error ? (
         <p className="config-set-baseline-panel__error" role="alert">
           {error}
+        </p>
+      ) : null}
+      {submitMessage ? (
+        <p className="config-set-baseline-panel__submit-success" role="status">
+          {submitMessage}
         </p>
       ) : null}
       {loading ? <p className="config-set-baseline-panel__loading">配置集加载中…</p> : null}
@@ -384,12 +452,18 @@ export function ConfigSetBaselinePanel({
         </>
       ) : null}
 
-      {compareResult ? (
+      {compareResult && changeSet ? (
         <div className="config-set-baseline-panel__compare">
-          <StructuredDiffView
-            result={compareResult}
-            changeSet={aggregateStructuredChangeSet(compareResult, [])}
-          />
+          <StructuredDiffView result={compareResult} changeSet={changeSet} />
+          {canAdmin && changeSet.items.length > 0 ? (
+            <button
+              type="button"
+              className="button"
+              onClick={() => void submitMappedChangeSet()}
+            >
+              提交变更请求
+            </button>
+          ) : null}
         </div>
       ) : null}
 
