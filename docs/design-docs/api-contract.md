@@ -96,6 +96,35 @@ Org-scoped parameter modules are a hierarchical taxonomy independent from the de
 
 `GET /api/v1/parameters` accepts `moduleId` and optional `includeDescendants` (defaults to including descendants). Parameter DTOs expose `moduleId` and `modulePath` (materialized name segments).
 
+## Parameter Import
+
+Admin-only (`canAdminParameters` / `admin:access`) batch import and full-DTS parse:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/parameter-import/parse-dts` | Parse a full `.dts` UTF-8 source via server CST (`parseDts`/`resolveDts`). Rejects `/include/` with `details.code=dts-include-unsupported`. |
+| `POST` | `/api/v1/parameter-import-batches` | Create an import preview batch. Optional `reviewMetadata` (skip reasons / notes) is written into `batch-import` audit metadata when present. |
+| `POST` | `/api/v1/parameter-import-batches/:batchId/apply` | Apply selected preview items. Optional `reviewMetadata` merges into the apply audit metadata. |
+
+`POST /api/v1/parameter-import/parse-dts` body:
+
+```json
+{ "sourceName": "board.dts", "content": "/dts-v1/;\n&demo { chip@6E { status = \"ok\"; }; };\n" }
+```
+
+Response rows include `name`, `module`, `sourceNodePath`, `rawText`, `normalizedValue`, and `valueType`. `module`/`name` follow `nodePathToParameterIdentity` on `sourceNodePath` (`nodePath/prop`). Default content size limit is 2MB.
+
+Optional `reviewMetadata` on create/apply:
+
+```json
+{
+  "reviewMetadata": {
+    "skippedRows": [{ "rowKey": "demo/chip@6E/status", "name": "status", "module": "demo/chip@6E", "reason": "skipped in wizard" }],
+    "notes": "wizard skipped 1 row(s)"
+  }
+}
+```
+
 ## Parameter Dashboard
 
 Read-only aggregation endpoints for `/parameter-home`. Both routes require parameter view permission (`canViewParameters`) and scope results to the authenticated organization. Optional `projectId` narrows aggregates to one managed project; omit it for org-wide totals.

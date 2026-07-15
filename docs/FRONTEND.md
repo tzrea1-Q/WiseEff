@@ -78,6 +78,15 @@ Key UI:
 - `ProjectParameterFilesPanel` and `ParameterFileConflictPanel` accept a `repository` prop only; they must **not** call `createParameterFileClient()` inside the component.
 - `/parameter-admin/projects` and `/parameter-admin` resolve the port once and pass it down (including mock mode demos that list teaching files / open conflicts without HTTP).
 
+## Parameter Import Wizard
+
+`ParameterImportWizard` on `/parameter-admin` supports spreadsheet / JSON / DTS fragment / full DTS sources.
+
+- Full `.dts` / `.dtsi` (`dts-full`) must go through `ParameterRepository.parseDtsImport` → `POST /api/v1/parameter-import/parse-dts` (mock uses a CST-derived walker). **Do not** silently fall back to `parseDtsFragmentImport` for `dts-full`.
+- Sources containing `/include/` fail with a readable `dts-include-unsupported` message.
+- Skipped rows become optional `reviewMetadata` on `createImportPreview` / `applyImportBatch` for server audit.
+- Content over 2MB shows the "will use server-side parse" hint; clients must not invent a local full-DTS pseudo-parse path.
+
 ## Hierarchical Module Trees
 
 Parameter and debugging domains each maintain an independent org-scoped module tree. Shared picker UI lives in `src/components/common/ModuleTreeSelect.tsx` (expand/collapse, breadcrumb labels, single- and multi-select modes).

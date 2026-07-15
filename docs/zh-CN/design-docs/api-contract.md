@@ -214,6 +214,7 @@ POST   /api/v1/parameter-submission-rounds
 GET    /api/v1/parameter-submission-rounds
 GET    /api/v1/parameter-change-requests
 POST   /api/v1/parameter-change-requests/:requestId/review
+POST   /api/v1/parameter-import/parse-dts
 POST   /api/v1/parameter-import-batches
 POST   /api/v1/parameter-import-batches/:batchId/apply
 GET    /api/v1/parameters/dashboard/summary
@@ -232,10 +233,13 @@ GET    /api/v1/parameters/dashboard/hotspots
 | `GET` | `/api/v1/parameter-submission-rounds` | 提交轮次列表 |
 | `GET` | `/api/v1/parameter-change-requests` | 变更请求列表 |
 | `POST` | `/api/v1/parameter-change-requests/:requestId/review` | 审阅、推进或打回 |
-| `POST` | `/api/v1/parameter-import-batches` | 创建导入批次 |
-| `POST` | `/api/v1/parameter-import-batches/:batchId/apply` | 应用导入 |
+| `POST` | `/api/v1/parameter-import/parse-dts` | 完整 `.dts` 服务端 CST 解析（`parseDts`/`resolveDts`）；含 `/include/` 时返回 `details.code=dts-include-unsupported` |
+| `POST` | `/api/v1/parameter-import-batches` | 创建导入批次预览；可选 `reviewMetadata`（跳过原因等）写入 `batch-import` 审计 metadata |
+| `POST` | `/api/v1/parameter-import-batches/:batchId/apply` | 应用导入；可选 `reviewMetadata` 合并进 apply 审计 |
 | `GET` | `/api/v1/parameters/dashboard/summary` | 参数看板汇总：KPI、趋势、风险分布、工作台信号；另含 `personalKpis`（按 `perspectiveRoleId` 视角聚合的个人 KPI：`contributionCount`、`workflowCount`、`openItemCount`、`pendingTodoCount`、`highRiskTouchCount`）与 `personalTrend`（个人趋势，结构与 `trend` 相同，按同一视角聚合）；查询参数 `window`（默认 `30d`）、可选 `projectId`、可选 `perspectiveRoleId`（前端当前角色，用于个人 KPI 语义分支） |
 | `GET` | `/api/v1/parameters/dashboard/hotspots` | 参数热榜；查询参数 `window`（默认 `30d`）、`dimension`（默认 `overall`）、可选 `projectId` |
+
+`parse-dts` 返回行含 `name`、`module`、`sourceNodePath`、`rawText`、`normalizedValue`、`valueType`；身份语义与服务端 `nodePathToParameterIdentity` 对齐。默认内容上限 2MB。完整字段示例见英文版 `docs/design-docs/api-contract.md` § Parameter Import。
 
 `/parameter-home` 前端通过 `ParameterDashboardRepository` 消费上述只读聚合接口；热榜评分为服务端确定性可解释打分，前端仅做展示与动作模板映射。
 

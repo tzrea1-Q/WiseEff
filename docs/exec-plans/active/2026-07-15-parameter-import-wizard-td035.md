@@ -154,11 +154,11 @@ Audit kind 保持现有 import 事件，metadata 合并 `reviewMetadata`。
 
 ## Documentation Update Gate
 
-- [ ] api-contract（中英）已更新
-- [ ] TD-035 关闭
-- [ ] 批导计划 P2/P3 指向已更新
-- [ ] playwright-cli 证据已附
-- [ ] `docs:check` 通过
+- [x] api-contract（中英）已更新
+- [x] TD-035 关闭
+- [x] 批导计划 P2/P3 指向已更新
+- [x] playwright-cli 证据已附（`work/ui-checks/td035-*`）
+- [x] `docs:check` 通过
 
 ---
 

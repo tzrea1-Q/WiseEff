@@ -198,6 +198,30 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "audit"]
   },
   {
+    id: "PARAM-IMPORT-DTS-FULL-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action: "Parse a full .dts via parameter-import/parse-dts with @address module paths and reject /include/.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-IMPORT-DTS-FULL-001"],
+    specFiles: ["e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "PARAM-IMPORT-REVIEW-META-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action: "Create an import preview with reviewMetadata.skippedRows and verify batch-import audit metadata.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-IMPORT-REVIEW-META-001"],
+    specFiles: ["e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts"],
+    assertions: ["api", "db", "audit"]
+  },
+  {
     id: "PARAM-DRAFT-EDIT-001",
     priority: "P1",
     area: "parameters",

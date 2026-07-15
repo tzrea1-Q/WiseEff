@@ -20,11 +20,12 @@
 ## 进行中
 
 - **TD-038（模块树后续）：** 多层级模块已落地后，仍需删除过渡 `module` 文本列、收敛 `project_modules` 与组织级 `parameter_modules` 单一真相源，并评估 dashboard 热榜的层级聚合。
-- **TD-039（项目参数文件，程序主体已关闭）：** DTS 程序 P0–P3.1 已于 2026-07-15 归档。**硬化收口 2026-07-15：** 旧文件/冲突面板已注入 `ParameterFileRepository`；`DTS_IDENTITY_FALLBACK_MODE` 可收紧 `(name, module)` fallback。残余：fallback 默认仍 `allow`、扁平 `parsed_index` 兼容视图、导入向导完整 DTS 见 TD-035。详见英文版 Open 表。
+- **TD-039（项目参数文件，程序主体已关闭）：** DTS 程序 P0–P3.1 已于 2026-07-15 归档。**硬化收口 2026-07-15：** 旧文件/冲突面板已注入 `ParameterFileRepository`；`DTS_IDENTITY_FALLBACK_MODE` 可收紧 `(name, module)` fallback。残余：fallback 默认仍 `allow`、扁平 `parsed_index` 兼容视图。详见英文版 Open 表。
 - **TD-040（DTS 配置集/门禁后续）：** (1) **已关闭 2026-07-15**（建项自动 `ensureDefaultConfigSet`）；(2) 可选 dt-schema 钩子已落地；(3) 容器沙箱评估维持子进程、本期不做；(4)/(0046) 级联已解决。详见英文版 Open 表。
 
 ## 近期关闭项
 
+- **TD-035（参数批导完整 DTS / reviewMetadata）：** 已于 2026-07-15 在 `feat/parameter-import-wizard-td035` 关闭。服务端 `parse-dts`、前端 `parseDtsFull`、向导 skip→`reviewMetadata` 审计与大文件提示已落地；原批导计划 P2/P3 由本期消化。计划：`docs/exec-plans/active/2026-07-15-parameter-import-wizard-td035.md`。
 - **TD-041（结构化编辑回路）：** 已于 2026-07-15 在 P3.1 关闭。编辑→变更集→`submitStructuredEdits`→既有 CR 审阅合入→CST 回写已打通；回写载荷用 `rawText`。计划归档：`docs/exec-plans/completed/2026-07-14-dts-p31-structured-edit-loop.md`。
 - **TD-037（多层级模块）：** 已于 2026-07-09 在 `feat/hierarchical-modules` 分支关闭。参数域与调试域独立模块树、`module_id` 外键、子树筛选、`ModuleTreeSelect` UI 与 MOD-TREE 验收已交付。计划归档：`docs/exec-plans/completed/2026-07-09-wiseeff-hierarchical-modules.md`。
 
