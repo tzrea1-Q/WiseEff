@@ -42,6 +42,8 @@ export type FileSyncSummary = {
   unchanged: number;
   unmatched: number;
   skipped: boolean;
+  /** Count of sync keys matched via (name, module) fallback rather than source_* bind. */
+  identityFallbackUses?: number;
 };
 
 export type ParameterFileConflictStatus = "open" | "resolved_file" | "resolved_ui";
