@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+
+import { createAuditEvent } from "../audit/repository";
 import type { AuthContext } from "../auth/types";
 import {
   bindParameterSource,
@@ -8,6 +11,7 @@ import {
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { detectFileUiDraftConflict } from "./conflictService";
+import { readDtsIdentityFallbackMode } from "./identityFallbackMode";
 import { getFileVersionById, getProjectParameterFileById } from "./repository";
 import { nodePathToParameterIdentity } from "./pathMapper";
 
@@ -52,6 +56,7 @@ export async function syncFileVersion(
   let unmatched = 0;
   let identityFallbackUses = 0;
   const entries = Object.entries(version.parsedIndex);
+  const fallbackMode = readDtsIdentityFallbackMode();
 
   for (const [nodePath, entry] of entries) {
     // Prefer structural source identity (nodePath including @address).
@@ -63,6 +68,20 @@ export async function syncFileVersion(
     });
 
     if (!resolved) {
+      if (fallbackMode === "deny") {
+        throw new ApiError(
+          "VALIDATION_FAILED",
+          "Identity fallback via (name, module) is denied. Bind source_file_name/source_node_path first.",
+          409,
+          {
+            mode: "deny",
+            sourceFileName: file.fileName,
+            sourceNodePath: nodePath,
+            fileId: file.id
+          }
+        );
+      }
+
       try {
         // Compatibility fallback: (name, module) from pathMapper — transitional (TD-039).
         const identity = nodePathToParameterIdentity(nodePath);
@@ -74,8 +93,34 @@ export async function syncFileVersion(
         });
         if (resolved) {
           identityFallbackUses += 1;
+          if (fallbackMode === "warn") {
+            await createAuditEvent(db, {
+              id: randomUUID(),
+              organizationId: auth.organization.id,
+              projectId: file.projectId,
+              actorUserId: auth.user.id,
+              actorType: "user",
+              app: "parameters",
+              kind: "parameter-file-identity-fallback",
+              action: "warn",
+              severity: "Low",
+              targetType: "project-parameter-file",
+              targetId: file.id,
+              metadata: {
+                mode: "warn",
+                sourceFileName: file.fileName,
+                sourceNodePath: nodePath,
+                fallbackName: identity.name,
+                fallbackModule: identity.module,
+                projectParameterValueId: resolved.id
+              }
+            });
+          }
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof ApiError) {
+          throw error;
+        }
         unmatched += 1;
         continue;
       }
