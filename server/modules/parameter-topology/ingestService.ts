@@ -304,12 +304,33 @@ async function ingestConfigRevisionTx(
     });
   }
 
-  const resolved = resolveDtsConfigSet({
-    entryFile: manifest.entryFile,
-    includeSearchPaths: manifest.includeSearchPaths,
-    overlayOrder: manifest.overlayOrder,
-    files,
-  });
+  const parseStartedAt = Date.now();
+  let resolved;
+  try {
+    resolved = resolveDtsConfigSet({
+      entryFile: manifest.entryFile,
+      includeSearchPaths: manifest.includeSearchPaths,
+      overlayOrder: manifest.overlayOrder,
+      files,
+    });
+  } catch (error) {
+    const { defaultMetricsRegistry } = await import("../../observability/metrics");
+    defaultMetricsRegistry.recordDtsPipelineResult({
+      stage: "parse",
+      status: "failed",
+      durationMs: Math.max(0, Date.now() - parseStartedAt)
+    });
+    throw error;
+  }
+  {
+    const { defaultMetricsRegistry } = await import("../../observability/metrics");
+    const hasErrors = resolved.diagnostics.some((diagnostic) => diagnostic.severity === "error");
+    defaultMetricsRegistry.recordDtsPipelineResult({
+      stage: "parse",
+      status: hasErrors ? "failed" : "succeeded",
+      durationMs: Math.max(0, Date.now() - parseStartedAt)
+    });
+  }
 
   const hasErrors = resolved.diagnostics.some((diagnostic) => diagnostic.severity === "error");
   const runId = randomUUID();

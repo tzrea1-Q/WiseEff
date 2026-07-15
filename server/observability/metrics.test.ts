@@ -74,6 +74,34 @@ describe("Prometheus metrics registry", () => {
     expect(text).not.toMatch(/job-1|run-1|Input appears|authorization|password|secret|token/i);
   });
 
+  it("records DTS pipeline, backlog, publish, and cutover gauges without secrets", () => {
+    const registry = createMetricsRegistry({ serviceName: "wiseeff-api" });
+
+    registry.recordDtsPipelineResult({ stage: "compile", status: "failed", durationMs: 120 });
+    registry.setDtsToolchainReady({
+      ok: false,
+      dtcVersion: "1.7.2",
+      fdtoverlayVersion: "1.7.2",
+      dtschemaVersion: "2024.11"
+    });
+    registry.setIdentityMappingBacklog(3);
+    registry.setParameterSpecReviewBacklog(1);
+    registry.recordConfigPublishResult({ result: "bypassed" });
+    registry.setParameterIdentityCutoverStatus("in_progress");
+    registry.setParameterIdentityMigrationComplete(true);
+
+    const text = registry.renderPrometheus();
+    expect(text).toContain('wiseeff_dts_pipeline_duration_ms_sum{stage="compile",status="failed"} 120');
+    expect(text).toContain('wiseeff_dts_pipeline_failures_total{stage="compile"} 1');
+    expect(text).toContain("wiseeff_dts_toolchain_ready 0");
+    expect(text).toContain("wiseeff_identity_mapping_tasks_open 3");
+    expect(text).toContain("wiseeff_parameter_spec_review_tasks_open 1");
+    expect(text).toContain('wiseeff_config_publish_results_total{result="bypassed"} 1');
+    expect(text).toContain('wiseeff_parameter_identity_cutover_status{status="in_progress"} 1');
+    expect(text).toContain("wiseeff_parameter_identity_migration_complete 1");
+    expect(text).not.toMatch(/password|secret|token|authorization/i);
+  });
+
   it("records low-cardinality Agent approval, tool, and audit failure metrics", () => {
     const registry = createMetricsRegistry({ serviceName: "wiseeff-api" });
 

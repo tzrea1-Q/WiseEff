@@ -67,9 +67,13 @@ npm run docs:check
 npm run selfhost:check
 npm run observability:check
 npm run queue:check -- --base-url http://127.0.0.1:8787
+npm run dts:toolchain:check
+npm run parameter-identities:check
 ```
 
 Use `npm run docs:check` for documentation governance, local Markdown links, bilingual developer-doc pairs, and required `.env.example` coverage.
+
+Parameter semantic identity cutover (maintenance window only) is documented in [docs/runbooks/parameter-identity-cutover.md](docs/runbooks/parameter-identity-cutover.md). Do not dual-write or partially apply a failed cutover.
 
 ## Deploy On A Linux Server
 

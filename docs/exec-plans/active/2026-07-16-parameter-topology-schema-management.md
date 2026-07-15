@@ -1146,28 +1146,28 @@ git commit -m "test(parameters): cover semantic topology workflows"
 - Modify: `docs/PLANS.md` and `docs/zh-CN/PLANS.md`
 - Modify: observability metric definitions and dashboards
 
-- [ ] **Step 1: Write the operator runbook**
+- [x] **Step 1: Write the operator runbook**
 
 The runbook must contain exact commands for write freeze, DB/object snapshot IDs, toolchain health, dry-run, ambiguity/spec backlog checks, compile-all, `--apply`, postflight, application switch, observation window, and whole-snapshot restore. It must explicitly forbid partial continuation after a failed apply.
 
-- [ ] **Step 2: Add metrics and alerts**
+- [x] **Step 2: Add metrics and alerts**
 
 Expose parse/schema/compile latency and failures, open mapping tasks, open spec reviews, toolchain versions, publish result, and migration/cutover status. Alert on toolchain unavailable, persistent mapping backlog, and production publish validation bypass.
 
-- [ ] **Step 3: Update all durable contracts**
+- [x] **Step 3: Update all durable contracts**
 
 Document source vs effective tree, spec/binding IDs, example/default/policy/effective value split, v2 API, production fail-closed mode, retired legacy API, and maintenance rollback.
 
-- [ ] **Step 4: Close or supersede old DTS plans/debt**
+- [x] **Step 4: Close or supersede old DTS plans/debt**
 
 Move completed `2026-07-15-dts-hardening-closeout.md` and `2026-07-15-parameter-import-wizard-td035.md` when their gates are truly complete. Record this plan as the replacement for path-derived identity and optional production schema validation debt.
 
-- [ ] **Step 5: Run documentation and operations checks**
+- [x] **Step 5: Run documentation and operations checks**
 
 Run: `npm run docs:check && npm run observability:check && npm run selfhost:check && git diff --check`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add README.md CONTRIBUTING.md ARCHITECTURE.md docs ops
@@ -1251,11 +1251,11 @@ git commit -m "test(parameters): prove semantic identity cutover"
 
 ## Documentation Update Gate
 
-- [ ] Every `Update` row has matching English/Chinese changes where a human-facing companion exists.
-- [ ] `npm run docs:check` passes.
+- [x] Every `Update` row has matching English/Chinese changes where a human-facing companion exists.
+- [x] `npm run docs:check` passes.
 - [ ] OpenAPI and database schema artifacts match implemented code.
 - [ ] Acceptance and operation IDs have generated evidence.
-- [ ] Any deferred item is recorded in `docs/exec-plans/tech-debt-tracker.md` with owner and acceptance condition.
+- [x] Any deferred item is recorded in `docs/exec-plans/tech-debt-tracker.md` with owner and acceptance condition.
 - [ ] The plan is moved to `docs/exec-plans/completed/` only after target migration rehearsal and all evidence gates pass.
 
 ## Spec coverage self-review

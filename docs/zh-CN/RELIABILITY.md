@@ -15,6 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
+- `/metrics` 现含 DTS 解析/编译延迟与失败、工具链就绪、身份映射/规格审核积压、发布绕过与参数身份 cutover 状态；告警与切换步骤见 `docs/runbooks/parameter-identity-cutover.md`。失败 apply 后禁止部分继续，只能整快照恢复。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
 ## 补充说明（小泽 checkpoint）

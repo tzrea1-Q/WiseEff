@@ -221,6 +221,18 @@ export function createWiseEffServer(
         oldestQueuedAgeMs: readyHealth.body.dependencies.notificationOutbox.oldestQueuedAgeMs
       });
     }
+    const dtsToolchain = readyHealth.body.dependencies.dtsToolchain;
+    if (dtsToolchain) {
+      metrics.setDtsToolchainReady({
+        ok: dtsToolchain.ok,
+        dtcVersion: typeof dtsToolchain.details?.dtc === "string" ? dtsToolchain.details.dtc : undefined,
+        fdtoverlayVersion:
+          typeof dtsToolchain.details?.fdtoverlay === "string" ? dtsToolchain.details.fdtoverlay : undefined,
+        dtschemaVersion:
+          typeof dtsToolchain.details?.dtschema === "string" ? dtsToolchain.details.dtschema : undefined
+      });
+    }
+    await refreshParameterTopologyMetrics(options.db, metrics);
 
     return {
       status: 200,
@@ -230,6 +242,42 @@ export function createWiseEffServer(
   });
 
   return attachDeviceBridgeServer(createHttpServer(router, { metrics, tracing }), options);
+}
+
+async function refreshParameterTopologyMetrics(db: Database | undefined, metrics: MetricsRegistry) {
+  if (!db) {
+    metrics.setIdentityMappingBacklog(0);
+    metrics.setParameterSpecReviewBacklog(0);
+    metrics.setParameterIdentityMigrationComplete(false);
+    metrics.setParameterIdentityCutoverStatus("not_started");
+    return;
+  }
+
+  try {
+    const [mapping, reviews, migration, cutover] = await Promise.all([
+      db.query<{ c: string }>(`select count(*)::text as c from identity_mapping_tasks where status = 'open'`),
+      db.query<{ c: string }>(`select count(*)::text as c from parameter_spec_review_tasks where status = 'open'`),
+      db.query<{ c: string }>(
+        `select count(*)::text as c from parameter_identity_migration_runs where status = 'completed'`
+      ),
+      db.query<{ c: string }>(`select count(*)::text as c from parameter_identity_cutovers`)
+    ]);
+
+    metrics.setIdentityMappingBacklog(Number(mapping.rows[0]?.c ?? 0));
+    metrics.setParameterSpecReviewBacklog(Number(reviews.rows[0]?.c ?? 0));
+    const migrationComplete = Number(migration.rows[0]?.c ?? 0) > 0;
+    const cutoverComplete = Number(cutover.rows[0]?.c ?? 0) > 0;
+    metrics.setParameterIdentityMigrationComplete(migrationComplete);
+    metrics.setParameterIdentityCutoverStatus(
+      cutoverComplete ? "complete" : migrationComplete ? "in_progress" : "not_started"
+    );
+  } catch {
+    // Additive tables may be absent on older databases; keep scrape healthy.
+    metrics.setIdentityMappingBacklog(0);
+    metrics.setParameterSpecReviewBacklog(0);
+    metrics.setParameterIdentityMigrationComplete(false);
+    metrics.setParameterIdentityCutoverStatus("not_started");
+  }
 }
 
 function buildDeviceBridgeRouteOptions(

@@ -27,6 +27,14 @@ npm run db:seed:m3
 
 `db:seed:m1` compiles the three full DTS project fixtures before writing parameter data. The seed therefore requires `dtc`; the bootstrap command installs it with Homebrew on macOS or the native package manager on supported Linux distributions.
 
+For the full DTS toolchain (dtc + fdtoverlay + dt-validate) used by fail-closed production publish:
+
+```bash
+npm run dts:toolchain:check
+```
+
+Semantic parameter-identity cutover rehearsal commands (`parameter-identities:migrate` / `cutover` / `check`) are operator-only. Follow [docs/runbooks/parameter-identity-cutover.md](docs/runbooks/parameter-identity-cutover.md); never continue after a failed `--apply`.
+
 Fill `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` in `.env` when testing live Xiaoze LLM behavior. The default `.env.example` profile prepares local PostgreSQL, local object storage, multi-protocol device gateway, production-mode local account auth defaults, and optional HMAC smoke inputs.
 
 ## Development Rules

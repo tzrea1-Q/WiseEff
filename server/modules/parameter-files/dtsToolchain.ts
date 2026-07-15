@@ -680,6 +680,41 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
     }
   };
 
+  const innerValidate = runner.validate.bind(runner);
+  runner.validate = async (configSet, opts = {}) => {
+    const startedAt = Date.now();
+    const mode = opts.mode ?? "release";
+    try {
+      const result = await innerValidate(configSet, opts);
+      const durationMs = Math.max(0, Date.now() - startedAt);
+      const { defaultMetricsRegistry } = await import("../../observability/metrics");
+      defaultMetricsRegistry.recordDtsPipelineResult({
+        stage: "compile",
+        status: result.ok ? "succeeded" : "failed",
+        durationMs
+      });
+      if (result.diagnostics.some((d) => d.stage === "dt-validate" || d.code === "schema-failed")) {
+        defaultMetricsRegistry.recordDtsPipelineResult({
+          stage: "schema",
+          status: result.failureCode === "schema-failed" ? "failed" : result.ok ? "succeeded" : "failed",
+          durationMs
+        });
+      }
+      defaultMetricsRegistry.recordConfigPublishResult({
+        result: mode === "off" ? "bypassed" : result.ok ? "passed" : "failed"
+      });
+      return result;
+    } catch (error) {
+      const { defaultMetricsRegistry } = await import("../../observability/metrics");
+      defaultMetricsRegistry.recordDtsPipelineResult({
+        stage: "compile",
+        status: "failed",
+        durationMs: Math.max(0, Date.now() - startedAt)
+      });
+      throw error;
+    }
+  };
+
   return runner;
 }
 

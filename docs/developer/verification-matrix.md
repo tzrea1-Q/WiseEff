@@ -18,6 +18,9 @@ Use the narrowest command that proves the change while developing. Before finish
 | `git diff --check` | Whitespace safety | Before committing or handing off. |
 | `npm run dtc:check -- --required` | A real Device Tree Compiler is present on PATH | Before M1 seeding, DTS validation work, or self-hosted image acceptance. |
 | `npm run dtc:seed:compile` | All three committed project seed overlays compile with real `dtc -@` | After changing DTS fixtures, seed generation, validation, or dtc deployment wiring. |
+| `npm run dts:toolchain:check` | dtc + fdtoverlay + dt-validate present at pinned versions | Before release-mode publish work or identity cutover rehearsal. |
+| `npm run parameter-identities:check` | Read-only preflight/postflight for semantic identity migration | Before/after maintenance-window cutover; see runbook. |
+| `npm run parameter-identities:migrate` | Dry-run (default) or gated `--apply` historical identity migration | Cutover rehearsal only; never dual-write in production. |
 | `npm run acceptance:coverage` | Requirement-level browser acceptance coverage markers | Adding or changing browser acceptance requirements or UI/API interaction behavior. |
 | `npm run acceptance:operations` | Operation-level browser coverage metadata | Adding or changing concrete user operations, roles, permissions, UI controls, or API-backed interaction behavior. |
 | `npm run acceptance:models` | M5.9 state-model and contract invariants for parameter review, log tasks, debugging, and permissions | Changing workflow state transitions, seeded fixtures, permission contracts, or API/domain rules behind browser acceptance. |

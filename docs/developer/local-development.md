@@ -30,6 +30,22 @@ npm run dtc:seed:compile
 
 The overlays may report `reg_format` / `ranges_format` warnings when compiled without their external base DTS. Compiler errors or an unavailable compiler fail the command and block M1 seeding.
 
+For fail-closed production publish validation (dtc + fdtoverlay + dt-validate):
+
+```bash
+npm run dts:toolchain:check
+npm run dts:config:validate
+```
+
+Semantic identity migration rehearsal (dry-run by default; apply only in a maintenance window):
+
+```bash
+npm run parameter-identities:migrate
+npm run parameter-identities:check
+```
+
+Operator procedure: [../runbooks/parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md).
+
 On PowerShell, edit `.env` and fill only these blank values when testing live Xiaoze LLM behavior:
 
 ```text

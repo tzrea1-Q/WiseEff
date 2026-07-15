@@ -2,8 +2,8 @@
 
 > 本文是 **P0–P3.1 程序归档后**的后续方案概要，锁定 B/C 两条路线的目标、边界与排序。可执行任务级计划见：
 >
-> - [DTS 硬化收口（B）](../exec-plans/active/2026-07-15-dts-hardening-closeout.md)
-> - [参数批导向导对齐 TD-035（C）](../exec-plans/active/2026-07-15-parameter-import-wizard-td035.md)
+> - [DTS 硬化收口（B）](../exec-plans/completed/2026-07-15-dts-hardening-closeout.md)
+> - [参数批导向导对齐 TD-035（C）](../exec-plans/completed/2026-07-15-parameter-import-wizard-td035.md)
 >
 > Git 发布集成（原定位决策 #1 的「后续独立立项」）**不在本期**，仍待单独立项。
 

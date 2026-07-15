@@ -354,14 +354,14 @@ work/ui-checks/parameter-topology-mobile.png
 - 更新本地开发、环境变量、验证矩阵及中文伴随文档
 - 更新产品规格、PLANS、tech debt、可观测配置
 
-- [ ] runbook 写明停写、DB/对象快照、工具健康、dry-run、积压检查、compile-all、apply、postflight、应用切换、观察窗口和整体恢复命令。
-- [ ] runbook 明确：apply 失败后禁止部分继续。
-- [ ] 增加解析/Schema/编译耗时与失败、映射积压、规格审核积压、工具版本、发布和迁移状态指标。
-- [ ] 工具不可用、映射长期积压和生产绕过门禁必须告警。
-- [ ] 文档统一使用 spec/binding、source/effective、example/default/policy/effective 等新术语。
-- [ ] 真正完成后归档或标记旧 DTS active plan 被本计划取代。
-- [ ] 运行 `npm run docs:check && npm run observability:check && npm run selfhost:check && git diff --check`。
-- [ ] 提交：`docs(parameters): add semantic cutover operations`。
+- [x] runbook 写明停写、DB/对象快照、工具健康、dry-run、积压检查、compile-all、apply、postflight、应用切换、观察窗口和整体恢复命令。
+- [x] runbook 明确：apply 失败后禁止部分继续。
+- [x] 增加解析/Schema/编译耗时与失败、映射积压、规格审核积压、工具版本、发布和迁移状态指标。
+- [x] 工具不可用、映射长期积压和生产绕过门禁必须告警。
+- [x] 文档统一使用 spec/binding、source/effective、example/default/policy/effective 等新术语。
+- [x] 真正完成后归档或标记旧 DTS active plan 被本计划取代。
+- [x] 运行 `npm run docs:check && npm run observability:check && npm run selfhost:check && git diff --check`。
+- [x] 提交：`docs(parameters): add semantic cutover operations`。
 
 ### Task 18：完整验证和迁移演练门禁
 
