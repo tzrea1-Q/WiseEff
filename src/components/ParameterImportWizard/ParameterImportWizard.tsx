@@ -171,25 +171,38 @@ export function ParameterImportWizard({
     return null;
   }
 
-  const parseAndMatch = (projectId: string) => {
+  const parseAndMatch = async (projectId: string) => {
     const errors: string[] = [];
     let parsed: ParsedImportRow[] = [];
     try {
-      parsed = parseImportSource({
-        fileName: sourceName || undefined,
-        bytes: sourceBytes ?? undefined,
-        text: sourceText || undefined
-      });
+      parsed = await parseImportSource(
+        {
+          fileName: sourceName || undefined,
+          bytes: sourceBytes ?? undefined,
+          text: sourceText || undefined
+        },
+        parameterActions
+          ? { parseDtsFullDeps: { parseDtsImport: (input) => parameterActions.parseDtsImport(input) } }
+          : undefined
+      );
     } catch (error) {
-      errors.push(error instanceof Error ? error.message : "解析失败，请检查文件内容。");
+      const details =
+        error && typeof error === "object" && "details" in error
+          ? (error as { details?: { code?: string } }).details
+          : undefined;
+      if (details?.code === "dts-include-unsupported") {
+        errors.push(error instanceof Error ? error.message : "DTS /include/ 暂不支持，请提供展开后的文件。");
+      } else {
+        errors.push(error instanceof Error ? error.message : "解析失败，请检查文件内容。");
+      }
     }
     setParsedRows(parsed);
     setReviewedRows(matchToLibrary(parsed, parameters, projectId));
     setParseErrors(errors);
   };
 
-  const handleParseAndAdvance = () => {
-    parseAndMatch(targetProjectId);
+  const handleParseAndAdvance = async () => {
+    await parseAndMatch(targetProjectId);
     setStep(2);
   };
 
@@ -202,10 +215,11 @@ export function ParameterImportWizard({
         return;
       }
       setTargetProjectId(nextProjectId);
-      parseAndMatch(nextProjectId);
-      setPreviewBatch(null);
-      setSelectedItemIds(new Set());
-      setStep(2);
+      void parseAndMatch(nextProjectId).then(() => {
+        setPreviewBatch(null);
+        setSelectedItemIds(new Set());
+        setStep(2);
+      });
       return;
     }
     setTargetProjectId(nextProjectId);

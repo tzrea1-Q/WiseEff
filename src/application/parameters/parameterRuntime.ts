@@ -1,14 +1,17 @@
 import type {
   ApplyParameterImportBatchInput,
   DiscardParameterDraftsInput,
+  DtsImportParseResult,
   ParameterDraftDto,
   ParameterImportBatchDto,
   ParameterImportPreviewInput,
   ParameterRepository,
+  ParseDtsImportInput,
   ProjectSummary,
   ReviewParameterChangeInput,
   SubmitParameterChangesInput
 } from "@/application/ports/ParameterRepository";
+import { mockParseDtsImportContent } from "@/infrastructure/mock/mockDtsImportParse";
 import type {
   ChangeRequest,
   ParameterDraftItem,
@@ -134,6 +137,7 @@ export type ParameterRuntimeActions = {
   reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
+  parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
   refresh(options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeRefreshResult>;
 };
 
@@ -324,6 +328,12 @@ export function createParameterRuntimeActions({
       }
 
       return runApiMutation((api) => api.applyImportBatch(input));
+    },
+    async parseDtsImport(input) {
+      if (runtimeMode !== "api") {
+        return mockParseDtsImportContent(input);
+      }
+      return requireRepository(repository).parseDtsImport(input);
     },
     refresh
   };

@@ -3,8 +3,10 @@ import type { Dispatch, ReactNode } from "react";
 import type {
   ApplyParameterImportBatchInput,
   DiscardParameterDraftsInput,
+  DtsImportParseResult,
   ParameterImportBatchDto,
   ParameterImportPreviewInput,
+  ParseDtsImportInput,
   ReviewParameterChangeInput,
   SubmitParameterChangesInput
 } from "@/application/ports/ParameterRepository";
@@ -53,6 +55,7 @@ export type ParameterPageActions = {
   reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
+  parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
   refresh(options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeRefreshResult>;
 };
 

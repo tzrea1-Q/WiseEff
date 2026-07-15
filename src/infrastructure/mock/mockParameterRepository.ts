@@ -1,3 +1,4 @@
+import { mockParseDtsImportContent } from "./mockDtsImportParse";
 import type {
   ApplyParameterImportBatchInput,
   ParameterDraftDto,
@@ -544,6 +545,9 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       writeMockState(runtime, applyImportItemsToState(readMockState(runtime), batch, selectedItemIds));
       importBatches.set(input.batchId, cloneImportBatch(applied));
       return cloneImportBatch(applied);
+    },
+    async parseDtsImport(input) {
+      return mockParseDtsImportContent(input);
     }
   };
 }

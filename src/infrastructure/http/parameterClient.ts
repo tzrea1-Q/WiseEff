@@ -1,6 +1,7 @@
 import type {
   ApplyParameterImportBatchInput,
   ChangeRequestListQuery,
+  DtsImportParseResult,
   ParameterImportPreviewInput,
   ParameterListQuery,
   ParameterRepository,
@@ -96,7 +97,8 @@ function reviewBody(input: ReviewParameterChangeInput) {
 
 function applyImportBody(input: ApplyParameterImportBatchInput) {
   return {
-    ...(input.selectedItemIds !== undefined ? { selectedItemIds: input.selectedItemIds } : {})
+    ...(input.selectedItemIds !== undefined ? { selectedItemIds: input.selectedItemIds } : {}),
+    ...(input.reviewMetadata !== undefined ? { reviewMetadata: input.reviewMetadata } : {})
   };
 }
 
@@ -169,6 +171,9 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
         applyImportBody(input)
       );
       return importBatchFromDto(response.item);
+    },
+    async parseDtsImport(input) {
+      return apiClient.post<DtsImportParseResult>("/api/v1/parameter-import/parse-dts", input);
     }
   };
 }

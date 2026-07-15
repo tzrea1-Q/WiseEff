@@ -205,6 +205,7 @@ function createParameterActions(overrides: Partial<ParameterPageActions> = {}): 
       items: []
     }),
     applyImportBatch: vi.fn().mockResolvedValue(undefined),
+    parseDtsImport: vi.fn().mockResolvedValue({ format: "dts-full", rows: [] }),
     refresh: vi.fn().mockResolvedValue(undefined),
     ...overrides
   };

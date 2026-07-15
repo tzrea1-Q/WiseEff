@@ -255,6 +255,42 @@ describe("createHttpParameterRepository", () => {
     );
   });
 
+  it("parses full DTS through parameter-import/parse-dts", async () => {
+    const parseResult = {
+      format: "dts-full" as const,
+      rows: [
+        {
+          name: "status",
+          module: "demo/battery_checker@0",
+          sourceNodePath: "demo/battery_checker@0/status",
+          rawText: '"ok"',
+          normalizedValue: '"ok"',
+          valueType: "string-list"
+        }
+      ]
+    };
+    const fetchMock = fetchQueue(parseResult);
+    const repository = createHttpParameterRepository(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(
+      repository.parseDtsImport({
+        sourceName: "board.dts",
+        content: '&demo { battery_checker@0 { status = "ok"; }; };'
+      })
+    ).resolves.toEqual(parseResult);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/parameter-import/parse-dts",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          sourceName: "board.dts",
+          content: '&demo { battery_checker@0 { status = "ok"; }; };'
+        })
+      })
+    );
+  });
+
   it("deletes drafts through the API client", async () => {
     const fetchMock = fetchQueue({ ok: true });
     const repository = createHttpParameterRepository(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
