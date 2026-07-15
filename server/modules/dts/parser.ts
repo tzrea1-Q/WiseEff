@@ -1,6 +1,31 @@
 import { lexDts, type DtsToken } from "./lexer";
-import type { DtsDirective, DtsDocument, DtsNodeCst, DtsPropertyCst } from "./types";
+import type { DtsDirective, DtsDocument, DtsNodeCst, DtsPropertyCst, DtsValue, DtsValueType } from "./types";
 import { classifyDtsValue } from "./valueTyping";
+import { parseDtsValue } from "./valueAst";
+
+/**
+ * `parseDtsValue` covers the DTS forms exercised by our fixtures; fall back to a value shaped
+ * like the legacy `valueType` classification for any unrecognized RHS so an unusual real-world
+ * property never aborts the whole document parse.
+ */
+function safeParseDtsValue(name: string, rawText: string, valueType: DtsValueType): DtsValue {
+  try {
+    return parseDtsValue(name, rawText).value;
+  } catch {
+    switch (valueType) {
+      case "bool":
+        return { kind: "boolean", present: true };
+      case "empty":
+        return { kind: "empty" };
+      case "string-list":
+        return { kind: "strings", values: [] };
+      case "bytes":
+        return { kind: "bytes", values: [] };
+      default:
+        return { kind: "mixed", segments: [] };
+    }
+  }
+}
 
 class Parser {
   private readonly tokens: DtsToken[];
@@ -209,6 +234,7 @@ class Parser {
         kind: "property",
         name,
         valueType: classified.valueType,
+        value: safeParseDtsValue(name, rawText, classified.valueType),
         rawText,
         normalizedValue: classified.normalizedValue,
         span,
@@ -221,6 +247,7 @@ class Parser {
       kind: "property",
       name,
       valueType: classified.valueType,
+      value: safeParseDtsValue(name, "", classified.valueType),
       rawText: "",
       normalizedValue: classified.normalizedValue,
       // Span covers the name (presence/empty marker); value body is empty.
