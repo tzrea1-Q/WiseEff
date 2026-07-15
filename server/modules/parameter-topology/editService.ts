@@ -11,17 +11,22 @@ import type { AuthContext } from "../auth/types";
 import { parseDts, serializeDts, type DtsNodeCst, type DtsPropertyCst } from "../dts";
 import type { DtsValue } from "../dts/types";
 import { renderDtsValue } from "../dts/valueAst";
+import {
+  createDtsToolchainRunner,
+  type DtsToolchainRunner,
+} from "../parameter-files/dtsToolchain";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { canEditParameters } from "../parameters/policy";
 import { upsertDraft } from "../parameters/repository";
+import { ingestConfigRevisionInTransaction } from "./ingestService";
 import {
   getConfigRevisionById,
-  insertConfigRevision,
-  insertConfigRevisionMembers,
-  nextConfigRevisionNumber,
+  insertValidationDiagnostics,
+  insertValidationRun,
   updateConfigRevisionStatus,
 } from "./repository";
+import type { ConfigRevisionManifest, PersistedValidationDiagnostic } from "./types";
 import { writeGovernanceAudit } from "./governanceAudit";
 
 export type BindingEditAction = "set" | "delete";
@@ -35,6 +40,11 @@ export type CreateBindingDraftInput = {
   reason: string;
   /** When true, enforce property-spec constraints (schema fail-closed). */
   enforceSchema?: boolean;
+};
+
+export type CreateBindingDraftDeps = {
+  /** Injected for tests; production defaults to the real Task 8 runner. */
+  toolchain?: DtsToolchainRunner;
 };
 
 export type BindingDraftWriteTarget = {
@@ -468,12 +478,14 @@ export async function unchangedSourceBytes(draft: BindingDraftResult): Promise<b
 
 /**
  * Create a typed binding draft that patches (or creates) a project overlay target,
- * stores a candidate config revision, and writes semantic FKs on the draft row.
+ * stores a candidate config revision, re-resolves + toolchain-validates fail-closed,
+ * and writes semantic FKs on the draft row.
  */
 export async function createBindingDraft(
   db: Database | Queryable,
   auth: AuthContext,
   input: CreateBindingDraftInput,
+  deps: CreateBindingDraftDeps = {},
 ): Promise<BindingDraftResult> {
   requireCanEdit(auth);
 
@@ -567,20 +579,7 @@ export async function createBindingDraft(
     action,
   );
 
-  // Candidate revision: draft status; never mutates released binding revision values.
-  const candidateRevisionId = randomUUID();
-  const revisionNumber = await nextConfigRevisionNumber(db, revision.configSetId);
-  await insertConfigRevision(db, {
-    id: candidateRevisionId,
-    organizationId: auth.organization.id,
-    projectId: binding.project_id,
-    configSetId: revision.configSetId,
-    revisionNumber,
-    status: "draft",
-    createdByUserId: auth.user.id,
-  });
-
-  // Pin candidate overlay content onto a new file version row (content in parsed_index).
+  // Pin candidate overlay content onto a new file version (never mutates released binding revisions).
   const candidateOverlayVersionId = randomUUID();
   const overlayChecksum = checksumOf(candidateOverlayContent);
   await db.query(
@@ -603,24 +602,53 @@ export async function createBindingDraft(
     ],
   );
 
-  await insertConfigRevisionMembers(db, candidateRevisionId, [
-    {
-      fileId: baseMember.file_id,
-      fileVersionId: baseMember.file_version_id,
-      fileName: baseMember.file_name,
-      role: "base",
-      sortOrder: baseMember.sort_order,
-      content: baseContent,
-    },
-    {
-      fileId: overlayMember.file_id,
-      fileVersionId: candidateOverlayVersionId,
-      fileName: overlayMember.file_name,
-      role: "overlay",
-      sortOrder: overlayMember.sort_order,
-      content: candidateOverlayContent,
-    },
-  ]);
+  const manifest: ConfigRevisionManifest = {
+    organizationId: auth.organization.id,
+    projectId: binding.project_id,
+    configSetId: revision.configSetId,
+    entryFile: baseMember.file_name,
+    includeSearchPaths: ["."],
+    overlayOrder: [overlayMember.file_name],
+    members: [
+      {
+        fileId: baseMember.file_id,
+        fileVersionId: baseMember.file_version_id,
+        fileName: baseMember.file_name,
+        role: "base",
+        sortOrder: baseMember.sort_order,
+        content: baseContent,
+      },
+      {
+        fileId: overlayMember.file_id,
+        fileVersionId: candidateOverlayVersionId,
+        fileName: overlayMember.file_name,
+        role: "overlay",
+        sortOrder: overlayMember.sort_order,
+        content: candidateOverlayContent,
+      },
+    ],
+  };
+
+  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
+  const candidateRevisionId = ingested.id;
+
+  if (ingested.status === "invalid") {
+    const diagnostics = await loadRevisionDiagnostics(db, candidateRevisionId);
+    throw new ApiError("VALIDATION_FAILED", "Candidate config revision failed resolve.", 400, {
+      reason: "resolve-failure",
+      candidateRevisionId,
+      diagnostics,
+    });
+  }
+
+  await assertCandidateToolchainRelease(db, auth, {
+    candidateRevisionId,
+    entryFile: baseMember.file_name,
+    overlayFileName: overlayMember.file_name,
+    baseContent,
+    candidateOverlayContent,
+    toolchain: deps.toolchain ?? createDtsToolchainRunner(),
+  });
 
   await updateConfigRevisionStatus(db, {
     id: candidateRevisionId,
@@ -681,6 +709,110 @@ export async function createBindingDraft(
     overlayFileId: overlayMember.file_id,
     overlayFileName: overlayMember.file_name,
   };
+}
+
+async function loadRevisionDiagnostics(
+  db: Queryable,
+  configRevisionId: string,
+): Promise<
+  Array<{
+    code: string;
+    severity: string;
+    stage: string;
+    message: string;
+    fileName: string | null;
+  }>
+> {
+  const result = await db.query<{
+    code: string;
+    severity: string;
+    stage: string;
+    message: string;
+    file_name: string | null;
+  }>(
+    `
+    select d.code, d.severity, d.stage, d.message, d.file_name
+    from dts_validation_diagnostics d
+    inner join dts_validation_runs r on r.id = d.validation_run_id
+    where r.config_revision_id = $1
+    order by d.created_at asc
+    `,
+    [configRevisionId],
+  );
+  return result.rows.map((row) => ({
+    code: row.code,
+    severity: row.severity,
+    stage: row.stage,
+    message: row.message,
+    fileName: row.file_name,
+  }));
+}
+
+async function assertCandidateToolchainRelease(
+  db: Queryable,
+  auth: AuthContext,
+  input: {
+    candidateRevisionId: string;
+    entryFile: string;
+    overlayFileName: string;
+    baseContent: string;
+    candidateOverlayContent: string;
+    toolchain: DtsToolchainRunner;
+  },
+): Promise<void> {
+  const files = new Map<string, { content: string }>([
+    [input.entryFile, { content: input.baseContent }],
+    [input.overlayFileName, { content: input.candidateOverlayContent }],
+  ]);
+
+  const toolchainResult = await input.toolchain.validate(
+    {
+      entryFile: input.entryFile,
+      includeSearchPaths: ["."],
+      overlayOrder: [input.overlayFileName],
+      files,
+    },
+    { mode: "release" },
+  );
+
+  const runId = randomUUID();
+  await insertValidationRun(db, {
+    id: runId,
+    organizationId: auth.organization.id,
+    configRevisionId: input.candidateRevisionId,
+    stage: "toolchain",
+    status: toolchainResult.ok ? "passed" : "failed",
+  });
+
+  const persisted: PersistedValidationDiagnostic[] = toolchainResult.diagnostics.map((diagnostic) => ({
+    id: randomUUID(),
+    code: (diagnostic.code ?? toolchainResult.failureCode ?? "compile-failed") as PersistedValidationDiagnostic["code"],
+    severity: "error" as const,
+    stage: diagnostic.stage ?? "toolchain",
+    message: diagnostic.message,
+    fileName: diagnostic.file,
+    startLine: diagnostic.line,
+  }));
+  if (persisted.length > 0) {
+    await insertValidationDiagnostics(db, runId, persisted);
+  }
+
+  if (toolchainResult.ok) {
+    return;
+  }
+
+  await updateConfigRevisionStatus(db, {
+    id: input.candidateRevisionId,
+    status: "invalid",
+    resolvedAt: new Date().toISOString(),
+  });
+
+  throw new ApiError("VALIDATION_FAILED", "Candidate config revision failed toolchain validation.", 400, {
+    reason: "toolchain-failure",
+    candidateRevisionId: input.candidateRevisionId,
+    failureCode: toolchainResult.failureCode,
+    diagnostics: toolchainResult.diagnostics,
+  });
 }
 
 async function ensureShadowParameterValue(

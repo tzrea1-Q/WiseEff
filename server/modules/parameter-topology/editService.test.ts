@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
+import type { DtsToolchainRunner } from "../parameter-files/dtsToolchain";
 import { ApiError } from "../../shared/http/errors";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
@@ -9,6 +10,50 @@ import { createOrReuseBinding, upsertBindingRevisionValues } from "./bindingServ
 import { createBindingDraft, unchangedSourceBytes } from "./editService";
 import { ingestConfigRevision } from "./ingestService";
 import type { ConfigRevisionManifest } from "./types";
+
+/** Pass-through runner so unit tests do not require host dtc/fdtoverlay/dtschema. */
+const passToolchain: DtsToolchainRunner = {
+  async validate() {
+    return {
+      ok: true,
+      mode: "release",
+      compiler: { dtc: "1.8.1", fdtoverlay: "1.8.1", dtschema: "2026.6" },
+      diagnostics: [],
+      artifacts: {},
+    };
+  },
+  async probe() {
+    return {
+      dtc: { path: "/usr/bin/dtc", version: "1.8.1" },
+      fdtoverlay: { path: "/usr/bin/fdtoverlay", version: "1.8.1" },
+      dtschema: { path: "/usr/bin/dt-validate", version: "2026.6" },
+    };
+  },
+};
+
+const failToolchain: DtsToolchainRunner = {
+  async validate() {
+    return {
+      ok: false,
+      mode: "release",
+      compiler: { dtc: "1.8.1", fdtoverlay: "1.8.1", dtschema: "2026.6" },
+      diagnostics: [
+        {
+          file: "edit-overlay.dts",
+          severity: "error",
+          code: "schema-failed",
+          message: "dt-validate: property iin_max fails schema",
+          stage: "dt-validate",
+        },
+      ],
+      failureCode: "schema-failed",
+      artifacts: {},
+    };
+  },
+  async probe() {
+    return passToolchain.probe();
+  },
+};
 
 const ORG_ID = "org-topo-edit";
 const PROJECT_ID = "project-topo-edit";
@@ -290,20 +335,26 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
   it("patches overlay write target and preserves base source bytes", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
 
-    const draft = await createBindingDraft(db!, auth, {
-      bindingId: fixture.binding.id,
-      baseRevisionId: fixture.revision.id,
-      targetValue: {
-        kind: "cells",
-        bits: 32,
-        groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+    const draft = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.binding.id,
+        baseRevisionId: fixture.revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+        },
+        reason: "Raise current limit for board variant",
       },
-      reason: "Raise current limit for board variant",
-    });
+      { toolchain: passToolchain },
+    );
 
     expect(draft.writeTarget).toMatchObject({ role: "overlay", propertyKey: "iin_max" });
     expect(draft.projectParameterBindingId).toBe(fixture.binding.id);
     expect(draft.parameterSpecId).toBe(SPEC_ID);
+    expect(draft.candidateRevisionId).toBeTruthy();
     expect(draft.rawText).toBe("<3000>");
     expect(await unchangedSourceBytes(draft)).toBe(true);
 
@@ -323,16 +374,21 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     const staleId = randomUUID();
 
     await expect(
-      createBindingDraft(db!, auth, {
-        bindingId: fixture.binding.id,
-        baseRevisionId: staleId,
-        targetValue: {
-          kind: "cells",
-          bits: 32,
-          groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: staleId,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+          },
+          reason: "stale edit",
         },
-        reason: "stale edit",
-      }),
+        { toolchain: passToolchain },
+      ),
     ).rejects.toMatchObject({
       code: "CONFLICT",
       status: 409,
@@ -343,16 +399,21 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
   it("creates project overlay instead of mutating shared base", async () => {
     const fixture = await seedConfigAndBinding(db!, auth, { overlayContent: OVERLAY_EMPTY });
 
-    const draft = await createBindingDraft(db!, auth, {
-      bindingId: fixture.binding.id,
-      baseRevisionId: fixture.revision.id,
-      targetValue: {
-        kind: "cells",
-        bits: 32,
-        groups: [[{ kind: "integer", raw: "3100", value: "3100" }]],
+    const draft = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.binding.id,
+        baseRevisionId: fixture.revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3100", value: "3100" }]],
+        },
+        reason: "Board variant override from shared base",
       },
-      reason: "Board variant override from shared base",
-    });
+      { toolchain: passToolchain },
+    );
 
     expect(draft.writeTarget).toMatchObject({ role: "overlay", propertyKey: "iin_max" });
     expect(await unchangedSourceBytes(draft)).toBe(true);
@@ -364,12 +425,17 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
   it("supports delete action via overlay delete-property", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
 
-    const draft = await createBindingDraft(db!, auth, {
-      bindingId: fixture.binding.id,
-      baseRevisionId: fixture.revision.id,
-      action: "delete",
-      reason: "Remove board override",
-    });
+    const draft = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.binding.id,
+        baseRevisionId: fixture.revision.id,
+        action: "delete",
+        reason: "Remove board override",
+      },
+      { toolchain: passToolchain },
+    );
 
     expect(draft.writeTarget).toMatchObject({ role: "overlay", propertyKey: "iin_max" });
     expect(draft.rawText).toBe("");
@@ -389,17 +455,22 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     );
 
     await expect(
-      createBindingDraft(db!, auth, {
-        bindingId: fixture.binding.id,
-        baseRevisionId: fixture.revision.id,
-        targetValue: {
-          kind: "cells",
-          bits: 32,
-          groups: [[{ kind: "integer", raw: "99999", value: "99999" }]],
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "99999", value: "99999" }]],
+          },
+          reason: "Out of range",
+          enforceSchema: true,
         },
-        reason: "Out of range",
-        enforceSchema: true,
-      }),
+        { toolchain: passToolchain },
+      ),
     ).rejects.toMatchObject({
       code: "VALIDATION_FAILED",
       details: expect.objectContaining({ reason: "schema-failure" }),
@@ -422,19 +493,92 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     ]);
 
     await expect(
-      createBindingDraft(db!, auth, {
-        bindingId: fixture.binding.id,
-        baseRevisionId: fixture.revision.id,
-        targetValue: {
-          kind: "cells",
-          bits: 32,
-          groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+          },
+          reason: "Blocked by mapping",
         },
-        reason: "Blocked by mapping",
-      }),
+        { toolchain: passToolchain },
+      ),
     ).rejects.toMatchObject({
       code: "CONFLICT",
       details: expect.objectContaining({ reason: "unresolved-mapping" }),
     });
+  });
+
+  it("fail-closed when candidate toolchain validation fails", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth);
+
+    const before = await db!.query<{ raw_value: string | null }>(
+      `
+      select raw_value from project_parameter_binding_revisions
+      where binding_id = $1 and config_revision_id = $2
+      `,
+      [fixture.binding.id, fixture.revision.id],
+    );
+
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+          },
+          reason: "Schema compile must block draft",
+        },
+        { toolchain: failToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: expect.objectContaining({
+        reason: "toolchain-failure",
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({ code: "schema-failed", severity: "error" }),
+        ]),
+      }),
+    } satisfies Partial<ApiError>);
+
+    const drafts = await db!.query<{ id: string }>(
+      `select id from parameter_drafts where project_parameter_binding_id = $1`,
+      [fixture.binding.id],
+    );
+    expect(drafts.rows).toHaveLength(0);
+
+    const after = await db!.query<{ raw_value: string | null }>(
+      `
+      select raw_value from project_parameter_binding_revisions
+      where binding_id = $1 and config_revision_id = $2
+      `,
+      [fixture.binding.id, fixture.revision.id],
+    );
+    expect(after.rows[0]?.raw_value).toBe(before.rows[0]?.raw_value);
+
+    const runs = await db!.query<{ status: string; stage: string }>(
+      `
+      select status, stage from dts_validation_runs
+      where stage = 'toolchain'
+        and config_revision_id in (
+          select id from dts_config_revisions
+          where config_set_id = $1 and id <> $2
+        )
+      order by created_at desc
+      limit 1
+      `,
+      [CONFIG_SET_ID, fixture.revision.id],
+    );
+    expect(runs.rows[0]).toMatchObject({ status: "failed", stage: "toolchain" });
   });
 });
