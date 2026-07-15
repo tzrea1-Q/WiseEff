@@ -345,11 +345,19 @@ export type CreateImportPreviewInput = {
   projectId: string;
   sourceName: string;
   items: Array<ParameterImportSourceItemDto & { id?: string }>;
+  reviewMetadata?: {
+    skippedRows?: Array<{ rowKey?: string; name?: string; module?: string; reason: string }>;
+    notes?: string;
+  };
 };
 
 export type ApplyImportBatchInput = {
   batchId: string;
   selectedItemIds?: string[];
+  reviewMetadata?: {
+    skippedRows?: Array<{ rowKey?: string; name?: string; module?: string; reason: string }>;
+    notes?: string;
+  };
 };
 
 function requireCanView(auth: AuthContext) {
@@ -758,6 +766,8 @@ async function createImportAudit(
     projectId: string;
     batchId: string;
     summary: { added: number; updated: number; skipped: number };
+    action?: "preview" | "apply";
+    reviewMetadata?: CreateImportPreviewInput["reviewMetadata"];
   },
   context: ServiceContext = {}
 ) {
@@ -769,13 +779,14 @@ async function createImportAudit(
     actorType: "user",
     app: "parameter-management",
     kind: "batch-import",
-    action: "apply",
+    action: input.action ?? "apply",
     severity: "High",
     targetType: "parameter-import-batch",
     targetId: input.batchId,
     metadata: {
       batchId: input.batchId,
-      summary: input.summary
+      summary: input.summary,
+      ...(input.reviewMetadata ? { reviewMetadata: input.reviewMetadata } : {})
     },
     traceId: context.requestId ?? randomUUID()
   });
@@ -839,7 +850,7 @@ export async function createImportPreview(db: Queryable, auth: AuthContext, inpu
   }
 
   const summary = summarizeImportItems(previewItems);
-  return insertImportBatch(db, {
+  const batch = await insertImportBatch(db, {
     id: randomUUID(),
     organizationId: auth.organization.id,
     projectId: parsed.projectId,
@@ -848,6 +859,22 @@ export async function createImportPreview(db: Queryable, auth: AuthContext, inpu
     summary,
     items: previewItems
   });
+
+  if (parsed.reviewMetadata) {
+    await createImportAudit(db, auth, {
+      projectId: parsed.projectId,
+      batchId: batch.id,
+      summary: {
+        added: summary.added,
+        updated: summary.updated,
+        skipped: parsed.reviewMetadata.skippedRows?.length ?? 0
+      },
+      action: "preview",
+      reviewMetadata: parsed.reviewMetadata
+    });
+  }
+
+  return batch;
 }
 
 export async function applyImportBatch(db: Database, auth: AuthContext, input: ApplyImportBatchInput, context: ServiceContext = {}) {
@@ -985,7 +1012,8 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
         added,
         updated,
         skipped: batch.items.length - selectedItems.length
-      }
+      },
+      reviewMetadata: parsed.reviewMetadata
     }, context);
 
     const project = await getProjectById(tx, {

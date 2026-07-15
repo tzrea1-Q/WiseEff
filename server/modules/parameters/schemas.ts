@@ -103,12 +103,42 @@ export const reviewChangeBodySchema = z.object({
 export const createImportBatchBodySchema = z.object({
   projectId: nonEmptyString,
   sourceName: nonEmptyString,
-  items: z.array(parameterImportSourceItemSchema).min(1)
+  items: z.array(parameterImportSourceItemSchema).min(1),
+  reviewMetadata: z
+    .object({
+      skippedRows: z
+        .array(
+          z.object({
+            rowKey: z.string().optional(),
+            name: z.string().optional(),
+            module: z.string().optional(),
+            reason: nonEmptyString
+          })
+        )
+        .optional(),
+      notes: z.string().optional()
+    })
+    .optional()
 });
 
 export const applyImportBatchBodySchema = z.object({
   batchId: nonEmptyString,
-  selectedItemIds: z.array(nonEmptyString).optional()
+  selectedItemIds: z.array(nonEmptyString).optional(),
+  reviewMetadata: z
+    .object({
+      skippedRows: z
+        .array(
+          z.object({
+            rowKey: z.string().optional(),
+            name: z.string().optional(),
+            module: z.string().optional(),
+            reason: nonEmptyString
+          })
+        )
+        .optional(),
+      notes: z.string().optional()
+    })
+    .optional()
 });
 
 export const parseDtsImportBodySchema = z.object({
