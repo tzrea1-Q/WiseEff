@@ -19,11 +19,18 @@ export type DtsPowerSeedParameterValue = {
 
 export type DtsPowerSeedParameter = {
   id: string;
+  /** Property key only, e.g. "gpio_int" — never the full source path. */
   name: string;
+  /** Driver identity for the owning node: its `compatible` string, or node name when absent. */
+  driverModule: string;
+  /** Owning node's own segment, e.g. "sc8562@6E" (unit address included when present). */
+  instanceName: string;
+  /** Full node path in this source version; a locator, not an identity. */
+  nodeLocator: string;
   description: string;
   explanation: string;
   configFormat: string;
-  module: string;
+  businessCategory: string;
   range: string;
   unit: string;
   risk: DtsPowerSeedRisk;
@@ -307,7 +314,7 @@ export function buildDtsPowerSeed(baseSource: string): DtsPowerSeed {
   const parameterLibrary = baseResolved.nodes.flatMap((node) =>
     node.properties.map((property): DtsPowerSeedParameter => {
       const sourceNodePath = propertySourcePath(node.nodePath, property.name);
-      const module = moduleForPath(node.nodePath, property.name);
+      const businessCategory = businessCategoryForPath(node.nodePath, property.name);
       const values = {} as Record<DtsPowerSeedProjectId, DtsPowerSeedParameterValue>;
 
       for (const projectId of ["aurora", "nebula", "atlas"] as const) {
@@ -327,15 +334,18 @@ export function buildDtsPowerSeed(baseSource: string): DtsPowerSeed {
         nodePath: node.nodePath,
         valueType: property.valueType,
         normalizedValue: property.normalizedValue,
-        module
+        businessCategory
       });
       return {
         id: parameterId(sourceNodePath),
-        name: parameterName(sourceNodePath),
+        name: property.name,
+        driverModule: node.compatible ?? node.name,
+        instanceName: node.unitAddress ? `${node.name}@${node.unitAddress}` : node.name,
+        nodeLocator: node.nodePath,
         description: metadata.description,
         explanation: metadata.explanation,
         configFormat: `DTS ${property.valueType}: ${sourceNodePath} = ${property.rawText.trim() || "<presence>"};`,
-        module,
+        businessCategory,
         range: metadata.range,
         unit: metadata.unit,
         risk: metadata.risk,
@@ -436,11 +446,7 @@ function parameterId(sourceNodePath: string) {
   return `${DTS_POWER_SEED_ID_PREFIX}${tail}-${digest}`;
 }
 
-function parameterName(sourceNodePath: string) {
-  return sourceNodePath.replaceAll("/", ".");
-}
-
-function moduleForPath(nodePath: string, propertyName: string) {
+function businessCategoryForPath(nodePath: string, propertyName: string) {
   const path = `${nodePath}/${propertyName}`.toLowerCase();
   if (!nodePath || propertyName === "board_id") return "Board Identity";
   if (path.includes("wireless") || path.includes("mt5788")) return "Wireless Charging";
@@ -479,7 +485,7 @@ function inferMetadata(input: {
   nodePath: string;
   valueType: DtsValueType;
   normalizedValue: string;
-  module: string;
+  businessCategory: string;
 }) {
   const semantic = propertySemantics[input.propertyName] ?? `${readableName(input.propertyName)} 配置`;
   const nodeName = input.nodePath.split("/").filter(Boolean).at(-1) ?? "根节点";
@@ -527,7 +533,11 @@ function inferRangeAndUnit(input: {
   return { range: "0 - 0xffffffff", unit: "cell" };
 }
 
-function inferRisk(input: { propertyName: string; module: string; valueType: DtsValueType }): DtsPowerSeedRisk {
+function inferRisk(input: {
+  propertyName: string;
+  businessCategory: string;
+  valueType: DtsValueType;
+}): DtsPowerSeedRisk {
   const name = input.propertyName.toLowerCase();
   if (
     name === "compatible" ||
@@ -544,13 +554,15 @@ function inferRisk(input: { propertyName: string; module: string; valueType: Dts
     return "High";
   }
   if (
-    ["Charge Pump IC", "Direct Charging", "Charging Policy", "Battery Protection"].includes(input.module) ||
+    ["Charge Pump IC", "Direct Charging", "Charging Policy", "Battery Protection"].includes(
+      input.businessCategory
+    ) ||
     input.valueType === "phandle-list" ||
     input.valueType === "mixed"
   ) {
     return "High";
   }
-  if (input.module === "Board Identity" || name === "board_id") return "Low";
+  if (input.businessCategory === "Board Identity" || name === "board_id") return "Low";
   return "Medium";
 }
 

@@ -20,6 +20,15 @@ function bySource(parameters: DtsPowerSeedParameter[], sourceNodePath: string) {
 }
 
 describe("DTS power seed catalog", () => {
+  it("keeps property key, driver, instance and locator separate", () => {
+    const seed = buildDtsPowerSeed(baseSource);
+    const item = bySource(seed.parameterLibrary, "amba/i2c@FDF5E000/sc8562@6E/gpio_int");
+    expect(item.name).toBe("gpio_int");
+    expect(item.driverModule).toBe("sc8562");
+    expect(item.instanceName).toBe("sc8562@6E");
+    expect(item.nodeLocator).toBe("amba/i2c@FDF5E000/sc8562@6E");
+  });
+
   it("maps every resolved property to one source-bound parameter", () => {
     const seed = buildDtsPowerSeed(baseSource);
     const resolved = resolveDts(baseSource);
@@ -50,9 +59,12 @@ describe("DTS power seed catalog", () => {
     expect(bySource(seed.parameterLibrary, "huawei_batt_info/battery_checker@1/matchable").id).not.toBe(
       bySource(seed.parameterLibrary, "huawei_batt_info/battery_checker@0/matchable").id
     );
-    expect(bySource(seed.parameterLibrary, "amba/i2c@FF24E000/hl7603@75/compatible").name).toContain(
-      "hl7603@75.compatible"
-    );
+    expect(bySource(seed.parameterLibrary, "amba/i2c@FF24E000/hl7603@75/compatible")).toMatchObject({
+      name: "compatible",
+      driverModule: "huawei,bypass_bst_hl7603",
+      instanceName: "hl7603@75",
+      nodeLocator: "amba/i2c@FF24E000/hl7603@75"
+    });
     expect(bySource(seed.parameterLibrary, "huawei_charger/weak_source_sleep_enabled").values.aurora)
       .toMatchObject({ currentValue: "true", recommendedValue: "true" });
     expect(bySource(seed.parameterLibrary, "wireless_charger/sc_err_tx").configFormat).toContain("bytes");
@@ -61,7 +73,7 @@ describe("DTS power seed catalog", () => {
     );
   });
 
-  it("creates three structurally identical, intentionally differentiated project files", () => {
+  it("creates three structurally identical, intentionally differentiated project files", async () => {
     const seed = buildDtsPowerSeed(baseSource);
     const identitiesByProject = seed.projectFiles.map((file) => {
       const resolved = resolveDts(file.source);
@@ -72,6 +84,9 @@ describe("DTS power seed catalog", () => {
 
     expect(seed.projectFiles.map((file) => file.projectId)).toEqual(["aurora", "nebula", "atlas"]);
     expect(seed.projectFiles.every((file) => file.fileName === DTS_POWER_SEED_FILE_NAME)).toBe(true);
+    expect(await readFile(path.join(root, "src/config/dts-seed/wiseeff-power-base.dts"), "utf8")).toContain(
+      "gpio-controller"
+    );
     expect(identitiesByProject[1]).toEqual(identitiesByProject[0]);
     expect(identitiesByProject[2]).toEqual(identitiesByProject[0]);
 
@@ -98,29 +113,29 @@ describe("DTS power seed catalog", () => {
     expect(differentiated.length).toBeGreaterThanOrEqual(15);
   });
 
-  it("infers useful units, ranges, risks, and domain modules", () => {
+  it("infers useful units, ranges, risks, and business categories", () => {
     const seed = buildDtsPowerSeed(baseSource);
 
     expect(bySource(seed.parameterLibrary, "amba/i2c@FDF5E000/sc8562@6E/vout_ovp_mv")).toMatchObject({
       unit: "mV",
       risk: "High",
-      module: "Charge Pump IC"
+      businessCategory: "Charge Pump IC"
     });
     expect(bySource(seed.parameterLibrary, "charging_core/iin_max")).toMatchObject({
       unit: "mA",
       range: "0 - 12000",
       risk: "High",
-      module: "Charging Policy"
+      businessCategory: "Charging Policy"
     });
     expect(bySource(seed.parameterLibrary, "hisi_bci_battery/battery_design_fcc")).toMatchObject({
       unit: "mAh",
       risk: "High",
-      module: "Battery Gauge"
+      businessCategory: "Battery Gauge"
     });
     expect(bySource(seed.parameterLibrary, "battery_ocv/ocv_table")).toMatchObject({
       unit: "mV table",
       valueKind: "complex",
-      module: "Battery Gauge"
+      businessCategory: "Battery Gauge"
     });
   });
 

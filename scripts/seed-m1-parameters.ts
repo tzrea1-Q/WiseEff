@@ -10,7 +10,7 @@ import { buildDtsParsedIndex } from "../server/modules/parameter-files/parseInde
 import { ingestDtsFileVersion } from "../server/modules/parameter-files/structuralIngest";
 import type { ObjectStore } from "../server/modules/logs/objectStore";
 import { createPostgresDatabase, type Database } from "../server/shared/database/client";
-import { buildDtsPowerSeed, type DtsPowerSeedProjectFile } from "./dts-power-seed";
+import { buildDtsPowerSeed, type DtsPowerSeedParameter, type DtsPowerSeedProjectFile } from "./dts-power-seed";
 import { compileDtsSeedFiles, loadCommittedDtsSeedFiles } from "./compile-dts-seed";
 
 export type PowerManagementProject = {
@@ -110,6 +110,29 @@ const workflowRoleBindings = [
   { userId: "u-li-peng", roleId: "hardware-committer" },
   { userId: "u-chen-na", roleId: "software-user" }
 ] as const;
+
+/**
+ * Legacy M1 seed rows still key on a flat `module` display field. Map the
+ * semantic seed's `businessCategory` onto it here rather than reintroducing
+ * `module` on `DtsPowerSeedParameter` itself.
+ */
+function toPowerManagementParameter(parameter: DtsPowerSeedParameter): PowerManagementParameter {
+  return {
+    id: parameter.id,
+    name: parameter.name,
+    description: parameter.description,
+    explanation: parameter.explanation,
+    configFormat: parameter.configFormat,
+    module: parameter.businessCategory,
+    range: parameter.range,
+    unit: parameter.unit,
+    risk: parameter.risk,
+    valueKind: parameter.valueKind,
+    sourceFileName: parameter.sourceFileName,
+    sourceNodePath: parameter.sourceNodePath,
+    values: parameter.values
+  };
+}
 
 function stableSeedId(prefix: string, value: string) {
   const digest = createHash("sha256").update(value).digest("hex").slice(0, 16);
@@ -639,7 +662,10 @@ async function main() {
   const config: PowerManagementConfig = {
     ...compatibilityConfig,
     parameterModules: [...modulesByName.values()],
-    parameterLibrary: [...compatibilityConfig.parameterLibrary, ...dtsSeed.parameterLibrary]
+    parameterLibrary: [
+      ...compatibilityConfig.parameterLibrary,
+      ...dtsSeed.parameterLibrary.map(toPowerManagementParameter)
+    ]
   };
   await compileDtsSeedFiles(projectFiles);
   await seedM1Parameters(db, config);

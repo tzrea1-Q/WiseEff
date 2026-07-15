@@ -38,16 +38,42 @@ export async function loadCommittedDtsSeedFiles(rootDir: string): Promise<DtsPow
   );
 }
 
+export const DTS_POWER_BASE_FIXTURE_FILE_NAME = "wiseeff-power-base.dts";
+
+/**
+ * Synthetic base tree that the overlay seed compiles against. Standalone
+ * syntax-checked here; real `fdtoverlay` application onto it is added and
+ * gated in Task 8 alongside the complete toolchain runner.
+ */
+export async function loadDtsPowerBaseFixture(rootDir: string): Promise<{ name: string; content: string }> {
+  return {
+    name: DTS_POWER_BASE_FIXTURE_FILE_NAME,
+    content: await readFile(
+      path.join(rootDir, "src", "config", "dts-seed", DTS_POWER_BASE_FIXTURE_FILE_NAME),
+      "utf8"
+    )
+  };
+}
+
 async function main() {
   const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   const result = await compileDtsSeedFiles(await loadCommittedDtsSeedFiles(rootDir));
+
+  const validator = createSubprocessDtcValidator();
+  const baseFixture = await loadDtsPowerBaseFixture(rootDir);
+  const baseResult = await validator.validate([baseFixture], { mode: "block" });
+  if (!baseResult.ok || baseResult.compiler === "unavailable") {
+    const details = baseResult.diagnostics.map((diagnostic) => `${diagnostic.file}: ${diagnostic.message}`).join("\n");
+    throw new Error(`DTS base fixture compilation failed.\n${details}`);
+  }
+
   console.log(
     JSON.stringify(
       {
-        ok: result.ok,
+        ok: result.ok && baseResult.ok,
         compiler: result.compiler,
         mode: result.mode,
-        diagnostics: result.diagnostics
+        diagnostics: [...result.diagnostics, ...baseResult.diagnostics]
       },
       null,
       2
