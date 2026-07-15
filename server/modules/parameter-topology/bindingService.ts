@@ -400,3 +400,198 @@ export async function persistAmbiguousIdentityMapping(
 
   return toMappingTask(result.rows[0]);
 }
+
+export async function getIdentityMappingTaskById(
+  db: Queryable,
+  input: { organizationId: string; taskId: string },
+): Promise<IdentityMappingTask | null> {
+  const result = await db.query<IdentityMappingTaskRow>(
+    `
+    select *
+    from identity_mapping_tasks
+    where id = $1 and organization_id = $2
+    limit 1
+    `,
+    [input.taskId, input.organizationId],
+  );
+  const row = result.rows[0];
+  return row ? toMappingTask(row) : null;
+}
+
+export async function listIdentityMappingTaskRows(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId?: string;
+    status?: "open" | "resolved" | "dismissed";
+  },
+): Promise<IdentityMappingTask[]> {
+  const values: unknown[] = [input.organizationId];
+  const conditions = ["organization_id = $1"];
+  if (input.projectId) {
+    values.push(input.projectId);
+    conditions.push(`project_id = $${values.length}`);
+  }
+  if (input.status) {
+    values.push(input.status);
+    conditions.push(`status = $${values.length}`);
+  }
+  const result = await db.query<IdentityMappingTaskRow>(
+    `
+    select *
+    from identity_mapping_tasks
+    where ${conditions.join(" and ")}
+    order by created_at asc
+    `,
+    values,
+  );
+  return result.rows.map(toMappingTask);
+}
+
+export async function resolveIdentityMappingTaskRow(
+  db: Queryable,
+  input: {
+    taskId: string;
+    organizationId: string;
+    status: "resolved" | "dismissed";
+    selectedLogicalNodeId?: string | null;
+    reviewerUserId: string;
+    reason: string;
+  },
+): Promise<IdentityMappingTask | null> {
+  const evidencePatch =
+    input.selectedLogicalNodeId != null
+      ? JSON.stringify({ selectedLogicalNodeId: input.selectedLogicalNodeId })
+      : null;
+
+  const result = await db.query<IdentityMappingTaskRow>(
+    `
+    update identity_mapping_tasks
+    set status = $3,
+        reviewer_user_id = $4,
+        reason = $5,
+        resolved_at = now(),
+        evidence = case
+          when $6::jsonb is null then evidence
+          else coalesce(evidence, '{}'::jsonb) || $6::jsonb
+        end
+    where id = $1 and organization_id = $2 and status = 'open'
+    returning *
+    `,
+    [
+      input.taskId,
+      input.organizationId,
+      input.status,
+      input.reviewerUserId,
+      input.reason,
+      evidencePatch,
+    ],
+  );
+  const row = result.rows[0];
+  return row ? toMappingTask(row) : null;
+}
+
+type BindingListRow = {
+  id: string;
+  parameter_spec_id: string;
+  parameter_spec_version_id: string;
+  property_key: string | null;
+  driver_module: string | null;
+  logical_node_id: string | null;
+  instance_name: string | null;
+  locator: string | null;
+  typed_value: unknown;
+  raw_value: string | null;
+  schema_state: string | null;
+  policy_state: string | null;
+};
+
+export type ProjectBindingListItem = {
+  id: string;
+  parameterSpecId: string;
+  parameterSpecVersionId: string;
+  propertyKey: string;
+  driverModule: string | null;
+  logicalNodeId: string | null;
+  instanceName: string | null;
+  locator: string | null;
+  typedValue: unknown;
+  rawValue: string;
+  schemaState: string | null;
+  policyState: string | null;
+};
+
+export async function listProjectBindingRows(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; revisionId?: string },
+): Promise<ProjectBindingListItem[]> {
+  const values: unknown[] = [input.organizationId, input.projectId];
+  let revisionJoin = `
+    left join lateral (
+      select *
+      from project_parameter_binding_revisions
+      where binding_id = b.id
+      order by created_at desc
+      limit 1
+    ) br on true
+  `;
+  if (input.revisionId) {
+    values.push(input.revisionId);
+    revisionJoin = `
+      inner join project_parameter_binding_revisions br
+        on br.binding_id = b.id and br.config_revision_id = $${values.length}
+    `;
+  }
+
+  const result = await db.query<BindingListRow>(
+    `
+    select
+      b.id,
+      b.parameter_spec_id,
+      br.parameter_spec_version_id,
+      coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key,
+      nullif(split_part(ps.specification_key, '/', 1), '') as driver_module,
+      b.logical_node_id,
+      case
+        when lnr.unit_address is not null then lnr.name || '@' || lnr.unit_address
+        else lnr.name
+      end as instance_name,
+      lnr.node_locator as locator,
+      br.typed_value,
+      br.raw_value,
+      br.schema_state,
+      br.policy_state
+    from project_parameter_bindings b
+    join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+    ${revisionJoin}
+    left join lateral (
+      select node_locator, name, unit_address
+      from dts_logical_node_revisions
+      where logical_node_id = b.logical_node_id
+        and ($3::text is null or config_revision_id = $3)
+      order by case when $3::text is null then 0 else 1 end desc, config_revision_id desc
+      limit 1
+    ) lnr on true
+    where b.organization_id = $1 and b.project_id = $2
+      and br.parameter_spec_version_id is not null
+    order by coalesce(lnr.node_locator, ''), coalesce(dps.property_key, ps.specification_key)
+    `,
+    input.revisionId ? values : [...values, null],
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    parameterSpecId: row.parameter_spec_id,
+    parameterSpecVersionId: row.parameter_spec_version_id,
+    propertyKey: row.property_key ?? "",
+    driverModule: row.driver_module,
+    logicalNodeId: row.logical_node_id,
+    instanceName: row.instance_name,
+    locator: row.locator,
+    typedValue: row.typed_value,
+    rawValue: row.raw_value ?? "",
+    schemaState: row.schema_state,
+    policyState: row.policy_state,
+  }));
+}

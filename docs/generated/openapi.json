@@ -1693,6 +1693,381 @@
         }
       }
     },
+    "/api/v2/parameter-specs": {
+      "get": {
+        "operationId": "parameterSpecs.list",
+        "summary": "List versioned parameter specifications",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSpecListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-specs/{specId}": {
+      "get": {
+        "operationId": "parameterSpecs.get",
+        "summary": "Get a parameter specification detail",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSpecDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-spec-review-tasks/{taskId}/resolve": {
+      "post": {
+        "operationId": "parameterSpecs.resolveReviewTask",
+        "summary": "Resolve a parameter specification review task",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveParameterSpecReviewTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSpecReviewTaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/config-sets/{configSetId}/revisions/{revisionId}/topology": {
+      "get": {
+        "operationId": "parameterTopology.getTopology",
+        "summary": "Get source or effective DTS topology for a config revision",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revisionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterTopologyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-bindings": {
+      "get": {
+        "operationId": "parameterTopology.listBindings",
+        "summary": "List semantic project parameter bindings",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectParameterBindingListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/identity-mapping-tasks": {
+      "get": {
+        "operationId": "parameterTopology.listIdentityMappingTasks",
+        "summary": "List identity mapping tasks",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityMappingTaskListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/identity-mapping-tasks/{taskId}/resolve": {
+      "post": {
+        "operationId": "parameterTopology.resolveIdentityMappingTask",
+        "summary": "Resolve an identity mapping task",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveIdentityMappingTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityMappingTaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/config-revisions/{revisionId}/validate": {
+      "post": {
+        "operationId": "parameterTopology.validateConfigRevision",
+        "summary": "Validate a config revision with the DTS toolchain gate",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revisionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateConfigRevisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigRevisionValidationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-files": {
       "post": {
         "operationId": "logs.uploadFile",
@@ -4318,6 +4693,50 @@
       "ParameterDashboardHotspotsResponse": {
         "type": "object",
         "x-wiseeff-schema": "ParameterDashboardHotspotsResponse"
+      },
+      "ParameterSpecListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterSpecListResponse"
+      },
+      "ParameterSpecDetailResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterSpecDetailResponse"
+      },
+      "ResolveParameterSpecReviewTaskRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ResolveParameterSpecReviewTaskRequest"
+      },
+      "ParameterSpecReviewTaskResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterSpecReviewTaskResponse"
+      },
+      "ParameterTopologyResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterTopologyResponse"
+      },
+      "ProjectParameterBindingListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProjectParameterBindingListResponse"
+      },
+      "IdentityMappingTaskListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "IdentityMappingTaskListResponse"
+      },
+      "ResolveIdentityMappingTaskRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ResolveIdentityMappingTaskRequest"
+      },
+      "IdentityMappingTaskResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "IdentityMappingTaskResponse"
+      },
+      "ValidateConfigRevisionRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ValidateConfigRevisionRequest"
+      },
+      "ConfigRevisionValidationResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ConfigRevisionValidationResponse"
       },
       "LogFileUploadRequest": {
         "type": "object",

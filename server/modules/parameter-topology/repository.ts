@@ -317,3 +317,246 @@ export async function insertValidationDiagnostics(
 function cryptoRandomId(): string {
   return randomUUID();
 }
+
+export async function getConfigRevisionById(
+  db: Queryable,
+  input: { organizationId: string; revisionId: string; projectId?: string; configSetId?: string },
+): Promise<DtsConfigRevisionDto | null> {
+  const values: unknown[] = [input.organizationId, input.revisionId];
+  const conditions = ["organization_id = $1", "id = $2"];
+  if (input.projectId) {
+    values.push(input.projectId);
+    conditions.push(`project_id = $${values.length}`);
+  }
+  if (input.configSetId) {
+    values.push(input.configSetId);
+    conditions.push(`config_set_id = $${values.length}`);
+  }
+  const result = await db.query<RevisionRow>(
+    `
+    select *
+    from dts_config_revisions
+    where ${conditions.join(" and ")}
+    limit 1
+    `,
+    values,
+  );
+  const row = result.rows[0];
+  return row ? toRevisionDto(row) : null;
+}
+
+type SourceNodeRow = {
+  id: string;
+  file_version_id: string;
+  parent_occurrence_id: string | null;
+  name: string;
+  unit_address: string | null;
+  labels: unknown;
+  ref_target: string | null;
+  is_overlay_root: boolean;
+  node_path: string;
+  start_line: number | string;
+  start_column: number | string;
+  end_line: number | string;
+  end_column: number | string;
+  content_hash: string;
+  source_order: number | string;
+};
+
+type SourcePropertyRow = {
+  id: string;
+  node_occurrence_id: string;
+  property_name: string;
+  start_line: number | string;
+  start_column: number | string;
+  end_line: number | string;
+  end_column: number | string;
+  content_hash: string;
+  source_order: number | string;
+};
+
+export async function listSourceTopology(
+  db: Queryable,
+  configRevisionId: string,
+): Promise<{
+  nodes: Array<{
+    id: string;
+    fileVersionId: string;
+    parentOccurrenceId: string | null;
+    name: string;
+    unitAddress?: string;
+    labels: string[];
+    refTarget?: string;
+    isOverlayRoot: boolean;
+    nodePath: string;
+    startLine: number;
+    startColumn: number;
+    endLine: number;
+    endColumn: number;
+    contentHash: string;
+    sourceOrder: number;
+    properties: Array<{
+      id: string;
+      propertyName: string;
+      startLine: number;
+      startColumn: number;
+      endLine: number;
+      endColumn: number;
+      contentHash: string;
+      sourceOrder: number;
+    }>;
+  }>;
+}> {
+  const [nodesResult, propsResult] = await Promise.all([
+    db.query<SourceNodeRow>(
+      `
+      select id, file_version_id, parent_occurrence_id, name, unit_address, labels, ref_target,
+             is_overlay_root, node_path, start_line, start_column, end_line, end_column,
+             content_hash, source_order
+      from dts_node_occurrences
+      where config_revision_id = $1
+      order by source_order asc
+      `,
+      [configRevisionId],
+    ),
+    db.query<SourcePropertyRow>(
+      `
+      select id, node_occurrence_id, property_name, start_line, start_column, end_line, end_column,
+             content_hash, source_order
+      from dts_property_occurrences
+      where config_revision_id = $1
+      order by source_order asc
+      `,
+      [configRevisionId],
+    ),
+  ]);
+
+  const propertiesByNode = new Map<string, SourcePropertyRow[]>();
+  for (const prop of propsResult.rows) {
+    const list = propertiesByNode.get(prop.node_occurrence_id) ?? [];
+    list.push(prop);
+    propertiesByNode.set(prop.node_occurrence_id, list);
+  }
+
+  return {
+    nodes: nodesResult.rows.map((node) => ({
+      id: node.id,
+      fileVersionId: node.file_version_id,
+      parentOccurrenceId: node.parent_occurrence_id,
+      name: node.name,
+      unitAddress: node.unit_address ?? undefined,
+      labels: Array.isArray(node.labels) ? node.labels.map(String) : [],
+      refTarget: node.ref_target ?? undefined,
+      isOverlayRoot: node.is_overlay_root,
+      nodePath: node.node_path,
+      startLine: Number(node.start_line),
+      startColumn: Number(node.start_column),
+      endLine: Number(node.end_line),
+      endColumn: Number(node.end_column),
+      contentHash: node.content_hash,
+      sourceOrder: Number(node.source_order),
+      properties: (propertiesByNode.get(node.id) ?? []).map((prop) => ({
+        id: prop.id,
+        propertyName: prop.property_name,
+        startLine: Number(prop.start_line),
+        startColumn: Number(prop.start_column),
+        endLine: Number(prop.end_line),
+        endColumn: Number(prop.end_column),
+        contentHash: prop.content_hash,
+        sourceOrder: Number(prop.source_order),
+      })),
+    })),
+  };
+}
+
+type EffectiveNodeRow = {
+  id: string;
+  logical_node_id: string;
+  node_locator: string;
+  name: string;
+  unit_address: string | null;
+  compatible: string | null;
+  parent_logical_node_id: string | null;
+};
+
+type EffectRow = {
+  id: string;
+  logical_node_revision_id: string;
+  property_name: string | null;
+  effect_kind: "set" | "override" | "delete";
+  node_occurrence_id: string | null;
+  property_occurrence_id: string | null;
+  source_order: number | string;
+};
+
+export async function listEffectiveTopology(
+  db: Queryable,
+  configRevisionId: string,
+): Promise<{
+  nodes: Array<{
+    id: string;
+    logicalNodeId: string;
+    locator: string;
+    name: string;
+    unitAddress?: string;
+    compatible?: string;
+    parentLogicalNodeId: string | null;
+    effects: Array<{
+      id: string;
+      propertyName: string | null;
+      effectKind: "set" | "override" | "delete";
+      nodeOccurrenceId: string | null;
+      propertyOccurrenceId: string | null;
+      sourceOrder: number;
+    }>;
+  }>;
+}> {
+  const [nodesResult, effectsResult] = await Promise.all([
+    db.query<EffectiveNodeRow>(
+      `
+      select id, logical_node_id, node_locator, name, unit_address, compatible, parent_logical_node_id
+      from dts_logical_node_revisions
+      where config_revision_id = $1
+      order by node_locator asc
+      `,
+      [configRevisionId],
+    ),
+    db.query<EffectRow>(
+      `
+      select id, logical_node_revision_id, property_name, effect_kind,
+             node_occurrence_id, property_occurrence_id, source_order
+      from dts_occurrence_effects
+      where config_revision_id = $1
+      order by source_order asc
+      `,
+      [configRevisionId],
+    ),
+  ]);
+
+  const effectsByNode = new Map<string, EffectRow[]>();
+  for (const effect of effectsResult.rows) {
+    const list = effectsByNode.get(effect.logical_node_revision_id) ?? [];
+    list.push(effect);
+    effectsByNode.set(effect.logical_node_revision_id, list);
+  }
+
+  return {
+    nodes: nodesResult.rows.map((node) => ({
+      id: node.id,
+      logicalNodeId: node.logical_node_id,
+      locator: node.node_locator,
+      name: node.name,
+      unitAddress: node.unit_address ?? undefined,
+      compatible: node.compatible ?? undefined,
+      parentLogicalNodeId: node.parent_logical_node_id,
+      effects: (effectsByNode.get(node.id) ?? []).map((effect) => ({
+        id: effect.id,
+        propertyName: effect.property_name,
+        effectKind: effect.effect_kind,
+        nodeOccurrenceId: effect.node_occurrence_id,
+        propertyOccurrenceId: effect.property_occurrence_id,
+        sourceOrder: Number(effect.source_order),
+      })),
+    })),
+  };
+}

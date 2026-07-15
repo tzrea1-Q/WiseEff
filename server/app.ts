@@ -32,6 +32,8 @@ import type { LogAnalysisQueue } from "./modules/logs/logAnalysisQueue";
 import { registerParameterFileRoutes } from "./modules/parameter-files/routes";
 import { registerParameterRoutes } from "./modules/parameters/routes";
 import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard/routes";
+import { registerParameterSpecRoutes } from "./modules/parameter-specs/routes";
+import { registerParameterTopologyRoutes } from "./modules/parameter-topology/routes";
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
 import { registerUserRoutes } from "./modules/users/routes";
 import { createHttpServer } from "./shared/http/server";
@@ -134,6 +136,14 @@ export function createWiseEffServer(
   registerParameterFileRoutes(router, {
     db: options.db,
     objectStore: options.objectStore,
+    getCurrentAuthContext: authResolver
+  });
+  registerParameterSpecRoutes(router, {
+    db: options.db,
+    getCurrentAuthContext: authResolver
+  });
+  registerParameterTopologyRoutes(router, {
+    db: options.db,
     getCurrentAuthContext: authResolver
   });
   registerParameterDashboardRoutes(router, {
