@@ -67,6 +67,28 @@ export interface DtsPropertyCst {
   span: DtsSpan;
 }
 
+/**
+ * `/delete-property/ name;` inside a node body. Additive CST kind for config-set resolution
+ * (see `configSetResolver.ts`); single-file `resolveDts` treats it as a no-op.
+ */
+export interface DtsDeletePropertyCst {
+  kind: "delete-property";
+  name: string;
+  span: DtsSpan;
+}
+
+/**
+ * `/delete-node/ name;` or `/delete-node/ name@unitAddress;` inside a node body. Additive CST
+ * kind for config-set resolution (see `configSetResolver.ts`); single-file `resolveDts` treats
+ * it as a no-op.
+ */
+export interface DtsDeleteNodeCst {
+  kind: "delete-node";
+  name: string;
+  unitAddress?: string;
+  span: DtsSpan;
+}
+
 export interface DtsNodeCst {
   kind: "node";
   name: string;
@@ -74,7 +96,7 @@ export interface DtsNodeCst {
   labels: string[];
   refTarget?: string;
   isOverlayRoot: boolean;
-  children: Array<DtsNodeCst | DtsPropertyCst>;
+  children: Array<DtsNodeCst | DtsPropertyCst | DtsDeletePropertyCst | DtsDeleteNodeCst>;
   span: DtsSpan;
 }
 

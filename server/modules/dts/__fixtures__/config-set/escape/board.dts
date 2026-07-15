@@ -1,0 +1,6 @@
+/dts-v1/;
+/include/ "../outside.dtsi"
+
+/ {
+	board_id = <1>;
+};

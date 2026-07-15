@@ -9,11 +9,28 @@ export {
 } from "./resolver";
 export { serializeDts } from "./serialize";
 export { classifyDtsValue, type ClassifiedDtsValue } from "./valueTyping";
+export { resolveDtsConfigSet } from "./configSetResolver";
+export type {
+  DtsConfigSetFile,
+  DtsConfigSetInput,
+  DtsResolutionDiagnostic,
+  DtsResolutionDiagnosticCode,
+  DtsSourceEffect,
+  DtsSourceChainEntry,
+  DtsNodeEffect,
+  DtsNodeSourceChainEntry,
+  DtsEffectiveProperty,
+  DtsEffectiveNode,
+  DtsEffectiveConfigSet,
+  DtsConfigSetResult,
+} from "./configSetResolver";
 export type {
   DtsDocument,
   DtsDirective,
   DtsNodeCst,
   DtsPropertyCst,
+  DtsDeletePropertyCst,
+  DtsDeleteNodeCst,
   DtsValueType,
   DtsSpan,
 } from "./types";

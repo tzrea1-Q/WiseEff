@@ -127,16 +127,10 @@ export async function uploadProjectParameterFile(
   }
 
   const source = normalized.bytes.toString("utf8");
+  // `/include/` is resolved by `resolveDtsConfigSet`; single-file upload no longer
+  // hard-rejects it. Remaining hard-unsupported constructs (if any) are still collected.
   const unsupportedConstructs =
     format === "dts" ? detectUnsupportedDtsConstructs(source) : [];
-  if (unsupportedConstructs.some((finding) => finding.code === "include")) {
-    throw new ApiError(
-      "VALIDATION_FAILED",
-      "DTS /include/ 暂不支持，请提供展开后的文件。",
-      400,
-      { code: "dts-include-unsupported" }
-    );
-  }
 
   const parsedIndex = buildParsedIndex(format, normalized.bytes);
 

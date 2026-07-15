@@ -1,5 +1,14 @@
 import { lexDts, type DtsToken } from "./lexer";
-import type { DtsDirective, DtsDocument, DtsNodeCst, DtsPropertyCst, DtsValue, DtsValueType } from "./types";
+import type {
+  DtsDeleteNodeCst,
+  DtsDeletePropertyCst,
+  DtsDirective,
+  DtsDocument,
+  DtsNodeCst,
+  DtsPropertyCst,
+  DtsValue,
+  DtsValueType,
+} from "./types";
 import { classifyDtsValue } from "./valueTyping";
 import { parseDtsValue } from "./valueAst";
 
@@ -170,10 +179,12 @@ class Parser {
     }
 
     this.expect("lbrace");
-    const children: Array<DtsNodeCst | DtsPropertyCst> = [];
+    const children: Array<DtsNodeCst | DtsPropertyCst | DtsDeletePropertyCst | DtsDeleteNodeCst> = [];
 
     while (!this.check("rbrace") && !this.check("eof")) {
-      if (this.looksLikeNode()) {
+      if (this.isDeleteDirective()) {
+        children.push(this.parseDeleteDirective());
+      } else if (this.looksLikeNode()) {
         children.push(this.parseNode());
       } else {
         children.push(this.parseProperty());
@@ -219,6 +230,35 @@ class Parser {
       }
     }
     return this.check("lbrace", offset);
+  }
+
+  /** `/delete-node/` and `/delete-property/` are node-body statements, not property values. */
+  private isDeleteDirective(): boolean {
+    return (
+      this.check("directive") &&
+      (this.peek().value === "/delete-node/" || this.peek().value === "/delete-property/")
+    );
+  }
+
+  private parseDeleteDirective(): DtsDeletePropertyCst | DtsDeleteNodeCst {
+    const tok = this.advance();
+    const nameTok = this.expect("ident", `Expected identifier after ${tok.value}`);
+    let unitAddress: string | undefined;
+    if (tok.value === "/delete-node/" && this.check("at")) {
+      this.advance();
+      const addr = this.peek();
+      if (addr.kind === "number" || addr.kind === "ident") {
+        unitAddress = this.advance().value;
+      } else {
+        throw new Error(`Expected unit address after @ at ${addr.span.start}`);
+      }
+    }
+    const semi = this.expect("semi", `Expected ';' after ${tok.value} ${nameTok.value}`);
+    const span = { start: tok.span.start, end: semi.span.end };
+    if (tok.value === "/delete-property/") {
+      return { kind: "delete-property", name: nameTok.value, span };
+    }
+    return { kind: "delete-node", name: nameTok.value, unitAddress, span };
   }
 
   private parseProperty(): DtsPropertyCst {
