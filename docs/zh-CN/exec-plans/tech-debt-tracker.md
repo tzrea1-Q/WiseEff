@@ -20,11 +20,12 @@
 ## 进行中
 
 - **TD-038（模块树后续）：** 多层级模块已落地后，仍需删除过渡 `module` 文本列、收敛 `project_modules` 与组织级 `parameter_modules` 单一真相源，并评估 dashboard 热榜的层级聚合。
-- **TD-039（项目参数文件 P1+P2）：** P1（结构化 DTS 核心，`feat/dts-structural-model`）与 P2（配置集/发布基线/`dtc` 校验门禁，`feat/dts-config-set-baseline`，待评审合并）均已落地。仍待办：source-path 绑定证明后移除 `(name, module)` 兼容 fallback；结构化管理 UI 是 P3——当前没有可见 UI。详见英文版 Open 表；P2 专属后续见 TD-040；与 TD-035 对齐。
-- **TD-040（DTS 配置集/门禁后续，P2）：** 四项已知后续：(1) 默认配置集回填只对迁移 `0043` 执行时已存在的项目生效，之后新建项目必须显式调用 `ensureDefaultConfigSet`/`createConfigSet`；(2) 门禁目前只跑 `dtc` 编译检查，尚未实现 `dt-schema`（`.yaml` binding）校验；(3) `dtc` 目前以受限子进程方式运行（临时目录、最小环境、超时；见 `docs/SECURITY.md`），而非容器化沙箱；(4) `dts_config_set.project_id` 外键没有 `on delete cascade`，回填后几乎每个项目都会有配置集，导致 `deleteProject` 删除仍有配置集/基线的项目时可能抛出外键错误。详见英文版 Open 表。
+- **TD-039（项目参数文件，程序主体已关闭）：** DTS 程序 P0–P3.1 已于 2026-07-15 归档。主体能力（CST 解析/配置集基线门禁/结构化 UI/`submitStructuredEdits` 回写）已落地。残余过渡：`(name, module)` fallback、扁平 `parsed_index` 兼容视图、旧文件/冲突面板仍直连 `parameterFileClient`。详见英文版 Open 表；门禁后续见 TD-040；与 TD-035 对齐。
+- **TD-040（DTS 配置集/门禁后续）：** 残余：(1) 新建项目需显式 `ensureDefaultConfigSet`；(2) 尚未实现 `dt-schema` binding 校验；(3) `dtc` 仍为受限子进程而非容器沙箱。第 (4) 项（`dts_config_set.project_id` cascade）与删项目级联链已由迁移 `0044`/`0046` 解决。详见英文版 Open 表。
 
 ## 近期关闭项
 
+- **TD-041（结构化编辑回路）：** 已于 2026-07-15 在 P3.1 关闭。编辑→变更集→`submitStructuredEdits`→既有 CR 审阅合入→CST 回写已打通；回写载荷用 `rawText`。计划归档：`docs/exec-plans/completed/2026-07-14-dts-p31-structured-edit-loop.md`。
 - **TD-037（多层级模块）：** 已于 2026-07-09 在 `feat/hierarchical-modules` 分支关闭。参数域与调试域独立模块树、`module_id` 外键、子树筛选、`ModuleTreeSelect` UI 与 MOD-TREE 验收已交付。计划归档：`docs/exec-plans/completed/2026-07-09-wiseeff-hierarchical-modules.md`。
 
 - **TD-029（小泽 checkpoint 持久化）：** 已于 2026-06-29 关闭。生产/自托管使用 `XIAOZE_CHECKPOINTER=postgres`；证据见 `docs/generated/xiaoze-checkpointer-evidence.md`。详情见英文版 Completed 表。

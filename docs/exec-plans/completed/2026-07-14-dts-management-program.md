@@ -54,11 +54,13 @@
 
 | 阶段 | 计划文档 | 目标 | Schema 变更 | 前置依赖 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| **P0** 解析止血 | [dts-p0-parser-safety](2026-07-14-dts-p0-parser-safety.md) | 让解析器「诚实」：剥注释（真修）、对无法忠实表达的构造**检测并拦截/告警**（不再静默产错）、回写多行/多组值**安全失败**而非损坏 | 无 | 无 | ✅ 已评审通过，合并本地 `main`（待 push） |
-| **P1** 结构化核心 | [dts-p1-structural-model](2026-07-14-dts-p1-structural-model.md) | 真 DTS 解析器（CST）+ 节点树/类型化属性/phandle schema + 迁移 + 结构化同步/无损回写 + 身份解耦 | 新表 | P0 合并 | ✅ 已评审通过，合并本地 `main`（待 push） |
-| **P2** 配置集·基线·校验门禁 | [dts-p2-config-set-baseline-gate](2026-07-14-dts-p2-config-set-baseline-gate.md) | 板级配置集 + 发布基线 + dtc/schema 校验沙箱 + 无损导出 | 新表（迁移 `0043`/`0044`） | P1 合并 | ✅ 已评审通过（修复 TD-040 项目删除回归，迁移 `0044`），合并本地 `main`（待 push）。纯 API/服务端交付，无可见 UI。 |
-| **P3** 产品功能闭环 | [dts-p3-structured-product](2026-07-14-dts-p3-structured-product.md) | 结构化值编辑器 + 结构化变更集/差异 + 路径/label/compatible 检索 + 影响分析 + 节点级 RBAC | 新表（迁移 `0045`） | P2 合并 | ✅ 已评审通过，合并本地 `main`（待 push）。评审另修复删项目级联历史缺口（迁移 `0046`）；遗留编辑回路见 P3.1/TD-041。 |
-| **P3.1** 结构化编辑回路闭合 | [dts-p31-structured-edit-loop](2026-07-14-dts-p31-structured-edit-loop.md) | 编辑→变更集→提交→CST 回写端到端；变更集身份映射；回写载荷用 `rawText` 保真 | 无/极少 | P3 合并 | ✅ 已在 `feat/dts-structured-edit-loop` 实现，待架构师评审/合入（闭合 TD-041） |
+| **P0** 解析止血 | [dts-p0-parser-safety](2026-07-14-dts-p0-parser-safety.md) | 让解析器「诚实」：剥注释（真修）、对无法忠实表达的构造**检测并拦截/告警**（不再静默产错）、回写多行/多组值**安全失败**而非损坏 | 无 | 无 | ✅ 已评审合并 |
+| **P1** 结构化核心 | [dts-p1-structural-model](2026-07-14-dts-p1-structural-model.md) | 真 DTS 解析器（CST）+ 节点树/类型化属性/phandle schema + 迁移 + 结构化同步/无损回写 + 身份解耦 | 新表（`0042`） | P0 合并 | ✅ 已评审合并 |
+| **P2** 配置集·基线·校验门禁 | [dts-p2-config-set-baseline-gate](2026-07-14-dts-p2-config-set-baseline-gate.md) | 板级配置集 + 发布基线 + dtc/schema 校验沙箱 + 无损导出 | 新表（`0043`/`0044`） | P1 合并 | ✅ 已评审合并 |
+| **P3** 产品功能闭环 | [dts-p3-structured-product](2026-07-14-dts-p3-structured-product.md) | 结构化值编辑器 + 结构化变更集/差异 + 路径/label/compatible 检索 + 影响分析 + 节点级 RBAC | 新表（`0045`；删项目级联 `0046`） | P2 合并 | ✅ 已评审合并 |
+| **P3.1** 结构化编辑回路闭合 | [dts-p31-structured-edit-loop](2026-07-14-dts-p31-structured-edit-loop.md) | 编辑→变更集→提交→CST 回写端到端；变更集身份映射；回写载荷用 `rawText` 保真 | 无 | P3 合并 | ✅ 已评审合并（闭合 TD-041） |
+
+**程序状态：** ✅ **Completed 2026-07-15** — P0–P3.1 全部评审合入本地 `main`；本程序计划与阶段计划归档至 `docs/exec-plans/completed/`。残余过渡项见 TD-035 / TD-038 / TD-039 / TD-040。
 
 > **为何 P2/P3 暂不细化到任务级：** 它们的任务细节强依赖 P1 落地后的实际 schema 与解析器契约，提前细化会大概率返工。架构师将在前一阶段合并后，基于真实产物撰写下一阶段的任务级计划。本主计划锁定其**范围边界**，避免范围漂移。
 
@@ -120,13 +122,13 @@
 
 ## Documentation Update Gate
 
-本主计划移入 `completed/` 的前提（在 P0-P3 全部完成后）：
+本主计划移入 `completed/` 的前提（在 P0-P3.1 全部完成后）：
 
-- [ ] P0-P3 阶段计划均已完成并移入 `completed/`
-- [ ] `domain-model.md` 已更新结构化实体（节点树/类型化值/配置集/基线）
-- [ ] TD-035 / TD-038 / TD-039 已在 tech-debt-tracker 中标记归并或关闭
-- [ ] `docs/PLANS.md` 与 `docs/zh-CN/PLANS.md` 活跃/完成列表一致
-- [ ] `npm run docs:check` 通过
+- [x] P0–P3.1 阶段计划均已完成并移入 `completed/`
+- [x] `domain-model.md`（中英）已更新结构化实体（节点树/类型化值/配置集/基线/敏感节点/编辑提交）
+- [x] TD-041 已关闭；TD-039 主体完成并记残余过渡；TD-035 / TD-038 / TD-040 残余项保留在 tech-debt-tracker（程序外后续）
+- [x] `docs/PLANS.md` 与 `docs/zh-CN/PLANS.md` 活跃/完成列表一致
+- [x] `npm run docs:check` 通过
 
 ---
 
