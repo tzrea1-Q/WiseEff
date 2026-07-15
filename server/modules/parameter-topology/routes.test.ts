@@ -204,6 +204,21 @@ describe("parameter semantic v2 routes", () => {
     expect(response.body?.items[0]).not.toHaveProperty("recommendedValue");
   });
 
+  it("GET /api/v2/projects/:projectId/parameter-bindings returns 404 for cross-org projectId", async () => {
+    const { ApiError } = await import("../../shared/http/errors");
+    vi.mocked(topologyService.listProjectBindings).mockRejectedValue(
+      new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+        projectId: "cross-org-project"
+      })
+    );
+
+    const response = await requestJson(
+      makeServer({ db: makeDb() }),
+      "/api/v2/projects/cross-org-project/parameter-bindings"
+    );
+    expect(response.status).toBe(404);
+  });
+
   it("GET /api/v2/identity-mapping-tasks lets viewers list open tasks", async () => {
     vi.mocked(topologyService.listIdentityMappingTasks).mockResolvedValue({
       items: [

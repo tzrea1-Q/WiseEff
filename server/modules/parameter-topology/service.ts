@@ -12,6 +12,7 @@ import {
   resolveIdentityMappingTaskRow
 } from "./bindingService";
 import { writeGovernanceAudit } from "./governanceAudit";
+import { getProjectById } from "../parameters/repository";
 import {
   getConfigRevisionById,
   insertValidationRun,
@@ -112,6 +113,15 @@ export async function listProjectBindings(
   input: { projectId: string; revisionId?: string }
 ): Promise<{ items: ProjectBindingDto[] }> {
   requireCanView(auth);
+  const project = await getProjectById(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId
+  });
+  if (!project) {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+      projectId: input.projectId
+    });
+  }
   const rows = await listProjectBindingRows(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
@@ -144,6 +154,17 @@ export async function listIdentityMappingTasks(
   input: { projectId?: string; status?: "open" | "resolved" | "dismissed" } = {}
 ) {
   requireCanView(auth);
+  if (input.projectId) {
+    const project = await getProjectById(db, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId
+    });
+    if (!project) {
+      throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+        projectId: input.projectId
+      });
+    }
+  }
   const items = await listIdentityMappingTaskRows(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
