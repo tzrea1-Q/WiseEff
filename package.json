@@ -58,6 +58,8 @@
     "dts:config:validate": "tsx scripts/validate-dts-config-set.ts",
     "xiaoze:eval": "tsx scripts/run-xiaoze-eval.ts",
     "db:migrate": "tsx scripts/migrate.ts",
+    "parameter-identities:migrate": "tsx scripts/migrate-parameter-identities.ts",
+    "parameter-identities:check": "tsx scripts/check-parameter-identity-cutover.ts",
     "reset:quality-runtime": "tsx scripts/reset-quality-runtime.ts",
     "db:seed:m0": "tsx scripts/seed-m0.ts",
     "db:seed:m1": "tsx scripts/seed-m1-parameters.ts",
