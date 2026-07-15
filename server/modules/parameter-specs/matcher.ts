@@ -335,6 +335,21 @@ export function reviewTasksForDecision(
   ];
 }
 
+/** Open review-task drafts for unmatched/ambiguous property matches (persist via repository). */
+export function collectOpenReviewTasks(
+  nodes: MatchableNode[],
+  registry: SchemaRegistry,
+): SpecReviewTaskDraft[] {
+  const drafts: SpecReviewTaskDraft[] = [];
+  for (const node of nodes) {
+    for (const propertyKey of Object.keys(node.properties)) {
+      const decision = matchProperty(node, propertyKey, registry);
+      drafts.push(...reviewTasksForDecision(decision, node, propertyKey));
+    }
+  }
+  return drafts;
+}
+
 export function bindGoldenOverlayProperties(
   nodes: MatchableNode[],
   registry: SchemaRegistry,

@@ -1,17 +1,28 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { resolveDts, resolveDtsConfigSet } from "../dts";
 import {
   bindGoldenOverlayProperties,
+  collectOpenReviewTasks,
   matchDriver,
   matchProperty,
   reviewTasksForDecision,
 } from "./matcher";
+import { persistOpenReviewTaskDrafts } from "./repository";
 import { loadSchemaRegistry } from "./schemaLoader";
-import type { DriverSchema, MatchableNode, SchemaRegistry } from "./types";
+import type {
+  DriverSchema,
+  MatchableNode,
+  PropertySpec,
+  SchemaCatalog,
+  SchemaRegistry,
+  SchemaSource,
+  SpecLifecycle,
+} from "./types";
+import type { Queryable } from "../../shared/database/client";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const seedDir = join(root, "src/config/dts-seed");
@@ -19,6 +30,75 @@ const schemasRoot = join(root, "schemas/dts");
 
 function registry(): SchemaRegistry {
   return loadSchemaRegistry(schemasRoot);
+}
+
+const emptyCatalog: SchemaCatalog = {
+  linuxDtSchemaRevision: "test-stub",
+  dtschemaVersion: "2026.6",
+  vendorContentHash: "synthetic",
+  importedAt: "2026-07-16T00:00:00.000Z",
+  schemaPaths: [],
+};
+
+function prop(input: {
+  id: string;
+  driverSchemaId: string | null;
+  propertyKey: string;
+  source: SchemaSource;
+  lifecycle?: SpecLifecycle;
+}): PropertySpec {
+  return {
+    id: input.id,
+    parameterSpecId: `param:${input.id}`,
+    driverSchemaId: input.driverSchemaId,
+    propertyKey: input.propertyKey,
+    schemaNamespace: `synthetic/${input.source}`,
+    source: input.source,
+    lifecycle: input.lifecycle ?? "active",
+    valueShape: { kind: "u32-array" },
+    constraints: {},
+  };
+}
+
+function driver(input: {
+  id: string;
+  compatible: string;
+  source: SchemaSource;
+  propertyIds: string[];
+  lifecycle?: SpecLifecycle;
+}): DriverSchema {
+  return {
+    id: input.id,
+    compatible: input.compatible,
+    compatiblePatterns: [input.compatible],
+    nodenamePatterns: [],
+    source: input.source,
+    schemaNamespace: `synthetic/${input.source}`,
+    version: 1,
+    lifecycle: input.lifecycle ?? "active",
+    propertyIds: input.propertyIds,
+    commonRefs: [],
+  };
+}
+
+/** In-memory multi-tier registry — no on-disk linux YAML required. */
+function syntheticRegistry(drivers: DriverSchema[], properties: PropertySpec[]): SchemaRegistry {
+  return {
+    catalog: emptyCatalog,
+    drivers,
+    properties,
+    propertiesById: new Map(properties.map((property) => [property.id, property])),
+    driversById: new Map(drivers.map((entry) => [entry.id, entry])),
+  };
+}
+
+function crossTierNode(properties: MatchableNode["properties"] = {}): MatchableNode {
+  return {
+    nodeLocator: "/test/cross-tier",
+    name: "cross-tier",
+    compatible: ["wiseeff,cross-tier"],
+    properties,
+  };
 }
 
 function nodeFromResolved(pathSuffix: string): MatchableNode {
@@ -191,5 +271,250 @@ describe("schema registry matcher", () => {
       expect(sc8562.value.schemaNamespace).toContain("sc8562");
       expect(mt5788.value.schemaNamespace).toContain("mt5788");
     }
+  });
+});
+
+describe("cross-tier schema precedence (synthetic registry)", () => {
+  const compatible = "wiseeff,cross-tier";
+
+  it("matchProperty prefers vendor over linux when both define the property (narrowing)", () => {
+    const linuxProp = prop({
+      id: "prop:linux:shared",
+      driverSchemaId: "driver:linux:cross",
+      propertyKey: "shared",
+      source: "linux",
+    });
+    const vendorProp = prop({
+      id: "prop:vendor:shared",
+      driverSchemaId: "driver:vendor:cross",
+      propertyKey: "shared",
+      source: "vendor",
+    });
+    const reg = syntheticRegistry(
+      [
+        driver({
+          id: "driver:linux:cross",
+          compatible,
+          source: "linux",
+          propertyIds: [linuxProp.id],
+        }),
+        driver({
+          id: "driver:vendor:cross",
+          compatible,
+          source: "vendor",
+          propertyIds: [vendorProp.id],
+        }),
+      ],
+      [linuxProp, vendorProp],
+    );
+    const decision = matchProperty(crossTierNode({ shared: { rawText: "<1>" } }), "shared", reg);
+    expect(decision).toMatchObject({
+      kind: "matched",
+      value: expect.objectContaining({ id: vendorProp.id, source: "vendor" }),
+    });
+  });
+
+  it("matchProperty keeps linux when linux+manual both define; manual only gap-fills missing keys", () => {
+    const linuxShared = prop({
+      id: "prop:linux:shared",
+      driverSchemaId: "driver:linux:cross",
+      propertyKey: "shared",
+      source: "linux",
+    });
+    const manualShared = prop({
+      id: "prop:manual:shared",
+      driverSchemaId: "driver:manual:cross",
+      propertyKey: "shared",
+      source: "manual",
+    });
+    const manualGap = prop({
+      id: "prop:manual:gap",
+      driverSchemaId: "driver:manual:cross",
+      propertyKey: "gap_only",
+      source: "manual",
+    });
+    const reg = syntheticRegistry(
+      [
+        driver({
+          id: "driver:linux:cross",
+          compatible,
+          source: "linux",
+          propertyIds: [linuxShared.id],
+        }),
+        driver({
+          id: "driver:manual:cross",
+          compatible,
+          source: "manual",
+          propertyIds: [manualShared.id, manualGap.id],
+        }),
+      ],
+      [linuxShared, manualShared, manualGap],
+    );
+    const node = crossTierNode({
+      shared: { rawText: "<1>" },
+      gap_only: { rawText: "<2>" },
+    });
+    // Actual matcher: vendor > linux > manual — linux wins over manual for the same key.
+    const shared = matchProperty(node, "shared", reg);
+    expect(shared).toMatchObject({
+      kind: "matched",
+      value: expect.objectContaining({ id: linuxShared.id, source: "linux" }),
+    });
+    // Manual fills the gap when linux/vendor do not define the key.
+    const gap = matchProperty(node, "gap_only", reg);
+    expect(gap).toMatchObject({
+      kind: "matched",
+      value: expect.objectContaining({ id: manualGap.id, source: "manual" }),
+    });
+  });
+
+  it("matchDriver prefers vendor over linux for the same compatible (higher specialization tier)", () => {
+    const reg = syntheticRegistry(
+      [
+        driver({
+          id: "driver:linux:cross",
+          compatible,
+          source: "linux",
+          propertyIds: [],
+        }),
+        driver({
+          id: "driver:vendor:cross",
+          compatible,
+          source: "vendor",
+          propertyIds: [],
+        }),
+      ],
+      [],
+    );
+    expect(matchDriver(crossTierNode(), reg)).toMatchObject({
+      kind: "matched",
+      value: expect.objectContaining({ id: "driver:vendor:cross", source: "vendor" }),
+    });
+  });
+
+  it("inferred never wins a releasable match over vendor/linux/manual", () => {
+    const vendorProp = prop({
+      id: "prop:vendor:shared",
+      driverSchemaId: "driver:vendor:cross",
+      propertyKey: "shared",
+      source: "vendor",
+    });
+    const inferredProp = prop({
+      id: "prop:inferred:shared",
+      driverSchemaId: "driver:inferred:cross",
+      propertyKey: "shared",
+      source: "inferred",
+      lifecycle: "draft",
+    });
+    const reg = syntheticRegistry(
+      [
+        driver({
+          id: "driver:vendor:cross",
+          compatible,
+          source: "vendor",
+          propertyIds: [vendorProp.id],
+        }),
+        driver({
+          id: "driver:inferred:cross",
+          compatible,
+          source: "inferred",
+          propertyIds: [inferredProp.id],
+          lifecycle: "draft",
+        }),
+        driver({
+          id: "driver:linux:other",
+          compatible: "wiseeff,other",
+          source: "linux",
+          propertyIds: [],
+        }),
+      ],
+      [vendorProp, inferredProp],
+    );
+    const node = crossTierNode({ shared: { rawText: "<1>" } });
+    expect(matchDriver(node, reg)).toMatchObject({
+      kind: "matched",
+      value: expect.objectContaining({ id: "driver:vendor:cross", source: "vendor" }),
+    });
+    expect(matchProperty(node, "shared", reg)).toMatchObject({
+      kind: "matched",
+      value: expect.objectContaining({ id: vendorProp.id, source: "vendor" }),
+    });
+  });
+
+  it("collectOpenReviewTasks drafts unmatched/ambiguous; persistOpenReviewTaskDrafts inserts rows", async () => {
+    const linuxA = prop({
+      id: "prop:linux:a",
+      driverSchemaId: "driver:linux:a",
+      propertyKey: "shared_prop",
+      source: "linux",
+    });
+    const linuxB = prop({
+      id: "prop:linux:b",
+      driverSchemaId: "driver:linux:b",
+      propertyKey: "shared_prop",
+      source: "linux",
+    });
+    const reg = syntheticRegistry(
+      [
+        driver({
+          id: "driver:linux:a",
+          compatible: "wiseeff,test-ambiguous",
+          source: "linux",
+          propertyIds: [linuxA.id],
+        }),
+        driver({
+          id: "driver:linux:b",
+          compatible: "wiseeff,test-ambiguous",
+          source: "linux",
+          propertyIds: [linuxB.id],
+        }),
+      ],
+      [linuxA, linuxB],
+    );
+    const ambiguousNode: MatchableNode = {
+      nodeLocator: "/test/ambiguous",
+      name: "ambiguous",
+      compatible: ["wiseeff,test-ambiguous"],
+      properties: { shared_prop: { rawText: "<1>" }, mystery: { rawText: "<0>" } },
+    };
+    const unmatchedOnly: MatchableNode = {
+      nodeLocator: "/test/unknown",
+      name: "unknown",
+      compatible: ["wiseeff,does-not-exist"],
+      properties: { orphan: { rawText: "<9>" } },
+    };
+
+    const drafts = collectOpenReviewTasks([ambiguousNode, unmatchedOnly], reg);
+    expect(drafts.length).toBeGreaterThanOrEqual(2);
+    expect(drafts.every((draft) => draft.status === "open")).toBe(true);
+    expect(drafts.some((draft) => draft.candidateSchemas.length > 1)).toBe(true);
+    expect(
+      drafts.some((draft) => draft.candidateSchemas.length === 0 && draft.sourceEvidence.inferred),
+    ).toBe(true);
+
+    const inserted: unknown[] = [];
+    const db: Queryable = {
+      query: vi.fn(async (_text, values) => {
+        const row = {
+          id: values?.[0],
+          organization_id: values?.[1],
+          parameter_spec_id: values?.[2],
+          source_evidence: JSON.parse(String(values?.[3])),
+          candidate_schemas: JSON.parse(String(values?.[4])),
+          project_count: values?.[5],
+          status: values?.[6],
+          reviewer_user_id: null,
+          reason: null,
+          created_at: "2026-07-16T00:00:00.000Z",
+          resolved_at: null,
+        };
+        inserted.push(row);
+        return { rows: [row], rowCount: 1 };
+      }),
+    };
+    const persisted = await persistOpenReviewTaskDrafts(db, "org-test", drafts);
+    expect(persisted).toHaveLength(drafts.length);
+    expect(inserted).toHaveLength(drafts.length);
+    expect(db.query).toHaveBeenCalled();
   });
 });

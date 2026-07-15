@@ -79,6 +79,20 @@ export async function insertSpecReviewTask(
   return toDto(result.rows[0]);
 }
 
+/** Persist open review-task drafts (unmatched/ambiguous). Binding callers land in Task 7. */
+export async function persistOpenReviewTaskDrafts(
+  db: Queryable,
+  organizationId: string,
+  drafts: SpecReviewTaskDraft[],
+): Promise<PersistedSpecReviewTask[]> {
+  const persisted: PersistedSpecReviewTask[] = [];
+  for (const draft of drafts) {
+    if (draft.status !== "open") continue;
+    persisted.push(await insertSpecReviewTask(db, { organizationId, draft }));
+  }
+  return persisted;
+}
+
 export async function listOpenSpecReviewTasks(
   db: Queryable,
   organizationId: string,
