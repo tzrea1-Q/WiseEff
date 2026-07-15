@@ -251,6 +251,89 @@ describe("createSubprocessDtcValidator - compiler unavailable degrade", () => {
   });
 });
 
+describe("createSubprocessDtcValidator - optional dt-schema hook", () => {
+  it("merges diagnostics from an injected schema runner when enableDtSchema is on", async () => {
+    const schemaRunner = vi.fn(async () => ({
+      available: true as const,
+      diagnostics: [
+        { file: "a.dts", severity: "warning" as const, message: "dt-schema: binding mismatch" }
+      ]
+    }));
+    const validator = createSubprocessDtcValidator({
+      spawnFn: fakeSpawnThatSucceeds("", 0),
+      whichDtc: async () => "dtc",
+      tmpDirFactory: trackingTmpDirFactory,
+      schemaRunner
+    });
+
+    vi.stubEnv("DTS_ENABLE_DT_SCHEMA", "1");
+    const result = await validator.validate([{ name: "a.dts", content: "/dts-v1/; / { };" }], {
+      mode: "warn",
+      enableDtSchema: true
+    });
+
+    expect(schemaRunner).toHaveBeenCalled();
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ message: "dt-schema: binding mismatch", severity: "warning" })
+      ])
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("treats unavailable schema tools as warning by default (does not hard-fail)", async () => {
+    const schemaRunner = vi.fn(async () => ({
+      available: false as const,
+      diagnostics: []
+    }));
+    const validator = createSubprocessDtcValidator({
+      spawnFn: fakeSpawnThatSucceeds("", 0),
+      whichDtc: async () => "dtc",
+      tmpDirFactory: trackingTmpDirFactory,
+      schemaRunner
+    });
+
+    vi.stubEnv("DTS_ENABLE_DT_SCHEMA", "1");
+    const result = await validator.validate([{ name: "a.dts", content: "/dts-v1/; / { };" }], {
+      mode: "block",
+      enableDtSchema: true
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "warning",
+          message: expect.stringMatching(/dt-schema.*unavailable/i)
+        })
+      ])
+    );
+  });
+
+  it("hard-fails unavailable schema tools only when DTS_DT_SCHEMA_MODE=block", async () => {
+    vi.stubEnv("DTS_ENABLE_DT_SCHEMA", "1");
+    vi.stubEnv("DTS_DT_SCHEMA_MODE", "block");
+    const schemaRunner = vi.fn(async () => ({
+      available: false as const,
+      diagnostics: []
+    }));
+    const validator = createSubprocessDtcValidator({
+      spawnFn: fakeSpawnThatSucceeds("", 0),
+      whichDtc: async () => "dtc",
+      tmpDirFactory: trackingTmpDirFactory,
+      schemaRunner
+    });
+
+    const result = await validator.validate([{ name: "a.dts", content: "/dts-v1/; / { };" }], {
+      mode: "block",
+      enableDtSchema: true
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics.some((d) => d.severity === "error" && /dt-schema/i.test(d.message))).toBe(true);
+  });
+});
+
 describe("createSubprocessDtcValidator - restricted subprocess execution", () => {
   it("writes files into an isolated tmp dir and cleans it up afterwards", async () => {
     let capturedTmpDir = "";

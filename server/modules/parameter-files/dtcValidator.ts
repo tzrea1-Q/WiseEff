@@ -27,9 +27,21 @@ export interface DtcValidatorFile {
 export interface DtcValidateOptions {
   mode?: ValidationMode;
   timeoutMs?: number;
-  /** Reserved extension point for optional dt-schema binding validation. Defaults to off. */
+  /** Optional dt-schema binding validation. Defaults from `DTS_ENABLE_DT_SCHEMA`. */
   enableDtSchema?: boolean;
 }
+
+export type DtSchemaMode = "warn" | "block";
+
+export type DtSchemaRunnerResult = {
+  available: boolean;
+  diagnostics: DtcDiagnostic[];
+};
+
+export type DtSchemaRunner = (
+  files: DtcValidatorFile[],
+  opts: { cwd: string; timeoutMs: number }
+) => Promise<DtSchemaRunnerResult>;
 
 export interface DtcValidator {
   validate(files: DtcValidatorFile[], opts?: DtcValidateOptions): Promise<DtcValidationResult>;
@@ -45,6 +57,17 @@ export function readDtsValidationMode(env: NodeJS.ProcessEnv = process.env): Val
     return raw;
   }
   return DEFAULT_MODE;
+}
+
+/** Opt-in dt-schema binding checks. Default off; set `DTS_ENABLE_DT_SCHEMA=1|true|on`. */
+export function readDtsEnableDtSchema(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = env.DTS_ENABLE_DT_SCHEMA?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+}
+
+/** Schema failure severity policy. Default `warn`; set `DTS_DT_SCHEMA_MODE=block` to hard-fail. */
+export function readDtsDtSchemaMode(env: NodeJS.ProcessEnv = process.env): DtSchemaMode {
+  return env.DTS_DT_SCHEMA_MODE?.trim().toLowerCase() === "block" ? "block" : "warn";
 }
 
 export function createStubDtcValidator(
@@ -158,6 +181,8 @@ export interface CreateSubprocessDtcValidatorDeps {
   spawnFn?: SpawnFn;
   whichDtc?: () => Promise<string | null>;
   tmpDirFactory?: () => string;
+  /** Optional dt-schema runner; when omitted and schema is enabled, reports unavailable. */
+  schemaRunner?: DtSchemaRunner;
 }
 
 /**
@@ -167,16 +192,23 @@ export interface CreateSubprocessDtcValidatorDeps {
  * mode=off never invokes whichDtc/spawn so it can never block on a slow or
  * hanging environment; degrade semantics for mode=block/warn are decided by
  * locked decision E once compiler availability is known.
+ *
+ * Optional dt-schema: when `enableDtSchema` / `DTS_ENABLE_DT_SCHEMA` is on,
+ * merges diagnostics from `schemaRunner`. Unavailable tools degrade to warning
+ * unless `DTS_DT_SCHEMA_MODE=block`.
  */
 export function createSubprocessDtcValidator(deps: CreateSubprocessDtcValidatorDeps = {}): DtcValidator {
   const spawnFn = deps.spawnFn ?? nodeSpawn;
   const whichDtc = deps.whichDtc ?? createDefaultWhichDtc(spawnFn);
   const tmpDirFactory = deps.tmpDirFactory ?? (() => mkdtempSync(join(tmpdir(), "dtc-validate-")));
+  const schemaRunner = deps.schemaRunner;
 
   return {
     async validate(files, opts = {}) {
       const mode = opts.mode ?? readDtsValidationMode(process.env);
       const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+      const enableDtSchema = opts.enableDtSchema ?? readDtsEnableDtSchema(process.env);
+      const schemaMode = readDtsDtSchemaMode(process.env);
 
       if (mode === "off") {
         return {
@@ -231,6 +263,27 @@ export function createSubprocessDtcValidator(deps: CreateSubprocessDtcValidatorD
           }
 
           diagnostics.push(...parseDtcStderr(result.stderr));
+        }
+
+        if (enableDtSchema) {
+          if (!schemaRunner) {
+            diagnostics.push({
+              file: SKIPPED_FILE_LABEL,
+              severity: schemaMode === "block" ? "error" : "warning",
+              message: "dt-schema tool is unavailable; binding validation was skipped."
+            });
+          } else {
+            const schemaResult = await schemaRunner(files, { cwd: tmpDir, timeoutMs });
+            if (!schemaResult.available) {
+              diagnostics.push({
+                file: SKIPPED_FILE_LABEL,
+                severity: schemaMode === "block" ? "error" : "warning",
+                message: "dt-schema tool is unavailable; binding validation was skipped."
+              });
+            } else {
+              diagnostics.push(...schemaResult.diagnostics);
+            }
+          }
         }
       } finally {
         rmSync(tmpDir, { recursive: true, force: true });

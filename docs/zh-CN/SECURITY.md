@@ -89,6 +89,8 @@ P2 配置集基线校验门禁用系统 `dtc` 二进制编译用户提供的 DTS
 - **不假设网络可用**：沙箱不为 `dtc` 提供也不预期出站网络访问；未来任何需要网络访问的校验器实现都应当作新的威胁模型评审，而不是增量改动。
 - **固定 argv，无 shell 拼接**：文件名和路径作为 `spawn` 的 argv 元素传入，从不拼接进 shell 字符串，DTS 文件名无法注入 shell 元字符。
 - **可审计的降级路径**：`dtc` 不在 `PATH` 上时，校验器按 `DTS_VALIDATION_MODE` 降级（`block` 失败关闭，`warn`/`off` 放行并记录诊断），而不是静默跳过校验；每次门禁运行——包括降级场景——都写 `validation.gate` 审计事件（见 `docs/zh-CN/developer/environment-variables.md`）。
+- **可选 dt-schema 钩子**：当 `DTS_ENABLE_DT_SCHEMA=1`（或 `enableDtSchema`）时，校验器可合并注入的 schema runner 诊断。缺工具默认按 warning 降级（`DTS_DT_SCHEMA_MODE=warn`）；仅 `DTS_DT_SCHEMA_MODE=block` 才把不可用抬升为硬错误。
+- **容器化沙箱评估（TD-040 / B5）**：**本期不实现**。评估结论：维持受限 OS 子进程（`tmpdir` + 仅 PATH 环境 + 硬超时 + 固定 argv）作为默认隔离边界。若后续威胁模型需要强于当前子进程的隔离，再单独立项评估容器/gVisor 方案。
 
 **导出数据分级：** `exportFile`/`exportConfigSet` 返回的正是项目已存储的同一份 DTS/JSON 参数内容（不含凭据、token 或跨租户数据），因此导出响应的敏感级别与源参数文件相同，均要求 `admin:access`，与配置集/基线其他接口一致。导出 bundle 通过 HTTP 响应体返回，供调用方手动提交到 Git；后端不会把它写入共享或公开位置，持久化导出 bundle 的调用方需要自行套用与源仓库一致的访问控制。
 

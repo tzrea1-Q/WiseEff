@@ -21,7 +21,7 @@
 
 - **TD-038（模块树后续）：** 多层级模块已落地后，仍需删除过渡 `module` 文本列、收敛 `project_modules` 与组织级 `parameter_modules` 单一真相源，并评估 dashboard 热榜的层级聚合。
 - **TD-039（项目参数文件，程序主体已关闭）：** DTS 程序 P0–P3.1 已于 2026-07-15 归档。主体能力（CST 解析/配置集基线门禁/结构化 UI/`submitStructuredEdits` 回写）已落地。残余过渡：`(name, module)` fallback、扁平 `parsed_index` 兼容视图、旧文件/冲突面板仍直连 `parameterFileClient`。详见英文版 Open 表；门禁后续见 TD-040；与 TD-035 对齐。
-- **TD-040（DTS 配置集/门禁后续）：** 残余：(1) 新建项目需显式 `ensureDefaultConfigSet`；(2) 尚未实现 `dt-schema` binding 校验；(3) `dtc` 仍为受限子进程而非容器沙箱。第 (4) 项（`dts_config_set.project_id` cascade）与删项目级联链已由迁移 `0044`/`0046` 解决。详见英文版 Open 表。
+- **TD-040（DTS 配置集/门禁后续）：** (1) 新建项目默认配置集由硬化收口 `createProjectForAuth` 收口中；(2) **2026-07-15 更新**：可选 dt-schema 钩子已落地（`DTS_ENABLE_DT_SCHEMA` / `schemaRunner`，缺工具默认 warning）；(3) **2026-07-15 评估不做**：维持受限子进程，容器/gVisor 另立。第 (4)/(0046) 级联项已解决。详见英文版 Open 表。
 
 ## 近期关闭项
 
