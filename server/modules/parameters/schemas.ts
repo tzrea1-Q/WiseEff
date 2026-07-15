@@ -111,6 +111,11 @@ export const applyImportBatchBodySchema = z.object({
   selectedItemIds: z.array(nonEmptyString).optional()
 });
 
+export const parseDtsImportBodySchema = z.object({
+  sourceName: nonEmptyString,
+  content: z.string()
+});
+
 export const paramsWithRoundIdSchema = z.object({
   roundId: nonEmptyString
 });
@@ -147,5 +152,6 @@ export type SubmitRoundBody = z.infer<typeof submitRoundBodySchema>;
 export type ReviewChangeBody = z.infer<typeof reviewChangeBodySchema>;
 export type CreateImportBatchBody = z.infer<typeof createImportBatchBodySchema>;
 export type ApplyImportBatchBody = z.infer<typeof applyImportBatchBodySchema>;
+export type ParseDtsImportBody = z.infer<typeof parseDtsImportBodySchema>;
 export type CreateProjectBody = z.infer<typeof createProjectBodySchema>;
 export type UpdateProjectBody = z.infer<typeof updateProjectBodySchema>;

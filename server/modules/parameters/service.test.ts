@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { applyImportBatch, createImportPreview, listDrafts, reviewChange, saveDraft, submitParameterChanges } from "./service";
+import { applyImportBatch, createImportPreview, listDrafts, parseDtsImportForAuth, reviewChange, saveDraft, submitParameterChanges } from "./service";
 import { createImportBatchBodySchema } from "./schemas";
 
 type QueryCall = {
@@ -241,6 +241,29 @@ describe("parameter service", () => {
 
     expect(calls).toHaveLength(0);
     expect(txCalls).toHaveLength(0);
+  });
+
+  it("non-admin cannot parse DTS for import", () => {
+    expect(() =>
+      parseDtsImportForAuth(makeAuth(), {
+        sourceName: "board.dts",
+        content: '/dts-v1/;\n&demo { status = "ok"; };\n'
+      })
+    ).toThrow(expect.objectContaining({ code: "FORBIDDEN" }) as unknown as ApiError);
+  });
+
+  it("parseDtsImportForAuth rejects /include/ with dts-include-unsupported", () => {
+    expect(() =>
+      parseDtsImportForAuth(makeAdminAuth(), {
+        sourceName: "board.dts",
+        content: `/dts-v1/;\n/include/ "pin.dtsi"\n/ { board_id = <0>; };\n`
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: "VALIDATION_FAILED",
+        details: { code: "dts-include-unsupported" }
+      }) as unknown as ApiError
+    );
   });
 
   it("invalid import item shape returns validation failed", async () => {

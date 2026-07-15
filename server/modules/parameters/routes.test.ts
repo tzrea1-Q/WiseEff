@@ -38,6 +38,7 @@ vi.mock("./service", () => ({
   listParameterModulesForAuth: vi.fn(),
   listSubmissionRounds: vi.fn(),
   moveParameterModuleForAuth: vi.fn(),
+  parseDtsImportForAuth: vi.fn(),
   resolveParameterListQuery: vi.fn(),
   reviewChange: vi.fn(),
   saveDraft: vi.fn(),
@@ -373,6 +374,60 @@ describe("parameter routes", () => {
       },
       { requestId: "test-request" }
     );
+  });
+
+  it("POST /api/v1/parameter-import/parse-dts returns parsed rows for admin", async () => {
+    const db = makeDb();
+    const parsed = {
+      format: "dts-full" as const,
+      rows: [
+        {
+          name: "status",
+          module: "demo_multi_instance/battery_checker@0",
+          sourceNodePath: "demo_multi_instance/battery_checker@0/status",
+          rawText: '"ok"',
+          normalizedValue: '"ok"',
+          valueType: "string-list"
+        }
+      ]
+    };
+    vi.mocked(service.parseDtsImportForAuth).mockReturnValue(parsed);
+
+    const response = await requestJson<typeof parsed>(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
+      "/api/v1/parameter-import/parse-dts",
+      {
+        method: "POST",
+        body: JSON.stringify({ sourceName: "board.dts", content: '/dts-v1/;\n&demo { status = "ok"; };\n' })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(parsed);
+    expect(service.parseDtsImportForAuth).toHaveBeenCalledWith(
+      makeAuth({ permissions: ["parameter:view", "admin:access"] }),
+      {
+        sourceName: "board.dts",
+        content: '/dts-v1/;\n&demo { status = "ok"; };\n'
+      }
+    );
+  });
+
+  it("POST /api/v1/parameter-import/parse-dts rejects missing sourceName", async () => {
+    const db = makeDb();
+
+    const response = await requestJson<{ error: { code: string } }>(
+      makeServer({ db, auth: makeAuth({ permissions: ["admin:access"] }) }),
+      "/api/v1/parameter-import/parse-dts",
+      {
+        method: "POST",
+        body: JSON.stringify({ content: "/dts-v1/;\n" })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    expect(service.parseDtsImportForAuth).not.toHaveBeenCalled();
   });
 
   it("review route rejects conflicting path and body request ids", async () => {

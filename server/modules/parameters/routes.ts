@@ -27,6 +27,7 @@ import {
   listParameterModulesForAuth,
   listSubmissionRounds,
   moveParameterModuleForAuth,
+  parseDtsImportForAuth,
   resolveParameterListQuery,
   reviewChange,
   saveDraft,
@@ -43,6 +44,7 @@ import {
   moveParameterModuleBodySchema,
   parameterModuleParamsSchema,
   paramsWithRoundIdSchema,
+  parseDtsImportBodySchema,
   reviewChangeBodySchema,
   saveDraftBodySchema,
   submitRoundBodySchema,
@@ -451,5 +453,13 @@ export function registerParameterRoutes(
     const item = await applyImportBatch(db, auth, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/parameter-import/parse-dts", async (request) => {
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(parseDtsImportBodySchema, request.body);
+    const result = parseDtsImportForAuth(auth, body);
+
+    return { status: 200, body: result };
   });
 }

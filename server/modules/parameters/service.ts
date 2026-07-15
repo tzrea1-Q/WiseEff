@@ -74,11 +74,14 @@ import {
 import {
   applyImportBatchBodySchema,
   createImportBatchBodySchema,
+  parseDtsImportBodySchema,
   type CreateParameterModuleBody,
   type ListParametersQuery,
   type MoveParameterModuleBody,
+  type ParseDtsImportBody,
   type UpdateParameterModuleBody
 } from "./schemas";
+import { parseDtsImportSource } from "./importDtsParse";
 import { getNextParameterStatus, parameterStatusLabels, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
 import type { ChangeRequestDto, ParameterImportSourceItemDto, ParameterImportSummaryDto, ParameterModuleDto } from "./types";
 import { buildSubmissionWorkflowTrail } from "../../../src/domain/parameters/submissionWorkflowTrail";
@@ -365,6 +368,17 @@ function requireCanAdminImport(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Admin access is required for parameter import.", 403);
   }
+}
+
+export function parseDtsImportForAuth(auth: AuthContext, input: ParseDtsImportBody) {
+  requireCanAdminImport(auth);
+  const parsed = parseDtsImportBodySchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ApiError("VALIDATION_FAILED", "Invalid DTS import parse request.", 400, {
+      issues: parsed.error.issues
+    });
+  }
+  return parseDtsImportSource(parsed.data);
 }
 
 function getReviewForbiddenMessage(fromStatus: ParameterChangeRequestStatus) {
