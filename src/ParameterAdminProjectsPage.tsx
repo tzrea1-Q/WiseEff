@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { canPerform } from "@/app/permissions";
 import type { PageProps } from "@/app/routes";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
+import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { ConfigSetBaselinePanel } from "@/components/admin/ConfigSetBaselinePanel";
 import { ParameterAdminSubNav } from "@/components/admin/ParameterAdminSubNav";
 import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
@@ -14,7 +15,6 @@ import { KpiStrip, type KpiItem } from "@/components/KpiStrip";
 import { roleHasPermission } from "@/domain/users/types";
 import { useParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
-import { createParameterFileClient } from "@/infrastructure/http/parameterFileClient";
 import {
   buildParameterAdminProjectsFromState,
   isEditableProjectStatus,
@@ -44,7 +44,7 @@ export function ParameterAdminProjectsPage({
 }: PageProps & { onNewProject?: () => void }) {
   const isApiMode = runtimeMode === "api";
   const adminClient = useMemo(() => createParameterAdminClient(), []);
-  const parameterFileClient = useMemo(() => createParameterFileClient(), []);
+  const parameterFileRepository = useMemo(() => resolveParameterFileRepository(runtimeMode), [runtimeMode]);
   const dtsRepo = useMemo(() => resolveDtsStructuredRepository(runtimeMode), [runtimeMode]);
   const canAdmin = canPerform(state.activeRoleId, "admin.access");
   const canEdit = roleHasPermission(state.activeRoleId, "parameter:edit");
@@ -96,21 +96,16 @@ export function ParameterAdminProjectsPage({
       return;
     }
 
-    if (!isApiMode) {
-      setAvailableFiles(MOCK_AVAILABLE_PARAMETER_FILES);
-      return;
-    }
-
     let cancelled = false;
     void (async () => {
       try {
-        const items = await parameterFileClient.listFiles(manageFilesProjectId);
+        const items = await parameterFileRepository.listFiles(manageFilesProjectId);
         if (!cancelled) {
           setAvailableFiles(items.map((item) => ({ id: item.id, fileName: item.fileName })));
         }
       } catch {
         if (!cancelled) {
-          setAvailableFiles([]);
+          setAvailableFiles(isApiMode ? [] : MOCK_AVAILABLE_PARAMETER_FILES);
         }
       }
     })();
@@ -118,7 +113,7 @@ export function ParameterAdminProjectsPage({
     return () => {
       cancelled = true;
     };
-  }, [isApiMode, manageFilesProjectId, parameterFileClient]);
+  }, [isApiMode, manageFilesProjectId, parameterFileRepository]);
 
   const kpiItems: KpiItem[] = [
     { id: "total", label: "项目总数", value: summary.total },
@@ -338,7 +333,7 @@ export function ParameterAdminProjectsPage({
               {manageFilesTab === "files" ? (
                 <>
                   <DtsSearchPanel projectId={manageFilesTarget.id} repository={dtsRepo} />
-                  <ProjectParameterFilesPanel projectId={manageFilesTarget.id} runtimeMode={runtimeMode} />
+                  <ProjectParameterFilesPanel projectId={manageFilesTarget.id} repository={parameterFileRepository} />
                 </>
               ) : null}
               {manageFilesTab === "config-sets" ? (

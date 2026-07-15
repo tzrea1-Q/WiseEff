@@ -18,8 +18,8 @@ import { ParameterImportWizard } from "./components/ParameterImportWizard/Parame
 import { UndoableToast } from "./components/UndoableToast";
 import { useTopBarActions } from "./components/layout";
 import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
+import { resolveParameterFileRepository } from "./application/parameters/parameterFileRuntime";
 import { createParameterAdminClient } from "./infrastructure/http/parameterAdminClient";
-import { createParameterFileClient } from "./infrastructure/http/parameterFileClient";
 import { getCoverage } from "./parameterAdminAnalytics";
 import type { ParameterModuleDraft } from "./powerManagementConfig";
 
@@ -53,7 +53,7 @@ export function ParameterAdminPage({
   const updateSearch = urlSearch.updateSearch;
   const isApiMode = runtimeMode === "api";
   const parameterAdminClient = useMemo(() => (isApiMode ? createParameterAdminClient() : null), [isApiMode]);
-  const parameterFileClient = useMemo(() => (isApiMode ? createParameterFileClient() : null), [isApiMode]);
+  const parameterFileRepository = useMemo(() => resolveParameterFileRepository(runtimeMode), [runtimeMode]);
   const projects = state.configDraft.projects;
   const library = useMemo(() => {
     if (isApiMode) {
@@ -94,13 +94,9 @@ export function ParameterAdminPage({
   }, [parameterAdminClient, reloadAdminModules]);
 
   useEffect(() => {
-    if (!parameterFileClient) {
-      setOpenConflictCount(0);
-      return undefined;
-    }
-
     let cancelled = false;
-    parameterFileClient.listConflicts(state.activeProjectId)
+    parameterFileRepository
+      .listConflicts(state.activeProjectId)
       .then((items) => {
         if (!cancelled) {
           setOpenConflictCount(items.filter((item) => item.status === "open").length);
@@ -115,7 +111,7 @@ export function ParameterAdminPage({
     return () => {
       cancelled = true;
     };
-  }, [parameterFileClient, state.activeProjectId]);
+  }, [parameterFileRepository, state.activeProjectId]);
 
   const resolveModuleName = useCallback(
     (moduleId: string) => moduleNodes.find((node) => node.id === moduleId)?.name ?? moduleId,
@@ -391,7 +387,7 @@ export function ParameterAdminPage({
       <ParameterFileConflictPanel
         open={conflictPanelOpen}
         projectId={state.activeProjectId}
-        runtimeMode={runtimeMode}
+        repository={parameterFileRepository}
         onClose={() => setConflictPanelOpen(false)}
         onOpenConflictCountChange={setOpenConflictCount}
       />

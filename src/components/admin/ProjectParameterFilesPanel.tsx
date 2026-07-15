@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FileSyncSummary, ProjectParameterFileVersion } from "@/application/ports/ParameterFileRepository";
-import { createParameterFileClient } from "@/infrastructure/http/parameterFileClient";
+import { useCallback, useEffect, useState } from "react";
+import type {
+  FileSyncSummary,
+  ParameterFileRepository,
+  ProjectParameterFileVersion
+} from "@/application/ports/ParameterFileRepository";
 
 type ProjectParameterFilesPanelProps = {
   projectId: string;
-  runtimeMode?: "api" | "mock";
+  repository: ParameterFileRepository;
 };
 
 function readFileAsBase64(file: File): Promise<string> {
@@ -44,9 +47,7 @@ function chooseLatestVersion(versions: ProjectParameterFileVersion[]) {
   return [...versions].sort((left, right) => right.versionNumber - left.versionNumber)[0];
 }
 
-export function ProjectParameterFilesPanel({ projectId, runtimeMode = "mock" }: ProjectParameterFilesPanelProps) {
-  const isApiMode = runtimeMode === "api";
-  const client = useMemo(() => createParameterFileClient(), []);
+export function ProjectParameterFilesPanel({ projectId, repository }: ProjectParameterFilesPanelProps) {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [files, setFiles] = useState<
@@ -67,27 +68,24 @@ export function ProjectParameterFilesPanel({ projectId, runtimeMode = "mock" }: 
   const [summaryText, setSummaryText] = useState("");
 
   const loadFiles = useCallback(async () => {
-    if (!isApiMode) {
-      return;
-    }
     setLoading(true);
     setError("");
     try {
-      const items = await client.listFiles(projectId);
+      const items = await repository.listFiles(projectId);
       setFiles(items);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "参数文件列表加载失败。");
     } finally {
       setLoading(false);
     }
-  }, [client, isApiMode, projectId]);
+  }, [projectId, repository]);
 
   useEffect(() => {
     void loadFiles();
   }, [loadFiles]);
 
   const onUploadFile = async (file: File | null) => {
-    if (!file || !isApiMode) {
+    if (!file) {
       return;
     }
     setUploading(true);
@@ -96,7 +94,7 @@ export function ProjectParameterFilesPanel({ projectId, runtimeMode = "mock" }: 
     setSummaryText("");
     try {
       const contentBase64 = await readFileAsBase64(file);
-      await client.uploadFile(projectId, { fileName: file.name, contentBase64 });
+      await repository.uploadFile(projectId, { fileName: file.name, contentBase64 });
       await loadFiles();
       setSummaryText(`已上传文件：${file.name}`);
     } catch (uploadFileError) {
@@ -119,7 +117,7 @@ export function ProjectParameterFilesPanel({ projectId, runtimeMode = "mock" }: 
     setVersionsLoading((current) => ({ ...current, [fileId]: true }));
     setActionError("");
     try {
-      const versions = await client.listVersions(projectId, fileId);
+      const versions = await repository.listVersions(projectId, fileId);
       setExpandedVersions((current) => ({ ...current, [fileId]: versions }));
     } catch (versionsError) {
       setActionError(versionsError instanceof Error ? versionsError.message : "加载版本列表失败。");
@@ -129,21 +127,18 @@ export function ProjectParameterFilesPanel({ projectId, runtimeMode = "mock" }: 
   };
 
   const downloadLatest = async (fileId: string, fallbackName: string, currentVersionId?: string) => {
-    if (!isApiMode) {
-      return;
-    }
     setActionError("");
     try {
       let targetVersionId = currentVersionId;
       if (!targetVersionId) {
-        const versions = await client.listVersions(projectId, fileId);
+        const versions = await repository.listVersions(projectId, fileId);
         targetVersionId = chooseLatestVersion(versions)?.id;
       }
       if (!targetVersionId) {
         throw new Error("该文件暂无可下载版本。");
       }
 
-      const result = await client.downloadVersion(projectId, fileId, targetVersionId);
+      const result = await repository.downloadVersion(projectId, fileId, targetVersionId);
       const blob = new Blob([Uint8Array.from(result.bytes)], {
         type: result.contentType || "application/octet-stream"
       });
@@ -162,26 +157,14 @@ export function ProjectParameterFilesPanel({ projectId, runtimeMode = "mock" }: 
   };
 
   const syncFile = async (fileId: string, fileName: string) => {
-    if (!isApiMode) {
-      return;
-    }
     setActionError("");
     try {
-      const result = await client.syncFile(projectId, fileId);
+      const result = await repository.syncFile(projectId, fileId);
       setSummaryText(`${fileName}：${formatSyncSummary(result)}`);
     } catch (syncError) {
       setActionError(syncError instanceof Error ? syncError.message : "文件同步失败。");
     }
   };
-
-  if (!isApiMode) {
-    return (
-      <section className="project-parameter-files project-parameter-files--placeholder">
-        <h3>参数文件</h3>
-        <p>Mock 模式仅展示占位信息。请切换到 API 模式后管理项目参数文件。</p>
-      </section>
-    );
-  }
 
   return (
     <section className="project-parameter-files">

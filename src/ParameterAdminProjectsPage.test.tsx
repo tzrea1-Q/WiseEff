@@ -5,18 +5,21 @@ import { initialState } from "./mockData";
 
 const listFilesMock = vi.fn().mockResolvedValue([]);
 const listProjectsMock = vi.fn().mockResolvedValue([]);
+const listConflictsMock = vi.fn().mockResolvedValue([]);
 
-vi.mock("@/infrastructure/http/parameterFileClient", () => ({
-  createParameterFileClient: () => ({
-    listFiles: listFilesMock,
-    uploadFile: vi.fn(),
-    uploadVersion: vi.fn(),
-    listVersions: vi.fn(),
-    downloadVersion: vi.fn(),
-    syncFile: vi.fn(),
-    listConflicts: vi.fn(),
-    resolveConflict: vi.fn()
-  })
+const resolveParameterFileRepository = vi.fn(() => ({
+  listFiles: listFilesMock,
+  uploadFile: vi.fn(),
+  uploadVersion: vi.fn(),
+  listVersions: vi.fn().mockResolvedValue([]),
+  downloadVersion: vi.fn(),
+  syncFile: vi.fn(),
+  listConflicts: listConflictsMock,
+  resolveConflict: vi.fn()
+}));
+
+vi.mock("@/application/parameters/parameterFileRuntime", () => ({
+  resolveParameterFileRepository: (...args: unknown[]) => resolveParameterFileRepository(...args)
 }));
 
 vi.mock("@/infrastructure/http/parameterAdminClient", () => ({
@@ -60,8 +63,11 @@ vi.mock("@/application/parameters/dtsStructuredRuntime", () => ({
 describe("ParameterAdminProjectsPage", () => {
   beforeEach(() => {
     resolveDtsStructuredRepository.mockClear();
+    resolveParameterFileRepository.mockClear();
     listFilesMock.mockReset();
     listFilesMock.mockResolvedValue([]);
+    listConflictsMock.mockReset();
+    listConflictsMock.mockResolvedValue([]);
     listProjectsMock.mockReset();
     listProjectsMock.mockResolvedValue([]);
   });
@@ -324,9 +330,27 @@ describe("ParameterAdminProjectsPage", () => {
     expect(resolveDtsStructuredRepository).toHaveBeenCalledWith("api");
   });
 
-  it("in mock mode uses teaching availableFiles without calling the parameter file client", async () => {
+  it("in mock mode loads availableFiles via the parameter file repository", async () => {
     window.history.replaceState(null, "", "/parameter-admin/projects");
     const atlasProject = initialState.configDraft.projects.find((project) => project.id === "atlas");
+    listFilesMock.mockResolvedValue([
+      {
+        id: "file-teaching",
+        projectId: "atlas",
+        fileName: "teaching-sample.dts",
+        format: "dts",
+        enabled: true,
+        updatedAt: "2026-07-14T08:00:00.000Z"
+      },
+      {
+        id: "file-board",
+        projectId: "atlas",
+        fileName: "board-sample.dts",
+        format: "dts",
+        enabled: true,
+        updatedAt: "2026-07-14T08:01:00.000Z"
+      }
+    ]);
 
     render(
       <ParameterAdminProjectsPage
@@ -346,14 +370,15 @@ describe("ParameterAdminProjectsPage", () => {
       expect(within(panel).getByLabelText("成员文件")).toBeInTheDocument();
     });
 
-    expect(listFilesMock).not.toHaveBeenCalled();
+    expect(resolveParameterFileRepository).toHaveBeenCalledWith("mock");
+    expect(listFilesMock).toHaveBeenCalledWith("atlas");
 
     const fileSelect = within(panel).getByLabelText("成员文件");
     expect(within(fileSelect).getByRole("option", { name: "teaching-sample.dts" })).toBeInTheDocument();
     expect(within(fileSelect).getByRole("option", { name: "board-sample.dts" })).toBeInTheDocument();
   });
 
-  it("in api mode loads availableFiles via parameter file client for ConfigSetBaselinePanel", async () => {
+  it("in api mode loads availableFiles via parameter file repository for ConfigSetBaselinePanel", async () => {
     window.history.replaceState(null, "", "/parameter-admin/projects");
     listProjectsMock.mockResolvedValue([
       {
