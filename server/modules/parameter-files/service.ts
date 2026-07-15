@@ -6,11 +6,17 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameters/policy";
+import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
+import type { ConfigRevisionManifest, ConfigRevisionManifestMember } from "../parameter-topology/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { listConfigSetMemberFiles } from "./baselineRepository";
+import { getConfigSetById, getFileConfigSetMembership } from "./configSetRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { syncFileVersion } from "./syncService";
 import {
+  getFileVersionById,
+  getProjectParameterFileById,
   getProjectParameterFileByName,
   insertFileVersion,
   insertProjectParameterFile,
@@ -20,7 +26,12 @@ import {
 import { uploadProjectParameterFileInputSchema, type UploadProjectParameterFileInput } from "./schemas";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
-import type { ParameterFileFormat, ProjectParameterFileDto, ProjectParameterFileVersionDto } from "./types";
+import type {
+  ConfigSetRole,
+  ParameterFileFormat,
+  ProjectParameterFileDto,
+  ProjectParameterFileVersionDto
+} from "./types";
 import { detectUnsupportedDtsConstructs, type UnsupportedConstruct } from "./unsupported";
 
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -104,6 +115,106 @@ async function createParameterFileUploadAudit(
   });
 }
 
+const OVERLAY_ROLES = new Set<ConfigSetRole>(["overlay", "charging", "thermal", "misc"]);
+
+/**
+ * After a member file version is frozen, ingest a semantic config revision only when the
+ * complete config-set manifest is available (base entry + every member has a current version).
+ * Isolated DTS uploads without config-set membership are skipped.
+ */
+async function maybeIngestSemanticConfigRevision(
+  db: Queryable,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: {
+    fileId: string;
+    frozenVersionId: string;
+    frozenSource: string;
+  }
+): Promise<void> {
+  const membership = await getFileConfigSetMembership(db, {
+    organizationId: auth.organization.id,
+    fileId: input.fileId
+  });
+  if (!membership?.configSetId) {
+    return;
+  }
+
+  const configSet = await getConfigSetById(db, {
+    organizationId: auth.organization.id,
+    configSetId: membership.configSetId
+  });
+  if (!configSet) {
+    return;
+  }
+
+  const memberFiles = await listConfigSetMemberFiles(db, membership.configSetId);
+  if (memberFiles.length === 0 || memberFiles.some((member) => !member.currentVersionId)) {
+    return;
+  }
+
+  const members: ConfigRevisionManifestMember[] = [];
+  for (const member of memberFiles) {
+    const file = await getProjectParameterFileById(db, {
+      organizationId: auth.organization.id,
+      fileId: member.fileId
+    });
+    if (!file || file.format !== "dts") {
+      continue;
+    }
+
+    const fileMembership = await getFileConfigSetMembership(db, {
+      organizationId: auth.organization.id,
+      fileId: member.fileId
+    });
+    const role = fileMembership?.configSetRole ?? "misc";
+    const versionId = member.currentVersionId as string;
+    const version = await getFileVersionById(db, { versionId });
+    if (!version) {
+      return;
+    }
+
+    const content =
+      versionId === input.frozenVersionId
+        ? input.frozenSource
+        : (await objectStore.get(version.storageKey)).toString("utf8");
+
+    members.push({
+      fileId: member.fileId,
+      fileVersionId: versionId,
+      fileName: member.fileName,
+      role,
+      sortOrder: fileMembership?.configSetSortOrder ?? 0,
+      content
+    });
+  }
+
+  const baseMembers = members
+    .filter((member) => member.role === "base")
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.fileName.localeCompare(b.fileName));
+  if (baseMembers.length === 0) {
+    // Incomplete manifest: overlays/includes without a base entry are not ingestible alone.
+    return;
+  }
+
+  const overlayOrder = members
+    .filter((member) => OVERLAY_ROLES.has(member.role as ConfigSetRole))
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.fileName.localeCompare(b.fileName))
+    .map((member) => member.fileName);
+
+  const manifest: ConfigRevisionManifest = {
+    organizationId: auth.organization.id,
+    projectId: configSet.projectId,
+    configSetId: configSet.id,
+    entryFile: baseMembers[0].fileName,
+    includeSearchPaths: ["."],
+    overlayOrder,
+    members
+  };
+
+  await ingestConfigRevisionInTransaction(db, manifest, auth);
+}
+
 export async function uploadProjectParameterFile(
   db: Database,
   objectStore: ObjectStore,
@@ -172,6 +283,13 @@ export async function uploadProjectParameterFile(
     await setCurrentVersion(tx, { fileId: file.id, versionId: version.id });
     if (format === "dts" && isDtsStructuralIngestEnabled()) {
       await ingestDtsFileVersion(tx, version.id, source);
+    }
+    if (format === "dts") {
+      await maybeIngestSemanticConfigRevision(tx, objectStore, auth, {
+        fileId: file.id,
+        frozenVersionId: version.id,
+        frozenSource: source
+      });
     }
     if (version.origin === "upload" && unsupportedConstructs.length === 0) {
       await syncFileVersion(tx, auth, { fileId: file.id, versionId: version.id });
