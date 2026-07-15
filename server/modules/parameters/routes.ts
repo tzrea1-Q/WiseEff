@@ -4,8 +4,8 @@ import type { ObjectStore } from "../logs/objectStore";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
+import { createProjectForAuth } from "./projectService";
 import {
-  createProject,
   deleteProject,
   getParameterById,
   getProjectAdminDetail,
@@ -201,12 +201,16 @@ export function registerParameterRoutes(
     requireCanAdmin(auth);
     const body = parseWithSchema(createProjectBodySchema, request.body, "Invalid project create payload.");
     const projectId = body.id?.trim() || slugifyProjectId(body.code);
-    const item = await createProject(db, {
-      organizationId: auth.organization.id,
-      id: projectId,
-      name: body.name.trim(),
-      code: body.code.trim().toUpperCase()
-    });
+    const item = await createProjectForAuth(
+      db,
+      auth,
+      {
+        id: projectId,
+        name: body.name.trim(),
+        code: body.code.trim().toUpperCase()
+      },
+      { requestId: request.requestId }
+    );
 
     return { status: 201, body: { item } };
   });

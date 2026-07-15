@@ -6,6 +6,7 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import * as repository from "./repository";
+import * as projectService from "./projectService";
 import { registerParameterRoutes } from "./routes";
 import * as service from "./service";
 
@@ -20,6 +21,10 @@ vi.mock("./repository", () => ({
   listProjectModules: vi.fn(),
   listProjects: vi.fn(),
   updateProject: vi.fn()
+}));
+
+vi.mock("./projectService", () => ({
+  createProjectForAuth: vi.fn()
 }));
 
 vi.mock("./service", () => ({
@@ -496,7 +501,7 @@ describe("parameter routes", () => {
       parameterCount: 0,
       updatedAt: "2026-07-02T00:00:00.000Z"
     };
-    vi.mocked(repository.createProject).mockResolvedValue(item);
+    vi.mocked(projectService.createProjectForAuth).mockResolvedValue(item);
 
     const response = await requestJson<{ item: typeof item }>(
       makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
@@ -509,12 +514,16 @@ describe("parameter routes", () => {
 
     expect(response.status).toBe(201);
     expect(response.body).toEqual({ item });
-    expect(repository.createProject).toHaveBeenCalledWith(db, {
-      organizationId: "org-1",
-      id: "nova",
-      name: "Nova",
-      code: "NOVA"
-    });
+    expect(projectService.createProjectForAuth).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ organization: { id: "org-1", name: "ChargeLab" } }),
+      {
+        id: "nova",
+        name: "Nova",
+        code: "NOVA"
+      },
+      expect.objectContaining({ requestId: expect.any(String) })
+    );
   });
 
   it("DELETE /api/v1/parameters/admin/projects/:projectId deletes an empty project", async () => {

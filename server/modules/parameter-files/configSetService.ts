@@ -111,6 +111,47 @@ export async function listConfigSets(db: Queryable, auth: AuthContext, projectId
   return listConfigSetsByProject(db, { organizationId: auth.organization.id, projectId });
 }
 
+/** Idempotent default config-set ensure for an open transaction / Queryable. */
+export async function ensureDefaultConfigSetInTx(
+  db: Queryable,
+  auth: AuthContext,
+  projectId: string,
+  context: ConfigSetServiceContext = {}
+): Promise<ConfigSetDto> {
+  requireParameterFileAdmin(auth);
+
+  const existing = await getConfigSetByProjectAndName(db, {
+    organizationId: auth.organization.id,
+    projectId,
+    name: DEFAULT_CONFIG_SET_NAME
+  });
+  if (existing) {
+    return existing;
+  }
+
+  const configSet = await insertConfigSet(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId,
+    name: DEFAULT_CONFIG_SET_NAME,
+    description: "Auto-created default configuration set."
+  });
+
+  await writeConfigSetAudit(
+    db,
+    auth,
+    {
+      action: "created",
+      projectId: configSet.projectId,
+      targetId: configSet.id,
+      metadata: { name: configSet.name, ensuredDefault: true }
+    },
+    context
+  );
+
+  return configSet;
+}
+
 export async function ensureDefaultConfigSet(
   db: Database,
   auth: AuthContext,
@@ -119,38 +160,7 @@ export async function ensureDefaultConfigSet(
 ): Promise<ConfigSetDto> {
   requireParameterFileAdmin(auth);
 
-  return db.transaction(async (tx) => {
-    const existing = await getConfigSetByProjectAndName(tx, {
-      organizationId: auth.organization.id,
-      projectId,
-      name: DEFAULT_CONFIG_SET_NAME
-    });
-    if (existing) {
-      return existing;
-    }
-
-    const configSet = await insertConfigSet(tx, {
-      id: randomUUID(),
-      organizationId: auth.organization.id,
-      projectId,
-      name: DEFAULT_CONFIG_SET_NAME,
-      description: "Auto-created default configuration set."
-    });
-
-    await writeConfigSetAudit(
-      tx,
-      auth,
-      {
-        action: "created",
-        projectId: configSet.projectId,
-        targetId: configSet.id,
-        metadata: { name: configSet.name, ensuredDefault: true }
-      },
-      context
-    );
-
-    return configSet;
-  });
+  return db.transaction(async (tx) => ensureDefaultConfigSetInTx(tx, auth, projectId, context));
 }
 
 export async function addConfigSetFile(
