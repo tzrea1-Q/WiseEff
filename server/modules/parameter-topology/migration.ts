@@ -9,7 +9,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { Queryable } from "../../shared/database/client";
+import type { Database, Queryable } from "../../shared/database/client";
 
 export type ParameterIdentityMigrationCoverage = {
   history: number;
@@ -45,17 +45,30 @@ export type MigrateParameterIdentitiesOptions = {
   dbSnapshotId?: string;
   objectSnapshotId?: string;
   writeLockConfirmed?: boolean;
-  /** Expected token for apply; defaults to env PARAMETER_IDENTITY_MAINTENANCE_TOKEN. */
+  /** Expected token for apply; required via this field or env PARAMETER_IDENTITY_MAINTENANCE_TOKEN. */
   expectedMaintenanceToken?: string;
   /** Optional org scope (tests / staged drills). Full cutover omits this. */
   organizationId?: string;
+  /** Test-only: throw after some apply writes inside the transaction. */
+  injectFailure?: boolean;
 };
 
 export type ApplyCutoverOptions = {
   migrationRunId: string;
+  /** Test-only: throw after partial cutover writes inside the transaction. */
   injectFailure?: boolean;
   cutoverSqlPath?: string;
 };
+
+/** Marker comment inside cutover SQL; apply splits here for mid-tx failure injection. */
+export const CUTOVER_FAILURE_INJECT_POINT = "-- CUTOVER_FAILURE_INJECT_POINT";
+
+function requireTransactionalDb(db: Queryable): Database {
+  if (typeof (db as Database).transaction === "function") {
+    return db as Database;
+  }
+  throw new Error("parameter identity apply/cutover requires Database.transaction()");
+}
 
 type SpecCandidate = {
   parameterSpecId: string;
@@ -192,16 +205,21 @@ async function loadSpecCandidates(
   return candidates;
 }
 
+type LogicalNodeResolveResult =
+  | { kind: "none" }
+  | { kind: "one"; logicalNodeId: string }
+  | { kind: "ambiguous"; logicalNodeIds: string[] };
+
 async function resolveLogicalNodeId(
   db: Queryable,
   projectId: string,
   sourceNodePath: string | null
-): Promise<string | null> {
-  if (!sourceNodePath?.trim()) return null;
+): Promise<LogicalNodeResolveResult> {
+  if (!sourceNodePath?.trim()) return { kind: "none" };
   const locator = locatorFromSourceNodePath(sourceNodePath);
   const result = await db.query<{ logical_node_id: string }>(
     `
-    select lnr.logical_node_id
+    select distinct lnr.logical_node_id
     from dts_logical_node_revisions lnr
     inner join dts_logical_nodes ln on ln.id = lnr.logical_node_id
     where ln.project_id = $1
@@ -210,14 +228,19 @@ async function resolveLogicalNodeId(
         or lnr.node_locator = $3
         or ltrim(lnr.node_locator, '/') = ltrim($2, '/')
       )
-    order by lnr.config_revision_id asc
+    order by lnr.logical_node_id asc
     limit 2
     `,
     [projectId, locator, locator.replace(/^\//, "")]
   );
-  if (result.rows.length === 1) return result.rows[0]?.logical_node_id ?? null;
-  if (result.rows.length > 1) return result.rows[0]?.logical_node_id ?? null;
-  return null;
+  if (result.rows.length === 0) return { kind: "none" };
+  if (result.rows.length === 1) {
+    return { kind: "one", logicalNodeId: result.rows[0]!.logical_node_id };
+  }
+  return {
+    kind: "ambiguous",
+    logicalNodeIds: result.rows.map((row) => row.logical_node_id)
+  };
 }
 
 async function ensureBinding(
@@ -400,9 +423,14 @@ async function insertEvidence(
 function assertApplyGates(options: MigrateParameterIdentitiesOptions): void {
   if (options.mode !== "apply") return;
   const expected =
-    options.expectedMaintenanceToken ??
-    process.env[EXPECTED_MAINTENANCE_TOKEN_ENV]?.trim() ??
-    "test-maintenance-token";
+    options.expectedMaintenanceToken?.trim() ||
+    process.env[EXPECTED_MAINTENANCE_TOKEN_ENV]?.trim() ||
+    "";
+  if (!expected) {
+    throw new Error(
+      `apply requires ${EXPECTED_MAINTENANCE_TOKEN_ENV} or expectedMaintenanceToken`
+    );
+  }
   if (!options.maintenanceToken || options.maintenanceToken !== expected) {
     throw new Error("apply requires a valid maintenance token");
   }
@@ -421,6 +449,18 @@ export async function migrateParameterIdentities(
   assertApplyGates(options);
   await ensureMigrationInfrastructure(db);
 
+  if (options.mode === "apply") {
+    return requireTransactionalDb(db).transaction((tx) =>
+      runParameterIdentityMigration(tx, options)
+    );
+  }
+  return runParameterIdentityMigration(db, options);
+}
+
+async function runParameterIdentityMigration(
+  db: Queryable,
+  options: MigrateParameterIdentitiesOptions
+): Promise<ParameterIdentityMigrationReport> {
   const apply = options.mode === "apply";
   const migrationRunId =
     options.migrationRunId ??
@@ -547,12 +587,20 @@ export async function migrateParameterIdentities(
       continue;
     }
 
-    const logicalNodeId = await resolveLogicalNodeId(db, value.project_id, value.source_node_path);
-    if (value.source_node_path && !logicalNodeId) {
+    const resolvedNode = await resolveLogicalNodeId(db, value.project_id, value.source_node_path);
+    if (resolvedNode.kind === "ambiguous") {
+      ambiguousRecords += 1;
+      blockers.push(
+        `ambiguous logical node for value ${value.id} path=${value.source_node_path}: ${resolvedNode.logicalNodeIds.join(",")}`
+      );
+      continue;
+    }
+    if (value.source_node_path && resolvedNode.kind === "none") {
       unmappedRecords += 1;
       blockers.push(`unmapped logical node for value ${value.id} path=${value.source_node_path}`);
       continue;
     }
+    const logicalNodeId = resolvedNode.kind === "one" ? resolvedNode.logicalNodeId : null;
 
     const bindingId = await ensureBinding(db, {
       organizationId: value.organization_id,
@@ -569,6 +617,10 @@ export async function migrateParameterIdentities(
       currentValue: value.current_value,
       apply
     });
+
+    if (apply && options.injectFailure && mappedProjectValues === 0) {
+      throw new Error("injected apply failure");
+    }
 
     // Never promote recommended_value into schema_default or policy_target.
     const evidenceId = await insertEvidence(db, {
@@ -1074,6 +1126,7 @@ export async function applyParameterIdentityCutover(
   db: Queryable,
   options: ApplyCutoverOptions
 ): Promise<void> {
+  const database = requireTransactionalDb(db);
   await ensureMigrationInfrastructure(db);
 
   const run = await db.query<{ status: string; report: unknown }>(
@@ -1082,10 +1135,6 @@ export async function applyParameterIdentityCutover(
   );
   if (!run.rows[0] || run.rows[0].status !== "completed") {
     throw new Error(`cutover requires completed migration run ${options.migrationRunId}`);
-  }
-
-  if (options.injectFailure) {
-    throw new Error("injected cutover failure");
   }
 
   const sqlPath = options.cutoverSqlPath ?? defaultCutoverSqlPath();
@@ -1097,14 +1146,21 @@ export async function applyParameterIdentityCutover(
     .replace(/\bcommit\s*;\s*$/im, "")
     .trim();
 
-  await db.query("begin");
-  try {
-    await db.query(sql);
-    await db.query("commit");
-  } catch (error) {
-    await db.query("rollback").catch(() => undefined);
-    throw error;
-  }
+  const parts = sql.split(CUTOVER_FAILURE_INJECT_POINT);
+  const beforeInject = parts[0]?.trim() ?? "";
+  const afterInject = parts.slice(1).join(CUTOVER_FAILURE_INJECT_POINT).trim();
+
+  await database.transaction(async (tx) => {
+    if (beforeInject) {
+      await tx.query(beforeInject);
+    }
+    if (options.injectFailure) {
+      throw new Error("injected cutover failure");
+    }
+    if (afterInject) {
+      await tx.query(afterInject);
+    }
+  });
 }
 
 export async function checkParameterIdentityCutover(db: Queryable): Promise<{

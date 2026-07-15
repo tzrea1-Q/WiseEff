@@ -42,6 +42,14 @@ const SOURCE_NODE_PATH = "amba/i2c@FDF5E000/sc8562@6E/gpio_int";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
+const MAINTENANCE_TOKEN = "test-maintenance-token";
+
+const applyGates = {
+  maintenanceToken: MAINTENANCE_TOKEN,
+  expectedMaintenanceToken: MAINTENANCE_TOKEN,
+  writeLockConfirmed: true as const
+};
+
 function expectedSpecId() {
   return stableSemanticId("parameter_spec", [ORG, "dts", SCHEMA_NS, PROPERTY_KEY]);
 }
@@ -575,10 +583,9 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
     const report = await migrateParameterIdentities(db!, {
       mode: "apply",
       organizationId: ORG,
-      maintenanceToken: "test-maintenance-token",
+      ...applyGates,
       dbSnapshotId: "db-snap-1",
-      objectSnapshotId: "obj-snap-1",
-      writeLockConfirmed: true
+      objectSnapshotId: "obj-snap-1"
     });
 
     expect(report.unmappedRecords).toBe(0);
@@ -732,10 +739,83 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
       migrateParameterIdentities(db!, {
         mode: "apply",
         organizationId: ORG,
-        maintenanceToken: "test-maintenance-token",
+        maintenanceToken: MAINTENANCE_TOKEN,
+        expectedMaintenanceToken: MAINTENANCE_TOKEN,
         writeLockConfirmed: false
       })
     ).rejects.toThrow(/write lock|maintenance|snapshot/i);
+  });
+
+  it("rejects apply when maintenance token is not configured", async () => {
+    await seedLegacyGraph(db!);
+    const previous = process.env.PARAMETER_IDENTITY_MAINTENANCE_TOKEN;
+    delete process.env.PARAMETER_IDENTITY_MAINTENANCE_TOKEN;
+    try {
+      await expect(
+        migrateParameterIdentities(db!, {
+          mode: "apply",
+          organizationId: ORG,
+          maintenanceToken: MAINTENANCE_TOKEN,
+          writeLockConfirmed: true,
+          dbSnapshotId: "db-snap",
+          objectSnapshotId: "obj-snap"
+        })
+      ).rejects.toThrow(/PARAMETER_IDENTITY_MAINTENANCE_TOKEN|expectedMaintenanceToken/i);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PARAMETER_IDENTITY_MAINTENANCE_TOKEN;
+      } else {
+        process.env.PARAMETER_IDENTITY_MAINTENANCE_TOKEN = previous;
+      }
+    }
+  });
+
+  it("blocks apply when logical node mapping is ambiguous", async () => {
+    await seedLegacyGraph(db!);
+    const otherLogicalNodeId = stableSemanticId("dts_logical_node", [
+      PROJECT,
+      CONFIG_SET,
+      `${NODE_LOCATOR}-alt`
+    ]);
+    await db!.query(
+      `
+      insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
+      values ($1, $2, $3, $4)
+      on conflict (id) do nothing
+      `,
+      [otherLogicalNodeId, ORG, PROJECT, CONFIG_SET]
+    );
+    await db!.query(
+      `
+      insert into dts_logical_node_revisions (
+        id, logical_node_id, config_revision_id, node_locator, name, unit_address, parent_logical_node_id
+      ) values ($1, $2, $3, $4, 'sc8562-alt', '6E', null)
+      on conflict (id) do nothing
+      `,
+      [
+        `lnr-${otherLogicalNodeId}`,
+        otherLogicalNodeId,
+        "rev-mig-14-1",
+        NODE_LOCATOR
+      ]
+    );
+
+    const dryRun = await migrateParameterIdentities(db!, {
+      mode: "dry-run",
+      organizationId: ORG
+    });
+    expect(dryRun.ambiguousRecords).toBeGreaterThanOrEqual(1);
+    expect(dryRun.blockers.some((b) => /ambiguous logical node/i.test(b))).toBe(true);
+
+    await expect(
+      migrateParameterIdentities(db!, {
+        mode: "apply",
+        organizationId: ORG,
+        ...applyGates,
+        dbSnapshotId: "db-snap-ambiguous",
+        objectSnapshotId: "obj-snap-ambiguous"
+      })
+    ).rejects.toThrow(/apply blocked|ambiguous logical node/i);
   });
 });
 
@@ -750,10 +830,9 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
         const report = await migrateParameterIdentities(tempDb, {
           mode: "apply",
           organizationId: ORG,
-          maintenanceToken: "test-maintenance-token",
+          ...applyGates,
           dbSnapshotId: `db-snap-restore-${i}`,
-          objectSnapshotId: `obj-snap-restore-${i}`,
-          writeLockConfirmed: true
+          objectSnapshotId: `obj-snap-restore-${i}`
         });
         reports.push(report);
         const bindings = await tempDb.query<{ id: string }>(
@@ -771,16 +850,15 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
     expect(bindingIds[0]).toBe(expectedBindingId(expectedSpecId(), expectedLogicalNodeId()));
   });
 
-  it("injected cutover failure leaves no marker and no partial active schema", async () => {
+  it("injected cutover failure after partial writes rolls back marker and archive", async () => {
     await withTempDatabase(async (tempDb) => {
       await seedLegacyGraph(tempDb);
       const report = await migrateParameterIdentities(tempDb, {
         mode: "apply",
         organizationId: ORG,
-        maintenanceToken: "test-maintenance-token",
+        ...applyGates,
         dbSnapshotId: "db-snap-fail",
-        objectSnapshotId: "obj-snap-fail",
-        writeLockConfirmed: true
+        objectSnapshotId: "obj-snap-fail"
       });
       expect(report.blockers).toEqual([]);
 
@@ -807,6 +885,49 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
          where table_schema = 'public' and table_name = 'legacy_parameter_definitions'`
       );
       expect(legacyDefs.rows).toHaveLength(0);
+
+      const historyNullable = await tempDb.query<{ is_nullable: string }>(
+        `
+        select is_nullable
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'parameter_history_entries'
+          and column_name = 'project_parameter_binding_id'
+        `
+      );
+      expect(historyNullable.rows[0]?.is_nullable).toBe("YES");
+    });
+  });
+
+  it("injected apply failure after partial writes leaves no semantic rows", async () => {
+    await withTempDatabase(async (tempDb) => {
+      await seedLegacyGraph(tempDb);
+      await expect(
+        migrateParameterIdentities(tempDb, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-apply-fail",
+          objectSnapshotId: "obj-snap-apply-fail",
+          injectFailure: true
+        })
+      ).rejects.toThrow(/injected apply failure/i);
+
+      const evidence = await tempDb.query(
+        `select 1 from legacy_parameter_migration_evidence limit 1`
+      );
+      expect(evidence.rows).toHaveLength(0);
+
+      const bindings = await tempDb.query(
+        `select 1 from project_parameter_bindings where project_id = $1 limit 1`,
+        [PROJECT]
+      );
+      expect(bindings.rows).toHaveLength(0);
+
+      const runs = await tempDb.query(
+        `select 1 from parameter_identity_migration_runs limit 1`
+      );
+      expect(runs.rows).toHaveLength(0);
     });
   });
 
@@ -816,10 +937,9 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
       const report = await migrateParameterIdentities(tempDb, {
         mode: "apply",
         organizationId: ORG,
-        maintenanceToken: "test-maintenance-token",
+        ...applyGates,
         dbSnapshotId: "db-snap-ok",
-        objectSnapshotId: "obj-snap-ok",
-        writeLockConfirmed: true
+        objectSnapshotId: "obj-snap-ok"
       });
 
       await applyParameterIdentityCutover(tempDb, {
@@ -844,8 +964,31 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
       );
       expect(active.rows).toHaveLength(0);
 
+      const draftsNotNull = await tempDb.query<{ is_nullable: string }>(
+        `
+        select is_nullable
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'parameter_drafts'
+          and column_name = 'project_parameter_binding_id'
+        `
+      );
+      expect(draftsNotNull.rows[0]?.is_nullable).toBe("NO");
+
+      const conflictsNotNull = await tempDb.query<{ is_nullable: string }>(
+        `
+        select is_nullable
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'parameter_file_sync_conflicts'
+          and column_name = 'project_parameter_binding_id'
+        `
+      );
+      expect(conflictsNotNull.rows[0]?.is_nullable).toBe("NO");
+
       const sql = await fs.readFile(cutoverSqlPath, "utf8");
       expect(sql).toContain("parameter_identity_cutovers");
+      expect(sql).toContain("CUTOVER_FAILURE_INJECT_POINT");
       expect(path.dirname(cutoverSqlPath).endsWith("cutovers")).toBe(true);
     });
   });

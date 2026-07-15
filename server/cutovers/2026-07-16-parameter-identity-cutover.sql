@@ -38,6 +38,18 @@ begin
   end if;
 
   if exists (
+    select 1 from parameter_drafts where project_parameter_binding_id is null
+  ) then
+    raise exception 'cutover blocked: drafts missing project_parameter_binding_id';
+  end if;
+
+  if exists (
+    select 1 from parameter_file_sync_conflicts where project_parameter_binding_id is null
+  ) then
+    raise exception 'cutover blocked: file conflicts missing project_parameter_binding_id';
+  end if;
+
+  if exists (
     select 1 from project_parameter_values ppv
     where not exists (
       select 1 from legacy_parameter_migration_evidence e
@@ -60,6 +72,15 @@ alter table parameter_change_requests
 
 alter table parameter_submission_items
   alter column project_parameter_binding_id set not null;
+
+alter table parameter_drafts
+  alter column project_parameter_binding_id set not null;
+
+alter table parameter_file_sync_conflicts
+  alter column project_parameter_binding_id set not null;
+
+-- CUTOVER_FAILURE_INJECT_POINT
+-- (applyParameterIdentityCutover splits here for mid-transaction failure tests)
 
 -- Drop legacy identity FKs / columns from active workflow tables.
 alter table parameter_history_entries
