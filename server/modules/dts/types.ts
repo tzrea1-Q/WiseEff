@@ -19,10 +19,22 @@ export interface DtsSpan {
 export type DtsValue =
   | { kind: "boolean"; present: true }
   | { kind: "empty" }
-  | { kind: "strings"; values: string[] }
+  | { kind: "strings"; values: string[]; items?: DtsStringListItem[] }
   | { kind: "cells"; bits: 8 | 16 | 32 | 64; groups: DtsCell[][] }
   | { kind: "bytes"; values: number[] }
   | { kind: "mixed"; segments: DtsValueSegment[] };
+
+/**
+ * Additive per-item raw span for `strings` values. `raw` is the exact source slice for this
+ * item (including any leading whitespace/newlines carried over from the preceding separator),
+ * so joining every item's `raw` with a single "," reconstructs the original RHS byte-for-byte
+ * even for multi-line, tab-indented string lists. Optional so hand-built fixtures that only set
+ * `values` keep working; render falls back to `", "`-joined `values` when `items` is absent.
+ */
+export interface DtsStringListItem {
+  value: string;
+  raw: string;
+}
 
 export type DtsCell =
   | { kind: "integer"; raw: string; value: string }

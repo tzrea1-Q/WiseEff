@@ -51,4 +51,23 @@ describe("parseDtsValue / renderDtsValue", () => {
     expect(value).toMatchObject({ kind: "strings", values: ["0.5", "-32767", "6|9|10"] });
     expect(renderDtsValue(value, raw)).toBe(raw);
   });
+
+  it("round-trips a multi-line, tab-indented string list byte-identically (real base-power-overlay.dts fixture)", () => {
+    // Mirrors the `vbat_comp_ic_para` RHS in src/config/dts-seed/base-power-overlay.dts, where
+    // the item list wraps across lines with tab indentation instead of a single ", "-joined run.
+    const raw = '"schargerV800", "13", "7", "3",\n\t\t"sc8565", "2", "0.5", "3"';
+    const { value } = parseDtsValue("vbat_comp_ic_para", raw);
+    expect(value).toMatchObject({
+      kind: "strings",
+      values: ["schargerV800", "13", "7", "3", "sc8565", "2", "0.5", "3"],
+    });
+    expect(renderDtsValue(value, raw)).toBe(raw);
+  });
+
+  it("parses a [xx yy ...] byte literal to the bytes kind and round-trips it", () => {
+    const raw = "[01 02 ab ff]";
+    const { value } = parseDtsValue("reg_config", raw);
+    expect(value).toEqual({ kind: "bytes", values: [1, 2, 171, 255] });
+    expect(renderDtsValue(value, raw)).toBe(raw);
+  });
 });

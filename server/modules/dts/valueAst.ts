@@ -43,7 +43,11 @@ export function renderDtsValue(value: DtsValue, previousRawText?: string): strin
     case "empty":
       return "";
     case "strings":
-      return value.values.map((v) => `"${v}"`).join(", ");
+      // Prefer the preserved raw spans (byte-identical, including multi-line/tab-indented
+      // separators); fall back to a plain ", "-joined render for hand-built values-only fixtures.
+      return value.items
+        ? value.items.map((item) => item.raw).join(",")
+        : value.values.map((v) => `"${v}"`).join(", ");
     case "bytes":
       return `[${value.values.map((v) => v.toString(16).padStart(2, "0")).join(" ")}]`;
     case "cells":
@@ -59,7 +63,7 @@ export function renderDtsValue(value: DtsValue, previousRawText?: string): strin
 }
 
 function renderSegment(segment: DtsValueSegment): string {
-  if (segment.kind === "string") return `"${segment.value}"`;
+  if (segment.kind === "string") return segment.raw;
   return renderCellsValue(segment.bits, [segment.cells]);
 }
 
@@ -76,6 +80,9 @@ function renderCell(cell: DtsCell): string {
 interface StringItem {
   type: "string";
   raw: string;
+  /** Untrimmed source slice (leading whitespace/newlines up to the preceding separator kept
+   * intact) so `strings` values round-trip byte-identically across multi-line item lists. */
+  sourceRaw: string;
   value: string;
 }
 
@@ -133,7 +140,7 @@ function parseTopLevelItem(itemRawWithWhitespace: string): ParsedItem {
 
   const stringMatch = STRING_RE.exec(trimmed);
   if (stringMatch) {
-    return { type: "string", raw: trimmed, value: stringMatch[1] };
+    return { type: "string", raw: trimmed, sourceRaw: itemRawWithWhitespace, value: stringMatch[1] };
   }
 
   const bitsMatch = BITS_GROUP_RE.exec(trimmed);
@@ -181,7 +188,11 @@ function parseCellToken(token: string, width: CellWidth): DtsCell {
 
 function combineItems(items: ParsedItem[]): DtsValue {
   if (items.every((item): item is StringItem => item.type === "string")) {
-    return { kind: "strings", values: items.map((item) => item.value) };
+    return {
+      kind: "strings",
+      values: items.map((item) => item.value),
+      items: items.map((item) => ({ value: item.value, raw: item.sourceRaw })),
+    };
   }
 
   if (items.every((item): item is CellsItem => item.type === "cells")) {
@@ -193,7 +204,7 @@ function combineItems(items: ParsedItem[]): DtsValue {
 
   const segments: DtsValueSegment[] = items.map((item) =>
     item.type === "string"
-      ? { kind: "string", raw: `"${item.value}"`, value: item.value }
+      ? { kind: "string", raw: item.raw, value: item.value }
       : { kind: "cells", bits: item.bits, cells: item.cells },
   );
   return { kind: "mixed", segments };
