@@ -267,6 +267,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "PARAM-DTS-EDIT-002",
+    workflow: "C",
+    title: "Structured edit submits a change request with rawText fidelity, advances review to merge, and CST writeback preserves rawText (no normalized rewrite).",
+    required: true
+  },
+  {
     id: "PARAM-DTS-CONFIGSET-001",
     workflow: "C",
     title: "Admin can manage config sets and release baselines from the projects file dialog (workflow C).",

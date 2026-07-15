@@ -56,11 +56,13 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 - `src/infrastructure/mock/*`：本地演示和单测。
 - `src/infrastructure/http/*`：API runtime，负责 `/api/v1` 请求和 DTO 映射。
 
-P3 新表面（均走 `DtsStructuredRepository`，勿在新面板里直接 new HTTP client）：
+P3 / P3.1 新表面（均走 `DtsStructuredRepository`，勿在新面板里直接 new HTTP client）：
 
+- `submitStructuredEdits`：经 `POST /api/v1/projects/:projectId/dts-structured-edits/submit` 提交结构化编辑；CR 与 CST 回写载荷用 `rawText`（非 `normalizedValue`）保真。
 - `StructuredValueEditor`：按 `valueType` 编辑 `rawText`（与后端值类型对齐的客户端校验）。
+- `DtsStructureBrowserPanel`：结构浏览、属性编辑、本地变更集聚合与「提交变更请求」；需 `parameter:edit`（`canEdit`），安全关键节点另需 `parameter:edit-critical`（`canEditCritical`）。
 - `DtsSearchPanel`：路径 / `@地址` / 标签 / compatible / 值检索，挂在 `/parameter-admin/projects` 管理文件对话框。
-- `ConfigSetBaselinePanel`：配置集 / 基线 / 对比 / 发布 / 导出，同对话框「配置集 / 基线」标签。
+- `ConfigSetBaselinePanel`：配置集 / 基线 / 对比 / 发布 / 导出，同对话框「配置集 / 基线」标签；对比变更集行映射真实参数并可走同一提交端口。
 - `StructuredDiffView`：基线结构化差异与变更集行。
 
 旧的 `ProjectParameterFilesPanel` / 冲突面板仍直连 `parameterFileClient`（TD-039 残留）；上述新表面已 Port 闭环。

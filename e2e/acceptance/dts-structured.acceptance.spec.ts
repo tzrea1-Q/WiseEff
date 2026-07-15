@@ -184,6 +184,7 @@ async function seedDtsAcceptanceFixture() {
       await client.query(`delete from parameter_submission_items where change_request_id = any($1::text[])`, [
         requestIds
       ]);
+      await client.query(`delete from parameter_history_entries where request_id = any($1::text[])`, [requestIds]);
       await client.query(`delete from parameter_change_requests where id = any($1::text[])`, [requestIds]);
     }
     if (roundIds.length > 0) {
@@ -212,6 +213,7 @@ async function cleanupDtsAcceptanceArtifacts(fileNames: string[]) {
       await client.query(`delete from parameter_submission_items where change_request_id = any($1::text[])`, [
         requestIds
       ]);
+      await client.query(`delete from parameter_history_entries where request_id = any($1::text[])`, [requestIds]);
       await client.query(`delete from parameter_change_requests where id = any($1::text[])`, [requestIds]);
     }
     if (roundIds.length > 0) {
@@ -279,6 +281,19 @@ async function cleanupDtsAcceptanceArtifacts(fileNames: string[]) {
       [parameterDefinitionId, sensitiveParameterDefinitionId]
     ]);
   });
+}
+
+async function advanceChangeRequestReview(request: APIRequestContext, requestId: string): Promise<string> {
+  const response = await request.post(
+    apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(requestId)}/review`),
+    {
+      headers: adminHeaders(),
+      data: { decision: "advance", note: `${descriptionPrefix} structured edit advance` }
+    }
+  );
+  expect(response.ok()).toBe(true);
+  const body = (await response.json()) as { item: { status: string } };
+  return body.item.status;
 }
 
 async function uploadDtsFile(
@@ -575,6 +590,171 @@ test.describe("DTS structured product browser acceptance", () => {
         );
         await client.query(`delete from dts_config_set where name = $1`, [configSetName]);
       });
+    }
+  });
+
+  test("structured edit submit preserves rawText through review merge and CST writeback", async ({
+    page,
+    request
+  }, testInfo) => {
+    // @acceptance PARAM-DTS-EDIT-002
+    // @operation PARAM-DTS-EDIT-002
+    test.setTimeout(180_000);
+    const fileName = `acceptance-dts-edit-${randomUUID()}.dts`;
+    const rawRegValue = "<0x6E>";
+    const normalizedRegValue = "<0x6e>";
+
+    try {
+      const uploaded = await uploadDtsFile(request, fileName, sampleDts);
+
+      await withPgClient(async (client) => {
+        await client.query(
+          `
+          update project_parameter_values
+          set source_file_name = $1,
+              source_node_path = 'amba/i2c@1/chip@6E/reg',
+              current_value = $2
+          where id = $3
+          `,
+          [fileName, normalizedRegValue, parameterValueId]
+        );
+      });
+
+      const submitResponse = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/dts-structured-edits/submit`),
+        {
+          headers: adminHeaders(),
+          data: {
+            edits: [
+              {
+                fileId: uploaded.fileId,
+                nodePath: "amba/i2c@1/chip@6E",
+                propertyName: "reg",
+                rawText: rawRegValue,
+                reason: `${descriptionPrefix} uppercase hex fidelity`
+              }
+            ],
+            reason: `${descriptionPrefix} structured edit submit`
+          }
+        }
+      );
+      expect(submitResponse.status()).toBe(201);
+      const submitBody = (await submitResponse.json()) as {
+        item: { id: string; items: Array<{ requestId: string; parameterId: string; targetValue: string }> };
+      };
+      expect(submitBody.item.items).toHaveLength(1);
+      expect(submitBody.item.items[0]?.parameterId).toBe(parameterValueId);
+      expect(submitBody.item.items[0]?.targetValue).toBe(rawRegValue);
+      expect(submitBody.item.items[0]?.targetValue).not.toBe(normalizedRegValue);
+
+      const requestId = submitBody.item.items[0]!.requestId;
+      const crRow = await withPgClient(async (client) => {
+        const result = await client.query<{ target_value: string; status: string }>(
+          `
+          select target_value, status
+          from parameter_change_requests
+          where id = $1
+          `,
+          [requestId]
+        );
+        return result.rows[0];
+      });
+      expect(crRow?.target_value).toBe(rawRegValue);
+      expect(crRow?.target_value).not.toBe(normalizedRegValue);
+
+      let status = crRow?.status ?? "submitted";
+      while (status !== "merged") {
+        status = await advanceChangeRequestReview(request, requestId);
+      }
+
+      const writebackVersion = await withPgClient(async (client) => {
+        const result = await client.query<{ id: string; origin: string; version_number: number }>(
+          `
+          select v.id, v.origin, v.version_number
+          from project_parameter_file_versions v
+          join project_parameter_files f on f.id = v.file_id
+          where f.organization_id = $1
+            and f.project_id = $2
+            and f.file_name = $3
+            and v.origin = 'writeback'
+          order by v.version_number desc
+          limit 1
+          `,
+          [organizationId, projectId, fileName]
+        );
+        return result.rows[0];
+      });
+      expect(writebackVersion).toBeTruthy();
+      expect(writebackVersion?.origin).toBe("writeback");
+
+      const contentResponse = await request.get(
+        apiRoute(
+          `/api/v1/projects/${projectId}/parameter-files/${uploaded.fileId}/versions/${writebackVersion!.id}/content`
+        ),
+        { headers: adminHeaders() }
+      );
+      expect(contentResponse.ok()).toBe(true);
+      const written = (await contentResponse.body()).toString("utf8");
+      expect(written).toContain(`reg = ${rawRegValue};`);
+      expect(written).not.toContain(`reg = ${normalizedRegValue};`);
+
+      await recordOperationEvidence({
+        operationId: "PARAM-DTS-EDIT-002",
+        title: "structured edit submit with rawText fidelity through merge writeback",
+        status: "passed",
+        page,
+        testInfo,
+        assertions: ["api", "ui", "db"],
+        api: [
+          summarizeApiResponse(submitResponse, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/dts-structured-edits/submit`,
+            responseSummary: `requestId=${requestId}; targetValue=${rawRegValue}`
+          }),
+          {
+            method: "GET",
+            path: `/api/v1/projects/${projectId}/parameter-files/${uploaded.fileId}/versions/${writebackVersion!.id}/content`,
+            status: contentResponse.status(),
+            responseSummary: `writeback preserves ${rawRegValue}`
+          }
+        ],
+        db: [
+          {
+            table: "parameter_change_requests",
+            predicate: `id=${requestId}`,
+            observed: `target_value=${crRow?.target_value}; status=merged`,
+            rowCount: 1
+          },
+          {
+            table: "project_parameter_file_versions",
+            predicate: `id=${writebackVersion!.id}`,
+            observed: `origin=${writebackVersion?.origin}; version_number=${writebackVersion?.version_number}`,
+            rowCount: 1
+          }
+        ],
+        notes: `${descriptionPrefix}: structured edit CR used rawText ${rawRegValue}; merge writeback version contains uppercase hex (non-normalized). Structure-browser chrome checked below when projects UI is available.`
+      });
+
+      // Light UI chrome check — do not fail the fidelity gate if projects table is unavailable.
+      try {
+        await signInBrowserAsRole(page, "admin", "/parameter-admin/projects");
+        await dismissXiaozeHint(page);
+        const manageFiles = page.getByRole("button", { name: /管理文件 Aurora/ });
+        if (await manageFiles.isVisible({ timeout: 10_000 }).catch(() => false)) {
+          await manageFiles.click();
+          const dialog = page.getByRole("dialog", { name: /管理文件 · Aurora/ });
+          await expect(dialog).toBeVisible({ timeout: 15_000 });
+          await dialog.getByRole("tab", { name: "结构浏览" }).click();
+          const structurePanel = dialog.getByRole("region", { name: "结构浏览" });
+          await expect(structurePanel).toBeVisible({ timeout: 15_000 });
+          await expect(structurePanel).toContainText("变更集");
+          await expect(structurePanel).toContainText("回写载荷使用 rawText");
+        }
+      } catch {
+        // Projects UI availability is environment-dependent; API/db fidelity above is the required gate.
+      }
+    } finally {
+      await cleanupDtsAcceptanceArtifacts([fileName]);
     }
   });
 

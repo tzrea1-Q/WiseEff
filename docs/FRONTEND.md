@@ -57,15 +57,18 @@ Page action flow:
 - `/parameter-review` lists pending and merged requests, advances or rejects workflow steps through `reviewChange`, and refreshes state after each server response.
 - `/parameter-admin` keeps direct library editing in mock mode; in API mode, parameter writes go through import batches or review flows instead of mutating client state directly.
 
-## DtsStructuredRepository (P3)
+## DtsStructuredRepository (P3 / P3.1)
 
-`DtsStructuredRepository` is the frontend port for structured DTS product surfaces (read, search, config sets/baselines, compare/export). New P3 UI must consume this port through `resolveDtsStructuredRepository(runtimeMode)` in `src/application/parameters/dtsStructuredRuntime.ts` — mock via `createMockDtsStructuredRepository`, API via `createDtsStructuredClient`. Do not call HTTP clients directly from new panels.
+`DtsStructuredRepository` is the frontend port for structured DTS product surfaces (read, search, config sets/baselines, compare/export, structured edit submit). New P3 UI must consume this port through `resolveDtsStructuredRepository(runtimeMode)` in `src/application/parameters/dtsStructuredRuntime.ts` — mock via `createMockDtsStructuredRepository`, API via `createDtsStructuredClient`. Do not call HTTP clients directly from new panels.
+
+`submitStructuredEdits(projectId, input)` posts structured edits to `POST /api/v1/projects/:projectId/dts-structured-edits/submit`. Each edit carries `{ fileId, nodePath, propertyName, rawText, reason? }`. The server maps edits onto `project_parameter_values` via `source_file_name` / `source_node_path`, creates drafts, and submits through the existing submission-round / change-request flow. **CR `targetValue` and CST writeback use `rawText`**, not `normalizedValue`, so hex casing and multi-group formatting survive merge writeback. Diff/compare views may still display `normalizedValue` for noise-free comparison.
 
 Key UI:
 
 - `StructuredValueEditor` (`src/components/parameters/StructuredValueEditor.tsx`) — type-aware editor driven by `valueType` / `rawText` from structure (u32-array, bytes, string-list, phandle-list, bool, empty, mixed). Client-side validation mirrors backend typing; authoritative values still come from review merge + CST writeback.
+- `DtsStructureBrowserPanel` — browse node tree, edit properties, aggregate a local change set, and submit via `submitStructuredEdits`. Requires `parameter:edit` (`canEdit`); sensitive/critical nodes additionally require `parameter:edit-critical` (`canEditCritical`).
 - `DtsSearchPanel` — project-scoped search by path / `@address` / label / compatible / value; mounts on the manage-files dialog of `/parameter-admin/projects`.
-- `ConfigSetBaselinePanel` — list/create config sets and baselines, add members, compare/release/export; mounts on the config-set/baseline tab of the same dialog.
+- `ConfigSetBaselinePanel` — list/create config sets and baselines, add members, compare/release/export; mounts on the config-set/baseline tab of the same dialog. Baseline compare change-set rows map to real parameters and can submit structured edits through the same port.
 - `StructuredDiffView` — renders baseline compare `structuralDiff` plus optional aggregated change-set rows (node/property kinds).
 
 Legacy `ProjectParameterFilesPanel` / conflict panels still talk to `parameterFileClient` directly (TD-039 residual). New structured surfaces above are port-closed.

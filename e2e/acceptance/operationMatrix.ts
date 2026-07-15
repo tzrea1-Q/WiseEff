@@ -561,6 +561,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["api"]
   },
   {
+    id: "PARAM-DTS-EDIT-002",
+    priority: "P1",
+    area: "parameters",
+    route: "/api/v1/projects/:projectId/dts-structured-edits/submit",
+    roles: ["Admin"],
+    action: "Submit structured edits as change requests with rawText fidelity, advance review to merge, and verify CST writeback preserves rawText.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-DTS-EDIT-002"],
+    specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
+    assertions: ["api", "ui", "db"]
+  },
+  {
     id: "PARAM-DTS-CONFIGSET-001",
     priority: "P1",
     area: "parameters",

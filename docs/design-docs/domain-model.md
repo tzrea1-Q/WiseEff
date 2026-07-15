@@ -120,6 +120,8 @@ When structural facts are unavailable (unbound / non-DTS), impact falls back to 
 
 A **structured change set** aggregates node/property-level diffs from baseline compare (`node_added` / `node_removed` / `prop_*`) into one reviewable unit that still maps onto existing `parameter_change_requests` (no parallel approval system). Frontend rendering lives in `StructuredDiffView` + `aggregateStructuredChangeSet`.
 
+**Structured edit submit (P3.1):** Browser structured edits map to the existing CR flow via `POST .../dts-structured-edits/submit`. CR `target_value` and CST writeback splice use `rawText` (not `normalizedValue`) so merge writeback preserves author formatting; normalized values remain for diff/compare only. This closes the edit → change set → submit → review → CST writeback loop.
+
 **Sensitive node RBAC:** org/project rules in `dts_sensitive_node_rules` match `path` or `compatible` patterns to a risk tier (`high` \| `critical`) and required capability (default `parameter:edit-critical`). Writes that hit a rule without the capability return `403`. Agent (`actorType=agent`) writes that hit `critical` are always denied and audited as `parameter-sensitive-node-denied` with `requireHuman: true` — a human must perform the change.
 
 ## State Machines

@@ -53,8 +53,8 @@
 
 **Files:** `service.ts`, `repository.ts` + tests
 
-- [ ] **Step 1: 失败测试** — 给定 `{fileId,nodePath,propertyName,rawText}`：解析 `source_file_name/source_node_path` → 定位/创建 `project_parameter_values` → 建 draft → 提交轮次产 CR；`mergedValue` 载荷为 `rawText`；命中敏感规则时按 RBAC 拒绝/放行。
-- [ ] **Step 2: FAIL** → **Step 3: 实现**（复用现有 draft/submission/review 逻辑，不新建审批）→ **Step 4: PASS** → 提交。
+- [x] **Step 1: 失败测试** — 给定 `{fileId,nodePath,propertyName,rawText}`：解析 `source_file_name/source_node_path` → 定位/创建 `project_parameter_values` → 建 draft → 提交轮次产 CR；`mergedValue` 载荷为 `rawText`；命中敏感规则时按 RBAC 拒绝/放行。
+- [x] **Step 2: FAIL** → **Step 3: 实现**（复用现有 draft/submission/review 逻辑，不新建审批）→ **Step 4: PASS** → 提交。
 
 ---
 
@@ -62,8 +62,8 @@
 
 **Files:** `DtsStructuredRepository.ts`, `dtsStructuredClient.ts`, `mockDtsStructuredRepository.ts` + tests
 
-- [ ] **Step 1: 失败测试** — `submitStructuredEdits` 契约；mock 模拟提交返回轮次/CR；api 打真实端点。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS** → 提交。
+- [x] **Step 1: 失败测试** — `submitStructuredEdits` 契约；mock 模拟提交返回轮次/CR；api 打真实端点。
+- [x] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS** → 提交。
 
 ---
 
@@ -71,8 +71,8 @@
 
 **Files:** `StructuredValueEditor.tsx`, `StructuredDiffView.tsx` + tests
 
-- [ ] **Step 1: 失败测试** — 编辑一个/多个结构化值 → 聚成变更集 → 点「提交变更请求」→ 走 Port 提交；对比视图行映射真实参数（无 `unmapped`）；RBAC 禁用态正确。
-- [ ] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS** → 提交。**（前端可见）**
+- [x] **Step 1: 失败测试** — 编辑一个/多个结构化值 → 聚成变更集 → 点「提交变更请求」→ 走 Port 提交；对比视图行映射真实参数（无 `unmapped`）；RBAC 禁用态正确。
+- [x] **Step 2: FAIL** → **Step 3: 实现** → **Step 4: PASS** → 提交。**（前端可见）**
 
 ---
 
@@ -80,9 +80,9 @@
 
 **Files:** acceptance spec + 文档
 
-- [ ] **Step 1: E2E** — 上传结构化 dts → 编辑值 → 提交 → 审阅合入 → CST 回写产生新版本 → 再解析幂等；回写属性为 `rawText` 格式（非规范化改写）。
-- [ ] **Step 2: 浏览器验证（强制）** — `playwright-cli` 三视口（1440×900/768×1024/390×844）走编辑→提交流程，snapshot+screenshot+console，证据入 `work/ui-checks/`。
-- [ ] **Step 3:** 文档更新 + 登记 `PARAM-DTS-EDIT-*` → `npm test` + `npm run test:server` + `npm run build` + `npm run acceptance:e2e` + `npm run docs:check` → 提交。
+- [x] **Step 1: E2E** — 上传结构化 dts → 编辑值 → 提交 → 审阅合入 → CST 回写产生新版本 → 再解析幂等；回写属性为 `rawText` 格式（非规范化改写）。
+- [x] **Step 2: 浏览器验证（强制）** — `playwright-cli` 三视口（1440×900/768×1024/390×844）走编辑→提交流程，snapshot+screenshot+console，证据入 `work/ui-checks/`。
+- [x] **Step 3:** 文档更新 + 登记 `PARAM-DTS-EDIT-*` → `npm test` + `npm run test:server` + `npm run build` + `npm run acceptance:e2e` + `npm run docs:check` → 提交。（验收 E2E / docs:check 由父智能体 gate）
 
 ---
 
@@ -113,12 +113,12 @@
 ## Documentation Update Gate
 
 移入 `completed/` 前：
-- [ ] FRONTEND / api-contract（中英）已更新
-- [ ] TD-041 标记关闭
-- [ ] `PARAM-DTS-EDIT-*` 验收登记且 `acceptance:coverage` 通过
-- [ ] playwright-cli 三视口证据已附
-- [ ] `docs/PLANS.md` 与 `docs/zh-CN/PLANS.md` 一致
-- [ ] `npm run docs:check` 通过
+- [x] FRONTEND / api-contract（中英）已更新
+- [x] TD-041 标记关闭
+- [x] `PARAM-DTS-EDIT-*` 验收登记（`acceptance:coverage` 待父智能体 gate）
+- [x] playwright-cli 三视口证据已附
+- [x] `docs/PLANS.md` 与 `docs/zh-CN/PLANS.md` 一致
+- [ ] `npm run docs:check` 通过（父智能体 gate）
 
 ---
 

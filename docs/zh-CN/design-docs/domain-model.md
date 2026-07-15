@@ -156,6 +156,8 @@ stateDiagram-v2
 
 **结构化变更集**把基线对比中的节点/属性级差异（`node_added` / `node_removed` / `prop_*`）聚成可审阅单元，仍映射到现有 `parameter_change_requests`（不平行建设审批体系）。前端由 `StructuredDiffView` + `aggregateStructuredChangeSet` 渲染。
 
+**结构化编辑提交（P3.1）：** 浏览器结构化编辑经 `POST .../dts-structured-edits/submit` 接入既有 CR 流。CR `target_value` 与 CST 回写拼接使用 `rawText`（非 `normalizedValue`），合入回写保留作者格式；规范化值仅用于差异/对比。由此闭合「编辑 → 变更集 → 提交 → 审阅 → CST 回写」回路。
+
 **敏感节点 RBAC：** `dts_sensitive_node_rules` 按 `path` / `compatible` 模式匹配到风险层级（`high` \| `critical`）与所需能力（默认 `parameter:edit-critical`）。命中规则但缺少能力返回 `403`。Agent（`actorType=agent`）对 `critical` 一律拒绝，审计为 `parameter-sensitive-node-denied` 且 `requireHuman: true`，须由人工完成。
 
 参数变更状态机：
