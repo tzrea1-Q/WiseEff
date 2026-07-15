@@ -142,4 +142,43 @@ describe("createMockDtsStructuredRepository (DtsStructuredRepository contract)",
     expect(exported.files).toEqual(expect.any(Array));
     expect(exported).not.toHaveProperty("item");
   });
+
+  it("submitStructuredEdits returns a mock submission round with CR items using rawText", async () => {
+    const repo = createRepo();
+    const rawText = "/bits/ 8 <0xAB 0xCD 0xEF 0x12>";
+
+    const round = await repo.submitStructuredEdits(PROJECT_ID, {
+      edits: [
+        {
+          fileId: FILE_ID,
+          nodePath: "amba/i2c@XXXX0000",
+          propertyName: "mixed_case_reg",
+          rawText,
+          reason: "mock structured submit"
+        }
+      ],
+      reason: "P3.1 mock submit"
+    });
+
+    expect(round.projectId).toBe(PROJECT_ID);
+    expect(round.status).toBe("submitted");
+    expect(round.items).toHaveLength(1);
+    expect(round.items[0]?.targetValue).toBe(rawText);
+    expect(round.items[0]?.parameterId).toEqual(expect.any(String));
+    expect(round.items[0]?.reason).toContain("mock structured submit");
+
+    // Second submit stays interactive (new round id).
+    const again = await repo.submitStructuredEdits(PROJECT_ID, {
+      edits: [
+        {
+          fileId: FILE_ID,
+          nodePath: "demo_integer",
+          propertyName: "single_value",
+          rawText: "<99>"
+        }
+      ]
+    });
+    expect(again.id).not.toBe(round.id);
+    expect(again.items[0]?.targetValue).toBe("<99>");
+  });
 });

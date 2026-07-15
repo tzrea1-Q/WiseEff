@@ -12,7 +12,9 @@ import type {
   DtsSearchQuery,
   DtsSearchResult,
   DtsStructureResult,
-  DtsStructuredRepository
+  DtsStructuredRepository,
+  DtsStructuredSubmissionRound,
+  DtsSubmitStructuredEditsInput
 } from "@/application/ports/DtsStructuredRepository";
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
@@ -71,6 +73,10 @@ function routeExport(projectId: string, configSetId: string) {
   return `${routeConfigSets(projectId)}/${encodeURIComponent(configSetId)}/export`;
 }
 
+function routeStructuredEditsSubmit(projectId: string) {
+  return `${routeProject(projectId)}/dts-structured-edits/submit`;
+}
+
 export function createDtsStructuredClient(client: ApiClient = createDefaultApiClient()): DtsStructuredRepository {
   return {
     async getStructure(projectId, fileId, versionId) {
@@ -117,6 +123,13 @@ export function createDtsStructuredClient(client: ApiClient = createDefaultApiCl
     },
     async exportConfigSet(projectId, configSetId) {
       return client.get<DtsExportConfigSetResult>(routeExport(projectId, configSetId));
+    },
+    async submitStructuredEdits(projectId, input: DtsSubmitStructuredEditsInput) {
+      const response = await client.post<ItemEnvelope<DtsStructuredSubmissionRound>>(
+        routeStructuredEditsSubmit(projectId),
+        input
+      );
+      return response.item;
     }
   };
 }

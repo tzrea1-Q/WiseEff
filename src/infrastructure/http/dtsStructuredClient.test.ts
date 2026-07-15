@@ -131,4 +131,52 @@ describe("createDtsStructuredClient", () => {
     expect(post).toHaveBeenNthCalledWith(2, "/api/v1/projects/project%2F1/baselines/bl%2F1/rollback", {});
     expect(post).toHaveBeenNthCalledWith(3, "/api/v1/projects/project%2F1/baselines/bl%2F1/release", {});
   });
+
+  it("maps submitStructuredEdits to POST dts-structured-edits/submit and unwraps round item", async () => {
+    const post = vi.fn().mockResolvedValueOnce({
+      item: {
+        id: "round-1",
+        projectId: "project/1",
+        status: "submitted",
+        summary: "P3.1 structured edit",
+        items: [
+          {
+            parameterId: "ppv-1",
+            targetValue: "/bits/ 8 <0xAB 0xCD>",
+            reason: "raise hex casing"
+          }
+        ]
+      }
+    });
+    const client = createDtsStructuredClient({ post } as never);
+
+    const result = await client.submitStructuredEdits("project/1", {
+      edits: [
+        {
+          fileId: "file/1",
+          nodePath: "amba/i2c@XXXX0000",
+          propertyName: "mixed_case_reg",
+          rawText: "/bits/ 8 <0xAB 0xCD>",
+          reason: "raise hex casing"
+        }
+      ],
+      reason: "P3.1 structured edit"
+    });
+
+    expect(post).toHaveBeenCalledWith("/api/v1/projects/project%2F1/dts-structured-edits/submit", {
+      edits: [
+        {
+          fileId: "file/1",
+          nodePath: "amba/i2c@XXXX0000",
+          propertyName: "mixed_case_reg",
+          rawText: "/bits/ 8 <0xAB 0xCD>",
+          reason: "raise hex casing"
+        }
+      ],
+      reason: "P3.1 structured edit"
+    });
+    expect(result.id).toBe("round-1");
+    expect(result.items[0]?.targetValue).toBe("/bits/ 8 <0xAB 0xCD>");
+    expect(result.items[0]?.parameterId).toBe("ppv-1");
+  });
 });

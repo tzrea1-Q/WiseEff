@@ -9,7 +9,8 @@ import type {
   DtsSearchBy,
   DtsSearchHit,
   DtsStructuralNode,
-  DtsStructuredRepository
+  DtsStructuredRepository,
+  DtsSubmitStructuredEditsInput
 } from "@/application/ports/DtsStructuredRepository";
 
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
@@ -436,6 +437,33 @@ export function createMockDtsStructuredRepository(
         }))
       };
       return result;
+    },
+
+    async submitStructuredEdits(requestedProjectId, input: DtsSubmitStructuredEditsInput) {
+      if (input.edits.length === 0) {
+        throw new Error("At least one structured edit is required.");
+      }
+      const roundId = nextId("mock-round");
+      return {
+        id: roundId,
+        projectId: requestedProjectId,
+        status: "submitted",
+        summary: input.reason?.trim() || "Structured edits submitted.",
+        createdAt: MOCK_NOW,
+        items: input.edits.map((edit, index) => {
+          const sourceNodePath = edit.nodePath.trim()
+            ? `${edit.nodePath.trim()}/${edit.propertyName.trim()}`
+            : edit.propertyName.trim();
+          return {
+            requestId: `${roundId}-cr-${index + 1}`,
+            parameterId: `mock-ppv-${edit.fileId}-${sourceNodePath.replace(/\//g, "-")}`,
+            targetValue: edit.rawText,
+            reason: edit.reason?.trim() || `Structured edit: ${sourceNodePath}`,
+            name: edit.propertyName,
+            module: edit.nodePath
+          };
+        })
+      };
     }
   };
 }

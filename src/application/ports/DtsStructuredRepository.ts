@@ -188,8 +188,49 @@ export type DtsExportConfigSetResult = {
   files: DtsExportConfigSetFile[];
 };
 
+/** One structured DTS property edit submitted through the existing change-request flow. */
+export type DtsStructuredEditUnit = {
+  fileId: string;
+  nodePath: string;
+  propertyName: string;
+  /** CST-preserving property text; becomes CR targetValue / writeback payload. */
+  rawText: string;
+  reason?: string;
+};
+
+export type DtsSubmitStructuredEditsInput = {
+  edits: DtsStructuredEditUnit[];
+  reason?: string;
+  assignees?: {
+    hardwareCommitterId: string;
+    softwareCommitterId: string;
+    softwareUserId: string;
+  };
+};
+
+export type DtsStructuredSubmissionItem = {
+  requestId?: string;
+  parameterId: string;
+  name?: string;
+  module?: string;
+  currentValue?: string;
+  targetValue: string;
+  reason: string;
+};
+
+export type DtsStructuredSubmissionRound = {
+  id: string;
+  projectId: string;
+  projectName?: string;
+  submitter?: string;
+  createdAt?: string;
+  status: string;
+  summary?: string;
+  items: DtsStructuredSubmissionItem[];
+};
+
 /**
- * Structured DTS + config-set/baseline surface for P3.
+ * Structured DTS + config-set/baseline surface for P3 / P3.1.
  * New UI must consume this port; do not call HTTP clients directly from panels.
  */
 export interface DtsStructuredRepository {
@@ -208,4 +249,10 @@ export interface DtsStructuredRepository {
   releaseBaseline(projectId: string, baselineId: string): Promise<DtsReleaseBaselineResult>;
 
   exportConfigSet(projectId: string, configSetId: string): Promise<DtsExportConfigSetResult>;
+
+  /** Submit structured edits as a change-request round (rawText fidelity). */
+  submitStructuredEdits(
+    projectId: string,
+    input: DtsSubmitStructuredEditsInput
+  ): Promise<DtsStructuredSubmissionRound>;
 }
