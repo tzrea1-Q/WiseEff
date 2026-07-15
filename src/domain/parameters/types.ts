@@ -1,4 +1,5 @@
 import type { ParameterValueKind } from "@/powerManagementConfig";
+import type { InitializationSuggestion } from "@/domain/parameter-topology/types";
 
 export type RiskLevel = "High" | "Medium" | "Low";
 
@@ -8,6 +9,9 @@ export type ParameterHistoryEntry = {
   changedAt: string;
   changedBy: string;
   requestId?: string;
+  /** Present once the entry is bound to a semantic project binding. */
+  projectParameterBindingId?: string;
+  parameterSpecId?: string;
 };
 
 export type ParameterRecord = {
@@ -21,6 +25,10 @@ export type ParameterRecord = {
   modulePath?: string[];
   projectId: string;
   currentValue: string;
+  /**
+   * Legacy flat-library field. New semantic surfaces must use
+   * exampleValue / schemaDefault / policyTarget / effectiveValue instead.
+   */
   recommendedValue: string;
   range: string;
   unit: string;
@@ -28,10 +36,16 @@ export type ParameterRecord = {
   valueKind: ParameterValueKind;
   sourceFileName?: string;
   sourceNodePath?: string;
+  /** Semantic FKs when the record is linked to topology bindings. */
+  parameterSpecId?: string;
+  projectParameterBindingId?: string;
   updatedAt: string;
   updatedAtTs: string;
   history: ParameterHistoryEntry[];
 };
+
+/** Re-export for consumers migrating off recommendedValue. */
+export type { InitializationSuggestion };
 
 export type RequestStatus =
   | "硬件Committer检视"
@@ -51,6 +65,19 @@ export type ParameterWorkflowAssignees = {
 
 export type ParameterDraftItem = {
   parameterId: string;
+  targetValue: string;
+  reason: string;
+  projectParameterBindingId?: string;
+  parameterSpecId?: string;
+};
+
+/**
+ * Binding-centric draft item — no recommendedValue.
+ * Initialization suggestions use policyTarget ?? schemaDefault; exampleValue is non-enforced.
+ */
+export type BindingParameterDraftItem = {
+  projectParameterBindingId: string;
+  parameterSpecId: string;
   targetValue: string;
   reason: string;
 };
@@ -99,6 +126,8 @@ export type ChangeRequest = {
   workflowAssignees?: ParameterWorkflowAssignees;
   fastTrack?: boolean;
   reviewerNote?: string;
+  projectParameterBindingId?: string;
+  parameterSpecId?: string;
 };
 
 export type ParameterSubmissionItem = {
@@ -112,6 +141,8 @@ export type ParameterSubmissionItem = {
   risk: RiskLevel;
   valueKind?: ParameterValueKind;
   reason: string;
+  projectParameterBindingId?: string;
+  parameterSpecId?: string;
 };
 
 export type SubmissionWorkflowStageDetail = {
