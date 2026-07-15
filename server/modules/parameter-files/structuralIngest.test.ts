@@ -96,5 +96,13 @@ describe.skipIf(!databaseAvailable)("ingestDtsFileVersion", () => {
     expect(ph.rows.map((r) => r.target_label).sort()).toEqual(["demo_ic_a", "demo_ic_b"]);
 
     expect(parsedIndex["amba/i2c@XXXX0000/chip@6E/reg"]?.value).toBe("<0x6e>");
+
+    const refreshed = await ingestDtsFileVersion(db!, versionId, sample);
+    expect(refreshed.counts).toEqual(counts);
+    const refreshedNodes = await db!.query<{ count: number }>(
+      `select count(*)::int as count from dts_nodes where file_version_id = $1`,
+      [versionId]
+    );
+    expect(refreshedNodes.rows[0]?.count).toBe(counts.nodes);
   });
 });

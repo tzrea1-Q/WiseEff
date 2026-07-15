@@ -1721,7 +1721,8 @@ export async function resolveParameterListQuery(
       moduleId: query.moduleId,
       includeDescendants,
       risk: query.risk,
-      q: query.q
+      q: query.q,
+      limit: query.limit
     };
   }
 
@@ -1738,7 +1739,8 @@ export async function resolveParameterListQuery(
         moduleId: resolved.id,
         includeDescendants,
         risk: query.risk,
-        q: query.q
+        q: query.q,
+        limit: query.limit
       };
     }
 
@@ -1748,7 +1750,8 @@ export async function resolveParameterListQuery(
       module: query.module,
       includeDescendants,
       risk: query.risk,
-      q: query.q
+      q: query.q,
+      limit: query.limit
     };
   }
 
@@ -1756,7 +1759,8 @@ export async function resolveParameterListQuery(
     organizationId,
     projectId: query.projectId,
     risk: query.risk,
-    q: query.q
+    q: query.q,
+    limit: query.limit
   };
 }
 

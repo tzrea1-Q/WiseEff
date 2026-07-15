@@ -16,12 +16,16 @@ WiseEff changes should keep the product usable, testable, and auditable. Start w
 ```bash
 npm ci
 copy .env.example .env
+npm run dtc:bootstrap
+npm run dtc:check -- --required
 npm run db:migrate
 npm run db:seed:m0
 npm run db:seed:m1
 npm run db:seed:m2
 npm run db:seed:m3
 ```
+
+`db:seed:m1` compiles the three full DTS project fixtures before writing parameter data. The seed therefore requires `dtc`; the bootstrap command installs it with Homebrew on macOS or the native package manager on supported Linux distributions.
 
 Fill `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` in `.env` when testing live Xiaoze LLM behavior. The default `.env.example` profile prepares local PostgreSQL, local object storage, multi-protocol device gateway, production-mode local account auth defaults, and optional HMAC smoke inputs.
 

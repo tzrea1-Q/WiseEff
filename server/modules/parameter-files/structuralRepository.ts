@@ -14,6 +14,24 @@ export async function replaceDtsStructuralModel(
   fileVersionId: string,
   resolved: ResolvedDts,
 ): Promise<StructuralInsertCounts> {
+  // `resolved_target_node_id` is intentionally not ON DELETE CASCADE because a
+  // dangling resolved reference should never be hidden. Remove both outgoing
+  // and incoming refs for this version before rebuilding its node tree.
+  await db.query(
+    `
+    delete from dts_phandle_refs
+    where from_property_id in (
+      select p.id
+      from dts_properties p
+      inner join dts_nodes n on n.id = p.node_id
+      where n.file_version_id = $1
+    )
+    or resolved_target_node_id in (
+      select id from dts_nodes where file_version_id = $1
+    )
+    `,
+    [fileVersionId]
+  );
   await db.query(`delete from dts_nodes where file_version_id = $1`, [fileVersionId]);
 
   const pathToId = new Map<string, string>();

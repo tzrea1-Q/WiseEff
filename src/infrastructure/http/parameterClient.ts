@@ -63,6 +63,7 @@ function buildParametersPath(query?: ParameterListQuery) {
   if (query?.module) params.set("module", query.module);
   if (query?.includeDescendants === false) params.set("includeDescendants", "false");
   for (const risk of query?.risk ?? []) params.append("risk", risk);
+  if (query?.limit !== undefined) params.set("limit", String(query.limit));
   return appendQuery("/api/v1/parameters", params);
 }
 

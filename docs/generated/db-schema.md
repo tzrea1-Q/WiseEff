@@ -894,7 +894,7 @@ Indexes:
 | `id` | `text` | Primary key |
 | `from_property_id` | `text` | Required, references `dts_properties(id)` cascade delete |
 | `target_label` | `text` | Required |
-| `resolved_target_node_id` | `text` | Nullable, references `dts_nodes(id)` |
+| `resolved_target_node_id` | `text` | Nullable, references `dts_nodes(id)` with `ON DELETE SET NULL` |
 
 Indexes:
 

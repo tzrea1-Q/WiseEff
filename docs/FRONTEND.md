@@ -97,6 +97,8 @@ Parameter and debugging domains each maintain an independent org-scoped module t
 
 API mode loads trees from `/api/v1/parameter-modules` and `/api/v1/debugging/admin/modules`. Mock mode derives trees from nested `parent`/`path` fields in `src/config/power-management.json` through `buildPowerManagementModuleTree()` in `src/powerManagementConfig.ts`.
 
+Mock mode intentionally keeps the 12 legacy compatibility parameters for fast component tests and demos. In API mode, `db:seed:m1` derives an additional 170 DTS-source definitions at seed time; each persisted value carries `sourceFileName=wiseeff-power-overlay.dts` and a property-qualified `sourceNodePath`. Regenerate the three committed Aurora/Nebula/Atlas fixtures with `npm run dts:seed:generate`, then prove them with `npm run dtc:seed:compile`.
+
 The M1 API smoke lives in `e2e/parameter-management.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, and `db:seed:m1`.
 
 ## Parameter Dashboard

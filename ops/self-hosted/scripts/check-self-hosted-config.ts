@@ -1,7 +1,16 @@
 import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-export const requiredSelfHostedScripts = ["selfhost:check", "selfhost:smoke", "backup:drill", "restore:drill", "backup:check", "queue:check"] as const;
+export const requiredSelfHostedScripts = [
+  "selfhost:check",
+  "selfhost:smoke",
+  "backup:drill",
+  "restore:drill",
+  "backup:check",
+  "queue:check",
+  "dtc:check",
+  "dtc:seed:compile"
+] as const;
 
 export const requiredSelfHostedServices = ["postgres", "redis", "api", "worker", "web", "proxy"] as const;
 
@@ -18,7 +27,7 @@ export const requiredComposeTokens = [
   "curl -fsS http://127.0.0.1:8787/health/live",
   "curl -fsS http://127.0.0.1:5173/",
   "wget -q --spider",
-  "Host: ${WISEEFF_SITE_HOST}",
+  "wget -q --spider http://127.0.0.1:2019/config/",
   "npm run worker:logs",
   "npm run preview -- --host 0.0.0.0 --port 5173 --strictPort",
   "80:80",
@@ -31,8 +40,10 @@ export const requiredDockerfileTokens = [
   "ARG VITE_WISEEFF_API_BASE_URL",
   "ENV VITE_WISEEFF_RUNTIME_MODE=$VITE_WISEEFF_RUNTIME_MODE",
   "ENV VITE_WISEEFF_API_BASE_URL=$VITE_WISEEFF_API_BASE_URL",
-  "RUN apk add --no-cache curl",
-  "RUN npm run build"
+  "RUN apk add --no-cache curl dtc",
+  "RUN dtc --version",
+  "npx tsc -b",
+  "npx vite build"
 ] as const;
 
 export const requiredDockerignoreTokens = ["**/.env", "**/.env.*", ".git/"] as const;
