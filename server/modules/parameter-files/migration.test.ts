@@ -18,6 +18,12 @@ const sensitiveNodeRulesMigrationPath = path.join(
   "migrations",
   "0045_dts_sensitive_node_rules.sql"
 );
+const projectDeleteCascadeMigrationPath = path.join(
+  root,
+  "server",
+  "migrations",
+  "0046_project_delete_cascade.sql"
+);
 
 describe("0041_project_parameter_files migration", () => {
   it("defines required tables, columns, and indexes", () => {
@@ -176,5 +182,26 @@ describe("0045_dts_sensitive_node_rules migration", () => {
     expect(sql).toContain("created_at");
     expect(sql).toContain("updated_at");
     expect(sql).toContain("dts_sensitive_node_rules_org_project_idx");
+  });
+});
+
+describe("0046_project_delete_cascade migration", () => {
+  it("rebuilds the DTS-chain FKs so project deletion cascades cleanly", () => {
+    const sql = readFileSync(projectDeleteCascadeMigrationPath, "utf8");
+
+    // Root: project → parameter files.
+    expect(sql).toContain("project_parameter_files_project_id_fkey");
+    expect(sql).toContain("foreign key (project_id) references projects(id) on delete cascade");
+    // Baseline members must not block file/version deletion.
+    expect(sql).toContain("dts_release_baseline_members_file_id_fkey");
+    expect(sql).toContain("dts_release_baseline_members_file_version_id_fkey");
+    // Sync conflicts clear with their referenced value/version/draft rows.
+    expect(sql).toContain("parameter_file_sync_conflicts_value_fkey");
+    expect(sql).toContain("parameter_file_sync_conflicts_file_version_fkey");
+    // Drafts are detached, not deleted.
+    expect(sql).toContain("parameter_drafts_origin_file_version_fkey");
+    expect(sql).toContain("on delete set null");
+    // Idempotent, append-only pattern.
+    expect(sql).toContain("drop constraint %I");
   });
 });
