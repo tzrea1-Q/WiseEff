@@ -83,7 +83,9 @@ export async function listProductionHits(token: string): Promise<string[]> {
 }
 
 describe("legacy parameter identity dependency guard", () => {
-  it("has no production dependency on legacy parameter identity", async () => {
+  it(
+    "has no production dependency on legacy parameter identity",
+    async () => {
     const forbidden = ["recommended_value", "source_node_path as parameter", "DTS_IDENTITY_FALLBACK_MODE"];
     const failures: string[] = [];
     for (const token of forbidden) {
@@ -96,5 +98,7 @@ describe("legacy parameter identity dependency guard", () => {
       );
     }
     expect(failures, failures.join("\n\n")).toEqual([]);
-  });
+    },
+    60_000
+  );
 });

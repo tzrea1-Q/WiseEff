@@ -55,8 +55,8 @@ export function buildVendorSchemaDocuments(): SchemaDocument[] {
     includeSearchPaths: [],
     overlayOrder: ["power.dtso"],
     files: new Map([
-      ["base.dts", { fileName: "base.dts", content: base }],
-      ["power.dtso", { fileName: "power.dtso", content: overlay }],
+      ["base.dts", { fileVersionId: "vendor-gen-base", content: base }],
+      ["power.dtso", { fileVersionId: "vendor-gen-overlay", content: overlay }],
     ]),
   });
 

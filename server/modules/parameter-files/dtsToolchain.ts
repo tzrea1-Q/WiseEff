@@ -526,7 +526,10 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
           return mode === "warn" ? { ...result, ok: true } : result;
         }
         diagnostics.push(...parseDtcStderr(baseCompile.stderr));
-        artifacts.baseDtbSha256 = sha256Hex(readFileSync(baseDtb));
+        // vite-env stubs require encoding; latin1 preserves DTB bytes for hashing/copy.
+        artifacts.baseDtbSha256 = createHash("sha256")
+          .update(readFileSync(baseDtb, "latin1"), "latin1")
+          .digest("hex");
 
         const dtboPaths: string[] = [];
         for (const overlayName of configSet.overlayOrder) {
@@ -573,7 +576,7 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
 
         const effectiveDtb = join(tmpDir, "effective.dtb");
         if (dtboPaths.length === 0) {
-          writeFileSync(effectiveDtb, readFileSync(baseDtb));
+          writeFileSync(effectiveDtb, readFileSync(baseDtb, "latin1"), "latin1");
         } else {
           const overlayApply = await runProcess(
             spawnFn,
@@ -609,7 +612,9 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
           }
         }
 
-        artifacts.effectiveDtbSha256 = sha256Hex(readFileSync(effectiveDtb));
+        artifacts.effectiveDtbSha256 = createHash("sha256")
+          .update(readFileSync(effectiveDtb, "latin1"), "latin1")
+          .digest("hex");
 
         const schema = await runProcess(
           spawnFn,

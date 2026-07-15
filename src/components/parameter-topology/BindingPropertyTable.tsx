@@ -60,7 +60,7 @@ export function BindingPropertyTable({
     : bindings;
 
   return (
-    <div className="binding-property-table">
+    <div className="binding-property-table" tabIndex={0} role="region" aria-label="参数绑定表">
       <table>
         <thead>
           <tr>

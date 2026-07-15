@@ -310,7 +310,9 @@ describe("createDtsToolchainRunner", () => {
 });
 
 describe("real dts toolchain (optional)", () => {
-  it("validates a tiny base+overlay set when host tools are present", async () => {
+  it(
+    "validates a tiny base+overlay set when host tools are present",
+    async () => {
     const runner = createDtsToolchainRunner();
     const probe = await runner.probe();
     if (!probe.dtc.path || !probe.fdtoverlay.path || !probe.dtschema.path) {
@@ -329,5 +331,7 @@ describe("real dts toolchain (optional)", () => {
       expect(result.ok).toBe(true);
       expect(result.artifacts.effectiveDtbSha256).toMatch(/^[a-f0-9]{64}$/);
     }
-  });
+    },
+    30_000
+  );
 });

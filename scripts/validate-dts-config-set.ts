@@ -54,13 +54,14 @@ function parseArgs(argv: string[]) {
     return { name: spec.slice(0, eq), path: spec.slice(eq + 1) };
   });
 
-  const mode = modeRaw === "warn" || modeRaw === "off" || modeRaw === "release" ? modeRaw : "release";
+  const mode: NonNullable<ValidateDtsConfigSetArgs["mode"]> =
+    modeRaw === "warn" || modeRaw === "off" || modeRaw === "release" ? modeRaw : "release";
   const overlayOrder = overlaysRaw
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
 
-  return { entryFile, overlayOrder, files, mode };
+  return { entryFile, overlayOrder, files, mode } satisfies ValidateDtsConfigSetArgs;
 }
 
 async function main() {

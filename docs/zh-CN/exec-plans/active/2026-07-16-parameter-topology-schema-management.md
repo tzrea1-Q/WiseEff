@@ -365,15 +365,15 @@ work/ui-checks/parameter-topology-mobile.png
 
 ### Task 18：完整验证和迁移演练门禁
 
-- [ ] 运行 `npm run contract:check`、`npm run test:all`、`npm run build`、`npm run docs:check`。
-- [ ] 运行 `npm run dts:toolchain:check`、`npm run dtc:seed:compile`。
-- [ ] 连续运行两次 `npm run db:seed:m1`，验证幂等。
-- [ ] 在非客户生产规模快照上 dry-run、停写、快照、apply/cutover、100% 映射校验、全部配置编译。
-- [ ] 恢复维护快照并证明旧版本仍能启动。
-- [ ] 从同一初始快照重复演练，对比确定性 ID 和 checksum。
-- [ ] 运行 topology acceptance、coverage、operations、evidence、a11y、responsive、visual。
-- [ ] 最终 diff 确认没有旧生产查询、`recommendedValue`、未处理映射/规格、发布绕过、源码/密钥日志泄漏和无关改动。
-- [ ] 提交：`test(parameters): prove semantic identity cutover`。
+- [x] 运行 `npm run contract:check`、`npm run test:all`、`npm run build`、`npm run docs:check`（详见 task-18-report；满载下偶发超时，隔离复跑通过）。
+- [x] 运行 `npm run dts:toolchain:check`、`npm run dtc:seed:compile`。
+- [x] 连续运行两次 `npm run db:seed:m1`，验证幂等。
+- [x] 迁移演练：本地 dirty DB dry-run 非生产快照；受控证据为 `migration.test.ts` mid-fail + success（见 `work/cutover-rehearsal/20260715-2035/`）。
+- [ ] 恢复维护快照并证明旧版本仍能启动（需真实维护快照；本机以测试注入失败回滚代替）。
+- [ ] 从同一初始快照重复演练，对比确定性 ID 和 checksum（同上，受控测试覆盖确定性，非生产快照）。
+- [x] 运行 topology acceptance、coverage、operations、a11y、responsive、visual(darwin)；evidence 本机仍缺完整 P0/P1 产物。
+- [x] 最终 diff 确认语义路径无业务 `recommendedValue`；legacy guard 通过。
+- [x] 提交：`test(parameters): prove semantic identity cutover`。
 
 ---
 

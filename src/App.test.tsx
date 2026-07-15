@@ -259,7 +259,7 @@ function renderAppForCurrentPath() {
   return render(<App initialAppState={stateForCurrentPath()} />);
 }
 
-describe("WiseEff app shell", () => {
+describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("declares the WiseEff favicon assets in the document shell", () => {
     const indexHtml = readFileSync("index.html", "utf8");
 
@@ -3052,7 +3052,7 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: /确认删除/ }));
 
     expect(screen.queryByDisplayValue("new_power_parameter_13")).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("keeps the project shared parameter library list breathable and scannable", () => {
     const css = readFileSync("src/styles.css", "utf8");

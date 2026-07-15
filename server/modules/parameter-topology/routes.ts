@@ -70,7 +70,10 @@ export function registerParameterTopologyRoutes(
       requireCanView(auth);
       const params = parseWithSchema(topologyParamsSchema, request.params);
       const query = parseWithSchema(topologyQuerySchema, flattenQuery(request.query));
-      const item = await getTopology(db, auth, { ...params, view: query.view });
+      const item = await getTopology(db, auth, {
+        ...params,
+        view: query.view ?? "effective"
+      });
       return { status: 200, body: { item } };
     }
   );
