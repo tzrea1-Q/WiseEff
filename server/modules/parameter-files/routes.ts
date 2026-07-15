@@ -2,8 +2,9 @@ import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import { canAdminParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canEditParameters, canViewParameters } from "../parameters/policy";
 import { listOpenConflicts } from "../parameters/repository";
+import { submitStructuredEdits } from "../parameters/service";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -33,7 +34,8 @@ import {
   addConfigSetFileBody,
   createBaselineBody,
   createConfigSetBody,
-  dtsSearchQuerySchema
+  dtsSearchQuerySchema,
+  submitStructuredEditsBodySchema
 } from "./schemas";
 import { getProjectParameterFileContent, uploadProjectParameterFile } from "./service";
 import { searchProjectDts } from "./dtsSearchService";
@@ -122,6 +124,12 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+  }
+}
+
+function requireCanEdit(auth: AuthContext) {
+  if (!canEditParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
   }
 }
 
@@ -332,6 +340,31 @@ export function registerParameterFileRoutes(
     });
 
     return { status: 200, body };
+  });
+
+  router.post("/api/v1/projects/:projectId/dts-structured-edits/submit", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanEdit(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const body = parseWithSchema(
+      submitStructuredEditsBodySchema,
+      request.body,
+      "Invalid structured edit submit payload."
+    );
+    const item = await submitStructuredEdits(
+      db,
+      auth,
+      {
+        projectId: params.projectId,
+        edits: body.edits,
+        reason: body.reason,
+        assignees: body.assignees
+      },
+      { requestId: request.requestId }
+    );
+
+    return { status: 201, body: { item } };
   });
 
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/sync", async (request) => {

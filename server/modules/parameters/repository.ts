@@ -2379,6 +2379,72 @@ export async function bindParameterSource(
   );
 }
 
+/**
+ * Create a parameter definition + project value bound to a structural DTS source path.
+ * Used by structured edit submit when no existing PPV matches source or (name, module).
+ */
+export async function insertProjectParameterValueWithSource(
+  db: Queryable,
+  input: {
+    id: string;
+    organizationId: string;
+    projectId: string;
+    definitionId: string;
+    name: string;
+    module: string;
+    currentValue: string;
+    recommendedValue: string;
+    actorUserId: string;
+    sourceFileName: string;
+    sourceNodePath: string;
+  }
+): Promise<ProjectParameterValueMatch> {
+  await db.query(
+    `
+    insert into parameter_definitions (
+      id, organization_id, name, description, explanation, config_format,
+      module, default_range, unit, risk
+    )
+    values ($1, $2, $3, $3, $3, 'DTS', $4, '', '', 'Low')
+    on conflict (id) do nothing
+    `,
+    [input.definitionId, input.organizationId, input.name, input.module]
+  );
+
+  const result = await db.query<ProjectParameterValueMatchRow>(
+    `
+    insert into project_parameter_values (
+      id, organization_id, project_id, parameter_definition_id,
+      current_value, recommended_value, updated_by_user_id,
+      source_file_name, source_node_path
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    returning
+      id,
+      project_id,
+      parameter_definition_id,
+      $10::text as name,
+      $11::text as module,
+      current_value
+    `,
+    [
+      input.id,
+      input.organizationId,
+      input.projectId,
+      input.definitionId,
+      input.currentValue,
+      input.recommendedValue,
+      input.actorUserId,
+      input.sourceFileName,
+      input.sourceNodePath,
+      input.name,
+      input.module
+    ]
+  );
+
+  return toProjectParameterValueMatch(result.rows[0]);
+}
+
 export async function listParameterDefinitionsForImport(
   db: Queryable,
   query: { organizationId: string; projectId: string; names: string[]; definitionIds: string[] }

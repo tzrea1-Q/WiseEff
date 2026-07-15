@@ -13,12 +13,15 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
+import { getProjectParameterFileById } from "../parameter-files/repository";
 import { writebackMergedParameterValue } from "../parameter-files/writebackService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
 import {
   applyAddedImportItem,
   applyUpdatedImportItem,
+  bindParameterSource,
   createChangeRequest,
   getImportBatchForUpdate,
   createSubmissionItem,
@@ -26,6 +29,8 @@ import {
   deleteDraft as deleteDraftRow,
   deleteDraftForParameter,
   findOpenChangeRequest,
+  findProjectValueByDefinition,
+  findProjectValueBySource,
   getChangeRequestById,
   getProjectById,
   getProjectParameterForUpdate,
@@ -34,6 +39,7 @@ import {
   hasOpenFileSyncConflict,
   hasEligibleWorkflowAssignee,
   insertImportBatch,
+  insertProjectParameterValueWithSource,
   insertReviewDecision,
   listParameterDefinitionsForImport,
   listChangeRequests as listChangeRequestRows,
@@ -47,6 +53,7 @@ import {
   mergeChangeRequest,
   type ParameterDefinitionImportCandidate,
   type PersistedImportBatchItem,
+  type ProjectParameterValueMatch,
   updateChangeRequestStatus,
   updateSubmissionRoundStatus,
   updateSubmissionRoundStatusFromRequests,
@@ -98,6 +105,186 @@ export type SubmitParameterChangesInput = {
     softwareUserId?: string;
   };
 };
+
+/** One structured DTS property edit unit (browser editor → change request). */
+export type StructuredEditUnit = {
+  fileId: string;
+  nodePath: string;
+  propertyName: string;
+  /** CST-preserving property text; must be used as CR targetValue / writeback payload. */
+  rawText: string;
+  reason?: string;
+};
+
+export type SubmitStructuredEditsInput = {
+  projectId: string;
+  edits: StructuredEditUnit[];
+  reason?: string;
+  assignees?: SubmitParameterChangesInput["assignees"];
+};
+
+export function sourceNodePathForStructuredEdit(edit: Pick<StructuredEditUnit, "nodePath" | "propertyName">) {
+  const nodePath = edit.nodePath.trim();
+  const propertyName = edit.propertyName.trim();
+  return nodePath ? `${nodePath}/${propertyName}` : propertyName;
+}
+
+async function resolveStructuredEditToParameter(
+  db: Queryable,
+  auth: AuthContext,
+  projectId: string,
+  edit: StructuredEditUnit
+): Promise<ProjectParameterValueMatch> {
+  const file = await getProjectParameterFileById(db, {
+    organizationId: auth.organization.id,
+    fileId: edit.fileId
+  });
+  if (!file || file.projectId !== projectId) {
+    throw new ApiError("NOT_FOUND", "Project parameter file was not found.", 404, {
+      fileId: edit.fileId,
+      projectId
+    });
+  }
+
+  const sourceFileName = file.fileName;
+  const sourceNodePath = sourceNodePathForStructuredEdit(edit);
+  if (!sourceNodePath) {
+    throw new ApiError("VALIDATION_FAILED", "Structured edit requires nodePath or propertyName.", 400);
+  }
+
+  const bySource = await findProjectValueBySource(db, {
+    organizationId: auth.organization.id,
+    projectId,
+    sourceFileName,
+    sourceNodePath
+  });
+  if (bySource) {
+    return bySource;
+  }
+
+  let identity: { name: string; module: string };
+  try {
+    identity = nodePathToParameterIdentity(sourceNodePath);
+  } catch {
+    throw new ApiError("VALIDATION_FAILED", `Invalid structured edit path: ${sourceNodePath}`, 400, {
+      sourceNodePath
+    });
+  }
+
+  const byDefinition = await findProjectValueByDefinition(db, {
+    organizationId: auth.organization.id,
+    projectId,
+    name: identity.name,
+    module: identity.module
+  });
+  if (byDefinition) {
+    await bindParameterSource(db, {
+      projectParameterValueId: byDefinition.id,
+      sourceFileName,
+      sourceNodePath
+    });
+    return byDefinition;
+  }
+
+  return insertProjectParameterValueWithSource(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId,
+    definitionId: randomUUID(),
+    name: identity.name,
+    module: identity.module,
+    currentValue: "",
+    recommendedValue: "",
+    actorUserId: auth.user.id,
+    sourceFileName,
+    sourceNodePath
+  });
+}
+
+/**
+ * Map structured DTS edits onto real project_parameter_values and submit via the
+ * existing draft → submission_round → change_request flow. CR targetValue is rawText.
+ */
+export async function submitStructuredEdits(
+  db: Database,
+  auth: AuthContext,
+  input: SubmitStructuredEditsInput,
+  context: ServiceContext = {}
+) {
+  requireCanEdit(auth);
+
+  if (input.edits.length === 0) {
+    throw new ApiError("VALIDATION_FAILED", "At least one structured edit is required.", 400);
+  }
+
+  const seenKeys = new Set<string>();
+  const items: SubmitParameterChangesInput["items"] = [];
+
+  for (const edit of input.edits) {
+    const key = `${edit.fileId}:${sourceNodePathForStructuredEdit(edit)}`;
+    if (seenKeys.has(key)) {
+      throw new ApiError("VALIDATION_FAILED", "Duplicate structured edit for the same property.", 400, {
+        fileId: edit.fileId,
+        nodePath: edit.nodePath,
+        propertyName: edit.propertyName
+      });
+    }
+    seenKeys.add(key);
+
+    const parameter = await resolveStructuredEditToParameter(db, auth, input.projectId, edit);
+    const reason =
+      edit.reason?.trim() ||
+      `Structured edit: ${sourceNodePathForStructuredEdit(edit)}`;
+
+    await upsertDraft(db, {
+      id: randomUUID(),
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      parameterId: parameter.id,
+      userId: auth.user.id,
+      targetValue: edit.rawText,
+      reason,
+      origin: "manual"
+    });
+
+    items.push({
+      parameterId: parameter.id,
+      targetValue: edit.rawText,
+      reason
+    });
+  }
+
+  await createAuditEvent(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    actorUserId: auth.user.id,
+    actorType: context.actorType ?? "user",
+    app: "parameter-management",
+    kind: "parameter-structured-edit-submit",
+    action: "submit",
+    severity: "Medium",
+    targetType: "parameter-submission-round",
+    targetId: input.projectId,
+    metadata: {
+      editCount: input.edits.length,
+      parameterIds: items.map((item) => item.parameterId)
+    },
+    traceId: context.requestId ?? randomUUID()
+  });
+
+  return submitParameterChanges(
+    db,
+    auth,
+    {
+      projectId: input.projectId,
+      items,
+      reason: input.reason,
+      assignees: input.assignees
+    },
+    context
+  );
+}
 
 export type DraftListQuery = {
   projectId?: string;

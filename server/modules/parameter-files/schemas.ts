@@ -112,3 +112,27 @@ export const dtsSearchResponseSchema = z.object({
 });
 
 export type DtsSearchResponse = z.infer<typeof dtsSearchResponseSchema>;
+
+export const submitStructuredEditsBodySchema = z.object({
+  edits: z
+    .array(
+      z.object({
+        fileId: nonEmptyString,
+        nodePath: z.string(),
+        propertyName: nonEmptyString,
+        rawText: z.string(),
+        reason: z.string().optional()
+      })
+    )
+    .min(1),
+  reason: z.string().optional(),
+  assignees: z
+    .object({
+      hardwareCommitterId: nonEmptyString,
+      softwareCommitterId: nonEmptyString,
+      softwareUserId: nonEmptyString
+    })
+    .optional()
+});
+
+export type SubmitStructuredEditsBody = z.infer<typeof submitStructuredEditsBodySchema>;
