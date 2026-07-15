@@ -1,0 +1,23 @@
+$id: wiseeff/nodename-battery-checker.yaml
+title: battery_checker
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/battery_checker
+nodename:
+  - battery_checker
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  matchable:
+    valueShape: phandle-list
+    exampleValue: <&fm1230 &t91407>
+    constraints: {}
+  spare-cycles:
+    valueShape: u32-array
+    exampleValue: <150>
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"ok"'
+    constraints: {}

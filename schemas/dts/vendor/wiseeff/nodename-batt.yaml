@@ -1,0 +1,29 @@
+$id: wiseeff/nodename-batt.yaml
+title: batt
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/batt
+nodename:
+  - batt
+properties:
+  batt_indentify_fcc:
+    valueShape: u32-array
+    exampleValue: <3590>
+    constraints: {}
+  batt_index:
+    valueShape: u32-array
+    exampleValue: <1>
+    constraints: {}
+  batt_name:
+    valueShape: string-list
+    exampleValue: '"battery_gauge_aux"'
+    constraints: {}
+  r_pcb:
+    valueShape: u32-array
+    exampleValue: <11920>
+    constraints: {}
+  soe_dynamic_enable:
+    valueShape: u32-array
+    exampleValue: <1>
+    constraints: {}

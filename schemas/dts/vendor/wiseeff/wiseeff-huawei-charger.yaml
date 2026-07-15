@@ -1,0 +1,31 @@
+$id: wiseeff/wiseeff-huawei-charger.yaml
+title: wiseeff,huawei_charger
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,huawei_charger
+compatible:
+  - wiseeff,huawei_charger
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  charge_done_sleep_enabled:
+    valueShape: bool
+    exampleValue: ''
+    constraints: {}
+  recharge_para:
+    valueShape: u32-array
+    exampleValue: <96 60 3 5 1 0 1 100>
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"ok"'
+    constraints: {}
+  support_new_pd_process:
+    valueShape: u32-array
+    exampleValue: <1>
+    constraints: {}
+  weak_source_sleep_enabled:
+    valueShape: bool
+    exampleValue: ''
+    constraints: {}

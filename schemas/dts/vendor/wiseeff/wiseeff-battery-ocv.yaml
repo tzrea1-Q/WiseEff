@@ -1,0 +1,19 @@
+$id: wiseeff/wiseeff-battery-ocv.yaml
+title: wiseeff,battery_ocv
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,battery_ocv
+compatible:
+  - wiseeff,battery_ocv
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  ocv_table:
+    valueShape: string-list
+    exampleValue: "\"-1\", \"3100\",\n\t\t\"0\", \"3200\",\n\t\t\"1\", \"3250\""
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"ok"'
+    constraints: {}

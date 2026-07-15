@@ -1,0 +1,19 @@
+$id: wiseeff/nodename-scharger-v800-flash.yaml
+title: scharger_v800_flash
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/scharger_v800_flash
+nodename:
+  - scharger_v800_flash
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: '"ok"'
+    constraints: {}
+  vendor,led-type:
+    valueShape: u32-array
+    exampleValue: <0>
+    constraints: {}

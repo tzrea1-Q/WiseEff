@@ -1,0 +1,17 @@
+$id: wiseeff/common-status.yaml
+title: Common status property
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/common
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints:
+      enum:
+        - okay
+        - disabled
+        - reserved
+        - fail
+    documentation: Standard DT status; illustrative enum only.

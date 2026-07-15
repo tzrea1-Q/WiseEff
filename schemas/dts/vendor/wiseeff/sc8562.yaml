@@ -1,0 +1,64 @@
+$id: wiseeff/sc8562.yaml
+title: sc8562
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/sc8562
+compatible:
+  - sc8562
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  compatible:
+    valueShape: string-list
+    exampleValue: '"sc8562"'
+    constraints: {}
+  fcp_support:
+    valueShape: u32-array
+    exampleValue: <0>
+    constraints: {}
+  gpio_int:
+    valueShape: mixed
+    exampleValue: <&gpio13 29 0>
+    constraints:
+      cells: 3
+      description: phandle pin flags
+    documentation: SC8562 interrupt GPIO phandle-array (pin + flags).
+  ic_role:
+    valueShape: u32-array
+    exampleValue: <1>
+    constraints: {}
+  reg:
+    valueShape: u32-array
+    exampleValue: <0x6e>
+    constraints: {}
+  scp_support:
+    valueShape: u32-array
+    exampleValue: <0>
+    constraints: {}
+  sense_r_actual:
+    valueShape: u32-array
+    exampleValue: <10>
+    constraints: {}
+  sense_r_config:
+    valueShape: u32-array
+    exampleValue: <10>
+    constraints: {}
+  slave_mode:
+    valueShape: u32-array
+    exampleValue: <0>
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"ok"'
+    constraints: {}
+  vout_ovp_mv:
+    valueShape: u32-array
+    exampleValue: <5000>
+    constraints: {}
+    units: mV
+  watchdog_time:
+    valueShape: u32-array
+    exampleValue: <5000>
+    constraints: {}
+    units: ms

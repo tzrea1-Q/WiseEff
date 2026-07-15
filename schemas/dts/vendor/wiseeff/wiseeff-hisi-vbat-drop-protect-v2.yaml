@@ -1,0 +1,20 @@
+$id: wiseeff/wiseeff-hisi-vbat-drop-protect-v2.yaml
+title: wiseeff,hisi_vbat_drop_protect_v2
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,hisi_vbat_drop_protect_v2
+compatible:
+  - wiseeff,hisi_vbat_drop_protect_v2
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: '"ok"'
+    constraints: {}
+  vbat_drop_vol_mv:
+    valueShape: u32-array
+    exampleValue: <2500>
+    constraints: {}
+    units: mV

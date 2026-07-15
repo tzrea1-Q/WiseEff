@@ -1,0 +1,13 @@
+$id: wiseeff/nodename-root.yaml
+title: /
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename//
+nodename:
+  - /
+properties:
+  board_id:
+    valueShape: u32-array
+    exampleValue: <12345>
+    constraints: {}
