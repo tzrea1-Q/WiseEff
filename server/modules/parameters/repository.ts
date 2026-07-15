@@ -314,6 +314,8 @@ export type ChangeRequestMergeResult = {
   targetValue: string;
   baseVersion: number;
   newVersion: number;
+  parameterSpecId?: string;
+  projectParameterBindingId?: string;
 };
 
 type ChangeRequestMergeRow = {
@@ -324,6 +326,8 @@ type ChangeRequestMergeRow = {
   target_value: string;
   base_version: number | string;
   new_version: number | string;
+  parameter_spec_id?: string | null;
+  project_parameter_binding_id?: string | null;
 };
 
 type SubmissionItemRow = {
@@ -713,7 +717,9 @@ function toChangeRequestMergeResult(row: ChangeRequestMergeRow): ChangeRequestMe
     projectId: row.project_id,
     targetValue: row.target_value,
     baseVersion: Number(row.base_version),
-    newVersion: Number(row.new_version)
+    newVersion: Number(row.new_version),
+    parameterSpecId: row.parameter_spec_id ?? undefined,
+    projectParameterBindingId: row.project_parameter_binding_id ?? undefined
   };
 }
 
@@ -1240,21 +1246,29 @@ export async function upsertDraft(
     reason: string;
     origin?: "manual" | "file_sync";
     originFileVersionId?: string;
+    /** Semantic binding identity — required for topology-aware drafts. */
+    projectParameterBindingId?: string;
+    parameterSpecId?: string;
   }
 ) {
   const result = await db.query<DraftRow>(
     `
     insert into parameter_drafts (
       id, organization_id, project_id, project_parameter_value_id, user_id,
-      target_value, reason, origin, origin_file_version_id
+      target_value, reason, origin, origin_file_version_id,
+      project_parameter_binding_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     on conflict (project_id, project_parameter_value_id, user_id)
     do update set
       target_value = excluded.target_value,
       reason = excluded.reason,
       origin = excluded.origin,
       origin_file_version_id = excluded.origin_file_version_id,
+      project_parameter_binding_id = coalesce(
+        excluded.project_parameter_binding_id,
+        parameter_drafts.project_parameter_binding_id
+      ),
       updated_at = now()
     returning id, project_id, project_parameter_value_id, target_value, reason, updated_at
     `,
@@ -1267,9 +1281,13 @@ export async function upsertDraft(
       input.targetValue,
       input.reason,
       input.origin ?? "manual",
-      input.originFileVersionId ?? null
+      input.originFileVersionId ?? null,
+      input.projectParameterBindingId ?? null
     ]
   );
+
+  // parameter_spec_id is stored on change requests / history; drafts carry binding id.
+  void input.parameterSpecId;
 
   return toDraftDto(result.rows[0]);
 }
@@ -1361,15 +1379,18 @@ export async function insertFileSyncConflict(
     uiDraftId: string;
     fileValue: string;
     uiDraftValue: string;
+    parameterSpecId?: string;
+    projectParameterBindingId?: string;
   }
 ) {
   const result = await db.query<FileSyncConflictRow>(
     `
     insert into parameter_file_sync_conflicts (
       id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
-      file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status
+      file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status,
+      parameter_spec_id, project_parameter_binding_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open')
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open', $11, $12)
     returning *
     `,
     [
@@ -1382,7 +1403,9 @@ export async function insertFileSyncConflict(
       input.fileDraftId,
       input.uiDraftId,
       input.fileValue,
-      input.uiDraftValue
+      input.uiDraftValue,
+      input.parameterSpecId ?? null,
+      input.projectParameterBindingId ?? null
     ]
   );
 
@@ -1504,6 +1527,8 @@ export async function createChangeRequest(
     submitterUserId: string;
     assignedToUserId?: string;
     workflowAssignees?: Partial<ParameterWorkflowAssigneesDto>;
+    parameterSpecId?: string;
+    projectParameterBindingId?: string;
   }
 ) {
   const result = await db.query<ChangeRequestRow>(
@@ -1513,9 +1538,9 @@ export async function createChangeRequest(
         id, organization_id, submission_round_id, project_id, project_parameter_value_id,
         parameter_definition_id, base_version, current_value, target_value, status, submitter_user_id,
         assigned_to_user_id, workflow_hardware_committer_user_id, workflow_software_committer_user_id,
-        workflow_software_user_id
+        workflow_software_user_id, parameter_spec_id, project_parameter_binding_id
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       returning *
     )
     select
@@ -1565,7 +1590,9 @@ export async function createChangeRequest(
       input.assignedToUserId ?? null,
       input.workflowAssignees?.hardwareCommitterId ?? null,
       input.workflowAssignees?.softwareCommitterId ?? null,
-      input.workflowAssignees?.softwareUserId ?? null
+      input.workflowAssignees?.softwareUserId ?? null,
+      input.parameterSpecId ?? null,
+      input.projectParameterBindingId ?? null
     ]
   );
 
@@ -1612,6 +1639,7 @@ export async function createSubmissionItem(
     currentValue: string;
     targetValue: string;
     reason: string;
+    projectParameterBindingId?: string;
   }
 ) {
   const result = await db.query<SubmissionItemRow>(
@@ -1619,9 +1647,9 @@ export async function createSubmissionItem(
     with inserted as (
       insert into parameter_submission_items (
         id, organization_id, submission_round_id, change_request_id, project_parameter_value_id,
-        current_value, target_value, reason
+        current_value, target_value, reason, project_parameter_binding_id
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       returning *
     )
     select
@@ -1648,7 +1676,8 @@ export async function createSubmissionItem(
       input.parameterId,
       input.currentValue,
       input.targetValue,
-      input.reason
+      input.reason,
+      input.projectParameterBindingId ?? null
     ]
   );
 
@@ -2173,6 +2202,8 @@ export async function mergeChangeRequest(
         project_id,
         project_parameter_value_id,
         parameter_definition_id,
+        parameter_spec_id,
+        project_parameter_binding_id,
         base_version,
         target_value
       from parameter_change_requests
@@ -2195,6 +2226,8 @@ export async function mergeChangeRequest(
         request_to_merge.id,
         request_to_merge.project_parameter_value_id,
         request_to_merge.parameter_definition_id,
+        request_to_merge.parameter_spec_id,
+        request_to_merge.project_parameter_binding_id,
         request_to_merge.project_id,
         request_to_merge.target_value,
         request_to_merge.base_version,
@@ -2203,7 +2236,8 @@ export async function mergeChangeRequest(
     inserted_history as (
       insert into parameter_history_entries (
         id, organization_id, project_id, parameter_definition_id, project_parameter_value_id,
-        version, value, changed_by_user_id, request_id
+        version, value, changed_by_user_id, request_id,
+        parameter_spec_id, project_parameter_binding_id
       )
       select
         $5,
@@ -2214,7 +2248,9 @@ export async function mergeChangeRequest(
         new_version,
         target_value,
         $4,
-        id
+        id,
+        parameter_spec_id,
+        project_parameter_binding_id
       from updated_value
       returning id
     )

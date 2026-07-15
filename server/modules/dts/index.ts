@@ -33,4 +33,5 @@ export type {
   DtsDeleteNodeCst,
   DtsValueType,
   DtsSpan,
+  DtsValue,
 } from "./types";

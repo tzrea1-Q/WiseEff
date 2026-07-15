@@ -252,18 +252,13 @@ describe("parameter service", () => {
     ).toThrow(expect.objectContaining({ code: "FORBIDDEN" }) as unknown as ApiError);
   });
 
-  it("parseDtsImportForAuth rejects /include/ with dts-include-unsupported", () => {
+  it("parseDtsImportForAuth no longer rejects /include/ at upload-parse time", () => {
     expect(() =>
       parseDtsImportForAuth(makeAdminAuth(), {
         sourceName: "board.dts",
         content: `/dts-v1/;\n/include/ "pin.dtsi"\n/ { board_id = <0>; };\n`
       })
-    ).toThrow(
-      expect.objectContaining({
-        code: "VALIDATION_FAILED",
-        details: { code: "dts-include-unsupported" }
-      }) as unknown as ApiError
-    );
+    ).not.toThrow();
   });
 
   it("invalid import item shape returns validation failed", async () => {
@@ -1292,6 +1287,7 @@ describe("parameter service", () => {
       "3100",
       "Reduce thermal risk.",
       "manual",
+      null,
       null
     ]);
     expect(calls[2].text).toContain("user_id = $2");
@@ -1338,6 +1334,7 @@ describe("parameter service", () => {
           created_at: "2026-05-25T05:00:00.000Z"
         }
       ],
+      [],
       [
         {
           id: "request-1",
@@ -1373,6 +1370,7 @@ describe("parameter service", () => {
           reason: "Reduce thermal risk."
         }
       ],
+      [],
       [],
       [
         {
@@ -1467,6 +1465,7 @@ describe("parameter service", () => {
           created_at: "2026-05-25T05:00:00.000Z"
         }
       ],
+      [],
       [
         changeRequestRow({
           status: "hardware_review",
@@ -1535,6 +1534,7 @@ describe("parameter service", () => {
           created_at: "2026-05-25T05:00:00.000Z"
         }
       ],
+      [],
       [
         changeRequestRow({
           status: "hardware_review",
@@ -1714,6 +1714,7 @@ describe("parameter service", () => {
           created_at: "2026-05-25T05:00:00.000Z"
         }
       ],
+      [],
       [
         {
           id: "request-1",

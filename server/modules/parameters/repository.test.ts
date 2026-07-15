@@ -317,6 +317,7 @@ describe("parameter repository", () => {
       "3100",
       "Reduce thermal risk.",
       "manual",
+      null,
       null
     ]);
     expect(draft).toMatchObject({ id: "draft-1", parameterId: "param-1", targetValue: "3100" });
@@ -430,7 +431,8 @@ describe("parameter repository", () => {
       "param-1",
       "3200",
       "3100",
-      "Reduce thermal risk."
+      "Reduce thermal risk.",
+      null
     ]);
   });
 
@@ -503,7 +505,9 @@ describe("parameter repository", () => {
       "u-hardware",
       "u-hardware",
       "u-software-committer",
-      "u-software-user"
+      "u-software-user",
+      null,
+      null
     ]);
     expect(request).toMatchObject({
       assignedTo: "u-hardware",
