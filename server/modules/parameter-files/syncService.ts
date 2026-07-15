@@ -1,19 +1,13 @@
-import { randomUUID } from "node:crypto";
-
-import { createAuditEvent } from "../audit/repository";
 import type { AuthContext } from "../auth/types";
 import {
   bindParameterSource,
-  findProjectValueByDefinition,
   findProjectValueBySource,
   upsertFileSyncDraft
 } from "../parameters/repository";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { detectFileUiDraftConflict } from "./conflictService";
-import { readDtsIdentityFallbackMode } from "./identityFallbackMode";
 import { getFileVersionById, getProjectParameterFileById } from "./repository";
-import { nodePathToParameterIdentity } from "./pathMapper";
 
 export type SyncFileVersionInput = {
   fileId: string;
@@ -25,7 +19,7 @@ export type FileSyncSummary = {
   unchanged: number;
   unmatched: number;
   skipped: boolean;
-  /** Times identity fell back from structural source_node_path to (name, module). */
+  /** Always 0 after (name, module) identity fallback retirement. */
   identityFallbackUses: number;
 };
 
@@ -44,7 +38,9 @@ export async function syncFileVersion(
 
   const version = await getFileVersionById(db, { versionId: input.versionId });
   if (!version || version.fileId !== file.id) {
-    throw new ApiError("NOT_FOUND", "Project parameter file version was not found.", 404, { versionId: input.versionId });
+    throw new ApiError("NOT_FOUND", "Project parameter file version was not found.", 404, {
+      versionId: input.versionId
+    });
   }
 
   if (version.origin === "writeback") {
@@ -54,78 +50,15 @@ export async function syncFileVersion(
   let draftsCreated = 0;
   let unchanged = 0;
   let unmatched = 0;
-  let identityFallbackUses = 0;
   const entries = Object.entries(version.parsedIndex);
-  const fallbackMode = readDtsIdentityFallbackMode();
 
   for (const [nodePath, entry] of entries) {
-    // Prefer structural source identity (nodePath including @address).
-    let resolved = await findProjectValueBySource(db, {
+    const resolved = await findProjectValueBySource(db, {
       organizationId: auth.organization.id,
       projectId: file.projectId,
       sourceFileName: file.fileName,
       sourceNodePath: nodePath
     });
-
-    if (!resolved) {
-      if (fallbackMode === "deny") {
-        throw new ApiError(
-          "VALIDATION_FAILED",
-          "Identity fallback via (name, module) is denied. Bind source_file_name/source_node_path first.",
-          409,
-          {
-            mode: "deny",
-            sourceFileName: file.fileName,
-            sourceNodePath: nodePath,
-            fileId: file.id
-          }
-        );
-      }
-
-      try {
-        // Compatibility fallback: (name, module) from pathMapper — transitional (TD-039).
-        const identity = nodePathToParameterIdentity(nodePath);
-        resolved = await findProjectValueByDefinition(db, {
-          organizationId: auth.organization.id,
-          projectId: file.projectId,
-          name: identity.name,
-          module: identity.module
-        });
-        if (resolved) {
-          identityFallbackUses += 1;
-          if (fallbackMode === "warn") {
-            await createAuditEvent(db, {
-              id: randomUUID(),
-              organizationId: auth.organization.id,
-              projectId: file.projectId,
-              actorUserId: auth.user.id,
-              actorType: "user",
-              app: "parameters",
-              kind: "parameter-file-identity-fallback",
-              action: "warn",
-              severity: "Low",
-              targetType: "project-parameter-file",
-              targetId: file.id,
-              metadata: {
-                mode: "warn",
-                sourceFileName: file.fileName,
-                sourceNodePath: nodePath,
-                fallbackName: identity.name,
-                fallbackModule: identity.module,
-                projectParameterValueId: resolved.id
-              },
-              traceId: randomUUID()
-            });
-          }
-        }
-      } catch (error) {
-        if (error instanceof ApiError) {
-          throw error;
-        }
-        unmatched += 1;
-        continue;
-      }
-    }
 
     if (!resolved) {
       unmatched += 1;
@@ -170,5 +103,5 @@ export async function syncFileVersion(
     });
   }
 
-  return { draftsCreated, unchanged, unmatched, skipped: false, identityFallbackUses };
+  return { draftsCreated, unchanged, unmatched, skipped: false, identityFallbackUses: 0 };
 }

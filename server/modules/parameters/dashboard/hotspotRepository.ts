@@ -32,11 +32,20 @@ type AggregateInput = {
   windowEnd: string;
 };
 
+/** Policy/schema drift replaces legacy recommended-vs-current scoring. */
 const DRIFT_EXPR = `
   case
-    when ppv.current_value ~ '^-?[0-9.]+$' and ppv.recommended_value ~ '^-?[0-9.]+$' then
-      abs(ppv.current_value::numeric - ppv.recommended_value::numeric)
-      / greatest(abs(ppv.current_value::numeric), abs(ppv.recommended_value::numeric), 1)
+    when b.raw_value ~ '^-?[0-9.]+$'
+      and coalesce(ppt.target_value #>> '{}', psv.schema_default #>> '{}', '') ~ '^-?[0-9.]+$' then
+      abs(
+        b.raw_value::numeric
+        - coalesce(ppt.target_value #>> '{}', psv.schema_default #>> '{}', '0')::numeric
+      )
+      / greatest(
+        abs(b.raw_value::numeric),
+        abs(coalesce(ppt.target_value #>> '{}', psv.schema_default #>> '{}', '0')::numeric),
+        1
+      )
       * 100
     else 0
   end

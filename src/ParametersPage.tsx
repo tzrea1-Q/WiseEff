@@ -760,7 +760,23 @@ export function ParametersPage({
   };
   useTopBarActions(
     <>
-      <button className="button subtle" type="button" onClick={() => exportProjectParametersAsExcel(filteredParameters, activeProject.code)}>
+      <button
+        className="button subtle"
+        type="button"
+        onClick={() =>
+          exportProjectParametersAsExcel(
+            filteredParameters.map((parameter) => ({
+              propertyKey: parameter.name,
+              driverModule: parameter.module,
+              instanceName: parameter.modulePath?.at(-1) ?? null,
+              locator: parameter.sourceNodePath ?? null,
+              effectiveValue: { kind: "strings" as const, values: [parameter.currentValue] },
+              schemaVersion: null
+            })),
+            activeProject.code
+          )
+        }
+      >
         导出 Excel
       </button>
       {effectiveCanEdit ? (

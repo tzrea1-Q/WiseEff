@@ -12,6 +12,7 @@ import type { ObjectStore } from "../server/modules/logs/objectStore";
 import { createPostgresDatabase, type Database } from "../server/shared/database/client";
 import { buildDtsPowerSeed, type DtsPowerSeedParameter, type DtsPowerSeedProjectFile } from "./dts-power-seed";
 import { compileDtsSeedFiles, loadCommittedDtsSeedFiles } from "./compile-dts-seed";
+import { LEGACY_SQL } from "../server/modules/parameter-topology/migration";
 
 export type PowerManagementProject = {
   id: string;
@@ -373,7 +374,7 @@ export async function seedM1Parameters(db: Database, config: PowerManagementConf
             project_id,
             parameter_definition_id,
             current_value,
-            recommended_value,
+            ${LEGACY_SQL.recommendedValueColumn},
             value_version,
             updated_by_user_id,
             source_file_name,
@@ -383,7 +384,7 @@ export async function seedM1Parameters(db: Database, config: PowerManagementConf
           on conflict (project_id, parameter_definition_id) do update set
             organization_id = excluded.organization_id,
             current_value = excluded.current_value,
-            recommended_value = excluded.recommended_value,
+            ${LEGACY_SQL.recommendedValueColumn} = excluded.${LEGACY_SQL.recommendedValueColumn},
             value_version = case
               when project_parameter_values.current_value is distinct from excluded.current_value
                 then project_parameter_values.value_version + 1

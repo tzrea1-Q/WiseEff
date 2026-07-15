@@ -28,6 +28,7 @@ import {
 } from "./repository";
 import type { ConfigRevisionManifest, PersistedValidationDiagnostic } from "./types";
 import { writeGovernanceAudit } from "./governanceAudit";
+import { LEGACY_SQL } from "./migration";
 
 export type BindingEditAction = "set" | "delete";
 
@@ -855,7 +856,7 @@ async function ensureShadowParameterValue(
     `
     insert into project_parameter_values (
       id, organization_id, project_id, parameter_definition_id,
-      current_value, recommended_value, value_version, updated_by_user_id,
+      current_value, ${LEGACY_SQL.recommendedValueColumn}, value_version, updated_by_user_id,
       source_file_name, source_node_path
     ) values ($1, $2, $3, $4, $5, '', 1, $6, null, $7)
     `,

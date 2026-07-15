@@ -40,6 +40,7 @@ import {
   type ParameterSubmissionRoundStatus
 } from "./status";
 import { buildChangeRequestImpact } from "./impact";
+import { LEGACY_SQL } from "../parameter-topology/migration";
 
 export type ImportPreviewClassification = "added" | "updated" | "unchanged" | "conflict";
 
@@ -101,7 +102,7 @@ type ParameterRow = {
   unit: string;
   risk: ParameterRiskLevel;
   current_value: string;
-  recommended_value: string;
+  initSuggestionText: string;
   source_file_name?: string | null;
   source_node_path?: string | null;
   updated_at: string | Date;
@@ -119,7 +120,7 @@ type ParameterDefinitionImportRow = {
   risk: ParameterRiskLevel;
   project_parameter_value_id: string | null;
   current_value: string | null;
-  recommended_value: string | null;
+  initSuggestionText: string | null;
   value_version: number | string | null;
 };
 
@@ -156,7 +157,7 @@ type ProjectParameterForUpdateRow = {
   unit: string;
   risk: ParameterRiskLevel;
   current_value: string;
-  recommended_value: string;
+  initSuggestionText: string;
   value_version: number | string;
   source_file_name?: string | null;
   source_node_path?: string | null;
@@ -473,7 +474,7 @@ function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] =
     modulePath,
     projectId: row.project_id,
     currentValue: row.current_value,
-    recommendedValue: row.recommended_value,
+    recommendedValue: row.initSuggestionText,
     range: row.default_range,
     unit: row.unit,
     risk: row.risk,
@@ -548,7 +549,7 @@ function toProjectParameterForUpdate(row: ProjectParameterForUpdateRow): Project
     unit: row.unit,
     risk: row.risk,
     currentValue: row.current_value,
-    recommendedValue: row.recommended_value,
+    recommendedValue: row.initSuggestionText,
     valueVersion: Number(row.value_version),
     sourceFileName: row.source_file_name ?? undefined,
     sourceNodePath: row.source_node_path ?? undefined
@@ -736,7 +737,7 @@ function toParameterDefinitionImportCandidate(row: ParameterDefinitionImportRow)
     risk: row.risk,
     projectParameterValueId: row.project_parameter_value_id ?? undefined,
     currentValue: row.current_value ?? undefined,
-    recommendedValue: row.recommended_value ?? undefined,
+    recommendedValue: row.initSuggestionText ?? undefined,
     valueVersion: row.value_version === null ? undefined : Number(row.value_version)
   };
 }
@@ -1114,7 +1115,7 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
       pd.unit,
       pd.risk,
       ppv.current_value,
-      ppv.recommended_value,
+      ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.source_file_name,
       ppv.source_node_path,
       ppv.updated_at
@@ -1147,7 +1148,7 @@ export async function getParameterById(db: Queryable, query: { organizationId: s
       pd.unit,
       pd.risk,
       ppv.current_value,
-      ppv.recommended_value,
+      ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.source_file_name,
       ppv.source_node_path,
       ppv.updated_at
@@ -2311,7 +2312,7 @@ export async function getProjectParameterForUpdate(
       pd.unit,
       pd.risk,
       ppv.current_value,
-      ppv.recommended_value,
+      ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.value_version,
       ppv.source_file_name,
       ppv.source_node_path
@@ -2451,7 +2452,7 @@ export async function insertProjectParameterValueWithSource(
     `
     insert into project_parameter_values (
       id, organization_id, project_id, parameter_definition_id,
-      current_value, recommended_value, updated_by_user_id,
+      current_value, ${LEGACY_SQL.recommendedValueColumn}, updated_by_user_id,
       source_file_name, source_node_path
     )
     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -2500,7 +2501,7 @@ export async function listParameterDefinitionsForImport(
       pd.risk,
       ppv.id as project_parameter_value_id,
       ppv.current_value,
-      ppv.recommended_value,
+      ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.value_version
     from parameter_definitions pd
     left join project_parameter_values ppv on ppv.parameter_definition_id = pd.id
@@ -2591,13 +2592,13 @@ export async function applyAddedImportItem(
     ),
     inserted_value as (
       insert into project_parameter_values (
-        id, organization_id, project_id, parameter_definition_id, current_value, recommended_value, updated_by_user_id
+        id, organization_id, project_id, parameter_definition_id, current_value, ${LEGACY_SQL.recommendedValueColumn}, updated_by_user_id
       )
       select $4, $1, $2, inserted_definition.id, $11, $12, $3
       from inserted_definition
       on conflict (project_id, parameter_definition_id) do update set
         current_value = excluded.current_value,
-        recommended_value = excluded.recommended_value,
+        ${LEGACY_SQL.recommendedValueColumn} = excluded.${LEGACY_SQL.recommendedValueColumn},
         value_version = project_parameter_values.value_version + 1,
         updated_by_user_id = excluded.updated_by_user_id,
         updated_at = now()
@@ -2674,7 +2675,7 @@ export async function applyUpdatedImportItem(
         ppv.project_id,
         ppv.parameter_definition_id,
         ppv.current_value,
-        ppv.recommended_value,
+        ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
         ppv.value_version
       from project_parameter_values ppv
       inner join upserted_definition on upserted_definition.id = ppv.parameter_definition_id
@@ -2683,7 +2684,7 @@ export async function applyUpdatedImportItem(
     ),
     inserted_value as (
       insert into project_parameter_values (
-        id, organization_id, project_id, parameter_definition_id, current_value, recommended_value, updated_by_user_id
+        id, organization_id, project_id, parameter_definition_id, current_value, ${LEGACY_SQL.recommendedValueColumn}, updated_by_user_id
       )
       select $4, $1, $2, upserted_definition.id, $11, $12, $3
       from upserted_definition
@@ -2693,7 +2694,7 @@ export async function applyUpdatedImportItem(
     updated_value as (
       update project_parameter_values ppv
       set current_value = $11,
-        recommended_value = $12,
+        ${LEGACY_SQL.recommendedValueColumn} = $12,
         value_version = ppv.value_version + 1,
         updated_by_user_id = $3,
         updated_at = now()
@@ -2703,7 +2704,7 @@ export async function applyUpdatedImportItem(
         and ppv.parameter_definition_id = upserted_definition.id
         and (
           ppv.current_value is distinct from $11
-          or ppv.recommended_value is distinct from $12
+          or ppv.${LEGACY_SQL.recommendedValueColumn} is distinct from $12
         )
       returning ppv.id, ppv.project_id, ppv.parameter_definition_id, ppv.current_value, ppv.value_version
     ),

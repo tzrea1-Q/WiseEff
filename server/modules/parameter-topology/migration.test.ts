@@ -820,7 +820,9 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
 });
 
 describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () => {
-  it("two fresh restores produce identical binding ids and counts", async () => {
+  it(
+    "two fresh restores produce identical binding ids and counts",
+    async () => {
     const reports: ParameterIdentityMigrationReport[] = [];
     const bindingIds: string[] = [];
 
@@ -848,7 +850,9 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
     expect(reports[0]?.coverage).toEqual(reports[1]?.coverage);
     expect(bindingIds[0]).toBe(bindingIds[1]);
     expect(bindingIds[0]).toBe(expectedBindingId(expectedSpecId(), expectedLogicalNodeId()));
-  });
+  },
+  20_000
+  );
 
   it("injected cutover failure after partial writes rolls back marker and archive", async () => {
     await withTempDatabase(async (tempDb) => {

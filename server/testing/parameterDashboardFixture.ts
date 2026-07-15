@@ -1,4 +1,5 @@
 import type { Database } from "../shared/database/client";
+import { LEGACY_SQL } from "../modules/parameter-topology/migration";
 
 const ORG_ID = "org-chargelab";
 const ORG_NAME = "ChargeLab";
@@ -112,7 +113,7 @@ export async function seedParameterDashboardFixture(db: Database) {
       await db.query(
         `insert into project_parameter_values (
            id, organization_id, project_id, parameter_definition_id,
-           current_value, recommended_value, value_version, updated_by_user_id
+           current_value, ${LEGACY_SQL.recommendedValueColumn}, value_version, updated_by_user_id
          ) values ($1, $2, $3, $4, $5, $6, 1, $7)`,
         [valueId, ORG_ID, project.id, definition.id, current, recommended, ACTIVE_USER_ID]
       );

@@ -98,7 +98,7 @@ function parameterRow(overrides: Record<string, unknown> = {}) {
     unit: "mA",
     risk: "High",
     current_value: "3200",
-    recommended_value: "3000",
+    initSuggestionText: "3000",
     value_version: 7,
     updated_at: "2026-05-25T02:00:00.000Z",
     ...overrides
@@ -118,7 +118,7 @@ function definitionRow(overrides: Record<string, unknown> = {}) {
     risk: "High",
     project_parameter_value_id: "param-1",
     current_value: "3200",
-    recommended_value: "3000",
+    initSuggestionText: "3000",
     value_version: 7,
     ...overrides
   };
@@ -340,7 +340,7 @@ describe("parameter service", () => {
           unit: "C",
           default_range: "40 - 90",
           current_value: "70",
-          recommended_value: "68",
+          initSuggestionText: "68",
           project_parameter_value_id: "param-unchanged",
           value_version: 2
         }),
@@ -352,7 +352,7 @@ describe("parameter service", () => {
           unit: "V",
           default_range: "300 - 450",
           current_value: "400",
-          recommended_value: "395",
+          initSuggestionText: "395",
           project_parameter_value_id: "param-conflict",
           value_version: 5
         })
@@ -577,21 +577,21 @@ describe("parameter service", () => {
           id: "definition-recommended-delta",
           name: "recommended_delta",
           current_value: "100",
-          recommended_value: "100",
+          initSuggestionText: "100",
           project_parameter_value_id: "param-recommended-delta"
         }),
         definitionRow({
           id: "definition-zero-baseline",
           name: "zero_baseline_delta",
           current_value: "100",
-          recommended_value: "0",
+          initSuggestionText: "0",
           project_parameter_value_id: "param-zero-baseline"
         }),
         definitionRow({
           id: "definition-nonnumeric-baseline",
           name: "nonnumeric_delta",
           current_value: "100",
-          recommended_value: "auto",
+          initSuggestionText: "auto",
           project_parameter_value_id: "param-nonnumeric-baseline"
         })
       ],

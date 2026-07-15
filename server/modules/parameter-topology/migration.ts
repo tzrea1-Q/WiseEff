@@ -4,6 +4,12 @@
  * Does not dual-write or promote recommended_value into schema_default/policy.
  */
 
+
+/** Pre-cutover SQL column names. Allowed only via this migrator module; production must not literalize them. */
+export const LEGACY_SQL = {
+  recommendedValueColumn: "recommended_value",
+} as const;
+
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";

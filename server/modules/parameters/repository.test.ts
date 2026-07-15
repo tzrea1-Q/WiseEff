@@ -139,7 +139,7 @@ describe("parameter repository", () => {
         unit: "mA",
         risk: "High",
         current_value: "3200",
-        recommended_value: "3000",
+        initSuggestionText: "3000",
         source_file_name: "config.json",
         source_node_path: "battery/temp_max",
         updated_at: updatedAt
@@ -200,7 +200,7 @@ describe("parameter repository", () => {
         unit: "mA",
         risk: "High",
         current_value: "3200",
-        recommended_value: "3000",
+        initSuggestionText: "3000",
         source_file_name: "config.json",
         source_node_path: "battery/temp_max",
         updated_at: updatedAt
@@ -867,7 +867,7 @@ describe("parameter repository", () => {
           risk: "High",
           project_parameter_value_id: "param-1",
           current_value: "3200",
-          recommended_value: "3000",
+          initSuggestionText: "3000",
           value_version: 7
         }
       ]

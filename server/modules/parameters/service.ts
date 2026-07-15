@@ -15,7 +15,6 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
-import { readDtsIdentityFallbackMode } from "../parameter-files/identityFallbackMode";
 import { writebackMergedParameterValue } from "../parameter-files/writebackService";
 import { resolveInitializationSuggestion } from "../parameter-topology/editService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
@@ -32,7 +31,6 @@ import {
   deleteDraft as deleteDraftRow,
   deleteDraftForParameter,
   findOpenChangeRequest,
-  findProjectValueByDefinition,
   findProjectValueBySource,
   getChangeRequestById,
   getProjectById,
@@ -199,50 +197,7 @@ export async function resolveStructuredEditToParameter(
     });
   }
 
-  const fallbackMode = readDtsIdentityFallbackMode();
-
-  // deny: do not bind existing rows via (name, module); new PPV+source insert is allowed (new bind ≠ fallback).
-  if (fallbackMode !== "deny") {
-    const byDefinition = await findProjectValueByDefinition(db, {
-      organizationId: auth.organization.id,
-      projectId,
-      name: identity.name,
-      module: identity.module
-    });
-    if (byDefinition) {
-      await bindParameterSource(db, {
-        projectParameterValueId: byDefinition.id,
-        sourceFileName,
-        sourceNodePath
-      });
-      if (fallbackMode === "warn") {
-        await createAuditEvent(db, {
-          id: randomUUID(),
-          organizationId: auth.organization.id,
-          projectId,
-          actorUserId: auth.user.id,
-          actorType: "user",
-          app: "parameter-management",
-          kind: "parameter-file-identity-fallback",
-          action: "warn",
-          severity: "Low",
-          targetType: "project-parameter-value",
-          targetId: byDefinition.id,
-          metadata: {
-            mode: "warn",
-            sourceFileName,
-            sourceNodePath,
-            fallbackName: identity.name,
-            fallbackModule: identity.module,
-            fileId: file.id
-          },
-          traceId: randomUUID()
-        });
-      }
-      return byDefinition;
-    }
-  }
-
+  // Fail closed: (name, module) identity fallback is retired. New source bindings may still insert.
   return insertProjectParameterValueWithSource(db, {
     id: randomUUID(),
     organizationId: auth.organization.id,
