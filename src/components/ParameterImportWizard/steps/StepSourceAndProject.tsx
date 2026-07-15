@@ -1,3 +1,7 @@
+import {
+  DTS_SERVER_PARSE_HINT,
+  shouldUseServerDtsParse
+} from "@/application/parameters/import/buildImportReviewMetadata";
 import { ClipboardPaste, Upload } from "lucide-react";
 import { useRef, useState, type DragEvent } from "react";
 import type { Project } from "@/mockData";
@@ -93,6 +97,13 @@ export function StepSourceAndProject({
   };
 
   const canProceed = Boolean(targetProjectId) && (sourceText.trim().length > 0 || Boolean(sourceBytes));
+  const contentByteLength =
+    sourceBytes?.byteLength ?? (sourceText ? new TextEncoder().encode(sourceText).byteLength : 0);
+  const showServerParseHint =
+    Boolean(sourceName.toLowerCase().match(/\.dtsi?$/)) ||
+    sourceText.includes("/dts-v1/") ||
+    sourceText.includes("/{");
+  const needsServerParse = showServerParseHint && shouldUseServerDtsParse(contentByteLength);
 
   return (
     <section className="parameter-import-wizard-step" aria-label="选择来源与目标项目">
@@ -203,6 +214,15 @@ export function StepSourceAndProject({
           setPasteDialogOpen(false);
         }}
       />
+      {needsServerParse ? (
+        <p className="parameter-import-wizard-server-parse-hint" role="status">
+          文件超过 2MB，{DTS_SERVER_PARSE_HINT}（完整 DTS 不会在本地伪解析）。
+        </p>
+      ) : showServerParseHint && contentByteLength > 0 ? (
+        <p className="parameter-import-wizard-server-parse-hint" role="status">
+          完整 DTS {DTS_SERVER_PARSE_HINT}，以保持与服务端 CST 一致。
+        </p>
+      ) : null}
       <div className="dialog-actions">
         <button type="button" className="button subtle" onClick={onDownloadTemplate}>
           下载导入模板

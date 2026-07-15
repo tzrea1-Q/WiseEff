@@ -1,4 +1,5 @@
 import { normalizeRow } from "./normalizeRow";
+import { stripDtsComments } from "./stripDtsComments";
 import type { ParsedImportRow } from "./types";
 
 const IDENTIFIER_PATTERN = /[a-zA-Z0-9_-]+/;
@@ -74,37 +75,38 @@ function readIdentifier(source: string, start: number): { name: string; end: num
 }
 
 export function parseDtsFragmentImport(source: string): ParsedImportRow[] {
+  const cleaned = stripDtsComments(source);
   const rows: ParsedImportRow[] = [];
   let i = 0;
 
-  while (i < source.length) {
-    const identifier = readIdentifier(source, i);
+  while (i < cleaned.length) {
+    const identifier = readIdentifier(cleaned, i);
     if (!identifier) {
       i += 1;
       continue;
     }
 
     let cursor = identifier.end;
-    while (cursor < source.length && /\s/.test(source[cursor])) {
+    while (cursor < cleaned.length && /\s/.test(cleaned[cursor])) {
       cursor += 1;
     }
-    if (source[cursor] !== "=") {
+    if (cleaned[cursor] !== "=") {
       i = identifier.end;
       continue;
     }
     cursor += 1;
 
-    const valueResult = readPropertyValue(source, cursor);
+    const valueResult = readPropertyValue(cleaned, cursor);
     if (!valueResult) {
       i = cursor;
       continue;
     }
 
     cursor = valueResult.end;
-    while (cursor < source.length && /\s/.test(source[cursor])) {
+    while (cursor < cleaned.length && /\s/.test(cleaned[cursor])) {
       cursor += 1;
     }
-    if (source[cursor] === ";") {
+    if (cleaned[cursor] === ";") {
       cursor += 1;
     }
 

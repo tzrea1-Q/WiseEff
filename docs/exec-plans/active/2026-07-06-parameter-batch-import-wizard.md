@@ -591,16 +591,16 @@ Before moving plan to `completed/`:
 
 ---
 
-## P2 / P3 Follow-up (not in this plan)
+## P2 / P3 Follow-up
 
-| ID | Item |
-| --- | --- |
-| P2-a | Full `.dts` file parser with node path → module suggestions |
-| P2-b | `parseDtsFull.ts` + tests with fixture from `power-management` seeds |
-| P3-a | Optional `reviewMetadata` on import batch API for skip reasons audit |
-| P3-b | Server-side DTS parse endpoint for files > 2MB |
+> **Digested 2026-07-15** by [`2026-07-15-parameter-import-wizard-td035.md`](2026-07-15-parameter-import-wizard-td035.md) (**TD-035 closed**).
 
-Log as TD-0XX in tech-debt-tracker when P1 merges.
+| ID | Item | Status |
+| --- | --- | --- |
+| P2-a | Full `.dts` file parser with node path → module suggestions | Done via server `parse-dts` + `nodePathToParameterIdentity` |
+| P2-b | `parseDtsFull.ts` + tests | Done (API/mock port; no fragment silent fallback) |
+| P3-a | Optional `reviewMetadata` on import batch API for skip reasons audit | Done (preview/apply → `batch-import` audit metadata) |
+| P3-b | Server-side DTS parse endpoint for files > 2MB | Done (`POST /api/v1/parameter-import/parse-dts`, 2MB default) |
 
 ---
 

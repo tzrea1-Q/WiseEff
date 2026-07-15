@@ -233,6 +233,40 @@ describe("mock parameter repository", () => {
     expect(round.status).toBe("已打回");
   });
 
+  it("parseDtsImport preserves @address paths and rejects /include/", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+
+    await expect(
+      repository.parseDtsImport({
+        sourceName: "board.dts",
+        content: '/dts-v1/;\n/include/ "pin.dtsi"\n/ { board_id = <0>; };\n'
+      })
+    ).rejects.toMatchObject({
+      details: { code: "dts-include-unsupported" }
+    });
+
+    const parsed = await repository.parseDtsImport({
+      sourceName: "board.dts",
+      content: `/dts-v1/;
+&demo {
+	battery_checker@0 {
+		status = "ok";
+	};
+	battery_checker@1 {
+		status = "disabled";
+	};
+};
+`
+    });
+
+    expect(parsed.format).toBe("dts-full");
+    expect(parsed.rows.map((row) => row.sourceNodePath).sort()).toEqual([
+      "demo/battery_checker@0/status",
+      "demo/battery_checker@1/status"
+    ]);
+    expect(parsed.rows.every((row) => row.module.includes("@"))).toBe(true);
+  });
+
   it("creates and applies deterministic import batch previews", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
 

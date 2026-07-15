@@ -6,6 +6,7 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import * as repository from "./repository";
+import * as projectService from "./projectService";
 import { registerParameterRoutes } from "./routes";
 import * as service from "./service";
 
@@ -22,6 +23,10 @@ vi.mock("./repository", () => ({
   updateProject: vi.fn()
 }));
 
+vi.mock("./projectService", () => ({
+  createProjectForAuth: vi.fn()
+}));
+
 vi.mock("./service", () => ({
   applyImportBatch: vi.fn(),
   createImportPreview: vi.fn(),
@@ -33,6 +38,7 @@ vi.mock("./service", () => ({
   listParameterModulesForAuth: vi.fn(),
   listSubmissionRounds: vi.fn(),
   moveParameterModuleForAuth: vi.fn(),
+  parseDtsImportForAuth: vi.fn(),
   resolveParameterListQuery: vi.fn(),
   reviewChange: vi.fn(),
   saveDraft: vi.fn(),
@@ -370,6 +376,60 @@ describe("parameter routes", () => {
     );
   });
 
+  it("POST /api/v1/parameter-import/parse-dts returns parsed rows for admin", async () => {
+    const db = makeDb();
+    const parsed = {
+      format: "dts-full" as const,
+      rows: [
+        {
+          name: "status",
+          module: "demo_multi_instance/battery_checker@0",
+          sourceNodePath: "demo_multi_instance/battery_checker@0/status",
+          rawText: '"ok"',
+          normalizedValue: '"ok"',
+          valueType: "string-list"
+        }
+      ]
+    };
+    vi.mocked(service.parseDtsImportForAuth).mockReturnValue(parsed);
+
+    const response = await requestJson<typeof parsed>(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
+      "/api/v1/parameter-import/parse-dts",
+      {
+        method: "POST",
+        body: JSON.stringify({ sourceName: "board.dts", content: '/dts-v1/;\n&demo { status = "ok"; };\n' })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(parsed);
+    expect(service.parseDtsImportForAuth).toHaveBeenCalledWith(
+      makeAuth({ permissions: ["parameter:view", "admin:access"] }),
+      {
+        sourceName: "board.dts",
+        content: '/dts-v1/;\n&demo { status = "ok"; };\n'
+      }
+    );
+  });
+
+  it("POST /api/v1/parameter-import/parse-dts rejects missing sourceName", async () => {
+    const db = makeDb();
+
+    const response = await requestJson<{ error: { code: string } }>(
+      makeServer({ db, auth: makeAuth({ permissions: ["admin:access"] }) }),
+      "/api/v1/parameter-import/parse-dts",
+      {
+        method: "POST",
+        body: JSON.stringify({ content: "/dts-v1/;\n" })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    expect(service.parseDtsImportForAuth).not.toHaveBeenCalled();
+  });
+
   it("review route rejects conflicting path and body request ids", async () => {
     const db = makeDb();
 
@@ -496,7 +556,7 @@ describe("parameter routes", () => {
       parameterCount: 0,
       updatedAt: "2026-07-02T00:00:00.000Z"
     };
-    vi.mocked(repository.createProject).mockResolvedValue(item);
+    vi.mocked(projectService.createProjectForAuth).mockResolvedValue(item);
 
     const response = await requestJson<{ item: typeof item }>(
       makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
@@ -509,12 +569,16 @@ describe("parameter routes", () => {
 
     expect(response.status).toBe(201);
     expect(response.body).toEqual({ item });
-    expect(repository.createProject).toHaveBeenCalledWith(db, {
-      organizationId: "org-1",
-      id: "nova",
-      name: "Nova",
-      code: "NOVA"
-    });
+    expect(projectService.createProjectForAuth).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ organization: { id: "org-1", name: "ChargeLab" } }),
+      {
+        id: "nova",
+        name: "Nova",
+        code: "NOVA"
+      },
+      expect.objectContaining({ requestId: expect.any(String) })
+    );
   });
 
   it("DELETE /api/v1/parameters/admin/projects/:projectId deletes an empty project", async () => {

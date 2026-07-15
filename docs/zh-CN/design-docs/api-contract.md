@@ -214,6 +214,7 @@ POST   /api/v1/parameter-submission-rounds
 GET    /api/v1/parameter-submission-rounds
 GET    /api/v1/parameter-change-requests
 POST   /api/v1/parameter-change-requests/:requestId/review
+POST   /api/v1/parameter-import/parse-dts
 POST   /api/v1/parameter-import-batches
 POST   /api/v1/parameter-import-batches/:batchId/apply
 GET    /api/v1/parameters/dashboard/summary
@@ -232,10 +233,13 @@ GET    /api/v1/parameters/dashboard/hotspots
 | `GET` | `/api/v1/parameter-submission-rounds` | 提交轮次列表 |
 | `GET` | `/api/v1/parameter-change-requests` | 变更请求列表 |
 | `POST` | `/api/v1/parameter-change-requests/:requestId/review` | 审阅、推进或打回 |
-| `POST` | `/api/v1/parameter-import-batches` | 创建导入批次 |
-| `POST` | `/api/v1/parameter-import-batches/:batchId/apply` | 应用导入 |
+| `POST` | `/api/v1/parameter-import/parse-dts` | 完整 `.dts` 服务端 CST 解析（`parseDts`/`resolveDts`）；含 `/include/` 时返回 `details.code=dts-include-unsupported` |
+| `POST` | `/api/v1/parameter-import-batches` | 创建导入批次预览；可选 `reviewMetadata`（跳过原因等）写入 `batch-import` 审计 metadata |
+| `POST` | `/api/v1/parameter-import-batches/:batchId/apply` | 应用导入；可选 `reviewMetadata` 合并进 apply 审计 |
 | `GET` | `/api/v1/parameters/dashboard/summary` | 参数看板汇总：KPI、趋势、风险分布、工作台信号；另含 `personalKpis`（按 `perspectiveRoleId` 视角聚合的个人 KPI：`contributionCount`、`workflowCount`、`openItemCount`、`pendingTodoCount`、`highRiskTouchCount`）与 `personalTrend`（个人趋势，结构与 `trend` 相同，按同一视角聚合）；查询参数 `window`（默认 `30d`）、可选 `projectId`、可选 `perspectiveRoleId`（前端当前角色，用于个人 KPI 语义分支） |
 | `GET` | `/api/v1/parameters/dashboard/hotspots` | 参数热榜；查询参数 `window`（默认 `30d`）、`dimension`（默认 `overall`）、可选 `projectId` |
+
+`parse-dts` 返回行含 `name`、`module`、`sourceNodePath`、`rawText`、`normalizedValue`、`valueType`；身份语义与服务端 `nodePathToParameterIdentity` 对齐。默认内容上限 2MB。完整字段示例见英文版 `docs/design-docs/api-contract.md` § Parameter Import。
 
 `/parameter-home` 前端通过 `ParameterDashboardRepository` 消费上述只读聚合接口；热榜评分为服务端确定性可解释打分，前端仅做展示与动作模板映射。
 
@@ -396,6 +400,53 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 省略 `versionId` 时使用文件 `currentVersionId`。`origin=writeback` 的版本在同步时不生成新草稿。
 
 审计动作：`parameter-file-upload`、`parameter-file-sync`、`parameter-file-conflict-open`、`parameter-file-conflict-resolve`、`parameter-writeback-to-file`。
+
+### 结构化读取与 DTS 检索（P3）
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure` | 从 `dts_*` 读取某一文件版本的结构化模型（请求内不重解析）。返回 `{ nodes }`；节点含类型化 `properties`（`valueType`/`rawText`/`normalizedValue`）与 `phandleRefs`。需要 `parameter:view`。 |
+| `GET` | `/api/v1/projects/:projectId/dts-search` | 在项目当前文件版本的 `dts_*` 上检索。查询：`q`（必填），`by` = `path`\|`address`\|`label`\|`compatible`\|`value`（默认 `path`）。返回 `{ hits }`。需要 `parameter:view`。 |
+| `POST` | `/api/v1/projects/:projectId/dts-structured-edits/submit` | 将一条或多条结构化 DTS 属性编辑提交为参数提交轮次。请求体：`{ edits: [{ fileId, nodePath, propertyName, rawText, reason? }], reason?, assignees? }`。按 `source_file_name`/`source_node_path` 映射到 `project_parameter_value`，创建草稿并提交 CR；`targetValue` 使用 `rawText`（非 `normalizedValue`）。返回 `201 { item }`（含 CR 项的提交轮次）。需要 `parameter:edit`；敏感节点规则适用（关键路径需 `parameter:edit-critical`；Agent 写 critical 节点拒绝）。审计：`parameter-structured-edit-submit`。 |
+
+### 变更请求 impact 扩展（P3）
+
+`GET /api/v1/parameter-change-requests`（及相关详情）暴露 `impact[]`，kind 为 `module` \| `test` \| `parameter` \| `phandle` \| `compatible` \| `config-set`。项目值结构化绑定时，服务端附加 phandle / compatible / config-set 对等项；否则保留遗留模板。
+
+敏感节点守卫作用于提交/合入/回写：缺少 `parameter:edit-critical` → `403`；Agent 写 `critical` 规则 → `403` 且 `requireHuman: true`，审计 `parameter-sensitive-node-denied`。
+
+## 配置集、发布基线与校验门禁（P2）
+
+板级配置集把项目下的参数文件聚合为一个可构建单元；发布基线对配置集做快照，支持对比/回滚/发布；校验门禁在基线发布前运行 `dtc`。以下路由均要求 `canAdminParameters`（`admin:access`）；非 Admin 调用返回 `403`。Admin UI 在 P3 提供（`/parameter-admin/projects` 的 `ConfigSetBaselinePanel`）。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/v1/projects/:projectId/config-sets` | 列出项目的配置集。 |
+| `POST` | `/api/v1/projects/:projectId/config-sets` | 创建配置集。请求体：`{ name, description?, derivedFromId? }`。返回 `201 { item }`；同项目内 `name` 重复报 `409`。 |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/files` | 把参数文件加入配置集成员。请求体：`{ fileId, role, sortOrder? }`（`role` 为 `base`\|`overlay`\|`charging`\|`thermal`\|`misc`）。返回 `201 { item }`；文件已属于另一配置集报 `409`。 |
+| `DELETE` | `/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId` | 从配置集移除文件。返回 `200 {}`。 |
+| `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/baselines` | 列出配置集的基线。 |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/baselines` | 把配置集当前所有成员版本快照为新的 `draft` 基线。请求体：`{ name, notes? }`。返回 `201 { item }`；成员无当前版本或基线重名报 `409`。 |
+| `GET` | `/api/v1/projects/:projectId/baselines/:baselineId/compare` | 对比基线钉住的版本与配置集当前版本。返回 `200 { item: { baselineId, members } }`；每个成员为 `unchanged`\|`version_changed`\|`file_added`\|`file_removed`；`version_changed` 的 dts 成员附带节点/属性级、类型感知的 `structuralDiff`。 |
+| `POST` | `/api/v1/projects/:projectId/baselines/:baselineId/rollback` | 原子地把每个已漂移成员指回钉住版本（不删历史；漂移成员会得到一个新的 `origin=rollback` 版本）。返回 `200 { item: { baselineId, restored } }`。 |
+| `POST` | `/api/v1/projects/:projectId/baselines/:baselineId/release` | 对当前成员内容运行校验门禁，门禁放行后把基线标记 `released`。返回 `200 { item: baseline, gate }`。**门禁阻断 → `409`**，`error.details = { code: 'dts-validation-failed', diagnostics, mode, compiler }`。 |
+| `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/export` | 导出无损 bundle：每个 dts 成员为 `serializeDts(parseDts(源))`。返回 `200 { manifest, files }`；`manifest.validation` 携带导出时刻的门禁结果（导出不会因门禁失败而阻断，这一点与 release 不同）。 |
+
+校验门禁结果结构（`gate` / `manifest.validation`）：
+
+```json
+{
+  "ok": true,
+  "mode": "warn",
+  "requiresConfirmation": true,
+  "compiler": "dtc",
+  "diagnostics": [{ "file": "board.dts", "line": 12, "severity": "error", "message": "syntax error" }]
+}
+```
+
+`mode` 为 `block`（默认）、`warn` 或 `off`（`DTS_VALIDATION_MODE`；见 `docs/zh-CN/developer/environment-variables.md`）。`compiler` 为 `dtc` 或 `unavailable`（`PATH` 上找不到 `dtc` 二进制）。只要结果不是一次硬性 `dtc` 通过（即 `warn` 模式，或 `block`/`off` 下因编译器不可用而软放行），`requiresConfirmation` 就为 `true`。
+
+审计 kind 与 action：`config-set`（`created`、`updated`、`member_changed`）、`baseline`（`created`、`rolled_back`、`released`）、`validation.gate`（`run`）、`export`（`file`、`config-set`）。
 
 ## 8. Jobs 与进度
 

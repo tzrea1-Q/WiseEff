@@ -20,7 +20,7 @@ Rules:
 
 - Auth and users: `/me`, user listing, user creation, activation, role replacement.
 - Projects and modules: project metadata and module lookup.
-- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), and per-project parameter file hosting with sync and conflict resolution (`/projects/:projectId/parameter-files*`).
+- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), per-project parameter file hosting with sync and conflict resolution (`/projects/:projectId/parameter-files*`), structured DTS read/search (`.../structure`, `/projects/:projectId/dts-search`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
 - Logs: upload/file records, analysis records, runs, rerun, archive, feedback.
 - Product feedback: Internal Beta sidebar feedback submission, admin triage, and attachment content.
 - Jobs: status and progress events.
@@ -95,6 +95,35 @@ Org-scoped parameter modules are a hierarchical taxonomy independent from the de
 | `DELETE` | `/api/v1/parameter-modules/:moduleId` | Delete an empty leaf module. |
 
 `GET /api/v1/parameters` accepts `moduleId` and optional `includeDescendants` (defaults to including descendants). Parameter DTOs expose `moduleId` and `modulePath` (materialized name segments).
+
+## Parameter Import
+
+Admin-only (`canAdminParameters` / `admin:access`) batch import and full-DTS parse:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/parameter-import/parse-dts` | Parse a full `.dts` UTF-8 source via server CST (`parseDts`/`resolveDts`). Rejects `/include/` with `details.code=dts-include-unsupported`. |
+| `POST` | `/api/v1/parameter-import-batches` | Create an import preview batch. Optional `reviewMetadata` (skip reasons / notes) is written into `batch-import` audit metadata when present. |
+| `POST` | `/api/v1/parameter-import-batches/:batchId/apply` | Apply selected preview items. Optional `reviewMetadata` merges into the apply audit metadata. |
+
+`POST /api/v1/parameter-import/parse-dts` body:
+
+```json
+{ "sourceName": "board.dts", "content": "/dts-v1/;\n&demo { chip@6E { status = \"ok\"; }; };\n" }
+```
+
+Response rows include `name`, `module`, `sourceNodePath`, `rawText`, `normalizedValue`, and `valueType`. `module`/`name` follow `nodePathToParameterIdentity` on `sourceNodePath` (`nodePath/prop`). Default content size limit is 2MB.
+
+Optional `reviewMetadata` on create/apply:
+
+```json
+{
+  "reviewMetadata": {
+    "skippedRows": [{ "rowKey": "demo/chip@6E/status", "name": "status", "module": "demo/chip@6E", "reason": "skipped in wizard" }],
+    "notes": "wizard skipped 1 row(s)"
+  }
+}
+```
 
 ## Parameter Dashboard
 
@@ -186,6 +215,53 @@ Sync body (optional):
 When `versionId` is omitted, sync uses the file's `currentVersionId`. Versions with `origin=writeback` skip automatic draft generation during sync.
 
 Audit actions: `parameter-file-upload`, `parameter-file-sync`, `parameter-file-conflict-open`, `parameter-file-conflict-resolve`, `parameter-writeback-to-file`.
+
+### Structured read and DTS search (P3)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure` | Read the persisted structural model for one file version from `dts_*` (no re-parse). Returns `{ nodes }`; each node includes typed `properties` (`valueType`, `rawText`, `normalizedValue`) and `phandleRefs`. Requires `parameter:view`. |
+| `GET` | `/api/v1/projects/:projectId/dts-search` | Search current file versions' `dts_*` rows. Query: `q` (required), `by` = `path`\|`address`\|`label`\|`compatible`\|`value` (default `path`). Returns `{ hits }`. Requires `parameter:view`. |
+| `POST` | `/api/v1/projects/:projectId/dts-structured-edits/submit` | Submit one or more structured DTS property edits as a parameter submission round. Body: `{ edits: [{ fileId, nodePath, propertyName, rawText, reason? }], reason?, assignees? }`. Maps each edit to a `project_parameter_value` via `source_file_name`/`source_node_path`, creates drafts, and submits CRs whose `targetValue` is `rawText` (not `normalizedValue`). Returns `201 { item }` (submission round with CR items). Requires `parameter:edit`; sensitive-node rules apply (`parameter:edit-critical` for critical paths; agent writes to critical nodes denied). Audit: `parameter-structured-edit-submit`. |
+
+### Change-request impact extensions (P3)
+
+`GET /api/v1/parameter-change-requests` (and related detail payloads) expose `impact[]` with kinds `module` \| `test` \| `parameter` \| `phandle` \| `compatible` \| `config-set`. When the project value is structurally bound, the server appends phandle / compatible / config-set peers; otherwise it keeps the legacy template.
+
+Sensitive-node guards apply on submit/merge/writeback paths: missing `parameter:edit-critical` → `403`; agent writes to `critical` rules → `403` with `requireHuman: true` and audit `parameter-sensitive-node-denied`.
+
+## Config Sets, Release Baselines, and the Validation Gate (P2)
+
+Board-level config sets aggregate a project's parameter files into one buildable unit; release baselines snapshot a config set for compare/rollback/release; the validation gate runs `dtc` before a baseline can be released. All routes below require `canAdminParameters` (`admin:access`); non-admin callers get `403`. Admin UI for this surface ships in P3 (`ConfigSetBaselinePanel` on `/parameter-admin/projects`).
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/projects/:projectId/config-sets` | List config sets for a project. |
+| `POST` | `/api/v1/projects/:projectId/config-sets` | Create a config set. Body: `{ name, description?, derivedFromId? }`. Returns `201 { item }`. Duplicate `name` in the same project is `409`. |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/files` | Add a parameter file as a config-set member. Body: `{ fileId, role, sortOrder? }` (`role` is `base`\|`overlay`\|`charging`\|`thermal`\|`misc`). Returns `201 { item }`. A file already owned by another config set is `409`. |
+| `DELETE` | `/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId` | Remove a file from the config set. Returns `200 {}`. |
+| `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/baselines` | List baselines for a config set. |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/baselines` | Snapshot the config set's current member versions into a new `draft` baseline. Body: `{ name, notes? }`. Returns `201 { item }`. A member with no current version, or a duplicate baseline name, is `409`. |
+| `GET` | `/api/v1/projects/:projectId/baselines/:baselineId/compare` | Compare the baseline's pinned versions against the config set's current versions. Returns `200 { item: { baselineId, members } }`; each member reports `unchanged`\|`version_changed`\|`file_added`\|`file_removed`, and `version_changed` DTS members include a `structuralDiff` (node/property level, type-aware). |
+| `POST` | `/api/v1/projects/:projectId/baselines/:baselineId/rollback` | Atomically repoint every drifted member back to its pinned version (never deletes history; drifted members get a new `origin=rollback` version). Returns `200 { item: { baselineId, restored } }`. |
+| `POST` | `/api/v1/projects/:projectId/baselines/:baselineId/release` | Run the validation gate against current member contents, then mark the baseline `released` if the gate allows it. Returns `200 { item: baseline, gate }`. **Blocked by the gate → `409`** with `error.details = { code: 'dts-validation-failed', diagnostics, mode, compiler }`. |
+| `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/export` | Export a lossless bundle: `serializeDts(parseDts(source))` per DTS member. Returns `200 { manifest, files }`; `manifest.validation` carries the gate result computed at export time (export never blocks on a failing gate, unlike release). |
+
+Validation gate result shape (`gate` / `manifest.validation`):
+
+```json
+{
+  "ok": true,
+  "mode": "warn",
+  "requiresConfirmation": true,
+  "compiler": "dtc",
+  "diagnostics": [{ "file": "board.dts", "line": 12, "severity": "error", "message": "syntax error" }]
+}
+```
+
+`mode` is `block` (default), `warn`, or `off` (`DTS_VALIDATION_MODE`; see `docs/developer/environment-variables.md`). `compiler` is `dtc` or `unavailable` (no `dtc` binary on `PATH`). `requiresConfirmation` is `true` whenever the result was not a hard `dtc` pass (`warn` mode, or `block`/`off` with an unavailable compiler that fell back to a soft pass).
+
+Audit kinds and actions: `config-set` (`created`, `updated`, `member_changed`), `baseline` (`created`, `rolled_back`, `released`), `validation.gate` (`run`), `export` (`file`, `config-set`).
 
 ## Governance
 

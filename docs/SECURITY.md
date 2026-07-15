@@ -31,6 +31,7 @@ Current frontend permissions include:
 
 - `parameter:view`
 - `parameter:edit`
+- `parameter:edit-critical` (safety-critical / sensitive-node writes; Hardware/Software Committer and Admin have it by default)
 - `debugging:use`
 - `logs:upload`
 - `parameter:review`
@@ -38,6 +39,8 @@ Current frontend permissions include:
 - `users:manage`
 
 When adding backend business routes, map frontend capabilities to server-side authorization checks and include negative tests for forbidden users.
+
+**Node-level sensitive rules (P3):** `dts_sensitive_node_rules` match org/optional-project `path` or `compatible` patterns to `high`/`critical` risk tiers and a required capability (default `parameter:edit-critical`). Writes that hit a rule without the capability return `403`. Agent actors (`actorType=agent`, including Xiaoze `action.submitParameterChange`) that hit `critical` are always denied, audited as `parameter-sensitive-node-denied` with `requireHuman: true`, and must be completed by a human.
 
 Development auth is limited to local development and tests. `x-wiseeff-user` and the seeded development user are convenience inputs only when `AUTH_MODE=development`; production startup requires `AUTH_MODE=production`. Target self-hosted identity should use `AUTH_PROVIDER=oidc` with `AUTH_OIDC_ISSUER` and `AUTH_OIDC_AUDIENCE`; the verifier checks OIDC access tokens through discovery/JWKS and then reloads effective active state, role bindings, and permissions from WiseEff PostgreSQL. WiseEff-owned local accounts use `AUTH_PROVIDER=local`; the API resolves `we_local_*` bearer session tokens from PostgreSQL and still reloads active state, role bindings, and permissions. Local HMAC smoke uses `AUTH_PROVIDER=hmac`, `AUTH_TOKEN_ISSUER`, and `AUTH_TOKEN_HMAC_SECRET`. Production routes must not fall back to the development user or trust token role claims as final authorization.
 
@@ -132,7 +135,7 @@ M4 Agent tools run only through the backend registry. Read tools still require s
 
 **Xiaoze P0 perception:** `perception.*` tools are read-only (`kind: read`, `requiresApproval: false`) and must pass the same `ToolRegistry.authorize` boundary as other Agent tools. Cross-page reads are bounded to the caller's project scope and permissions; out-of-scope tool calls return `FORBIDDEN` and the agent must answer with a safe non-data response. The AG-UI endpoint rejects unauthenticated requests before streaming events.
 
-**Xiaoze P1 action:** `action.submitParameterChange` is mutating and approval-gated. The AG-UI runtime persists orchestrator tool-call + approval records, emits an interrupt, and resumes only through `approveToolCall` / `rejectToolCall` with transactional re-authorization and audit `actorType=agent`. `editedArgs` fully replaces the tool payload before approval. Device write guards remain outside Xiaoze in P1.
+**Xiaoze P1 action:** `action.submitParameterChange` is mutating and approval-gated. The AG-UI runtime persists orchestrator tool-call + approval records, emits an interrupt, and resumes only through `approveToolCall` / `rejectToolCall` with transactional re-authorization and audit `actorType=agent`. `editedArgs` fully replaces the tool payload before approval. Before submit, the tool runs the same sensitive-node guard as human writes: critical rule hits are denied immediately (`403`, `requireHuman: true`) and never create a production change request. Device write guards remain outside Xiaoze in P1.
 
 **Xiaoze P2 planning:** Multi-step plans use a LangGraph `StateGraph` with a per-`threadId` checkpointer so approved mutating steps resume mid-plan without restarting perceived context. When `XIAOZE_CHECKPOINTER=postgres`, checkpoint payloads (including tool arguments and perceived context) persist at rest in PostgreSQL and must be protected by the same database access controls as other Agent tables; they are separate from user-visible chat history (TD-030). Proactive suggestions are read-only, authz-bounded, and opt-in (`XIAOZE_PROACTIVE_ENABLED` / `VITE_XIAOZE_PROACTIVE_ENABLED`, default off). The suggest pass uses only `perception.*` tools via `POST /api/v1/agent/xiaoze/suggest` and never writes or proposes data outside the caller's permissions. Mutating writes in a plan still require per-step human approval through the existing orchestrator chain; rejecting a step halts the plan without mutation.
 
@@ -169,6 +172,21 @@ The M3 simulator-backed path implements this boundary for local verification. M3
 Local device bridge connectivity uses short-lived pairing codes and scoped bridge tokens (`device-bridge:connect`, `device-bridge:execute`) that are validated server-side before WebSocket registration and RPC execution. Browser bridge health probes and pairing UI do not grant device-write authority; only authenticated debugging routes can create bridge-backed sessions and governed writes.
 
 Bridge rename (`PATCH /api/v1/device-bridges/:bridgeId`) and revoke (`POST /api/v1/device-bridges/:bridgeId/revoke`) require `debugging:use`, must target a user-owned bridge, and revoke immediately invalidates the bridge token for new WebSocket connections. Renaming updates display metadata only; it does not rotate credentials or grant additional scopes.
+
+## Untrusted Subprocess Execution (DTS Validation Gate)
+
+The P2 config-set baseline validation gate compiles user-supplied DTS content with the system `dtc` binary (`server/modules/parameter-files/dtcValidator.ts`). DTS content is untrusted input (uploaded/edited by project members), so the subprocess boundary must stay restricted:
+
+- **Isolated temp directory**: each validation run writes files into a fresh `mkdtemp` directory that is removed in a `finally` block, including on spawn error, timeout, or an unexpected exception; validation never writes into a shared or predictable path.
+- **Minimal environment**: the child process receives only `PATH` (`minimalEnv()`), stripping API keys, database URLs, and other process secrets from the environment `dtc` would otherwise inherit.
+- **Hard timeout**: every `dtc` invocation runs under a timeout (`DtcValidateOptions.timeoutMs`, default 10s) that sends `SIGKILL` to the child if exceeded, so a malformed or adversarial `.dts` file cannot hang the release/export path indefinitely.
+- **No network assumption**: the sandbox does not provision or expect outbound network access for `dtc`; treat any future validator implementation that needs network access as a new threat-model review, not an incremental change.
+- **Fixed argv, no shell interpolation**: file names and paths are passed as `spawn` argv elements, never interpolated into a shell string, so DTS file names cannot inject shell metacharacters.
+- **Auditable degrade path**: when `dtc` is not on `PATH`, the validator degrades according to `DTS_VALIDATION_MODE` (`block` fails closed, `warn`/`off` pass with a recorded diagnostic) rather than silently skipping validation; every gate run, including degraded ones, writes a `validation.gate` audit event (see `docs/developer/environment-variables.md`).
+- **Optional dt-schema hook**: when `DTS_ENABLE_DT_SCHEMA=1` (or `enableDtSchema`), the validator may merge diagnostics from an injected schema runner. Missing schema tools degrade to warning by default (`DTS_DT_SCHEMA_MODE=warn`); only `DTS_DT_SCHEMA_MODE=block` elevates unavailability to a hard error.
+- **Containerized sandbox evaluation (TD-040 / B5)**: **not implemented this period**. Assessment remains: keep the restricted OS subprocess (`tmpdir` + PATH-only env + hard timeout + fixed argv) as the default isolation boundary. A container/gVisor sandbox for `dtc` is deferred to a separate initiative if threat modeling later requires stronger isolation than the current subprocess controls.
+
+**Export data classification:** `exportFile`/`exportConfigSet` return the same DTS/JSON parameter content that is already stored per-project (not credentials, tokens, or cross-tenant data), so export responses carry the same project-scoped sensitivity as the source parameter files and require `admin:access` like the rest of the config-set/baseline surface. Export bundles are returned in the HTTP response body for the caller to hand-commit to Git; they are not written to a shared or public location by the backend, and callers that persist exported bundles are responsible for applying the same access control as the source repository.
 
 ## References
 

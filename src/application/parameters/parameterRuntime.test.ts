@@ -52,6 +52,7 @@ function createRepository(overrides: Partial<ParameterRepository> = {}): Paramet
       summary: { added: 1, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
       items: []
     }),
+    parseDtsImport: vi.fn().mockResolvedValue({ format: "dts-full", rows: [] }),
     ...overrides
   };
 }

@@ -49,6 +49,10 @@ describe("platform user roles", () => {
     expect(roleHasPermission("software-committer", "parameter:review")).toBe(true);
     expect(roleHasPermission("admin", "users:manage")).toBe(true);
     expect(roleHasPermission("admin", "admin:access")).toBe(true);
+    expect(roleHasPermission("admin", "parameter:edit-critical")).toBe(true);
+    expect(roleHasPermission("hardware-committer", "parameter:edit-critical")).toBe(true);
+    expect(roleHasPermission("software-committer", "parameter:edit-critical")).toBe(true);
+    expect(roleHasPermission("hardware-user", "parameter:edit-critical")).toBe(false);
   });
 
   it("declares the requested role inclusion relationships explicitly", () => {

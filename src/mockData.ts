@@ -44,7 +44,7 @@ export type ParameterHistoryEntry = {
 };
 
 export type ImpactItem = {
-  kind: "module" | "test" | "parameter";
+  kind: "module" | "test" | "parameter" | "phandle" | "compatible" | "config-set";
   name: string;
   note: string;
   risk: RiskLevel;

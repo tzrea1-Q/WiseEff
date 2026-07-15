@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { IMPORT_TEMPLATE_HEADERS } from "./columnMap";
 import { detectImportFormat, parseImportSource } from "./detectImportFormat";
 
@@ -65,7 +65,7 @@ describe("detectImportFormat", () => {
 });
 
 describe("parseImportSource", () => {
-  it("routes json input through parseJsonImport", () => {
+  it("routes json input through parseJsonImport", async () => {
     const text = JSON.stringify([
       {
         name: "fast_charge_current_limit_ma",
@@ -74,7 +74,7 @@ describe("parseImportSource", () => {
       }
     ]);
 
-    const rows = parseImportSource({ text });
+    const rows = await parseImportSource({ text });
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
@@ -85,25 +85,51 @@ describe("parseImportSource", () => {
     });
   });
 
-  it("routes dts-full input through parseDtsFragmentImport", () => {
-    const text = `fast-charge-profile-matrix = "0", "5000";`;
+  it("routes dts-full input through parseDtsFull without fragment fallback", async () => {
+    const text = `/dts-v1/;\n&demo {\n\tbattery_checker@0 {\n\t\tstatus = "ok";\n\t};\n};\n`;
+    const parseDtsImport = vi.fn(async () => ({
+      format: "dts-full" as const,
+      rows: [
+        {
+          name: "status",
+          module: "demo/battery_checker@0",
+          sourceNodePath: "demo/battery_checker@0/status",
+          rawText: '"ok"',
+          normalizedValue: '"ok"',
+          valueType: "string-list"
+        }
+      ]
+    }));
 
-    const rows = parseImportSource({ fileName: "board.dts", text });
+    const rows = await parseImportSource(
+      { fileName: "board.dts", text },
+      { parseDtsFullDeps: { parseDtsImport } }
+    );
 
+    expect(parseDtsImport).toHaveBeenCalled();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      name: "fast-charge-profile-matrix",
-      sourceFormat: "dts-fragment"
+      name: "status",
+      module: "demo/battery_checker@0",
+      sourceFormat: "dts-full",
+      sourceLocation: "demo/battery_checker@0/status"
     });
+    expect(rows.every((row) => row.sourceFormat !== "dts-fragment")).toBe(true);
   });
 
-  it("routes csv-like input through parseSpreadsheetImport", () => {
+  it("rejects dts-full parse without parseDtsFullDeps instead of fragment silent fallback", async () => {
+    await expect(parseImportSource({ fileName: "board.dts", text: "status = \"ok\";" })).rejects.toThrow(
+      /parse-dts|parseDtsFullDeps/
+    );
+  });
+
+  it("routes csv-like input through parseSpreadsheetImport", async () => {
     const text = [
       IMPORT_TEMPLATE_HEADERS.join(","),
       "battery_health_reserve_pct,Battery Safety,10,12,,,,,,,"
     ].join("\n");
 
-    const rows = parseImportSource({ fileName: "params.csv", text });
+    const rows = await parseImportSource({ fileName: "params.csv", text });
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({

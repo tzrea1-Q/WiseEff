@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { canPerform } from "@/app/permissions";
 import type { PageProps } from "@/app/routes";
+import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
+import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
+import { ConfigSetBaselinePanel } from "@/components/admin/ConfigSetBaselinePanel";
 import { ParameterAdminSubNav } from "@/components/admin/ParameterAdminSubNav";
 import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
 import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterFilesPanel";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
+import { DtsSearchPanel } from "@/components/parameters/DtsSearchPanel";
+import { DtsStructureBrowserPanel } from "@/components/parameters/DtsStructureBrowserPanel";
 import { KpiStrip, type KpiItem } from "@/components/KpiStrip";
+import { roleHasPermission } from "@/domain/users/types";
 import { useParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import {
@@ -17,6 +24,16 @@ import {
   type ParameterAdminProjectRow
 } from "@/parameterAdminProjects";
 
+type ManageFilesTab = "files" | "config-sets" | "structure";
+
+type AvailableParameterFile = { id: string; fileName: string };
+
+/** Mock teaching files aligned with mockDtsStructuredRepository for config-set picker demos. */
+const MOCK_AVAILABLE_PARAMETER_FILES: AvailableParameterFile[] = [
+  { id: "file-teaching-dts", fileName: "teaching-sample.dts" },
+  { id: "file-teaching-board", fileName: "board-sample.dts" }
+];
+
 export function ParameterAdminProjectsPage({
   state,
   dispatch,
@@ -27,6 +44,11 @@ export function ParameterAdminProjectsPage({
 }: PageProps & { onNewProject?: () => void }) {
   const isApiMode = runtimeMode === "api";
   const adminClient = useMemo(() => createParameterAdminClient(), []);
+  const parameterFileRepository = useMemo(() => resolveParameterFileRepository(runtimeMode), [runtimeMode]);
+  const dtsRepo = useMemo(() => resolveDtsStructuredRepository(runtimeMode), [runtimeMode]);
+  const canAdmin = canPerform(state.activeRoleId, "admin.access");
+  const canEdit = roleHasPermission(state.activeRoleId, "parameter:edit");
+  const canEditCritical = roleHasPermission(state.activeRoleId, "parameter:edit-critical");
   const { search, updateSearch } = useParamAdminProjectsSearch();
   const [apiRows, setApiRows] = useState<ParameterAdminProjectRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -34,6 +56,8 @@ export function ParameterAdminProjectsPage({
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [manageFilesProjectId, setManageFilesProjectId] = useState<string | null>(null);
+  const [manageFilesTab, setManageFilesTab] = useState<ManageFilesTab>("files");
+  const [availableFiles, setAvailableFiles] = useState<AvailableParameterFile[]>([]);
   const [formPending, setFormPending] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [formError, setFormError] = useState("");
@@ -65,6 +89,31 @@ export function ParameterAdminProjectsPage({
   useEffect(() => {
     void loadProjects();
   }, [isApiMode]);
+
+  useEffect(() => {
+    if (!manageFilesProjectId) {
+      setAvailableFiles([]);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const items = await parameterFileRepository.listFiles(manageFilesProjectId);
+        if (!cancelled) {
+          setAvailableFiles(items.map((item) => ({ id: item.id, fileName: item.fileName })));
+        }
+      } catch {
+        if (!cancelled) {
+          setAvailableFiles(isApiMode ? [] : MOCK_AVAILABLE_PARAMETER_FILES);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isApiMode, manageFilesProjectId, parameterFileRepository]);
 
   const kpiItems: KpiItem[] = [
     { id: "total", label: "项目总数", value: summary.total },
@@ -107,6 +156,7 @@ export function ParameterAdminProjectsPage({
     if (!rows.some((row) => row.id === projectId)) {
       return;
     }
+    setManageFilesTab("files");
     setManageFilesProjectId(projectId);
   }, [rows]);
 
@@ -244,19 +294,64 @@ export function ParameterAdminProjectsPage({
               <div>
                 <span className="eyebrow">项目文件</span>
                 <h2 id="project-parameter-files-title">管理文件 · {manageFilesTarget.name}</h2>
-                <p>在「参数文件」标签中维护该项目的参数文件与版本。</p>
+                <p>在「参数文件」「配置集 / 基线」与「结构浏览」标签中维护该项目的文件、发布单元与结构化预览。</p>
               </div>
               <button type="button" className="button subtle" onClick={() => setManageFilesProjectId(null)}>
                 关闭
               </button>
             </div>
             <div className="project-parameter-files-tabs" role="tablist" aria-label="项目详情标签">
-              <button type="button" role="tab" aria-selected="true" className="project-parameter-files-tab is-active">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={manageFilesTab === "files"}
+                className={`project-parameter-files-tab${manageFilesTab === "files" ? " is-active" : ""}`}
+                onClick={() => setManageFilesTab("files")}
+              >
                 参数文件
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={manageFilesTab === "config-sets"}
+                className={`project-parameter-files-tab${manageFilesTab === "config-sets" ? " is-active" : ""}`}
+                onClick={() => setManageFilesTab("config-sets")}
+              >
+                配置集 / 基线
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={manageFilesTab === "structure"}
+                className={`project-parameter-files-tab${manageFilesTab === "structure" ? " is-active" : ""}`}
+                onClick={() => setManageFilesTab("structure")}
+              >
+                结构浏览
               </button>
             </div>
             <div className="project-parameter-files-dialog-body">
-              <ProjectParameterFilesPanel projectId={manageFilesTarget.id} runtimeMode={runtimeMode} />
+              {manageFilesTab === "files" ? (
+                <>
+                  <DtsSearchPanel projectId={manageFilesTarget.id} repository={dtsRepo} />
+                  <ProjectParameterFilesPanel projectId={manageFilesTarget.id} repository={parameterFileRepository} />
+                </>
+              ) : null}
+              {manageFilesTab === "config-sets" ? (
+                <ConfigSetBaselinePanel
+                  projectId={manageFilesTarget.id}
+                  repository={dtsRepo}
+                  canAdmin={canAdmin}
+                  availableFiles={availableFiles}
+                />
+              ) : null}
+              {manageFilesTab === "structure" ? (
+                <DtsStructureBrowserPanel
+                  projectId={manageFilesTarget.id}
+                  repository={dtsRepo}
+                  canEdit={canEdit}
+                  canEditCritical={canEditCritical}
+                />
+              ) : null}
             </div>
           </div>
         </div>

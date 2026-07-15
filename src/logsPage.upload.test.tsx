@@ -55,6 +55,7 @@ function createParameterRepository(overrides: Partial<ParameterRepository> = {})
     reviewChange: vi.fn(),
     createImportPreview: vi.fn(),
     applyImportBatch: vi.fn(),
+    parseDtsImport: vi.fn().mockResolvedValue({ format: "dts-full", rows: [] }),
     ...overrides
   };
 }

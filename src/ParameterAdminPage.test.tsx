@@ -75,6 +75,7 @@ function createParameterActions(overrides: Partial<ParameterPageActions> = {}): 
       ]
     }),
     applyImportBatch: vi.fn().mockResolvedValue(undefined),
+    parseDtsImport: vi.fn().mockResolvedValue({ format: "dts-full", rows: [] }),
     refresh: vi.fn().mockResolvedValue(undefined),
     ...overrides
   };
@@ -290,7 +291,7 @@ describe("ParameterAdminPage", () => {
     );
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
 
-    expect(within(dialog).getByRole("region", { name: "解析与校验" })).toBeInTheDocument();
+    await within(dialog).findByRole("region", { name: "解析与校验" });
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
 
     expect(within(dialog).getByRole("region", { name: "逐行核对" })).toBeInTheDocument();
@@ -311,7 +312,8 @@ describe("ParameterAdminPage", () => {
             currentValue: "3200",
             recommendedValue: "3400"
           }
-        ]
+        ],
+        reviewMetadata: undefined
       })
     );
 
@@ -326,7 +328,8 @@ describe("ParameterAdminPage", () => {
     await waitFor(() =>
       expect(parameterActions.applyImportBatch).toHaveBeenCalledWith({
         batchId: "api-import-batch",
-        selectedItemIds: ["preview-item-1", "preview-item-2"]
+        selectedItemIds: ["preview-item-1", "preview-item-2"],
+        reviewMetadata: undefined
       })
     );
 

@@ -25,6 +25,10 @@ export function canEditParameters(auth: AuthContext) {
   return isActive(auth) && hasPermission(auth, "parameter:edit");
 }
 
+export function canEditCriticalParameters(auth: AuthContext) {
+  return isActive(auth) && hasPermission(auth, "parameter:edit-critical");
+}
+
 export function canReviewParameters(auth: AuthContext) {
   return isActive(auth) && hasPermission(auth, "parameter:review");
 }

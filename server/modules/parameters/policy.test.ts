@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import {
   canAdminParameters,
+  canEditCriticalParameters,
   canEditParameters,
   canMergeParameters,
   canReviewParameterStage,
@@ -37,6 +38,19 @@ describe("parameter policy", () => {
     expect(canReviewParameters(auth({ permissions: ["parameter:review"] }))).toBe(true);
     expect(canEditParameters(auth({ permissions: ["parameter:edit"], user: { ...auth().user, isActive: false } }))).toBe(false);
     expect(canReviewParameters(auth({ permissions: [], user: { ...auth().user, isActive: true } }))).toBe(false);
+  });
+
+  it("requires active users and parameter:edit-critical for safety-critical writes", () => {
+    expect(canEditCriticalParameters(auth({ permissions: ["parameter:edit-critical"] }))).toBe(true);
+    expect(canEditCriticalParameters(auth({ permissions: ["parameter:edit"] }))).toBe(false);
+    expect(
+      canEditCriticalParameters(
+        auth({
+          permissions: ["parameter:edit-critical"],
+          user: { ...auth().user, isActive: false }
+        })
+      )
+    ).toBe(false);
   });
 
   it("allows merge for active software users and admins", () => {

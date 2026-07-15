@@ -65,10 +65,13 @@ export function createBearerTokenForUser(userId: string, email: string, name: st
 
 export function authHeadersForUser(userId: string, email: string, name: string) {
   const authorization = createBearerTokenForUser(userId, email, name);
+  // Always include x-wiseeff-user so AUTH_MODE=development resolvers (which ignore Bearer)
+  // still load the intended user from the database.
   if (authorization) {
     return {
       "Content-Type": "application/json",
-      Authorization: authorization
+      Authorization: authorization,
+      "x-wiseeff-user": userId
     };
   }
 
@@ -81,10 +84,13 @@ export function authHeadersForUser(userId: string, email: string, name: string) 
 export function authHeadersForRole(roleId: AcceptanceRoleId) {
   const user = acceptanceUsersByRole[roleId];
   const authorization = createBearerTokenForUser(user.userId, user.email, user.name);
+  // Always include x-wiseeff-user so AUTH_MODE=development resolvers (which ignore Bearer)
+  // still load the intended user from the database.
   if (authorization) {
     return {
       "Content-Type": "application/json",
-      Authorization: authorization
+      Authorization: authorization,
+      "x-wiseeff-user": user.userId
     };
   }
 

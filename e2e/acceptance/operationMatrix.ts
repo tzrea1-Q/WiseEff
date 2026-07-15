@@ -198,6 +198,30 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "audit"]
   },
   {
+    id: "PARAM-IMPORT-DTS-FULL-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action: "Parse a full .dts via parameter-import/parse-dts with @address module paths and reject /include/.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-IMPORT-DTS-FULL-001"],
+    specFiles: ["e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "PARAM-IMPORT-REVIEW-META-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action: "Create an import preview with reviewMetadata.skippedRows and verify batch-import audit metadata.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-IMPORT-REVIEW-META-001"],
+    specFiles: ["e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts"],
+    assertions: ["api", "db", "audit"]
+  },
+  {
     id: "PARAM-DRAFT-EDIT-001",
     priority: "P1",
     area: "parameters",
@@ -534,6 +558,102 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "automated",
     acceptanceIds: ["PARAM-FILE-CONFLICT-001"],
     specFiles: ["e2e/acceptance/parameter-files.acceptance.spec.ts"],
+    assertions: ["api", "db"]
+  },
+  {
+    id: "PARAM-DTS-STRUCTURE-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure",
+    roles: ["Admin"],
+    action: "Read structured DTS nodes, typed properties, and phandle refs for a uploaded file version.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-DTS-STRUCTURE-001"],
+    specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "PARAM-DTS-EDIT-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure",
+    roles: ["Admin"],
+    action: "Confirm structure payload carries typed properties (valueType/rawText) consumed by StructuredValueEditor.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-DTS-EDIT-001"],
+    specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "PARAM-DTS-EDIT-002",
+    priority: "P1",
+    area: "parameters",
+    route: "/api/v1/projects/:projectId/dts-structured-edits/submit",
+    roles: ["Admin"],
+    action: "Submit structured edits as change requests with rawText fidelity, advance review to merge, and verify CST writeback preserves rawText.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-DTS-EDIT-002"],
+    specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
+    assertions: ["api", "ui", "db"]
+  },
+  {
+    id: "PARAM-DTS-CONFIGSET-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects",
+    roles: ["Admin"],
+    action: "Create a config set and baseline via API and open the ConfigSetBaselinePanel on the projects file dialog.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-DTS-CONFIGSET-001"],
+    specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "PARAM-DTS-DIFF-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/api/v1/projects/:projectId/baselines/:baselineId/compare",
+    roles: ["Admin"],
+    action: "Compare a release baseline and surface structured member diffs / change-set payload.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-DTS-DIFF-001"],
+    specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
+    assertions: ["api", "ui"]
+  },
+  {
+    id: "PARAM-DTS-SEARCH-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/api/v1/projects/:projectId/dts-search",
+    roles: ["Admin"],
+    action: "Search structured DTS nodes by path and render DtsSearchPanel in the manage-files dialog.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-DTS-SEARCH-001"],
+    specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "PARAM-DTS-IMPACT-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/api/v1/parameter-change-requests",
+    roles: ["Admin", "Hardware Committer"],
+    action: "Submit a source-bound parameter change and assert impact includes structural kinds when DTS facts exist.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-DTS-IMPACT-001"],
+    specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "PARAM-DTS-RBAC-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/api/v1/parameter-submission-rounds",
+    roles: ["Hardware User", "Admin"],
+    action: "Reject sensitive-node submits without parameter:edit-critical and assert critical agent deny semantics.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-DTS-RBAC-001"],
+    specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
     assertions: ["api", "db"]
   }
 ];

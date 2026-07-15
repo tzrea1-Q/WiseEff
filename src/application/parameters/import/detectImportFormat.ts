@@ -1,4 +1,5 @@
 import { parseDtsFragmentImport } from "./parseDtsFragment";
+import { parseDtsFull, type ParseDtsFullDeps } from "./parseDtsFull";
 import { parseJsonImport } from "./parseJson";
 import { parseSpreadsheetImport } from "./parseSpreadsheet";
 import type { ImportSourceFormat, ParsedImportRow } from "./types";
@@ -7,6 +8,11 @@ export type DetectImportFormatInput = {
   fileName?: string;
   bytes?: Uint8Array;
   text?: string;
+};
+
+export type ParseImportSourceOptions = {
+  /** Required when format resolves to dts-full — never uses fragment fallback. */
+  parseDtsFullDeps?: ParseDtsFullDeps;
 };
 
 function isXlsxSpreadsheet(input: DetectImportFormatInput): boolean {
@@ -56,12 +62,23 @@ export function detectImportFormat(input: DetectImportFormatInput): ImportSource
   return "spreadsheet";
 }
 
-export function parseImportSource(input: DetectImportFormatInput): ParsedImportRow[] {
+export async function parseImportSource(
+  input: DetectImportFormatInput,
+  options: ParseImportSourceOptions = {}
+): Promise<ParsedImportRow[]> {
   const format = detectImportFormat(input);
   switch (format) {
     case "json":
       return parseJsonImport(input.text ?? "");
-    case "dts-full":
+    case "dts-full": {
+      if (!options.parseDtsFullDeps) {
+        throw new Error("完整 DTS 解析需要服务端 parse-dts（或 mock），请通过 parseDtsFullDeps 提供。");
+      }
+      return parseDtsFull(
+        { sourceName: input.fileName, content: input.text ?? "" },
+        options.parseDtsFullDeps
+      );
+    }
     case "dts-fragment":
       return parseDtsFragmentImport(input.text ?? "");
     case "spreadsheet":

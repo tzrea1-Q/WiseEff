@@ -1,0 +1,364 @@
+/*
+ * DTS 配置格式教学范例文件
+ *
+ * 本文件基于 overlay.dts 缩减而成，每种配置格式仅保留一项示例，
+ * 并附加注释说明该格式的语法与用途，供学习 DTS 配置参考。
+ *
+ * 目录索引:
+ *   1.  文件头声明          (/dts-v1/, /plugin/)
+ *   3.  根节点属性赋值      (/ {})
+ *   4.  节点引用覆盖        (&label)
+ *   5.  整数属性            (<>)
+ *   6.  字符串属性          ("")
+ *   7.  字节数组属性        (/bits/ 8 <>)
+ *   8.  Phandle 引用        (<&xxx>)
+ *   9.  布尔/空属性         (无值)
+ *   10. 总线设备节点        (name@address)
+ *   11. 同名多节点          (@0 / @1)
+ *   12. 编号标签变体        (_1 / _swi)
+ *   13. 多层嵌套子节点      (无地址子节点)
+ *   14. compatible 属性     (vendor,device)
+ *   15. -supply 后缀属性    (regulator 绑定)
+ *   16. kebab-case 命名     (连字符)
+ *   17. 字符串→属性名引用   (间接引用)
+ *   18. 自描述表格          (列数元数据 + 数据行)
+ *   19. 编号属性序列        (同前缀 + 数字后缀)
+ *   20. 标准 DTS 框架属性   (#address-cells 等)
+ *   21. 负数值              (字符串形式与 <> 形式)
+ *   22. 十六进制大小写混用  (0xb / 0x4B)
+ *   23. 多 phandle 列表     (<&a &b>)
+ *   24. 注释格式            (block 和 line)
+ *   25. 多 <> 组逗号拼接    (<...>,<...>)
+ *   26. 同一节点多次覆盖    (&label 出现多次)
+ *   27. 节点内定义 label    (label:name)
+ *   28. vendor 前缀属性名   (vendor,property)
+ *   29. 浮点数字符串表示    ("0.5")
+ *   30. 字符串中 | 多值     ("6|9|10")
+ *   31. 同 compatible 多实例 (相同 compatible 不同 reg)
+ */
+
+/* ── 1. 文件头声明 ── */
+/dts-v1/;
+/plugin/;
+
+/* ── 2. include 包含 ── */
+
+/* ── 3. 根节点属性赋值 ── */
+/ {
+	board_id = <0>;
+};
+
+/* ── 5. 整数属性 ── */
+&demo_integer {
+	/* 单值整数 */
+	single_value = <42>;
+	/* 十六进制整数 */
+	hex_value = <0x220022>;
+	/* 多值数组 */
+	multi_value = <1 2800>;
+	/* 多行矩阵——换行不影响解析，空格/Tab 均可分隔 */
+	multi_line_matrix = <
+		16 100 100
+		6  15  100
+		0  5   100>;
+};
+
+/* ── 6. 字符串属性 ── */
+&demo_string {
+	/* 单字符串 */
+	status = "ok";
+	/* 字符串数组（逗号分隔的多个字符串） */
+	string_array = "buck", "0", "1", "1";
+	/* 多行字符串参数表——换行不中断 */
+	multi_line_table =
+		"scp", "lvc", "2000", "105", "0", "2",
+		"scp", "sc",  "3000", "105", "0", "0";
+};
+
+/* ── 7. 字节数组属性 ── */
+&demo_byte_array {
+	/* 8 位字节数组 */
+	reg_config = /bits/ 8 <0x19 0x32 0x4B 0x64 0x7D>;
+	/* 也可用于普通数值 */
+	mode_list = /bits/ 8 <0 1 1 5 6>;
+};
+
+/* ── 8. Phandle 引用 ── */
+&demo_phandle {
+	/* GPIO 引用: phandler + pin 号 + flags */
+	gpio_int = <&gpio13 29 0>;
+	/* interrupt-parent 引用中断控制器 */
+	interrupt-parent = <&gic>;
+};
+
+/* ── 9. 布尔/空属性 ── */
+&demo_bool {
+	/* 布尔属性——存在即启用 */
+	weak_source_sleep_enabled;
+	charge_done_sleep_enabled;
+};
+
+/* ── 20. 标准 DTS 框架属性 ── */
+&amba {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	compatible = "arm,amba-bus";
+	interrupt-parent = <&gic>;
+	ranges;
+
+	/* ── 10. 总线设备节点 name@address ── */
+	i2c@XXXX0000 {
+		status = "ok";
+
+		/* ── 14. compatible 的 vendor,device 格式 ── */
+		chip@6E {
+			compatible = "vendor,chip123";   /* vendor,device 格式 */
+			reg = <0x6e>;                    /* 总线地址，与 @6E 对应 */
+
+			/* ── 13. 无地址子节点（功能子模块）── */
+			sub_module {
+				param_a = <0>;
+				status = "ok";
+			};
+
+			/* ── 15. -supply 后缀属性 ── */
+			vdd-supply = <&demo_regulator>;
+
+			/* ── 16. kebab-case 命名 ── */
+			some-kebab-property = <0>;       /* kebab-case（规范推荐） */
+			some_snake_property = <0>;        /* snake_case（项目惯例） */
+		};
+
+		/* ── 22. 十六进制大小写混用 ── */
+		mixed_case_reg = /bits/ 8 <0xab 0xCD 0xef 0x12>;
+	};
+};
+
+/* ── 11. 同名多节点 @0 / @1 ── */
+&demo_multi_instance {
+	status = "ok";
+
+	battery_checker@0 {
+		matchable = <&demo_ic_a &demo_ic_b>;
+		spare-cycles = <150>;
+		status = "ok";
+	};
+
+	battery_checker@1 {
+		matchable = <&demo_ic_a_1 &demo_ic_b_1>;
+		spare-cycles = <150>;
+		status = "ok";
+	};
+};
+
+/* ── 12. 编号标签变体 _1 / _swi ── */
+&demo_ic_a {
+	status = "ok";
+};
+
+&demo_ic_a_1 {
+	status = "ok";
+};
+
+&demo_ic_a_swi {
+	status = "ok";
+};
+
+/* ── 17. 字符串→属性名间接引用 ── */
+&demo_indirect_ref {
+	/* "volt_para" 引用同节点下的另一个属性名 */
+	bat_para =
+		"default", "10", "15", "volt_para",
+		"default", "15", "20", "volt_para1",
+		"CAE",     "10", "15", "volt_para",
+		"CAE",     "15", "20", "volt_para1";
+
+	/* 被引用的属性 */
+	volt_para =
+		"4080", "5000", "3777",
+		"4300", "3777", "2697",
+		"4500", "2697", "1618",
+		"4555", "1618", "1200";
+	volt_para1 =
+		"4500", "5000", "3776",
+		"4550", "3776", "2697",
+		"4555", "2697", "1200";
+
+	/* "cccv_para0" 引用子节点名 */
+	battery_tbl = "default", "cccv_para0";
+
+	/* 被引用的子节点 */
+	cccv_para0 {
+		param = <4500 0>;
+	};
+
+	/* "time_para01" 引用属性名，"0X1" 为模式标识 */
+	time_para_group =
+		"0X1", "time_para01",
+		"0X0", "time_para02";
+	time_para01 = "640", "7200", "520", "8000", "0", "12500";
+	time_para02 = "900", "8300", "720", "8700", "0", "12500";
+};
+
+/* ── 18. 自描述表格（列数元数据 + 数据行）── */
+&demo_self_describing_table {
+	/* 声明每行 14 列 */
+	init_para_col = <14>;
+	/* 严格 14 列/行 */
+	init_para =
+		"type_a", "SC_2", "0", "1", "3300", "4500", "9000", "450", "300", "100", "300", "10000", "9000", "2",
+		"type_b", "SC_4", "2", "1", "3200", "4500", "15000", "500", "300", "100", "300", "20000", "15000", "4";
+};
+
+/* ── 19. 编号属性序列 ── */
+&demo_numbered_series {
+	/* FOD 损耗阈值表：rx_ploss_th0 ~ rx_ploss_th31（此处仅示意 2 个） */
+	rx_ploss_th0 = /bits/ 8 <0x19 0x32 0x4B 0x64 0x7D 0x96 0xAF 0xE1 0xEB>;
+	rx_ploss_th1 = /bits/ 8 <0x19 0x32 0x4B 0x64 0x7D 0x96 0xAF 0xE1 0xEB>;
+
+	/* 电压参数表：volt_para0 ~ volt_para3 */
+	volt_para0 = "4050", "8092", "6474", "4080", "6474", "3777";
+	volt_para1 = "4200", "10790", "8092", "4250", "8092", "5395";
+
+	/* IC 参数表：ic_para1 ~ ic_para3 */
+	ic_para1 =
+		"0", "0", "5000", "0", "0",
+		"1", "1", "5000", "1", "1";
+	ic_para2 =
+		"0", "0", "12000", "0", "0",
+		"1", "1", "10000", "1", "1";
+
+	/* CCCV 温度区间参数：前缀 + 温度范围后缀 */
+	cccv_0_10 = <4550 541>;
+	cccv_10_20 = <4200 3610 4250 2707 4500 1805>;
+	cccv_20_45 = <4000 4512 4040 3970 4270 3610>;
+};
+
+/* ── 21. 负数值 ── */
+&demo_negative {
+	/* 字符串形式的负数——参数表中常用 "-32767" 表示下限无穷 */
+	temp_para =
+		"-32767", "10", "0",
+		"10", "45", "5000",
+		"45", "32767", "0";
+
+	/* 尖括号形式的负数 */
+	margin = <-1>;
+
+	/* "-1" 在不同上下文中含义不同 */
+	adaptor_id = "-1";
+};
+
+/* ── 23. 多 phandle 无分隔列表 ── */
+&demo_phandle_list {
+	/* 两个 phandle 组成可匹配设备列表 */
+	matchable = <&demo_ic_a &demo_ic_b>;
+	/* 也可以更多 */
+	all_ics = <&demo_ic_a &demo_ic_b &demo_ic_a_1 &demo_ic_b_1>;
+};
+
+/* ── 24. 注释格式 ── */
+&demo_comment {
+	/* 这是块注释——可以
+	   跨越多行 */
+	value_a = <0>;
+	// 这是行注释——仅单行
+	value_b = <0>;
+	/* 行内块注释 */ value_c = <0>;
+	// 行注释也可在属性行上方
+	value_d = <0>;
+};
+
+/* ── 补充：status 属性的两种常见值 ── */
+&demo_status_ok {
+	status = "ok";
+};
+
+&demo_status_disabled {
+	status = "disabled";
+};
+
+/* ── 25. 多 <> 组逗号拼接 ── */
+&demo_multi_group {
+	/* 两组参数拼接为一个数组: [1, 2600, 2, 2800] */
+	combined_para = <1 2600>,<2 2800>;
+	/* 也可以更多组 */
+	multi_group = <0 100>,<1 200>,<2 300>;
+};
+
+/* ── 26. 同一节点多次引用覆盖 ── */
+&demo_multi_ref {
+	/* 第一次引用：添加属性 A */
+	prop_a = <0>;
+};
+
+&demo_multi_ref {
+	/* 第二次引用：添加属性 B——与上面的 prop_a 合并到同一节点 */
+	prop_b = <1>;
+	/* 也可添加子节点 */
+	sub_node {
+		param = <0>;
+	};
+};
+
+/* ── 27. 节点内定义 label ── */
+&demo_label_parent {
+	/* 定义 label 为 my_batt，节点名为 batt_cell */
+	my_batt:batt_cell {
+		voltage = <4200>;
+		capacity = <5000>;
+	};
+};
+
+/* 通过 label 引用上面定义的节点 */
+&my_batt {
+	/* 此属性会合并到 batt_cell 节点中 */
+	temp_th = <450>;
+};
+
+/* ── 28. vendor 前缀的自定义属性名 ── */
+&demo_vendor_prop {
+	/* vendor 前缀属性——避免命名空间冲突 */
+	vendor,led-type = <0>;
+	vendor,custom-cfg = <1 2 3>;
+	/* 对照：标准属性无前缀 */
+	status = "ok";
+};
+
+/* ── 29. 浮点数以字符串形式表示 ── */
+&demo_float {
+	/* "0.5" 是字符串，驱动用 kstrtod() 等函数解析 */
+	comp_para =
+		"chip_a", "13", "7", "3",
+		"chip_b", "2", "0.5", "3";
+	/* 单个浮点值也需用字符串 */
+	coefficient = "0.5";
+};
+
+/* ── 30. 字符串值中用 | 表示多值 ── */
+&demo_pipe_multi_value {
+	/* "6|9|10" 在一个字符串中编码多个适配器类型 ID */
+	trx_plim =
+		"5000",  "5500",  "1200", "-1", "2",      "-1", "-1", "-1",
+		"12000", "12000", "2300", "-1", "6|9|10", "-1", "3",  "-1",
+		"12000", "12000", "2300", "-1", "11|12",  "-1", "3",  "-1";
+};
+
+/* ── 31. 同一 compatible 的多实例（相同驱动，不同地址）── */
+&demo_same_compat_multi {
+	/* 实例 1: I2C 地址 0x77 */
+	bypass_chip@77 {
+		compatible = "vendor,bypass_chip";
+		reg = <0x77>;
+		ic_role = "0";       /* 用属性值区分实例角色 */
+		status = "ok";
+	};
+
+	/* 实例 2: I2C 地址 0x75，相同 compatible */
+	bypass_chip@75 {
+		compatible = "vendor,bypass_chip";
+		reg = <0x75>;
+		ic_role = "1";       /* 不同角色 */
+		status = "ok";
+	};
+};

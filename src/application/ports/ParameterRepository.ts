@@ -85,6 +85,12 @@ export type ParameterImportPreviewInput = {
   projectId: string;
   sourceName: string;
   items: ParameterImportSourceItem[];
+  reviewMetadata?: ParameterImportReviewMetadata;
+};
+
+export type ParameterImportReviewMetadata = {
+  skippedRows?: Array<{ rowKey?: string; name?: string; module?: string; reason: string }>;
+  notes?: string;
 };
 
 export type ParameterImportBatchDto = {
@@ -108,6 +114,28 @@ export type ApplyParameterImportBatchInput = {
   batchId: string;
   selectedItemIds?: string[];
   expectedVersion?: number;
+  reviewMetadata?: ParameterImportReviewMetadata;
+};
+
+export type DtsImportParseRow = {
+  name: string;
+  module: string;
+  sourceNodePath: string;
+  rawText: string;
+  normalizedValue: string;
+  valueType: string;
+  skipSuggested?: boolean;
+};
+
+export type DtsImportParseResult = {
+  format: "dts-full";
+  rows: DtsImportParseRow[];
+  diagnostics?: Array<{ severity: "error" | "warning" | "info"; message: string }>;
+};
+
+export type ParseDtsImportInput = {
+  sourceName: string;
+  content: string;
 };
 
 export type DiscardParameterDraftsInput = {
@@ -150,4 +178,5 @@ export interface ParameterRepository {
   reviewChange(input: ReviewParameterChangeInput): Promise<ChangeRequest>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterImportBatchDto>;
+  parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
 }

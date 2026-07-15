@@ -47,6 +47,7 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 
 - 参数管理：`ParameterRepository`
 - 参数看板：`ParameterDashboardRepository`
+- DTS 结构化产品面：`DtsStructuredRepository`（`resolveDtsStructuredRepository` → mock / `dtsStructuredClient`）
 - 日志分析：`LogAnalysisRepository`
 - 产品反馈：`ProductFeedbackRepository`
 - 设备调试：`DebuggingGateway`
@@ -55,13 +56,24 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 - `src/infrastructure/mock/*`：本地演示和单测。
 - `src/infrastructure/http/*`：API runtime，负责 `/api/v1` 请求和 DTO 映射。
 
+P3 / P3.1 新表面（均走 `DtsStructuredRepository`，勿在新面板里直接 new HTTP client）：
+
+- `submitStructuredEdits`：经 `POST /api/v1/projects/:projectId/dts-structured-edits/submit` 提交结构化编辑；CR 与 CST 回写载荷用 `rawText`（非 `normalizedValue`）保真。
+- `StructuredValueEditor`：按 `valueType` 编辑 `rawText`（与后端值类型对齐的客户端校验）。
+- `DtsStructureBrowserPanel`：结构浏览、属性编辑、本地变更集聚合与「提交变更请求」；需 `parameter:edit`（`canEdit`），安全关键节点另需 `parameter:edit-critical`（`canEditCritical`）。
+- `DtsSearchPanel`：路径 / `@地址` / 标签 / compatible / 值检索，挂在 `/parameter-admin/projects` 管理文件对话框。
+- `ConfigSetBaselinePanel`：配置集 / 基线 / 对比 / 发布 / 导出，同对话框「配置集 / 基线」标签；对比变更集行映射真实参数并可走同一提交端口。
+- `StructuredDiffView`：基线结构化差异与变更集行。
+
+旧的 `ProjectParameterFilesPanel` / 冲突面板通过 `resolveParameterFileRepository(runtimeMode)` 注入 `ParameterFileRepository`（mock：`createMockParameterFileRepository`；API：`createParameterFileClient`），组件内禁止 `createParameterFileClient()`。mock 模式下可演示文件列表与冲突面板，不直连 `:8787`。
+
 ## 主要页面流
 
 参数管理：
 
 - `/parameters`：筛选参数、查看详情和历史、创建草稿、提交本轮修改。
 - `/parameter-review`：查看待审请求、推进或拒绝流程。
-- `/parameter-admin`：mock mode 下保留直接管理体验；API mode 下写入应走 import/review 流程。
+- `/parameter-admin`：mock mode 下保留直接管理体验；API mode 下写入应走 import/review 流程。批量导入向导（`ParameterImportWizard`）对完整 `.dts` / `.dtsi` 通过 `ParameterRepository.parseDtsImport` → `POST /api/v1/parameter-import/parse-dts`（或 mock CST 派生）解析，**不再**对 `dts-full` 静默回退 `parseDtsFragment`；含 `/include/` 时展示可读错误。跳过行汇总为 `reviewMetadata` 挂到 create preview / apply。大于 2MB 的 DTS 提示「将使用服务端解析」。
 
 ## 多层级模块树
 

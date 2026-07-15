@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { ApiError } from "../../../shared/http/errors";
 import type { Database } from "../../../shared/database/client";
+import { getProjectParameterForUpdate } from "../../parameters/repository";
+import { assertSensitiveNodeWriteAllowed } from "../../parameters/sensitiveNode";
 import { submitParameterChanges } from "../../parameters/service";
 import type { AgentToolDefinition } from "../toolRegistry";
 
@@ -38,11 +40,27 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           );
         }
 
+        const parameter = await getProjectParameterForUpdate(options.db as Database, {
+          organizationId: context.auth.organization.id,
+          projectId,
+          parameterId
+        });
+        if (parameter?.sourceNodePath) {
+          await assertSensitiveNodeWriteAllowed(options.db as Database, context.auth, {
+            organizationId: context.auth.organization.id,
+            projectId,
+            nodePath: parameter.sourceNodePath,
+            sourceFileName: parameter.sourceFileName,
+            actorType: "agent",
+            requestId: context.requestId
+          });
+        }
+
         if (typeof options.db.transaction === "function") {
           const submission = await submitParameterChanges(options.db as Database, context.auth, {
             projectId,
             items: [{ parameterId, targetValue, reason }]
-          }, { requestId: context.requestId });
+          }, { requestId: context.requestId, actorType: "agent" });
           const changeRequestId = submission.items[0]?.requestId ?? submission.id;
           return {
             summary: `Submitted parameter change request ${changeRequestId} for review.`,

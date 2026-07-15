@@ -23,18 +23,21 @@ The product model separates prototype display data into durable, auditable busin
 
 ## Project Parameter Files
 
-Project parameter files are first-class project-scoped entities that host DTS/JSON configuration bytes in object storage with immutable version history. File versions carry a `parsed_index` (`nodePath` → value) used to diff against database state, generate `file_sync` drafts, and patch nodes after review merge.
+Project parameter files are first-class project-scoped entities that host DTS/JSON configuration bytes in object storage with immutable version history. File versions carry a `parsed_index` (`nodePath` → normalized value) used to diff against database state, generate `file_sync` drafts, and patch nodes after review merge. For DTS, `parsed_index` is a **derived compatibility view** of the structural model (feature flag `DTS_STRUCTURAL_INGEST`, default on).
 
 | Entity | Description |
 | --- | --- |
 | `ProjectParameterFile` | One hosted `.dts` or `.json` file per project (`file_name` unique per project), optional `module_hint`, `enabled` flag, and `current_version_id`. |
 | `ProjectParameterFileVersion` | Immutable file bytes in object storage with `version_number`, `checksum`, `parsed_index`, and `origin` (`upload` or `writeback`). |
+| `DtsNode` | Structural node for a file version: `node_path` (includes `@unitAddress`), labels, optional `compatible`/`status`, parent link. |
+| `DtsProperty` | Typed property on a node: `value_type` (`u32-array` \| `bytes` \| `string-list` \| `phandle-list` \| `mixed` \| `bool` \| `empty`), `raw_text`, `normalized_value`. |
+| `DtsPhandleRef` | Phandle edge from a property to a target label (optional resolved node id). |
 | `ParameterFileSyncConflict` | Open queue row when the same project value has competing `file_sync` and `manual` drafts with different target values. |
 
 `ProjectParameterValue` extensions:
 
 - `source_file_name`: hosted file name such as `battery.dtsi`
-- `source_node_path`: parsed node path such as `battery/temp_max`
+- `source_node_path`: structural node path such as `amba/i2c@XXXX0000/chip@6E/reg` (preferred identity)
 
 Source fields live on project values, not definitions: the same definition can bind to different files per project. Null source fields mean manually maintained values.
 
@@ -45,9 +48,11 @@ Source fields live on project values, not definitions: the same definition can b
 
 ### File Sync and Writeback
 
-Upload or version upload with `origin=upload` parses the file, diffs each `parsed_index` entry against the matched project value, and upserts `file_sync` drafts when values differ. Matching prefers `source_file_name` + `source_node_path`, then falls back to `name` + `module`. First bind writes source fields on the project value. Drafts are not auto-submitted; users still run the existing submission and review workflow.
+Upload or version upload with `origin=upload` parses the file, diffs each `parsed_index` entry against the matched project value, and upserts `file_sync` drafts when values differ. Matching prefers `source_file_name` + `source_node_path` (structural `nodePath`), then falls back to `name` + `module` (compatibility path; counted as `identityFallbackUses` on sync summary). First bind writes source fields on the project value. Drafts are not auto-submitted; users still run the existing submission and review workflow.
 
-`origin=writeback` versions are created after `software_merge → merged` when the merged parameter has source fields. Writeback patches the current file bytes (JSON path set or DTS property text replace) and must not trigger another sync pass.
+**DTS structural core (P1):** `server/modules/dts/` provides lexer → CST parser → value typing/normalization → overlay/label resolver → lossless CST serializer. Upload (when `DTS_STRUCTURAL_INGEST` is on) persists `dts_nodes` / `dts_properties` / `dts_phandle_refs` and derives `parsed_index` from the merged model. `/include/` remains hard-rejected. Writeback mutates CST property `rawText` and serializes with byte-stable remainder (multiline / multi-group / `@address` supported).
+
+`origin=writeback` versions are created after `software_merge → merged` when the merged parameter has source fields. Writeback patches the current file bytes (JSON path set or DTS CST property splice) and must not trigger another sync pass.
 
 Disabled files stop participating in automatic sync; existing source bindings remain.
 
@@ -60,7 +65,64 @@ A conflict opens when one `project_parameter_value_id` has both a `file_sync` dr
 
 Terminal conflict statuses are `resolved_file` and `resolved_ui`. Resolution writes `parameter-file-conflict-resolve` audit.
 
-P1 limits uploads to 2 MB. Full DTS AST parse and writeback remain P2 (TD-039).
+Upload size limit remains 2 MB.
+
+### Config Sets, Release Baselines, and the Validation Gate (P2)
+
+A `DtsConfigSet` is the top-level buildable unit above individual files: a project groups a set of `ProjectParameterFile` members (each with a `role`) into one config set, optionally derived from another config set to express board variants. A `ReleaseBaseline` freezes a config set's current member versions into an immutable, comparable, and reversible snapshot. `DtcValidator` gates baseline release on a `dtc` compile pass (or a configured degrade mode) before a baseline can move from `draft` to `released`.
+
+| Entity | Description |
+| --- | --- |
+| `DtsConfigSet` | A project-scoped buildable unit (`dts_config_set`): `name` (unique per project), optional `description`, optional `derived_from_id` for board-variant lineage. |
+| `ProjectParameterFile` (extended) | Adds `config_set_id`, `config_set_role` (`base`\|`overlay`\|`charging`\|`thermal`\|`misc`), and `config_set_sort_order`. A file belongs to at most one config set at a time. |
+| `ReleaseBaseline` | A named, immutable snapshot of a config set (`dts_release_baseline`): `status` (`draft`\|`released`), optional `notes`, `created_by`. |
+| `ReleaseBaselineMember` | One pinned `(file_id, file_version_id, version_number)` row per config-set member at snapshot time (`dts_release_baseline_members`). Pinning references an existing immutable file version; it never copies object-store bytes. |
+
+Rules:
+
+- Every project has an implicit **default config set** so existing single-file upload/sync/writeback APIs keep working unchanged; migration `0043` backfills one default config set per pre-existing project and repoints its files. Projects created after that migration must call `ensureDefaultConfigSet` or `createConfigSet` explicitly — there is no runtime auto-provisioning.
+- `createBaseline` snapshots every current member version in one transaction; a member with no current version blocks baseline creation (`409`), and a duplicate baseline name for the same config set is a `409` conflict.
+- `compareBaseline(baselineId)` classifies each member as `unchanged`, `version_changed`, `file_added`, or `file_removed` by comparing the pinned `file_version_id` against the config set's current `current_version_id`. For a `version_changed` DTS member, it additionally computes a **structural diff** (`node_added`/`node_removed`/`prop_added`/`prop_removed`/`prop_changed`) from `resolveDts().normalizedValue`, so equivalent reorderings (hex case, multi-group flattening) never appear as noise.
+- `rollbackToBaseline(baselineId)` is atomic: inside one transaction it repoints every drifted member's `current_version_id` back toward the pinned version. It never deletes history, and it never silently rewinds a file's linear version pointer — instead it inserts a new `origin='rollback'` version that carries the pinned version's bytes forward, so the version history stays monotonic and auditable. A member whose file no longer exists aborts the whole rollback. Because rollback always mints a fresh version id for a drifted member, a `compareBaseline` immediately after rollback still reports that member as `version_changed` (the id differs from the id pinned in the baseline), but its structural diff is empty, confirming the content itself matches exactly.
+- `releaseBaseline(baselineId)` runs the validation gate (below) against the config set's **current** member contents, then flips a `draft` baseline to `released` only when the gate allows it.
+
+**Validation gate:** `DtcValidator.validate(files, { mode })` compiles a config set's DTS members with the system `dtc` binary in a restricted subprocess (isolated temp dir, `PATH`-only environment, hard timeout) and returns `{ ok, mode, diagnostics, compiler }`. `mode` is read from `DTS_VALIDATION_MODE` (`block` default, `warn`, or `off`; see `docs/developer/environment-variables.md`).
+
+- `mode=block`: any `error`-severity diagnostic, or an unavailable `dtc` binary, makes `ok=false`; `releaseBaseline` then throws `ApiError('CONFLICT', ..., 409, { code: 'dts-validation-failed', diagnostics })` and the baseline stays `draft`.
+- `mode=warn`: always `ok=true`, but `requiresConfirmation=true` — release proceeds with a human-visible "unvalidated" flag.
+- `mode=off`: never spawns `dtc`; always `ok=true`, `requiresConfirmation=false`.
+- Every gate run writes a `validation.gate` audit event (mode, compiler, diagnostic count, `requiresConfirmation`), independent of pass/fail.
+
+**Lossless export:** `exportFile`/`exportConfigSet` re-serialize each member's authoritative CST (`serializeDts(parseDts(source))`) so exported bytes are byte-for-byte equivalent to the source for round-trippable content. `exportConfigSet` returns a `manifest` (config set, members with role/sortOrder/versionNumber/format, and the validation-gate result at export time) plus each member's exported content, so software engineers can hand-commit the bundle to Git.
+
+Release baseline state machine:
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft
+  draft --> released: releaseBaseline (gate passes)
+```
+
+`released` is a status marker, not a lock: a config set's members can keep changing after release, and a later `compareBaseline`/`rollbackToBaseline` call still operates against the same baseline id.
+
+### Structured impact, change sets, and sensitive nodes (P3)
+
+`ChangeRequest.impact` is computed server-side. When a project value has `source_file_name` + `source_node_path` bound to the structural model, impact includes real DTS facts in addition to the direct `parameter` item:
+
+| Kind | Meaning |
+| --- | --- |
+| `parameter` | Always present for the changed project value (risk/audit consumers). |
+| `phandle` | Other nodes whose properties reference this node via phandle. |
+| `compatible` | Sibling nodes sharing the same `compatible` string in the version. |
+| `config-set` | Peer files in the same `dts_config_set` as the bound file. |
+
+When structural facts are unavailable (unbound / non-DTS), impact falls back to the legacy two-item template (`parameter` + `module`).
+
+A **structured change set** aggregates node/property-level diffs from baseline compare (`node_added` / `node_removed` / `prop_*`) into one reviewable unit that still maps onto existing `parameter_change_requests` (no parallel approval system). Frontend rendering lives in `StructuredDiffView` + `aggregateStructuredChangeSet`.
+
+**Structured edit submit (P3.1):** Browser structured edits map to the existing CR flow via `POST .../dts-structured-edits/submit`. CR `target_value` and CST writeback splice use `rawText` (not `normalizedValue`) so merge writeback preserves author formatting; normalized values remain for diff/compare only. This closes the edit → change set → submit → review → CST writeback loop.
+
+**Sensitive node RBAC:** org/project rules in `dts_sensitive_node_rules` match `path` or `compatible` patterns to a risk tier (`high` \| `critical`) and required capability (default `parameter:edit-critical`). Writes that hit a rule without the capability return `403`. Agent (`actorType=agent`) writes that hit `critical` are always denied and audited as `parameter-sensitive-node-denied` with `requireHuman: true` — a human must perform the change.
 
 ## State Machines
 

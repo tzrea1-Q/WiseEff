@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { applyImportBatch, createImportPreview, listDrafts, reviewChange, saveDraft, submitParameterChanges } from "./service";
+import { applyImportBatch, createImportPreview, listDrafts, parseDtsImportForAuth, reviewChange, saveDraft, submitParameterChanges } from "./service";
 import { createImportBatchBodySchema } from "./schemas";
 
 type QueryCall = {
@@ -243,6 +243,29 @@ describe("parameter service", () => {
     expect(txCalls).toHaveLength(0);
   });
 
+  it("non-admin cannot parse DTS for import", () => {
+    expect(() =>
+      parseDtsImportForAuth(makeAuth(), {
+        sourceName: "board.dts",
+        content: '/dts-v1/;\n&demo { status = "ok"; };\n'
+      })
+    ).toThrow(expect.objectContaining({ code: "FORBIDDEN" }) as unknown as ApiError);
+  });
+
+  it("parseDtsImportForAuth rejects /include/ with dts-include-unsupported", () => {
+    expect(() =>
+      parseDtsImportForAuth(makeAdminAuth(), {
+        sourceName: "board.dts",
+        content: `/dts-v1/;\n/include/ "pin.dtsi"\n/ { board_id = <0>; };\n`
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: "VALIDATION_FAILED",
+        details: { code: "dts-include-unsupported" }
+      }) as unknown as ApiError
+    );
+  });
+
   it("invalid import item shape returns validation failed", async () => {
     expect(() =>
       createImportBatchBodySchema.parse({
@@ -413,6 +436,142 @@ describe("parameter service", () => {
       []
     ]);
     expect(calls.some((call) => call.text.includes("insert into parameter_import_batches"))).toBe(true);
+  });
+
+  it("createImportPreview with reviewMetadata writes audit metadata containing skippedRows", async () => {
+    const { db, calls } = createFakeDb([
+      [projectRow()],
+      [],
+      [
+        (call) => [
+          {
+            id: call.values[0],
+            project_id: "project-1",
+            source_name: "board.dts",
+            status: "previewed",
+            summary: JSON.parse(call.values[6] as string),
+            items: JSON.parse(call.values[7] as string),
+            created_at: "2026-05-25T05:00:00.000Z",
+            applied_at: null
+          }
+        ]
+      ]
+    ]);
+
+    const reviewMetadata = {
+      skippedRows: [{ name: "weak_source_sleep_enabled", module: "demo_bool", reason: "布尔属性暂不导入" }],
+      notes: "wizard skip summary"
+    };
+
+    await createImportPreview(db, makeAdminAuth(), {
+      projectId: "project-1",
+      sourceName: "board.dts",
+      items: [
+        {
+          name: "hex_value",
+          module: "demo_integer",
+          risk: "Low",
+          unit: "-",
+          range: "-",
+          currentValue: "<0x220022>"
+        }
+      ],
+      reviewMetadata
+    });
+
+    const auditCall = calls.find((call) => call.text.includes("insert into audit_events"));
+    expect(auditCall).toBeDefined();
+    expect(auditCall?.values).toContain("batch-import");
+    expect(JSON.parse(auditCall?.values[11] as string)).toMatchObject({
+      reviewMetadata
+    });
+  });
+
+  it("createImportPreview without reviewMetadata does not write import audit", async () => {
+    const { db, calls } = createFakeDb([
+      [projectRow()],
+      [],
+      [
+        (call) => [
+          {
+            id: call.values[0],
+            project_id: "project-1",
+            source_name: "board.dts",
+            status: "previewed",
+            summary: JSON.parse(call.values[6] as string),
+            items: JSON.parse(call.values[7] as string),
+            created_at: "2026-05-25T05:00:00.000Z",
+            applied_at: null
+          }
+        ]
+      ]
+    ]);
+
+    await createImportPreview(db, makeAdminAuth(), {
+      projectId: "project-1",
+      sourceName: "board.dts",
+      items: [
+        {
+          name: "hex_value",
+          module: "demo_integer",
+          risk: "Low",
+          unit: "-",
+          range: "-",
+          currentValue: "<0x220022>"
+        }
+      ]
+    });
+
+    expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+  });
+
+  it("applyImportBatch merges reviewMetadata into apply audit metadata", async () => {
+    const { db, txCalls } = createFakeDb([
+      [importBatchRow()],
+      [projectRow()],
+      [parameterRow()],
+      [],
+      [
+        {
+          id: "item-added",
+          definition_id: "thermal_guard_threshold_c",
+          project_parameter_value_id: "project-1-thermal_guard_threshold_c",
+          new_version: 1
+        }
+      ],
+      [
+        {
+          id: "item-updated",
+          definition_id: "definition-1",
+          project_parameter_value_id: "param-1",
+          new_version: 8
+        }
+      ],
+      [importBatchRow({ status: "applied", applied_at: "2026-05-25T07:00:00.000Z" })],
+      []
+    ]);
+
+    const reviewMetadata = {
+      skippedRows: [{ rowKey: "demo_bool/weak_source_sleep_enabled", reason: "skipped in wizard" }],
+      notes: "final snapshot"
+    };
+
+    await applyImportBatch(
+      db,
+      makeAdminAuth(),
+      {
+        batchId: "batch-1",
+        selectedItemIds: ["item-added", "item-updated"],
+        reviewMetadata
+      },
+      { requestId: "request-import-apply-meta" }
+    );
+
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(JSON.parse(auditCall?.values[11] as string)).toMatchObject({
+      batchId: "batch-1",
+      reviewMetadata
+    });
   });
 
   it("preview flags high-risk recommended value deltas without over-flagging zero or nonnumeric baselines", async () => {

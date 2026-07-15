@@ -24,6 +24,7 @@ export const developmentAuthContext: AuthContext = {
   permissions: [
     "parameter:view",
     "parameter:edit",
+    "parameter:edit-critical",
     "debugging:use",
     "logs:view",
     "logs:upload",

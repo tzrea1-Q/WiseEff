@@ -2,8 +2,9 @@ import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import { canAdminParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canEditParameters, canViewParameters } from "../parameters/policy";
 import { listOpenConflicts } from "../parameters/repository";
+import { submitStructuredEdits } from "../parameters/service";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -14,9 +15,40 @@ import {
   listFileVersions,
   listProjectParameterFiles
 } from "./repository";
+import {
+  compareBaseline,
+  createBaseline,
+  listBaselines,
+  releaseBaseline,
+  rollbackToBaseline
+} from "./baselineService";
+import {
+  addConfigSetFile,
+  createConfigSet,
+  listConfigSets,
+  removeConfigSetFile
+} from "./configSetService";
+import type { DtcValidator } from "./dtcValidator";
+import { exportConfigSet } from "./exportService";
+import {
+  addConfigSetFileBody,
+  createBaselineBody,
+  createConfigSetBody,
+  dtsSearchQuerySchema,
+  submitStructuredEditsBodySchema
+} from "./schemas";
 import { getProjectParameterFileContent, uploadProjectParameterFile } from "./service";
+import { searchProjectDts } from "./dtsSearchService";
+import { getParameterFileVersionStructure } from "./structuralReadService";
 import { syncFileVersion } from "./syncService";
 import type { ParameterFileFormat } from "./types";
+
+function firstQueryValue(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}
 
 const paramsWithProjectIdSchema = z.object({
   projectId: z.string().min(1)
@@ -32,6 +64,18 @@ const paramsWithVersionIdSchema = paramsWithFileIdSchema.extend({
 
 const paramsWithConflictIdSchema = paramsWithProjectIdSchema.extend({
   conflictId: z.string().min(1)
+});
+
+const paramsWithConfigSetIdSchema = paramsWithProjectIdSchema.extend({
+  configSetId: z.string().min(1)
+});
+
+const paramsWithConfigSetFileIdSchema = paramsWithConfigSetIdSchema.extend({
+  fileId: z.string().min(1)
+});
+
+const paramsWithBaselineIdSchema = paramsWithProjectIdSchema.extend({
+  baselineId: z.string().min(1)
 });
 
 const uploadBodySchema = z.object({
@@ -83,6 +127,12 @@ function requireCanView(auth: AuthContext) {
   }
 }
 
+function requireCanEdit(auth: AuthContext) {
+  if (!canEditParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
+  }
+}
+
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
@@ -128,9 +178,16 @@ export function registerParameterFileRoutes(
   options: {
     db?: Database;
     objectStore?: ObjectStore;
+    validator?: DtcValidator;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
+  function validationDeps() {
+    return {
+      objectStore: requireObjectStore(options.objectStore),
+      validator: options.validator
+    };
+  }
   router.get("/api/v1/projects/:projectId/parameter-files", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -163,7 +220,14 @@ export function registerParameterFileRoutes(
       { requestId: request.requestId }
     );
 
-    return { status: 201, body: { item: result.file, version: result.version } };
+    return {
+      status: 201,
+      body: {
+        item: result.file,
+        version: result.version,
+        ...(result.unsupportedConstructs ? { unsupportedConstructs: result.unsupportedConstructs } : {})
+      }
+    };
   });
 
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/versions", async (request) => {
@@ -193,7 +257,13 @@ export function registerParameterFileRoutes(
       { requestId: request.requestId }
     );
 
-    return { status: 201, body: { item: result.version } };
+    return {
+      status: 201,
+      body: {
+        item: result.version,
+        ...(result.unsupportedConstructs ? { unsupportedConstructs: result.unsupportedConstructs } : {})
+      }
+    };
   });
 
   router.get("/api/v1/projects/:projectId/parameter-files/:fileId/versions", async (request) => {
@@ -229,6 +299,72 @@ export function registerParameterFileRoutes(
       contentType: contentTypeForFormat(file.format),
       fileName: file.fileName
     };
+  });
+
+  router.get("/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(paramsWithVersionIdSchema, request.params);
+    const file = await requireProjectFile(db, auth, params.projectId, params.fileId);
+    const version = await getFileVersionById(db, { versionId: params.versionId });
+    if (!version || version.fileId !== file.id) {
+      throw new ApiError("NOT_FOUND", "Project parameter file version was not found.", 404, {
+        fileId: params.fileId,
+        versionId: params.versionId
+      });
+    }
+    const body = await getParameterFileVersionStructure(db, version.id);
+
+    return { status: 200, body };
+  });
+
+  router.get("/api/v1/projects/:projectId/dts-search", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const query = parseWithSchema(
+      dtsSearchQuerySchema,
+      {
+        q: firstQueryValue(request.query.q) ?? "",
+        by: firstQueryValue(request.query.by)
+      },
+      "Invalid DTS search query."
+    );
+    const body = await searchProjectDts(db, {
+      organizationId: auth.organization.id,
+      projectId: params.projectId,
+      q: query.q,
+      by: query.by ?? "path"
+    });
+
+    return { status: 200, body };
+  });
+
+  router.post("/api/v1/projects/:projectId/dts-structured-edits/submit", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanEdit(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const body = parseWithSchema(
+      submitStructuredEditsBodySchema,
+      request.body,
+      "Invalid structured edit submit payload."
+    );
+    const item = await submitStructuredEdits(
+      db,
+      auth,
+      {
+        projectId: params.projectId,
+        edits: body.edits,
+        reason: body.reason,
+        assignees: body.assignees
+      },
+      { requestId: request.requestId }
+    );
+
+    return { status: 201, body: { item } };
   });
 
   router.post("/api/v1/projects/:projectId/parameter-files/:fileId/sync", async (request) => {
@@ -272,5 +408,148 @@ export function registerParameterFileRoutes(
     });
 
     return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/projects/:projectId/config-sets", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const items = await listConfigSets(db, auth, params.projectId);
+
+    return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v1/projects/:projectId/config-sets", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const body = parseWithSchema(createConfigSetBody, request.body, "Invalid create config set payload.");
+    const item = await createConfigSet(
+      db,
+      auth,
+      {
+        projectId: params.projectId,
+        name: body.name.trim(),
+        description: body.description,
+        derivedFromId: body.derivedFromId
+      },
+      { requestId: request.requestId }
+    );
+
+    return { status: 201, body: { item } };
+  });
+
+  router.post("/api/v1/projects/:projectId/config-sets/:configSetId/files", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
+    const body = parseWithSchema(addConfigSetFileBody, request.body, "Invalid add config set file payload.");
+    const item = await addConfigSetFile(
+      db,
+      auth,
+      {
+        configSetId: params.configSetId,
+        fileId: body.fileId,
+        role: body.role,
+        sortOrder: body.sortOrder
+      },
+      { requestId: request.requestId }
+    );
+
+    return { status: 201, body: { item } };
+  });
+
+  router.delete("/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithConfigSetFileIdSchema, request.params);
+    await removeConfigSetFile(
+      db,
+      auth,
+      { configSetId: params.configSetId, fileId: params.fileId },
+      { requestId: request.requestId }
+    );
+
+    return { status: 200, body: {} };
+  });
+
+  router.get("/api/v1/projects/:projectId/config-sets/:configSetId/baselines", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
+    const items = await listBaselines(db, auth, params.configSetId);
+
+    return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v1/projects/:projectId/config-sets/:configSetId/baselines", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
+    const body = parseWithSchema(createBaselineBody, request.body, "Invalid create baseline payload.");
+    const item = await createBaseline(
+      db,
+      auth,
+      {
+        configSetId: params.configSetId,
+        name: body.name.trim(),
+        notes: body.notes
+      },
+      { requestId: request.requestId }
+    );
+
+    return { status: 201, body: { item } };
+  });
+
+  router.get("/api/v1/projects/:projectId/baselines/:baselineId/compare", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
+    const item = await compareBaseline(db, auth, params.baselineId, {
+      objectStore: requireObjectStore(options.objectStore)
+    });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/projects/:projectId/baselines/:baselineId/rollback", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
+    const item = await rollbackToBaseline(db, auth, params.baselineId, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/projects/:projectId/baselines/:baselineId/release", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
+    const result = await releaseBaseline(db, auth, params.baselineId, validationDeps(), {
+      requestId: request.requestId
+    });
+
+    return { status: 200, body: { item: result.baseline, gate: result.gate } };
+  });
+
+  router.get("/api/v1/projects/:projectId/config-sets/:configSetId/export", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
+    const result = await exportConfigSet(db, auth, params.configSetId, validationDeps(), {
+      requestId: request.requestId
+    });
+
+    return { status: 200, body: result };
   });
 }

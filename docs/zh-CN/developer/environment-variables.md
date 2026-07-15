@@ -47,6 +47,17 @@
 | `OBJECT_STORAGE_TLS_POLICY` | 自托管 profile 为 `required` | M6.3 evidence | 目标证据必须使用 TLS，除非记录明确的本地实验例外。 |
 | `OBJECT_STORAGE_PATH_STYLE` | `true` | S3-compatible self-hosting | 自托管 provider 不支持 virtual-host bucket 时使用 path-style。 |
 
+## DTS 配置集校验门禁
+
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `DTS_VALIDATION_MODE` | `block`（代码默认；`.env.example` 未设置） | P2 配置集基线发布门禁 | `block`：`dtc` 报错或 `dtc` 二进制不可用时，`releaseBaseline` 返回 `409` 阻断发布。`warn`：始终放行，但标记 `requiresConfirmation: true`。`off`：完全跳过校验（不会调用 `dtc`）。自托管目标未安装 `dtc` 时可设为 `warn`。 |
+| `DTS_IDENTITY_FALLBACK_MODE` | `allow`（代码默认） | 文件同步 / 结构化编辑身份解析 | 无 `source_*` 绑定时可回退 `(name, module)`。`allow` 保留回退并累计 `identityFallbackUses`；`warn` 允许回退并写 `parameter-file-identity-fallback` 审计；`deny` 时 sync 回退路径 `409 VALIDATION_FAILED`，结构化编辑仍可 insert 新 PPV+source（新绑定≠ fallback）。 |
+| `DTS_ENABLE_DT_SCHEMA` | 关闭（`0` / 未设置） | `dtc` 之后的可选 dt-schema 绑定校验 | 设为 `1`/`true`/`on` 启用可选 schema 钩子（`enableDtSchema` / 可注入 `schemaRunner`）。 |
+| `DTS_DT_SCHEMA_MODE` | `warn` | schema 工具缺失 / 失败策略 | `warn`：缺工具只记 warning，不硬失败；`block`：在外层校验模式非 `warn` 时把不可用抬升为硬错误。 |
+
+`DtcValidator`（`server/modules/parameter-files/dtcValidator.ts`）在受限子进程中运行系统 `dtc` 编译器：独立临时目录、仅含 `PATH` 的最小环境变量，以及到期即杀进程的硬超时。当 `dtc` 不在 `PATH` 上时校验器会降级而不是挂起：`block` 返回 `ok:false`（发布保持阻断，直到人工决定切到 `warn`），`warn` 返回 `ok:true` 并附带「校验已跳过」诊断，`off` 完全不调用 `dtc`。每次门禁运行——通过、失败或降级——都会写入 `validation.gate` 审计事件。容器/`gVisor` 沙箱**本期不做**；见 `docs/zh-CN/SECURITY.md`。
+
 ## 设备调试
 
 | 变量 | 本地默认值 | 用途 | 说明 |

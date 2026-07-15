@@ -11,6 +11,7 @@ export type PlatformRoleId =
 export type PermissionKey =
   | "parameter:view"
   | "parameter:edit"
+  | "parameter:edit-critical"
   | "debugging:use"
   | "logs:upload"
   | "parameter:review"
@@ -70,7 +71,14 @@ export const platformRoles = [
     description: "Can perform Hardware User actions and review hardware-side parameter submissions.",
     discipline: "hardware",
     level: "committer",
-    permissions: ["parameter:view", "parameter:edit", "debugging:use", "logs:upload", "parameter:review"]
+    permissions: [
+      "parameter:view",
+      "parameter:edit",
+      "parameter:edit-critical",
+      "debugging:use",
+      "logs:upload",
+      "parameter:review"
+    ]
   },
   {
     id: "software-committer",
@@ -78,14 +86,30 @@ export const platformRoles = [
     description: "Can perform Hardware User actions and review software-side parameter submissions.",
     discipline: "software",
     level: "committer",
-    permissions: ["parameter:view", "parameter:edit", "debugging:use", "logs:upload", "parameter:review"]
+    permissions: [
+      "parameter:view",
+      "parameter:edit",
+      "parameter:edit-critical",
+      "debugging:use",
+      "logs:upload",
+      "parameter:review"
+    ]
   },
   {
     id: "admin",
     name: "Admin",
     description: "Can perform all User and Committer actions and access application admin pages and user management.",
     level: "admin",
-    permissions: ["parameter:view", "parameter:edit", "debugging:use", "logs:upload", "parameter:review", "admin:access", "users:manage"]
+    permissions: [
+      "parameter:view",
+      "parameter:edit",
+      "parameter:edit-critical",
+      "debugging:use",
+      "logs:upload",
+      "parameter:review",
+      "admin:access",
+      "users:manage"
+    ]
   }
 ] as const satisfies readonly PlatformRole[];
 

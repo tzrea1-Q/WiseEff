@@ -17,7 +17,9 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `PARAM-HAPPY-001` | B | Yes | Parameter search, draft, submit, review, merge, persistence, and audit happy path works. | `e2e/acceptance/parameters.acceptance.spec.ts` |
 | `PARAM-HOME-001` | B | Yes | Parameter home dashboard loads summary/hotspots from API data and supports in-page window and hotspot-dimension controls. | `e2e/acceptance/parameter-home.acceptance.spec.ts` |
 | `PARAM-ADMIN-001` | C | Yes | Parameter admin import preview and audit drawer remain available to Admin. | `e2e/acceptance/parameters.acceptance.spec.ts` |
-| `PARAM-ADMIN-002` | C | No | Admin can run the five-step parameter import wizard (target project, multi-format source, per-row review, batch preview, apply). | `src/components/ParameterImportWizard` (Playwright e2e follow-up) |
+| `PARAM-ADMIN-002` | C | No | Admin can run the five-step parameter import wizard (target project, multi-format source, per-row review, batch preview, apply). | `e2e/acceptance/parameter-import-wizard.acceptance.spec.ts` |
+| `PARAM-IMPORT-DTS-FULL-001` | C | Yes | Admin full `.dts` import uses server `parse-dts` with distinct `@address` module paths; `/include/` is rejected; wizard shows server-parse hint. | `e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts` |
+| `PARAM-IMPORT-REVIEW-META-001` | C | Yes | Import preview with `reviewMetadata.skippedRows` persists that structure on `batch-import` audit metadata. | `e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts` |
 | `LOG-HAPPY-001` | D | Yes | Log upload, analysis progress, evidence, feedback, archive, and unsupported-file path work. | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
 | `DEBUG-SIM-001` | E | Yes | Simulator read, write, mismatch, rollback, and audit path work, including complex JSON value metadata. | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
 | `DEBUG-ADMIN-001` | E | Yes | Debugging admin can create, edit, archive, restore, and protocol-bind catalog parameters in API mode, including complex value metadata. | `e2e/acceptance/debugging-admin.acceptance.spec.ts` |

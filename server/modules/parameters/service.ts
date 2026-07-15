@@ -13,11 +13,16 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
+import { getProjectParameterFileById } from "../parameter-files/repository";
+import { readDtsIdentityFallbackMode } from "../parameter-files/identityFallbackMode";
 import { writebackMergedParameterValue } from "../parameter-files/writebackService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
+import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
 import {
   applyAddedImportItem,
   applyUpdatedImportItem,
+  bindParameterSource,
   createChangeRequest,
   getImportBatchForUpdate,
   createSubmissionItem,
@@ -25,6 +30,8 @@ import {
   deleteDraft as deleteDraftRow,
   deleteDraftForParameter,
   findOpenChangeRequest,
+  findProjectValueByDefinition,
+  findProjectValueBySource,
   getChangeRequestById,
   getProjectById,
   getProjectParameterForUpdate,
@@ -33,6 +40,7 @@ import {
   hasOpenFileSyncConflict,
   hasEligibleWorkflowAssignee,
   insertImportBatch,
+  insertProjectParameterValueWithSource,
   insertReviewDecision,
   listParameterDefinitionsForImport,
   listChangeRequests as listChangeRequestRows,
@@ -46,6 +54,7 @@ import {
   mergeChangeRequest,
   type ParameterDefinitionImportCandidate,
   type PersistedImportBatchItem,
+  type ProjectParameterValueMatch,
   updateChangeRequestStatus,
   updateSubmissionRoundStatus,
   updateSubmissionRoundStatusFromRequests,
@@ -65,11 +74,14 @@ import {
 import {
   applyImportBatchBodySchema,
   createImportBatchBodySchema,
+  parseDtsImportBodySchema,
   type CreateParameterModuleBody,
   type ListParametersQuery,
   type MoveParameterModuleBody,
+  type ParseDtsImportBody,
   type UpdateParameterModuleBody
 } from "./schemas";
+import { parseDtsImportSource } from "./importDtsParse";
 import { getNextParameterStatus, parameterStatusLabels, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
 import type { ChangeRequestDto, ParameterImportSourceItemDto, ParameterImportSummaryDto, ParameterModuleDto } from "./types";
 import { buildSubmissionWorkflowTrail } from "../../../src/domain/parameters/submissionWorkflowTrail";
@@ -77,6 +89,7 @@ import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeli
 
 type ServiceContext = AuditCorrelationContext & {
   objectStore?: ObjectStore;
+  actorType?: "user" | "agent" | "system";
 };
 
 export type SaveDraftInput = {
@@ -96,6 +109,215 @@ export type SubmitParameterChangesInput = {
     softwareUserId?: string;
   };
 };
+
+/** One structured DTS property edit unit (browser editor → change request). */
+export type StructuredEditUnit = {
+  fileId: string;
+  nodePath: string;
+  propertyName: string;
+  /** CST-preserving property text; must be used as CR targetValue / writeback payload. */
+  rawText: string;
+  reason?: string;
+};
+
+export type SubmitStructuredEditsInput = {
+  projectId: string;
+  edits: StructuredEditUnit[];
+  reason?: string;
+  assignees?: SubmitParameterChangesInput["assignees"];
+};
+
+export function sourceNodePathForStructuredEdit(edit: Pick<StructuredEditUnit, "nodePath" | "propertyName">) {
+  const nodePath = edit.nodePath.trim();
+  const propertyName = edit.propertyName.trim();
+  return nodePath ? `${nodePath}/${propertyName}` : propertyName;
+}
+
+export async function resolveStructuredEditToParameter(
+  db: Queryable,
+  auth: AuthContext,
+  projectId: string,
+  edit: StructuredEditUnit
+): Promise<ProjectParameterValueMatch> {
+  const file = await getProjectParameterFileById(db, {
+    organizationId: auth.organization.id,
+    fileId: edit.fileId
+  });
+  if (!file || file.projectId !== projectId) {
+    throw new ApiError("NOT_FOUND", "Project parameter file was not found.", 404, {
+      fileId: edit.fileId,
+      projectId
+    });
+  }
+
+  const sourceFileName = file.fileName;
+  const sourceNodePath = sourceNodePathForStructuredEdit(edit);
+  if (!sourceNodePath) {
+    throw new ApiError("VALIDATION_FAILED", "Structured edit requires nodePath or propertyName.", 400);
+  }
+
+  const bySource = await findProjectValueBySource(db, {
+    organizationId: auth.organization.id,
+    projectId,
+    sourceFileName,
+    sourceNodePath
+  });
+  if (bySource) {
+    return bySource;
+  }
+
+  let identity: { name: string; module: string };
+  try {
+    identity = nodePathToParameterIdentity(sourceNodePath);
+  } catch {
+    throw new ApiError("VALIDATION_FAILED", `Invalid structured edit path: ${sourceNodePath}`, 400, {
+      sourceNodePath
+    });
+  }
+
+  const fallbackMode = readDtsIdentityFallbackMode();
+
+  // deny: do not bind existing rows via (name, module); new PPV+source insert is allowed (new bind ≠ fallback).
+  if (fallbackMode !== "deny") {
+    const byDefinition = await findProjectValueByDefinition(db, {
+      organizationId: auth.organization.id,
+      projectId,
+      name: identity.name,
+      module: identity.module
+    });
+    if (byDefinition) {
+      await bindParameterSource(db, {
+        projectParameterValueId: byDefinition.id,
+        sourceFileName,
+        sourceNodePath
+      });
+      if (fallbackMode === "warn") {
+        await createAuditEvent(db, {
+          id: randomUUID(),
+          organizationId: auth.organization.id,
+          projectId,
+          actorUserId: auth.user.id,
+          actorType: "user",
+          app: "parameter-management",
+          kind: "parameter-file-identity-fallback",
+          action: "warn",
+          severity: "Low",
+          targetType: "project-parameter-value",
+          targetId: byDefinition.id,
+          metadata: {
+            mode: "warn",
+            sourceFileName,
+            sourceNodePath,
+            fallbackName: identity.name,
+            fallbackModule: identity.module,
+            fileId: file.id
+          },
+          traceId: randomUUID()
+        });
+      }
+      return byDefinition;
+    }
+  }
+
+  return insertProjectParameterValueWithSource(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId,
+    definitionId: randomUUID(),
+    name: identity.name,
+    module: identity.module,
+    currentValue: "",
+    recommendedValue: "",
+    actorUserId: auth.user.id,
+    sourceFileName,
+    sourceNodePath
+  });
+}
+
+/**
+ * Map structured DTS edits onto real project_parameter_values and submit via the
+ * existing draft → submission_round → change_request flow. CR targetValue is rawText.
+ */
+export async function submitStructuredEdits(
+  db: Database,
+  auth: AuthContext,
+  input: SubmitStructuredEditsInput,
+  context: ServiceContext = {}
+) {
+  requireCanEdit(auth);
+
+  if (input.edits.length === 0) {
+    throw new ApiError("VALIDATION_FAILED", "At least one structured edit is required.", 400);
+  }
+
+  const seenKeys = new Set<string>();
+  const items: SubmitParameterChangesInput["items"] = [];
+
+  for (const edit of input.edits) {
+    const key = `${edit.fileId}:${sourceNodePathForStructuredEdit(edit)}`;
+    if (seenKeys.has(key)) {
+      throw new ApiError("VALIDATION_FAILED", "Duplicate structured edit for the same property.", 400, {
+        fileId: edit.fileId,
+        nodePath: edit.nodePath,
+        propertyName: edit.propertyName
+      });
+    }
+    seenKeys.add(key);
+
+    const parameter = await resolveStructuredEditToParameter(db, auth, input.projectId, edit);
+    const reason =
+      edit.reason?.trim() ||
+      `Structured edit: ${sourceNodePathForStructuredEdit(edit)}`;
+
+    await upsertDraft(db, {
+      id: randomUUID(),
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      parameterId: parameter.id,
+      userId: auth.user.id,
+      targetValue: edit.rawText,
+      reason,
+      origin: "manual"
+    });
+
+    items.push({
+      parameterId: parameter.id,
+      targetValue: edit.rawText,
+      reason
+    });
+  }
+
+  await createAuditEvent(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    actorUserId: auth.user.id,
+    actorType: context.actorType ?? "user",
+    app: "parameter-management",
+    kind: "parameter-structured-edit-submit",
+    action: "submit",
+    severity: "Medium",
+    targetType: "parameter-submission-round",
+    targetId: input.projectId,
+    metadata: {
+      editCount: input.edits.length,
+      parameterIds: items.map((item) => item.parameterId)
+    },
+    traceId: context.requestId ?? randomUUID()
+  });
+
+  return submitParameterChanges(
+    db,
+    auth,
+    {
+      projectId: input.projectId,
+      items,
+      reason: input.reason,
+      assignees: input.assignees
+    },
+    context
+  );
+}
 
 export type DraftListQuery = {
   projectId?: string;
@@ -123,11 +345,19 @@ export type CreateImportPreviewInput = {
   projectId: string;
   sourceName: string;
   items: Array<ParameterImportSourceItemDto & { id?: string }>;
+  reviewMetadata?: {
+    skippedRows?: Array<{ rowKey?: string; name?: string; module?: string; reason: string }>;
+    notes?: string;
+  };
 };
 
 export type ApplyImportBatchInput = {
   batchId: string;
   selectedItemIds?: string[];
+  reviewMetadata?: {
+    skippedRows?: Array<{ rowKey?: string; name?: string; module?: string; reason: string }>;
+    notes?: string;
+  };
 };
 
 function requireCanView(auth: AuthContext) {
@@ -146,6 +376,17 @@ function requireCanAdminImport(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Admin access is required for parameter import.", 403);
   }
+}
+
+export function parseDtsImportForAuth(auth: AuthContext, input: ParseDtsImportBody) {
+  requireCanAdminImport(auth);
+  const parsed = parseDtsImportBodySchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ApiError("VALIDATION_FAILED", "Invalid DTS import parse request.", 400, {
+      issues: parsed.error.issues
+    });
+  }
+  return parseDtsImportSource(parsed.data);
 }
 
 function getReviewForbiddenMessage(fromStatus: ParameterChangeRequestStatus) {
@@ -525,6 +766,8 @@ async function createImportAudit(
     projectId: string;
     batchId: string;
     summary: { added: number; updated: number; skipped: number };
+    action?: "preview" | "apply";
+    reviewMetadata?: CreateImportPreviewInput["reviewMetadata"];
   },
   context: ServiceContext = {}
 ) {
@@ -536,13 +779,14 @@ async function createImportAudit(
     actorType: "user",
     app: "parameter-management",
     kind: "batch-import",
-    action: "apply",
+    action: input.action ?? "apply",
     severity: "High",
     targetType: "parameter-import-batch",
     targetId: input.batchId,
     metadata: {
       batchId: input.batchId,
-      summary: input.summary
+      summary: input.summary,
+      ...(input.reviewMetadata ? { reviewMetadata: input.reviewMetadata } : {})
     },
     traceId: context.requestId ?? randomUUID()
   });
@@ -606,7 +850,7 @@ export async function createImportPreview(db: Queryable, auth: AuthContext, inpu
   }
 
   const summary = summarizeImportItems(previewItems);
-  return insertImportBatch(db, {
+  const batch = await insertImportBatch(db, {
     id: randomUUID(),
     organizationId: auth.organization.id,
     projectId: parsed.projectId,
@@ -615,6 +859,22 @@ export async function createImportPreview(db: Queryable, auth: AuthContext, inpu
     summary,
     items: previewItems
   });
+
+  if (parsed.reviewMetadata) {
+    await createImportAudit(db, auth, {
+      projectId: parsed.projectId,
+      batchId: batch.id,
+      summary: {
+        added: summary.added,
+        updated: summary.updated,
+        skipped: parsed.reviewMetadata.skippedRows?.length ?? 0
+      },
+      action: "preview",
+      reviewMetadata: parsed.reviewMetadata
+    });
+  }
+
+  return batch;
 }
 
 export async function applyImportBatch(db: Database, auth: AuthContext, input: ApplyImportBatchInput, context: ServiceContext = {}) {
@@ -752,7 +1012,8 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
         added,
         updated,
         skipped: batch.items.length - selectedItems.length
-      }
+      },
+      reviewMetadata: parsed.reviewMetadata
     }, context);
 
     const project = await getProjectById(tx, {
@@ -830,6 +1091,17 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       if (hasConflict) {
         throw new ApiError("CONFLICT", "Parameter has an open file sync conflict.", 409, {
           parameterId: item.parameterId
+        });
+      }
+
+      if (parameter.sourceNodePath) {
+        await assertSensitiveNodeWriteAllowed(tx, auth, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          nodePath: parameter.sourceNodePath,
+          sourceFileName: parameter.sourceFileName,
+          actorType: context.actorType ?? "user",
+          requestId: context.requestId
         });
       }
 

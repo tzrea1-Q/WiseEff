@@ -37,4 +37,19 @@ battery-thermal-derate-curve = <
       sourceLocation: "battery-thermal-derate-curve"
     });
   });
+
+  it("does not emit rows from commented-out property assignments", () => {
+    const source = `alive = <1>;
+/* x = <9>; */
+// y = <8>;
+z = <3>;`;
+
+    const rows = parseDtsFragmentImport(source);
+    const names = rows.map((row) => row.name);
+
+    expect(names).toContain("alive");
+    expect(names).toContain("z");
+    expect(names).not.toContain("x");
+    expect(names).not.toContain("y");
+  });
 });

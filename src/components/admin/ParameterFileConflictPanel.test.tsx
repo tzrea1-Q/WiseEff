@@ -1,59 +1,68 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+
+import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import { ParameterFileConflictPanel } from "./ParameterFileConflictPanel";
 
-const listConflictsMock = vi.fn();
-const resolveConflictMock = vi.fn();
+const createParameterFileClient = vi.fn();
 
 vi.mock("@/infrastructure/http/parameterFileClient", () => ({
-  createParameterFileClient: () => ({
-    listConflicts: listConflictsMock,
-    resolveConflict: resolveConflictMock
-  })
+  createParameterFileClient: (...args: unknown[]) => createParameterFileClient(...args)
 }));
 
+function createStubRepository(overrides: Partial<ParameterFileRepository> = {}): ParameterFileRepository {
+  return {
+    listFiles: vi.fn().mockResolvedValue([]),
+    uploadFile: vi.fn(),
+    uploadVersion: vi.fn(),
+    listVersions: vi.fn().mockResolvedValue([]),
+    downloadVersion: vi.fn(),
+    syncFile: vi.fn(),
+    listConflicts: vi.fn().mockResolvedValue([]),
+    resolveConflict: vi.fn(),
+    ...overrides
+  };
+}
+
 describe("ParameterFileConflictPanel", () => {
-  it("renders open conflicts with parameter name fallback", async () => {
-    listConflictsMock.mockResolvedValueOnce([
-      {
-        id: "conflict-1",
-        organizationId: "org-1",
-        projectId: "atlas",
-        projectParameterValueId: "value-1",
-        parameterDefinitionId: "def-fast-charge-current",
-        parameterName: "fast_charge_current_limit_ma",
-        parameterModule: "Charging Policy",
-        fileVersionId: "version-1",
-        fileDraftId: "file-draft-1",
-        uiDraftId: "ui-draft-1",
-        fileValue: "3200",
-        uiDraftValue: "3400",
-        status: "open",
-        createdAt: "2026-07-11T11:00:00.000Z"
-      },
-      {
-        id: "conflict-2",
-        organizationId: "org-1",
-        projectId: "atlas",
-        projectParameterValueId: "value-2",
-        parameterDefinitionId: "def-battery-temp-target",
-        fileVersionId: "version-1",
-        fileDraftId: "file-draft-2",
-        uiDraftId: "ui-draft-2",
-        fileValue: "35",
-        uiDraftValue: "36",
-        status: "open",
-        createdAt: "2026-07-11T11:01:00.000Z"
-      }
-    ]);
+  it("renders open conflicts from the injected repository without HTTP client", async () => {
+    const repository = createStubRepository({
+      listConflicts: vi.fn().mockResolvedValue([
+        {
+          id: "conflict-1",
+          organizationId: "org-1",
+          projectId: "atlas",
+          projectParameterValueId: "value-1",
+          parameterDefinitionId: "def-fast-charge-current",
+          parameterName: "fast_charge_current_limit_ma",
+          parameterModule: "Charging Policy",
+          fileVersionId: "version-1",
+          fileDraftId: "file-draft-1",
+          uiDraftId: "ui-draft-1",
+          fileValue: "3200",
+          uiDraftValue: "3400",
+          status: "open",
+          createdAt: "2026-07-11T11:00:00.000Z"
+        },
+        {
+          id: "conflict-2",
+          organizationId: "org-1",
+          projectId: "atlas",
+          projectParameterValueId: "value-2",
+          parameterDefinitionId: "def-battery-temp-target",
+          fileVersionId: "version-1",
+          fileDraftId: "file-draft-2",
+          uiDraftId: "ui-draft-2",
+          fileValue: "35",
+          uiDraftValue: "36",
+          status: "open",
+          createdAt: "2026-07-11T11:01:00.000Z"
+        }
+      ])
+    });
 
     render(
-      <ParameterFileConflictPanel
-        open
-        projectId="atlas"
-        runtimeMode="api"
-        onClose={vi.fn()}
-      />
+      <ParameterFileConflictPanel open projectId="atlas" repository={repository} onClose={vi.fn()} />
     );
 
     expect(await screen.findByText("fast_charge_current_limit_ma")).toBeInTheDocument();
@@ -61,11 +70,28 @@ describe("ParameterFileConflictPanel", () => {
     expect(screen.getByText("Charging Policy")).toBeInTheDocument();
     expect(screen.getByText("3200")).toBeInTheDocument();
     expect(screen.getByText("3400")).toBeInTheDocument();
+    expect(createParameterFileClient).not.toHaveBeenCalled();
   });
 
-  it("resolves conflict by keeping file value", async () => {
-    listConflictsMock.mockResolvedValueOnce([
-      {
+  it("resolves conflict by keeping file value via the injected repository", async () => {
+    const repository = createStubRepository({
+      listConflicts: vi.fn().mockResolvedValue([
+        {
+          id: "conflict-3",
+          organizationId: "org-1",
+          projectId: "atlas",
+          projectParameterValueId: "value-3",
+          parameterDefinitionId: "def-limit",
+          fileVersionId: "version-1",
+          fileDraftId: "file-draft-3",
+          uiDraftId: "ui-draft-3",
+          fileValue: "1",
+          uiDraftValue: "2",
+          status: "open",
+          createdAt: "2026-07-11T11:02:00.000Z"
+        }
+      ]),
+      resolveConflict: vi.fn().mockResolvedValue({
         id: "conflict-3",
         organizationId: "org-1",
         projectId: "atlas",
@@ -76,39 +102,21 @@ describe("ParameterFileConflictPanel", () => {
         uiDraftId: "ui-draft-3",
         fileValue: "1",
         uiDraftValue: "2",
-        status: "open",
+        status: "resolved_file",
         createdAt: "2026-07-11T11:02:00.000Z"
-      }
-    ]);
-    resolveConflictMock.mockResolvedValueOnce({
-      id: "conflict-3",
-      organizationId: "org-1",
-      projectId: "atlas",
-      projectParameterValueId: "value-3",
-      parameterDefinitionId: "def-limit",
-      fileVersionId: "version-1",
-      fileDraftId: "file-draft-3",
-      uiDraftId: "ui-draft-3",
-      fileValue: "1",
-      uiDraftValue: "2",
-      status: "resolved_file",
-      createdAt: "2026-07-11T11:02:00.000Z"
+      })
     });
 
     render(
-      <ParameterFileConflictPanel
-        open
-        projectId="atlas"
-        runtimeMode="api"
-        onClose={vi.fn()}
-      />
+      <ParameterFileConflictPanel open projectId="atlas" repository={repository} onClose={vi.fn()} />
     );
 
     await screen.findByText("def-limit");
     fireEvent.click(screen.getByRole("button", { name: "保留文件值" }));
 
     await waitFor(() => {
-      expect(resolveConflictMock).toHaveBeenCalledWith("atlas", "conflict-3", "file");
+      expect(repository.resolveConflict).toHaveBeenCalledWith("atlas", "conflict-3", "file");
     });
+    expect(createParameterFileClient).not.toHaveBeenCalled();
   });
 });

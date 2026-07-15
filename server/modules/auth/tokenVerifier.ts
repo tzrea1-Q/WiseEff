@@ -16,6 +16,7 @@ const roleIds = new Set<BackendRoleId>(["guest", "hardware-user", "software-user
 const permissionIds = new Set<BackendPermission>([
   "parameter:view",
   "parameter:edit",
+  "parameter:edit-critical",
   "debugging:use",
   "debugging:view",
   "debugging:read",

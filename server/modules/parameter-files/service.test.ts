@@ -6,9 +6,23 @@ import type { Database, QueryResult, Queryable } from "../../shared/database/cli
 import { ApiError } from "../../shared/http/errors";
 import { MAX_FILE_BYTES, uploadProjectParameterFile } from "./service";
 import { syncFileVersion } from "./syncService";
+import { ingestDtsFileVersion } from "./structuralIngest";
 
 vi.mock("./syncService", () => ({
-  syncFileVersion: vi.fn(async () => ({ draftsCreated: 0, unchanged: 0, unmatched: 0, skipped: false }))
+  syncFileVersion: vi.fn(async () => ({
+    draftsCreated: 0,
+    unchanged: 0,
+    unmatched: 0,
+    skipped: false,
+    identityFallbackUses: 0
+  }))
+}));
+
+vi.mock("./structuralIngest", () => ({
+  ingestDtsFileVersion: vi.fn(async () => ({
+    parsedIndex: {},
+    counts: { nodes: 0, properties: 0, phandleRefs: 0 }
+  }))
 }));
 
 type QueryCall = {
@@ -195,5 +209,99 @@ describe("project parameter file upload service", () => {
       })
     ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Unsupported parameter file extension.", 400));
     expect(put).not.toHaveBeenCalled();
+  });
+
+  it("rejects DTS with /include/ before storage or version insert", async () => {
+    const { db, txCalls } = createFakeDb();
+    const { objectStore, put } = makeObjectStore();
+    const bytes = Buffer.from('/include/ "pin.dtsi"\n/ { board_id = <0>; };\n', "utf8");
+
+    await expect(
+      uploadProjectParameterFile(db, objectStore, adminAuth(), {
+        projectId: "project-1",
+        fileName: "board.dts",
+        bytes
+      })
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: { code: "dts-include-unsupported" }
+    });
+    expect(put).not.toHaveBeenCalled();
+    expect(txCalls.find((call) => call.text.includes("insert into project_parameter_files"))).toBeFalsy();
+  });
+
+  it("uploads DTS with @address/&label overlays and syncs (supported by structural parse)", async () => {
+    const { db } = createFakeDb([
+      [],
+      [fileRow({ file_name: "overlay.dts", format: "dts" })],
+      [versionRow({ id: "ver-dts-1", storage_key: "org-1/stored-overlay.dts", size_bytes: 64 })],
+      [],
+      []
+    ]);
+    const { objectStore, put } = makeObjectStore();
+    const bytes = Buffer.from("&demo {\n\tchip@6E {\n\t\treg = <0x6e>;\n\t};\n};\n", "utf8");
+    vi.mocked(syncFileVersion).mockClear();
+
+    const result = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "overlay.dts",
+      bytes
+    });
+
+    expect(put).toHaveBeenCalled();
+    expect(result.file.currentVersionNumber).toBe(1);
+    expect(result.unsupportedConstructs).toBeUndefined();
+    expect(syncFileVersion).toHaveBeenCalled();
+  });
+
+  it("uploads clean simple DTS and still syncs", async () => {
+    const { db } = createFakeDb([
+      [],
+      [fileRow({ file_name: "simple.dts", format: "dts" })],
+      [versionRow({ id: "ver-dts-clean", storage_key: "org-1/stored-simple.dts", size_bytes: 32 })],
+      [],
+      []
+    ]);
+    const { objectStore } = makeObjectStore();
+    const bytes = Buffer.from("/ {\n\tboard_id = <0>;\n};\n", "utf8");
+    vi.mocked(syncFileVersion).mockClear();
+    vi.mocked(ingestDtsFileVersion).mockClear();
+
+    const result = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "simple.dts",
+      bytes
+    });
+
+    expect(result.unsupportedConstructs).toBeUndefined();
+    expect(ingestDtsFileVersion).toHaveBeenCalled();
+    expect(syncFileVersion).toHaveBeenCalled();
+  });
+
+  it("skips structural ingest when DTS_STRUCTURAL_INGEST is disabled", async () => {
+    const prev = process.env.DTS_STRUCTURAL_INGEST;
+    process.env.DTS_STRUCTURAL_INGEST = "0";
+    try {
+      const { db } = createFakeDb([
+        [],
+        [fileRow({ file_name: "simple.dts", format: "dts" })],
+        [versionRow({ id: "ver-dts-off", storage_key: "org-1/stored-simple.dts", size_bytes: 32 })],
+        [],
+        []
+      ]);
+      const { objectStore } = makeObjectStore();
+      vi.mocked(ingestDtsFileVersion).mockClear();
+
+      await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+        projectId: "project-1",
+        fileName: "simple.dts",
+        bytes: Buffer.from("/ {\n\tboard_id = <0>;\n};\n", "utf8")
+      });
+
+      expect(ingestDtsFileVersion).not.toHaveBeenCalled();
+    } finally {
+      if (prev === undefined) delete process.env.DTS_STRUCTURAL_INGEST;
+      else process.env.DTS_STRUCTURAL_INGEST = prev;
+    }
   });
 });

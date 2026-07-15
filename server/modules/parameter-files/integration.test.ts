@@ -187,7 +187,8 @@ describe.skipIf(!databaseAvailable)("parameter file integration", () => {
       draftsCreated: 1,
       unchanged: 0,
       unmatched: 0,
-      skipped: false
+      skipped: false,
+      identityFallbackUses: expect.any(Number)
     });
 
     const drafts = await db.query<{

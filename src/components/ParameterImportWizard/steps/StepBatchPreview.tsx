@@ -4,6 +4,7 @@ import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterImportBatchDto, ParameterImportBatchItem } from "@/application/ports/ParameterRepository";
 import { isEligibleImportItem } from "@/application/parameters/import/isEligibleImportItem";
 import { toSourceItems } from "@/application/parameters/import/toSourceItems";
+import { buildImportReviewMetadata } from "@/application/parameters/import/buildImportReviewMetadata";
 import type { ReviewedImportRow } from "@/application/parameters/import/types";
 
 export type StepBatchPreviewProps = {
@@ -80,7 +81,8 @@ export function StepBatchPreview({
         const result = await parameterActions.createImportPreview({
           projectId: targetProjectId,
           sourceName: sourceName || "手动粘贴",
-          items
+          items,
+          reviewMetadata: buildImportReviewMetadata(reviewedRows)
         });
         if (cancelled) {
           return;

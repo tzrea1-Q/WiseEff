@@ -6,8 +6,12 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { parseDts, resolveDts, serializeDts, classifyDtsValue } from "../dts";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
+import { isDtsStructuralIngestEnabled } from "./structuralFlag";
+import { ingestDtsFileVersion } from "./structuralIngest";
+import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
 import type { ParameterFileFormat } from "./types";
 
 type WritebackSource = {
@@ -59,46 +63,6 @@ function setNestedJsonLeaf(target: Record<string, unknown>, pathSegments: string
   }
 
   cursor[pathSegments[pathSegments.length - 1]] = value;
-}
-
-function findMatchingBrace(source: string, startAt: number): number {
-  let depth = 0;
-  for (let index = startAt; index < source.length; index += 1) {
-    const ch = source[index];
-    if (ch === "{") depth += 1;
-    if (ch === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return index;
-      }
-    }
-  }
-  return -1;
-}
-
-function findNamedBlock(source: string, blockName: string, fromIndex: number, toIndex: number) {
-  const escaped = blockName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`\\b${escaped}\\b\\s*\\{`, "g");
-  pattern.lastIndex = fromIndex;
-
-  while (true) {
-    const match = pattern.exec(source);
-    if (!match || match.index >= toIndex) {
-      return null;
-    }
-    const openBraceIndex = pattern.lastIndex - 1;
-    if (openBraceIndex >= toIndex) {
-      return null;
-    }
-    const closeBraceIndex = findMatchingBrace(source, openBraceIndex);
-    if (closeBraceIndex === -1 || closeBraceIndex >= toIndex) {
-      return null;
-    }
-    return {
-      contentStart: openBraceIndex + 1,
-      contentEnd: closeBraceIndex
-    };
-  }
 }
 
 function patchByFormat(content: string, format: ParameterFileFormat, nodePath: string, newValue: string): Buffer {
@@ -192,6 +156,7 @@ export function patchJsonValue(content: string, nodePath: string, newValue: stri
   return Buffer.from(JSON.stringify(parsed, null, 2), "utf8");
 }
 
+/** Patch a DTS property via CST locate → replace rawText → lossless serialize. */
 export function patchDtsProperty(content: string, nodePath: string, newValue: string): Buffer {
   const pathSegments = splitNodePath(nodePath);
   if (pathSegments.length < 2) {
@@ -199,36 +164,49 @@ export function patchDtsProperty(content: string, nodePath: string, newValue: st
   }
 
   const propertyName = pathSegments[pathSegments.length - 1];
-  const modulePath = pathSegments.slice(0, -1);
+  const targetNodePath = pathSegments.slice(0, -1).join("/");
 
-  let scopeStart = 0;
-  let scopeEnd = content.length;
-  for (const segment of modulePath) {
-    const block = findNamedBlock(content, segment, scopeStart, scopeEnd);
-    if (!block) {
-      throw new ApiError("CONFLICT", "Unable to locate DTS module path for writeback.", 409, {
-        nodePath,
-        missingSegment: segment
-      });
-    }
-    scopeStart = block.contentStart;
-    scopeEnd = block.contentEnd;
+  let doc;
+  try {
+    doc = parseDts(content);
+  } catch (error) {
+    throw new ApiError("VALIDATION_FAILED", "Failed to parse DTS content for writeback.", 400, {
+      nodePath,
+      cause: error instanceof Error ? error.message : String(error)
+    });
   }
 
-  const blockContent = content.slice(scopeStart, scopeEnd);
-  const escapedProperty = propertyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const propertyPattern = new RegExp(`(\\b${escapedProperty}\\b\\s*=\\s*)([^;\\n\\r]*)(\\s*;?)`);
-  if (!propertyPattern.test(blockContent)) {
+  const resolved = resolveDts(doc);
+  const node = resolved.nodes.find((entry) => entry.nodePath === targetNodePath);
+  if (!node) {
+    throw new ApiError("CONFLICT", "Unable to locate DTS module path for writeback.", 409, {
+      nodePath,
+      missingSegment: targetNodePath
+    });
+  }
+
+  const property = node.properties.find((entry) => entry.name === propertyName);
+  if (!property) {
     throw new ApiError("CONFLICT", "Unable to locate DTS property for writeback.", 409, {
       nodePath,
       propertyName
     });
   }
 
-  const updatedBlock = blockContent.replace(propertyPattern, (_full, prefix: string, _oldValue: string, suffix: string) => {
-    return `${prefix}${newValue}${suffix}`;
-  });
-  return Buffer.from(`${content.slice(0, scopeStart)}${updatedBlock}${content.slice(scopeEnd)}`, "utf8");
+  if (property.valueType === "bool" || property.valueType === "empty") {
+    throw new ApiError("CONFLICT", "Cannot write a value onto a boolean/empty DTS property.", 409, {
+      nodePath,
+      propertyName,
+      valueType: property.valueType
+    });
+  }
+
+  const classified = classifyDtsValue(newValue, propertyName);
+  property.cst.rawText = newValue;
+  property.cst.valueType = classified.valueType;
+  property.cst.normalizedValue = classified.normalizedValue;
+
+  return Buffer.from(serializeDts(doc), "utf8");
 }
 
 export async function writebackMergedParameterValue(
@@ -248,6 +226,15 @@ export async function writebackMergedParameterValue(
   if (!source.sourceFileName || !source.sourceNodePath) {
     return { skipped: true };
   }
+
+  await assertSensitiveNodeWriteAllowed(db, auth, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    nodePath: source.sourceNodePath,
+    sourceFileName: source.sourceFileName,
+    actorType: "user",
+    requestId: context.requestId
+  });
 
   const file = await getProjectParameterFileByName(db, {
     organizationId: auth.organization.id,
@@ -298,6 +285,9 @@ export async function writebackMergedParameterValue(
   });
 
   await setCurrentVersion(db, { fileId: file.id, versionId: version.id });
+  if (file.format === "dts" && isDtsStructuralIngestEnabled()) {
+    await ingestDtsFileVersion(db, version.id, patchedBytes.toString("utf8"));
+  }
   await createWritebackAudit(
     db,
     auth,
