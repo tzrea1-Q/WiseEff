@@ -27,6 +27,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 - `exec-plans/active/2026-07-08-product-feedback.md`: Internal Beta product feedback — persist sidebar feedback with multi-image ObjectStore attachments and admin triage at `/feedback-admin`.
 - `exec-plans/active/2026-07-15-dts-hardening-closeout.md`: DTS hardening closeout (B) — auto default config set on project create, Port-ify parameter-file/conflict panels, identity-fallback mode (`allow|warn|deny`), optional dt-schema hook; closes TD-040(1) and residual TD-039 panel debt.
 - `exec-plans/active/2026-07-15-parameter-import-wizard-td035.md`: Parameter batch-import wizard TD-035 alignment (C) — server `parse-dts` via CST, `parseDtsFull` client, `reviewMetadata` audit; closes TD-035 P2/P3 follow-ups.
+- `exec-plans/active/2026-07-16-parameter-topology-schema-management.md`: replace path-derived parameter identity with source/effective DTS topology, versioned schemas, stable project bindings, full historical migration, and an atomic fail-closed cutover.
 
 ## Completed Plans
 
