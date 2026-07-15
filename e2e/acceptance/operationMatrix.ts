@@ -314,9 +314,25 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     action: "Use the Windows-first local bridge panel to download, pair, and reconnect local debugging targets.",
     coverage: "future",
     acceptanceIds: ["BRIDGE-WIN-001"],
-    specFiles: ["e2e/acceptance/debugging-local-bridge.acceptance.spec.ts"],
+    specFiles: [
+      "e2e/acceptance/debugging-local-bridge.acceptance.spec.ts",
+      "e2e/acceptance/local-device-bridge.acceptance.spec.ts"
+    ],
     assertions: ["ui", "api"],
     deferralReason: "Requires a real Windows bridge runtime and localhost health endpoint orchestration in acceptance."
+  },
+  {
+    id: "BRIDGE-HDC-001",
+    priority: "P1",
+    area: "debugging",
+    route: "/node-debugging",
+    roles: ["Hardware Committer", "Admin"],
+    action: "Run real paired-bridge HDC detect when DEVICE_BRIDGE_HDC_AVAILABLE is enabled.",
+    coverage: "conditional",
+    acceptanceIds: ["BRIDGE-HDC-001"],
+    specFiles: ["e2e/acceptance/local-device-bridge.acceptance.spec.ts"],
+    assertions: ["ui", "api"],
+    deferralReason: "Requires a pre-paired bridge process, hdc on PATH, USB device, and DEVICE_BRIDGE_HDC_AVAILABLE=true."
   },
   {
     id: "HDC-LAB-001",
@@ -389,6 +405,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     action: "Reject a Xiaoze parameter change without creating a change request.",
     coverage: "automated",
     acceptanceIds: ["XIAOZE-ACTION-REJECT-001"],
+    specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "XIAOZE-ACTION-RESUME-001",
+    priority: "P1",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Resume an approved Xiaoze AG-UI native mutating action without reopening a change request.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-ACTION-RESUME-001"],
     specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
     assertions: ["api"]
   },
@@ -655,5 +683,65 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["PARAM-DTS-RBAC-001"],
     specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
     assertions: ["api", "db"]
+  },
+  {
+    id: "PARAM-SPEC-GOVERN-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action: "Search parameter specs, open detail, and resolve a spec review task with audit evidence.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-SPEC-GOVERN-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "PARAM-TOPOLOGY-BROWSE-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Admin", "Hardware User"],
+    action: "Toggle source/effective topology, search two gpio_int bindings, and open binding detail without path-as-identity.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-TOPOLOGY-BROWSE-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "PARAM-TOPOLOGY-EDIT-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Hardware User", "Admin"],
+    action: "Apply typed binding edits with schema diagnostics and reject stale base-revision edits.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-TOPOLOGY-EDIT-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "PARAM-IDENTITY-MAP-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Surface unresolved overlay targets and resolve identity mapping tasks that block publish.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-IDENTITY-MAP-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "PARAM-CONFIG-PUBLISH-GATE-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Block publish on compiler/edit diagnostics, then validate and publish a clean config revision with audit persistence.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-CONFIG-PUBLISH-GATE-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
   }
 ];
