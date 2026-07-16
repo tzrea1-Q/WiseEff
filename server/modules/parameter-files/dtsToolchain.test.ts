@@ -7,7 +7,9 @@ import type { ChildProcess, spawn as nodeSpawn } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  checkPinnedToolchainVersions,
   createDtsToolchainRunner,
+  extractSemverLike,
   loadPinnedToolchainVersions,
   type DtsToolchainConfigSet,
   type DtsToolchainProbe
@@ -114,6 +116,36 @@ describe("loadPinnedToolchainVersions", () => {
   });
 });
 
+describe("checkPinnedToolchainVersions", () => {
+  const pinned = loadPinnedToolchainVersions();
+
+  it("accepts the correct pinned versions", () => {
+    expect(
+      checkPinnedToolchainVersions(
+        { dtc: "1.8.1", fdtoverlay: "1.8.1", dtschema: "2026.6" },
+        pinned
+      )
+    ).toEqual({ ok: true });
+    expect(extractSemverLike("Version: DTC 1.8.1")).toBe("1.8.1");
+  });
+
+  it("rejects a wrong dtc version", () => {
+    const result = checkPinnedToolchainVersions(
+      { dtc: "1.6.0", fdtoverlay: "1.8.1", dtschema: "2026.6" },
+      pinned
+    );
+    expect(result).toMatchObject({ ok: false, tool: "dtc", actual: "1.6.0", expected: "1.8.1" });
+  });
+
+  it("rejects an unparseable dtschema version", () => {
+    const result = checkPinnedToolchainVersions(
+      { dtc: "1.8.1", fdtoverlay: "1.8.1", dtschema: "dev-main" },
+      pinned
+    );
+    expect(result).toMatchObject({ ok: false, tool: "dtschema", reason: expect.stringMatching(/Unparseable/i) });
+  });
+});
+
 describe("createDtsToolchainRunner", () => {
   it("compiles base+overlay, runs dt-validate, and returns artifact hashes in release mode", async () => {
     const spawnFn = fakeSpawnScript((command, args) => {
@@ -165,6 +197,38 @@ describe("createDtsToolchainRunner", () => {
     expect(result.ok).toBe(false);
     expect(result.failureCode).toBe("toolchain-unavailable");
     expect(result.compiler.dtschema).toBeNull();
+  });
+
+  it("fails closed in release mode when probed versions do not match the pin", async () => {
+    const runner = createDtsToolchainRunner({
+      spawnFn: fakeSpawnScript(() => ({ code: 0 })),
+      probeTools: async () =>
+        pinnedProbe({
+          dtc: { path: "dtc", version: "1.6.0" }
+        }),
+      tmpDirFactory: trackingTmpDirFactory
+    });
+
+    const result = await runner.validate(happyConfigSet(), { mode: "release" });
+    expect(result.ok).toBe(false);
+    expect(result.failureCode).toBe("version-mismatch");
+    expect(result.diagnostics.some((d) => /does not match pinned/i.test(d.message))).toBe(true);
+  });
+
+  it("fails closed in release mode when a probed version is unparseable", async () => {
+    const runner = createDtsToolchainRunner({
+      spawnFn: fakeSpawnScript(() => ({ code: 0 })),
+      probeTools: async () =>
+        pinnedProbe({
+          dtschema: { path: "dt-validate", version: "built-from-source" }
+        }),
+      tmpDirFactory: trackingTmpDirFactory
+    });
+
+    const result = await runner.validate(happyConfigSet(), { mode: "release" });
+    expect(result.ok).toBe(false);
+    expect(result.failureCode).toBe("version-mismatch");
+    expect(result.diagnostics.some((d) => /Unparseable dtschema version/i.test(d.message))).toBe(true);
   });
 
   it("allows warn/off local diagnostics when tools are missing but release does not", async () => {

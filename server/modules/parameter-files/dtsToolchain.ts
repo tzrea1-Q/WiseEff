@@ -26,6 +26,7 @@ export type DtsToolchainVersions = {
 
 export type DtsToolchainFailureCode =
   | "toolchain-unavailable"
+  | "version-mismatch"
   | "path-escape"
   | "overlay-order"
   | "compile-failed"
@@ -178,11 +179,63 @@ function runProcess(
   });
 }
 
-function parseVersionToken(raw: string): string | null {
+/**
+ * Extract a semver-like `X.Y` / `X.Y.Z` token from toolchain `--version` output.
+ * Returns null when the output is empty or unparseable (fail-closed for release pins).
+ */
+export function extractSemverLike(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
   const text = raw.trim();
   if (!text) return null;
   const match = text.match(/(\d+\.\d+(?:\.\d+)?)/);
-  return match?.[1] ?? text.split(/\s+/).at(-1) ?? text;
+  return match?.[1] ?? null;
+}
+
+function parseVersionToken(raw: string): string | null {
+  return extractSemverLike(raw);
+}
+
+export type PinnedVersionCheckResult =
+  | { ok: true }
+  | { ok: false; tool: "dtc" | "fdtoverlay" | "dtschema"; actual: string | null; expected: string; reason: string };
+
+/**
+ * Compare probed toolchain versions against `tools/dts-toolchain/versions.json`.
+ * `fdtoverlay` shares the pinned dtc version (same device-tree-compiler build).
+ * Unparseable or mismatched versions fail closed.
+ */
+export function checkPinnedToolchainVersions(
+  actual: DtsToolchainVersions,
+  pinned: PinnedDtsToolchainVersions = loadPinnedToolchainVersions()
+): PinnedVersionCheckResult {
+  const checks: Array<{ tool: "dtc" | "fdtoverlay" | "dtschema"; actual: string | null; expected: string }> = [
+    { tool: "dtc", actual: actual.dtc, expected: pinned.dtc.version },
+    { tool: "fdtoverlay", actual: actual.fdtoverlay, expected: pinned.dtc.version },
+    { tool: "dtschema", actual: actual.dtschema, expected: pinned.dtschema }
+  ];
+
+  for (const check of checks) {
+    const parsed = extractSemverLike(check.actual);
+    if (!parsed) {
+      return {
+        ok: false,
+        tool: check.tool,
+        actual: check.actual,
+        expected: check.expected,
+        reason: `Unparseable ${check.tool} version (expected ${check.expected}).`
+      };
+    }
+    if (parsed !== check.expected) {
+      return {
+        ok: false,
+        tool: check.tool,
+        actual: parsed,
+        expected: check.expected,
+        reason: `${check.tool} version ${parsed} does not match pinned ${check.expected}.`
+      };
+    }
+  }
+  return { ok: true };
 }
 
 async function probeCommand(
@@ -418,6 +471,32 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
           return failed(mode, "toolchain-unavailable", versions, diagnostics, artifacts);
         }
         return softUnavailable(mode, versions, diagnostics);
+      }
+
+      const pinCheck = checkPinnedToolchainVersions(versions, pinned);
+      if (!pinCheck.ok) {
+        const diagnostics: DtsToolchainDiagnostic[] = [
+          {
+            file: SKIPPED_FILE_LABEL,
+            severity: mode === "release" ? "error" : "warning",
+            code: "version-mismatch",
+            stage: "toolchain",
+            message:
+              `${pinCheck.reason} ` +
+              `Pinned: dtc ${pinned.dtc.version} @ ${pinned.dtc.commit}, dtschema ${pinned.dtschema}.`
+          }
+        ];
+        if (mode === "release") {
+          return failed(mode, "version-mismatch", versions, diagnostics, artifacts);
+        }
+        return {
+          ok: true,
+          mode,
+          compiler: versions,
+          diagnostics,
+          artifacts,
+          failureCode: "version-mismatch"
+        };
       }
 
       for (const name of [configSet.entryFile, ...configSet.overlayOrder]) {

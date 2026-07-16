@@ -29,12 +29,16 @@ npm run dtc:seed:compile
 
 bootstrap 在 macOS 使用 Homebrew，在 Debian/Ubuntu 使用 `device-tree-compiler`，在 Alpine 与 RHEL 系 Linux 使用 `dtc` 包。`db:seed:m1` 会先用真实 dtc 编译 Aurora、Nebula、Atlas 三份 overlay；编译器缺失或出现 error 时停止写库。脱离外部 base DTS 单独编译 overlay 时，`reg_format` / `ranges_format` warning 可保留，但不能有 error。
 
-完整失败关闭工具链与配置校验：
+完整失败关闭工具链与配置校验（版本钉扎见 `tools/dts-toolchain/versions.json`）：
 
 ```bash
-npm run dts:toolchain:check
+# macOS：确保 pip 安装的 dt-validate 在 PATH 中
+export PATH="$HOME/Library/Python/3.9/bin:$PATH"
+npm run dts:toolchain:check -- --required
 npm run dts:config:validate
 ```
+
+`dts:toolchain:check --required` 会对比探测版本与钉扎文件；缺工具、版本无法解析或不匹配时失败。
 
 语义身份迁移演练（默认 dry-run；仅维护窗口 `--apply`）：
 

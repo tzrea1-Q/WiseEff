@@ -266,7 +266,38 @@ export async function runValidationGate(
     entryFile = [...files.keys()][0] ?? null;
   }
 
-  if (!entryFile) {
+  if (!entryFile || files.size === 0) {
+    // Release/baseline must never soft-pass an empty Config Set.
+    if (input.forRelease || mode === "block") {
+      const diagnostics: DtcDiagnostic[] = [
+        {
+          file: "<config-set>",
+          severity: "error",
+          message: "Config set has no DTS members to validate."
+        }
+      ];
+      await writeValidationGateAudit(
+        db,
+        auth,
+        {
+          configSetId: input.configSetId,
+          projectId: configSet.projectId,
+          ok: false,
+          mode,
+          compiler: "unavailable",
+          diagnostics,
+          requiresConfirmation: false
+        },
+        context
+      );
+      throw new ApiError("CONFLICT", "Empty config set cannot be released.", 409, {
+        code: "dts-empty-config-set",
+        diagnostics,
+        mode,
+        compiler: "unavailable"
+      });
+    }
+
     const empty: ValidationGateResult = {
       ok: true,
       mode,

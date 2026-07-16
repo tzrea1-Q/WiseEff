@@ -274,16 +274,81 @@ export async function insertValidationRun(
     configRevisionId: string;
     stage: string;
     status: "pending" | "passed" | "failed";
+    toolchain?: Record<string, unknown>;
+    artifactHashes?: Record<string, unknown>;
   },
 ): Promise<void> {
   await db.query(
     `
     insert into dts_validation_runs (
       id, organization_id, config_revision_id, stage, status, toolchain, artifact_hashes
-    ) values ($1, $2, $3, $4, $5, '{}'::jsonb, '{}'::jsonb)
+    ) values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
     `,
-    [input.id, input.organizationId, input.configRevisionId, input.stage, input.status],
+    [
+      input.id,
+      input.organizationId,
+      input.configRevisionId,
+      input.stage,
+      input.status,
+      JSON.stringify(input.toolchain ?? {}),
+      JSON.stringify(input.artifactHashes ?? {}),
+    ],
   );
+}
+
+export type ConfigRevisionMemberRow = {
+  fileId: string;
+  fileVersionId: string;
+  role: string;
+  sortOrder: number;
+  fileName: string;
+  checksum: string;
+  storageKey: string;
+  parsedIndex: unknown;
+};
+
+export async function listConfigRevisionMembers(
+  db: Queryable,
+  configRevisionId: string,
+): Promise<ConfigRevisionMemberRow[]> {
+  const result = await db.query<{
+    file_id: string;
+    file_version_id: string;
+    role: string;
+    sort_order: number | string;
+    file_name: string;
+    checksum: string;
+    storage_key: string;
+    parsed_index: unknown;
+  }>(
+    `
+    select
+      m.file_id,
+      m.file_version_id,
+      m.role,
+      m.sort_order,
+      f.file_name,
+      v.checksum,
+      v.storage_key,
+      v.parsed_index
+    from dts_config_revision_members m
+    join project_parameter_files f on f.id = m.file_id
+    join project_parameter_file_versions v on v.id = m.file_version_id
+    where m.config_revision_id = $1
+    order by m.sort_order asc, f.file_name asc
+    `,
+    [configRevisionId],
+  );
+  return result.rows.map((row) => ({
+    fileId: row.file_id,
+    fileVersionId: row.file_version_id,
+    role: row.role,
+    sortOrder: Number(row.sort_order),
+    fileName: row.file_name,
+    checksum: row.checksum,
+    storageKey: row.storage_key,
+    parsedIndex: row.parsed_index,
+  }));
 }
 
 export async function insertValidationDiagnostics(

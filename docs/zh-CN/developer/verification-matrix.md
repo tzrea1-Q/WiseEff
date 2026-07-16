@@ -23,7 +23,7 @@
 | --- | --- | --- |
 | `npm run dtc:check -- --required` | PATH 上存在真实 Device Tree Compiler | M1 seed、DTS 校验或自托管镜像验收前使用。 |
 | `npm run dtc:seed:compile` | Aurora、Nebula、Atlas 三份已提交 overlay 均通过真实 `dtc -@` 编译 | 修改 DTS fixture、seed 生成、验证门禁或 dtc 部署流程后使用。 |
-| `npm run dts:toolchain:check` | dtc + fdtoverlay + dt-validate 与钉扎版本可用 | 发布模式校验或身份切换演练前。 |
+| `npm run dts:toolchain:check -- --required` | dtc + fdtoverlay + dt-validate 存在且版本与 `tools/dts-toolchain/versions.json` 一致（缺失、无法解析或不匹配均失败） | 发布模式校验或身份切换演练前。确保 `dt-validate` 在 `PATH`（macOS 提示：`~/Library/Python/3.9/bin`）。 |
 | `npm run parameter-identities:check` | 语义身份迁移只读预检/后检 | 维护窗口前后；见 cutover runbook。 |
 | `npm run parameter-identities:migrate` | 默认 dry-run，或门禁后的 `--apply` 历史迁移 | 仅切换演练；生产禁止双写。 |
 | `npm run db:seed:m1` 连续执行两次 | 全量参数、DTS 结构、版本与基线可幂等刷新 | 修改 M1 seed 或结构化 ingest 后使用；版本数和历史数不得因无变化重跑而增长。 |

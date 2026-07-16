@@ -1,5 +1,5 @@
 import type { ConfigSetRole } from "../parameter-files/types";
-import type { DtsResolutionDiagnostic, DtsSourceEffect } from "../dts";
+import type { DtsSourceEffect } from "../dts";
 
 export type ConfigRevisionStatus =
   | "draft"
@@ -114,9 +114,13 @@ export type PersistedLogicalNodeRevision = {
   parentLogicalNodeId: string | null;
 };
 
-export type PersistedValidationDiagnostic = DtsResolutionDiagnostic & {
+export type PersistedValidationDiagnostic = {
   id: string;
+  code: string;
+  severity: "error" | "warning" | "info";
   stage: string;
+  message: string;
+  fileName: string;
   startLine?: number;
   startColumn?: number;
   guidance?: string;

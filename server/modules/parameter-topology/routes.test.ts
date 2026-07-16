@@ -290,7 +290,8 @@ describe("parameter semantic v2 routes", () => {
       expect.anything(),
       expect.objectContaining({ user: expect.objectContaining({ id: "user-1" }) }),
       expect.objectContaining({ projectId: "project-1", revisionId: "rev-1" }),
-      expect.objectContaining({ requestId: "test-request" })
+      expect.objectContaining({ requestId: "test-request" }),
+      expect.objectContaining({ objectStore: undefined })
     );
   });
 });

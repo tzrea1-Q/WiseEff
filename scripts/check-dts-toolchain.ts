@@ -1,9 +1,14 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { probeDtc, type DtcProbeResult } from "./check-dtc";
+import {
+  checkPinnedToolchainVersions,
+  extractSemverLike,
+  loadPinnedToolchainVersions,
+  type PinnedDtsToolchainVersions
+} from "../server/modules/parameter-files/dtsToolchain";
 
 export type ToolchainProbeResult = {
   dtc: DtcProbeResult;
@@ -17,10 +22,9 @@ export type ToolchainProbeResult = {
     version: string | null;
     error: string | null;
   };
-  pinned: {
-    dtc: { version: string; commit: string };
-    dtschema: string;
-  };
+  pinned: PinnedDtsToolchainVersions;
+  versionsMatch: boolean;
+  versionError: string | null;
   ok: boolean;
 };
 
@@ -30,26 +34,61 @@ function probeVersionedCommand(command: string, args: string[]): {
   error: string | null;
 } {
   const result = spawnSync(command, args, { encoding: "utf8" });
-  const version = (result.stdout ?? "").trim() || (result.stderr ?? "").trim();
+  const raw = (result.stdout ?? "").trim() || (result.stderr ?? "").trim();
   if (result.error) {
     return { available: false, version: null, error: result.error.message };
   }
   if (result.status === 0) {
-    return { available: true, version: version || `${command} (version unavailable)`, error: null };
+    const version = extractSemverLike(raw);
+    return {
+      available: true,
+      version: version ?? (raw || null),
+      error: version ? null : `Unparseable ${command} version output: ${raw || "(empty)"}`
+    };
   }
   return {
     available: false,
     version: null,
-    error: version || `${command} executable was not found on PATH`
+    error: raw || `${command} executable was not found on PATH`
   };
 }
 
-export function loadPinnedVersions(rootDir = join(dirname(fileURLToPath(import.meta.url)), "..")): {
-  dtc: { version: string; commit: string };
-  dtschema: string;
-} {
-  const raw = readFileSync(join(rootDir, "tools/dts-toolchain/versions.json"), "utf8");
-  return JSON.parse(raw) as { dtc: { version: string; commit: string }; dtschema: string };
+export function loadPinnedVersions(
+  rootDir = join(dirname(fileURLToPath(import.meta.url)), "..")
+): PinnedDtsToolchainVersions {
+  return loadPinnedToolchainVersions(rootDir);
+}
+
+export function evaluateToolchainProbe(input: {
+  dtc: DtcProbeResult;
+  fdtoverlay: { available: boolean; version: string | null; error: string | null };
+  dtschema: { available: boolean; version: string | null; error: string | null };
+  pinned: PinnedDtsToolchainVersions;
+}): ToolchainProbeResult {
+  const toolsPresent = input.dtc.available && input.fdtoverlay.available && input.dtschema.available;
+  const pinCheck = checkPinnedToolchainVersions(
+    {
+      dtc: extractSemverLike(input.dtc.version) ?? input.dtc.version,
+      fdtoverlay: extractSemverLike(input.fdtoverlay.version) ?? input.fdtoverlay.version,
+      dtschema: extractSemverLike(input.dtschema.version) ?? input.dtschema.version
+    },
+    input.pinned
+  );
+
+  const versionsMatch = pinCheck.ok;
+  const versionError = pinCheck.ok ? null : pinCheck.reason;
+  // Presence alone is insufficient: --required and release gates also require pinned versions.
+  const ok = toolsPresent && versionsMatch;
+
+  return {
+    dtc: input.dtc,
+    fdtoverlay: input.fdtoverlay,
+    dtschema: input.dtschema,
+    pinned: input.pinned,
+    versionsMatch,
+    versionError,
+    ok
+  };
 }
 
 export function probeDtsToolchain(): ToolchainProbeResult {
@@ -57,13 +96,7 @@ export function probeDtsToolchain(): ToolchainProbeResult {
   const dtc = probeDtc();
   const fdtoverlay = probeVersionedCommand("fdtoverlay", ["--version"]);
   const dtschema = probeVersionedCommand("dt-validate", ["--version"]);
-  return {
-    dtc,
-    fdtoverlay,
-    dtschema,
-    pinned,
-    ok: dtc.available && fdtoverlay.available && dtschema.available
-  };
+  return evaluateToolchainProbe({ dtc, fdtoverlay, dtschema, pinned });
 }
 
 async function main() {
@@ -76,13 +109,20 @@ async function main() {
     if (!result.dtc.available) missing.push("dtc");
     if (!result.fdtoverlay.available) missing.push("fdtoverlay");
     if (!result.dtschema.available) missing.push("dt-validate (dtschema)");
+    const versionLine = result.versionError
+      ? `Version pin failed: ${result.versionError}\n`
+      : "";
     console.error(
-      `DTS toolchain required but incomplete (missing: ${missing.join(", ")}).\n` +
+      `DTS toolchain required but incomplete` +
+        (missing.length > 0 ? ` (missing: ${missing.join(", ")})` : "") +
+        `.\n` +
+        versionLine +
         `Pinned: dtc ${result.pinned.dtc.version} @ ${result.pinned.dtc.commit}, dtschema ${result.pinned.dtschema}.\n` +
         `Install guidance:\n` +
         `  - dtc/fdtoverlay: npm run dtc:bootstrap (or brew/apk/apt package device-tree-compiler)\n` +
         `  - dtschema: python3 -m pip install -r tools/dts-toolchain/requirements.txt\n` +
-        `  - ensure dt-validate is on PATH (often ~/.local/bin or ~/Library/Python/*/bin)`
+        `  - ensure dt-validate is on PATH (often ~/.local/bin or ~/Library/Python/*/bin)\n` +
+        `  - macOS tip: export PATH="$HOME/Library/Python/3.9/bin:$PATH"`
     );
     process.exitCode = 1;
   }

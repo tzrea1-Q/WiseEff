@@ -144,6 +144,7 @@ export function createWiseEffServer(
   });
   registerParameterTopologyRoutes(router, {
     db: options.db,
+    objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
   registerParameterDashboardRoutes(router, {

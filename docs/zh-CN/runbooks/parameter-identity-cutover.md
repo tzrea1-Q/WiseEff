@@ -13,7 +13,9 @@
 - 已部署包含迁移 `0048`、`/api/v2` 语义 API 与本 runbook 的维护目标构建。
 - 操作员持有与目标环境一致的 `PARAMETER_IDENTITY_MAINTENANCE_TOKEN`。
 - 具备 [backup-restore.md](../../runbooks/backup-restore.md) 中的 PostgreSQL 与对象存储备份工具。
-- `PATH` 上可用 `dtc`、`fdtoverlay`、`dt-validate`。
+- `PATH` 上可用 `dtc`、`fdtoverlay`、`dt-validate`，且版本与 `tools/dts-toolchain/versions.json` 钉扎一致（dtc/fdtoverlay `1.8.1`，dtschema `2026.6`）。
+- macOS 上 pip 安装的 `dt-validate` 常见于 `~/Library/Python/3.9/bin`，发布检查前请加入 `PATH`：
+  `export PATH="$HOME/Library/Python/3.9/bin:$PATH"`。
 
 ## 1. 写冻结
 
@@ -39,12 +41,12 @@ echo "OBJECT_SNAPSHOT_ID=${OBJECT_SNAPSHOT_ID}"
 ## 3. 工具链健康
 
 ```bash
-npm run dts:toolchain:check
+npm run dts:toolchain:check -- --required
 npm run dtc:check -- --required
 npm run dts:config:validate
 ```
 
-期望：钉扎版本已记录，编译路径绿色。工具链不完整则中止——生产发布失败关闭。
+期望：工具存在且版本与 `tools/dts-toolchain/versions.json` 一致。`--required` 在缺二进制、`--version` 无法解析或版本不匹配时失败。钉扎检查失败则中止——生产发布失败关闭。
 
 ## 4. Dry-run 迁移
 

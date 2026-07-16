@@ -69,10 +69,10 @@
 
 **Files:** `service.ts`, `dtsToolchain.ts`, `check-dts-toolchain.ts`, `validationGate.ts`, docs EN/zh-CN
 
-- [ ] validate loads manifest + object store; runs resolve/dtc/fdtoverlay/dt-validate + blockers
-- [ ] Pin check compares actual vs `tools/dts-toolchain/versions.json`
-- [ ] Tests: empty set, dtc missing, fdtoverlay fail, schema fail, compile fail, open mapping, success
-- [ ] Commit: `fix(dts): fail-closed validate and pin toolchain versions`
+- [x] validate loads manifest + object store; runs resolve/dtc/fdtoverlay/dt-validate + blockers
+- [x] Pin check compares actual vs `tools/dts-toolchain/versions.json`
+- [x] Tests: empty set, dtc missing, fdtoverlay fail, schema fail, compile fail, open mapping, success
+- [x] Commit: `fix(dts): fail-closed validate and pin toolchain versions`
 
 ### Task 4: Typed edit API and precise Config Set writeback
 

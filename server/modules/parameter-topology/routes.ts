@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
+import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters, canViewParameters } from "../parameters/policy";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -59,6 +60,7 @@ export function registerParameterTopologyRoutes(
   router: WiseEffRouter,
   options: {
     db?: Database;
+    objectStore?: ObjectStore;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
@@ -125,7 +127,8 @@ export function registerParameterTopologyRoutes(
       db,
       auth,
       { projectId: params.projectId, revisionId: params.revisionId, stage: body.stage },
-      { requestId: request.requestId }
+      { requestId: request.requestId },
+      { objectStore: options.objectStore }
     );
     return { status: 200, body: { item } };
   });

@@ -32,7 +32,7 @@
 
 1. ingest + matcher + 稳定 binding  
 2. mapping resolution 事务化  
-3. fail-closed validation + 工具链钉扎  
+3. fail-closed validation + 工具链钉扎（已完成）  
 4. typed edit / writeback API  
 5. 前端真实数据接通  
 6. 规格审核队列  

@@ -30,12 +30,16 @@ npm run dtc:seed:compile
 
 The overlays may report `reg_format` / `ranges_format` warnings when compiled without their external base DTS. Compiler errors or an unavailable compiler fail the command and block M1 seeding.
 
-For fail-closed production publish validation (dtc + fdtoverlay + dt-validate):
+For fail-closed production publish validation (dtc + fdtoverlay + dt-validate at pinned versions from `tools/dts-toolchain/versions.json`):
 
 ```bash
-npm run dts:toolchain:check
+# macOS: ensure pip-installed dt-validate is on PATH
+export PATH="$HOME/Library/Python/3.9/bin:$PATH"
+npm run dts:toolchain:check -- --required
 npm run dts:config:validate
 ```
+
+`dts:toolchain:check --required` compares probed versions to the pin file and fails on missing tools, unparseable version output, or mismatch.
 
 Semantic identity migration rehearsal (dry-run by default; apply only in a maintenance window):
 
