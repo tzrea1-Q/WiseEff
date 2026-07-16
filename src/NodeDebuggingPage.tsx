@@ -834,6 +834,8 @@ export function NodeDebuggingPage({
   const detectRequestSeqRef = useRef(0);
   const rowsRef = useRef(rows);
   const rowOperationSeqRef = useRef<Record<string, number>>({});
+  const rowOperationGenerationRef = useRef(0);
+  const activeSessionIdRef = useRef<string | undefined>(undefined);
   const selectAllRef = useRef<HTMLInputElement>(null);
 
   const appendEvent = (event: Omit<PageNodeOperationEvent, "id" | "at"> & { at?: string }) => {
@@ -849,7 +851,14 @@ export function NodeDebuggingPage({
     return nextSeq;
   };
 
-  const isLatestRowOperation = (rowId: string, operationSeq: number) =>
+  const isLatestRowOperation = (
+    rowId: string,
+    operationSeq: number,
+    generation: number,
+    requestProtocol: DebugConnectionProtocol
+  ) =>
+    rowOperationGenerationRef.current === generation &&
+    protocolRef.current === requestProtocol &&
     rowOperationSeqRef.current[rowId] === operationSeq;
 
   const connected = Boolean(target) && !isHdcPlaceholderTarget(target ?? "");
@@ -862,6 +871,10 @@ export function NodeDebuggingPage({
   useEffect(() => {
     protocolRef.current = protocol;
   }, [protocol]);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
 
   useEffect(() => {
     setRows((current) => {
@@ -921,6 +934,7 @@ export function NodeDebuggingPage({
   const switchProtocol = (nextProtocol: DebugConnectionProtocol) => {
     if (nextProtocol === protocol) return;
     detectRequestSeqRef.current += 1;
+    rowOperationGenerationRef.current += 1;
     storeSelectedProtocol(nextProtocol);
     setProtocol(nextProtocol);
     setDetecting(false);
@@ -964,6 +978,8 @@ export function NodeDebuggingPage({
 
   const readRowWithTarget = async (row: RuntimeRow, activeTarget?: string, sessionId?: string) => {
     if ((!activeTarget && !sessionId) || !canRead(row)) return;
+    const requestProtocol = protocolRef.current;
+    const generation = rowOperationGenerationRef.current;
     const operationSeq = nextRowOperationSeq(row.id);
     updateRow(row.id, { runtimeStatus: "执行中", activeOperation: "read", error: undefined });
     try {
@@ -976,7 +992,7 @@ export function NodeDebuggingPage({
           })
         : await readNodeValue({ target: activeTarget ?? "", nodePath: row.nodePath });
       const outcome = resolveReadRowOutcome(result);
-      const isLatest = isLatestRowOperation(row.id, operationSeq);
+      const isLatest = isLatestRowOperation(row.id, operationSeq, generation, requestProtocol);
       if (isLatest) {
         if (outcome.ok) {
           updateRow(row.id, {
@@ -1025,7 +1041,7 @@ export function NodeDebuggingPage({
       }
     } catch (error) {
       const message = readFailureMessage(error);
-      if (isLatestRowOperation(row.id, operationSeq)) {
+      if (isLatestRowOperation(row.id, operationSeq, generation, requestProtocol)) {
         updateRow(row.id, {
           runtimeStatus: "失败",
           activeOperation: undefined,
@@ -1046,7 +1062,16 @@ export function NodeDebuggingPage({
   };
 
   const readReadableRows = async (activeTarget: string | undefined, currentRows: RuntimeRow[], sessionId?: string) => {
+    const generation = rowOperationGenerationRef.current;
+    const requestProtocol = protocolRef.current;
     for (const row of currentRows) {
+      if (
+        rowOperationGenerationRef.current !== generation ||
+        protocolRef.current !== requestProtocol ||
+        (sessionId !== undefined && activeSessionIdRef.current !== sessionId)
+      ) {
+        return;
+      }
       if (canRead(row)) {
         await readRowWithTarget(row, activeTarget, sessionId);
       }
@@ -1213,6 +1238,8 @@ export function NodeDebuggingPage({
   const writeRow = async (row: RuntimeRow) => {
     if ((!target && !activeSessionId) || !canWrite(row)) return;
     const readBack = row.accessMode === "RW";
+    const requestProtocol = protocolRef.current;
+    const generation = rowOperationGenerationRef.current;
     const operationSeq = nextRowOperationSeq(row.id);
     updateRow(row.id, { runtimeStatus: "执行中", activeOperation: "write", error: undefined });
     try {
@@ -1228,7 +1255,7 @@ export function NodeDebuggingPage({
           })
         : await writeNodeValue({ target: target ?? "", nodePath: row.nodePath, value: row.draftValue, readBack });
 
-      if (!isLatestRowOperation(row.id, operationSeq)) return;
+      if (!isLatestRowOperation(row.id, operationSeq, generation, requestProtocol)) return;
 
       if (!result.ok) {
         updateRow(row.id, {
@@ -1288,7 +1315,7 @@ export function NodeDebuggingPage({
       }
     } catch (error) {
       const message = readFailureMessage(error);
-      if (isLatestRowOperation(row.id, operationSeq)) {
+      if (isLatestRowOperation(row.id, operationSeq, generation, requestProtocol)) {
         updateRow(row.id, {
           runtimeStatus: "写入失败",
           activeOperation: undefined,

@@ -199,6 +199,41 @@ export async function cleanupSemanticAcceptanceArtifacts(
         `,
         [versionIds]
       );
+      // Review tasks may reference property occurrences (ON DELETE CASCADE). Matcher
+      // overrides reference those tasks without cascade, so clear overrides first or
+      // occurrence deletes fail when cascading task deletes.
+      await client.query(
+        `
+        delete from parameter_spec_matcher_overrides
+        where source_review_task_id in (
+          select t.id
+          from parameter_spec_review_tasks t
+          where t.property_occurrence_id in (
+            select id from dts_property_occurrences where file_version_id = any($1::text[])
+          )
+             or t.config_revision_id in (
+               select distinct m.config_revision_id
+               from dts_config_revision_members m
+               where m.file_version_id = any($1::text[])
+             )
+        )
+        `,
+        [versionIds]
+      );
+      await client.query(
+        `
+        delete from parameter_spec_review_tasks
+        where property_occurrence_id in (
+          select id from dts_property_occurrences where file_version_id = any($1::text[])
+        )
+           or config_revision_id in (
+             select distinct m.config_revision_id
+             from dts_config_revision_members m
+             where m.file_version_id = any($1::text[])
+           )
+        `,
+        [versionIds]
+      );
       await client.query(
         `delete from dts_config_revision_members where file_version_id = any($1::text[])`,
         [versionIds]

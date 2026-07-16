@@ -6,6 +6,7 @@ import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
+import { apiRoute } from "./helpers/runtime";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
 
 useBrowserDiagnostics(test);

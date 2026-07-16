@@ -255,6 +255,66 @@ describe("/node-debugging", () => {
     });
   });
 
+  it("ignores stale auto-read results that resolve after switching protocols", async () => {
+    let detectCallCount = 0;
+    const pendingReads: Array<{ resolve: (value: unknown) => void }> = [];
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn(() => {
+        detectCallCount += 1;
+        if (detectCallCount === 1) {
+          return Promise.resolve({ session: apiSession, target: apiTarget });
+        }
+        return new Promise<never>(() => undefined);
+      }),
+      readNode: vi.fn((input) => new Promise((resolve) => {
+        pendingReads.push({
+          resolve: () => {
+            const nodeId = input.nodeId ?? input.parameterId;
+            const value = nodeId === "dbg-charge-input-current" ? "3651" : "12";
+            resolve({
+              ok: true,
+              value,
+              stdout: `${value}\n`,
+              durationMs: 7,
+              operation: {
+                id: `op-read-stale-${nodeId}`,
+                sessionId: apiSession.id,
+                parameterId: nodeId,
+                nodePath: input.nodePath,
+                operationType: "read",
+                status: "succeeded",
+                readValue: value,
+                verified: true,
+                durationMs: 7,
+                createdAt: "2026-05-27T09:00:01.000Z"
+              }
+            });
+          }
+        });
+      }))
+    });
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
+
+    await waitFor(() => expect(pendingReads.length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+
+    await waitFor(() => {
+      expect(within(findRowByText("charger.input_current_limit_ma")).getByText("等待读取")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      for (const pending of [...pendingReads]) {
+        pending.resolve(undefined);
+      }
+    });
+
+    await waitFor(() => {
+      expect(within(findRowByText("charger.input_current_limit_ma")).getByText("等待读取")).toBeInTheDocument();
+    });
+    expect(within(findRowByText("charger.input_current_limit_ma")).queryByText("3651")).not.toBeInTheDocument();
+    expect(within(findRowByText("charger.input_current_limit_ma")).queryByText("成功")).not.toBeInTheDocument();
+  });
+
   it("recomputes row binding availability when switching protocols", async () => {
     const hdcOnlyParameter = {
       ...userState.debugParameters[0],
