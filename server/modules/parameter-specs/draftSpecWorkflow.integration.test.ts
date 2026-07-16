@@ -220,7 +220,7 @@ describe.skipIf(!databaseAvailable)("draft spec workflow integration", () => {
 
     await activateParameterSpec(db!, makeAuth(), {
       specId: ids.parameterSpecId,
-      valueShape: { kind: "cells", bits: 32 },
+      valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
       constraints: { cells: 1 },
       documentation: "GPIO interrupt cells property",
       reason: "Reviewed and activated",
@@ -319,9 +319,13 @@ describe.skipIf(!databaseAvailable)("draft spec workflow integration", () => {
   });
 
   it("idempotent createSpec and special-character IDs do not collide", async () => {
-    const a = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "foo:bar", driverModule: null });
-    const b = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "foo/bar", driverModule: null });
-    expect(a.parameterSpecId).toBe(b.parameterSpecId);
+    const colon = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "foo:bar", driverModule: null });
+    const slash = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "foo/bar", driverModule: null });
+    expect(colon.parameterSpecId).not.toBe(slash.parameterSpecId);
+
+    const comma = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "vendor,limit", driverModule: null });
+    const hyphen = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "vendor-limit", driverModule: null });
+    expect(comma.parameterSpecId).not.toBe(hyphen.parameterSpecId);
 
     const { task } = await ingestAndFindTask(db!, "idempotent_prop", "<3>");
     const first = await resolveSpecReviewTask(db!, makeAuth(), {
