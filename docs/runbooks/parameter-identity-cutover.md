@@ -60,6 +60,8 @@ Expected: tools present **and** versions match `tools/dts-toolchain/versions.jso
 npm run parameter-identities:migrate
 ```
 
+Dry-run is **read-only**: it never `CREATE`/`ALTER`/`INSERT`/`UPDATE`. Migration infrastructure tables come from formal migration `0049`. The migrator wraps dry-run in a transaction that always rolls back.
+
 Inspect JSON: `unmappedRecords`, `ambiguousRecords`, `brokenHistoryChains`, and `blockers` must all be zero / empty before apply.
 
 ## 5. Ambiguity and spec backlog checks

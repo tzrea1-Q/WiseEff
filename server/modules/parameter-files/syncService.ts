@@ -10,7 +10,6 @@ import {
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { detectFileUiDraftConflict } from "./conflictService";
-import { readDtsIdentityFallbackMode } from "./identityFallbackMode";
 import { getFileVersionById, getProjectParameterFileById } from "./repository";
 
 export type SyncFileVersionInput = {
@@ -54,9 +53,7 @@ export async function syncFileVersion(
   let draftsCreated = 0;
   let unchanged = 0;
   let unmatched = 0;
-  let identityFallbackUses = 0;
   const entries = Object.entries(version.parsedIndex);
-  const fallbackMode = readDtsIdentityFallbackMode();
 
   for (const [nodePath, entry] of entries) {
     const resolved = await findProjectValueBySource(db, {

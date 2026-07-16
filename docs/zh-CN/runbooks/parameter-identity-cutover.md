@@ -54,6 +54,8 @@ npm run dts:config:validate
 npm run parameter-identities:migrate
 ```
 
+Dry-run **只读**：不会 `CREATE`/`ALTER`/`INSERT`/`UPDATE`。基础设施表由正式迁移 `0049` 预建；dry-run 在事务中执行并始终回滚。
+
 检查 JSON：`unmappedRecords`、`ambiguousRecords`、`brokenHistoryChains`、`blockers` 必须为 0 / 空。
 
 ## 5. 歧义与规格积压检查

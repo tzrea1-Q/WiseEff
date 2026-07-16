@@ -102,10 +102,10 @@
 
 **Files:** `migration.ts`, cutover SQL, repositories, checker, smoke tests
 
-- [ ] Deterministic matching via source path/property/compatible/spec/revision; dry-run read-only
-- [ ] Production paths on semantic IDs before rename; no legacy PPV FK after cutover; checker must not swallow SQL errors
-- [ ] Cutover API smoke; clean-snapshot rehearsal evidence or explicit blocker
-- [ ] Commit: `fix(parameters): read-only migration dry-run and cutover sync`
+- [x] Deterministic matching via source path/property/compatible/spec/revision; dry-run read-only
+- [x] Production paths on semantic IDs before rename; no legacy PPV FK after cutover; checker must not swallow SQL errors
+- [x] Cutover API smoke; clean-snapshot rehearsal evidence or explicit blocker
+- [x] Commit: `fix(parameters): read-only migration dry-run and cutover sync`
 
 ### Task 8: Browser acceptance + docs + final gates
 

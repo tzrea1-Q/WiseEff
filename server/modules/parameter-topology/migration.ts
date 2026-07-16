@@ -133,35 +133,58 @@ export function locatorFromSourceNodePath(sourceNodePath: string): string {
   return normalizeLocator(segments.slice(0, -1).join("/"));
 }
 
-async function ensureMigrationInfrastructure(db: Queryable): Promise<void> {
-  await db.query(`
-    create table if not exists parameter_identity_migration_runs (
-      id text primary key,
-      mode text not null check (mode in ('dry-run', 'apply')),
-      status text not null check (status in ('completed', 'failed', 'blocked')),
-      report jsonb not null default '{}'::jsonb,
-      db_snapshot_id text,
-      object_snapshot_id text,
-      write_lock_confirmed boolean not null default false,
-      created_at timestamptz not null default now(),
-      completed_at timestamptz
-    )
-  `);
-  await db.query(`
-    create table if not exists parameter_identity_cutovers (
-      id text primary key,
-      migration_run_id text not null references parameter_identity_migration_runs(id),
-      cutover_at timestamptz not null default now()
-    )
-  `);
+/** Dry-run must never CREATE/ALTER; formal migration 0049 pre-creates these. */
+async function requireMigrationInfrastructure(db: Queryable): Promise<void> {
+  const result = await db.query<{ name: string }>(
+    `
+    select table_name as name
+    from information_schema.tables
+    where table_schema = 'public'
+      and table_name in (
+        'parameter_identity_migration_runs',
+        'parameter_identity_cutovers'
+      )
+    `
+  );
+  const present = new Set(result.rows.map((row) => row.name));
+  const missing: string[] = [];
+  if (!present.has("parameter_identity_migration_runs")) {
+    missing.push("parameter_identity_migration_runs");
+  }
+  if (!present.has("parameter_identity_cutovers")) {
+    missing.push("parameter_identity_cutovers");
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `parameter identity migration infrastructure missing: ${missing.join(", ")}. Run db:migrate (0049) first.`
+    );
+  }
+}
+
+function propertyKeyFromPath(sourceNodePath: string | null, fallbackName: string): string {
+  if (!sourceNodePath?.trim()) return fallbackName;
+  const segments = sourceNodePath.replace(/^\/+/, "").replace(/\/+$/, "").split("/").filter(Boolean);
+  return segments[segments.length - 1] || fallbackName;
+}
+
+function sanitizeSpecSegment(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9_.@+-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
 }
 
 async function loadSpecCandidates(
   db: Queryable,
-  organizationId: string,
-  propertyKey: string,
-  module: string
+  input: {
+    organizationId: string;
+    propertyKey: string;
+    module: string;
+    schemaNamespace?: string | null;
+    driverName?: string | null;
+  }
 ): Promise<SpecCandidate[]> {
+  const moduleKey = `${input.module}/${input.propertyKey}`;
+  const driverKey = input.driverName
+    ? `${input.driverName}/${input.propertyKey}`
+    : null;
   const result = await db.query<{
     parameter_spec_id: string;
     parameter_spec_version_id: string;
@@ -179,20 +202,43 @@ async function loadSpecCandidates(
     from parameter_specs ps
     inner join parameter_spec_versions psv
       on psv.parameter_spec_id = ps.id
-     and psv.lifecycle = 'active'
+     and psv.lifecycle in ('active', 'draft')
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
-    where coalesce(ps.organization_id, $1) = $1
+    where (ps.organization_id is null or ps.organization_id = $1)
       and (
         ps.specification_key = $2
-        or (dps.property_key = $3 and (
-          dps.schema_namespace = $4
-          or ps.specification_key = $2
-          or split_part(ps.specification_key, '/', 1) = $4
-        ))
+        or ($3::text is not null and ps.specification_key = $3)
+        or dps.property_key = $4
+        or split_part(ps.specification_key, '/', 2) = $4
+        or (
+          dps.property_key = $4
+          and (
+            ($5::text is not null and dps.schema_namespace = $5)
+            or ($6::text is not null and split_part(ps.specification_key, '/', 1) = $6)
+            or split_part(ps.specification_key, '/', 1) = $7
+          )
+        )
       )
-    order by ps.specification_key asc, psv.version desc
+    order by
+      case
+        when ps.specification_key = $2 then 0
+        when $3::text is not null and ps.specification_key = $3 then 1
+        when $5::text is not null and dps.schema_namespace = $5 then 2
+        when $6::text is not null and split_part(ps.specification_key, '/', 1) = $6 then 3
+        else 4
+      end,
+      ps.specification_key asc,
+      psv.version desc
     `,
-    [organizationId, `${module}/${propertyKey}`, propertyKey, module]
+    [
+      input.organizationId,
+      moduleKey,
+      driverKey,
+      input.propertyKey,
+      input.schemaNamespace ?? null,
+      input.driverName ?? null,
+      input.module
+    ]
   );
 
   const seen = new Set<string>();
@@ -213,40 +259,237 @@ async function loadSpecCandidates(
 
 type LogicalNodeResolveResult =
   | { kind: "none" }
-  | { kind: "one"; logicalNodeId: string }
+  | {
+      kind: "one";
+      logicalNodeId: string;
+      compatible: string | null;
+      driverSchemaVersionId: string | null;
+      nodeName: string | null;
+      configRevisionId: string | null;
+    }
   | { kind: "ambiguous"; logicalNodeIds: string[] };
 
 async function resolveLogicalNodeId(
   db: Queryable,
-  projectId: string,
-  sourceNodePath: string | null
+  input: {
+    projectId: string;
+    sourceNodePath: string | null;
+    sourceFileName: string | null;
+  }
 ): Promise<LogicalNodeResolveResult> {
-  if (!sourceNodePath?.trim()) return { kind: "none" };
-  const locator = locatorFromSourceNodePath(sourceNodePath);
-  const result = await db.query<{ logical_node_id: string }>(
+  if (!input.sourceNodePath?.trim()) return { kind: "none" };
+  const locator = locatorFromSourceNodePath(input.sourceNodePath);
+  const result = await db.query<{
+    logical_node_id: string;
+    compatible: string | null;
+    driver_schema_version_id: string | null;
+    name: string | null;
+    config_revision_id: string;
+  }>(
     `
-    select distinct lnr.logical_node_id
+    select
+      lnr.logical_node_id,
+      lnr.compatible,
+      lnr.driver_schema_version_id,
+      lnr.name,
+      lnr.config_revision_id
     from dts_logical_node_revisions lnr
     inner join dts_logical_nodes ln on ln.id = lnr.logical_node_id
+    inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
+    left join dts_config_revision_members crm on crm.config_revision_id = cr.id
+    left join project_parameter_files ppf on ppf.id = crm.file_id
     where ln.project_id = $1
       and (
         lnr.node_locator = $2
         or lnr.node_locator = $3
         or ltrim(lnr.node_locator, '/') = ltrim($2, '/')
       )
-    order by lnr.logical_node_id asc
-    limit 2
+      and (
+        $4::text is null
+        or ppf.file_name = $4
+        or ppf.file_name is null
+      )
+    order by
+      case when $4::text is not null and ppf.file_name = $4 then 0 else 1 end,
+      cr.revision_number desc,
+      lnr.logical_node_id asc
     `,
-    [projectId, locator, locator.replace(/^\//, "")]
+    [
+      input.projectId,
+      locator,
+      locator.replace(/^\//, ""),
+      input.sourceFileName?.trim() || null
+    ]
   );
-  if (result.rows.length === 0) return { kind: "none" };
-  if (result.rows.length === 1) {
-    return { kind: "one", logicalNodeId: result.rows[0]!.logical_node_id };
+
+  const unique = new Map<string, (typeof result.rows)[number]>();
+  for (const row of result.rows) {
+    if (!unique.has(row.logical_node_id)) unique.set(row.logical_node_id, row);
+  }
+  const rows = [...unique.values()];
+  if (rows.length === 0) return { kind: "none" };
+  if (rows.length === 1) {
+    const row = rows[0]!;
+    return {
+      kind: "one",
+      logicalNodeId: row.logical_node_id,
+      compatible: row.compatible,
+      driverSchemaVersionId: row.driver_schema_version_id,
+      nodeName: row.name,
+      configRevisionId: row.config_revision_id
+    };
   }
   return {
     kind: "ambiguous",
-    logicalNodeIds: result.rows.map((row) => row.logical_node_id)
+    logicalNodeIds: rows.map((row) => row.logical_node_id)
   };
+}
+
+function planInferredSpec(input: {
+  organizationId: string;
+  module: string;
+  propertyKey: string;
+  schemaNamespace?: string | null;
+  driverName?: string | null;
+}): SpecCandidate {
+  const namespace =
+    sanitizeSpecSegment(input.schemaNamespace || input.driverName || input.module);
+  const propertyKey = sanitizeSpecSegment(input.propertyKey);
+  const specificationKey = `${namespace}/${propertyKey}`;
+  const parameterSpecId = stableSemanticId("parameter_spec", [
+    input.organizationId,
+    "dts",
+    namespace,
+    propertyKey
+  ]);
+  const parameterSpecVersionId = stableSemanticId("parameter_spec_version", [
+    parameterSpecId,
+    "1"
+  ]);
+  return {
+    parameterSpecId,
+    parameterSpecVersionId,
+    schemaNamespace: namespace,
+    propertyKey: input.propertyKey,
+    specificationKey
+  };
+}
+
+async function ensureInferredSpec(
+  db: Queryable,
+  spec: SpecCandidate,
+  organizationId: string,
+  apply: boolean
+): Promise<void> {
+  if (!apply) return;
+  await db.query(
+    `
+    insert into parameter_specs (id, organization_id, source_kind, specification_key)
+    values ($1, $2, 'dts', $3)
+    on conflict (id) do nothing
+    `,
+    [spec.parameterSpecId, organizationId, spec.specificationKey]
+  );
+  await db.query(
+    `
+    insert into parameter_spec_versions (
+      id, parameter_spec_id, version, display_name, description, value_shape,
+      schema_default, example_value, lifecycle
+    ) values (
+      $1, $2, 1, $3, 'Inferred during identity migration',
+      '{"kind":"legacy-text"}'::jsonb,
+      null, null, 'draft'
+    )
+    on conflict (id) do nothing
+    `,
+    [spec.parameterSpecVersionId, spec.parameterSpecId, spec.propertyKey ?? "property"]
+  );
+  const propertySpecId = stableSemanticId("dts_property_spec", [
+    spec.parameterSpecId,
+    spec.propertyKey ?? "property"
+  ]);
+  await db.query(
+    `
+    insert into dts_property_specs (
+      id, parameter_spec_id, property_key, schema_namespace, constraints
+    ) values ($1, $2, $3, $4, '{}'::jsonb)
+    on conflict (id) do nothing
+    `,
+    [
+      propertySpecId,
+      spec.parameterSpecId,
+      spec.propertyKey ?? "property",
+      spec.schemaNamespace ?? "unknown"
+    ]
+  );
+}
+
+async function ensureAmbiguityTasks(
+  db: Queryable,
+  input: {
+    apply: boolean;
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string | null;
+    reason: string;
+    candidateLogicalNodeIds?: string[];
+    parameterSpecIds?: string[];
+    evidence: Record<string, unknown>;
+  }
+): Promise<void> {
+  if (!input.apply) return;
+
+  if (input.configRevisionId && (input.candidateLogicalNodeIds?.length ?? 0) > 0) {
+    const taskId = stableSemanticId("identity_mapping_task", [
+      input.organizationId,
+      input.projectId,
+      input.configRevisionId,
+      input.reason,
+      ...(input.candidateLogicalNodeIds ?? [])
+    ]);
+    await db.query(
+      `
+      insert into identity_mapping_tasks (
+        id, organization_id, project_id, config_revision_id,
+        candidate_logical_node_ids, evidence, status, reason
+      ) values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, 'open', $7)
+      on conflict (id) do nothing
+      `,
+      [
+        taskId,
+        input.organizationId,
+        input.projectId,
+        input.configRevisionId,
+        JSON.stringify(input.candidateLogicalNodeIds ?? []),
+        JSON.stringify(input.evidence),
+        input.reason
+      ]
+    );
+  }
+
+  if ((input.parameterSpecIds?.length ?? 0) > 1) {
+    const taskId = stableSemanticId("parameter_spec_review_task", [
+      input.organizationId,
+      input.reason,
+      ...(input.parameterSpecIds ?? [])
+    ]);
+    await db.query(
+      `
+      insert into parameter_spec_review_tasks (
+        id, organization_id, parameter_spec_id, source_evidence,
+        candidate_schemas, project_count, status, reason
+      ) values ($1, $2, null, $3::jsonb, $4::jsonb, 1, 'open', $5)
+      on conflict (id) do nothing
+      `,
+      [
+        taskId,
+        input.organizationId,
+        JSON.stringify(input.evidence),
+        JSON.stringify(input.parameterSpecIds ?? []),
+        input.reason
+      ]
+    );
+  }
 }
 
 async function ensureBinding(
@@ -453,14 +696,31 @@ export async function migrateParameterIdentities(
   options: MigrateParameterIdentitiesOptions
 ): Promise<ParameterIdentityMigrationReport> {
   assertApplyGates(options);
-  await ensureMigrationInfrastructure(db);
+  await requireMigrationInfrastructure(db);
 
   if (options.mode === "apply") {
     return requireTransactionalDb(db).transaction((tx) =>
       runParameterIdentityMigration(tx, options)
     );
   }
-  return runParameterIdentityMigration(db, options);
+
+  // Dry-run is read-only: never CREATE/ALTER/INSERT/UPDATE. If a helper
+  // accidentally writes, roll the whole transaction back on exit.
+  const database = requireTransactionalDb(db);
+  return database.transaction(async (tx) => {
+    const report = await runParameterIdentityMigration(tx, options);
+    throw Object.assign(new Error("DRY_RUN_ROLLBACK"), { report });
+  }).catch((error: unknown) => {
+    if (
+      error &&
+      typeof error === "object" &&
+      "report" in error &&
+      (error as { message?: string }).message === "DRY_RUN_ROLLBACK"
+    ) {
+      return (error as { report: ParameterIdentityMigrationReport }).report;
+    }
+    throw error;
+  });
 }
 
 async function runParameterIdentityMigration(
@@ -539,22 +799,61 @@ async function runParameterIdentityMigration(
   );
 
   for (const def of definitions.rows) {
-    const candidates = await loadSpecCandidates(db, def.organization_id, def.name, def.module);
-    if (candidates.length === 0) {
-      unmappedRecords += 1;
-      blockers.push(`unmapped definition ${def.id} (${def.module}/${def.name})`);
-      continue;
-    }
-    if (candidates.length > 1) {
-      ambiguousRecords += 1;
-      blockers.push(
-        `ambiguous definition ${def.id}: ${candidates.map((c) => c.parameterSpecId).join(",")}`
+    const propertyKey = def.name;
+    const candidates = await loadSpecCandidates(db, {
+      organizationId: def.organization_id,
+      propertyKey,
+      module: def.module
+    });
+
+    let spec: SpecCandidate | null = null;
+    let inferred = false;
+
+    if (candidates.length === 1) {
+      spec = candidates[0]!;
+    } else if (candidates.length > 1) {
+      // Prefer exact module/name or unique property-key after namespace filter.
+      const exact = candidates.filter(
+        (c) =>
+          c.specificationKey === `${def.module}/${propertyKey}` ||
+          c.specificationKey === `${sanitizeSpecSegment(def.module)}/${sanitizeSpecSegment(propertyKey)}`
       );
-      continue;
+      if (exact.length === 1) {
+        spec = exact[0]!;
+      } else {
+        ambiguousRecords += 1;
+        blockers.push(
+          `ambiguous definition ${def.id}: ${candidates.map((c) => c.parameterSpecId).join(",")}`
+        );
+        await ensureAmbiguityTasks(db, {
+          apply,
+          organizationId: def.organization_id,
+          projectId: values.rows.find((v) => v.parameter_definition_id === def.id)?.project_id ?? "unknown",
+          configRevisionId: null,
+          reason: `ambiguous parameter spec for ${def.module}/${propertyKey}`,
+          parameterSpecIds: candidates.map((c) => c.parameterSpecId),
+          evidence: {
+            definitionId: def.id,
+            module: def.module,
+            propertyKey,
+            candidateSpecificationKeys: candidates.map((c) => c.specificationKey)
+          }
+        });
+        continue;
+      }
+    } else {
+      // Deterministic inferred draft: module + property key (never a project path).
+      spec = planInferredSpec({
+        organizationId: def.organization_id,
+        module: def.module,
+        propertyKey
+      });
+      inferred = true;
+      await ensureInferredSpec(db, spec, def.organization_id, apply);
     }
-    const spec = candidates[0]!;
+
     // Spec identity must never be derived from a project path.
-    if (spec.specificationKey.includes("@") || spec.specificationKey.includes("i2c@")) {
+    if (spec.specificationKey.includes("@") || /i2c@/i.test(spec.specificationKey)) {
       blockers.push(`spec ${spec.parameterSpecId} encodes a project path`);
       continue;
     }
@@ -578,7 +877,8 @@ async function runParameterIdentityMigration(
       evidence: {
         specificationKey: spec.specificationKey,
         schemaNamespace: spec.schemaNamespace,
-        propertyKey: spec.propertyKey ?? def.name
+        propertyKey: spec.propertyKey ?? def.name,
+        inferred
       }
     });
     evidenceRows += 1;
@@ -593,33 +893,159 @@ async function runParameterIdentityMigration(
       continue;
     }
 
-    const resolvedNode = await resolveLogicalNodeId(db, value.project_id, value.source_node_path);
+    const propertyKey = propertyKeyFromPath(value.source_node_path, mappedDef.spec.propertyKey ?? "");
+    const resolvedNode = await resolveLogicalNodeId(db, {
+      projectId: value.project_id,
+      sourceNodePath: value.source_node_path,
+      sourceFileName: value.source_file_name
+    });
     if (resolvedNode.kind === "ambiguous") {
       ambiguousRecords += 1;
       blockers.push(
         `ambiguous logical node for value ${value.id} path=${value.source_node_path}: ${resolvedNode.logicalNodeIds.join(",")}`
       );
+      await ensureAmbiguityTasks(db, {
+        apply,
+        organizationId: value.organization_id,
+        projectId: value.project_id,
+        configRevisionId: null,
+        reason: `ambiguous logical node for ${value.source_node_path}`,
+        candidateLogicalNodeIds: resolvedNode.logicalNodeIds,
+        evidence: {
+          projectParameterValueId: value.id,
+          sourceFileName: value.source_file_name,
+          sourceNodePath: value.source_node_path
+        }
+      });
       continue;
     }
-    if (value.source_node_path && resolvedNode.kind === "none") {
-      unmappedRecords += 1;
-      blockers.push(`unmapped logical node for value ${value.id} path=${value.source_node_path}`);
-      continue;
+
+    let logicalNodeId: string | null = null;
+    let driverName: string | null = null;
+    let schemaNamespace: string | null = mappedDef.spec.schemaNamespace;
+    let configRevisionId: string | null = null;
+
+    if (resolvedNode.kind === "one") {
+      logicalNodeId = resolvedNode.logicalNodeId;
+      driverName = resolvedNode.nodeName;
+      configRevisionId = resolvedNode.configRevisionId;
+      if (resolvedNode.compatible) {
+        const compat = resolvedNode.compatible.replace(/^"+|"+$/g, "");
+        const vendorDriver = compat.split(",").pop()?.trim() ?? null;
+        if (vendorDriver) driverName = vendorDriver;
+      }
+      if (resolvedNode.driverSchemaVersionId) {
+        const driver = await db.query<{ schema_namespace: string | null }>(
+          `
+          select ds.schema_namespace
+          from driver_schema_versions dsv
+          inner join driver_schemas ds on ds.id = dsv.driver_schema_id
+          where dsv.id = $1
+          limit 1
+          `,
+          [resolvedNode.driverSchemaVersionId]
+        );
+        schemaNamespace = driver.rows[0]?.schema_namespace ?? schemaNamespace;
+      }
+    } else if (value.source_node_path) {
+      // Path present but no effective logical node yet — still bind with null node
+      // when the Parameter Spec is uniquely determined; record soft blocker only when
+      // the project already has logical nodes that should have matched.
+      const projectNodes = await db.query<{ c: string }>(
+        `select count(*)::text as c from dts_logical_nodes where project_id = $1`,
+        [value.project_id]
+      );
+      if (Number(projectNodes.rows[0]?.c ?? 0) > 0) {
+        // Soft: keep mapping via inferred/catalog spec; history chain still preserved.
+        // Explicit mapping task only when apply and a config revision exists.
+        const latestRevision = await db.query<{ id: string }>(
+          `
+          select id from dts_config_revisions
+          where project_id = $1
+          order by revision_number desc
+          limit 1
+          `,
+          [value.project_id]
+        );
+        if (latestRevision.rows[0]?.id) {
+          await ensureAmbiguityTasks(db, {
+            apply,
+            organizationId: value.organization_id,
+            projectId: value.project_id,
+            configRevisionId: latestRevision.rows[0].id,
+            reason: `unmapped logical node for ${value.source_node_path}`,
+            candidateLogicalNodeIds: [],
+            evidence: {
+              projectParameterValueId: value.id,
+              sourceFileName: value.source_file_name,
+              sourceNodePath: value.source_node_path,
+              propertyKey
+            }
+          });
+        }
+      }
     }
-    const logicalNodeId = resolvedNode.kind === "one" ? resolvedNode.logicalNodeId : null;
+
+    // Re-resolve catalog match with driver/compatible evidence when available.
+    let valueSpec = mappedDef.spec;
+    if (driverName || schemaNamespace) {
+      const refined = await loadSpecCandidates(db, {
+        organizationId: value.organization_id,
+        propertyKey: propertyKey || mappedDef.spec.propertyKey || "",
+        module: mappedDef.spec.schemaNamespace || driverName || "unknown",
+        schemaNamespace,
+        driverName
+      });
+      if (refined.length === 1) {
+        valueSpec = refined[0]!;
+      } else if (refined.length > 1) {
+        const exactDriver = refined.filter(
+          (c) =>
+            driverName &&
+            (c.specificationKey.startsWith(`${driverName}/`) ||
+              c.specificationKey.startsWith(`${sanitizeSpecSegment(driverName)}/`))
+        );
+        if (exactDriver.length === 1) {
+          valueSpec = exactDriver[0]!;
+        } else if (exactDriver.length > 1) {
+          ambiguousRecords += 1;
+          blockers.push(
+            `ambiguous driver spec for value ${value.id}: ${exactDriver.map((c) => c.parameterSpecId).join(",")}`
+          );
+          await ensureAmbiguityTasks(db, {
+            apply,
+            organizationId: value.organization_id,
+            projectId: value.project_id,
+            configRevisionId,
+            reason: `ambiguous driver property spec for ${propertyKey}`,
+            parameterSpecIds: exactDriver.map((c) => c.parameterSpecId),
+            evidence: {
+              projectParameterValueId: value.id,
+              driverName,
+              schemaNamespace,
+              propertyKey,
+              sourceFileName: value.source_file_name,
+              sourceNodePath: value.source_node_path,
+              configRevisionId
+            }
+          });
+          continue;
+        }
+      }
+    }
 
     const bindingId = await ensureBinding(db, {
       organizationId: value.organization_id,
       projectId: value.project_id,
       logicalNodeId,
-      parameterSpecId: mappedDef.spec.parameterSpecId,
+      parameterSpecId: valueSpec.parameterSpecId,
       apply
     });
 
     await ensureBindingRevision(db, {
       bindingId,
       projectId: value.project_id,
-      parameterSpecVersionId: mappedDef.spec.parameterSpecVersionId,
+      parameterSpecVersionId: valueSpec.parameterSpecVersionId,
       currentValue: value.current_value,
       apply
     });
@@ -634,7 +1060,7 @@ async function runParameterIdentityMigration(
       organizationId: value.organization_id,
       legacyKind: "project_parameter_value",
       legacyId: value.id,
-      legacyName: mappedDef.spec.specificationKey,
+      legacyName: valueSpec.specificationKey,
       legacyPath: value.source_node_path,
       legacyCurrentValue: value.current_value,
       legacyRecommendedValue: value.recommended_value,
@@ -647,20 +1073,26 @@ async function runParameterIdentityMigration(
         path: value.source_node_path,
         file: value.source_file_name
       }),
-      parameterSpecId: mappedDef.spec.parameterSpecId,
-      parameterSpecVersionId: mappedDef.spec.parameterSpecVersionId,
+      parameterSpecId: valueSpec.parameterSpecId,
+      parameterSpecVersionId: valueSpec.parameterSpecVersionId,
       bindingId,
       migrationRunId,
       evidence: {
         note: "recommended_value preserved as evidence only",
-        logicalNodeId
+        logicalNodeId,
+        sourceFileName: value.source_file_name,
+        sourceNodePath: value.source_node_path,
+        propertyKey,
+        driverName,
+        schemaNamespace,
+        configRevisionId
       }
     });
     evidenceRows += 1;
     mappedProjectValues += 1;
     valueMap.set(value.id, {
       bindingId,
-      spec: mappedDef.spec,
+      spec: valueSpec,
       logicalNodeId,
       evidenceId
     });
@@ -1133,7 +1565,7 @@ export async function applyParameterIdentityCutover(
   options: ApplyCutoverOptions
 ): Promise<void> {
   const database = requireTransactionalDb(db);
-  await ensureMigrationInfrastructure(db);
+  await requireMigrationInfrastructure(db);
 
   const run = await db.query<{ status: string; report: unknown }>(
     `select status, report from parameter_identity_migration_runs where id = $1`,
@@ -1175,20 +1607,30 @@ export async function checkParameterIdentityCutover(db: Queryable): Promise<{
   cutoverComplete: boolean;
   migrationRuns: number;
 }> {
-  await ensureMigrationInfrastructure(db);
+  await requireMigrationInfrastructure(db);
   const blockers: string[] = [];
 
-  const unmappedDefs = await db.query<{ c: string }>(
-    `
-    select count(*)::text as c
-    from parameter_definitions pd
-    where not exists (
-      select 1 from legacy_parameter_migration_evidence e
-      where e.legacy_kind = 'parameter_definition' and e.legacy_id = pd.id
-        and e.parameter_spec_id is not null
-    )
-    `
-  ).catch(() => ({ rows: [{ c: "0" }] }));
+  let unmappedDefCount = 0;
+  try {
+    const unmappedDefs = await db.query<{ c: string }>(
+      `
+      select count(*)::text as c
+      from parameter_definitions pd
+      where not exists (
+        select 1 from legacy_parameter_migration_evidence e
+        where e.legacy_kind = 'parameter_definition' and e.legacy_id = pd.id
+          and e.parameter_spec_id is not null
+      )
+      `
+    );
+    unmappedDefCount = Number(unmappedDefs.rows[0]?.c ?? 0);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Missing table after cutover is expected; any other SQL error is a real blocker.
+    if (!/parameter_definitions/i.test(message) || !/does not exist|undefined_table|42P01/i.test(message)) {
+      blockers.push(`cutover check SQL failed (definitions): ${message}`);
+    }
+  }
 
   const openMapping = await db.query<{ c: string }>(
     `select count(*)::text as c from identity_mapping_tasks where status = 'open'`
@@ -1197,17 +1639,24 @@ export async function checkParameterIdentityCutover(db: Queryable): Promise<{
     blockers.push("open identity mapping tasks remain");
   }
 
-  const nullHistory = await db.query<{ c: string }>(
-    `
-    select count(*)::text as c from parameter_history_entries
-    where project_parameter_binding_id is null
-    `
-  ).catch(() => ({ rows: [{ c: "0" }] }));
-  if (Number(nullHistory.rows[0]?.c ?? 0) > 0) {
+  let nullHistoryCount = 0;
+  try {
+    const nullHistory = await db.query<{ c: string }>(
+      `
+      select count(*)::text as c from parameter_history_entries
+      where project_parameter_binding_id is null
+      `
+    );
+    nullHistoryCount = Number(nullHistory.rows[0]?.c ?? 0);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    blockers.push(`cutover check SQL failed (history): ${message}`);
+  }
+  if (nullHistoryCount > 0) {
     blockers.push("history rows missing binding ids");
   }
 
-  if (Number(unmappedDefs.rows[0]?.c ?? 0) > 0) {
+  if (unmappedDefCount > 0) {
     blockers.push("definitions without migration evidence");
   }
 
@@ -1217,6 +1666,34 @@ export async function checkParameterIdentityCutover(db: Queryable): Promise<{
   const runs = await db.query<{ c: string }>(
     `select count(*)::text as c from parameter_identity_migration_runs where status = 'completed'`
   );
+
+  // After cutover, active workflow tables must not retain FKs to archived PPV tables.
+  try {
+    const legacyPpvFks = await db.query<{ c: string }>(
+      `
+      select count(*)::text as c
+      from pg_constraint con
+      join pg_class rel on rel.oid = con.conrelid
+      join pg_namespace nsp on nsp.oid = rel.relnamespace
+      where nsp.nspname = 'public'
+        and con.contype = 'f'
+        and pg_get_constraintdef(con.oid) ilike '%legacy_project_parameter_values%'
+        and rel.relname in (
+          'parameter_history_entries',
+          'parameter_drafts',
+          'parameter_change_requests',
+          'parameter_submission_items',
+          'parameter_file_sync_conflicts'
+        )
+      `
+    );
+    if (Number(legacyPpvFks.rows[0]?.c ?? 0) > 0) {
+      blockers.push("active workflow tables still depend on legacy PPV foreign keys");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    blockers.push(`cutover check SQL failed (legacy PPV FK scan): ${message}`);
+  }
 
   return {
     ok: blockers.length === 0,

@@ -108,7 +108,7 @@ alter table node_operations
 alter table node_operations
   drop column if exists parameter_definition_id;
 
--- Retarget remaining value FKs to archived tables after rename.
+-- Drop PPV FKs and columns from active workflow tables (no retarget to legacy_*).
 alter table parameter_history_entries
   drop constraint if exists parameter_history_entries_project_parameter_value_id_fkey;
 alter table parameter_drafts
@@ -120,31 +120,34 @@ alter table parameter_submission_items
 alter table parameter_file_sync_conflicts
   drop constraint if exists parameter_file_sync_conflicts_project_parameter_value_id_fkey;
 
+-- Unique / supporting indexes that reference PPV columns must go before column drops.
+drop index if exists parameter_drafts_project_parameter_value_id_user_id_key;
+alter table parameter_drafts
+  drop constraint if exists parameter_drafts_project_id_project_parameter_value_id_user_id_key;
+
+alter table parameter_history_entries
+  drop column if exists project_parameter_value_id;
+alter table parameter_drafts
+  drop column if exists project_parameter_value_id;
+alter table parameter_change_requests
+  drop column if exists project_parameter_value_id;
+alter table parameter_submission_items
+  drop column if exists project_parameter_value_id;
+alter table parameter_file_sync_conflicts
+  drop column if exists project_parameter_value_id;
+
+-- Recreate draft uniqueness on semantic binding identity.
+alter table parameter_drafts
+  drop constraint if exists parameter_drafts_project_binding_user_key;
+alter table parameter_drafts
+  add constraint parameter_drafts_project_binding_user_key
+  unique (project_id, project_parameter_binding_id, user_id);
+
 alter table project_parameter_values
   drop constraint if exists project_parameter_values_parameter_definition_id_fkey;
 
 alter table parameter_definitions rename to legacy_parameter_definitions;
 alter table project_parameter_values rename to legacy_project_parameter_values;
-
-alter table parameter_history_entries
-  add constraint parameter_history_entries_legacy_ppv_fkey
-  foreign key (project_parameter_value_id) references legacy_project_parameter_values(id);
-
-alter table parameter_drafts
-  add constraint parameter_drafts_legacy_ppv_fkey
-  foreign key (project_parameter_value_id) references legacy_project_parameter_values(id);
-
-alter table parameter_change_requests
-  add constraint parameter_change_requests_legacy_ppv_fkey
-  foreign key (project_parameter_value_id) references legacy_project_parameter_values(id);
-
-alter table parameter_submission_items
-  add constraint parameter_submission_items_legacy_ppv_fkey
-  foreign key (project_parameter_value_id) references legacy_project_parameter_values(id);
-
-alter table parameter_file_sync_conflicts
-  add constraint parameter_file_sync_conflicts_legacy_ppv_fkey
-  foreign key (project_parameter_value_id) references legacy_project_parameter_values(id);
 
 alter table legacy_project_parameter_values
   add constraint legacy_ppv_legacy_definition_fkey

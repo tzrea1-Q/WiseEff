@@ -14,10 +14,15 @@ import {
 } from "../../testing/testDatabase";
 import {
   applyParameterIdentityCutover,
+  checkParameterIdentityCutover,
   migrateParameterIdentities,
   stableSemanticId,
   type ParameterIdentityMigrationReport
 } from "./migration";
+import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
+import { listParameters, listChangeRequests } from "../parameters/repository";
+import { ApiError } from "../../shared/http/errors";
+
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const cutoverSqlPath = path.join(
@@ -578,6 +583,75 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
     expect(report.coverage.auditLinks).toBe(1);
   });
 
+  it("dry-run is read-only: no DDL/DML side effects on migration tables or evidence", async () => {
+    await seedLegacyGraph(db!);
+    const beforeEvidence = await db!.query<{ c: string }>(
+      `select count(*)::text as c from legacy_parameter_migration_evidence`
+    );
+    const beforeRuns = await db!.query<{ c: string }>(
+      `select count(*)::text as c from parameter_identity_migration_runs`
+    );
+    const beforeBindings = await db!.query<{ c: string }>(
+      `select count(*)::text as c from project_parameter_bindings where project_id = $1`,
+      [PROJECT]
+    );
+
+    const report = await migrateParameterIdentities(db!, {
+      mode: "dry-run",
+      organizationId: ORG
+    });
+    expect(report.mappedDefinitions).toBeGreaterThan(0);
+
+    const afterEvidence = await db!.query<{ c: string }>(
+      `select count(*)::text as c from legacy_parameter_migration_evidence`
+    );
+    const afterRuns = await db!.query<{ c: string }>(
+      `select count(*)::text as c from parameter_identity_migration_runs`
+    );
+    const afterBindings = await db!.query<{ c: string }>(
+      `select count(*)::text as c from project_parameter_bindings where project_id = $1`,
+      [PROJECT]
+    );
+    expect(afterEvidence.rows[0]?.c).toBe(beforeEvidence.rows[0]?.c);
+    expect(afterRuns.rows[0]?.c).toBe(beforeRuns.rows[0]?.c);
+    expect(afterBindings.rows[0]?.c).toBe(beforeBindings.rows[0]?.c);
+  });
+
+  it("checker surfaces SQL failures instead of swallowing them as zero", async () => {
+    const brokenDb = {
+      query: async (text: string) => {
+        if (/parameter_identity_migration_runs|parameter_identity_cutovers/i.test(text) && /information_schema/i.test(text)) {
+          return {
+            rows: [
+              { name: "parameter_identity_migration_runs" },
+              { name: "parameter_identity_cutovers" }
+            ]
+          };
+        }
+        if (/from parameter_definitions/i.test(text)) {
+          throw new Error('relation "parameter_definitions" does not exist');
+        }
+        if (/identity_mapping_tasks/i.test(text)) {
+          return { rows: [{ c: "0" }] };
+        }
+        if (/parameter_history_entries/i.test(text)) {
+          throw new Error("permission denied for table parameter_history_entries");
+        }
+        if (/parameter_identity_cutovers/i.test(text) || /parameter_identity_migration_runs/i.test(text)) {
+          return { rows: [{ c: "0" }] };
+        }
+        if (/pg_constraint/i.test(text)) {
+          return { rows: [{ c: "0" }] };
+        }
+        return { rows: [] };
+      }
+    };
+
+    const result = await checkParameterIdentityCutover(brokenDb as never);
+    expect(result.ok).toBe(false);
+    expect(result.blockers.some((b) => /permission denied/i.test(b))).toBe(true);
+  });
+
   it("apply writes evidence, semantic FKs, and audit links without promoting recommended_value", async () => {
     const seeded = await seedLegacyGraph(db!);
     const report = await migrateParameterIdentities(db!, {
@@ -990,10 +1064,117 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
       );
       expect(conflictsNotNull.rows[0]?.is_nullable).toBe("NO");
 
+      const ppvColumns = await tempDb.query<{ column_name: string }>(
+        `
+        select column_name
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name in (
+            'parameter_history_entries',
+            'parameter_drafts',
+            'parameter_change_requests',
+            'parameter_submission_items',
+            'parameter_file_sync_conflicts'
+          )
+          and column_name = 'project_parameter_value_id'
+        `
+      );
+      expect(ppvColumns.rows).toHaveLength(0);
+
+      const legacyPpvFks = await tempDb.query<{ c: string }>(
+        `
+        select count(*)::text as c
+        from pg_constraint con
+        join pg_class rel on rel.oid = con.conrelid
+        join pg_namespace nsp on nsp.oid = rel.relnamespace
+        where nsp.nspname = 'public'
+          and con.contype = 'f'
+          and pg_get_constraintdef(con.oid) ilike '%legacy_project_parameter_values%'
+          and rel.relname in (
+            'parameter_history_entries',
+            'parameter_drafts',
+            'parameter_change_requests',
+            'parameter_submission_items',
+            'parameter_file_sync_conflicts'
+          )
+        `
+      );
+      expect(Number(legacyPpvFks.rows[0]?.c ?? 0)).toBe(0);
+
+      resetParameterIdentityCutoverCache();
+      const params = await listParameters(tempDb, { organizationId: ORG, projectId: PROJECT, limit: 10 });
+      expect(params.length).toBeGreaterThan(0);
+      expect(params.some((item) => item.id === expectedBindingId(expectedSpecId(), expectedLogicalNodeId()))).toBe(
+        true
+      );
+
+      const crs = await listChangeRequests(tempDb, { organizationId: ORG, projectId: PROJECT });
+      expect(crs.length).toBeGreaterThan(0);
+
+      const check = await checkParameterIdentityCutover(tempDb);
+      expect(check.cutoverComplete).toBe(true);
+      expect(check.blockers.filter((b) => /legacy PPV/i.test(b))).toEqual([]);
+
       const sql = await fs.readFile(cutoverSqlPath, "utf8");
       expect(sql).toContain("parameter_identity_cutovers");
       expect(sql).toContain("CUTOVER_FAILURE_INJECT_POINT");
+      expect(sql).not.toContain("parameter_history_entries_legacy_ppv_fkey");
       expect(path.dirname(cutoverSqlPath).endsWith("cutovers")).toBe(true);
+    });
+  });
+});
+
+describe.skipIf(!databaseAvailable)("post-cutover API smoke (temp DB)", () => {
+  it("cutover then semantic list works and legacy single-id evidence resolves to 410 contract", async () => {
+    await withTempDatabase(async (tempDb) => {
+      await seedLegacyGraph(tempDb);
+      const report = await migrateParameterIdentities(tempDb, {
+        mode: "apply",
+        organizationId: ORG,
+        ...applyGates,
+        dbSnapshotId: "db-snap-smoke",
+        objectSnapshotId: "obj-snap-smoke"
+      });
+      expect(report.blockers).toEqual([]);
+      await applyParameterIdentityCutover(tempDb, { migrationRunId: report.migrationRunId });
+      resetParameterIdentityCutoverCache();
+
+      const activeDefs = await tempDb.query(
+        `select 1 from information_schema.tables
+         where table_schema = 'public' and table_name = 'parameter_definitions'`
+      );
+      expect(activeDefs.rows).toHaveLength(0);
+
+      const listed = await listParameters(tempDb, { organizationId: ORG, projectId: PROJECT, limit: 20 });
+      expect(listed.length).toBeGreaterThan(0);
+
+      const evidence = await tempDb.query<{ id: string }>(
+        `
+        select id from legacy_parameter_migration_evidence
+        where legacy_id = $1
+        limit 1
+        `,
+        [PPV_ID]
+      );
+      expect(evidence.rows[0]?.id).toBeTruthy();
+
+      // Mirror routes.rejectRetiredLegacyParameterId contract.
+      const legacyLookup = await tempDb.query<{ id: string }>(
+        `
+        select id from legacy_parameter_migration_evidence
+        where legacy_id = $1
+        order by created_at asc
+        limit 1
+        `,
+        [PPV_ID]
+      );
+      expect(legacyLookup.rows[0]?.id).toBeTruthy();
+      const gone = new ApiError("GONE", "legacy-parameter-id-retired", 410, {
+        diagnostic: "legacy-parameter-id-retired",
+        migrationEvidenceId: legacyLookup.rows[0]!.id
+      });
+      expect(gone.status).toBe(410);
+      expect(gone.details).toMatchObject({ diagnostic: "legacy-parameter-id-retired" });
     });
   });
 });
