@@ -11,7 +11,7 @@ commonRefs:
 properties:
   status:
     valueShape: string-list
-    exampleValue: '"ok"'
+    exampleValue: '"okay"'
     constraints: {}
   vbat_drop_vol_mv:
     valueShape: u32-array

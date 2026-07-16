@@ -94,8 +94,8 @@
 ### Task 9–11: Frontend, acceptance, hygiene
 
 - [x] Real provenance; mapping UI; accurate validate/publish copy; no teaching fallback in API mode
-- [ ] Topology acceptance via APIs only; persistent evidence dir separate from Playwright outputDir
-- [ ] Fix golden `status="ok"` via standard values or vendor schema (keep fail-closed)
+- [x] Topology acceptance via APIs only; persistent evidence dir separate from Playwright outputDir
+- [x] Fix golden `status="ok"` via standard values or vendor schema (keep fail-closed)
 - [ ] trailing whitespace; docs EN+zh-CN; final gates
 
 ## Risk & rollback

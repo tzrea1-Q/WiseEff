@@ -73,39 +73,39 @@
         "db",
         "audit"
       ],
-      "notes": "PARAM-TOPOLOGY acceptance: fail-closed validate reports schema-failed (not force-passed); bindingId+value persist after reload from DB. runId=c639b7ff",
+      "notes": "PARAM-TOPOLOGY acceptance: successful validate (not schema-failed); bindingId+provenance persist after reload. org=org-chargelab runId=5697c2f0",
       "artifacts": [
-        "test-results/acceptance/operation-evidence/PARAM-CONFIG-PUBLISH-GATE-001-validate-publish-gate-and-db-reload-persistence.png"
+        "test-results/acceptance-operation-evidence/PARAM-CONFIG-PUBLISH-GATE-001-validate-publish-gate-and-db-reload-persistence.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v2/projects/aurora/config-revisions/ae0b3fac-204f-47fb-b813-88d1f6b65d00/validate",
+          "path": "/api/v2/projects/aurora/config-revisions/35fa3d0c-aafb-4b9e-8b7a-c4c2ad3eb97b/validate",
           "status": 200,
-          "requestId": "f628f99d-cad8-4867-bf27-96b20a867455",
-          "responseSummary": "run=049dbd24-7af5-4da1-9ece-da878a034526; status=failed"
+          "requestId": "a889de5e-6470-42de-ad8f-be208b9a330c",
+          "responseSummary": "run=ccaa61fe-4992-4b4e-accf-4e7d7c008dfb; status=passed"
         }
       ],
       "db": [
         {
           "table": "dts_config_revisions",
-          "predicate": "id=ae0b3fac-204f-47fb-b813-88d1f6b65d00",
-          "observed": "status=resolved",
+          "predicate": "id=35fa3d0c-aafb-4b9e-8b7a-c4c2ad3eb97b",
+          "observed": "status=validated",
           "rowCount": 1
         },
         {
           "table": "project_parameter_binding_revisions",
-          "predicate": "binding=621f5cb6-59c6-4d4e-8a04-7512ccff722a; revision=ae0b3fac-204f-47fb-b813-88d1f6b65d00",
-          "observed": "id=621f5cb6-59c6-4d4e-8a04-7512ccff722a; raw=<&gpio13 29 0>",
+          "predicate": "binding=621f5cb6-59c6-4d4e-8a04-7512ccff722a",
+          "observed": "id=621f5cb6-59c6-4d4e-8a04-7512ccff722a; raw=<&gpio13 30 0>",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "96243746-2f9d-4b57-9bfe-2c48eaffa035",
+          "id": "d99efd15-ae58-455e-a358-1e97794e3560",
           "kind": "parameter-topology-governance",
           "action": "config-revision-validated",
-          "targetId": "ae0b3fac-204f-47fb-b813-88d1f6b65d00"
+          "targetId": "35fa3d0c-aafb-4b9e-8b7a-c4c2ad3eb97b"
         }
       ],
       "trace": {
@@ -125,17 +125,17 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "XIAOZE_DETERMINISTIC": "false",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
         "steps": [
           "Open route /parameters.",
           "Run operation PARAM-CONFIG-PUBLISH-GATE-001: validate/publish gate and DB reload persistence.",
-          "Review operation artifacts: test-results/acceptance/operation-evidence/PARAM-CONFIG-PUBLISH-GATE-001-validate-publish-gate-and-db-reload-persistence.png."
+          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-CONFIG-PUBLISH-GATE-001-validate-publish-gate-and-db-reload-persistence.png."
         ]
       },
-      "recordedAt": "2026-07-16T03:07:22.392Z"
+      "recordedAt": "2026-07-16T05:04:05.534Z"
     },
     {
       "operationId": "PARAM-IDENTITY-MAP-001",
@@ -149,40 +149,40 @@
         "db",
         "audit"
       ],
-      "notes": "Open mapping blocks validate (fail-closed). Resolve clears blocker with governance audit.",
+      "notes": "Ambiguous ingest created open-mapping; validate fail-closed; resolve via API with audit.",
       "artifacts": [
-        "test-results/acceptance/operation-evidence/PARAM-IDENTITY-MAP-001-identity-mapping-blocker-then-resolve-audit.png"
+        "test-results/acceptance-operation-evidence/PARAM-IDENTITY-MAP-001-identity-mapping-blocker-then-resolve-audit.png"
       ],
       "api": [
         {
           "method": "POST",
           "path": "/api/v2/projects/aurora/config-revisions/.../validate",
           "status": 200,
-          "requestId": "9e802c72-ba05-4576-8861-74872b9fb663",
+          "requestId": "5113cf99-7eab-4afc-8ae0-98cd9dc4925b",
           "responseSummary": "failureCode=open-mapping"
         },
         {
           "method": "POST",
-          "path": "/api/v2/identity-mapping-tasks/acceptance-identity-map-f127570a/resolve",
+          "path": "/api/v2/identity-mapping-tasks/565a7b55-27c7-451b-80f9-f0d887808a14/resolve",
           "status": 200,
-          "requestId": "e129225c-9408-4dd9-b6ed-a6e41c6d4a2f",
-          "responseSummary": "selected=455ed205-70ef-4176-9fe8-81952ba3667d"
+          "requestId": "6f357462-5f8b-4545-b9aa-09c3c6c26e9b",
+          "responseSummary": "selected=71bbeea0-9961-4365-9a53-8f4e62115a19"
         }
       ],
       "db": [
         {
           "table": "identity_mapping_tasks",
-          "predicate": "id=acceptance-identity-map-f127570a",
+          "predicate": "id=565a7b55-27c7-451b-80f9-f0d887808a14",
           "observed": "status=resolved",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "e6e5ac43-f4e0-4201-b936-da7da7762c28",
+          "id": "7bf8516c-fd00-4e22-8637-dfecd977e51c",
           "kind": "parameter-topology-governance",
           "action": "identity-mapping-resolved",
-          "targetId": "acceptance-identity-map-f127570a"
+          "targetId": "565a7b55-27c7-451b-80f9-f0d887808a14"
         }
       ],
       "trace": {
@@ -202,17 +202,17 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "XIAOZE_DETERMINISTIC": "false",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
         "steps": [
           "Open route /parameters.",
           "Run operation PARAM-IDENTITY-MAP-001: identity mapping blocker then resolve audit.",
-          "Review operation artifacts: test-results/acceptance/operation-evidence/PARAM-IDENTITY-MAP-001-identity-mapping-blocker-then-resolve-audit.png."
+          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-IDENTITY-MAP-001-identity-mapping-blocker-then-resolve-audit.png."
         ]
       },
-      "recordedAt": "2026-07-16T03:07:16.887Z"
+      "recordedAt": "2026-07-16T05:04:03.915Z"
     },
     {
       "operationId": "PARAM-SPEC-GOVERN-001",
@@ -226,40 +226,40 @@
         "db",
         "audit"
       ],
-      "notes": "PARAM-TOPOLOGY acceptance: listed two distinct gpio_int specs from ingest, resolved review task, audited governance event.",
+      "notes": "PARAM-TOPOLOGY acceptance: unmatched review from real ingest; resolved via API; UI lists distinct gpio_int specs.",
       "artifacts": [
-        "test-results/acceptance/operation-evidence/PARAM-SPEC-GOVERN-001-spec-search-review-resolve-audit.png"
+        "test-results/acceptance-operation-evidence/PARAM-SPEC-GOVERN-001-spec-search-review-resolve-audit.png"
       ],
       "api": [
         {
           "method": "GET",
           "path": "/api/v2/parameter-specs",
           "status": 200,
-          "requestId": "19334bb3-711c-43b4-8d53-1643590a20fc",
+          "requestId": "c753885f-3cc2-4eb6-8d34-753f73eb6187",
           "responseSummary": "gpio_int specs=2; distinct sc8562/mt5788"
         },
         {
           "method": "POST",
-          "path": "/api/v2/parameter-spec-review-tasks/acceptance-spec-review-gpio-int/resolve",
+          "path": "/api/v2/parameter-spec-review-tasks/c0ef9b2b-7243-4444-b05b-0b991ae33fb8/resolve",
           "status": 200,
-          "requestId": "4624366b-cbef-4fad-b75d-0047da6500e6",
-          "responseSummary": "resolved to pspec:vendor/sc8562:gpio_int"
+          "requestId": "ae8c3b8b-7b7f-488b-bf88-d0e5b7308f7c",
+          "responseSummary": "resolved task=c0ef9b2b-7243-4444-b05b-0b991ae33fb8"
         }
       ],
       "db": [
         {
           "table": "parameter_spec_review_tasks",
-          "predicate": "id=acceptance-spec-review-gpio-int",
+          "predicate": "id=c0ef9b2b-7243-4444-b05b-0b991ae33fb8",
           "observed": "status=resolved; spec=pspec:vendor/sc8562:gpio_int",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "577eae68-f518-4322-9b9d-fbd85ff18c76",
+          "id": "44b4c19c-79c2-4b7f-81a2-8189ebe80a9e",
           "kind": "parameter-topology-governance",
           "action": "spec-review-resolved",
-          "targetId": "acceptance-spec-review-gpio-int"
+          "targetId": "c0ef9b2b-7243-4444-b05b-0b991ae33fb8"
         }
       ],
       "trace": {
@@ -279,17 +279,17 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "XIAOZE_DETERMINISTIC": "false",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
         "steps": [
           "Open route /parameter-admin.",
           "Run operation PARAM-SPEC-GOVERN-001: spec search review resolve audit.",
-          "Review operation artifacts: test-results/acceptance/operation-evidence/PARAM-SPEC-GOVERN-001-spec-search-review-resolve-audit.png."
+          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-SPEC-GOVERN-001-spec-search-review-resolve-audit.png."
         ]
       },
-      "recordedAt": "2026-07-16T03:07:14.500Z"
+      "recordedAt": "2026-07-16T05:04:00.591Z"
     },
     {
       "operationId": "PARAM-TOPOLOGY-BROWSE-001",
@@ -301,24 +301,24 @@
         "ui",
         "api"
       ],
-      "notes": "API-mode workspace loads ingested Config Set revision; source/effective trees expose amba→i2c@FDF5E000→sc8562@6E; two distinct gpio_int bindings by stable binding id.",
+      "notes": "API-mode workspace loads ingested Config Set; topology API 200; two gpio_int bindings with provenance.",
       "artifacts": [
-        "test-results/acceptance/operation-evidence/PARAM-TOPOLOGY-BROWSE-001-real-source-effective-tree-and-two-gpio-int-bindings.png"
+        "test-results/acceptance-operation-evidence/PARAM-TOPOLOGY-BROWSE-001-real-source-effective-tree-and-two-gpio-int-bindings.png"
       ],
       "api": [
         {
           "method": "GET",
           "path": "/api/v2/projects/aurora/config-sets/.../topology",
           "status": 200,
-          "requestId": "83bc50e4-65d4-43b5-9b95-be3021042dba",
+          "requestId": "d26be2a5-56c7-4fd4-97c3-6d2e4ee77731",
           "responseSummary": "status=200 nodes=58; sc8562+mt5788 present"
         },
         {
           "method": "GET",
           "path": "/api/v2/projects/aurora/parameter-bindings",
           "status": 200,
-          "requestId": "35f2f40a-11e1-4151-a0fb-97d4e51dc796",
-          "responseSummary": "gpio_int bindings=2"
+          "requestId": "dcf23048-0238-4fa7-b56f-2e870faeab87",
+          "responseSummary": "gpio_int bindings=39"
         }
       ],
       "trace": {
@@ -338,17 +338,17 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "XIAOZE_DETERMINISTIC": "false",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
         "steps": [
           "Open route /parameters.",
           "Run operation PARAM-TOPOLOGY-BROWSE-001: real source/effective tree and two gpio_int bindings.",
-          "Review operation artifacts: test-results/acceptance/operation-evidence/PARAM-TOPOLOGY-BROWSE-001-real-source-effective-tree-and-two-gpio-int-bindings.png."
+          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-TOPOLOGY-BROWSE-001-real-source-effective-tree-and-two-gpio-int-bindings.png."
         ]
       },
-      "recordedAt": "2026-07-16T03:07:15.430Z"
+      "recordedAt": "2026-07-16T05:04:01.531Z"
     },
     {
       "operationId": "PARAM-TOPOLOGY-EDIT-001",
@@ -360,24 +360,39 @@
         "ui",
         "api"
       ],
-      "notes": "UI typed edit blocks on SCHEMA_CELL_COUNT via real drafts API; stale baseRevisionId returns 409; throwaway Config Set validate fails closed on compile/toolchain.",
+      "notes": "UI schema cell-count block; stale 409; real bad-DTS fail-closed; successful typed draft writeback+reingest.",
       "artifacts": [
-        "test-results/acceptance/operation-evidence/PARAM-TOPOLOGY-EDIT-001-typed-edit-schema-diagnostics-stale-409-compiler-failure.png"
+        "test-results/acceptance-operation-evidence/PARAM-TOPOLOGY-EDIT-001-typed-edit-schema-diagnostics-stale-409-compiler-failure.png"
       ],
       "api": [
         {
           "method": "POST",
           "path": "/api/v2/projects/aurora/parameter-bindings/.../drafts",
           "status": 409,
-          "requestId": "b6d189fb-6aa0-4122-9509-0215db6ec004",
+          "requestId": "af23f01f-1030-4092-91f8-04c2c5931250",
           "responseSummary": "stale-revision 409"
         },
         {
           "method": "POST",
-          "path": "/api/v2/projects/aurora/config-revisions/c7ec4632-cb6e-416c-8a57-8fda6c634c57/validate",
+          "path": "/api/v2/projects/aurora/config-revisions/fb147b66-cc4f-4058-9e86-4640154ebde5/validate",
           "status": 200,
-          "requestId": "50dc64fa-0dab-487d-8f4a-17e9f80ec32d",
-          "responseSummary": "compiler/toolchain failureCode=resolve-failed"
+          "requestId": "41712d4d-22eb-42e7-a769-33e703d67621",
+          "responseSummary": "failureCode=resolve-failed"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v2/projects/aurora/parameter-bindings/.../drafts",
+          "status": 201,
+          "requestId": "c5798a3d-1fe4-42d3-a20f-6945a9c35a33",
+          "responseSummary": "draft=b7e8c73d-fccf-4852-b28d-b0d66d7509cc; candidate=35fa3d0c-aafb-4b9e-8b7a-c4c2ad3eb97b; raw=<&gpio13 30 0>"
+        }
+      ],
+      "db": [
+        {
+          "table": "project_parameter_file_versions",
+          "predicate": "origin=writeback latest",
+          "observed": "origin=writeback; checksum=6018b45f3308",
+          "rowCount": 1
         }
       ],
       "trace": {
@@ -397,17 +412,17 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "XIAOZE_DETERMINISTIC": "false",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
         "steps": [
           "Open route /parameters.",
           "Run operation PARAM-TOPOLOGY-EDIT-001: typed edit schema diagnostics, stale 409, compiler failure.",
-          "Review operation artifacts: test-results/acceptance/operation-evidence/PARAM-TOPOLOGY-EDIT-001-typed-edit-schema-diagnostics-stale-409-compiler-failure.png."
+          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-TOPOLOGY-EDIT-001-typed-edit-schema-diagnostics-stale-409-compiler-failure.png."
         ]
       },
-      "recordedAt": "2026-07-16T03:07:15.734Z"
+      "recordedAt": "2026-07-16T05:04:03.649Z"
     }
   ]
 }

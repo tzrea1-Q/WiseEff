@@ -70,7 +70,7 @@ Read-only generated evidence must show:
 - successful ADB target detection,
 - successful node read,
 - request or audit correlation as redacted shape summaries when available,
-- browser screenshot, `test-results/acceptance/operation-evidence/...json`, and `playwright-report/acceptance/index.html` locations.
+- browser screenshot, `test-results/acceptance-operation-evidence/...json`, and `playwright-report/acceptance/index.html` locations.
 
 Write-mode generated evidence must additionally show:
 

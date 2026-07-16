@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawn as nodeSpawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -113,6 +113,16 @@ const DIAGNOSTIC_LINE =
 
 function repoRootFromModule(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+}
+
+/** Committed Linux dt-schema bindings generated from WiseEff vendor/golden compatibles. */
+export function resolveLinuxBindingsDir(rootDir: string = repoRootFromModule()): string | null {
+  const fromEnv = process.env.WISEEFF_DT_SCHEMA_BINDINGS_DIR?.trim();
+  if (fromEnv) {
+    return existsSync(fromEnv) ? fromEnv : null;
+  }
+  const committed = join(rootDir, "schemas/dts/linux-bindings");
+  return existsSync(committed) ? committed : null;
 }
 
 export function loadPinnedToolchainVersions(
@@ -695,10 +705,17 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
           .update(readFileSync(effectiveDtb, "latin1"), "latin1")
           .digest("hex");
 
+        // Prefer committed WiseEff Linux bindings with compatible-match so
+        // proprietary golden properties are covered by vendor schema instead of
+        // falling through bare dt-core — fail-closed schema errors still apply.
+        const schemaDir = resolveLinuxBindingsDir();
+        const schemaArgs = schemaDir
+          ? ["-s", schemaDir, "-c", effectiveDtb]
+          : [effectiveDtb];
         const schema = await runProcess(
           spawnFn,
           probe.dtschema.path!,
-          [effectiveDtb],
+          schemaArgs,
           { cwd: tmpDir, env: minimalEnv() },
           timeoutMs
         );

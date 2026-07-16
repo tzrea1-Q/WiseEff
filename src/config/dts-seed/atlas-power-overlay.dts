@@ -8,7 +8,7 @@
 
 &amba {
 	i2c@FDF5E000 {
-		status = "ok";
+		status = "okay";
 		hold-time = <0x210021>;
 		sc8562@6E {
 			compatible = "sc8562";
@@ -22,7 +22,7 @@
 			sense_r_actual = <10>;
 			watchdog_time = <8000>;
 			vout_ovp_mv = <4800>;
-			status = "ok";
+			status = "okay";
 		};
 	};
 };
@@ -30,7 +30,7 @@
 &spmi1 {
 	scharger_v800 {
 		gpios = <&gpio5 31 0>;
-		status = "ok";
+		status = "okay";
 		scharger_v800_buck {
 			r_charger_uohm = <1100>;
 			usbovp_sw_flag = "buck", "0", "1", "1";
@@ -39,7 +39,7 @@
 		};
 
 		scharger_v800_coul {
-			status = "ok";
+			status = "okay";
 			batt_l_v800 {
 				batt_index = <0>;
 				batt_name = "battery_gauge";
@@ -51,7 +51,7 @@
 
 		scharger_v800_flash {
 			vendor,led-type = <0>;
-			status = "ok";
+			status = "okay";
 		};
 	};
 };
@@ -59,7 +59,7 @@
 &spmi {
 	pmic@0 {
 		hi6xxx_coul {
-			status = "ok";
+			status = "okay";
 			batt:batt{
 				batt_index = <1>;
 				batt_name = "battery_gauge_aux";
@@ -78,7 +78,7 @@
 
 &hisi_vbat_drop_protect_v2 {
 	vbat_drop_vol_mv = <2600>;
-	status = "ok";
+	status = "okay";
 
 	middle_cpu {
 		active_perf_limit  = <
@@ -97,7 +97,7 @@
 	battery_board_type = <2>;
 	vth_correct_para = <1 2800>;
 	vth_correct_para_low_temp = <1 2600>,<2 2800>;
-	status = "ok";
+	status = "okay";
 };
 
 &battery_ocv {
@@ -105,7 +105,7 @@
 		"-1", "3100",
 		"0", "3200",
 		"1", "3250";
-	status = "ok";
+	status = "okay";
 };
 
 &soh_core {
@@ -118,7 +118,7 @@
 	charge_done_sleep_enabled;
 	support_new_pd_process = <1>;
 	recharge_para = <95 75 4 6 1 0 1 100>;
-	status = "ok";
+	status = "okay";
 };
 
 &charging_core {
@@ -132,14 +132,14 @@
 		"-32767", "1", "2300", "0", "4200", "0",
 		"10", "35", "2300", "3000", "4530", "3",
 		"55", "32767", "2300", "0", "4195", "0";
-	status = "ok";
+	status = "okay";
 };
 
 &charge_mode_test {
 	test_para =
 		"scp", "lvc", "2000", "105", "0", "2",
 		"scp", "sc4", "3000", "105", "0", "0";
-	status = "ok";
+	status = "okay";
 };
 
 &wireless_charger {
@@ -153,7 +153,7 @@
 	rx_mode_para =
 		"5W",   "5000",  "475",  "5000",  "5500",  "825", "4650", "-1", "-1", "-1", "0", "-1", "4",
 		"SC_4", "15000", "1800", "15000", "15000", "-1", "-1",   "46", "-1", "1",  "2", "-1", "-1";
-	status = "ok";
+	status = "okay";
 };
 
 &wireless_sc {
@@ -169,7 +169,7 @@
 	bat_para =
 		"default", "10", "45", "0x01", "volt_para00",
 		"default", "10", "15", "0x02", "volt_para01";
-	status = "ok";
+	status = "okay";
 };
 
 &direct_charge_ic {
@@ -180,7 +180,7 @@
 		"lvc_mode", "ic_para1",
 		"sc_mode", "ic_para2",
 		"sc4_mode", "ic_para3";
-	status = "ok";
+	status = "okay";
 };
 
 &direct_charge_comp {
@@ -217,21 +217,21 @@
 		"45", "32767", "0";
 	resist_para =
 		"0", "280", "3000", "280", "32767", "1800";
-	status = "ok";
+	status = "okay";
 };
 
 &huawei_batt_info {
-	status = "ok";
+	status = "okay";
 	sn-check-type = <2>;
 	battery_checker@0 {
 		matchable = <&fm1230 &t91407>;
 		spare-cycles = <150>;
-		status = "ok";
+		status = "okay";
 	};
 	battery_checker@1 {
 		matchable = <&fm1230_1 &t91407_1>;
 		spare-cycles = <150>;
-		status = "ok";
+		status = "okay";
 	};
 };
 
@@ -240,34 +240,34 @@
 	battct_id_gpio-supply = <&huawei_batt_identify>;
 	ow_reset_start_delay = <300>;
 	ow_read_end_delay = <100>;
-	status = "ok";
+	status = "okay";
 };
 
 &fm1230_1 {
 	onewire-gpio = <&gpio2 15 0>;
 	battct_id_gpio-supply = <&huawei_batt_identify>;
 	ic_index = <1>;
-	status = "ok";
+	status = "okay";
 };
 
 &fm1230_swi {
-	status = "ok";
+	status = "okay";
 };
 
 &t91407 {
 	onewire-gpio = <&gpio2 14 0>;
 	battct_id_gpio-supply = <&huawei_batt_identify>;
-	status = "ok";
+	status = "okay";
 };
 
 &huawei_batt_identify {
 	gpios = <&gpio10 16 0>;
 	id_voltage_gpiov = <0 1>;
-	status = "ok";
+	status = "okay";
 };
 
 &battery_temp_fitting {
-	status = "ok";
+	status = "okay";
 	btf_temp_lth = "-50";
 	fitting_mode = <2>;
 	replace_sensor = "bat0_raw_temp";
@@ -277,14 +277,14 @@
 };
 
 &multi_btb_temp {
-	status = "ok";
+	status = "okay";
 	sensor-names =
 		"bat0_raw_temp", "comp_para", "0",
 		"bat1_raw_temp", "comp_para1", "0";
 };
 
 &battery_charge_balance {
-	status = "ok";
+	status = "okay";
 	unbalance_th = <80 9000>;
 
 	battery0 {
@@ -308,7 +308,7 @@
 };
 
 &battery_cccv {
-	status = "ok";
+	status = "okay";
 	battery_tbl =
 		"default", "cccv_para0";
 	cccv_para0 {
@@ -328,7 +328,7 @@
 };
 
 &boost_5v {
-	status = "ok";
+	status = "okay";
 	gpio_5v_boost = <&gpio7 27 0>;
 };
 
@@ -340,7 +340,7 @@
 	ranges;
 
 	i2c@FF24E000 {
-		status = "ok";
+		status = "okay";
 		hold-time = <0x190019>;
 		mt5788@2B {
 			compatible = "mt,mt5788";
@@ -360,7 +360,7 @@
 				"3", "550", "9900", "300", "9900", "250",
 				"12", "195", "9900", "200", "9900", "1";
 			prevfod1_product_list = /bits/ 8 <17>;
-			status = "ok";
+			status = "okay";
 		};
 
 		hl7603@77 {
@@ -369,7 +369,7 @@
 			reg = <0x77>;
 			const_vout = <3500>;
 			gpio_enable = <&gpio10 5 0>;
-			status = "ok";
+			status = "okay";
 		};
 
 		hl7603@75 {
@@ -380,7 +380,7 @@
 			shutdown_cfg =
 				"0xb", "2", "2850",
 				"0xc", "2", "2850";
-			status = "ok";
+			status = "okay";
 		};
 	};
 };

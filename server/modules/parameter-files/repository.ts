@@ -182,13 +182,25 @@ export async function insertFileVersion(
     insert into project_parameter_file_versions (
       id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
+    values (
+      $1,
+      $2,
+      coalesce(
+        (select max(version_number) from project_parameter_file_versions where file_id = $2),
+        0
+      ) + 1,
+      $3,
+      $4,
+      $5,
+      $6::jsonb,
+      $7,
+      $8
+    )
     returning *
     `,
     [
       input.id,
       input.fileId,
-      input.versionNumber,
       input.storageKey,
       input.checksum,
       input.sizeBytes,

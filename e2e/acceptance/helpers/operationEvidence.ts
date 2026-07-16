@@ -72,7 +72,7 @@ export type RecordOperationEvidenceInput = {
   reproduction?: OperationEvidenceReproductionSummary;
 };
 
-const evidenceRoot = "test-results/acceptance/operation-evidence";
+const evidenceRoot = "test-results/acceptance-operation-evidence";
 
 export function operationEvidenceFileName(operationId: string, title: string) {
   const titleSlug = title

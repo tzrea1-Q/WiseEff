@@ -46,7 +46,7 @@ properties:
     constraints: {}
   status:
     valueShape: string-list
-    exampleValue: '"ok"'
+    exampleValue: '"okay"'
     constraints: {}
   time_para:
     valueShape: u32-array

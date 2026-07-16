@@ -11,7 +11,7 @@ commonRefs:
 properties:
   status:
     valueShape: string-list
-    exampleValue: '"ok"'
+    exampleValue: '"okay"'
     constraints: {}
   unbalance_th:
     valueShape: u32-array

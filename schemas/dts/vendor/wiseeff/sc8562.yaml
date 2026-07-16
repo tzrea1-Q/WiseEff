@@ -50,7 +50,7 @@ properties:
     constraints: {}
   status:
     valueShape: string-list
-    exampleValue: '"ok"'
+    exampleValue: '"okay"'
     constraints: {}
   vout_ovp_mv:
     valueShape: u32-array

@@ -19,5 +19,5 @@ properties:
     constraints: {}
   status:
     valueShape: string-list
-    exampleValue: '"ok"'
+    exampleValue: '"okay"'
     constraints: {}

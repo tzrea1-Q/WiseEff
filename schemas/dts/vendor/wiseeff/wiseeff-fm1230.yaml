@@ -29,5 +29,5 @@ properties:
     units: ms
   status:
     valueShape: string-list
-    exampleValue: '"ok"'
+    exampleValue: '"okay"'
     constraints: {}

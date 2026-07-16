@@ -81,9 +81,9 @@ export async function compileDtsSeedEffectiveTrees(
       },
       {
         mode: "release",
-        // Vendor power fixtures are not dtschema-clean; seed gate requires
-        // dtc+fdtoverlay effective DTB production with tools present.
-        failOnSchema: false
+        // Vendor power fixtures compile + schema-validate against committed
+        // linux-bindings (compatible-match). Keep fail-closed.
+        failOnSchema: true
       }
     );
 

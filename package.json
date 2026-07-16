@@ -51,6 +51,7 @@
     "contract:check": "tsx scripts/check-openapi-contract.ts",
     "docs:check": "tsx scripts/check-doc-governance.ts",
     "dts:seed:generate": "tsx scripts/dts-power-seed.ts",
+    "dts:linux-bindings:generate": "tsx scripts/generate-linux-dt-bindings.ts",
     "dtc:check": "tsx scripts/check-dtc.ts",
     "dtc:bootstrap": "tsx scripts/bootstrap-dtc.ts",
     "dtc:seed:compile": "tsx scripts/compile-dts-seed.ts",

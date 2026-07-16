@@ -46,7 +46,7 @@
 - `PARAM-TOPOLOGY-BROWSE-001`：在 `/parameters` 切换真实源树/生效树（`amba` → `i2c@FDF5E000` → `sc8562@6E`），搜索两个 `gpio_int` 绑定；topology API 必须 200 且含预期节点（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-TOPOLOGY-EDIT-001`：类型化 drafts 返回 Schema cell-count 诊断、过期 revision 返回 409，并对临时 Config Set 走 fail-closed 编译/工具链校验（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-IDENTITY-MAP-001`：未解决身份映射阻断 validate（`open-mapping`）；决议后清除阻断并写治理审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-CONFIG-PUBLISH-GATE-001`：真实工具链 validate 对 Schema 诊断 fail-closed（不强制通过）；刷新后 bindingId 与 raw 值从 DB 持久（治理审计仍写入）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-CONFIG-PUBLISH-GATE-001`：真实工具链 validate 在黄金/候选 Config Set 上成功（status=okay + vendor linux-bindings；不以 schema-failed 冒充成功）；刷新后 bindingId 与 provenance 从 DB 持久（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 
 ## 同类中文文档
 

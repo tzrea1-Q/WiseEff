@@ -27,7 +27,7 @@ properties:
     constraints: {}
   status:
     valueShape: string-list
-    exampleValue: '"ok"'
+    exampleValue: '"okay"'
     constraints: {}
   trx_plim:
     valueShape: string-list

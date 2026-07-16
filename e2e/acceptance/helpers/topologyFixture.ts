@@ -52,51 +52,12 @@ async function uploadDts(
 /**
  * Ensure aurora `default` Config Set has base+overlay members and a semantic
  * revision produced by production upload→ingest (not teaching fixtures).
+ * Always re-uploads committed seed overlays so acceptance picks up seed fixes
+ * (e.g. status=okay) without business-table SQL mutation.
  */
 export async function ensureAuroraSemanticTopology(
   request: APIRequestContext
 ): Promise<SemanticTopologyContext> {
-  const existing = await withPgClient(async (client) => {
-    const revision = await client.query<{ id: string; status: string; config_set_id: string }>(
-      `
-      select r.id, r.status, r.config_set_id
-      from dts_config_revisions r
-      inner join dts_config_set cs on cs.id = r.config_set_id
-      where r.organization_id = $1
-        and r.project_id = $2
-        and cs.name = 'default'
-        and r.status in ('resolved', 'validated', 'needs_mapping')
-      order by r.revision_number desc
-      limit 1
-      `,
-      [organizationId, projectId]
-    );
-    if (!revision.rows[0]) return null;
-
-    const gpio = await client.query<{ n: string }>(
-      `
-      select count(*)::text as n
-      from project_parameter_binding_revisions br
-      inner join project_parameter_bindings b on b.id = br.binding_id
-      inner join parameter_specs ps on ps.id = b.parameter_spec_id
-      where br.config_revision_id = $1
-        and coalesce(
-          (select dps.property_key from dts_property_specs dps where dps.parameter_spec_id = ps.id limit 1),
-          nullif(split_part(ps.specification_key, '/', 2), '')
-        ) = 'gpio_int'
-      `,
-      [revision.rows[0].id]
-    );
-    if (Number(gpio.rows[0]?.n ?? 0) < 2) return null;
-
-    return {
-      configSetId: revision.rows[0].config_set_id,
-      revisionId: revision.rows[0].id,
-      status: revision.rows[0].status
-    };
-  });
-  if (existing) return existing;
-
   const setsResponse = await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
     headers: adminHeaders()
   });
@@ -119,66 +80,39 @@ export async function ensureAuroraSemanticTopology(
   let baseFileId = filesBody.items.find((item) => item.fileName === baseFileName)?.id;
   let overlayFileId = filesBody.items.find((item) => item.fileName === overlayFileName)?.id;
 
-  if (!baseFileId) {
-    const uploaded = await uploadDts(request, baseFileName, baseSource);
-    baseFileId = uploaded.fileId;
-  } else {
-    await uploadDts(request, baseFileName, baseSource);
-  }
+  const uploadedBase = await uploadDts(request, baseFileName, baseSource);
+  baseFileId = uploadedBase.fileId;
+  const uploadedOverlay = await uploadDts(request, overlayFileName, overlaySource);
+  overlayFileId = uploadedOverlay.fileId;
 
-  if (!overlayFileId) {
-    const uploaded = await uploadDts(request, overlayFileName, overlaySource);
-    overlayFileId = uploaded.fileId;
-  }
-
-  const membership = await withPgClient(async (client) => {
-    const rows = await client.query<{ file_id: string; config_set_role: string | null }>(
-      `
-      select id as file_id, config_set_role
-      from project_parameter_files
-      where project_id = $1 and config_set_id = $2
-      `,
-      [projectId, configSetId]
-    );
-    return rows.rows;
-  });
-
-  if (!membership.some((row) => row.file_id === baseFileId && row.config_set_role === "base")) {
-    const addBase = await request.post(
-      apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/files`),
-      {
-        headers: adminHeaders(),
-        data: { fileId: baseFileId, role: "base", sortOrder: 0 }
-      }
-    );
-    if (!addBase.ok() && addBase.status() !== 409) {
-      throw new Error(`add base to config-set failed: ${addBase.status()} ${await addBase.text()}`);
+  const addBase = await request.post(
+    apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/files`),
+    {
+      headers: adminHeaders(),
+      data: { fileId: baseFileId, role: "base", sortOrder: 0 }
     }
+  );
+  if (!addBase.ok() && addBase.status() !== 409) {
+    throw new Error(`add base to config-set failed: ${addBase.status()} ${await addBase.text()}`);
   }
 
-  if (
-    !membership.some(
-      (row) => row.file_id === overlayFileId && (row.config_set_role === "overlay" || row.config_set_role)
-    )
-  ) {
-    const addOverlay = await request.post(
-      apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/files`),
-      {
-        headers: adminHeaders(),
-        data: { fileId: overlayFileId, role: "overlay", sortOrder: 1 }
-      }
-    );
-    if (!addOverlay.ok() && addOverlay.status() !== 409) {
-      throw new Error(
-        `add overlay to config-set failed: ${addOverlay.status()} ${await addOverlay.text()}`
-      );
+  const addOverlay = await request.post(
+    apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/files`),
+    {
+      headers: adminHeaders(),
+      data: { fileId: overlayFileId, role: "overlay", sortOrder: 1 }
     }
+  );
+  if (!addOverlay.ok() && addOverlay.status() !== 409) {
+    throw new Error(
+      `add overlay to config-set failed: ${addOverlay.status()} ${await addOverlay.text()}`
+    );
   }
 
   // Re-upload overlay to trigger production maybeIngestSemanticConfigRevision.
   await uploadDts(request, overlayFileName, overlaySource);
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
     const ready = await withPgClient(async (client) => {
       const revision = await client.query<{ id: string; status: string }>(
         `

@@ -11,7 +11,7 @@ commonRefs:
 properties:
   status:
     valueShape: string-list
-    exampleValue: '"ok"'
+    exampleValue: '"okay"'
     constraints: {}
   test_para:
     valueShape: string-list

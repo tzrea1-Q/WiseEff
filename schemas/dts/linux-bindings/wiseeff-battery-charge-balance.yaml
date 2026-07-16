@@ -1,0 +1,26 @@
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-battery-charge-balance.yaml#
+$title: wiseeff,battery_charge_balance
+description: WiseEff vendor binding generated for dt-validate coverage of golden power fixtures.
+maintainers:
+  - WiseEff
+select:
+  properties:
+    compatible:
+      contains:
+        const: wiseeff,battery_charge_balance
+  required:
+    - compatible
+properties:
+  compatible: true
+  status:
+    enum:
+      - okay
+      - disabled
+      - reserved
+      - fail
+      - fail-needs-probe
+  model: true
+additionalProperties: true
+unevaluatedProperties: true

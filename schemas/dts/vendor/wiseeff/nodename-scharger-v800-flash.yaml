@@ -11,7 +11,7 @@ commonRefs:
 properties:
   status:
     valueShape: string-list
-    exampleValue: '"ok"'
+    exampleValue: '"okay"'
     constraints: {}
   vendor,led-type:
     valueShape: u32-array
