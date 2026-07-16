@@ -125,6 +125,64 @@ async function withTempDatabase(fn: (db: Database) => Promise<void>) {
   }
 }
 
+function openDatabaseConnection(connectionString: string): {
+  db: Database;
+  close: () => Promise<void>;
+} {
+  const client = new pg.Client({ connectionString });
+  let connected = false;
+  const db = createDatabase({
+    query: async (text, values = []) => {
+      if (!connected) {
+        await client.connect();
+        connected = true;
+      }
+      const result = await client.query(text, values);
+      return { rows: result.rows, rowCount: result.rowCount };
+    }
+  });
+  return {
+    db,
+    close: async () => {
+      if (connected) {
+        await client.end().catch(() => undefined);
+      }
+    }
+  };
+}
+
+async function withTempDatabaseConnection(
+  fn: (ctx: { db: Database; connectionString: string }) => Promise<void>
+) {
+  const dbName = `wiseeff_mig14_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`.replace(
+    /[^a-z0-9_]/gi,
+    ""
+  );
+  await withAdminClient(async (admin) => {
+    await admin.query(`create database ${dbName}`);
+  });
+
+  const connectionString = adminConnectionString(dbName);
+  const client = new pg.Client({ connectionString });
+  await client.connect();
+  const db = createDatabase({
+    query: async (text, values = []) => {
+      const result = await client.query(text, values);
+      return { rows: result.rows, rowCount: result.rowCount };
+    }
+  });
+
+  try {
+    await applyMigrations(db, migrationsDir);
+    await fn({ db, connectionString });
+  } finally {
+    await client.end().catch(() => undefined);
+    await withAdminClient(async (admin) => {
+      await admin.query(`drop database if exists ${dbName} with (force)`);
+    });
+  }
+}
+
 async function seedLegacyGraph(db: InMemoryTestDatabase | Database) {
   const specId = expectedSpecId();
   const specVersionId = expectedSpecVersionId(specId);
@@ -922,7 +980,7 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
         id, mode, status, report, db_snapshot_id, object_snapshot_id,
         write_lock_confirmed, completed_at
       ) values (
-        $1, 'apply', 'completed', $2::jsonb, 'db', 'obj', true, now()
+        $1, 'apply', 'finalized', $2::jsonb, 'db', 'obj', true, now()
       )
       `,
       [
@@ -940,7 +998,7 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
 
     await expect(
       applyParameterIdentityCutover(db!, { migrationRunId: fakeRunId })
-    ).rejects.toThrow(/cutover blocked|inferred/i);
+    ).rejects.toThrow(/cutover blocked|inferred|finalized/i);
 
     // Apply writes inside the shared test transaction survive the thrown apply block;
     // reuse the inferred draft + open review task that apply already staged.
@@ -1290,6 +1348,301 @@ describe.skipIf(!databaseAvailable)("post-cutover API smoke (temp DB)", () => {
       });
       expect(gone.status).toBe(410);
       expect(gone.details).toMatchObject({ diagnostic: "legacy-parameter-id-retired" });
+    });
+  });
+});
+
+describe.skipIf(!databaseAvailable)("parameter identity stage-review and finalize", () => {
+  const stageGates = {
+    ...applyGates,
+    dbSnapshotId: "db-snap-stage",
+    objectSnapshotId: "obj-snap-stage"
+  };
+
+  async function seedOrphanDefinition(db: Database) {
+    await seedLegacyGraph(db);
+    await db.query(
+      `
+      insert into parameter_definitions (
+        id, organization_id, name, description, explanation, config_format,
+        module, default_range, unit, risk
+      ) values (
+        $1, $2, $3, 'orphan', 'no catalog', 'DTS',
+        'orphan_module', '', '', 'Low'
+      )
+      `,
+      ["pd-mig-stage-orphan", ORG, "orphan_stage_only_param"]
+    );
+  }
+
+  it(
+    "stage-review persists inferred staging across a separate postgres connection",
+    async () => {
+      await withTempDatabaseConnection(async ({ db, connectionString }) => {
+        await seedOrphanDefinition(db);
+        const staged = await migrateParameterIdentities(db, {
+          mode: "stage-review",
+          organizationId: ORG,
+          ...stageGates
+        });
+        expect(staged.mode).toBe("stage-review");
+        expect(staged.inferredPendingReview).toBe(1);
+        expect(staged.blockers.length).toBeGreaterThan(0);
+
+        const run = await db.query<{ status: string; mode: string }>(
+          `select status, mode from parameter_identity_migration_runs where id = $1`,
+          [staged.migrationRunId]
+        );
+        expect(run.rows[0]).toMatchObject({ status: "staged", mode: "stage-review" });
+
+        const bindings = await db.query(
+          `select 1 from project_parameter_bindings where project_id = $1 limit 1`,
+          [PROJECT]
+        );
+        expect(bindings.rows).toHaveLength(0);
+
+        const reconnect = openDatabaseConnection(connectionString);
+        try {
+          const persistedRun = await reconnect.db.query<{ status: string }>(
+            `select status from parameter_identity_migration_runs where id = $1`,
+            [staged.migrationRunId]
+          );
+          expect(persistedRun.rows[0]?.status).toBe("staged");
+
+          const openInferred = await reconnect.db.query<{ c: string }>(
+            `
+            select count(*)::text as c
+            from parameter_spec_review_tasks
+            where status = 'open'
+              and coalesce(source_evidence->>'inferred', '') = 'true'
+            `
+          );
+          expect(Number(openInferred.rows[0]?.c ?? 0)).toBe(1);
+
+          const defEvidence = await reconnect.db.query<{ c: string }>(
+            `
+            select count(*)::text as c
+            from legacy_parameter_migration_evidence
+            where legacy_kind = 'parameter_definition'
+              and migration_run_id = $1
+            `,
+            [staged.migrationRunId]
+          );
+          expect(Number(defEvidence.rows[0]?.c ?? 0)).toBeGreaterThan(0);
+        } finally {
+          await reconnect.close();
+        }
+      });
+    },
+    20_000
+  );
+
+  it(
+    "finalize references staged run, requires resolved tasks, and writes activity atomically",
+    async () => {
+      await withTempDatabaseConnection(async ({ db }) => {
+        await seedOrphanDefinition(db);
+        const staged = await migrateParameterIdentities(db, {
+          mode: "stage-review",
+          organizationId: ORG,
+          ...stageGates
+        });
+
+        await expect(
+          migrateParameterIdentities(db, {
+            mode: "finalize",
+            migrationRunId: staged.migrationRunId,
+            organizationId: ORG,
+            ...applyGates
+          })
+        ).rejects.toThrow(/finalize blocked: open inferred/i);
+
+        const inferredTask = await db.query<{ id: string; parameter_spec_id: string }>(
+          `
+          select id, parameter_spec_id
+          from parameter_spec_review_tasks
+          where status = 'open'
+            and coalesce(source_evidence->>'inferred', '') = 'true'
+          limit 1
+          `
+        );
+        const specId = inferredTask.rows[0]?.parameter_spec_id;
+        expect(specId).toBeTruthy();
+        await db.query(
+          `
+          update parameter_spec_review_tasks
+          set status = 'resolved', resolved_at = now()
+          where id = $1
+          `,
+          [inferredTask.rows[0]!.id]
+        );
+        await db.query(
+          `update parameter_spec_versions set lifecycle = 'active' where parameter_spec_id = $1`,
+          [specId]
+        );
+
+        const finalized = await migrateParameterIdentities(db, {
+          mode: "finalize",
+          migrationRunId: staged.migrationRunId,
+          organizationId: ORG,
+          ...applyGates
+        });
+        expect(finalized.mode).toBe("finalize");
+        expect(finalized.blockers).toEqual([]);
+
+        const run = await db.query<{ status: string; mode: string }>(
+          `select status, mode from parameter_identity_migration_runs where id = $1`,
+          [staged.migrationRunId]
+        );
+        expect(run.rows[0]).toMatchObject({ status: "finalized", mode: "finalize" });
+
+        const bindings = await db.query<{ c: string }>(
+          `select count(*)::text as c from project_parameter_bindings where project_id = $1`,
+          [PROJECT]
+        );
+        expect(Number(bindings.rows[0]?.c ?? 0)).toBeGreaterThan(0);
+
+        const history = await db.query<{ c: string }>(
+          `
+          select count(*)::text as c
+          from parameter_history_entries
+          where project_parameter_binding_id is not null
+          `
+        );
+        expect(Number(history.rows[0]?.c ?? 0)).toBeGreaterThan(0);
+
+        await applyParameterIdentityCutover(db, { migrationRunId: staged.migrationRunId });
+      });
+    },
+    30_000
+  );
+
+  it("finalize failure rolls back activity writes but keeps staged review artifacts", async () => {
+    await withTempDatabase(async (db) => {
+      await seedLegacyGraph(db);
+      const staged = await migrateParameterIdentities(db, {
+        mode: "stage-review",
+        organizationId: ORG,
+        ...stageGates
+      });
+      expect(staged.blockers).toEqual([]);
+
+      await expect(
+        migrateParameterIdentities(db, {
+          mode: "finalize",
+          migrationRunId: staged.migrationRunId,
+          organizationId: ORG,
+          ...applyGates,
+          injectFailure: true
+        })
+      ).rejects.toThrow(/injected apply failure/i);
+
+      const run = await db.query<{ status: string }>(
+        `select status from parameter_identity_migration_runs where id = $1`,
+        [staged.migrationRunId]
+      );
+      expect(run.rows[0]?.status).toBe("staged");
+
+      const bindings = await db.query(
+        `select 1 from project_parameter_bindings where project_id = $1 limit 1`,
+        [PROJECT]
+      );
+      expect(bindings.rows).toHaveLength(0);
+
+      const defEvidence = await db.query<{ c: string }>(
+        `
+        select count(*)::text as c
+        from legacy_parameter_migration_evidence
+        where legacy_kind = 'parameter_definition'
+          and migration_run_id = $1
+        `,
+        [staged.migrationRunId]
+      );
+      expect(Number(defEvidence.rows[0]?.c ?? 0)).toBeGreaterThan(0);
+    });
+  });
+
+  it("direct apply rollback does not remove prior stage-review tasks", async () => {
+    await withTempDatabaseConnection(async ({ db, connectionString }) => {
+      await seedOrphanDefinition(db);
+      const staged = await migrateParameterIdentities(db, {
+        mode: "stage-review",
+        organizationId: ORG,
+        ...stageGates
+      });
+
+      await expect(
+        migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-apply-fail-orphan",
+          objectSnapshotId: "obj-snap-apply-fail-orphan"
+        })
+      ).rejects.toThrow(/apply blocked|inferred pending review/i);
+
+      const reconnect = openDatabaseConnection(connectionString);
+      try {
+        const openInferred = await reconnect.db.query<{ c: string }>(
+          `
+          select count(*)::text as c
+          from parameter_spec_review_tasks
+          where status = 'open'
+            and coalesce(source_evidence->>'inferred', '') = 'true'
+          `
+        );
+        expect(Number(openInferred.rows[0]?.c ?? 0)).toBe(1);
+
+        const stagedRun = await reconnect.db.query<{ status: string }>(
+          `select status from parameter_identity_migration_runs where id = $1`,
+          [staged.migrationRunId]
+        );
+        expect(stagedRun.rows[0]?.status).toBe("staged");
+      } finally {
+        await reconnect.close();
+      }
+    });
+  });
+
+  it("cutover accepts only finalized migration runs", async () => {
+    await withTempDatabase(async (db) => {
+      await seedLegacyGraph(db);
+      const staged = await migrateParameterIdentities(db, {
+        mode: "stage-review",
+        organizationId: ORG,
+        ...stageGates
+      });
+
+      await expect(
+        applyParameterIdentityCutover(db, { migrationRunId: staged.migrationRunId })
+      ).rejects.toThrow(/requires finalized migration run/i);
+
+      await db.query(
+        `
+        update parameter_identity_migration_runs
+        set status = 'completed'
+        where id = $1
+        `,
+        [staged.migrationRunId]
+      );
+      await expect(
+        applyParameterIdentityCutover(db, { migrationRunId: staged.migrationRunId })
+      ).rejects.toThrow(/requires finalized migration run/i);
+
+      await db.query(
+        `update parameter_identity_migration_runs set status = 'staged' where id = $1`,
+        [staged.migrationRunId]
+      );
+
+      const finalized = await migrateParameterIdentities(db, {
+        mode: "finalize",
+        migrationRunId: staged.migrationRunId,
+        organizationId: ORG,
+        ...applyGates
+      });
+      expect(finalized.blockers).toEqual([]);
+
+      await applyParameterIdentityCutover(db, { migrationRunId: staged.migrationRunId });
     });
   });
 });
