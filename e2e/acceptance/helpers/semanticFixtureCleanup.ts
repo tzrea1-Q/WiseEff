@@ -42,11 +42,30 @@ async function deleteChangeRequestChain(
   }
 }
 
-async function resolveConfigSetIds(client: Client, names: string[]): Promise<string[]> {
+async function resolveConfigSetIds(
+  client: Client,
+  organizationId: string,
+  projectId: string,
+  names: string[]
+): Promise<string[]> {
+  if (!organizationId?.trim() || !projectId?.trim()) {
+    throw new Error("semanticFixtureCleanup requires organizationId and projectId");
+  }
   if (names.length === 0) return [];
   const result = await client.query<{ id: string }>(
-    `select id from dts_config_set where name = any($1::text[])`,
-    [names]
+    `
+    select cs.id
+    from dts_config_set cs
+    inner join projects p
+      on p.id = cs.project_id
+     and p.organization_id = cs.organization_id
+    where cs.organization_id = $1
+      and cs.project_id = $2
+      and p.id = $2
+      and p.organization_id = $1
+      and cs.name = any($3::text[])
+    `,
+    [organizationId, projectId, names]
   );
   return result.rows.map((row) => row.id);
 }
@@ -97,7 +116,12 @@ export async function cleanupSemanticAcceptanceArtifacts(
   scope: SemanticFixtureCleanupScope
 ): Promise<void> {
   await withPgClient(async (client) => {
-    const configSetIds = await resolveConfigSetIds(client, scope.configSetNames ?? []);
+    const configSetIds = await resolveConfigSetIds(
+      client,
+      scope.organizationId,
+      scope.projectId,
+      scope.configSetNames ?? []
+    );
     const revisionIds = await resolveRevisionIds(client, configSetIds);
     const fileIds = await resolveFileIds(client, scope.organizationId, scope.projectId, scope.fileNames ?? []);
     const versionIds = await resolveVersionIds(client, fileIds);
