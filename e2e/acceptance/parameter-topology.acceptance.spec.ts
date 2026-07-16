@@ -134,27 +134,28 @@ async function waitForRevision(
   throw new Error(`Timed out waiting for revision on config set ${configSetId}`);
 }
 
-async function resolveOpenReviewsForRevision(
+async function resolveReviewsForCurrentRevision(
   request: APIRequestContext,
   revisionId: string,
-  fallbackSpecId: string
+  projectId: string
 ) {
   const list = await request.get(
-    apiRoute(`/api/v2/parameter-spec-review-tasks?status=open&limit=100`),
+    apiRoute(
+      `/api/v2/parameter-spec-review-tasks?status=open&configRevisionId=${encodeURIComponent(revisionId)}&projectId=${encodeURIComponent(projectId)}&limit=100`
+    ),
     { headers: adminHeaders() }
   );
   expect(list.ok()).toBe(true);
   const body = (await list.json()) as {
     items: Array<{
       id: string;
-      candidateSchemas?: Array<{ id: string }>;
-      sourceEvidence?: { configRevisionId?: string };
+      propertyKey?: string;
+      candidateSchemas?: Array<{ id: string; propertyKey?: string }>;
     }>;
   };
-  // Validate fail-closed counts org-open tasks with null parameter_spec_id as blockers
-  // for any revision — resolve every open task via API (not SQL dismiss-all).
   for (const task of body.items) {
-    const parameterSpecId = task.candidateSchemas?.[0]?.id ?? fallbackSpecId;
+    expect(task.candidateSchemas?.length ?? 0, `task ${task.id} must expose candidates`).toBeGreaterThan(0);
+    const parameterSpecId = task.candidateSchemas![0]!.id;
     const resolve = await request.post(
       apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
       {
@@ -162,7 +163,7 @@ async function resolveOpenReviewsForRevision(
         data: {
           decision: "resolved",
           parameterSpecId,
-          reason: `${descriptionPrefix} resolve open review before validate (rev=${revisionId})`
+          reason: `${descriptionPrefix} resolve review for revision ${revisionId}`
         }
       }
     );
@@ -546,7 +547,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     ]).toContain(compileBody.item.failureCode);
 
     // Successful typed edit → precise DTS writeback + re-ingest (createBindingDraft).
-    await resolveOpenReviewsForRevision(request, revisionId, specSc!.id);
+    await resolveReviewsForCurrentRevision(request, revisionId, projectId);
     const editedRaw = "<&gpio13 30 0>";
     const successfulDraft = await request.post(
       apiRoute(
@@ -814,7 +815,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     // 10) SUCCESSFUL validate on golden/candidate path (not schema-failed-as-success).
     const validateTargetId = draftBody.item.candidateRevisionId || revisionId;
-    await resolveOpenReviewsForRevision(request, validateTargetId, specSc!.id);
+    await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
 
     const validateResponse = await request.post(
       apiRoute(

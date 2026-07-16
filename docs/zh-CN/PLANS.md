@@ -15,7 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- 当前活跃计划清单以英文版 `docs/PLANS.md` 为准。DTS 主程序（P0–P3.1）及 `2026-07-15-dts-full-seed-and-toolchain.md` 已归档；`2026-07-16-parameter-topology-schema-management.md` 负责拓扑/Schema 身份与原子 cutover；`2026-07-16-parameter-topology-e2e-review-blockers.md` 打通 ingest→binding→编辑→fail-closed 校验；`2026-07-16-parameter-topology-cutover-workflow-review.md` 修复第二轮 Review：cutover 后全语义工作流、规格审核落地、精确 occurrence 回写、candidate/validation 状态机、inferred cutover 门禁与无 DB 绕过验收（分支 `fix/parameter-topology-cutover-workflow-review`）。多层级模块亦已归档。
+- 当前活跃计划清单以英文版 `docs/PLANS.md` 为准。`2026-07-16-parameter-topology-semantic-cutover-round3.md` 为第三轮：真实 vendor dt-schema、语义 dashboard、inferred stage/finalize、精确 merge 回写、matcher/review 作用域、manifest 回填、UI 未完成审核、严格 acceptance（分支 `fix/parameter-topology-semantic-cutover-round3`）。TD-042 仍为 BLOCKER。
 - **分支与 PR：** 实现型子智能体只在从 `main` 切出的 feature branch 上开发并本地 commit；不得 push `main`、不得开/合 GitHub PR。由父智能体 review 后提 PR、合并，再 `git pull` 同步本地 `main`。细则见英文版 `docs/PLANS.md` § Git Branch & PR Workflow。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 

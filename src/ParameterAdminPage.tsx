@@ -540,6 +540,12 @@ export function ParameterAdminPage({
                 ) : null}
                 <SpecReviewQueue
                   tasks={reviewTasks}
+                  librarySpecs={specRows.map((spec) => ({
+                    id: spec.id,
+                    label: `${spec.driverModule ?? "vendor"}/${spec.propertyKey}`,
+                    propertyKey: spec.propertyKey,
+                    driverModule: spec.driverModule
+                  }))}
                   onApprove={(input) => {
                     void handleApproveReview(input);
                   }}
