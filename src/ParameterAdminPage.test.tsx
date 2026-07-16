@@ -257,7 +257,7 @@ describe("ParameterAdminPage", () => {
     fireEvent.change(within(queue).getByLabelText("审核原因"), {
       target: { value: "New manual spec from review" }
     });
-    fireEvent.click(within(queue).getByRole("button", { name: "创建新规格" }));
+    fireEvent.click(within(queue).getByRole("button", { name: "创建草稿规格" }));
 
     await waitFor(() =>
       expect(resolveSpecReviewTask).toHaveBeenCalledWith("task-unmatched", {
@@ -266,7 +266,9 @@ describe("ParameterAdminPage", () => {
         reason: "New manual spec from review"
       })
     );
-    await waitFor(() => expect(screen.getByText(/已创建并绑定规格/)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(/草稿规格「mystery_prop」已创建/)
+    );
   });
 
   it("passes confirmPropertyMismatch when approving a library schema with different property key", async () => {

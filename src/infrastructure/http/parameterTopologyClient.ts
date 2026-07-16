@@ -339,10 +339,17 @@ export function createHttpParameterTopologyRepository(
       } satisfies SpecReviewTaskListResult;
     },
     async resolveSpecReviewTask(taskId, input: ResolveSpecReviewInput) {
-      await apiClient.post<ItemEnvelope<{ id: string; status: string }>>(
+      await apiClient.post<ItemEnvelope<{ id: string; status: string; draftCreated?: boolean; message?: string }>>(
         `/api/v2/parameter-spec-review-tasks/${encodeURIComponent(taskId)}/resolve`,
         input
       );
+    },
+    async activateParameterSpec(specId, input) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/activate`,
+        input
+      );
+      return specDetailFromDto(response.item);
     },
     async listBindings(projectId, revisionId) {
       const response = await apiClient.get<ItemsEnvelope<ProjectBindingDto>>(

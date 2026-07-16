@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { LibrarySelectFilter } from "@/components/admin/LibrarySelectFilter";
 import { ParameterSpecDetail, type ParameterSpecDetailView } from "./ParameterSpecDetail";
+import { DraftSpecActivatePanel, type ActivateDraftSpecInput } from "./DraftSpecActivatePanel";
 
 export type ParameterSpecLibraryRow = {
   id: string;
@@ -199,6 +200,8 @@ export type ParameterSpecLibraryProps = {
   reviewQueueSlot?: ReactNode;
   loading?: boolean;
   onSelectSpec: (specId: string) => void;
+  onActivateDraftSpec?: (input: ActivateDraftSpecInput) => void;
+  activatePending?: boolean;
 };
 
 export function ParameterSpecLibrary({
@@ -207,7 +210,9 @@ export function ParameterSpecLibrary({
   detail = null,
   reviewQueueSlot = null,
   loading = false,
-  onSelectSpec
+  onSelectSpec,
+  onActivateDraftSpec,
+  activatePending = false
 }: ParameterSpecLibraryProps) {
   const [filters, setFilters] = useState<ParameterSpecLibraryFilters>(EMPTY_FILTERS);
   const filtered = useMemo(() => filterParameterSpecLibrary(specs, filters), [specs, filters]);
@@ -385,6 +390,9 @@ export function ParameterSpecLibrary({
       </section>
 
       {detail ? <ParameterSpecDetail detail={detail} /> : null}
+      {detail && onActivateDraftSpec ? (
+        <DraftSpecActivatePanel detail={detail} onActivate={onActivateDraftSpec} pending={activatePending} />
+      ) : null}
       {reviewQueueSlot}
     </div>
   );

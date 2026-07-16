@@ -107,6 +107,7 @@ export function ParameterAdminPage({
   const [reviewActionSuccess, setReviewActionSuccess] = useState<string | null>(null);
   const [reviewPendingTaskId, setReviewPendingTaskId] = useState<string | null>(null);
   const [reviewPendingAction, setReviewPendingAction] = useState<"approve" | "dismiss" | "create" | null>(null);
+  const [activatePendingSpecId, setActivatePendingSpecId] = useState<string | null>(null);
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
@@ -333,7 +334,9 @@ export function ParameterAdminPage({
           createSpec: true,
           reason: input.reason
         });
-        setReviewActionSuccess(`已创建并绑定规格「${input.propertyKey}」。`);
+        setReviewActionSuccess(
+          `草稿规格「${input.propertyKey}」已创建；请补齐类型/约束并激活后再批准绑定。`
+        );
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
@@ -343,6 +346,44 @@ export function ParameterAdminPage({
       }
     },
     [reloadReviewTasks, reloadSpecs, topologyRepository]
+  );
+
+  const handleActivateDraftSpec = useCallback(
+    async (input: {
+      specId: string;
+      valueShape: Record<string, unknown>;
+      constraints: Record<string, unknown>;
+      documentation: string;
+      reason: string;
+    }) => {
+      if (!topologyRepository) {
+        return;
+      }
+      setReviewActionError(null);
+      setReviewActionSuccess(null);
+      setActivatePendingSpecId(input.specId);
+      try {
+        await topologyRepository.activateParameterSpec(input.specId, {
+          valueShape: input.valueShape,
+          constraints: input.constraints,
+          documentation: input.documentation,
+          reason: input.reason,
+        });
+        setReviewActionSuccess(`规格「${input.specId}」已激活，可在审核队列中批准绑定。`);
+        await reloadSpecs();
+        if (selectedSpecId === input.specId) {
+          const detail = await topologyRepository.getSpec(input.specId);
+          setSpecDetail(
+            toSpecDetailView(detail, specRows.find((row) => row.id === input.specId)?.usageCount ?? 0)
+          );
+        }
+      } catch (error) {
+        setReviewActionError(formatReviewActionError(error));
+      } finally {
+        setActivatePendingSpecId(null);
+      }
+    },
+    [reloadSpecs, selectedSpecId, specRows, topologyRepository]
   );
 
   const handleSelectSpec = useCallback(
@@ -597,6 +638,10 @@ export function ParameterAdminPage({
             selectedSpecId={selectedSpecId}
             detail={specDetail}
             onSelectSpec={handleSelectSpec}
+            onActivateDraftSpec={(input) => {
+              void handleActivateDraftSpec(input);
+            }}
+            activatePending={activatePendingSpecId === selectedSpecId}
             reviewQueueSlot={
               <>
                 {reviewActionError ? <p className="form-error" role="alert">{reviewActionError}</p> : null}

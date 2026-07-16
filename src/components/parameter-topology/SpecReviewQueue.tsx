@@ -71,7 +71,7 @@ export function SpecReviewQueue({
       <div className="parameters-table-heading">
         <div>
           <h2>规格审核队列</h2>
-          <p>可从候选或全库搜索选择 Schema；属性键不一致时需额外确认。未匹配任务可创建新规格。</p>
+          <p>可从候选或全库搜索选择 Schema；属性键不一致时需额外确认。未匹配任务可创建草稿规格（需激活后再裁决）。</p>
         </div>
       </div>
 
@@ -254,7 +254,7 @@ export function SpecReviewQueue({
                           })
                         }
                       >
-                        {isPending && pendingAction === "create" ? "创建中…" : "创建新规格"}
+                        {isPending && pendingAction === "create" ? "创建中…" : "创建草稿规格"}
                       </button>
                     ) : null}
                     {onDismiss ? (
