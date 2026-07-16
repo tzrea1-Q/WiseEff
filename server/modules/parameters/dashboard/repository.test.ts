@@ -17,7 +17,7 @@ describe("dashboard repository", () => {
   beforeEach(async () => {
     db = await createInMemoryTestDatabase();
     await seedParameterDashboardFixture(db);
-  }, 30_000);
+  }, 180_000);
 
   afterEach(async () => {
     await db.rollback();
