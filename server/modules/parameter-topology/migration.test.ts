@@ -681,10 +681,11 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
   it("checker surfaces SQL failures instead of swallowing them as zero", async () => {
     const brokenDb = {
       query: async (text: string) => {
-        if (/parameter_identity_migration_runs|parameter_identity_cutovers/i.test(text) && /information_schema/i.test(text)) {
+        if (/parameter_identity_migration_runs|parameter_identity_cutovers|parameter_identity_migration_phases/i.test(text) && /information_schema/i.test(text)) {
           return {
             rows: [
               { name: "parameter_identity_migration_runs" },
+              { name: "parameter_identity_migration_phases" },
               { name: "parameter_identity_cutovers" }
             ]
           };
@@ -974,6 +975,14 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
 
     // Force a completed run row with inferredPendingReview to prove cutover gate.
     const fakeRunId = "mig-run-inferred-block";
+    const forgedReport = {
+      ...dryRun,
+      migrationRunId: fakeRunId,
+      mode: "apply",
+      inferredPendingReview: 1,
+      mappedDefinitions: 1,
+      blockers: [`inferred pending review for definition ${orphanDef}: orphan_module/${orphanKey}`]
+    };
     await db!.query(
       `
       insert into parameter_identity_migration_runs (
@@ -983,22 +992,29 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
         $1, 'apply', 'finalized', $2::jsonb, 'db', 'obj', true, now()
       )
       `,
-      [
-        fakeRunId,
-        JSON.stringify({
-          ...dryRun,
-          migrationRunId: fakeRunId,
-          mode: "apply",
-          inferredPendingReview: 1,
-          mappedDefinitions: 1,
-          blockers: [`inferred pending review for definition ${orphanDef}: orphan_module/${orphanKey}`]
-        })
-      ]
+      [fakeRunId, JSON.stringify(forgedReport)]
     );
 
     await expect(
       applyParameterIdentityCutover(db!, { migrationRunId: fakeRunId })
-    ).rejects.toThrow(/cutover blocked|inferred|finalized/i);
+    ).rejects.toThrow(/successful finalize phase/i);
+
+    await db!.query(
+      `
+      insert into parameter_identity_migration_phases (
+        id, migration_run_id, phase, status, report,
+        db_snapshot_id, object_snapshot_id, completed_at
+      ) values (
+        'phase-forged-inferred', $1, 'finalize', 'finalized', $2::jsonb,
+        'db', 'obj', now()
+      )
+      `,
+      [fakeRunId, JSON.stringify(forgedReport)]
+    );
+
+    await expect(
+      applyParameterIdentityCutover(db!, { migrationRunId: fakeRunId })
+    ).rejects.toThrow(/cutover blocked|inferred/i);
 
     // Apply writes inside the shared test transaction survive the thrown apply block;
     // reuse the inferred draft + open review task that apply already staged.
@@ -1395,6 +1411,17 @@ describe.skipIf(!databaseAvailable)("parameter identity stage-review and finaliz
         );
         expect(run.rows[0]).toMatchObject({ status: "staged", mode: "stage-review" });
 
+        const stagePhase = await db.query<{ phase: string; status: string }>(
+          `
+          select phase, status
+          from parameter_identity_migration_phases
+          where migration_run_id = $1
+          `,
+          [staged.migrationRunId]
+        );
+        expect(stagePhase.rows).toHaveLength(1);
+        expect(stagePhase.rows[0]).toMatchObject({ phase: "stage-review", status: "staged" });
+
         const bindings = await db.query(
           `select 1 from project_parameter_bindings where project_id = $1 limit 1`,
           [PROJECT]
@@ -1457,9 +1484,9 @@ describe.skipIf(!databaseAvailable)("parameter identity stage-review and finaliz
           })
         ).rejects.toThrow(/finalize blocked: open inferred/i);
 
-        const inferredTask = await db.query<{ id: string; parameter_spec_id: string }>(
+        const inferredTask = await db.query<{ id: string; parameter_spec_id: string; migration_run_id: string }>(
           `
-          select id, parameter_spec_id
+          select id, parameter_spec_id, migration_run_id
           from parameter_spec_review_tasks
           where status = 'open'
             and coalesce(source_evidence->>'inferred', '') = 'true'
@@ -1468,6 +1495,7 @@ describe.skipIf(!databaseAvailable)("parameter identity stage-review and finaliz
         );
         const specId = inferredTask.rows[0]?.parameter_spec_id;
         expect(specId).toBeTruthy();
+        expect(inferredTask.rows[0]?.migration_run_id).toBe(staged.migrationRunId);
         await db.query(
           `
           update parameter_spec_review_tasks
@@ -1494,7 +1522,29 @@ describe.skipIf(!databaseAvailable)("parameter identity stage-review and finaliz
           `select status, mode from parameter_identity_migration_runs where id = $1`,
           [staged.migrationRunId]
         );
-        expect(run.rows[0]).toMatchObject({ status: "finalized", mode: "finalize" });
+        expect(run.rows[0]).toMatchObject({ status: "finalized", mode: "stage-review" });
+
+        const phases = await db.query<{ phase: string; status: string; report: ParameterIdentityMigrationReport }>(
+          `
+          select phase, status, report
+          from parameter_identity_migration_phases
+          where migration_run_id = $1
+          order by created_at asc
+          `,
+          [staged.migrationRunId]
+        );
+        expect(phases.rows).toHaveLength(2);
+        expect(phases.rows[0]).toMatchObject({ phase: "stage-review", status: "staged" });
+        expect(phases.rows[1]).toMatchObject({ phase: "finalize", status: "finalized" });
+        expect(phases.rows[0]!.report.inferredPendingReview).toBe(1);
+        expect(phases.rows[1]!.report.inferredPendingReview).toBe(0);
+        expect(phases.rows[0]!.report).not.toEqual(phases.rows[1]!.report);
+
+        const runReport = await db.query<{ report: ParameterIdentityMigrationReport }>(
+          `select report from parameter_identity_migration_runs where id = $1`,
+          [staged.migrationRunId]
+        );
+        expect(runReport.rows[0]?.report.inferredPendingReview).toBe(1);
 
         const bindings = await db.query<{ c: string }>(
           `select count(*)::text as c from project_parameter_bindings where project_id = $1`,
@@ -1542,6 +1592,26 @@ describe.skipIf(!databaseAvailable)("parameter identity stage-review and finaliz
         [staged.migrationRunId]
       );
       expect(run.rows[0]?.status).toBe("staged");
+
+      const finalizePhases = await db.query<{ c: string }>(
+        `
+        select count(*)::text as c
+        from parameter_identity_migration_phases
+        where migration_run_id = $1 and phase = 'finalize'
+        `,
+        [staged.migrationRunId]
+      );
+      expect(Number(finalizePhases.rows[0]?.c ?? 0)).toBe(0);
+
+      const stagePhase = await db.query<{ report: ParameterIdentityMigrationReport }>(
+        `
+        select report
+        from parameter_identity_migration_phases
+        where migration_run_id = $1 and phase = 'stage-review'
+        `,
+        [staged.migrationRunId]
+      );
+      expect(stagePhase.rows[0]?.report.mode).toBe("stage-review");
 
       const bindings = await db.query(
         `select 1 from project_parameter_bindings where project_id = $1 limit 1`,
@@ -1620,6 +1690,27 @@ describe.skipIf(!databaseAvailable)("parameter identity stage-review and finaliz
       await db.query(
         `
         update parameter_identity_migration_runs
+        set status = 'finalized'
+        where id = $1
+        `,
+        [staged.migrationRunId]
+      );
+      await expect(
+        applyParameterIdentityCutover(db, { migrationRunId: staged.migrationRunId })
+      ).rejects.toThrow(/successful finalize phase/i);
+
+      await db.query(
+        `
+        update parameter_identity_migration_runs
+        set status = 'staged'
+        where id = $1
+        `,
+        [staged.migrationRunId]
+      );
+
+      await db.query(
+        `
+        update parameter_identity_migration_runs
         set status = 'completed'
         where id = $1
         `,
@@ -1645,4 +1736,106 @@ describe.skipIf(!databaseAvailable)("parameter identity stage-review and finaliz
       await applyParameterIdentityCutover(db, { migrationRunId: staged.migrationRunId });
     });
   });
+
+  it("finalize ignores open review tasks from unrelated migration runs", async () => {
+    await withTempDatabase(async (db) => {
+      await seedLegacyGraph(db);
+      const staged = await migrateParameterIdentities(db, {
+        mode: "stage-review",
+        organizationId: ORG,
+        ...stageGates
+      });
+      expect(staged.blockers).toEqual([]);
+
+      await db.query(
+        `
+        insert into parameter_identity_migration_runs (
+          id, mode, status, report, db_snapshot_id, object_snapshot_id,
+          write_lock_confirmed, completed_at
+        ) values (
+          'unrelated-migration-run', 'stage-review', 'staged', '{}'::jsonb,
+          'db-unrelated', 'obj-unrelated', true, now()
+        )
+        `
+      );
+
+      await db.query(
+        `
+        insert into parameter_spec_review_tasks (
+          id, organization_id, parameter_spec_id, source_evidence,
+          candidate_schemas, project_count, status, reason, blocker_scope,
+          migration_run_id
+        ) values (
+          'review-task-unrelated-run', $1, $2,
+          '{"inferred": true}'::jsonb, '[]'::jsonb, 1, 'open',
+          'unrelated inferred blocker', 'platform', 'unrelated-migration-run'
+        )
+        `,
+        [ORG, expectedSpecId()]
+      );
+
+      const finalized = await migrateParameterIdentities(db, {
+        mode: "finalize",
+        migrationRunId: staged.migrationRunId,
+        organizationId: ORG,
+        ...applyGates
+      });
+      expect(finalized.blockers).toEqual([]);
+    });
+  });
+
+  it(
+    "concurrent finalize allows only one success for the same staged run",
+    async () => {
+      await withTempDatabaseConnection(async ({ db, connectionString }) => {
+        await seedLegacyGraph(db);
+        const staged = await migrateParameterIdentities(db, {
+          mode: "stage-review",
+          organizationId: ORG,
+          ...stageGates
+        });
+        expect(staged.blockers).toEqual([]);
+
+        const connA = openDatabaseConnection(connectionString);
+        const connB = openDatabaseConnection(connectionString);
+        try {
+          const results = await Promise.allSettled([
+            migrateParameterIdentities(connA.db, {
+              mode: "finalize",
+              migrationRunId: staged.migrationRunId,
+              organizationId: ORG,
+              ...applyGates
+            }),
+            migrateParameterIdentities(connB.db, {
+              mode: "finalize",
+              migrationRunId: staged.migrationRunId,
+              organizationId: ORG,
+              ...applyGates
+            })
+          ]);
+
+          const fulfilled = results.filter((result) => result.status === "fulfilled");
+          const rejected = results.filter((result) => result.status === "rejected");
+          expect(fulfilled).toHaveLength(1);
+          expect(rejected).toHaveLength(1);
+          const failure = (rejected[0] as PromiseRejectedResult).reason as Error;
+          expect(failure.message).toMatch(/staged|finalized/i);
+
+          const finalizePhases = await db.query<{ c: string }>(
+            `
+            select count(*)::text as c
+            from parameter_identity_migration_phases
+            where migration_run_id = $1 and phase = 'finalize' and status = 'finalized'
+            `,
+            [staged.migrationRunId]
+          );
+          expect(Number(finalizePhases.rows[0]?.c ?? 0)).toBe(1);
+        } finally {
+          await connA.close();
+          await connB.close();
+        }
+      });
+    },
+    30_000
+  );
 });
