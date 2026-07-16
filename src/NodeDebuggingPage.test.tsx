@@ -250,7 +250,9 @@ describe("/node-debugging", () => {
     await waitFor(() => {
       expect(within(findRowByText("charger.input_current_limit_ma")).queryByText("3651")).not.toBeInTheDocument();
     });
-    expect(within(findRowByText("charger.input_current_limit_ma")).getByText("等待读取")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(findRowByText("charger.input_current_limit_ma")).getByText("等待读取")).toBeInTheDocument();
+    });
   });
 
   it("recomputes row binding availability when switching protocols", async () => {

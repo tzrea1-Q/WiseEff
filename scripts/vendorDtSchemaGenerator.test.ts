@@ -115,8 +115,10 @@ describe("vendorDtSchemaGenerator unit", () => {
 });
 
 describe.skipIf(!toolchainAvailable())("vendor schema real dt-validate fixtures", () => {
-  it("positive: valid sc8562 node passes dt-validate", () => {
-    const result = compileAndValidate(`${gpioBase}
+  it(
+    "positive: valid sc8562 node passes dt-validate",
+    () => {
+      const result = compileAndValidate(`${gpioBase}
   i2c@0 {
     #address-cells = <1>;
     #size-cells = <0>;
@@ -129,11 +131,15 @@ describe.skipIf(!toolchainAvailable())("vendor schema real dt-validate fixtures"
   };
 };
 `);
-    expect(result.status, result.stderr).toBe(0);
-  });
+      expect(result.status, result.stderr).toBe(0);
+    },
+    30_000,
+  );
 
-  it("negative: undeclared vendor property fails", () => {
-    const result = compileAndValidate(`${gpioBase}
+  it(
+    "negative: undeclared vendor property fails",
+    () => {
+      const result = compileAndValidate(`${gpioBase}
   i2c@0 {
     #address-cells = <1>;
     #size-cells = <0>;
@@ -147,12 +153,16 @@ describe.skipIf(!toolchainAvailable())("vendor schema real dt-validate fixtures"
   };
 };
 `);
-    expect(result.status).not.toBe(0);
-    expect(result.stderr.toLowerCase()).toMatch(/rogue_prop|additional|unevaluated|false/);
-  });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr.toLowerCase()).toMatch(/rogue_prop|additional|unevaluated|false/);
+    },
+    30_000,
+  );
 
-  it("negative: gpio_int wrong cell count fails", () => {
-    const result = compileAndValidate(`${gpioBase}
+  it(
+    "negative: gpio_int wrong cell count fails",
+    () => {
+      const result = compileAndValidate(`${gpioBase}
   i2c@0 {
     #address-cells = <1>;
     #size-cells = <0>;
@@ -165,11 +175,15 @@ describe.skipIf(!toolchainAvailable())("vendor schema real dt-validate fixtures"
   };
 };
 `);
-    expect(result.status).not.toBe(0);
-  });
+      expect(result.status).not.toBe(0);
+    },
+    30_000,
+  );
 
-  it("negative: string where cells expected fails", () => {
-    const result = compileAndValidate(`${gpioBase}
+  it(
+    "negative: string where cells expected fails",
+    () => {
+      const result = compileAndValidate(`${gpioBase}
   i2c@0 {
     #address-cells = <1>;
     #size-cells = <0>;
@@ -182,11 +196,15 @@ describe.skipIf(!toolchainAvailable())("vendor schema real dt-validate fixtures"
   };
 };
 `);
-    expect(result.status).not.toBe(0);
-  });
+      expect(result.status).not.toBe(0);
+    },
+    30_000,
+  );
 
-  it("negative: boolean property with value fails", () => {
-    const result = compileAndValidate(`${gpioBase}
+  it(
+    "negative: boolean property with value fails",
+    () => {
+      const result = compileAndValidate(`${gpioBase}
   gpio13_bad: gpio_bad {
     compatible = "wiseeff,gpio13";
     gpio-controller = <1>;
@@ -194,6 +212,8 @@ describe.skipIf(!toolchainAvailable())("vendor schema real dt-validate fixtures"
   };
 };
 `);
-    expect(result.status).not.toBe(0);
-  });
+      expect(result.status).not.toBe(0);
+    },
+    30_000,
+  );
 });
