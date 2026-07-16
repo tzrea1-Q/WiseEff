@@ -1,4 +1,5 @@
 -- Backfill Config Set manifest fields for historical config revisions.
+-- Uses pinned dts_config_revision_members (role/sort_order/file_version), never live ppf columns.
 
 alter table dts_config_revisions
   add column if not exists manifest_state text not null default 'complete';
@@ -17,65 +18,58 @@ $$;
 
 with member_ranked as (
   select
-    cr.id as config_revision_id,
+    m.config_revision_id,
     ppf.file_name,
-    ppf.config_set_role as role,
-    ppf.config_set_sort_order as sort_order,
-    count(*) filter (where ppf.config_set_role = 'base') over (partition by cr.id) as base_count
-  from dts_config_revisions cr
-  inner join dts_config_set cs on cs.id = cr.config_set_id
-  inner join project_parameter_files ppf on ppf.config_set_id = cs.id
-  where ppf.config_set_role is not null
+    m.role,
+    m.sort_order,
+    count(*) filter (where m.role = 'base') over (partition by m.config_revision_id) as base_count
+  from dts_config_revision_members m
+  inner join project_parameter_files ppf on ppf.id = m.file_id
 ),
-base_pick as (
-  select distinct on (config_revision_id)
-    config_revision_id,
-    file_name
-  from member_ranked
-  where role = 'base' and base_count = 1
-  order by config_revision_id, sort_order, file_name
-),
-overlay_pick as (
+per_revision as (
   select
     config_revision_id,
-    jsonb_agg(file_name order by sort_order, file_name) as overlays
+    max(base_count) as base_count,
+    max(case when role = 'base' and base_count = 1 then file_name end) as sole_base_file,
+    coalesce(
+      jsonb_agg(file_name order by sort_order, file_name) filter (where role = 'overlay'),
+      '[]'::jsonb
+    ) as overlay_files
   from member_ranked
-  where role = 'overlay'
   group by config_revision_id
 ),
-ambiguous as (
+overlay_order_uncertain as (
   select distinct config_revision_id
   from member_ranked
-  where base_count > 1 or base_count = 0
+  where role = 'overlay'
+  group by config_revision_id, sort_order
+  having count(*) > 1
 )
 update dts_config_revisions cr
 set
-  entry_file = coalesce(cr.entry_file, bp.file_name),
+  entry_file = coalesce(cr.entry_file, pr.sole_base_file),
   overlay_order = case
     when cr.overlay_order is not null and cr.overlay_order <> '[]'::jsonb then cr.overlay_order
-    else coalesce(op.overlays, '[]'::jsonb)
+    else pr.overlay_files
   end,
   manifest_state = case
-    when amb.config_revision_id is not null then 'needs_review'
-    when bp.file_name is null and cr.entry_file is null then 'needs_review'
+    when pr.base_count <> 1 then 'needs_review'
+    when ou.config_revision_id is not null then 'needs_review'
+    when coalesce(cr.entry_file, pr.sole_base_file) is null then 'needs_review'
+    when cr.include_search_paths is null or cr.include_search_paths = '[]'::jsonb then 'needs_review'
     else 'complete'
   end
-from base_pick bp
-full outer join overlay_pick op on op.config_revision_id = bp.config_revision_id
-left join ambiguous amb on amb.config_revision_id = coalesce(bp.config_revision_id, op.config_revision_id)
-where cr.id = coalesce(bp.config_revision_id, op.config_revision_id);
+from per_revision pr
+left join overlay_order_uncertain ou on ou.config_revision_id = pr.config_revision_id
+where cr.id = pr.config_revision_id;
 
 update dts_config_revisions cr
 set manifest_state = 'needs_review'
-where cr.entry_file is null
-  and (cr.overlay_order is null or cr.overlay_order = '[]'::jsonb)
-  and not exists (
-    select 1
-    from dts_config_set cs
-    inner join project_parameter_files ppf on ppf.config_set_id = cs.id
-    where cs.id = cr.config_set_id
-      and ppf.config_set_role is not null
-  );
+where not exists (
+  select 1
+  from dts_config_revision_members m
+  where m.config_revision_id = cr.id
+);
 
 create index if not exists dts_config_revisions_manifest_state_idx
   on dts_config_revisions (manifest_state)
