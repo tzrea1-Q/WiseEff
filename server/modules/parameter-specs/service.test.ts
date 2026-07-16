@@ -8,6 +8,8 @@ import { countOpenIdentityMappingTasksForRevision } from "../parameter-topology/
 import {
   applyDismissedSpecReview,
   applyResolvedSpecReview,
+  assertPropertyKeyMatchOrConfirmed,
+  createOrgManualParameterSpec,
   refreshConfigRevisionAfterSpecReview,
   requireOrgOrGlobalSpec,
 } from "./reviewApply";
@@ -33,6 +35,12 @@ vi.mock("./repository", () => ({
 vi.mock("./reviewApply", () => ({
   applyResolvedSpecReview: vi.fn(),
   applyDismissedSpecReview: vi.fn(),
+  assertPropertyKeyMatchOrConfirmed: vi.fn(() => ({
+    mismatchConfirmed: false,
+    taskPropertyKey: "gpio_int",
+    specPropertyKey: "gpio_int",
+  })),
+  createOrgManualParameterSpec: vi.fn(),
   parseSpecReviewEvidence: vi.fn((task: { sourceEvidence: Record<string, unknown> }) => ({
     organizationId: "org-1",
     projectId: task.sourceEvidence.projectId ?? "project-1",
@@ -367,5 +375,188 @@ describe("parameter spec review service", () => {
     });
     expect(dto.ambiguous).toBe(true);
     expect(dto.evidence).toEqual(["a", "b"]);
+    expect(dto.candidates[0]).toMatchObject({
+      id: "pspec:a",
+      propertyKey: "gpio_int",
+      driverModule: "a",
+    });
+  });
+
+  it("resolveSpecReviewTask rejects property key mismatch without confirmPropertyMismatch", async () => {
+    vi.mocked(lockOpenSpecReviewTask).mockResolvedValue(openTask);
+    vi.mocked(requireOrgOrGlobalSpec).mockResolvedValue({
+      id: "pspec:other",
+      sourceKind: "manual",
+      specificationKey: "manual/other_key",
+      propertyKey: "other_key",
+      driverModule: "manual",
+      lifecycle: "active",
+      currentVersionId: "ver-other",
+      currentVersion: 1,
+      displayName: null,
+      description: null,
+      valueShape: null,
+      schemaDefault: null,
+      exampleValue: null,
+      schemaNamespace: "manual",
+      units: null,
+      constraints: null,
+      documentation: null,
+      compatiblePatterns: null,
+      policyTarget: null,
+    });
+    vi.mocked(assertPropertyKeyMatchOrConfirmed).mockImplementation(() => {
+      throw new ApiError("CONFLICT", "Selected parameter spec property key does not match the review task.", 409, {
+        taskPropertyKey: "gpio_int",
+        specPropertyKey: "other_key",
+        confirmRequired: true,
+      });
+    });
+
+    await expect(
+      resolveSpecReviewTask(makeDb(), makeAuth(), {
+        taskId: "task-1",
+        decision: "resolved",
+        parameterSpecId: "pspec:other",
+        reason: "forced mismatch",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+    expect(applyResolvedSpecReview).not.toHaveBeenCalled();
+    expect(writeGovernanceAudit).not.toHaveBeenCalled();
+  });
+
+  it("resolveSpecReviewTask audits confirmed property key mismatch", async () => {
+    vi.mocked(lockOpenSpecReviewTask).mockResolvedValue(openTask);
+    vi.mocked(requireOrgOrGlobalSpec).mockResolvedValue({
+      id: "pspec:other",
+      sourceKind: "manual",
+      specificationKey: "manual/other_key",
+      propertyKey: "other_key",
+      driverModule: "manual",
+      lifecycle: "active",
+      currentVersionId: "ver-other",
+      currentVersion: 1,
+      displayName: null,
+      description: null,
+      valueShape: null,
+      schemaDefault: null,
+      exampleValue: null,
+      schemaNamespace: "manual",
+      units: null,
+      constraints: null,
+      documentation: null,
+      compatiblePatterns: null,
+      policyTarget: null,
+    });
+    vi.mocked(assertPropertyKeyMatchOrConfirmed).mockReturnValue({
+      mismatchConfirmed: true,
+      taskPropertyKey: "gpio_int",
+      specPropertyKey: "other_key",
+    });
+    vi.mocked(applyResolvedSpecReview).mockResolvedValue({
+      bindingId: "binding-1",
+      projectId: "project-1",
+      configRevisionId: "rev-1",
+    });
+    vi.mocked(resolveSpecReviewTaskRow).mockResolvedValue({
+      ...openTask,
+      parameterSpecId: "pspec:other",
+      status: "resolved",
+      reason: "confirmed mismatch",
+      resolvedAt: "2026-07-16T02:00:00.000Z",
+    });
+
+    await resolveSpecReviewTask(makeDb(), makeAuth(), {
+      taskId: "task-1",
+      decision: "resolved",
+      parameterSpecId: "pspec:other",
+      reason: "confirmed mismatch",
+      confirmPropertyMismatch: true,
+    });
+
+    expect(writeGovernanceAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          propertyKeyMismatchConfirmed: true,
+          taskPropertyKey: "gpio_int",
+          specPropertyKey: "other_key",
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("resolveSpecReviewTask createSpec creates manual spec and resolves unmatched task", async () => {
+    const unmatchedTask = {
+      ...openTask,
+      candidateSchemas: [],
+      sourceEvidence: {
+        ...openTask.sourceEvidence,
+        propertyKey: "mystery_prop",
+      },
+    };
+    vi.mocked(lockOpenSpecReviewTask).mockResolvedValue(unmatchedTask);
+    vi.mocked(createOrgManualParameterSpec).mockResolvedValue({
+      parameterSpecId: "pspec:org-1:manual:mystery_prop",
+      parameterSpecVersionId: "pspec:org-1:manual:mystery_prop:v1",
+      created: true,
+    });
+    vi.mocked(requireOrgOrGlobalSpec).mockResolvedValue({
+      id: "pspec:org-1:manual:mystery_prop",
+      sourceKind: "manual",
+      specificationKey: "manual/mystery_prop",
+      propertyKey: "mystery_prop",
+      driverModule: "manual",
+      lifecycle: "active",
+      currentVersionId: "pspec:org-1:manual:mystery_prop:v1",
+      currentVersion: 1,
+      displayName: null,
+      description: null,
+      valueShape: null,
+      schemaDefault: null,
+      exampleValue: null,
+      schemaNamespace: "manual",
+      units: null,
+      constraints: null,
+      documentation: null,
+      compatiblePatterns: null,
+      policyTarget: null,
+    });
+    vi.mocked(applyResolvedSpecReview).mockResolvedValue({
+      bindingId: "binding-new",
+      projectId: "project-1",
+      configRevisionId: "rev-1",
+    });
+    vi.mocked(resolveSpecReviewTaskRow).mockResolvedValue({
+      ...unmatchedTask,
+      parameterSpecId: "pspec:org-1:manual:mystery_prop",
+      status: "resolved",
+      reason: "Created from review",
+      resolvedAt: "2026-07-16T02:00:00.000Z",
+    });
+
+    await resolveSpecReviewTask(makeDb(), makeAuth(), {
+      taskId: "task-1",
+      decision: "resolved",
+      createSpec: true,
+      reason: "Created from review",
+    });
+
+    expect(createOrgManualParameterSpec).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: "org-1",
+      propertyKey: "mystery_prop",
+      driverModule: null,
+    });
+    expect(writeGovernanceAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({ createdSpec: true }),
+      }),
+      expect.anything(),
+    );
   });
 });

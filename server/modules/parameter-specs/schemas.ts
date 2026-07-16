@@ -58,7 +58,9 @@ export const listSpecReviewTasksQuerySchema = z.object({
 
 export const parameterSpecReviewCandidateDtoSchema = z.object({
   id: nonEmptyString,
-  label: nonEmptyString
+  label: nonEmptyString,
+  propertyKey: z.string().nullable().optional(),
+  driverModule: z.string().nullable().optional()
 });
 
 export const parameterSpecReviewTaskDtoSchema = z.object({
@@ -80,15 +82,26 @@ export const resolveSpecReviewTaskBodySchema = z
   .object({
     decision: z.enum(["resolved", "dismissed"]),
     parameterSpecId: nonEmptyString.optional(),
-    reason: nonEmptyString
+    reason: nonEmptyString,
+    confirmPropertyMismatch: z.boolean().optional(),
+    createSpec: z.boolean().optional()
   })
   .superRefine((value, ctx) => {
-    if (value.decision === "resolved" && !value.parameterSpecId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "parameterSpecId is required when resolving a review task.",
-        path: ["parameterSpecId"]
-      });
+    if (value.decision === "resolved") {
+      if (!value.parameterSpecId && !value.createSpec) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "parameterSpecId or createSpec is required when resolving a review task.",
+          path: ["parameterSpecId"]
+        });
+      }
+      if (value.parameterSpecId && value.createSpec) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Provide parameterSpecId or createSpec, not both.",
+          path: ["createSpec"]
+        });
+      }
     }
   });
 

@@ -207,6 +207,57 @@ describe("parameter semantic v2 routes", () => {
     );
   });
 
+  it("POST resolve forwards confirmPropertyMismatch and createSpec to service", async () => {
+    vi.mocked(specService.resolveSpecReviewTask).mockResolvedValue({
+      id: "task-1",
+      status: "resolved",
+      parameterSpecId: "spec-new",
+      reason: "Created"
+    });
+
+    const response = await requestJson(
+      makeServer({ db: makeDb(), auth: makeAdminAuth() }),
+      "/api/v2/parameter-spec-review-tasks/task-1/resolve",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          decision: "resolved",
+          createSpec: true,
+          reason: "Created manual spec",
+          confirmPropertyMismatch: true
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(specService.resolveSpecReviewTask).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        taskId: "task-1",
+        decision: "resolved",
+        createSpec: true,
+        confirmPropertyMismatch: true,
+        reason: "Created manual spec"
+      }),
+      expect.anything()
+    );
+  });
+
+  it("POST resolve rejects resolved body without parameterSpecId or createSpec", async () => {
+    const response = await requestJson(
+      makeServer({ db: makeDb(), auth: makeAdminAuth() }),
+      "/api/v2/parameter-spec-review-tasks/task-1/resolve",
+      {
+        method: "POST",
+        body: JSON.stringify({ decision: "resolved", reason: "missing spec id" })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(specService.resolveSpecReviewTask).not.toHaveBeenCalled();
+  });
+
   it("GET topology lets viewers read source and effective views", async () => {
     vi.mocked(topologyService.getTopology).mockResolvedValue({
       view: "effective",

@@ -8,6 +8,8 @@ import { countOpenIdentityMappingTasksForRevision } from "../parameter-topology/
 import {
   applyDismissedSpecReview,
   applyResolvedSpecReview,
+  assertPropertyKeyMatchOrConfirmed,
+  createOrgManualParameterSpec,
   parseSpecReviewEvidence,
   refreshConfigRevisionAfterSpecReview,
   requireOrgOrGlobalSpec,
@@ -89,9 +91,17 @@ export function toReviewTaskDto(task: PersistedSpecReviewTask): ParameterSpecRev
       const candidate = asRecord(raw);
       const id = resolveCandidateSpecId(candidate);
       if (!id) return null;
-      return { id, label: candidateLabel(candidate, id) };
+      return {
+        id,
+        label: candidateLabel(candidate, id),
+        propertyKey: asString(candidate.propertyKey),
+        driverModule: asString(candidate.schemaNamespace),
+      };
     })
-    .filter((item): item is { id: string; label: string } => item != null);
+    .filter(
+      (item): item is { id: string; label: string; propertyKey: string | null; driverModule: string | null } =>
+        item != null,
+    );
 
   const firstCandidate = asRecord(task.candidateSchemas[0] ?? {});
   const driverModule = asString(firstCandidate.schemaNamespace);
@@ -271,8 +281,45 @@ export async function resolveSpecReviewTask(
 
     let applied: { projectId: string; configRevisionId: string; bindingId?: string };
     let parameterSpecId = input.parameterSpecId;
+    let createdSpec = false;
+    let propertyKeyMismatchConfirmed = false;
+    let mismatchKeys: { taskPropertyKey: string | null; specPropertyKey: string | null } = {
+      taskPropertyKey: null,
+      specPropertyKey: null,
+    };
 
     if (input.decision === "resolved") {
+      if (input.createSpec) {
+        if (locked.candidateSchemas.length > 0) {
+          throw new ApiError(
+            "VALIDATION_FAILED",
+            "Cannot create a new spec when review task candidates exist; select from the library.",
+            400,
+            { taskId: input.taskId },
+          );
+        }
+        const evidence = parseSpecReviewEvidence(locked);
+        const taskPropertyKey = evidence.propertyKey;
+        if (!taskPropertyKey) {
+          throw new ApiError(
+            "VALIDATION_FAILED",
+            "Review task evidence is missing propertyKey required to create a spec.",
+            400,
+            { taskId: input.taskId },
+          );
+        }
+        const driverModule =
+          asString(asRecord(locked.sourceEvidence).driverModule) ??
+          asString(asRecord(locked.candidateSchemas[0] ?? {}).schemaNamespace);
+        const created = await createOrgManualParameterSpec(tx, {
+          organizationId: auth.organization.id,
+          propertyKey: taskPropertyKey,
+          driverModule,
+        });
+        parameterSpecId = created.parameterSpecId;
+        createdSpec = created.created;
+      }
+
       if (!parameterSpecId) {
         throw new ApiError("VALIDATION_FAILED", "parameterSpecId is required when resolving a review task.", 400);
       }
@@ -280,6 +327,16 @@ export async function resolveSpecReviewTask(
         organizationId: auth.organization.id,
         parameterSpecId,
       });
+      const mismatch = assertPropertyKeyMatchOrConfirmed(
+        locked,
+        allowedSpec,
+        input.confirmPropertyMismatch,
+      );
+      propertyKeyMismatchConfirmed = mismatch.mismatchConfirmed;
+      mismatchKeys = {
+        taskPropertyKey: mismatch.taskPropertyKey,
+        specPropertyKey: mismatch.specPropertyKey,
+      };
       const result = await applyResolvedSpecReview(tx, {
         task: locked,
         organizationId: auth.organization.id,
@@ -321,6 +378,10 @@ export async function resolveSpecReviewTask(
           logicalNodeId: parseSpecReviewEvidence(locked).logicalNodeId,
           bindingId: applied.bindingId ?? null,
           failClosedDismiss: input.decision === "dismissed",
+          createdSpec,
+          propertyKeyMismatchConfirmed,
+          taskPropertyKey: mismatchKeys.taskPropertyKey,
+          specPropertyKey: mismatchKeys.specPropertyKey,
         },
       },
       context,
@@ -341,6 +402,7 @@ export async function resolveSpecReviewTask(
 
     const openReviewsRemaining = await countOpenSpecReviewTasksForRevision(tx, {
       organizationId: auth.organization.id,
+      projectId: applied.projectId,
       configRevisionId: applied.configRevisionId,
     });
     const openMappingsRemaining = await countOpenIdentityMappingTasksForRevision(tx, {

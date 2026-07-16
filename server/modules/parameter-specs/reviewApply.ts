@@ -11,6 +11,7 @@ import {
   upsertOccurrenceSpecDecision,
   upsertMatcherOverride,
   type PersistedSpecReviewTask,
+  type ParameterSpecDetailRow,
 } from "./repository";
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -327,4 +328,104 @@ export async function requireOrgOrGlobalSpec(
     );
   }
   return allowedSpec;
+}
+
+/** Fail closed when task property key differs from selected spec unless explicitly confirmed. */
+export function assertPropertyKeyMatchOrConfirmed(
+  task: PersistedSpecReviewTask,
+  spec: Pick<ParameterSpecDetailRow, "propertyKey">,
+  confirmPropertyMismatch?: boolean,
+): { mismatchConfirmed: boolean; taskPropertyKey: string | null; specPropertyKey: string | null } {
+  const taskPropertyKey = parseSpecReviewEvidence(task).propertyKey;
+  const specPropertyKey = spec.propertyKey;
+  if (taskPropertyKey && specPropertyKey && taskPropertyKey !== specPropertyKey) {
+    if (!confirmPropertyMismatch) {
+      throw new ApiError(
+        "CONFLICT",
+        "Selected parameter spec property key does not match the review task.",
+        409,
+        {
+          taskPropertyKey,
+          specPropertyKey,
+          confirmRequired: true,
+        },
+      );
+    }
+    return { mismatchConfirmed: true, taskPropertyKey, specPropertyKey };
+  }
+  return { mismatchConfirmed: false, taskPropertyKey, specPropertyKey };
+}
+
+/**
+ * Create an org-owned manual parameter spec for unmatched review resolution.
+ * Reuses an existing org spec when the stable id already exists.
+ */
+export async function createOrgManualParameterSpec(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    propertyKey: string;
+    driverModule: string | null;
+  },
+): Promise<{ parameterSpecId: string; parameterSpecVersionId: string; created: boolean }> {
+  const schemaNamespace = input.driverModule ?? "manual";
+  const specificationKey = `${schemaNamespace}/${input.propertyKey}`;
+  const parameterSpecId = `pspec:${input.organizationId}:${schemaNamespace}:${input.propertyKey}`;
+  const parameterSpecVersionId = `${parameterSpecId}:v1`;
+  const dtsPropertySpecId = `dps:${parameterSpecId}`;
+
+  const existing = await getParameterSpecRow(db, {
+    organizationId: input.organizationId,
+    specId: parameterSpecId,
+  });
+  if (existing?.currentVersionId) {
+    return {
+      parameterSpecId,
+      parameterSpecVersionId: existing.currentVersionId,
+      created: false,
+    };
+  }
+
+  await db.query(
+    `
+    insert into parameter_specs (id, organization_id, source_kind, specification_key)
+    values ($1, $2, 'manual', $3)
+    on conflict (id) do nothing
+    `,
+    [parameterSpecId, input.organizationId, specificationKey],
+  );
+  await db.query(
+    `
+    insert into parameter_spec_versions (
+      id, parameter_spec_id, version, display_name, description, value_shape,
+      schema_default, example_value, lifecycle
+    ) values ($1, $2, 1, $3, $4, $5::jsonb, null, null, 'active')
+    on conflict (id) do nothing
+    `,
+    [
+      parameterSpecVersionId,
+      parameterSpecId,
+      input.propertyKey,
+      `Manual spec created from review for ${input.propertyKey}`,
+      JSON.stringify({ kind: "unknown" }),
+    ],
+  );
+  await db.query(
+    `
+    insert into dts_property_specs (
+      id, parameter_spec_id, driver_schema_id, property_key, schema_namespace,
+      units, constraints, documentation
+    ) values ($1, $2, null, $3, $4, null, '{}'::jsonb, $5)
+    on conflict (id) do nothing
+    `,
+    [
+      dtsPropertySpecId,
+      parameterSpecId,
+      input.propertyKey,
+      schemaNamespace,
+      `Created from unmatched spec review for ${input.propertyKey}`,
+    ],
+  );
+
+  return { parameterSpecId, parameterSpecVersionId, created: true };
 }
