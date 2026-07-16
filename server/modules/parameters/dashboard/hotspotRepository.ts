@@ -1,5 +1,14 @@
 import type { Database } from "../../../shared/database/client";
+import { mustUseSemanticParameterIdentity } from "../semanticParameterReads";
+import {
+  SEMANTIC_ACTIVE_SPEC_VERSION_LATERAL,
+  SEMANTIC_BINDING_ORG_SCOPE,
+  SEMANTIC_IDENTITY_SQL,
+  SEMANTIC_MODULE_EXPR,
+  SEMANTIC_TITLE_EXPR
+} from "../semanticParameterIdentityNames";
 import type { HotspotDimension } from "../../../../src/domain/parameters/dashboardTypes";
+import { aggregateHotspotGroupsLegacy } from "./legacyDashboardAdapter";
 
 export type HotspotGroupAggregate = {
   groupId: string;
@@ -32,18 +41,6 @@ type AggregateInput = {
   windowEnd: string;
 };
 
-const DRIFT_EXPR = `
-  case
-    when ppv.current_value ~ '^-?[0-9.]+$' and ppv.recommended_value ~ '^-?[0-9.]+$' then
-      abs(ppv.current_value::numeric - ppv.recommended_value::numeric)
-      / greatest(abs(ppv.current_value::numeric), abs(ppv.recommended_value::numeric), 1)
-      * 100
-    else 0
-  end
-`;
-
-const RISK_WEIGHT_EXPR = `case d.risk when 'High' then 3 when 'Medium' then 2 else 1 end`;
-
 type RawRow = {
   group_id: string;
   kind: string;
@@ -59,31 +56,6 @@ type RawRow = {
   drift_sum: string;
   last_changed_at: Date | null;
 };
-
-function mapLegacyRow(row: RawRow): HotspotGroupAggregate {
-  return {
-    groupId: row.group_id,
-    kind: row.kind as HotspotGroupAggregate["kind"],
-    title: row.title,
-    projectId: row.project_id ?? undefined,
-    projectCode: row.project_code,
-    module: row.module,
-    parameterCount: Number(row.parameter_count),
-    definitionCount: Number(row.definition_count),
-    relatedRequestCount: Number(row.related_request_count),
-    highRiskCount: Number(row.high_risk_count),
-    riskWeightSum: Number(row.risk_weight_sum),
-    driftSum: Number(row.drift_sum),
-    logSignalCount: 0,
-    lastChangedAt: row.last_changed_at ? new Date(row.last_changed_at).toISOString() : undefined,
-    historyEventsInWindow: 0,
-    modifiedParamCount: 0,
-    openRequestCount: 0,
-    returnedInWindow: 0,
-    contributorsInWindow: 0,
-    contributorsAllTime: 0
-  };
-}
 
 type BehavioralRawRow = RawRow & {
   history_events_in_window: string;
@@ -119,7 +91,7 @@ function mapBehavioralRow(row: BehavioralRawRow, kind: "project" | "module" | "p
   };
 }
 
-async function aggregateProjectGroups(db: Database, input: AggregateInput): Promise<HotspotGroupAggregate[]> {
+async function aggregateProjectGroupsSemantic(db: Database, input: AggregateInput): Promise<HotspotGroupAggregate[]> {
   const projectFilter = input.projectId ? "and p.id = $4" : "";
   const args = input.projectId
     ? [input.organizationId, input.windowStart, input.windowEnd, input.projectId]
@@ -133,8 +105,8 @@ async function aggregateProjectGroups(db: Database, input: AggregateInput): Prom
       p.id as project_id,
       p.code as project_code,
       '项目参数' as module,
-      count(distinct ppv.id) as parameter_count,
-      count(distinct d.id) as definition_count,
+      count(distinct b.id) as parameter_count,
+      count(distinct ps.id) as definition_count,
       count(distinct cr.id) filter (
         where cr.created_at >= $2 and cr.created_at < $3
       ) as related_request_count,
@@ -148,9 +120,9 @@ async function aggregateProjectGroups(db: Database, input: AggregateInput): Prom
         when exists (
           select 1
           from parameter_history_entries h_mod
-          where h_mod.project_parameter_value_id = ppv.id
+          where h_mod.project_parameter_binding_id = b.id
             and h_mod.version > 1
-        ) then d.id
+        ) then ps.id
       end) as modified_param_count,
       count(distinct cr.id) filter (
         where cr.status in ('submitted', 'hardware_review', 'software_review', 'software_merge')
@@ -170,16 +142,18 @@ async function aggregateProjectGroups(db: Database, input: AggregateInput): Prom
       ) as contributors_all_time,
       max(h.changed_at) as last_changed_at
     from projects p
-    join project_parameter_values ppv on ppv.project_id = p.id
-    join parameter_definitions d on d.id = ppv.parameter_definition_id
+    join ${SEMANTIC_IDENTITY_SQL.bindingsTable} b on b.project_id = p.id
+    join ${SEMANTIC_IDENTITY_SQL.specsTable} ps on ps.id = b.parameter_spec_id
+    ${SEMANTIC_ACTIVE_SPEC_VERSION_LATERAL}
+    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
     left join parameter_change_requests cr
       on cr.organization_id = p.organization_id
      and cr.project_id = p.id
-     and cr.parameter_definition_id = d.id
+     and cr.project_parameter_binding_id = b.id
     left join parameter_history_entries h
       on h.organization_id = p.organization_id
      and h.project_id = p.id
-     and h.parameter_definition_id = d.id
+     and h.project_parameter_binding_id = b.id
     where p.organization_id = $1 ${projectFilter}
     group by p.id, p.code
     order by p.code asc
@@ -189,22 +163,22 @@ async function aggregateProjectGroups(db: Database, input: AggregateInput): Prom
   return rows.rows.map((row) => mapBehavioralRow(row, "project"));
 }
 
-async function aggregateModuleGroups(db: Database, input: AggregateInput): Promise<HotspotGroupAggregate[]> {
-  const projectFilter = input.projectId ? "and ppv.project_id = $4" : "";
+async function aggregateModuleGroupsSemantic(db: Database, input: AggregateInput): Promise<HotspotGroupAggregate[]> {
+  const projectFilter = input.projectId ? "and b.project_id = $4" : "";
   const args = input.projectId
     ? [input.organizationId, input.windowStart, input.windowEnd, input.projectId]
     : [input.organizationId, input.windowStart, input.windowEnd];
   const rows = await db.query<BehavioralRawRow>(
     `
     select
-      d.module as group_id,
+      ${SEMANTIC_MODULE_EXPR} as group_id,
       'module' as kind,
-      d.module as title,
+      ${SEMANTIC_MODULE_EXPR} as title,
       null as project_id,
-      count(distinct ppv.project_id)::text || ' 个项目' as project_code,
-      d.module as module,
-      count(distinct ppv.id) as parameter_count,
-      count(distinct d.id) as definition_count,
+      count(distinct b.project_id)::text || ' 个项目' as project_code,
+      ${SEMANTIC_MODULE_EXPR} as module,
+      count(distinct b.id) as parameter_count,
+      count(distinct ps.id) as definition_count,
       count(distinct cr.id) filter (
         where cr.created_at >= $2 and cr.created_at < $3
       ) as related_request_count,
@@ -218,9 +192,9 @@ async function aggregateModuleGroups(db: Database, input: AggregateInput): Promi
         when exists (
           select 1
           from parameter_history_entries h_mod
-          where h_mod.project_parameter_value_id = ppv.id
+          where h_mod.project_parameter_binding_id = b.id
             and h_mod.version > 1
-        ) then d.id
+        ) then ps.id
       end) as modified_param_count,
       count(distinct cr.id) filter (
         where cr.status in ('submitted', 'hardware_review', 'software_review', 'software_merge')
@@ -239,41 +213,43 @@ async function aggregateModuleGroups(db: Database, input: AggregateInput): Promi
         where h.changed_by_user_id is not null
       ) as contributors_all_time,
       max(h.changed_at) as last_changed_at
-    from parameter_definitions d
-    join project_parameter_values ppv on ppv.parameter_definition_id = d.id
-    join projects p on p.id = ppv.project_id
+    from ${SEMANTIC_IDENTITY_SQL.bindingsTable} b
+    join ${SEMANTIC_IDENTITY_SQL.specsTable} ps on ps.id = b.parameter_spec_id
+    ${SEMANTIC_ACTIVE_SPEC_VERSION_LATERAL}
+    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    join projects p on p.id = b.project_id
     left join parameter_change_requests cr
-      on cr.organization_id = d.organization_id
-     and cr.project_id = ppv.project_id
-     and cr.parameter_definition_id = d.id
+      on cr.organization_id = b.organization_id
+     and cr.project_id = b.project_id
+     and cr.project_parameter_binding_id = b.id
     left join parameter_history_entries h
-      on h.organization_id = d.organization_id
-     and h.project_id = ppv.project_id
-     and h.parameter_definition_id = d.id
-    where d.organization_id = $1 ${projectFilter}
-    group by d.module
-    order by d.module asc
+      on h.organization_id = b.organization_id
+     and h.project_id = b.project_id
+     and h.project_parameter_binding_id = b.id
+    where b.organization_id = $1 ${projectFilter}
+    group by ${SEMANTIC_MODULE_EXPR}
+    order by ${SEMANTIC_MODULE_EXPR} asc
     `,
     args
   );
   return rows.rows.map((row) => mapBehavioralRow(row, "module"));
 }
 
-async function aggregateParameterGroups(db: Database, input: AggregateInput): Promise<HotspotGroupAggregate[]> {
-  const projectFilter = input.projectId ? "and ppv.project_id = $4" : "";
+async function aggregateParameterGroupsSemantic(db: Database, input: AggregateInput): Promise<HotspotGroupAggregate[]> {
+  const projectFilter = input.projectId ? "and b.project_id = $4" : "";
   const args = input.projectId
     ? [input.organizationId, input.windowStart, input.windowEnd, input.projectId]
     : [input.organizationId, input.windowStart, input.windowEnd];
   const rows = await db.query<BehavioralRawRow>(
     `
     select
-      d.id as group_id,
+      ps.id as group_id,
       'parameter' as kind,
-      d.name as title,
+      ${SEMANTIC_TITLE_EXPR} as title,
       null as project_id,
-      count(distinct ppv.project_id)::text || ' 个项目' as project_code,
-      d.module as module,
-      count(distinct ppv.project_id) as parameter_count,
+      count(distinct b.project_id)::text || ' 个项目' as project_code,
+      ${SEMANTIC_MODULE_EXPR} as module,
+      count(distinct b.project_id) as parameter_count,
       1 as definition_count,
       count(distinct cr.id) filter (
         where cr.created_at >= $2 and cr.created_at < $3
@@ -288,9 +264,9 @@ async function aggregateParameterGroups(db: Database, input: AggregateInput): Pr
         when exists (
           select 1
           from parameter_history_entries h_mod
-          where h_mod.project_parameter_value_id = ppv.id
+          where h_mod.project_parameter_binding_id = b.id
             and h_mod.version > 1
-        ) then ppv.project_id
+        ) then b.project_id
       end) as modified_param_count,
       count(distinct cr.id) filter (
         where cr.status in ('submitted', 'hardware_review', 'software_review', 'software_merge')
@@ -309,33 +285,45 @@ async function aggregateParameterGroups(db: Database, input: AggregateInput): Pr
         where h.changed_by_user_id is not null
       ) as contributors_all_time,
       max(h.changed_at) as last_changed_at
-    from parameter_definitions d
-    join project_parameter_values ppv on ppv.parameter_definition_id = d.id
-    join projects p on p.id = ppv.project_id
+    from ${SEMANTIC_IDENTITY_SQL.bindingsTable} b
+    join ${SEMANTIC_IDENTITY_SQL.specsTable} ps on ps.id = b.parameter_spec_id
+    ${SEMANTIC_ACTIVE_SPEC_VERSION_LATERAL}
+    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    join projects p on p.id = b.project_id
     left join parameter_change_requests cr
-      on cr.organization_id = d.organization_id
-     and cr.project_id = ppv.project_id
-     and cr.parameter_definition_id = d.id
+      on cr.organization_id = b.organization_id
+     and cr.project_id = b.project_id
+     and cr.project_parameter_binding_id = b.id
     left join parameter_history_entries h
-      on h.organization_id = d.organization_id
-     and h.project_id = ppv.project_id
-     and h.parameter_definition_id = d.id
-    where d.organization_id = $1 ${projectFilter}
-    group by d.id, d.name, d.module
-    order by d.name asc
+      on h.organization_id = b.organization_id
+     and h.project_id = b.project_id
+     and h.project_parameter_binding_id = b.id
+    where ${SEMANTIC_BINDING_ORG_SCOPE} ${projectFilter}
+    group by ps.id, ${SEMANTIC_TITLE_EXPR}, ${SEMANTIC_MODULE_EXPR}
+    order by ${SEMANTIC_TITLE_EXPR} asc
     `,
     args
   );
   return rows.rows.map((row) => mapBehavioralRow(row, "parameter"));
 }
 
-export async function aggregateHotspotGroups(db: Database, input: AggregateInput): Promise<HotspotGroupAggregate[]> {
+async function aggregateHotspotGroupsSemantic(
+  db: Database,
+  input: AggregateInput
+): Promise<HotspotGroupAggregate[]> {
   switch (input.dimension) {
     case "project":
-      return aggregateProjectGroups(db, input);
+      return aggregateProjectGroupsSemantic(db, input);
     case "module":
-      return aggregateModuleGroups(db, input);
+      return aggregateModuleGroupsSemantic(db, input);
     case "parameter":
-      return aggregateParameterGroups(db, input);
+      return aggregateParameterGroupsSemantic(db, input);
   }
+}
+
+export async function aggregateHotspotGroups(db: Database, input: AggregateInput): Promise<HotspotGroupAggregate[]> {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    return aggregateHotspotGroupsSemantic(db, input);
+  }
+  return aggregateHotspotGroupsLegacy(db, input);
 }

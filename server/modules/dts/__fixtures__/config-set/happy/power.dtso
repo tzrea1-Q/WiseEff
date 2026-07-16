@@ -1,0 +1,5 @@
+/plugin/;
+
+&sc8562 {
+	gpio_int = <&gpio13 29 0>;
+};

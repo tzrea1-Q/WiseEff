@@ -71,7 +71,7 @@ Evidence must show:
 - snapshot presence from the governed write path,
 - audit events for target detect, session create, node read, node write, and snapshot rollback,
 - rollback result and final restoration equality,
-- browser screenshot, `test-results/acceptance/operation-evidence/...json`, and `playwright-report/acceptance/index.html` locations.
+- browser screenshot, `test-results/acceptance-operation-evidence/...json`, and `playwright-report/acceptance/index.html` locations.
 
 ## Safety Notes
 

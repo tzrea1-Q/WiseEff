@@ -367,4 +367,44 @@ describe("runValidationGate", () => {
       )
     ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
   });
+
+  it("rejects empty config sets on the release/baseline path", async () => {
+    const { db, txCalls } = createFakeDb([
+      [configSetRow()],
+      [], // no members
+      []
+    ]);
+
+    await expect(
+      runValidationGate(
+        db,
+        adminAuth(),
+        { configSetId: "dcs-1", mode: "block", forRelease: true },
+        {
+          objectStore: fakeObjectStore({}),
+          toolchain: {
+            async validate() {
+              throw new Error("toolchain must not run for an empty config set");
+            },
+            async probe() {
+              return {
+                dtc: { path: null, version: null },
+                fdtoverlay: { path: null, version: null },
+                dtschema: { path: null, version: null }
+              };
+            }
+          }
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: { code: "dts-empty-config-set" }
+    });
+
+    const auditCall = findValidationGateAudit(txCalls);
+    expect(auditCall).toBeTruthy();
+    const metadata = JSON.parse(auditCall?.values[11] as string);
+    expect(metadata.ok).toBe(false);
+  });
 });

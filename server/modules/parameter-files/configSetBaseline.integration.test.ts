@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
@@ -201,7 +201,7 @@ describe.skipIf(!databaseAvailable)("DTS config set / baseline / gate integratio
     expect(comparedAfterRollback.members).toHaveLength(2);
   });
 
-  it("release gate blocks on dts errors in mode=block, then passes with requiresConfirmation in mode=warn", async () => {
+  it("release gate blocks on dts errors in mode=block, rejects warn/off for release, then passes in block mode", async () => {
     const boardUpload = await uploadProjectParameterFile(db!, objectStore, auth, {
       projectId: "project-csb-int",
       fileName: "board.dts",
@@ -249,13 +249,33 @@ describe.skipIf(!databaseAvailable)("DTS config set / baseline / gate integratio
       diagnostics: [{ file: "board.dts", line: 12, severity: "error", message: "syntax error" }]
     }));
 
-    const released = await releaseBaseline(db!, auth, baseline.id, { objectStore, validator: warnValidator });
+    vi.stubEnv("DTS_VALIDATION_MODE", "warn");
+    await expect(
+      releaseBaseline(db!, auth, baseline.id, { objectStore, validator: warnValidator })
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: { code: "dts-release-mode-required", mode: "warn" }
+    });
+    vi.unstubAllEnvs();
+
+    const passValidator = createStubDtcValidator(() => ({
+      ok: true,
+      mode: "block",
+      compiler: "dtc",
+      diagnostics: []
+    }));
+
+    const released = await releaseBaseline(db!, auth, baseline.id, {
+      objectStore,
+      validator: passValidator
+    });
 
     expect(released.baseline.status).toBe("released");
     expect(released.gate).toMatchObject({
       ok: true,
-      mode: "warn",
-      requiresConfirmation: true,
+      mode: "block",
+      requiresConfirmation: false,
       compiler: "dtc"
     });
   });

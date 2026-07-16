@@ -159,6 +159,27 @@ async function cleanupParameterFileAcceptanceArtifacts(fileName: string) {
           `,
           [versionIds]
         );
+        await client.query(
+          `
+          delete from dts_config_revision_members
+          where file_version_id = any($1::text[])
+          `,
+          [versionIds]
+        );
+        await client.query(
+          `
+          delete from dts_property_occurrences
+          where file_version_id = any($1::text[])
+          `,
+          [versionIds]
+        );
+        await client.query(
+          `
+          delete from dts_node_occurrences
+          where file_version_id = any($1::text[])
+          `,
+          [versionIds]
+        );
       }
 
       await client.query(

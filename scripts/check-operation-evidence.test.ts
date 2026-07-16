@@ -20,7 +20,7 @@ describe("operation evidence helper", () => {
 
   it("redacts token and key values from evidence notes", async () => {
     const fileName = operationEvidenceFileName("PARAM-DRAFT-EDIT-002", "redacts sensitive notes");
-    const filePath = join("test-results/acceptance/operation-evidence", fileName);
+    const filePath = join("test-results/acceptance-operation-evidence", fileName);
 
     try {
       const result = await recordOperationEvidence({
@@ -42,7 +42,7 @@ describe("operation evidence helper", () => {
 
   it("records role, route, and assertions from the operation matrix", async () => {
     const fileName = operationEvidenceFileName("PARAM-HAPPY-001", "records operation metadata");
-    const filePath = join("test-results/acceptance/operation-evidence", fileName);
+    const filePath = join("test-results/acceptance-operation-evidence", fileName);
 
     try {
       const result = await recordOperationEvidence({
@@ -422,7 +422,7 @@ describe("operation evidence checker", () => {
           role: "Hardware User",
           route: "/parameters",
           assertions: ["ui"],
-          artifacts: ["test-results/acceptance/operation-evidence/missing-artifact.png"]
+          artifacts: ["test-results/acceptance-operation-evidence/missing-artifact.png"]
         }
       ]
     });
@@ -445,7 +445,7 @@ describe("operation evidence checker", () => {
           role: "Hardware User",
           route: "/parameters",
           assertions: ["ui", "api"],
-          artifacts: ["test-results/acceptance/operation-evidence/example.png"]
+          artifacts: ["test-results/acceptance-operation-evidence/example.png"]
         }
       ]
     });

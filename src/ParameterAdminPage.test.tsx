@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { TopBarActionsContext } from "./components/layout";
 import { fillPasteImportContent } from "./components/ParameterImportWizard/testHelpers";
@@ -7,9 +7,42 @@ import { ParameterAdminPage } from "./ParameterAdminPage";
 import { initialState } from "./mockData";
 import type { ParameterPageActions } from "./app/routes";
 
+const listSpecs = vi.fn();
+const getSpec = vi.fn();
+const listSpecReviewTasks = vi.fn();
+const resolveSpecReviewTask = vi.fn();
+
+vi.mock("./infrastructure/http/parameterTopologyClient", () => ({
+  createHttpParameterTopologyRepository: () => ({
+    listSpecs,
+    getSpec,
+    listSpecReviewTasks,
+    resolveSpecReviewTask,
+    listBindings: vi.fn(),
+    getTopology: vi.fn(),
+    listMappingTasks: vi.fn(),
+    resolveMapping: vi.fn(),
+    validateRevision: vi.fn(),
+    createBindingDraft: vi.fn()
+  })
+}));
+
+vi.mock("./infrastructure/http/parameterAdminClient", () => ({
+  createParameterAdminClient: () => ({
+    listModules: vi.fn().mockResolvedValue([])
+  })
+}));
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/parameter-admin");
+});
+
+beforeEach(() => {
+  listSpecs.mockReset().mockResolvedValue([]);
+  getSpec.mockReset();
+  listSpecReviewTasks.mockReset().mockResolvedValue({ items: [], nextCursor: null });
+  resolveSpecReviewTask.mockReset().mockResolvedValue(undefined);
 });
 
 function TopBarActionsHarness({ children }: { children: ReactNode }) {
@@ -122,7 +155,7 @@ describe("ParameterAdminPage", () => {
     expect(within(library).getAllByRole("button", { name: "项目参数" }).length).toBeGreaterThan(0);
   });
 
-  it("shows an empty library in API mode when runtime parameters are empty", () => {
+  it("uses the semantic spec library in API mode instead of state.parameters", async () => {
     renderPage(
       "",
       {
@@ -140,8 +173,152 @@ describe("ParameterAdminPage", () => {
       "api"
     );
 
-    expect(screen.getByText("还没有任何参数。从下方开始")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "参数规格库" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "项目共享参数库" })).not.toBeInTheDocument();
     expect(screen.queryByText(/fast_charge_current_limit_ma/)).not.toBeInTheDocument();
+    expect(screen.queryByText("还没有任何参数。从下方开始")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/没有匹配的参数规格|0 \/ 0 项/)).toBeInTheDocument();
+    });
+    expect(listSpecReviewTasks).toHaveBeenCalledWith(expect.objectContaining({ status: "open" }));
+  });
+
+  it("loads the review queue from the API and refreshes after approve", async () => {
+    listSpecReviewTasks
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: "task-1",
+            status: "open",
+            propertyKey: "gpio_int",
+            driverModule: "unknown-ic",
+            evidence: ["compatible unmatched"],
+            candidates: [
+              { id: "pspec:a", label: "vendor,sc8562 / gpio_int" },
+              { id: "pspec:b", label: "mediatek,mt5788 / gpio_int" }
+            ],
+            ambiguous: true,
+            projectCount: 2,
+            createdAt: "2026-07-16T01:00:00.000Z"
+          }
+        ],
+        nextCursor: null
+      })
+      .mockResolvedValueOnce({ items: [], nextCursor: null });
+
+    renderPage("", initialState, vi.fn(), createParameterActions(), vi.fn(), "api");
+
+    const queue = await screen.findByRole("region", { name: "规格审核队列" });
+    expect(within(queue).getByText("compatible unmatched")).toBeInTheDocument();
+
+    fireEvent.change(within(queue).getByRole("combobox", { name: "选择 Schema" }), {
+      target: { value: "pspec:b" }
+    });
+    fireEvent.change(within(queue).getByLabelText("审核原因"), {
+      target: { value: "Matched MT5788" }
+    });
+    fireEvent.click(within(queue).getByRole("button", { name: "批准" }));
+
+    await waitFor(() =>
+      expect(resolveSpecReviewTask).toHaveBeenCalledWith("task-1", {
+        decision: "resolved",
+        parameterSpecId: "pspec:b",
+        reason: "Matched MT5788"
+      })
+    );
+    await waitFor(() => expect(listSpecReviewTasks).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(listSpecs).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(within(queue).getByText("没有待审核的推理规格。")).toBeInTheDocument());
+  });
+
+  it("creates a new spec for unmatched review tasks via createSpec resolve", async () => {
+    listSpecReviewTasks
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: "task-unmatched",
+            status: "open",
+            propertyKey: "mystery_prop",
+            driverModule: null,
+            evidence: ["no schema match"],
+            candidates: [],
+            ambiguous: false,
+            projectCount: 1,
+            createdAt: "2026-07-16T01:00:00.000Z"
+          }
+        ],
+        nextCursor: null
+      })
+      .mockResolvedValueOnce({ items: [], nextCursor: null });
+
+    renderPage("", initialState, vi.fn(), createParameterActions(), vi.fn(), "api");
+
+    const queue = await screen.findByRole("region", { name: "规格审核队列" });
+    fireEvent.change(within(queue).getByLabelText("审核原因"), {
+      target: { value: "New manual spec from review" }
+    });
+    fireEvent.click(within(queue).getByRole("button", { name: "创建新规格" }));
+
+    await waitFor(() =>
+      expect(resolveSpecReviewTask).toHaveBeenCalledWith("task-unmatched", {
+        decision: "resolved",
+        createSpec: true,
+        reason: "New manual spec from review"
+      })
+    );
+    await waitFor(() => expect(screen.getByText(/已创建并绑定规格/)).toBeInTheDocument());
+  });
+
+  it("passes confirmPropertyMismatch when approving a library schema with different property key", async () => {
+    listSpecReviewTasks.mockResolvedValueOnce({
+      items: [
+        {
+          id: "task-mismatch",
+          status: "open",
+          propertyKey: "gpio_int",
+          driverModule: "vendor,sc8562",
+          evidence: ["library mismatch"],
+          candidates: [],
+          ambiguous: false,
+          projectCount: 1,
+          createdAt: "2026-07-16T01:00:00.000Z"
+        }
+      ],
+      nextCursor: null
+    });
+    listSpecs.mockResolvedValueOnce([
+      {
+        id: "pspec:other",
+        sourceKind: "manual",
+        specificationKey: "manual/other_key",
+        propertyKey: "other_key",
+        driverModule: "manual",
+        lifecycle: "active",
+        currentVersionId: "ver-1",
+        currentVersion: 1
+      }
+    ]);
+
+    renderPage("", initialState, vi.fn(), createParameterActions(), vi.fn(), "api");
+
+    const queue = await screen.findByRole("region", { name: "规格审核队列" });
+    fireEvent.change(within(queue).getByRole("combobox", { name: "选择 Schema" }), {
+      target: { value: "pspec:other" }
+    });
+    fireEvent.change(within(queue).getByLabelText("审核原因"), {
+      target: { value: "Confirmed cross-key bind" }
+    });
+    fireEvent.click(within(queue).getByLabelText(/高风险/));
+    fireEvent.click(within(queue).getByRole("button", { name: "批准" }));
+
+    await waitFor(() =>
+      expect(resolveSpecReviewTask).toHaveBeenCalledWith("task-mismatch", {
+        decision: "resolved",
+        parameterSpecId: "pspec:other",
+        reason: "Confirmed cross-key bind",
+        confirmPropertyMismatch: true
+      })
+    );
   });
 
   it("opens definition and values dialogs from row actions", () => {

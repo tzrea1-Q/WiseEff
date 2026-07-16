@@ -84,7 +84,7 @@ export type EvaluateOperationEvidenceInput = {
   records: OperationEvidenceRecord[];
 };
 
-const defaultEvidenceRoot = "test-results/acceptance/operation-evidence";
+const defaultEvidenceRoot = "test-results/acceptance-operation-evidence";
 const defaultMarkdownOut = "docs/generated/acceptance-operation-evidence.md";
 const defaultJsonOut = "docs/generated/acceptance-operation-evidence/index.json";
 const requiredPriorities = new Set(["P0", "P1"]);

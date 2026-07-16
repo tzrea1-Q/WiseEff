@@ -60,3 +60,27 @@ npm run build
 ```
 
 These tests cover AG-UI endpoint wiring, read-only perception tools, mutating action approval/resume, LangGraph planning/checkpoint behavior, safe readiness evidence, and the existing WiseEff approval boundary for mutating tool plans. Set `XIAOZE_DETERMINISTIC=true` for offline acceptance without live `AGENT_API_*` values.
+
+## Parameter Topology (round 4)
+
+Round 4 closes parent-agent review blockers on branch `fix/parameter-topology-round4-review-blockers`. **TD-042 remains a BLOCKER** — these gates prove local/temp-DB behavior, not production cutover readiness.
+
+| Area | Tests / command | Proves |
+| --- | --- | --- |
+| Vendor dt-schema | `server/modules/dts/goldenPowerFixture.test.ts`, `scripts/vendorDtSchemaGenerator.test.ts` | Deterministic linux-bindings from property specs; golden DTBs pass real `dt-validate`; negative fixtures fail with expected diagnostics |
+| Golden counts | `goldenPowerFixture.test.ts` (173 properties), `seedM1DtsFiles.test.ts` (519 `dts_properties`), `matcher.test.ts`, `ingestService.test.ts` | Locked **173/519** topology/seed counts |
+| Stage → finalize | `server/modules/parameter-topology/migration.test.ts` (temp PostgreSQL, reconnect, inject-fail) | Durable `stage-review` transaction; atomic `finalize`; cutover rejects non-`finalized` runs |
+| Exact writeback | `server/modules/parameter-topology/editService.test.ts`, merge workflow tests | Occurrence-locked merge/writeback; immutable base; stale identity → `409` |
+| Matcher / review scope | `server/modules/parameter-specs/matcher.test.ts`, `matcherScope.integration.test.ts` | Override isolation by node locator fingerprint; `blocker_scope` honored on validate/release |
+| Manifest gates | `server/modules/parameter-topology/manifestBackfillMigration.test.ts`, `configRevisionManifest.test.ts`, `editService` needs_review paths | Backfill from `dts_config_revision_members`; `needs_review` fail-closed on edit/validate/release/writeback |
+| Global-spec hotspots | `server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts` | Tenant projects include `organization_id IS NULL` vendor specs |
+| Unmatched review | `server/modules/parameter-specs/service.test.ts`, `routes.test.ts` | `createSpec` + `confirmPropertyMismatch` with governance audit |
+| Browser acceptance | `e2e/acceptance/parameter-topology.acceptance.spec.ts` | `PARAM-SPEC-GOVERN-001` through `PARAM-CONFIG-PUBLISH-GATE-001`; no teaching fallback in API mode |
+
+Toolchain gate before topology release work:
+
+```bash
+PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dts:toolchain:check
+PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
+npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameter-topology/migration.test.ts server/modules/parameter-specs/matcherScope.integration.test.ts --run
+```

@@ -104,12 +104,13 @@ describe("parameter routes", () => {
       organizationId: "org-1",
       projectId: "aurora",
       risk: "High",
-      q: "charge"
+      q: "charge",
+      limit: 500
     });
 
     const response = await requestJson(
       makeServer({ db }),
-      "/api/v1/parameters?projectId=aurora&risk=High&q=charge"
+      "/api/v1/parameters?projectId=aurora&risk=High&q=charge&limit=500"
     );
 
     expect(response.status).toBe(200);
@@ -117,13 +118,15 @@ describe("parameter routes", () => {
     expect(service.resolveParameterListQuery).toHaveBeenCalledWith(db, "org-1", {
       projectId: "aurora",
       risk: "High",
-      q: "charge"
+      q: "charge",
+      limit: 500
     });
     expect(repository.listParameters).toHaveBeenCalledWith(db, {
       organizationId: "org-1",
       projectId: "aurora",
       risk: "High",
-      q: "charge"
+      q: "charge",
+      limit: 500
     });
   });
 

@@ -1,0 +1,29 @@
+$id: wiseeff/arm-amba-bus.yaml
+title: arm,amba-bus
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/arm,amba-bus
+compatible:
+  - arm,amba-bus
+properties:
+  '#address-cells':
+    valueShape: u32-array
+    exampleValue: <2>
+    constraints: {}
+  '#size-cells':
+    valueShape: u32-array
+    exampleValue: <2>
+    constraints: {}
+  compatible:
+    valueShape: string-list
+    exampleValue: '"arm,amba-bus"'
+    constraints: {}
+  interrupt-parent:
+    valueShape: phandle-list
+    exampleValue: <&gic>
+    constraints: {}
+  ranges:
+    valueShape: empty
+    exampleValue: ''
+    constraints: {}

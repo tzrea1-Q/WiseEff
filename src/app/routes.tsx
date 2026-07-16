@@ -162,6 +162,7 @@ export function PageRouter({
           canEdit={canEditParameters}
           initializationStatus={activeProjectInitializationStatus}
           topBarProjectId={TopBarProjectId ?? effectiveParametersProjectId}
+          runtimeMode={runtimeMode}
         />
       );
     case "parameter-submissions":

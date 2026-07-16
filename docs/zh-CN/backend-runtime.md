@@ -8,6 +8,8 @@ WiseEff 后端是 TypeScript 模块化单体。M0-M5 已包括 auth、audit、pa
 
 ```bash
 npm ci
+npm run dtc:bootstrap
+npm run dtc:check -- --required
 npm run db:migrate
 npm run db:seed:m0
 npm run db:seed:m1
@@ -62,7 +64,7 @@ npm run db:migrate
 seed 命令按阶段组织：
 
 - `db:seed:m0`：基础组织、用户、项目。
-- `db:seed:m1`：参数管理样例数据。
+- `db:seed:m1`：参数管理全量样例数据；先真实编译三项目 DTS，再写入 170 个来源参数、510 个项目值、结构化文件和 seed baseline。
 - `db:seed:m2`：日志分析样例数据。
 - `db:seed:m3`：调试设备和参数 catalog。
 

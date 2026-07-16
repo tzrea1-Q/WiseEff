@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import type { CreateAuditEventInput } from "../audit/types";
+import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
 import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
 import { createDebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import { createDebuggingService } from "./service";
@@ -30,6 +31,13 @@ function createFakeDb(results: QueuedResult[] = []) {
 
   const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
     const call = { text, values };
+    // Cutover probes must not consume the queued fixture rows.
+    if (text.includes("parameter_identity_cutovers")) {
+      return { rows: [{ c: "0" } as Row], rowCount: 1 };
+    }
+    if (text.includes("information_schema.tables") && text.includes("parameter_definitions")) {
+      return { rows: [{ c: "1" } as Row], rowCount: 1 };
+    }
     target.push(call);
     if (text.includes("debug_device_leases")) {
       const leaseResultIndex = results.findIndex((result) => typeof result === "function" && result.debugDeviceLease);
@@ -369,6 +377,10 @@ const multiProjectReadAuth = makeAuth(["debugging:view", "debugging:read"], [
 ]);
 
 describe("debugging service", () => {
+  beforeEach(() => {
+    resetParameterIdentityCutoverCache();
+  });
+
   it("listAdminParameters requires debugging:admin, includes archived rows, and returns bindings", async () => {
     const { db, calls } = createFakeDb([
       [parameterRow({ id: "param-1", enabled: false, archived_at: "2026-06-22T12:00:00.000Z" })],

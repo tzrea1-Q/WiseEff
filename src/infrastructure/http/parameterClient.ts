@@ -8,7 +8,7 @@ import type {
   ReviewParameterChangeInput,
   SubmissionRoundListQuery
 } from "@/application/ports/ParameterRepository";
-import { createApiClient } from "./apiClient";
+import { createApiClient, WiseEffApiError } from "./apiClient";
 import {
   changeRequestFromDto,
   importBatchFromDto,
@@ -63,6 +63,7 @@ function buildParametersPath(query?: ParameterListQuery) {
   if (query?.module) params.set("module", query.module);
   if (query?.includeDescendants === false) params.set("includeDescendants", "false");
   for (const risk of query?.risk ?? []) params.append("risk", risk);
+  if (query?.limit !== undefined) params.set("limit", String(query.limit));
   return appendQuery("/api/v1/parameters", params);
 }
 
@@ -117,8 +118,31 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
       return response.items.map(parameterRecordFromDto);
     },
     async getParameter(parameterId: string) {
-      const response = await apiClient.get<ItemEnvelope<ParameterRecordDto>>(`/api/v1/parameters/${encodeURIComponent(parameterId)}`);
-      return parameterRecordFromDto(response.item);
+      try {
+        const response = await apiClient.get<ItemEnvelope<ParameterRecordDto>>(
+          `/api/v1/parameters/${encodeURIComponent(parameterId)}`
+        );
+        return parameterRecordFromDto(response.item);
+      } catch (error) {
+        if (
+          error instanceof WiseEffApiError &&
+          error.code === "GONE" &&
+          (error.message === "legacy-parameter-id-retired" ||
+            error.details?.diagnostic === "legacy-parameter-id-retired")
+        ) {
+          throw new WiseEffApiError(
+            "GONE",
+            "legacy-parameter-id-retired",
+            {
+              ...error.details,
+              diagnostic: "legacy-parameter-id-retired",
+              migrationEvidenceId: error.details?.migrationEvidenceId
+            },
+            error.requestId
+          );
+        }
+        throw error;
+      }
     },
     async listParameterHistory(parameterId: string) {
       const response = await apiClient.get<ItemsEnvelope<ParameterHistoryEntryDto>>(`/api/v1/parameters/${encodeURIComponent(parameterId)}/history`);

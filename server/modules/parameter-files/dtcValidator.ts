@@ -186,12 +186,12 @@ export interface CreateSubprocessDtcValidatorDeps {
 }
 
 /**
- * Restricted subprocess implementation of DtcValidator (locked decision D):
- * runs `dtc` in an isolated tmpdir with a minimal (PATH-only) env, a hard
- * timeout that kills the child, and best-effort tmpdir cleanup in `finally`.
- * mode=off never invokes whichDtc/spawn so it can never block on a slow or
- * hanging environment; degrade semantics for mode=block/warn are decided by
- * locked decision E once compiler availability is known.
+ * Restricted subprocess implementation of DtcValidator (legacy file-by-file path).
+ * Prefer `createDtsToolchainRunner` / `dtsToolchain.ts` for complete config-set
+ * validation (base `dtc -@` → overlay DTBO → `fdtoverlay` → `dt-validate`).
+ *
+ * Security posture is unchanged: isolated tmpdir, PATH-only env, hard timeout,
+ * best-effort cleanup. mode=off never invokes whichDtc/spawn.
  *
  * Optional dt-schema: when `enableDtSchema` / `DTS_ENABLE_DT_SCHEMA` is on,
  * merges diagnostics from `schemaRunner`. Unavailable tools degrade to warning

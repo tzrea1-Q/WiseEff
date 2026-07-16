@@ -1,0 +1,43 @@
+$id: wiseeff/wiseeff-direct-charger.yaml
+title: wiseeff,direct_charger
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,direct_charger
+compatible:
+  - wiseeff,direct_charger
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  bat_para:
+    valueShape: string-list
+    exampleValue: "\"default\", \"10\", \"15\", \"volt_para\",\n\t\t\"CAE\", \"15\", \"20\", \"volt_para1\""
+    constraints: {}
+  resist_para:
+    valueShape: string-list
+    exampleValue: "\"0\", \"260\", \"3300\",\n\t\t\"260\", \"32767\", \"2000\""
+    constraints: {}
+  stage_need_to_jump:
+    valueShape: string-list
+    exampleValue: '"1"'
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}
+  temp_para:
+    valueShape: string-list
+    exampleValue: "\"-32767\", \"10\", \"0\",\n\t\t\"45\", \"32767\", \"0\""
+    constraints: {}
+  use_5A:
+    valueShape: u32-array
+    exampleValue: <1>
+    constraints: {}
+  volt_para:
+    valueShape: string-list
+    exampleValue: "\"4080\", \"5000\", \"3777\",\n\t\t\"4555\", \"1618\", \"1200\""
+    constraints: {}
+  volt_para1:
+    valueShape: string-list
+    exampleValue: "\"4500\", \"5000\", \"3776\",\n\t\t\"4555\", \"2697\", \"1200\""
+    constraints: {}

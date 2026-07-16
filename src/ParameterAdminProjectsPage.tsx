@@ -26,7 +26,12 @@ import {
 
 type ManageFilesTab = "files" | "config-sets" | "structure";
 
-type AvailableParameterFile = { id: string; fileName: string };
+type AvailableParameterFile = {
+  id: string;
+  fileName: string;
+  format?: string;
+  currentVersionId?: string;
+};
 
 /** Mock teaching files aligned with mockDtsStructuredRepository for config-set picker demos. */
 const MOCK_AVAILABLE_PARAMETER_FILES: AvailableParameterFile[] = [
@@ -101,7 +106,14 @@ export function ParameterAdminProjectsPage({
       try {
         const items = await parameterFileRepository.listFiles(manageFilesProjectId);
         if (!cancelled) {
-          setAvailableFiles(items.map((item) => ({ id: item.id, fileName: item.fileName })));
+          setAvailableFiles(
+            items.map((item) => ({
+              id: item.id,
+              fileName: item.fileName,
+              format: item.format,
+              currentVersionId: item.currentVersionId
+            }))
+          );
         }
       } catch {
         if (!cancelled) {
@@ -114,6 +126,8 @@ export function ParameterAdminProjectsPage({
       cancelled = true;
     };
   }, [isApiMode, manageFilesProjectId, parameterFileRepository]);
+
+  const structureFile = availableFiles.find((file) => file.format === "dts" && file.currentVersionId) ?? null;
 
   const kpiItems: KpiItem[] = [
     { id: "total", label: "项目总数", value: summary.total },
@@ -348,6 +362,8 @@ export function ParameterAdminProjectsPage({
                 <DtsStructureBrowserPanel
                   projectId={manageFilesTarget.id}
                   repository={dtsRepo}
+                  fileId={structureFile?.id}
+                  versionId={structureFile?.currentVersionId}
                   canEdit={canEdit}
                   canEditCritical={canEditCritical}
                 />

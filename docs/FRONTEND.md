@@ -78,6 +78,22 @@ Key UI:
 - `ProjectParameterFilesPanel` and `ParameterFileConflictPanel` accept a `repository` prop only; they must **not** call `createParameterFileClient()` inside the component.
 - `/parameter-admin/projects` and `/parameter-admin` resolve the port once and pass it down (including mock mode demos that list teaching files / open conflicts without HTTP).
 
+## Parameter topology ports (semantic identity)
+
+Semantic library and project topology UI live under `src/components/parameter-topology/` and domain types under `src/domain/parameter-topology/`. Ports cover:
+
+- Parameter specs + spec review queue (`/parameter-admin`)
+- Source vs effective topology browse and search on `/parameters`
+- Typed binding edit with schema diagnostics
+- Identity mapping task resolution
+- Fail-closed config revision validate/publish gate
+- **Unmatched spec review:** `SpecReviewQueue` exposes create-spec for unmatched tasks (`createSpec: true` on resolve). Library resolve with a property-key mismatch requires explicit `confirmPropertyMismatch: true` before the client calls `POST .../parameter-spec-review-tasks/:taskId/resolve`.
+- Dashboard hotspots include global vendor specs for tenant-bound projects (API aggregates `organization_id IS NULL` specs).
+
+API mode talks to `/api/v2` (not flat `/api/v1` parameter definition IDs). DTOs keep `exampleValue`, `schemaDefault`, `policyTarget`, and `effectiveValue` separate — no business `recommendedValue`. After cutover, legacy parameter IDs are not projected; callers must use binding/spec IDs.
+
+Provenance, binding detail, and mapping/review queues must come from the API response (`sourceChain`, occurrence spans, task payloads). In API mode do **not** fall back to teaching/mock topology data when the backend is empty or errors. Validate/publish copy must match gate outcomes (`validated` vs fail-closed revoke); never treat `schema-failed` as a success path.
+
 ## Parameter Import Wizard
 
 `ParameterImportWizard` on `/parameter-admin` supports spreadsheet / JSON / DTS fragment / full DTS sources.
@@ -96,6 +112,8 @@ Parameter and debugging domains each maintain an independent org-scoped module t
 - `/debugging-admin` — `DebugModuleManagementDialog` governs the debug node module tree; `DebugNodeLibraryTable`, `DebugParameterLibraryTable`, and `DebugNodeEditorDialog` pick modules via `ModuleTreeSelect`.
 
 API mode loads trees from `/api/v1/parameter-modules` and `/api/v1/debugging/admin/modules`. Mock mode derives trees from nested `parent`/`path` fields in `src/config/power-management.json` through `buildPowerManagementModuleTree()` in `src/powerManagementConfig.ts`.
+
+Mock mode intentionally keeps the 12 legacy compatibility parameters for fast component tests and demos. In API mode, `db:seed:m1` derives an additional 170 DTS-source definitions at seed time; each persisted value carries `sourceFileName=wiseeff-power-overlay.dts` and a property-qualified `sourceNodePath`. Regenerate the three committed Aurora/Nebula/Atlas fixtures with `npm run dts:seed:generate`, then prove them with `npm run dtc:seed:compile`.
 
 The M1 API smoke lives in `e2e/parameter-management.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, and `db:seed:m1`.
 

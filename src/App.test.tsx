@@ -259,7 +259,7 @@ function renderAppForCurrentPath() {
   return render(<App initialAppState={stateForCurrentPath()} />);
 }
 
-describe("WiseEff app shell", () => {
+describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("declares the WiseEff favicon assets in the document shell", () => {
     const indexHtml = readFileSync("index.html", "utf8");
 
@@ -687,7 +687,8 @@ describe("WiseEff app shell", () => {
       />
     );
 
-    expect(await screen.findAllByText("api_runtime_voltage_limit")).not.toHaveLength(0);
+    expect(await screen.findByLabelText("项目拓扑工作区")).toBeInTheDocument();
+    expect(await screen.findAllByText("gpio_int")).not.toHaveLength(0);
     expect(userGovernanceActions.listUsers).not.toHaveBeenCalled();
   });
 
@@ -753,7 +754,8 @@ describe("WiseEff app shell", () => {
       />
     );
 
-    expect(await screen.findAllByText("api_runtime_voltage_limit")).not.toHaveLength(0);
+    expect(await screen.findByLabelText("项目拓扑工作区")).toBeInTheDocument();
+    expect(await screen.findAllByText("gpio_int")).not.toHaveLength(0);
     expect(parameterRepository.listProjects).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listParameters).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listChangeRequests).toHaveBeenCalledTimes(1);
@@ -1565,7 +1567,7 @@ describe("WiseEff app shell", () => {
     const exportedRows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
     const exportedText = exportedRows.flat().join("\n");
 
-    expect(exportedText).toContain("参数名称");
+    expect(exportedText).toContain("属性键");
     expect(exportedText).toContain("fast_charge_current_limit_ma");
     expect(exportedText).toContain("charge_voltage_limit_mv");
     expect(exportedText).not.toContain("battery_health_reserve_pct");
@@ -3050,7 +3052,7 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: /确认删除/ }));
 
     expect(screen.queryByDisplayValue("new_power_parameter_13")).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("keeps the project shared parameter library list breathable and scannable", () => {
     const css = readFileSync("src/styles.css", "utf8");

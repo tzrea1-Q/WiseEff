@@ -1,0 +1,21 @@
+$id: wiseeff/wiseeff-spmi1.yaml
+title: wiseeff,spmi1
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,spmi1
+compatible:
+  - wiseeff,spmi1
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  compatible:
+    valueShape: string-list
+    exampleValue: '"wiseeff,spmi1"'
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}
+childNodes:
+  - scharger_v800

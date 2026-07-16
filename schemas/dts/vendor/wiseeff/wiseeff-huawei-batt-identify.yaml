@@ -1,0 +1,23 @@
+$id: wiseeff/wiseeff-huawei-batt-identify.yaml
+title: wiseeff,huawei_batt_identify
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,huawei_batt_identify
+compatible:
+  - wiseeff,huawei_batt_identify
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  gpios:
+    valueShape: mixed
+    exampleValue: <&gpio10 16 0>
+    constraints: {}
+  id_voltage_gpiov:
+    valueShape: u32-array
+    exampleValue: <0 1>
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}

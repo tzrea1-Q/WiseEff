@@ -1,0 +1,26 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-test-ambiguous.yaml#
+title: wiseeff,test-ambiguous
+description: WiseEff vendor binding for wiseeff,test-ambiguous (generated from vendor property schema).
+maintainers:
+  - WiseEff
+properties:
+  reg:
+    maxItems: 1
+  gpio_int:
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/phandle-array
+      - items:
+          minItems: 3
+          maxItems: 3
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,test-ambiguous
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false

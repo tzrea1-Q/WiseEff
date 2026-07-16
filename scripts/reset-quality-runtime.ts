@@ -14,6 +14,58 @@ const seededUserIds = [
   "u-sun-mei"
 ] as const;
 
+/**
+ * Ownership rows that commonly collide when reassigned onto a seeded user
+ * (unique on project/value/user). Safe to drop before quality reseeding.
+ */
+const deleteOwnedByTransientUser: ReadonlyArray<{ table: string; column: string }> = [
+  { table: "parameter_drafts", column: "user_id" },
+  { table: "user_notifications", column: "recipient_user_id" }
+];
+
+/** Optional attribution FKs can be cleared instead of deleting the parent row. */
+const nullifyTransientUserRefs: ReadonlyArray<{ table: string; column: string }> = [
+  { table: "agent_approvals", column: "decided_by_user_id" },
+  { table: "audit_events", column: "actor_user_id" },
+  { table: "debug_nodes", column: "archived_by" },
+  { table: "debugging_parameters", column: "archived_by" },
+  { table: "identity_mapping_tasks", column: "reviewer_user_id" },
+  { table: "local_registration_role_requests", column: "decided_by_user_id" },
+  { table: "parameter_change_requests", column: "assigned_to_user_id" },
+  { table: "parameter_change_requests", column: "workflow_hardware_committer_user_id" },
+  { table: "parameter_change_requests", column: "workflow_software_committer_user_id" },
+  { table: "parameter_change_requests", column: "workflow_software_user_id" },
+  { table: "parameter_file_sync_conflicts", column: "resolved_by_user_id" },
+  { table: "parameter_history_entries", column: "changed_by_user_id" },
+  { table: "parameter_review_decisions", column: "reviewer_user_id" },
+  { table: "parameter_spec_review_tasks", column: "reviewer_user_id" },
+  { table: "project_parameter_values", column: "updated_by_user_id" }
+];
+
+/**
+ * Durable domain rows keep their data; only the actor pointer moves to a seeded
+ * admin so transient acceptance users can be deleted before reseeding.
+ */
+const reassignTransientUserRefs: ReadonlyArray<{ table: string; column: string }> = [
+  { table: "agent_approvals", column: "requested_by_user_id" },
+  { table: "agent_sessions", column: "actor_user_id" },
+  { table: "debug_device_leases", column: "lease_owner_user_id" },
+  { table: "debugging_sessions", column: "actor_user_id" },
+  { table: "debugging_snapshots", column: "created_by_user_id" },
+  { table: "dts_config_revisions", column: "created_by_user_id" },
+  { table: "dts_release_baseline", column: "created_by_user_id" },
+  { table: "dts_sensitive_node_rules", column: "created_by_user_id" },
+  { table: "log_feedback", column: "user_id" },
+  { table: "log_file_objects", column: "uploaded_by_user_id" },
+  { table: "log_records", column: "submitted_by_user_id" },
+  { table: "node_operations", column: "actor_user_id" },
+  { table: "parameter_change_requests", column: "submitter_user_id" },
+  { table: "parameter_import_batches", column: "created_by_user_id" },
+  { table: "parameter_submission_rounds", column: "submitter_user_id" },
+  { table: "product_feedback", column: "submitter_user_id" },
+  { table: "project_parameter_file_versions", column: "created_by_user_id" }
+];
+
 export async function resetQualityRuntime(db: Database) {
   await db.transaction(async (tx) => {
     await tx.query("update users set organization_id = 'org-chargelab' where id = any($1::text[])", [seededUserIds]);
@@ -22,6 +74,26 @@ export async function resetQualityRuntime(db: Database) {
     await tx.query("delete from user_password_credentials");
     await tx.query("delete from user_role_bindings");
     await tx.query("delete from audit_events where app in ('auth', 'user-governance') or target_type = 'user'");
+
+    for (const { table, column } of nullifyTransientUserRefs) {
+      await tx.query(
+        `update ${table} set ${column} = null where ${column} is not null and ${column} <> all($1::text[])`,
+        [seededUserIds]
+      );
+    }
+
+    for (const { table, column } of deleteOwnedByTransientUser) {
+      await tx.query(`delete from ${table} where ${column} <> all($1::text[])`, [seededUserIds]);
+    }
+
+    const keepUserId = seededUserIds[0];
+    for (const { table, column } of reassignTransientUserRefs) {
+      await tx.query(
+        `update ${table} set ${column} = $2 where ${column} is not null and ${column} <> all($1::text[])`,
+        [seededUserIds, keepUserId]
+      );
+    }
+
     await tx.query("delete from users where id <> all($1::text[])", [seededUserIds]);
   });
 }

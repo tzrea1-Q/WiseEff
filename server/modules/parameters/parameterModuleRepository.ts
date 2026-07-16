@@ -1,3 +1,4 @@
+import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
 import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { assertNoCycle, buildPath, depthOf } from "../shared/moduleTree";
@@ -116,7 +117,7 @@ export async function countParametersForModule(
   const result = await db.query<{ count: string }>(
     `
     select count(*)::text as count
-    from parameter_definitions
+    from ${LEGACY_IDENTITY_SQL.definitionsTable}
     where organization_id = $1
       and parameter_module_id = $2
     `,
@@ -223,7 +224,7 @@ export async function updateParameterModule(
   if (result.rows[0] && nextName !== existing.name) {
     await db.query(
       `
-      update parameter_definitions
+      update ${LEGACY_IDENTITY_SQL.definitionsTable}
       set module = $3,
         updated_at = now()
       where organization_id = $1

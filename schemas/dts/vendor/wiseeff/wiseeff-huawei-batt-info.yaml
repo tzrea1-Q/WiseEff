@@ -1,0 +1,22 @@
+$id: wiseeff/wiseeff-huawei-batt-info.yaml
+title: wiseeff,huawei_batt_info
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,huawei_batt_info
+compatible:
+  - wiseeff,huawei_batt_info
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  sn-check-type:
+    valueShape: u32-array
+    exampleValue: <2>
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}
+childNodes:
+  - battery_checker@0
+  - battery_checker@1

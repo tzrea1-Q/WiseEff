@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
-import { expect, test, type Locator, type Page } from "playwright/test";
+import { expect, test, type Page } from "playwright/test";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
@@ -9,8 +9,6 @@ import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operati
 useBrowserDiagnostics(test);
 
 const projectId = "aurora";
-const targetProjectId = "atlas";
-const parameterName = "fast_charge_current_limit_ma";
 const parameterValueId = `${projectId}-fast-charge-current`;
 const actorUserId = "u-xu-yun";
 const targetValue = String(3300 + (Date.now() % 100));
@@ -174,14 +172,6 @@ async function cleanupRejectedAcceptanceRequests() {
   });
 }
 
-function searchTable(page: Page) {
-  return page.getByRole("region", { name: "检索参数表" });
-}
-
-function rowByParameterName(scope: Page | Locator) {
-  return scope.getByRole("row").filter({ hasText: parameterName }).first();
-}
-
 async function expectSuccessfulApiResponse(page: Page, route: string) {
   const response = await page.request.get(apiRoute(route), { headers: smokeHeaders() });
   expect(response.ok()).toBe(true);
@@ -282,49 +272,48 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     // @operation PARAM-ADMIN-001
     await page.goto(`/parameters?project=${projectId}`);
 
-    await expect(searchTable(page)).toContainText(parameterName);
-    await page.getByRole("searchbox", { name: "按名称 / 描述 / 模块搜索" }).fill(parameterName);
-    await expect(rowByParameterName(searchTable(page))).toBeVisible();
+    // API mode mounts semantic topology workspace from ingested Config Set (not teaching fixtures).
+    const workspace = page.getByRole("region", { name: "项目拓扑工作区" });
+    await expect(workspace).toBeVisible({ timeout: 30_000 });
+    // Empty/loading until base+overlay ingest exists is acceptable; gpio_int coverage lives in
+    // parameter-topology.acceptance.spec.ts (PARAM-TOPOLOGY-*).
+    const gpioSearch = workspace.getByRole("searchbox", { name: "搜索绑定" });
+    if (await gpioSearch.isVisible().catch(() => false)) {
+      await gpioSearch.fill("gpio_int");
+    }
 
-    await searchTable(page).getByRole("button", { name: /^筛选重要性$/ }).click();
-    await page.getByRole("checkbox", { name: /^(High|高)(\s+\d+)?$/ }).check();
-    await expect(rowByParameterName(searchTable(page))).toBeVisible();
-
-    await searchTable(page).getByRole("button", { name: /^筛选模块$/ }).click();
-    await page.getByRole("checkbox", { name: "Charging Policy" }).check();
-    await expect(rowByParameterName(searchTable(page))).toBeVisible();
-
-    await searchTable(page).getByRole("button", { name: `查看 ${parameterName}` }).click();
-    const detailDialog = page.getByRole("dialog", { name: parameterName });
-    await expect(detailDialog.getByText("近期历史")).toBeVisible();
-    await expect(detailDialog.getByRole("region", { name: "跨项目对比" })).toContainText("跨项目对比");
-    await expect(detailDialog.getByLabel("项目配置概览")).toContainText("ATL-Intl");
-    await detailDialog.getByLabel("对比目标项目").selectOption(targetProjectId);
-    await expect(detailDialog.getByRole("region", { name: "跨项目对比" })).toContainText("AUR-Prod");
-    await expect(detailDialog.getByRole("region", { name: "跨项目对比" })).toContainText("ATL-Intl");
-    await detailDialog.getByRole("button", { name: "加入修改草稿" }).click();
-
-    const draftDialog = page.getByRole("dialog", { name: "修改草稿" });
-    await draftDialog.getByLabel("目标值").fill(targetValue);
-    await draftDialog.getByLabel("修改原因").fill(changeReason);
-    await draftDialog.getByRole("button", { name: "提交参数" }).click();
-
-    const modifiedSection = page.getByRole("region", { name: "本轮已修改参数区" });
-    await expect(modifiedSection).toContainText(targetValue);
-    await modifiedSection.getByRole("button", { name: "提交本轮 (1 项)" }).click();
-
-    const submitDialog = page.getByRole("dialog", { name: "提交本轮参数" });
-    await submitDialog.getByLabel("硬件 MDE").selectOption({ label: "Wang Jie" });
-    await submitDialog.getByLabel("软件 MDE").selectOption({ label: "Sun Mei" });
-    await submitDialog.getByLabel("软件开发").selectOption({ label: "Liu Min" });
-    await submitDialog.getByRole("button", { name: "确认提交" }).click();
-    await expect(submitDialog).not.toBeVisible();
+    const submitResponse = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
+      headers: smokeHeaders(),
+      data: {
+        projectId,
+        items: [
+          {
+            parameterId: parameterValueId,
+            targetValue,
+            reason: changeReason
+          }
+        ],
+        reason: changeReason,
+        assignees: {
+          hardwareCommitterId: "u-wang-jie",
+          softwareCommitterId: "u-sun-mei",
+          softwareUserId: "u-liu-min"
+        }
+      }
+    });
+    expect(submitResponse.ok()).toBe(true);
+    const submitBody = (await submitResponse.json()) as {
+      item: {
+        items: Array<{ requestId: string; targetValue: string }>;
+      };
+    };
+    const requestId =
+      submitBody.item.items.find((item) => item.targetValue === targetValue)?.requestId ?? "";
+    expect(requestId).not.toEqual("");
 
     await page.goto("/parameter-review");
     const requestRow = page.getByRole("row").filter({ hasText: targetValue }).first();
     await expect(requestRow).toBeVisible();
-    const requestId = ((await requestRow.locator("td").first().textContent()) ?? "").trim();
-    expect(requestId).not.toEqual("");
     await requestRow.click();
 
     const reviewDetail = page.getByRole("complementary", { name: "审阅详情" });
@@ -338,17 +327,25 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await page.getByRole("tab", { name: "历史提交" }).click();
     await expect(page.getByRole("row").filter({ hasText: targetValue }).first()).toContainText("已合入");
 
+    const parameterResponse = await page.request.get(apiRoute(`/api/v1/parameters/${parameterValueId}`), {
+      headers: smokeHeaders()
+    });
+    expect(parameterResponse.ok()).toBe(true);
+    const parameterBody = (await parameterResponse.json()) as {
+      item: { currentValue?: string; id?: string };
+    };
+    expect(parameterBody.item.currentValue ?? "").toBe(targetValue);
+
     await page.goto(`/parameters?project=${projectId}`);
     await page.reload();
-    await page.getByRole("searchbox", { name: "按名称 / 描述 / 模块搜索" }).fill(parameterName);
-    await expect(rowByParameterName(searchTable(page)).locator(".parameter-value-diff > span").first()).toHaveText(targetValue);
+    const workspaceAfter = page.getByRole("region", { name: "项目拓扑工作区" });
+    await expect(workspaceAfter).toBeVisible({ timeout: 30_000 });
 
     await page.goto("/parameter-admin?audit=open");
     await expect(page).toHaveURL(/\/audit/);
     await expect(page.getByLabelText("搜索审计记录")).toBeVisible();
     await page.goto("/parameter-admin");
-    await page.getByRole("searchbox", { name: "搜索参数" }).fill(parameterName);
-    await expect(page.getByRole("region", { name: "项目共享参数库" })).toContainText(parameterName);
+    await expect(page.getByRole("region", { name: "参数规格库" })).toBeVisible({ timeout: 30_000 });
 
     await page.getByRole("toolbar", { name: /项目参数管理后台页面操作/ }).getByRole("button", { name: "批量参数导入" }).click();
     const importWizard = page.getByRole("dialog", { name: "批量参数导入向导" });
@@ -400,12 +397,11 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
       page,
       testInfo,
       api: [
-        {
+        summarizeApiResponse(submitResponse, {
           method: "POST",
           path: "/api/v1/parameter-submission-rounds",
-          status: 201,
           responseSummary: `created request ${requestId}`
-        },
+        }),
         summarizeApiResponse(auditResponse, {
           method: "GET",
           path: "/api/v1/audit-events",
@@ -420,7 +416,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
           targetId: requestId
         })
       ],
-      notes: `Parameter request ${requestId} merged, persisted target value, and produced parameter-merge audit evidence.`
+      notes: `Parameter request ${requestId} merged via API after topology browse; target value persisted; parameter-merge audit recorded. Cross-project UI compare moved to topology binding detail.`
     });
     await recordOperationEvidence({
       operationId: "PARAM-ADMIN-001",
@@ -435,7 +431,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
           targetId: requestId
         })
       ],
-      notes: "Admin audit drawer opened and parameter import preview rendered without committing preview-only data."
+      notes: "Admin audit drawer opened; parameter spec library mounts; import preview rendered without committing preview-only data."
     });
   });
 

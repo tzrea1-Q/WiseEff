@@ -1,0 +1,15 @@
+$id: wiseeff/nodename-scharger-v800-coul.yaml
+title: scharger_v800_coul
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/scharger_v800_coul
+nodename:
+  - scharger_v800_coul
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}

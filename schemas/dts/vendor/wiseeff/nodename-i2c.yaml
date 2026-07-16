@@ -1,0 +1,27 @@
+$id: wiseeff/nodename-i2c.yaml
+title: i2c
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/i2c
+nodename:
+  - i2c
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  '#address-cells':
+    valueShape: u32-array
+    exampleValue: <1>
+    constraints: {}
+  '#size-cells':
+    valueShape: u32-array
+    exampleValue: <0>
+    constraints: {}
+  hold-time:
+    valueShape: u32-array
+    exampleValue: <0x220022>
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}

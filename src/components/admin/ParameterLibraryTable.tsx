@@ -69,7 +69,9 @@ export function ParameterLibraryTable({
       <div className="parameters-table-heading">
         <div>
           <h2>项目共享参数库</h2>
-          <p>维护跨项目共享的参数定义与各项目实际取值，通过操作列进入弹窗编辑。</p>
+          <p>
+            Mock 模式扁平参数库（兼容旧演示）。API 模式已切换为参数规格库：按属性键 / 驱动规格治理，不再以完整路径作为名称。
+          </p>
         </div>
         <div className="param-admin-library-heading-actions">
           {onManageModules ? (

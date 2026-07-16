@@ -20,12 +20,13 @@
 ## 进行中
 
 - **TD-038（模块树后续）：** 多层级模块已落地后，仍需删除过渡 `module` 文本列、收敛 `project_modules` 与组织级 `parameter_modules` 单一真相源，并评估 dashboard 热榜的层级聚合。
-- **TD-039（项目参数文件，程序主体已关闭）：** DTS 程序 P0–P3.1 已于 2026-07-15 归档。**硬化收口 2026-07-15：** 旧文件/冲突面板已注入 `ParameterFileRepository`；`DTS_IDENTITY_FALLBACK_MODE` 可收紧 `(name, module)` fallback。残余：fallback 默认仍 `allow`、扁平 `parsed_index` 兼容视图。详见英文版 Open 表。
-- **TD-040（DTS 配置集/门禁后续）：** (1) **已关闭 2026-07-15**（建项自动 `ensureDefaultConfigSet`）；(2) 可选 dt-schema 钩子已落地；(3) 容器沙箱评估维持子进程、本期不做；(4)/(0046) 级联已解决。详见英文版 Open 表。
+- **TD-039（项目参数文件，程序主体已关闭）：** DTS 程序与硬化收口已归档。路径派生身份退役由活跃计划 `2026-07-16-parameter-topology-schema-management.md` 承接（语义规格/绑定 + 原子切换）。残余 fallback 仅在 cutover 前存在。
+- **TD-040（DTS 配置集/门禁后续）：** (1)(2)(3)(4) 状态见英文版；生产失败关闭 Schema/工具链校验由拓扑计划 Task 8/10/17 承接。
+- **TD-042（参数身份 cutover）：** Phase 7 已修好只读 dry-run、语义匹配、切断 active↔legacy PPV FK、临时库 post-cutover API smoke。本地脏库 dry-run 现为 193/193 defs + 557/557 values、blockers=[]。Cutover 工作流 review（Tasks 1–10）已落地 cutover 后语义活动路径、诚实 inferred 计数与无 DB 绕过的拓扑验收。**第四轮**（分支 `fix/parameter-topology-round4-review-blockers`）已落地：有效厂商 dt-schema、`stage-review`→`finalize`、精确 occurrence 锁定合入/回写、matcher override + 审核 `blocker_scope`（含 locator 指纹）、manifest 回填与 `needs_review` 失败关闭门禁、hotspot 全局厂商规格、未匹配 `createSpec` + `confirmPropertyMismatch` 与审计、黄金计数 **173/519**。**缺少合法干净非客户快照与维护窗口**，未执行 apply→cutover→整库恢复演练，**仍为 BLOCKER，不得宣称生产 cutover 就绪**；第四轮仅为实现证据。
 
 ## 近期关闭项
 
-- **TD-035（参数批导完整 DTS / reviewMetadata）：** 已于 2026-07-15 在 `feat/parameter-import-wizard-td035` 关闭。服务端 `parse-dts`、前端 `parseDtsFull`、向导 skip→`reviewMetadata` 审计与大文件提示已落地；原批导计划 P2/P3 由本期消化。计划：`docs/exec-plans/active/2026-07-15-parameter-import-wizard-td035.md`。
+- **TD-035（参数批导完整 DTS / reviewMetadata）：** 已于 2026-07-15 关闭。计划归档：`docs/exec-plans/completed/2026-07-15-parameter-import-wizard-td035.md`。
 - **TD-041（结构化编辑回路）：** 已于 2026-07-15 在 P3.1 关闭。编辑→变更集→`submitStructuredEdits`→既有 CR 审阅合入→CST 回写已打通；回写载荷用 `rawText`。计划归档：`docs/exec-plans/completed/2026-07-14-dts-p31-structured-edit-loop.md`。
 - **TD-037（多层级模块）：** 已于 2026-07-09 在 `feat/hierarchical-modules` 分支关闭。参数域与调试域独立模块树、`module_id` 外键、子树筛选、`ModuleTreeSelect` UI 与 MOD-TREE 验收已交付。计划归档：`docs/exec-plans/completed/2026-07-09-wiseeff-hierarchical-modules.md`。
 

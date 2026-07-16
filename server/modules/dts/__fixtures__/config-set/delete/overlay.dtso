@@ -1,0 +1,7 @@
+/plugin/;
+
+&charger {
+	/delete-property/ a;
+	/delete-node/ sub;
+	c = <3>;
+};

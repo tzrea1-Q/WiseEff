@@ -1,0 +1,30 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-gpio5.yaml#
+title: wiseeff,gpio5
+description: WiseEff vendor binding for wiseeff,gpio5 (generated from vendor property schema).
+maintainers:
+  - WiseEff
+allOf:
+  - $ref: /schemas/gpio/gpio.yaml#
+  - type: object
+    properties:
+      compatible:
+        contains:
+          const: wiseeff,gpio5
+      '#gpio-cells':
+        const: 2
+      status:
+        allOf:
+          - $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+          - enum:
+              - okay
+              - disabled
+              - reserved
+              - fail
+              - fail-needs-probe
+    required:
+      - compatible
+    additionalProperties: false
+    unevaluatedProperties: false

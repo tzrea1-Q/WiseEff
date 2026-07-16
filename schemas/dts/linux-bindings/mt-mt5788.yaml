@@ -1,0 +1,42 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/mt-mt5788.yaml#
+title: mt,mt5788
+description: WiseEff vendor binding for mt,mt5788 (generated from vendor property schema).
+maintainers:
+  - WiseEff
+properties:
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  gpio_en:
+    $ref: /schemas/types.yaml#/definitions/phandle-array
+  gpio_int:
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/phandle-array
+      - items:
+          minItems: 3
+          maxItems: 3
+  prevfod1_product_list:
+    $ref: /schemas/types.yaml#/definitions/uint8-array
+  reg:
+    maxItems: 1
+  rx_fod_cond:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  rx_mod_cm_cfg:
+    $ref: /schemas/types.yaml#/definitions/uint8-array
+  rx_ploss_th0:
+    $ref: /schemas/types.yaml#/definitions/uint8-array
+  time_para:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+  time_para_group:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  tx_current_fod_para:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: mt,mt5788
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false

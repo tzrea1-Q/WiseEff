@@ -1,0 +1,19 @@
+$id: wiseeff/wiseeff-spmi.yaml
+title: wiseeff,spmi
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,spmi
+compatible:
+  - wiseeff,spmi
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  compatible:
+    valueShape: string-list
+    exampleValue: '"wiseeff,spmi"'
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}

@@ -265,6 +265,77 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
 
+  "parameterSpecs.list": {
+    summary: "List versioned parameter specifications",
+    tags: ["parameters"],
+    responseBody: "ParameterSpecListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterSpecs.get": {
+    summary: "Get a parameter specification detail",
+    tags: ["parameters"],
+    responseBody: "ParameterSpecDetailResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterSpecs.listReviewTasks": {
+    summary: "List organization-scoped parameter specification review tasks",
+    tags: ["parameters"],
+    responseBody: "ParameterSpecReviewTaskListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterSpecs.resolveReviewTask": {
+    summary: "Resolve a parameter specification review task",
+    tags: ["parameters"],
+    requestBody: "ResolveParameterSpecReviewTaskRequest",
+    responseBody: "ParameterSpecReviewTaskResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterTopology.getTopology": {
+    summary: "Get source or effective DTS topology for a config revision",
+    tags: ["parameters"],
+    responseBody: "ParameterTopologyResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterTopology.listBindings": {
+    summary: "List semantic project parameter bindings",
+    tags: ["parameters"],
+    responseBody: "ProjectParameterBindingListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterTopology.listIdentityMappingTasks": {
+    summary: "List identity mapping tasks",
+    tags: ["parameters"],
+    responseBody: "IdentityMappingTaskListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterTopology.resolveIdentityMappingTask": {
+    summary: "Resolve an identity mapping task",
+    tags: ["parameters"],
+    requestBody: "ResolveIdentityMappingTaskRequest",
+    responseBody: "IdentityMappingTaskResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterTopology.validateConfigRevision": {
+    summary: "Validate a config revision with the DTS toolchain gate",
+    tags: ["parameters"],
+    requestBody: "ValidateConfigRevisionRequest",
+    responseBody: "ConfigRevisionValidationResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterTopology.createBindingDraft": {
+    summary: "Create a typed parameter binding draft with precise Config Set writeback",
+    tags: ["parameters"],
+    requestBody: "CreateBindingDraftRequest",
+    responseBody: "BindingDraftResponse",
+    successStatus: 201,
+    additionalResponses: {
+      "400": "ErrorResponse",
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
+
   "logs.uploadFile": {
     summary: "Upload log file",
     tags: ["logs"],

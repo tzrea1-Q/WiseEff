@@ -1,0 +1,17 @@
+$id: wiseeff/wiseeff-acceptance-broken.yaml
+title: wiseeff,acceptance-broken
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,acceptance-broken
+compatible:
+  - wiseeff,acceptance-broken
+properties:
+  compatible:
+    valueShape: string-list
+    exampleValue: '"wiseeff,acceptance-broken"'
+    constraints: {}
+  reg:
+    valueShape: u32-array
+    exampleValue: <0>
+    constraints: {}
