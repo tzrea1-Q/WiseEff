@@ -1,10 +1,14 @@
 %YAML 1.2
 ---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
 $id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-boost-5v.yaml#
-$title: wiseeff,boost_5v
-description: WiseEff vendor binding generated for dt-validate coverage of golden power fixtures.
+title: wiseeff,boost_5v
+description: WiseEff vendor binding for wiseeff,boost_5v (generated from vendor property schema).
 maintainers:
   - WiseEff
+allOf:
+  - $ref: /schemas/device.yaml#
+  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
 select:
   properties:
     compatible:
@@ -13,14 +17,15 @@ select:
   required:
     - compatible
 properties:
-  compatible: true
+  compatible:
+    type: string
+    pattern: ^wiseeff,boost_5v$
+  gpio_5v_boost:
+    $ref: /schemas/types.yaml#/definitions/phandle-array
   status:
-    enum:
-      - okay
-      - disabled
-      - reserved
-      - fail
-      - fail-needs-probe
-  model: true
-additionalProperties: true
-unevaluatedProperties: true
+    type: string
+required:
+  - compatible
+  - status
+additionalProperties: false
+unevaluatedProperties: false

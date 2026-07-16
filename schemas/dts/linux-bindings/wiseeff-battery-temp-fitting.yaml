@@ -1,10 +1,14 @@
 %YAML 1.2
 ---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
 $id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-battery-temp-fitting.yaml#
-$title: wiseeff,battery_temp_fitting
-description: WiseEff vendor binding generated for dt-validate coverage of golden power fixtures.
+title: wiseeff,battery_temp_fitting
+description: WiseEff vendor binding for wiseeff,battery_temp_fitting (generated from vendor property schema).
 maintainers:
   - WiseEff
+allOf:
+  - $ref: /schemas/device.yaml#
+  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
 select:
   properties:
     compatible:
@@ -13,14 +17,21 @@ select:
   required:
     - compatible
 properties:
-  compatible: true
+  compatible:
+    type: string
+    pattern: ^wiseeff,battery_temp_fitting$
+  btf_temp_lth:
+    type: string
+  fitting_mode:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+  replace_sensor:
+    type: string
   status:
-    enum:
-      - okay
-      - disabled
-      - reserved
-      - fail
-      - fail-needs-probe
-  model: true
-additionalProperties: true
-unevaluatedProperties: true
+    type: string
+  temp_para:
+    type: string
+required:
+  - compatible
+  - status
+additionalProperties: false
+unevaluatedProperties: false

@@ -1,10 +1,13 @@
 %YAML 1.2
 ---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
 $id: http://devicetree.org/schemas/vendor/wiseeff/arm-amba-bus.yaml#
-$title: arm,amba-bus
-description: WiseEff vendor binding generated for dt-validate coverage of golden power fixtures.
+title: arm,amba-bus
+description: WiseEff vendor binding for arm,amba-bus (generated from vendor property schema).
 maintainers:
   - WiseEff
+allOf:
+  - $ref: /schemas/device.yaml#
 select:
   properties:
     compatible:
@@ -13,14 +16,17 @@ select:
   required:
     - compatible
 properties:
-  compatible: true
-  status:
-    enum:
-      - okay
-      - disabled
-      - reserved
-      - fail
-      - fail-needs-probe
-  model: true
-additionalProperties: true
-unevaluatedProperties: true
+  compatible:
+    type: string
+    pattern: ^arm,amba-bus$
+  '#address-cells':
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+  '#size-cells':
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+  interrupt-parent:
+    $ref: /schemas/types.yaml#/definitions/phandle
+  ranges: true
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false

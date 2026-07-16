@@ -8,6 +8,8 @@
 
 &amba {
 	i2c@FDF5E000 {
+		#address-cells = <1>;
+		#size-cells = <0>;
 		status = "okay";
 		hold-time = <0x230023>;
 		sc8562@6E {
@@ -337,9 +339,10 @@
 	#size-cells = <2>;
 	compatible = "arm,amba-bus";
 	interrupt-parent = <&gic>;
-	ranges;
 
 	i2c@FF24E000 {
+		#address-cells = <1>;
+		#size-cells = <0>;
 		status = "okay";
 		hold-time = <0x190019>;
 		mt5788@2B {

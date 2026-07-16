@@ -1,10 +1,14 @@
 %YAML 1.2
 ---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
 $id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-acceptance-map.yaml#
-$title: wiseeff,acceptance-map
-description: WiseEff vendor binding generated for dt-validate coverage of golden power fixtures.
+title: wiseeff,acceptance-map
+description: WiseEff vendor binding for wiseeff,acceptance-map (generated from vendor property schema).
 maintainers:
   - WiseEff
+allOf:
+  - $ref: /schemas/device.yaml#
+  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
 select:
   properties:
     compatible:
@@ -13,14 +17,17 @@ select:
   required:
     - compatible
 properties:
-  compatible: true
+  compatible:
+    type: string
+    pattern: ^wiseeff,acceptance-map$
+  reg:
+    $ref: /schemas/types.yaml#/definitions/reg
+  gpio_int:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
   status:
-    enum:
-      - okay
-      - disabled
-      - reserved
-      - fail
-      - fail-needs-probe
-  model: true
-additionalProperties: true
-unevaluatedProperties: true
+    type: string
+required:
+  - compatible
+  - status
+additionalProperties: false
+unevaluatedProperties: false

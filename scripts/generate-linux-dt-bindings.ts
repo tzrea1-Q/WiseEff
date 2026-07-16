@@ -3,34 +3,26 @@
  * `dt-validate -s <dir> -c` can cover proprietary properties without disabling
  * fail-closed schema checks.
  */
-import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import yaml from "js-yaml";
+import {
+  buildBindingForCompatible,
+  loadVendorSpecs,
+  stableBindingsContentHash,
+  type GeneratedBinding
+} from "./lib/vendorDtSchemaGenerator";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const vendorDir = join(root, "schemas/dts/vendor/wiseeff");
 const seedDir = join(root, "src/config/dts-seed");
 const outDir = join(root, "schemas/dts/linux-bindings");
 
-function slug(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "root";
-}
-
 function collectCompatibles(): string[] {
   const found = new Set<string>();
-
-  for (const name of readdirSync(vendorDir).filter((entry) => entry.endsWith(".yaml"))) {
-    const doc = yaml.load(readFileSync(join(vendorDir, name), "utf8")) as {
-      compatible?: string[];
-    };
-    for (const value of doc.compatible ?? []) found.add(value);
-  }
+  const vendorByCompatible = loadVendorSpecs(vendorDir);
+  for (const value of vendorByCompatible.keys()) found.add(value);
 
   for (const name of readdirSync(seedDir).filter((entry) => entry.endsWith(".dts"))) {
     const text = readFileSync(join(seedDir, name), "utf8");
@@ -39,7 +31,6 @@ function collectCompatibles(): string[] {
     }
   }
 
-  // Board roots / acceptance fixtures used by e2e loops.
   found.add("wiseeff,board");
   found.add("wiseeff,acceptance-broken");
   found.add("wiseeff,acceptance-map");
@@ -57,38 +48,12 @@ function collectCompatibles(): string[] {
   return [...found].sort();
 }
 
-function renderBinding(compatible: string): string {
-  const idSlug = slug(compatible);
-  return `%YAML 1.2
----
-$id: http://devicetree.org/schemas/vendor/wiseeff/${idSlug}.yaml#
-$title: ${compatible}
-description: WiseEff vendor binding generated for dt-validate coverage of golden power fixtures.
-maintainers:
-  - WiseEff
-select:
-  properties:
-    compatible:
-      contains:
-        const: ${compatible}
-  required:
-    - compatible
-properties:
-  compatible: true
-  status:
-    enum:
-      - okay
-      - disabled
-      - reserved
-      - fail
-      - fail-needs-probe
-  model: true
-additionalProperties: true
-unevaluatedProperties: true
-`;
-}
-
-export function generateLinuxDtBindings(): { files: string[]; contentHash: string } {
+export function generateLinuxDtBindings(): {
+  files: string[];
+  contentHash: string;
+  blockers: string[];
+  generated: GeneratedBinding[];
+} {
   mkdirSync(outDir, { recursive: true });
   for (const existing of readdirSync(outDir)) {
     if (existing.endsWith(".yaml") || existing.endsWith(".yml")) {
@@ -96,42 +61,67 @@ export function generateLinuxDtBindings(): { files: string[]; contentHash: strin
     }
   }
 
-  const files: string[] = [];
-  const hash = createHash("sha256");
+  const vendorByCompatible = loadVendorSpecs(vendorDir);
+  const generated: GeneratedBinding[] = [];
+  const blockers: string[] = [];
+
   for (const compatible of collectCompatibles()) {
-    const fileName = `${slug(compatible)}.yaml`;
-    const body = renderBinding(compatible);
-    writeFileSync(join(outDir, fileName), body, "utf8");
-    files.push(fileName);
-    hash.update(fileName);
-    hash.update("\0");
-    hash.update(body);
-    hash.update("\0");
+    const binding = buildBindingForCompatible(compatible, vendorByCompatible, seedDir);
+    generated.push(binding);
+    blockers.push(...binding.blockers);
+    if (!binding.body.trim()) {
+      blockers.push(`schema-blocker: empty binding for ${compatible}`);
+      continue;
+    }
+    writeFileSync(join(outDir, binding.fileName), binding.body, "utf8");
   }
+
+  const written = generated.filter((item) => item.body.trim());
+  const contentHash = stableBindingsContentHash(
+    written.map((item) => ({ fileName: item.fileName, body: item.body }))
+  );
 
   const manifest = {
     generatedAt: new Date().toISOString(),
-    contentHash: hash.digest("hex"),
-    files: files.sort()
+    contentHash,
+    blockerCount: blockers.length,
+    files: written.map((item) => item.fileName).sort()
   };
   writeFileSync(join(outDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-  return { files: manifest.files, contentHash: manifest.contentHash };
+
+  return { files: manifest.files, contentHash, blockers, generated };
 }
+
+const GOLDEN_COMPATIBLES = new Set(
+  readFileSync(join(seedDir, "wiseeff-power-base.dts"), "utf8")
+    .match(/compatible\s*=\s*"([^"]+)"/g)
+    ?.map((m) => m.replace(/.*"([^"]+)"/, "$1")) ?? []
+);
 
 async function main() {
   const result = generateLinuxDtBindings();
+  const hardBlockers = result.blockers.filter((item) => {
+    if (!item.startsWith("schema-blocker:")) return false;
+    const compatible = item.match(/for (.+)$/)?.[1];
+    return compatible ? GOLDEN_COMPATIBLES.has(compatible) || item.includes("empty binding") : true;
+  });
   console.log(
     JSON.stringify(
       {
-        ok: true,
+        ok: hardBlockers.length === 0,
         outDir: "schemas/dts/linux-bindings",
         fileCount: result.files.length,
-        contentHash: result.contentHash
+        contentHash: result.contentHash,
+        blockerCount: result.blockers.length,
+        hardBlockerCount: hardBlockers.length
       },
       null,
       2
     )
   );
+  if (hardBlockers.length > 0) {
+    process.exitCode = 1;
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

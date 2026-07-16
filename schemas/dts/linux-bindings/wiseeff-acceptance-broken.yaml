@@ -1,10 +1,13 @@
 %YAML 1.2
 ---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
 $id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-acceptance-broken.yaml#
-$title: wiseeff,acceptance-broken
-description: WiseEff vendor binding generated for dt-validate coverage of golden power fixtures.
+title: wiseeff,acceptance-broken
+description: WiseEff vendor binding for wiseeff,acceptance-broken (generated from vendor property schema).
 maintainers:
   - WiseEff
+allOf:
+  - $ref: /schemas/device.yaml#
 select:
   properties:
     compatible:
@@ -13,14 +16,12 @@ select:
   required:
     - compatible
 properties:
-  compatible: true
-  status:
-    enum:
-      - okay
-      - disabled
-      - reserved
-      - fail
-      - fail-needs-probe
-  model: true
-additionalProperties: true
-unevaluatedProperties: true
+  compatible:
+    type: string
+    pattern: ^wiseeff,acceptance-broken$
+  reg:
+    $ref: /schemas/types.yaml#/definitions/reg
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false
