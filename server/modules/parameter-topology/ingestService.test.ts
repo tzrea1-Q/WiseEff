@@ -13,11 +13,14 @@ import type { ConfigRevisionManifest } from "./types";
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const seedDir = join(root, "src/config/dts-seed");
 const overlaySource = readFileSync(join(seedDir, "base-power-overlay.dts"), "utf8");
+const baseSource = readFileSync(join(seedDir, "wiseeff-power-base.dts"), "utf8");
 
 const ORG_ID = "org-topo-ingest";
 const PROJECT_ID = "project-topo-ingest";
 const USER_ID = "user-topo-ingest";
 const CONFIG_SET_ID = "dcs-topo-ingest";
+const SC8562_LOCATOR = "/amba/i2c@FDF5E000/sc8562@6E";
+const MT5788_LOCATOR = "/amba/i2c@FF24E000/mt5788@2B";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -118,12 +121,12 @@ async function insertPinnedMember(
   ]);
 }
 
-function goldenManifest(): ConfigRevisionManifest {
+function goldenManifest(options?: { useRealBase?: boolean }): ConfigRevisionManifest {
   const baseFileId = "file-base-topo";
   const overlayFileId = "file-overlay-topo";
   const baseVersionId = "fv-base-topo";
   const overlayVersionId = "fv-overlay-topo";
-  const baseContent = buildLabelStubBase(overlaySource);
+  const baseContent = options?.useRealBase ? baseSource : buildLabelStubBase(overlaySource);
   return {
     organizationId: ORG_ID,
     projectId: PROJECT_ID,
@@ -150,6 +153,42 @@ function goldenManifest(): ConfigRevisionManifest {
       },
     ],
   };
+}
+
+async function bindingForNodeProperty(
+  db: InMemoryTestDatabase,
+  configRevisionId: string,
+  nodeLocator: string,
+  propertyKey: string,
+) {
+  const result = await db.query<{
+    binding_id: string;
+    logical_node_id: string;
+    parameter_spec_id: string;
+  }>(
+    `
+    select b.id as binding_id, b.logical_node_id, b.parameter_spec_id
+    from project_parameter_bindings b
+    inner join project_parameter_binding_revisions br
+      on br.binding_id = b.id and br.config_revision_id = $1
+    inner join dts_logical_node_revisions lnr
+      on lnr.logical_node_id = b.logical_node_id and lnr.config_revision_id = $1
+    inner join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+    where lnr.node_locator = $2
+      and coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') = $3
+    limit 1
+    `,
+    [configRevisionId, nodeLocator, propertyKey],
+  );
+  const row = result.rows[0];
+  return row
+    ? {
+        bindingId: row.binding_id,
+        logicalNodeId: row.logical_node_id,
+        parameterSpecId: row.parameter_spec_id,
+      }
+    : null;
 }
 
 async function countTable(
@@ -316,5 +355,39 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
     expect(firstStatus.rows[0]?.status).toBe("resolved");
     expect(await countTable(db!, "dts_property_occurrences", first.id)).toBe(170);
     expect(await countTable(db!, "dts_property_occurrences", second.id)).toBe(170);
+  });
+
+  it("reuses stable bindingId for sc8562@6E.gpio_int across consecutive full-config-set revisons", async () => {
+    const manifest = goldenManifest({ useRealBase: true });
+    for (const member of manifest.members) {
+      await insertPinnedMember(db!, {
+        fileId: member.fileId,
+        fileName: member.fileName,
+        versionId: member.fileVersionId,
+        content: member.content,
+        role: member.role === "base" ? "base" : "overlay",
+        sortOrder: member.sortOrder,
+      });
+    }
+
+    const first = await ingestConfigRevision(db!, manifest, auth);
+    const second = await ingestConfigRevision(db!, manifest, auth);
+
+    expect(first.status).toBe("resolved");
+    expect(second.status).toBe("resolved");
+    expect(second.revisionNumber).toBe(first.revisionNumber + 1);
+
+    const firstGpio = await bindingForNodeProperty(db!, first.id, SC8562_LOCATOR, "gpio_int");
+    const secondGpio = await bindingForNodeProperty(db!, second.id, SC8562_LOCATOR, "gpio_int");
+    expect(firstGpio).toBeTruthy();
+    expect(secondGpio).toBeTruthy();
+    expect(secondGpio!.bindingId).toBe(firstGpio!.bindingId);
+    expect(secondGpio!.logicalNodeId).toBe(firstGpio!.logicalNodeId);
+
+    const mt5788First = await bindingForNodeProperty(db!, first.id, MT5788_LOCATOR, "gpio_int");
+    expect(mt5788First).toBeTruthy();
+    expect(mt5788First!.parameterSpecId).not.toBe(firstGpio!.parameterSpecId);
+    expect(mt5788First!.parameterSpecId).toMatch(/mt5788/i);
+    expect(firstGpio!.parameterSpecId).toMatch(/sc8562/i);
   });
 });

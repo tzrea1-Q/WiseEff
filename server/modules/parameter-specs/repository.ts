@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Queryable } from "../../shared/database/client";
-import type { SpecReviewTaskDraft } from "./types";
+import type { DriverSchema, PropertySpec, SpecReviewTaskDraft } from "./types";
 
 type ReviewTaskRow = {
   id: string;
@@ -367,4 +367,141 @@ export async function getParameterSpecRow(
       : null,
     policyTarget: row.policy_target ?? null,
   };
+}
+
+function driverSchemaRootId(driverSchemaId: string): string {
+  return driverSchemaId.replace(/:v\d+$/, "");
+}
+
+/**
+ * Ensure ParameterSpec (+ version) and dts_property_specs rows exist for a matched property.
+ * Binding FKs require these rows before createOrReuseBinding / upsertBindingRevisionValues.
+ */
+export async function upsertMatchedPropertySpec(
+  db: Queryable,
+  property: PropertySpec,
+): Promise<{ parameterSpecId: string; parameterSpecVersionId: string }> {
+  const specificationKey = `${property.schemaNamespace}/${property.propertyKey}`;
+  await db.query(
+    `
+    insert into parameter_specs (id, organization_id, source_kind, specification_key)
+    values ($1, null, 'dts', $2)
+    on conflict (id) do nothing
+    `,
+    [property.parameterSpecId, specificationKey],
+  );
+  await db.query(
+    `
+    insert into parameter_spec_versions (
+      id, parameter_spec_id, version, display_name, description, value_shape,
+      schema_default, example_value, lifecycle
+    ) values ($1, $2, 1, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8)
+    on conflict (id) do nothing
+    `,
+    [
+      property.id,
+      property.parameterSpecId,
+      property.propertyKey,
+      property.documentation ?? property.propertyKey,
+      JSON.stringify(property.valueShape),
+      property.schemaDefault === undefined ? null : JSON.stringify(property.schemaDefault),
+      property.exampleValue === undefined ? null : JSON.stringify(property.exampleValue),
+      property.lifecycle,
+    ],
+  );
+
+  await db.query(
+    `
+    insert into dts_property_specs (
+      id, parameter_spec_id, driver_schema_id, property_key, schema_namespace,
+      units, constraints, documentation
+    ) values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+    on conflict (id) do nothing
+    `,
+    [
+      `dps:${property.parameterSpecId}`,
+      property.parameterSpecId,
+      // Prefer null here; callers upsert drivers first and may patch later.
+      // Avoid FK failures when driver_schemas row is not yet present.
+      null,
+      property.propertyKey,
+      property.schemaNamespace,
+      property.units ?? null,
+      JSON.stringify(property.constraints ?? {}),
+      property.documentation ?? null,
+    ],
+  );
+
+  return {
+    parameterSpecId: property.parameterSpecId,
+    parameterSpecVersionId: property.id,
+  };
+}
+
+/**
+ * Ensure driver_schemas (+ version) rows exist so logical node revisions can store
+ * driver_schema_version_id for continuity evidence.
+ */
+export async function upsertMatchedDriverSchema(
+  db: Queryable,
+  driver: DriverSchema,
+): Promise<{ driverSchemaId: string; driverSchemaVersionId: string }> {
+  const rootId = driverSchemaRootId(driver.id);
+  const driverParamSpecId = `pspec:driver:${driver.schemaNamespace}`;
+  const driverParamVersionId = `psv:driver:${driver.schemaNamespace}:v${driver.version}`;
+
+  await db.query(
+    `
+    insert into parameter_specs (id, organization_id, source_kind, specification_key)
+    values ($1, null, 'dts', $2)
+    on conflict (id) do nothing
+    `,
+    [driverParamSpecId, `driver/${driver.schemaNamespace}`],
+  );
+  await db.query(
+    `
+    insert into parameter_spec_versions (
+      id, parameter_spec_id, version, display_name, description, value_shape,
+      schema_default, example_value, lifecycle
+    ) values ($1, $2, $3, $4, $5, $6::jsonb, null, null, $7)
+    on conflict (id) do nothing
+    `,
+    [
+      driverParamVersionId,
+      driverParamSpecId,
+      driver.version,
+      driver.compatible,
+      `Driver schema ${driver.schemaNamespace}`,
+      JSON.stringify({ kind: "unknown" }),
+      driver.lifecycle,
+    ],
+  );
+  await db.query(
+    `
+    insert into driver_schemas (id, parameter_spec_id, organization_id, schema_namespace)
+    values ($1, $2, null, $3)
+    on conflict (id) do nothing
+    `,
+    [rootId, driverParamSpecId, driver.schemaNamespace],
+  );
+  await db.query(
+    `
+    insert into driver_schema_versions (
+      id, driver_schema_id, parameter_spec_version_id, version,
+      compatible_patterns, parent_bus_constraints, source, lifecycle
+    ) values ($1, $2, $3, $4, $5::jsonb, '{}'::jsonb, $6, $7)
+    on conflict (id) do nothing
+    `,
+    [
+      driver.id,
+      rootId,
+      driverParamVersionId,
+      driver.version,
+      JSON.stringify(driver.compatiblePatterns),
+      driver.source,
+      driver.lifecycle,
+    ],
+  );
+
+  return { driverSchemaId: rootId, driverSchemaVersionId: driver.id };
 }

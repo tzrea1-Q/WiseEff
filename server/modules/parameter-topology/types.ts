@@ -110,6 +110,7 @@ export type PersistedLogicalNodeRevision = {
   name: string;
   unitAddress?: string;
   compatible?: string;
+  driverSchemaVersionId?: string | null;
   parentLogicalNodeId: string | null;
 };
 

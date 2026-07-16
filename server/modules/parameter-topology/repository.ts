@@ -150,7 +150,7 @@ export async function insertLogicalNodeRevision(
     insert into dts_logical_node_revisions (
       id, logical_node_id, config_revision_id, node_locator, name, unit_address,
       compatible, driver_schema_version_id, parent_logical_node_id
-    ) values ($1, $2, $3, $4, $5, $6, $7, null, $8)
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     `,
     [
       revision.id,
@@ -160,6 +160,7 @@ export async function insertLogicalNodeRevision(
       revision.name,
       revision.unitAddress ?? null,
       revision.compatible ?? null,
+      revision.driverSchemaVersionId ?? null,
       revision.parentLogicalNodeId,
     ],
   );
@@ -559,4 +560,83 @@ export async function listEffectiveTopology(
       })),
     })),
   };
+}
+
+export type PreviousLogicalNodeRow = {
+  logicalNodeId: string;
+  nodeLocator: string;
+  name: string;
+  unitAddress?: string;
+  compatible?: string;
+  driverSchemaVersionId?: string | null;
+  parentLogicalNodeId: string | null;
+  reg?: string;
+};
+
+/** Load logical-node snapshots from the latest prior revision of a config set. */
+export async function listPreviousLogicalNodeSnapshots(
+  db: Queryable,
+  input: { configSetId: string; beforeRevisionNumber: number },
+): Promise<PreviousLogicalNodeRow[]> {
+  const revisionResult = await db.query<{ id: string }>(
+    `
+    select id
+    from dts_config_revisions
+    where config_set_id = $1
+      and revision_number < $2
+      and status not in ('invalid', 'resolving')
+    order by revision_number desc
+    limit 1
+    `,
+    [input.configSetId, input.beforeRevisionNumber],
+  );
+  const previousRevisionId = revisionResult.rows[0]?.id;
+  if (!previousRevisionId) return [];
+
+  const result = await db.query<{
+    logical_node_id: string;
+    node_locator: string;
+    name: string;
+    unit_address: string | null;
+    compatible: string | null;
+    driver_schema_version_id: string | null;
+    parent_logical_node_id: string | null;
+    reg_raw: string | null;
+  }>(
+    `
+    select
+      lnr.logical_node_id,
+      lnr.node_locator,
+      lnr.name,
+      lnr.unit_address,
+      lnr.compatible,
+      lnr.driver_schema_version_id,
+      lnr.parent_logical_node_id,
+      (
+        select po.raw_text
+        from dts_occurrence_effects oe
+        inner join dts_property_occurrences po on po.id = oe.property_occurrence_id
+        where oe.logical_node_revision_id = lnr.id
+          and oe.property_name = 'reg'
+          and oe.effect_kind in ('set', 'override')
+        order by oe.source_order desc
+        limit 1
+      ) as reg_raw
+    from dts_logical_node_revisions lnr
+    where lnr.config_revision_id = $1
+    order by lnr.node_locator asc
+    `,
+    [previousRevisionId],
+  );
+
+  return result.rows.map((row) => ({
+    logicalNodeId: row.logical_node_id,
+    nodeLocator: row.node_locator,
+    name: row.name,
+    unitAddress: row.unit_address ?? undefined,
+    compatible: row.compatible ?? undefined,
+    driverSchemaVersionId: row.driver_schema_version_id,
+    parentLogicalNodeId: row.parent_logical_node_id,
+    reg: row.reg_raw ?? undefined,
+  }));
 }

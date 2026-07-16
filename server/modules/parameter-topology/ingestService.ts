@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { AuthContext } from "../auth/types";
 import {
@@ -10,7 +12,27 @@ import {
   type DtsPropertyCst,
   type DtsSourceChainEntry,
 } from "../dts";
+import type { LogicalNodeCandidate, LogicalNodeSnapshot } from "../dts/identity";
+import {
+  collectOpenReviewTasks,
+  matchDriver,
+  matchProperty,
+} from "../parameter-specs/matcher";
+import {
+  persistOpenReviewTaskDrafts,
+  upsertMatchedDriverSchema,
+  upsertMatchedPropertySpec,
+} from "../parameter-specs/repository";
+import { loadSchemaRegistry } from "../parameter-specs/schemaLoader";
+import type { MatchableNode, SchemaRegistry } from "../parameter-specs/types";
 import type { Database, Queryable } from "../../shared/database/client";
+import {
+  createOrReuseBinding,
+  persistAmbiguousIdentityMapping,
+  resolveLogicalContinuity,
+  upsertBindingRevisionValues,
+  type ContinuityAmbiguous,
+} from "./bindingService";
 import {
   insertConfigRevision,
   insertConfigRevisionMembers,
@@ -21,6 +43,7 @@ import {
   insertPropertyOccurrence,
   insertValidationDiagnostics,
   insertValidationRun,
+  listPreviousLogicalNodeSnapshots,
   nextConfigRevisionNumber,
   updateConfigRevisionStatus,
 } from "./repository";
@@ -32,6 +55,8 @@ import type {
   PersistedNodeOccurrence,
   PersistedPropertyOccurrence,
 } from "./types";
+
+const schemasRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../schemas/dts");
 
 export function offsetToLineColumn(source: string, offset: number): LineColumn {
   let line = 1;
@@ -76,6 +101,73 @@ function parentLocator(locator: string): string | null {
   const idx = trimmed.lastIndexOf("/");
   if (idx < 0) return "/";
   return `/${trimmed.slice(0, idx)}`;
+}
+
+function locatorDepth(locator: string): number {
+  if (locator === "/") return 0;
+  return locator.split("/").filter(Boolean).length;
+}
+
+function topologyRelationFor(locator: string): string {
+  const parent = parentLocator(locator);
+  return parent ? `child-of-locator:${parent}` : "root";
+}
+
+function parseCompatibleList(rawText: string): string[] {
+  return [...rawText.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+}
+
+function extractReg(node: DtsEffectiveNode): string | undefined {
+  const reg = node.properties.get("reg");
+  if (!reg || reg.deleted) return undefined;
+  return reg.rawText;
+}
+
+function uniqueKeysFromReg(reg?: string): Record<string, string> | undefined {
+  if (!reg) return undefined;
+  const match = reg.match(/<\s*(0x[0-9a-fA-F]+|\d+)/);
+  if (!match) return undefined;
+  return { "i2c-reg": match[1].toLowerCase() };
+}
+
+function toMatchableNode(node: DtsEffectiveNode): MatchableNode {
+  const compatibleProp = node.properties.get("compatible");
+  const compatible =
+    compatibleProp && !compatibleProp.deleted ? parseCompatibleList(compatibleProp.rawText) : [];
+  const properties: MatchableNode["properties"] = {};
+  for (const [key, property] of node.properties) {
+    if (property.deleted) continue;
+    properties[key] = { rawText: property.rawText };
+  }
+  return {
+    nodeLocator: node.nodeLocator,
+    name: node.name,
+    unitAddress: node.unitAddress,
+    compatible,
+    properties,
+  };
+}
+
+function toPreviousSnapshot(row: {
+  logicalNodeId: string;
+  nodeLocator: string;
+  name: string;
+  unitAddress?: string;
+  driverSchemaVersionId?: string | null;
+  parentLogicalNodeId: string | null;
+  reg?: string;
+}): LogicalNodeSnapshot {
+  return {
+    logicalNodeId: row.logicalNodeId,
+    nodeLocator: row.nodeLocator,
+    name: row.name,
+    unitAddress: row.unitAddress,
+    parentLogicalNodeId: row.parentLogicalNodeId,
+    driverSchemaVersionId: row.driverSchemaVersionId,
+    reg: row.reg,
+    uniqueKeys: uniqueKeysFromReg(row.reg),
+    topologyRelation: topologyRelationFor(row.nodeLocator),
+  };
 }
 
 type PropertyMatchKey = string;
@@ -212,35 +304,144 @@ function takePropertyOccurrenceId(
   return null;
 }
 
-function buildLogicalRevisions(
-  effectiveNodes: Map<string, DtsEffectiveNode>,
-  organizationId: string,
-  projectId: string,
-  configSetId: string,
-): {
-  logicalNodes: Array<{ id: string; organizationId: string; projectId: string; configSetId: string }>;
+type ContinuityBuildResult = {
+  logicalNodesToInsert: Array<{
+    id: string;
+    organizationId: string;
+    projectId: string;
+    configSetId: string;
+  }>;
   revisions: PersistedLogicalNodeRevision[];
   revisionByLocator: Map<string, PersistedLogicalNodeRevision>;
-} {
-  const logicalNodes: Array<{ id: string; organizationId: string; projectId: string; configSetId: string }> = [];
-  const revisions: PersistedLogicalNodeRevision[] = [];
-  const revisionByLocator = new Map<string, PersistedLogicalNodeRevision>();
-  const logicalIdByLocator = new Map<string, string>();
+  stableLogicalIdByLocator: Map<string, string>;
+  ambiguous: Array<{ previous: LogicalNodeSnapshot; continuity: ContinuityAmbiguous }>;
+};
 
-  const sorted = [...effectiveNodes.values()].sort((a, b) => a.nodeLocator.localeCompare(b.nodeLocator));
+async function buildLogicalRevisionsWithContinuity(
+  tx: Queryable,
+  input: {
+    effectiveNodes: Map<string, DtsEffectiveNode>;
+    organizationId: string;
+    projectId: string;
+    configSetId: string;
+    revisionNumber: number;
+    registry: SchemaRegistry;
+  },
+): Promise<ContinuityBuildResult> {
+  const previousRows = await listPreviousLogicalNodeSnapshots(tx, {
+    configSetId: input.configSetId,
+    beforeRevisionNumber: input.revisionNumber,
+  });
+  const previousSnapshots = previousRows.map(toPreviousSnapshot);
+
+  const sorted = [...input.effectiveNodes.values()]
+    .filter((node) => !node.deleted)
+    .sort(
+      (a, b) =>
+        locatorDepth(a.nodeLocator) - locatorDepth(b.nodeLocator) ||
+        a.nodeLocator.localeCompare(b.nodeLocator),
+    );
+
+  const provisionalByLocator = new Map<string, LogicalNodeCandidate>();
+  const driverVersionByLocator = new Map<string, string | null>();
+
   for (const node of sorted) {
-    const logicalNodeId = randomUUID();
-    logicalIdByLocator.set(node.nodeLocator, logicalNodeId);
-    logicalNodes.push({ id: logicalNodeId, organizationId, projectId, configSetId });
+    const matchable = toMatchableNode(node);
+    const driverDecision = matchDriver(matchable, input.registry);
+    let driverSchemaVersionId: string | null = null;
+    if (driverDecision.kind === "matched") {
+      const upserted = await upsertMatchedDriverSchema(tx, driverDecision.value);
+      driverSchemaVersionId = upserted.driverSchemaVersionId;
+    }
+    driverVersionByLocator.set(node.nodeLocator, driverSchemaVersionId);
+
+    const parentLoc = parentLocator(node.nodeLocator);
+    const reg = extractReg(node);
+    const provisionalId = randomUUID();
+    provisionalByLocator.set(node.nodeLocator, {
+      logicalNodeId: provisionalId,
+      nodeLocator: node.nodeLocator,
+      name: node.name,
+      unitAddress: node.unitAddress,
+      parentLogicalNodeId: parentLoc
+        ? (provisionalByLocator.get(parentLoc)?.logicalNodeId ?? null)
+        : null,
+      driverSchemaVersionId,
+      reg,
+      uniqueKeys: uniqueKeysFromReg(reg),
+      topologyRelation: topologyRelationFor(node.nodeLocator),
+      labels: [...node.labels],
+    });
   }
 
+  const candidates = [...provisionalByLocator.values()];
+  const claimedProvisional = new Set<string>();
+  const stableByProvisional = new Map<string, string>();
+  const ambiguous: ContinuityBuildResult["ambiguous"] = [];
+
+  const previousInDepthOrder = [...previousSnapshots].sort(
+    (a, b) =>
+      locatorDepth(a.nodeLocator) - locatorDepth(b.nodeLocator) ||
+      a.nodeLocator.localeCompare(b.nodeLocator),
+  );
+
+  for (const previous of previousInDepthOrder) {
+    const available = candidates.filter((candidate) => !claimedProvisional.has(candidate.logicalNodeId));
+    // Prefer candidates whose parent already resolved to the previous parent's stable id.
+    const withStableParents = available.map((candidate) => {
+      const parentLoc = parentLocator(candidate.nodeLocator);
+      if (!parentLoc) return candidate;
+      const provisionalParent = provisionalByLocator.get(parentLoc)?.logicalNodeId;
+      const stableParent =
+        provisionalParent && stableByProvisional.has(provisionalParent)
+          ? stableByProvisional.get(provisionalParent)!
+          : candidate.parentLogicalNodeId;
+      return { ...candidate, parentLogicalNodeId: stableParent };
+    });
+
+    const continuity = resolveLogicalContinuity(previous, withStableParents);
+    if (continuity.kind === "matched") {
+      claimedProvisional.add(continuity.candidateLogicalNodeId);
+      stableByProvisional.set(continuity.candidateLogicalNodeId, continuity.stableLogicalNodeId);
+    } else if (continuity.kind === "ambiguous") {
+      for (const candidate of continuity.candidates) {
+        claimedProvisional.add(candidate.logicalNodeId);
+        // Keep provisional ids as the candidate identities exposed to mapping review.
+        stableByProvisional.set(candidate.logicalNodeId, candidate.logicalNodeId);
+      }
+      ambiguous.push({ previous, continuity });
+    }
+  }
+
+  const previousIds = new Set(previousSnapshots.map((row) => row.logicalNodeId));
+  const logicalNodesToInsert: ContinuityBuildResult["logicalNodesToInsert"] = [];
+  const insertedLogicalIds = new Set<string>();
+  const revisions: PersistedLogicalNodeRevision[] = [];
+  const revisionByLocator = new Map<string, PersistedLogicalNodeRevision>();
+  const stableLogicalIdByLocator = new Map<string, string>();
+
   for (const node of sorted) {
-    const logicalNodeId = logicalIdByLocator.get(node.nodeLocator)!;
+    const provisional = provisionalByLocator.get(node.nodeLocator)!;
+    const stableId =
+      stableByProvisional.get(provisional.logicalNodeId) ?? provisional.logicalNodeId;
+    stableLogicalIdByLocator.set(node.nodeLocator, stableId);
+
+    if (!previousIds.has(stableId) && !insertedLogicalIds.has(stableId)) {
+      logicalNodesToInsert.push({
+        id: stableId,
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        configSetId: input.configSetId,
+      });
+      insertedLogicalIds.add(stableId);
+    }
+
     const parentLoc = parentLocator(node.nodeLocator);
+    const parentStable = parentLoc ? (stableLogicalIdByLocator.get(parentLoc) ?? null) : null;
     const compatibleProp = node.properties.get("compatible");
     const revision: PersistedLogicalNodeRevision = {
       id: randomUUID(),
-      logicalNodeId,
+      logicalNodeId: stableId,
       nodeLocator: node.nodeLocator,
       name: node.name,
       unitAddress: node.unitAddress,
@@ -248,18 +449,75 @@ function buildLogicalRevisions(
         compatibleProp && !compatibleProp.deleted
           ? compatibleProp.normalizedValue || compatibleProp.rawText
           : undefined,
-      parentLogicalNodeId: parentLoc ? (logicalIdByLocator.get(parentLoc) ?? null) : null,
+      driverSchemaVersionId: driverVersionByLocator.get(node.nodeLocator) ?? null,
+      parentLogicalNodeId: parentStable,
     };
     revisions.push(revision);
     revisionByLocator.set(node.nodeLocator, revision);
   }
 
-  return { logicalNodes, revisions, revisionByLocator };
+  return {
+    logicalNodesToInsert,
+    revisions,
+    revisionByLocator,
+    stableLogicalIdByLocator,
+    ambiguous,
+  };
+}
+
+async function createBindingsForMatchedProperties(
+  tx: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string;
+    effectiveNodes: Map<string, DtsEffectiveNode>;
+    stableLogicalIdByLocator: Map<string, string>;
+    registry: SchemaRegistry;
+  },
+): Promise<void> {
+  for (const node of input.effectiveNodes.values()) {
+    if (node.deleted) continue;
+    const logicalNodeId = input.stableLogicalIdByLocator.get(node.nodeLocator);
+    if (!logicalNodeId) continue;
+    const matchable = toMatchableNode(node);
+
+    for (const [propertyKey, property] of node.properties) {
+      if (property.deleted) continue;
+      const decision = matchProperty(matchable, propertyKey, input.registry);
+      if (decision.kind !== "matched") continue;
+
+      const { parameterSpecId, parameterSpecVersionId } = await upsertMatchedPropertySpec(
+        tx,
+        decision.value,
+      );
+      const binding = await createOrReuseBinding(tx, {
+        organizationId: input.organizationId,
+        key: {
+          projectId: input.projectId,
+          logicalNodeId,
+          parameterSpecId,
+        },
+      });
+      await upsertBindingRevisionValues(tx, {
+        bindingId: binding.id,
+        configRevisionId: input.configRevisionId,
+        parameterSpecVersionId,
+        values: {
+          typedValue: property.value ?? { kind: "raw", rawText: property.rawText },
+          canonicalValue: property.value ?? property.normalizedValue,
+          rawValue: property.rawText,
+          schemaState: "matched",
+        },
+      });
+    }
+  }
 }
 
 /**
  * Persist one immutable config-set revision: members, source occurrences, logical nodes,
- * provenance effects, and resolve-stage diagnostics. Never mutates a previous revision.
+ * provenance effects, schema match, continuity/bindings, and resolve-stage diagnostics.
+ * Never mutates a previous revision.
  */
 export async function ingestConfigRevision(
   db: Database,
@@ -318,7 +576,7 @@ async function ingestConfigRevisionTx(
     defaultMetricsRegistry.recordDtsPipelineResult({
       stage: "parse",
       status: "failed",
-      durationMs: Math.max(0, Date.now() - parseStartedAt)
+      durationMs: Math.max(0, Date.now() - parseStartedAt),
     });
     throw error;
   }
@@ -328,7 +586,7 @@ async function ingestConfigRevisionTx(
     defaultMetricsRegistry.recordDtsPipelineResult({
       stage: "parse",
       status: hasErrors ? "failed" : "succeeded",
-      durationMs: Math.max(0, Date.now() - parseStartedAt)
+      durationMs: Math.max(0, Date.now() - parseStartedAt),
     });
   }
 
@@ -385,23 +643,33 @@ async function ingestConfigRevisionTx(
     }
   }
 
-  const { logicalNodes, revisions, revisionByLocator } = buildLogicalRevisions(
-    resolved.effective.nodesByLocator,
-    manifest.organizationId,
-    manifest.projectId,
-    manifest.configSetId,
-  );
+  const registry = loadSchemaRegistry(schemasRoot);
+  const matchableNodes = [...resolved.effective.nodesByLocator.values()]
+    .filter((node) => !node.deleted)
+    .map(toMatchableNode);
 
-  for (const logical of logicalNodes) {
+  const reviewDrafts = collectOpenReviewTasks(matchableNodes, registry);
+  await persistOpenReviewTaskDrafts(tx, manifest.organizationId, reviewDrafts);
+
+  const continuity = await buildLogicalRevisionsWithContinuity(tx, {
+    effectiveNodes: resolved.effective.nodesByLocator,
+    organizationId: manifest.organizationId,
+    projectId: manifest.projectId,
+    configSetId: manifest.configSetId,
+    revisionNumber,
+    registry,
+  });
+
+  for (const logical of continuity.logicalNodesToInsert) {
     await insertLogicalNode(tx, logical);
   }
-  for (const logicalRevision of revisions) {
+  for (const logicalRevision of continuity.revisions) {
     await insertLogicalNodeRevision(tx, revision.id, logicalRevision);
   }
 
   let effectOrder = 0;
   for (const node of resolved.effective.nodesByLocator.values()) {
-    const logicalRevision = revisionByLocator.get(node.nodeLocator);
+    const logicalRevision = continuity.revisionByLocator.get(node.nodeLocator);
     if (!logicalRevision) continue;
 
     for (const property of node.properties.values()) {
@@ -424,6 +692,34 @@ async function ingestConfigRevisionTx(
         effectOrder += 1;
       }
     }
+  }
+
+  await createBindingsForMatchedProperties(tx, {
+    organizationId: manifest.organizationId,
+    projectId: manifest.projectId,
+    configRevisionId: revision.id,
+    effectiveNodes: resolved.effective.nodesByLocator,
+    stableLogicalIdByLocator: continuity.stableLogicalIdByLocator,
+    registry,
+  });
+
+  for (const item of continuity.ambiguous) {
+    await persistAmbiguousIdentityMapping(tx, {
+      organizationId: manifest.organizationId,
+      projectId: manifest.projectId,
+      configRevisionId: revision.id,
+      previous: item.previous,
+      continuity: item.continuity,
+    });
+  }
+
+  if (continuity.ambiguous.length > 0) {
+    revision = await updateConfigRevisionStatus(tx, {
+      id: revision.id,
+      status: "needs_mapping",
+      resolvedAt: new Date().toISOString(),
+    });
+    return revision;
   }
 
   revision = await updateConfigRevisionStatus(tx, {
