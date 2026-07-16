@@ -86,8 +86,8 @@
 
 ### Task 7–8: Migration honesty + continuity
 
-- [ ] Report exactMatched / reviewedMatched / inferredPendingReview / ambiguous / unmapped / broken
-- [ ] Cutover blocks unaudited inferred; dry-run does not mask inferred as mapped
+- [x] Report exactMatched / reviewedMatched / inferredPendingReview / ambiguous / unmapped / broken
+- [x] Cutover blocks unaudited inferred; dry-run does not mask inferred as mapped
 - [ ] Reviewed mapping evidence reused on next ingest; only stable revisons are continuity baselines
 - [ ] R1/R2/R3 continuity tests
 

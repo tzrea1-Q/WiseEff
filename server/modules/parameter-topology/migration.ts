@@ -33,7 +33,14 @@ export type ParameterIdentityMigrationReport = {
   migrationRunId: string;
   mode: "dry-run" | "apply";
   legacyDefinitions: number;
+  /**
+   * Reliably mapped definitions only (exactMatched + reviewedMatched).
+   * Never includes inferred drafts — those are inferredPendingReview.
+   */
   mappedDefinitions: number;
+  exactMatched: number;
+  reviewedMatched: number;
+  inferredPendingReview: number;
   legacyProjectValues: number;
   mappedProjectValues: number;
   unmappedRecords: number;
@@ -82,6 +89,8 @@ type SpecCandidate = {
   schemaNamespace: string | null;
   propertyKey: string | null;
   specificationKey: string;
+  lifecycle: "draft" | "active" | "deprecated";
+  inferredDraft: boolean;
 };
 
 type DefinitionRow = {
@@ -191,6 +200,8 @@ async function loadSpecCandidates(
     schema_namespace: string | null;
     property_key: string | null;
     specification_key: string;
+    lifecycle: string;
+    description: string | null;
   }>(
     `
     select
@@ -198,7 +209,9 @@ async function loadSpecCandidates(
       psv.id as parameter_spec_version_id,
       dps.schema_namespace,
       dps.property_key,
-      ps.specification_key
+      ps.specification_key,
+      psv.lifecycle,
+      psv.description
     from parameter_specs ps
     inner join parameter_spec_versions psv
       on psv.parameter_spec_id = ps.id
@@ -220,6 +233,7 @@ async function loadSpecCandidates(
         )
       )
     order by
+      case when psv.lifecycle = 'active' then 0 else 1 end,
       case
         when ps.specification_key = $2 then 0
         when $3::text is not null and ps.specification_key = $3 then 1
@@ -246,15 +260,76 @@ async function loadSpecCandidates(
   for (const row of result.rows) {
     if (seen.has(row.parameter_spec_id)) continue;
     seen.add(row.parameter_spec_id);
+    const lifecycle =
+      row.lifecycle === "active" || row.lifecycle === "deprecated" ? row.lifecycle : "draft";
+    const inferredDraft =
+      lifecycle === "draft" &&
+      (row.description ?? "").toLowerCase().includes("inferred during identity migration");
     candidates.push({
       parameterSpecId: row.parameter_spec_id,
       parameterSpecVersionId: row.parameter_spec_version_id,
       schemaNamespace: row.schema_namespace,
       propertyKey: row.property_key,
-      specificationKey: row.specification_key
+      specificationKey: row.specification_key,
+      lifecycle,
+      inferredDraft
     });
   }
   return candidates;
+}
+
+async function findReviewedSpecForDefinition(
+  db: Queryable,
+  input: { organizationId: string; definitionId: string; propertyKey: string; module: string }
+): Promise<SpecCandidate | null> {
+  const result = await db.query<{
+    parameter_spec_id: string;
+    parameter_spec_version_id: string;
+    schema_namespace: string | null;
+    property_key: string | null;
+    specification_key: string;
+    lifecycle: string;
+  }>(
+    `
+    select
+      ps.id as parameter_spec_id,
+      psv.id as parameter_spec_version_id,
+      dps.schema_namespace,
+      dps.property_key,
+      ps.specification_key,
+      psv.lifecycle
+    from parameter_spec_review_tasks t
+    inner join parameter_specs ps on ps.id = t.parameter_spec_id
+    inner join parameter_spec_versions psv
+      on psv.parameter_spec_id = ps.id
+     and psv.lifecycle = 'active'
+    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    where t.organization_id = $1
+      and t.status = 'resolved'
+      and (
+        t.source_evidence->>'definitionId' = $2
+        or (
+          coalesce(t.source_evidence->>'inferred', '') = 'true'
+          and t.source_evidence->>'module' = $3
+          and t.source_evidence->>'propertyKey' = $4
+        )
+      )
+    order by t.resolved_at desc nulls last, t.created_at desc
+    limit 1
+    `,
+    [input.organizationId, input.definitionId, input.module, input.propertyKey]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    parameterSpecId: row.parameter_spec_id,
+    parameterSpecVersionId: row.parameter_spec_version_id,
+    schemaNamespace: row.schema_namespace,
+    propertyKey: row.property_key,
+    specificationKey: row.specification_key,
+    lifecycle: "active",
+    inferredDraft: false
+  };
 }
 
 type LogicalNodeResolveResult =
@@ -371,7 +446,9 @@ function planInferredSpec(input: {
     parameterSpecVersionId,
     schemaNamespace: namespace,
     propertyKey: input.propertyKey,
-    specificationKey
+    specificationKey,
+    lifecycle: "draft",
+    inferredDraft: true
   };
 }
 
@@ -420,6 +497,53 @@ async function ensureInferredSpec(
       spec.parameterSpecId,
       spec.propertyKey ?? "property",
       spec.schemaNamespace ?? "unknown"
+    ]
+  );
+}
+
+/**
+ * Every inferred draft must surface as a review task / cutover blocker.
+ * Dry-run still records the blocker without writing.
+ */
+async function ensureInferredReviewTask(
+  db: Queryable,
+  input: {
+    apply: boolean;
+    organizationId: string;
+    definitionId: string;
+    module: string;
+    propertyKey: string;
+    spec: SpecCandidate;
+  }
+): Promise<void> {
+  if (!input.apply) return;
+  const taskId = stableSemanticId("parameter_spec_review_task", [
+    input.organizationId,
+    "inferred",
+    input.definitionId,
+    input.spec.parameterSpecId
+  ]);
+  await db.query(
+    `
+    insert into parameter_spec_review_tasks (
+      id, organization_id, parameter_spec_id, source_evidence,
+      candidate_schemas, project_count, status, reason
+    ) values ($1, $2, $3, $4::jsonb, $5::jsonb, 1, 'open', $6)
+    on conflict (id) do nothing
+    `,
+    [
+      taskId,
+      input.organizationId,
+      input.spec.parameterSpecId,
+      JSON.stringify({
+        inferred: true,
+        definitionId: input.definitionId,
+        module: input.module,
+        propertyKey: input.propertyKey,
+        specificationKey: input.spec.specificationKey
+      }),
+      JSON.stringify([input.spec.parameterSpecId]),
+      `inferred draft parameter spec for ${input.module}/${input.propertyKey} requires review`
     ]
   );
 }
@@ -743,12 +867,14 @@ async function runParameterIdentityMigration(
   let ambiguousRecords = 0;
   let brokenHistoryChains = 0;
   let evidenceRows = 0;
-  let mappedDefinitions = 0;
+  let exactMatched = 0;
+  let reviewedMatched = 0;
+  let inferredPendingReview = 0;
   let mappedProjectValues = 0;
 
   const definitionMap = new Map<
     string,
-    { spec: SpecCandidate; evidenceId?: string }
+    { spec: SpecCandidate; evidenceId?: string; matchKind: "exact" | "reviewed" | "inferred" }
   >();
   const valueMap = new Map<
     string,
@@ -805,51 +931,77 @@ async function runParameterIdentityMigration(
       propertyKey,
       module: def.module
     });
+    const activeCandidates = candidates.filter((c) => c.lifecycle === "active" && !c.inferredDraft);
+    const inferredDraftCandidates = candidates.filter((c) => c.inferredDraft);
 
     let spec: SpecCandidate | null = null;
-    let inferred = false;
+    let matchKind: "exact" | "reviewed" | "inferred" | null = null;
 
-    if (candidates.length === 1) {
-      spec = candidates[0]!;
-    } else if (candidates.length > 1) {
-      // Prefer exact module/name or unique property-key after namespace filter.
-      const exact = candidates.filter(
+    const pickExact = (pool: SpecCandidate[]): SpecCandidate | null => {
+      if (pool.length === 1) return pool[0]!;
+      const exact = pool.filter(
         (c) =>
           c.specificationKey === `${def.module}/${propertyKey}` ||
-          c.specificationKey === `${sanitizeSpecSegment(def.module)}/${sanitizeSpecSegment(propertyKey)}`
+          c.specificationKey ===
+            `${sanitizeSpecSegment(def.module)}/${sanitizeSpecSegment(propertyKey)}`
       );
-      if (exact.length === 1) {
-        spec = exact[0]!;
+      return exact.length === 1 ? exact[0]! : null;
+    };
+
+    const exact = pickExact(activeCandidates);
+    if (exact) {
+      spec = exact;
+      matchKind = "exact";
+    } else if (activeCandidates.length > 1) {
+      ambiguousRecords += 1;
+      blockers.push(
+        `ambiguous definition ${def.id}: ${activeCandidates.map((c) => c.parameterSpecId).join(",")}`
+      );
+      await ensureAmbiguityTasks(db, {
+        apply,
+        organizationId: def.organization_id,
+        projectId: values.rows.find((v) => v.parameter_definition_id === def.id)?.project_id ?? "unknown",
+        configRevisionId: null,
+        reason: `ambiguous parameter spec for ${def.module}/${propertyKey}`,
+        parameterSpecIds: activeCandidates.map((c) => c.parameterSpecId),
+        evidence: {
+          definitionId: def.id,
+          module: def.module,
+          propertyKey,
+          candidateSpecificationKeys: activeCandidates.map((c) => c.specificationKey)
+        }
+      });
+      continue;
+    } else {
+      const reviewed = await findReviewedSpecForDefinition(db, {
+        organizationId: def.organization_id,
+        definitionId: def.id,
+        propertyKey,
+        module: def.module
+      });
+      if (reviewed) {
+        spec = reviewed;
+        matchKind = "reviewed";
       } else {
-        ambiguousRecords += 1;
-        blockers.push(
-          `ambiguous definition ${def.id}: ${candidates.map((c) => c.parameterSpecId).join(",")}`
-        );
-        await ensureAmbiguityTasks(db, {
+        // Inferred ≠ reliably mapped. Prefer an existing inferred draft id when present.
+        spec =
+          pickExact(inferredDraftCandidates) ??
+          planInferredSpec({
+            organizationId: def.organization_id,
+            module: def.module,
+            propertyKey
+          });
+        matchKind = "inferred";
+        await ensureInferredSpec(db, spec, def.organization_id, apply);
+        await ensureInferredReviewTask(db, {
           apply,
           organizationId: def.organization_id,
-          projectId: values.rows.find((v) => v.parameter_definition_id === def.id)?.project_id ?? "unknown",
-          configRevisionId: null,
-          reason: `ambiguous parameter spec for ${def.module}/${propertyKey}`,
-          parameterSpecIds: candidates.map((c) => c.parameterSpecId),
-          evidence: {
-            definitionId: def.id,
-            module: def.module,
-            propertyKey,
-            candidateSpecificationKeys: candidates.map((c) => c.specificationKey)
-          }
+          definitionId: def.id,
+          module: def.module,
+          propertyKey,
+          spec
         });
-        continue;
       }
-    } else {
-      // Deterministic inferred draft: module + property key (never a project path).
-      spec = planInferredSpec({
-        organizationId: def.organization_id,
-        module: def.module,
-        propertyKey
-      });
-      inferred = true;
-      await ensureInferredSpec(db, spec, def.organization_id, apply);
     }
 
     // Spec identity must never be derived from a project path.
@@ -857,7 +1009,18 @@ async function runParameterIdentityMigration(
       blockers.push(`spec ${spec.parameterSpecId} encodes a project path`);
       continue;
     }
-    mappedDefinitions += 1;
+
+    if (matchKind === "exact") {
+      exactMatched += 1;
+    } else if (matchKind === "reviewed") {
+      reviewedMatched += 1;
+    } else {
+      inferredPendingReview += 1;
+      blockers.push(
+        `inferred pending review for definition ${def.id}: ${def.module}/${propertyKey}`
+      );
+    }
+
     const evidenceId = await insertEvidence(db, {
       apply,
       organizationId: def.organization_id,
@@ -878,11 +1041,12 @@ async function runParameterIdentityMigration(
         specificationKey: spec.specificationKey,
         schemaNamespace: spec.schemaNamespace,
         propertyKey: spec.propertyKey ?? def.name,
-        inferred
+        inferred: matchKind === "inferred",
+        matchKind
       }
     });
     evidenceRows += 1;
-    definitionMap.set(def.id, { spec, evidenceId });
+    definitionMap.set(def.id, { spec, evidenceId, matchKind });
   }
 
   for (const value of values.rows) {
@@ -1505,11 +1669,15 @@ async function runParameterIdentityMigration(
     throw new Error(`apply blocked: ${blockers.join("; ")}`);
   }
 
+  const mappedDefinitions = exactMatched + reviewedMatched;
   const report: ParameterIdentityMigrationReport = {
     migrationRunId,
     mode: options.mode,
     legacyDefinitions: definitions.rows.length,
     mappedDefinitions,
+    exactMatched,
+    reviewedMatched,
+    inferredPendingReview,
     legacyProjectValues: values.rows.length,
     mappedProjectValues,
     unmappedRecords,
@@ -1574,6 +1742,17 @@ export async function applyParameterIdentityCutover(
   if (!run.rows[0] || run.rows[0].status !== "completed") {
     throw new Error(`cutover requires completed migration run ${options.migrationRunId}`);
   }
+  const report = run.rows[0].report as Partial<ParameterIdentityMigrationReport> | null;
+  const inferredPending =
+    typeof report?.inferredPendingReview === "number" ? report.inferredPendingReview : 0;
+  if (inferredPending > 0) {
+    throw new Error(
+      `cutover blocked: ${inferredPending} inferred specs pending review (unaudited inferred cannot cut over)`
+    );
+  }
+  if (Array.isArray(report?.blockers) && report.blockers.some((b) => /inferred pending review/i.test(b))) {
+    throw new Error("cutover blocked: unaudited inferred specs remain in migration report");
+  }
 
   const sqlPath = options.cutoverSqlPath ?? defaultCutoverSqlPath();
   let sql = await fs.readFile(sqlPath, "utf8");
@@ -1637,6 +1816,38 @@ export async function checkParameterIdentityCutover(db: Queryable): Promise<{
   );
   if (Number(openMapping.rows[0]?.c ?? 0) > 0) {
     blockers.push("open identity mapping tasks remain");
+  }
+
+  const openInferredReviews = await db.query<{ c: string }>(
+    `
+    select count(*)::text as c
+    from parameter_spec_review_tasks
+    where status = 'open'
+      and coalesce(source_evidence->>'inferred', '') = 'true'
+    `
+  );
+  if (Number(openInferredReviews.rows[0]?.c ?? 0) > 0) {
+    blockers.push("unaudited inferred parameter specs remain (open inferred review tasks)");
+  }
+
+  const inferredEvidence = await db.query<{ c: string }>(
+    `
+    select count(*)::text as c
+    from legacy_parameter_migration_evidence e
+    where e.legacy_kind = 'parameter_definition'
+      and coalesce(e.evidence->>'inferred', '') = 'true'
+      and coalesce(e.evidence->>'matchKind', '') = 'inferred'
+      and not exists (
+        select 1
+        from parameter_spec_review_tasks t
+        where t.parameter_spec_id = e.parameter_spec_id
+          and t.status = 'resolved'
+          and coalesce(t.source_evidence->>'inferred', '') = 'true'
+      )
+    `
+  );
+  if (Number(inferredEvidence.rows[0]?.c ?? 0) > 0) {
+    blockers.push("unaudited inferred migration evidence remains");
   }
 
   let nullHistoryCount = 0;

@@ -564,6 +564,9 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
     expect(report).toMatchObject({
       legacyDefinitions: seeded.expectedDefinitions,
       mappedDefinitions: seeded.expectedDefinitions,
+      exactMatched: seeded.expectedDefinitions,
+      reviewedMatched: 0,
+      inferredPendingReview: 0,
       legacyProjectValues: seeded.expectedValues,
       mappedProjectValues: seeded.expectedValues,
       unmappedRecords: 0,
@@ -842,6 +845,118 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
         process.env.PARAMETER_IDENTITY_MAINTENANCE_TOKEN = previous;
       }
     }
+  });
+
+  it("dry-run does not count inferred drafts as mappedDefinitions", async () => {
+    await seedLegacyGraph(db!);
+    // Unique key absent from vendor catalog → must infer (not exact/ambiguous).
+    const orphanDef = "pd-mig-orphan-only";
+    const orphanKey = "orphan_legacy_only_param";
+    await db!.query(
+      `
+      insert into parameter_definitions (
+        id, organization_id, name, description, explanation, config_format,
+        module, default_range, unit, risk
+      ) values (
+        $1, $2, $3, 'orphan', 'no catalog', 'DTS',
+        'orphan_module', '', '', 'Low'
+      )
+      `,
+      [orphanDef, ORG, orphanKey]
+    );
+
+    const report = await migrateParameterIdentities(db!, {
+      mode: "dry-run",
+      organizationId: ORG
+    });
+
+    expect(report.legacyDefinitions).toBe(2);
+    expect(report.exactMatched).toBe(1);
+    expect(report.reviewedMatched).toBe(0);
+    expect(report.inferredPendingReview).toBe(1);
+    expect(report.mappedDefinitions).toBe(1);
+    expect(report.mappedDefinitions).not.toBe(report.legacyDefinitions);
+    expect(report.blockers.some((b) => /inferred pending review/i.test(b))).toBe(true);
+    expect(report.blockers.some((b) => b.includes(orphanDef))).toBe(true);
+  });
+
+  it("apply and cutover block unaudited inferred specs", async () => {
+    await seedLegacyGraph(db!);
+    const orphanDef = "pd-mig-orphan-cutover";
+    const orphanKey = "orphan_cutover_only_param";
+    await db!.query(
+      `
+      insert into parameter_definitions (
+        id, organization_id, name, description, explanation, config_format,
+        module, default_range, unit, risk
+      ) values (
+        $1, $2, $3, 'orphan', 'no catalog', 'DTS',
+        'orphan_module', '', '', 'Low'
+      )
+      `,
+      [orphanDef, ORG, orphanKey]
+    );
+
+    const dryRun = await migrateParameterIdentities(db!, {
+      mode: "dry-run",
+      organizationId: ORG
+    });
+    expect(dryRun.inferredPendingReview).toBe(1);
+    expect(dryRun.mappedDefinitions).toBe(1);
+
+    await expect(
+      migrateParameterIdentities(db!, {
+        mode: "apply",
+        organizationId: ORG,
+        ...applyGates,
+        dbSnapshotId: "db-snap-inferred",
+        objectSnapshotId: "obj-snap-inferred"
+      })
+    ).rejects.toThrow(/apply blocked|inferred pending review/i);
+
+    // Force a completed run row with inferredPendingReview to prove cutover gate.
+    const fakeRunId = "mig-run-inferred-block";
+    await db!.query(
+      `
+      insert into parameter_identity_migration_runs (
+        id, mode, status, report, db_snapshot_id, object_snapshot_id,
+        write_lock_confirmed, completed_at
+      ) values (
+        $1, 'apply', 'completed', $2::jsonb, 'db', 'obj', true, now()
+      )
+      `,
+      [
+        fakeRunId,
+        JSON.stringify({
+          ...dryRun,
+          migrationRunId: fakeRunId,
+          mode: "apply",
+          inferredPendingReview: 1,
+          mappedDefinitions: 1,
+          blockers: [`inferred pending review for definition ${orphanDef}: orphan_module/${orphanKey}`]
+        })
+      ]
+    );
+
+    await expect(
+      applyParameterIdentityCutover(db!, { migrationRunId: fakeRunId })
+    ).rejects.toThrow(/cutover blocked|inferred/i);
+
+    // Apply writes inside the shared test transaction survive the thrown apply block;
+    // reuse the inferred draft + open review task that apply already staged.
+    const openInferred = await db!.query<{ c: string }>(
+      `
+      select count(*)::text as c
+      from parameter_spec_review_tasks
+      where status = 'open'
+        and coalesce(source_evidence->>'inferred', '') = 'true'
+      `
+    );
+    expect(Number(openInferred.rows[0]?.c ?? 0)).toBeGreaterThan(0);
+
+    const check = await checkParameterIdentityCutover(db!);
+    expect(check.ok).toBe(false);
+    expect(check.blockers.some((b) => /unaudited inferred/i.test(b))).toBe(true);
   });
 
   it("blocks apply when logical node mapping is ambiguous", async () => {
