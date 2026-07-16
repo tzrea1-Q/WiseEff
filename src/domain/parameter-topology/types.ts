@@ -42,6 +42,8 @@ export type SpecQuery = {
 
 export type ParameterSpecSummary = {
   id: string;
+  /** Null for platform-global specs (readable/bindable; not org-admin mutable). */
+  organizationId?: string | null;
   sourceKind: ParameterSourceKind;
   specificationKey: string;
   propertyKey: string | null;

@@ -13,6 +13,7 @@ import {
   parseSpecReviewEvidence,
   refreshConfigRevisionAfterSpecReview,
   requireOrgOrGlobalSpec,
+  requireOrgOwnedSpec,
   requireLocateEvidence,
 } from "./reviewApply";
 import { assertSpecActivatable, assertSpecResolvable } from "./specCompleteness";
@@ -160,6 +161,7 @@ export async function listParameterSpecs(
   return {
     items: rows.map((row) => ({
       id: row.id,
+      organizationId: row.organizationId,
       sourceKind: row.sourceKind,
       specificationKey: row.specificationKey,
       propertyKey: row.propertyKey,
@@ -187,6 +189,7 @@ export async function getParameterSpec(
   return {
     item: {
       id: row.id,
+      organizationId: row.organizationId,
       sourceKind: row.sourceKind,
       specificationKey: row.specificationKey,
       propertyKey: row.propertyKey,
@@ -540,7 +543,7 @@ export async function activateParameterSpec(
   requireCanAdmin(auth);
 
   return db.transaction(async (tx) => {
-    const spec = await requireOrgOrGlobalSpec(tx, {
+    const spec = await requireOrgOwnedSpec(tx, {
       organizationId: auth.organization.id,
       parameterSpecId: input.specId,
     });
@@ -560,6 +563,7 @@ export async function activateParameterSpec(
       valueShape: input.valueShape,
       constraints: nextConstraints,
       documentation: input.documentation,
+      storedValueShape: spec.valueShape,
     });
 
     await tx.query(
@@ -620,6 +624,7 @@ export async function activateParameterSpec(
     return {
       item: {
         id: refreshed.id,
+        organizationId: refreshed.organizationId,
         sourceKind: refreshed.sourceKind,
         specificationKey: refreshed.specificationKey,
         propertyKey: refreshed.propertyKey,

@@ -7,6 +7,7 @@ export const specLifecycleSchema = z.enum(["draft", "active", "deprecated"]);
 
 export const parameterSpecSummaryDtoSchema = z.object({
   id: nonEmptyString,
+  organizationId: z.string().nullable().optional(),
   sourceKind: parameterSourceKindSchema,
   specificationKey: nonEmptyString,
   propertyKey: z.string().nullable(),

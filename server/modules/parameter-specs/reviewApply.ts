@@ -369,6 +369,31 @@ export async function requireOrgOrGlobalSpec(
   return allowedSpec;
 }
 
+/**
+ * Mutating paths (activate/update) must target an org-owned row.
+ * Global specs (organization_id IS NULL) are readable/bindable but not activatable by org admins.
+ */
+export async function requireOrgOwnedSpec(
+  db: Queryable,
+  input: { organizationId: string; parameterSpecId: string },
+) {
+  const allowedSpec = await requireOrgOrGlobalSpec(db, input);
+  if (allowedSpec.organizationId == null) {
+    throw new ApiError(
+      "FORBIDDEN",
+      "Platform global parameter specs cannot be activated or modified by organization admins.",
+      403,
+      { parameterSpecId: input.parameterSpecId },
+    );
+  }
+  if (allowedSpec.organizationId !== input.organizationId) {
+    throw new ApiError("NOT_FOUND", "Parameter spec was not found for this organization.", 404, {
+      parameterSpecId: input.parameterSpecId,
+    });
+  }
+  return allowedSpec;
+}
+
 /** Fail closed when task property key differs from selected spec unless explicitly confirmed. */
 export function assertPropertyKeyMatchOrConfirmed(
   task: PersistedSpecReviewTask,
@@ -444,10 +469,39 @@ export async function createOrgManualParameterSpec(
     organizationId: input.organizationId,
     specId: ids.parameterSpecId,
   });
-  if (existing?.currentVersionId) {
+  if (existing?.currentVersionId && existing.organizationId === input.organizationId) {
     return {
       parameterSpecId: ids.parameterSpecId,
       parameterSpecVersionId: existing.currentVersionId,
+      created: false,
+      valueShape,
+    };
+  }
+
+  // Idempotency across hash-formula changes: reuse org-owned manual row with same property key.
+  const byProperty = await db.query<{ id: string; version_id: string }>(
+    `
+    select ps.id, psv.id as version_id
+    from parameter_specs ps
+    inner join lateral (
+      select id
+      from parameter_spec_versions
+      where parameter_spec_id = ps.id
+      order by version desc
+      limit 1
+    ) psv on true
+    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    where ps.organization_id = $1
+      and ps.source_kind = 'manual'
+      and coalesce(dps.property_key, '') = $2
+    limit 1
+    `,
+    [input.organizationId, input.propertyKey],
+  );
+  if (byProperty.rows[0]) {
+    return {
+      parameterSpecId: byProperty.rows[0].id,
+      parameterSpecVersionId: byProperty.rows[0].version_id,
       created: false,
       valueShape,
     };

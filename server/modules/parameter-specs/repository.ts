@@ -867,6 +867,7 @@ export async function countDismissedSpecBlockersForRevision(
 
 type SpecListRow = {
   id: string;
+  organization_id: string | null;
   source_kind: "dts" | "json" | "manual";
   specification_key: string;
   property_key: string | null;
@@ -878,6 +879,7 @@ type SpecListRow = {
 
 export type ParameterSpecListRow = {
   id: string;
+  organizationId: string | null;
   sourceKind: "dts" | "json" | "manual";
   specificationKey: string;
   propertyKey: string | null;
@@ -904,6 +906,7 @@ export type ParameterSpecDetailRow = ParameterSpecListRow & {
 function toListRow(row: SpecListRow): ParameterSpecListRow {
   return {
     id: row.id,
+    organizationId: row.organization_id,
     sourceKind: row.source_kind,
     specificationKey: row.specification_key,
     propertyKey: row.property_key,
@@ -964,6 +967,7 @@ export async function listParameterSpecRows(
     `
     select
       ps.id,
+      ps.organization_id,
       ps.source_kind,
       ps.specification_key,
       coalesce(
@@ -1023,6 +1027,7 @@ export async function getParameterSpecRow(
     `
     select
       ps.id,
+      ps.organization_id,
       ps.source_kind,
       ps.specification_key,
       coalesce(
