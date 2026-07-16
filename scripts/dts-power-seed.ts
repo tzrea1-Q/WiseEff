@@ -75,11 +75,11 @@ const projectOverrides: Record<Exclude<DtsPowerSeedProjectId, "aurora">, SourceO
     "charging_core/ichg_max": "<3000>",
     "wireless_charger/pmax": "<40>",
     "wireless_sc/volt_para00": "\"4580\", \"2000\", \"420\"",
-    "direct_charge_comp/status": "\"ok\"",
+    "direct_charge_comp/status": "\"okay\"",
     "direct_charge_turbo/time_para01": "\"720\", \"7600\", \"0\", \"14000\"",
     "direct_charger/resist_para": "\"0\", \"240\", \"3600\", \"240\", \"32767\", \"2300\"",
     "battery_charge_balance/unbalance_th": "<120 10000>",
-    "btb_check/status": "\"ok\"",
+    "btb_check/status": "\"okay\"",
     "amba/i2c@FF24E000/mt5788@2B/time_para": "<1900 1350 0 2700>",
     "amba/i2c@FF24E000/hl7603@77/const_vout": "<3700>",
     "amba/i2c@FF24E000/hl7603@75/const_vout": "<3400>"

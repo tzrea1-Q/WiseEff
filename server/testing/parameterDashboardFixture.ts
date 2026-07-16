@@ -38,9 +38,14 @@ async function deleteOrgDashboardData(db: Database) {
   await db.query("delete from parameter_definitions where organization_id = $1", [ORG_ID]);
   await db.query("delete from project_modules where organization_id = $1", [ORG_ID]);
 
-  // Semantic topology FKs block project/file deletes after migration 0048.
+  // Semantic topology FKs block project/file deletes after migration 0048/0050.
   await db.query(
     `delete from identity_mapping_tasks
+     where project_id in (select id from projects where organization_id = $1)`,
+    [ORG_ID]
+  );
+  await db.query(
+    `delete from dts_property_occurrence_spec_decisions
      where project_id in (select id from projects where organization_id = $1)`,
     [ORG_ID]
   );

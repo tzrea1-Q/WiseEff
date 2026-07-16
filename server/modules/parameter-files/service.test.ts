@@ -156,8 +156,9 @@ describe("project parameter file upload service", () => {
     });
     expect(txCalls.find((call) => call.text.includes("insert into project_parameter_files"))).toBeTruthy();
     const insertVersionCall = txCalls.find((call) => call.text.includes("insert into project_parameter_file_versions"));
-    expect(insertVersionCall?.values[2]).toBe(1);
-    expect(insertVersionCall?.values[6]).toBe(JSON.stringify({ "battery/temp_max": { value: "85" } }));
+    expect(insertVersionCall?.text).toContain("coalesce");
+    expect(insertVersionCall?.values[2]).toBe("org-1/stored-config.json");
+    expect(insertVersionCall?.values[5]).toBe(JSON.stringify({ "battery/temp_max": { value: "85" } }));
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))).toBeTruthy();
     expect(result.file.currentVersionNumber).toBe(1);
     expect(result.version.versionNumber).toBe(1);
@@ -179,7 +180,8 @@ describe("project parameter file upload service", () => {
 
     expect(txCalls.find((call) => call.text.includes("insert into project_parameter_files"))).toBeFalsy();
     const insertVersionCall = txCalls.find((call) => call.text.includes("insert into project_parameter_file_versions"));
-    expect(insertVersionCall?.values[2]).toBe(2);
+    expect(insertVersionCall?.text).toContain("coalesce");
+    expect(insertVersionCall?.values[2]).toBe("org-1/stored-config.json");
     expect(result.version.versionNumber).toBe(2);
   });
 

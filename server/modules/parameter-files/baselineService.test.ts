@@ -522,8 +522,9 @@ describe("rollbackToBaseline", () => {
 
     const versionInserts = txCalls.filter((call) => call.text.includes("insert into project_parameter_file_versions"));
     expect(versionInserts).toHaveLength(1);
+    expect(versionInserts[0].text).toContain("coalesce");
     expect(versionInserts[0].values).toEqual(
-      expect.arrayContaining(["file-2", 3, "sk-2", "checksum-2", 55, "rollback", "user-1"])
+      expect.arrayContaining(["file-2", "sk-2", "checksum-2", 55, "{}", "rollback", "user-1"])
     );
 
     const currentVersionUpdates = txCalls.filter(
