@@ -1,0 +1,31 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-charge-mode-test.yaml#
+title: wiseeff,charge_mode_test
+description: WiseEff vendor binding for wiseeff,charge_mode_test (generated from vendor property schema).
+maintainers:
+  - WiseEff
+allOf:
+  - $ref: /schemas/device.yaml#
+  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
+select:
+  properties:
+    compatible:
+      contains:
+        const: wiseeff,charge_mode_test
+  required:
+    - compatible
+properties:
+  compatible:
+    type: string
+    pattern: ^wiseeff,charge_mode_test$
+  status:
+    type: string
+  test_para:
+    type: string
+required:
+  - compatible
+  - status
+additionalProperties: false
+unevaluatedProperties: false

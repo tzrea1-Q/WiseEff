@@ -593,7 +593,7 @@ Before moving plan to `completed/`:
 
 ## P2 / P3 Follow-up
 
-> **Digested 2026-07-15** by [`2026-07-15-parameter-import-wizard-td035.md`](2026-07-15-parameter-import-wizard-td035.md) (**TD-035 closed**).
+> **Digested 2026-07-15** by [`2026-07-15-parameter-import-wizard-td035.md`](../completed/2026-07-15-parameter-import-wizard-td035.md) (**TD-035 closed**).
 
 | ID | Item | Status |
 | --- | --- | --- |

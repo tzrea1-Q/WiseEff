@@ -1,0 +1,19 @@
+$id: wiseeff/wiseeff-amba.yaml
+title: wiseeff,amba
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,amba
+compatible:
+  - wiseeff,amba
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  compatible:
+    valueShape: string-list
+    exampleValue: '"wiseeff,amba"'
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}

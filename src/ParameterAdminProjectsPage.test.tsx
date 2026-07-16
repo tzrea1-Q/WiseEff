@@ -314,6 +314,66 @@ describe("ParameterAdminProjectsPage", () => {
     expect(within(panel).getByRole("checkbox", { name: "布尔开关" })).toBeInTheDocument();
   });
 
+  it("loads the current seeded DTS file and version in api structure browsing", async () => {
+    window.history.replaceState(null, "", "/parameter-admin/projects");
+    listProjectsMock.mockResolvedValue([
+      {
+        id: "atlas",
+        name: "Atlas",
+        code: "ATL",
+        status: "initialized",
+        moduleCount: 18,
+        parameterCount: 182,
+        updatedAt: "2026-07-14T08:00:00.000Z"
+      }
+    ]);
+    listFilesMock.mockResolvedValue([
+      {
+        id: "file-atlas-dts",
+        projectId: "atlas",
+        fileName: "wiseeff-power-overlay.dts",
+        format: "dts",
+        enabled: true,
+        currentVersionId: "version-atlas-dts-1",
+        currentVersionNumber: 1,
+        updatedAt: "2026-07-14T08:00:00.000Z"
+      }
+    ]);
+    const getStructure = vi.fn().mockResolvedValue({ nodes: [] });
+    resolveDtsStructuredRepository.mockReturnValueOnce({
+      listConfigSets: vi.fn().mockResolvedValue([]),
+      createConfigSet: vi.fn(),
+      addConfigSetFile: vi.fn(),
+      removeConfigSetFile: vi.fn(),
+      listBaselines: vi.fn().mockResolvedValue([]),
+      createBaseline: vi.fn(),
+      compareBaseline: vi.fn(),
+      rollbackBaseline: vi.fn(),
+      releaseBaseline: vi.fn(),
+      exportConfigSet: vi.fn(),
+      getStructure,
+      search: vi.fn()
+    });
+
+    render(
+      <ParameterAdminProjectsPage
+        state={initialState}
+        dispatch={vi.fn()}
+        onNavigate={vi.fn()}
+        search=""
+        runtimeMode="api"
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "管理文件 Atlas" }));
+    const dialog = screen.getByRole("dialog", { name: "管理文件 · Atlas" });
+    fireEvent.click(within(dialog).getByRole("tab", { name: "结构浏览" }));
+
+    await waitFor(() => {
+      expect(getStructure).toHaveBeenCalledWith("atlas", "file-atlas-dts", "version-atlas-dts-1");
+    });
+  });
+
   it("resolves the http dts repository when runtimeMode is api", () => {
     window.history.replaceState(null, "", "/parameter-admin/projects");
 
@@ -431,5 +491,4 @@ describe("ParameterAdminProjectsPage", () => {
     expect(within(fileSelect).getByRole("option", { name: "board.dts" })).toBeInTheDocument();
   });
 });
-
 

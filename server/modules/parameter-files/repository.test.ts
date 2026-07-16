@@ -181,10 +181,10 @@ describe("parameter-files repository", () => {
     });
 
     expect(calls[0].text).toContain("insert into project_parameter_file_versions");
+    expect(calls[0].text).toContain("coalesce");
     expect(calls[0].values).toEqual([
       "ver-1",
       "file-1",
-      1,
       "org-1/files/battery.dtsi",
       "abc123",
       1024,

@@ -30,8 +30,8 @@ describe("DTS parser safety integration (teaching sample)", () => {
     expect(Object.keys(synthetic)).toEqual(["alive"]);
   });
 
-  it("detectUnsupportedDtsConstructs only reports include after P1 structural support", () => {
-    const codes = detectUnsupportedDtsConstructs(sample).map((finding) => finding.code);
-    expect(codes).toEqual(["include"]);
+  it("detectUnsupportedDtsConstructs does not flag /include/ (resolver owns include diagnostics)", () => {
+    expect(sample).toContain("/include/");
+    expect(detectUnsupportedDtsConstructs(sample)).toEqual([]);
   });
 });

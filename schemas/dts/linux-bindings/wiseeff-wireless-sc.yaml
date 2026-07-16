@@ -1,0 +1,39 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-wireless-sc.yaml#
+title: wiseeff,wireless_sc
+description: WiseEff vendor binding for wiseeff,wireless_sc (generated from vendor property schema).
+maintainers:
+  - WiseEff
+allOf:
+  - $ref: /schemas/device.yaml#
+  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
+select:
+  properties:
+    compatible:
+      contains:
+        const: wiseeff,wireless_sc
+  required:
+    - compatible
+properties:
+  compatible:
+    type: string
+    pattern: ^wiseeff,wireless_sc$
+  bat_para:
+    type: string
+  init_para:
+    type: string
+  init_para_col:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+  status:
+    type: string
+  volt_para00:
+    type: string
+  volt_para01:
+    type: string
+required:
+  - compatible
+  - status
+additionalProperties: false
+unevaluatedProperties: false

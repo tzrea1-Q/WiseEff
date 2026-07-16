@@ -1,0 +1,14 @@
+/dts-v1/;
+/include/ "pins.dtsi"
+
+/ {
+	amba: amba {
+		i2c@FDF5E000 {
+			status = "ok";
+			sc8562: sc8562@6E {
+				compatible = "sc8562";
+				reg = <0x6e>;
+			};
+		};
+	};
+};

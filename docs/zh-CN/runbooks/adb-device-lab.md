@@ -70,7 +70,7 @@ npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts
 - ADB target 检测成功，
 - 节点读取成功，
 - 可用的 request 或 audit 关联，并以脱敏 shape 摘要展示，
-- 浏览器截图、`test-results/acceptance/operation-evidence/...json` 和 `playwright-report/acceptance/index.html` 位置。
+- 浏览器截图、`test-results/acceptance-operation-evidence/...json` 和 `playwright-report/acceptance/index.html` 位置。
 
 写入模式生成证据还必须展示：
 

@@ -40,6 +40,17 @@ import {
   type ParameterSubmissionRoundStatus
 } from "./status";
 import { buildChangeRequestImpact } from "./impact";
+import { LEGACY_SQL } from "../parameter-topology/migration";
+import {
+  listSemanticParameters,
+  mustUseSemanticParameterIdentity,
+  upsertSemanticDraft
+} from "./semanticParameterReads";
+import { resetParameterIdentityCutoverCache } from "./cutoverAwareIdentity";
+import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
+import { deletePreCutoverProjectParameterValues } from "./legacyParameterIdentityAdapter";
+
+export { resetParameterIdentityCutoverCache };
 
 export type ImportPreviewClassification = "added" | "updated" | "unchanged" | "conflict";
 
@@ -101,7 +112,7 @@ type ParameterRow = {
   unit: string;
   risk: ParameterRiskLevel;
   current_value: string;
-  recommended_value: string;
+  initSuggestionText: string;
   source_file_name?: string | null;
   source_node_path?: string | null;
   updated_at: string | Date;
@@ -119,7 +130,7 @@ type ParameterDefinitionImportRow = {
   risk: ParameterRiskLevel;
   project_parameter_value_id: string | null;
   current_value: string | null;
-  recommended_value: string | null;
+  initSuggestionText: string | null;
   value_version: number | string | null;
 };
 
@@ -156,7 +167,7 @@ type ProjectParameterForUpdateRow = {
   unit: string;
   risk: ParameterRiskLevel;
   current_value: string;
-  recommended_value: string;
+  initSuggestionText: string;
   value_version: number | string;
   source_file_name?: string | null;
   source_node_path?: string | null;
@@ -189,6 +200,7 @@ type DraftRow = {
   origin?: "manual" | "file_sync";
   origin_file_version_id?: string | null;
   updated_at: string | Date;
+  project_parameter_binding_id?: string | null;
 };
 
 export type ParameterDraftWithOrigin = {
@@ -314,6 +326,8 @@ export type ChangeRequestMergeResult = {
   targetValue: string;
   baseVersion: number;
   newVersion: number;
+  parameterSpecId?: string;
+  projectParameterBindingId?: string;
 };
 
 type ChangeRequestMergeRow = {
@@ -324,6 +338,8 @@ type ChangeRequestMergeRow = {
   target_value: string;
   base_version: number | string;
   new_version: number | string;
+  parameter_spec_id?: string | null;
+  project_parameter_binding_id?: string | null;
 };
 
 type SubmissionItemRow = {
@@ -453,6 +469,11 @@ function parseModulePathNames(modulePath: string | null | undefined): string[] |
   return trimmed.split("/").filter(Boolean);
 }
 
+function normalizeParameterRisk(risk: string | null | undefined): ParameterRiskLevel {
+  if (risk === "High" || risk === "Medium" || risk === "Low") return risk;
+  return "Low";
+}
+
 function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] = []): ParameterRecordDto {
   const updatedAt = dateTimeToIso(row.updated_at);
   const modulePath = parseModulePathNames(row.module_path);
@@ -469,7 +490,7 @@ function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] =
     modulePath,
     projectId: row.project_id,
     currentValue: row.current_value,
-    recommendedValue: row.recommended_value,
+    recommendedValue: row.initSuggestionText,
     range: row.default_range,
     unit: row.unit,
     risk: row.risk,
@@ -492,13 +513,17 @@ function toHistoryDto(row: ParameterHistoryRow): ParameterHistoryEntryDto {
 }
 
 function toDraftDto(row: DraftRow): ParameterDraftDto {
+  const bindingId = row.project_parameter_binding_id ?? undefined;
+  // Post-cutover: parameterId DTO field carries the semantic binding id.
+  const parameterId = bindingId ?? row.project_parameter_value_id;
   return {
     id: row.id,
     projectId: row.project_id,
-    parameterId: row.project_parameter_value_id,
+    parameterId,
     targetValue: row.target_value,
     reason: row.reason,
-    updatedAt: dateTimeToIso(row.updated_at)
+    updatedAt: dateTimeToIso(row.updated_at),
+    projectParameterBindingId: bindingId
   };
 }
 
@@ -544,7 +569,7 @@ function toProjectParameterForUpdate(row: ProjectParameterForUpdateRow): Project
     unit: row.unit,
     risk: row.risk,
     currentValue: row.current_value,
-    recommendedValue: row.recommended_value,
+    recommendedValue: row.initSuggestionText,
     valueVersion: Number(row.value_version),
     sourceFileName: row.source_file_name ?? undefined,
     sourceNodePath: row.source_node_path ?? undefined
@@ -713,7 +738,9 @@ function toChangeRequestMergeResult(row: ChangeRequestMergeRow): ChangeRequestMe
     projectId: row.project_id,
     targetValue: row.target_value,
     baseVersion: Number(row.base_version),
-    newVersion: Number(row.new_version)
+    newVersion: Number(row.new_version),
+    parameterSpecId: row.parameter_spec_id ?? undefined,
+    projectParameterBindingId: row.project_parameter_binding_id ?? undefined
   };
 }
 
@@ -730,7 +757,7 @@ function toParameterDefinitionImportCandidate(row: ParameterDefinitionImportRow)
     risk: row.risk,
     projectParameterValueId: row.project_parameter_value_id ?? undefined,
     currentValue: row.current_value ?? undefined,
-    recommendedValue: row.recommended_value ?? undefined,
+    recommendedValue: row.initSuggestionText ?? undefined,
     valueVersion: row.value_version === null ? undefined : Number(row.value_version)
   };
 }
@@ -792,6 +819,21 @@ export async function getProjectById(db: Queryable, query: { organizationId: str
 }
 
 export async function listProjectAdminSummaries(db: Queryable, query: { organizationId: string }) {
+  const semantic = await mustUseSemanticParameterIdentity(db);
+  const parameterCountSql = semantic
+    ? `
+      select project_id, count(*)::int as parameter_count
+      from project_parameter_bindings
+      where organization_id = $1
+      group by project_id
+    `
+    : `
+      select project_id, count(*)::int as parameter_count
+      from ${LEGACY_IDENTITY_SQL.valuesTable}
+      where organization_id = $1
+      group by project_id
+    `;
+
   const result = await db.query<ProjectRow>(
     `
     select
@@ -810,10 +852,7 @@ export async function listProjectAdminSummaries(db: Queryable, query: { organiza
       group by project_id
     ) module_counts on module_counts.project_id = p.id
     left join (
-      select project_id, count(*)::int as parameter_count
-      from project_parameter_values
-      where organization_id = $1
-      group by project_id
+      ${parameterCountSql}
     ) param_counts on param_counts.project_id = p.id
     where p.organization_id = $1
     order by p.name asc
@@ -1004,14 +1043,63 @@ export async function deleteProject(
     [organizationId, projectId]
   );
 
-  await db.query(
-    `
-    delete from project_parameter_values
-    where organization_id = $1
-      and project_id = $2
-    `,
-    [organizationId, projectId]
-  );
+  // Post-cutover: clear semantic topology without querying renamed flat tables.
+  // Pre-cutover: delete flat values via explicit transitional adapter only.
+  if (!(await mustUseSemanticParameterIdentity(db))) {
+    await deletePreCutoverProjectParameterValues(db, { organizationId, projectId });
+  } else {
+    await db.query(
+      `
+      update legacy_parameter_migration_evidence
+      set project_parameter_binding_id = null,
+          parameter_spec_id = null,
+          parameter_spec_version_id = null
+      where project_parameter_binding_id in (
+        select id from project_parameter_bindings
+        where organization_id = $1 and project_id = $2
+      )
+      `,
+      [organizationId, projectId]
+    );
+    await db.query(
+      `
+      update node_operations
+      set project_parameter_binding_id = null,
+          parameter_spec_id = null
+      where organization_id = $1
+        and project_parameter_binding_id in (
+          select id from project_parameter_bindings
+          where organization_id = $1 and project_id = $2
+        )
+      `,
+      [organizationId, projectId]
+    );
+    await db.query(
+      `
+      delete from project_parameter_bindings
+      where organization_id = $1
+        and project_id = $2
+      `,
+      [organizationId, projectId]
+    );
+    // Delete config revisions before files cascade from projects (member FKs).
+    await db.query(
+      `
+      delete from dts_config_revisions
+      where organization_id = $1
+        and project_id = $2
+      `,
+      [organizationId, projectId]
+    );
+    await db.query(
+      `
+      delete from dts_logical_nodes
+      where organization_id = $1
+        and project_id = $2
+      `,
+      [organizationId, projectId]
+    );
+  }
 
   await db.query(
     `
@@ -1051,6 +1139,39 @@ export async function listProjectModules(db: Queryable, query: { organizationId:
 }
 
 export async function listParameters(db: Queryable, query: ListParametersQuery) {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    const limit = Math.min(Math.max(query.limit ?? 100, 1), 500);
+    const rows = await listSemanticParameters(db, {
+      organizationId: query.organizationId,
+      projectId: query.projectId,
+      module: query.module,
+      q: query.q,
+      limit
+    });
+    return rows.map((row) =>
+      toParameterDto({
+        id: row.id,
+        project_id: row.project_id,
+        name: row.name,
+        description: row.description,
+        explanation: row.explanation,
+        config_format: row.config_format,
+        value_kind: row.value_kind,
+        module: row.module,
+        parameter_module_id: row.parameter_module_id,
+        module_path: row.module_path,
+        default_range: row.default_range,
+        unit: row.unit,
+        risk: normalizeParameterRisk(row.risk),
+        current_value: row.current_value,
+        initSuggestionText: row.initSuggestionText ?? "",
+        source_file_name: row.source_file_name,
+        source_node_path: row.source_node_path,
+        updated_at: row.updated_at
+      })
+    );
+  }
+
   const values: unknown[] = [query.organizationId];
   const where = ["ppv.organization_id = $1", "pd.organization_id = $1"];
 
@@ -1108,12 +1229,12 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
       pd.unit,
       pd.risk,
       ppv.current_value,
-      ppv.recommended_value,
+      ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.source_file_name,
       ppv.source_node_path,
       ppv.updated_at
-    from project_parameter_values ppv
-    inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
+    from ${LEGACY_IDENTITY_SQL.valuesTable} ppv
+    inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = ppv.parameter_definition_id
     left join parameter_modules pm on pm.id = pd.parameter_module_id and pm.organization_id = pd.organization_id
     where ${where.join("\n      and ")}
     order by ppv.updated_at desc, pd.name asc
@@ -1126,6 +1247,39 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
 }
 
 export async function getParameterById(db: Queryable, query: { organizationId: string; parameterId: string }) {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    const rows = await listSemanticParameters(db, {
+      organizationId: query.organizationId,
+      limit: 500
+    });
+    const row = rows.find((candidate) => candidate.id === query.parameterId);
+    if (!row) return null;
+    const history = await listParameterHistory(db, query);
+    return toParameterDto(
+      {
+        id: row.id,
+        project_id: row.project_id,
+        name: row.name,
+        description: row.description,
+        explanation: row.explanation,
+        config_format: row.config_format,
+        value_kind: row.value_kind,
+        module: row.module,
+        parameter_module_id: row.parameter_module_id,
+        module_path: row.module_path,
+        default_range: row.default_range,
+        unit: row.unit,
+        risk: normalizeParameterRisk(row.risk),
+        current_value: row.current_value,
+        initSuggestionText: row.initSuggestionText ?? "",
+        source_file_name: row.source_file_name,
+        source_node_path: row.source_node_path,
+        updated_at: row.updated_at
+      },
+      history
+    );
+  }
+
   const result = await db.query<ParameterRow>(
     `
     select
@@ -1141,12 +1295,12 @@ export async function getParameterById(db: Queryable, query: { organizationId: s
       pd.unit,
       pd.risk,
       ppv.current_value,
-      ppv.recommended_value,
+      ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.source_file_name,
       ppv.source_node_path,
       ppv.updated_at
-    from project_parameter_values ppv
-    inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
+    from ${LEGACY_IDENTITY_SQL.valuesTable} ppv
+    inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = ppv.parameter_definition_id
     where ppv.organization_id = $1
       and pd.organization_id = $1
       and ppv.id = $2
@@ -1163,6 +1317,26 @@ export async function getParameterById(db: Queryable, query: { organizationId: s
 }
 
 export async function listParameterHistory(db: Queryable, query: { organizationId: string; parameterId: string }) {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    const result = await db.query<ParameterHistoryRow>(
+      `
+      select
+        phe.version,
+        phe.value,
+        phe.changed_at,
+        users.name as changed_by,
+        phe.request_id
+      from parameter_history_entries phe
+      left join users on users.id = phe.changed_by_user_id
+      where phe.organization_id = $1
+        and phe.project_parameter_binding_id = $2
+      order by phe.changed_at desc
+      `,
+      [query.organizationId, query.parameterId]
+    );
+    return result.rows.map(toHistoryDto);
+  }
+
   const result = await db.query<ParameterHistoryRow>(
     `
     select
@@ -1172,8 +1346,8 @@ export async function listParameterHistory(db: Queryable, query: { organizationI
       users.name as changed_by,
       phe.request_id
     from parameter_history_entries phe
-    inner join project_parameter_values ppv on ppv.id = phe.project_parameter_value_id
-    inner join parameter_definitions pd on pd.id = phe.parameter_definition_id
+    inner join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = phe.project_parameter_value_id
+    inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = phe.parameter_definition_id
     left join users on users.id = phe.changed_by_user_id
     where phe.organization_id = $1
       and ppv.organization_id = $1
@@ -1198,9 +1372,24 @@ export async function listDraftsForUser(
     addCondition(where, values, (placeholder) => `project_id = ${placeholder}`, query.projectId);
   }
 
+  const semantic = await mustUseSemanticParameterIdentity(db);
   const result = await db.query<DraftRow>(
+    semantic
+      ? `
+    select
+      id,
+      project_id,
+      coalesce(project_parameter_binding_id, '') as project_parameter_value_id,
+      target_value,
+      reason,
+      updated_at,
+      project_parameter_binding_id
+    from parameter_drafts
+    where ${where.join("\n      and ")}
+    order by updated_at desc
     `
-    select id, project_id, project_parameter_value_id, target_value, reason, updated_at
+      : `
+    select id, project_id, project_parameter_value_id, target_value, reason, updated_at, project_parameter_binding_id
     from parameter_drafts
     where ${where.join("\n      and ")}
     order by updated_at desc
@@ -1215,9 +1404,26 @@ export async function listDraftsForParameterValue(
   db: Queryable,
   query: { projectParameterValueId: string }
 ) {
+  const semantic = await mustUseSemanticParameterIdentity(db);
   const result = await db.query<DraftRow>(
+    semantic
+      ? `
+    select
+      id,
+      user_id,
+      project_id,
+      coalesce(project_parameter_binding_id, '') as project_parameter_value_id,
+      target_value,
+      origin,
+      origin_file_version_id,
+      updated_at,
+      project_parameter_binding_id
+    from parameter_drafts
+    where project_parameter_binding_id = $1
+    order by updated_at desc, id asc
     `
-    select id, user_id, project_id, project_parameter_value_id, target_value, origin, origin_file_version_id, updated_at
+      : `
+    select id, user_id, project_id, project_parameter_value_id, target_value, origin, origin_file_version_id, updated_at, project_parameter_binding_id
     from parameter_drafts
     where project_parameter_value_id = $1
     order by updated_at desc, id asc
@@ -1240,21 +1446,57 @@ export async function upsertDraft(
     reason: string;
     origin?: "manual" | "file_sync";
     originFileVersionId?: string;
+    /** Semantic binding identity — required for topology-aware drafts. */
+    projectParameterBindingId?: string;
+    parameterSpecId?: string;
   }
 ) {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    const bindingId = input.projectParameterBindingId ?? input.parameterId;
+    const row = await upsertSemanticDraft(db, {
+      id: input.id,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      bindingId,
+      userId: input.userId,
+      targetValue: input.targetValue,
+      reason: input.reason,
+      origin: input.origin,
+      originFileVersionId: input.originFileVersionId
+    });
+    void input.parameterSpecId;
+    if (!row) {
+      throw new Error("Failed to upsert semantic parameter draft");
+    }
+    return toDraftDto({
+      id: row.id,
+      project_id: row.project_id,
+      project_parameter_value_id: bindingId,
+      target_value: row.target_value,
+      reason: row.reason,
+      updated_at: row.updated_at,
+      project_parameter_binding_id: row.project_parameter_binding_id
+    });
+  }
+
   const result = await db.query<DraftRow>(
     `
     insert into parameter_drafts (
       id, organization_id, project_id, project_parameter_value_id, user_id,
-      target_value, reason, origin, origin_file_version_id
+      target_value, reason, origin, origin_file_version_id,
+      project_parameter_binding_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     on conflict (project_id, project_parameter_value_id, user_id)
     do update set
       target_value = excluded.target_value,
       reason = excluded.reason,
       origin = excluded.origin,
       origin_file_version_id = excluded.origin_file_version_id,
+      project_parameter_binding_id = coalesce(
+        excluded.project_parameter_binding_id,
+        parameter_drafts.project_parameter_binding_id
+      ),
       updated_at = now()
     returning id, project_id, project_parameter_value_id, target_value, reason, updated_at
     `,
@@ -1267,9 +1509,13 @@ export async function upsertDraft(
       input.targetValue,
       input.reason,
       input.origin ?? "manual",
-      input.originFileVersionId ?? null
+      input.originFileVersionId ?? null,
+      input.projectParameterBindingId ?? null
     ]
   );
+
+  // parameter_spec_id is stored on change requests / history; drafts carry binding id.
+  void input.parameterSpecId;
 
   return toDraftDto(result.rows[0]);
 }
@@ -1318,6 +1564,20 @@ export async function deleteDraftForParameter(
   db: Queryable,
   input: { organizationId: string; userId: string; projectId: string; parameterId: string }
 ) {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    await db.query(
+      `
+      delete from parameter_drafts
+      where organization_id = $1
+        and user_id = $2
+        and project_id = $3
+        and project_parameter_binding_id = $4
+      `,
+      [input.organizationId, input.userId, input.projectId, input.parameterId]
+    );
+    return;
+  }
+
   await db.query(
     `
     delete from parameter_drafts
@@ -1334,6 +1594,20 @@ export async function hasOpenFileSyncConflict(
   db: Queryable,
   query: { projectParameterValueId: string }
 ) {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    const result = await db.query<{ id: string }>(
+      `
+      select id
+      from parameter_file_sync_conflicts
+      where project_parameter_binding_id = $1
+        and status = 'open'
+      limit 1
+      `,
+      [query.projectParameterValueId]
+    );
+    return result.rows.length > 0;
+  }
+
   const result = await db.query<{ id: string }>(
     `
     select id
@@ -1361,15 +1635,18 @@ export async function insertFileSyncConflict(
     uiDraftId: string;
     fileValue: string;
     uiDraftValue: string;
+    parameterSpecId?: string;
+    projectParameterBindingId?: string;
   }
 ) {
   const result = await db.query<FileSyncConflictRow>(
     `
     insert into parameter_file_sync_conflicts (
       id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
-      file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status
+      file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status,
+      parameter_spec_id, project_parameter_binding_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open')
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open', $11, $12)
     returning *
     `,
     [
@@ -1382,7 +1659,9 @@ export async function insertFileSyncConflict(
       input.fileDraftId,
       input.uiDraftId,
       input.fileValue,
-      input.uiDraftValue
+      input.uiDraftValue,
+      input.parameterSpecId ?? null,
+      input.projectParameterBindingId ?? null
     ]
   );
 
@@ -1504,8 +1783,76 @@ export async function createChangeRequest(
     submitterUserId: string;
     assignedToUserId?: string;
     workflowAssignees?: Partial<ParameterWorkflowAssigneesDto>;
+    parameterSpecId?: string;
+    projectParameterBindingId?: string;
   }
 ) {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    const bindingId = input.projectParameterBindingId ?? input.parameterId;
+    const result = await db.query<ChangeRequestRow>(
+      `
+      with inserted as (
+        insert into parameter_change_requests (
+          id, organization_id, submission_round_id, project_id,
+          base_version, current_value, target_value, status, submitter_user_id,
+          assigned_to_user_id, workflow_hardware_committer_user_id, workflow_software_committer_user_id,
+          workflow_software_user_id, parameter_spec_id, project_parameter_binding_id
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        returning *
+      )
+      select
+        inserted.id,
+        inserted.submission_round_id,
+        inserted.project_id,
+        coalesce(inserted.project_parameter_binding_id, '') as project_parameter_value_id,
+        coalesce(split_part(ps.specification_key, '/', 1), '') as module,
+        coalesce(split_part(ps.specification_key, '/', 2), ps.specification_key, '') as title,
+        inserted.current_value,
+        inserted.target_value,
+        users.name as submitter,
+        inserted.status,
+        'Low' as risk,
+        'legacy-text' as value_kind,
+        'DTS' as config_format,
+        inserted.created_at,
+        inserted.updated_at,
+        inserted.assigned_to_user_id,
+        inserted.workflow_hardware_committer_user_id,
+        inserted.workflow_software_committer_user_id,
+        inserted.workflow_software_user_id,
+        assignee.name as assigned_to,
+        inserted.reviewer_note,
+        inserted.reject_reason,
+        inserted.fast_track,
+        null::text as source_file_name,
+        null::text as source_node_path
+      from inserted
+      left join parameter_specs ps on ps.id = inserted.parameter_spec_id
+      inner join users on users.id = inserted.submitter_user_id
+      left join users assignee on assignee.id = inserted.assigned_to_user_id
+      `,
+      [
+        input.id,
+        input.organizationId,
+        input.submissionRoundId,
+        input.projectId,
+        input.baseVersion,
+        input.currentValue,
+        input.targetValue,
+        input.status,
+        input.submitterUserId,
+        input.assignedToUserId ?? null,
+        input.workflowAssignees?.hardwareCommitterId ?? null,
+        input.workflowAssignees?.softwareCommitterId ?? null,
+        input.workflowAssignees?.softwareUserId ?? null,
+        input.parameterSpecId ?? null,
+        bindingId
+      ]
+    );
+    return toChangeRequestDto(db, result.rows[0]);
+  }
+
   const result = await db.query<ChangeRequestRow>(
     `
     with inserted as (
@@ -1513,9 +1860,9 @@ export async function createChangeRequest(
         id, organization_id, submission_round_id, project_id, project_parameter_value_id,
         parameter_definition_id, base_version, current_value, target_value, status, submitter_user_id,
         assigned_to_user_id, workflow_hardware_committer_user_id, workflow_software_committer_user_id,
-        workflow_software_user_id
+        workflow_software_user_id, parameter_spec_id, project_parameter_binding_id
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       returning *
     )
     select
@@ -1545,10 +1892,10 @@ export async function createChangeRequest(
       ppv.source_file_name,
       ppv.source_node_path
     from inserted
-    inner join parameter_definitions pd on pd.id = inserted.parameter_definition_id
+    inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = inserted.parameter_definition_id
     inner join users on users.id = inserted.submitter_user_id
     left join users assignee on assignee.id = inserted.assigned_to_user_id
-    left join project_parameter_values ppv on ppv.id = inserted.project_parameter_value_id
+    left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = inserted.project_parameter_value_id
     `,
     [
       input.id,
@@ -1565,7 +1912,9 @@ export async function createChangeRequest(
       input.assignedToUserId ?? null,
       input.workflowAssignees?.hardwareCommitterId ?? null,
       input.workflowAssignees?.softwareCommitterId ?? null,
-      input.workflowAssignees?.softwareUserId ?? null
+      input.workflowAssignees?.softwareUserId ?? null,
+      input.parameterSpecId ?? null,
+      input.projectParameterBindingId ?? null
     ]
   );
 
@@ -1612,16 +1961,67 @@ export async function createSubmissionItem(
     currentValue: string;
     targetValue: string;
     reason: string;
+    projectParameterBindingId?: string;
   }
 ) {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    const bindingId = input.projectParameterBindingId ?? input.parameterId;
+    const result = await db.query<SubmissionItemRow>(
+      `
+      with inserted as (
+        insert into parameter_submission_items (
+          id, organization_id, submission_round_id, change_request_id,
+          current_value, target_value, reason, project_parameter_binding_id
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8)
+        returning *
+      )
+      select
+        inserted.change_request_id,
+        coalesce(inserted.project_parameter_binding_id, '') as project_parameter_value_id,
+        coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key, '') as name,
+        split_part(ps.specification_key, '/', 1) as module,
+        inserted.current_value,
+        inserted.target_value,
+        coalesce(psv.value_shape->>'unit', '') as unit,
+        'Low' as risk,
+        coalesce(psv.value_shape->>'kind', 'legacy-text') as value_kind,
+        'DTS' as config_format,
+        inserted.reason
+      from inserted
+      left join project_parameter_bindings b on b.id = inserted.project_parameter_binding_id
+      left join parameter_specs ps on ps.id = b.parameter_spec_id
+      left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      left join lateral (
+        select psv.*
+        from parameter_spec_versions psv
+        where psv.parameter_spec_id = ps.id
+        order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
+        limit 1
+      ) psv on true
+      `,
+      [
+        input.id,
+        input.organizationId,
+        input.submissionRoundId,
+        input.changeRequestId,
+        input.currentValue,
+        input.targetValue,
+        input.reason,
+        bindingId
+      ]
+    );
+    return toSubmissionItemDto(result.rows[0]);
+  }
+
   const result = await db.query<SubmissionItemRow>(
     `
     with inserted as (
       insert into parameter_submission_items (
         id, organization_id, submission_round_id, change_request_id, project_parameter_value_id,
-        current_value, target_value, reason
+        current_value, target_value, reason, project_parameter_binding_id
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       returning *
     )
     select
@@ -1637,8 +2037,8 @@ export async function createSubmissionItem(
       pd.config_format,
       inserted.reason
     from inserted
-    inner join project_parameter_values ppv on ppv.id = inserted.project_parameter_value_id
-    inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
+    inner join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = inserted.project_parameter_value_id
+    inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = ppv.parameter_definition_id
     `,
     [
       input.id,
@@ -1648,7 +2048,8 @@ export async function createSubmissionItem(
       input.parameterId,
       input.currentValue,
       input.targetValue,
-      input.reason
+      input.reason,
+      input.projectParameterBindingId ?? null
     ]
   );
 
@@ -1818,8 +2219,62 @@ export async function listChangeRequests(
     addCondition(where, values, (placeholder) => `pcr.assigned_to_user_id = ${placeholder}`, query.assignedTo);
   }
 
+  const semantic = await mustUseSemanticParameterIdentity(db);
   const result = await db.query<ChangeRequestRow>(
+    semantic
+      ? `
+    select
+      pcr.id,
+      pcr.submission_round_id,
+      pcr.project_id,
+      coalesce(pcr.project_parameter_binding_id, '') as project_parameter_value_id,
+      pcr.base_version,
+      split_part(ps.specification_key, '/', 1) as module,
+      coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as title,
+      pcr.current_value,
+      pcr.target_value,
+      users.name as submitter,
+      pcr.submitter_user_id,
+      pcr.status,
+      'Low' as risk,
+      coalesce(psv.value_shape->>'kind', 'legacy-text') as value_kind,
+      'DTS' as config_format,
+      pcr.created_at,
+      pcr.updated_at,
+      pcr.assigned_to_user_id,
+      pcr.workflow_hardware_committer_user_id,
+      pcr.workflow_software_committer_user_id,
+      pcr.workflow_software_user_id,
+      assignee.name as assigned_to,
+      pcr.reviewer_note,
+      pcr.reject_reason,
+      pcr.fast_track,
+      null::text as source_file_name,
+      lnr.node_locator as source_node_path
+    from parameter_change_requests pcr
+    left join parameter_specs ps on ps.id = pcr.parameter_spec_id
+    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    left join lateral (
+      select psv.*
+      from parameter_spec_versions psv
+      where psv.parameter_spec_id = ps.id
+      order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
+      limit 1
+    ) psv on true
+    left join project_parameter_bindings b on b.id = pcr.project_parameter_binding_id
+    left join lateral (
+      select lnr.node_locator
+      from dts_logical_node_revisions lnr
+      where lnr.logical_node_id = b.logical_node_id
+      order by lnr.config_revision_id desc
+      limit 1
+    ) lnr on true
+    inner join users on users.id = pcr.submitter_user_id
+    left join users assignee on assignee.id = pcr.assigned_to_user_id
+    where ${where.join("\n      and ")}
+    order by pcr.updated_at desc
     `
+      : `
     select
       pcr.id,
       pcr.submission_round_id,
@@ -1849,10 +2304,10 @@ export async function listChangeRequests(
       ppv.source_file_name,
       ppv.source_node_path
     from parameter_change_requests pcr
-    inner join parameter_definitions pd on pd.id = pcr.parameter_definition_id
+    inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = pcr.parameter_definition_id
     inner join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
-    left join project_parameter_values ppv on ppv.id = pcr.project_parameter_value_id
+    left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = pcr.project_parameter_value_id
     where ${where.join("\n      and ")}
     order by pcr.updated_at desc
     `,
@@ -1870,6 +2325,60 @@ export async function findOpenChangeRequest(
   db: Queryable,
   query: { organizationId: string; projectId: string; parameterId: string }
 ) {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    const result = await db.query<ChangeRequestRow>(
+      `
+      select
+        pcr.id,
+        pcr.submission_round_id,
+        pcr.project_id,
+        coalesce(pcr.project_parameter_binding_id, '') as project_parameter_value_id,
+        pcr.base_version,
+        split_part(ps.specification_key, '/', 1) as module,
+        coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as title,
+        pcr.current_value,
+        pcr.target_value,
+        users.name as submitter,
+        pcr.submitter_user_id,
+        pcr.status,
+        'Low' as risk,
+        coalesce(psv.value_shape->>'kind', 'legacy-text') as value_kind,
+        'DTS' as config_format,
+        pcr.created_at,
+        pcr.updated_at,
+        pcr.assigned_to_user_id,
+        pcr.workflow_hardware_committer_user_id,
+        pcr.workflow_software_committer_user_id,
+        pcr.workflow_software_user_id,
+        assignee.name as assigned_to,
+        pcr.reviewer_note,
+        pcr.reject_reason,
+        pcr.fast_track,
+        null::text as source_file_name,
+        null::text as source_node_path
+      from parameter_change_requests pcr
+      left join parameter_specs ps on ps.id = pcr.parameter_spec_id
+      left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      left join lateral (
+        select psv.*
+        from parameter_spec_versions psv
+        where psv.parameter_spec_id = ps.id
+        order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
+        limit 1
+      ) psv on true
+      inner join users on users.id = pcr.submitter_user_id
+      left join users assignee on assignee.id = pcr.assigned_to_user_id
+      where pcr.organization_id = $1
+        and pcr.project_id = $2
+        and pcr.project_parameter_binding_id = $3
+        and pcr.status not in ('merged', 'rejected', 'withdrawn')
+      limit 1
+      `,
+      [query.organizationId, query.projectId, query.parameterId]
+    );
+    return result.rows[0] ? toChangeRequestDto(db, result.rows[0]) : null;
+  }
+
   const result = await db.query<ChangeRequestRow>(
     `
     select
@@ -1901,10 +2410,10 @@ export async function findOpenChangeRequest(
       ppv.source_file_name,
       ppv.source_node_path
     from parameter_change_requests pcr
-    inner join parameter_definitions pd on pd.id = pcr.parameter_definition_id
+    inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = pcr.parameter_definition_id
     inner join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
-    left join project_parameter_values ppv on ppv.id = pcr.project_parameter_value_id
+    left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = pcr.project_parameter_value_id
     where pcr.organization_id = $1
       and pcr.project_id = $2
       and pcr.project_parameter_value_id = $3
@@ -1921,6 +2430,59 @@ export async function getChangeRequestById(
   db: Queryable,
   query: { organizationId: string; requestId: string }
 ) {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    const result = await db.query<ChangeRequestRow>(
+      `
+      select
+        pcr.id,
+        pcr.submission_round_id,
+        pcr.project_id,
+        coalesce(pcr.project_parameter_binding_id, '') as project_parameter_value_id,
+        null::text as parameter_definition_id,
+        pcr.base_version,
+        split_part(ps.specification_key, '/', 1) as module,
+        coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as title,
+        pcr.current_value,
+        pcr.target_value,
+        users.name as submitter,
+        pcr.submitter_user_id,
+        pcr.status,
+        'Low' as risk,
+        coalesce(psv.value_shape->>'kind', 'legacy-text') as value_kind,
+        'DTS' as config_format,
+        pcr.created_at,
+        pcr.updated_at,
+        pcr.assigned_to_user_id,
+        pcr.workflow_hardware_committer_user_id,
+        pcr.workflow_software_committer_user_id,
+        pcr.workflow_software_user_id,
+        assignee.name as assigned_to,
+        pcr.reviewer_note,
+        pcr.reject_reason,
+        pcr.fast_track,
+        null::text as source_file_name,
+        null::text as source_node_path
+      from parameter_change_requests pcr
+      left join parameter_specs ps on ps.id = pcr.parameter_spec_id
+      left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      left join lateral (
+        select psv.*
+        from parameter_spec_versions psv
+        where psv.parameter_spec_id = ps.id
+        order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
+        limit 1
+      ) psv on true
+      inner join users on users.id = pcr.submitter_user_id
+      left join users assignee on assignee.id = pcr.assigned_to_user_id
+      where pcr.organization_id = $1
+        and pcr.id = $2
+      for update of pcr
+      `,
+      [query.organizationId, query.requestId]
+    );
+    return result.rows[0] ? toChangeRequestDto(db, result.rows[0]) : null;
+  }
+
   const result = await db.query<ChangeRequestRow>(
     `
     select
@@ -1953,10 +2515,10 @@ export async function getChangeRequestById(
       ppv.source_file_name,
       ppv.source_node_path
     from parameter_change_requests pcr
-    inner join parameter_definitions pd on pd.id = pcr.parameter_definition_id
+    inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = pcr.parameter_definition_id
     inner join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
-    left join project_parameter_values ppv on ppv.id = pcr.project_parameter_value_id
+    left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = pcr.project_parameter_value_id
     where pcr.organization_id = $1
       and pcr.id = $2
     for update of pcr
@@ -2103,6 +2665,63 @@ export async function updateChangeRequestStatus(
   }
 ) {
   const rejectReason = input.status === "rejected" ? input.note ?? null : null;
+  if (await mustUseSemanticParameterIdentity(db)) {
+    const result = await db.query<ChangeRequestRow>(
+      `
+      update parameter_change_requests
+      set status = $3,
+        reviewer_note = $4,
+        reject_reason = coalesce($5, reject_reason),
+        assigned_to_user_id = case
+          when $3 in ('submitted', 'hardware_review') then coalesce(workflow_hardware_committer_user_id, assigned_to_user_id)
+          when $3 = 'software_review' then coalesce(workflow_software_committer_user_id, assigned_to_user_id)
+          when $3 = 'software_merge' then coalesce(workflow_software_user_id, assigned_to_user_id)
+          when $3 in ('merged', 'rejected') then null
+          else assigned_to_user_id
+        end,
+        updated_at = now()
+      where organization_id = $1
+        and id = $2
+      returning
+        id,
+        submission_round_id,
+        project_id,
+        coalesce(project_parameter_binding_id, '') as project_parameter_value_id,
+        null::text as parameter_definition_id,
+        base_version,
+        coalesce(
+          (select split_part(specification_key, '/', 1) from parameter_specs where id = parameter_change_requests.parameter_spec_id),
+          ''
+        ) as module,
+        coalesce(
+          (select split_part(specification_key, '/', 2) from parameter_specs where id = parameter_change_requests.parameter_spec_id),
+          ''
+        ) as title,
+        current_value,
+        target_value,
+        (select name from users where id = parameter_change_requests.submitter_user_id) as submitter,
+        status,
+        'Low' as risk,
+        'legacy-text' as value_kind,
+        'DTS' as config_format,
+        created_at,
+        updated_at,
+        assigned_to_user_id,
+        workflow_hardware_committer_user_id,
+        workflow_software_committer_user_id,
+        workflow_software_user_id,
+        (select name from users where id = parameter_change_requests.assigned_to_user_id) as assigned_to,
+        reviewer_note,
+        reject_reason,
+        fast_track,
+        null::text as source_file_name,
+        null::text as source_node_path
+      `,
+      [input.organizationId, input.requestId, input.status, input.note ?? null, rejectReason]
+    );
+    return result.rows[0] ? toChangeRequestDto(db, result.rows[0]) : null;
+  }
+
   const result = await db.query<ChangeRequestRow>(
     `
     update parameter_change_requests
@@ -2126,15 +2745,15 @@ export async function updateChangeRequestStatus(
       project_parameter_value_id,
       parameter_definition_id,
       base_version,
-      (select module from parameter_definitions where id = parameter_change_requests.parameter_definition_id) as module,
-      (select name from parameter_definitions where id = parameter_change_requests.parameter_definition_id) as title,
+      (select module from ${LEGACY_IDENTITY_SQL.definitionsTable} where id = parameter_change_requests.parameter_definition_id) as module,
+      (select name from ${LEGACY_IDENTITY_SQL.definitionsTable} where id = parameter_change_requests.parameter_definition_id) as title,
       current_value,
       target_value,
       (select name from users where id = parameter_change_requests.submitter_user_id) as submitter,
       status,
-      (select risk from parameter_definitions where id = parameter_change_requests.parameter_definition_id) as risk,
-      (select value_kind from parameter_definitions where id = parameter_change_requests.parameter_definition_id) as value_kind,
-      (select config_format from parameter_definitions where id = parameter_change_requests.parameter_definition_id) as config_format,
+      (select risk from ${LEGACY_IDENTITY_SQL.definitionsTable} where id = parameter_change_requests.parameter_definition_id) as risk,
+      (select value_kind from ${LEGACY_IDENTITY_SQL.definitionsTable} where id = parameter_change_requests.parameter_definition_id) as value_kind,
+      (select config_format from ${LEGACY_IDENTITY_SQL.definitionsTable} where id = parameter_change_requests.parameter_definition_id) as config_format,
       created_at,
       updated_at,
       assigned_to_user_id,
@@ -2145,8 +2764,8 @@ export async function updateChangeRequestStatus(
       reviewer_note,
       reject_reason,
       fast_track,
-      (select source_file_name from project_parameter_values where id = parameter_change_requests.project_parameter_value_id) as source_file_name,
-      (select source_node_path from project_parameter_values where id = parameter_change_requests.project_parameter_value_id) as source_node_path
+      (select source_file_name from ${LEGACY_IDENTITY_SQL.valuesTable} where id = parameter_change_requests.project_parameter_value_id) as source_file_name,
+      (select source_node_path from ${LEGACY_IDENTITY_SQL.valuesTable} where id = parameter_change_requests.project_parameter_value_id) as source_node_path
     `,
     [input.organizationId, input.requestId, input.status, input.note ?? null, rejectReason]
   );
@@ -2164,6 +2783,133 @@ export async function mergeChangeRequest(
     actorUserId: string;
   }
 ) {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    const result = await db.query<ChangeRequestMergeRow>(
+      `
+      with request_to_merge as (
+        select
+          id,
+          organization_id,
+          project_id,
+          project_parameter_binding_id,
+          parameter_spec_id,
+          base_config_revision_id,
+          base_version,
+          target_value
+        from parameter_change_requests
+        where organization_id = $1
+          and id = $2
+          and status = 'software_merge'
+          and project_parameter_binding_id is not null
+        for update
+      ),
+      latest_revision as (
+        select
+          request_to_merge.*,
+          coalesce(
+            request_to_merge.base_config_revision_id,
+            (
+              select id
+              from dts_config_revisions
+              where project_id = request_to_merge.project_id
+              order by revision_number desc
+              limit 1
+            )
+          ) as config_revision_id,
+          coalesce(bpr.raw_value, request_to_merge.target_value) as prior_value
+        from request_to_merge
+        left join project_parameter_binding_revisions bpr
+          on bpr.binding_id = request_to_merge.project_parameter_binding_id
+         and bpr.config_revision_id = coalesce(
+           request_to_merge.base_config_revision_id,
+           (
+             select id
+             from dts_config_revisions
+             where project_id = request_to_merge.project_id
+             order by revision_number desc
+             limit 1
+           )
+         )
+      ),
+      upsert_binding_revision as (
+        insert into project_parameter_binding_revisions (
+          id, binding_id, config_revision_id, parameter_spec_version_id,
+          typed_value, canonical_value, raw_value, schema_state, policy_state
+        )
+        select
+          coalesce(
+            (select id from project_parameter_binding_revisions
+             where binding_id = latest_revision.project_parameter_binding_id
+               and config_revision_id = latest_revision.config_revision_id),
+            latest_revision.project_parameter_binding_id || '-rev'
+          ),
+          latest_revision.project_parameter_binding_id,
+          latest_revision.config_revision_id,
+          (
+            select psv.id
+            from parameter_spec_versions psv
+            where psv.parameter_spec_id = latest_revision.parameter_spec_id
+            order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
+            limit 1
+          ),
+          jsonb_build_object('kind', 'legacy-text', 'value', latest_revision.target_value),
+          jsonb_build_object('kind', 'legacy-text', 'value', latest_revision.target_value),
+          latest_revision.target_value,
+          'merged',
+          'merged'
+        from latest_revision
+        where latest_revision.config_revision_id is not null
+        on conflict (binding_id, config_revision_id) do update set
+          raw_value = excluded.raw_value,
+          typed_value = excluded.typed_value,
+          canonical_value = excluded.canonical_value
+        returning binding_id
+      ),
+      inserted_history as (
+        insert into parameter_history_entries (
+          id, organization_id, project_id,
+          version, value, changed_by_user_id, request_id,
+          parameter_spec_id, project_parameter_binding_id
+        )
+        select
+          $3,
+          $1,
+          latest_revision.project_id,
+          coalesce($4, latest_revision.base_version) + 1,
+          latest_revision.target_value,
+          $5,
+          latest_revision.id,
+          latest_revision.parameter_spec_id,
+          latest_revision.project_parameter_binding_id
+        from latest_revision
+        returning id
+      )
+      select
+        latest_revision.id,
+        latest_revision.project_parameter_binding_id as project_parameter_value_id,
+        null::text as parameter_definition_id,
+        latest_revision.parameter_spec_id,
+        latest_revision.project_parameter_binding_id,
+        latest_revision.project_id,
+        latest_revision.target_value,
+        latest_revision.base_version,
+        coalesce($4, latest_revision.base_version) + 1 as new_version
+      from latest_revision
+      inner join inserted_history on true
+      `,
+      [
+        input.organizationId,
+        input.requestId,
+        input.historyId,
+        input.expectedVersion ?? null,
+        input.actorUserId
+      ]
+    );
+    const merged = result.rows[0];
+    if (!merged) return null;
+    return toChangeRequestMergeResult(merged);
+  }
+
   const result = await db.query<ChangeRequestMergeRow>(
     `
     with request_to_merge as (
@@ -2173,6 +2919,8 @@ export async function mergeChangeRequest(
         project_id,
         project_parameter_value_id,
         parameter_definition_id,
+        parameter_spec_id,
+        project_parameter_binding_id,
         base_version,
         target_value
       from parameter_change_requests
@@ -2182,7 +2930,7 @@ export async function mergeChangeRequest(
       for update
     ),
     updated_value as (
-      update project_parameter_values ppv
+      update ${LEGACY_IDENTITY_SQL.valuesTable} ppv
       set current_value = request_to_merge.target_value,
         value_version = ppv.value_version + 1,
         updated_by_user_id = $4,
@@ -2195,6 +2943,8 @@ export async function mergeChangeRequest(
         request_to_merge.id,
         request_to_merge.project_parameter_value_id,
         request_to_merge.parameter_definition_id,
+        request_to_merge.parameter_spec_id,
+        request_to_merge.project_parameter_binding_id,
         request_to_merge.project_id,
         request_to_merge.target_value,
         request_to_merge.base_version,
@@ -2203,7 +2953,8 @@ export async function mergeChangeRequest(
     inserted_history as (
       insert into parameter_history_entries (
         id, organization_id, project_id, parameter_definition_id, project_parameter_value_id,
-        version, value, changed_by_user_id, request_id
+        version, value, changed_by_user_id, request_id,
+        parameter_spec_id, project_parameter_binding_id
       )
       select
         $5,
@@ -2214,7 +2965,9 @@ export async function mergeChangeRequest(
         new_version,
         target_value,
         $4,
-        id
+        id,
+        parameter_spec_id,
+        project_parameter_binding_id
       from updated_value
       returning id
     )
@@ -2264,6 +3017,60 @@ export async function getProjectParameterForUpdate(
   db: Queryable,
   query: { organizationId: string; projectId: string; parameterId: string }
 ) {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    const result = await db.query<ProjectParameterForUpdateRow>(
+      `
+      select
+        b.id,
+        b.project_id,
+        b.parameter_spec_id as parameter_definition_id,
+        coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as name,
+        split_part(ps.specification_key, '/', 1) as module,
+        coalesce(psv.value_shape->>'unit', '') as unit,
+        'Low' as risk,
+        coalesce(bpr.raw_value, '') as current_value,
+        '' as "initSuggestionText",
+        coalesce(
+          (select count(*)::int from project_parameter_binding_revisions br where br.binding_id = b.id),
+          1
+        ) as value_version,
+        null::text as source_file_name,
+        lnr.node_locator as source_node_path
+      from project_parameter_bindings b
+      inner join parameter_specs ps on ps.id = b.parameter_spec_id
+      left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      left join lateral (
+        select psv.*
+        from parameter_spec_versions psv
+        where psv.parameter_spec_id = ps.id
+        order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
+        limit 1
+      ) psv on true
+      left join lateral (
+        select bpr.raw_value
+        from project_parameter_binding_revisions bpr
+        where bpr.binding_id = b.id
+        order by bpr.created_at desc
+        limit 1
+      ) bpr on true
+      left join dts_logical_nodes ln on ln.id = b.logical_node_id
+      left join lateral (
+        select lnr.node_locator
+        from dts_logical_node_revisions lnr
+        where lnr.logical_node_id = ln.id
+        order by lnr.config_revision_id desc
+        limit 1
+      ) lnr on true
+      where b.organization_id = $1
+        and b.project_id = $2
+        and b.id = $3
+      for update of b
+      `,
+      [query.organizationId, query.projectId, query.parameterId]
+    );
+    return result.rows[0] ? toProjectParameterForUpdate(result.rows[0]) : null;
+  }
+
   const result = await db.query<ProjectParameterForUpdateRow>(
     `
     select
@@ -2275,12 +3082,12 @@ export async function getProjectParameterForUpdate(
       pd.unit,
       pd.risk,
       ppv.current_value,
-      ppv.recommended_value,
+      ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.value_version,
       ppv.source_file_name,
       ppv.source_node_path
-    from project_parameter_values ppv
-    inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
+    from ${LEGACY_IDENTITY_SQL.valuesTable} ppv
+    inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = ppv.parameter_definition_id
     where ppv.organization_id = $1
       and pd.organization_id = $1
       and ppv.project_id = $2
@@ -2311,8 +3118,8 @@ export async function findProjectValueBySource(
       pd.name,
       pd.module,
       ppv.current_value
-    from project_parameter_values ppv
-    inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
+    from ${LEGACY_IDENTITY_SQL.valuesTable} ppv
+    inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = ppv.parameter_definition_id
     where ppv.organization_id = $1
       and pd.organization_id = $1
       and ppv.project_id = $2
@@ -2344,8 +3151,8 @@ export async function findProjectValueByDefinition(
       pd.name,
       pd.module,
       ppv.current_value
-    from project_parameter_values ppv
-    inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
+    from ${LEGACY_IDENTITY_SQL.valuesTable} ppv
+    inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = ppv.parameter_definition_id
     where ppv.organization_id = $1
       and pd.organization_id = $1
       and ppv.project_id = $2
@@ -2369,7 +3176,7 @@ export async function bindParameterSource(
 ) {
   await db.query(
     `
-    update project_parameter_values
+    update ${LEGACY_IDENTITY_SQL.valuesTable}
     set source_file_name = $2,
       source_node_path = $3,
       updated_at = now()
@@ -2401,7 +3208,7 @@ export async function insertProjectParameterValueWithSource(
 ): Promise<ProjectParameterValueMatch> {
   await db.query(
     `
-    insert into parameter_definitions (
+    insert into ${LEGACY_IDENTITY_SQL.definitionsTable} (
       id, organization_id, name, description, explanation, config_format,
       module, default_range, unit, risk
     )
@@ -2413,9 +3220,9 @@ export async function insertProjectParameterValueWithSource(
 
   const result = await db.query<ProjectParameterValueMatchRow>(
     `
-    insert into project_parameter_values (
+    insert into ${LEGACY_IDENTITY_SQL.valuesTable} (
       id, organization_id, project_id, parameter_definition_id,
-      current_value, recommended_value, updated_by_user_id,
+      current_value, ${LEGACY_SQL.recommendedValueColumn}, updated_by_user_id,
       source_file_name, source_node_path
     )
     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -2464,10 +3271,10 @@ export async function listParameterDefinitionsForImport(
       pd.risk,
       ppv.id as project_parameter_value_id,
       ppv.current_value,
-      ppv.recommended_value,
+      ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.value_version
-    from parameter_definitions pd
-    left join project_parameter_values ppv on ppv.parameter_definition_id = pd.id
+    from ${LEGACY_IDENTITY_SQL.definitionsTable} pd
+    left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.parameter_definition_id = pd.id
       and ppv.organization_id = $1
       and ppv.project_id = $2
     where pd.organization_id = $1
@@ -2546,7 +3353,7 @@ export async function applyAddedImportItem(
   const result = await db.query<ImportApplyResultRow>(
     `
     with inserted_definition as (
-      insert into parameter_definitions (
+      insert into ${LEGACY_IDENTITY_SQL.definitionsTable} (
         id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk
       )
       values ($5, $1, $6, $13, $14, $15, $7, $10, $9, $8)
@@ -2554,15 +3361,15 @@ export async function applyAddedImportItem(
       returning id
     ),
     inserted_value as (
-      insert into project_parameter_values (
-        id, organization_id, project_id, parameter_definition_id, current_value, recommended_value, updated_by_user_id
+      insert into ${LEGACY_IDENTITY_SQL.valuesTable} (
+        id, organization_id, project_id, parameter_definition_id, current_value, ${LEGACY_SQL.recommendedValueColumn}, updated_by_user_id
       )
       select $4, $1, $2, inserted_definition.id, $11, $12, $3
       from inserted_definition
       on conflict (project_id, parameter_definition_id) do update set
         current_value = excluded.current_value,
-        recommended_value = excluded.recommended_value,
-        value_version = project_parameter_values.value_version + 1,
+        ${LEGACY_SQL.recommendedValueColumn} = excluded.${LEGACY_SQL.recommendedValueColumn},
+        value_version = ${LEGACY_IDENTITY_SQL.valuesTable}.value_version + 1,
         updated_by_user_id = excluded.updated_by_user_id,
         updated_at = now()
       returning id, parameter_definition_id, value_version
@@ -2615,7 +3422,7 @@ export async function applyUpdatedImportItem(
   const result = await db.query<ImportApplyResultRow>(
     `
     with upserted_definition as (
-      insert into parameter_definitions (
+      insert into ${LEGACY_IDENTITY_SQL.definitionsTable} (
         id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk
       )
       values ($5, $1, $6, $13, $14, $15, $7, $10, $9, $8)
@@ -2629,7 +3436,7 @@ export async function applyUpdatedImportItem(
         unit = excluded.unit,
         risk = excluded.risk,
         updated_at = now()
-      where parameter_definitions.organization_id = $1
+      where ${LEGACY_IDENTITY_SQL.definitionsTable}.organization_id = $1
       returning id
     ),
     existing_value as (
@@ -2638,16 +3445,16 @@ export async function applyUpdatedImportItem(
         ppv.project_id,
         ppv.parameter_definition_id,
         ppv.current_value,
-        ppv.recommended_value,
+        ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
         ppv.value_version
-      from project_parameter_values ppv
+      from ${LEGACY_IDENTITY_SQL.valuesTable} ppv
       inner join upserted_definition on upserted_definition.id = ppv.parameter_definition_id
       where ppv.organization_id = $1
         and ppv.project_id = $2
     ),
     inserted_value as (
-      insert into project_parameter_values (
-        id, organization_id, project_id, parameter_definition_id, current_value, recommended_value, updated_by_user_id
+      insert into ${LEGACY_IDENTITY_SQL.valuesTable} (
+        id, organization_id, project_id, parameter_definition_id, current_value, ${LEGACY_SQL.recommendedValueColumn}, updated_by_user_id
       )
       select $4, $1, $2, upserted_definition.id, $11, $12, $3
       from upserted_definition
@@ -2655,9 +3462,9 @@ export async function applyUpdatedImportItem(
       returning id, project_id, parameter_definition_id, current_value, value_version
     ),
     updated_value as (
-      update project_parameter_values ppv
+      update ${LEGACY_IDENTITY_SQL.valuesTable} ppv
       set current_value = $11,
-        recommended_value = $12,
+        ${LEGACY_SQL.recommendedValueColumn} = $12,
         value_version = ppv.value_version + 1,
         updated_by_user_id = $3,
         updated_at = now()
@@ -2667,7 +3474,7 @@ export async function applyUpdatedImportItem(
         and ppv.parameter_definition_id = upserted_definition.id
         and (
           ppv.current_value is distinct from $11
-          or ppv.recommended_value is distinct from $12
+          or ppv.${LEGACY_SQL.recommendedValueColumn} is distinct from $12
         )
       returning ppv.id, ppv.project_id, ppv.parameter_definition_id, ppv.current_value, ppv.value_version
     ),
@@ -2755,8 +3562,8 @@ async function listSubmissionItemsByRoundIds(
       pd.config_format,
       psi.reason
     from parameter_submission_items psi
-    inner join project_parameter_values ppv on ppv.id = psi.project_parameter_value_id
-    inner join parameter_definitions pd on pd.id = ppv.parameter_definition_id
+    inner join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = psi.project_parameter_value_id
+    inner join ${LEGACY_IDENTITY_SQL.definitionsTable} pd on pd.id = ppv.parameter_definition_id
     where psi.organization_id = $1
       and psi.submission_round_id = any($2::text[])
     order by psi.id asc

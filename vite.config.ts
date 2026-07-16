@@ -107,7 +107,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    exclude: [...configDefaults.exclude, ...siblingWorktreeExclude, "e2e/**"],
+    exclude: [...configDefaults.exclude, ...siblingWorktreeExclude, "e2e/**", "server/**"],
     setupFiles: "./src/test/setup.ts",
     env: {
       VITE_WISEEFF_RUNTIME_MODE: "mock"

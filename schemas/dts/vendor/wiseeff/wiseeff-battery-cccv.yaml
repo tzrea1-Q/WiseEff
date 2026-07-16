@@ -1,0 +1,19 @@
+$id: wiseeff/wiseeff-battery-cccv.yaml
+title: wiseeff,battery_cccv
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,battery_cccv
+compatible:
+  - wiseeff,battery_cccv
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  battery_tbl:
+    valueShape: string-list
+    exampleValue: '"default", "cccv_para0"'
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}

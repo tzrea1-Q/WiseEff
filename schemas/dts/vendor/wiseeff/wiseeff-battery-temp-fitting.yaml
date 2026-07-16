@@ -1,0 +1,31 @@
+$id: wiseeff/wiseeff-battery-temp-fitting.yaml
+title: wiseeff,battery_temp_fitting
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,battery_temp_fitting
+compatible:
+  - wiseeff,battery_temp_fitting
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  btf_temp_lth:
+    valueShape: string-list
+    exampleValue: '"-50"'
+    constraints: {}
+  fitting_mode:
+    valueShape: u32-array
+    exampleValue: <2>
+    constraints: {}
+  replace_sensor:
+    valueShape: string-list
+    exampleValue: '"bat0_raw_temp"'
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}
+  temp_para:
+    valueShape: string-list
+    exampleValue: "\"-32767\", \"1\", \"2300\", \"0\", \"4200\", \"0\",\n\t\t\"55\", \"32767\", \"2300\", \"0\", \"4195\", \"0\""
+    constraints: {}

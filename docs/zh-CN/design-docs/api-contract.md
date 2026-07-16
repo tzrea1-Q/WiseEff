@@ -448,6 +448,29 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 
 审计 kind 与 action：`config-set`（`created`、`updated`、`member_changed`）、`baseline`（`created`、`rolled_back`、`released`）、`validation.gate`（`run`）、`export`（`file`、`config-set`）。
 
+## 语义参数拓扑（`/api/v2`）
+
+拓扑/Schema 程序的语义表面。生产对身份、dt-schema、`dtc`、`fdtoverlay` 失败关闭。维护窗口 cutover 后，遗留扁平参数 ID 返回 `410`（`details.code=legacy-parameter-id-retired`），不做兼容投影。
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/v2/parameter-specs` | 列出版本化参数规格 |
+| `GET` | `/api/v2/parameter-specs/:specId` | 规格详情（example/default/policy 分字段） |
+| `GET` | `/api/v2/parameter-spec-review-tasks` | 组织范围、分页、按状态筛选的规格审核队列（`?status=&limit=&cursor=`） |
+| `POST` | `/api/v2/parameter-spec-review-tasks/:taskId/resolve` | Admin 决议规格审核（`parameterSpecId` 须为本组织或全局）。`resolved` 在同一事务中应用 occurrence→spec→binding 并持久化可复用 matcher override；`dismissed` 失败关闭：不创建 binding，发布/校验仍阻断被 dismiss 的属性。 |
+| `GET` | `/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology` | 源树或生效树（`?view=source\|effective`） |
+| `GET` | `/api/v2/projects/:projectId/parameter-bindings` | 稳定项目绑定 |
+| `GET` | `/api/v2/identity-mapping-tasks` | 身份映射任务列表 |
+| `POST` | `/api/v2/identity-mapping-tasks/:taskId/resolve` | Admin 决议映射 |
+| `POST` | `/api/v2/projects/:projectId/config-revisions/:revisionId/validate` | 失败关闭工具链校验。再次校验失败会**撤销**此前的 `validated` 标记；开放身份映射或被 dismiss 且未匹配的规格审核保持 fail-closed。 |
+| `POST` | `/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts` | 类型化绑定草稿 + 精确 Config Set occurrence/CST span 回写（默认强制 schema；共享 base 不变）。Cutover 后草稿不得再创建 shadow `project_parameter_values` / `parameter_definitions`。 |
+
+值拆分：`exampleValue` / `schemaDefault` / `policyTarget` / `effectiveValue` 分字段；不得折叠为业务 `recommendedValue`。拓扑载荷携带 API provenance（`sourceChain` / occurrence span）；API 模式下客户端不得发明教学回退数据。
+
+Config Set revision 持久化完整 manifest（`entryFile`、`includeSearchPaths`、overlay 顺序、成员角色）；校验与客户端须重载该 manifest，禁止硬编码 `includeSearchPaths=["."]`。
+
+切换流程见 `docs/runbooks/parameter-identity-cutover.md`。在干净非客户快照整库演练完成前，**TD-042 仍为 BLOCKER**，不得仅凭临时库证据宣称生产 cutover 就绪。
+
 ## 8. Jobs 与进度
 
 | 方法 | 路径 | 说明 |

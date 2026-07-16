@@ -1,7 +1,8 @@
 import { Info, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
-import { buildParameterLibraryFromRecords, buildParameterModuleTree } from "./parameterAdminLibrary";
+import type { ParameterSpecDetail } from "@/domain/parameter-topology/types";
+import { buildParameterModuleTree } from "./parameterAdminLibrary";
 import type { AppAction, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import type { PageProps } from "./app/routes";
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
@@ -14,14 +15,46 @@ import { ModuleManagementDialog } from "./components/admin/ModuleManagementDialo
 import { ParameterDefinitionDialog } from "./components/admin/ParameterDefinitionDialog";
 import { ParameterLibraryTable } from "./components/admin/ParameterLibraryTable";
 import { ParameterValuesDialog } from "./components/admin/ParameterValuesDialog";
+import {
+  mapParameterSpecToLibraryRow,
+  ParameterSpecLibrary,
+  type ParameterSpecLibraryRow
+} from "./components/parameter-topology/ParameterSpecLibrary";
+import type { ParameterSpecDetailView } from "./components/parameter-topology/ParameterSpecDetail";
+import { SpecReviewQueue, type SpecReviewTaskView } from "./components/parameter-topology/SpecReviewQueue";
 import { ParameterImportWizard } from "./components/ParameterImportWizard/ParameterImportWizard";
 import { UndoableToast } from "./components/UndoableToast";
 import { useTopBarActions } from "./components/layout";
 import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
 import { resolveParameterFileRepository } from "./application/parameters/parameterFileRuntime";
 import { createParameterAdminClient } from "./infrastructure/http/parameterAdminClient";
+import { createHttpParameterTopologyRepository } from "./infrastructure/http/parameterTopologyClient";
 import { getCoverage } from "./parameterAdminAnalytics";
 import type { ParameterModuleDraft } from "./powerManagementConfig";
+
+function toSpecDetailView(detail: ParameterSpecDetail, usageCount = 0): ParameterSpecDetailView {
+  return {
+    ...mapParameterSpecToLibraryRow({
+      id: detail.id,
+      propertyKey: detail.propertyKey,
+      specificationKey: detail.specificationKey,
+      driverModule: detail.driverModule,
+      lifecycle: detail.lifecycle,
+      currentVersion: detail.currentVersion,
+      compatiblePatterns: detail.compatiblePatterns,
+      valueShape: detail.valueShape,
+      exampleValue: detail.exampleValue,
+      schemaNamespace: detail.schemaNamespace,
+      usageCount
+    }),
+    schemaDefault: detail.schemaDefault,
+    policyTarget: detail.policyTarget,
+    usage: [],
+    schemaHistory: detail.currentVersion
+      ? [{ version: detail.currentVersion, source: detail.schemaNamespace ?? detail.sourceKind }]
+      : []
+  };
+}
 
 function buildParameterAuditCenterPath(projectId: string) {
   const params = new URLSearchParams({ app: "parameter" });
@@ -48,19 +81,31 @@ export function ParameterAdminPage({
   const [conflictPanelOpen, setConflictPanelOpen] = useState(false);
   const [openConflictCount, setOpenConflictCount] = useState(0);
   const [adminModuleNodes, setAdminModuleNodes] = useState<FlatModuleNode[]>([]);
+  const [specRows, setSpecRows] = useState<ParameterSpecLibraryRow[]>([]);
+  const [specLoading, setSpecLoading] = useState(false);
+  const [selectedSpecId, setSelectedSpecId] = useState<string | null>(null);
+  const [specDetail, setSpecDetail] = useState<ParameterSpecDetailView | null>(null);
+  const [reviewTasks, setReviewTasks] = useState<SpecReviewTaskView[]>([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewActionError, setReviewActionError] = useState<string | null>(null);
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
   const isApiMode = runtimeMode === "api";
   const parameterAdminClient = useMemo(() => (isApiMode ? createParameterAdminClient() : null), [isApiMode]);
+  const topologyRepository = useMemo(
+    () => (isApiMode ? createHttpParameterTopologyRepository() : null),
+    [isApiMode]
+  );
   const parameterFileRepository = useMemo(() => resolveParameterFileRepository(runtimeMode), [runtimeMode]);
   const projects = state.configDraft.projects;
+  // Mock keeps the flat draft library. API mode library UI reads parameter specs — not state.parameters.
   const library = useMemo(() => {
     if (isApiMode) {
-      return buildParameterLibraryFromRecords(state.parameters, projects);
+      return [];
     }
     return state.configDraft.parameterLibrary;
-  }, [isApiMode, projects, state.configDraft.parameterLibrary, state.parameters]);
+  }, [isApiMode, state.configDraft.parameterLibrary]);
   const moduleNodes = useMemo(() => {
     if (isApiMode && adminModuleNodes.length > 0) {
       return adminModuleNodes;
@@ -92,6 +137,169 @@ export function ParameterAdminPage({
       cancelled = true;
     };
   }, [parameterAdminClient, reloadAdminModules]);
+
+  const reloadSpecs = useCallback(async () => {
+    if (!topologyRepository) {
+      setSpecRows([]);
+      return;
+    }
+    setSpecLoading(true);
+    try {
+      const items = await topologyRepository.listSpecs({});
+      setSpecRows(
+        items.map((item) =>
+          mapParameterSpecToLibraryRow({
+            id: item.id,
+            propertyKey: item.propertyKey,
+            specificationKey: item.specificationKey,
+            driverModule: item.driverModule,
+            lifecycle: item.lifecycle,
+            currentVersion: item.currentVersion
+          })
+        )
+      );
+    } catch {
+      setSpecRows([]);
+    } finally {
+      setSpecLoading(false);
+    }
+  }, [topologyRepository]);
+
+  useEffect(() => {
+    if (!topologyRepository) {
+      setSpecRows([]);
+      setSpecDetail(null);
+      setSelectedSpecId(null);
+      setReviewTasks([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+    reloadSpecs().catch(() => {
+      if (!cancelled) {
+        setSpecRows([]);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadSpecs, topologyRepository]);
+
+  const reloadReviewTasks = useCallback(async () => {
+    if (!topologyRepository) {
+      setReviewTasks([]);
+      return;
+    }
+    setReviewLoading(true);
+    setReviewActionError(null);
+    try {
+      const result = await topologyRepository.listSpecReviewTasks({ status: "open", limit: 50 });
+      setReviewTasks(
+        result.items.map((task) => ({
+          id: task.id,
+          propertyKey: task.propertyKey ?? "unknown",
+          driverModule: task.driverModule,
+          evidence: task.evidence,
+          candidates: task.candidates,
+          ambiguous: task.ambiguous,
+          projectCount: task.projectCount
+        }))
+      );
+    } catch {
+      setReviewTasks([]);
+      setReviewActionError("无法加载规格审核队列。");
+    } finally {
+      setReviewLoading(false);
+    }
+  }, [topologyRepository]);
+
+  useEffect(() => {
+    if (!topologyRepository) {
+      setReviewTasks([]);
+      return undefined;
+    }
+    let cancelled = false;
+    reloadReviewTasks().catch(() => {
+      if (!cancelled) {
+        setReviewTasks([]);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadReviewTasks, topologyRepository]);
+
+  const handleApproveReview = useCallback(
+    async (input: { taskId: string; parameterSpecId: string; reason: string }) => {
+      if (!topologyRepository) {
+        return;
+      }
+      setReviewActionError(null);
+      try {
+        await topologyRepository.resolveSpecReviewTask(input.taskId, {
+          decision: "resolved",
+          parameterSpecId: input.parameterSpecId,
+          reason: input.reason
+        });
+        // Spec resolve rewrites occurrence→spec→binding; reload queue + library.
+        await Promise.all([reloadReviewTasks(), reloadSpecs()]);
+        if (selectedSpecId) {
+          try {
+            const detail = await topologyRepository.getSpec(selectedSpecId);
+            setSpecDetail(
+              toSpecDetailView(detail, specRows.find((row) => row.id === selectedSpecId)?.usageCount ?? 0)
+            );
+          } catch {
+            // Keep prior detail if refresh fails; queue/library already refreshed.
+          }
+        }
+      } catch {
+        setReviewActionError("批准失败，请重试。");
+      }
+    },
+    [reloadReviewTasks, reloadSpecs, selectedSpecId, specRows, topologyRepository]
+  );
+
+  const handleDismissReview = useCallback(
+    async (input: { taskId: string; reason: string }) => {
+      if (!topologyRepository) {
+        return;
+      }
+      setReviewActionError(null);
+      try {
+        await topologyRepository.resolveSpecReviewTask(input.taskId, {
+          decision: "dismissed",
+          reason: input.reason
+        });
+        await Promise.all([reloadReviewTasks(), reloadSpecs()]);
+      } catch {
+        setReviewActionError("驳回失败，请重试。");
+      }
+    },
+    [reloadReviewTasks, reloadSpecs, topologyRepository]
+  );
+
+  const handleSelectSpec = useCallback(
+    async (specId: string) => {
+      setSelectedSpecId(specId);
+      if (!topologyRepository) {
+        return;
+      }
+      try {
+        const detail = await topologyRepository.getSpec(specId);
+        const view = toSpecDetailView(detail, specRows.find((row) => row.id === specId)?.usageCount ?? 0);
+        setSpecDetail(view);
+        setSpecRows((current) =>
+          current.map((row) => (row.id === specId ? { ...row, ...mapParameterSpecToLibraryRow(detail) } : row))
+        );
+      } catch {
+        const row = specRows.find((item) => item.id === specId) ?? null;
+        setSpecDetail(row);
+      }
+    },
+    [specRows, topologyRepository]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -166,13 +374,17 @@ export function ParameterAdminPage({
   };
   const definitionParameter = library.find((parameter) => parameter.id === definitionDialogParameterId) ?? null;
   const valuesParameter = library.find((parameter) => parameter.id === valuesDialogParameterId) ?? null;
-  const highRiskCount = library.filter((parameter) => parameter.risk === "High").length;
-  const orphanCount = library.filter((parameter) => getCoverage(parameter, projects) === "orphan").length;
+  const highRiskCount = isApiMode
+    ? specRows.filter((spec) => spec.reviewState === "needs_review").length
+    : library.filter((parameter) => parameter.risk === "High").length;
+  const orphanCount = isApiMode
+    ? specRows.filter((spec) => spec.usageCount === 0).length
+    : library.filter((parameter) => getCoverage(parameter, projects) === "orphan").length;
   const highRiskOrphans = library.filter((parameter) => parameter.risk === "High" && getCoverage(parameter, projects) === "orphan");
   const todayChanges = state.auditEvents.filter((event) => isWithinHours(event.time, 24)).length;
   const lastImport = state.auditEvents.find((event) => event.kind === "batch-import");
   const insights: Insight[] =
-    highRiskOrphans.length > 0
+    !isApiMode && highRiskOrphans.length > 0
       ? [
           {
             id: "high-risk-orphans",
@@ -207,12 +419,12 @@ export function ParameterAdminPage({
   }, [rawSearch, auditCenterPath, onNavigate]);
 
   const kpiItems: KpiItem[] = [
-    { id: "shared", label: "共享参数", value: library.length },
+    { id: "shared", label: isApiMode ? "规格数" : "共享参数", value: isApiMode ? specRows.length : library.length },
     {
       id: "high",
-      label: "高风险",
+      label: isApiMode ? "待审核" : "高风险",
       value: highRiskCount,
-      interactive: highRiskCount > 0,
+      interactive: !isApiMode && highRiskCount > 0,
       tone: "warning",
       onClick: () => updateSearch({ risk: "high" })
     },
@@ -225,9 +437,9 @@ export function ParameterAdminPage({
     },
     {
       id: "orphan",
-      label: "闲置参数",
+      label: isApiMode ? "未使用规格" : "闲置参数",
       value: orphanCount,
-      interactive: orphanCount > 0,
+      interactive: !isApiMode && orphanCount > 0,
       tone: "warning",
       onClick: () => updateSearch({ coverage: "orphan" })
     },
@@ -313,7 +525,38 @@ export function ParameterAdminPage({
         onDismiss={(insightId) => dispatch({ type: "DISMISS_INSIGHT", insightId })}
       />
       <main className="param-admin-main">
-        {library.length === 0 ? (
+        {isApiMode ? (
+          <ParameterSpecLibrary
+            specs={specRows}
+            loading={specLoading}
+            selectedSpecId={selectedSpecId}
+            detail={specDetail}
+            onSelectSpec={handleSelectSpec}
+            reviewQueueSlot={
+              <>
+                {reviewActionError ? <p className="form-error" role="alert">{reviewActionError}</p> : null}
+                {reviewLoading && reviewTasks.length === 0 ? (
+                  <p className="parameters-table-empty">正在加载规格审核队列…</p>
+                ) : null}
+                <SpecReviewQueue
+                  tasks={reviewTasks}
+                  librarySpecs={specRows.map((spec) => ({
+                    id: spec.id,
+                    label: `${spec.driverModule ?? "vendor"}/${spec.propertyKey}`,
+                    propertyKey: spec.propertyKey,
+                    driverModule: spec.driverModule
+                  }))}
+                  onApprove={(input) => {
+                    void handleApproveReview(input);
+                  }}
+                  onDismiss={(input) => {
+                    void handleDismissReview(input);
+                  }}
+                />
+              </>
+            }
+          />
+        ) : library.length === 0 ? (
           <div className="param-admin-empty">
             <Info size={22} aria-hidden="true" />
             <p>还没有任何参数。从下方开始</p>

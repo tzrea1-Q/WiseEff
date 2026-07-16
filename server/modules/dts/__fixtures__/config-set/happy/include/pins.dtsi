@@ -1,0 +1,7 @@
+/ {
+	gpio13: gpio13 {
+		compatible = "wiseeff,gpio13";
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+};

@@ -123,9 +123,11 @@ class Resolver {
     for (const child of cst.children) {
       if (child.kind === "property") {
         this.ingestProperty(node, child);
-      } else {
+      } else if (child.kind === "node") {
         this.ingestNode(child, node.nodePath);
       }
+      // `delete-property`/`delete-node` are config-set resolution concerns (see
+      // `configSetResolver.ts`); the single-file resolver treats them as no-ops.
     }
 
     return node;

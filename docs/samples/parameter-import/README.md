@@ -20,6 +20,7 @@
 ## 样例设计要点
 
 - **已有参数**：`fast_charge_current_limit_ma`、`charge_voltage_limit_mv`、`battery_temp_target_c` 等来自 `src/config/power-management.json`。
+- **真实 DTS 目录**：同一配置还包含 170 个 `dts-source-*` 参数，名称使用完整节点路径（如 `charging_core.ichg_max`），并精确绑定 `wiseeff-power-overlay.dts` 的属性路径；这些参数用于完整 DTS 导入、结构化检索和项目差异验证。
 - **不变项**：`usb_pd_profile_limit_w` 在样例中与库内推荐值相同，预览应归入「不变」。
 - **新增候选**：`aurora_pack_balancing_window_s`、`thermal_guard_hysteresis_c`、`nebula_debug_charge_boost_ma` 需 Step 3 **预填并创建**。
 - **DTS 片段**：属性名采用 device-tree 风格（如 `fast-charge-profile-matrix`），与库内 `dts_*` 参数名不同，多数会走新增/待补全模块路径。

@@ -1,0 +1,37 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-fm1230.yaml#
+title: wiseeff,fm1230
+description: WiseEff vendor binding for wiseeff,fm1230 (generated from vendor property schema).
+maintainers:
+  - WiseEff
+allOf:
+  - $ref: /schemas/device.yaml#
+  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
+select:
+  properties:
+    compatible:
+      contains:
+        const: wiseeff,fm1230
+  required:
+    - compatible
+properties:
+  compatible:
+    type: string
+    pattern: ^wiseeff,fm1230$
+  battct_id_gpio-supply:
+    $ref: /schemas/types.yaml#/definitions/phandle
+  onewire-gpio:
+    $ref: /schemas/types.yaml#/definitions/phandle-array
+  ow_read_end_delay:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+  ow_reset_start_delay:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+  status:
+    type: string
+required:
+  - compatible
+  - status
+additionalProperties: false
+unevaluatedProperties: false

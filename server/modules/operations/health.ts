@@ -32,6 +32,7 @@ export type OperationsHealthBody = {
     durableQueue?: CombinedDurableQueueHealth;
     notificationOutbox?: NotificationOutboxHealth;
     xiaozeLlm?: DependencyHealth;
+    dtsToolchain?: DependencyHealth;
   };
 };
 
@@ -169,11 +170,44 @@ async function checkDurableQueue(durableQueue?: DurableQueueHealthCheck): Promis
   return durableQueue;
 }
 
+async function checkDtsToolchain(): Promise<DependencyHealth> {
+  try {
+    const { probeDtsToolchain, loadPinnedToolchainVersions } = await import(
+      "../parameter-files/dtsToolchain"
+    );
+    const pinned = loadPinnedToolchainVersions();
+    const probe = await probeDtsToolchain();
+    const ok = Boolean(probe.dtc.path && probe.fdtoverlay.path && probe.dtschema.path);
+    return {
+      ok,
+      status: ok ? "ready" : "missing",
+      message: ok
+        ? "DTS toolchain (dtc, fdtoverlay, dt-validate) is available."
+        : "DTS toolchain incomplete; release validation will fail closed.",
+      details: {
+        dtc: probe.dtc.version ?? "unavailable",
+        fdtoverlay: probe.fdtoverlay.version ?? "unavailable",
+        dtschema: probe.dtschema.version ?? "unavailable",
+        pinnedDtc: pinned.dtc.version,
+        pinnedDtcCommit: pinned.dtc.commit,
+        pinnedDtschema: pinned.dtschema
+      }
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "failed",
+      message: error instanceof Error ? error.message : "DTS toolchain probe failed."
+    };
+  }
+}
+
 export async function buildReadyHealth(options: {
   db?: Pick<Database, "query">;
   objectStore?: ObjectStoreHealthCheck;
   includeWorkerQueue?: boolean;
   includeNotificationOutbox?: boolean;
+  includeDtsToolchain?: boolean;
   durableQueue?: DurableQueueHealthCheck;
   env?: XiaozeLlmEnv;
 }) {
@@ -187,6 +221,7 @@ export async function buildReadyHealth(options: {
     durableQueueTransport && workerQueue
       ? buildDurableQueueHealth({ transport: durableQueueTransport, database: workerQueue })
       : undefined;
+  const dtsToolchain = options.includeDtsToolchain === false ? undefined : await checkDtsToolchain();
   const ok =
     database.ok &&
     objectStore.ok &&
@@ -194,6 +229,7 @@ export async function buildReadyHealth(options: {
     (notificationOutbox?.ok ?? true) &&
     (durableQueue?.ok ?? true) &&
     (xiaozeLlm?.ok ?? true);
+  // dtsToolchain is reported but does not gate process readiness (release gate is fail-closed separately).
 
   return {
     status: ok ? 200 : 503,
@@ -207,7 +243,8 @@ export async function buildReadyHealth(options: {
         ...(workerQueue ? { workerQueue } : {}),
         ...(notificationOutbox ? { notificationOutbox } : {}),
         ...(durableQueue ? { durableQueue } : {}),
-        ...(xiaozeLlm ? { xiaozeLlm } : {})
+        ...(xiaozeLlm ? { xiaozeLlm } : {}),
+        ...(dtsToolchain ? { dtsToolchain } : {})
       }
     } satisfies OperationsHealthBody
   };

@@ -1,0 +1,27 @@
+$id: wiseeff/wiseeff-fm1230-1.yaml
+title: wiseeff,fm1230_1
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,fm1230_1
+compatible:
+  - wiseeff,fm1230_1
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  battct_id_gpio-supply:
+    valueShape: phandle-list
+    exampleValue: <&huawei_batt_identify>
+    constraints: {}
+  ic_index:
+    valueShape: u32-array
+    exampleValue: <1>
+    constraints: {}
+  onewire-gpio:
+    valueShape: mixed
+    exampleValue: <&gpio2 15 0>
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}

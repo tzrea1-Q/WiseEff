@@ -1,0 +1,39 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-wireless-charger.yaml#
+title: wiseeff,wireless_charger
+description: WiseEff vendor binding for wiseeff,wireless_charger (generated from vendor property schema).
+maintainers:
+  - WiseEff
+allOf:
+  - $ref: /schemas/device.yaml#
+  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
+select:
+  properties:
+    compatible:
+      contains:
+        const: wiseeff,wireless_charger
+  required:
+    - compatible
+properties:
+  compatible:
+    type: string
+    pattern: ^wiseeff,wireless_charger$
+  pmax:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+  rx_mode_para:
+    type: string
+  rx_mode_type_para:
+    $ref: /schemas/types.yaml#/definitions/hex
+  sc_err_tx:
+    $ref: /schemas/types.yaml#/definitions/hex
+  status:
+    type: string
+  trx_plim:
+    type: string
+required:
+  - compatible
+  - status
+additionalProperties: false
+unevaluatedProperties: false

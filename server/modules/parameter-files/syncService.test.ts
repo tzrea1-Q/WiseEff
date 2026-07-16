@@ -7,7 +7,6 @@ import { detectFileUiDraftConflict } from "./conflictService";
 import { getFileVersionById, getProjectParameterFileById } from "./repository";
 import {
   bindParameterSource,
-  findProjectValueByDefinition,
   findProjectValueBySource,
   upsertFileSyncDraft
 } from "../parameters/repository";
@@ -23,7 +22,6 @@ vi.mock("./conflictService", () => ({
 
 vi.mock("../parameters/repository", () => ({
   findProjectValueBySource: vi.fn(),
-  findProjectValueByDefinition: vi.fn(),
   bindParameterSource: vi.fn(),
   upsertFileSyncDraft: vi.fn()
 }));
@@ -35,7 +33,6 @@ vi.mock("../audit/repository", () => ({
 const mockedGetProjectParameterFileById = vi.mocked(getProjectParameterFileById);
 const mockedGetFileVersionById = vi.mocked(getFileVersionById);
 const mockedFindProjectValueBySource = vi.mocked(findProjectValueBySource);
-const mockedFindProjectValueByDefinition = vi.mocked(findProjectValueByDefinition);
 const mockedBindParameterSource = vi.mocked(bindParameterSource);
 const mockedUpsertFileSyncDraft = vi.mocked(upsertFileSyncDraft);
 const mockedDetectFileUiDraftConflict = vi.mocked(detectFileUiDraftConflict);
@@ -96,10 +93,9 @@ describe("syncFileVersion", () => {
     });
   });
 
-  it("JSON file index changes value 80->85 creates file_sync draft", async () => {
+  it("JSON file index changes value 80->85 creates file_sync draft via source binding", async () => {
     mockUploadVersion();
-    mockedFindProjectValueBySource.mockResolvedValue(null);
-    mockedFindProjectValueByDefinition.mockResolvedValue({
+    mockedFindProjectValueBySource.mockResolvedValue({
       id: "ppv-1",
       projectId: "project-1",
       parameterDefinitionId: "pd-1",
@@ -118,7 +114,7 @@ describe("syncFileVersion", () => {
       unchanged: 0,
       unmatched: 0,
       skipped: false,
-      identityFallbackUses: 1
+      identityFallbackUses: 0
     });
     expect(mockedUpsertFileSyncDraft).toHaveBeenCalledWith(fakeDb, {
       organizationId: "org-1",
@@ -197,70 +193,26 @@ describe("syncFileVersion", () => {
       identityFallbackUses: 0
     });
     expect(mockedFindProjectValueBySource).not.toHaveBeenCalled();
-    expect(mockedFindProjectValueByDefinition).not.toHaveBeenCalled();
     expect(mockedBindParameterSource).not.toHaveBeenCalled();
     expect(mockedUpsertFileSyncDraft).not.toHaveBeenCalled();
   });
 
-  it("warn mode allows (name,module) fallback and writes an identity-fallback audit event", async () => {
-    vi.stubEnv("DTS_IDENTITY_FALLBACK_MODE", "warn");
+  it("fail-closed when source binding is missing (no name/module fallback)", async () => {
     mockUploadVersion();
     mockedFindProjectValueBySource.mockResolvedValue(null);
-    mockedFindProjectValueByDefinition.mockResolvedValue({
-      id: "ppv-1",
-      projectId: "project-1",
-      parameterDefinitionId: "pd-1",
-      name: "temp_max",
-      module: "battery",
-      currentValue: "80"
-    });
 
     const result = await syncFileVersion(fakeDb, adminAuth(), {
       fileId: "file-1",
       versionId: "version-1"
     });
 
-    expect(result.identityFallbackUses).toBe(1);
-    expect(result.draftsCreated).toBe(1);
-    expect(mockedCreateAuditEvent).toHaveBeenCalledWith(
-      fakeDb,
-      expect.objectContaining({
-        kind: "parameter-file-identity-fallback",
-        action: "warn",
-        metadata: expect.objectContaining({
-          mode: "warn",
-          sourceNodePath: "battery/temp_max",
-          fallbackName: "temp_max",
-          fallbackModule: "battery"
-        })
-      })
-    );
-  });
-
-  it("deny mode refuses (name,module) fallback with VALIDATION_FAILED 409", async () => {
-    vi.stubEnv("DTS_IDENTITY_FALLBACK_MODE", "deny");
-    mockUploadVersion();
-    mockedFindProjectValueBySource.mockResolvedValue(null);
-    mockedFindProjectValueByDefinition.mockResolvedValue({
-      id: "ppv-1",
-      projectId: "project-1",
-      parameterDefinitionId: "pd-1",
-      name: "temp_max",
-      module: "battery",
-      currentValue: "80"
+    expect(result).toEqual({
+      draftsCreated: 0,
+      unchanged: 0,
+      unmatched: 1,
+      skipped: false,
+      identityFallbackUses: 0
     });
-
-    await expect(
-      syncFileVersion(fakeDb, adminAuth(), {
-        fileId: "file-1",
-        versionId: "version-1"
-      })
-    ).rejects.toMatchObject({
-      code: "VALIDATION_FAILED",
-      status: 409
-    });
-
-    expect(mockedFindProjectValueByDefinition).not.toHaveBeenCalled();
     expect(mockedUpsertFileSyncDraft).not.toHaveBeenCalled();
     expect(mockedBindParameterSource).not.toHaveBeenCalled();
   });
