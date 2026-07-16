@@ -6,10 +6,14 @@ import { DraftSpecActivatePanel, type ActivateDraftSpecInput } from "./DraftSpec
 
 export type ParameterSpecLibraryRow = {
   id: string;
+  /** Null means platform-global; org admins must not activate/modify. */
+  organizationId: string | null;
   propertyKey: string;
   driverModule: string | null;
   compatible: string | null;
   valueType: string;
+  /** Full inferred/API value shape; activate must not collapse to kind-only. */
+  valueShape: Record<string, unknown> | null;
   schemaSource: string;
   schemaVersion: string | number | null;
   exampleValue: unknown;
@@ -21,6 +25,7 @@ export type ParameterSpecLibraryRow = {
 /** Maps topology API / mock payloads into library rows. Never uses path as identity. */
 export function mapParameterSpecToLibraryRow(input: {
   id: string;
+  organizationId?: string | null;
   propertyKey?: string | null;
   specificationKey?: string | null;
   driverModule?: string | null;
@@ -41,9 +46,11 @@ export function mapParameterSpecToLibraryRow(input: {
     input.id;
   const valueShape = input.valueShape;
   let valueType = "unknown";
+  let preservedShape: Record<string, unknown> | null = null;
   if (typeof valueShape === "string") {
     valueType = valueShape;
-  } else if (valueShape && typeof valueShape === "object" && "kind" in valueShape) {
+  } else if (valueShape && typeof valueShape === "object" && !Array.isArray(valueShape) && "kind" in valueShape) {
+    preservedShape = { ...(valueShape as Record<string, unknown>) };
     valueType = String((valueShape as { kind: unknown }).kind);
   }
 
@@ -57,10 +64,12 @@ export function mapParameterSpecToLibraryRow(input: {
 
   return {
     id: input.id,
+    organizationId: input.organizationId ?? null,
     propertyKey,
     driverModule: input.driverModule ?? null,
     compatible: input.compatiblePatterns?.[0] ?? null,
     valueType,
+    valueShape: preservedShape,
     schemaSource,
     schemaVersion: input.currentVersion ?? null,
     exampleValue: input.exampleValue ?? null,
@@ -74,10 +83,11 @@ export function mapParameterSpecToLibraryRow(input: {
 export const SEMANTIC_MOCK_PARAMETER_SPECS: ParameterSpecLibraryRow[] = [
   mapParameterSpecToLibraryRow({
     id: "mock-spec-sc8562-gpio-int",
+    organizationId: "org-mock",
     propertyKey: "gpio_int",
     driverModule: "sc8562",
     compatiblePatterns: ["vendor,sc8562"],
-    valueShape: { kind: "phandle-list" },
+    valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
     schemaSource: "vendor",
     currentVersion: 3,
     exampleValue: "<&gpio13 29 0>",
@@ -87,10 +97,11 @@ export const SEMANTIC_MOCK_PARAMETER_SPECS: ParameterSpecLibraryRow[] = [
   }),
   mapParameterSpecToLibraryRow({
     id: "mock-spec-mt5788-gpio-int",
+    organizationId: "org-mock",
     propertyKey: "gpio_int",
     driverModule: "mt5788",
     compatiblePatterns: ["mediatek,mt5788"],
-    valueShape: { kind: "phandle-list" },
+    valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
     schemaSource: "linux",
     currentVersion: 1,
     exampleValue: "<&gpio6 15 0>",
@@ -390,8 +401,12 @@ export function ParameterSpecLibrary({
       </section>
 
       {detail ? <ParameterSpecDetail detail={detail} /> : null}
-      {detail && onActivateDraftSpec ? (
+      {detail && onActivateDraftSpec && detail.organizationId != null ? (
         <DraftSpecActivatePanel detail={detail} onActivate={onActivateDraftSpec} pending={activatePending} />
+      ) : detail && detail.reviewState === "draft" && detail.organizationId == null ? (
+        <p className="form-hint" role="status">
+          平台全局草稿规格不可由组织管理员激活；请通过平台治理入口维护。
+        </p>
       ) : null}
       {reviewQueueSlot}
     </div>

@@ -11,10 +11,12 @@ afterEach(() => {
 
 const gpioIntSc8562: ParameterSpecLibraryRow = {
   id: "spec-sc8562-gpio-int",
+  organizationId: "org-chargelab",
   propertyKey: "gpio_int",
   driverModule: "sc8562",
   compatible: "vendor,sc8562",
   valueType: "phandle-list",
+  valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
   schemaSource: "vendor",
   schemaVersion: "3",
   exampleValue: "<&gpio13 29 0>",
@@ -25,10 +27,12 @@ const gpioIntSc8562: ParameterSpecLibraryRow = {
 
 const gpioIntMt5788: ParameterSpecLibraryRow = {
   id: "spec-mt5788-gpio-int",
+  organizationId: "org-chargelab",
   propertyKey: "gpio_int",
   driverModule: "mt5788",
   compatible: "mediatek,mt5788",
   valueType: "phandle-list",
+  valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
   schemaSource: "linux",
   schemaVersion: "1",
   exampleValue: "<&gpio6 15 0>",
@@ -39,10 +43,12 @@ const gpioIntMt5788: ParameterSpecLibraryRow = {
 
 const pathLikeLegacy: ParameterSpecLibraryRow = {
   id: "spec-status",
+  organizationId: "org-chargelab",
   propertyKey: "status",
   driverModule: "sc8562",
   compatible: "vendor,sc8562",
   valueType: "string-list",
+  valueShape: { kind: "string-list" },
   schemaSource: "manual",
   schemaVersion: "1",
   exampleValue: '"okay"',

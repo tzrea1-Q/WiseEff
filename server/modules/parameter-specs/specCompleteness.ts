@@ -48,6 +48,7 @@ export function assertSpecActivatable(input: {
   constraints: Record<string, unknown> | null;
   documentation: string | null;
   parameterSpecId: string;
+  storedValueShape?: unknown;
 }): void {
   if (isUnsupportedShape(input.valueShape)) {
     throw new ApiError(
@@ -56,6 +57,47 @@ export function assertSpecActivatable(input: {
       400,
       { parameterSpecId: input.parameterSpecId, valueShapeKind: shapeKind(input.valueShape) },
     );
+  }
+  const shape = input.valueShape;
+  if (!shape || typeof shape !== "object" || Array.isArray(shape) || !("kind" in shape)) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Activation requires a complete valueShape object.",
+      400,
+      { parameterSpecId: input.parameterSpecId },
+    );
+  }
+  const kind = shapeKind(shape);
+  if (kind === "cells" || kind === "phandle-list" || kind === "u32-array") {
+    const record = shape as Record<string, unknown>;
+    const cellsPerGroup =
+      typeof record.cellsPerGroup === "number"
+        ? record.cellsPerGroup
+        : typeof record.cells === "number"
+          ? record.cells
+          : null;
+    if (cellsPerGroup == null || !Number.isFinite(cellsPerGroup) || cellsPerGroup < 1) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Cell-array valueShape must include cellsPerGroup or cells.",
+        400,
+        { parameterSpecId: input.parameterSpecId, valueShapeKind: kind },
+      );
+    }
+  }
+  if (input.storedValueShape && typeof input.storedValueShape === "object" && !Array.isArray(input.storedValueShape)) {
+    const stored = input.storedValueShape as Record<string, unknown>;
+    const incoming = shape as Record<string, unknown>;
+    for (const key of ["bits", "groups", "cellsPerGroup", "length", "cells"] as const) {
+      if (stored[key] != null && incoming[key] != null && stored[key] !== incoming[key]) {
+        throw new ApiError(
+          "VALIDATION_FAILED",
+          "Activation valueShape conflicts with inferred draft shape.",
+          400,
+          { parameterSpecId: input.parameterSpecId, field: key, stored: stored[key], incoming: incoming[key] },
+        );
+      }
+    }
   }
   if (!hasCompleteConstraints(input.valueShape, input.constraints)) {
     throw new ApiError(

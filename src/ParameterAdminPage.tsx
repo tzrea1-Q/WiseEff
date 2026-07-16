@@ -37,6 +37,7 @@ function toSpecDetailView(detail: ParameterSpecDetail, usageCount = 0): Paramete
   return {
     ...mapParameterSpecToLibraryRow({
       id: detail.id,
+      organizationId: detail.organizationId ?? null,
       propertyKey: detail.propertyKey,
       specificationKey: detail.specificationKey,
       driverModule: detail.driverModule,
@@ -170,6 +171,7 @@ export function ParameterAdminPage({
         items.map((item) =>
           mapParameterSpecToLibraryRow({
             id: item.id,
+            organizationId: item.organizationId ?? null,
             propertyKey: item.propertyKey,
             specificationKey: item.specificationKey,
             driverModule: item.driverModule,
