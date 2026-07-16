@@ -2,6 +2,7 @@ import type { Database } from "../../../shared/database/client";
 import { mustUseSemanticParameterIdentity } from "../semanticParameterReads";
 import {
   SEMANTIC_ACTIVE_SPEC_VERSION_LATERAL,
+  SEMANTIC_BINDING_ORG_SCOPE,
   SEMANTIC_IDENTITY_SQL,
   SEMANTIC_MODULE_EXPR,
   SEMANTIC_TITLE_EXPR
@@ -284,20 +285,20 @@ async function aggregateParameterGroupsSemantic(db: Database, input: AggregateIn
         where h.changed_by_user_id is not null
       ) as contributors_all_time,
       max(h.changed_at) as last_changed_at
-    from ${SEMANTIC_IDENTITY_SQL.specsTable} ps
-    join ${SEMANTIC_IDENTITY_SQL.bindingsTable} b on b.parameter_spec_id = ps.id
+    from ${SEMANTIC_IDENTITY_SQL.bindingsTable} b
+    join ${SEMANTIC_IDENTITY_SQL.specsTable} ps on ps.id = b.parameter_spec_id
     ${SEMANTIC_ACTIVE_SPEC_VERSION_LATERAL}
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
     join projects p on p.id = b.project_id
     left join parameter_change_requests cr
-      on cr.organization_id = ps.organization_id
+      on cr.organization_id = b.organization_id
      and cr.project_id = b.project_id
      and cr.project_parameter_binding_id = b.id
     left join parameter_history_entries h
-      on h.organization_id = ps.organization_id
+      on h.organization_id = b.organization_id
      and h.project_id = b.project_id
      and h.project_parameter_binding_id = b.id
-    where ps.organization_id = $1 ${projectFilter}
+    where ${SEMANTIC_BINDING_ORG_SCOPE} ${projectFilter}
     group by ps.id, ${SEMANTIC_TITLE_EXPR}, ${SEMANTIC_MODULE_EXPR}
     order by ${SEMANTIC_TITLE_EXPR} asc
     `,

@@ -16,6 +16,7 @@ import { requestJson } from "../../../test/testClient";
 import type { AuthContext } from "../../auth/types";
 import { resetParameterIdentityCutoverCache } from "../cutoverAwareIdentity";
 import { registerParameterDashboardRoutes } from "./routes";
+import { aggregateHotspotGroups } from "./hotspotRepository";
 import {
   applyParameterIdentityCutover,
   migrateParameterIdentities,
@@ -35,6 +36,19 @@ const PPV_HIGH = "ppv-pcd-high";
 const PPV_LOW = "ppv-pcd-low";
 const SCHEMA_NS = "ChargingPolicy";
 const DRIVER = "sc8562";
+
+const ORG_A = "org-pcd-hotspot-a";
+const ORG_B = "org-pcd-hotspot-b";
+const USER_A = "user-pcd-hotspot-a";
+const USER_B = "user-pcd-hotspot-b";
+const PROJECT_A = "project-pcd-hotspot-a";
+const PROJECT_B = "project-pcd-hotspot-b";
+const CONFIG_SET_A = "dcs-pcd-hotspot-a";
+const CONFIG_SET_B = "dcs-pcd-hotspot-b";
+const GLOBAL_VENDOR_PROPERTY = "vendor_gpio_int";
+const ORG_OWNED_PROPERTY = "org_fast_charge";
+const VENDOR_SCHEMA_NS = "VendorGpio";
+const GLOBAL_SPEC_ID = stableSemanticId("parameter_spec", ["global", "dts", VENDOR_SCHEMA_NS, GLOBAL_VENDOR_PROPERTY]);
 
 const databaseAvailable = await isTestDatabaseAvailable();
 const MAINTENANCE_TOKEN = "test-maintenance-token";
@@ -292,6 +306,232 @@ async function seedPreCutoverDashboardGraph(db: Database) {
   return { specHighId, specLowId };
 }
 
+function makeAuthFor(organizationId: string, userId: string, organizationName: string): AuthContext {
+  return {
+    user: {
+      id: userId,
+      organizationId,
+      name: "Hotspot User",
+      email: `${userId}@example.com`,
+      title: "Admin",
+      isActive: true
+    },
+    organization: { id: organizationId, name: organizationName },
+    roles: [{ projectId: null, roleId: "admin" }],
+    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
+  };
+}
+
+
+async function bootstrapPostCutoverDatabase(db: Database) {
+  await seedPreCutoverDashboardGraph(db);
+  const report = await migrateParameterIdentities(db, {
+    mode: "apply",
+    organizationId: ORG,
+    ...applyGates,
+    dbSnapshotId: "db-snap-pcd-bootstrap",
+    objectSnapshotId: "obj-snap-pcd-bootstrap"
+  });
+  expect(report.blockers).toEqual([]);
+  await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+  resetParameterIdentityCutoverCache();
+
+  const legacyTables = await db.query(
+    `select table_name from information_schema.tables
+     where table_schema = 'public'
+       and table_name in ('parameter_definitions', 'project_parameter_values')`
+  );
+  expect(legacyTables.rows).toHaveLength(0);
+}
+
+async function seedSemanticHotspotTenantGraph(db: Database) {
+  const orgOwnedSpecId = stableSemanticId("parameter_spec", [ORG_A, "dts", SCHEMA_NS, ORG_OWNED_PROPERTY]);
+  const orgOwnedSpecVersionId = stableSemanticId("parameter_spec_version", [orgOwnedSpecId, "1"]);
+  const globalSpecVersionId = stableSemanticId("parameter_spec_version", [GLOBAL_SPEC_ID, "1"]);
+  const logicalNodeA = stableSemanticId("dts_logical_node", [PROJECT_A, CONFIG_SET_A, "/amba/i2c@FDF5E000/sc8562@6E"]);
+  const logicalNodeB = stableSemanticId("dts_logical_node", [PROJECT_B, CONFIG_SET_B, "/amba/i2c@FDF5E000/sc8562@6E"]);
+  const bindingGlobalA = stableSemanticId("project_parameter_binding", [PROJECT_A, logicalNodeA, GLOBAL_SPEC_ID]);
+  const bindingGlobalB = stableSemanticId("project_parameter_binding", [PROJECT_B, logicalNodeB, GLOBAL_SPEC_ID]);
+  const bindingOrgOwnedA = stableSemanticId("project_parameter_binding", [PROJECT_A, logicalNodeA, orgOwnedSpecId]);
+
+  await db.query(
+    `insert into organizations (id, name) values ($1, 'Hotspot Org A'), ($2, 'Hotspot Org B')
+     on conflict (id) do update set name = excluded.name`,
+    [ORG_A, ORG_B]
+  );
+  await db.query(
+    `insert into users (id, organization_id, name, email, title, is_active)
+     values ($1, $2, 'User A', 'a@example.com', 'Admin', true),
+            ($3, $4, 'User B', 'b@example.com', 'Admin', true)`,
+    [USER_A, ORG_A, USER_B, ORG_B]
+  );
+  await db.query(
+    `insert into projects (id, organization_id, name, code, status)
+     values ($1, $2, 'Project A', 'PRJ-A', 'initialized'),
+            ($3, $4, 'Project B', 'PRJ-B', 'initialized')`,
+    [PROJECT_A, ORG_A, PROJECT_B, ORG_B]
+  );
+  await db.query(
+    `insert into dts_config_set (id, organization_id, project_id, name, description)
+     values ($1, $2, $3, 'cfg-a', 'hotspot-a'),
+            ($4, $5, $6, 'cfg-b', 'hotspot-b')`,
+    [CONFIG_SET_A, ORG_A, PROJECT_A, CONFIG_SET_B, ORG_B, PROJECT_B]
+  );
+  await db.query(
+    `insert into parameter_specs (id, organization_id, source_kind, specification_key, semantic_module, risk)
+     values ($1, null, 'dts', $2, $3, 'Medium'),
+            ($4, $5, 'dts', $6, $3, 'High')`,
+    [
+      GLOBAL_SPEC_ID,
+      `${VENDOR_SCHEMA_NS}/${GLOBAL_VENDOR_PROPERTY}`,
+      DRIVER,
+      orgOwnedSpecId,
+      ORG_A,
+      `${SCHEMA_NS}/${ORG_OWNED_PROPERTY}`
+    ]
+  );
+  await db.query(
+    `insert into parameter_spec_versions (
+      id, parameter_spec_id, version, display_name, description, value_shape, lifecycle
+    ) values ($1, $2, 1, $3, 'Global vendor spec', '{"kind":"cells"}'::jsonb, 'active'),
+             ($4, $5, 1, $6, 'Org-owned spec', '{"kind":"cells"}'::jsonb, 'active')`,
+    [
+      globalSpecVersionId,
+      GLOBAL_SPEC_ID,
+      GLOBAL_VENDOR_PROPERTY,
+      orgOwnedSpecVersionId,
+      orgOwnedSpecId,
+      ORG_OWNED_PROPERTY
+    ]
+  );
+  await db.query(
+    `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, constraints)
+     values ($1, $2, $3, $4, '{}'::jsonb),
+            ($5, $6, $7, $8, '{}'::jsonb)`,
+    [
+      stableSemanticId("dts_property_spec", [GLOBAL_SPEC_ID, GLOBAL_VENDOR_PROPERTY]),
+      GLOBAL_SPEC_ID,
+      GLOBAL_VENDOR_PROPERTY,
+      VENDOR_SCHEMA_NS,
+      stableSemanticId("dts_property_spec", [orgOwnedSpecId, ORG_OWNED_PROPERTY]),
+      orgOwnedSpecId,
+      ORG_OWNED_PROPERTY,
+      SCHEMA_NS
+    ]
+  );
+  await db.query(
+    `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
+     values ($1, $2, $3, $4),
+            ($5, $6, $7, $8)`,
+    [logicalNodeA, ORG_A, PROJECT_A, CONFIG_SET_A, logicalNodeB, ORG_B, PROJECT_B, CONFIG_SET_B]
+  );
+  await db.query(
+    `insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id)
+     values ($1, $2, $3, $4, $5),
+            ($6, $7, $8, $9, $5),
+            ($10, $2, $3, $4, $11)`,
+    [
+      bindingGlobalA,
+      ORG_A,
+      PROJECT_A,
+      logicalNodeA,
+      GLOBAL_SPEC_ID,
+      bindingGlobalB,
+      ORG_B,
+      PROJECT_B,
+      logicalNodeB,
+      bindingOrgOwnedA,
+      orgOwnedSpecId
+    ]
+  );
+
+  const roundA = "round-pcd-hotspot-a";
+  const roundB = "round-pcd-hotspot-b";
+  await db.query(
+    `insert into parameter_submission_rounds (id, organization_id, project_id, submitter_user_id, status, summary)
+     values ($1, $2, $3, $4, 'submitted', 'hotspot-a'),
+            ($5, $6, $7, $8, 'submitted', 'hotspot-b')`,
+    [roundA, ORG_A, PROJECT_A, USER_A, roundB, ORG_B, PROJECT_B, USER_B]
+  );
+  await db.query(
+    `insert into parameter_change_requests (
+      id, organization_id, submission_round_id, project_id,
+      parameter_spec_id, project_parameter_binding_id,
+      base_version, current_value, target_value, status, submitter_user_id, created_at
+    ) values
+      ($1, $2, $3, $4, $5, $6, 1, '<1>', '<2>', 'submitted', $7, now() - interval '3 days'),
+      ($8, $2, $3, $4, $9, $10, 1, '<100>', '<110>', 'hardware_review', $7, now() - interval '4 days'),
+      ($11, $12, $13, $14, $5, $15, 1, '<1>', '<2>', 'submitted', $16, now() - interval '5 days')`,
+    [
+      "cr-global-a",
+      ORG_A,
+      roundA,
+      PROJECT_A,
+      GLOBAL_SPEC_ID,
+      bindingGlobalA,
+      USER_A,
+      "cr-org-owned-a",
+      orgOwnedSpecId,
+      bindingOrgOwnedA,
+      "cr-global-b",
+      ORG_B,
+      roundB,
+      PROJECT_B,
+      bindingGlobalB,
+      USER_B
+    ]
+  );
+  await db.query(
+    `insert into parameter_history_entries (
+      id, organization_id, project_id, parameter_spec_id, project_parameter_binding_id,
+      version, value, changed_by_user_id, request_id, changed_at
+    ) values
+      ($1, $2, $3, $4, $5, 1, '<1>', $6, $7, now() - interval '2 days'),
+      ($8, $2, $3, $4, $5, 2, '<2>', $6, null, now() - interval '1 day'),
+      ($9, $2, $3, $10, $11, 1, '<100>', $6, $12, now() - interval '2 days'),
+      ($13, $14, $15, $4, $16, 1, '<1>', $17, $18, now() - interval '2 days')`,
+    [
+      "hist-global-a-1",
+      ORG_A,
+      PROJECT_A,
+      GLOBAL_SPEC_ID,
+      bindingGlobalA,
+      USER_A,
+      "cr-global-a",
+      "hist-global-a-2",
+      "hist-org-owned-a-1",
+      orgOwnedSpecId,
+      bindingOrgOwnedA,
+      "cr-org-owned-a",
+      "hist-global-b-1",
+      ORG_B,
+      PROJECT_B,
+      bindingGlobalB,
+      USER_B,
+      "cr-global-b"
+    ]
+  );
+
+  return {
+    globalSpecId: GLOBAL_SPEC_ID,
+    orgOwnedSpecId,
+    bindingGlobalA,
+    bindingGlobalB,
+    bindingOrgOwnedA
+  };
+}
+
+function hotspotWindowBounds() {
+  const windowEnd = new Date();
+  windowEnd.setUTCHours(0, 0, 0, 0);
+  const windowStart = new Date(windowEnd);
+  windowStart.setUTCDate(windowStart.getUTCDate() - 30);
+  return {
+    windowStart: windowStart.toISOString(),
+    windowEnd: windowEnd.toISOString()
+  };
+}
+
 describe.skipIf(!databaseAvailable)("post-cutover dashboard API (temp DB)", () => {
   it(
     "serves /dashboard/summary and /dashboard/hotspots from semantic tables only",
@@ -360,6 +600,115 @@ describe.skipIf(!databaseAvailable)("post-cutover dashboard API (temp DB)", () =
         );
         expect(moduleHotspots.status).toBe(200);
         expect(moduleHotspots.body.items.some((item) => item.module === DRIVER)).toBe(true);
+      });
+    },
+    120_000
+  );
+
+  it(
+    "includes org-owned and global vendor specs in parameter hotspots via binding tenant scope",
+    async () => {
+      await withTempDatabase(async (db) => {
+        await bootstrapPostCutoverDatabase(db);
+        const seeded = await seedSemanticHotspotTenantGraph(db);
+        const { windowStart, windowEnd } = hotspotWindowBounds();
+
+        const groups = await aggregateHotspotGroups(db, {
+          organizationId: ORG_A,
+          projectId: null,
+          dimension: "parameter",
+          windowStart,
+          windowEnd
+        });
+
+        const globalGroup = groups.find((group) => group.groupId === seeded.globalSpecId);
+        const orgOwnedGroup = groups.find((group) => group.groupId === seeded.orgOwnedSpecId);
+        expect(globalGroup?.title).toBe(GLOBAL_VENDOR_PROPERTY);
+        expect(orgOwnedGroup?.title).toBe(ORG_OWNED_PROPERTY);
+        expect(globalGroup?.relatedRequestCount).toBe(1);
+        expect(globalGroup?.historyEventsInWindow).toBe(2);
+        expect(globalGroup?.openRequestCount).toBe(1);
+        expect(orgOwnedGroup?.relatedRequestCount).toBe(1);
+        expect(orgOwnedGroup?.historyEventsInWindow).toBe(1);
+
+        const server = makeDashboardServer(db, makeAuthFor(ORG_A, USER_A, "Hotspot Org A"));
+        const hotspotResponse = await requestJson<{
+          items: Array<{ id: string; kind: string; title: string; evidence: string[] }>;
+        }>(server, "/api/v1/parameters/dashboard/hotspots?window=30d&dimension=parameter");
+
+        expect(hotspotResponse.status).toBe(200);
+        const titles = hotspotResponse.body.items.map((item) => item.title);
+        expect(titles).toContain(GLOBAL_VENDOR_PROPERTY);
+        expect(titles).toContain(ORG_OWNED_PROPERTY);
+        const globalHotspot = hotspotResponse.body.items.find(
+          (item) => item.id === `parameter:${seeded.globalSpecId}`
+        );
+        expect(globalHotspot?.evidence.some((line) => line.includes("个项目中修改"))).toBe(true);
+      });
+    },
+    120_000
+  );
+
+  it(
+    "isolates parameter hotspots across orgs sharing the same global vendor spec",
+    async () => {
+      await withTempDatabase(async (db) => {
+        await bootstrapPostCutoverDatabase(db);
+        const seeded = await seedSemanticHotspotTenantGraph(db);
+        const { windowStart, windowEnd } = hotspotWindowBounds();
+
+        const orgAGroups = await aggregateHotspotGroups(db, {
+          organizationId: ORG_A,
+          projectId: null,
+          dimension: "parameter",
+          windowStart,
+          windowEnd
+        });
+        const orgBGroups = await aggregateHotspotGroups(db, {
+          organizationId: ORG_B,
+          projectId: null,
+          dimension: "parameter",
+          windowStart,
+          windowEnd
+        });
+
+        const globalA = orgAGroups.find((group) => group.groupId === seeded.globalSpecId);
+        const globalB = orgBGroups.find((group) => group.groupId === seeded.globalSpecId);
+        const orgOwnedB = orgBGroups.find((group) => group.groupId === seeded.orgOwnedSpecId);
+
+        expect(globalA?.parameterCount).toBe(1);
+        expect(globalA?.historyEventsInWindow).toBe(2);
+        expect(globalA?.relatedRequestCount).toBe(1);
+        expect(globalB?.parameterCount).toBe(1);
+        expect(globalB?.historyEventsInWindow).toBe(1);
+        expect(globalB?.relatedRequestCount).toBe(1);
+        expect(orgOwnedB).toBeUndefined();
+
+        const serverA = makeDashboardServer(db, makeAuthFor(ORG_A, USER_A, "Hotspot Org A"));
+        const serverB = makeDashboardServer(db, makeAuthFor(ORG_B, USER_B, "Hotspot Org B"));
+
+        const responseA = await requestJson<{
+          items: Array<{ id: string; title: string; projectCode: string }>;
+        }>(serverA, "/api/v1/parameters/dashboard/hotspots?window=30d&dimension=parameter");
+        const responseB = await requestJson<{
+          items: Array<{ id: string; title: string; projectCode: string }>;
+        }>(serverB, "/api/v1/parameters/dashboard/hotspots?window=30d&dimension=parameter");
+
+        expect(responseA.status).toBe(200);
+        expect(responseB.status).toBe(200);
+        expect(responseA.body.items.some((item) => item.title === ORG_OWNED_PROPERTY)).toBe(true);
+        expect(responseB.body.items.some((item) => item.title === ORG_OWNED_PROPERTY)).toBe(false);
+
+        const globalHotspotA = responseA.body.items.find(
+          (item) => item.id === `parameter:${seeded.globalSpecId}`
+        );
+        const globalHotspotB = responseB.body.items.find(
+          (item) => item.id === `parameter:${seeded.globalSpecId}`
+        );
+        expect(globalHotspotA?.projectCode).toBe("1 个项目");
+        expect(globalHotspotB?.projectCode).toBe("1 个项目");
+        expect(globalHotspotA?.title).toBe(GLOBAL_VENDOR_PROPERTY);
+        expect(globalHotspotB?.title).toBe(GLOBAL_VENDOR_PROPERTY);
       });
     },
     120_000

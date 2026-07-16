@@ -34,6 +34,12 @@ export const SEMANTIC_TITLE_EXPR = `
 /** Risk tier stored on the spec; policy targets may override later. */
 export const SEMANTIC_RISK_EXPR = `coalesce(nullif(ps.risk, ''), 'Low')`;
 
+/**
+ * Post-cutover tenant scope for dashboard aggregations.
+ * Bindings carry the org boundary; global vendor specs keep organization_id null.
+ */
+export const SEMANTIC_BINDING_ORG_SCOPE = `b.organization_id = $1`;
+
 /** Active spec version lateral join used by dashboard aggregations. */
 export const SEMANTIC_ACTIVE_SPEC_VERSION_LATERAL = `
   left join lateral (
