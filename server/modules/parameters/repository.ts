@@ -2951,19 +2951,6 @@ export async function mergeChangeRequest(
                )
            )
       ),
-      updated_binding_revision as (
-        update project_parameter_binding_revisions bpr
-        set
-          raw_value = occurrence_lock.target_value,
-          typed_value = jsonb_build_object('kind', 'legacy-text', 'value', occurrence_lock.target_value),
-          canonical_value = jsonb_build_object('kind', 'legacy-text', 'value', occurrence_lock.target_value),
-          schema_state = 'merged',
-          policy_state = 'merged'
-        from occurrence_lock
-        where bpr.id = occurrence_lock.binding_revision_id
-          and bpr.config_revision_id = occurrence_lock.base_config_revision_id
-        returning bpr.binding_id
-      ),
       inserted_history as (
         insert into parameter_history_entries (
           id, organization_id, project_id,
@@ -2981,7 +2968,6 @@ export async function mergeChangeRequest(
           occurrence_lock.parameter_spec_id,
           occurrence_lock.project_parameter_binding_id
         from occurrence_lock
-        inner join updated_binding_revision on true
         returning id
       )
       select

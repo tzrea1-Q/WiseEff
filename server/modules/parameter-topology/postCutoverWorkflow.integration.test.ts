@@ -533,13 +533,14 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           parameterId: seeded.bindingId
         });
         expect(history.some((entry) => entry.value === "<9>")).toBe(true);
+        expect(history.filter((entry) => entry.value === "<9>")).toHaveLength(1);
 
-        const bindingRaw = await db.query<{ raw_value: string | null; config_revision_id: string }>(
+        const baseBindingRaw = await db.query<{ raw_value: string | null; config_revision_id: string }>(
           `select raw_value, config_revision_id from project_parameter_binding_revisions
            where binding_id = $1 and config_revision_id = $2`,
           [seeded.bindingId, writeLock.baseConfigRevisionId]
         );
-        expect(bindingRaw.rows[0]?.raw_value).toBe("<9>");
+        expect(baseBindingRaw.rows[0]?.raw_value).toBe("<1>");
 
         const objectStore = {
           async get(key: string) {
@@ -563,20 +564,58 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           projectParameterBindingId: seeded.bindingId,
           parameterSpecId: seeded.specId,
           changeRequestId: request.id,
-        }, { skipToolchain: true, skipSemanticGates: true });
+        }, {
+          toolchain: {
+            async validate() {
+              return {
+                ok: true,
+                mode: "release" as const,
+                compiler: { dtc: "test", fdtoverlay: "test", dtschema: "test" },
+                diagnostics: [],
+                artifacts: {},
+              };
+            },
+            async probe() {
+              return {
+                dtc: { path: "/usr/bin/dtc", version: "test" },
+                fdtoverlay: { path: "/usr/bin/fdtoverlay", version: "test" },
+                dtschema: { path: "/usr/bin/dt-validate", version: "test" },
+              };
+            },
+          },
+          skipSemanticGates: true,
+        });
         expect(writeback.skipped).toBe(false);
         if (!writeback.skipped) {
           expect(writeback.candidateRevisionId).toBeTruthy();
+          expect(writeback.bindingRevisionId).toBeTruthy();
+
+          const stillBase = await db.query<{ raw_value: string | null }>(
+            `select raw_value from project_parameter_binding_revisions
+             where binding_id = $1 and config_revision_id = $2`,
+            [seeded.bindingId, writeLock.baseConfigRevisionId]
+          );
+          expect(stillBase.rows[0]?.raw_value).toBe("<1>");
+
+          const candidateBinding = await db.query<{ raw_value: string | null }>(
+            `select raw_value from project_parameter_binding_revisions
+             where binding_id = $1 and config_revision_id = $2`,
+            [seeded.bindingId, writeback.candidateRevisionId]
+          );
+          expect(candidateBinding.rows[0]?.raw_value).toBe("<9>");
         }
 
-        const reloadedBinding = await db.query<{ raw_value: string | null }>(
-          `select raw_value from project_parameter_binding_revisions
+        const reloadedBinding = await db.query<{ raw_value: string | null; config_revision_id: string }>(
+          `select raw_value, config_revision_id from project_parameter_binding_revisions
            where binding_id = $1
            order by created_at desc
            limit 1`,
           [seeded.bindingId]
         );
         expect(reloadedBinding.rows[0]?.raw_value).toBe("<9>");
+        if (!writeback.skipped) {
+          expect(reloadedBinding.rows[0]?.config_revision_id).toBe(writeback.candidateRevisionId);
+        }
 
         const overlayVersion = await db.query<{ parsed_index: { sourceText?: string } }>(
           `select parsed_index from project_parameter_file_versions
@@ -812,7 +851,27 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
               parameterSpecId: seeded.specId,
               changeRequestId: request.id
             },
-            { skipToolchain: true, skipSemanticGates: true }
+            {
+              toolchain: {
+                async validate() {
+                  return {
+                    ok: true,
+                    mode: "release" as const,
+                    compiler: { dtc: "test", fdtoverlay: "test", dtschema: "test" },
+                    diagnostics: [],
+                    artifacts: {},
+                  };
+                },
+                async probe() {
+                  return {
+                    dtc: { path: "/usr/bin/dtc", version: "test" },
+                    fdtoverlay: { path: "/usr/bin/fdtoverlay", version: "test" },
+                    dtschema: { path: "/usr/bin/dt-validate", version: "test" },
+                  };
+                },
+              },
+              skipSemanticGates: true,
+            }
           )
         ).rejects.toMatchObject({
           code: "CONFLICT",

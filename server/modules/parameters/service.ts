@@ -1636,6 +1636,34 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       note: input.note
     });
 
+    const semanticIdentity = await mustUseSemanticParameterIdentity(tx);
+    if (semanticIdentity) {
+      if (!context.objectStore) {
+        throw new ApiError(
+          "SERVICE_UNAVAILABLE",
+          "Semantic merge requires object storage for DTS writeback.",
+          503,
+          { requestId: input.requestId }
+        );
+      }
+      if (!request.projectId) {
+        throw new ApiError(
+          "CONFLICT",
+          "Semantic merge requires a project-scoped change request.",
+          409,
+          { requestId: input.requestId }
+        );
+      }
+      if (!request.projectParameterBindingId) {
+        throw new ApiError(
+          "CONFLICT",
+          "Semantic merge requires a project parameter binding write lock.",
+          409,
+          { requestId: input.requestId }
+        );
+      }
+    }
+
     const merged = await mergeChangeRequest(tx, {
       historyId: randomUUID(),
       organizationId: auth.organization.id,
@@ -1646,6 +1674,31 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
 
     if (!merged) {
       throw new ApiError("CONFLICT", "Parameter value changed before merge.", 409, { requestId: input.requestId });
+    }
+
+    if (semanticIdentity) {
+      const writeback = await writebackMergedParameterValue(
+        tx,
+        context.objectStore!,
+        auth,
+        {
+          projectId: request.projectId!,
+          parameterDefinitionId: merged.parameterDefinitionId,
+          mergedValue: merged.targetValue,
+          projectParameterBindingId: merged.projectParameterBindingId,
+          parameterSpecId: merged.parameterSpecId,
+          changeRequestId: input.requestId,
+        },
+        context
+      );
+      if (writeback.skipped) {
+        throw new ApiError(
+          "CONFLICT",
+          "Semantic merge writeback was skipped; refusing to mark the request as merged.",
+          409,
+          { requestId: input.requestId }
+        );
+      }
     }
 
     const updated = await updateChangeRequestStatus(tx, {
@@ -1682,7 +1735,8 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       changeRequest: request,
       participants
     }, context);
-    if (context.objectStore && request.projectId) {
+
+    if (!semanticIdentity && context.objectStore && request.projectId) {
       await writebackMergedParameterValue(
         tx,
         context.objectStore,
@@ -1695,10 +1749,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
           parameterSpecId: merged.parameterSpecId,
           changeRequestId: input.requestId,
         },
-        {
-          ...context,
-          skipToolchain: process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN === "1",
-        }
+        context
       );
     }
 

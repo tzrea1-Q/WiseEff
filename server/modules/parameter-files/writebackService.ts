@@ -47,8 +47,12 @@ export type WritebackMergedParameterValueInput = {
 
 export type WritebackServiceContext = AuditCorrelationContext & {
   objectStore?: ObjectStore;
-  /** Injected for tests; production uses host toolchain when available. */
-  skipToolchain?: boolean;
+  /**
+   * Explicit toolchain runner injection for tests.
+   * Production must omit this and use the pinned host runner.
+   * There is no environment-variable bypass.
+   */
+  toolchain?: ReturnType<typeof createDtsToolchainRunner>;
   /** Test-only: skip semantic promotion gates after resolve/toolchain. */
   skipSemanticGates?: boolean;
 };
@@ -416,26 +420,7 @@ export async function writebackMergedParameterValue(
       {
         objectStore,
         skipSemanticGates: context.skipSemanticGates,
-        toolchain: context.skipToolchain
-          ? {
-              async validate() {
-                return {
-                  ok: true,
-                  mode: "release" as const,
-                  compiler: { dtc: "test", fdtoverlay: "test", dtschema: "test" },
-                  diagnostics: [],
-                  artifacts: {},
-                };
-              },
-              async probe() {
-                return {
-                  dtc: { path: "/usr/bin/dtc", version: "test" },
-                  fdtoverlay: { path: "/usr/bin/fdtoverlay", version: "test" },
-                  dtschema: { path: "/usr/bin/dt-validate", version: "test" },
-                };
-              },
-            }
-          : createDtsToolchainRunner(),
+        toolchain: context.toolchain ?? createDtsToolchainRunner(),
       },
     );
 
