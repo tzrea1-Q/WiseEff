@@ -92,7 +92,7 @@ npm run dts:config:validate
 # or POST /api/v2/projects/:projectId/config-revisions/:revisionId/validate
 ```
 
-Every effective DTB / config revision used in production must pass fail-closed toolchain validation.
+Every effective DTB / config revision used in production must pass fail-closed toolchain validation. Golden seed overlays (`aurora`/`nebula`/`atlas` + `wiseeff-power-base.dts`) must compile with `failOnSchema: true` and pass real `dt-validate` on the locked **173** property occurrences (**519** `dts_properties` rows in M1 seed tests).
 
 ## 7. Stage review (inferred specs and evidence)
 
@@ -218,4 +218,5 @@ Partial schema undo is forbidden. Restore is the only supported rollback.
 - [observability-operations.md](observability-operations.md)
 - Plan: `docs/exec-plans/active/2026-07-16-parameter-topology-schema-management.md`
 - Workflow review: `docs/exec-plans/active/2026-07-16-parameter-topology-cutover-workflow-review.md`
+- Round 4 blockers: `docs/exec-plans/active/2026-07-16-parameter-topology-round4-review-blockers.md`
 - Source hygiene: Vitest `legacyDependencyGuard.test.ts` (migrations/cutovers/adapters allowlist only; not a runtime middleware)

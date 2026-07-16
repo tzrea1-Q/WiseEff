@@ -22,7 +22,7 @@
 - **TD-038（模块树后续）：** 多层级模块已落地后，仍需删除过渡 `module` 文本列、收敛 `project_modules` 与组织级 `parameter_modules` 单一真相源，并评估 dashboard 热榜的层级聚合。
 - **TD-039（项目参数文件，程序主体已关闭）：** DTS 程序与硬化收口已归档。路径派生身份退役由活跃计划 `2026-07-16-parameter-topology-schema-management.md` 承接（语义规格/绑定 + 原子切换）。残余 fallback 仅在 cutover 前存在。
 - **TD-040（DTS 配置集/门禁后续）：** (1)(2)(3)(4) 状态见英文版；生产失败关闭 Schema/工具链校验由拓扑计划 Task 8/10/17 承接。
-- **TD-042（参数身份 cutover）：** Phase 7 已修好只读 dry-run、语义匹配、切断 active↔legacy PPV FK、临时库 post-cutover API smoke。本地脏库 dry-run 现为 193/193 defs + 557/557 values、blockers=[]。Cutover 工作流 review（Tasks 1–10）已落地 cutover 后语义活动路径、诚实 inferred 计数与无 DB 绕过的拓扑验收。**缺少合法干净非客户快照与维护窗口**，未执行 apply→cutover→整库恢复演练，**仍为 BLOCKER，不得宣称生产 cutover 就绪**。
+- **TD-042（参数身份 cutover）：** Phase 7 已修好只读 dry-run、语义匹配、切断 active↔legacy PPV FK、临时库 post-cutover API smoke。本地脏库 dry-run 现为 193/193 defs + 557/557 values、blockers=[]。Cutover 工作流 review（Tasks 1–10）已落地 cutover 后语义活动路径、诚实 inferred 计数与无 DB 绕过的拓扑验收。**第四轮**（分支 `fix/parameter-topology-round4-review-blockers`）已落地：有效厂商 dt-schema、`stage-review`→`finalize`、精确 occurrence 锁定合入/回写、matcher override + 审核 `blocker_scope`（含 locator 指纹）、manifest 回填与 `needs_review` 失败关闭门禁、hotspot 全局厂商规格、未匹配 `createSpec` + `confirmPropertyMismatch` 与审计、黄金计数 **173/519**。**缺少合法干净非客户快照与维护窗口**，未执行 apply→cutover→整库恢复演练，**仍为 BLOCKER，不得宣称生产 cutover 就绪**；第四轮仅为实现证据。
 
 ## 近期关闭项
 

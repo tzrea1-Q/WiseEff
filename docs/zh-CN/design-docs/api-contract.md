@@ -457,19 +457,25 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | `GET` | `/api/v2/parameter-specs` | 列出版本化参数规格 |
 | `GET` | `/api/v2/parameter-specs/:specId` | 规格详情（example/default/policy 分字段） |
 | `GET` | `/api/v2/parameter-spec-review-tasks` | 组织范围、分页、按状态筛选的规格审核队列（`?status=&limit=&cursor=`） |
-| `POST` | `/api/v2/parameter-spec-review-tasks/:taskId/resolve` | Admin 决议规格审核（`parameterSpecId` 须为本组织或全局）。`resolved` 在同一事务中应用 occurrence→spec→binding 并持久化可复用 matcher override；`dismissed` 失败关闭：不创建 binding，发布/校验仍阻断被 dismiss 的属性。 |
+| `POST` | `/api/v2/parameter-spec-review-tasks/:taskId/resolve` | Admin 决议规格审核（`parameterSpecId` 须为本组织或全局，**或** 未匹配任务使用 `createSpec: true`）。`resolved` 在同一事务中应用 occurrence→spec→binding 并持久化可复用 matcher override（作用域：`compatible` + **节点 locator 指纹** + 属性键）。库内决议若属性键与 occurrence 不一致，须显式 `confirmPropertyMismatch: true`，否则服务端拒绝。`dismissed` 失败关闭：不创建 binding，发布/校验仍阻断被 dismiss 的属性。审计：`parameter-topology-governance` / `spec-review-resolved`。 |
 | `GET` | `/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology` | 源树或生效树（`?view=source\|effective`） |
 | `GET` | `/api/v2/projects/:projectId/parameter-bindings` | 稳定项目绑定 |
 | `GET` | `/api/v2/identity-mapping-tasks` | 身份映射任务列表 |
 | `POST` | `/api/v2/identity-mapping-tasks/:taskId/resolve` | Admin 决议映射 |
 | `POST` | `/api/v2/projects/:projectId/config-revisions/:revisionId/validate` | 失败关闭工具链校验。再次校验失败会**撤销**此前的 `validated` 标记；开放身份映射或被 dismiss 且未匹配的规格审核保持 fail-closed。 |
-| `POST` | `/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts` | 类型化绑定草稿 + 精确 Config Set occurrence/CST span 回写（默认强制 schema；共享 base 不变）。Cutover 后草稿不得再创建 shadow `project_parameter_values` / `parameter_definitions`。 |
+| `POST` | `/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts` | 类型化绑定草稿 + **精确 occurrence** Config Set 回写：锁定 binding revision、occurrence、文件版本、checksum 与 CST span（默认强制 schema；共享 base 不变）。身份过期 → `409`。Cutover 后草稿不得再创建 shadow `project_parameter_values` / `parameter_definitions`。 |
 
 值拆分：`exampleValue` / `schemaDefault` / `policyTarget` / `effectiveValue` 分字段；不得折叠为业务 `recommendedValue`。拓扑载荷携带 API provenance（`sourceChain` / occurrence span）；API 模式下客户端不得发明教学回退数据。
 
-Config Set revision 持久化完整 manifest（`entryFile`、`includeSearchPaths`、overlay 顺序、成员角色）；校验与客户端须重载该 manifest，禁止硬编码 `includeSearchPaths=["."]`。
+Config Set revision 持久化完整 manifest（`entryFile`、`includeSearchPaths`、overlay 顺序、成员角色）。历史 revision 缺失时从钉住的 `dts_config_revision_members` 回填。`manifestState=needs_review` 对校验、类型化编辑、发布、回写失败关闭，直至修复。校验与客户端须重载该 manifest，禁止硬编码 `includeSearchPaths=["."]`。
 
-切换流程见 `docs/runbooks/parameter-identity-cutover.md`。在干净非客户快照整库演练完成前，**TD-042 仍为 BLOCKER**，不得仅凭临时库证据宣称生产 cutover 就绪。
+Dashboard hotspot（`GET /api/v1/parameters/dashboard/hotspots`）对租户绑定项目须同时包含**全局厂商规格**（`organization_id IS NULL`）与本组织规格。
+
+**迁移 CLI（仅维护窗口）：** `npm run parameter-identities:migrate` 支持 `dry-run`（默认）、`--stage-review`（可运维推断暂存事务）、`--finalize --migration-run-id <id>`（原子活动 FK 写入）。Cutover 仅接受 `finalized` 运行。见 `docs/runbooks/parameter-identity-cutover.md`。
+
+**第四轮证据：** 厂商 dt-schema 在黄金 DTB 上通过真实 `dt-validate`；黄金拓扑计数 **173** 属性 occurrence / **519** 行 seed `dts_properties`（服务端测试锁定）。审核阻断遵守 `blocker_scope`；matcher override 含 locator 指纹。
+
+切换流程见 `docs/runbooks/parameter-identity-cutover.md`。在干净非客户快照整库演练完成前，**TD-042 仍为 BLOCKER**——第四轮修复不构成生产 cutover 就绪声明。
 
 ## 8. Jobs 与进度
 

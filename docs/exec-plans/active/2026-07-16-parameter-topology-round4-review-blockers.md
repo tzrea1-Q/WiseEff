@@ -6,7 +6,20 @@
 **Goal:** Close parent-agent Round 3 Review blockers: real dt-validate schemas, durable stage→finalize, exact locked merge writeback, scoped matcher/review, honest manifest backfill, global-spec hotspots, unmatched review UI+audit, regression/acceptance gates.
 
 **Branch:** `fix/parameter-topology-round4-review-blockers`  
-**Preserved baseline:** `a94d0f57` (merge `fix/parameter-topology-semantic-cutover-round3`). **TD-042 remains BLOCKER.**
+**Preserved baseline:** `a94d0f57` (merge `fix/parameter-topology-semantic-cutover-round3`). **TD-042 remains BLOCKER — not production cutover ready.**
+
+## Round 4 fixes landed (implementation evidence)
+
+| Fix | Evidence |
+| --- | --- |
+| Valid vendor dt-schema generation | `fix(dts): generate valid deterministic vendor dt-schema`; `scripts/vendorDtSchemaGenerator.test.ts`; `dts:toolchain:check` + `dtc:seed:compile` with `failOnSchema: true` |
+| Durable `stage-review` → `finalize` | `migration.test.ts` (temp PG, reconnect, inject-fail); runbook §7–9; CLI `--stage-review` / `--finalize` |
+| Exact occurrence locked merge/writeback | `editService` stale `409`; immutable base revision; merge workflow tests |
+| Matcher override + review blocker scope (locator) | `matcherScope.integration.test.ts`; `nodeLocatorFingerprint`; `blocker_scope` revision/project/platform |
+| Manifest backfill + `needs_review` fail-closed | `manifestBackfillMigration.test.ts`, `configRevisionManifest.test.ts`; edit/validate/release/writeback gates |
+| Global vendor specs in hotspots | `postCutoverDashboard.integration.test.ts`; `organization_id IS NULL` specs for tenant projects |
+| Unmatched `createSpec` + `confirmPropertyMismatch` | `service.test.ts`, `SpecReviewQueue.tsx`, `parameterTopologyClient`; governance audit |
+| Golden counts **173/519** | `goldenPowerFixture.test.ts`, `ingestService.test.ts`, `matcher.test.ts`, `seedM1DtsFiles.test.ts` |
 
 ## Success criteria
 
@@ -78,9 +91,9 @@ Plan
 
 ## Documentation Update Gate
 
-- [ ] EN+zh-CN pairs updated where required
-- [ ] `npm run docs:check` passes
-- [ ] TD-042 explicit BLOCKER (not closed)
+- [x] EN+zh-CN pairs updated where required
+- [x] `npm run docs:check` passes
+- [x] TD-042 explicit BLOCKER (not closed)
 - [ ] Plan stays active until parent review
 - [ ] `git diff --check` clean (no trailing whitespace)
 

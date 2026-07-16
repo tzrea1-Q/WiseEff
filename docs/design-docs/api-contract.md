@@ -273,19 +273,25 @@ Additive semantic surface used by the topology/schema program. Production remain
 | `GET` | `/api/v2/parameter-specs` | List versioned parameter specs (property key, driver module, locator fields separated). |
 | `GET` | `/api/v2/parameter-specs/:specId` | Spec detail including example/default/policy metadata (`example_value` is informational). |
 | `GET` | `/api/v2/parameter-spec-review-tasks` | Org-scoped, paginated, status-filtered spec review queue (`?status=&limit=&cursor=`). |
-| `POST` | `/api/v2/parameter-spec-review-tasks/:taskId/resolve` | Admin resolve/dismiss a spec review task (`parameterSpecId` must be org-owned or global). Resolve applies occurrence→spec→binding + reusable matcher override in one transaction. Dismiss is fail-closed: no binding is created and release/validate still blocks dismissed properties. |
+| `POST` | `/api/v2/parameter-spec-review-tasks/:taskId/resolve` | Admin resolve/dismiss a spec review task (`parameterSpecId` must be org-owned or global, **or** `createSpec: true` for unmatched tasks). Resolve applies occurrence→spec→binding + reusable matcher override (scoped by compatible + **node locator fingerprint** + property key) in one transaction. Library resolve with a different property key requires explicit `confirmPropertyMismatch: true` or the server rejects with a mismatch error. Dismiss is fail-closed: no binding is created and release/validate still blocks dismissed properties. Audit: `parameter-topology-governance` / `spec-review-resolved`. |
 | `GET` | `/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology` | Source or effective tree (`?view=source\|effective`). |
 | `GET` | `/api/v2/projects/:projectId/parameter-bindings` | Stable project bindings (spec + logical node + effective value). |
 | `GET` | `/api/v2/identity-mapping-tasks` | List open/resolved identity mapping tasks. |
 | `POST` | `/api/v2/identity-mapping-tasks/:taskId/resolve` | Admin resolve a mapping task. |
 | `POST` | `/api/v2/projects/:projectId/config-revisions/:revisionId/validate` | Fail-closed toolchain validate for publish readiness. Failed re-validation **revokes** a previously `validated` revision (does not leave a stale validated marker). Open identity-mapping or dismissed-but-unmatched spec-review blockers fail closed. |
-| `POST` | `/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts` | Typed binding draft with precise Config Set occurrence/CST-span writeback (schema enforced; shared base unchanged). Post-cutover drafts must not create shadow `project_parameter_values` / `parameter_definitions` rows. |
+| `POST` | `/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts` | Typed binding draft with **exact-occurrence** Config Set writeback: locks binding revision, occurrence, file version, checksum, and CST span (schema enforced; shared base unchanged). Stale revision/occurrence identity → `409`. Post-cutover drafts must not create shadow `project_parameter_values` / `parameter_definitions` rows. |
 
 Value split: responses expose `exampleValue`, `schemaDefault`, `policyTarget`, and `effectiveValue` as distinct fields. Do not collapse them into a business `recommendedValue`. Topology payloads carry API provenance (`sourceChain` / occurrence spans); clients must not invent teaching fallbacks in API mode.
 
-Config Set revisions persist a full manifest (`entryFile`, `includeSearchPaths`, overlay order, member roles). Clients and validators must reload that manifest rather than hardcoding `includeSearchPaths=["."]`.
+Config Set revisions persist a full manifest (`entryFile`, `includeSearchPaths`, overlay order, member roles). Historical revisions without a manifest are backfilled from pinned `dts_config_revision_members`. `manifestState=needs_review` fail-closes validate, typed edit, release, and writeback until repaired. Clients and validators must reload the persisted manifest rather than hardcoding `includeSearchPaths=["."]`.
 
-Cutover/rollback procedure: `docs/runbooks/parameter-identity-cutover.md`. **TD-042 remains a BLOCKER** until a clean non-customer snapshot rehearsal completes — do not claim production cutover ready from temp-DB evidence alone.
+Dashboard hotspots (`GET /api/v1/parameters/dashboard/hotspots`) include **global vendor specs** (`organization_id IS NULL`) for tenant-bound projects alongside org-owned specs.
+
+**Migration CLI (maintenance only):** `npm run parameter-identities:migrate` supports `dry-run` (default), `--stage-review` (durable inferred staging transaction), and `--finalize --migration-run-id <id>` (atomic activity FK write). Cutover accepts only `finalized` runs. See `docs/runbooks/parameter-identity-cutover.md`.
+
+**Round 4 evidence:** vendor dt-schema passes real `dt-validate` on golden DTBs; golden topology counts **173** property occurrences / **519** seed `dts_properties` rows (locked in server tests). Review blockers honor `blocker_scope`; matcher overrides include locator fingerprint.
+
+Cutover/rollback procedure: `docs/runbooks/parameter-identity-cutover.md`. **TD-042 remains a BLOCKER** until a clean non-customer snapshot rehearsal completes — round 4 fixes do not clear production cutover readiness.
 
 ## Governance
 
