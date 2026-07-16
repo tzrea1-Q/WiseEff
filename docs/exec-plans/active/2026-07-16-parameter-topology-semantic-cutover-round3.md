@@ -5,7 +5,8 @@
 
 **Goal:** Real vendor dt-schema (no permissive stubs), post-cutover semantic dashboard/hotspot, durable inferred stage→review→finalize, precise merge writeback identity, scoped matcher/review blockers, manifest backfill, UI unmatched review, and acceptance without DB bypass or fallback specs.
 
-**Branch:** `fix/parameter-topology-semantic-cutover-round3`  
+**Branch:** `fix/parameter-topology-semantic-cutover-round3`
+
 **Preserved baseline:** `6b4ef783` (merge `fix/parameter-topology-cutover-workflow-review`). **TD-042 BLOCKER** until clean-snapshot rehearsal.
 
 ## Success criteria
