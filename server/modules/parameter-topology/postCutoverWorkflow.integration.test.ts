@@ -1,6 +1,7 @@
 /**
- * Task 1–2: post-cutover activity workflow on a temp DB.
- * migrate → cutover → list/draft/submit/review/merge/history/writeback/debug/delete
+ * Task 1–3: post-cutover activity workflow on a temp DB.
+ * migrate → cutover → list/draft/submit/review/merge/writeback/debug/delete
+ * plus exact locked merge/writeback and stale 409 guards.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -11,6 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import { createDatabase, type Database } from "../../shared/database/client";
 import { applyMigrations } from "../../shared/database/migrations";
+import { ApiError } from "../../shared/http/errors";
 import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
 import { insertNodeOperation } from "../debugging/repository";
@@ -21,6 +23,7 @@ import {
   createSubmissionItem,
   createSubmissionRound,
   deleteProject,
+  getChangeRequestWriteLock,
   listDraftsForUser,
   listParameterHistory,
   listParameters,
@@ -28,6 +31,7 @@ import {
   updateChangeRequestStatus,
   upsertDraft
 } from "../parameters/repository";
+import { resolveBindingWriteLock } from "./editService";
 import {
   applyParameterIdentityCutover,
   migrateParameterIdentities,
@@ -148,18 +152,28 @@ async function seedPreCutoverGraph(db: Database) {
   const configRevisionId = "rev-pcw-1";
   const fileId = "file-pcw-1";
   const fileVersionId = "fv-pcw-1";
+  const overlayFileId = "file-pcw-overlay";
+  const overlayVersionId = "fv-pcw-overlay";
   const content = `/dts-v1/;
 / {
 	amba {
 		i2c@FDF5E000 {
-			sc8562@6E {
+			sc8562: sc8562@6E {
+				compatible = "vendor,sc8562";
 				gpio_int = <1>;
 			};
 		};
 	};
 };
 `;
+  const overlayContent = `/dts-v1/;
+/plugin/;
+
+&sc8562 {
+};
+`;
   const checksum = createHash("sha256").update(content, "utf8").digest("hex");
+  const overlayChecksum = createHash("sha256").update(overlayContent, "utf8").digest("hex");
 
   await db.query(`insert into organizations (id, name) values ($1, 'PCW Org')`, [ORG]);
   await db.query(
@@ -211,27 +225,68 @@ async function seedPreCutoverGraph(db: Database) {
     fileId
   ]);
   await db.query(
+    `insert into project_parameter_files (
+      id, organization_id, project_id, file_name, format, enabled,
+      config_set_id, config_set_role, config_set_sort_order
+    ) values ($1, $2, $3, 'pcw-overlay.dts', 'dts', true, $4, 'overlay', 1)`,
+    [overlayFileId, ORG, PROJECT, CONFIG_SET]
+  );
+  await db.query(
+    `insert into project_parameter_file_versions (
+      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+    ) values ($1, $2, 1, $3, $4, $5, $6::jsonb, 'upload', $7)`,
+    [
+      overlayVersionId,
+      overlayFileId,
+      `${ORG}/${overlayChecksum}-pcw-overlay.dts`,
+      overlayChecksum,
+      Buffer.byteLength(overlayContent),
+      JSON.stringify({ sourceText: overlayContent }),
+      USER
+    ]
+  );
+  await db.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
+    overlayVersionId,
+    overlayFileId
+  ]);
+  await db.query(
     `insert into dts_config_revisions (
-      id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id
-    ) values ($1, $2, $3, $4, 1, 'compiled', $5)`,
-    [configRevisionId, ORG, PROJECT, CONFIG_SET, USER]
+      id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id,
+      entry_file, include_search_paths, overlay_order, manifest_state
+    ) values ($1, $2, $3, $4, 1, 'compiled', $5, 'pcw-base.dts', $6::jsonb, $7::jsonb, 'complete')`,
+    [
+      configRevisionId,
+      ORG,
+      PROJECT,
+      CONFIG_SET,
+      USER,
+      JSON.stringify(["."]),
+      JSON.stringify(["pcw-overlay.dts"])
+    ]
   );
   await db.query(
     `insert into dts_config_revision_members (
       id, config_revision_id, file_id, file_version_id, role, sort_order
     ) values ($1, $2, $3, $4, 'base', 0)`,
-    [`member-${configRevisionId}`, configRevisionId, fileId, fileVersionId]
+    [`member-${configRevisionId}-base`, configRevisionId, fileId, fileVersionId]
+  );
+  await db.query(
+    `insert into dts_config_revision_members (
+      id, config_revision_id, file_id, file_version_id, role, sort_order
+    ) values ($1, $2, $3, $4, 'overlay', 1)`,
+    [`member-${configRevisionId}-overlay`, configRevisionId, overlayFileId, overlayVersionId]
   );
   await db.query(
     `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
      values ($1, $2, $3, $4)`,
     [logicalNodeId, ORG, PROJECT, CONFIG_SET]
   );
+  const logicalNodeRevisionId = `lnr-${logicalNodeId}`;
   await db.query(
     `insert into dts_logical_node_revisions (
       id, logical_node_id, config_revision_id, node_locator, name, unit_address, parent_logical_node_id
     ) values ($1, $2, $3, $4, 'sc8562', '6E', null)`,
-    [`lnr-${logicalNodeId}`, logicalNodeId, configRevisionId, NODE_LOCATOR]
+    [logicalNodeRevisionId, logicalNodeId, configRevisionId, NODE_LOCATOR]
   );
   const nodeOccurrenceId = "no-pcw-1";
   const propertyOccurrenceId = "po-pcw-gpio-int";
@@ -253,10 +308,17 @@ async function seedPreCutoverGraph(db: Database) {
   );
   await db.query(
     `insert into dts_occurrence_effects (
-      id, config_revision_id, property_occurrence_id, node_occurrence_id,
+      id, config_revision_id, logical_node_revision_id, property_occurrence_id, node_occurrence_id,
       property_name, effect_kind, source_order
-    ) values ($1, $2, $3, $4, $5, 'set', 1)`,
-    ["oe-pcw-gpio-int", configRevisionId, propertyOccurrenceId, nodeOccurrenceId, PROPERTY_KEY]
+    ) values ($1, $2, $3, $4, $5, $6, 'set', 1)`,
+    [
+      "oe-pcw-gpio-int",
+      configRevisionId,
+      logicalNodeRevisionId,
+      propertyOccurrenceId,
+      nodeOccurrenceId,
+      PROPERTY_KEY
+    ]
   );
   await db.query(
     `insert into parameter_definitions (
@@ -308,8 +370,13 @@ async function seedPreCutoverGraph(db: Database) {
     bindingId: expectedBindingId(specId, logicalNodeId),
     fileId,
     fileVersionId,
+    overlayFileId,
+    overlayVersionId,
     content,
-    checksum
+    overlayContent,
+    checksum,
+    overlayChecksum,
+    configRevisionId,
   };
 }
 
@@ -350,6 +417,11 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           PROJECT
         ]);
 
+        const auth = makeAuth();
+        const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
+        expect(writeLock.baseConfigRevisionId).toBeTruthy();
+        expect(writeLock.bindingRevisionId).toBeTruthy();
+
         const draftId = randomUUID();
         const draft = await upsertDraft(db, {
           id: draftId,
@@ -360,7 +432,8 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           targetValue: "<9>",
           reason: "post-cutover typed draft",
           projectParameterBindingId: seeded.bindingId,
-          parameterSpecId: seeded.specId
+          parameterSpecId: seeded.specId,
+          writeLock,
         });
         expect(draft.projectParameterBindingId).toBe(seeded.bindingId);
         expect(draft.parameterId).toBe(seeded.bindingId);
@@ -374,6 +447,21 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         expect(stored?.id).toBe(draftId);
         expect(stored?.parameterId).toBe(seeded.bindingId);
         expect(stored?.targetValue).toBe("<9>");
+
+        const draftLockRow = await db.query<{
+          base_config_revision_id: string | null;
+          binding_revision_id: string | null;
+          source_file_version_id: string | null;
+          expected_checksum: string | null;
+        }>(
+          `select base_config_revision_id, binding_revision_id, source_file_version_id, expected_checksum
+           from parameter_drafts where id = $1`,
+          [draftId]
+        );
+        expect(draftLockRow.rows[0]?.base_config_revision_id).toBe(writeLock.baseConfigRevisionId);
+        expect(draftLockRow.rows[0]?.binding_revision_id).toBe(writeLock.bindingRevisionId);
+        expect(draftLockRow.rows[0]?.source_file_version_id).toBe(writeLock.sourceFileVersionId);
+        expect(draftLockRow.rows[0]?.expected_checksum).toBe(writeLock.expectedChecksum);
 
         const legacyCountAfter = await db.query<{ c: string }>(
           `select count(*)::text as c from legacy_project_parameter_values where organization_id = $1`,
@@ -391,7 +479,6 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         expect(shadowLinks.rows).toHaveLength(0);
         expect(shadowDefs.rows).toHaveLength(0);
 
-        const auth = makeAuth();
         const round = await createSubmissionRound(db, {
           id: randomUUID(),
           organizationId: ORG,
@@ -413,7 +500,8 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           status: "software_merge",
           submitterUserId: USER,
           parameterSpecId: seeded.specId,
-          projectParameterBindingId: seeded.bindingId
+          projectParameterBindingId: seeded.bindingId,
+          writeLock,
         });
         await createSubmissionItem(db, {
           id: randomUUID(),
@@ -446,15 +534,18 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(history.some((entry) => entry.value === "<9>")).toBe(true);
 
-        const bindingRaw = await db.query<{ raw_value: string | null }>(
-          `select raw_value from project_parameter_binding_revisions
-           where binding_id = $1 order by created_at desc limit 1`,
-          [seeded.bindingId]
+        const bindingRaw = await db.query<{ raw_value: string | null; config_revision_id: string }>(
+          `select raw_value, config_revision_id from project_parameter_binding_revisions
+           where binding_id = $1 and config_revision_id = $2`,
+          [seeded.bindingId, writeLock.baseConfigRevisionId]
         );
         expect(bindingRaw.rows[0]?.raw_value).toBe("<9>");
 
         const objectStore = {
-          async get() {
+          async get(key: string) {
+            if (key.includes("overlay")) {
+              return Buffer.from(seeded.overlayContent, "utf8");
+            }
             return Buffer.from(seeded.content, "utf8");
           },
           async put(input: { bytes: Buffer }) {
@@ -470,9 +561,32 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           parameterDefinitionId: seeded.specId,
           mergedValue: "<9>",
           projectParameterBindingId: seeded.bindingId,
-          parameterSpecId: seeded.specId
-        });
+          parameterSpecId: seeded.specId,
+          changeRequestId: request.id,
+        }, { skipToolchain: true, skipSemanticGates: true });
         expect(writeback.skipped).toBe(false);
+        if (!writeback.skipped) {
+          expect(writeback.candidateRevisionId).toBeTruthy();
+        }
+
+        const reloadedBinding = await db.query<{ raw_value: string | null }>(
+          `select raw_value from project_parameter_binding_revisions
+           where binding_id = $1
+           order by created_at desc
+           limit 1`,
+          [seeded.bindingId]
+        );
+        expect(reloadedBinding.rows[0]?.raw_value).toBe("<9>");
+
+        const overlayVersion = await db.query<{ parsed_index: { sourceText?: string } }>(
+          `select parsed_index from project_parameter_file_versions
+           where file_id = $1
+           order by version_number desc
+           limit 1`,
+          [seeded.overlayFileId]
+        );
+        expect(overlayVersion.rows[0]?.parsed_index?.sourceText).toMatch(/gpio_int\s*=\s*<9>/);
+        expect(seeded.content).toContain("gpio_int = <1>;");
 
         const deviceId = "device-pcw-1";
         const targetId = "target-pcw-1";
@@ -529,6 +643,187 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           [PROJECT]
         );
         expect(bindingsLeft.rows).toHaveLength(0);
+      });
+    },
+    120_000
+  );
+
+  it(
+    "returns 409 when merge lock is missing or stale",
+    async () => {
+      await withTempDatabase(async (db) => {
+        const seeded = await seedPreCutoverGraph(db);
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-pcw-stale",
+          objectSnapshotId: "obj-snap-pcw-stale"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        resetParameterIdentityCutoverCache();
+
+        const auth = makeAuth();
+        const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
+        const round = await createSubmissionRound(db, {
+          id: randomUUID(),
+          organizationId: ORG,
+          projectId: PROJECT,
+          submitterUserId: USER,
+          status: "submitted",
+          summary: "stale merge"
+        });
+        const requestWithoutLock = await createChangeRequest(db, {
+          id: randomUUID(),
+          organizationId: ORG,
+          submissionRoundId: round.id,
+          projectId: PROJECT,
+          parameterId: seeded.bindingId,
+          parameterDefinitionId: seeded.specId,
+          baseVersion: 1,
+          currentValue: "<1>",
+          targetValue: "<9>",
+          status: "software_merge",
+          submitterUserId: USER,
+          parameterSpecId: seeded.specId,
+          projectParameterBindingId: seeded.bindingId
+        });
+        const missingLockMerge = await mergeChangeRequest(db, {
+          historyId: randomUUID(),
+          organizationId: ORG,
+          requestId: requestWithoutLock.id,
+          actorUserId: USER
+        });
+        expect(missingLockMerge).toBeNull();
+
+        const request = await createChangeRequest(db, {
+          id: randomUUID(),
+          organizationId: ORG,
+          submissionRoundId: round.id,
+          projectId: PROJECT,
+          parameterId: seeded.bindingId,
+          parameterDefinitionId: seeded.specId,
+          baseVersion: 1,
+          currentValue: "<1>",
+          targetValue: "<9>",
+          status: "software_merge",
+          submitterUserId: USER,
+          parameterSpecId: seeded.specId,
+          projectParameterBindingId: seeded.bindingId,
+          writeLock
+        });
+        await db.query(
+          `update project_parameter_file_versions set checksum = 'stale-checksum' where id = $1`,
+          [writeLock.sourceFileVersionId]
+        );
+        const staleMerge = await mergeChangeRequest(db, {
+          historyId: randomUUID(),
+          organizationId: ORG,
+          requestId: request.id,
+          actorUserId: USER
+        });
+        expect(staleMerge).toBeNull();
+      });
+    },
+    120_000
+  );
+
+  it(
+    "returns 409 when writeback checksum lock is stale",
+    async () => {
+      await withTempDatabase(async (db) => {
+        const seeded = await seedPreCutoverGraph(db);
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-pcw-wb-stale",
+          objectSnapshotId: "obj-snap-pcw-wb-stale"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        resetParameterIdentityCutoverCache();
+
+        const auth = makeAuth();
+        const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
+        const round = await createSubmissionRound(db, {
+          id: randomUUID(),
+          organizationId: ORG,
+          projectId: PROJECT,
+          submitterUserId: USER,
+          status: "submitted",
+          summary: "stale writeback"
+        });
+        const request = await createChangeRequest(db, {
+          id: randomUUID(),
+          organizationId: ORG,
+          submissionRoundId: round.id,
+          projectId: PROJECT,
+          parameterId: seeded.bindingId,
+          parameterDefinitionId: seeded.specId,
+          baseVersion: 1,
+          currentValue: "<1>",
+          targetValue: "<9>",
+          status: "software_merge",
+          submitterUserId: USER,
+          parameterSpecId: seeded.specId,
+          projectParameterBindingId: seeded.bindingId,
+          writeLock
+        });
+        await mergeChangeRequest(db, {
+          historyId: randomUUID(),
+          organizationId: ORG,
+          requestId: request.id,
+          actorUserId: USER
+        });
+
+        await db.query(
+          `update project_parameter_file_versions set checksum = 'stale-checksum' where id = $1`,
+          [writeLock.sourceFileVersionId]
+        );
+
+        const objectStore = {
+          async get(key: string) {
+            if (key.includes("overlay")) {
+              return Buffer.from(seeded.overlayContent, "utf8");
+            }
+            return Buffer.from(seeded.content, "utf8");
+          },
+          async put(input: { bytes: Buffer }) {
+            return {
+              storageKey: `${ORG}/stale-writeback.dts`,
+              checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+              fileSizeBytes: input.bytes.length
+            };
+          }
+        };
+
+        await expect(
+          writebackMergedParameterValue(
+            db,
+            objectStore as never,
+            auth,
+            {
+              projectId: PROJECT,
+              parameterDefinitionId: seeded.specId,
+              mergedValue: "<9>",
+              projectParameterBindingId: seeded.bindingId,
+              parameterSpecId: seeded.specId,
+              changeRequestId: request.id
+            },
+            { skipToolchain: true, skipSemanticGates: true }
+          )
+        ).rejects.toMatchObject({
+          code: "CONFLICT",
+          status: 409
+        } satisfies Partial<ApiError>);
+
+        const persistedLock = await getChangeRequestWriteLock(db, {
+          organizationId: ORG,
+          requestId: request.id
+        });
+        expect(persistedLock?.expectedChecksum).toBe(writeLock.expectedChecksum);
       });
     },
     120_000
