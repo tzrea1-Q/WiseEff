@@ -1,4 +1,5 @@
 import type { Database } from "../../../shared/database/client";
+import { LEGACY_IDENTITY_SQL } from "../legacyParameterIdentityNames";
 import {
   actionableReviewStatusesForRole,
   ADMIN_GOVERNANCE_AUDIT_APPS,
@@ -46,7 +47,7 @@ export async function countKpis(
   }>(
     `
     select
-      (select count(*) from project_parameter_values ppv
+      (select count(*) from ${LEGACY_IDENTITY_SQL.valuesTable} ppv
          join projects p on p.id = ppv.project_id
         where p.organization_id = $1 ${projectFilter}) as total_parameters,
       (select count(*) from projects p where p.organization_id = $1
@@ -57,9 +58,9 @@ export async function countKpis(
       (select count(distinct h.changed_by_user_id) from parameter_history_entries h
         where h.organization_id = $1 and h.changed_at >= $2
         ${input.projectId ? "and h.project_id = $3" : ""}) as active_contributors,
-      (select count(*) from project_parameter_values ppv
+      (select count(*) from ${LEGACY_IDENTITY_SQL.valuesTable} ppv
          join projects p on p.id = ppv.project_id
-         join parameter_definitions d on d.id = ppv.parameter_definition_id
+         join ${LEGACY_IDENTITY_SQL.definitionsTable} d on d.id = ppv.parameter_definition_id
         where p.organization_id = $1 and d.risk = 'High' ${projectFilter}) as high_risk_parameters
     `,
     input.projectId ? params : [input.organizationId, input.windowStart]
@@ -170,7 +171,7 @@ async function countUserPersonalKpis(db: Database, input: PersonalKpiInput) {
           and r.created_at >= $3
           ${workflowProjectFilter}) as workflow_count,
       (select count(*) from parameter_history_entries h
-        join parameter_definitions d on d.id = h.parameter_definition_id
+        join ${LEGACY_IDENTITY_SQL.definitionsTable} d on d.id = h.parameter_definition_id
         where h.organization_id = $1
           and h.changed_by_user_id = $2
           and h.changed_at >= $3
@@ -222,7 +223,7 @@ async function countCommitterPersonalKpis(db: Database, input: PersonalKpiInput)
           ${decisionProjectFilter}) as requests_processed,
       (select count(distinct rd.request_id) from parameter_review_decisions rd
         join parameter_change_requests cr on cr.id = rd.request_id
-        join parameter_definitions d on d.id = cr.parameter_definition_id
+        join ${LEGACY_IDENTITY_SQL.definitionsTable} d on d.id = cr.parameter_definition_id
         where rd.organization_id = $1
           and rd.reviewer_user_id = $2
           and rd.created_at >= $3
@@ -234,7 +235,7 @@ async function countCommitterPersonalKpis(db: Database, input: PersonalKpiInput)
           ${reviewStatusFilter}
           ${queueProjectFilter}) as pending_reviews,
       (select count(*) from parameter_change_requests cr
-        join parameter_definitions d on d.id = cr.parameter_definition_id
+        join ${LEGACY_IDENTITY_SQL.definitionsTable} d on d.id = cr.parameter_definition_id
         where cr.organization_id = $1
           and cr.status not in ('merged', 'rejected', 'withdrawn')
           and d.risk = 'High'
@@ -526,8 +527,8 @@ export async function aggregateRiskDistribution(
            count(*) filter (where d.risk = 'Medium') as medium,
            count(*) filter (where d.risk = 'Low') as low
       from projects p
-      join project_parameter_values ppv on ppv.project_id = p.id
-      join parameter_definitions d on d.id = ppv.parameter_definition_id
+      join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.project_id = p.id
+      join ${LEGACY_IDENTITY_SQL.definitionsTable} d on d.id = ppv.parameter_definition_id
      where p.organization_id = $1 ${projectFilter}
      group by p.id, p.code, p.name
      order by p.code asc

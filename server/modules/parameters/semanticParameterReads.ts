@@ -1,6 +1,6 @@
 /**
  * Post-cutover parameter reads/writes against semantic bindings/specs.
- * Must not reference renamed legacy_parameter_definitions / legacy_project_parameter_values.
+ * Must not query renamed flat-identity archive tables.
  */
 import type { Queryable } from "../../shared/database/client";
 import {

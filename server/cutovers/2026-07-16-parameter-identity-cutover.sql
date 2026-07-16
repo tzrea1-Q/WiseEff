@@ -153,5 +153,15 @@ alter table legacy_project_parameter_values
   add constraint legacy_ppv_legacy_definition_fkey
   foreign key (parameter_definition_id) references legacy_parameter_definitions(id);
 
+-- Archived flat identity must not block project delete; activity delete paths
+-- clean semantic topology only and must not query these renamed tables.
+alter table legacy_project_parameter_values
+  drop constraint if exists project_parameter_values_project_id_fkey;
+alter table legacy_project_parameter_values
+  drop constraint if exists legacy_ppv_project_id_fkey;
+alter table legacy_project_parameter_values
+  add constraint legacy_ppv_project_id_fkey
+  foreign key (project_id) references projects(id) on delete cascade;
+
 insert into parameter_identity_cutovers (id, migration_run_id, cutover_at)
 values ('{{CUTOVER_ID}}', '{{MIGRATION_RUN_ID}}', now());

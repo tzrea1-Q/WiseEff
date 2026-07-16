@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { QueryResult, Queryable } from "../../shared/database/client";
+import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
 import {
   acquireDebugDeviceLease,
   claimSnapshotForRollback,
@@ -42,6 +43,14 @@ function createFakeDb(results: QueuedResult[] = []) {
   const db: Queryable = {
     query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
       const call = { text, values };
+      // Cutover probes are infrastructure; do not consume scripted responses.
+      // Default unit-test world is pre-cutover (marker absent, flat tables present).
+      if (text.includes("parameter_identity_cutovers")) {
+        return { rows: [{ c: "0" }] as Row[], rowCount: 1 };
+      }
+      if (text.includes("information_schema.tables")) {
+        return { rows: [{ c: "1" }] as Row[], rowCount: 1 };
+      }
       calls.push(call);
       const next = results.shift() ?? [];
       const rows = typeof next === "function" ? next(call) : next;
@@ -51,6 +60,10 @@ function createFakeDb(results: QueuedResult[] = []) {
 
   return { calls, db };
 }
+
+beforeEach(() => {
+  resetParameterIdentityCutoverCache();
+});
 
 const timestamp = "2026-05-27T10:00:00.000Z";
 

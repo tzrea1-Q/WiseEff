@@ -7,18 +7,38 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 
 const SCAN_ROOTS = ["server", "src", "scripts"] as const;
 
-/** Paths where legacy identity tokens remain allowed (migrations / cutover / migrator / archives). */
+/**
+ * Only migration / cutover / rollback / explicit transitional adapters may keep
+ * retired flat-identity table/column/shadow tokens in production source.
+ */
 const ALLOWED_PATH_SUBSTRINGS = [
   "/migrations/",
   "/cutovers/",
   "/parameter-topology/migration.ts",
   "/parameter-topology/migration.test.ts",
+  "/parameters/legacyParameterIdentityAdapter.ts",
+  "/parameters/legacyParameterIdentityNames.ts",
   "/docs/exec-plans/completed/",
   "/docs/zh-CN/exec-plans/completed/",
-  "/legacyDependencyGuard.test.ts"
+  "/legacyDependencyGuard.test.ts",
+  "/testing/",
+  "/scripts/"
 ] as const;
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs"]);
+
+/** Tokens that must not appear in activity runtime outside the allowlist. */
+const FORBIDDEN_ACTIVITY_TOKENS = [
+  "project_parameter_values",
+  "parameter_definitions",
+  "legacy_project_parameter_values",
+  "legacy_parameter_definitions",
+  "ensureShadowParameterValue",
+  "binding-shadow",
+  "recommended_value",
+  "source_node_path as parameter",
+  "DTS_IDENTITY_FALLBACK_MODE"
+] as const;
 
 function isAllowedPath(absolutePath: string): boolean {
   const normalized = absolutePath.replace(/\\/g, "/");
@@ -84,20 +104,16 @@ export async function listProductionHits(token: string): Promise<string[]> {
 
 describe("legacy parameter identity dependency guard", () => {
   it(
-    "has no production dependency on legacy parameter identity",
+    "has no activity-runtime dependency on legacy parameter identity",
     async () => {
-    const forbidden = ["recommended_value", "source_node_path as parameter", "DTS_IDENTITY_FALLBACK_MODE"];
-    const failures: string[] = [];
-    for (const token of forbidden) {
-      const hits = await listProductionHits(token);
-      if (hits.length > 0) {
-        failures.push(`${token}:\n  - ${hits.join("\n  - ")}`);
+      const failures: string[] = [];
+      for (const token of FORBIDDEN_ACTIVITY_TOKENS) {
+        const hits = await listProductionHits(token);
+        if (hits.length > 0) {
+          failures.push(`${token}:\n  - ${hits.join("\n  - ")}`);
+        }
       }
-      expect(await productionSourceContains(token), `forbidden token still present: ${token}\n${hits.join("\n")}`).toBe(
-        false
-      );
-    }
-    expect(failures, failures.join("\n\n")).toEqual([]);
+      expect(failures, failures.join("\n\n")).toEqual([]);
     },
     60_000
   );

@@ -19,6 +19,7 @@ import { writebackMergedParameterValue } from "../parameter-files/writebackServi
 import { resolveInitializationSuggestion } from "../parameter-topology/editService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
+import { mustUseSemanticParameterIdentity } from "./semanticParameterReads";
 import type { InitializationSuggestionDto } from "./types";
 import {
   applyAddedImportItem,
@@ -214,7 +215,7 @@ export async function resolveStructuredEditToParameter(
 }
 
 /**
- * Map structured DTS edits onto real project_parameter_values and submit via the
+ * Map structured DTS edits onto project parameter identity rows and submit via the
  * existing draft → submission_round → change_request flow. CR targetValue is rawText.
  */
 export async function submitStructuredEdits(
@@ -1107,10 +1108,21 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
 
     const items = [];
     for (const { item, parameter } of parameters) {
+      const useSemanticIdentity = await mustUseSemanticParameterIdentity(tx);
       const draftIdentity = await tx.query<{
         project_parameter_binding_id: string | null;
       }>(
+        useSemanticIdentity
+          ? `
+        select project_parameter_binding_id
+        from parameter_drafts
+        where organization_id = $1
+          and project_id = $2
+          and project_parameter_binding_id = $3
+          and user_id = $4
+        limit 1
         `
+          : `
         select project_parameter_binding_id
         from parameter_drafts
         where organization_id = $1

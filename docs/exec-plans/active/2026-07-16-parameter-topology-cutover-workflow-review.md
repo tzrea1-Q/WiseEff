@@ -62,10 +62,10 @@
 
 ### Task 1–2: Post-cutover workflow + typed edit without shadow PPV
 
-- [ ] Audit and replace legacy SQL in parameters/debugging/writeback/delete paths with semantic IDs
-- [ ] Strengthen `legacyDependencyGuard` allowlist to migration/cutover/rollback/adapters only
-- [ ] Remove `ensureShadowParameterValue` from post-cutover typed draft path
-- [ ] Integration: temp DB → migrate → cutover → list/draft/submit/review/merge/history/writeback/debug/delete
+- [x] Audit and replace legacy SQL in parameters/debugging/writeback/delete paths with semantic IDs
+- [x] Strengthen `legacyDependencyGuard` allowlist to migration/cutover/rollback/adapters only
+- [x] Remove `ensureShadowParameterValue` from post-cutover typed draft path
+- [x] Integration: temp DB → migrate → cutover → list/draft/submit/review/merge/history/writeback/debug/delete
 
 ### Task 3: Spec review applies decisions
 

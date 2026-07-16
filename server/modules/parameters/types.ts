@@ -82,11 +82,16 @@ export type ParameterRecordDto = {
 export type ParameterDraftDto = {
   id: string;
   projectId: string;
+  /**
+   * DTO compatibility field.
+   * Pre-cutover: project_parameter_value id.
+   * Post-cutover: semantic project_parameter_binding id (same as projectParameterBindingId).
+   */
   parameterId: string;
   targetValue: string;
   reason: string;
   updatedAt: string;
-  /** Present for topology-aware drafts created via binding edits. */
+  /** Semantic binding identity for topology-aware drafts. */
   projectParameterBindingId?: string;
 };
 

@@ -12,6 +12,8 @@ import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, s
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
+import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
+import { loadPreCutoverWritebackSource } from "../parameters/legacyParameterIdentityAdapter";
 import type { ParameterFileFormat } from "./types";
 
 type WritebackSource = {
@@ -21,9 +23,13 @@ type WritebackSource = {
 
 export type WritebackMergedParameterValueInput = {
   projectId: string;
+  /**
+   * Pre-cutover: parameter_definition id.
+   * Post-cutover DTO compatibility: ignored when projectParameterBindingId is set.
+   */
   parameterDefinitionId: string;
   mergedValue: string;
-  /** Semantic identity — preferred over definition id when present. */
+  /** Semantic identity — required for post-cutover writeback. */
   projectParameterBindingId?: string;
   parameterSpecId?: string;
 };
@@ -82,24 +88,55 @@ function contentTypeForFormat(format: ParameterFileFormat) {
   return format === "json" ? "application/json" : "text/plain";
 }
 
-async function loadWritebackSource(
+async function loadSemanticWritebackSource(
   db: Queryable,
   auth: AuthContext,
-  input: Pick<WritebackMergedParameterValueInput, "projectId" | "parameterDefinitionId">
+  input: Pick<WritebackMergedParameterValueInput, "projectId" | "projectParameterBindingId">
 ): Promise<WritebackSource | null> {
+  if (!input.projectParameterBindingId) {
+    return null;
+  }
+
   const result = await db.query<{
     source_file_name: string | null;
     source_node_path: string | null;
   }>(
     `
-    select source_file_name, source_node_path
-    from project_parameter_values
-    where organization_id = $1
-      and project_id = $2
-      and parameter_definition_id = $3
+    select
+      ppf.file_name as source_file_name,
+      case
+        when lnr.node_locator is null then dps.property_key
+        when lnr.node_locator like '/%' then ltrim(lnr.node_locator, '/') || '/' || dps.property_key
+        else lnr.node_locator || '/' || dps.property_key
+      end as source_node_path
+    from project_parameter_bindings b
+    inner join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    left join dts_logical_nodes ln on ln.id = b.logical_node_id
+    left join lateral (
+      select lnr.node_locator, lnr.config_revision_id
+      from dts_logical_node_revisions lnr
+      where lnr.logical_node_id = ln.id
+      order by lnr.config_revision_id desc
+      limit 1
+    ) lnr on true
+    left join lateral (
+      select po.file_version_id
+      from dts_occurrence_effects oe
+      inner join dts_property_occurrences po on po.id = oe.property_occurrence_id
+      where oe.config_revision_id = lnr.config_revision_id
+        and oe.property_name = dps.property_key
+      order by oe.source_order desc
+      limit 1
+    ) occ on true
+    left join project_parameter_file_versions pfv on pfv.id = occ.file_version_id
+    left join project_parameter_files ppf on ppf.id = pfv.file_id
+    where b.organization_id = $1
+      and b.project_id = $2
+      and b.id = $3
     limit 1
     `,
-    [auth.organization.id, input.projectId, input.parameterDefinitionId]
+    [auth.organization.id, input.projectId, input.projectParameterBindingId]
   );
 
   const row = result.rows[0];
@@ -111,6 +148,24 @@ async function loadWritebackSource(
     sourceFileName: row.source_file_name,
     sourceNodePath: row.source_node_path
   };
+}
+
+async function loadWritebackSource(
+  db: Queryable,
+  auth: AuthContext,
+  input: Pick<
+    WritebackMergedParameterValueInput,
+    "projectId" | "parameterDefinitionId" | "projectParameterBindingId"
+  >
+): Promise<WritebackSource | null> {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    return loadSemanticWritebackSource(db, auth, input);
+  }
+
+  return loadPreCutoverWritebackSource(db, auth, {
+    projectId: input.projectId,
+    parameterDefinitionId: input.parameterDefinitionId
+  });
 }
 
 async function createWritebackAudit(

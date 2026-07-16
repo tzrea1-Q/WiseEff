@@ -20,6 +20,8 @@ import {
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { canEditParameters } from "../parameters/policy";
+import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
+import { ensurePreCutoverLinkedParameterValue } from "../parameters/legacyParameterIdentityAdapter";
 import { upsertDraft } from "../parameters/repository";
 import { ingestConfigRevisionInTransaction } from "./ingestService";
 import {
@@ -30,7 +32,6 @@ import {
 } from "./repository";
 import type { ConfigRevisionManifest, ConfigRevisionManifestMember, PersistedValidationDiagnostic } from "./types";
 import { writeGovernanceAudit } from "./governanceAudit";
-import { LEGACY_SQL } from "./migration";
 
 export type BindingEditAction = "set" | "delete";
 
@@ -791,20 +792,28 @@ export async function createBindingDraft(
     status: "draft",
   });
 
-  const shadowPpv = await ensureShadowParameterValue(db, auth, {
-    projectId: binding.project_id,
-    bindingId: binding.binding_id,
-    parameterSpecId: binding.parameter_spec_id,
-    propertyKey: binding.property_key,
-    currentRaw: rawText,
-  });
+  // Post-cutover drafts key only on project_parameter_binding_id.
+  // Pre-cutover still needs a linked PPV row for the legacy unique constraint —
+  // that dual-write lives solely in the transitional adapter (unreachable post-cutover).
+  const useSemantic = await mustUseSemanticParameterIdentity(db);
+  let draftParameterId = binding.binding_id;
+  if (!useSemantic) {
+    const linked = await ensurePreCutoverLinkedParameterValue(db, auth, {
+      projectId: binding.project_id,
+      bindingId: binding.binding_id,
+      parameterSpecId: binding.parameter_spec_id,
+      propertyKey: binding.property_key,
+      currentRaw: rawText,
+    });
+    draftParameterId = linked.id;
+  }
 
   const draftId = randomUUID();
   await upsertDraft(db, {
     id: draftId,
     organizationId: auth.organization.id,
     projectId: binding.project_id,
-    parameterId: shadowPpv.id,
+    parameterId: draftParameterId,
     userId: auth.user.id,
     targetValue: rawText,
     reason: input.reason,
@@ -943,61 +952,4 @@ async function assertCandidateToolchainRelease(
     failureCode: toolchainResult.failureCode,
     diagnostics: toolchainResult.diagnostics,
   });
-}
-
-async function ensureShadowParameterValue(
-  db: Queryable,
-  auth: AuthContext,
-  input: {
-    projectId: string;
-    bindingId: string;
-    parameterSpecId: string;
-    propertyKey: string;
-    currentRaw: string;
-  },
-): Promise<{ id: string }> {
-  const existing = await db.query<{ id: string }>(
-    `
-    select ppv.id
-    from project_parameter_values ppv
-    where ppv.organization_id = $1
-      and ppv.project_id = $2
-      and ppv.source_node_path like '%' || $3
-    order by ppv.updated_at desc
-    limit 1
-    `,
-    [auth.organization.id, input.projectId, input.propertyKey],
-  );
-  if (existing.rows[0]) return { id: existing.rows[0].id };
-
-  const definitionId = randomUUID();
-  const ppvId = randomUUID();
-  await db.query(
-    `
-    insert into parameter_definitions (
-      id, organization_id, name, description, explanation, config_format,
-      module, default_range, unit, risk
-    ) values ($1, $2, $3, '', '', 'dts', 'binding-shadow', '', '', 'Low')
-    `,
-    [definitionId, auth.organization.id, input.propertyKey],
-  );
-  await db.query(
-    `
-    insert into project_parameter_values (
-      id, organization_id, project_id, parameter_definition_id,
-      current_value, ${LEGACY_SQL.recommendedValueColumn}, value_version, updated_by_user_id,
-      source_file_name, source_node_path
-    ) values ($1, $2, $3, $4, $5, '', 1, $6, null, $7)
-    `,
-    [
-      ppvId,
-      auth.organization.id,
-      input.projectId,
-      definitionId,
-      input.currentRaw,
-      auth.user.id,
-      `binding/${input.bindingId}/${input.propertyKey}`,
-    ],
-  );
-  return { id: ppvId };
 }

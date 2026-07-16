@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
+import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
 import { buildDebugNodeModuleNameSubtreeFilter } from "./debugNodeModuleRepository";
 import type {
   DebugDeviceRecord,
@@ -368,7 +369,7 @@ const debugParameterNodeBindingColumns = `
   updated_at
 `;
 
-const nodeOperationColumns = `
+const nodeOperationColumnsLegacy = `
   id,
   organization_id,
   session_id,
@@ -394,7 +395,40 @@ const nodeOperationColumns = `
   requested_value_digest,
   previous_value_digest,
   readback_value_digest,
-  value_preview
+  value_preview,
+  parameter_spec_id,
+  project_parameter_binding_id
+`;
+
+const nodeOperationColumnsSemantic = `
+  id,
+  organization_id,
+  session_id,
+  parameter_id,
+  null::text as parameter_definition_id,
+  protocol,
+  node_path,
+  operation_type,
+  status,
+  requested_value,
+  previous_value,
+  read_value,
+  readback_value,
+  verified,
+  failure_reason,
+  duration_ms,
+  approval_id,
+  snapshot_id,
+  created_at,
+  value_kind,
+  value_format,
+  normalization_mode,
+  requested_value_digest,
+  previous_value_digest,
+  readback_value_digest,
+  value_preview,
+  parameter_spec_id,
+  project_parameter_binding_id
 `;
 
 export type WriteDebugParameterInput = {
@@ -933,9 +967,10 @@ export async function listDebugSessionEvents(
   db: Queryable,
   input: { organizationId: string; sessionId: string }
 ): Promise<NodeOperationRecord[]> {
+  const semantic = await mustUseSemanticParameterIdentity(db);
   const result = await db.query<NodeOperationRow>(
     `
-    select ${nodeOperationColumns}
+    select ${semantic ? nodeOperationColumnsSemantic : nodeOperationColumnsLegacy}
     from node_operations
     where organization_id = $1
       and session_id = $2
@@ -1229,8 +1264,23 @@ export async function insertNodeOperation(
     actorUserId: string;
   }
 ): Promise<NodeOperationRecord> {
+  const semantic = await mustUseSemanticParameterIdentity(db);
   const result = await db.query<NodeOperationRow>(
+    semantic
+      ? `
+    insert into node_operations (
+      id, organization_id, session_id, parameter_id, node_id, protocol, node_path, operation_type,
+      status, requested_value, previous_value, read_value, readback_value, verified,
+      failure_reason, duration_ms, approval_id, snapshot_id,
+      value_kind, value_format, normalization_mode,
+      requested_value_digest, previous_value_digest, readback_value_digest, value_preview,
+      actor_user_id,
+      parameter_spec_id, project_parameter_binding_id
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+    returning ${nodeOperationColumnsSemantic}
     `
+      : `
     insert into node_operations (
       id, organization_id, session_id, parameter_id, node_id, parameter_definition_id, protocol, node_path, operation_type,
       status, requested_value, previous_value, read_value, readback_value, verified,
@@ -1241,39 +1291,70 @@ export async function insertNodeOperation(
       parameter_spec_id, project_parameter_binding_id
     )
     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
-    returning ${nodeOperationColumns}
+    returning ${nodeOperationColumnsLegacy}
     `,
-    [
-      randomUUID(),
-      input.organizationId,
-      input.sessionId,
-      input.parameterId,
-      input.nodeId ?? input.parameterId,
-      input.parameterDefinitionId ?? null,
-      input.protocol ?? defaultDebugConnectionProtocol,
-      input.nodePath,
-      input.operationType,
-      input.status,
-      input.requestedValue ?? null,
-      input.previousValue ?? null,
-      input.readValue ?? null,
-      input.readbackValue ?? null,
-      input.verified ?? false,
-      input.failureReason ?? null,
-      input.durationMs,
-      input.approvalId ?? null,
-      input.snapshotId ?? null,
-      input.valueKind ?? null,
-      input.valueFormat ?? null,
-      input.normalizationMode ?? null,
-      input.requestedValueDigest ?? null,
-      input.previousValueDigest ?? null,
-      input.readbackValueDigest ?? null,
-      input.valuePreview ?? null,
-      input.actorUserId,
-      input.parameterSpecId ?? null,
-      input.projectParameterBindingId ?? null
-    ]
+    semantic
+      ? [
+          randomUUID(),
+          input.organizationId,
+          input.sessionId,
+          input.parameterId,
+          input.nodeId ?? input.parameterId,
+          input.protocol ?? defaultDebugConnectionProtocol,
+          input.nodePath,
+          input.operationType,
+          input.status,
+          input.requestedValue ?? null,
+          input.previousValue ?? null,
+          input.readValue ?? null,
+          input.readbackValue ?? null,
+          input.verified ?? false,
+          input.failureReason ?? null,
+          input.durationMs,
+          input.approvalId ?? null,
+          input.snapshotId ?? null,
+          input.valueKind ?? null,
+          input.valueFormat ?? null,
+          input.normalizationMode ?? null,
+          input.requestedValueDigest ?? null,
+          input.previousValueDigest ?? null,
+          input.readbackValueDigest ?? null,
+          input.valuePreview ?? null,
+          input.actorUserId,
+          input.parameterSpecId ?? null,
+          input.projectParameterBindingId ?? null
+        ]
+      : [
+          randomUUID(),
+          input.organizationId,
+          input.sessionId,
+          input.parameterId,
+          input.nodeId ?? input.parameterId,
+          input.parameterDefinitionId ?? null,
+          input.protocol ?? defaultDebugConnectionProtocol,
+          input.nodePath,
+          input.operationType,
+          input.status,
+          input.requestedValue ?? null,
+          input.previousValue ?? null,
+          input.readValue ?? null,
+          input.readbackValue ?? null,
+          input.verified ?? false,
+          input.failureReason ?? null,
+          input.durationMs,
+          input.approvalId ?? null,
+          input.snapshotId ?? null,
+          input.valueKind ?? null,
+          input.valueFormat ?? null,
+          input.normalizationMode ?? null,
+          input.requestedValueDigest ?? null,
+          input.previousValueDigest ?? null,
+          input.readbackValueDigest ?? null,
+          input.valuePreview ?? null,
+          input.actorUserId,
+          input.parameterSpecId ?? null,
+          input.projectParameterBindingId ?? null
+        ]
   );
 
   return toNodeOperationRecord(result.rows[0]);
