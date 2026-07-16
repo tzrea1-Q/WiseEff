@@ -59,6 +59,10 @@ export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase
   await ensureMigrations();
   const client = new pg.Client({ connectionString: resolveTestDatabaseUrl() });
   await client.connect();
+  // Serialize shared-DB transactional fixtures across vitest workers to avoid
+  // lock contention / hook timeouts under `npm run test:all` default parallelism.
+  const FIXTURE_ADVISORY_LOCK = 4_201_658;
+  await client.query("select pg_advisory_lock($1)", [FIXTURE_ADVISORY_LOCK]);
   await client.query("begin");
 
   const queryable = {
@@ -74,8 +78,12 @@ export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase
     query: queryable.query,
     transaction: async <T,>(fn: (tx: typeof queryable) => Promise<T>) => fn(queryable),
     rollback: async () => {
-      await client.query("rollback");
-      await client.end();
+      try {
+        await client.query("rollback");
+      } finally {
+        await client.query("select pg_advisory_unlock($1)", [FIXTURE_ADVISORY_LOCK]).catch(() => undefined);
+        await client.end();
+      }
     }
   };
 }
