@@ -510,6 +510,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         driverModule: string | null;
         locator: string | null;
         rawValue: string;
+        parameterSpecId?: string;
       }>;
     };
     const gpioBindings = bindingsBody.items.filter((item) => item.propertyKey === "gpio_int");
@@ -652,7 +653,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(compileBody.item.status).toBe("failed");
     expect(compileBody.item.failureCode).toBe("resolve-failed");
 
-    // Successful typed edit → precise DTS writeback + re-ingest (createBindingDraft).
+    // Successful typed edit draft, then real submit → review → merge → writeback.
     await resolveReviewsForCurrentRevision(request, revisionId, projectId);
     const editedRaw = "<&gpio13 30 0>";
     const successfulDraft = await request.post(
@@ -684,13 +685,97 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         draftId: string;
         candidateRevisionId: string;
         rawText?: string;
+        projectParameterBindingId?: string;
       };
     };
     expect(draftBody.item.candidateRevisionId).toBeTruthy();
     expect(draftBody.item.rawText ?? editedRaw).toMatch(/30/);
+    // Draft-time candidate is preview only — CR must not be merged yet.
+    const preMergeCrCount = await withPgClient(async (client) => {
+      const result = await client.query<{ c: string }>(
+        `
+        select count(*)::text as c
+        from parameter_change_requests
+        where project_parameter_binding_id = $1 and status = 'merged'
+        `,
+        [scBinding!.id]
+      );
+      return Number(result.rows[0]?.c ?? 0);
+    });
+    expect(preMergeCrCount).toBe(0);
 
-    const writebackDb = await withPgClient(async (client) => {
-      const result = await client.query<{ checksum: string; origin: string }>(
+    const submitRound = await request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
+      headers: adminHeaders(),
+      data: {
+        projectId,
+        items: [
+          {
+            parameterId: scBinding!.id,
+            targetValue: draftBody.item.rawText ?? editedRaw,
+            reason: `${descriptionPrefix} submit typed edit for merge`,
+            projectParameterBindingId: scBinding!.id,
+            parameterSpecId: scBinding!.parameterSpecId
+          }
+        ],
+        reason: `${descriptionPrefix} submit typed edit for merge`,
+        assignees: {
+          hardwareCommitterId: "u-wang-jie",
+          softwareCommitterId: "u-sun-mei",
+          softwareUserId: "u-liu-min"
+        }
+      }
+    });
+    expect(submitRound.status(), await submitRound.text()).toBe(201);
+    const submitBody = (await submitRound.json()) as {
+      item: { items: Array<{ requestId: string; parameterId: string }> };
+    };
+    const changeRequestId = submitBody.item.items[0]?.requestId;
+    expect(changeRequestId).toBeTruthy();
+
+    let crStatus = "";
+    for (let step = 0; step < 8 && crStatus !== "merged"; step += 1) {
+      const advance = await request.post(
+        apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(changeRequestId!)}/review`),
+        {
+          headers: adminHeaders(),
+          data: { decision: "advance", note: `${descriptionPrefix} advance step ${step}` }
+        }
+      );
+      expect(advance.ok(), await advance.text()).toBe(true);
+      const advanceBody = (await advance.json()) as { item: { status: string } };
+      crStatus = advanceBody.item.status;
+    }
+    expect(crStatus).toBe("merged");
+
+    const mergeEvidence = await withPgClient(async (client) => {
+      const cr = await client.query<{
+        status: string;
+        project_parameter_binding_id: string | null;
+      }>(
+        `select status, project_parameter_binding_id from parameter_change_requests where id = $1`,
+        [changeRequestId]
+      );
+      const base = await client.query<{ raw_value: string | null }>(
+        `
+        select raw_value from project_parameter_binding_revisions
+        where binding_id = $1 and config_revision_id = $2
+        `,
+        [scBinding!.id, revisionId]
+      );
+      const latest = await client.query<{
+        raw_value: string | null;
+        config_revision_id: string;
+      }>(
+        `
+        select raw_value, config_revision_id
+        from project_parameter_binding_revisions
+        where binding_id = $1
+        order by created_at desc
+        limit 1
+        `,
+        [scBinding!.id]
+      );
+      const writeback = await client.query<{ origin: string; checksum: string }>(
         `
         select checksum, origin
         from project_parameter_file_versions
@@ -700,19 +785,37 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         `
       );
       return {
-        table: "project_parameter_file_versions",
-        predicate: "origin=writeback latest",
-        observed: result.rows[0]
-          ? `origin=${result.rows[0].origin}; checksum=${result.rows[0].checksum.slice(0, 12)}`
-          : "missing",
-        rowCount: result.rowCount ?? result.rows.length
+        crStatus: cr.rows[0]?.status ?? null,
+        bindingId: cr.rows[0]?.project_parameter_binding_id ?? null,
+        baseRaw: base.rows[0]?.raw_value ?? null,
+        latestRaw: latest.rows[0]?.raw_value ?? null,
+        latestRevisionId: latest.rows[0]?.config_revision_id ?? null,
+        writebackOrigin: writeback.rows[0]?.origin ?? null,
+        writebackChecksum: writeback.rows[0]?.checksum?.slice(0, 12) ?? null
       };
     });
-    expect(writebackDb.observed).toContain("writeback");
+    expect(mergeEvidence.crStatus).toBe("merged");
+    expect(mergeEvidence.bindingId).toBe(scBinding!.id);
+    expect(mergeEvidence.baseRaw).toBe(baseBindingSnapshot);
+    expect(mergeEvidence.latestRevisionId).toBeTruthy();
+    expect(mergeEvidence.latestRevisionId).not.toBe(revisionId);
+    expect(mergeEvidence.latestRaw ?? "").toMatch(/30/);
+    expect(mergeEvidence.writebackOrigin).toBe("writeback");
+    // Semantic merge refuses skipped writeback; merged CR proves writeback.skipped === false.
+    expect(mergeEvidence.crStatus === "merged" && mergeEvidence.writebackOrigin === "writeback").toBe(
+      true
+    );
+
+    const writebackDb = {
+      table: "project_parameter_file_versions",
+      predicate: "origin=writeback latest",
+      observed: `origin=${mergeEvidence.writebackOrigin}; checksum=${mergeEvidence.writebackChecksum}; candidate=${mergeEvidence.latestRevisionId}`,
+      rowCount: 1
+    };
 
     await recordOperationEvidence({
       operationId: "PARAM-TOPOLOGY-EDIT-001",
-      title: "typed edit schema diagnostics, stale 409, compiler failure",
+      title: "typed edit submit review merge writeback",
       status: "passed",
       role: "Admin",
       route: "/parameters",
@@ -733,12 +836,17 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         summarizeApiResponse(successfulDraft, {
           method: "POST",
           path: `/api/v2/projects/${projectId}/parameter-bindings/.../drafts`,
-          responseSummary: `draft=${draftBody.item.draftId}; candidate=${draftBody.item.candidateRevisionId}; raw=${editedRaw}`
+          responseSummary: `draft=${draftBody.item.draftId}; previewCandidate=${draftBody.item.candidateRevisionId}`
+        }),
+        summarizeApiResponse(submitRound, {
+          method: "POST",
+          path: "/api/v1/parameter-submission-rounds",
+          responseSummary: `requestId=${changeRequestId}`
         })
       ],
       db: [writebackDb],
       notes:
-        "UI schema cell-count block; stale 409; real bad-DTS fail-closed; successful typed draft writeback+reingest."
+        "UI schema cell-count block; stale 409; real bad-DTS fail-closed; typed draft → submit → review → semantic merge writeback (base immutable, candidate new, skipped=false)."
     });
 
     // Identity mapping via real ambiguous ingest (throwaway Config Set).
@@ -931,10 +1039,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       notes: "Ambiguous ingest created open-mapping; validate fail-closed; left/right siblings adjudicated independently via API with audit."
     });
 
-    // 10) SUCCESSFUL validate on golden/candidate path (not schema-failed-as-success).
-    const validateTargetId = draftBody.item.candidateRevisionId;
+    // 10) SUCCESSFUL validate on merge writeback candidate (not draft preview / schema-failed-as-success).
+    const validateTargetId = mergeEvidence.latestRevisionId!;
     expect(validateTargetId).toBeTruthy();
     expect(validateTargetId).not.toBe(revisionId);
+    expect(validateTargetId).not.toBe(draftBody.item.candidateRevisionId);
     await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
 
     const validateResponse = await request.post(
