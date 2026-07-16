@@ -4,11 +4,19 @@ import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { writeGovernanceAudit } from "../parameter-topology/governanceAudit";
+import { countOpenIdentityMappingTasksForRevision } from "../parameter-topology/bindingService";
 import {
-  getParameterSpecRow,
+  applyDismissedSpecReview,
+  applyResolvedSpecReview,
+  refreshConfigRevisionAfterSpecReview,
+  requireOrgOrGlobalSpec,
+} from "./reviewApply";
+import {
   getSpecReviewTaskById,
   listSpecReviewTaskRows,
-  resolveSpecReviewTaskRow
+  lockOpenSpecReviewTask,
+  resolveSpecReviewTaskRow,
+  countOpenSpecReviewTasksForRevision,
 } from "./repository";
 import { listSpecReviewTasks, resolveCandidateSpecId, resolveSpecReviewTask, toReviewTaskDto } from "./service";
 
@@ -17,11 +25,35 @@ vi.mock("./repository", () => ({
   getSpecReviewTaskById: vi.fn(),
   listParameterSpecRows: vi.fn(),
   listSpecReviewTaskRows: vi.fn(),
-  resolveSpecReviewTaskRow: vi.fn()
+  lockOpenSpecReviewTask: vi.fn(),
+  resolveSpecReviewTaskRow: vi.fn(),
+  countOpenSpecReviewTasksForRevision: vi.fn(),
+}));
+
+vi.mock("./reviewApply", () => ({
+  applyResolvedSpecReview: vi.fn(),
+  applyDismissedSpecReview: vi.fn(),
+  parseSpecReviewEvidence: vi.fn((task: { sourceEvidence: Record<string, unknown> }) => ({
+    organizationId: "org-1",
+    projectId: task.sourceEvidence.projectId ?? "project-1",
+    configRevisionId: task.sourceEvidence.configRevisionId ?? "rev-1",
+    propertyOccurrenceId: task.sourceEvidence.propertyOccurrenceId ?? "po-1",
+    logicalNodeId: task.sourceEvidence.logicalNodeId ?? "ln-1",
+    propertyKey: task.sourceEvidence.propertyKey ?? "gpio_int",
+    nodeLocator: "/node",
+    compatible: ["vendor,sc8562"],
+    matcherCandidates: [],
+  })),
+  refreshConfigRevisionAfterSpecReview: vi.fn(),
+  requireOrgOrGlobalSpec: vi.fn(),
 }));
 
 vi.mock("../parameter-topology/governanceAudit", () => ({
-  writeGovernanceAudit: vi.fn()
+  writeGovernanceAudit: vi.fn(),
+}));
+
+vi.mock("../parameter-topology/bindingService", () => ({
+  countOpenIdentityMappingTasksForRevision: vi.fn(),
 }));
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
@@ -32,30 +64,50 @@ function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
       name: "Riley Chen",
       email: "riley@example.com",
       title: "Engineer",
-      isActive: true
+      isActive: true,
     },
     organization: { id: "org-1", name: "ChargeLab" },
     roles: [{ projectId: null, roleId: "admin" }],
     permissions: ["parameter:view", "parameter:edit", "admin:access"],
-    ...overrides
+    ...overrides,
   };
 }
 
 function makeDb(): Database {
   return {
     query: vi.fn(),
-    transaction: vi.fn()
+    transaction: vi.fn(async (fn) => fn({ query: vi.fn() })),
   };
 }
+
+const openTask = {
+  id: "task-1",
+  organizationId: "org-1",
+  sourceEvidence: {
+    propertyKey: "gpio_int",
+    evidence: ["ambiguous"],
+    projectId: "project-1",
+    configRevisionId: "rev-1",
+    propertyOccurrenceId: "po-1",
+    logicalNodeId: "ln-1",
+  },
+  candidateSchemas: [{ id: "pspec:vendor,sc8562:gpio_int" }],
+  projectCount: 2,
+  status: "open" as const,
+  createdAt: "2026-07-16T01:00:00.000Z",
+};
 
 describe("parameter spec review service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(countOpenSpecReviewTasksForRevision).mockResolvedValue(0);
+    vi.mocked(countOpenIdentityMappingTasksForRevision).mockResolvedValue(0);
+    vi.mocked(refreshConfigRevisionAfterSpecReview).mockResolvedValue("resolved");
   });
 
   it("maps legacy propspec candidate ids to parameterSpecId", () => {
     expect(resolveCandidateSpecId({ id: "propspec:vendor,sc8562:gpio_int:v1" })).toBe(
-      "pspec:vendor,sc8562:gpio_int"
+      "pspec:vendor,sc8562:gpio_int",
     );
     expect(resolveCandidateSpecId({ parameterSpecId: "pspec:a", id: "propspec:x:y:v1" })).toBe("pspec:a");
   });
@@ -68,26 +120,26 @@ describe("parameter spec review service", () => {
           organizationId: "org-1",
           sourceEvidence: {
             propertyKey: "gpio_int",
-            evidence: ["compatible unmatched"]
+            evidence: ["compatible unmatched"],
           },
           candidateSchemas: [
             {
               id: "pspec:vendor,sc8562:gpio_int",
               propertyKey: "gpio_int",
-              schemaNamespace: "vendor,sc8562"
+              schemaNamespace: "vendor,sc8562",
             },
             {
               id: "propspec:mediatek,mt5788:gpio_int:v1",
               propertyKey: "gpio_int",
-              schemaNamespace: "mediatek,mt5788"
-            }
+              schemaNamespace: "mediatek,mt5788",
+            },
           ],
           projectCount: 2,
           status: "open",
-          createdAt: "2026-07-16T01:00:00.000Z"
-        }
+          createdAt: "2026-07-16T01:00:00.000Z",
+        },
       ],
-      nextCursor: { createdAt: "2026-07-16T01:00:00.000Z", id: "task-1" }
+      nextCursor: { createdAt: "2026-07-16T01:00:00.000Z", id: "task-1" },
     });
 
     const result = await listSpecReviewTasks(makeDb(), makeAuth(), { status: "open", limit: 10 });
@@ -96,44 +148,40 @@ describe("parameter spec review service", () => {
       organizationId: "org-1",
       status: "open",
       limit: 10,
-      cursor: null
+      cursor: null,
     });
     expect(result.items[0]).toMatchObject({
       id: "task-1",
       propertyKey: "gpio_int",
       ambiguous: true,
-      projectCount: 2
+      projectCount: 2,
     });
     expect(result.items[0]?.candidates.map((c) => c.id)).toEqual([
       "pspec:vendor,sc8562:gpio_int",
-      "pspec:mediatek,mt5788:gpio_int"
+      "pspec:mediatek,mt5788:gpio_int",
     ]);
     expect(result.nextCursor).toBeTruthy();
   });
 
   it("resolveSpecReviewTask rejects cross-org or unknown parameterSpecId with 404", async () => {
-    vi.mocked(getSpecReviewTaskById).mockResolvedValue({
-      id: "task-1",
-      organizationId: "org-1",
-      sourceEvidence: { propertyKey: "gpio_int", evidence: [] },
-      candidateSchemas: [],
-      projectCount: 1,
-      status: "open",
-      createdAt: "2026-07-16T01:00:00.000Z"
-    });
-    vi.mocked(getParameterSpecRow).mockResolvedValue(null);
+    vi.mocked(lockOpenSpecReviewTask).mockResolvedValue(openTask);
+    vi.mocked(requireOrgOrGlobalSpec).mockRejectedValue(
+      new ApiError("NOT_FOUND", "Parameter spec was not found for this organization.", 404, {
+        parameterSpecId: "pspec:other-org",
+      }),
+    );
 
     await expect(
       resolveSpecReviewTask(makeDb(), makeAuth(), {
         taskId: "task-1",
         decision: "resolved",
         parameterSpecId: "pspec:other-org",
-        reason: "wrong org"
-      })
+        reason: "wrong org",
+      }),
     ).rejects.toMatchObject({
       code: "NOT_FOUND",
       status: 404,
-      details: { parameterSpecId: "pspec:other-org" }
+      details: { parameterSpecId: "pspec:other-org" },
     } satisfies Partial<ApiError>);
 
     expect(resolveSpecReviewTaskRow).not.toHaveBeenCalled();
@@ -141,32 +189,25 @@ describe("parameter spec review service", () => {
   });
 
   it("resolveSpecReviewTask returns 404 for cross-org task ids", async () => {
+    vi.mocked(lockOpenSpecReviewTask).mockResolvedValue(null);
     vi.mocked(getSpecReviewTaskById).mockResolvedValue(null);
 
     await expect(
       resolveSpecReviewTask(makeDb(), makeAuth(), {
         taskId: "task-cross",
         decision: "dismissed",
-        reason: "not mine"
-      })
+        reason: "not mine",
+      }),
     ).rejects.toMatchObject({
       code: "NOT_FOUND",
       status: 404,
-      details: { taskId: "task-cross" }
+      details: { taskId: "task-cross" },
     } satisfies Partial<ApiError>);
   });
 
-  it("resolveSpecReviewTask accepts org or global specs and writes audit", async () => {
-    vi.mocked(getSpecReviewTaskById).mockResolvedValue({
-      id: "task-1",
-      organizationId: "org-1",
-      sourceEvidence: { propertyKey: "gpio_int", evidence: ["ambiguous"] },
-      candidateSchemas: [{ id: "pspec:vendor,sc8562:gpio_int" }],
-      projectCount: 2,
-      status: "open",
-      createdAt: "2026-07-16T01:00:00.000Z"
-    });
-    vi.mocked(getParameterSpecRow).mockResolvedValue({
+  it("resolveSpecReviewTask applies binding path and writes audit before close", async () => {
+    vi.mocked(lockOpenSpecReviewTask).mockResolvedValue(openTask);
+    vi.mocked(requireOrgOrGlobalSpec).mockResolvedValue({
       id: "pspec:vendor,sc8562:gpio_int",
       sourceKind: "dts",
       specificationKey: "vendor,sc8562/gpio_int",
@@ -185,19 +226,19 @@ describe("parameter spec review service", () => {
       constraints: null,
       documentation: null,
       compatiblePatterns: null,
-      policyTarget: null
+      policyTarget: null,
+    });
+    vi.mocked(applyResolvedSpecReview).mockResolvedValue({
+      bindingId: "binding-1",
+      projectId: "project-1",
+      configRevisionId: "rev-1",
     });
     vi.mocked(resolveSpecReviewTaskRow).mockResolvedValue({
-      id: "task-1",
-      organizationId: "org-1",
+      ...openTask,
       parameterSpecId: "pspec:vendor,sc8562:gpio_int",
-      sourceEvidence: { propertyKey: "gpio_int", evidence: ["ambiguous"] },
-      candidateSchemas: [],
-      projectCount: 2,
       status: "resolved",
       reason: "Matched SC8562",
-      createdAt: "2026-07-16T01:00:00.000Z",
-      resolvedAt: "2026-07-16T02:00:00.000Z"
+      resolvedAt: "2026-07-16T02:00:00.000Z",
     });
 
     const result = await resolveSpecReviewTask(
@@ -207,16 +248,17 @@ describe("parameter spec review service", () => {
         taskId: "task-1",
         decision: "resolved",
         parameterSpecId: "pspec:vendor,sc8562:gpio_int",
-        reason: "Matched SC8562"
+        reason: "Matched SC8562",
       },
-      { requestId: "req-1" }
+      { requestId: "req-1" },
     );
 
     expect(result).toMatchObject({
       id: "task-1",
       status: "resolved",
-      parameterSpecId: "pspec:vendor,sc8562:gpio_int"
+      parameterSpecId: "pspec:vendor,sc8562:gpio_int",
     });
+    expect(applyResolvedSpecReview).toHaveBeenCalled();
     expect(writeGovernanceAudit).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -227,10 +269,86 @@ describe("parameter spec review service", () => {
         metadata: expect.objectContaining({
           decision: "resolved",
           parameterSpecId: "pspec:vendor,sc8562:gpio_int",
-          propertyKey: "gpio_int"
-        })
+          bindingId: "binding-1",
+        }),
       }),
-      { requestId: "req-1" }
+      { requestId: "req-1" },
+    );
+    expect(resolveSpecReviewTaskRow).toHaveBeenCalled();
+  });
+
+  it("duplicate resolve with same choice is idempotent", async () => {
+    vi.mocked(lockOpenSpecReviewTask).mockResolvedValue(null);
+    vi.mocked(getSpecReviewTaskById).mockResolvedValue({
+      ...openTask,
+      status: "resolved",
+      parameterSpecId: "pspec:vendor,sc8562:gpio_int",
+      reason: "Matched SC8562",
+      resolvedAt: "2026-07-16T02:00:00.000Z",
+    });
+
+    const result = await resolveSpecReviewTask(makeDb(), makeAuth(), {
+      taskId: "task-1",
+      decision: "resolved",
+      parameterSpecId: "pspec:vendor,sc8562:gpio_int",
+      reason: "Matched SC8562 again",
+    });
+
+    expect(result.status).toBe("resolved");
+    expect(applyResolvedSpecReview).not.toHaveBeenCalled();
+    expect(resolveSpecReviewTaskRow).not.toHaveBeenCalled();
+  });
+
+  it("conflicting resolve choice returns 409", async () => {
+    vi.mocked(lockOpenSpecReviewTask).mockResolvedValue(null);
+    vi.mocked(getSpecReviewTaskById).mockResolvedValue({
+      ...openTask,
+      status: "resolved",
+      parameterSpecId: "pspec:vendor,sc8562:gpio_int",
+      reason: "Matched SC8562",
+      resolvedAt: "2026-07-16T02:00:00.000Z",
+    });
+
+    await expect(
+      resolveSpecReviewTask(makeDb(), makeAuth(), {
+        taskId: "task-1",
+        decision: "resolved",
+        parameterSpecId: "pspec:other",
+        reason: "different",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+  });
+
+  it("dismiss applies fail-closed path without binding", async () => {
+    vi.mocked(lockOpenSpecReviewTask).mockResolvedValue(openTask);
+    vi.mocked(applyDismissedSpecReview).mockResolvedValue({
+      projectId: "project-1",
+      configRevisionId: "rev-1",
+    });
+    vi.mocked(resolveSpecReviewTaskRow).mockResolvedValue({
+      ...openTask,
+      status: "dismissed",
+      reason: "Not this board",
+      resolvedAt: "2026-07-16T02:00:00.000Z",
+    });
+
+    const result = await resolveSpecReviewTask(makeDb(), makeAuth(), {
+      taskId: "task-1",
+      decision: "dismissed",
+      reason: "Not this board",
+    });
+
+    expect(result.status).toBe("dismissed");
+    expect(applyDismissedSpecReview).toHaveBeenCalled();
+    expect(applyResolvedSpecReview).not.toHaveBeenCalled();
+    expect(writeGovernanceAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        action: "spec-review-dismissed",
+        metadata: expect.objectContaining({ failClosedDismiss: true, bindingId: null }),
+      }),
+      expect.anything(),
     );
   });
 
@@ -241,11 +359,11 @@ describe("parameter spec review service", () => {
       sourceEvidence: { propertyKey: "gpio_int", evidence: ["a", "b"] },
       candidateSchemas: [
         { id: "pspec:a", propertyKey: "gpio_int", schemaNamespace: "a" },
-        { id: "pspec:b", propertyKey: "gpio_int", schemaNamespace: "b" }
+        { id: "pspec:b", propertyKey: "gpio_int", schemaNamespace: "b" },
       ],
       projectCount: 1,
       status: "open",
-      createdAt: "2026-07-16T01:00:00.000Z"
+      createdAt: "2026-07-16T01:00:00.000Z",
     });
     expect(dto.ambiguous).toBe(true);
     expect(dto.evidence).toEqual(["a", "b"]);

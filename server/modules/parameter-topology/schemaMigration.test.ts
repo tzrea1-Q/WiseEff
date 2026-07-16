@@ -30,6 +30,8 @@ const REQUIRED_TABLES = [
   "project_parameter_binding_revisions",
   "identity_mapping_tasks",
   "parameter_spec_review_tasks",
+  "parameter_spec_matcher_overrides",
+  "dts_property_occurrence_spec_decisions",
   "dts_validation_runs",
   "dts_validation_diagnostics",
   "audit_subject_links",

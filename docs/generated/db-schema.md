@@ -1034,6 +1034,8 @@ Additive-only tables for topology- and schema-aware parameter identity. Producti
 | `project_parameter_bindings` / `project_parameter_binding_revisions` | Stable project×logical-node×spec bindings and per-revision typed/canonical/raw values |
 | `identity_mapping_tasks` | Blocking ambiguous logical-node continuity reviews |
 | `parameter_spec_review_tasks` | Inferred/unknown property-spec review queue |
+| `parameter_spec_matcher_overrides` | Reusable reviewed matcher rules (resolved/dismissed) for subsequent ingest |
+| `dts_property_occurrence_spec_decisions` | Per-occurrence occurrence→spec decisions from review resolve/dismiss |
 | `dts_validation_runs` / `dts_validation_diagnostics` | Toolchain/schema validation runs and structured diagnostics |
 | `legacy_parameter_migration_evidence` | Preserves old IDs/names/paths/values/hashes during cutover |
 | `audit_subject_links` | Maps audit events to legacy and/or semantic subject IDs without rewriting immutable audit payloads |

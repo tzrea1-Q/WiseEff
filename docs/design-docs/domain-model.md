@@ -135,7 +135,7 @@ Path-derived `(name, module)` / full DTS path identity is being replaced by:
 | `ParameterSpec` / `ParameterSpecVersion` | Stable specification identity; `example_value` is illustrative only and never drives DB constraints or release policy. |
 | Schema default / policy target / effective value | Separate fields. Legacy `recommended_value` is migration evidence only and must not auto-promote into default or policy. |
 | `ProjectParameterBinding` | Stable `project × logical-node × spec` binding used by history, drafts, CRs, and exports. |
-| Identity mapping / spec review tasks | Human queues for ambiguous or incomplete migration/governance. |
+| Identity mapping / spec review tasks | Human queues for ambiguous or incomplete migration/governance. Spec-review resolve creates occurrence→spec decisions, project bindings, and reusable matcher overrides; dismiss never pretends a property matched and remains a fail-closed release blocker. |
 
 HTTP for the semantic surface lives under `/api/v2` (see api-contract). Production cutover is maintenance-only, fail-closed, and whole-snapshot rollback only — see `docs/runbooks/parameter-identity-cutover.md`. Do not dual-write or expose a compatibility projection in production.
 

@@ -457,7 +457,7 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | `GET` | `/api/v2/parameter-specs` | 列出版本化参数规格 |
 | `GET` | `/api/v2/parameter-specs/:specId` | 规格详情（example/default/policy 分字段） |
 | `GET` | `/api/v2/parameter-spec-review-tasks` | 组织范围、分页、按状态筛选的规格审核队列（`?status=&limit=&cursor=`） |
-| `POST` | `/api/v2/parameter-spec-review-tasks/:taskId/resolve` | Admin 决议规格审核（`parameterSpecId` 须为本组织或全局） |
+| `POST` | `/api/v2/parameter-spec-review-tasks/:taskId/resolve` | Admin 决议规格审核（`parameterSpecId` 须为本组织或全局）。`resolved` 在同一事务中应用 occurrence→spec→binding 并持久化可复用 matcher override；`dismissed` 失败关闭：不创建 binding，发布/校验仍阻断被 dismiss 的属性。 |
 | `GET` | `/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology` | 源树或生效树（`?view=source\|effective`） |
 | `GET` | `/api/v2/projects/:projectId/parameter-bindings` | 稳定项目绑定 |
 | `GET` | `/api/v2/identity-mapping-tasks` | 身份映射任务列表 |

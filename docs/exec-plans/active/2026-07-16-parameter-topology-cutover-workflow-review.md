@@ -69,9 +69,9 @@
 
 ### Task 3: Spec review applies decisions
 
-- [ ] Evidence locates org/project/revision/occurrence/logical node/property/candidates
-- [ ] Transactional resolve: lock → validate spec → occurrence→spec → binding → revision → status → audit → close
-- [ ] Persist reusable matcher override; dismiss fail-closed; cross-org 404; rollback + idempotency tests
+- [x] Evidence locates org/project/revision/occurrence/logical node/property/candidates
+- [x] Transactional resolve: lock → validate spec → occurrence→spec → binding → revision → status → audit → close
+- [x] Persist reusable matcher override; dismiss fail-closed; cross-org 404; rollback + idempotency tests
 
 ### Task 4: Precise occurrence writeback
 

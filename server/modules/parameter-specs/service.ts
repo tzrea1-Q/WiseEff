@@ -4,14 +4,24 @@ import { canAdminParameters, canViewParameters } from "../parameters/policy";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { writeGovernanceAudit } from "../parameter-topology/governanceAudit";
+import { countOpenIdentityMappingTasksForRevision } from "../parameter-topology/bindingService";
 import {
+  applyDismissedSpecReview,
+  applyResolvedSpecReview,
+  parseSpecReviewEvidence,
+  refreshConfigRevisionAfterSpecReview,
+  requireOrgOrGlobalSpec,
+} from "./reviewApply";
+import {
+  countOpenSpecReviewTasksForRevision,
   getParameterSpecRow,
   getSpecReviewTaskById,
   listParameterSpecRows,
   listSpecReviewTaskRows,
+  lockOpenSpecReviewTask,
   resolveSpecReviewTaskRow,
   type PersistedSpecReviewTask,
-  type SpecReviewTaskListCursor
+  type SpecReviewTaskListCursor,
 } from "./repository";
 import type {
   ListParameterSpecsQuery,
@@ -19,7 +29,7 @@ import type {
   ParameterSpecDetailDto,
   ParameterSpecReviewTaskDto,
   ParameterSpecSummaryDto,
-  ResolveSpecReviewTaskBody
+  ResolveSpecReviewTaskBody,
 } from "./schemas";
 
 function requireCanView(auth: AuthContext) {
@@ -98,7 +108,7 @@ export function toReviewTaskDto(task: PersistedSpecReviewTask): ParameterSpecRev
     projectCount: task.projectCount,
     createdAt: task.createdAt,
     resolvedAt: task.resolvedAt ?? null,
-    reason: task.reason ?? null
+    reason: task.reason ?? null,
   };
 }
 
@@ -126,12 +136,12 @@ function encodeReviewCursor(cursor: SpecReviewTaskListCursor | null): string | n
 export async function listParameterSpecs(
   db: Database,
   auth: AuthContext,
-  query: ListParameterSpecsQuery = {}
+  query: ListParameterSpecsQuery = {},
 ): Promise<{ items: ParameterSpecSummaryDto[] }> {
   requireCanView(auth);
   const rows = await listParameterSpecRows(db, {
     organizationId: auth.organization.id,
-    ...query
+    ...query,
   });
   return {
     items: rows.map((row) => ({
@@ -142,20 +152,20 @@ export async function listParameterSpecs(
       driverModule: row.driverModule,
       lifecycle: row.lifecycle,
       currentVersionId: row.currentVersionId,
-      currentVersion: row.currentVersion
-    }))
+      currentVersion: row.currentVersion,
+    })),
   };
 }
 
 export async function getParameterSpec(
   db: Database,
   auth: AuthContext,
-  specId: string
+  specId: string,
 ): Promise<{ item: ParameterSpecDetailDto }> {
   requireCanView(auth);
   const row = await getParameterSpecRow(db, {
     organizationId: auth.organization.id,
-    specId
+    specId,
   });
   if (!row) {
     throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId });
@@ -180,15 +190,15 @@ export async function getParameterSpec(
       constraints: row.constraints,
       documentation: row.documentation,
       compatiblePatterns: row.compatiblePatterns,
-      policyTarget: row.policyTarget
-    }
+      policyTarget: row.policyTarget,
+    },
   };
 }
 
 export async function listSpecReviewTasks(
   db: Database,
   auth: AuthContext,
-  query: ListSpecReviewTasksQuery = {}
+  query: ListSpecReviewTasksQuery = {},
 ): Promise<{ items: ParameterSpecReviewTaskDto[]; nextCursor: string | null }> {
   requireCanAdmin(auth);
   const limit = query.limit ?? 50;
@@ -197,85 +207,159 @@ export async function listSpecReviewTasks(
     organizationId: auth.organization.id,
     status: query.status,
     limit,
-    cursor
+    cursor,
   });
   return {
     items: result.items.map(toReviewTaskDto),
-    nextCursor: encodeReviewCursor(result.nextCursor)
+    nextCursor: encodeReviewCursor(result.nextCursor),
   };
 }
 
+function sameResolvedChoice(
+  task: PersistedSpecReviewTask,
+  input: ResolveSpecReviewTaskBody & { taskId: string },
+): boolean {
+  if (task.status !== input.decision) return false;
+  if (input.decision === "dismissed") return true;
+  return task.parameterSpecId === input.parameterSpecId;
+}
+
+/**
+ * Apply review decision (occurrence→spec→binding + matcher override) in one transaction.
+ * Dismiss is fail-closed: no binding is created; release/validate still blocks.
+ */
 export async function resolveSpecReviewTask(
   db: Database,
   auth: AuthContext,
   input: ResolveSpecReviewTaskBody & { taskId: string },
-  context: AuditCorrelationContext = {}
+  context: AuditCorrelationContext = {},
 ): Promise<{ id: string; status: "resolved" | "dismissed"; parameterSpecId?: string; reason?: string }> {
   requireCanAdmin(auth);
 
-  const existing = await getSpecReviewTaskById(db, {
-    organizationId: auth.organization.id,
-    taskId: input.taskId
-  });
-  if (!existing) {
-    throw new ApiError("NOT_FOUND", "Parameter spec review task was not found.", 404, { taskId: input.taskId });
-  }
-
-  if (input.decision === "resolved") {
-    const parameterSpecId = input.parameterSpecId;
-    if (!parameterSpecId) {
-      throw new ApiError("VALIDATION_FAILED", "parameterSpecId is required when resolving a review task.", 400);
-    }
-    const allowedSpec = await getParameterSpecRow(db, {
+  return db.transaction(async (tx) => {
+    const locked = await lockOpenSpecReviewTask(tx, {
       organizationId: auth.organization.id,
-      specId: parameterSpecId
+      taskId: input.taskId,
     });
-    if (!allowedSpec) {
-      throw new ApiError("NOT_FOUND", "Parameter spec was not found for this organization.", 404, {
-        parameterSpecId
+
+    if (!locked) {
+      const known = await getSpecReviewTaskById(tx, {
+        organizationId: auth.organization.id,
+        taskId: input.taskId,
+      });
+      if (!known) {
+        throw new ApiError("NOT_FOUND", "Parameter spec review task was not found.", 404, {
+          taskId: input.taskId,
+        });
+      }
+      if (sameResolvedChoice(known, input)) {
+        return {
+          id: known.id,
+          status: known.status === "open" ? input.decision : known.status,
+          parameterSpecId: known.parameterSpecId,
+          reason: known.reason,
+        };
+      }
+      throw new ApiError("CONFLICT", "Parameter spec review task already resolved with a different choice.", 409, {
+        taskId: input.taskId,
+        status: known.status,
+        parameterSpecId: known.parameterSpecId ?? null,
       });
     }
-  }
 
-  const resolved = await resolveSpecReviewTaskRow(db, {
-    taskId: input.taskId,
-    organizationId: auth.organization.id,
-    status: input.decision,
-    parameterSpecId: input.parameterSpecId,
-    reviewerUserId: auth.user.id,
-    reason: input.reason
-  });
-  if (!resolved) {
-    throw new ApiError("CONFLICT", "Parameter spec review task is not open.", 409, { taskId: input.taskId });
-  }
+    let applied: { projectId: string; configRevisionId: string; bindingId?: string };
+    let parameterSpecId = input.parameterSpecId;
 
-  await writeGovernanceAudit(
-    db,
-    auth,
-    {
-      action: input.decision === "resolved" ? "spec-review-resolved" : "spec-review-dismissed",
-      projectId: null,
-      targetType: "parameter-spec-review-task",
-      targetId: resolved.id,
-      metadata: {
-        taskId: resolved.id,
-        parameterSpecId: resolved.parameterSpecId ?? input.parameterSpecId ?? null,
-        decision: input.decision,
-        reasonHash: hashReason(input.reason),
-        projectCount: existing.projectCount,
-        propertyKey: asString(asRecord(existing.sourceEvidence).propertyKey),
-        previousStatus: existing.status
+    if (input.decision === "resolved") {
+      if (!parameterSpecId) {
+        throw new ApiError("VALIDATION_FAILED", "parameterSpecId is required when resolving a review task.", 400);
       }
-    },
-    context
-  );
+      const allowedSpec = await requireOrgOrGlobalSpec(tx, {
+        organizationId: auth.organization.id,
+        parameterSpecId,
+      });
+      const result = await applyResolvedSpecReview(tx, {
+        task: locked,
+        organizationId: auth.organization.id,
+        parameterSpecId,
+        parameterSpecVersionId: allowedSpec.currentVersionId!,
+        reviewerUserId: auth.user.id,
+        reason: input.reason,
+      });
+      applied = result;
+    } else {
+      // Fail-closed dismiss: persist decision/override, never create a matched binding.
+      applied = await applyDismissedSpecReview(tx, {
+        task: locked,
+        organizationId: auth.organization.id,
+        reviewerUserId: auth.user.id,
+        reason: input.reason,
+      });
+      parameterSpecId = undefined;
+    }
 
-  return {
-    id: resolved.id,
-    status: resolved.status === "open" ? input.decision : resolved.status,
-    parameterSpecId: resolved.parameterSpecId,
-    reason: resolved.reason
-  };
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: input.decision === "resolved" ? "spec-review-resolved" : "spec-review-dismissed",
+        projectId: applied.projectId,
+        targetType: "parameter-spec-review-task",
+        targetId: locked.id,
+        metadata: {
+          taskId: locked.id,
+          parameterSpecId: parameterSpecId ?? null,
+          decision: input.decision,
+          reasonHash: hashReason(input.reason),
+          projectCount: locked.projectCount,
+          propertyKey: asString(asRecord(locked.sourceEvidence).propertyKey),
+          previousStatus: locked.status,
+          configRevisionId: applied.configRevisionId,
+          propertyOccurrenceId: parseSpecReviewEvidence(locked).propertyOccurrenceId,
+          logicalNodeId: parseSpecReviewEvidence(locked).logicalNodeId,
+          bindingId: applied.bindingId ?? null,
+          failClosedDismiss: input.decision === "dismissed",
+        },
+      },
+      context,
+    );
+
+    // Close task last so any prior failure rolls back without marking resolved.
+    const resolved = await resolveSpecReviewTaskRow(tx, {
+      taskId: input.taskId,
+      organizationId: auth.organization.id,
+      status: input.decision,
+      parameterSpecId: parameterSpecId ?? null,
+      reviewerUserId: auth.user.id,
+      reason: input.reason,
+    });
+    if (!resolved) {
+      throw new ApiError("CONFLICT", "Parameter spec review task is not open.", 409, { taskId: input.taskId });
+    }
+
+    const openReviewsRemaining = await countOpenSpecReviewTasksForRevision(tx, {
+      organizationId: auth.organization.id,
+      configRevisionId: applied.configRevisionId,
+    });
+    const openMappingsRemaining = await countOpenIdentityMappingTasksForRevision(tx, {
+      organizationId: auth.organization.id,
+      configRevisionId: applied.configRevisionId,
+    });
+    await refreshConfigRevisionAfterSpecReview(tx, {
+      organizationId: auth.organization.id,
+      configRevisionId: applied.configRevisionId,
+      decision: input.decision,
+      openReviewsRemaining,
+      openMappingsRemaining,
+    });
+
+    return {
+      id: resolved.id,
+      status: resolved.status === "open" ? input.decision : resolved.status,
+      parameterSpecId: resolved.parameterSpecId,
+      reason: resolved.reason,
+    };
+  });
 }
 
 function hashReason(reason: string) {

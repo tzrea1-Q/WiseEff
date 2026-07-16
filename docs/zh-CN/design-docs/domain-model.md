@@ -171,7 +171,7 @@ stateDiagram-v2
 | `ParameterSpec` / `ParameterSpecVersion` | 稳定规格身份；`example_value` 仅作示例，不参与 DB 约束或发布策略 |
 | Schema 默认 / 策略目标 / 生效值 | 分字段存储；遗留 `recommended_value` 仅作迁移证据，不得自动提升为 default/policy |
 | `ProjectParameterBinding` | 稳定的 `project × logical-node × spec` 绑定，供历史/草稿/CR/导出使用 |
-| 身份映射 / 规格审核任务 | 歧义或不完整迁移/治理的人工队列 |
+| 身份映射 / 规格审核任务 | 歧义或不完整迁移/治理的人工队列。规格审核 `resolved` 会写入 occurrence→spec 决策、项目 binding 与可复用 matcher override；`dismissed` 不得假装已匹配，并作为 fail-closed 发布阻断。 |
 
 语义 HTTP 表面位于 `/api/v2`。生产切换仅限维护窗口、失败关闭，且只能整快照回滚——见 `docs/runbooks/parameter-identity-cutover.md`。生产禁止双写或兼容投影。
 

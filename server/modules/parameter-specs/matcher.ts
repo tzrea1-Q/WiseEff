@@ -280,27 +280,51 @@ export function matchProperty(
   };
 }
 
+export type SpecReviewLocateContext = {
+  organizationId: string;
+  projectId: string;
+  configRevisionId: string;
+  propertyOccurrenceId: string | null;
+  logicalNodeId: string | null;
+};
+
 export function reviewTasksForDecision(
   decision: MappingDecision<PropertySpec> | MappingDecision<DriverSchema>,
   node: MatchableNode,
   propertyKey?: string,
+  locate?: SpecReviewLocateContext,
 ): SpecReviewTaskDraft[] {
   if (decision.kind === "matched") return [];
+
+  const locateEvidence = locate
+    ? {
+        organizationId: locate.organizationId,
+        projectId: locate.projectId,
+        configRevisionId: locate.configRevisionId,
+        propertyOccurrenceId: locate.propertyOccurrenceId,
+        logicalNodeId: locate.logicalNodeId,
+      }
+    : {};
 
   if (decision.kind === "ambiguous") {
     return [
       {
         id: randomUUID(),
         sourceEvidence: {
+          ...locateEvidence,
           nodeLocator: node.nodeLocator,
           compatible: node.compatible,
           propertyKey,
           evidence: decision.evidence,
+          matcherCandidates: decision.candidates.map((candidate) =>
+            "parameterSpecId" in candidate ? candidate.parameterSpecId : candidate.id,
+          ),
         },
         candidateSchemas: decision.candidates.map((candidate) =>
           "propertyKey" in candidate
             ? {
                 id: candidate.parameterSpecId,
+                parameterSpecId: candidate.parameterSpecId,
                 parameterSpecVersionId: candidate.id,
                 propertyKey: candidate.propertyKey,
                 schemaNamespace: candidate.schemaNamespace,
@@ -323,10 +347,12 @@ export function reviewTasksForDecision(
     {
       id: randomUUID(),
       sourceEvidence: {
+        ...locateEvidence,
         nodeLocator: node.nodeLocator,
         compatible: node.compatible,
         propertyKey,
         evidence: decision.evidence,
+        matcherCandidates: [],
         inferred: true,
       },
       candidateSchemas: [],

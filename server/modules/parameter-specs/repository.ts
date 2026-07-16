@@ -212,6 +212,233 @@ export async function resolveSpecReviewTaskRow(
   return row ? toDto(row) : null;
 }
 
+export async function lockOpenSpecReviewTask(
+  db: Queryable,
+  input: { organizationId: string; taskId: string },
+): Promise<PersistedSpecReviewTask | null> {
+  const result = await db.query<ReviewTaskRow>(
+    `
+    select *
+    from parameter_spec_review_tasks
+    where id = $1 and organization_id = $2 and status = 'open'
+    for update
+    `,
+    [input.taskId, input.organizationId],
+  );
+  const row = result.rows[0];
+  return row ? toDto(row) : null;
+}
+
+export type MatcherOverrideDecision = "resolved" | "dismissed";
+
+export type PersistedMatcherOverride = {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  compatibleFingerprint: string;
+  nodeLocator: string | null;
+  propertyKey: string;
+  decision: MatcherOverrideDecision;
+  parameterSpecId: string | null;
+  sourceReviewTaskId: string | null;
+  reason: string | null;
+};
+
+type MatcherOverrideRow = {
+  id: string;
+  organization_id: string;
+  project_id: string;
+  compatible_fingerprint: string;
+  node_locator: string | null;
+  property_key: string;
+  decision: MatcherOverrideDecision;
+  parameter_spec_id: string | null;
+  source_review_task_id: string | null;
+  reason: string | null;
+};
+
+function toMatcherOverride(row: MatcherOverrideRow): PersistedMatcherOverride {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    projectId: row.project_id,
+    compatibleFingerprint: row.compatible_fingerprint,
+    nodeLocator: row.node_locator,
+    propertyKey: row.property_key,
+    decision: row.decision,
+    parameterSpecId: row.parameter_spec_id,
+    sourceReviewTaskId: row.source_review_task_id,
+    reason: row.reason,
+  };
+}
+
+/** Stable fingerprint for compatible[] used by matcher override lookup. */
+export function compatibleFingerprint(compatible: string[]): string {
+  return [...compatible].map((item) => item.trim()).filter(Boolean).sort().join("\0");
+}
+
+export async function listMatcherOverridesForProject(
+  db: Queryable,
+  input: { organizationId: string; projectId: string },
+): Promise<PersistedMatcherOverride[]> {
+  const result = await db.query<MatcherOverrideRow>(
+    `
+    select *
+    from parameter_spec_matcher_overrides
+    where organization_id = $1 and project_id = $2
+    `,
+    [input.organizationId, input.projectId],
+  );
+  return result.rows.map(toMatcherOverride);
+}
+
+export async function upsertMatcherOverride(
+  db: Queryable,
+  input: {
+    id?: string;
+    organizationId: string;
+    projectId: string;
+    compatibleFingerprint: string;
+    nodeLocator?: string | null;
+    propertyKey: string;
+    decision: MatcherOverrideDecision;
+    parameterSpecId?: string | null;
+    sourceReviewTaskId?: string | null;
+    reason?: string | null;
+    createdByUserId: string;
+  },
+): Promise<PersistedMatcherOverride> {
+  const id = input.id ?? randomUUID();
+  const result = await db.query<MatcherOverrideRow>(
+    `
+    insert into parameter_spec_matcher_overrides (
+      id, organization_id, project_id, compatible_fingerprint, node_locator,
+      property_key, decision, parameter_spec_id, source_review_task_id, reason, created_by_user_id
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    on conflict (organization_id, project_id, compatible_fingerprint, property_key) do update set
+      node_locator = excluded.node_locator,
+      decision = excluded.decision,
+      parameter_spec_id = excluded.parameter_spec_id,
+      source_review_task_id = excluded.source_review_task_id,
+      reason = excluded.reason,
+      updated_at = now()
+    returning *
+    `,
+    [
+      id,
+      input.organizationId,
+      input.projectId,
+      input.compatibleFingerprint,
+      input.nodeLocator ?? null,
+      input.propertyKey,
+      input.decision,
+      input.parameterSpecId ?? null,
+      input.sourceReviewTaskId ?? null,
+      input.reason ?? null,
+      input.createdByUserId,
+    ],
+  );
+  return toMatcherOverride(result.rows[0]);
+}
+
+export async function upsertOccurrenceSpecDecision(
+  db: Queryable,
+  input: {
+    id?: string;
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string;
+    propertyOccurrenceId: string;
+    logicalNodeId?: string | null;
+    propertyKey: string;
+    decision: MatcherOverrideDecision;
+    parameterSpecId?: string | null;
+    bindingId?: string | null;
+    reviewTaskId?: string | null;
+  },
+): Promise<void> {
+  const id = input.id ?? randomUUID();
+  await db.query(
+    `
+    insert into dts_property_occurrence_spec_decisions (
+      id, organization_id, project_id, config_revision_id, property_occurrence_id,
+      logical_node_id, property_key, decision, parameter_spec_id, binding_id, review_task_id
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    on conflict (property_occurrence_id) do update set
+      logical_node_id = excluded.logical_node_id,
+      property_key = excluded.property_key,
+      decision = excluded.decision,
+      parameter_spec_id = excluded.parameter_spec_id,
+      binding_id = excluded.binding_id,
+      review_task_id = excluded.review_task_id,
+      updated_at = now()
+    `,
+    [
+      id,
+      input.organizationId,
+      input.projectId,
+      input.configRevisionId,
+      input.propertyOccurrenceId,
+      input.logicalNodeId ?? null,
+      input.propertyKey,
+      input.decision,
+      input.parameterSpecId ?? null,
+      input.bindingId ?? null,
+      input.reviewTaskId ?? null,
+    ],
+  );
+}
+
+export async function countOpenSpecReviewTasksForRevision(
+  db: Queryable,
+  input: { organizationId: string; configRevisionId: string },
+): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from parameter_spec_review_tasks t
+    where t.organization_id = $1
+      and t.status = 'open'
+      and (
+        coalesce(t.source_evidence->>'configRevisionId', '') = $2
+        or t.parameter_spec_id is null
+        or exists (
+          select 1
+          from project_parameter_binding_revisions br
+          join project_parameter_bindings b on b.id = br.binding_id
+          where br.config_revision_id = $2
+            and b.parameter_spec_id = t.parameter_spec_id
+        )
+      )
+    `,
+    [input.organizationId, input.configRevisionId],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+/**
+ * Dismissed properties still block release: they are not matched bindings.
+ * Count occurrence decisions or project overrides that dismiss without a binding on this revision.
+ */
+export async function countDismissedSpecBlockersForRevision(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; configRevisionId: string },
+): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from dts_property_occurrence_spec_decisions d
+    where d.organization_id = $1
+      and d.project_id = $2
+      and d.config_revision_id = $3
+      and d.decision = 'dismissed'
+      and d.binding_id is null
+    `,
+    [input.organizationId, input.projectId, input.configRevisionId],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
 type SpecListRow = {
   id: string;
   source_kind: "dts" | "json" | "manual";

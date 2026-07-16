@@ -9,6 +9,10 @@ import {
   type DtsToolchainDiagnostic,
   type DtsToolchainRunner
 } from "../parameter-files/dtsToolchain";
+import {
+  countDismissedSpecBlockersForRevision,
+  countOpenSpecReviewTasksForRevision
+} from "../parameter-specs/repository";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameters/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -373,6 +377,7 @@ type ValidateFailureCode =
   | "empty-config-set"
   | "open-mapping"
   | "open-review"
+  | "dismissed-review"
   | "schema-policy-blocker"
   | "resolve-failed"
   | "toolchain-unavailable"
@@ -383,34 +388,6 @@ type ValidateFailureCode =
   | "path-escape"
   | "timeout"
   | "missing-content";
-
-async function countOpenSpecReviewTasksForRevision(
-  db: Queryable,
-  input: { organizationId: string; configRevisionId: string }
-): Promise<number> {
-  // Block on open reviews for specs bound in this revision, or orphan/inferred reviews
-  // with no parameter_spec_id (still unresolved platform work for the org).
-  const result = await db.query<{ count: string }>(
-    `
-    select count(*)::text as count
-    from parameter_spec_review_tasks t
-    where t.organization_id = $1
-      and t.status = 'open'
-      and (
-        t.parameter_spec_id is null
-        or exists (
-          select 1
-          from project_parameter_binding_revisions br
-          join project_parameter_bindings b on b.id = br.binding_id
-          where br.config_revision_id = $2
-            and b.parameter_spec_id = t.parameter_spec_id
-        )
-      )
-    `,
-    [input.organizationId, input.configRevisionId]
-  );
-  return Number(result.rows[0]?.count ?? 0);
-}
 
 async function countSchemaPolicyBlockers(db: Queryable, configRevisionId: string): Promise<number> {
   const result = await db.query<{ count: string }>(
@@ -652,6 +629,40 @@ export async function validateConfigRevision(
           ],
           "review",
           "open-review"
+        )
+      },
+      context
+    );
+  }
+
+  // Dismissed reviews never pretend a property matched; release stays fail-closed.
+  const dismissedReviews = await countDismissedSpecBlockersForRevision(db, {
+    organizationId: auth.organization.id,
+    projectId: revision.projectId,
+    configRevisionId: revision.id
+  });
+  if (dismissedReviews > 0) {
+    return persistFailedValidation(
+      db,
+      auth,
+      {
+        revisionId: revision.id,
+        projectId: revision.projectId,
+        configSetId: revision.configSetId,
+        stage,
+        failureCode: "dismissed-review",
+        diagnostics: toPersistedDiagnostics(
+          [
+            {
+              code: "dismissed-review",
+              severity: "error",
+              stage: "review",
+              message: `Dismissed parameter spec reviews remain without bindings (${dismissedReviews}); validation fails closed.`,
+              fileName: "<review>"
+            }
+          ],
+          "review",
+          "dismissed-review"
         )
       },
       context

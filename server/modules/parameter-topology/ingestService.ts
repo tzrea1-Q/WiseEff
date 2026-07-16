@@ -14,17 +14,22 @@ import {
 } from "../dts";
 import type { LogicalNodeCandidate, LogicalNodeSnapshot } from "../dts/identity";
 import {
-  collectOpenReviewTasks,
   matchDriver,
   matchProperty,
+  reviewTasksForDecision,
 } from "../parameter-specs/matcher";
 import {
+  compatibleFingerprint,
+  getParameterSpecRow,
+  listMatcherOverridesForProject,
   persistOpenReviewTaskDrafts,
   upsertMatchedDriverSchema,
   upsertMatchedPropertySpec,
+  upsertOccurrenceSpecDecision,
+  type PersistedMatcherOverride,
 } from "../parameter-specs/repository";
 import { loadSchemaRegistry } from "../parameter-specs/schemaLoader";
-import type { MatchableNode, SchemaRegistry } from "../parameter-specs/types";
+import type { MatchableNode, SchemaRegistry, SpecReviewTaskDraft } from "../parameter-specs/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import {
   createOrReuseBinding,
@@ -465,7 +470,24 @@ async function buildLogicalRevisionsWithContinuity(
   };
 }
 
-async function createBindingsForMatchedProperties(
+function overrideLookupKey(compatible: string[], propertyKey: string): string {
+  return `${compatibleFingerprint(compatible)}\0${propertyKey}`;
+}
+
+function buildOverrideIndex(overrides: PersistedMatcherOverride[]): Map<string, PersistedMatcherOverride> {
+  const index = new Map<string, PersistedMatcherOverride>();
+  for (const override of overrides) {
+    index.set(`${override.compatibleFingerprint}\0${override.propertyKey}`, override);
+  }
+  return index;
+}
+
+/**
+ * Match properties, apply reusable matcher overrides, create bindings, and queue
+ * open review tasks with precise locate evidence. Dismissed overrides skip review
+ * recreation and never pretend the property matched.
+ */
+async function matchBindAndQueueReviews(
   tx: Queryable,
   input: {
     organizationId: string;
@@ -473,9 +495,17 @@ async function createBindingsForMatchedProperties(
     configRevisionId: string;
     effectiveNodes: Map<string, DtsEffectiveNode>;
     stableLogicalIdByLocator: Map<string, string>;
+    propertyOccurrenceByKey: Map<string, string>;
     registry: SchemaRegistry;
   },
-): Promise<void> {
+): Promise<SpecReviewTaskDraft[]> {
+  const overrides = await listMatcherOverridesForProject(tx, {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+  });
+  const overrideByKey = buildOverrideIndex(overrides);
+  const reviewDrafts: SpecReviewTaskDraft[] = [];
+
   for (const node of input.effectiveNodes.values()) {
     if (node.deleted) continue;
     const logicalNodeId = input.stableLogicalIdByLocator.get(node.nodeLocator);
@@ -484,34 +514,110 @@ async function createBindingsForMatchedProperties(
 
     for (const [propertyKey, property] of node.properties) {
       if (property.deleted) continue;
-      const decision = matchProperty(matchable, propertyKey, input.registry);
-      if (decision.kind !== "matched") continue;
-
-      const { parameterSpecId, parameterSpecVersionId } = await upsertMatchedPropertySpec(
-        tx,
-        decision.value,
-      );
-      const binding = await createOrReuseBinding(tx, {
+      const propertyOccurrenceId =
+        input.propertyOccurrenceByKey.get(`${node.nodeLocator}\0${propertyKey}`) ?? null;
+      const locate = {
         organizationId: input.organizationId,
-        key: {
-          projectId: input.projectId,
-          logicalNodeId,
-          parameterSpecId,
-        },
-      });
-      await upsertBindingRevisionValues(tx, {
-        bindingId: binding.id,
+        projectId: input.projectId,
         configRevisionId: input.configRevisionId,
-        parameterSpecVersionId,
-        values: {
-          typedValue: property.value ?? { kind: "raw", rawText: property.rawText },
-          canonicalValue: property.value ?? property.normalizedValue,
-          rawValue: property.rawText,
-          schemaState: "matched",
-        },
-      });
+        propertyOccurrenceId,
+        logicalNodeId,
+      };
+      const override = overrideByKey.get(overrideLookupKey(matchable.compatible, propertyKey));
+
+      if (override?.decision === "dismissed") {
+        if (propertyOccurrenceId) {
+          await upsertOccurrenceSpecDecision(tx, {
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            configRevisionId: input.configRevisionId,
+            propertyOccurrenceId,
+            logicalNodeId,
+            propertyKey,
+            decision: "dismissed",
+            parameterSpecId: null,
+            bindingId: null,
+            reviewTaskId: override.sourceReviewTaskId,
+          });
+        }
+        continue;
+      }
+
+      if (override?.decision === "resolved" && override.parameterSpecId) {
+        const spec = await getParameterSpecRow(tx, {
+          organizationId: input.organizationId,
+          specId: override.parameterSpecId,
+        });
+        if (!spec?.currentVersionId) continue;
+        const binding = await createOrReuseBinding(tx, {
+          organizationId: input.organizationId,
+          key: {
+            projectId: input.projectId,
+            logicalNodeId,
+            parameterSpecId: override.parameterSpecId,
+          },
+        });
+        await upsertBindingRevisionValues(tx, {
+          bindingId: binding.id,
+          configRevisionId: input.configRevisionId,
+          parameterSpecVersionId: spec.currentVersionId,
+          values: {
+            typedValue: property.value ?? { kind: "raw", rawText: property.rawText },
+            canonicalValue: property.value ?? property.normalizedValue,
+            rawValue: property.rawText,
+            schemaState: "reviewed",
+          },
+        });
+        if (propertyOccurrenceId) {
+          await upsertOccurrenceSpecDecision(tx, {
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            configRevisionId: input.configRevisionId,
+            propertyOccurrenceId,
+            logicalNodeId,
+            propertyKey,
+            decision: "resolved",
+            parameterSpecId: override.parameterSpecId,
+            bindingId: binding.id,
+            reviewTaskId: override.sourceReviewTaskId,
+          });
+        }
+        continue;
+      }
+
+      const decision = matchProperty(matchable, propertyKey, input.registry);
+      if (decision.kind === "matched") {
+        const { parameterSpecId, parameterSpecVersionId } = await upsertMatchedPropertySpec(
+          tx,
+          decision.value,
+        );
+        const binding = await createOrReuseBinding(tx, {
+          organizationId: input.organizationId,
+          key: {
+            projectId: input.projectId,
+            logicalNodeId,
+            parameterSpecId,
+          },
+        });
+        await upsertBindingRevisionValues(tx, {
+          bindingId: binding.id,
+          configRevisionId: input.configRevisionId,
+          parameterSpecVersionId,
+          values: {
+            typedValue: property.value ?? { kind: "raw", rawText: property.rawText },
+            canonicalValue: property.value ?? property.normalizedValue,
+            rawValue: property.rawText,
+            schemaState: "matched",
+          },
+        });
+        continue;
+      }
+
+      reviewDrafts.push(...reviewTasksForDecision(decision, matchable, propertyKey, locate));
     }
   }
+
+  return reviewDrafts;
 }
 
 /**
@@ -644,12 +750,6 @@ async function ingestConfigRevisionTx(
   }
 
   const registry = loadSchemaRegistry(schemasRoot);
-  const matchableNodes = [...resolved.effective.nodesByLocator.values()]
-    .filter((node) => !node.deleted)
-    .map(toMatchableNode);
-
-  const reviewDrafts = collectOpenReviewTasks(matchableNodes, registry);
-  await persistOpenReviewTaskDrafts(tx, manifest.organizationId, reviewDrafts);
 
   const continuity = await buildLogicalRevisionsWithContinuity(tx, {
     effectiveNodes: resolved.effective.nodesByLocator,
@@ -667,6 +767,7 @@ async function ingestConfigRevisionTx(
     await insertLogicalNodeRevision(tx, revision.id, logicalRevision);
   }
 
+  const propertyOccurrenceByKey = new Map<string, string>();
   let effectOrder = 0;
   for (const node of resolved.effective.nodesByLocator.values()) {
     const logicalRevision = continuity.revisionByLocator.get(node.nodeLocator);
@@ -679,6 +780,14 @@ async function ingestConfigRevisionTx(
           (propertyOccurrenceId ? nodeIdByPropertyId.get(propertyOccurrenceId) : undefined) ??
           nodeByPathAndFile.get(`${entry.fileName}\0${entry.nodeLocator}`) ??
           null;
+
+        if (
+          propertyOccurrenceId &&
+          (entry.effect === "set" || entry.effect === "override") &&
+          !property.deleted
+        ) {
+          propertyOccurrenceByKey.set(`${node.nodeLocator}\0${entry.propertyName}`, propertyOccurrenceId);
+        }
 
         await insertOccurrenceEffect(tx, revision.id, {
           id: randomUUID(),
@@ -694,14 +803,16 @@ async function ingestConfigRevisionTx(
     }
   }
 
-  await createBindingsForMatchedProperties(tx, {
+  const reviewDrafts = await matchBindAndQueueReviews(tx, {
     organizationId: manifest.organizationId,
     projectId: manifest.projectId,
     configRevisionId: revision.id,
     effectiveNodes: resolved.effective.nodesByLocator,
     stableLogicalIdByLocator: continuity.stableLogicalIdByLocator,
+    propertyOccurrenceByKey,
     registry,
   });
+  await persistOpenReviewTaskDrafts(tx, manifest.organizationId, reviewDrafts);
 
   for (const item of continuity.ambiguous) {
     await persistAmbiguousIdentityMapping(tx, {
