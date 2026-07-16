@@ -186,14 +186,73 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await waitFor(() => {
-      expect(within(screen.getByRole("region", { name: "项目拓扑工作区" })).getByRole("button", { name: /发布/ })).toBeEnabled();
+      expect(within(screen.getByRole("region", { name: "项目拓扑工作区" })).getByRole("button", { name: "校验" })).toBeEnabled();
     });
     const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
-    fireEvent.click(within(workspace).getByRole("button", { name: /发布/ }));
+    expect(within(workspace).queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
+    fireEvent.click(within(workspace).getByRole("button", { name: "校验" }));
 
     await waitFor(() => {
       expect(repository.validateRevision).toHaveBeenCalledWith("aurora", "rev-real-1");
     });
-    expect(await screen.findByRole("status")).toHaveTextContent(/校验通过|发布条件/);
+    expect(await screen.findByText(/校验通过|发布条件/)).toBeVisible();
+  });
+
+  it("resolves identity mapping then reloads topology", async () => {
+    const repository = createRepository({
+      listMappingTasks: vi.fn().mockResolvedValue([
+        {
+          id: "map-1",
+          projectId: "aurora",
+          configRevisionId: "rev-real-1",
+          previousLogicalNodeId: "logical-old",
+          candidateLogicalNodeIds: ["logical-sc8562", "logical-mt5788"],
+          status: "open",
+          reason: "ambiguous",
+          createdAt: "2026-07-16T00:00:00.000Z",
+          evidence: {
+            previousNodeLocator: "/amba/i2c@FDF5E000/sc8562@6E",
+            evidence: ["unit-address"],
+            candidates: [
+              { logicalNodeId: "logical-sc8562", nodeLocator: "/amba/i2c@FDF5E000/sc8562@6E", name: "sc8562" },
+              { logicalNodeId: "logical-mt5788", nodeLocator: "/amba/i2c@FDF5E000/mt5788@55", name: "mt5788" }
+            ]
+          }
+        }
+      ]),
+      resolveMapping: vi.fn().mockResolvedValue(undefined)
+    });
+    const { fireEvent } = await import("@testing-library/react");
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        canPublish
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+      />
+    );
+
+    const review = await screen.findByRole("region", { name: "映射审核" });
+    fireEvent.change(within(review).getByRole("combobox", { name: "选择映射候选" }), {
+      target: { value: "logical-sc8562" }
+    });
+    fireEvent.change(within(review).getByLabelText("映射确认原因"), {
+      target: { value: "Same board instance" }
+    });
+    const topologyCallsBefore = vi.mocked(repository.getTopology).mock.calls.length;
+    fireEvent.click(within(review).getByRole("button", { name: "确认映射" }));
+
+    await waitFor(() => {
+      expect(repository.resolveMapping).toHaveBeenCalledWith("map-1", {
+        decision: "resolved",
+        selectedLogicalNodeId: "logical-sc8562",
+        reason: "Same board instance"
+      });
+    });
+    await waitFor(() => {
+      expect(vi.mocked(repository.getTopology).mock.calls.length).toBeGreaterThan(topologyCallsBefore);
+    });
   });
 });

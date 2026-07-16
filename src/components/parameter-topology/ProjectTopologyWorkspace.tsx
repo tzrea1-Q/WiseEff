@@ -3,15 +3,18 @@ import type {
   EffectiveTopologyNode,
   IdentityMappingTask,
   ProjectParameterBinding,
+  ResolveMappingInput,
   SourceTopologyNode,
   TopologyDiagnostic,
   TopologyView
 } from "@/domain/parameter-topology/types";
+import { buildProvenanceLabels } from "@/domain/parameter-topology/buildProvenanceLabels";
 import {
   BindingDetailPanel,
   type BindingEditValidation
 } from "./BindingDetailPanel";
 import { BindingPropertyTable } from "./BindingPropertyTable";
+import { IdentityMappingReview } from "./IdentityMappingReview";
 import { TopologyTree } from "./TopologyTree";
 
 export type TopologyLayoutMode = "desktop" | "tablet" | "mobile";
@@ -29,12 +32,17 @@ export type ProjectTopologyWorkspaceProps = {
   incompleteBase?: boolean;
   canEdit?: boolean;
   canPublish?: boolean;
+  /**
+   * Toolbar action label. Default `校验` because the wired action is validateRevision.
+   * Only use `发布` when a real publish/release transition is provided via onPublish.
+   */
+  publishActionLabel?: "校验" | "发布";
   layoutMode?: TopologyLayoutMode;
   onValidateEdit?: (
     input: { bindingId: string; rawValue: string }
   ) => BindingEditValidation | Promise<BindingEditValidation>;
   onPublish?: () => void;
-  onResolveMapping?: (taskId: string) => void;
+  onResolveMapping?: (taskId: string, input: ResolveMappingInput) => void | Promise<void>;
 };
 
 /** @deprecated Import from `./topologyTeachingFixtures` — not for API-mode defaults. */
@@ -45,6 +53,40 @@ export {
 } from "./topologyTeachingFixtures";
 
 type MobilePane = "tree" | "properties" | "detail";
+
+function collectPublishBlockers(input: {
+  incompleteBase: boolean;
+  openMappings: IdentityMappingTask[];
+  diagnostics: TopologyDiagnostic[];
+  editBlocked: boolean;
+  bindings: ProjectParameterBinding[];
+}): string[] {
+  const blockers: string[] = [];
+  if (input.incompleteBase) {
+    blockers.push("缺少 base 配置");
+  }
+  if (input.openMappings.length > 0) {
+    blockers.push(`存在 ${input.openMappings.length} 个未解决身份映射`);
+  }
+  const schemaInvalid = input.bindings.filter((binding) => binding.schemaState === "invalid");
+  if (schemaInvalid.length > 0) {
+    blockers.push(`${schemaInvalid.length} 个绑定 schema 无效`);
+  }
+  const policyFail = input.bindings.filter((binding) => binding.policyState === "fail");
+  if (policyFail.length > 0) {
+    blockers.push(`${policyFail.length} 个绑定 policy 未通过`);
+  }
+  const toolchainErrors = input.diagnostics.filter(
+    (item) => (item.severity ?? "error").toLocaleLowerCase() === "error"
+  );
+  for (const item of toolchainErrors) {
+    blockers.push(item.message);
+  }
+  if (input.editBlocked) {
+    blockers.push("编辑诊断未通过");
+  }
+  return blockers;
+}
 
 export function ProjectTopologyWorkspace({
   projectId,
@@ -58,6 +100,7 @@ export function ProjectTopologyWorkspace({
   incompleteBase = false,
   canEdit = true,
   canPublish = false,
+  publishActionLabel = "校验",
   layoutMode = "desktop",
   onValidateEdit,
   onPublish,
@@ -71,10 +114,14 @@ export function ProjectTopologyWorkspace({
   const [editBlocked, setEditBlocked] = useState(false);
 
   const openMappings = mappingTasks.filter((task) => task.status === "open");
-  const hasCompileErrors = diagnostics.some(
-    (item) => (item.severity ?? "error").toLocaleLowerCase() === "error"
-  );
-  const publishBlocked = incompleteBase || openMappings.length > 0 || hasCompileErrors || editBlocked;
+  const publishBlockers = collectPublishBlockers({
+    incompleteBase,
+    openMappings,
+    diagnostics,
+    editBlocked,
+    bindings
+  });
+  const publishBlocked = publishBlockers.length > 0;
 
   const selectedSourceNode = useMemo(
     () => sourceNodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -121,10 +168,12 @@ export function ProjectTopologyWorkspace({
     ? bindings.find((binding) => binding.id === selectedBindingId) ?? null
     : null;
 
-  const provenanceLabels =
-    selectedEffectiveNode?.effects
-      .filter((effect) => !selectedBinding || effect.propertyName === selectedBinding.propertyKey)
-      .map((effect) => `power.dtso · ${effect.propertyName ?? "node"} · ${effect.effectKind}`) ?? [];
+  const provenanceLabels = buildProvenanceLabels({
+    effects: selectedEffectiveNode?.effects ?? [],
+    sourceNodes,
+    propertyKey: selectedBinding?.propertyKey,
+    nodeLocator: selectedEffectiveNode?.locator ?? selectedBinding?.locator
+  });
 
   const handleSelectNode = (nodeId: string) => {
     setSelectedNodeId(nodeId);
@@ -213,7 +262,7 @@ export function ProjectTopologyWorkspace({
           disabled={!canPublish || publishBlocked}
           onClick={() => onPublish?.()}
         >
-          发布
+          {publishActionLabel}
         </button>
       </header>
 
@@ -235,47 +284,36 @@ export function ProjectTopologyWorkspace({
 
       {view === "source" && selectedSourceNode ? (
         <p className="project-topology-workspace__source-meta">
+          {selectedSourceNode.fileName ? `${selectedSourceNode.fileName} · ` : null}
           {selectedSourceNode.nodePath} · L{selectedSourceNode.startLine}
         </p>
       ) : null}
 
-      {publishBlocked ? (
-        <p className="project-topology-workspace__publish-block" role="status">
-          发布已阻断：
-          {incompleteBase ? "缺少 base；" : null}
-          {openMappings.length > 0 ? `存在 ${openMappings.length} 个未解决映射；` : null}
-          {hasCompileErrors ? "编译诊断未通过；" : null}
-          {editBlocked ? "编辑诊断未通过。" : null}
-        </p>
+      {publishBlockers.length > 0 ? (
+        <section className="project-topology-workspace__publish-block" role="status" aria-label="发布阻断项">
+          <p>{publishActionLabel === "发布" ? "发布已阻断：" : "校验前阻断："}</p>
+          <ul>
+            {publishBlockers.map((blocker) => (
+              <li key={blocker}>{blocker}</li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {diagnostics.length > 0 ? (
         <section aria-label="编译诊断">
           <ul>
             {diagnostics.map((item) => (
-              <li key={`${item.code ?? ""}:${item.message}`}>{item.message}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {openMappings.length > 0 ? (
-        <section aria-label="映射审核">
-          <h3>映射审核</h3>
-          <ul>
-            {openMappings.map((task) => (
-              <li key={task.id}>
-                {task.reason ?? "open mapping"}
-                {onResolveMapping ? (
-                  <button type="button" onClick={() => onResolveMapping(task.id)}>
-                    处理
-                  </button>
-                ) : null}
+              <li key={`${item.code ?? ""}:${item.message}`}>
+                {item.severity ? `[${item.severity}] ` : null}
+                {item.message}
               </li>
             ))}
           </ul>
         </section>
       ) : null}
+
+      <IdentityMappingReview tasks={mappingTasks} onResolve={onResolveMapping} />
 
       <div className="project-topology-workspace__panes">
         {showTree ? (

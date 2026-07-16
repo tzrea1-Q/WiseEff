@@ -106,6 +106,8 @@ export type SourceTopologyProperty = {
 export type SourceTopologyNode = {
   id: string;
   fileVersionId: string;
+  /** Present when the topology API joins revision members / project files. */
+  fileName?: string;
   parentOccurrenceId: string | null;
   name: string;
   unitAddress?: string;
@@ -166,12 +168,32 @@ export type TopologyTree =
 
 export type IdentityMappingTaskStatus = "open" | "resolved" | "dismissed";
 
+export type IdentityMappingCandidate = {
+  logicalNodeId: string;
+  nodeLocator?: string;
+  name?: string;
+  unitAddress?: string;
+};
+
+/**
+ * Structured evidence from identity_mapping_tasks.evidence JSON.
+ * `risk` may be omitted — UI derives high risk when candidates are ambiguous.
+ */
+export type IdentityMappingEvidence = {
+  previousLogicalNodeId?: string | null;
+  previousNodeLocator?: string | null;
+  evidence?: string[];
+  candidates?: IdentityMappingCandidate[];
+  risk?: string | null;
+};
+
 export type IdentityMappingTask = {
   id: string;
   projectId: string;
   configRevisionId: string;
   previousLogicalNodeId: string | null;
   candidateLogicalNodeIds: string[];
+  evidence?: IdentityMappingEvidence | Record<string, unknown> | null;
   status: IdentityMappingTaskStatus;
   reason?: string | null;
   createdAt: string;

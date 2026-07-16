@@ -24,10 +24,19 @@ const OPEN_MAPPING: IdentityMappingTask = {
   projectId: "aurora",
   configRevisionId: "rev-1",
   previousLogicalNodeId: "logical-old",
-  candidateLogicalNodeIds: ["logical-sc8562"],
+  candidateLogicalNodeIds: ["logical-sc8562", "logical-mt5788"],
   status: "open",
   reason: "overlay target ambiguous",
-  createdAt: "2026-07-16T00:00:00.000Z"
+  createdAt: "2026-07-16T00:00:00.000Z",
+  evidence: {
+    previousNodeLocator: "/amba/i2c@FDF5E000/sc8562@6E",
+    evidence: ["unit-address", "ambiguous-candidates"],
+    candidates: [
+      { logicalNodeId: "logical-sc8562", nodeLocator: "/amba/i2c@FDF5E000/sc8562@6E", name: "sc8562" },
+      { logicalNodeId: "logical-mt5788", nodeLocator: "/amba/i2c@FDF5E000/mt5788@55", name: "mt5788" }
+    ],
+    risk: "高风险（歧义）"
+  }
 };
 
 const COMPILE_DIAGNOSTICS: TopologyDiagnostic[] = [
@@ -104,7 +113,7 @@ describe("ProjectTopologyWorkspace", () => {
 
     const effectiveDetail = within(workspace).getByRole("region", { name: "绑定详情" });
     expect(within(effectiveDetail).getByText(/来源链|provenance/i)).toBeVisible();
-    expect(within(effectiveDetail).getByText(/power\.dtso/)).toBeVisible();
+    expect(within(effectiveDetail).getByText(/power\.dtso · \/amba\/i2c@FDF5E000\/sc8562@6E · L48 · set/)).toBeVisible();
   });
 
   it("marks unresolved phandle targets in source mode", () => {
@@ -158,7 +167,7 @@ describe("ProjectTopologyWorkspace", () => {
     fireEvent.click(within(detail).getByRole("button", { name: /校验|应用诊断/i }));
 
     expect(await within(detail).findByText(/cell count must be 3/)).toBeVisible();
-    expect(within(workspace).getByRole("button", { name: /发布/ })).toBeDisabled();
+    expect(within(workspace).getByRole("button", { name: "校验" })).toBeDisabled();
     expect(onPublish).not.toHaveBeenCalled();
   });
 
@@ -173,9 +182,46 @@ describe("ProjectTopologyWorkspace", () => {
 
     const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
     expect(within(workspace).getByRole("region", { name: "映射审核" })).toBeVisible();
-    expect(within(workspace).getByText(/Undefined node reference: gpio99/)).toBeVisible();
-    expect(within(workspace).getByRole("button", { name: /发布/ })).toBeDisabled();
-    expect(within(workspace).getByText(/发布已阻断|无法发布/)).toBeVisible();
+    expect(within(workspace).getAllByText(/Undefined node reference: gpio99/).length).toBeGreaterThan(0);
+    expect(within(workspace).getByRole("button", { name: "校验" })).toBeDisabled();
+    const blockers = within(workspace).getByRole("status", { name: "发布阻断项" });
+    expect(blockers).toHaveTextContent(/未解决身份映射/);
+    expect(blockers).toHaveTextContent(/Undefined node reference: gpio99/);
+    expect(within(workspace).getByText(/高风险（歧义）/)).toBeVisible();
+    expect(within(workspace).getByRole("list", { name: "映射候选" })).toBeVisible();
+    expect(within(workspace).getByRole("list", { name: "映射证据" })).toBeVisible();
+  });
+
+  it("resolves identity mapping with selected candidate and reason", () => {
+    const onResolveMapping = vi.fn();
+    renderWorkspace({
+      canPublish: true,
+      mappingTasks: [OPEN_MAPPING],
+      onResolveMapping
+    });
+
+    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    const review = within(workspace).getByRole("region", { name: "映射审核" });
+    fireEvent.change(within(review).getByRole("combobox", { name: "选择映射候选" }), {
+      target: { value: "logical-sc8562" }
+    });
+    fireEvent.change(within(review).getByLabelText("映射确认原因"), {
+      target: { value: "Same SC8562 instance" }
+    });
+    fireEvent.click(within(review).getByRole("button", { name: "确认映射" }));
+
+    expect(onResolveMapping).toHaveBeenCalledWith("map-task-1", {
+      decision: "resolved",
+      selectedLogicalNodeId: "logical-sc8562",
+      reason: "Same SC8562 instance"
+    });
+  });
+
+  it("labels toolbar action as 校验 by default (validate-only)", () => {
+    renderWorkspace({ canPublish: true });
+    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    expect(within(workspace).getByRole("button", { name: "校验" })).toBeEnabled();
+    expect(within(workspace).queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
   });
 
   it("shows blocking incomplete state when base is missing", () => {

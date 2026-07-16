@@ -90,6 +90,8 @@ export function BindingDetailPanel({
           <h4>源 occurrence</h4>
           {sourceNode ? (
             <p>
+              {sourceNode.fileName ? `${sourceNode.fileName} · ` : null}
+              {sourceNode.fileVersionId ? `fv:${sourceNode.fileVersionId} · ` : null}
               {sourceNode.nodePath} · L{sourceNode.startLine}
               {effects[0] ? ` · ${effects[0].effectKind}` : " · set"}
             </p>

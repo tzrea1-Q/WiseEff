@@ -565,6 +565,8 @@ type SourcePropertyRow = {
   source_order: number | string;
 };
 
+type SourceNodeRowWithFile = SourceNodeRow & { file_name: string | null };
+
 export async function listSourceTopology(
   db: Queryable,
   configRevisionId: string,
@@ -572,6 +574,7 @@ export async function listSourceTopology(
   nodes: Array<{
     id: string;
     fileVersionId: string;
+    fileName?: string;
     parentOccurrenceId: string | null;
     name: string;
     unitAddress?: string;
@@ -598,14 +601,17 @@ export async function listSourceTopology(
   }>;
 }> {
   const [nodesResult, propsResult] = await Promise.all([
-    db.query<SourceNodeRow>(
+    db.query<SourceNodeRowWithFile>(
       `
-      select id, file_version_id, parent_occurrence_id, name, unit_address, labels, ref_target,
-             is_overlay_root, node_path, start_line, start_column, end_line, end_column,
-             content_hash, source_order
-      from dts_node_occurrences
-      where config_revision_id = $1
-      order by source_order asc
+      select n.id, n.file_version_id, f.file_name, n.parent_occurrence_id, n.name, n.unit_address,
+             n.labels, n.ref_target, n.is_overlay_root, n.node_path, n.start_line, n.start_column,
+             n.end_line, n.end_column, n.content_hash, n.source_order
+      from dts_node_occurrences n
+      left join dts_config_revision_members m
+        on m.file_version_id = n.file_version_id and m.config_revision_id = n.config_revision_id
+      left join project_parameter_files f on f.id = m.file_id
+      where n.config_revision_id = $1
+      order by n.source_order asc
       `,
       [configRevisionId],
     ),
@@ -632,6 +638,7 @@ export async function listSourceTopology(
     nodes: nodesResult.rows.map((node) => ({
       id: node.id,
       fileVersionId: node.file_version_id,
+      ...(node.file_name ? { fileName: node.file_name } : {}),
       parentOccurrenceId: node.parent_occurrence_id,
       name: node.name,
       unitAddress: node.unit_address ?? undefined,

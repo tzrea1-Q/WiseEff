@@ -12,6 +12,7 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
   {
     id: "src-amba",
     fileVersionId: "fv-base",
+    fileName: "board.dts",
     parentOccurrenceId: null,
     name: "amba",
     labels: ["amba"],
@@ -28,6 +29,7 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
   {
     id: "src-amba-overlay",
     fileVersionId: "fv-overlay",
+    fileName: "power.dtso",
     parentOccurrenceId: null,
     name: "amba",
     labels: [],
@@ -45,6 +47,7 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
   {
     id: "src-i2c",
     fileVersionId: "fv-base",
+    fileName: "board.dts",
     parentOccurrenceId: "src-amba",
     name: "i2c",
     unitAddress: "FDF5E000",
@@ -62,6 +65,7 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
   {
     id: "src-sc8562",
     fileVersionId: "fv-overlay",
+    fileName: "power.dtso",
     parentOccurrenceId: "src-i2c",
     name: "sc8562",
     unitAddress: "6E",
@@ -90,6 +94,7 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
   {
     id: "src-unresolved",
     fileVersionId: "fv-overlay",
+    fileName: "power.dtso",
     parentOccurrenceId: null,
     name: "missing",
     labels: [],

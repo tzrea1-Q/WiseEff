@@ -1050,7 +1050,7 @@ export async function createBindingDraft(
     status: ingested.status,
     ...semanticCounts,
     toolchainOk: toolchainOutcome.ok,
-    toolchainFailureCode: toolchainOutcome.failureCode,
+    toolchainFailureCode: toolchainOutcome.ok ? null : toolchainOutcome.failureCode,
   });
   if (!finalGate.ok) {
     await ensureCandidateKeepStatus(db, candidateRevisionId, finalGate.keepStatus);

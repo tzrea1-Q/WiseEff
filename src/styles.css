@@ -19191,7 +19191,48 @@ body.xiaoze-popup-resize-active {
 
 .project-topology-workspace__publish-block {
   margin: 0;
-  color: #9a3412;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--destructive, #b42318) 10%, transparent);
+  color: var(--foreground);
+}
+
+.project-topology-workspace__publish-block ul {
+  margin: 4px 0 0;
+  padding-left: 1.25rem;
+}
+
+.identity-mapping-review {
+  display: grid;
+  gap: 8px;
+}
+
+.identity-mapping-review__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.identity-mapping-review__item {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border, #d4d4d8);
+  border-radius: 8px;
+}
+
+.identity-mapping-review__item header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.identity-mapping-review__form {
+  display: grid;
+  gap: 8px;
 }
 
 .topology-tree {

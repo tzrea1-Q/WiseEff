@@ -138,6 +138,33 @@ export function ParameterAdminPage({
     };
   }, [parameterAdminClient, reloadAdminModules]);
 
+  const reloadSpecs = useCallback(async () => {
+    if (!topologyRepository) {
+      setSpecRows([]);
+      return;
+    }
+    setSpecLoading(true);
+    try {
+      const items = await topologyRepository.listSpecs({});
+      setSpecRows(
+        items.map((item) =>
+          mapParameterSpecToLibraryRow({
+            id: item.id,
+            propertyKey: item.propertyKey,
+            specificationKey: item.specificationKey,
+            driverModule: item.driverModule,
+            lifecycle: item.lifecycle,
+            currentVersion: item.currentVersion
+          })
+        )
+      );
+    } catch {
+      setSpecRows([]);
+    } finally {
+      setSpecLoading(false);
+    }
+  }, [topologyRepository]);
+
   useEffect(() => {
     if (!topologyRepository) {
       setSpecRows([]);
@@ -148,41 +175,16 @@ export function ParameterAdminPage({
     }
 
     let cancelled = false;
-    setSpecLoading(true);
-    topologyRepository
-      .listSpecs({})
-      .then((items) => {
-        if (cancelled) {
-          return;
-        }
-        setSpecRows(
-          items.map((item) =>
-            mapParameterSpecToLibraryRow({
-              id: item.id,
-              propertyKey: item.propertyKey,
-              specificationKey: item.specificationKey,
-              driverModule: item.driverModule,
-              lifecycle: item.lifecycle,
-              currentVersion: item.currentVersion
-            })
-          )
-        );
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setSpecRows([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setSpecLoading(false);
-        }
-      });
+    reloadSpecs().catch(() => {
+      if (!cancelled) {
+        setSpecRows([]);
+      }
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [topologyRepository]);
+  }, [reloadSpecs, topologyRepository]);
 
   const reloadReviewTasks = useCallback(async () => {
     if (!topologyRepository) {
@@ -240,12 +242,23 @@ export function ParameterAdminPage({
           parameterSpecId: input.parameterSpecId,
           reason: input.reason
         });
-        await reloadReviewTasks();
+        // Spec resolve rewrites occurrence→spec→binding; reload queue + library.
+        await Promise.all([reloadReviewTasks(), reloadSpecs()]);
+        if (selectedSpecId) {
+          try {
+            const detail = await topologyRepository.getSpec(selectedSpecId);
+            setSpecDetail(
+              toSpecDetailView(detail, specRows.find((row) => row.id === selectedSpecId)?.usageCount ?? 0)
+            );
+          } catch {
+            // Keep prior detail if refresh fails; queue/library already refreshed.
+          }
+        }
       } catch {
         setReviewActionError("批准失败，请重试。");
       }
     },
-    [reloadReviewTasks, topologyRepository]
+    [reloadReviewTasks, reloadSpecs, selectedSpecId, specRows, topologyRepository]
   );
 
   const handleDismissReview = useCallback(
@@ -259,12 +272,12 @@ export function ParameterAdminPage({
           decision: "dismissed",
           reason: input.reason
         });
-        await reloadReviewTasks();
+        await Promise.all([reloadReviewTasks(), reloadSpecs()]);
       } catch {
         setReviewActionError("驳回失败，请重试。");
       }
     },
-    [reloadReviewTasks, topologyRepository]
+    [reloadReviewTasks, reloadSpecs, topologyRepository]
   );
 
   const handleSelectSpec = useCallback(

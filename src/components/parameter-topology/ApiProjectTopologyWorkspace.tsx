@@ -5,6 +5,7 @@ import type {
   EffectiveTopologyNode,
   IdentityMappingTask,
   ProjectParameterBinding,
+  ResolveMappingInput,
   SourceTopologyNode,
   TopologyDiagnostic
 } from "@/domain/parameter-topology/types";
@@ -143,6 +144,7 @@ export function ApiProjectTopologyWorkspace({
   const [reloadToken, setReloadToken] = useState(0);
   const [preferredRevisionId, setPreferredRevisionId] = useState<string | undefined>();
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
+  const [mappingMessage, setMappingMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!repository) {
@@ -251,14 +253,14 @@ export function ApiProjectTopologyWorkspace({
     }
   };
 
-  const handlePublish = async () => {
+  /** Validate only — no publish/release transition exists on this surface. */
+  const handleValidate = async () => {
     if (!repository || loadState.kind !== "ready") return;
     setPublishMessage(null);
     try {
       const run = await repository.validateRevision(projectId, loadState.revisionId);
       if (run.status === "passed") {
         setPublishMessage("校验通过，修订已具备发布条件。");
-        setReloadToken((token) => token + 1);
         return;
       }
       setPublishMessage(`校验未通过（${run.stage}）。`);
@@ -281,6 +283,20 @@ export function ApiProjectTopologyWorkspace({
         return;
       }
       setPublishMessage(mapped.message);
+    }
+  };
+
+  const handleResolveMapping = async (taskId: string, input: ResolveMappingInput) => {
+    if (!repository || loadState.kind !== "ready") return;
+    setMappingMessage(null);
+    try {
+      await repository.resolveMapping(taskId, input);
+      setMappingMessage(input.decision === "resolved" ? "映射已确认，正在刷新拓扑…" : "映射已驳回，正在刷新拓扑…");
+      setPreferredRevisionId(undefined);
+      setReloadToken((token) => token + 1);
+    } catch (error) {
+      const mapped = mapParameterTopologyError(error);
+      setMappingMessage(mapped.message);
     }
   };
 
@@ -335,6 +351,11 @@ export function ApiProjectTopologyWorkspace({
           {publishMessage}
         </p>
       ) : null}
+      {mappingMessage ? (
+        <p className="project-topology-workspace__mapping-message" role="status">
+          {mappingMessage}
+        </p>
+      ) : null}
       <ProjectTopologyWorkspace
         projectId={projectId}
         configSetId={loadState.configSetId}
@@ -347,10 +368,14 @@ export function ApiProjectTopologyWorkspace({
         incompleteBase={loadState.incompleteBase}
         canEdit={canEdit && loadState.status !== "invalid"}
         canPublish={canPublish}
+        publishActionLabel="校验"
         layoutMode={layoutMode}
         onValidateEdit={handleValidateEdit}
         onPublish={() => {
-          void handlePublish();
+          void handleValidate();
+        }}
+        onResolveMapping={(taskId, input) => {
+          void handleResolveMapping(taskId, input);
         }}
       />
     </>

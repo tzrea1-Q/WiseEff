@@ -241,6 +241,7 @@ export async function listIdentityMappingTasks(
       configRevisionId: item.configRevisionId,
       previousLogicalNodeId: item.previousLogicalNodeId,
       candidateLogicalNodeIds: item.candidateLogicalNodeIds,
+      evidence: item.evidence ?? {},
       status: item.status,
       reason: item.reason,
       createdAt: item.createdAt,

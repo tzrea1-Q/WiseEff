@@ -227,6 +227,7 @@ describe("ParameterAdminPage", () => {
       })
     );
     await waitFor(() => expect(listSpecReviewTasks).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(listSpecs).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(within(queue).getByText("没有待审核的推理规格。")).toBeInTheDocument());
   });
 
