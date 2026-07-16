@@ -6,6 +6,7 @@ import type {
   ProjectParameterInitializationSnapshotItem,
   RiskLevel
 } from "./types";
+import { buildInitializationSuggestion } from "../parameter-topology/types";
 
 type CandidateInput = {
   primarySourceProjectId: string;
@@ -56,6 +57,14 @@ function resolveDefinitionRecommendedValue(
   parameter: PowerManagementConfig["parameterLibrary"][number]
 ) {
   for (const value of Object.values(parameter.values)) {
+    const suggestion = buildInitializationSuggestion({
+      policyTarget: (value as { policyTarget?: unknown } | undefined)?.policyTarget,
+      schemaDefault: (value as { schemaDefault?: unknown } | undefined)?.schemaDefault,
+      exampleValue: (value as { exampleValue?: unknown } | undefined)?.exampleValue
+    });
+    if (suggestion.suggestion != null && String(suggestion.suggestion).trim()) {
+      return String(suggestion.suggestion);
+    }
     const recommended = value?.recommendedValue?.trim();
     if (recommended) {
       return recommended;
@@ -123,6 +132,15 @@ export function getInitializationCandidateParameters(
       const alternatives = sourcePriority.filter(
         (projectId) => projectId !== sourceProjectId && hasProjectValue(parameter.values, projectId)
       );
+      const suggestion = buildInitializationSuggestion({
+        policyTarget: (value as { policyTarget?: unknown } | undefined)?.policyTarget,
+        schemaDefault: (value as { schemaDefault?: unknown } | undefined)?.schemaDefault,
+        exampleValue: (value as { exampleValue?: unknown } | undefined)?.exampleValue
+      });
+      const recommendedValue =
+        suggestion.suggestion != null && String(suggestion.suggestion).trim()
+          ? String(suggestion.suggestion)
+          : value?.recommendedValue ?? "";
 
       return [
         {
@@ -131,10 +149,10 @@ export function getInitializationCandidateParameters(
           sourceRole: sourceProjectId === input.primarySourceProjectId ? "primary" : "supplement",
           module: parameter.module,
           risk: parameter.risk,
-          recommendedValue: value?.recommendedValue ?? "",
+          recommendedValue,
           currentValueState: "pending_project_confirmation",
           alternativeSourceProjectIds: alternatives,
-          needsRecommendedValueConfirmation: !value?.recommendedValue?.trim()
+          needsRecommendedValueConfirmation: !recommendedValue.trim()
         }
       ];
     });

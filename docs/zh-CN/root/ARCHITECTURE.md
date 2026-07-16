@@ -15,6 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
+- 参数身份已从路径派生模型转向 `parameter-topology` / `parameter-specs`（源树 vs 生效树、稳定 binding、版本化规格）；生产切换见 `docs/runbooks/parameter-identity-cutover.md`。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
 ## 同类中文文档

@@ -1,0 +1,23 @@
+$id: wiseeff/wiseeff-t91407.yaml
+title: wiseeff,t91407
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,t91407
+compatible:
+  - wiseeff,t91407
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  battct_id_gpio-supply:
+    valueShape: phandle-list
+    exampleValue: <&huawei_batt_identify>
+    constraints: {}
+  onewire-gpio:
+    valueShape: mixed
+    exampleValue: <&gpio2 14 0>
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}

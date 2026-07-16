@@ -15,6 +15,7 @@ export type ParameterListQuery = {
   moduleId?: string;
   includeDescendants?: boolean;
   risk?: Array<ParameterRecord["risk"]>;
+  limit?: number;
 };
 
 export type ChangeRequestListQuery = {

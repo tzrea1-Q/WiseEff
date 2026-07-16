@@ -1,4 +1,5 @@
 import type { Database } from "../../../shared/database/client";
+import { LEGACY_IDENTITY_SQL } from "../legacyParameterIdentityNames";
 import type { HotspotDimension } from "../../../../src/domain/parameters/dashboardTypes";
 
 export type HotspotGroupAggregate = {
@@ -32,11 +33,20 @@ type AggregateInput = {
   windowEnd: string;
 };
 
+/** Policy/schema drift replaces legacy recommended-vs-current scoring. */
 const DRIFT_EXPR = `
   case
-    when ppv.current_value ~ '^-?[0-9.]+$' and ppv.recommended_value ~ '^-?[0-9.]+$' then
-      abs(ppv.current_value::numeric - ppv.recommended_value::numeric)
-      / greatest(abs(ppv.current_value::numeric), abs(ppv.recommended_value::numeric), 1)
+    when b.raw_value ~ '^-?[0-9.]+$'
+      and coalesce(ppt.target_value #>> '{}', psv.schema_default #>> '{}', '') ~ '^-?[0-9.]+$' then
+      abs(
+        b.raw_value::numeric
+        - coalesce(ppt.target_value #>> '{}', psv.schema_default #>> '{}', '0')::numeric
+      )
+      / greatest(
+        abs(b.raw_value::numeric),
+        abs(coalesce(ppt.target_value #>> '{}', psv.schema_default #>> '{}', '0')::numeric),
+        1
+      )
       * 100
     else 0
   end
@@ -170,8 +180,8 @@ async function aggregateProjectGroups(db: Database, input: AggregateInput): Prom
       ) as contributors_all_time,
       max(h.changed_at) as last_changed_at
     from projects p
-    join project_parameter_values ppv on ppv.project_id = p.id
-    join parameter_definitions d on d.id = ppv.parameter_definition_id
+    join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.project_id = p.id
+    join ${LEGACY_IDENTITY_SQL.definitionsTable} d on d.id = ppv.parameter_definition_id
     left join parameter_change_requests cr
       on cr.organization_id = p.organization_id
      and cr.project_id = p.id
@@ -239,8 +249,8 @@ async function aggregateModuleGroups(db: Database, input: AggregateInput): Promi
         where h.changed_by_user_id is not null
       ) as contributors_all_time,
       max(h.changed_at) as last_changed_at
-    from parameter_definitions d
-    join project_parameter_values ppv on ppv.parameter_definition_id = d.id
+    from ${LEGACY_IDENTITY_SQL.definitionsTable} d
+    join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.parameter_definition_id = d.id
     join projects p on p.id = ppv.project_id
     left join parameter_change_requests cr
       on cr.organization_id = d.organization_id
@@ -309,8 +319,8 @@ async function aggregateParameterGroups(db: Database, input: AggregateInput): Pr
         where h.changed_by_user_id is not null
       ) as contributors_all_time,
       max(h.changed_at) as last_changed_at
-    from parameter_definitions d
-    join project_parameter_values ppv on ppv.parameter_definition_id = d.id
+    from ${LEGACY_IDENTITY_SQL.definitionsTable} d
+    join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.parameter_definition_id = d.id
     join projects p on p.id = ppv.project_id
     left join parameter_change_requests cr
       on cr.organization_id = d.organization_id

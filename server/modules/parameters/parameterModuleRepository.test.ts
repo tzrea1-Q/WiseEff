@@ -18,6 +18,13 @@ function createFakeDb(rowsOrQueue: unknown[] | Array<unknown[] | ((call: QueryCa
   const db: Queryable = {
     query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
       const call = { text, values };
+      // Cutover probes must not consume the test SQL queue.
+      if (text.includes("parameter_identity_cutovers")) {
+        return { rows: [{ c: "0" } as Row], rowCount: 1 };
+      }
+      if (text.includes("information_schema.tables") && text.includes("parameter_definitions")) {
+        return { rows: [{ c: "1" } as Row], rowCount: 1 };
+      }
       calls.push(call);
       let next = queue.shift();
       if (typeof next === "function") {

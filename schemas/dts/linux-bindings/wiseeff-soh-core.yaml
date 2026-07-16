@@ -1,0 +1,26 @@
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-soh-core.yaml#
+$title: wiseeff,soh_core
+description: WiseEff vendor binding generated for dt-validate coverage of golden power fixtures.
+maintainers:
+  - WiseEff
+select:
+  properties:
+    compatible:
+      contains:
+        const: wiseeff,soh_core
+  required:
+    - compatible
+properties:
+  compatible: true
+  status:
+    enum:
+      - okay
+      - disabled
+      - reserved
+      - fail
+      - fail-needs-probe
+  model: true
+additionalProperties: true
+unevaluatedProperties: true

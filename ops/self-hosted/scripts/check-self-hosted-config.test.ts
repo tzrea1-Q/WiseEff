@@ -8,7 +8,11 @@ const validPackageJson = {
     "queue:check": "tsx scripts/check-durable-queue.ts",
     "restore:drill": "tsx scripts/run-restore-drill.ts",
     "selfhost:check": "tsx ops/self-hosted/scripts/check-self-hosted-config.ts",
-    "selfhost:smoke": "tsx ops/self-hosted/scripts/run-self-hosted-smoke.ts"
+    "selfhost:smoke": "tsx ops/self-hosted/scripts/run-self-hosted-smoke.ts",
+    "dtc:check": "tsx scripts/check-dtc.ts",
+    "dtc:seed:compile": "tsx scripts/compile-dts-seed.ts",
+    "dts:toolchain:check": "tsx scripts/check-dts-toolchain.ts --required",
+    "dts:config:validate": "tsx scripts/validate-dts-config-set.ts"
   }
 };
 
@@ -56,20 +60,25 @@ services:
       - "80:80"
       - "443:443"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider --header=\"Host: \${WISEEFF_SITE_HOST}\" http://127.0.0.1/health/live"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:2019/config/"]
 volumes:
   wiseeff-postgres-data:
 `;
 
 const validDockerfile = `
+FROM node:22.21.1-alpine AS dtc-builder
+ARG DTC_COMMIT=8f48565e5cfedc74d3f7512f1e0188e9d85dc1de
 FROM node:22.21.1-alpine AS deps
 FROM node:22.21.1-alpine AS runtime
 ARG VITE_WISEEFF_RUNTIME_MODE=api
 ARG VITE_WISEEFF_API_BASE_URL
 ENV VITE_WISEEFF_RUNTIME_MODE=$VITE_WISEEFF_RUNTIME_MODE
 ENV VITE_WISEEFF_API_BASE_URL=$VITE_WISEEFF_API_BASE_URL
-RUN apk add --no-cache curl
-RUN npm run build
+COPY tools/dts-toolchain/requirements.txt /tmp/dts-toolchain-requirements.txt
+RUN pip3 install --break-system-packages --no-cache-dir -r /tmp/dts-toolchain-requirements.txt
+COPY --from=dtc-builder /opt/dtc /opt/dtc
+RUN dtc --version && fdtoverlay --version && dt-validate --version
+RUN npx tsc -b && npx vite build
 `;
 
 const validDockerignore = `
@@ -186,7 +195,18 @@ describe("self-hosted config metadata", () => {
     });
 
     expect(result.status).toBe("failed");
-    expect(result.missingScripts).toEqual(["selfhost:check", "selfhost:smoke", "backup:drill", "restore:drill", "backup:check", "queue:check"]);
+    expect(result.missingScripts).toEqual([
+      "selfhost:check",
+      "selfhost:smoke",
+      "backup:drill",
+      "restore:drill",
+      "backup:check",
+      "queue:check",
+      "dtc:check",
+      "dtc:seed:compile",
+      "dts:toolchain:check",
+      "dts:config:validate"
+    ]);
     expect(result.missingServices).toEqual(["postgres", "redis", "worker", "web", "proxy"]);
     expect(result.missingComposeTokens).toEqual(
       expect.arrayContaining([
@@ -199,6 +219,9 @@ describe("self-hosted config metadata", () => {
       ])
     );
     expect(result.missingDockerfileTokens).toEqual(expect.arrayContaining(["ARG VITE_WISEEFF_API_BASE_URL"]));
+    expect(result.missingDockerfileTokens).toEqual(
+      expect.arrayContaining(["ARG DTC_COMMIT=8f48565e5cfedc74d3f7512f1e0188e9d85dc1de"])
+    );
     expect(result.missingDockerignoreTokens).toEqual(expect.arrayContaining(["**/.env", "**/.env.*"]));
     expect(result.missingEnvKeys).toEqual(
       expect.arrayContaining([

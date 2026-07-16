@@ -156,8 +156,9 @@ describe("project parameter file upload service", () => {
     });
     expect(txCalls.find((call) => call.text.includes("insert into project_parameter_files"))).toBeTruthy();
     const insertVersionCall = txCalls.find((call) => call.text.includes("insert into project_parameter_file_versions"));
-    expect(insertVersionCall?.values[2]).toBe(1);
-    expect(insertVersionCall?.values[6]).toBe(JSON.stringify({ "battery/temp_max": { value: "85" } }));
+    expect(insertVersionCall?.text).toContain("coalesce");
+    expect(insertVersionCall?.values[2]).toBe("org-1/stored-config.json");
+    expect(insertVersionCall?.values[5]).toBe(JSON.stringify({ "battery/temp_max": { value: "85" } }));
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))).toBeTruthy();
     expect(result.file.currentVersionNumber).toBe(1);
     expect(result.version.versionNumber).toBe(1);
@@ -179,7 +180,8 @@ describe("project parameter file upload service", () => {
 
     expect(txCalls.find((call) => call.text.includes("insert into project_parameter_files"))).toBeFalsy();
     const insertVersionCall = txCalls.find((call) => call.text.includes("insert into project_parameter_file_versions"));
-    expect(insertVersionCall?.values[2]).toBe(2);
+    expect(insertVersionCall?.text).toContain("coalesce");
+    expect(insertVersionCall?.values[2]).toBe("org-1/stored-config.json");
     expect(result.version.versionNumber).toBe(2);
   });
 
@@ -211,23 +213,29 @@ describe("project parameter file upload service", () => {
     expect(put).not.toHaveBeenCalled();
   });
 
-  it("rejects DTS with /include/ before storage or version insert", async () => {
-    const { db, txCalls } = createFakeDb();
+  it("allows DTS with /include/ (config-set resolver owns include diagnostics)", async () => {
+    const { db, txCalls } = createFakeDb([
+      [],
+      [fileRow({ file_name: "board.dts", format: "dts" })],
+      [versionRow({ id: "ver-include-1", storage_key: "org-1/stored-board.dts", size_bytes: 48 })],
+      [],
+      []
+    ]);
     const { objectStore, put } = makeObjectStore();
     const bytes = Buffer.from('/include/ "pin.dtsi"\n/ { board_id = <0>; };\n', "utf8");
+    vi.mocked(syncFileVersion).mockClear();
 
-    await expect(
-      uploadProjectParameterFile(db, objectStore, adminAuth(), {
-        projectId: "project-1",
-        fileName: "board.dts",
-        bytes
-      })
-    ).rejects.toMatchObject({
-      code: "VALIDATION_FAILED",
-      details: { code: "dts-include-unsupported" }
+    const result = await uploadProjectParameterFile(db, objectStore, adminAuth(), {
+      projectId: "project-1",
+      fileName: "board.dts",
+      bytes
     });
-    expect(put).not.toHaveBeenCalled();
-    expect(txCalls.find((call) => call.text.includes("insert into project_parameter_files"))).toBeFalsy();
+
+    expect(result.file.currentVersionNumber).toBe(1);
+    expect(result.unsupportedConstructs).toBeUndefined();
+    expect(put).toHaveBeenCalled();
+    expect(txCalls.find((call) => call.text.includes("insert into project_parameter_files"))).toBeTruthy();
+    expect(syncFileVersion).toHaveBeenCalled();
   });
 
   it("uploads DTS with @address/&label overlays and syncs (supported by structural parse)", async () => {

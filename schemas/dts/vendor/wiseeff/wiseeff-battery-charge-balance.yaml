@@ -1,0 +1,19 @@
+$id: wiseeff/wiseeff-battery-charge-balance.yaml
+title: wiseeff,battery_charge_balance
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,battery_charge_balance
+compatible:
+  - wiseeff,battery_charge_balance
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}
+  unbalance_th:
+    valueShape: u32-array
+    exampleValue: <100 10000>
+    constraints: {}

@@ -61,14 +61,18 @@ test.describe("M5.11 accessibility quality gate", () => {
 
     await prepareInteractionSurface(page);
 
+    // Tablet layout opens binding detail as a dialog drawer (desktop keeps it inline).
+    await page.setViewportSize({ width: 900, height: 1024 });
     await page.goto("/parameters");
     await prepareInteractionSurface(page);
-    const firstDetailButton = page.getByRole("button", { name: /^查看 / }).first();
-    await expect(firstDetailButton).toBeVisible();
-    await firstDetailButton.click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await scan(page, testInfo, "parameter-detail-dialog");
+    const workspace = page.getByRole("region", { name: "项目拓扑工作区" });
+    await expect(workspace).toBeVisible({ timeout: 15_000 });
+    await workspace.getByRole("searchbox", { name: "搜索绑定" }).fill("gpio_int");
+    await workspace.getByRole("cell", { name: "gpio_int" }).first().click();
+    await expect(page.getByRole("dialog", { name: "绑定详情" })).toBeVisible();
+    await scan(page, testInfo, "parameter-binding-detail-dialog");
 
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/logs");
     await prepareInteractionSurface(page);
     await page.getByRole("toolbar", { name: /日志(?:分析工作台|智能分析)页面操作/ }).getByRole("button", { name: "上传新日志" }).click();

@@ -175,6 +175,71 @@ export const routeManifest = [
     stability: "mvp"
   },
 
+  { id: "parameterSpecs.list", method: "GET", path: "/api/v2/parameter-specs", module: "parameters", stability: "mvp" },
+  {
+    id: "parameterSpecs.get",
+    method: "GET",
+    path: "/api/v2/parameter-specs/:specId",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.listReviewTasks",
+    method: "GET",
+    path: "/api/v2/parameter-spec-review-tasks",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.resolveReviewTask",
+    method: "POST",
+    path: "/api/v2/parameter-spec-review-tasks/:taskId/resolve",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.getTopology",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.listBindings",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-bindings",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.listIdentityMappingTasks",
+    method: "GET",
+    path: "/api/v2/identity-mapping-tasks",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.resolveIdentityMappingTask",
+    method: "POST",
+    path: "/api/v2/identity-mapping-tasks/:taskId/resolve",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.validateConfigRevision",
+    method: "POST",
+    path: "/api/v2/projects/:projectId/config-revisions/:revisionId/validate",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.createBindingDraft",
+    method: "POST",
+    path: "/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts",
+    module: "parameters",
+    stability: "mvp"
+  },
+
   { id: "logs.uploadFile", method: "POST", path: "/api/v1/log-files", module: "logs", stability: "mvp" },
   { id: "logs.upload", method: "POST", path: "/api/v1/logs", module: "logs", stability: "mvp" },
   { id: "logs.list", method: "GET", path: "/api/v1/logs", module: "logs", stability: "mvp" },

@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
 import { detectFileUiDraftConflict, resolveParameterFileConflict } from "./conflictService";
 
 type QueryCall = {
@@ -18,6 +19,13 @@ function createFakeDb(results: QueuedResult[] = []) {
 
   const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
     const call = { text, values };
+    // Cutover probes must not consume the queued fixture rows.
+    if (text.includes("parameter_identity_cutovers")) {
+      return { rows: [{ c: "0" } as Row], rowCount: 1 };
+    }
+    if (text.includes("information_schema.tables") && text.includes("parameter_definitions")) {
+      return { rows: [{ c: "1" } as Row], rowCount: 1 };
+    }
     target.push(call);
     const next = results.shift() ?? [];
     const rows = typeof next === "function" ? next(call) : next;
@@ -52,6 +60,10 @@ function reviewerAuth(): AuthContext {
 }
 
 describe("parameter file conflict service", () => {
+  beforeEach(() => {
+    resetParameterIdentityCutoverCache();
+  });
+
   it("file_sync + manual with different value creates conflict", async () => {
     const { db, calls } = createFakeDb([
       [
@@ -119,7 +131,9 @@ describe("parameter file conflict service", () => {
       "draft-file",
       "draft-ui",
       "85",
-      "82"
+      "82",
+      null,
+      null
     ]);
   });
 

@@ -1,0 +1,15 @@
+$id: wiseeff/wiseeff-fm1230-swi.yaml
+title: wiseeff,fm1230_swi
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,fm1230_swi
+compatible:
+  - wiseeff,fm1230_swi
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}

@@ -1,0 +1,5 @@
+/plugin/;
+
+&led {
+	blink_ms = <300>;
+};

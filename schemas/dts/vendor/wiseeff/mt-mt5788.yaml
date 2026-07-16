@@ -1,0 +1,62 @@
+$id: wiseeff/mt-mt5788.yaml
+title: mt,mt5788
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/mt,mt5788
+compatible:
+  - mt,mt5788
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  compatible:
+    valueShape: string-list
+    exampleValue: '"mt,mt5788"'
+    constraints: {}
+  gpio_en:
+    valueShape: mixed
+    exampleValue: <&gpio2 26 0>
+    constraints: {}
+  gpio_int:
+    valueShape: mixed
+    exampleValue: <&gpio6 15 0>
+    constraints:
+      cells: 3
+      description: phandle pin flags
+    documentation: MT5788 interrupt GPIO phandle-array (pin + flags).
+  prevfod1_product_list:
+    valueShape: bytes
+    exampleValue: /bits/ 8 <17>
+    constraints: {}
+  reg:
+    valueShape: u32-array
+    exampleValue: <0x2B>
+    constraints: {}
+  rx_fod_cond:
+    valueShape: string-list
+    exampleValue: "\"0\", \"-1\", \"2\", \"5000\",\n\t\t\t\t\"31\", \"-1\", \"-1\", \"15000\""
+    constraints: {}
+  rx_mod_cm_cfg:
+    valueShape: bytes
+    exampleValue: /bits/ 8 <0x5 0x5 0x5>
+    constraints: {}
+  rx_ploss_th0:
+    valueShape: bytes
+    exampleValue: /bits/ 8 <0x19 0x32 0x4B 0x64 0x7D 0x96 0xAF 0xE1 0xEB 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0xFF>
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}
+  time_para:
+    valueShape: u32-array
+    exampleValue: "<\n\t\t\t\t1800 1250\n\t\t\t\t0 2500\n\t\t\t>"
+    constraints: {}
+  time_para_group:
+    valueShape: string-list
+    exampleValue: "\"SC_2\", \"1\", \"time_para01\",\n\t\t\t\t\"SC_4\", \"0\", \"time_para\""
+    constraints: {}
+  tx_current_fod_para:
+    valueShape: string-list
+    exampleValue: "\"3\", \"550\", \"9900\", \"300\", \"9900\", \"250\",\n\t\t\t\t\"12\", \"195\", \"9900\", \"200\", \"9900\", \"1\""
+    constraints: {}

@@ -23,6 +23,11 @@ export type LogAnalysisJobFailureReason = "parse_error" | "object_store_error" |
 export type AgentToolMetricKind = "read" | "preparation" | "mutating";
 export type AgentApprovalMetricAction = "requested" | "approved" | "rejected";
 export type AgentToolMetricStatus = "succeeded" | "failed" | "rejected";
+export type DtsPipelineStage = "parse" | "schema" | "compile";
+export type DtsPipelineStatus = "succeeded" | "failed";
+export type ConfigPublishResult = "passed" | "failed" | "bypassed";
+export type ParameterIdentityCutoverStatus = "not_started" | "in_progress" | "complete" | "failed";
+
 
 const dynamicSegmentPattern =
   /\/(?:[a-z]+-)?[0-9a-f]{6,}(?=\/|$)|\/(?:request|session|operation|job|log|audit|approval|snapshot|target|run|op)-[^/]+/gi;
@@ -182,6 +187,57 @@ export function createMetricsRegistry(options: { serviceName: string }) {
       incrementCounter("wiseeff_notification_delivery_total", "WiseEff notification outbox delivery results by status.", labels);
       incrementCounter("wiseeff_notification_delivery_duration_ms_sum", "Total WiseEff notification delivery duration in milliseconds.", labels, input.durationMs);
       incrementCounter("wiseeff_notification_delivery_duration_ms_count", "Count of WiseEff notification delivery duration samples.", labels);
+    },
+    recordDtsPipelineResult(input: { stage: DtsPipelineStage; status: DtsPipelineStatus; durationMs: number }) {
+      const labels = { stage: input.stage, status: input.status };
+      incrementCounter("wiseeff_dts_pipeline_duration_ms_sum", "Total WiseEff DTS parse/schema/compile duration in milliseconds.", labels, input.durationMs);
+      incrementCounter("wiseeff_dts_pipeline_duration_ms_count", "Count of WiseEff DTS parse/schema/compile duration samples.", labels);
+      if (input.status === "failed") {
+        incrementCounter("wiseeff_dts_pipeline_failures_total", "WiseEff DTS parse/schema/compile failures by stage.", { stage: input.stage });
+      }
+    },
+    setDtsToolchainReady(input: { ok: boolean; dtcVersion?: string; fdtoverlayVersion?: string; dtschemaVersion?: string }) {
+      setGauge("wiseeff_dts_toolchain_ready", "WiseEff DTS toolchain readiness, 1 when dtc/fdtoverlay/dt-validate are available.", {}, input.ok ? 1 : 0);
+      setGauge("wiseeff_dependency_health", "WiseEff dependency health, 1 for healthy and 0 for unhealthy.", { dependency: "dtsToolchain" }, input.ok ? 1 : 0);
+      setGauge(
+        "wiseeff_dts_toolchain_info",
+        "WiseEff DTS toolchain version labels as an info gauge.",
+        {
+          dtc: input.dtcVersion ?? "unavailable",
+          fdtoverlay: input.fdtoverlayVersion ?? "unavailable",
+          dtschema: input.dtschemaVersion ?? "unavailable"
+        },
+        1
+      );
+    },
+    setIdentityMappingBacklog(openCount: number) {
+      setGauge("wiseeff_identity_mapping_tasks_open", "Open WiseEff identity mapping tasks.", {}, openCount);
+    },
+    setParameterSpecReviewBacklog(openCount: number) {
+      setGauge("wiseeff_parameter_spec_review_tasks_open", "Open WiseEff parameter spec review tasks.", {}, openCount);
+    },
+    recordConfigPublishResult(input: { result: ConfigPublishResult }) {
+      incrementCounter("wiseeff_config_publish_results_total", "WiseEff config publish/validate results by outcome.", {
+        result: input.result
+      });
+    },
+    setParameterIdentityCutoverStatus(status: ParameterIdentityCutoverStatus) {
+      for (const candidate of ["not_started", "in_progress", "complete", "failed"] as const) {
+        setGauge(
+          "wiseeff_parameter_identity_cutover_status",
+          "WiseEff parameter identity cutover status as one-hot gauges.",
+          { status: candidate },
+          candidate === status ? 1 : 0
+        );
+      }
+    },
+    setParameterIdentityMigrationComplete(complete: boolean) {
+      setGauge(
+        "wiseeff_parameter_identity_migration_complete",
+        "WiseEff parameter identity migration completion, 1 when a completed migration run exists.",
+        {},
+        complete ? 1 : 0
+      );
     },
     renderPrometheus() {
       const allSamples = [...gauges.values(), ...counters.values()].sort((left, right) => left.name.localeCompare(right.name) || labelsKey(left.labels).localeCompare(labelsKey(right.labels)));

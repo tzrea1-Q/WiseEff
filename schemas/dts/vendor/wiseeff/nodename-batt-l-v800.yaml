@@ -1,0 +1,29 @@
+$id: wiseeff/nodename-batt-l-v800.yaml
+title: batt_l_v800
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/batt_l_v800
+nodename:
+  - batt_l_v800
+properties:
+  batt_indentify_fcc:
+    valueShape: u32-array
+    exampleValue: <1805>
+    constraints: {}
+  batt_index:
+    valueShape: u32-array
+    exampleValue: <0>
+    constraints: {}
+  batt_name:
+    valueShape: string-list
+    exampleValue: '"battery_gauge"'
+    constraints: {}
+  r_pcb:
+    valueShape: u32-array
+    exampleValue: <23330>
+    constraints: {}
+  soe_dynamic_enable:
+    valueShape: u32-array
+    exampleValue: <1>
+    constraints: {}

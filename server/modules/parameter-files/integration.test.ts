@@ -175,6 +175,15 @@ describe.skipIf(!databaseAvailable)("parameter file integration", () => {
     expect(uploadResponse.status).toBe(201);
     expect(uploadResponse.body.version.versionNumber).toBe(1);
 
+    await db.query(
+      `
+      update project_parameter_values
+      set source_file_name = $1, source_node_path = 'battery/temp_max'
+      where id = 'ppv-pf-int'
+      `,
+      [fileName]
+    );
+
     const syncResponse = await requestJson<{
       item: { draftsCreated: number; unchanged: number; unmatched: number; skipped: boolean };
     }>(server, `/api/v1/projects/project-pf-int/parameter-files/${uploadResponse.body.item.id}/sync`, {
@@ -253,6 +262,15 @@ describe.skipIf(!databaseAvailable)("parameter file integration", () => {
       })
     });
     expect(uploadResponse.status).toBe(201);
+
+    await db.query(
+      `
+      update project_parameter_values
+      set source_file_name = $1, source_node_path = 'battery/temp_max'
+      where id = 'ppv-pf-int'
+      `,
+      [fileName]
+    );
 
     await requestJson(server, `/api/v1/projects/project-pf-int/parameter-files/${uploadResponse.body.item.id}/sync`, {
       method: "POST",

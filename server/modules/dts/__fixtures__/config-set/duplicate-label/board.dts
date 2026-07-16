@@ -1,0 +1,12 @@
+/dts-v1/;
+
+/ {
+	shared: nodeA {
+		val = <1>;
+	};
+	container {
+		shared: nodeB {
+			val = <2>;
+		};
+	};
+};

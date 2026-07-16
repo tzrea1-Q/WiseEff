@@ -1,0 +1,26 @@
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-btb-check.yaml#
+$title: wiseeff,btb_check
+description: WiseEff vendor binding generated for dt-validate coverage of golden power fixtures.
+maintainers:
+  - WiseEff
+select:
+  properties:
+    compatible:
+      contains:
+        const: wiseeff,btb_check
+  required:
+    - compatible
+properties:
+  compatible: true
+  status:
+    enum:
+      - okay
+      - disabled
+      - reserved
+      - fail
+      - fail-needs-probe
+  model: true
+additionalProperties: true
+unevaluatedProperties: true
