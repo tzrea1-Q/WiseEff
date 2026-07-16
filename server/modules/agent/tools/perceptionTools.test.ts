@@ -60,7 +60,8 @@ describe("createPerceptionTools", () => {
               unit: "°C",
               project_id: "aurora",
               current_value: "38",
-              recommended_value: "35",
+              policy_target: "35",
+              schema_default: "36",
               risk: "Medium"
             }
           ] as Row[],
@@ -72,7 +73,8 @@ describe("createPerceptionTools", () => {
     const parameter = (result.data as { parameters?: Array<Record<string, unknown>> }).parameters?.[0];
     expect(parameter?.description).toBe("电池快充过程中的目标温度区间。");
     expect(parameter?.explanation).toBe("配合散热策略控制电芯温度。");
-    expect(parameter?.recommended_value).toBe("35");
+    expect(parameter?.policy_target).toBe("35");
+    expect(parameter?.schema_default).toBe("36");
     expect(result.citations[0]?.snippet).toContain("电池快充");
   });
 

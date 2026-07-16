@@ -18,6 +18,8 @@ M6.6 release-candidate procedures live in [releases/](releases/). Use them after
 
 Server prerequisites: Docker Engine 20.10+, and Docker Compose v2 or standalone `docker-compose` 1.28+. Node.js is not required on the server; the stack runs inside containers.
 
+The runtime image installs Alpine's `dtc` package and runs `dtc --version` during image build. This makes DTS validation and `db:seed:m1` independent of host packages. `npm run selfhost:check` verifies both the image dependency and the repository dtc commands.
+
 ```bash
 cp .env.example .env
 chmod 600 .env
@@ -40,6 +42,8 @@ For internal demo/staging hosts, import bundled seed data with:
 ```bash
 ./scripts/seed-demo-data.sh
 ```
+
+The M1 step compiles the three project overlays inside the API container before persisting the full source-bound parameter catalog and baselines.
 
 See [docs/runbooks/self-hosted-runtime.md](../../docs/runbooks/self-hosted-runtime.md) for full bootstrap and seed guidance.
 

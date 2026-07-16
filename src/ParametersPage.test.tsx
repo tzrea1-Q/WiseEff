@@ -1368,3 +1368,28 @@ describe("ParametersPage · 布局与 Sheet", () => {
     expect(container.querySelector(".parameters-bottom-actions")).not.toBeInTheDocument();
   });
 });
+
+describe("ParametersPage API topology workspace", () => {
+  it("mounts API topology workspace instead of flat sourceNodePath tables", async () => {
+    render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={initialState}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          runtimeMode="api"
+          canEdit
+        />
+      </TopBarActionsHarness>
+    );
+
+    const workspace = await screen.findByRole("region", { name: "项目拓扑工作区" });
+    // Loading / empty / error are all valid — never teaching fallback with fabricated ids.
+    expect(workspace.getAttribute("data-config-set-id") ?? "").not.toMatch(/-default-config$/);
+    expect(workspace.getAttribute("data-revision-id") ?? "").not.toMatch(/-head$/);
+    expect(screen.queryByRole("table", { name: "检索参数表" })).not.toBeInTheDocument();
+    expect(workspace.textContent).not.toMatch(/sourceNodePath/);
+    expect(workspace.textContent).not.toMatch(/aurora-default-config|aurora-head/);
+  });
+});

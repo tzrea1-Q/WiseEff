@@ -86,6 +86,31 @@ export type ParameterDraftDto = {
   targetValue: string;
   reason: string;
   updatedAt: string;
+  /** Present for topology-aware drafts created via binding edits. */
+  projectParameterBindingId?: string;
+};
+
+/**
+ * New binding-centric draft surface — no recommendedValue.
+ * Initialization suggestions use policyTarget ?? schemaDefault; exampleValue is non-enforced.
+ */
+export type BindingParameterDraftDto = {
+  id: string;
+  projectId: string;
+  projectParameterBindingId: string;
+  parameterSpecId: string;
+  targetValue: string;
+  reason: string;
+  updatedAt: string;
+};
+
+export type InitializationSuggestionDto = {
+  /** Prefer policyTarget, else schemaDefault. Never exampleValue. */
+  suggestion: unknown | null;
+  source: "policyTarget" | "schemaDefault" | null;
+  /** Illustrative only — must not be treated as enforced default or recommendation. */
+  exampleValue: unknown | null;
+  exampleEnforced: false;
 };
 
 export type ParameterWorkflowAssigneesDto = {

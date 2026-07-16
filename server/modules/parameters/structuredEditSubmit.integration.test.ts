@@ -182,6 +182,23 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
       [fileName, "amba/i2c@XXXX0000/mixed_case_reg", PPV]
     );
 
+    const bindingId = `binding-p31-${randomUUID().slice(0, 8)}`;
+    const specId = `spec-p31-${randomUUID().slice(0, 8)}`;
+    await db!.query(
+      `
+      insert into parameter_specs (id, organization_id, source_kind, specification_key)
+      values ($1, $2, 'dts', 'amba/mixed_case_reg')
+      `,
+      [specId, ORG]
+    );
+    await db!.query(
+      `
+      insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id)
+      values ($1, $2, $3, null, $4)
+      `,
+      [bindingId, ORG, PROJECT, specId]
+    );
+
     const round = await submitStructuredEdits(db!, auth, {
       projectId: PROJECT,
       edits: [
@@ -190,7 +207,9 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
           nodePath: "amba/i2c@XXXX0000",
           propertyName: "mixed_case_reg",
           rawText: RAW_HEX,
-          reason: "raise hex casing for writeback fidelity"
+          reason: "raise hex casing for writeback fidelity",
+          projectParameterBindingId: bindingId,
+          parameterSpecId: specId
         }
       ],
       reason: "P3.1 structured edit submit"
@@ -202,10 +221,12 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
     const cr = await db!.query<{
       target_value: string;
       project_parameter_value_id: string;
+      project_parameter_binding_id: string | null;
+      parameter_spec_id: string | null;
       id: string;
     }>(
       `
-      select id, target_value, project_parameter_value_id
+      select id, target_value, project_parameter_value_id, project_parameter_binding_id, parameter_spec_id
       from parameter_change_requests
       where submission_round_id = $1
       `,
@@ -213,6 +234,8 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
     );
     expect(cr.rows).toHaveLength(1);
     expect(cr.rows[0]?.project_parameter_value_id).toBe(PPV);
+    expect(cr.rows[0]?.project_parameter_binding_id).toBe(bindingId);
+    expect(cr.rows[0]?.parameter_spec_id).toBe(specId);
     // Fidelity: CR payload must be rawText, not normalized lowercase form.
     expect(cr.rows[0]?.target_value).toBe(RAW_HEX);
     expect(cr.rows[0]?.target_value).not.toBe(NORMALIZED_HEX);
@@ -313,6 +336,37 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
       [fileName, "amba/i2c@XXXX0000/mixed_case_reg", PPV]
     );
 
+    const bindingId = `binding-http-${randomUUID().slice(0, 8)}`;
+    const specId = `spec-http-${randomUUID().slice(0, 8)}`;
+    await db!.query(
+      `
+      insert into parameter_specs (id, organization_id, source_kind, specification_key)
+      values ($1, $2, 'dts', 'amba/mixed_case_reg')
+      `,
+      [specId, ORG]
+    );
+    await db!.query(
+      `
+      insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id)
+      values ($1, $2, $3, null, $4)
+      `,
+      [bindingId, ORG, PROJECT, specId]
+    );
+
+    // Persist binding on a pre-submit draft so HTTP structured-edit submit propagates semantic FKs.
+    await db!.query(
+      `
+      insert into parameter_drafts (
+        id, organization_id, project_id, project_parameter_value_id, user_id,
+        target_value, reason, origin, project_parameter_binding_id
+      ) values ($1, $2, $3, $4, $5, $6, 'prebind', 'manual', $7)
+      on conflict (project_id, project_parameter_value_id, user_id) do update set
+        project_parameter_binding_id = excluded.project_parameter_binding_id,
+        target_value = excluded.target_value
+      `,
+      [randomUUID(), ORG, PROJECT, PPV, USER, RAW_HEX, bindingId]
+    );
+
     const submitResponse = await requestJson<{
       item: { id: string; items: Array<{ parameterId: string; targetValue: string }> };
     }>(server, `/api/v1/projects/${PROJECT}/dts-structured-edits/submit`, {
@@ -324,7 +378,9 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
             nodePath: "amba/i2c@XXXX0000",
             propertyName: "mixed_case_reg",
             rawText: RAW_HEX,
-            reason: "http structured submit"
+            reason: "http structured submit",
+            projectParameterBindingId: bindingId,
+            parameterSpecId: specId
           }
         ],
         reason: "P3.1 http fidelity"
@@ -334,9 +390,15 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
     expect(submitResponse.body.item.items[0]?.parameterId).toBe(PPV);
     expect(submitResponse.body.item.items[0]?.targetValue).toBe(RAW_HEX);
 
-    const requestRow = await db!.query<{ id: string; status: string; target_value: string }>(
+    const requestRow = await db!.query<{
+      id: string;
+      status: string;
+      target_value: string;
+      project_parameter_binding_id: string | null;
+      parameter_spec_id: string | null;
+    }>(
       `
-      select id, status, target_value
+      select id, status, target_value, project_parameter_binding_id, parameter_spec_id
       from parameter_change_requests
       where project_parameter_value_id = $1
       order by created_at desc
@@ -345,12 +407,28 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
       [PPV]
     );
     expect(requestRow.rows[0]?.target_value).toBe(RAW_HEX);
+    expect(requestRow.rows[0]?.project_parameter_binding_id).toBe(bindingId);
+    expect(requestRow.rows[0]?.parameter_spec_id).toBe(specId);
 
     let status = requestRow.rows[0]?.status ?? "";
     const requestId = requestRow.rows[0]!.id;
     while (status !== "merged") {
       status = await advanceReview(server, requestId);
     }
+
+    const history = await db!.query<{
+      project_parameter_binding_id: string | null;
+      parameter_spec_id: string | null;
+    }>(
+      `
+      select project_parameter_binding_id, parameter_spec_id
+      from parameter_history_entries
+      where request_id = $1
+      `,
+      [requestId]
+    );
+    expect(history.rows[0]?.project_parameter_binding_id).toBe(bindingId);
+    expect(history.rows[0]?.parameter_spec_id).toBe(specId);
 
     const versions = await db!.query<{ version_number: number; origin: string; storage_key: string }>(
       `

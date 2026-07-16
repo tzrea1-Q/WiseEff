@@ -1,0 +1,19 @@
+$id: wiseeff/nodename-scharger-v800.yaml
+title: scharger_v800
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/scharger_v800
+nodename:
+  - scharger_v800
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  gpios:
+    valueShape: mixed
+    exampleValue: <&gpio5 31 0>
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"ok"'
+    constraints: {}

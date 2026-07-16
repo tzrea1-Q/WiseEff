@@ -29,6 +29,10 @@ export function classifyBrowserIssue(
   }
 
   if (issue.type === "console" && issue.level === "error") {
+    // Chromium emits this for every non-2xx fetch; API status is asserted via the response listener.
+    if (/Failed to load resource: the server responded with a status of \d+/i.test(issue.message)) {
+      return { action: "ignore" };
+    }
     return { action: "fail", reason: `Unexpected console error: ${issue.message}` };
   }
 
@@ -107,7 +111,9 @@ function isWiseEffUrl(url: string) {
 }
 
 function isCriticalApiUrl(url: string) {
-  return isWiseEffUrl(url) && url.includes("/api/v1/") && !url.includes("/api/v1/audit-events");
+  if (!isWiseEffUrl(url) || !url.includes("/api/")) return false;
+  if (url.includes("/api/v1/audit-events")) return false;
+  return url.includes("/api/v1/") || url.includes("/api/v2/");
 }
 
 function isNavigationAbort(failureText: string | undefined) {
@@ -122,7 +128,7 @@ function isExpectedApiFailure(issue: Extract<BrowserIssue, { type: "response" }>
     (rule) =>
       rule.status === issue.status &&
       rule.method.toUpperCase() === method &&
-      rule.path === path
+      (rule.path === path || path.startsWith(rule.path.endsWith("/") ? rule.path : `${rule.path}/`) || path.startsWith(rule.path))
   );
 }
 

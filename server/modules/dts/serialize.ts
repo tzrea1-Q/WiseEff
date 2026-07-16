@@ -11,9 +11,10 @@ function collectPropertyEdits(nodes: DtsNodeCst[], source: string, out: Replacem
     for (const child of node.children) {
       if (child.kind === "property") {
         maybeEdit(child, source, out);
-      } else {
+      } else if (child.kind === "node") {
         collectPropertyEdits([child], source, out);
       }
+      // `delete-property`/`delete-node` carry no `rawText` to splice.
     }
   }
 }

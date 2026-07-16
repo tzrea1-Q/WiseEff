@@ -1,0 +1,999 @@
+import { createHash, randomUUID } from "node:crypto";
+
+import type { AuditCorrelationContext } from "../audit/types";
+import type { AuthContext } from "../auth/types";
+import { resolveDtsConfigSet } from "../dts";
+import type { ObjectStore } from "../logs/objectStore";
+import {
+  createDtsToolchainRunner,
+  type DtsToolchainDiagnostic,
+  type DtsToolchainRunner
+} from "../parameter-files/dtsToolchain";
+import { canAdminParameters, canEditParameters, canViewParameters } from "../parameters/policy";
+import type { Database, Queryable } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
+import {
+  applyReviewedIdentityMapping,
+  countOpenIdentityMappingTasksForRevision,
+  getIdentityMappingTaskById,
+  listIdentityMappingTaskRows,
+  listProjectBindingRows,
+  lockOpenIdentityMappingTask,
+  resolveIdentityMappingTaskRow,
+  selectedCandidateBelongsToRevision
+} from "./bindingService";
+import {
+  createBindingDraft as createBindingDraftEdit,
+  type BindingDraftResult,
+  type CreateBindingDraftDeps
+} from "./editService";
+import { writeGovernanceAudit } from "./governanceAudit";
+import { getProjectById } from "../parameters/repository";
+import {
+  getConfigRevisionById,
+  getLatestConfigRevision,
+  insertValidationDiagnostics,
+  insertValidationRun,
+  listConfigRevisionMembers,
+  listEffectiveTopology,
+  listRevisionDiagnostics,
+  listSourceTopology,
+  updateConfigRevisionStatus,
+  type ConfigRevisionMemberRow
+} from "./repository";
+import type {
+  CreateBindingDraftBody,
+  DtsValueDto,
+  ProjectBindingDto,
+  ResolveIdentityMappingTaskBody,
+  TopologyView
+} from "./schemas";
+import { dtsValueSchema, projectBindingDtoSchema } from "./schemas";
+import type { PersistedValidationDiagnostic } from "./types";
+
+function requireCanView(auth: AuthContext) {
+  if (!canViewParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+  }
+}
+
+function requireCanEdit(auth: AuthContext) {
+  if (!canEditParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
+  }
+}
+
+function requireCanAdmin(auth: AuthContext) {
+  if (!canAdminParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+  }
+}
+
+function evidenceHash(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value ?? null), "utf8").digest("hex").slice(0, 16);
+}
+
+function toEffectiveValue(typedValue: unknown): DtsValueDto {
+  const parsed = dtsValueSchema.safeParse(typedValue);
+  if (parsed.success) {
+    return parsed.data;
+  }
+  if (typedValue && typeof typedValue === "object" && !Array.isArray(typedValue) && "kind" in typedValue) {
+    // Preserve typed AST shapes that may include additive optional fields.
+    return typedValue as DtsValueDto;
+  }
+  return { kind: "empty" };
+}
+
+function toSchemaState(value: string | null | undefined): ProjectBindingDto["schemaState"] {
+  if (value === "valid" || value === "invalid" || value === "unreviewed") return value;
+  return "unreviewed";
+}
+
+function toPolicyState(value: string | null | undefined): ProjectBindingDto["policyState"] {
+  if (value === "pass" || value === "fail" || value === "not_applicable") return value;
+  return "not_applicable";
+}
+
+const CURRENT_REVISION_ALIASES = new Set(["current", "latest", "head"]);
+
+export async function getTopology(
+  db: Database,
+  auth: AuthContext,
+  input: { projectId: string; configSetId: string; revisionId: string; view: TopologyView }
+) {
+  requireCanView(auth);
+  const revision = CURRENT_REVISION_ALIASES.has(input.revisionId)
+    ? await getLatestConfigRevision(db, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        configSetId: input.configSetId
+      })
+    : await getConfigRevisionById(db, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        configSetId: input.configSetId,
+        revisionId: input.revisionId
+      });
+  if (!revision) {
+    throw new ApiError("NOT_FOUND", "Config revision was not found.", 404, {
+      projectId: input.projectId,
+      configSetId: input.configSetId,
+      revisionId: input.revisionId
+    });
+  }
+
+  const members = await listConfigRevisionMembers(db, revision.id);
+  const incompleteBase = !members.some((member) => member.role === "base");
+  const diagnostics = (await listRevisionDiagnostics(db, revision.id)).map((item) => ({
+    severity: item.severity,
+    code: item.code,
+    message: item.message,
+    ...(item.path ? { path: item.path } : {}),
+    ...(item.startLine !== undefined ? { startLine: item.startLine } : {}),
+    ...(item.startColumn !== undefined ? { startColumn: item.startColumn } : {}),
+    ...(item.guidance ? { guidance: item.guidance } : {})
+  }));
+
+  if (input.view === "source") {
+    const source = await listSourceTopology(db, revision.id);
+    return {
+      view: "source" as const,
+      revisionId: revision.id,
+      configSetId: revision.configSetId,
+      projectId: revision.projectId,
+      status: revision.status,
+      incompleteBase,
+      diagnostics,
+      nodes: source.nodes
+    };
+  }
+
+  const effective = await listEffectiveTopology(db, revision.id);
+  return {
+    view: "effective" as const,
+    revisionId: revision.id,
+    configSetId: revision.configSetId,
+    projectId: revision.projectId,
+    status: revision.status,
+    incompleteBase,
+    diagnostics,
+    nodes: effective.nodes
+  };
+}
+
+export async function listProjectBindings(
+  db: Database,
+  auth: AuthContext,
+  input: { projectId: string; revisionId?: string }
+): Promise<{ items: ProjectBindingDto[] }> {
+  requireCanView(auth);
+  const project = await getProjectById(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId
+  });
+  if (!project) {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+      projectId: input.projectId
+    });
+  }
+  const rows = await listProjectBindingRows(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    revisionId: input.revisionId
+  });
+
+  const items = rows.map((row) =>
+    projectBindingDtoSchema.parse({
+      id: row.id,
+      parameterSpecId: row.parameterSpecId,
+      parameterSpecVersionId: row.parameterSpecVersionId,
+      propertyKey: row.propertyKey,
+      driverModule: row.driverModule,
+      logicalNodeId: row.logicalNodeId,
+      instanceName: row.instanceName,
+      locator: row.locator,
+      effectiveValue: toEffectiveValue(row.typedValue),
+      rawValue: row.rawValue,
+      schemaState: toSchemaState(row.schemaState),
+      policyState: toPolicyState(row.policyState)
+    })
+  );
+
+  return { items };
+}
+
+export async function listIdentityMappingTasks(
+  db: Database,
+  auth: AuthContext,
+  input: { projectId?: string; status?: "open" | "resolved" | "dismissed" } = {}
+) {
+  requireCanView(auth);
+  if (input.projectId) {
+    const project = await getProjectById(db, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId
+    });
+    if (!project) {
+      throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+        projectId: input.projectId
+      });
+    }
+  }
+  const items = await listIdentityMappingTaskRows(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    status: input.status
+  });
+  return {
+    items: items.map((item) => ({
+      id: item.id,
+      projectId: item.projectId,
+      configRevisionId: item.configRevisionId,
+      previousLogicalNodeId: item.previousLogicalNodeId,
+      candidateLogicalNodeIds: item.candidateLogicalNodeIds,
+      status: item.status,
+      reason: item.reason,
+      createdAt: item.createdAt,
+      resolvedAt: item.resolvedAt
+    }))
+  };
+}
+
+export async function resolveIdentityMappingTask(
+  db: Database,
+  auth: AuthContext,
+  input: ResolveIdentityMappingTaskBody & { taskId: string },
+  context: AuditCorrelationContext = {}
+) {
+  requireCanAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    const existing = await lockOpenIdentityMappingTask(tx, {
+      organizationId: auth.organization.id,
+      taskId: input.taskId
+    });
+    if (!existing) {
+      const known = await getIdentityMappingTaskById(tx, {
+        organizationId: auth.organization.id,
+        taskId: input.taskId
+      });
+      if (!known) {
+        throw new ApiError("NOT_FOUND", "Identity mapping task was not found.", 404, {
+          taskId: input.taskId
+        });
+      }
+      throw new ApiError("CONFLICT", "Identity mapping task is not open.", 409, { taskId: input.taskId });
+    }
+
+    if (
+      input.decision === "resolved" &&
+      input.selectedLogicalNodeId &&
+      !existing.candidateLogicalNodeIds.includes(input.selectedLogicalNodeId)
+    ) {
+      throw new ApiError("VALIDATION_FAILED", "selectedLogicalNodeId must be one of the candidate ids.", 400, {
+        selectedLogicalNodeId: input.selectedLogicalNodeId,
+        candidates: existing.candidateLogicalNodeIds
+      });
+    }
+
+    if (input.decision === "resolved" && input.selectedLogicalNodeId) {
+      const belongs = await selectedCandidateBelongsToRevision(tx, {
+        organizationId: auth.organization.id,
+        projectId: existing.projectId,
+        configRevisionId: existing.configRevisionId,
+        selectedLogicalNodeId: input.selectedLogicalNodeId
+      });
+      if (!belongs) {
+        throw new ApiError(
+          "VALIDATION_FAILED",
+          "selectedLogicalNodeId must belong to the same organization, project, and config revision.",
+          400,
+          {
+            selectedLogicalNodeId: input.selectedLogicalNodeId,
+            configRevisionId: existing.configRevisionId
+          }
+        );
+      }
+
+      await applyReviewedIdentityMapping(tx, {
+        organizationId: auth.organization.id,
+        projectId: existing.projectId,
+        configRevisionId: existing.configRevisionId,
+        previousLogicalNodeId: existing.previousLogicalNodeId,
+        selectedLogicalNodeId: input.selectedLogicalNodeId
+      });
+    }
+
+    const resolved = await resolveIdentityMappingTaskRow(tx, {
+      taskId: input.taskId,
+      organizationId: auth.organization.id,
+      status: input.decision,
+      selectedLogicalNodeId: input.selectedLogicalNodeId,
+      reviewerUserId: auth.user.id,
+      reason: input.reason
+    });
+    if (!resolved) {
+      throw new ApiError("CONFLICT", "Identity mapping task is not open.", 409, { taskId: input.taskId });
+    }
+
+    const openRemaining = await countOpenIdentityMappingTasksForRevision(tx, {
+      organizationId: auth.organization.id,
+      configRevisionId: existing.configRevisionId
+    });
+
+    // Dismiss never clears identity ambiguity. Resolve clears needs_mapping only when
+    // every open mapping task is gone and this resolve path completed without errors.
+    const nextStatus =
+      input.decision === "resolved" && openRemaining === 0 ? "resolved" : "needs_mapping";
+
+    await updateConfigRevisionStatus(tx, {
+      id: existing.configRevisionId,
+      status: nextStatus,
+      resolvedAt: nextStatus === "resolved" ? new Date().toISOString() : null
+    });
+
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: input.decision === "resolved" ? "identity-mapping-resolved" : "identity-mapping-dismissed",
+        projectId: existing.projectId,
+        targetType: "identity-mapping-task",
+        targetId: resolved.id,
+        metadata: {
+          taskId: resolved.id,
+          configRevisionId: existing.configRevisionId,
+          previousLogicalNodeId: existing.previousLogicalNodeId,
+          selectedLogicalNodeId: input.selectedLogicalNodeId ?? null,
+          candidateCount: existing.candidateLogicalNodeIds.length,
+          openMappingTasksRemaining: openRemaining,
+          revisionStatus: nextStatus,
+          evidenceHash: evidenceHash(existing.evidence),
+          reasonHash: evidenceHash(input.reason)
+        }
+      },
+      context
+    );
+
+    return {
+      id: resolved.id,
+      status: resolved.status,
+      selectedLogicalNodeId: input.selectedLogicalNodeId
+    };
+  });
+}
+
+export type ValidateConfigRevisionDeps = {
+  objectStore?: ObjectStore;
+  toolchain?: DtsToolchainRunner;
+};
+
+type ValidateFailureCode =
+  | "empty-config-set"
+  | "open-mapping"
+  | "open-review"
+  | "schema-policy-blocker"
+  | "resolve-failed"
+  | "toolchain-unavailable"
+  | "version-mismatch"
+  | "compile-failed"
+  | "schema-failed"
+  | "overlay-order"
+  | "path-escape"
+  | "timeout"
+  | "missing-content";
+
+async function countOpenSpecReviewTasksForRevision(
+  db: Queryable,
+  input: { organizationId: string; configRevisionId: string }
+): Promise<number> {
+  // Block on open reviews for specs bound in this revision, or orphan/inferred reviews
+  // with no parameter_spec_id (still unresolved platform work for the org).
+  const result = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from parameter_spec_review_tasks t
+    where t.organization_id = $1
+      and t.status = 'open'
+      and (
+        t.parameter_spec_id is null
+        or exists (
+          select 1
+          from project_parameter_binding_revisions br
+          join project_parameter_bindings b on b.id = br.binding_id
+          where br.config_revision_id = $2
+            and b.parameter_spec_id = t.parameter_spec_id
+        )
+      )
+    `,
+    [input.organizationId, input.configRevisionId]
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+async function countSchemaPolicyBlockers(db: Queryable, configRevisionId: string): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from project_parameter_binding_revisions
+    where config_revision_id = $1
+      and (
+        schema_state = 'invalid'
+        or policy_state = 'fail'
+      )
+    `,
+    [configRevisionId]
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+async function loadMemberContent(
+  member: ConfigRevisionMemberRow,
+  objectStore: ObjectStore | undefined
+): Promise<string | null> {
+  if (member.parsedIndex && typeof member.parsedIndex === "object" && !Array.isArray(member.parsedIndex)) {
+    const sourceText = (member.parsedIndex as Record<string, unknown>).sourceText;
+    if (typeof sourceText === "string") {
+      return sourceText;
+    }
+  }
+  if (!objectStore) {
+    return null;
+  }
+  try {
+    const bytes = await objectStore.get(member.storageKey);
+    return bytes.toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+function toPersistedDiagnostics(
+  diagnostics: Array<{
+    code?: string;
+    severity?: "error" | "warning" | "info";
+    stage?: string;
+    message: string;
+    fileName?: string;
+    file?: string;
+    line?: number;
+  }>,
+  defaultStage: string,
+  defaultCode: string
+): PersistedValidationDiagnostic[] {
+  return diagnostics.map((diagnostic) => ({
+    id: randomUUID(),
+    code: (diagnostic.code ?? defaultCode) as PersistedValidationDiagnostic["code"],
+    severity: (diagnostic.severity ?? "error") as PersistedValidationDiagnostic["severity"],
+    stage: diagnostic.stage ?? defaultStage,
+    message: diagnostic.message,
+    fileName: diagnostic.fileName ?? diagnostic.file ?? "<validation>",
+    startLine: diagnostic.line
+  }));
+}
+
+async function persistFailedValidation(
+  db: Database,
+  auth: AuthContext,
+  input: {
+    revisionId: string;
+    projectId: string;
+    configSetId: string;
+    stage: string;
+    failureCode: ValidateFailureCode;
+    diagnostics: PersistedValidationDiagnostic[];
+    toolchain?: Record<string, unknown>;
+    artifactHashes?: Record<string, unknown>;
+  },
+  context: AuditCorrelationContext
+) {
+  const runId = randomUUID();
+  await insertValidationRun(db, {
+    id: runId,
+    organizationId: auth.organization.id,
+    configRevisionId: input.revisionId,
+    stage: input.stage,
+    status: "failed",
+    toolchain: input.toolchain ?? {},
+    artifactHashes: input.artifactHashes ?? {}
+  });
+  if (input.diagnostics.length > 0) {
+    await insertValidationDiagnostics(db, runId, input.diagnostics);
+  }
+  await writeGovernanceAudit(
+    db,
+    auth,
+    {
+      action: "config-revision-validated",
+      projectId: input.projectId,
+      targetType: "dts-config-revision",
+      targetId: input.revisionId,
+      metadata: {
+        validationRunId: runId,
+        configRevisionId: input.revisionId,
+        configSetId: input.configSetId,
+        stage: input.stage,
+        status: "failed",
+        failureCode: input.failureCode,
+        artifactHashes: input.artifactHashes ?? {}
+      }
+    },
+    context
+  );
+  return {
+    id: runId,
+    status: "failed" as const,
+    stage: input.stage,
+    failureCode: input.failureCode,
+    artifactHashes: input.artifactHashes ?? {},
+    diagnostics: input.diagnostics.map((diagnostic) => ({
+      code: diagnostic.code,
+      severity: diagnostic.severity,
+      stage: diagnostic.stage,
+      message: diagnostic.message,
+      fileName: diagnostic.fileName
+    }))
+  };
+}
+
+/**
+ * Fail-closed production validate: load revision Config Set → resolve → toolchain
+ * (dtc/fdtoverlay/dt-validate with pinned versions) → mapping/review/schema blockers.
+ * Only marks the revision `validated` when every gate passes.
+ */
+export async function validateConfigRevision(
+  db: Database,
+  auth: AuthContext,
+  input: { projectId: string; revisionId: string; stage?: string },
+  context: AuditCorrelationContext = {},
+  deps: ValidateConfigRevisionDeps = {}
+) {
+  requireCanAdmin(auth);
+
+  const revision = await getConfigRevisionById(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    revisionId: input.revisionId
+  });
+  if (!revision) {
+    throw new ApiError("NOT_FOUND", "Config revision was not found.", 404, {
+      projectId: input.projectId,
+      revisionId: input.revisionId
+    });
+  }
+
+  const stage = input.stage ?? "toolchain";
+  const members = await listConfigRevisionMembers(db, revision.id);
+
+  if (members.length === 0) {
+    return persistFailedValidation(
+      db,
+      auth,
+      {
+        revisionId: revision.id,
+        projectId: revision.projectId,
+        configSetId: revision.configSetId,
+        stage,
+        failureCode: "empty-config-set",
+        diagnostics: toPersistedDiagnostics(
+          [
+            {
+              code: "empty-config-set",
+              severity: "error",
+              stage,
+              message: "Config revision has an empty Config Set; release validation fails closed.",
+              fileName: "<config-set>"
+            }
+          ],
+          stage,
+          "empty-config-set"
+        )
+      },
+      context
+    );
+  }
+
+  const openMappings = await countOpenIdentityMappingTasksForRevision(db, {
+    organizationId: auth.organization.id,
+    configRevisionId: revision.id
+  });
+  if (openMappings > 0 || revision.status === "needs_mapping") {
+    return persistFailedValidation(
+      db,
+      auth,
+      {
+        revisionId: revision.id,
+        projectId: revision.projectId,
+        configSetId: revision.configSetId,
+        stage,
+        failureCode: "open-mapping",
+        diagnostics: toPersistedDiagnostics(
+          [
+            {
+              code: "open-mapping",
+              severity: "error",
+              stage: "identity",
+              message: `Open identity mapping tasks remain (${openMappings}); validation fails closed.`,
+              fileName: "<identity>"
+            }
+          ],
+          "identity",
+          "open-mapping"
+        )
+      },
+      context
+    );
+  }
+
+  const openReviews = await countOpenSpecReviewTasksForRevision(db, {
+    organizationId: auth.organization.id,
+    configRevisionId: revision.id
+  });
+  if (openReviews > 0) {
+    return persistFailedValidation(
+      db,
+      auth,
+      {
+        revisionId: revision.id,
+        projectId: revision.projectId,
+        configSetId: revision.configSetId,
+        stage,
+        failureCode: "open-review",
+        diagnostics: toPersistedDiagnostics(
+          [
+            {
+              code: "open-review",
+              severity: "error",
+              stage: "review",
+              message: `Open parameter spec review tasks remain (${openReviews}); validation fails closed.`,
+              fileName: "<review>"
+            }
+          ],
+          "review",
+          "open-review"
+        )
+      },
+      context
+    );
+  }
+
+  const schemaPolicyBlockers = await countSchemaPolicyBlockers(db, revision.id);
+  if (schemaPolicyBlockers > 0) {
+    return persistFailedValidation(
+      db,
+      auth,
+      {
+        revisionId: revision.id,
+        projectId: revision.projectId,
+        configSetId: revision.configSetId,
+        stage,
+        failureCode: "schema-policy-blocker",
+        diagnostics: toPersistedDiagnostics(
+          [
+            {
+              code: "schema-policy-blocker",
+              severity: "error",
+              stage: "schema",
+              message: `Schema/policy blockers remain on binding revisions (${schemaPolicyBlockers}).`,
+              fileName: "<schema>"
+            }
+          ],
+          "schema",
+          "schema-policy-blocker"
+        )
+      },
+      context
+    );
+  }
+
+  const files = new Map<string, { fileVersionId: string; content: string }>();
+  const overlays: Array<{ name: string; sortOrder: number }> = [];
+  let entryFile: string | null = null;
+  let entrySort = Number.POSITIVE_INFINITY;
+
+  for (const member of members) {
+    const content = await loadMemberContent(member, deps.objectStore);
+    if (content == null) {
+      return persistFailedValidation(
+        db,
+        auth,
+        {
+          revisionId: revision.id,
+          projectId: revision.projectId,
+          configSetId: revision.configSetId,
+          stage,
+          failureCode: "missing-content",
+          diagnostics: toPersistedDiagnostics(
+            [
+              {
+                code: "missing-content",
+                severity: "error",
+                stage,
+                message: `Unable to load content for ${member.fileName} (file version ${member.fileVersionId}).`,
+                fileName: member.fileName
+              }
+            ],
+            stage,
+            "missing-content"
+          )
+        },
+        context
+      );
+    }
+    files.set(member.fileName, { fileVersionId: member.fileVersionId, content });
+    if (member.role === "base" && member.sortOrder <= entrySort) {
+      entryFile = member.fileName;
+      entrySort = member.sortOrder;
+    } else if (member.role === "overlay") {
+      overlays.push({ name: member.fileName, sortOrder: member.sortOrder });
+    }
+  }
+
+  if (!entryFile) {
+    entryFile = [...files.keys()][0] ?? null;
+  }
+  if (!entryFile || files.size === 0) {
+    return persistFailedValidation(
+      db,
+      auth,
+      {
+        revisionId: revision.id,
+        projectId: revision.projectId,
+        configSetId: revision.configSetId,
+        stage,
+        failureCode: "empty-config-set",
+        diagnostics: toPersistedDiagnostics(
+          [
+            {
+              code: "empty-config-set",
+              severity: "error",
+              stage,
+              message: "Config revision has no resolvable DTS entry file.",
+              fileName: "<config-set>"
+            }
+          ],
+          stage,
+          "empty-config-set"
+        )
+      },
+      context
+    );
+  }
+
+  overlays.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  const overlayOrder = overlays.map((item) => item.name);
+  const includeSearchPaths = ["."];
+
+  const resolved = resolveDtsConfigSet({
+    entryFile,
+    includeSearchPaths,
+    overlayOrder,
+    files
+  });
+  const resolveErrors = resolved.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+  if (resolveErrors.length > 0) {
+    return persistFailedValidation(
+      db,
+      auth,
+      {
+        revisionId: revision.id,
+        projectId: revision.projectId,
+        configSetId: revision.configSetId,
+        stage: "resolve",
+        failureCode: "resolve-failed",
+        diagnostics: toPersistedDiagnostics(
+          resolveErrors.map((diagnostic) => ({
+            code: diagnostic.code,
+            severity: diagnostic.severity,
+            stage: "resolve",
+            message: diagnostic.message,
+            fileName: diagnostic.fileName
+          })),
+          "resolve",
+          "resolve-failed"
+        )
+      },
+      context
+    );
+  }
+
+  const toolchain = deps.toolchain ?? createDtsToolchainRunner();
+  const toolchainFiles = new Map<string, { content: string }>();
+  for (const [name, file] of files) {
+    toolchainFiles.set(name, { content: file.content });
+  }
+
+  const toolchainResult = await toolchain.validate(
+    {
+      entryFile,
+      includeSearchPaths,
+      overlayOrder,
+      files: toolchainFiles
+    },
+    { mode: "release" }
+  );
+
+  const toolchainPayload = {
+    dtc: toolchainResult.compiler.dtc,
+    fdtoverlay: toolchainResult.compiler.fdtoverlay,
+    dtschema: toolchainResult.compiler.dtschema
+  };
+  const artifactHashes = {
+    ...toolchainResult.artifacts,
+    revisionId: revision.id,
+    entryFile,
+    overlayOrder
+  };
+
+  if (!toolchainResult.ok) {
+    const failureCode = (toolchainResult.failureCode ?? "compile-failed") as ValidateFailureCode;
+    return persistFailedValidation(
+      db,
+      auth,
+      {
+        revisionId: revision.id,
+        projectId: revision.projectId,
+        configSetId: revision.configSetId,
+        stage,
+        failureCode,
+        diagnostics: toPersistedDiagnostics(
+          toolchainResult.diagnostics.map((diagnostic: DtsToolchainDiagnostic) => ({
+            code: diagnostic.code ?? failureCode,
+            severity: diagnostic.severity,
+            stage: diagnostic.stage ?? "toolchain",
+            message: diagnostic.message,
+            file: diagnostic.file,
+            line: diagnostic.line
+          })),
+          "toolchain",
+          failureCode
+        ),
+        toolchain: toolchainPayload,
+        artifactHashes
+      },
+      context
+    );
+  }
+
+  const runId = randomUUID();
+  await insertValidationRun(db, {
+    id: runId,
+    organizationId: auth.organization.id,
+    configRevisionId: revision.id,
+    stage,
+    status: "passed",
+    toolchain: toolchainPayload,
+    artifactHashes
+  });
+
+  if (toolchainResult.diagnostics.length > 0) {
+    await insertValidationDiagnostics(
+      db,
+      runId,
+      toPersistedDiagnostics(
+        toolchainResult.diagnostics.map((diagnostic) => ({
+          code: diagnostic.code ?? "toolchain",
+          severity: diagnostic.severity,
+          stage: diagnostic.stage ?? "toolchain",
+          message: diagnostic.message,
+          file: diagnostic.file,
+          line: diagnostic.line
+        })),
+        "toolchain",
+        "toolchain"
+      )
+    );
+  }
+
+  await updateConfigRevisionStatus(db, {
+    id: revision.id,
+    status: "validated",
+    resolvedAt: new Date().toISOString()
+  });
+
+  await writeGovernanceAudit(
+    db,
+    auth,
+    {
+      action: "config-revision-validated",
+      projectId: revision.projectId,
+      targetType: "dts-config-revision",
+      targetId: revision.id,
+      metadata: {
+        validationRunId: runId,
+        configRevisionId: revision.id,
+        configSetId: revision.configSetId,
+        stage,
+        status: "passed",
+        toolchain: toolchainPayload,
+        artifactHashes
+      }
+    },
+    context
+  );
+
+  return {
+    id: runId,
+    status: "passed" as const,
+    stage,
+    artifactHashes,
+    toolchain: toolchainPayload
+  };
+}
+
+export type CreateBindingDraftServiceResult = {
+  draftId: string;
+  candidateRevisionId: string;
+  rawText: string;
+  parameterSpecId: string;
+  projectParameterBindingId: string;
+  writeTarget: BindingDraftResult["writeTarget"];
+  overlayFileId: string;
+  overlayFileName: string;
+};
+
+/**
+ * Org-isolated typed binding draft API: precise Config Set writeback + fail-closed validate.
+ */
+export async function createBindingDraft(
+  db: Database,
+  auth: AuthContext,
+  input: {
+    projectId: string;
+    bindingId: string;
+  } & CreateBindingDraftBody,
+  deps: CreateBindingDraftDeps = {}
+): Promise<CreateBindingDraftServiceResult> {
+  requireCanEdit(auth);
+
+  const project = await getProjectById(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId
+  });
+  if (!project) {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+      projectId: input.projectId
+    });
+  }
+
+  const bindingProject = await db.query<{ project_id: string }>(
+    `
+    select project_id
+    from project_parameter_bindings
+    where id = $1 and organization_id = $2
+    limit 1
+    `,
+    [input.bindingId, auth.organization.id]
+  );
+  if (!bindingProject.rows[0] || bindingProject.rows[0].project_id !== input.projectId) {
+    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", 404, {
+      projectId: input.projectId,
+      bindingId: input.bindingId
+    });
+  }
+
+  const draft = await createBindingDraftEdit(
+    db,
+    auth,
+    {
+      bindingId: input.bindingId,
+      baseRevisionId: input.baseRevisionId,
+      targetValue: input.targetValue,
+      action: input.action,
+      reason: input.reason
+    },
+    deps
+  );
+
+  return {
+    draftId: draft.draftId,
+    candidateRevisionId: draft.candidateRevisionId,
+    rawText: draft.rawText,
+    parameterSpecId: draft.parameterSpecId,
+    projectParameterBindingId: draft.projectParameterBindingId,
+    writeTarget: draft.writeTarget,
+    overlayFileId: draft.overlayFileId,
+    overlayFileName: draft.overlayFileName
+  };
+}

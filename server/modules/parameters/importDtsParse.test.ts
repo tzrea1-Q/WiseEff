@@ -66,13 +66,8 @@ describe("parseDtsImportSource", () => {
     expect(hex!.valueType).toBe("u32-array");
   });
 
-  it("rejects /include/ with dts-include-unsupported", () => {
+  it("does not reject /include/ (config-set resolver owns include diagnostics)", () => {
     const content = `/dts-v1/;\n/include/ "pin.dtsi"\n/ { board_id = <0>; };\n`;
-    expect(() => parseDtsImportSource({ sourceName: "board.dts", content })).toThrow(
-      expect.objectContaining({
-        code: "VALIDATION_FAILED",
-        details: { code: "dts-include-unsupported" }
-      }) as unknown as ApiError
-    );
+    expect(() => parseDtsImportSource({ sourceName: "board.dts", content })).not.toThrow();
   });
 });

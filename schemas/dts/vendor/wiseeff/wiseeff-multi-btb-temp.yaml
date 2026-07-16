@@ -1,0 +1,19 @@
+$id: wiseeff/wiseeff-multi-btb-temp.yaml
+title: wiseeff,multi_btb_temp
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,multi_btb_temp
+compatible:
+  - wiseeff,multi_btb_temp
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  sensor-names:
+    valueShape: string-list
+    exampleValue: "\"bat0_raw_temp\", \"comp_para\", \"0\",\n\t\t\"bat1_raw_temp\", \"comp_para1\", \"0\""
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"ok"'
+    constraints: {}

@@ -166,12 +166,15 @@ describe("powerManagementConfig", () => {
 
   it("adds and deletes project and debug parameters", () => {
     const draft = clonePowerManagementConfig(bundledPowerManagementConfig);
+    const projectParameterCount = draft.parameterLibrary.length;
     const withProjectParameter = addProjectParameter(draft);
     const addedProjectParameter = withProjectParameter.parameterLibrary.at(-1);
 
-    expect(addedProjectParameter?.name).toBe("new_power_parameter_13");
+    expect(addedProjectParameter?.name).toBe(`new_power_parameter_${projectParameterCount + 1}`);
     expect(addedProjectParameter?.values.aurora?.currentValue).toBe("0");
-    expect(deleteProjectParameter(withProjectParameter, addedProjectParameter?.id ?? "").parameterLibrary).toHaveLength(12);
+    expect(deleteProjectParameter(withProjectParameter, addedProjectParameter?.id ?? "").parameterLibrary).toHaveLength(
+      projectParameterCount
+    );
 
     const withDebugParameter = addDebugParameter(draft);
     const addedDebugParameter = withDebugParameter.debugParameters.at(-1);

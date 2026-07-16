@@ -6,6 +6,19 @@ const configPath = "src/config/power-management.json";
 
 const config = {
   projects: [{ id: "aurora", name: "Aurora", code: "AUR" }],
+  parameterModules: [
+    {
+      name: "Power",
+      description: "Power root",
+      scope: "All power settings"
+    },
+    {
+      name: "Charging Policy",
+      parent: "Power",
+      description: "Charging policy",
+      scope: "Charging limits"
+    }
+  ],
   parameterLibrary: [
     {
       id: "fast-charge-current",
@@ -17,6 +30,8 @@ const config = {
       range: "1000 - 5000",
       unit: "mA",
       risk: "High",
+      sourceFileName: "wiseeff-power-overlay.dts",
+      sourceNodePath: "charging_core/ichg_max",
       values: {
         aurora: { currentValue: "3200", recommendedValue: "3000" }
       }
@@ -143,6 +158,26 @@ describe("seedM1Parameters", () => {
       version: 2,
       value: "3200"
     });
+  });
+
+  it("seeds the hierarchical module catalog and exact DTS source binding", async () => {
+    const { db, queries } = createSeedDatabase();
+
+    await seedM1Parameters(db, config);
+
+    const moduleInserts = queries.filter((call) => call.text.includes("insert into parameter_modules"));
+    expect(moduleInserts).toHaveLength(2);
+    expect(moduleInserts[1]?.values).toEqual(expect.arrayContaining(["Charging Policy"]));
+
+    const definitionInsert = queries.find((call) => call.text.includes("insert into parameter_definitions"));
+    expect(definitionInsert?.text).toContain("parameter_module_id");
+
+    const valueInsert = queries.find((call) => call.text.includes("insert into project_parameter_values"));
+    expect(valueInsert?.text).toContain("source_file_name");
+    expect(valueInsert?.text).toContain("source_node_path");
+    expect(valueInsert?.values).toEqual(
+      expect.arrayContaining(["wiseeff-power-overlay.dts", "charging_core/ichg_max"])
+    );
   });
 
   it("adds history only when the seeded current value advances to a new version", async () => {

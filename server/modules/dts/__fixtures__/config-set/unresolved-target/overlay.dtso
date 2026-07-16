@@ -1,0 +1,5 @@
+/plugin/;
+
+&nonexistent {
+	foo = <1>;
+};

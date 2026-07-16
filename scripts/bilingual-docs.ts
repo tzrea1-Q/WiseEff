@@ -59,6 +59,7 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/runbooks/release-rollback.md", zh: "docs/zh-CN/runbooks/release-rollback.md", tier: "runbook", status: "required" },
   { en: "docs/runbooks/monitoring-alerting.md", zh: "docs/zh-CN/runbooks/monitoring-alerting.md", tier: "runbook", status: "required" },
   { en: "docs/runbooks/observability-operations.md", zh: "docs/zh-CN/runbooks/observability-operations.md", tier: "runbook", status: "required" },
+  { en: "docs/runbooks/parameter-identity-cutover.md", zh: "docs/zh-CN/runbooks/parameter-identity-cutover.md", tier: "runbook", status: "required" },
   { en: "docs/runbooks/incidents.md", zh: "docs/zh-CN/runbooks/incidents.md", tier: "runbook", status: "required" },
   { en: "docs/runbooks/hdc-device-lab.md", zh: "docs/zh-CN/runbooks/hdc-device-lab.md", tier: "runbook", status: "required" },
   { en: "docs/runbooks/agent-provider.md", zh: "docs/zh-CN/runbooks/agent-provider.md", tier: "runbook", status: "required" },

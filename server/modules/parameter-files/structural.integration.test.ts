@@ -144,6 +144,17 @@ describe.skipIf(!databaseAvailable)("DTS structural integration", () => {
       bytes: Buffer.from(uploadableSample, "utf8"),
     });
 
+    await db!.query(
+      `
+      update project_parameter_values
+      set source_file_name = $1
+      where project_id = 'project-struct-int'
+        and source_node_path is not null
+      `,
+      [uploaded.file.fileName]
+    );
+    await db!.query(`delete from parameter_drafts where project_id = 'project-struct-int'`);
+
     const nodes = await db!.query<{ node_path: string }>(
       `select node_path from dts_nodes where file_version_id = $1`,
       [uploaded.version.id],

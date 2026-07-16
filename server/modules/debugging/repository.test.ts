@@ -1056,7 +1056,9 @@ describe("debugging repository", () => {
       "prev-digest",
       "read-digest",
       "3200",
-      "user-1"
+      "user-1",
+      null,
+      null
     ]);
     expect(operation).toMatchObject({
       operationType: "write",

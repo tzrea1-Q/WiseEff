@@ -137,9 +137,12 @@ describe("createHttpParameterRepository", () => {
     const fetchMock = fetchQueue({ items: [parameterDto] });
     const repository = createHttpParameterRepository(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
 
-    const parameters = await repository.listParameters({ projectId: "aurora", risk: ["High"] });
+    const parameters = await repository.listParameters({ projectId: "aurora", risk: ["High"], limit: 500 });
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/parameters?projectId=aurora&risk=High", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/parameters?projectId=aurora&risk=High&limit=500",
+      expect.objectContaining({ method: "GET" })
+    );
     expect(parameters).toEqual([{ ...parameterDto, risk: "High", valueKind: "scalar", history: [] }]);
   });
 

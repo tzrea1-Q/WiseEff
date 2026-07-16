@@ -21,6 +21,7 @@ Rules:
 - Auth and users: `/me`, user listing, user creation, activation, role replacement.
 - Projects and modules: project metadata and module lookup.
 - Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), per-project parameter file hosting with sync and conflict resolution (`/projects/:projectId/parameter-files*`), structured DTS read/search (`.../structure`, `/projects/:projectId/dts-search`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
+- Semantic parameter topology (v2): parameter specs, spec review tasks, source/effective topology, project bindings, identity mapping tasks, and fail-closed config-revision validate under `/api/v2/*` (see below). Legacy flat parameter IDs are retired at cutover with `410 legacy-parameter-id-retired`.
 - Logs: upload/file records, analysis records, runs, rerun, archive, feedback.
 - Product feedback: Internal Beta sidebar feedback submission, admin triage, and attachment content.
 - Jobs: status and progress events.
@@ -262,6 +263,27 @@ Validation gate result shape (`gate` / `manifest.validation`):
 `mode` is `block` (default), `warn`, or `off` (`DTS_VALIDATION_MODE`; see `docs/developer/environment-variables.md`). `compiler` is `dtc` or `unavailable` (no `dtc` binary on `PATH`). `requiresConfirmation` is `true` whenever the result was not a hard `dtc` pass (`warn` mode, or `block`/`off` with an unavailable compiler that fell back to a soft pass).
 
 Audit kinds and actions: `config-set` (`created`, `updated`, `member_changed`), `baseline` (`created`, `rolled_back`, `released`), `validation.gate` (`run`), `export` (`file`, `config-set`).
+
+## Semantic Parameter Topology (`/api/v2`)
+
+Additive semantic surface used by the topology/schema program. Production remains fail-closed on identity, dt-schema, `dtc`, and `fdtoverlay`. After the maintenance cutover, legacy flat parameter definition/value IDs return `410` with `details.code=legacy-parameter-id-retired` (lookup via migration evidence) — not a compatibility projection.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v2/parameter-specs` | List versioned parameter specs (property key, driver module, locator fields separated). |
+| `GET` | `/api/v2/parameter-specs/:specId` | Spec detail including example/default/policy metadata (`example_value` is informational). |
+| `GET` | `/api/v2/parameter-spec-review-tasks` | Org-scoped, paginated, status-filtered spec review queue (`?status=&limit=&cursor=`). |
+| `POST` | `/api/v2/parameter-spec-review-tasks/:taskId/resolve` | Admin resolve/dismiss a spec review task (`parameterSpecId` must be org-owned or global). |
+| `GET` | `/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology` | Source or effective tree (`?view=source\|effective`). |
+| `GET` | `/api/v2/projects/:projectId/parameter-bindings` | Stable project bindings (spec + logical node + effective value). |
+| `GET` | `/api/v2/identity-mapping-tasks` | List open/resolved identity mapping tasks. |
+| `POST` | `/api/v2/identity-mapping-tasks/:taskId/resolve` | Admin resolve a mapping task. |
+| `POST` | `/api/v2/projects/:projectId/config-revisions/:revisionId/validate` | Fail-closed toolchain validate for publish readiness. |
+| `POST` | `/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts` | Typed binding draft with precise Config Set overlay writeback (schema enforced; shared base unchanged). |
+
+Value split: responses expose `exampleValue`, `schemaDefault`, `policyTarget`, and `effectiveValue` as distinct fields. Do not collapse them into a business `recommendedValue`.
+
+Cutover/rollback procedure: `docs/runbooks/parameter-identity-cutover.md`.
 
 ## Governance
 

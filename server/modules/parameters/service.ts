@@ -15,10 +15,11 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
-import { readDtsIdentityFallbackMode } from "../parameter-files/identityFallbackMode";
 import { writebackMergedParameterValue } from "../parameter-files/writebackService";
+import { resolveInitializationSuggestion } from "../parameter-topology/editService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
+import type { InitializationSuggestionDto } from "./types";
 import {
   applyAddedImportItem,
   applyUpdatedImportItem,
@@ -30,7 +31,6 @@ import {
   deleteDraft as deleteDraftRow,
   deleteDraftForParameter,
   findOpenChangeRequest,
-  findProjectValueByDefinition,
   findProjectValueBySource,
   getChangeRequestById,
   getProjectById,
@@ -97,11 +97,19 @@ export type SaveDraftInput = {
   parameterId: string;
   targetValue: string;
   reason: string;
+  projectParameterBindingId?: string;
+  parameterSpecId?: string;
 };
 
 export type SubmitParameterChangesInput = {
   projectId: string;
-  items: Array<{ parameterId: string; targetValue: string; reason: string }>;
+  items: Array<{
+    parameterId: string;
+    targetValue: string;
+    reason: string;
+    projectParameterBindingId?: string;
+    parameterSpecId?: string;
+  }>;
   reason?: string;
   assignees?: {
     hardwareCommitterId?: string;
@@ -118,6 +126,8 @@ export type StructuredEditUnit = {
   /** CST-preserving property text; must be used as CR targetValue / writeback payload. */
   rawText: string;
   reason?: string;
+  projectParameterBindingId?: string;
+  parameterSpecId?: string;
 };
 
 export type SubmitStructuredEditsInput = {
@@ -131,6 +141,18 @@ export function sourceNodePathForStructuredEdit(edit: Pick<StructuredEditUnit, "
   const nodePath = edit.nodePath.trim();
   const propertyName = edit.propertyName.trim();
   return nodePath ? `${nodePath}/${propertyName}` : propertyName;
+}
+
+/**
+ * Initialization suggestions never treat exampleValue as enforced.
+ * Prefer policyTarget, then schemaDefault.
+ */
+export function getInitializationSuggestion(input: {
+  policyTarget?: unknown;
+  schemaDefault?: unknown;
+  exampleValue?: unknown;
+}): InitializationSuggestionDto {
+  return resolveInitializationSuggestion(input);
 }
 
 export async function resolveStructuredEditToParameter(
@@ -175,50 +197,7 @@ export async function resolveStructuredEditToParameter(
     });
   }
 
-  const fallbackMode = readDtsIdentityFallbackMode();
-
-  // deny: do not bind existing rows via (name, module); new PPV+source insert is allowed (new bind ≠ fallback).
-  if (fallbackMode !== "deny") {
-    const byDefinition = await findProjectValueByDefinition(db, {
-      organizationId: auth.organization.id,
-      projectId,
-      name: identity.name,
-      module: identity.module
-    });
-    if (byDefinition) {
-      await bindParameterSource(db, {
-        projectParameterValueId: byDefinition.id,
-        sourceFileName,
-        sourceNodePath
-      });
-      if (fallbackMode === "warn") {
-        await createAuditEvent(db, {
-          id: randomUUID(),
-          organizationId: auth.organization.id,
-          projectId,
-          actorUserId: auth.user.id,
-          actorType: "user",
-          app: "parameter-management",
-          kind: "parameter-file-identity-fallback",
-          action: "warn",
-          severity: "Low",
-          targetType: "project-parameter-value",
-          targetId: byDefinition.id,
-          metadata: {
-            mode: "warn",
-            sourceFileName,
-            sourceNodePath,
-            fallbackName: identity.name,
-            fallbackModule: identity.module,
-            fileId: file.id
-          },
-          traceId: randomUUID()
-        });
-      }
-      return byDefinition;
-    }
-  }
-
+  // Fail closed: (name, module) identity fallback is retired. New source bindings may still insert.
   return insertProjectParameterValueWithSource(db, {
     id: randomUUID(),
     organizationId: auth.organization.id,
@@ -277,13 +256,17 @@ export async function submitStructuredEdits(
       userId: auth.user.id,
       targetValue: edit.rawText,
       reason,
-      origin: "manual"
+      origin: "manual",
+      projectParameterBindingId: edit.projectParameterBindingId,
+      parameterSpecId: edit.parameterSpecId
     });
 
     items.push({
       parameterId: parameter.id,
       targetValue: edit.rawText,
-      reason
+      reason,
+      projectParameterBindingId: edit.projectParameterBindingId,
+      parameterSpecId: edit.parameterSpecId
     });
   }
 
@@ -1046,7 +1029,9 @@ export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDra
     userId: auth.user.id,
     targetValue: input.targetValue,
     reason: input.reason,
-    origin: "manual"
+    origin: "manual",
+    projectParameterBindingId: input.projectParameterBindingId,
+    parameterSpecId: input.parameterSpecId
   });
 }
 
@@ -1122,6 +1107,31 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
 
     const items = [];
     for (const { item, parameter } of parameters) {
+      const draftIdentity = await tx.query<{
+        project_parameter_binding_id: string | null;
+      }>(
+        `
+        select project_parameter_binding_id
+        from parameter_drafts
+        where organization_id = $1
+          and project_id = $2
+          and project_parameter_value_id = $3
+          and user_id = $4
+        limit 1
+        `,
+        [auth.organization.id, input.projectId, parameter.id, auth.user.id]
+      );
+      const projectParameterBindingId =
+        item.projectParameterBindingId ?? draftIdentity.rows[0]?.project_parameter_binding_id ?? undefined;
+      let parameterSpecId = item.parameterSpecId;
+      if (!parameterSpecId && projectParameterBindingId) {
+        const bindingSpec = await tx.query<{ parameter_spec_id: string }>(
+          `select parameter_spec_id from project_parameter_bindings where id = $1 limit 1`,
+          [projectParameterBindingId]
+        );
+        parameterSpecId = bindingSpec.rows[0]?.parameter_spec_id;
+      }
+
       const request = await createChangeRequest(tx, {
         id: randomUUID(),
         organizationId: auth.organization.id,
@@ -1135,7 +1145,9 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         status,
         submitterUserId: auth.user.id,
         assignedToUserId: workflowAssignees?.hardwareCommitterId,
-        workflowAssignees
+        workflowAssignees,
+        parameterSpecId,
+        projectParameterBindingId
       });
 
       const submissionItem = await createSubmissionItem(tx, {
@@ -1146,7 +1158,8 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         parameterId: parameter.id,
         currentValue: parameter.currentValue,
         targetValue: item.targetValue,
-        reason: item.reason
+        reason: item.reason,
+        projectParameterBindingId
       });
 
       await deleteDraftForParameter(tx, {
@@ -1641,7 +1654,9 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         {
           projectId: request.projectId,
           parameterDefinitionId: merged.parameterDefinitionId,
-          mergedValue: merged.targetValue
+          mergedValue: merged.targetValue,
+          projectParameterBindingId: merged.projectParameterBindingId,
+          parameterSpecId: merged.parameterSpecId
         },
         context
       );
@@ -1721,7 +1736,8 @@ export async function resolveParameterListQuery(
       moduleId: query.moduleId,
       includeDescendants,
       risk: query.risk,
-      q: query.q
+      q: query.q,
+      limit: query.limit
     };
   }
 
@@ -1738,7 +1754,8 @@ export async function resolveParameterListQuery(
         moduleId: resolved.id,
         includeDescendants,
         risk: query.risk,
-        q: query.q
+        q: query.q,
+        limit: query.limit
       };
     }
 
@@ -1748,7 +1765,8 @@ export async function resolveParameterListQuery(
       module: query.module,
       includeDescendants,
       risk: query.risk,
-      q: query.q
+      q: query.q,
+      limit: query.limit
     };
   }
 
@@ -1756,7 +1774,8 @@ export async function resolveParameterListQuery(
     organizationId,
     projectId: query.projectId,
     risk: query.risk,
-    q: query.q
+    q: query.q,
+    limit: query.limit
   };
 }
 

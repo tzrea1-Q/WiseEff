@@ -1,0 +1,25 @@
+$id: wiseeff/nodename-cccv-para0.yaml
+title: cccv_para0
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/cccv_para0
+nodename:
+  - cccv_para0
+properties:
+  buck_cccv_0_5:
+    valueShape: u32-array
+    exampleValue: <4540 1078 0>
+    constraints: {}
+  buck_temp_tab:
+    valueShape: string-list
+    exampleValue: '"5", "buck_cccv_0_5"'
+    constraints: {}
+  cccv_10_20:
+    valueShape: u32-array
+    exampleValue: "<4200 10790 0\n\t\t\t4250 8092 0\n\t\t\t4565 2697 0>"
+    constraints: {}
+  temp_tab:
+    valueShape: string-list
+    exampleValue: '"20", "cccv_10_20"'
+    constraints: {}

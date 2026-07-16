@@ -1,0 +1,15 @@
+$id: wiseeff/nodename-hi6xxx-coul.yaml
+title: hi6xxx_coul
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/hi6xxx_coul
+nodename:
+  - hi6xxx_coul
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: '"ok"'
+    constraints: {}

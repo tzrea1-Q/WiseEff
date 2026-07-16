@@ -160,6 +160,21 @@ stateDiagram-v2
 
 **敏感节点 RBAC：** `dts_sensitive_node_rules` 按 `path` / `compatible` 模式匹配到风险层级（`high` \| `critical`）与所需能力（默认 `parameter:edit-critical`）。命中规则但缺少能力返回 `403`。Agent（`actorType=agent`）对 `critical` 一律拒绝，审计为 `parameter-sensitive-node-denied` 且 `requireHuman: true`，须由人工完成。
 
+#### 语义拓扑身份（增量模型 → 原子切换）
+
+路径派生身份（`(name, module)` / 完整 DTS 路径）由下列概念替换：
+
+| 概念 | 含义 |
+| --- | --- |
+| 源码树 | 全部 DTS/DTSI/overlay occurrence 及其文件与 span 溯源 |
+| 生效树 | overlay 解析后的逻辑节点/属性，带有序 `sourceChain` |
+| `ParameterSpec` / `ParameterSpecVersion` | 稳定规格身份；`example_value` 仅作示例，不参与 DB 约束或发布策略 |
+| Schema 默认 / 策略目标 / 生效值 | 分字段存储；遗留 `recommended_value` 仅作迁移证据，不得自动提升为 default/policy |
+| `ProjectParameterBinding` | 稳定的 `project × logical-node × spec` 绑定，供历史/草稿/CR/导出使用 |
+| 身份映射 / 规格审核任务 | 歧义或不完整迁移/治理的人工队列 |
+
+语义 HTTP 表面位于 `/api/v2`。生产切换仅限维护窗口、失败关闭，且只能整快照回滚——见 `docs/runbooks/parameter-identity-cutover.md`。生产禁止双写或兼容投影。
+
 参数变更状态机：
 
 ```mermaid
