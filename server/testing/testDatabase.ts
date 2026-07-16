@@ -7,6 +7,11 @@ import { applyMigrations } from "../shared/database/migrations";
 const projectRoot = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const migrationsDir = path.join(projectRoot, "server", "migrations");
 
+/** Shared-DB transactional fixtures serialize on this advisory lock across vitest workers. */
+const FIXTURE_ADVISORY_LOCK = 4_201_658;
+const FIXTURE_LOCK_WAIT_MS = 120_000;
+const FIXTURE_LOCK_POLL_MS = 50;
+
 let migrationsApplied = false;
 
 export type InMemoryTestDatabase = Database & {
@@ -55,15 +60,40 @@ async function ensureMigrations() {
   }
 }
 
+async function acquireFixtureLock(client: pg.Client): Promise<void> {
+  const deadline = Date.now() + FIXTURE_LOCK_WAIT_MS;
+  while (Date.now() < deadline) {
+    const result = await client.query<{ ok: boolean }>("select pg_try_advisory_lock($1) as ok", [
+      FIXTURE_ADVISORY_LOCK
+    ]);
+    if (result.rows[0]?.ok) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, FIXTURE_LOCK_POLL_MS));
+  }
+  throw new Error(
+    `Timed out after ${FIXTURE_LOCK_WAIT_MS}ms waiting for shared PG fixture advisory lock ${FIXTURE_ADVISORY_LOCK}`
+  );
+}
+
 export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase> {
   await ensureMigrations();
   const client = new pg.Client({ connectionString: resolveTestDatabaseUrl() });
   await client.connect();
-  // Serialize shared-DB transactional fixtures across vitest workers to avoid
-  // lock contention / hook timeouts under `npm run test:all` default parallelism.
-  const FIXTURE_ADVISORY_LOCK = 4_201_658;
-  await client.query("select pg_advisory_lock($1)", [FIXTURE_ADVISORY_LOCK]);
-  await client.query("begin");
+  let lockHeld = false;
+  try {
+    // Non-blocking try-lock with polling so timed-out vitest workers do not leave
+    // a forever-blocked pg_advisory_lock wait that cascades under test:all.
+    await acquireFixtureLock(client);
+    lockHeld = true;
+    await client.query("begin");
+  } catch (error) {
+    if (lockHeld) {
+      await client.query("select pg_advisory_unlock($1)", [FIXTURE_ADVISORY_LOCK]).catch(() => undefined);
+    }
+    await client.end().catch(() => undefined);
+    throw error;
+  }
 
   const queryable = {
     query: async (text: string, values: unknown[] = []) => {
@@ -81,7 +111,10 @@ export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase
       try {
         await client.query("rollback");
       } finally {
-        await client.query("select pg_advisory_unlock($1)", [FIXTURE_ADVISORY_LOCK]).catch(() => undefined);
+        if (lockHeld) {
+          await client.query("select pg_advisory_unlock($1)", [FIXTURE_ADVISORY_LOCK]).catch(() => undefined);
+          lockHeld = false;
+        }
         await client.end();
       }
     }

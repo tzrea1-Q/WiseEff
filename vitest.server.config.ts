@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const isNestedWorktree = /[\\/]\.worktrees[\\/]/.test(projectRoot);
 const siblingWorktreeExclude = isNestedWorktree ? [] : [".worktrees/**"];
-const defaultMaxWorkers = Math.min(4, Math.max(1, Math.floor(os.cpus().length / 2) || 2));
+// Cap workers so shared-PG advisory-lock fixtures do not queue past suite budgets.
+const defaultMaxWorkers = Math.min(2, Math.max(1, Math.floor(os.cpus().length / 2) || 1));
 
 export default defineConfig({
   test: {
@@ -22,7 +23,8 @@ export default defineConfig({
       ? Number(process.env.VITEST_SERVER_MAX_WORKERS)
       : defaultMaxWorkers,
     fileParallelism: true,
-    testTimeout: 60_000,
-    hookTimeout: 60_000
+    // Heavy migration/ingest suites + fixture lock queue need headroom above 60s.
+    testTimeout: 180_000,
+    hookTimeout: 180_000
   }
 });
