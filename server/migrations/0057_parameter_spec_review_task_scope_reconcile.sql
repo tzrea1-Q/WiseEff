@@ -1,4 +1,4 @@
--- Round 5: tenant-validated backfill of scoped columns on legacy parameter spec review tasks.
+-- Round 5: idempotent reconcile for review-task scope columns after tenant-validated backfill.
 
 with scoped as (
   select
@@ -90,12 +90,13 @@ computed as (
       )
         then coalesce(s.source_evidence, '{}'::jsonb) || jsonb_build_object(
           'scopeBackfill',
-          jsonb_build_object(
+          coalesce(s.source_evidence->'scopeBackfill', '{}'::jsonb) || jsonb_build_object(
             'code', 'invalid_review_evidence',
             'requestedProjectId', s.requested_project_id,
             'requestedConfigRevisionId', s.requested_config_revision_id,
             'requestedPropertyOccurrenceId', s.requested_property_occurrence_id,
-            'migration', '0055'
+            'migration', '0057',
+            'reconciledAt', to_jsonb(now()::text)
           )
         )
       else s.source_evidence
