@@ -2793,6 +2793,7 @@ export async function mergeChangeRequest(
           project_id,
           project_parameter_binding_id,
           parameter_spec_id,
+          base_config_revision_id,
           base_version,
           target_value
         from parameter_change_requests
@@ -2805,19 +2806,30 @@ export async function mergeChangeRequest(
       latest_revision as (
         select
           request_to_merge.*,
-          cr.id as config_revision_id,
+          coalesce(
+            request_to_merge.base_config_revision_id,
+            (
+              select id
+              from dts_config_revisions
+              where project_id = request_to_merge.project_id
+              order by revision_number desc
+              limit 1
+            )
+          ) as config_revision_id,
           coalesce(bpr.raw_value, request_to_merge.target_value) as prior_value
         from request_to_merge
-        left join lateral (
-          select id
-          from dts_config_revisions
-          where project_id = request_to_merge.project_id
-          order by revision_number desc
-          limit 1
-        ) cr on true
         left join project_parameter_binding_revisions bpr
           on bpr.binding_id = request_to_merge.project_parameter_binding_id
-         and bpr.config_revision_id = cr.id
+         and bpr.config_revision_id = coalesce(
+           request_to_merge.base_config_revision_id,
+           (
+             select id
+             from dts_config_revisions
+             where project_id = request_to_merge.project_id
+             order by revision_number desc
+             limit 1
+           )
+         )
       ),
       upsert_binding_revision as (
         insert into project_parameter_binding_revisions (

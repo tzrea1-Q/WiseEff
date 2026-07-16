@@ -119,6 +119,8 @@ export async function listSpecReviewTaskRows(
   input: {
     organizationId: string;
     status?: "open" | "resolved" | "dismissed";
+    projectId?: string;
+    configRevisionId?: string;
     limit: number;
     cursor?: SpecReviewTaskListCursor | null;
   },
@@ -129,6 +131,20 @@ export async function listSpecReviewTaskRows(
   if (input.status) {
     values.push(input.status);
     conditions.push(`status = $${values.length}`);
+  }
+
+  if (input.projectId) {
+    values.push(input.projectId);
+    conditions.push(
+      `(project_id = $${values.length} or coalesce(source_evidence->>'projectId', '') = $${values.length})`,
+    );
+  }
+
+  if (input.configRevisionId) {
+    values.push(input.configRevisionId);
+    conditions.push(
+      `(config_revision_id = $${values.length} or coalesce(source_evidence->>'configRevisionId', '') = $${values.length})`,
+    );
   }
 
   if (input.cursor) {
@@ -277,6 +293,12 @@ export function compatibleFingerprint(compatible: string[]): string {
   return [...compatible].map((item) => item.trim()).filter(Boolean).sort().join("\0");
 }
 
+/** Normalized node locator fingerprint for matcher override scope. */
+export function nodeLocatorFingerprint(nodeLocator?: string | null): string {
+  const normalized = (nodeLocator ?? "").trim().replace(/\/+/g, "/").replace(/\/$/, "");
+  return normalized;
+}
+
 export async function listMatcherOverridesForProject(
   db: Queryable,
   input: { organizationId: string; projectId: string },
@@ -309,13 +331,15 @@ export async function upsertMatcherOverride(
   },
 ): Promise<PersistedMatcherOverride> {
   const id = input.id ?? randomUUID();
+  const locatorFingerprint = nodeLocatorFingerprint(input.nodeLocator);
   const result = await db.query<MatcherOverrideRow>(
     `
     insert into parameter_spec_matcher_overrides (
       id, organization_id, project_id, compatible_fingerprint, node_locator,
-      property_key, decision, parameter_spec_id, source_review_task_id, reason, created_by_user_id
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    on conflict (organization_id, project_id, compatible_fingerprint, property_key) do update set
+      node_locator_fingerprint, property_key, decision, parameter_spec_id,
+      source_review_task_id, reason, created_by_user_id
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    on conflict (organization_id, project_id, compatible_fingerprint, node_locator_fingerprint, property_key) do update set
       node_locator = excluded.node_locator,
       decision = excluded.decision,
       parameter_spec_id = excluded.parameter_spec_id,
@@ -330,6 +354,7 @@ export async function upsertMatcherOverride(
       input.projectId,
       input.compatibleFingerprint,
       input.nodeLocator ?? null,
+      locatorFingerprint,
       input.propertyKey,
       input.decision,
       input.parameterSpecId ?? null,
@@ -401,13 +426,14 @@ export async function countOpenSpecReviewTasksForRevision(
       and t.status = 'open'
       and (
         coalesce(t.source_evidence->>'configRevisionId', '') = $2
-        or t.parameter_spec_id is null
+        or t.config_revision_id = $2
         or exists (
           select 1
           from project_parameter_binding_revisions br
           join project_parameter_bindings b on b.id = br.binding_id
           where br.config_revision_id = $2
             and b.parameter_spec_id = t.parameter_spec_id
+            and t.parameter_spec_id is not null
         )
       )
     `,

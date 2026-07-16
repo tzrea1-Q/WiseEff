@@ -206,6 +206,8 @@ export async function listSpecReviewTasks(
   const result = await listSpecReviewTaskRows(db, {
     organizationId: auth.organization.id,
     status: query.status,
+    projectId: query.projectId,
+    configRevisionId: query.configRevisionId,
     limit,
     cursor,
   });

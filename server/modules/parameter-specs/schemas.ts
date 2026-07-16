@@ -50,6 +50,8 @@ export const specReviewTaskStatusSchema = z.enum(["open", "resolved", "dismissed
 
 export const listSpecReviewTasksQuerySchema = z.object({
   status: specReviewTaskStatusSchema.optional(),
+  projectId: z.string().optional(),
+  configRevisionId: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
   cursor: z.string().optional()
 });

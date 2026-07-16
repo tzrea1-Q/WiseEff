@@ -286,6 +286,12 @@ export async function writebackMergedParameterValue(
     });
   }
   if (!source.sourceFileName || !source.sourceNodePath) {
+    if (await mustUseSemanticParameterIdentity(db)) {
+      throw new ApiError("CONFLICT", "Semantic writeback requires bound source file and occurrence.", 409, {
+        projectId: input.projectId,
+        projectParameterBindingId: input.projectParameterBindingId
+      });
+    }
     return { skipped: true };
   }
 

@@ -31,7 +31,7 @@ export type ParameterIdentityMigrationCoverage = {
 
 export type ParameterIdentityMigrationReport = {
   migrationRunId: string;
-  mode: "dry-run" | "apply";
+  mode: "dry-run" | "stage-review" | "finalize" | "apply";
   legacyDefinitions: number;
   /**
    * Reliably mapped definitions only (exactMatched + reviewedMatched).
@@ -52,7 +52,7 @@ export type ParameterIdentityMigrationReport = {
 };
 
 export type MigrateParameterIdentitiesOptions = {
-  mode: "dry-run" | "apply";
+  mode: "dry-run" | "stage-review" | "finalize" | "apply";
   migrationRunId?: string;
   maintenanceToken?: string;
   dbSnapshotId?: string;
@@ -795,7 +795,7 @@ async function insertEvidence(
 }
 
 function assertApplyGates(options: MigrateParameterIdentitiesOptions): void {
-  if (options.mode !== "apply") return;
+  if (options.mode !== "apply" && options.mode !== "stage-review" && options.mode !== "finalize") return;
   const expected =
     options.expectedMaintenanceToken?.trim() ||
     process.env[EXPECTED_MAINTENANCE_TOKEN_ENV]?.trim() ||
@@ -823,7 +823,7 @@ export async function migrateParameterIdentities(
   assertApplyGates(options);
   await requireMigrationInfrastructure(db);
 
-  if (options.mode === "apply") {
+  if (options.mode === "apply" || options.mode === "stage-review" || options.mode === "finalize") {
     return requireTransactionalDb(db).transaction((tx) =>
       runParameterIdentityMigration(tx, options)
     );
@@ -852,7 +852,10 @@ async function runParameterIdentityMigration(
   db: Queryable,
   options: MigrateParameterIdentitiesOptions
 ): Promise<ParameterIdentityMigrationReport> {
-  const apply = options.mode === "apply";
+  const writesStaging =
+    options.mode === "apply" || options.mode === "stage-review" || options.mode === "finalize";
+  const writesActivity = options.mode === "apply" || options.mode === "finalize";
+  const apply = writesStaging;
   const migrationRunId =
     options.migrationRunId ??
     stableSemanticId("parameter_identity_migration_run", [
@@ -1215,7 +1218,7 @@ async function runParameterIdentityMigration(
       projectId: value.project_id,
       logicalNodeId,
       parameterSpecId: valueSpec.parameterSpecId,
-      apply
+      apply: writesActivity
     });
 
     await ensureBindingRevision(db, {
@@ -1223,10 +1226,10 @@ async function runParameterIdentityMigration(
       projectId: value.project_id,
       parameterSpecVersionId: valueSpec.parameterSpecVersionId,
       currentValue: value.current_value,
-      apply
+      apply: writesActivity
     });
 
-    if (apply && options.injectFailure && mappedProjectValues === 0) {
+    if (writesActivity && options.injectFailure && mappedProjectValues === 0) {
       throw new Error("injected apply failure");
     }
 
@@ -1318,7 +1321,7 @@ async function runParameterIdentityMigration(
       }
     }
     historyCoverage += 1;
-    if (apply) {
+    if (writesActivity) {
       await db.query(
         `
         update parameter_history_entries
@@ -1345,7 +1348,7 @@ async function runParameterIdentityMigration(
       continue;
     }
     draftCoverage += 1;
-    if (apply) {
+    if (writesActivity) {
       await db.query(
         `update parameter_drafts set project_parameter_binding_id = $2 where id = $1`,
         [row.id, mapped.bindingId]
@@ -1381,7 +1384,7 @@ async function runParameterIdentityMigration(
       continue;
     }
     crCoverage += 1;
-    if (apply) {
+    if (writesActivity) {
       await db.query(
         `
         update parameter_change_requests
@@ -1408,7 +1411,7 @@ async function runParameterIdentityMigration(
       continue;
     }
     itemCoverage += 1;
-    if (apply) {
+    if (writesActivity) {
       await db.query(
         `update parameter_submission_items set project_parameter_binding_id = $2 where id = $1`,
         [row.id, mapped.bindingId]
@@ -1461,7 +1464,7 @@ async function runParameterIdentityMigration(
       continue;
     }
     conflictCoverage += 1;
-    if (apply) {
+    if (writesActivity) {
       await db.query(
         `
         update parameter_file_sync_conflicts
@@ -1495,7 +1498,7 @@ async function runParameterIdentityMigration(
       [baseline.config_set_id]
     );
     // For dry-run, binding revisions are not written; count planned coverage via mapped values.
-    const planned = apply
+    const planned = writesActivity
       ? Number(linked.rows[0]?.c ?? 0)
       : values.rows.filter((value) => valueMap.has(value.id)).length;
     if (planned > 0) {
@@ -1542,7 +1545,7 @@ async function runParameterIdentityMigration(
     );
     const bindingId = valueForDef?.[1]?.bindingId ?? null;
     debugCoverage += 1;
-    if (apply) {
+    if (writesActivity) {
       await db.query(
         `
         update debugging_parameters
@@ -1588,7 +1591,7 @@ async function runParameterIdentityMigration(
     );
     const bindingId = valueForDef?.[1]?.bindingId ?? null;
     debugCoverage += 1;
-    if (apply) {
+    if (writesActivity) {
       await db.query(
         `
         update node_operations
@@ -1653,7 +1656,7 @@ async function runParameterIdentityMigration(
     if (!semanticId) continue;
 
     auditCoverage += 1;
-    if (apply) {
+    if (writesActivity) {
       const evidenceId =
         mappedValue?.evidenceId ??
         mappedDef?.evidenceId ??
@@ -1677,7 +1680,7 @@ async function runParameterIdentityMigration(
     }
   }
 
-  if (apply && blockers.length > 0) {
+  if (writesActivity && blockers.length > 0) {
     throw new Error(`apply blocked: ${blockers.join("; ")}`);
   }
 
@@ -1710,21 +1713,31 @@ async function runParameterIdentityMigration(
     }
   };
 
-  if (apply) {
+  if (writesStaging) {
+    const runStatus =
+      options.mode === "stage-review"
+        ? "staged"
+        : blockers.length === 0
+          ? options.mode === "finalize"
+            ? "finalized"
+            : "completed"
+          : "blocked";
     await db.query(
       `
       insert into parameter_identity_migration_runs (
         id, mode, status, report, db_snapshot_id, object_snapshot_id,
         write_lock_confirmed, completed_at
-      ) values ($1, 'apply', $2, $3::jsonb, $4, $5, true, now())
+      ) values ($1, $2, $3, $4::jsonb, $5, $6, true, now())
       on conflict (id) do update set
+        mode = excluded.mode,
         status = excluded.status,
         report = excluded.report,
         completed_at = excluded.completed_at
       `,
       [
         migrationRunId,
-        blockers.length === 0 ? "completed" : "blocked",
+        options.mode,
+        runStatus,
         JSON.stringify(report),
         options.dbSnapshotId ?? null,
         options.objectSnapshotId ?? null
@@ -1751,8 +1764,8 @@ export async function applyParameterIdentityCutover(
     `select status, report from parameter_identity_migration_runs where id = $1`,
     [options.migrationRunId]
   );
-  if (!run.rows[0] || run.rows[0].status !== "completed") {
-    throw new Error(`cutover requires completed migration run ${options.migrationRunId}`);
+  if (!run.rows[0] || !["completed", "finalized"].includes(run.rows[0].status)) {
+    throw new Error(`cutover requires completed/finalized migration run ${options.migrationRunId}`);
   }
   const report = run.rows[0].report as Partial<ParameterIdentityMigrationReport> | null;
   const inferredPending =
