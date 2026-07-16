@@ -15,7 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- 当前活跃计划清单以英文版 `docs/PLANS.md` 为准。DTS 主程序（P0–P3.1）及 `2026-07-15-dts-full-seed-and-toolchain.md`（三项目 170 个来源参数、结构化文件/基线、真实 dtc bootstrap/CI/自托管环境）已归档；`2026-07-16-parameter-topology-schema-management.md` 负责以源码/有效拓扑、版本化 Schema 和稳定项目绑定替换路径派生身份，并通过维护窗口完成全量历史迁移和原子切换。多层级模块亦已归档。
+- 当前活跃计划清单以英文版 `docs/PLANS.md` 为准。DTS 主程序（P0–P3.1）及 `2026-07-15-dts-full-seed-and-toolchain.md`（三项目 170 个来源参数、结构化文件/基线、真实 dtc bootstrap/CI/自托管环境）已归档；`2026-07-16-parameter-topology-schema-management.md` 负责以源码/有效拓扑、版本化 Schema 和稳定项目绑定替换路径派生身份，并通过维护窗口完成全量历史迁移和原子切换；`2026-07-16-parameter-topology-e2e-review-blockers.md` 修复 Review 合并阻断，打通 ingest→binding→编辑→fail-closed 校验→前端与验收的真实生产路径（分支 `fix/parameter-topology-e2e-review-blockers`）。多层级模块亦已归档。
 - **分支与 PR：** 实现型子智能体只在从 `main` 切出的 feature branch 上开发并本地 commit；不得 push `main`、不得开/合 GitHub PR。由父智能体 review 后提 PR、合并，再 `git pull` 同步本地 `main`。细则见英文版 `docs/PLANS.md` § Git Branch & PR Workflow。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 

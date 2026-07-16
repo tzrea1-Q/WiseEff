@@ -26,6 +26,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 - `exec-plans/active/2026-07-07-wiseeff-debug-logs-org-scope-decoupling.md`: Decouple log analysis and debugging from parameter-management projects — organization-scoped M2/M3, migration 0037, API/frontend/Agent/e2e updates.
 - `exec-plans/active/2026-07-08-product-feedback.md`: Internal Beta product feedback — persist sidebar feedback with multi-image ObjectStore attachments and admin triage at `/feedback-admin`.
 - `exec-plans/active/2026-07-16-parameter-topology-schema-management.md`: replace path-derived parameter identity with source/effective DTS topology, versioned schemas, stable project bindings, full historical migration, and an atomic fail-closed cutover. Supersedes residual path-derived identity and optional production schema-validation debt from TD-039/TD-040; prior closeouts `2026-07-15-dts-hardening-closeout.md` and `2026-07-15-parameter-import-wizard-td035.md` are archived under `completed/`.
+- `exec-plans/active/2026-07-16-parameter-topology-e2e-review-blockers.md`: fix merge-blocking review findings so ingest, identity mapping, fail-closed validate/toolchain pin, typed edit writeback, frontend, spec review queue, migration/cutover, and browser acceptance share one real production path (branch `fix/parameter-topology-e2e-review-blockers`).
 
 ## Completed Plans
 
