@@ -242,6 +242,51 @@ npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <ar
 
 `selfhost:release-gate` verifies release metadata, command-gate wiring, identity/backup/rollback/capacity/synthetic/queue/observability evidence paths, dependency statuses, and explicit HDC scope. It can verify local script configuration, but release readiness requires target OIDC evidence from `npm run identity:check` plus target evidence from backup/restore, rollback rehearsal, queue drain/pause/resume, observability snapshots, capacity, and target synthetic acceptance. Local HMAC smoke or static bearer injection must not be treated as M6.2 identity readiness. Rollback, capacity, target synthetic, queue, and observability dependencies cannot be marked `passed` without the matching evidence path in the release record.
 
+## 参数拓扑（第四轮）
+
+第四轮在分支 `fix/parameter-topology-round4-review-blockers` 关闭父智能体 Review 阻断。**TD-042 仍为 BLOCKER**——下列门禁证明本地/临时库行为，不构成生产 cutover 就绪。
+
+| 领域 | 测试 / 命令 | 证明内容 |
+| --- | --- | --- |
+| 厂商 dt-schema | `goldenPowerFixture.test.ts`、`scripts/vendorDtSchemaGenerator.test.ts` | 由属性规格确定性生成 linux-bindings；黄金 DTB 通过真实 `dt-validate`；负例按预期失败 |
+| 黄金计数 | `goldenPowerFixture.test.ts`（173 属性）、`seedM1DtsFiles.test.ts`（519 行 `dts_properties`）、`matcher.test.ts`、`ingestService.test.ts` | 锁定 **173/519** 拓扑/seed 计数 |
+| stage → finalize | `migration.test.ts`（临时 PostgreSQL、重连、注入失败） | 可运维 `stage-review` 事务；原子 `finalize`；cutover 拒绝非 `finalized` 运行 |
+| 精确回写 | `editService.test.ts`、合入工作流测试 | occurrence 锁定合入/回写；base 不可变；身份过期 → `409` |
+| Matcher / 审核作用域 | `matcher.test.ts`、`matcherScope.integration.test.ts` | override 按节点 locator 指纹隔离；`blocker_scope` 门禁 |
+| Manifest 门禁 | `manifestBackfillMigration.test.ts`、`configRevisionManifest.test.ts`、`editService` needs_review 路径 | 从 `dts_config_revision_members` 回填；`needs_review` 对编辑/校验/发布/回写失败关闭 |
+| 全局规格 hotspot | `postCutoverDashboard.integration.test.ts` | 租户项目包含 `organization_id IS NULL` 厂商规格 |
+| 未匹配审核 | `service.test.ts`、`routes.test.ts` | `createSpec` + `confirmPropertyMismatch` 与治理审计 |
+| 浏览器验收 | `parameter-topology.acceptance.spec.ts` | `PARAM-SPEC-GOVERN-001` 至 `PARAM-CONFIG-PUBLISH-GATE-001`；API 模式无教学回退 |
+
+拓扑发布前工具链门禁：
+
+```bash
+PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dts:toolchain:check
+PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
+npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameter-topology/migration.test.ts server/modules/parameter-specs/matcherScope.integration.test.ts --run
+```
+
+## 参数拓扑（第五轮）
+
+第五轮在分支 `fix/parameter-topology-round5-review-blockers` 关闭父智能体 Review 阻断。**TD-042 仍为 BLOCKER**——下列门禁证明本地/临时库行为，不构成生产 cutover 就绪。
+
+| 领域 | 测试 / 命令 | 证明内容 |
+| --- | --- | --- |
+| 不可变 base 与 candidate | `postCutoverWorkflow.integration.test.ts`、`editService.test.ts` | 合入/回写后 base binding revision 不变；合入值仅在 candidate revision |
+| Fail-closed 回写 | `parameters/service` 合入路径、`writebackService`、`editService` 工具链门禁 | 缺 `objectStore`、项目范围、write lock 或工具链失败关闭；无 `WISEEFF_WRITEBACK_SKIP_TOOLCHAIN` 生产绕过 |
+| Phase 审计与运行关联 | `migration.test.ts`（`parameter_identity_migration_phases`、`migration_run_id`） | `stage-review`/`finalize` 不可变 phase 行；推断任务关联 staged 运行；cutover 拒绝伪造状态 |
+| 租户 resolve | `validateSpecReviewTenantEvidence`、跨租户 PG 负向测试 | 跨租户证据拒绝；0055 不信任 raw evidence ID |
+| Draft→激活→resolve | `draftSpecWorkflow.integration.test.ts`、`service.test.ts`、`routes.test.ts` | `createSpec` 仅 draft；`activate` 需 Admin+完整形状；resolve 拒绝 draft |
+| 验收 fixture 诚实化 | `acceptanceTaskLookup.ts`、`semanticFixtureCleanup.ts`、topology/files/dts acceptance | 无 `items[0]` fallback；前缀作用域 FK 完整清理；覆盖 draft→activate→resolve |
+
+第五轮工具链门禁（同第四轮）：
+
+```bash
+PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dts:toolchain:check
+PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
+npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts server/modules/parameter-specs/draftSpecWorkflow.integration.test.ts server/modules/parameter-topology/migration.test.ts --run
+```
+
 ## 10. Documentation Governance
 
 Documentation-impacting work must run `npm run docs:check` plus `git diff --check`. The docs check enforces that active implementation plans carry a documentation impact matrix and update gate.

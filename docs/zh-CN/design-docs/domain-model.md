@@ -160,6 +160,42 @@ stateDiagram-v2
 
 **敏感节点 RBAC：** `dts_sensitive_node_rules` 按 `path` / `compatible` 模式匹配到风险层级（`high` \| `critical`）与所需能力（默认 `parameter:edit-critical`）。命中规则但缺少能力返回 `403`。Agent（`actorType=agent`）对 `critical` 一律拒绝，审计为 `parameter-sensitive-node-denied` 且 `requireHuman: true`，须由人工完成。
 
+#### 语义拓扑身份（增量模型 → 原子切换）
+
+路径派生身份（`(name, module)` / 完整 DTS 路径）由下列概念替换：
+
+| 概念 | 含义 |
+| --- | --- |
+| 源码树 | 全部 DTS/DTSI/overlay occurrence 及其文件与 span 溯源 |
+| 生效树 | overlay 解析后的逻辑节点/属性，带有序 `sourceChain` |
+| `ParameterSpec` / `ParameterSpecVersion` | 稳定规格身份；`example_value` 仅作示例，不参与 DB 约束或发布策略 |
+| Schema 默认 / 策略目标 / 生效值 | 分字段存储；遗留 `recommended_value` 仅作迁移证据，不得自动提升为 default/policy |
+| `ProjectParameterBinding` | 稳定的 `project × logical-node × spec` 绑定，供历史/草稿/CR/导出使用 |
+| 身份映射 / 规格审核任务 | 歧义或不完整迁移/治理的人工队列。规格审核 `resolved` 会写入 occurrence→spec 决策、项目 binding 与可复用 matcher override；`dismissed` 不得假装已匹配，并作为 fail-closed 发布阻断。 |
+| Binding candidate 状态机 | 集中候选态；`needs_mapping` / `invalid` 不得被覆盖成 `draft`。 |
+| 校验门禁 | 失败关闭工具链校验；再次校验失败撤销 `validated`；缺失 Config Set base/manifest 失败关闭。 |
+| 迁移匹配分桶 | 报告拆分 `exactMatched` / `reviewedMatched` / `inferredPendingReview` / `ambiguous` / `unmapped` / `broken`。推断草稿不计为可发布已映射；未审核 inferred 阻断 cutover。 |
+| 已审核连续性 | 已审核身份映射与 matcher override 可跨后续 revison 复用；仅稳定 revison 可作为连续性基线。 |
+| Config Set manifest | 每个 revision 持久化 `entryFile`、`includeSearchPaths`、overlay 顺序与成员角色。历史行缺失时从钉住的 `dts_config_revision_members` 回填。`manifestState=needs_review` 对编辑、校验、发布、回写失败关闭，直至运维修复 manifest。 |
+| Matcher override 作用域 | 可复用 override 键为 `compatible` 指纹 + **节点 locator 指纹** + `propertyKey`。同一 compatible/属性在不同逻辑节点上不得串用，除非经审核显式决议。 |
+| 审核阻断作用域 | 规格审核与映射阻断携带 `blocker_scope`（`revision` \| `project` \| `platform`）。校验/发布门禁按作用域生效——revision 级阻断不得 org 级误伤无关项目。 |
+| 全局厂商规格 | `organization_id IS NULL` 的 `ParameterSpec` 为平台全局厂商定义。租户绑定项目的 dashboard/hotspot 聚合须同时包含全局规格与本组织规格。 |
+| 厂商 dt-schema | Linux-binding JSON schema 由属性规格确定性生成（非宽松 `additionalProperties: true` 占位）。黄金 DTB 须通过真实 `dt-validate`；负例 fixture 须按预期失败。 |
+| 迁移 CLI 阶段 | `parameter-identities:migrate` 提供 `dry-run`（默认）、可运维 `stage-review`（推断草稿与审核任务单事务提交）、原子 `finalize`（活动 FK + binding）。Cutover 仅接受 `finalized` 运行。 |
+| 不可变 base 与 candidate binding revision | 锁定合入/回写仅 ingest **candidate** config revision，并只在该 revision 上 upsert `project_parameter_binding_revisions`。锁定的 **base** config revision 及其 binding revision 行不可变；合入值写在 candidate revision。身份过期 → `409`。 |
+| Fail-closed 回写依赖 | Cutover 后语义合入须注入 `objectStore`、项目范围变更请求、精确 write lock 与真实 DTC 工具链校验。跳过回写或缺依赖均失败关闭；生产路径无 `WISEEFF_WRITEBACK_SKIP_TOOLCHAIN`。 |
+| 迁移 phase 审计 | `stage-review` 与 `finalize` 各向 `parameter_identity_migration_phases` 追加不可变行（不覆盖既有 phase 载荷）。Cutover 仅接受带成功 `finalize` phase 行的运行。 |
+| 迁移运行任务关联 | `stage-review` 创建的 inferred 规格审核与身份映射任务携带 `migration_run_id`；`finalize` 要求该运行关联任务全部 resolved 后才写入 activity FK。 |
+| 手工规格生命周期 | 未匹配 `createSpec` 仅创建本组织 **draft** 规格（从 occurrence AST 推断类型）。Admin `activate` 将 draft→active 并补齐约束；仅 active+完整规格可 `resolve`。 |
+| 租户拥有校验 resolve | 规格审核 `resolve` 经租户级 join 校验 org/project/revision/occurrence/logical node；不得单独信任 raw evidence ID（0055 加固）。 |
+| 精确回写身份 | 合入/回写锁定 binding revision、occurrence、文件版本、checksum 与 CST span。共享 base revision 不可变；身份过期 → `409`。 |
+
+**第四轮黄金 fixture 计数（测试锁定）：** `wiseeff-power-base.dts` overlay 拓扑 = **50 节点 / 173 个属性 occurrence**；M1 DTS seed 目录 = **519 行 `dts_properties`**。
+
+语义 HTTP 表面位于 `/api/v2`。生产切换仅限维护窗口、失败关闭，且只能整快照回滚——见 `docs/runbooks/parameter-identity-cutover.md`。生产禁止双写或兼容投影。Cutover 后活动路径只使用 binding/spec/occurrence ID，不得再创建 shadow PPV/definition 行。**TD-042 仍为 BLOCKER**——第四轮与第五轮修复均不构成生产 cutover 就绪声明。
+
+**`legacyDependencyGuard`：** 位于 `server/modules/parameter-topology/legacyDependencyGuard.test.ts` 的 Vitest 源码扫描（不是运行时中间件）。禁止在 `server/`、`src/`、`scripts/` 中出现已退役扁平身份/shadow token；允许名单仅限 migrations、cutovers、rollback/adapters、过渡适配器、已完成计划文档、tests/e2e 与 scripts。
+
 参数变更状态机：
 
 ```mermaid

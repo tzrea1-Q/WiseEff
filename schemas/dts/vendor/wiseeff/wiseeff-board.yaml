@@ -1,0 +1,17 @@
+$id: wiseeff/wiseeff-board.yaml
+title: wiseeff,board
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,board
+compatible:
+  - wiseeff,board
+properties:
+  compatible:
+    valueShape: string-list
+    exampleValue: '"wiseeff,board"'
+    constraints: {}
+  model:
+    valueShape: string-list
+    exampleValue: '"Acceptance Board"'
+    constraints: {}

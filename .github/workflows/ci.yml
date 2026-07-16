@@ -63,6 +63,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install and verify DTS toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y device-tree-compiler python3-pip
+          python3 -m pip install --user -r tools/dts-toolchain/requirements.txt
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          npm run dts:toolchain:check
+          npm run dtc:seed:compile
+
       - name: Build
         run: npm run build
 
@@ -122,6 +131,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install and verify DTS toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y device-tree-compiler python3-pip
+          python3 -m pip install --user -r tools/dts-toolchain/requirements.txt
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          npm run dts:toolchain:check
+          npm run dtc:seed:compile
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium

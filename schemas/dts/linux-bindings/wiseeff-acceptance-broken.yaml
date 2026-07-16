@@ -1,0 +1,18 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-acceptance-broken.yaml#
+title: wiseeff,acceptance-broken
+description: WiseEff vendor binding for wiseeff,acceptance-broken (generated from vendor property schema).
+maintainers:
+  - WiseEff
+properties:
+  reg:
+    maxItems: 1
+  compatible:
+    contains:
+      const: wiseeff,acceptance-broken
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false

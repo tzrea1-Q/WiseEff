@@ -11,6 +11,7 @@ export default defineConfig({
     environment: "node",
     include: ["server/**/*.test.ts"],
     exclude: ["node_modules/**", ...siblingWorktreeExclude],
+    setupFiles: ["./server/testing/vitest.setup.ts"],
     passWithNoTests: true,
     pool: "threads"
   }

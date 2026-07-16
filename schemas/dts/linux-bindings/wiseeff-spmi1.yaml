@@ -1,0 +1,23 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-spmi1.yaml#
+title: wiseeff,spmi1
+description: WiseEff vendor binding for wiseeff,spmi1 (generated from vendor property schema).
+maintainers:
+  - WiseEff
+properties:
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  scharger_v800:
+    type: object
+  compatible:
+    contains:
+      const: wiseeff,spmi1
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false
+patternProperties:
+  ^.*@[0-9a-fA-F]+$:
+    type: object

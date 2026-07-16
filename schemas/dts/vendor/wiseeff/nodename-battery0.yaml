@@ -1,0 +1,25 @@
+$id: wiseeff/nodename-battery0.yaml
+title: battery0
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/battery0
+nodename:
+  - battery0
+properties:
+  cccv_0:
+    valueShape: u32-array
+    exampleValue: <4500 0>
+    constraints: {}
+  cccv_10_20:
+    valueShape: u32-array
+    exampleValue: "<4200 3610\n\t\t\t4250 2707\n\t\t\t4555 1260>"
+    constraints: {}
+  temp_tab:
+    valueShape: string-list
+    exampleValue: "\"0\", \"cccv_0\",\n\t\t\t\"20\", \"cccv_10_20\""
+    constraints: {}
+  weight:
+    valueShape: u32-array
+    exampleValue: <1805>
+    constraints: {}

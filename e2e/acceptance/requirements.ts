@@ -99,6 +99,18 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PARAM-IMPORT-DTS-FULL-001",
+    workflow: "C",
+    title: "Admin full .dts import uses server parse-dts with distinct @address module paths; /include/ is rejected.",
+    required: true
+  },
+  {
+    id: "PARAM-IMPORT-REVIEW-META-001",
+    workflow: "C",
+    title: "Import preview with reviewMetadata.skippedRows persists that structure on batch-import audit metadata.",
+    required: true
+  },
+  {
     id: "PARAM-DRAFT-EDIT-001",
     workflow: "B",
     title: "Parameter draft edit and remove operations work before final submission.",
@@ -141,6 +153,18 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "BRIDGE-WIN-001",
+    workflow: "E",
+    title: "Windows-first local bridge panel covers missing/pairing/startup/online states with same-origin download CTA.",
+    required: false
+  },
+  {
+    id: "BRIDGE-HDC-001",
+    workflow: "E",
+    title: "Real paired bridge HDC detect smoke runs when DEVICE_BRIDGE_HDC_AVAILABLE is enabled.",
+    required: false
+  },
+  {
     id: "HDC-LAB-001",
     workflow: "F",
     title: "Real HDC device lab read/write smoke runs when explicitly enabled.",
@@ -180,6 +204,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "XIAOZE-ACTION-AUTHZ-001",
     workflow: "G",
     title: "Users without edit permission cannot approve Xiaoze mutating actions.",
+    required: true
+  },
+  {
+    id: "XIAOZE-ACTION-RESUME-001",
+    workflow: "G",
+    title: "Xiaoze AG-UI native resume continues an approved mutating action without reopening a change request.",
     required: true
   },
   {
@@ -300,6 +330,36 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PARAM-DTS-RBAC-001",
     workflow: "C",
     title: "Sensitive-node writes without parameter:edit-critical return 403; agent writes to critical nodes are denied.",
+    required: true
+  },
+  {
+    id: "PARAM-SPEC-GOVERN-001",
+    workflow: "C",
+    title: "Admin can search parameter specs, open detail, and resolve inference review tasks with audit evidence.",
+    required: true
+  },
+  {
+    id: "PARAM-TOPOLOGY-BROWSE-001",
+    workflow: "B",
+    title: "Users can toggle source/effective topology, search two gpio_int bindings, and open binding detail without path-as-identity.",
+    required: true
+  },
+  {
+    id: "PARAM-TOPOLOGY-EDIT-001",
+    workflow: "B",
+    title: "Typed binding edits surface schema diagnostics and reject stale base-revision edits.",
+    required: true
+  },
+  {
+    id: "PARAM-IDENTITY-MAP-001",
+    workflow: "B",
+    title: "Unresolved overlay targets and open identity mapping tasks block publish until resolved.",
+    required: true
+  },
+  {
+    id: "PARAM-CONFIG-PUBLISH-GATE-001",
+    workflow: "B",
+    title: "Publish is blocked by compiler/edit diagnostics; clean revisions validate/publish with audit and semantic persistence after reload.",
     required: true
   }
 ];

@@ -1,0 +1,13 @@
+$id: wiseeff/test-ambiguous-a.yaml
+title: Ambiguous fixture A
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/test-ambiguous-a
+compatible:
+  - wiseeff,test-ambiguous
+properties:
+  shared_prop:
+    valueShape: u32-array
+    exampleValue: <1>
+    documentation: Ambiguous candidate A

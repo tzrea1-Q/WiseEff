@@ -17,7 +17,7 @@ describe("dashboard repository", () => {
   beforeEach(async () => {
     db = await createInMemoryTestDatabase();
     await seedParameterDashboardFixture(db);
-  });
+  }, 30_000);
 
   afterEach(async () => {
     await db.rollback();
@@ -60,16 +60,20 @@ describe("dashboard repository", () => {
   });
 
   it("counts personal KPIs scoped by user, project and window", async () => {
-    const query = vi.fn().mockResolvedValue({
-      rows: [
-        {
-          contribution_count: "8",
-          workflow_count: "3",
-          high_risk_touch_count: "2"
-        }
-      ],
-      rowCount: 1
-    });
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ c: "0" }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ c: "1" }], rowCount: 1 })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            contribution_count: "8",
+            workflow_count: "3",
+            high_risk_touch_count: "2"
+          }
+        ],
+        rowCount: 1
+      });
     const mockDb = {
       query,
       transaction: vi.fn()
@@ -92,8 +96,8 @@ describe("dashboard repository", () => {
       roleLevel: "user"
     });
 
-    expect(query).toHaveBeenCalledTimes(1);
-    const [sql, args] = query.mock.calls[0] as [string, unknown[]];
+    expect(query).toHaveBeenCalledTimes(3);
+    const [sql, args] = query.mock.calls[2] as [string, unknown[]];
     expect(sql).toContain("h.changed_by_user_id = $2");
     expect(sql).toContain("r.submitter_user_id = $2");
     expect(sql).toContain("h.project_id = $4");

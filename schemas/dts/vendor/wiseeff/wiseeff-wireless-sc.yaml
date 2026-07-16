@@ -1,0 +1,35 @@
+$id: wiseeff/wiseeff-wireless-sc.yaml
+title: wiseeff,wireless_sc
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,wireless_sc
+compatible:
+  - wiseeff,wireless_sc
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  bat_para:
+    valueShape: string-list
+    exampleValue: "\"default\", \"10\", \"45\", \"0x01\", \"volt_para00\",\n\t\t\"default\", \"10\", \"15\", \"0x02\", \"volt_para01\""
+    constraints: {}
+  init_para:
+    valueShape: string-list
+    exampleValue: "\"0x2\", \"SC_2\", \"0\", \"1\", \"3300\", \"4500\", \"9000\",  \"450\", \"300\", \"100\", \"300\", \"10000\", \"9000\",  \"2\",\n\t\t\"0x4\", \"SC_4\", \"2\", \"1\", \"3200\", \"4500\", \"15000\", \"500\", \"300\", \"100\", \"300\", \"20000\", \"15000\", \"4\""
+    constraints: {}
+  init_para_col:
+    valueShape: u32-array
+    exampleValue: <14>
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}
+  volt_para00:
+    valueShape: string-list
+    exampleValue: '"4555", "1802", "386"'
+    constraints: {}
+  volt_para01:
+    valueShape: string-list
+    exampleValue: "\"4050\", \"4046\", \"3237\",\n\t\t\"4555\", \"809\", \"600\""
+    constraints: {}

@@ -42,6 +42,11 @@
 - `PARAM-FILE-CONFLICT-001`：Admin 裁决 file/UI 草稿冲突，可选择保留文件值或 UI 值（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-IMPORT-DTS-FULL-001`：完整 `.dts` 经 `parse-dts` 产出带 `@address` 的 module 路径；`/include/` 被拒绝；向导显示服务端解析提示（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。
 - `PARAM-IMPORT-REVIEW-META-001`：带 `reviewMetadata.skippedRows` 的导入预览写入 `batch-import` 审计 metadata（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。
+- `PARAM-SPEC-GOVERN-001`：Admin 在 `/parameter-admin` 检索 ingest 后的规格（sc8562/mt5788 两个不同 `gpio_int`），打开详情并决议审核任务（含治理审计）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-TOPOLOGY-BROWSE-001`：在 `/parameters` 切换真实源树/生效树（`amba` → `i2c@FDF5E000` → `sc8562@6E`），搜索两个 `gpio_int` 绑定；topology API 必须 200 且含预期节点（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-TOPOLOGY-EDIT-001`：类型化 drafts 返回 Schema cell-count 诊断、过期 revision 返回 409，并对临时 Config Set 走 fail-closed 编译/工具链校验（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-IDENTITY-MAP-001`：未解决身份映射阻断 validate（`open-mapping`）；决议后清除阻断并写治理审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-CONFIG-PUBLISH-GATE-001`：真实工具链 validate 在黄金/候选 Config Set 上成功（status=okay + vendor linux-bindings；不以 schema-failed 冒充成功）；刷新后 bindingId 与 provenance 从 DB 持久（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 
 ## 同类中文文档
 

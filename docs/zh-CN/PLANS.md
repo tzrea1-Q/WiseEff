@@ -15,7 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- 当前活跃计划清单以英文版 `docs/PLANS.md` 为准。DTS 主程序（P0–P3.1）已归档；后续活跃计划含硬化收口 `2026-07-15-dts-hardening-closeout.md`（B）与导入向导对齐 `2026-07-15-parameter-import-wizard-td035.md`（C），方案见 `docs/design-docs/2026-07-15-dts-followup-scheme.md`。多层级模块亦已归档。
+- 当前活跃计划清单以英文版 `docs/PLANS.md` 为准。`2026-07-16-parameter-topology-round4-review-blockers.md` 为第四轮 Review 阻断修复：真实 dt-validate schema、可运维 stage→finalize、精确锁定 merge 回写、matcher/review 作用域、manifest 门禁、全局规格 hotspot、未匹配创建+不匹配审计、acceptance/浏览器证据（分支 `fix/parameter-topology-round4-review-blockers`）。`2026-07-16-parameter-topology-round5-review-blockers.md` 为第五轮：不可变 base binding、真 fail-closed writeback、stage/finalize phase 审计、租户 resolve、createSpec 草稿→激活、acceptance fixture 诚实化（分支 `fix/parameter-topology-round5-review-blockers`）。TD-042 仍为 BLOCKER。
 - **分支与 PR：** 实现型子智能体只在从 `main` 切出的 feature branch 上开发并本地 commit；不得 push `main`、不得开/合 GitHub PR。由父智能体 review 后提 PR、合并，再 `git pull` 同步本地 `main`。细则见英文版 `docs/PLANS.md` § Git Branch & PR Workflow。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 

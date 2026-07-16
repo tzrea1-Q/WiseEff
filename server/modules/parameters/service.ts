@@ -15,10 +15,12 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
-import { readDtsIdentityFallbackMode } from "../parameter-files/identityFallbackMode";
-import { writebackMergedParameterValue } from "../parameter-files/writebackService";
+import { writebackMergedParameterValue, type WritebackServiceContext } from "../parameter-files/writebackService";
+import { resolveBindingWriteLock, resolveInitializationSuggestion } from "../parameter-topology/editService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
+import { mustUseSemanticParameterIdentity } from "./semanticParameterReads";
+import type { InitializationSuggestionDto } from "./types";
 import {
   applyAddedImportItem,
   applyUpdatedImportItem,
@@ -30,9 +32,9 @@ import {
   deleteDraft as deleteDraftRow,
   deleteDraftForParameter,
   findOpenChangeRequest,
-  findProjectValueByDefinition,
   findProjectValueBySource,
   getChangeRequestById,
+  getDraftWriteLock,
   getProjectById,
   getProjectParameterForUpdate,
   getSubmissionRoundById,
@@ -90,6 +92,14 @@ import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeli
 type ServiceContext = AuditCorrelationContext & {
   objectStore?: ObjectStore;
   actorType?: "user" | "agent" | "system";
+  /**
+   * Test-only: inject a fake DTC toolchain runner for semantic merge writeback.
+   * Production routes must omit this so writeback uses the pinned host runner.
+   * There is no environment-variable bypass.
+   */
+  toolchain?: WritebackServiceContext["toolchain"];
+  /** Test-only: skip semantic promotion gates after resolve/toolchain. */
+  skipSemanticGates?: boolean;
 };
 
 export type SaveDraftInput = {
@@ -97,11 +107,19 @@ export type SaveDraftInput = {
   parameterId: string;
   targetValue: string;
   reason: string;
+  projectParameterBindingId?: string;
+  parameterSpecId?: string;
 };
 
 export type SubmitParameterChangesInput = {
   projectId: string;
-  items: Array<{ parameterId: string; targetValue: string; reason: string }>;
+  items: Array<{
+    parameterId: string;
+    targetValue: string;
+    reason: string;
+    projectParameterBindingId?: string;
+    parameterSpecId?: string;
+  }>;
   reason?: string;
   assignees?: {
     hardwareCommitterId?: string;
@@ -118,6 +136,8 @@ export type StructuredEditUnit = {
   /** CST-preserving property text; must be used as CR targetValue / writeback payload. */
   rawText: string;
   reason?: string;
+  projectParameterBindingId?: string;
+  parameterSpecId?: string;
 };
 
 export type SubmitStructuredEditsInput = {
@@ -131,6 +151,18 @@ export function sourceNodePathForStructuredEdit(edit: Pick<StructuredEditUnit, "
   const nodePath = edit.nodePath.trim();
   const propertyName = edit.propertyName.trim();
   return nodePath ? `${nodePath}/${propertyName}` : propertyName;
+}
+
+/**
+ * Initialization suggestions never treat exampleValue as enforced.
+ * Prefer policyTarget, then schemaDefault.
+ */
+export function getInitializationSuggestion(input: {
+  policyTarget?: unknown;
+  schemaDefault?: unknown;
+  exampleValue?: unknown;
+}): InitializationSuggestionDto {
+  return resolveInitializationSuggestion(input);
 }
 
 export async function resolveStructuredEditToParameter(
@@ -175,50 +207,7 @@ export async function resolveStructuredEditToParameter(
     });
   }
 
-  const fallbackMode = readDtsIdentityFallbackMode();
-
-  // deny: do not bind existing rows via (name, module); new PPV+source insert is allowed (new bind ≠ fallback).
-  if (fallbackMode !== "deny") {
-    const byDefinition = await findProjectValueByDefinition(db, {
-      organizationId: auth.organization.id,
-      projectId,
-      name: identity.name,
-      module: identity.module
-    });
-    if (byDefinition) {
-      await bindParameterSource(db, {
-        projectParameterValueId: byDefinition.id,
-        sourceFileName,
-        sourceNodePath
-      });
-      if (fallbackMode === "warn") {
-        await createAuditEvent(db, {
-          id: randomUUID(),
-          organizationId: auth.organization.id,
-          projectId,
-          actorUserId: auth.user.id,
-          actorType: "user",
-          app: "parameter-management",
-          kind: "parameter-file-identity-fallback",
-          action: "warn",
-          severity: "Low",
-          targetType: "project-parameter-value",
-          targetId: byDefinition.id,
-          metadata: {
-            mode: "warn",
-            sourceFileName,
-            sourceNodePath,
-            fallbackName: identity.name,
-            fallbackModule: identity.module,
-            fileId: file.id
-          },
-          traceId: randomUUID()
-        });
-      }
-      return byDefinition;
-    }
-  }
-
+  // Fail closed: (name, module) identity fallback is retired. New source bindings may still insert.
   return insertProjectParameterValueWithSource(db, {
     id: randomUUID(),
     organizationId: auth.organization.id,
@@ -235,7 +224,7 @@ export async function resolveStructuredEditToParameter(
 }
 
 /**
- * Map structured DTS edits onto real project_parameter_values and submit via the
+ * Map structured DTS edits onto project parameter identity rows and submit via the
  * existing draft → submission_round → change_request flow. CR targetValue is rawText.
  */
 export async function submitStructuredEdits(
@@ -277,13 +266,17 @@ export async function submitStructuredEdits(
       userId: auth.user.id,
       targetValue: edit.rawText,
       reason,
-      origin: "manual"
+      origin: "manual",
+      projectParameterBindingId: edit.projectParameterBindingId,
+      parameterSpecId: edit.parameterSpecId
     });
 
     items.push({
       parameterId: parameter.id,
       targetValue: edit.rawText,
-      reason
+      reason,
+      projectParameterBindingId: edit.projectParameterBindingId,
+      parameterSpecId: edit.parameterSpecId
     });
   }
 
@@ -404,7 +397,7 @@ function requireCanReviewStage(auth: AuthContext, projectId: string | undefined,
 }
 
 function requireCanMerge(auth: AuthContext, projectId: string | undefined) {
-  if (projectId && canMergeParameters(auth, projectId)) return;
+  if (canMergeParameters(auth, projectId)) return;
 
   throw new ApiError("FORBIDDEN", "Parameter merge role is required for this project.", 403);
 }
@@ -1038,6 +1031,12 @@ export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDra
   requireCanEdit(auth);
   await loadParameterForSubmission(db, auth, input.projectId, input.parameterId);
 
+  const bindingId = input.projectParameterBindingId ?? input.parameterId;
+  let writeLock;
+  if (await mustUseSemanticParameterIdentity(db)) {
+    writeLock = await resolveBindingWriteLock(db, auth, { bindingId });
+  }
+
   return upsertDraft(db, {
     id: randomUUID(),
     organizationId: auth.organization.id,
@@ -1046,7 +1045,10 @@ export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDra
     userId: auth.user.id,
     targetValue: input.targetValue,
     reason: input.reason,
-    origin: "manual"
+    origin: "manual",
+    projectParameterBindingId: input.projectParameterBindingId,
+    parameterSpecId: input.parameterSpecId,
+    writeLock,
   });
 }
 
@@ -1122,6 +1124,57 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
 
     const items = [];
     for (const { item, parameter } of parameters) {
+      const useSemanticIdentity = await mustUseSemanticParameterIdentity(tx);
+      const draftIdentity = await tx.query<{
+        project_parameter_binding_id: string | null;
+      }>(
+        useSemanticIdentity
+          ? `
+        select project_parameter_binding_id
+        from parameter_drafts
+        where organization_id = $1
+          and project_id = $2
+          and project_parameter_binding_id = $3
+          and user_id = $4
+        limit 1
+        `
+          : `
+        select project_parameter_binding_id
+        from parameter_drafts
+        where organization_id = $1
+          and project_id = $2
+          and project_parameter_value_id = $3
+          and user_id = $4
+        limit 1
+        `,
+        [auth.organization.id, input.projectId, parameter.id, auth.user.id]
+      );
+      const projectParameterBindingId =
+        item.projectParameterBindingId ?? draftIdentity.rows[0]?.project_parameter_binding_id ?? undefined;
+      let parameterSpecId = item.parameterSpecId;
+      if (!parameterSpecId && projectParameterBindingId) {
+        const bindingSpec = await tx.query<{ parameter_spec_id: string }>(
+          `select parameter_spec_id from project_parameter_bindings where id = $1 limit 1`,
+          [projectParameterBindingId]
+        );
+        parameterSpecId = bindingSpec.rows[0]?.parameter_spec_id;
+      }
+
+      const writeLock =
+        projectParameterBindingId && (await mustUseSemanticParameterIdentity(tx))
+          ? await getDraftWriteLock(tx, {
+              organizationId: auth.organization.id,
+              projectId: input.projectId,
+              bindingId: projectParameterBindingId,
+              userId: auth.user.id,
+            })
+          : null;
+      if (projectParameterBindingId && (await mustUseSemanticParameterIdentity(tx)) && !writeLock) {
+        throw new ApiError("CONFLICT", "Draft is missing exact writeback lock metadata.", 409, {
+          parameterId: parameter.id,
+        });
+      }
+
       const request = await createChangeRequest(tx, {
         id: randomUUID(),
         organizationId: auth.organization.id,
@@ -1135,7 +1188,10 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         status,
         submitterUserId: auth.user.id,
         assignedToUserId: workflowAssignees?.hardwareCommitterId,
-        workflowAssignees
+        workflowAssignees,
+        parameterSpecId,
+        projectParameterBindingId,
+        writeLock: writeLock ?? undefined,
       });
 
       const submissionItem = await createSubmissionItem(tx, {
@@ -1146,7 +1202,8 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         parameterId: parameter.id,
         currentValue: parameter.currentValue,
         targetValue: item.targetValue,
-        reason: item.reason
+        reason: item.reason,
+        projectParameterBindingId
       });
 
       await deleteDraftForParameter(tx, {
@@ -1587,6 +1644,35 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       note: input.note
     });
 
+    const semanticIdentity = await mustUseSemanticParameterIdentity(tx);
+    if (semanticIdentity) {
+      if (!context.objectStore) {
+        throw new ApiError(
+          "CONFLICT",
+          "Semantic merge requires object storage for DTS writeback.",
+          409,
+          { requestId: input.requestId }
+        );
+      }
+      if (!request.projectId) {
+        throw new ApiError(
+          "CONFLICT",
+          "Semantic merge requires a project-scoped change request.",
+          409,
+          { requestId: input.requestId }
+        );
+      }
+      // Post-cutover change requests identify the binding via parameterId.
+      if (!request.parameterId) {
+        throw new ApiError(
+          "CONFLICT",
+          "Semantic merge requires a project parameter binding write lock.",
+          409,
+          { requestId: input.requestId }
+        );
+      }
+    }
+
     const merged = await mergeChangeRequest(tx, {
       historyId: randomUUID(),
       organizationId: auth.organization.id,
@@ -1597,6 +1683,31 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
 
     if (!merged) {
       throw new ApiError("CONFLICT", "Parameter value changed before merge.", 409, { requestId: input.requestId });
+    }
+
+    if (semanticIdentity) {
+      const writeback = await writebackMergedParameterValue(
+        tx,
+        context.objectStore!,
+        auth,
+        {
+          projectId: request.projectId!,
+          parameterDefinitionId: merged.parameterDefinitionId,
+          mergedValue: merged.targetValue,
+          projectParameterBindingId: merged.projectParameterBindingId,
+          parameterSpecId: merged.parameterSpecId,
+          changeRequestId: input.requestId,
+        },
+        context
+      );
+      if (writeback.skipped) {
+        throw new ApiError(
+          "CONFLICT",
+          "Semantic merge writeback was skipped; refusing to mark the request as merged.",
+          409,
+          { requestId: input.requestId }
+        );
+      }
     }
 
     const updated = await updateChangeRequestStatus(tx, {
@@ -1633,7 +1744,8 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       changeRequest: request,
       participants
     }, context);
-    if (context.objectStore && request.projectId) {
+
+    if (!semanticIdentity && context.objectStore && request.projectId) {
       await writebackMergedParameterValue(
         tx,
         context.objectStore,
@@ -1641,7 +1753,10 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         {
           projectId: request.projectId,
           parameterDefinitionId: merged.parameterDefinitionId,
-          mergedValue: merged.targetValue
+          mergedValue: merged.targetValue,
+          projectParameterBindingId: merged.projectParameterBindingId,
+          parameterSpecId: merged.parameterSpecId,
+          changeRequestId: input.requestId,
         },
         context
       );
@@ -1721,7 +1836,8 @@ export async function resolveParameterListQuery(
       moduleId: query.moduleId,
       includeDescendants,
       risk: query.risk,
-      q: query.q
+      q: query.q,
+      limit: query.limit
     };
   }
 
@@ -1738,7 +1854,8 @@ export async function resolveParameterListQuery(
         moduleId: resolved.id,
         includeDescendants,
         risk: query.risk,
-        q: query.q
+        q: query.q,
+        limit: query.limit
       };
     }
 
@@ -1748,7 +1865,8 @@ export async function resolveParameterListQuery(
       module: query.module,
       includeDescendants,
       risk: query.risk,
-      q: query.q
+      q: query.q,
+      limit: query.limit
     };
   }
 
@@ -1756,7 +1874,8 @@ export async function resolveParameterListQuery(
     organizationId,
     projectId: query.projectId,
     risk: query.risk,
-    q: query.q
+    q: query.q,
+    limit: query.limit
   };
 }
 

@@ -1,55 +1,1641 @@
 ## Browser Acceptance Evidence
 
-- Date: 2026-06-02T19:16:28.149Z
-- Branch: `codex/m6-target-evidence-closure`
-- Commit: `06cb6915b3030fafc371c7365fa32468deef7232`
+- Date: 2026-07-16T12:47:01.137Z
+- Branch: `fix/parameter-topology-round5-review-blockers`
+- Commit: `4007751896b44dba0c4255c19a5074afba302a39`
 - Dirty worktree: `true`
 - Mode: `local-non-hdc`
-- Status: `passed`
+- Status: `failed`
 
 ### Preflight Result
 
-- Status: `passed`
-- Outcome: `non_hdc_local`
-- HDC: `skipped`
+- Status: `failed`
+- Outcome: `blocked`
+- HDC: `unknown`
 - Evidence: test-results/acceptance/preflight-evidence.md
-- Detail: ok
+- Detail: > core-efficiency-prototype@0.1.0 acceptance:preflight
+> tsx -- scripts/run-acceptance-preflight.ts --env-file .env --frontend-url http://127.0.0.1:5173 --evidence-out test-results/acceptance/preflight-evidence.md
+
+## Acceptance Preflight Evidence
+
+- Date: 2026-07-16T12:23:54.426Z
+- Branch: `fix/parameter-topology-round5-review-blockers`
+- Commit: `4007751896b44dba0c4255c19a5074afba302a39`
+- Dirty worktree: `false`
+- Pilot outcome: `blocked`
+
+### Environment
+
+| Key | Value |
+| --- | --- |
+| WISEEFF_API_BASE_URL | http://127.0.0.1:8787 |
+| VITE_WISEEFF_API_BASE_URL | http://127.0.0.1:8787 |
+| M5_SMOKE_AUTHORIZATION | <set> |
+| WISEEFF_SMOKE_AUTHORIZATION | <set> |
+
+### Checks
+
+| Check | Status | Detail |
+| --- | --- | --- |
+| api runtime | passed | already listening at http://127.0.0.1:8787/health/live |
+| frontend runtime | passed | already listening at http://127.0.0.1:5173 |
+| docs:check | passed | ok |
+| contract:check | passed | ok |
+| test:all | failed | Not implemented: Window's confirm() method<br>Not implemented: navigation to another Document<br>Not implemented: navigation to another Document<br>(node:34378) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.<br>(Use `node --trace-deprecation ...` to show where the warning was created)<br>(node:34378) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.<br>(Use `node --trace-deprecation ...` to show where the warning was created)<br>(node:34378) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.<br>(Use `node --trace-deprecation ...` to show where the warning was created)<br><br>⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯<br><br> FAIL  server/modules/parameter-topology/migration.test.ts > parameter identity stage-review and finalize > finalize failure rolls back activity writes but keeps staged review artifacts<br>Error: Test timed out in 5000ms.<br>If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".<br> ❯ server/modules/parameter-topology/migration.test.ts:1570:3<br>    1568\|   );<br>    1569\|<br>    1570\|   it("finalize failure rolls back activity writes but keeps staged rev…<br>       \|   ^<br>    1571\|     await withTempDatabase(async (db) => {<br>    1572\|       await seedLegacyGraph(db);<br><br>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/9]⎯<br><br> FAIL  server/modules/parameters/dashboard/hotspotRepository.test.ts > hotspot repository > aggregates module-dimension groups with behavioral counts<br> FAIL  server/modules/parameters/dashboard/hotspotRepository.test.ts > hotspot repository > aggregates project-dimension groups with real counts<br> FAIL  server/modules/parameters/dashboard/hotspotRepository.test.ts > hotspot repository > aggregates parameter-dimension groups across projects with project scope counts<br>Error: Hook timed out in 30000ms.<br>If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".<br> ❯ server/modules/parameters/dashboard/hotspotRepository.test.ts:9:3<br>      7\|   let db: InMemoryTestDatabase;<br>      8\|<br>      9\|   beforeEach(async () => {<br>       \|   ^<br>     10\|     db = await createInMemoryTestDatabase();<br>     11\|     await seedParameterDashboardFixture(db);<br><br>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/9]⎯<br><br> FAIL  server/modules/parameters/dashboard/hotspotRepository.test.ts > hotspot repository > aggregates module-dimension groups with behavioral counts<br>Error: Hook timed out in 10000ms.<br>If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".<br> ❯ server/modules/parameters/dashboard/hotspotRepository.test.ts:14:3<br>     12\|   }, 30_000);<br>     13\|<br>     14\|   afterEach(async () => {<br>       \|   ^<br>     15\|     await db.rollback();<br>     16\|   });<br><br>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/9]⎯<br><br> FAIL  server/modules/parameters/dashboard/repository.test.ts > dashboard repository > counts KPIs scoped to org and window<br> FAIL  server/modules/parameters/dashboard/repository.test.ts > dashboard repository > aggregates trend into zero-filled day buckets<br>Error: Hook timed out in 30000ms.<br>If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".<br> ❯ server/modules/parameters/dashboard/repository.test.ts:17:3<br>     15\|   let db: InMemoryTestDatabase;<br>     16\|<br>     17\|   beforeEach(async () => {<br>       \|   ^<br>     18\|     db = await createInMemoryTestDatabase();<br>     19\|     await seedParameterDashboardFixture(db);<br><br>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/9]⎯<br><br> FAIL  server/modules/parameters/dashboard/repository.test.ts > dashboard repository > counts KPIs scoped to org and window<br>Error: Hook timed out in 10000ms.<br>If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".<br> ❯ server/modules/parameters/dashboard/repository.test.ts:22:3<br>     20\|   }, 30_000);<br>     21\|<br>     22\|   afterEach(async () => {<br>       \|   ^<br>     23\|     await db.rollback();<br>     24\|   });<br><br>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/9]⎯<br><br> FAIL  server/modules/parameters/dashboard/service.test.ts > dashboard service > builds a full summary with personal metrics and trend<br>Error: Hook timed out in 60000ms.<br>If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".<br> ❯ server/modules/parameters/dashboard/service.test.ts:24:3<br>     22\|   let db: InMemoryTestDatabase;<br>     23\|<br>     24\|   beforeEach(async () => {<br>       \|   ^<br>     25\|     db = await createInMemoryTestDatabase();<br>     26\|     await seedParameterDashboardFixture(db);<br><br>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/9]⎯<br><br><br><br>> core-efficiency-prototype@0.1.0 test:all<br>> npm test && npm run test:server<br><br><br>> core-efficiency-prototype@0.1.0 test<br>> NODE_OPTIONS='--max-old-space-size=768' tsx scripts/run-vitest.ts<br><br><br> RUN  v4.1.5 /Users/tzrea1/Develop/WiseEff<br><br><br> Test Files  312 passed (312)<br>      Tests  2164 passed (2164)<br>   Start at  20:18:22<br>   Duration  139.37s (transform 40.03s, setup 110.51s, import 200.03s, tests 312.55s, environment 505.11s)<br><br><br>> core-efficiency-prototype@0.1.0 test:server<br>> NODE_OPTIONS='--max-old-space-size=768' vitest run --config vitest.server.config.ts<br><br><br> RUN  v4.1.5 /Users/tzrea1/Develop/WiseEff<br><br> ❯ server/modules/parameter-topology/migration.test.ts (22 tests \| 1 failed) 50773ms<br>     × finalize failure rolls back activity writes but keeps staged review artifacts 5015ms<br> ❯ server/modules/parameters/dashboard/hotspotRepository.test.ts (3 tests \| 3 failed) 103372ms<br>     × aggregates module-dimension groups with behavioral counts 40018ms<br>     × aggregates project-dimension groups with real counts 32680ms<br>     × aggregates parameter-dimension groups across projects with project scope counts 30671ms<br> ❯ server/modules/parameters/dashboard/service.test.ts (5 tests \| 1 failed) 144812ms<br>     × builds a full summary with personal metrics and trend 61678ms<br> ❯ server/modules/parameters/dashboard/repository.test.ts (7 tests \| 2 failed) 163227ms<br>     × counts KPIs scoped to org and window 40014ms<br>     × aggregates trend into zero-filled day buckets 32690ms<br><br> Test Files  4 failed \| 205 passed (209)<br>      Tests  7 failed \| 1492 passed \| 1 skipped (1500)<br>   Start at  20:20:42<br>   Duration  163.95s (transform 8.83s, setup 4.69s, import 36.26s, tests 626.72s, environment 66ms) |
+| build | passed | ok |
+| git diff --check | passed | ok |
+| health live | passed | ok |
+| health ready | passed | database, object store, worker, and agent are ready. |
+| current user | passed | ok |
+| pilot readiness | failed | Pilot-readiness is blocked by: deviceGateway, backups. |
+| frontend | passed | http://127.0.0.1:5173 returned 200. |
 
 ### Playwright Result
 
-- Status: `passed`
+- Status: `failed`
 - Evidence: playwright-report/acceptance/index.html
-- Detail: ok
+- Detail: (node:42042) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:42042) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:43784) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:43784) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:45703) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:45703) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47857) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47857) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47864) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47864) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47871) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47871) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47877) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47877) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47885) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47885) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:50663) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:50663) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:50669) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:50669) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:50697) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:50697) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:52197) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:52197) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:53708) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:53708) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:54944) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:54944) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:55755) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:55755) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:58570) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:58570) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:60002) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:60002) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:60145) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:60145) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:60428) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:60428) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:60561) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:60561) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:61553) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:61553) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:62363) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:62363) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:62909) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:62909) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:63639) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:63639) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:64168) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:64168) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:65418) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:65418) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:66733) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:66733) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:67756) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:67756) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68640) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68640) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:69870) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:69870) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:70907) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:70907) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+> core-efficiency-prototype@0.1.0 acceptance:e2e
+> playwright test --config playwright.acceptance.config.ts
+
+
+Running 85 tests using 1 worker
+
+  ✓   1 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:154:3 › ADB device-lab preflight validation › discovers the only ready ADB target without requiring a target override (2ms)
+  ✓   2 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:163:3 › ADB device-lab preflight validation › rejects multiple ready ADB targets before configuration (1ms)
+  ✓   3 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:172:3 › ADB device-lab preflight validation › validates optional smoke overrides against discovered configuration (0ms)
+  ✓   4 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:188:3 › ADB device-lab preflight validation › resolves write confirmation requirements after auto configuration (0ms)
+  ✓   5 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:205:3 › ADB device-lab preflight validation › resolves one ADB inventory row and one shared default smoke binding from the database (0ms)
+  ✓   6 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:227:3 › ADB device-lab preflight validation › rejects missing ADB inventory rows with redacted diagnostics (0ms)
+  ✓   7 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:235:3 › ADB device-lab preflight validation › rejects non-readable default smoke bindings (0ms)
+  ✓   8 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:254:3 › ADB device-lab preflight validation › rejects additional ready ADB devices before a hardware run (0ms)
+  ✓   9 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:270:3 › ADB device-lab preflight validation › preserves debugging sessions that still own device leases during cleanup (2ms)
+  ✓  10 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:292:3 › ADB device-lab preflight validation › requires explicit write and rollback confirmations when write mode is enabled (0ms)
+  ✓  11 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:319:3 › ADB device-lab evidence redaction › shape-summarizes operation and audit identifiers (1ms)
+  ✓  12 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:361:3 › ADB device-lab evidence redaction › shape-summarizes identifier-bearing API evidence paths (0ms)
+  ✓  13 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:371:3 › ADB device-lab evidence redaction › shape-summarizes target identifiers in failure diagnostics (1ms)
+  ✓  14 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:378:3 › ADB device-lab evidence redaction › shape-summarizes API error bodies and operation failure reasons (1ms)
+  -  15 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:939:3 › ADB device-lab full-chain loop › detects and reads a real ADB target, with optional write/readback/rollback
+  ✓  16 [Desktop Chrome] › e2e/acceptance/auth-runtime.acceptance.spec.ts:10:3 › M5.5 auth runtime parity › loads API-mode browser current user with the local dev auth contract (5.2s)
+  ✘  17 [Desktop Chrome] › e2e/acceptance/debugging-admin.acceptance.spec.ts:194:3 › DEBUG-ADMIN-001 debugging admin catalog governance › debugging admin manages an API-backed HDC/ADB catalog node (3.6s)
+  ✘  18 [Desktop Chrome] › e2e/acceptance/debugging-simulator.acceptance.spec.ts:455:3 › M5.4 manual flow E - debugging simulator loop › reads, writes, detects mismatch, rolls back, and records audit evidence (31.1s)
+  ✘  19 [Desktop Chrome] › e2e/acceptance/debugging-simulator.acceptance.spec.ts:547:3 › M5.4 manual flow E - debugging simulator loop › blocks node writes for non-writer roles in UI and forced API calls (31.5s)
+  ✘  20 [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:268:3 › DTS structured product browser acceptance › structure, typed editor contract, search, config-set/baseline, and structured diff (252ms)
+  ✘  21 [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:535:3 › DTS structured product browser acceptance › structured edit submit preserves rawText through review merge and CST writeback (202ms)
+  ✘  22 [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:700:3 › DTS structured product browser acceptance › structural impact kinds when DTS bindings exist (221ms)
+  ✘  23 [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:824:3 › DTS structured product browser acceptance › sensitive-node RBAC denies missing capability; agent critical deny is enforced (196ms)
+  ✓  24 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:92:3 › HDC device-lab preflight validation › discovers the only connected HDC target without requiring target override (146ms)
+  ✓  25 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:98:3 › HDC device-lab preflight validation › rejects multiple HDC targets before automatic configuration (122ms)
+  ✓  26 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:102:3 › HDC device-lab preflight validation › auto-prepares a lab-only HDC inventory row and safe temporary smoke binding (118ms)
+  ✓  27 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:127:3 › HDC device-lab preflight validation › disables non-lab HDC bindings before frontend auto-read can touch real hardware (121ms)
+  ✓  28 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:147:3 › HDC device-lab preflight validation › requires explicit write and rollback confirmations before writing HDC hardware (117ms)
+  -  29 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:773:3 › M5.4 manual flow F - HDC device-lab loop › drives /node-debugging through HDC read, write/readback, audit, and snapshot rollback
+  ✓  30 [Desktop Chrome] › e2e/acceptance/hierarchical-modules.acceptance.spec.ts:202:3 › MOD-TREE hierarchical module acceptance › nested parameter modules support subtree filtering for assigned parameters (215ms)
+  ✓  31 [Desktop Chrome] › e2e/acceptance/hierarchical-modules.acceptance.spec.ts:275:3 › MOD-TREE hierarchical module acceptance › admin can move parameter modules and cycle moves are rejected (173ms)
+  ✓  32 [Desktop Chrome] › e2e/acceptance/hierarchical-modules.acceptance.spec.ts:344:3 › MOD-TREE hierarchical module acceptance › nested debug node modules support subtree filtering for assigned nodes (127ms)
+  ✓  33 [Desktop Chrome] › e2e/acceptance/hierarchical-modules.acceptance.spec.ts:411:3 › MOD-TREE hierarchical module acceptance › module tree mutations require admin and non-empty modules cannot be deleted (165ms)
+  -  34 [Desktop Chrome] › e2e/acceptance/local-device-bridge.acceptance.spec.ts:181:3 › local device bridge conditional acceptance › pairs bridge and runs bridge-backed detect/read/(optional) write
+  -  35 [Desktop Chrome] › e2e/acceptance/local-device-bridge.acceptance.spec.ts:333:3 › local device bridge conditional acceptance › real bridge HDC path (device lab stub)
+  ✓  36 [Desktop Chrome] › e2e/acceptance/log-analysis.acceptance.spec.ts:246:3 › M5.4 manual flow D - log analysis browser acceptance › uploads, completes, links evidence, audits feedback, archives, and records unsupported upload failure (9.4s)
+  ✓  37 [Desktop Chrome] › e2e/acceptance/log-analysis.acceptance.spec.ts:355:3 › M5.4 manual flow D - log analysis browser acceptance › reruns a completed log and records run, job progress, audit, and operation evidence (7.8s)
+  ✓  38 [Desktop Chrome] › e2e/acceptance/notifications.acceptance.spec.ts:11:3 › Notification center acceptance › loads inbox APIs and opens the TopBar notification panel (4.5s)
+  ✓  39 [Desktop Chrome] › e2e/acceptance/notifications.acceptance.spec.ts:50:3 › Notification center acceptance › marks all notifications read through the API (5.5s)
+  ✘  40 [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:160:3 › project parameter files browser acceptance › uploads, lists, and syncs project parameter files (191ms)
+  ✘  41 [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:259:3 › project parameter files browser acceptance › resolves file/UI draft conflicts (148ms)
+  ✓  42 [Desktop Chrome] › e2e/acceptance/parameter-home.acceptance.spec.ts:10:3 › parameter-home production dashboard › loads summary and hotspots APIs and renders in-page dashboard controls (3.5s)
+  ✘  43 [Desktop Chrome] › e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts:31:3 › PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignment › PARAM-IMPORT-DTS-FULL-001 parses full DTS with @address modules via parse-dts (96ms)
+  ✓  44 [Desktop Chrome] › e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts:88:3 › PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignment › PARAM-IMPORT-REVIEW-META-001 stores skippedRows in import preview audit metadata (143ms)
+  ✓  45 [Desktop Chrome] › e2e/acceptance/parameter-import-wizard.acceptance.spec.ts:31:3 › PARAM-ADMIN-002 parameter import wizard browser acceptance › runs the five-step import wizard through preview (6.9s)
+  ✓  46 [Desktop Chrome] › e2e/acceptance/parameter-topology.acceptance.spec.ts:232:3 › Parameter topology / schema browser acceptance › governs specs, browses real topology, edits, maps identity, and gates publish (30.0s)
+  ✘  47 [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:172:3 › M5.5 parameter negative-path browser acceptance › blocks blank draft reasons before API submission (17.6s)
+  ✘  48 [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:190:3 › M5.5 parameter negative-path browser acceptance › edits a draft item and removes another item before final submission (13.6s)
+  ✘  49 [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:277:3 › M5.5 parameter negative-path browser acceptance › defaults every workflow assignee slot to an eligible active non-admin user and hides ineligible users (16.0s)
+  ✘  50 [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:320:3 › M5.5 parameter negative-path browser acceptance › rejects forced invalid workflow assignees at the API boundary (299ms)
+  ✘  51 [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:268:3 › M5.4 manual flow B/C - parameter management browser acceptance › searches, drafts, submits, reviews, persists, audits, and opens admin import preview (1.7m)
+  ✘  52 [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:438:3 › M5.4 manual flow B/C - parameter management browser acceptance › rejects a submitted parameter request and persists rejection reason and audit evidence (17.7s)
+  ✘  53 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Guest (11.9s)
+  ✘  54 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Hardware User (13.1s)
+  ✘  55 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Software User (12.7s)
+  ✓  56 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Hardware Committer (3.2s)
+  ✓  57 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Software Committer (6.6s)
+  ✓  58 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Admin (3.3s)
+  ✓  59 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:112:3 › M5.5 permissions matrix browser acceptance › keeps API-backed workflow eligibility stricter than visible role inclusion (335ms)
+  ✘  60 [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:190:3 › M5.4 manual flow H - permissions and user governance › loads users, shows role/status, and gates user governance to Admin (19.2s)
+  ✘  61 [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:246:3 › M5.4 manual flow H - permissions and user governance › lets Admin manage a non-self user in UI while denying non-Admin access (17.5s)
+  ✘  62 [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:347:3 › M5.4 manual flow H - permissions and user governance › protects API-mode user context with production bearer authentication (5.0s)
+  ✓  63 [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:237:3 › Product feedback browser acceptance › submits sidebar feedback with an optional image and persists it (6.4s)
+  ✓  64 [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:308:3 › Product feedback browser acceptance › lets Admin list, open, triage, close, and note feedback (5.7s)
+  ✘  65 [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:372:3 › Product feedback browser acceptance › blocks non-Admin feedback admin APIs and page access (11.9s)
+  ✓  66 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads / without a runtime crash (4.9s)
+  ✓  67 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /parameter-home without a runtime crash (5.0s)
+  ✓  68 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /parameters without a runtime crash (5.1s)
+  ✓  69 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /parameter-review without a runtime crash (4.7s)
+  ✓  70 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /parameter-admin without a runtime crash (6.6s)
+  ✓  71 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /logs without a runtime crash (6.3s)
+  ✓  72 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /log-admin without a runtime crash (5.3s)
+  ✓  73 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /debugging without a runtime crash (5.4s)
+  ✘  74 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /node-debugging without a runtime crash (7.1s)
+  ✓  75 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /debugging-admin without a runtime crash (5.3s)
+  ✓  76 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /user-permissions without a runtime crash (5.7s)
+  ✘  77 [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:227:3 › Xiaoze P1 action › approves a parameter change through the approval chain (7.6s)
+  ✘  78 [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:303:3 › Xiaoze P1 action › resumes with AG-UI native resume entries after interrupt (38.2s)
+  ✘  79 [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:405:3 › Xiaoze P1 action › rejects a parameter change without mutation (13.4s)
+  ✘  80 [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:455:3 › Xiaoze P1 action › denies out-of-permission approval execution with a safe message (14.1s)
+  ✓  81 [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:169:3 › Xiaoze P0 perception › returns a grounded answer for an in-scope project question (13.9s)
+  ✓  82 [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:194:3 › Xiaoze P0 perception › does not leak data for an out-of-scope project question (8.3s)
+  ✘  83 [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:225:3 › Xiaoze P0 perception › rejects unauthenticated xiaoze requests (3.3s)
+  ✘  84 [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:219:3 › Xiaoze P2 planning › completes a multi-step task through approval and observe loop (10.8s)
+  ✘  85 [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:287:3 › Xiaoze P2 planning › returns grounded proactive suggestions when enabled and nothing for unauthorized scope (63ms)
+
+
+  1) [Desktop Chrome] › e2e/acceptance/debugging-admin.acceptance.spec.ts:194:3 › DEBUG-ADMIN-001 debugging admin catalog governance › debugging admin manages an API-backed HDC/ADB catalog node
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByText('已保存')
+    Expected: visible
+    Error: strict mode violation: getByText('已保存') resolved to 2 elements:
+        1) <span class="debug-admin-save-indicator visible">已保存</span> aka getByLabel('调试管理后台页面操作').getByText('已保存')
+        2) <span class="kpi-value">已保存</span> aka getByLabel('参数管理后台指标').getByText('已保存')
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 30000ms[22m
+    [2m  - waiting for getByText('已保存')[22m
+
+
+      208 |     await createDialog.getByLabel("简述").fill("Acceptance debug node");
+      209 |     await createDialog.getByRole("button", { name: "保存" }).click();
+    > 210 |     await expect(page.getByText("已保存")).toBeVisible({ timeout: 30_000 });
+          |                                         ^
+      211 |
+      212 |     await configureProtocolBindings(page, nodeName, suffix);
+      213 |     await expect(nodeRow(page, nodeName)).toBeVisible();
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/debugging-admin.acceptance.spec.ts:210:41
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/debugging-admin.acceptance-62f10-backed-HDC-ADB-catalog-node-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/debugging-admin.acceptance-62f10-backed-HDC-ADB-catalog-node-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/debugging-admin.acceptance-62f10-backed-HDC-ADB-catalog-node-Desktop-Chrome/error-context.md
+
+    Error Context: test-results/acceptance/debugging-admin.acceptance-62f10-backed-HDC-ADB-catalog-node-Desktop-Chrome/error-context.md
+
+    attachment #6: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/debugging-admin.acceptance-62f10-backed-HDC-ADB-catalog-node-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/debugging-admin.acceptance-62f10-backed-HDC-ADB-catalog-node-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [Desktop Chrome] › e2e/acceptance/debugging-simulator.acceptance.spec.ts:455:3 › M5.4 manual flow E - debugging simulator loop › reads, writes, detects mismatch, rolls back, and records audit evidence
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator: locator('.topbar .device-pill').first()
+    Expected substring: [32m"Aurora Simulator 1"[39m
+    Received string:    [31m"未连接 HDC 设备重新检测"[39m
+    Timeout: 30000ms
+
+    Call log:
+    [2m  - Expect "toContainText" with timeout 30000ms[22m
+    [2m  - waiting for locator('.topbar .device-pill').first()[22m
+    [2m    34 × locator resolved to <div class="device-pill">…</div>[22m
+    [2m       - unexpected value "未连接 HDC 设备重新检测"[22m
+
+
+      296 |   const devicePill = page.locator(".topbar .device-pill").first();
+      297 |   await expect(devicePill).toBeVisible({ timeout: 30_000 });
+    > 298 |   await expect(devicePill).toContainText("Aurora Simulator 1", { timeout: 30_000 });
+          |                            ^
+      299 |   await expect(devicePill.locator(".live-dot")).toHaveCount(1);
+      300 | }
+      301 |
+        at expectSimulatorOnline (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/debugging-simulator.acceptance.spec.ts:298:28)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/debugging-simulator.acceptance.spec.ts:460:5
+
+    Error: Browser diagnostics failed:
+    - Unexpected API response 409 for /api/v1/debugging/targets/detect
+
+       at helpers/browserDiagnostics.ts:91
+
+      89 |     assertNoBrowserDiagnosticsFailures() {
+      90 |       if (failures.length > 0) {
+    > 91 |         throw new Error(`Browser diagnostics failed:\n${failures.map((failure) => `- ${failure}`).join("\n")}`);
+         |               ^
+      92 |       }
+      93 |     }
+      94 |   };
+        at Object.assertNoBrowserDiagnosticsFailures (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/browserDiagnostics.ts:91:15)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/browserDiagnostics.ts:105:28
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/debugging-simulator.accept-5c827--and-records-audit-evidence-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/debugging-simulator.accept-5c827--and-records-audit-evidence-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/debugging-simulator.accept-5c827--and-records-audit-evidence-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/debugging-simulator.accept-5c827--and-records-audit-evidence-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/debugging-simulator.accept-5c827--and-records-audit-evidence-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [Desktop Chrome] › e2e/acceptance/debugging-simulator.acceptance.spec.ts:547:3 › M5.4 manual flow E - debugging simulator loop › blocks node writes for non-writer roles in UI and forced API calls
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator: locator('.topbar .device-pill').first()
+    Expected substring: [32m"Aurora Simulator 1"[39m
+    Received string:    [31m"未连接 HDC 设备重新检测"[39m
+    Timeout: 30000ms
+
+    Call log:
+    [2m  - Expect "toContainText" with timeout 30000ms[22m
+    [2m  - waiting for locator('.topbar .device-pill').first()[22m
+    [2m    34 × locator resolved to <div class="device-pill">…</div>[22m
+    [2m       - unexpected value "未连接 HDC 设备重新检测"[22m
+
+
+      296 |   const devicePill = page.locator(".topbar .device-pill").first();
+      297 |   await expect(devicePill).toBeVisible({ timeout: 30_000 });
+    > 298 |   await expect(devicePill).toContainText("Aurora Simulator 1", { timeout: 30_000 });
+          |                            ^
+      299 |   await expect(devicePill.locator(".live-dot")).toHaveCount(1);
+      300 | }
+      301 |
+        at expectSimulatorOnline (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/debugging-simulator.acceptance.spec.ts:298:28)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/debugging-simulator.acceptance.spec.ts:552:5
+
+    Error: Browser diagnostics failed:
+    - Unexpected API response 409 for /api/v1/debugging/targets/detect
+
+       at helpers/browserDiagnostics.ts:91
+
+      89 |     assertNoBrowserDiagnosticsFailures() {
+      90 |       if (failures.length > 0) {
+    > 91 |         throw new Error(`Browser diagnostics failed:\n${failures.map((failure) => `- ${failure}`).join("\n")}`);
+         |               ^
+      92 |       }
+      93 |     }
+      94 |   };
+        at Object.assertNoBrowserDiagnosticsFailures (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/browserDiagnostics.ts:91:15)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/browserDiagnostics.ts:105:28
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/debugging-simulator.accept-beb06--in-UI-and-forced-API-calls-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/debugging-simulator.accept-beb06--in-UI-and-forced-API-calls-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/debugging-simulator.accept-beb06--in-UI-and-forced-API-calls-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/debugging-simulator.accept-beb06--in-UI-and-forced-API-calls-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/debugging-simulator.accept-beb06--in-UI-and-forced-API-calls-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:268:3 › DTS structured product browser acceptance › structure, typed editor contract, search, config-set/baseline, and structured diff
+
+    ReferenceError: apiRoute is not defined
+
+      245 |   content: string
+      246 | ): Promise<{ fileId: string; versionId: string }> {
+    > 247 |   const response = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+          |                                  ^
+      248 |     headers: adminHeaders(),
+      249 |     data: {
+      250 |       fileName,
+        at uploadDtsFile (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:247:34)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:289:29
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:535:3 › DTS structured product browser acceptance › structured edit submit preserves rawText through review merge and CST writeback
+
+    ReferenceError: apiRoute is not defined
+
+      245 |   content: string
+      246 | ): Promise<{ fileId: string; versionId: string }> {
+    > 247 |   const response = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+          |                                  ^
+      248 |     headers: adminHeaders(),
+      249 |     data: {
+      250 |       fileName,
+        at uploadDtsFile (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:247:34)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:547:30
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--eacb5-iew-merge-and-CST-writeback-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--eacb5-iew-merge-and-CST-writeback-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/dts-structured.acceptance--eacb5-iew-merge-and-CST-writeback-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--eacb5-iew-merge-and-CST-writeback-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/dts-structured.acceptance--eacb5-iew-merge-and-CST-writeback-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6) [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:700:3 › DTS structured product browser acceptance › structural impact kinds when DTS bindings exist
+
+    ReferenceError: apiRoute is not defined
+
+      245 |   content: string
+      246 | ): Promise<{ fileId: string; versionId: string }> {
+    > 247 |   const response = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+          |                                  ^
+      248 |     headers: adminHeaders(),
+      249 |     data: {
+      250 |       fileName,
+        at uploadDtsFile (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:247:34)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:708:29
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--fcc89-nds-when-DTS-bindings-exist-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--fcc89-nds-when-DTS-bindings-exist-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/dts-structured.acceptance--fcc89-nds-when-DTS-bindings-exist-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--fcc89-nds-when-DTS-bindings-exist-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/dts-structured.acceptance--fcc89-nds-when-DTS-bindings-exist-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  7) [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:824:3 › DTS structured product browser acceptance › sensitive-node RBAC denies missing capability; agent critical deny is enforced
+
+    ReferenceError: apiRoute is not defined
+
+      245 |   content: string
+      246 | ): Promise<{ fileId: string; versionId: string }> {
+    > 247 |   const response = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+          |                                  ^
+      248 |     headers: adminHeaders(),
+      249 |     data: {
+      250 |       fileName,
+        at uploadDtsFile (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:247:34)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:832:13
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--9fda5-t-critical-deny-is-enforced-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--9fda5-t-critical-deny-is-enforced-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/dts-structured.acceptance--9fda5-t-critical-deny-is-enforced-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--9fda5-t-critical-deny-is-enforced-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/dts-structured.acceptance--9fda5-t-critical-deny-is-enforced-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  8) [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:160:3 › project parameter files browser acceptance › uploads, lists, and syncs project parameter files
+
+    error: update or delete on table "parameter_spec_review_tasks" violates foreign key constraint "parameter_spec_matcher_overrides_source_review_task_id_fkey" on table "parameter_spec_matcher_overrides"
+
+       at helpers/semanticFixtureCleanup.ts:182
+
+      180 |         [versionIds]
+      181 |       );
+    > 182 |       await client.query(`delete from dts_property_occurrences where file_version_id = any($1::text[])`, [
+          |       ^
+      183 |         versionIds
+      184 |       ]);
+      185 |       await client.query(`delete from dts_node_occurrences where file_version_id = any($1::text[])`, [versionIds]);
+        at /Users/tzrea1/Develop/WiseEff/node_modules/pg/lib/client.js:646:17
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/semanticFixtureCleanup.ts:182:7
+        at withPgClient (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/database.ts:38:12)
+        at cleanupSemanticAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/semanticFixtureCleanup.ts:99:3)
+        at cleanupParameterFileAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:115:3)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:149:7
+        at withPgClient (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/database.ts:38:12)
+        at cleanupAllParameterFileAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:136:3)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:156:5
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/parameter-files.acceptance-5de3c-ncs-project-parameter-files-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/parameter-files.acceptance-5de3c-ncs-project-parameter-files-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/parameter-files.acceptance-5de3c-ncs-project-parameter-files-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/parameter-files.acceptance-5de3c-ncs-project-parameter-files-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/parameter-files.acceptance-5de3c-ncs-project-parameter-files-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  9) [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:259:3 › project parameter files browser acceptance › resolves file/UI draft conflicts
+
+    error: update or delete on table "parameter_spec_review_tasks" violates foreign key constraint "parameter_spec_matcher_overrides_source_review_task_id_fkey" on table "parameter_spec_matcher_overrides"
+
+       at helpers/semanticFixtureCleanup.ts:182
+
+      180 |         [versionIds]
+      181 |       );
+    > 182 |       await client.query(`delete from dts_property_occurrences where file_version_id = any($1::text[])`, [
+          |       ^
+      183 |         versionIds
+      184 |       ]);
+      185 |       await client.query(`delete from dts_node_occurrences where file_version_id = any($1::text[])`, [versionIds]);
+        at /Users/tzrea1/Develop/WiseEff/node_modules/pg/lib/client.js:646:17
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/semanticFixtureCleanup.ts:182:7
+        at withPgClient (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/database.ts:38:12)
+        at cleanupSemanticAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/semanticFixtureCleanup.ts:99:3)
+        at cleanupParameterFileAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:115:3)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:149:7
+        at withPgClient (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/database.ts:38:12)
+        at cleanupAllParameterFileAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:136:3)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:156:5
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/parameter-files.acceptance-fa70a-ves-file-UI-draft-conflicts-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/parameter-files.acceptance-fa70a-ves-file-UI-draft-conflicts-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/parameter-files.acceptance-fa70a-ves-file-UI-draft-conflicts-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/parameter-files.acceptance-fa70a-ves-file-UI-draft-conflicts-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/parameter-files.acceptance-fa70a-ves-file-UI-draft-conflicts-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  10) [Desktop Chrome] › e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts:31:3 › PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignment › PARAM-IMPORT-DTS-FULL-001 parses full DTS with @address modules via parse-dts
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m400[39m
+    Received: [31m200[39m
+
+      55 |       }
+      56 |     });
+    > 57 |     expect(includeResponse.status()).toBe(400);
+         |                                      ^
+      58 |     const includeBody = (await includeResponse.json()) as { error: { details?: { code?: string } } };
+      59 |     expect(includeBody.error.details?.code).toBe("dts-include-unsupported");
+      60 |
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts:57:38
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/parameter-import-dts-td035-b4105-dress-modules-via-parse-dts-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/parameter-import-dts-td035-b4105-dress-modules-via-parse-dts-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/parameter-import-dts-td035-b4105-dress-modules-via-parse-dts-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/parameter-import-dts-td035-b4105-dress-modules-via-parse-dts-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/parameter-import-dts-td035-b4105-dress-modules-via-parse-dts-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  11) [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:172:3 › M5.5 parameter negative-path browser acceptance › blocks blank draft reasons before API submission
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator: locator('.parameters-table').filter({ hasText: 'fast_charge_current_limit_ma' }).first()
+    Expected substring: [32m"fast_charge_current_limit_ma"[39m
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toContainText" with timeout 10000ms[22m
+    [2m  - waiting for locator('.parameters-table').filter({ hasText: 'fast_charge_current_limit_ma' }).first()[22m
+
+
+      102 | async function openParameterDraftDialog(page: Page, targetValue: string) {
+      103 |   await page.goto(`/parameters?project=${projectId}`);
+    > 104 |   await expect(searchTable(page)).toContainText(parameterName);
+          |                                   ^
+      105 |   await searchTable(page).locator(".view-row-button").first().click();
+      106 |   await page.locator(".parameter-detail-dialog__actions .button.primary").click();
+      107 |
+        at openParameterDraftDialog (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameters-negative.acceptance.spec.ts:104:35)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameters-negative.acceptance.spec.ts:175:25
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/parameters-negative.accept-a909d-asons-before-API-submission-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/parameters-negative.accept-a909d-asons-before-API-submission-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/parameters-negative.accept-a909d-asons-before-API-submission-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/parameters-negative.accept-a909d-asons-before-API-submission-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/parameters-negative.accept-a909d-asons-before-API-submission-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  12) [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:190:3 › M5.5 parameter negative-path browser acceptance › edits a draft item and removes another item before final submission
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator: locator('.parameters-table').filter({ hasText: 'fast_charge_current_limit_ma' }).first()
+    Expected substring: [32m"fast_charge_current_limit_ma"[39m
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toContainText" with timeout 10000ms[22m
+    [2m  - waiting for locator('.parameters-table').filter({ hasText: 'fast_charge_current_limit_ma' }).first()[22m
+
+
+      192 |     // @operation PARAM-DRAFT-EDIT-001
+      193 |     await page.goto(`/parameters?project=${projectId}`);
+    > 194 |     await expect(searchTable(page)).toContainText(parameterName);
+          |                                     ^
+      195 |
+      196 |     await parameterRow(page, parameterName).locator(".edit-row-button").click();
+      197 |     const draftDialog = page.locator(".parameter-draft-dialog");
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameters-negative.acceptance.spec.ts:194:37
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/parameters-negative.accept-6cb0e-tem-before-final-submission-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/parameters-negative.accept-6cb0e-tem-before-final-submission-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/parameters-negative.accept-6cb0e-tem-before-final-submission-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/parameters-negative.accept-6cb0e-tem-before-final-submission-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/parameters-negative.accept-6cb0e-tem-before-final-submission-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  13) [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:277:3 › M5.5 parameter negative-path browser acceptance › defaults every workflow assignee slot to an eligible active non-admin user and hides ineligible users
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator: locator('.parameters-table').filter({ hasText: 'fast_charge_current_limit_ma' }).first()
+    Expected substring: [32m"fast_charge_current_limit_ma"[39m
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toContainText" with timeout 10000ms[22m
+    [2m  - waiting for locator('.parameters-table').filter({ hasText: 'fast_charge_current_limit_ma' }).first()[22m
+
+
+      102 | async function openParameterDraftDialog(page: Page, targetValue: string) {
+      103 |   await page.goto(`/parameters?project=${projectId}`);
+    > 104 |   await expect(searchTable(page)).toContainText(parameterName);
+          |                                   ^
+      105 |   await searchTable(page).locator(".view-row-button").first().click();
+      106 |   await page.locator(".parameter-detail-dialog__actions .button.primary").click();
+      107 |
+        at openParameterDraftDialog (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameters-negative.acceptance.spec.ts:104:35)
+        at createOneValidDraft (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameters-negative.acceptance.spec.ts:116:23)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameters-negative.acceptance.spec.ts:282:5
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/parameters-negative.accept-ef68d--and-hides-ineligible-users-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/parameters-negative.accept-ef68d--and-hides-ineligible-users-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/parameters-negative.accept-ef68d--and-hides-ineligible-users-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/parameters-negative.accept-ef68d--and-hides-ineligible-users-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/parameters-negative.accept-ef68d--and-hides-ineligible-users-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  14) [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:320:3 › M5.5 parameter negative-path browser acceptance › rejects forced invalid workflow assignees at the API boundary
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m400[39m
+    Received: [31m409[39m
+
+      341 |     });
+      342 |
+    > 343 |     expect(response.status()).toBe(400);
+          |                               ^
+      344 |     await expect(response.json()).resolves.toMatchObject({
+      345 |       error: { code: "VALIDATION_FAILED" }
+      346 |     });
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameters-negative.acceptance.spec.ts:343:31
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/parameters-negative.accept-4ad38-signees-at-the-API-boundary-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/parameters-negative.accept-4ad38-signees-at-the-API-boundary-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/parameters-negative.accept-4ad38-signees-at-the-API-boundary-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/parameters-negative.accept-4ad38-signees-at-the-API-boundary-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/parameters-negative.accept-4ad38-signees-at-the-API-boundary-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  15) [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:268:3 › M5.4 manual flow B/C - parameter management browser acceptance › searches, drafts, submits, reviews, persists, audits, and opens admin import preview
+
+    [31mTest timeout of 90000ms exceeded.[39m
+
+    Error: locator.click: Test timeout of 90000ms exceeded.
+    Call log:
+    [2m  - waiting for getByRole('complementary', { name: '审阅详情' }).getByRole('button', { name: '推进流程' })[22m
+    [2m    - locator resolved to <button type="button" data-slot="button" data-size="default" data-variant="default" class="group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-…>…</button>[22m
+    [2m  - attempting click action[22m
+    [2m    - waiting for element to be visible, enabled and stable[22m
+    [2m    - element is visible, enabled and stable[22m
+    [2m    - scrolling into view if needed[22m
+    [2m    - done scrolling[22m
+    [2m    - <div class="submission-dialog submission-detail-dialog">…</div> from <div role="dialog" aria-modal="true" class="modal-backdrop" aria-labelledby="submission-detail-title">…</div> subtree intercepts pointer events[22m
+    [2m  - retrying click action[22m
+    [2m    - waiting for element to be visible, enabled and stable[22m
+    [2m    - element is visible, enabled and stable[22m
+    [2m    - scrolling into view if needed[22m
+    [2m    - done scrolling[22m
+    [2m    - <div role="dialog" aria-modal="true" class="modal-backdrop" aria-labelledby="submission-detail-title">…</div> intercepts pointer events[22m
+    [2m  - retrying click action[22m
+    [2m    - waiting 20ms[22m
+    [2m    2 × waiting for element to be visible, enabled and stable[22m
+    [2m      - element is visible, enabled and stable[22m
+    [2m      - scrolling into view if needed[22m
+    [2m      - done scrolling[22m
+    [2m      - <div class="submission-dialog submission-detail-dialog">…</div> from <div role="dialog" aria-modal="true" class="modal-backdrop" aria-labelledby="submission-detail-title">…</div> subtree intercepts pointer events[22m
+    [2m    - retrying click action[22m
+    [2m      - waiting 100ms[22m
+    [2m    46 × waiting for element to be visible, enabled and stable[22m
+    [2m       - element is visible, enabled and stable[22m
+    [2m       - scrolling into view if needed[22m
+    [2m       - done scrolling[22m
+    [2m       - <div class="submission-dialog submission-detail-dialog">…</div> from <div role="dialog" aria-modal="true" class="modal-backdrop" aria-labelledby="submission-detail-title">…</div> subtree intercepts pointer events[22m
+    [2m     - retrying click action[22m
+    [2m       - waiting 500ms[22m
+    [2m       - waiting for element to be visible, enabled and stable[22m
+    [2m       - element is visible, enabled and stable[22m
+    [2m       - scrolling into view if needed[22m
+    [2m       - done scrolling[22m
+    [2m       - <div role="dialog" aria-modal="true" class="modal-backdrop" aria-labelledby="submission-detail-title">…</div> intercepts pointer events[22m
+    [2m     - retrying click action[22m
+    [2m       - waiting 500ms[22m
+    [2m       - waiting for element to be visible, enabled and stable[22m
+    [2m       - element is visible, enabled and stable[22m
+    [2m       - scrolling into view if needed[22m
+    [2m       - done scrolling[22m
+    [2m       - <div class="submission-dialog submission-detail-dialog">…</div> from <div role="dialog" aria-modal="true" class="modal-backdrop" aria-labelledby="submission-detail-title">…</div> subtree intercepts pointer events[22m
+    [2m     - retrying click action[22m
+    [2m       - waiting 500ms[22m
+    [2m       - waiting for element to be visible, enabled and stable[22m
+    [2m       - element is visible, enabled and stable[22m
+    [2m       - scrolling into view if needed[22m
+    [2m       - done scrolling[22m
+    [2m       - <div class="submission-dialog submission-detail-dialog">…</div> from <div role="dialog" aria-modal="true" class="modal-backdrop" aria-labelledby="submission-detail-title">…</div> subtree intercepts pointer events[22m
+    [2m     - retrying click action[22m
+    [2m       - waiting 500ms[22m
+
+
+      319 |     const reviewDetail = page.getByRole("complementary", { name: "审阅详情" });
+      320 |     await expect(reviewDetail.locator(".vertical-timeline-item--current")).toContainText(/硬件(?:Committer|MDE)检视/);
+    > 321 |     await reviewDetail.getByRole("button", { name: "推进流程" }).click();
+          |                                                              ^
+      322 |     await expect(reviewDetail.locator(".vertical-timeline-item--current")).toContainText(/软件(?:Committer|MDE)检视/);
+      323 |     await reviewDetail.getByRole("button", { name: "推进流程" }).click();
+      324 |     await expect(reviewDetail.locator(".vertical-timeline-item--current")).toContainText(/软件(?:User|开发人员?)合入/);
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameters.acceptance.spec.ts:321:62
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/parameters.acceptance-M5-4-66394--opens-admin-import-preview-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/parameters.acceptance-M5-4-66394--opens-admin-import-preview-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/parameters.acceptance-M5-4-66394--opens-admin-import-preview-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/parameters.acceptance-M5-4-66394--opens-admin-import-preview-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/parameters.acceptance-M5-4-66394--opens-admin-import-preview-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  16) [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:438:3 › M5.4 manual flow B/C - parameter management browser acceptance › rejects a submitted parameter request and persists rejection reason and audit evidence
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Locator: locator('.review-detail')
+    Expected substring: [32m"3dfd4fba-06e7-4163-a62d-dfe843810542"[39m
+    Received string:    [31m"Aurora 量产平台charge_voltage_limit_mv目标模块为 Charging Policy，由 Xu Yun 提交。查看提交详情（1 项变更）审阅摘要charge_voltage_limit_mv 从 4350 调整为 4333。影响面parametercharge_voltage_limit_mvChanges Charging Policy parameter from 4350 to 4333.HighmoduleCharging PolicyHigh risk module review recommended.High变更历史流程 1当前流程硬件MDE检视当前处理人：Wang Jie。流程 2软件MDE检视软件 MDE：Sun Mei。流程 3软件开发人员合入软件开发人员：Liu Min。推进流程打回修改"[39m
+    Timeout: 10000ms
+
+    Call log:
+    [2m  - Expect "toContainText" with timeout 10000ms[22m
+    [2m  - waiting for locator('.review-detail')[22m
+    [2m    14 × locator resolved to <aside aria-label="审阅详情" class="review-detail">…</aside>[22m
+    [2m       - unexpected value "Aurora 量产平台charge_voltage_limit_mv目标模块为 Charging Policy，由 Xu Yun 提交。查看提交详情（1 项变更）审阅摘要charge_voltage_limit_mv 从 4350 调整为 4333。影响面parametercharge_voltage_limit_mvChanges Charging Policy parameter from 4350 to 4333.HighmoduleCharging PolicyHigh risk module review recommended.High变更历史流程 1当前流程硬件MDE检视当前处理人：Wang Jie。流程 2软件MDE检视软件 MDE：Sun Mei。流程 3软件开发人员合入软件开发人员：Liu Min。推进流程打回修改"[22m
+
+
+      448 |
+      449 |     const reviewDetail = page.locator(".review-detail");
+    > 450 |     await expect(reviewDetail).toContainText(requestId);
+          |                                ^
+      451 |     await reviewDetail.locator(".action-panel button").last().click();
+      452 |
+      453 |     const rejectDialog = page.locator(".rejection-dialog");
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameters.acceptance.spec.ts:450:32
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/parameters.acceptance-M5-4-20c26-n-reason-and-audit-evidence-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/parameters.acceptance-M5-4-20c26-n-reason-and-audit-evidence-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/parameters.acceptance-M5-4-20c26-n-reason-and-audit-evidence-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/parameters.acceptance-M5-4-20c26-n-reason-and-audit-evidence-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/parameters.acceptance-M5-4-20c26-n-reason-and-audit-evidence-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  17) [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Guest
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByRole('heading', { name: 'Permission denied' })
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 10000ms[22m
+    [2m  - waiting for getByRole('heading', { name: 'Permission denied' })[22m
+
+
+      86 |         await expect(page.locator("main, .main-content").first()).toBeVisible();
+      87 |       } else {
+    > 88 |         await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
+         |                                                                                ^
+      89 |         await expect(page.getByText(`Current role: ${expectation.role}`)).toBeVisible();
+      90 |       }
+      91 |
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/permissions-matrix.acceptance.spec.ts:88:80
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/permissions-matrix.accepta-d8815-route-permissions-for-Guest-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/permissions-matrix.accepta-d8815-route-permissions-for-Guest-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/permissions-matrix.accepta-d8815-route-permissions-for-Guest-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/permissions-matrix.accepta-d8815-route-permissions-for-Guest-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/permissions-matrix.accepta-d8815-route-permissions-for-Guest-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  18) [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Hardware User
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByRole('heading', { name: 'Permission denied' })
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 10000ms[22m
+    [2m  - waiting for getByRole('heading', { name: 'Permission denied' })[22m
+
+
+       95 |         await expect(page.locator("main, .main-content").first()).toBeVisible();
+       96 |       } else {
+    >  97 |         await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
+          |                                                                                ^
+       98 |         await expect(page.getByText(`Current role: ${expectation.role}`)).toBeVisible();
+       99 |       }
+      100 |
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/permissions-matrix.acceptance.spec.ts:97:80
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/permissions-matrix.accepta-96e17-rmissions-for-Hardware-User-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/permissions-matrix.accepta-96e17-rmissions-for-Hardware-User-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/permissions-matrix.accepta-96e17-rmissions-for-Hardware-User-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/permissions-matrix.accepta-96e17-rmissions-for-Hardware-User-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/permissions-matrix.accepta-96e17-rmissions-for-Hardware-User-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  19) [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Software User
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByRole('heading', { name: 'Permission denied' })
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 10000ms[22m
+    [2m  - waiting for getByRole('heading', { name: 'Permission denied' })[22m
+
+
+       95 |         await expect(page.locator("main, .main-content").first()).toBeVisible();
+       96 |       } else {
+    >  97 |         await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
+          |                                                                                ^
+       98 |         await expect(page.getByText(`Current role: ${expectation.role}`)).toBeVisible();
+       99 |       }
+      100 |
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/permissions-matrix.acceptance.spec.ts:97:80
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/permissions-matrix.accepta-82a0c-rmissions-for-Software-User-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/permissions-matrix.accepta-82a0c-rmissions-for-Software-User-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/permissions-matrix.accepta-82a0c-rmissions-for-Software-User-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/permissions-matrix.accepta-82a0c-rmissions-for-Software-User-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/permissions-matrix.accepta-82a0c-rmissions-for-Software-User-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  20) [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:190:3 › M5.4 manual flow H - permissions and user governance › loads users, shows role/status, and gates user governance to Admin
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByRole('heading', { name: 'Permission denied' })
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 10000ms[22m
+    [2m  - waiting for getByRole('heading', { name: 'Permission denied' })[22m
+
+
+      226 |
+      227 |     await setPrototypeRole(page, "Hardware User");
+    > 228 |     await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
+          |                                                                            ^
+      229 |     await expect(page.getByText("Current role: Hardware User")).toBeVisible();
+      230 |     await expect(page.getByText("Required role: Admin")).toBeVisible();
+      231 |     await expect(page.getByRole("region", { name: "用户权限" })).toHaveCount(0);
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/permissions.acceptance.spec.ts:228:76
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/permissions.acceptance-M5--841bf-es-user-governance-to-Admin-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/permissions.acceptance-M5--841bf-es-user-governance-to-Admin-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/permissions.acceptance-M5--841bf-es-user-governance-to-Admin-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/permissions.acceptance-M5--841bf-es-user-governance-to-Admin-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/permissions.acceptance-M5--841bf-es-user-governance-to-Admin-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  21) [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:246:3 › M5.4 manual flow H - permissions and user governance › lets Admin manage a non-self user in UI while denying non-Admin access
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByRole('heading', { name: 'Permission denied' })
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 10000ms[22m
+    [2m  - waiting for getByRole('heading', { name: 'Permission denied' })[22m
+
+
+      301 |
+      302 |     await setPrototypeRole(page, "Software User");
+    > 303 |     await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
+          |                                                                            ^
+      304 |     await expect(page.getByText("Current role: Software User")).toBeVisible();
+      305 |     await expect(page.getByText("Required role: Admin")).toBeVisible();
+      306 |     await expect(page.getByRole("table", { name: "平台用户" })).toHaveCount(0);
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/permissions.acceptance.spec.ts:303:76
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/permissions.acceptance-M5--4e815-le-denying-non-Admin-access-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/permissions.acceptance-M5--4e815-le-denying-non-Admin-access-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/permissions.acceptance-M5--4e815-le-denying-non-Admin-access-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/permissions.acceptance-M5--4e815-le-denying-non-Admin-access-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/permissions.acceptance-M5--4e815-le-denying-non-Admin-access-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  22) [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:347:3 › M5.4 manual flow H - permissions and user governance › protects API-mode user context with production bearer authentication
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m401[39m
+    Received: [31m200[39m
+
+      353 |     const invalidBody = (await invalidResponse.json()) as { error?: { code?: string; message?: string } };
+      354 |
+    > 355 |     expect(invalidResponse.status()).toBe(401);
+          |                                      ^
+      356 |     expect(invalidBody.error).toMatchObject({
+      357 |       code: "UNAUTHENTICATED"
+      358 |     });
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/permissions.acceptance.spec.ts:355:38
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/permissions.acceptance-M5--75653-ction-bearer-authentication-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/permissions.acceptance-M5--75653-ction-bearer-authentication-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/permissions.acceptance-M5--75653-ction-bearer-authentication-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/permissions.acceptance-M5--75653-ction-bearer-authentication-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/permissions.acceptance-M5--75653-ction-bearer-authentication-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  23) [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:372:3 › Product feedback browser acceptance › blocks non-Admin feedback admin APIs and page access
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByRole('heading', { name: 'Permission denied' })
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 10000ms[22m
+    [2m  - waiting for getByRole('heading', { name: 'Permission denied' })[22m
+
+
+      392 |
+      393 |     await loadPageAsHardwareUser(page, "/feedback-admin");
+    > 394 |     await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
+          |                                                                            ^
+      395 |     await expect(page.getByText("Current role: Hardware User")).toBeVisible();
+      396 |     await expect(page.getByText("Required role: Admin")).toBeVisible();
+      397 |
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/product-feedback.acceptance.spec.ts:394:76
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/product-feedback.acceptanc-b24bc--admin-APIs-and-page-access-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/product-feedback.acceptanc-b24bc--admin-APIs-and-page-access-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/product-feedback.acceptanc-b24bc--admin-APIs-and-page-access-Desktop-Chrome/error-context.md
+
+    Error Context: test-results/acceptance/product-feedback.acceptanc-b24bc--admin-APIs-and-page-access-Desktop-Chrome/error-context.md
+
+    attachment #6: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/product-feedback.acceptanc-b24bc--admin-APIs-and-page-access-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/product-feedback.acceptanc-b24bc--admin-APIs-and-page-access-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  24) [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /node-debugging without a runtime crash
+
+    Error: Browser diagnostics failed:
+    - Unexpected API response 409 for /api/v1/debugging/targets/detect
+
+       at helpers/browserDiagnostics.ts:91
+
+      89 |     assertNoBrowserDiagnosticsFailures() {
+      90 |       if (failures.length > 0) {
+    > 91 |         throw new Error(`Browser diagnostics failed:\n${failures.map((failure) => `- ${failure}`).join("\n")}`);
+         |               ^
+      92 |       }
+      93 |     }
+      94 |   };
+        at Object.assertNoBrowserDiagnosticsFailures (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/browserDiagnostics.ts:91:15)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/browserDiagnostics.ts:105:28
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: operation-evidence (application/json) ───────────────────────────────────────────
+    test-results/acceptance/shell-navigation.acceptanc-989b2-ing-without-a-runtime-crash-Desktop-Chrome/attachments/operation-evidence-3d999f1626f98d9db6d636143997e07552841268.json
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/shell-navigation.acceptanc-989b2-ing-without-a-runtime-crash-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #4: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/shell-navigation.acceptanc-989b2-ing-without-a-runtime-crash-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/shell-navigation.acceptanc-989b2-ing-without-a-runtime-crash-Desktop-Chrome/error-context.md
+
+    attachment #6: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/shell-navigation.acceptanc-989b2-ing-without-a-runtime-crash-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/shell-navigation.acceptanc-989b2-ing-without-a-runtime-crash-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  25) [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:227:3 › Xiaoze P1 action › approves a parameter change through the approval chain
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      259 |
+      260 |     expect(resumed.status).toBe(200);
+    > 261 |     expect(parseSseEvents(resumed.body).some((event) => event.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
+          |                                                                                                 ^
+      262 |     expect(await countOpenChangeRequests()).toBeGreaterThan(openBefore);
+      263 |
+      264 |     const followUp = await postXiaoze(request, adminHeaders(), {
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/xiaoze-action.acceptance.spec.ts:261:97
+
+    Error Context: test-results/acceptance/xiaoze-action.acceptance-X-d1ba6--through-the-approval-chain-Desktop-Chrome/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/xiaoze-action.acceptance-X-d1ba6--through-the-approval-chain-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/xiaoze-action.acceptance-X-d1ba6--through-the-approval-chain-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  26) [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:303:3 › Xiaoze P1 action › resumes with AG-UI native resume entries after interrupt
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeTruthy[2m()[22m
+
+    Received: [31m""[39m
+
+      321 |     const interruptValue = readInterruptValue(started.events);
+      322 |     const approvalId = String(interruptValue?.approvalId ?? "");
+    > 323 |     expect(approvalId).toBeTruthy();
+          |                        ^
+      324 |
+      325 |     const finished = started.events.find((event) => event.type === "RUN_FINISHED");
+      326 |     const outcome = finished?.outcome as { interrupts?: Array<{ id?: string }> } | undefined;
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/xiaoze-action.acceptance.spec.ts:323:24
+
+    Error Context: test-results/acceptance/xiaoze-action.acceptance-X-25f48-ume-entries-after-interrupt-Desktop-Chrome/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/xiaoze-action.acceptance-X-25f48-ume-entries-after-interrupt-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/xiaoze-action.acceptance-X-25f48-ume-entries-after-interrupt-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  27) [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:405:3 › Xiaoze P1 action › rejects a parameter change without mutation
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeTruthy[2m()[22m
+
+    Received: [31mundefined[39m
+
+      419 |     });
+      420 |     const interruptValue = readInterruptValue(started.events);
+    > 421 |     expect(interruptValue?.approvalId).toBeTruthy();
+          |                                        ^
+      422 |
+      423 |     const resumed = await postXiaoze(request, adminHeaders(), {
+      424 |       threadId: `${threadId}-reject`,
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/xiaoze-action.acceptance.spec.ts:421:40
+
+    Error Context: test-results/acceptance/xiaoze-action.acceptance-X-28780-ter-change-without-mutation-Desktop-Chrome/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/xiaoze-action.acceptance-X-28780-ter-change-without-mutation-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/xiaoze-action.acceptance-X-28780-ter-change-without-mutation-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  28) [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:455:3 › Xiaoze P1 action › denies out-of-permission approval execution with a safe message
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeTruthy[2m()[22m
+
+    Received: [31mundefined[39m
+
+      469 |     });
+      470 |     const interruptValue = readInterruptValue(started.events);
+    > 471 |     expect(interruptValue?.approvalId).toBeTruthy();
+          |                                        ^
+      472 |
+      473 |     const resumed = await postXiaoze(request, readOnlyHeaders(), {
+      474 |       threadId: `${threadId}-authz`,
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/xiaoze-action.acceptance.spec.ts:471:40
+
+    Error Context: test-results/acceptance/xiaoze-action.acceptance-X-896f1-ecution-with-a-safe-message-Desktop-Chrome/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/xiaoze-action.acceptance-X-896f1-ecution-with-a-safe-message-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/xiaoze-action.acceptance-X-896f1-ecution-with-a-safe-message-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  29) [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:225:3 › Xiaoze P0 perception › rejects unauthenticated xiaoze requests
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32m401[39m
+    Received: [31m200[39m
+
+      225 |   test("rejects unauthenticated xiaoze requests", async ({ request }) => {
+      226 |     const result = await postXiaozeQuestion(request, { "Content-Type": "application/json", Accept: "text/event-stream" }, "hello");
+    > 227 |     expect(result.status).toBe(401);
+          |                           ^
+      228 |   });
+      229 | });
+      230 |
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/xiaoze-perception.acceptance.spec.ts:227:27
+
+    Error Context: test-results/acceptance/xiaoze-perception.acceptan-9fea8-thenticated-xiaoze-requests-Desktop-Chrome/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/xiaoze-perception.acceptan-9fea8-thenticated-xiaoze-requests-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/xiaoze-perception.acceptan-9fea8-thenticated-xiaoze-requests-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  30) [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:219:3 › Xiaoze P2 planning › completes a multi-step task through approval and observe loop
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeTruthy[2m()[22m
+
+    Received: [31mundefined[39m
+
+      237 |     expect(started.status).toBe(200);
+      238 |     const interruptValue = readInterruptValue(started.events);
+    > 239 |     expect(interruptValue?.approvalId).toBeTruthy();
+          |                                        ^
+      240 |
+      241 |     const resumed = await postXiaoze(request, adminHeaders(), {
+      242 |       threadId: thread,
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/xiaoze-planning.acceptance.spec.ts:239:40
+
+    Error Context: test-results/acceptance/xiaoze-planning.acceptance-85c52-h-approval-and-observe-loop-Desktop-Chrome/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/xiaoze-planning.acceptance-85c52-h-approval-and-observe-loop-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/xiaoze-planning.acceptance-85c52-h-approval-and-observe-loop-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  31) [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:287:3 › Xiaoze P2 planning › returns grounded proactive suggestions when enabled and nothing for unauthorized scope
+
+    error: insert or update on table "parameter_change_requests" violates foreign key constraint "parameter_change_requests_parameter_definition_id_fkey"
+
+      199 |     }
+      200 |
+    > 201 |     await client.query(
+          |     ^
+      202 |       `
+      203 |       insert into parameter_change_requests (
+      204 |         id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
+        at /Users/tzrea1/Develop/WiseEff/node_modules/pg/lib/client.js:646:17
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/xiaoze-planning.acceptance.spec.ts:201:5
+        at withPgClient (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/database.ts:38:12)
+        at ensureOpenChangeRequestForSuggest (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/xiaoze-planning.acceptance.spec.ts:185:3)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/xiaoze-planning.acceptance.spec.ts:289:5
+
+    Error Context: test-results/acceptance/xiaoze-planning.acceptance-5b9b4-hing-for-unauthorized-scope-Desktop-Chrome/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/xiaoze-planning.acceptance-5b9b4-hing-for-unauthorized-scope-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/xiaoze-planning.acceptance-5b9b4-hing-for-unauthorized-scope-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  31 failed
+    [Desktop Chrome] › e2e/acceptance/debugging-admin.acceptance.spec.ts:194:3 › DEBUG-ADMIN-001 debugging admin catalog governance › debugging admin manages an API-backed HDC/ADB catalog node
+    [Desktop Chrome] › e2e/acceptance/debugging-simulator.acceptance.spec.ts:455:3 › M5.4 manual flow E - debugging simulator loop › reads, writes, detects mismatch, rolls back, and records audit evidence
+    [Desktop Chrome] › e2e/acceptance/debugging-simulator.acceptance.spec.ts:547:3 › M5.4 manual flow E - debugging simulator loop › blocks node writes for non-writer roles in UI and forced API calls
+    [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:268:3 › DTS structured product browser acceptance › structure, typed editor contract, search, config-set/baseline, and structured diff
+    [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:535:3 › DTS structured product browser acceptance › structured edit submit preserves rawText through review merge and CST writeback
+    [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:700:3 › DTS structured product browser acceptance › structural impact kinds when DTS bindings exist
+    [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:824:3 › DTS structured product browser acceptance › sensitive-node RBAC denies missing capability; agent critical deny is enforced
+    [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:160:3 › project parameter files browser acceptance › uploads, lists, and syncs project parameter files
+    [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:259:3 › project parameter files browser acceptance › resolves file/UI draft conflicts
+    [Desktop Chrome] › e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts:31:3 › PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignment › PARAM-IMPORT-DTS-FULL-001 parses full DTS with @address modules via parse-dts
+    [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:172:3 › M5.5 parameter negative-path browser acceptance › blocks blank draft reasons before API submission
+    [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:190:3 › M5.5 parameter negative-path browser acceptance › edits a draft item and removes another item before final submission
+    [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:277:3 › M5.5 parameter negative-path browser acceptance › defaults every workflow assignee slot to an eligible active non-admin user and hides ineligible users
+    [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:320:3 › M5.5 parameter negative-path browser acceptance › rejects forced invalid workflow assignees at the API boundary
+    [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:268:3 › M5.4 manual flow B/C - parameter management browser acceptance › searches, drafts, submits, reviews, persists, audits, and opens admin import preview
+    [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:438:3 › M5.4 manual flow B/C - parameter management browser acceptance › rejects a submitted parameter request and persists rejection reason and audit evidence
+    [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Guest
+    [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Hardware User
+    [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Software User
+    [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:190:3 › M5.4 manual flow H - permissions and user governance › loads users, shows role/status, and gates user governance to Admin
+    [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:246:3 › M5.4 manual flow H - permissions and user governance › lets Admin manage a non-self user in UI while denying non-Admin access
+    [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:347:3 › M5.4 manual flow H - permissions and user governance › protects API-mode user context with production bearer authentication
+    [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:372:3 › Product feedback browser acceptance › blocks non-Admin feedback admin APIs and page access
+    [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /node-debugging without a runtime crash
+    [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:227:3 › Xiaoze P1 action › approves a parameter change through the approval chain
+    [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:303:3 › Xiaoze P1 action › resumes with AG-UI native resume entries after interrupt
+    [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:405:3 › Xiaoze P1 action › rejects a parameter change without mutation
+    [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:455:3 › Xiaoze P1 action › denies out-of-permission approval execution with a safe message
+    [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:225:3 › Xiaoze P0 perception › rejects unauthenticated xiaoze requests
+    [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:219:3 › Xiaoze P2 planning › completes a multi-step task through approval and observe loop
+    [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:287:3 › Xiaoze P2 planning › returns grounded proactive suggestions when enabled and nothing for unauthorized scope
+  4 skipped
+  50 passed (23.1m)
 
 ### Workflow Table
 
 | ID | Workflow | Status | Notes | Artifacts |
 | --- | --- | --- | --- | --- |
-| A | Shell navigation and access | passed | Core routes load without visible runtime crashes. | playwright-report/acceptance/index.html |
-| B | Parameter management loop | passed | Parameter browser workflow coverage is reported by Playwright specs. | playwright-report/acceptance/index.html |
-| C | Parameter admin governance | passed | Admin governance and audit drawer coverage is reported by Playwright specs. | playwright-report/acceptance/index.html |
+| A | Shell navigation and access | failed | Core routes load without visible runtime crashes. | playwright-report/acceptance/index.html |
+| B | Parameter management loop | failed | Parameter browser workflow coverage is reported by Playwright specs. | playwright-report/acceptance/index.html |
+| C | Parameter admin governance | failed | Admin governance and audit drawer coverage is reported by Playwright specs. | playwright-report/acceptance/index.html |
 | D | Log analysis loop | passed | Upload, analysis, evidence, feedback, archive, and unsupported-file coverage. | playwright-report/acceptance/index.html |
-| E | Debugging simulator | passed | Simulator read, write, mismatch, rollback, and audit coverage. | playwright-report/acceptance/index.html |
+| E | Debugging simulator | failed | Simulator read, write, mismatch, rollback, and audit coverage. | playwright-report/acceptance/index.html |
 | F | HDC device lab | skipped | Runs only when DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true. | playwright-report/acceptance/index.html |
-| G | Agent collaboration | passed | Agent context, approval dialog, reject, approve, and evidence coverage. | playwright-report/acceptance/index.html |
-| H | Permissions and user governance | passed | Route access and user-permissions governance coverage. | playwright-report/acceptance/index.html |
+| G | Agent collaboration | failed | Agent context, approval dialog, reject, approve, and evidence coverage. | playwright-report/acceptance/index.html |
+| H | Permissions and user governance | failed | Route access and user-permissions governance coverage. | playwright-report/acceptance/index.html |
+| I | Product feedback | failed | Sidebar feedback submission, admin triage, and admin-only access coverage. | playwright-report/acceptance/index.html |
 
 ### Requirement Coverage
 
 - Coverage status: `passed`
-- Covered required IDs: `21`
+- Covered required IDs: `59`
 - Missing required IDs: _none_
 - Unknown IDs: _none_
 
 ### Operation Evidence
 
-- Evidence status: `passed`
-- Covered operation IDs: `20`
-- Missing operation IDs: _none_
-- Invalid evidence records: _none_
-- Validation errors: `0`
-- Validation error detail: _none_
-- Evidence records: `34`
+- Evidence status: `failed`
+- Covered operation IDs: `24`
+- Missing operation IDs: `DEBUG-ADMIN-001`, `DEBUG-PERM-001`, `DEBUG-SIM-001`, `PARAM-ADMIN-001`, `PARAM-ASSIGNEE-001`, `PARAM-ASSIGNEE-002`, `PARAM-ASSIGNEE-003`, `PARAM-DRAFT-EDIT-001`, `PARAM-DTS-CONFIGSET-001`, `PARAM-DTS-DIFF-001`, `PARAM-DTS-EDIT-001`, `PARAM-DTS-EDIT-002`, `PARAM-DTS-IMPACT-001`, `PARAM-DTS-RBAC-001`, `PARAM-DTS-SEARCH-001`, `PARAM-DTS-STRUCTURE-001`, `PARAM-FILE-RESOLVE-001`, `PARAM-FILE-SYNC-001`, `PARAM-FILE-UPLOAD-001`, `PARAM-HAPPY-001`, `PARAM-IMPORT-DTS-FULL-001`, `PARAM-REASON-001`, `PARAM-REJECT-001`, `PERM-GOV-001`, `PERM-USER-MGMT-001`, `PFB-AUTHZ-001`, `XIAOZE-ACTION-APPROVE-001`, `XIAOZE-ACTION-AUTHZ-001`, `XIAOZE-ACTION-REJECT-001`, `XIAOZE-ACTION-RESUME-001`
+- Invalid evidence records: `PARAM-ADMIN-002`, `PARAM-IMPORT-REVIEW-META-001`, `XIAOZE-PERCEPTION-001`, `XIAOZE-PERCEPTION-AUTHZ-001`
+- Validation errors: `8`
+- PARAM-ADMIN-002 assertions: Evidence is missing required operation assertions: audit.
+- PARAM-ADMIN-002 audit: Audit assertions require at least one audit event summary.
+- PARAM-IMPORT-REVIEW-META-001 artifacts: Evidence requires at least one artifact.
+- PARAM-IMPORT-REVIEW-META-001 api: API assertions require at least one API request/response summary.
+- PARAM-IMPORT-REVIEW-META-001 db: DB assertions require at least one database assertion summary.
+- PARAM-IMPORT-REVIEW-META-001 audit: Audit assertions require at least one audit event summary.
+- XIAOZE-PERCEPTION-001 artifacts: Evidence requires at least one artifact.
+- XIAOZE-PERCEPTION-AUTHZ-001 artifacts: Evidence requires at least one artifact.
+- Evidence records: `36`
 - Evidence index: docs/generated/acceptance-operation-evidence.md
 
 ### Artifact Paths
@@ -63,4 +1649,16 @@
 
 ### Blockers
 
-- _none_
+- Playwright acceptance did not pass.
+- Workflow A did not pass browser acceptance.
+- Workflow B did not pass browser acceptance.
+- Workflow C did not pass browser acceptance.
+- Workflow E did not pass browser acceptance.
+- Workflow G did not pass browser acceptance.
+- Workflow H did not pass browser acceptance.
+- Workflow I did not pass browser acceptance.
+- Operation evidence is missing required IDs: DEBUG-ADMIN-001, DEBUG-PERM-001, DEBUG-SIM-001, PARAM-ADMIN-001, PARAM-ASSIGNEE-001, PARAM-ASSIGNEE-002, PARAM-ASSIGNEE-003, PARAM-DRAFT-EDIT-001, PARAM-DTS-CONFIGSET-001, PARAM-DTS-DIFF-001, PARAM-DTS-EDIT-001, PARAM-DTS-EDIT-002, PARAM-DTS-IMPACT-001, PARAM-DTS-RBAC-001, PARAM-DTS-SEARCH-001, PARAM-DTS-STRUCTURE-001, PARAM-FILE-RESOLVE-001, PARAM-FILE-SYNC-001, PARAM-FILE-UPLOAD-001, PARAM-HAPPY-001, PARAM-IMPORT-DTS-FULL-001, PARAM-REASON-001, PARAM-REJECT-001, PERM-GOV-001, PERM-USER-MGMT-001, PFB-AUTHZ-001, XIAOZE-ACTION-APPROVE-001, XIAOZE-ACTION-AUTHZ-001, XIAOZE-ACTION-REJECT-001, XIAOZE-ACTION-RESUME-001.
+- Operation evidence records are missing review or forensic metadata: PARAM-ADMIN-002, PARAM-IMPORT-REVIEW-META-001, XIAOZE-PERCEPTION-001, XIAOZE-PERCEPTION-AUTHZ-001.
+- Acceptance preflight did not pass.
+- Local non-HDC mode requires pilot_ready or non_hdc_local preflight outcome.
+- Local non-HDC mode requires HDC to be skipped or absent.

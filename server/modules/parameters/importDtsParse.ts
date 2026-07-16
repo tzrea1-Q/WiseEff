@@ -37,7 +37,7 @@ function sourceNodePathFor(nodePath: string, propertyName: string): string {
 
 /**
  * Parse a full DTS source into import preview rows using the server CST resolver.
- * Rejects `/include/` with the same semantics as parameter-file upload.
+ * `/include/` is not a hard reject here — config-set resolution owns include diagnostics.
  */
 export function parseDtsImportSource(
   input: ParseDtsImportSourceInput,

@@ -11,7 +11,7 @@ import { apiRoute, smokeHeaders } from "./helpers/runtime";
 // Browser acceptance artifacts for this spec are written by Playwright to:
 // - test-results/acceptance
 // - playwright-report/acceptance/index.html
-// - test-results/acceptance/operation-evidence/*.json and *.png
+// - test-results/acceptance-operation-evidence/*.json and *.png
 // Manual playwright-cli evidence, when captured outside the automated run, should live under work/ui-checks/product-feedback-*.
 
 useBrowserDiagnostics(test);

@@ -1,60 +1,77 @@
 import * as XLSX from "xlsx";
-import type { ParameterRecord } from "../../mockData";
-import { riskLabels } from "../../workbenchUi";
+import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
 
 const PARAMETER_EXPORT_HEADERS = [
-  "参数名称",
-  "模块",
-  "当前值",
-  "推荐值",
-  "范围 / 单位",
-  "重要性",
-  "更新时间"
+  "属性键",
+  "驱动模块",
+  "实例",
+  "定位符",
+  "生效值",
+  "Schema 版本"
 ] as const;
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-function formatParameterUpdatedAt(updatedAt: string) {
-  const timestamp = Date.parse(updatedAt);
-  if (!Number.isFinite(timestamp)) {
-    return updatedAt;
-  }
+export type ParameterExportRow = Pick<
+  ProjectParameterBinding,
+  "propertyKey" | "driverModule" | "instanceName" | "locator" | "effectiveValue"
+> & {
+  schemaVersion?: string | number | null;
+};
 
-  const date = new Date(timestamp);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+function formatEffectiveValue(value: ProjectParameterBinding["effectiveValue"]): string {
+  if (value.kind === "boolean") return "true";
+  if (value.kind === "empty") return "";
+  if (value.kind === "strings") return value.values.join(", ");
+  if (value.kind === "bytes") return value.values.map((item) => String(item)).join(" ");
+  if (value.kind === "cells") {
+    return value.groups
+      .map((group) =>
+        group
+          .map((cell) => (cell.kind === "integer" ? cell.raw || cell.value : cell.label))
+          .join(" ")
+      )
+      .join(" | ");
+  }
+  return value.segments
+    .map((segment) => {
+      if (segment.kind === "string") return segment.value;
+      return segment.cells
+        .map((cell) => (cell.kind === "integer" ? cell.raw || cell.value : cell.label))
+        .join(" ");
+    })
+    .join(" ");
 }
 
-export function buildProjectParametersSheetRows(rows: ParameterRecord[]) {
+export function buildProjectParametersSheetRows(rows: ParameterExportRow[]) {
   return [
     [...PARAMETER_EXPORT_HEADERS],
     ...rows.map((parameter) => [
-      parameter.name,
-      parameter.module,
-      parameter.currentValue,
-      parameter.recommendedValue,
-      `${parameter.range} ${parameter.unit}`.trim(),
-      riskLabels[parameter.risk],
-      formatParameterUpdatedAt(parameter.updatedAt)
+      parameter.propertyKey,
+      parameter.driverModule ?? "",
+      parameter.instanceName ?? "",
+      parameter.locator ?? "",
+      formatEffectiveValue(parameter.effectiveValue),
+      parameter.schemaVersion == null ? "" : String(parameter.schemaVersion)
     ])
   ];
 }
 
-export function buildProjectParametersWorkbook(rows: ParameterRecord[]) {
+export function buildProjectParametersWorkbook(rows: ParameterExportRow[]) {
   const workbook = XLSX.utils.book_new();
   const worksheet = XLSX.utils.aoa_to_sheet(buildProjectParametersSheetRows(rows));
   XLSX.utils.book_append_sheet(workbook, worksheet, "参数");
   return workbook;
 }
 
-export function serializeProjectParametersWorkbook(rows: ParameterRecord[]) {
+export function serializeProjectParametersWorkbook(rows: ParameterExportRow[]) {
   const workbook = buildProjectParametersWorkbook(rows);
   const bytes = XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as number[];
   return new Uint8Array(bytes);
 }
 
 export function exportProjectParametersAsExcel(
-  rows: ParameterRecord[],
+  rows: ParameterExportRow[],
   projectCode: string,
   options?: { returnBuffer?: boolean }
 ) {

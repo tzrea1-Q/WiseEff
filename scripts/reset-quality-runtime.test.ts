@@ -29,15 +29,18 @@ describe("quality runtime reset wiring", () => {
 
     await resetQualityRuntime(db);
 
-    expect(queries.map((query) => query.text)).toEqual([
-      "update users set organization_id = 'org-chargelab' where id = any($1::text[])",
+    expect(queries[0].text).toBe(
+      "update users set organization_id = 'org-chargelab' where id = any($1::text[])"
+    );
+    expect(queries.map((query) => query.text).slice(1, 6)).toEqual([
       "delete from local_registration_role_requests",
       "delete from auth_sessions",
       "delete from user_password_credentials",
       "delete from user_role_bindings",
-      "delete from audit_events where app in ('auth', 'user-governance') or target_type = 'user'",
-      "delete from users where id <> all($1::text[])"
+      "delete from audit_events where app in ('auth', 'user-governance') or target_type = 'user'"
     ]);
+    expect(queries.at(-1)?.text).toBe("delete from users where id <> all($1::text[])");
+    expect(queries.some((query) => query.text.includes("delete from parameter_drafts where user_id"))).toBe(true);
     expect(queries[0].values[0]).toEqual([
       "u-xu-yun",
       "u-zhao-heng",

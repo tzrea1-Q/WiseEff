@@ -12,6 +12,16 @@ import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, s
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
+import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
+import { loadPreCutoverWritebackSource } from "../parameters/legacyParameterIdentityAdapter";
+import { getChangeRequestWriteLock } from "../parameters/repository";
+import {
+  applyLockedOverlayWriteback,
+  resolveBindingWriteLock,
+  type BindingWriteLockContext,
+  type BindingWriteLockFields,
+} from "../parameter-topology/editService";
+import { createDtsToolchainRunner } from "./dtsToolchain";
 import type { ParameterFileFormat } from "./types";
 
 type WritebackSource = {
@@ -21,11 +31,31 @@ type WritebackSource = {
 
 export type WritebackMergedParameterValueInput = {
   projectId: string;
+  /**
+   * Pre-cutover: parameter_definition id.
+   * Post-cutover DTO compatibility: ignored when projectParameterBindingId is set.
+   */
   parameterDefinitionId: string;
   mergedValue: string;
+  /** Semantic identity — required for post-cutover writeback. */
+  projectParameterBindingId?: string;
+  parameterSpecId?: string;
+  /** Locked merge identity — required for post-cutover exact writeback. */
+  writeLock?: BindingWriteLockFields;
+  changeRequestId?: string;
 };
 
-export type WritebackServiceContext = AuditCorrelationContext;
+export type WritebackServiceContext = AuditCorrelationContext & {
+  objectStore?: ObjectStore;
+  /**
+   * Explicit toolchain runner injection for tests.
+   * Production must omit this and use the pinned host runner.
+   * There is no environment-variable bypass.
+   */
+  toolchain?: ReturnType<typeof createDtsToolchainRunner>;
+  /** Test-only: skip semantic promotion gates after resolve/toolchain. */
+  skipSemanticGates?: boolean;
+};
 
 function splitNodePath(nodePath: string) {
   return nodePath.split("/").map((segment) => segment.trim()).filter(Boolean);
@@ -79,24 +109,55 @@ function contentTypeForFormat(format: ParameterFileFormat) {
   return format === "json" ? "application/json" : "text/plain";
 }
 
-async function loadWritebackSource(
+async function loadSemanticWritebackSource(
   db: Queryable,
   auth: AuthContext,
-  input: Pick<WritebackMergedParameterValueInput, "projectId" | "parameterDefinitionId">
+  input: Pick<WritebackMergedParameterValueInput, "projectId" | "projectParameterBindingId">
 ): Promise<WritebackSource | null> {
+  if (!input.projectParameterBindingId) {
+    return null;
+  }
+
   const result = await db.query<{
     source_file_name: string | null;
     source_node_path: string | null;
   }>(
     `
-    select source_file_name, source_node_path
-    from project_parameter_values
-    where organization_id = $1
-      and project_id = $2
-      and parameter_definition_id = $3
+    select
+      ppf.file_name as source_file_name,
+      case
+        when lnr.node_locator is null then dps.property_key
+        when lnr.node_locator like '/%' then ltrim(lnr.node_locator, '/') || '/' || dps.property_key
+        else lnr.node_locator || '/' || dps.property_key
+      end as source_node_path
+    from project_parameter_bindings b
+    inner join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    left join dts_logical_nodes ln on ln.id = b.logical_node_id
+    left join lateral (
+      select lnr.node_locator, lnr.config_revision_id
+      from dts_logical_node_revisions lnr
+      where lnr.logical_node_id = ln.id
+      order by lnr.config_revision_id desc
+      limit 1
+    ) lnr on true
+    left join lateral (
+      select po.file_version_id
+      from dts_occurrence_effects oe
+      inner join dts_property_occurrences po on po.id = oe.property_occurrence_id
+      where oe.config_revision_id = lnr.config_revision_id
+        and oe.property_name = dps.property_key
+      order by oe.source_order desc
+      limit 1
+    ) occ on true
+    left join project_parameter_file_versions pfv on pfv.id = occ.file_version_id
+    left join project_parameter_files ppf on ppf.id = pfv.file_id
+    where b.organization_id = $1
+      and b.project_id = $2
+      and b.id = $3
     limit 1
     `,
-    [auth.organization.id, input.projectId, input.parameterDefinitionId]
+    [auth.organization.id, input.projectId, input.projectParameterBindingId]
   );
 
   const row = result.rows[0];
@@ -110,6 +171,100 @@ async function loadWritebackSource(
   };
 }
 
+async function loadWritebackSource(
+  db: Queryable,
+  auth: AuthContext,
+  input: Pick<
+    WritebackMergedParameterValueInput,
+    "projectId" | "parameterDefinitionId" | "projectParameterBindingId"
+  >
+): Promise<WritebackSource | null> {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    return loadSemanticWritebackSource(db, auth, input);
+  }
+
+  return loadPreCutoverWritebackSource(db, auth, {
+    projectId: input.projectId,
+    parameterDefinitionId: input.parameterDefinitionId
+  });
+}
+
+async function resolveLockedWritebackContext(
+  db: Queryable,
+  auth: AuthContext,
+  input: WritebackMergedParameterValueInput,
+): Promise<{ lock: BindingWriteLockContext; parameterSpecVersionId: string }> {
+  const persistedLock =
+    input.writeLock ??
+    (input.changeRequestId
+      ? await getChangeRequestWriteLock(db, {
+          organizationId: auth.organization.id,
+          requestId: input.changeRequestId,
+        })
+      : null);
+
+  if (!persistedLock) {
+    throw new ApiError("CONFLICT", "Exact writeback requires locked merge identity.", 409, {
+      reason: "missing-write-lock",
+      changeRequestId: input.changeRequestId,
+      projectParameterBindingId: input.projectParameterBindingId,
+    });
+  }
+
+  if (!input.projectParameterBindingId) {
+    throw new ApiError("CONFLICT", "Semantic writeback requires project parameter binding.", 409, {
+      reason: "missing-binding",
+    });
+  }
+
+  const resolved = await resolveBindingWriteLock(db, auth, {
+    bindingId: input.projectParameterBindingId,
+    baseRevisionId: persistedLock.baseConfigRevisionId,
+  });
+
+  if (
+    resolved.bindingRevisionId !== persistedLock.bindingRevisionId ||
+    resolved.sourceFileVersionId !== persistedLock.sourceFileVersionId ||
+    resolved.expectedChecksum !== persistedLock.expectedChecksum
+  ) {
+    throw new ApiError("CONFLICT", "Persisted write lock no longer matches binding topology.", 409, {
+      reason: "stale-write-lock",
+    });
+  }
+
+  const specVersion = await db.query<{ id: string }>(
+    `
+    select psv.id
+    from parameter_spec_versions psv
+    where psv.parameter_spec_id = $1
+    order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
+    limit 1
+    `,
+    [input.parameterSpecId],
+  );
+  const parameterSpecVersionId = specVersion.rows[0]?.id;
+  if (!parameterSpecVersionId) {
+    throw new ApiError("CONFLICT", "Parameter spec version missing for locked writeback.", 409, {
+      reason: "missing-spec-version",
+      parameterSpecId: input.parameterSpecId,
+    });
+  }
+
+  return {
+    lock: {
+      ...persistedLock,
+      propertyKey: resolved.propertyKey,
+      targetRef: resolved.targetRef,
+      expectedRawText: resolved.expectedRawText,
+      nodeSpan: resolved.nodeSpan,
+      overlayFileId: resolved.overlayFileId,
+      overlayFileName: resolved.overlayFileName,
+      overlayFileVersionId: resolved.overlayFileVersionId,
+    },
+    parameterSpecVersionId,
+  };
+}
+
 async function createWritebackAudit(
   db: Queryable,
   auth: AuthContext,
@@ -120,6 +275,9 @@ async function createWritebackAudit(
     fileId: string;
     fileName: string;
     versionNumber: number;
+    projectParameterBindingId?: string;
+    parameterSpecId?: string;
+    candidateRevisionId?: string;
   },
   context: WritebackServiceContext = {}
 ) {
@@ -138,8 +296,11 @@ async function createWritebackAudit(
     metadata: {
       fileName: input.fileName,
       parameterDefinitionId: input.parameterDefinitionId,
+      projectParameterBindingId: input.projectParameterBindingId,
+      parameterSpecId: input.parameterSpecId,
       sourceNodePath: input.nodePath,
-      versionNumber: input.versionNumber
+      versionNumber: input.versionNumber,
+      candidateRevisionId: input.candidateRevisionId,
     },
     traceId: context.requestId ?? randomUUID()
   });
@@ -215,7 +376,81 @@ export async function writebackMergedParameterValue(
   auth: AuthContext,
   input: WritebackMergedParameterValueInput,
   context: WritebackServiceContext = {}
-): Promise<{ skipped: true } | { skipped: false; fileId: string; versionId: string; versionNumber: number }> {
+): Promise<
+  | { skipped: true }
+  | {
+      skipped: false;
+      fileId: string;
+      versionId: string;
+      versionNumber: number;
+      candidateRevisionId?: string;
+      bindingRevisionId?: string;
+    }
+> {
+  if (await mustUseSemanticParameterIdentity(db)) {
+    if (!input.projectParameterBindingId) {
+      throw new ApiError("CONFLICT", "Semantic writeback requires bound source file and occurrence.", 409, {
+        projectId: input.projectId,
+        projectParameterBindingId: input.projectParameterBindingId,
+      });
+    }
+
+    const { lock, parameterSpecVersionId } = await resolveLockedWritebackContext(db, auth, input);
+    const nodePath = `${lock.targetRef}/${lock.propertyKey}`;
+
+    await assertSensitiveNodeWriteAllowed(db, auth, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      nodePath,
+      sourceFileName: lock.overlayFileName,
+      actorType: "user",
+      requestId: context.requestId,
+    });
+
+    const applied = await applyLockedOverlayWriteback(
+      db,
+      auth,
+      {
+        lock,
+        bindingId: input.projectParameterBindingId,
+        parameterSpecId: input.parameterSpecId ?? input.parameterDefinitionId,
+        parameterSpecVersionId,
+        mergedValue: input.mergedValue,
+      },
+      {
+        objectStore,
+        skipSemanticGates: context.skipSemanticGates,
+        toolchain: context.toolchain ?? createDtsToolchainRunner(),
+      },
+    );
+
+    await createWritebackAudit(
+      db,
+      auth,
+      {
+        projectId: input.projectId,
+        parameterDefinitionId: input.parameterDefinitionId,
+        nodePath,
+        fileId: applied.fileId,
+        fileName: lock.overlayFileName,
+        versionNumber: applied.versionNumber,
+        projectParameterBindingId: input.projectParameterBindingId,
+        parameterSpecId: input.parameterSpecId,
+        candidateRevisionId: applied.candidateRevisionId,
+      },
+      context,
+    );
+
+    return {
+      skipped: false,
+      fileId: applied.fileId,
+      versionId: applied.fileVersionId,
+      versionNumber: applied.versionNumber,
+      candidateRevisionId: applied.candidateRevisionId,
+      bindingRevisionId: applied.bindingRevisionId,
+    };
+  }
+
   const source = await loadWritebackSource(db, auth, input);
   if (!source) {
     throw new ApiError("NOT_FOUND", "Project parameter value for writeback was not found.", 404, {
@@ -297,7 +532,9 @@ export async function writebackMergedParameterValue(
       nodePath: source.sourceNodePath,
       fileId: file.id,
       fileName: file.fileName,
-      versionNumber: version.versionNumber
+      versionNumber: version.versionNumber,
+      projectParameterBindingId: input.projectParameterBindingId,
+      parameterSpecId: input.parameterSpecId
     },
     context
   );

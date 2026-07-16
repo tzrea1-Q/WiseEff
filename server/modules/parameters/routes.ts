@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import type { Database } from "../../shared/database/client";
+import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { createProjectForAuth } from "./projectService";
@@ -111,6 +111,27 @@ function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
   }
+}
+
+async function rejectRetiredLegacyParameterId(db: Queryable, legacyId: string): Promise<never | void> {
+  const result = await db.query<{ id: string }>(
+    `
+    select id
+    from legacy_parameter_migration_evidence
+    where legacy_id = $1
+    order by created_at asc
+    limit 1
+    `,
+    [legacyId]
+  );
+  const evidenceId = result.rows[0]?.id;
+  if (!evidenceId) {
+    return;
+  }
+  throw new ApiError("GONE", "legacy-parameter-id-retired", 410, {
+    diagnostic: "legacy-parameter-id-retired",
+    migrationEvidenceId: evidenceId
+  });
 }
 
 function requireCanReviewOrMerge(auth: AuthContext) {
@@ -336,6 +357,7 @@ export function registerParameterRoutes(
     });
 
     if (!item) {
+      await rejectRetiredLegacyParameterId(db, params.parameterId);
       throw new ApiError("NOT_FOUND", "Parameter was not found.", 404, { parameterId: params.parameterId });
     }
 
@@ -351,6 +373,10 @@ export function registerParameterRoutes(
       organizationId: auth.organization.id,
       parameterId: params.parameterId
     });
+
+    if (items.length === 0) {
+      await rejectRetiredLegacyParameterId(db, params.parameterId);
+    }
 
     return { status: 200, body: { items } };
   });

@@ -1,0 +1,26 @@
+$id: wiseeff/wiseeff-test-ambiguous.yaml
+title: wiseeff,test-ambiguous
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,test-ambiguous
+compatible:
+  - wiseeff,test-ambiguous
+properties:
+  compatible:
+    valueShape: string-list
+    exampleValue: '"wiseeff,test-ambiguous"'
+    constraints: {}
+  reg:
+    valueShape: u32-array
+    exampleValue: <0x10>
+    constraints: {}
+  gpio_int:
+    valueShape: mixed
+    exampleValue: <&gpio13 1 0>
+    constraints:
+      cells: 3
+  status:
+    valueShape: string-list
+    exampleValue: '"okay"'
+    constraints: {}

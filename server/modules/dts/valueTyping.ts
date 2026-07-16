@@ -5,7 +5,7 @@ export interface ClassifiedDtsValue {
   normalizedValue: string;
 }
 
-const EMPTY_PROPERTY_NAMES = new Set(["ranges", "dma-ranges"]);
+export const EMPTY_PROPERTY_NAMES = new Set(["ranges", "dma-ranges"]);
 
 /** Classify a property RHS and produce a type-aware normalized comparison string. */
 export function classifyDtsValue(rawText: string, propertyName: string): ClassifiedDtsValue {

@@ -1,0 +1,20 @@
+$id: wiseeff/wiseeff-gic.yaml
+title: wiseeff,gic
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,gic
+compatible:
+  - wiseeff,gic
+properties:
+  compatible:
+    valueShape: string-list
+    exampleValue: '"wiseeff,gic"'
+    constraints: {}
+  interrupt-controller:
+    valueShape: empty
+    constraints: {}
+  '#interrupt-cells':
+    valueShape: u32-array
+    exampleValue: <3>
+    constraints: {}

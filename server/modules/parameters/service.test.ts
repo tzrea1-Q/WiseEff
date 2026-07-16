@@ -16,15 +16,26 @@ function createFakeDb(
   results: QueuedResult[] = [],
   options: {
     readConflictChecksFromQueue?: boolean;
+    /** When true, semantic/post-cutover identity path is active. */
+    semanticCutoverComplete?: boolean;
   } = {}
 ) {
   const calls: QueryCall[] = [];
   const txCalls: QueryCall[] = [];
   const transactions: QueryCall[][] = [];
   const readConflictChecksFromQueue = options.readConflictChecksFromQueue ?? false;
+  const semanticCutoverComplete = options.semanticCutoverComplete ?? false;
 
   const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
     const call = { text, values };
+    // Cutover probes must not consume the queued fixture rows.
+    if (text.includes("parameter_identity_cutovers")) {
+      return { rows: [{ c: semanticCutoverComplete ? "1" : "0" } as Row], rowCount: 1 };
+    }
+    if (text.includes("information_schema.tables") && text.includes("parameter_definitions")) {
+      // When cutover is complete, legacy flat tables are retired.
+      return { rows: [{ c: semanticCutoverComplete ? "0" : "1" } as Row], rowCount: 1 };
+    }
     target.push(call);
     if (!readConflictChecksFromQueue && text.includes("from parameter_file_sync_conflicts")) {
       return { rows: [] as Row[], rowCount: 0 };
@@ -98,7 +109,7 @@ function parameterRow(overrides: Record<string, unknown> = {}) {
     unit: "mA",
     risk: "High",
     current_value: "3200",
-    recommended_value: "3000",
+    initSuggestionText: "3000",
     value_version: 7,
     updated_at: "2026-05-25T02:00:00.000Z",
     ...overrides
@@ -118,7 +129,7 @@ function definitionRow(overrides: Record<string, unknown> = {}) {
     risk: "High",
     project_parameter_value_id: "param-1",
     current_value: "3200",
-    recommended_value: "3000",
+    initSuggestionText: "3000",
     value_version: 7,
     ...overrides
   };
@@ -252,18 +263,13 @@ describe("parameter service", () => {
     ).toThrow(expect.objectContaining({ code: "FORBIDDEN" }) as unknown as ApiError);
   });
 
-  it("parseDtsImportForAuth rejects /include/ with dts-include-unsupported", () => {
+  it("parseDtsImportForAuth no longer rejects /include/ at upload-parse time", () => {
     expect(() =>
       parseDtsImportForAuth(makeAdminAuth(), {
         sourceName: "board.dts",
         content: `/dts-v1/;\n/include/ "pin.dtsi"\n/ { board_id = <0>; };\n`
       })
-    ).toThrow(
-      expect.objectContaining({
-        code: "VALIDATION_FAILED",
-        details: { code: "dts-include-unsupported" }
-      }) as unknown as ApiError
-    );
+    ).not.toThrow();
   });
 
   it("invalid import item shape returns validation failed", async () => {
@@ -345,7 +351,7 @@ describe("parameter service", () => {
           unit: "C",
           default_range: "40 - 90",
           current_value: "70",
-          recommended_value: "68",
+          initSuggestionText: "68",
           project_parameter_value_id: "param-unchanged",
           value_version: 2
         }),
@@ -357,7 +363,7 @@ describe("parameter service", () => {
           unit: "V",
           default_range: "300 - 450",
           current_value: "400",
-          recommended_value: "395",
+          initSuggestionText: "395",
           project_parameter_value_id: "param-conflict",
           value_version: 5
         })
@@ -582,21 +588,21 @@ describe("parameter service", () => {
           id: "definition-recommended-delta",
           name: "recommended_delta",
           current_value: "100",
-          recommended_value: "100",
+          initSuggestionText: "100",
           project_parameter_value_id: "param-recommended-delta"
         }),
         definitionRow({
           id: "definition-zero-baseline",
           name: "zero_baseline_delta",
           current_value: "100",
-          recommended_value: "0",
+          initSuggestionText: "0",
           project_parameter_value_id: "param-zero-baseline"
         }),
         definitionRow({
           id: "definition-nonnumeric-baseline",
           name: "nonnumeric_delta",
           current_value: "100",
-          recommended_value: "auto",
+          initSuggestionText: "auto",
           project_parameter_value_id: "param-nonnumeric-baseline"
         })
       ],
@@ -1292,6 +1298,7 @@ describe("parameter service", () => {
       "3100",
       "Reduce thermal risk.",
       "manual",
+      null,
       null
     ]);
     expect(calls[2].text).toContain("user_id = $2");
@@ -1338,6 +1345,7 @@ describe("parameter service", () => {
           created_at: "2026-05-25T05:00:00.000Z"
         }
       ],
+      [],
       [
         {
           id: "request-1",
@@ -1373,6 +1381,7 @@ describe("parameter service", () => {
           reason: "Reduce thermal risk."
         }
       ],
+      [],
       [],
       [
         {
@@ -1467,6 +1476,7 @@ describe("parameter service", () => {
           created_at: "2026-05-25T05:00:00.000Z"
         }
       ],
+      [],
       [
         changeRequestRow({
           status: "hardware_review",
@@ -1535,6 +1545,7 @@ describe("parameter service", () => {
           created_at: "2026-05-25T05:00:00.000Z"
         }
       ],
+      [],
       [
         changeRequestRow({
           status: "hardware_review",
@@ -1714,6 +1725,7 @@ describe("parameter service", () => {
           created_at: "2026-05-25T05:00:00.000Z"
         }
       ],
+      [],
       [
         {
           id: "request-1",
@@ -2078,5 +2090,128 @@ describe("parameter service", () => {
     expect(softwareReview.status).toBe("software_review");
     expect(softwareMerge.status).toBe("software_merge");
     expect(merged.status).toBe("merged");
+  });
+
+  describe("post-cutover semantic merge fail-closed preflight", () => {
+    const mergeAuth = () =>
+      makeAuth({
+        roles: [{ projectId: null, roleId: "admin" }],
+        permissions: [
+          "parameter:view",
+          "parameter:edit",
+          "parameter:review",
+          "parameter:merge",
+          "admin:access"
+        ]
+      });
+
+    it("rejects semantic merge when objectStore is missing", async () => {
+      const { db, txCalls } = createFakeDb(
+        [[changeRequestRow({ status: "software_merge", risk: "Medium" })], []],
+        { semanticCutoverComplete: true }
+      );
+
+      await expect(
+        reviewChange(db, mergeAuth(), {
+          requestId: "request-1",
+          decision: "advance",
+          expectedVersion: 7
+        })
+      ).rejects.toMatchObject(
+        new ApiError("CONFLICT", "Semantic merge requires object storage for DTS writeback.", 409, {
+          requestId: "request-1"
+        })
+      );
+
+      expect(txCalls.some((call) => call.text.includes("insert into parameter_history_entries"))).toBe(false);
+      expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
+      expect(txCalls.some((call) => call.text.includes("update parameter_change_requests") && call.values?.includes("merged"))).toBe(
+        false
+      );
+    });
+
+    it("rejects semantic merge when projectId is missing", async () => {
+      const { db, txCalls } = createFakeDb(
+        [[changeRequestRow({ status: "software_merge", risk: "Medium", project_id: null })], []],
+        { semanticCutoverComplete: true }
+      );
+
+      await expect(
+        reviewChange(
+          db,
+          mergeAuth(),
+          { requestId: "request-1", decision: "advance", expectedVersion: 7 },
+          { objectStore: { get: async () => Buffer.alloc(0), put: async () => ({ storageKey: "x", checksumSha256: "y", fileSizeBytes: 0 }) } as never }
+        )
+      ).rejects.toMatchObject(
+        new ApiError("CONFLICT", "Semantic merge requires a project-scoped change request.", 409, {
+          requestId: "request-1"
+        })
+      );
+
+      expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
+    });
+
+    it("rejects semantic merge when binding identity is missing", async () => {
+      const { db, txCalls } = createFakeDb(
+        [
+          [
+            changeRequestRow({
+              status: "software_merge",
+              risk: "Medium",
+              project_parameter_value_id: ""
+            })
+          ],
+          []
+        ],
+        { semanticCutoverComplete: true }
+      );
+
+      await expect(
+        reviewChange(
+          db,
+          mergeAuth(),
+          { requestId: "request-1", decision: "advance", expectedVersion: 7 },
+          { objectStore: { get: async () => Buffer.alloc(0), put: async () => ({ storageKey: "x", checksumSha256: "y", fileSizeBytes: 0 }) } as never }
+        )
+      ).rejects.toMatchObject(
+        new ApiError("CONFLICT", "Semantic merge requires a project parameter binding write lock.", 409, {
+          requestId: "request-1"
+        })
+      );
+
+      expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
+    });
+
+    it("does not honor WISEEFF_WRITEBACK_SKIP_TOOLCHAIN env bypass", async () => {
+      const previous = process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN;
+      process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN = "1";
+      try {
+        const { db, txCalls } = createFakeDb(
+          [[changeRequestRow({ status: "software_merge", risk: "Medium" })], []],
+          { semanticCutoverComplete: true }
+        );
+
+        await expect(
+          reviewChange(db, mergeAuth(), {
+            requestId: "request-1",
+            decision: "advance",
+            expectedVersion: 7
+          })
+        ).rejects.toMatchObject(
+          new ApiError("CONFLICT", "Semantic merge requires object storage for DTS writeback.", 409, {
+            requestId: "request-1"
+          })
+        );
+
+        expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
+      } finally {
+        if (previous === undefined) {
+          delete process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN;
+        } else {
+          process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN = previous;
+        }
+      }
+    });
   });
 });

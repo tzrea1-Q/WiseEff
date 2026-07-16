@@ -41,7 +41,8 @@ export const listParametersQuerySchema = z.object({
   moduleId: nonEmptyString.optional(),
   includeDescendants: booleanQuerySchema.optional(),
   risk: z.union([z.enum(parameterRiskLevels), z.array(z.enum(parameterRiskLevels))]).optional(),
-  q: nonEmptyString.optional()
+  q: nonEmptyString.optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional()
 });
 
 export const parameterModuleParamsSchema = z.object({
@@ -173,6 +174,7 @@ export type ListParametersQuery = {
   includeDescendants?: boolean;
   risk?: z.infer<typeof listParametersQuerySchema>["risk"];
   q?: string;
+  limit?: number;
 };
 export type CreateParameterModuleBody = z.infer<typeof createParameterModuleBodySchema>;
 export type UpdateParameterModuleBody = z.infer<typeof updateParameterModuleBodySchema>;

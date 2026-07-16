@@ -499,7 +499,13 @@ export async function releaseBaseline(
     throw new ApiError("NOT_FOUND", "Baseline not found.", 404, { baselineId });
   }
 
-  const gate = await runValidationGate(db, auth, { configSetId: baseline.configSetId }, deps, context);
+  const gate = await runValidationGate(
+    db,
+    auth,
+    { configSetId: baseline.configSetId, forRelease: true },
+    deps,
+    context
+  );
 
   return db.transaction(async (tx) => {
     const configSet = await getConfigSetById(tx, {

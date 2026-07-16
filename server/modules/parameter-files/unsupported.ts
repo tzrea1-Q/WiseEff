@@ -1,6 +1,11 @@
-import { stripDtsComments } from "./preprocess";
-
-/** P1: only /include/ remains unsupported; other constructs are handled by structured parsing. */
+/**
+ * Hard-unsupported DTS constructs outside the structured parser / config-set
+ * resolver contract. `/include/` is intentionally not reported here: missing
+ * or cyclic includes are `resolveDtsConfigSet` diagnostics, not upload blockers.
+ *
+ * The `"include"` code remains in the public type for API schema compatibility
+ * with historical `unsupportedConstructs` payloads; the detector never emits it.
+ */
 export type UnsupportedConstructCode = "include";
 
 export type UnsupportedConstruct = {
@@ -9,26 +14,7 @@ export type UnsupportedConstruct = {
   sample: string;
 };
 
-function clipSample(text: string, max = 48): string {
-  const compact = text.replace(/\s+/g, " ").trim();
-  if (compact.length <= max) {
-    return compact;
-  }
-  return `${compact.slice(0, max - 1)}…`;
-}
-
-/** Detect DTS constructs that remain hard-unsupported (currently only /include/). */
-export function detectUnsupportedDtsConstructs(source: string): UnsupportedConstruct[] {
-  const cleaned = stripDtsComments(source);
-  const match = /\/include\//.exec(cleaned);
-  if (!match) {
-    return [];
-  }
-  return [
-    {
-      code: "include",
-      message: "DTS /include/ is not supported; provide an expanded file.",
-      sample: clipSample(match[0]),
-    },
-  ];
+/** Detect DTS constructs that remain hard-unsupported (none after config-set include resolution). */
+export function detectUnsupportedDtsConstructs(_source: string): UnsupportedConstruct[] {
+  return [];
 }

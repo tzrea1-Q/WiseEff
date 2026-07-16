@@ -47,6 +47,11 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `MOD-TREE-AUTHZ-001` | C | Yes | Non-admin cannot mutate module trees and deleting non-empty modules returns 409. | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
 | `PARAM-FILE-ADMIN-001` | C | Yes | Admin uploads a project parameter file, lists versions, manual sync creates a `file_sync` draft, and the project files panel renders in `/parameter-admin/projects`. | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
 | `PARAM-FILE-CONFLICT-001` | C | Yes | Admin resolves an open file/UI draft conflict by keeping the file or UI value. | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
+| `PARAM-SPEC-GOVERN-001` | C | Yes | Admin searches ingested parameter specs (distinct sc8562/mt5788 `gpio_int`), opens detail, and resolves a spec review task with governance audit. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-TOPOLOGY-BROWSE-001` | B | Yes | Users toggle real source/effective trees (`amba` → `i2c@FDF5E000` → `sc8562@6E`), search two `gpio_int` bindings, and open binding detail; topology API must return 200 with expected nodes. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-TOPOLOGY-EDIT-001` | B | Yes | Typed binding drafts surface schema cell-count diagnostics, reject stale revision with HTTP 409, and exercise fail-closed compiler/toolchain validate on a throwaway Config Set. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-IDENTITY-MAP-001` | B | Yes | Open identity mapping blocks validate (`open-mapping`); resolve clears the blocker with governance audit evidence. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-CONFIG-PUBLISH-GATE-001` | B | Yes | Real toolchain validate succeeds on golden/candidate Config Set after status=okay + vendor linux-bindings (not schema-failed-as-success); bindingId + provenance persist from DB after reload. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 
 ## Interpretation
 

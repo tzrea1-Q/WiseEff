@@ -1,0 +1,17 @@
+$id: wiseeff/nodename-middle-cpu.yaml
+title: middle_cpu
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/middle_cpu
+nodename:
+  - middle_cpu
+properties:
+  active_perf_limit:
+    valueShape: u32-array
+    exampleValue: "<\n\t\t\t16 100 100\n\t\t\t6 15 100\n\t\t\t0 5 100>"
+    constraints: {}
+  passive_perf_limit:
+    valueShape: u32-array
+    exampleValue: "<\n\t\t\t0 5 10 40 10 0\n\t\t\t6 15 10 70 10 0\n\t\t\t16 100 0 100 10 0>"
+    constraints: {}
