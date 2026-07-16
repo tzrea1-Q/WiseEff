@@ -8,6 +8,17 @@
 **Branch:** `fix/parameter-topology-round5-review-blockers`  
 **Preserved baseline:** Round4 `8a6971bd` via `--no-ff` merge. **TD-042 remains BLOCKER — not production cutover ready.**
 
+## Round 5 fixes landed (implementation evidence)
+
+| Fix | Evidence |
+| --- | --- |
+| Immutable base vs candidate binding revisions | `applyLockedOverlayWriteback` upserts binding revision on candidate config revision only; `postCutoverWorkflow.integration.test.ts` proves base `<1>` unchanged, candidate `<9>` |
+| Fail-closed writeback dependencies | `parameters/service` merge rejects missing `objectStore`/project/write lock; real DTC toolchain via `assertCandidateToolchainRelease`; no `WISEEFF_WRITEBACK_SKIP_TOOLCHAIN` production path |
+| Immutable phase audit + run linkage | `migration.test.ts` — `parameter_identity_migration_phases` append-only; inferred tasks carry `migration_run_id`; cutover rejects staged-only/forged runs |
+| Tenant-owned review resolve | `validateSpecReviewTenantEvidence` tenant-scoped join; cross-tenant PG negative tests; migration 0055 hardening |
+| Manual spec draft→activate→resolve | `draftSpecWorkflow.integration.test.ts`; `POST /api/v2/parameter-specs/:specId/activate`; `DraftSpecActivatePanel` + `ParameterSpecLibrary` |
+| Acceptance fixture honesty | `acceptanceTaskLookup.ts`, `semanticFixtureCleanup.ts`; topology acceptance draft→activate→resolve; no `items[0]` fallbacks |
+
 ## Success criteria
 
 1. Merge never UPDATEs `project_parameter_binding_revisions` for the locked base config revision; candidate revision holds the new value.

@@ -108,18 +108,21 @@ npm run parameter-identities:migrate -- \
   --object-snapshot-id "$OBJECT_SNAPSHOT_ID"
 ```
 
-Capture `migrationRunId` from the report JSON. The run status is `staged` even when `blockers` lists inferred pending review — resolve those in Admin before finalize. Each `stage-review` also appends an immutable row to `parameter_identity_migration_phases` (phase=`stage-review`); finalize appends a separate phase row and only then flips the logical run to `finalized` without overwriting the staged report.
+Capture `migrationRunId` from the report JSON. The run status is `staged` even when `blockers` lists inferred pending review — resolve those in Admin before finalize. Each `stage-review` also appends an immutable row to `parameter_identity_migration_phases` (phase=`stage-review`); finalize appends a separate phase row and only then flips the logical run to `finalized` without overwriting the staged report. Inferred spec-review and identity-mapping tasks created during staging carry `migration_run_id` so finalize can require backlog clearance for **that run only**.
 
 **On failure:** whole-snapshot restore (section 13). Do not retry against a dirty DB.
 
 ## 8. Resolve inferred / mapping backlog
 
-In `/parameter-admin`, resolve every open inferred spec review and identity mapping task tied to the staged run. Re-run checks:
+In `/parameter-admin`, resolve every open inferred spec review and identity mapping task tied to the staged run (`migration_run_id = '<migrationRunId>'`). Re-run checks:
 
 ```bash
-psql "$DATABASE_URL" -c "select count(*) as open_inferred from parameter_spec_review_tasks where status = 'open' and coalesce(source_evidence->>'inferred','') = 'true';"
+psql "$DATABASE_URL" -c "select count(*) as open_inferred from parameter_spec_review_tasks where status = 'open' and migration_run_id = '<migrationRunId>';"
+psql "$DATABASE_URL" -c "select count(*) as open_mapping_for_run from identity_mapping_tasks where status = 'open' and migration_run_id = '<migrationRunId>';"
 npm run parameter-identities:check
 ```
+
+For unmatched inferred properties, use `createSpec: true` on resolve to create an org-owned **draft** spec, then Admin **activate** (`POST /api/v2/parameter-specs/:specId/activate`) before resolving the review task. Only active+complete specs may resolve.
 
 ## 9. Finalize migration (activity FKs + bindings)
 

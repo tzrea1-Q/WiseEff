@@ -31,7 +31,10 @@
 | `npm run test:server -- scripts/vendorDtSchemaGenerator.test.ts --run` | 黄金 DTB 真实 `dt-validate`；负例 DTB 按预期失败 | 修改厂商 dt-schema 生成或 linux-binding schema 后。 |
 | `npm run test:server -- server/modules/parameter-topology/migration.test.ts --run` | 可运维 `stage-review` → `finalize` 跨 PostgreSQL 事务（重连 + 注入失败） | 修改迁移 CLI 或 staged-run 持久化后。 |
 | `npm run test:server -- server/modules/parameter-specs/matcherScope.integration.test.ts --run` | Matcher override locator 指纹隔离；审核 `blocker_scope` 门禁 | 修改 matcher override 或审核阻断作用域后。 |
-| `npm run parameter-identities:migrate -- --stage-review` / `--finalize` | 维护窗口推断迁移暂存与原子 finalize（仅临时库演练） | Cutover 演练；见 `docs/runbooks/parameter-identity-cutover.md`。**TD-042 未关闭前不得宣称生产就绪。** |
+| `npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts --run` | Cutover 后合入/回写无 shadow PPV；base binding revision 不可变；candidate revision 承载合入值 | 修改语义合入/回写或 binding revision 不可变性后。需 `DATABASE_URL`。 |
+| `npm run test:server -- server/modules/parameter-specs/draftSpecWorkflow.integration.test.ts --run` | 手工规格 draft→`activate`→resolve；draft 在激活前不得 resolve | 修改 `createSpec`、activate 路由或规格审核 resolve 后。需 `DATABASE_URL`。 |
+| `npm run acceptance:e2e -- e2e/acceptance/parameter-topology.acceptance.spec.ts` | 拓扑治理含 draft→activate→resolve；`acceptanceTaskLookup`（无 `items[0]` fallback）；`semanticFixtureCleanup` 前缀清理 | 修改拓扑验收辅助、规格审核 UI 或不可变合入行为后。 |
+| `npm run parameter-identities:migrate -- --stage-review` / `--finalize` | 维护窗口推断迁移暂存与原子 finalize（仅临时库演练） | Cutover 演练；见 `docs/runbooks/parameter-identity-cutover.md`。`parameter_identity_migration_phases` 行不可变；推断任务携带 `migration_run_id`。**TD-042 未关闭前不得宣称生产就绪。** |
 | `npm run db:seed:m1` 连续执行两次 | 全量参数、DTS 结构、版本与基线可幂等刷新 | 修改 M1 seed 或结构化 ingest 后使用；版本数和历史数不得因无变化重跑而增长。 |
 | `npm run acceptance:e2e -- e2e/acceptance/hdc-device-lab.acceptance.spec.ts` | 本机真实 HDC 前端/API/设备写入、回读和回滚证据 | 已连接审批过的本机 HDC target，并配置 `DEBUG_DEVICE_GATEWAY_MODE=hdc`、`HDC_DEVICE_LAB_AVAILABLE=true`、`HDC_SMOKE_CONFIRM_WRITE=confirm-high-risk-write` 和 `HDC_SMOKE_CONFIRM_ROLLBACK=confirm-rollback` 时使用。默认自动准备 lab-only 临时文件节点。 |
 | `npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts` | 本机真实 ADB 前端/API/设备证据 | 已连接审批过的本机 ADB 设备，并配置 `DEBUG_DEVICE_GATEWAY_MODE=adb` 与 `ADB_DEVICE_LAB_AVAILABLE=true` 时使用。默认只读，除非设置 `ADB_SMOKE_ENABLE_WRITE=true`。 |

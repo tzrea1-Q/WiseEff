@@ -88,6 +88,7 @@ Semantic library and project topology UI live under `src/components/parameter-to
 - Identity mapping task resolution
 - Fail-closed config revision validate/publish gate
 - **Unmatched spec review:** `SpecReviewQueue` exposes create-spec for unmatched tasks (`createSpec: true` on resolve). Library resolve with a property-key mismatch requires explicit `confirmPropertyMismatch: true` before the client calls `POST .../parameter-spec-review-tasks/:taskId/resolve`.
+- **Draft spec activate:** `ParameterSpecLibrary` + `DraftSpecActivatePanel` let Admins complete `valueShape`/`constraints`/`documentation` and call `POST /api/v2/parameter-specs/:specId/activate` before resolving unmatched reviews. Resolve/release reject draft specs until active+complete.
 - Dashboard hotspots include global vendor specs for tenant-bound projects (API aggregates `organization_id IS NULL` specs).
 
 API mode talks to `/api/v2` (not flat `/api/v1` parameter definition IDs). DTOs keep `exampleValue`, `schemaDefault`, `policyTarget`, and `effectiveValue` separate — no business `recommendedValue`. After cutover, legacy parameter IDs are not projected; callers must use binding/spec IDs.

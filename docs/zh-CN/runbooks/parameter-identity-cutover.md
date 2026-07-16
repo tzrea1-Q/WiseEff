@@ -99,18 +99,21 @@ npm run parameter-identities:migrate -- \
   --object-snapshot-id "$OBJECT_SNAPSHOT_ID"
 ```
 
-从报告 JSON 保存 `migrationRunId`。即使 `blockers` 含 inferred pending review，运行状态仍为 `staged`——finalize 前须在 Admin 完成审核。每次 `stage-review` 还会在 `parameter_identity_migration_phases` 追加不可变行（phase=`stage-review`）；finalize 追加独立 phase 行后，才将逻辑运行翻转为 `finalized`，且不会覆盖 staged 报告。
+从报告 JSON 保存 `migrationRunId`。即使 `blockers` 含 inferred pending review，运行状态仍为 `staged`——finalize 前须在 Admin 完成审核。每次 `stage-review` 还会在 `parameter_identity_migration_phases` 追加不可变行（phase=`stage-review`）；finalize 追加独立 phase 行后，才将逻辑运行翻转为 `finalized`，且不会覆盖 staged 报告。staging 期间创建的 inferred 规格审核与身份映射任务携带 `migration_run_id`，以便 finalize 仅要求**该运行**积压清零。
 
 **失败：** 第 14 节整快照恢复。禁止对脏库重试。
 
 ## 8. 清零 inferred / 映射积压
 
-在 `/parameter-admin` 解析与 staged 运行相关的全部 open inferred 规格审核与 identity mapping 任务，然后：
+在 `/parameter-admin` 解析与 staged 运行相关的全部 open inferred 规格审核与 identity mapping 任务（`migration_run_id = '<migrationRunId>'`），然后：
 
 ```bash
-psql "$DATABASE_URL" -c "select count(*) as open_inferred from parameter_spec_review_tasks where status = 'open' and coalesce(source_evidence->>'inferred','') = 'true';"
+psql "$DATABASE_URL" -c "select count(*) as open_inferred from parameter_spec_review_tasks where status = 'open' and migration_run_id = '<migrationRunId>';"
+psql "$DATABASE_URL" -c "select count(*) as open_mapping_for_run from identity_mapping_tasks where status = 'open' and migration_run_id = '<migrationRunId>';"
 npm run parameter-identities:check
 ```
+
+对未匹配 inferred 属性，resolve 时使用 `createSpec: true` 创建本组织 **draft** 规格，再经 Admin **激活**（`POST /api/v2/parameter-specs/:specId/activate`）后方可 resolve 审核任务。仅 active 且约束完整的规格可 resolve。
 
 ## 9. Finalize 迁移（activity FK + 绑定）
 

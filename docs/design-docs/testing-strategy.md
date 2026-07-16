@@ -84,3 +84,24 @@ PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dts:toolchain:check
 PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
 npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameter-topology/migration.test.ts server/modules/parameter-specs/matcherScope.integration.test.ts --run
 ```
+
+## Parameter Topology (round 5)
+
+Round 5 closes parent-agent review blockers on branch `fix/parameter-topology-round5-review-blockers`. **TD-042 remains a BLOCKER** — these gates prove local/temp-DB behavior, not production cutover readiness.
+
+| Area | Tests / command | Proves |
+| --- | --- | --- |
+| Immutable base vs candidate | `postCutoverWorkflow.integration.test.ts`, `editService.test.ts` | Base binding revision unchanged after merge/writeback; merged value on candidate revision only |
+| Fail-closed writeback | `parameters/service` merge path, `writebackService`, `editService` toolchain gates | Missing `objectStore`, project scope, write lock, or toolchain fails closed; no `WISEEFF_WRITEBACK_SKIP_TOOLCHAIN` production bypass |
+| Phase audit + run linkage | `migration.test.ts` (`parameter_identity_migration_phases`, `migration_run_id`) | Immutable `stage-review`/`finalize` phase rows; inferred tasks linked to staged run; cutover rejects forged status |
+| Tenant-owned resolve | `parameter-specs/repository` `validateSpecReviewTenantEvidence`, cross-tenant PG tests | Resolve rejects cross-tenant evidence; 0055 does not trust raw evidence IDs |
+| Draft→activate→resolve | `draftSpecWorkflow.integration.test.ts`, `parameter-specs/service.test.ts`, `routes.test.ts` | `createSpec` draft only; `activate` requires Admin + complete shape; resolve rejects draft specs |
+| Acceptance fixture honesty | `e2e/acceptance/helpers/acceptanceTaskLookup.ts`, `semanticFixtureCleanup.ts`, topology/files/dts acceptance specs | No `items[0]` fallbacks; prefix-scoped FK-complete cleanup; draft→activate→resolve covered |
+
+Round 5 toolchain gate (same as round 4):
+
+```bash
+PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dts:toolchain:check
+PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
+npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts server/modules/parameter-specs/draftSpecWorkflow.integration.test.ts server/modules/parameter-topology/migration.test.ts --run
+```

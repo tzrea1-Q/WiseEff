@@ -182,11 +182,17 @@ stateDiagram-v2
 | 全局厂商规格 | `organization_id IS NULL` 的 `ParameterSpec` 为平台全局厂商定义。租户绑定项目的 dashboard/hotspot 聚合须同时包含全局规格与本组织规格。 |
 | 厂商 dt-schema | Linux-binding JSON schema 由属性规格确定性生成（非宽松 `additionalProperties: true` 占位）。黄金 DTB 须通过真实 `dt-validate`；负例 fixture 须按预期失败。 |
 | 迁移 CLI 阶段 | `parameter-identities:migrate` 提供 `dry-run`（默认）、可运维 `stage-review`（推断草稿与审核任务单事务提交）、原子 `finalize`（活动 FK + binding）。Cutover 仅接受 `finalized` 运行。 |
+| 不可变 base 与 candidate binding revision | 锁定合入/回写仅 ingest **candidate** config revision，并只在该 revision 上 upsert `project_parameter_binding_revisions`。锁定的 **base** config revision 及其 binding revision 行不可变；合入值写在 candidate revision。身份过期 → `409`。 |
+| Fail-closed 回写依赖 | Cutover 后语义合入须注入 `objectStore`、项目范围变更请求、精确 write lock 与真实 DTC 工具链校验。跳过回写或缺依赖均失败关闭；生产路径无 `WISEEFF_WRITEBACK_SKIP_TOOLCHAIN`。 |
+| 迁移 phase 审计 | `stage-review` 与 `finalize` 各向 `parameter_identity_migration_phases` 追加不可变行（不覆盖既有 phase 载荷）。Cutover 仅接受带成功 `finalize` phase 行的运行。 |
+| 迁移运行任务关联 | `stage-review` 创建的 inferred 规格审核与身份映射任务携带 `migration_run_id`；`finalize` 要求该运行关联任务全部 resolved 后才写入 activity FK。 |
+| 手工规格生命周期 | 未匹配 `createSpec` 仅创建本组织 **draft** 规格（从 occurrence AST 推断类型）。Admin `activate` 将 draft→active 并补齐约束；仅 active+完整规格可 `resolve`。 |
+| 租户拥有校验 resolve | 规格审核 `resolve` 经租户级 join 校验 org/project/revision/occurrence/logical node；不得单独信任 raw evidence ID（0055 加固）。 |
 | 精确回写身份 | 合入/回写锁定 binding revision、occurrence、文件版本、checksum 与 CST span。共享 base revision 不可变；身份过期 → `409`。 |
 
 **第四轮黄金 fixture 计数（测试锁定）：** `wiseeff-power-base.dts` overlay 拓扑 = **50 节点 / 173 个属性 occurrence**；M1 DTS seed 目录 = **519 行 `dts_properties`**。
 
-语义 HTTP 表面位于 `/api/v2`。生产切换仅限维护窗口、失败关闭，且只能整快照回滚——见 `docs/runbooks/parameter-identity-cutover.md`。生产禁止双写或兼容投影。Cutover 后活动路径只使用 binding/spec/occurrence ID，不得再创建 shadow PPV/definition 行。**TD-042 仍为 BLOCKER**——第四轮修复不构成生产 cutover 就绪声明。
+语义 HTTP 表面位于 `/api/v2`。生产切换仅限维护窗口、失败关闭，且只能整快照回滚——见 `docs/runbooks/parameter-identity-cutover.md`。生产禁止双写或兼容投影。Cutover 后活动路径只使用 binding/spec/occurrence ID，不得再创建 shadow PPV/definition 行。**TD-042 仍为 BLOCKER**——第四轮与第五轮修复均不构成生产 cutover 就绪声明。
 
 **`legacyDependencyGuard`：** 位于 `server/modules/parameter-topology/legacyDependencyGuard.test.ts` 的 Vitest 源码扫描（不是运行时中间件）。禁止在 `server/`、`src/`、`scripts/` 中出现已退役扁平身份/shadow token；允许名单仅限 migrations、cutovers、rollback/adapters、过渡适配器、已完成计划文档、tests/e2e 与 scripts。
 

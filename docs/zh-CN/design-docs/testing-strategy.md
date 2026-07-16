@@ -266,6 +266,27 @@ PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
 npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameter-topology/migration.test.ts server/modules/parameter-specs/matcherScope.integration.test.ts --run
 ```
 
+## 参数拓扑（第五轮）
+
+第五轮在分支 `fix/parameter-topology-round5-review-blockers` 关闭父智能体 Review 阻断。**TD-042 仍为 BLOCKER**——下列门禁证明本地/临时库行为，不构成生产 cutover 就绪。
+
+| 领域 | 测试 / 命令 | 证明内容 |
+| --- | --- | --- |
+| 不可变 base 与 candidate | `postCutoverWorkflow.integration.test.ts`、`editService.test.ts` | 合入/回写后 base binding revision 不变；合入值仅在 candidate revision |
+| Fail-closed 回写 | `parameters/service` 合入路径、`writebackService`、`editService` 工具链门禁 | 缺 `objectStore`、项目范围、write lock 或工具链失败关闭；无 `WISEEFF_WRITEBACK_SKIP_TOOLCHAIN` 生产绕过 |
+| Phase 审计与运行关联 | `migration.test.ts`（`parameter_identity_migration_phases`、`migration_run_id`） | `stage-review`/`finalize` 不可变 phase 行；推断任务关联 staged 运行；cutover 拒绝伪造状态 |
+| 租户 resolve | `validateSpecReviewTenantEvidence`、跨租户 PG 负向测试 | 跨租户证据拒绝；0055 不信任 raw evidence ID |
+| Draft→激活→resolve | `draftSpecWorkflow.integration.test.ts`、`service.test.ts`、`routes.test.ts` | `createSpec` 仅 draft；`activate` 需 Admin+完整形状；resolve 拒绝 draft |
+| 验收 fixture 诚实化 | `acceptanceTaskLookup.ts`、`semanticFixtureCleanup.ts`、topology/files/dts acceptance | 无 `items[0]` fallback；前缀作用域 FK 完整清理；覆盖 draft→activate→resolve |
+
+第五轮工具链门禁（同第四轮）：
+
+```bash
+PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dts:toolchain:check
+PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
+npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts server/modules/parameter-specs/draftSpecWorkflow.integration.test.ts server/modules/parameter-topology/migration.test.ts --run
+```
+
 ## 10. Documentation Governance
 
 Documentation-impacting work must run `npm run docs:check` plus `git diff --check`. The docs check enforces that active implementation plans carry a documentation impact matrix and update gate.

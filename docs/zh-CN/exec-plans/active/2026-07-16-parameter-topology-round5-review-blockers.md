@@ -8,6 +8,17 @@
 **分支：** `fix/parameter-topology-round5-review-blockers`  
 **保留基线：** Round4 `8a6971bd`（`--no-ff` 合并）。**TD-042 仍为 BLOCKER — 非 production cutover ready。**
 
+## 第五轮已落地修复（实现证据）
+
+| 修复项 | 证据 |
+| --- | --- |
+| 不可变 base 与 candidate binding revision | `applyLockedOverlayWriteback` 仅在 candidate config revision upsert binding revision；`postCutoverWorkflow.integration.test.ts` 证明 base 仍为 `<1>`、candidate 为 `<9>` |
+| Fail-closed 回写依赖 | `parameters/service` 合并在缺 `objectStore`/项目/write lock 时拒绝；真实 DTC 经 `assertCandidateToolchainRelease`；无 `WISEEFF_WRITEBACK_SKIP_TOOLCHAIN` 生产路径 |
+| 不可变 phase 审计与运行关联 | `migration.test.ts` — `parameter_identity_migration_phases` 仅追加；推断任务带 `migration_run_id`；cutover 拒绝仅 staged/伪造运行 |
+| 租户拥有校验 resolve | `validateSpecReviewTenantEvidence` 租户 join；跨租户 PG 负向测试；0055 加固 |
+| 手工规格 draft→激活→resolve | `draftSpecWorkflow.integration.test.ts`；`POST /api/v2/parameter-specs/:specId/activate`；`DraftSpecActivatePanel` + `ParameterSpecLibrary` |
+| 验收 fixture 诚实化 | `acceptanceTaskLookup.ts`、`semanticFixtureCleanup.ts`；拓扑验收 draft→activate→resolve；无 `items[0]` fallback |
+
 ## 成功标准
 
 1. Merge 不得 UPDATE 锁定 base config revision 对应的 binding revision；新值只在 candidate revision。
