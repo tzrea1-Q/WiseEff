@@ -1640,9 +1640,9 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     if (semanticIdentity) {
       if (!context.objectStore) {
         throw new ApiError(
-          "SERVICE_UNAVAILABLE",
+          "CONFLICT",
           "Semantic merge requires object storage for DTS writeback.",
-          503,
+          409,
           { requestId: input.requestId }
         );
       }
@@ -1654,7 +1654,8 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
           { requestId: input.requestId }
         );
       }
-      if (!request.projectParameterBindingId) {
+      // Post-cutover change requests identify the binding via parameterId.
+      if (!request.parameterId) {
         throw new ApiError(
           "CONFLICT",
           "Semantic merge requires a project parameter binding write lock.",
