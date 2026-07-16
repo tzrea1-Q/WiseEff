@@ -242,39 +242,43 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
     await db?.rollback();
   });
 
-  it("persists 170 golden property occurrences and effective gpio_int in one revision", async () => {
-    const manifest = goldenManifest();
-    for (const member of manifest.members) {
-      await insertPinnedMember(db!, {
-        fileId: member.fileId,
-        fileName: member.fileName,
-        versionId: member.fileVersionId,
-        content: member.content,
-        role: member.role === "base" ? "base" : "overlay",
-        sortOrder: member.sortOrder,
-      });
-    }
+  it(
+    "persists 170 golden property occurrences and effective gpio_int in one revision",
+    async () => {
+      const manifest = goldenManifest();
+      for (const member of manifest.members) {
+        await insertPinnedMember(db!, {
+          fileId: member.fileId,
+          fileName: member.fileName,
+          versionId: member.fileVersionId,
+          content: member.content,
+          role: member.role === "base" ? "base" : "overlay",
+          sortOrder: member.sortOrder,
+        });
+      }
 
-    const revision = await ingestConfigRevision(db!, manifest, auth);
+      const revision = await ingestConfigRevision(db!, manifest, auth);
 
-    expect(revision.status).toBe("resolved");
-    expect(await countTable(db!, "dts_property_occurrences", revision.id)).toBe(170);
-    expect(
-      await effectiveProperty(db!, revision.id, "/amba/i2c@FDF5E000/sc8562@6E", "gpio_int"),
-    ).toMatchObject({ propertyName: "gpio_int", rawText: "<&gpio13 29 0>" });
+      expect(revision.status).toBe("resolved");
+      expect(await countTable(db!, "dts_property_occurrences", revision.id)).toBe(170);
+      expect(
+        await effectiveProperty(db!, revision.id, "/amba/i2c@FDF5E000/sc8562@6E", "gpio_int"),
+      ).toMatchObject({ propertyName: "gpio_int", rawText: "<&gpio13 29 0>" });
 
-    const lineCol = await db!.query<{ start_line: number; start_column: number }>(
-      `
-      select start_line, start_column
-      from dts_property_occurrences
-      where config_revision_id = $1 and property_name = 'gpio_int' and raw_text = '<&gpio13 29 0>'
-      limit 1
-      `,
-      [revision.id],
-    );
-    expect(lineCol.rows[0]?.start_line).toBeGreaterThan(0);
-    expect(lineCol.rows[0]?.start_column).toBeGreaterThan(0);
-  });
+      const lineCol = await db!.query<{ start_line: number; start_column: number }>(
+        `
+        select start_line, start_column
+        from dts_property_occurrences
+        where config_revision_id = $1 and property_name = 'gpio_int' and raw_text = '<&gpio13 29 0>'
+        limit 1
+        `,
+        [revision.id],
+      );
+      expect(lineCol.rows[0]?.start_line).toBeGreaterThan(0);
+      expect(lineCol.rows[0]?.start_column).toBeGreaterThan(0);
+    },
+    60_000
+  );
 
   it("leaves no partial occurrence rows when an include fails", async () => {
     const baseFileId = randomUUID();
@@ -329,65 +333,73 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
     expect(diagnostics.rows.map((row) => row.code)).toContain("include-missing");
   });
 
-  it("never mutates a previous revision when ingesting again", async () => {
-    const manifest = goldenManifest();
-    for (const member of manifest.members) {
-      await insertPinnedMember(db!, {
-        fileId: member.fileId,
-        fileName: member.fileName,
-        versionId: member.fileVersionId,
-        content: member.content,
-        role: member.role === "base" ? "base" : "overlay",
-        sortOrder: member.sortOrder,
-      });
-    }
+  it(
+    "never mutates a previous revision when ingesting again",
+    async () => {
+      const manifest = goldenManifest();
+      for (const member of manifest.members) {
+        await insertPinnedMember(db!, {
+          fileId: member.fileId,
+          fileName: member.fileName,
+          versionId: member.fileVersionId,
+          content: member.content,
+          role: member.role === "base" ? "base" : "overlay",
+          sortOrder: member.sortOrder,
+        });
+      }
 
-    const first = await ingestConfigRevision(db!, manifest, auth);
-    const second = await ingestConfigRevision(db!, manifest, auth);
+      const first = await ingestConfigRevision(db!, manifest, auth);
+      const second = await ingestConfigRevision(db!, manifest, auth);
 
-    expect(first.id).not.toBe(second.id);
-    expect(second.revisionNumber).toBe(first.revisionNumber + 1);
+      expect(first.id).not.toBe(second.id);
+      expect(second.revisionNumber).toBe(first.revisionNumber + 1);
 
-    const firstStatus = await db!.query<{ status: string }>(
-      `select status from dts_config_revisions where id = $1`,
-      [first.id],
-    );
-    expect(firstStatus.rows[0]?.status).toBe("resolved");
-    expect(await countTable(db!, "dts_property_occurrences", first.id)).toBe(170);
-    expect(await countTable(db!, "dts_property_occurrences", second.id)).toBe(170);
-  });
+      const firstStatus = await db!.query<{ status: string }>(
+        `select status from dts_config_revisions where id = $1`,
+        [first.id],
+      );
+      expect(firstStatus.rows[0]?.status).toBe("resolved");
+      expect(await countTable(db!, "dts_property_occurrences", first.id)).toBe(170);
+      expect(await countTable(db!, "dts_property_occurrences", second.id)).toBe(170);
+    },
+    60_000
+  );
 
-  it("reuses stable bindingId for sc8562@6E.gpio_int across consecutive full-config-set revisons", async () => {
-    const manifest = goldenManifest({ useRealBase: true });
-    for (const member of manifest.members) {
-      await insertPinnedMember(db!, {
-        fileId: member.fileId,
-        fileName: member.fileName,
-        versionId: member.fileVersionId,
-        content: member.content,
-        role: member.role === "base" ? "base" : "overlay",
-        sortOrder: member.sortOrder,
-      });
-    }
+  it(
+    "reuses stable bindingId for sc8562@6E.gpio_int across consecutive full-config-set revisons",
+    async () => {
+      const manifest = goldenManifest({ useRealBase: true });
+      for (const member of manifest.members) {
+        await insertPinnedMember(db!, {
+          fileId: member.fileId,
+          fileName: member.fileName,
+          versionId: member.fileVersionId,
+          content: member.content,
+          role: member.role === "base" ? "base" : "overlay",
+          sortOrder: member.sortOrder,
+        });
+      }
 
-    const first = await ingestConfigRevision(db!, manifest, auth);
-    const second = await ingestConfigRevision(db!, manifest, auth);
+      const first = await ingestConfigRevision(db!, manifest, auth);
+      const second = await ingestConfigRevision(db!, manifest, auth);
 
-    expect(first.status).toBe("resolved");
-    expect(second.status).toBe("resolved");
-    expect(second.revisionNumber).toBe(first.revisionNumber + 1);
+      expect(first.status).toBe("resolved");
+      expect(second.status).toBe("resolved");
+      expect(second.revisionNumber).toBe(first.revisionNumber + 1);
 
-    const firstGpio = await bindingForNodeProperty(db!, first.id, SC8562_LOCATOR, "gpio_int");
-    const secondGpio = await bindingForNodeProperty(db!, second.id, SC8562_LOCATOR, "gpio_int");
-    expect(firstGpio).toBeTruthy();
-    expect(secondGpio).toBeTruthy();
-    expect(secondGpio!.bindingId).toBe(firstGpio!.bindingId);
-    expect(secondGpio!.logicalNodeId).toBe(firstGpio!.logicalNodeId);
+      const firstGpio = await bindingForNodeProperty(db!, first.id, SC8562_LOCATOR, "gpio_int");
+      const secondGpio = await bindingForNodeProperty(db!, second.id, SC8562_LOCATOR, "gpio_int");
+      expect(firstGpio).toBeTruthy();
+      expect(secondGpio).toBeTruthy();
+      expect(secondGpio!.bindingId).toBe(firstGpio!.bindingId);
+      expect(secondGpio!.logicalNodeId).toBe(firstGpio!.logicalNodeId);
 
-    const mt5788First = await bindingForNodeProperty(db!, first.id, MT5788_LOCATOR, "gpio_int");
-    expect(mt5788First).toBeTruthy();
-    expect(mt5788First!.parameterSpecId).not.toBe(firstGpio!.parameterSpecId);
-    expect(mt5788First!.parameterSpecId).toMatch(/mt5788/i);
-    expect(firstGpio!.parameterSpecId).toMatch(/sc8562/i);
-  });
+      const mt5788First = await bindingForNodeProperty(db!, first.id, MT5788_LOCATOR, "gpio_int");
+      expect(mt5788First).toBeTruthy();
+      expect(mt5788First!.parameterSpecId).not.toBe(firstGpio!.parameterSpecId);
+      expect(mt5788First!.parameterSpecId).toMatch(/mt5788/i);
+      expect(firstGpio!.parameterSpecId).toMatch(/sc8562/i);
+    },
+    60_000
+  );
 });

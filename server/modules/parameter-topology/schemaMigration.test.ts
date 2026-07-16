@@ -222,7 +222,10 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
       expect(before).not.toContain("parameter_specs");
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([migration0048]);
+      expect(pending[0]).toBe(migration0048);
+      expect(pending).toEqual(
+        expect.arrayContaining([migration0048, "0049_parameter_identity_migration_infra.sql"])
+      );
 
       const tableNames = await listPublicTables(db);
       expect(tableNames).toEqual(expect.arrayContaining([...REQUIRED_TABLES]));

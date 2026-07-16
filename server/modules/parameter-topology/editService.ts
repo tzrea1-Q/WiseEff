@@ -151,7 +151,31 @@ function cellIntegerValues(value: DtsValue): number[] {
   return out;
 }
 
+function cellGroupSizes(value: DtsValue): number[] {
+  if (value.kind !== "cells") return [];
+  return value.groups.map((group) => group.length);
+}
+
+function asConstraintCells(constraints: unknown): number | undefined {
+  if (!constraints || typeof constraints !== "object" || Array.isArray(constraints)) return undefined;
+  const value = (constraints as Record<string, unknown>).cells;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function assertSchemaAllows(value: DtsValue, constraints: unknown): void {
+  const expectedCells = asConstraintCells(constraints);
+  if (expectedCells !== undefined) {
+    const sizes = cellGroupSizes(value);
+    if (sizes.length === 0 || sizes.some((size) => size !== expectedCells)) {
+      throw new ApiError("VALIDATION_FAILED", `cell count must be ${expectedCells}`, 400, {
+        reason: "schema-failure",
+        code: "SCHEMA_CELL_COUNT",
+        expectedCells,
+        actualCells: sizes,
+      });
+    }
+  }
+
   const min = asConstraintNumber(constraints, "min");
   const max = asConstraintNumber(constraints, "max");
   if (min === undefined && max === undefined) return;

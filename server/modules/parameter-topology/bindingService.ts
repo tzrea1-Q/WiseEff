@@ -718,8 +718,22 @@ export async function listProjectBindingRows(
       b.id,
       b.parameter_spec_id,
       br.parameter_spec_version_id,
-      coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), ''), '') as property_key,
-      nullif(split_part(ps.specification_key, '/', 1), '') as driver_module,
+      coalesce(
+        dps.property_key,
+        nullif(
+          (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))],
+          ''
+        ),
+        ''
+      ) as property_key,
+      nullif(
+        case
+          when cardinality(string_to_array(ps.specification_key, '/')) >= 3
+            then (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/')) - 1]
+          else split_part(ps.specification_key, '/', 1)
+        end,
+        ''
+      ) as driver_module,
       b.logical_node_id,
       case
         when lnr.unit_address is not null then lnr.name || '@' || lnr.unit_address

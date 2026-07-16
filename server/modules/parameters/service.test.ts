@@ -25,6 +25,13 @@ function createFakeDb(
 
   const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
     const call = { text, values };
+    // Cutover probes must not consume the queued fixture rows.
+    if (text.includes("parameter_identity_cutovers")) {
+      return { rows: [{ c: "0" } as Row], rowCount: 1 };
+    }
+    if (text.includes("information_schema.tables") && text.includes("parameter_definitions")) {
+      return { rows: [{ c: "1" } as Row], rowCount: 1 };
+    }
     target.push(call);
     if (!readConflictChecksFromQueue && text.includes("from parameter_file_sync_conflicts")) {
       return { rows: [] as Row[], rowCount: 0 };

@@ -233,8 +233,10 @@ export function ProjectTopologyWorkspace({
         </nav>
       ) : null}
 
-      {view === "source" ? (
-        <p className="project-topology-workspace__source-meta">power.dtsi · L42</p>
+      {view === "source" && selectedSourceNode ? (
+        <p className="project-topology-workspace__source-meta">
+          {selectedSourceNode.nodePath} · L{selectedSourceNode.startLine}
+        </p>
       ) : null}
 
       {publishBlocked ? (

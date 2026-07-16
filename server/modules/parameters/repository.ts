@@ -467,6 +467,11 @@ function parseModulePathNames(modulePath: string | null | undefined): string[] |
   return trimmed.split("/").filter(Boolean);
 }
 
+function normalizeParameterRisk(risk: string | null | undefined): ParameterRiskLevel {
+  if (risk === "High" || risk === "Medium" || risk === "Low") return risk;
+  return "Low";
+}
+
 function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] = []): ParameterRecordDto {
   const updatedAt = dateTimeToIso(row.updated_at);
   const modulePath = parseModulePathNames(row.module_path);
@@ -1090,9 +1095,9 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
         module_path: row.module_path,
         default_range: row.default_range,
         unit: row.unit,
-        risk: row.risk,
+        risk: normalizeParameterRisk(row.risk),
         current_value: row.current_value,
-        initSuggestionText: row.initSuggestionText,
+        initSuggestionText: row.initSuggestionText ?? "",
         source_file_name: row.source_file_name,
         source_node_path: row.source_node_path,
         updated_at: row.updated_at
@@ -1197,9 +1202,9 @@ export async function getParameterById(db: Queryable, query: { organizationId: s
         module_path: row.module_path,
         default_range: row.default_range,
         unit: row.unit,
-        risk: row.risk,
+        risk: normalizeParameterRisk(row.risk),
         current_value: row.current_value,
-        initSuggestionText: row.initSuggestionText,
+        initSuggestionText: row.initSuggestionText ?? "",
         source_file_name: row.source_file_name,
         source_node_path: row.source_node_path,
         updated_at: row.updated_at

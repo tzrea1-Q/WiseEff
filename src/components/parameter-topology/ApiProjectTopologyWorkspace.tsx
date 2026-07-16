@@ -226,7 +226,11 @@ export function ApiProjectTopologyWorkspace({
     } catch (error) {
       const mapped: ParameterTopologyMappedError = mapParameterTopologyError(error);
       if (mapped.kind === "diagnostics") {
-        return { valid: false, diagnostics: mapped.diagnostics };
+        const diagnostics =
+          mapped.diagnostics.length > 0
+            ? mapped.diagnostics
+            : [{ message: mapped.message, code: "VALIDATION_FAILED" }];
+        return { valid: false, diagnostics };
       }
       if (mapped.kind === "stale-revision") {
         return {

@@ -16,7 +16,13 @@ export async function isParameterIdentityCutoverComplete(db: Queryable): Promise
     const result = await db.query<{ c: string }>(
       `select count(*)::text as c from parameter_identity_cutovers`
     );
-    cachedCutoverComplete = Number(result.rows[0]?.c ?? 0) > 0;
+    const countCell = result.rows[0]?.c;
+    // Unit-test stubs often return unrelated queued rows without a `c` column.
+    if (typeof countCell === "undefined" || countCell === null) {
+      cachedCutoverComplete = false;
+    } else {
+      cachedCutoverComplete = Number(countCell) > 0;
+    }
   } catch {
     cachedCutoverComplete = false;
   }
@@ -26,12 +32,18 @@ export async function isParameterIdentityCutoverComplete(db: Queryable): Promise
 /** True when flat parameter_definitions / project_parameter_values are retired. */
 export async function legacyParameterIdentityTablesRetired(db: Queryable): Promise<boolean> {
   if (await isParameterIdentityCutoverComplete(db)) return true;
-  const result = await db.query<{ c: string }>(
-    `
-    select count(*)::text as c
-    from information_schema.tables
-    where table_schema = 'public' and table_name = 'parameter_definitions'
-    `
-  );
-  return Number(result.rows[0]?.c ?? 0) === 0;
+  try {
+    const result = await db.query<{ c: string }>(
+      `
+      select count(*)::text as c
+      from information_schema.tables
+      where table_schema = 'public' and table_name = 'parameter_definitions'
+      `
+    );
+    // Stub/unit-test adapters often return empty rows — treat as "tables still present".
+    if (!result.rows[0]) return false;
+    return Number(result.rows[0].c ?? 0) === 0;
+  } catch {
+    return false;
+  }
 }

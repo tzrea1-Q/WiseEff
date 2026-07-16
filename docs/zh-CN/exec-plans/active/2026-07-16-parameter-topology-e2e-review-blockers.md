@@ -30,17 +30,17 @@
 
 ## 阶段提交顺序
 
-1. ingest + matcher + 稳定 binding  
-2. mapping resolution 事务化  
-3. fail-closed validation + 工具链钉扎（已完成）  
-4. typed edit / writeback API（已完成）  
-5. 前端真实数据接通（已完成）  
-6. 规格审核队列（已完成）  
-7. 迁移 / cutover（已完成；干净快照演练见 TD-042 BLOCKER）  
-8. 验收 / 文档 / 终态门禁  
+1. ingest + matcher + 稳定 binding（已完成）
+2. mapping resolution 事务化（已完成）
+3. fail-closed validation + 工具链钉扎（已完成）
+4. typed edit / writeback API（已完成）
+5. 前端真实数据接通（已完成）
+6. 规格审核队列（已完成）
+7. 迁移 / cutover（已完成；干净快照演练见 TD-042 BLOCKER）
+8. 验收 / 文档 / 终态门禁（拓扑真实路径已通；**全量** `acceptance:browser` / `acceptance:evidence` 未绿；**不得宣称生产 cutover 就绪**）
 
-任务细节、文件清单与验证命令见英文计划正文。
+任务细节、文件清单与验证命令见英文计划正文。Task 8 已去掉 `[200,404]`、教学数据与 stub validate，改为上传 base+overlay 触发 ingest 的真实路径；validate 对黄金 seed fail-closed 于 `schema-failed`（非 force-pass）。全量浏览器矩阵仍有非拓扑失败（见 Phase 8 报告）。TD-042 仍开放。
 
 ## 文档影响矩阵与更新门禁
 
-与英文计划中的 Documentation Impact Matrix / Documentation Update Gate 一致；中英文成对更新。结束前运行 `npm run docs:check`。
+与英文计划中的 Documentation Impact Matrix / Documentation Update Gate 一致；中英文成对更新。结束前运行 `npm run docs:check`。TD-042（缺少干净快照演练）已记入技术债；计划迁入 `completed/` 须经父智能体 review。

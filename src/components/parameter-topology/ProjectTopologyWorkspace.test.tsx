@@ -87,12 +87,12 @@ describe("ProjectTopologyWorkspace", () => {
     const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
 
     fireEvent.click(within(workspace).getByRole("radio", { name: "源树" }));
-    expect(within(workspace).getByText(/power\.dtsi · L42/)).toBeVisible();
 
     const ambaItems = within(workspace).getAllByRole("treeitem", { name: /&amba|amba/ });
     expect(ambaItems.length).toBeGreaterThanOrEqual(2);
 
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    expect(within(workspace).getByText(/\/amba\/i2c@FDF5E000\/sc8562@6E · L\d+/)).toBeVisible();
     fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
     const sourceDetail = within(workspace).getByRole("region", { name: "绑定详情" });
     expect(within(sourceDetail).getByRole("region", { name: "源 occurrence" })).toBeVisible();

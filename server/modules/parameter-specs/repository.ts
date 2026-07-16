@@ -285,11 +285,20 @@ export async function listParameterSpecRows(
   }
   if (input.driverModule) {
     values.push(input.driverModule);
-    conditions.push(`split_part(ps.specification_key, '/', 1) = $${values.length}`);
+    conditions.push(`(
+      case
+        when cardinality(string_to_array(ps.specification_key, '/')) >= 3
+          then (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/')) - 1]
+        else split_part(ps.specification_key, '/', 1)
+      end
+    ) = $${values.length}`);
   }
   if (input.propertyKey) {
     values.push(input.propertyKey);
-    conditions.push(`coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) = $${values.length}`);
+    conditions.push(`coalesce(
+      dps.property_key,
+      (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))]
+    ) = $${values.length}`);
   }
   if (input.q) {
     values.push(`%${input.q}%`);
@@ -304,8 +313,21 @@ export async function listParameterSpecRows(
       ps.id,
       ps.source_kind,
       ps.specification_key,
-      coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), '')) as property_key,
-      nullif(split_part(ps.specification_key, '/', 1), '') as driver_module,
+      coalesce(
+        dps.property_key,
+        nullif(
+          (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))],
+          ''
+        )
+      ) as property_key,
+      nullif(
+        case
+          when cardinality(string_to_array(ps.specification_key, '/')) >= 3
+            then (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/')) - 1]
+          else split_part(ps.specification_key, '/', 1)
+        end,
+        ''
+      ) as driver_module,
       psv.lifecycle,
       psv.id as current_version_id,
       psv.version as current_version
@@ -350,8 +372,21 @@ export async function getParameterSpecRow(
       ps.id,
       ps.source_kind,
       ps.specification_key,
-      coalesce(dps.property_key, nullif(split_part(ps.specification_key, '/', 2), '')) as property_key,
-      nullif(split_part(ps.specification_key, '/', 1), '') as driver_module,
+      coalesce(
+        dps.property_key,
+        nullif(
+          (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))],
+          ''
+        )
+      ) as property_key,
+      nullif(
+        case
+          when cardinality(string_to_array(ps.specification_key, '/')) >= 3
+            then (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/')) - 1]
+          else split_part(ps.specification_key, '/', 1)
+        end,
+        ''
+      ) as driver_module,
       psv.lifecycle,
       psv.id as current_version_id,
       psv.version as current_version,

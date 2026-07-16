@@ -443,6 +443,33 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     expect(await unchangedSourceBytes(draft)).toBe(true);
   });
 
+  it("rejects cell-count schema failures from vendor constraints", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth);
+    await db!.query(`update dts_property_specs set constraints = '{"cells":3}'::jsonb where property_key = 'iin_max'`);
+
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "2700", value: "2700" }]],
+          },
+          reason: "Wrong cell count",
+        },
+        { toolchain: passToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      message: "cell count must be 3",
+      details: expect.objectContaining({ reason: "schema-failure", code: "SCHEMA_CELL_COUNT" }),
+    });
+  });
+
   it("returns schema diagnostics without updating released binding revision", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
 

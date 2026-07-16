@@ -111,34 +111,35 @@
 
 **Files:** `e2e/acceptance/parameter-topology.acceptance.spec.ts`, coverage maps, plan checkboxes, runbooks
 
-- [ ] Remove 404/teaching/stub acceptance; one real business flow UI+API+DB+audit
-- [ ] Three viewports + screenshots + console/network; regenerate acceptance:evidence
-- [ ] `docs:check`, contract/build/test/toolchain/selfhost gates; update this plan
-- [ ] Commit: `test(parameters): e2e real topology acceptance and docs`
+- [x] Remove 404/teaching/stub acceptance; one real business flow UI+API+DB+audit
+- [x] Three viewports + screenshots + console/network; focused topology e2e regenerates topology operation evidence
+- [x] `docs:check`, contract/build/test/toolchain/selfhost gates; update this plan
+- [ ] Full-matrix `acceptance:browser` + `acceptance:evidence` green (FAILED — see Phase 8 report; unrelated suite pollution / FK / authz)
+- [x] Commit: `test(parameters): e2e real topology acceptance and docs`
 
 ## Documentation Impact Matrix
 
 | Area | Exact paths | Action |
 | --- | --- | --- |
-| Repository maps | `AGENTS.md`, `ARCHITECTURE.md`, zh-CN companions | Review; update if runtime maps change |
-| Planning | this plan, `docs/PLANS.md`, `docs/zh-CN/PLANS.md`, tech-debt tracker | Update |
-| Product truth | `docs/product-specs/prototype-functional-spec.md` | Review |
-| Domain/API | `docs/design-docs/domain-model.md`, `api-contract.md` + zh-CN | Update for validate/edit/review APIs |
-| Frontend | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` | Update real topology loading |
-| Security | `docs/SECURITY.md` + zh-CN | Review untrusted compile / audit |
-| Reliability/runbooks | `docs/runbooks/parameter-identity-cutover.md` + zh-CN, `docs/RELIABILITY.md` | Update PATH/version pin / dry-run read-only |
-| Developer setup/env | local-development, environment-variables, verification-matrix + zh-CN | Update toolchain pin check |
-| Quality/acceptance | coverage map, operation matrix, acceptance specs + zh-CN | Update |
-| Generated | OpenAPI, db-schema, acceptance evidence | Regenerate |
-| README/CONTRIBUTING | root + zh-CN | Review DTS prerequisites |
+| Repository maps | `AGENTS.md`, `ARCHITECTURE.md`, zh-CN companions | Review — no map change required for Task 8 |
+| Planning | this plan, `docs/PLANS.md`, `docs/zh-CN/PLANS.md`, tech-debt tracker | Update — Task 8 checkboxes; TD-042 remains open (no clean snapshot) |
+| Product truth | `docs/product-specs/prototype-functional-spec.md` | Review — topology browse/edit already described |
+| Domain/API | `docs/design-docs/domain-model.md`, `api-contract.md` + zh-CN | Review — validate/edit/review APIs already documented in prior phases |
+| Frontend | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` | Review — API-mode topology loading already documented |
+| Security | `docs/SECURITY.md` + zh-CN | Review — untrusted compile / audit unchanged |
+| Reliability/runbooks | `docs/runbooks/parameter-identity-cutover.md` + zh-CN, `docs/RELIABILITY.md` | Review — PATH/pin/dry-run already updated in Phase 7 |
+| Developer setup/env | local-development, environment-variables, verification-matrix + zh-CN | Review — toolchain pin check already present |
+| Quality/acceptance | coverage map, operation matrix, acceptance specs + zh-CN | Update — real wired paths, no 404/teaching allowances |
+| Generated | OpenAPI, db-schema, acceptance evidence | Regenerate operation/browser evidence |
+| README/CONTRIBUTING | root + zh-CN | Review — DTS prerequisites unchanged |
 
 ## Documentation Update Gate
 
-- [ ] Every Update/Review row handled or recorded with evidence
-- [ ] `npm run docs:check` passes
-- [ ] OpenAPI matches implemented routes
-- [ ] Acceptance/operation IDs have regenerated evidence
-- [ ] Deferred cutover items recorded in tech-debt tracker if no clean snapshot
+- [x] Every Update/Review row handled or recorded with evidence
+- [x] `npm run docs:check` passes
+- [x] OpenAPI matches implemented routes
+- [ ] Full acceptance/operation evidence matrix regenerated (topology ops yes; full matrix FAIL — Phase 8 report)
+- [x] Deferred cutover items recorded in tech-debt tracker if no clean snapshot (TD-042)
 - [ ] Plan moves to `completed/` only after parent review and verified gates (not claimed production-ready without snapshot evidence)
 
 ## Verification commands

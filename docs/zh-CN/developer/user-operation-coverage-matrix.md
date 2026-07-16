@@ -40,11 +40,11 @@
 - `PARAM-FILE-UPLOAD-001`：Admin 在 `/parameter-admin/projects` 上传 JSON 参数文件并列出文件与版本（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-FILE-SYNC-001`：Admin 手动同步参数文件，当解析值与 DB 当前值不一致时创建 `file_sync` 草稿（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-FILE-RESOLVE-001`：Admin 通过 API 裁决 file/UI 草稿冲突（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
-- `PARAM-SPEC-GOVERN-001`：Admin 在 `/parameter-admin` 检索规格并决议审核任务（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-TOPOLOGY-BROWSE-001`：在 `/parameters` 切换源/生效拓扑并搜索两个 `gpio_int` 绑定（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-TOPOLOGY-EDIT-001`：类型化编辑诊断与过期 revision 拒绝（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-IDENTITY-MAP-001`：未解析目标与身份映射决议（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-CONFIG-PUBLISH-GATE-001`：发布门禁、revision 校验与刷新后语义持久化（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-SPEC-GOVERN-001`：Admin 检索 ingest 后的规格并决议审核任务（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-TOPOLOGY-BROWSE-001`：真实源/生效树与 topology API 200（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-TOPOLOGY-EDIT-001`：drafts Schema 诊断、409 与编译失败关闭（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-IDENTITY-MAP-001`：`open-mapping` 阻断 validate 与决议审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-CONFIG-PUBLISH-GATE-001`：真实工具链 validate 与 DB reload 持久化（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 
 ## 同类中文文档
 

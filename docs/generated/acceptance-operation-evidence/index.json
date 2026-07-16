@@ -1,86 +1,111 @@
 {
-  "status": "passed",
+  "status": "failed",
   "coveredOperationIds": [
-    "AGENT-APPROVAL-001",
-    "AGENT-UNAUTH-001",
+    "PARAM-CONFIG-PUBLISH-GATE-001",
+    "PARAM-IDENTITY-MAP-001",
+    "PARAM-SPEC-GOVERN-001",
+    "PARAM-TOPOLOGY-BROWSE-001",
+    "PARAM-TOPOLOGY-EDIT-001"
+  ],
+  "missingOperationIds": [
     "AUTH-RUNTIME-001",
+    "DEBUG-ADMIN-001",
     "DEBUG-PERM-001",
     "DEBUG-SIM-001",
     "LOG-HAPPY-001",
     "LOG-REANALYZE-001",
+    "MOD-TREE-AUTHZ-001",
+    "MOD-TREE-DEBUG-001",
+    "MOD-TREE-PARAM-001",
+    "MOD-TREE-PARAM-002",
+    "NOTIF-INBOX-001",
+    "NOTIF-READ-001",
     "PARAM-ADMIN-001",
+    "PARAM-ADMIN-002",
     "PARAM-ASSIGNEE-001",
     "PARAM-ASSIGNEE-002",
     "PARAM-ASSIGNEE-003",
     "PARAM-DRAFT-EDIT-001",
+    "PARAM-DTS-CONFIGSET-001",
+    "PARAM-DTS-DIFF-001",
+    "PARAM-DTS-EDIT-001",
+    "PARAM-DTS-EDIT-002",
+    "PARAM-DTS-IMPACT-001",
+    "PARAM-DTS-RBAC-001",
+    "PARAM-DTS-SEARCH-001",
+    "PARAM-DTS-STRUCTURE-001",
+    "PARAM-FILE-RESOLVE-001",
+    "PARAM-FILE-SYNC-001",
+    "PARAM-FILE-UPLOAD-001",
     "PARAM-HAPPY-001",
+    "PARAM-HOME-001",
+    "PARAM-IMPORT-DTS-FULL-001",
+    "PARAM-IMPORT-REVIEW-META-001",
     "PARAM-REASON-001",
     "PARAM-REJECT-001",
     "PERM-GOV-001",
     "PERM-MATRIX-001",
     "PERM-MATRIX-002",
     "PERM-USER-MGMT-001",
-    "SHELL-DIAG-001"
+    "PFB-ADMIN-001",
+    "PFB-AUTHZ-001",
+    "PFB-SUBMIT-001",
+    "SHELL-DIAG-001",
+    "XIAOZE-ACTION-APPROVE-001",
+    "XIAOZE-ACTION-AUTHZ-001",
+    "XIAOZE-ACTION-REJECT-001",
+    "XIAOZE-ACTION-RESUME-001",
+    "XIAOZE-PERCEPTION-001",
+    "XIAOZE-PERCEPTION-AUTHZ-001"
   ],
-  "missingOperationIds": [],
   "invalidEvidenceIds": [],
   "validationErrors": [],
   "records": [
     {
-      "operationId": "AGENT-APPROVAL-001",
-      "title": "agent approval reject execute trace audit",
+      "operationId": "PARAM-CONFIG-PUBLISH-GATE-001",
+      "title": "validate/publish gate and DB reload persistence",
       "status": "passed",
       "role": "Admin",
-      "route": "/agent",
+      "route": "/parameters",
       "assertions": [
         "ui",
         "api",
+        "db",
         "audit"
       ],
-      "notes": "Agent session agent-session-50a267db-39a9-480e-86c7-be61530623b7 required approval, preserved state on rejection, executed after approval, and produced trace/audit evidence.",
+      "notes": "PARAM-TOPOLOGY acceptance: fail-closed validate reports schema-failed (not force-passed); bindingId+value persist after reload from DB. runId=c639b7ff",
       "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\AGENT-APPROVAL-001-agent-approval-reject-execute-trace-audit.png"
+        "test-results/acceptance/operation-evidence/PARAM-CONFIG-PUBLISH-GATE-001-validate-publish-gate-and-db-reload-persistence.png"
       ],
       "api": [
         {
-          "method": "GET",
-          "path": "/api/v1/audit-events",
+          "method": "POST",
+          "path": "/api/v2/projects/aurora/config-revisions/ae0b3fac-204f-47fb-b813-88d1f6b65d00/validate",
           "status": 200,
-          "responseSummary": "session agent-session-50a267db-39a9-480e-86c7-be61530623b7 includes approval-rejected and approval-executed audit actions"
+          "requestId": "f628f99d-cad8-4867-bf27-96b20a867455",
+          "responseSummary": "run=049dbd24-7af5-4da1-9ece-da878a034526; status=failed"
         }
       ],
       "db": [
         {
-          "table": "agent_tool_calls",
-          "predicate": "sessionId=agent-session-50a267db-39a9-480e-86c7-be61530623b7",
-          "observed": "toolCalls=5; approvals=2; traces=3",
+          "table": "dts_config_revisions",
+          "predicate": "id=ae0b3fac-204f-47fb-b813-88d1f6b65d00",
+          "observed": "status=resolved",
+          "rowCount": 1
+        },
+        {
+          "table": "project_parameter_binding_revisions",
+          "predicate": "binding=621f5cb6-59c6-4d4e-8a04-7512ccff722a; revision=ae0b3fac-204f-47fb-b813-88d1f6b65d00",
+          "observed": "id=621f5cb6-59c6-4d4e-8a04-7512ccff722a; raw=<&gpio13 29 0>",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "audit-9fc6c893-006a-4723-990f-6ce73cb22cb9",
-          "kind": "agent-tool",
-          "action": "approval-requested",
-          "targetId": "agent-tool-f4f77b9e-e4c3-470c-91be-6469303e0e28",
-          "requestId": "a05901df-f8be-4b72-a387-61320feac3f2",
-          "metadataSummary": "approvalId,initiatedByUserId,sessionId,toolCallId,toolName"
-        },
-        {
-          "id": "audit-09a88146-489e-490d-b3e3-b6d5934663a9",
-          "kind": "agent-tool",
-          "action": "approval-rejected",
-          "targetId": "agent-tool-f4f77b9e-e4c3-470c-91be-6469303e0e28",
-          "requestId": "506d832e-f5d7-4561-ae05-118a68b2fec5",
-          "metadataSummary": "approvalId,initiatedByUserId,reason,sessionId,toolCallId"
-        },
-        {
-          "id": "audit-45a09c31-2e45-48ed-aa10-e6dd692f055f",
-          "kind": "agent-tool",
-          "action": "approval-executed",
-          "targetId": "agent-tool-ccf88fb6-cb27-4bbd-9fb4-4da0a693ac46",
-          "requestId": "d0cdbe4d-f453-4df8-9ca5-62b658c39bf8",
-          "metadataSummary": "approvalId,initiatedByUserId,sessionId,summary,toolCallId,toolName"
+          "id": "96243746-2f9d-4b57-9bfe-2c48eaffa035",
+          "kind": "parameter-topology-governance",
+          "action": "config-revision-validated",
+          "targetId": "ae0b3fac-204f-47fb-b813-88d1f6b65d00"
         }
       ],
       "trace": {
@@ -99,260 +124,65 @@
           "DATABASE_URL": "set",
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
+          "XIAOZE_DETERMINISTIC": "false",
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
         }
       },
       "reproduction": {
         "steps": [
-          "Open route /agent.",
-          "Run operation AGENT-APPROVAL-001: agent approval reject execute trace audit.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\AGENT-APPROVAL-001-agent-approval-reject-execute-trace-audit.png."
+          "Open route /parameters.",
+          "Run operation PARAM-CONFIG-PUBLISH-GATE-001: validate/publish gate and DB reload persistence.",
+          "Review operation artifacts: test-results/acceptance/operation-evidence/PARAM-CONFIG-PUBLISH-GATE-001-validate-publish-gate-and-db-reload-persistence.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:40:39.654Z"
+      "recordedAt": "2026-07-16T03:07:22.392Z"
     },
     {
-      "operationId": "AGENT-UNAUTH-001",
-      "title": "agent direct run rejected before approval",
-      "status": "passed",
-      "role": "Guest, Hardware User, Software User",
-      "route": "/agent",
-      "assertions": [
-        "api",
-        "audit"
-      ],
-      "notes": "Agent session agent-session-0b7e6b14-d3e2-4b09-84a6-1ae7e7ac4e97 rejected direct run for pending tool call agent-tool-e15c708a-bb5d-4c69-a53e-512d4096d565 with APPROVAL_REQUIRED and preserved pending approval state without draft side effects.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\AGENT-UNAUTH-001-agent-direct-run-rejected-before-approval.png"
-      ],
-      "api": [
-        {
-          "method": "POST",
-          "path": "/api/v1/agent/sessions/agent-session-0b7e6b14-d3e2-4b09-84a6-1ae7e7ac4e97/tool-calls/agent-tool-e15c708a-bb5d-4c69-a53e-512d4096d565/run",
-          "status": 409,
-          "requestId": "40198051-05de-4dd2-8084-3b78144ccc68",
-          "responseSummary": "APPROVAL_REQUIRED"
-        }
-      ],
-      "audit": [
-        {
-          "id": "audit-4563bb84-daf1-4753-a6bc-95bae7e5620f",
-          "kind": "agent-tool",
-          "action": "approval-requested",
-          "targetId": "agent-tool-e15c708a-bb5d-4c69-a53e-512d4096d565",
-          "requestId": "c79b1d61-4ed8-4543-a413-98ae279222f4",
-          "metadataSummary": "approvalId,initiatedByUserId,sessionId,toolCallId,toolName"
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /agent.",
-          "Run operation AGENT-UNAUTH-001: agent direct run rejected before approval.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\AGENT-UNAUTH-001-agent-direct-run-rejected-before-approval.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:40:36.991Z"
-    },
-    {
-      "operationId": "AUTH-RUNTIME-001",
-      "title": "API mode browser auth runtime parity",
+      "operationId": "PARAM-IDENTITY-MAP-001",
+      "title": "identity mapping blocker then resolve audit",
       "status": "passed",
       "role": "Admin",
-      "route": "/",
-      "assertions": [
-        "ui",
-        "api"
-      ],
-      "notes": "/api/v1/me accepted smoke auth and the API-mode page loaded without auth errors.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\AUTH-RUNTIME-001-api-mode-browser-auth-runtime-parity.png"
-      ],
-      "api": [
-        {
-          "method": "GET",
-          "path": "/api/v1/me",
-          "status": 200,
-          "requestId": "e9c5ba15-f18a-4c90-bb6e-28a5666a2110",
-          "responseSummary": "smoke auth accepted for current user"
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /.",
-          "Run operation AUTH-RUNTIME-001: API mode browser auth runtime parity.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\AUTH-RUNTIME-001-api-mode-browser-auth-runtime-parity.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:40:41.354Z"
-    },
-    {
-      "operationId": "DEBUG-PERM-001",
-      "title": "debugging write permission denial ui and api",
-      "status": "passed",
-      "role": "Guest, Hardware User, Software User",
-      "route": "/node-debugging",
-      "assertions": [
-        "ui",
-        "api"
-      ],
-      "notes": "Read-only node flow hid write controls; forced API write as acceptance-debug-nonwriter returned 403 debugging:write without a debug-node-write audit event.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\DEBUG-PERM-001-debugging-write-permission-denial-ui-and-api.png"
-      ],
-      "api": [
-        {
-          "method": "GET",
-          "path": "/api/v1/me",
-          "status": 200,
-          "requestId": "c590d56e-478f-4bdc-9be2-3869822a46b0",
-          "responseSummary": "user=acceptance-debug-nonwriter; missing debugging:write"
-        },
-        {
-          "method": "POST",
-          "path": "/api/v1/debugging/nodes/write",
-          "status": 403,
-          "requestId": "5a442a95-efc1-492b-a9e8-6c2c4ee8f32e",
-          "responseSummary": "Missing permission: debugging:write."
-        },
-        {
-          "method": "GET",
-          "path": "/api/v1/audit-events",
-          "status": 200,
-          "requestId": "ff6dc3e0-a72d-4100-90b3-795582dc0101",
-          "responseSummary": "audit events=100; no debug-node-write for acceptance-debug-nonwriter"
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /node-debugging.",
-          "Run operation DEBUG-PERM-001: debugging write permission denial ui and api.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\DEBUG-PERM-001-debugging-write-permission-denial-ui-and-api.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:41:28.430Z"
-    },
-    {
-      "operationId": "DEBUG-SIM-001",
-      "title": "debugging simulator read write mismatch rollback audit",
-      "status": "passed",
-      "role": "Hardware Committer, Admin",
-      "route": "/node-debugging",
+      "route": "/parameters",
       "assertions": [
         "ui",
         "api",
         "db",
         "audit"
       ],
-      "notes": "Simulator write and mismatch paths produced audit evidence; snapshot b3dba9b9-0ece-4243-b46f-08cdf0945087 rolled back to the original safe value.",
+      "notes": "Open mapping blocks validate (fail-closed). Resolve clears blocker with governance audit.",
       "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\DEBUG-SIM-001-debugging-simulator-read-write-mismatch-rollback-audit.png"
+        "test-results/acceptance/operation-evidence/PARAM-IDENTITY-MAP-001-identity-mapping-blocker-then-resolve-audit.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/debugging/snapshots/b3dba9b9-0ece-4243-b46f-08cdf0945087/rollback",
+          "path": "/api/v2/projects/aurora/config-revisions/.../validate",
           "status": 200,
-          "requestId": "1c8fd6d6-c117-491a-8486-ddd009768921",
-          "responseSummary": "rolled back snapshot b3dba9b9-0ece-4243-b46f-08cdf0945087"
+          "requestId": "9e802c72-ba05-4576-8861-74872b9fb663",
+          "responseSummary": "failureCode=open-mapping"
         },
         {
-          "method": "GET",
-          "path": "/api/v1/audit-events",
+          "method": "POST",
+          "path": "/api/v2/identity-mapping-tasks/acceptance-identity-map-f127570a/resolve",
           "status": 200,
-          "requestId": "71ee46b6-2c11-44d1-b7f0-ac4aa2609651",
-          "responseSummary": "audit events=100"
+          "requestId": "e129225c-9408-4dd9-b6ed-a6e41c6d4a2f",
+          "responseSummary": "selected=455ed205-70ef-4176-9fe8-81952ba3667d"
         }
       ],
       "db": [
         {
-          "table": "debugging_parameters",
-          "predicate": "projectId=aurora; parameterId=dbg-fast-charge-current; snapshotId=b3dba9b9-0ece-4243-b46f-08cdf0945087",
-          "observed": "currentValue=3100; snapshotStatus=consumed",
+          "table": "identity_mapping_tasks",
+          "predicate": "id=acceptance-identity-map-f127570a",
+          "observed": "status=resolved",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "c54c658a-e575-4183-af9c-ede62c31a351",
-          "kind": "debug-node-write",
-          "targetId": "dbg-fast-charge-current",
-          "requestId": "7b5a7af0-4d0f-4ed6-858a-b38d44c6358b",
-          "metadataSummary": "nodePath=/sys/class/power_supply/battery/constant_charge_current; verified=true; sessionId=6838fb2a-be01-4c7e-9846-a3a67469e6f3; snapshotId=b3dba9b9-0ece-4243-b46f-08cdf0945087; operationId=6fee7735-bc6b-40bd-9fa6-c5819fed864f; failureReason=null; previousValue=3000; readbackValue=3100; requestedValue=3100"
-        },
-        {
-          "id": "3d49bbd8-0946-45de-a862-049c1a0d2e25",
-          "kind": "debug-node-write",
-          "targetId": "dbg-readback-mismatch",
-          "requestId": "8101699e-fa56-46e7-8506-eb9bd03e13d3",
-          "metadataSummary": "nodePath=/sys/class/power_supply/battery/readback_mismatch; verified=false; sessionId=6838fb2a-be01-4c7e-9846-a3a67469e6f3; snapshotId=e8082e5a-8928-4ee1-b444-f08397d084e6; operationId=2e0b4123-9790-47aa-9be4-3391f170edd2; failureReason=Readback mismatch.; previousValue=1; readbackValue=1; requestedValue=2"
-        },
-        {
-          "id": "3751d0e5-03dd-45fd-9bbb-1e123ef7231f",
-          "kind": "debug-snapshot-rollback",
-          "targetId": "b3dba9b9-0ece-4243-b46f-08cdf0945087",
-          "requestId": "1c8fd6d6-c117-491a-8486-ddd009768921",
-          "metadataSummary": "failed=false; sessionId=6838fb2a-be01-4c7e-9846-a3a67469e6f3; operationIds=35a661ec-3dfc-49b4-b86d-b8a8708a0769"
+          "id": "e6e5ac43-f4e0-4201-b936-da7da7762c28",
+          "kind": "parameter-topology-governance",
+          "action": "identity-mapping-resolved",
+          "targetId": "acceptance-identity-map-f127570a"
         }
       ],
       "trace": {
@@ -371,219 +201,65 @@
           "DATABASE_URL": "set",
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
+          "XIAOZE_DETERMINISTIC": "false",
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
         }
       },
       "reproduction": {
         "steps": [
-          "Open route /node-debugging.",
-          "Run operation DEBUG-SIM-001: debugging simulator read write mismatch rollback audit.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\DEBUG-SIM-001-debugging-simulator-read-write-mismatch-rollback-audit.png."
+          "Open route /parameters.",
+          "Run operation PARAM-IDENTITY-MAP-001: identity mapping blocker then resolve audit.",
+          "Review operation artifacts: test-results/acceptance/operation-evidence/PARAM-IDENTITY-MAP-001-identity-mapping-blocker-then-resolve-audit.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:41:26.895Z"
+      "recordedAt": "2026-07-16T03:07:16.887Z"
     },
     {
-      "operationId": "LOG-HAPPY-001",
-      "title": "log upload complete evidence feedback archive unsupported",
-      "status": "passed",
-      "role": "Software User, Software Committer, Admin",
-      "route": "/logs",
-      "assertions": [
-        "ui",
-        "api",
-        "db",
-        "audit"
-      ],
-      "notes": "Log ec7816b3-8bbe-461c-bcc0-6a1eda24af01 completed analysis, linked evidence, recorded feedback, archived successfully, and rejected unsupported upload with a readable failure.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\LOG-HAPPY-001-log-upload-complete-evidence-feedback-archive-unsupported.png"
-      ],
-      "api": [
-        {
-          "method": "POST",
-          "path": "/api/v1/logs/ec7816b3-8bbe-461c-bcc0-6a1eda24af01/archive",
-          "status": 200,
-          "requestId": "0a6e75f6-b3ac-446c-8204-e3bfd8edfc8c",
-          "responseSummary": "archiveState=archived"
-        },
-        {
-          "method": "GET",
-          "path": "/api/v1/logs?projectId=aurora",
-          "status": 200,
-          "requestId": "415c6c2e-31cf-4080-895d-fa8d38c0daa3",
-          "responseSummary": "active logs=0; archived log hidden"
-        },
-        {
-          "method": "GET",
-          "path": "/api/v1/audit-events",
-          "status": 200,
-          "requestId": "ce4aafef-cd5b-454b-9ad6-1d5d61149df3",
-          "responseSummary": "audit events=100"
-        }
-      ],
-      "db": [
-        {
-          "table": "log_records",
-          "predicate": "id=ec7816b3-8bbe-461c-bcc0-6a1eda24af01",
-          "observed": "status=complete; archiveState=archived; currentRunId=7c04d15d-7fb8-4f70-a7c4-06aabb487978",
-          "rowCount": 1
-        }
-      ],
-      "audit": [
-        {
-          "id": "78421e10-c0c6-4d2b-b80c-41b220b043c1",
-          "kind": "log-feedback",
-          "action": "feedback",
-          "targetId": "ec7816b3-8bbe-461c-bcc0-6a1eda24af01",
-          "requestId": "bd016af6-8b04-49d4-b8e6-bdec34eaa86b",
-          "metadataSummary": "rating"
-        },
-        {
-          "id": "d536ed0b-bdbd-4045-98c7-145a66e04695",
-          "kind": "log-archive",
-          "action": "archive",
-          "targetId": "ec7816b3-8bbe-461c-bcc0-6a1eda24af01",
-          "requestId": "0a6e75f6-b3ac-446c-8204-e3bfd8edfc8c",
-          "metadataSummary": "archiveState"
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /logs.",
-          "Run operation LOG-HAPPY-001: log upload complete evidence feedback archive unsupported.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\LOG-HAPPY-001-log-upload-complete-evidence-feedback-archive-unsupported.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:42:15.709Z"
-    },
-    {
-      "operationId": "LOG-REANALYZE-001",
-      "title": "completed log reanalysis creates rerun job progress and audit",
-      "status": "passed",
-      "role": "Software User, Software Committer, Admin",
-      "route": "/logs",
-      "assertions": [
-        "ui",
-        "api",
-        "db",
-        "audit"
-      ],
-      "notes": "Log 2363881d-5b35-4a6c-9ca4-5599d55c485e created rerun 80132f53-cf0d-4b0d-a0b7-7e50e530a9a0; UI refreshed the log workbench and audit recorded log-rerun with job metadata.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\LOG-REANALYZE-001-completed-log-reanalysis-creates-rerun-job-progress-and-audit.png"
-      ],
-      "api": [
-        {
-          "method": "POST",
-          "path": "/api/v1/logs/2363881d-5b35-4a6c-9ca4-5599d55c485e/rerun",
-          "status": 200,
-          "requestId": "67fe4b8d-97a8-43f1-8955-f6758e833311",
-          "responseSummary": "created run=80132f53-cf0d-4b0d-a0b7-7e50e530a9a0"
-        },
-        {
-          "method": "GET",
-          "path": "/api/v1/audit-events",
-          "status": 200,
-          "requestId": "eb087f6f-2669-494f-aaaf-21ee1270da50",
-          "responseSummary": "audit events=100"
-        }
-      ],
-      "db": [
-        {
-          "table": "log_records",
-          "predicate": "id=2363881d-5b35-4a6c-9ca4-5599d55c485e",
-          "observed": "status=complete; archiveState=active; currentRunId=80132f53-cf0d-4b0d-a0b7-7e50e530a9a0",
-          "rowCount": 1
-        },
-        {
-          "table": "log_analysis_runs",
-          "predicate": "id=80132f53-cf0d-4b0d-a0b7-7e50e530a9a0",
-          "observed": "status=complete; progress=100; jobId=bf8ccb77-e722-438a-9ca3-c8dee4626011",
-          "rowCount": 1
-        }
-      ],
-      "audit": [
-        {
-          "id": "f8cf1371-a3fc-456d-a9c3-79a0c6964f2d",
-          "kind": "log-rerun",
-          "action": "rerun",
-          "targetId": "2363881d-5b35-4a6c-9ca4-5599d55c485e",
-          "requestId": "67fe4b8d-97a8-43f1-8955-f6758e833311",
-          "metadataSummary": "jobId,runId"
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /logs.",
-          "Run operation LOG-REANALYZE-001: completed log reanalysis creates rerun job progress and audit.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\LOG-REANALYZE-001-completed-log-reanalysis-creates-rerun-job-progress-and-audit.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:42:20.594Z"
-    },
-    {
-      "operationId": "PARAM-ADMIN-001",
-      "title": "parameter admin import preview and audit drawer",
+      "operationId": "PARAM-SPEC-GOVERN-001",
+      "title": "spec search review resolve audit",
       "status": "passed",
       "role": "Admin",
       "route": "/parameter-admin",
       "assertions": [
         "ui",
+        "api",
+        "db",
         "audit"
       ],
-      "notes": "Admin audit drawer opened and parameter import preview rendered without committing preview-only data.",
+      "notes": "PARAM-TOPOLOGY acceptance: listed two distinct gpio_int specs from ingest, resolved review task, audited governance event.",
       "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PARAM-ADMIN-001-parameter-admin-import-preview-and-audit-drawer.png"
+        "test-results/acceptance/operation-evidence/PARAM-SPEC-GOVERN-001-spec-search-review-resolve-audit.png"
+      ],
+      "api": [
+        {
+          "method": "GET",
+          "path": "/api/v2/parameter-specs",
+          "status": 200,
+          "requestId": "19334bb3-711c-43b4-8d53-1643590a20fc",
+          "responseSummary": "gpio_int specs=2; distinct sc8562/mt5788"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v2/parameter-spec-review-tasks/acceptance-spec-review-gpio-int/resolve",
+          "status": 200,
+          "requestId": "4624366b-cbef-4fad-b75d-0047da6500e6",
+          "responseSummary": "resolved to pspec:vendor/sc8562:gpio_int"
+        }
+      ],
+      "db": [
+        {
+          "table": "parameter_spec_review_tasks",
+          "predicate": "id=acceptance-spec-review-gpio-int",
+          "observed": "status=resolved; spec=pspec:vendor/sc8562:gpio_int",
+          "rowCount": 1
+        }
       ],
       "audit": [
         {
-          "id": "cc6820f0-d38a-451c-b5f6-ef540fc2306d",
-          "kind": "parameter-merge",
-          "action": "merge",
-          "targetId": "7379ef39-5010-40a4-a13e-f4b7ef31dbec",
-          "requestId": "92ebffcb-b104-4a0c-abd6-87881b698e60"
+          "id": "577eae68-f518-4322-9b9d-fbd85ff18c76",
+          "kind": "parameter-topology-governance",
+          "action": "spec-review-resolved",
+          "targetId": "acceptance-spec-review-gpio-int"
         }
       ],
       "trace": {
@@ -602,261 +278,47 @@
           "DATABASE_URL": "set",
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
+          "XIAOZE_DETERMINISTIC": "false",
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
         }
       },
       "reproduction": {
         "steps": [
           "Open route /parameter-admin.",
-          "Run operation PARAM-ADMIN-001: parameter admin import preview and audit drawer.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-ADMIN-001-parameter-admin-import-preview-and-audit-drawer.png."
+          "Run operation PARAM-SPEC-GOVERN-001: spec search review resolve audit.",
+          "Review operation artifacts: test-results/acceptance/operation-evidence/PARAM-SPEC-GOVERN-001-spec-search-review-resolve-audit.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:43:34.409Z"
+      "recordedAt": "2026-07-16T03:07:14.500Z"
     },
     {
-      "operationId": "PARAM-ASSIGNEE-001",
-      "title": "workflow assignee defaults are eligible",
+      "operationId": "PARAM-TOPOLOGY-BROWSE-001",
+      "title": "real source/effective tree and two gpio_int bindings",
       "status": "passed",
-      "role": "Hardware User",
+      "role": "Admin",
       "route": "/parameters",
       "assertions": [
-        "ui"
-      ],
-      "notes": "All workflow assignee selectors defaulted to non-empty eligible active users.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-001-workflow-assignee-defaults-are-eligible.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /parameters.",
-          "Run operation PARAM-ASSIGNEE-001: workflow assignee defaults are eligible.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-001-workflow-assignee-defaults-are-eligible.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:42:58.468Z"
-    },
-    {
-      "operationId": "PARAM-ASSIGNEE-002",
-      "title": "workflow assignee dropdowns hide ineligible users",
-      "status": "passed",
-      "role": "Hardware User",
-      "route": "/parameters",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Inactive, guest, admin-only, and role-ineligible users were absent from workflow assignee dropdowns.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-002-workflow-assignee-dropdowns-hide-ineligible-users.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /parameters.",
-          "Run operation PARAM-ASSIGNEE-002: workflow assignee dropdowns hide ineligible users.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-002-workflow-assignee-dropdowns-hide-ineligible-users.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:42:58.528Z"
-    },
-    {
-      "operationId": "PARAM-ASSIGNEE-003",
-      "title": "forced invalid workflow assignees rejected",
-      "status": "passed",
-      "role": "Hardware User",
-      "route": "/api/v1/parameter-submission-rounds",
-      "assertions": [
+        "ui",
         "api"
       ],
-      "notes": "The parameter submission API rejected role-ineligible workflow assignees with VALIDATION_FAILED.",
+      "notes": "API-mode workspace loads ingested Config Set revision; source/effective trees expose amba→i2c@FDF5E000→sc8562@6E; two distinct gpio_int bindings by stable binding id.",
       "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-003-forced-invalid-workflow-assignees-rejected.png"
+        "test-results/acceptance/operation-evidence/PARAM-TOPOLOGY-BROWSE-001-real-source-effective-tree-and-two-gpio-int-bindings.png"
       ],
       "api": [
         {
-          "method": "POST",
-          "path": "/api/v1/parameter-submission-rounds",
-          "status": 400,
-          "requestId": "44eb3c54-b35e-4d5c-a693-6608708212c2",
-          "responseSummary": "VALIDATION_FAILED for role-ineligible workflow assignees"
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /api/v1/parameter-submission-rounds.",
-          "Run operation PARAM-ASSIGNEE-003: forced invalid workflow assignees rejected.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-003-forced-invalid-workflow-assignees-rejected.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:42:58.719Z"
-    },
-    {
-      "operationId": "PARAM-DRAFT-EDIT-001",
-      "title": "parameter draft edit and remove before submission",
-      "status": "passed",
-      "role": "Hardware User",
-      "route": "/parameters",
-      "assertions": [
-        "ui",
-        "api",
-        "db"
-      ],
-      "notes": "Edited one draft target value, removed another draft item, and verified only the edited item reached final submission payload.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PARAM-DRAFT-EDIT-001-parameter-draft-edit-and-remove-before-submission.png"
-      ],
-      "api": [
-        {
-          "method": "POST",
-          "path": "/api/v1/parameter-submission-rounds",
-          "status": 201,
-          "requestId": "2324014e-e10a-46f3-9836-1f37cc6273af",
-          "responseSummary": "submitted request bcb87f43-c55c-47e7-9cad-8e738dda4696; removed target 4331 absent"
-        }
-      ],
-      "db": [
-        {
-          "table": "parameter_submission_items",
-          "predicate": "requestId=bcb87f43-c55c-47e7-9cad-8e738dda4696; excludedTargetValue=4331",
-          "observed": "targetValue=3122; submittedCount=1; excludedCount=0",
-          "rowCount": 1
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /parameters.",
-          "Run operation PARAM-DRAFT-EDIT-001: parameter draft edit and remove before submission.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-DRAFT-EDIT-001-parameter-draft-edit-and-remove-before-submission.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:42:56.515Z"
-    },
-    {
-      "operationId": "PARAM-HAPPY-001",
-      "title": "parameter management submit review merge persistence audit",
-      "status": "passed",
-      "role": "Hardware User, Hardware Committer, Software Committer, Software User, Admin",
-      "route": "/parameters",
-      "assertions": [
-        "ui",
-        "api",
-        "db",
-        "audit"
-      ],
-      "notes": "Parameter request 7379ef39-5010-40a4-a13e-f4b7ef31dbec merged, persisted target value, and produced parameter-merge audit evidence.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PARAM-HAPPY-001-parameter-management-submit-review-merge-persistence-audit.png"
-      ],
-      "api": [
-        {
-          "method": "POST",
-          "path": "/api/v1/parameter-submission-rounds",
-          "status": 201,
-          "responseSummary": "created request 7379ef39-5010-40a4-a13e-f4b7ef31dbec"
+          "method": "GET",
+          "path": "/api/v2/projects/aurora/config-sets/.../topology",
+          "status": 200,
+          "requestId": "83bc50e4-65d4-43b5-9b95-be3021042dba",
+          "responseSummary": "status=200 nodes=58; sc8562+mt5788 present"
         },
         {
           "method": "GET",
-          "path": "/api/v1/audit-events",
+          "path": "/api/v2/projects/aurora/parameter-bindings",
           "status": 200,
-          "requestId": "0e5a7fe8-b633-4c6a-b1d6-79f296955585",
-          "responseSummary": "found 100 audit events"
-        }
-      ],
-      "db": [
-        {
-          "table": "parameter_change_requests",
-          "predicate": "id=7379ef39-5010-40a4-a13e-f4b7ef31dbec",
-          "observed": "status=merged; targetValue=3397",
-          "rowCount": 1
-        }
-      ],
-      "audit": [
-        {
-          "id": "cc6820f0-d38a-451c-b5f6-ef540fc2306d",
-          "kind": "parameter-merge",
-          "action": "merge",
-          "targetId": "7379ef39-5010-40a4-a13e-f4b7ef31dbec",
-          "requestId": "92ebffcb-b104-4a0c-abd6-87881b698e60"
+          "requestId": "35f2f40a-11e1-4151-a0fb-97d4e51dc796",
+          "responseSummary": "gpio_int bindings=2"
         }
       ],
       "trace": {
@@ -875,540 +337,47 @@
           "DATABASE_URL": "set",
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
+          "XIAOZE_DETERMINISTIC": "false",
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
         }
       },
       "reproduction": {
         "steps": [
           "Open route /parameters.",
-          "Run operation PARAM-HAPPY-001: parameter management submit review merge persistence audit.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-HAPPY-001-parameter-management-submit-review-merge-persistence-audit.png."
+          "Run operation PARAM-TOPOLOGY-BROWSE-001: real source/effective tree and two gpio_int bindings.",
+          "Review operation artifacts: test-results/acceptance/operation-evidence/PARAM-TOPOLOGY-BROWSE-001-real-source-effective-tree-and-two-gpio-int-bindings.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:43:34.309Z"
+      "recordedAt": "2026-07-16T03:07:15.430Z"
     },
     {
-      "operationId": "PARAM-REASON-001",
-      "title": "blank parameter draft reason blocked",
-      "status": "passed",
-      "role": "Hardware User",
-      "route": "/parameters",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Blank draft reason left the submit action disabled before an API submission could be made.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PARAM-REASON-001-blank-parameter-draft-reason-blocked.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /parameters.",
-          "Run operation PARAM-REASON-001: blank parameter draft reason blocked.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-REASON-001-blank-parameter-draft-reason-blocked.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:42:54.268Z"
-    },
-    {
-      "operationId": "PARAM-REJECT-001",
-      "title": "parameter review rejection reason persistence audit",
-      "status": "passed",
-      "role": "Hardware Committer, Software Committer",
-      "route": "/parameter-review",
-      "assertions": [
-        "ui",
-        "api",
-        "db",
-        "audit"
-      ],
-      "notes": "Parameter request 98d137c2-e68a-4822-b7cf-83544006a2b7 was rejected through the browser UI and produced persisted rejection and parameter-review-reject audit evidence.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PARAM-REJECT-001-parameter-review-rejection-reason-persistence-audit.png"
-      ],
-      "api": [
-        {
-          "method": "GET",
-          "path": "/api/v1/parameter-change-requests?projectId=aurora",
-          "status": 200,
-          "requestId": "2c447c0c-662d-43a0-bcd8-7d9921ebcd8d",
-          "responseSummary": "request 98d137c2-e68a-4822-b7cf-83544006a2b7 status=rejected"
-        },
-        {
-          "method": "GET",
-          "path": "/api/v1/audit-events",
-          "status": 200,
-          "requestId": "156b5bb3-a0e8-4ff3-b2c7-70c6bba1880e",
-          "responseSummary": "found 100 audit events"
-        }
-      ],
-      "db": [
-        {
-          "table": "parameter_change_requests",
-          "predicate": "id=98d137c2-e68a-4822-b7cf-83544006a2b7",
-          "observed": "status=rejected; targetValue=4333",
-          "rowCount": 1
-        }
-      ],
-      "audit": [
-        {
-          "id": "e419e1a2-2324-4329-8e2a-fa23d363fc89",
-          "kind": "parameter-review-reject",
-          "action": "reject",
-          "targetId": "98d137c2-e68a-4822-b7cf-83544006a2b7",
-          "requestId": "7cf5d784-44e7-4f84-a4ca-4f1d794776a6"
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /parameter-review.",
-          "Run operation PARAM-REJECT-001: parameter review rejection reason persistence audit.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-REJECT-001-parameter-review-rejection-reason-persistence-audit.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:43:36.388Z"
-    },
-    {
-      "operationId": "PERM-GOV-001",
-      "title": "user governance admin only and self protection",
+      "operationId": "PARAM-TOPOLOGY-EDIT-001",
+      "title": "typed edit schema diagnostics, stale 409, compiler failure",
       "status": "passed",
       "role": "Admin",
-      "route": "/user-permissions",
+      "route": "/parameters",
       "assertions": [
-        "ui"
-      ],
-      "notes": "Admin saw user governance, active Admin self-disable controls were disabled, and Hardware User received controlled permission denial.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PERM-GOV-001-user-governance-admin-only-and-self-protection.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /user-permissions.",
-          "Run operation PERM-GOV-001: user governance admin only and self protection.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-GOV-001-user-governance-admin-only-and-self-protection.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:44:08.632Z"
-    },
-    {
-      "operationId": "PERM-MATRIX-001",
-      "title": "visible route permissions for Admin",
-      "status": "passed",
-      "role": "Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Admin visibility was checked for debugging and parameter review route access.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-admin.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation PERM-MATRIX-001: visible route permissions for Admin.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-admin.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:43:45.719Z"
-    },
-    {
-      "operationId": "PERM-MATRIX-001",
-      "title": "visible route permissions for Guest",
-      "status": "passed",
-      "role": "Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Guest visibility was checked for debugging and parameter review route access.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-guest.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation PERM-MATRIX-001: visible route permissions for Guest.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-guest.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:43:37.986Z"
-    },
-    {
-      "operationId": "PERM-MATRIX-001",
-      "title": "visible route permissions for Hardware Committer",
-      "status": "passed",
-      "role": "Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Hardware Committer visibility was checked for debugging and parameter review route access.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-hardware-committer.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation PERM-MATRIX-001: visible route permissions for Hardware Committer.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-hardware-committer.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:43:42.723Z"
-    },
-    {
-      "operationId": "PERM-MATRIX-001",
-      "title": "visible route permissions for Hardware User",
-      "status": "passed",
-      "role": "Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Hardware User visibility was checked for debugging and parameter review route access.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-hardware-user.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation PERM-MATRIX-001: visible route permissions for Hardware User.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-hardware-user.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:43:39.439Z"
-    },
-    {
-      "operationId": "PERM-MATRIX-001",
-      "title": "visible route permissions for Software Committer",
-      "status": "passed",
-      "role": "Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Software Committer visibility was checked for debugging and parameter review route access.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-software-committer.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation PERM-MATRIX-001: visible route permissions for Software Committer.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-software-committer.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:43:44.238Z"
-    },
-    {
-      "operationId": "PERM-MATRIX-001",
-      "title": "visible route permissions for Software User",
-      "status": "passed",
-      "role": "Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Software User visibility was checked for debugging and parameter review route access.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-software-user.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation PERM-MATRIX-001: visible route permissions for Software User.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-software-user.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:43:40.965Z"
-    },
-    {
-      "operationId": "PERM-MATRIX-002",
-      "title": "api workflow eligibility stricter than visible role inclusion",
-      "status": "passed",
-      "role": "Hardware User, Hardware Committer, Software Committer, Software User, Admin",
-      "route": "/api/v1/parameter-submission-rounds",
-      "assertions": [
+        "ui",
         "api"
       ],
-      "notes": "API-backed parameter submission rejected project-scoped workflow assignees that visible role inclusion alone would not permit.",
+      "notes": "UI typed edit blocks on SCHEMA_CELL_COUNT via real drafts API; stale baseRevisionId returns 409; throwaway Config Set validate fails closed on compile/toolchain.",
       "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-002-api-workflow-eligibility-stricter-than-visible-role-inclusion.png"
+        "test-results/acceptance/operation-evidence/PARAM-TOPOLOGY-EDIT-001-typed-edit-schema-diagnostics-stale-409-compiler-failure.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/parameter-submission-rounds",
-          "status": 400,
-          "requestId": "2b73cb1a-df59-4ef1-9b37-173dea278fb9",
-          "responseSummary": "VALIDATION_FAILED for role-ineligible workflow assignees"
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /api/v1/parameter-submission-rounds.",
-          "Run operation PERM-MATRIX-002: api workflow eligibility stricter than visible role inclusion.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-002-api-workflow-eligibility-stricter-than-visible-role-inclusion.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:43:45.934Z"
-    },
-    {
-      "operationId": "PERM-USER-MGMT-001",
-      "title": "admin user management ui and non admin denial",
-      "status": "passed",
-      "role": "Admin",
-      "route": "/user-permissions",
-      "assertions": [
-        "ui",
-        "api",
-        "db",
-        "audit"
-      ],
-      "notes": "Admin changed a non-self user's role and created a backend-governed user through the UI. Software User was denied access to /user-permissions, and API, DB, and audit evidence confirmed durable user-governance writes.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\PERM-USER-MGMT-001-admin-user-management-ui-and-non-admin-denial.png"
-      ],
-      "api": [
-        {
-          "method": "GET",
-          "path": "/api/v1/users",
-          "status": 200,
-          "requestId": "59e2c40f-516c-4830-86c1-12ab06ee54d8",
-          "responseSummary": "created user u-4b81e9f0-131f-4b87-9cc1-0679781f3732 listed with software-user role"
+          "path": "/api/v2/projects/aurora/parameter-bindings/.../drafts",
+          "status": 409,
+          "requestId": "b6d189fb-6aa0-4122-9509-0215db6ec004",
+          "responseSummary": "stale-revision 409"
         },
         {
-          "method": "GET",
-          "path": "/api/v1/audit-events",
+          "method": "POST",
+          "path": "/api/v2/projects/aurora/config-revisions/c7ec4632-cb6e-416c-8a57-8fda6c634c57/validate",
           "status": 200,
-          "requestId": "4432b693-5973-4b85-b971-648c1170dfac",
-          "responseSummary": "user-create and user-role-replace audit events visible"
-        }
-      ],
-      "db": [
-        {
-          "table": "users,user_role_bindings",
-          "predicate": "userId=u-4b81e9f0-131f-4b87-9cc1-0679781f3732; email=chen.rui.acceptance.1780400626027@chargelab.cn; roleId=software-user",
-          "observed": "users=1; roles=1; active=true",
-          "rowCount": 1
-        }
-      ],
-      "audit": [
-        {
-          "id": "ea020453-492c-40be-8282-d135f2a2a1bb",
-          "kind": "user-create",
-          "action": "create",
-          "targetId": "u-4b81e9f0-131f-4b87-9cc1-0679781f3732",
-          "requestId": "b76d9329-4375-45c4-afc9-ac12bca01603",
-          "metadataSummary": "email,roles"
-        },
-        {
-          "id": "524e3f9b-15a4-4c72-82f1-89a9f49d466c",
-          "kind": "user-role-replace",
-          "action": "replace-roles",
-          "targetId": "u-wang-jie",
-          "requestId": "a6d69d5b-47b3-4e03-9f93-3dc957e11a28",
-          "metadataSummary": "roles"
+          "requestId": "50dc64fa-0dab-487d-8f4a-17e9f80ec32d",
+          "responseSummary": "compiler/toolchain failureCode=resolve-failed"
         }
       ],
       "trace": {
@@ -1427,438 +396,18 @@
           "DATABASE_URL": "set",
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
+          "XIAOZE_DETERMINISTIC": "false",
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
         }
       },
       "reproduction": {
         "steps": [
-          "Open route /user-permissions.",
-          "Run operation PERM-USER-MGMT-001: admin user management ui and non admin denial.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-USER-MGMT-001-admin-user-management-ui-and-non-admin-denial.png."
+          "Open route /parameters.",
+          "Run operation PARAM-TOPOLOGY-EDIT-001: typed edit schema diagnostics, stale 409, compiler failure.",
+          "Review operation artifacts: test-results/acceptance/operation-evidence/PARAM-TOPOLOGY-EDIT-001-typed-edit-schema-diagnostics-stale-409-compiler-failure.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:10.112Z"
-    },
-    {
-      "operationId": "SHELL-DIAG-001",
-      "title": "shell route debugging-admin",
-      "status": "passed",
-      "role": "Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Route /debugging-admin loaded without visible runtime crash or browser diagnostic failures.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-debugging-admin.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation SHELL-DIAG-001: shell route debugging-admin.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-debugging-admin.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:44:23.434Z"
-    },
-    {
-      "operationId": "SHELL-DIAG-001",
-      "title": "shell route debugging",
-      "status": "passed",
-      "role": "Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Route /debugging loaded without visible runtime crash or browser diagnostic failures.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-debugging.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation SHELL-DIAG-001: shell route debugging.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-debugging.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:44:20.382Z"
-    },
-    {
-      "operationId": "SHELL-DIAG-001",
-      "title": "shell route home",
-      "status": "passed",
-      "role": "Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Route / loaded without visible runtime crash or browser diagnostic failures.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-home.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation SHELL-DIAG-001: shell route home.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-home.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:44:11.342Z"
-    },
-    {
-      "operationId": "SHELL-DIAG-001",
-      "title": "shell route log-admin",
-      "status": "passed",
-      "role": "Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Route /log-admin loaded without visible runtime crash or browser diagnostic failures.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-log-admin.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation SHELL-DIAG-001: shell route log-admin.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-log-admin.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:44:18.834Z"
-    },
-    {
-      "operationId": "SHELL-DIAG-001",
-      "title": "shell route logs",
-      "status": "passed",
-      "role": "Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Route /logs loaded without visible runtime crash or browser diagnostic failures.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-logs.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation SHELL-DIAG-001: shell route logs.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-logs.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:44:17.372Z"
-    },
-    {
-      "operationId": "SHELL-DIAG-001",
-      "title": "shell route node-debugging",
-      "status": "passed",
-      "role": "Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Route /node-debugging loaded without visible runtime crash or browser diagnostic failures.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-node-debugging.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation SHELL-DIAG-001: shell route node-debugging.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-node-debugging.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:44:21.921Z"
-    },
-    {
-      "operationId": "SHELL-DIAG-001",
-      "title": "shell route parameter-admin",
-      "status": "passed",
-      "role": "Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Route /parameter-admin loaded without visible runtime crash or browser diagnostic failures.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameter-admin.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation SHELL-DIAG-001: shell route parameter-admin.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameter-admin.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:44:15.928Z"
-    },
-    {
-      "operationId": "SHELL-DIAG-001",
-      "title": "shell route parameter-review",
-      "status": "passed",
-      "role": "Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Route /parameter-review loaded without visible runtime crash or browser diagnostic failures.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameter-review.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation SHELL-DIAG-001: shell route parameter-review.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameter-review.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:44:14.417Z"
-    },
-    {
-      "operationId": "SHELL-DIAG-001",
-      "title": "shell route parameters",
-      "status": "passed",
-      "role": "Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Route /parameters loaded without visible runtime crash or browser diagnostic failures.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameters.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation SHELL-DIAG-001: shell route parameters.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameters.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:44:12.857Z"
-    },
-    {
-      "operationId": "SHELL-DIAG-001",
-      "title": "shell route user-permissions",
-      "status": "passed",
-      "role": "Admin",
-      "route": "core routes",
-      "assertions": [
-        "ui"
-      ],
-      "notes": "Route /user-permissions loaded without visible runtime crash or browser diagnostic failures.",
-      "artifacts": [
-        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-user-permissions.png"
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route core routes.",
-          "Run operation SHELL-DIAG-001: shell route user-permissions.",
-          "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-user-permissions.png."
-        ]
-      },
-      "recordedAt": "2026-06-02T11:44:24.975Z"
+      "recordedAt": "2026-07-16T03:07:15.734Z"
     }
   ]
 }
