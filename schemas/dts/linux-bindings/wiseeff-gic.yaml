@@ -6,22 +6,16 @@ title: wiseeff,gic
 description: WiseEff vendor binding for wiseeff,gic (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,gic
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,gic$
-  interrupt-controller: true
+  interrupt-controller:
+    $ref: /schemas/types.yaml#/definitions/flag
   '#interrupt-cells':
-    $ref: /schemas/types.yaml#/definitions/uint32-array
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - const: 3
+  compatible:
+    contains:
+      const: wiseeff,gic
 required:
   - compatible
 additionalProperties: false

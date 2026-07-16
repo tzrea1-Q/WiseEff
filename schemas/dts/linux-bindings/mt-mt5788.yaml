@@ -6,49 +6,37 @@ title: mt,mt5788
 description: WiseEff vendor binding for mt,mt5788 (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: mt,mt5788
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^mt,mt5788$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   gpio_en:
     $ref: /schemas/types.yaml#/definitions/phandle-array
   gpio_int:
-    $ref: /schemas/types.yaml#/definitions/phandle-array
-    minItems: 1
-    maxItems: 1
-    items:
-      minItems: 3
-      maxItems: 3
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/phandle-array
+      - items:
+          minItems: 3
+          maxItems: 3
   prevfod1_product_list:
-    $ref: /schemas/types.yaml#/definitions/hex
+    $ref: /schemas/types.yaml#/definitions/uint8-array
   reg:
-    $ref: /schemas/types.yaml#/definitions/reg
+    maxItems: 1
   rx_fod_cond:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   rx_mod_cm_cfg:
-    $ref: /schemas/types.yaml#/definitions/hex
+    $ref: /schemas/types.yaml#/definitions/uint8-array
   rx_ploss_th0:
-    $ref: /schemas/types.yaml#/definitions/hex
-  status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/uint8-array
   time_para:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   time_para_group:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   tx_current_fod_para:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: mt,mt5788
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

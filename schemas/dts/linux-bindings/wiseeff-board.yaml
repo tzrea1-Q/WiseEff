@@ -6,22 +6,16 @@ title: wiseeff,board
 description: WiseEff vendor binding for wiseeff,board (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,board
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,board$
   model:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,board
 required:
   - compatible
 additionalProperties: false
 unevaluatedProperties: false
+patternProperties:
+  ^.*@[0-9a-fA-F]+$:
+    type: object

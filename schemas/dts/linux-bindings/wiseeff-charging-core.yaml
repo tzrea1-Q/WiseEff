@@ -6,32 +6,21 @@ title: wiseeff,charging_core
 description: WiseEff vendor binding for wiseeff,charging_core (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,charging_core
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,charging_core$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   ichg_max:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   iin_max:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   iterm_table:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   jeita_table:
-    type: string
-  status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,charging_core
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

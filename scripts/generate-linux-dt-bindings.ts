@@ -3,13 +3,15 @@
  * `dt-validate -s <dir> -c` can cover proprietary properties without disabling
  * fail-closed schema checks.
  */
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   buildBindingForCompatible,
+  collectReleaseCompatibles,
   loadVendorSpecs,
+  manifestGeneratedAt,
   stableBindingsContentHash,
   type GeneratedBinding
 } from "./lib/vendorDtSchemaGenerator";
@@ -19,35 +21,6 @@ const vendorDir = join(root, "schemas/dts/vendor/wiseeff");
 const seedDir = join(root, "src/config/dts-seed");
 const outDir = join(root, "schemas/dts/linux-bindings");
 
-function collectCompatibles(): string[] {
-  const found = new Set<string>();
-  const vendorByCompatible = loadVendorSpecs(vendorDir);
-  for (const value of vendorByCompatible.keys()) found.add(value);
-
-  for (const name of readdirSync(seedDir).filter((entry) => entry.endsWith(".dts"))) {
-    const text = readFileSync(join(seedDir, name), "utf8");
-    for (const match of text.matchAll(/compatible\s*=\s*"([^"]+)"/g)) {
-      found.add(match[1]!);
-    }
-  }
-
-  found.add("wiseeff,board");
-  found.add("wiseeff,acceptance-broken");
-  found.add("wiseeff,acceptance-map");
-  found.add("wiseeff,amba");
-  found.add("wiseeff,gic");
-  found.add("wiseeff,spmi");
-  found.add("wiseeff,spmi1");
-  found.add("wiseeff,gpio2");
-  found.add("wiseeff,gpio5");
-  found.add("wiseeff,gpio6");
-  found.add("wiseeff,gpio7");
-  found.add("wiseeff,gpio10");
-  found.add("wiseeff,gpio13");
-
-  return [...found].sort();
-}
-
 export function generateLinuxDtBindings(): {
   files: string[];
   contentHash: string;
@@ -56,21 +29,21 @@ export function generateLinuxDtBindings(): {
 } {
   mkdirSync(outDir, { recursive: true });
   for (const existing of readdirSync(outDir)) {
-    if (existing.endsWith(".yaml") || existing.endsWith(".yml")) {
+    if (existing.endsWith(".yaml") || existing.endsWith(".yml") || existing === "manifest.json") {
       rmSync(join(outDir, existing), { force: true });
     }
   }
 
   const vendorByCompatible = loadVendorSpecs(vendorDir);
+  const compatibles = collectReleaseCompatibles(seedDir, vendorByCompatible);
   const generated: GeneratedBinding[] = [];
   const blockers: string[] = [];
 
-  for (const compatible of collectCompatibles()) {
-    const binding = buildBindingForCompatible(compatible, vendorByCompatible, seedDir);
+  for (const compatible of compatibles) {
+    const binding = buildBindingForCompatible(compatible, vendorByCompatible, vendorDir);
     generated.push(binding);
     blockers.push(...binding.blockers);
     if (!binding.body.trim()) {
-      blockers.push(`schema-blocker: empty binding for ${compatible}`);
       continue;
     }
     writeFileSync(join(outDir, binding.fileName), binding.body, "utf8");
@@ -81,10 +54,12 @@ export function generateLinuxDtBindings(): {
     written.map((item) => ({ fileName: item.fileName, body: item.body }))
   );
 
+  const hardBlockers = blockers.filter((item) => item.startsWith("schema-blocker:"));
   const manifest = {
-    generatedAt: new Date().toISOString(),
+    generatedAt: manifestGeneratedAt(),
     contentHash,
     blockerCount: blockers.length,
+    hardBlockerCount: hardBlockers.length,
     files: written.map((item) => item.fileName).sort()
   };
   writeFileSync(join(outDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
@@ -92,19 +67,9 @@ export function generateLinuxDtBindings(): {
   return { files: manifest.files, contentHash, blockers, generated };
 }
 
-const GOLDEN_COMPATIBLES = new Set(
-  readFileSync(join(seedDir, "wiseeff-power-base.dts"), "utf8")
-    .match(/compatible\s*=\s*"([^"]+)"/g)
-    ?.map((m) => m.replace(/.*"([^"]+)"/, "$1")) ?? []
-);
-
 async function main() {
   const result = generateLinuxDtBindings();
-  const hardBlockers = result.blockers.filter((item) => {
-    if (!item.startsWith("schema-blocker:")) return false;
-    const compatible = item.match(/for (.+)$/)?.[1];
-    return compatible ? GOLDEN_COMPATIBLES.has(compatible) || item.includes("empty binding") : true;
-  });
+  const hardBlockers = result.blockers.filter((item) => item.startsWith("schema-blocker:"));
   console.log(
     JSON.stringify(
       {
@@ -113,7 +78,8 @@ async function main() {
         fileCount: result.files.length,
         contentHash: result.contentHash,
         blockerCount: result.blockers.length,
-        hardBlockerCount: hardBlockers.length
+        hardBlockerCount: hardBlockers.length,
+        hardBlockers: hardBlockers.slice(0, 40)
       },
       null,
       2

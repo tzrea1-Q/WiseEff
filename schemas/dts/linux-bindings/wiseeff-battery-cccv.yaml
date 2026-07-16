@@ -6,26 +6,17 @@ title: wiseeff,battery_cccv
 description: WiseEff vendor binding for wiseeff,battery_cccv (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,battery_cccv
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,battery_cccv$
-  battery_tbl:
-    type: string
   status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  battery_tbl:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  cccv_para0:
+    type: object
+  compatible:
+    contains:
+      const: wiseeff,battery_cccv
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

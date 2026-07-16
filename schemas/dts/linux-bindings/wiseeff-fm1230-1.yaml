@@ -6,30 +6,19 @@ title: wiseeff,fm1230_1
 description: WiseEff vendor binding for wiseeff,fm1230_1 (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,fm1230_1
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,fm1230_1$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   battct_id_gpio-supply:
-    $ref: /schemas/types.yaml#/definitions/phandle
+    $ref: /schemas/types.yaml#/definitions/phandle-array
   ic_index:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   onewire-gpio:
     $ref: /schemas/types.yaml#/definitions/phandle-array
-  status:
-    type: string
+  compatible:
+    contains:
+      const: wiseeff,fm1230_1
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

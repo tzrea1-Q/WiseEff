@@ -6,27 +6,26 @@ title: arm,amba-bus
 description: WiseEff vendor binding for arm,amba-bus (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: arm,amba-bus
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^arm,amba-bus$
   '#address-cells':
-    $ref: /schemas/types.yaml#/definitions/uint32-array
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - const: 2
   '#size-cells':
-    $ref: /schemas/types.yaml#/definitions/uint32-array
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - const: 2
   interrupt-parent:
-    $ref: /schemas/types.yaml#/definitions/phandle
-  ranges: true
+    $ref: /schemas/types.yaml#/definitions/phandle-array
+  ranges:
+    $ref: /schemas/types.yaml#/definitions/flag
+  compatible:
+    contains:
+      const: arm,amba-bus
 required:
   - compatible
 additionalProperties: false
 unevaluatedProperties: false
+patternProperties:
+  ^.*@[0-9a-fA-F]+$:
+    type: object

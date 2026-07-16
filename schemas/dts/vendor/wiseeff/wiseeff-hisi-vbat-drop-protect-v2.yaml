@@ -18,3 +18,5 @@ properties:
     exampleValue: <2500>
     constraints: {}
     units: mV
+childNodes:
+  - middle_cpu

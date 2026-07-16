@@ -6,24 +6,13 @@ title: wiseeff,soh_core
 description: WiseEff vendor binding for wiseeff,soh_core (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,soh_core
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,soh_core$
   status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,soh_core
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

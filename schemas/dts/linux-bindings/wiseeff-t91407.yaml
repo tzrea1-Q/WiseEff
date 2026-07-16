@@ -6,28 +6,17 @@ title: wiseeff,t91407
 description: WiseEff vendor binding for wiseeff,t91407 (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,t91407
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,t91407$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   battct_id_gpio-supply:
-    $ref: /schemas/types.yaml#/definitions/phandle
+    $ref: /schemas/types.yaml#/definitions/phandle-array
   onewire-gpio:
     $ref: /schemas/types.yaml#/definitions/phandle-array
-  status:
-    type: string
+  compatible:
+    contains:
+      const: wiseeff,t91407
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

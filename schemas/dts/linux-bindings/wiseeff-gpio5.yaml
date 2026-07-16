@@ -7,32 +7,24 @@ description: WiseEff vendor binding for wiseeff,gpio5 (generated from vendor pro
 maintainers:
   - WiseEff
 allOf:
-  - $ref: /schemas/device.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,gpio5
-  required:
-    - compatible
-properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,gpio5$
-  gpio-controller: true
-  '#gpio-cells':
-    $ref: /schemas/types.yaml#/definitions/uint32-array
-    minItems: 1
-    maxItems: 1
-  status:
-    type: string
-    enum:
-      - okay
-      - disabled
-      - reserved
-      - fail
-required:
-  - compatible
-  - status
-additionalProperties: false
-unevaluatedProperties: false
+  - $ref: /schemas/gpio/gpio.yaml#
+  - type: object
+    properties:
+      compatible:
+        contains:
+          const: wiseeff,gpio5
+      '#gpio-cells':
+        const: 2
+      status:
+        allOf:
+          - $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+          - enum:
+              - okay
+              - disabled
+              - reserved
+              - fail
+              - fail-needs-probe
+    required:
+      - compatible
+    additionalProperties: false
+    unevaluatedProperties: false

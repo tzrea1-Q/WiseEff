@@ -6,28 +6,17 @@ title: wiseeff,direct_charge_turbo
 description: WiseEff vendor binding for wiseeff,direct_charge_turbo (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,direct_charge_turbo
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,direct_charge_turbo$
   status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   time_para_group:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   time_para01:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,direct_charge_turbo
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

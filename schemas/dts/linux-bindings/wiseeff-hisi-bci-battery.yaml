@@ -6,32 +6,21 @@ title: wiseeff,hisi_bci_battery
 description: WiseEff vendor binding for wiseeff,hisi_bci_battery (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,hisi_bci_battery
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,hisi_bci_battery$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   battery_board_type:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   battery_design_fcc:
     $ref: /schemas/types.yaml#/definitions/uint32-array
-  status:
-    type: string
   vth_correct_para:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   vth_correct_para_low_temp:
-    $comment: needs-review:vth_correct_para_low_temp
+    $ref: /schemas/types.yaml#/definitions/uint32-matrix
+  compatible:
+    contains:
+      const: wiseeff,hisi_bci_battery
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

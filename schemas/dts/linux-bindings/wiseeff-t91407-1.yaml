@@ -1,9 +1,9 @@
 %YAML 1.2
 ---
 $schema: http://devicetree.org/meta-schemas/core.yaml#
-$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-amba.yaml#
-title: wiseeff,amba
-description: WiseEff vendor binding for wiseeff,amba (generated from vendor property schema).
+$id: http://devicetree.org/schemas/vendor/wiseeff/wiseeff-t91407-1.yaml#
+title: wiseeff,t91407_1
+description: WiseEff vendor binding for wiseeff,t91407_1 (generated from vendor property schema).
 maintainers:
   - WiseEff
 properties:
@@ -11,11 +11,8 @@ properties:
     $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   compatible:
     contains:
-      const: wiseeff,amba
+      const: wiseeff,t91407_1
 required:
   - compatible
 additionalProperties: false
 unevaluatedProperties: false
-patternProperties:
-  ^.*@[0-9a-fA-F]+$:
-    type: object

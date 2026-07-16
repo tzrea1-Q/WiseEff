@@ -1,7 +1,8 @@
 {
-  "generatedAt": "2026-07-16T07:21:06.114Z",
-  "contentHash": "cb1d0a0d8dc5314e6cc7d6542e3442fcd76a9f88dbd66599c464f228c0e1475d",
-  "blockerCount": 5,
+  "generatedAt": "1970-01-01T00:00:00.000Z",
+  "contentHash": "14df682ba5cfc3698933ecd70a6367b3e539fe50fbc65c8a61d5c1791bf0eb82",
+  "blockerCount": 0,
+  "hardBlockerCount": 0,
   "files": [
     "arm-amba-bus.yaml",
     "huawei-bypass-bst-hl7603.yaml",
@@ -43,6 +44,7 @@
     "wiseeff-soh-core.yaml",
     "wiseeff-spmi.yaml",
     "wiseeff-spmi1.yaml",
+    "wiseeff-t91407-1.yaml",
     "wiseeff-t91407.yaml",
     "wiseeff-test-ambiguous.yaml",
     "wiseeff-wireless-charger.yaml",

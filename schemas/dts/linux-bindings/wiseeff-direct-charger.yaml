@@ -6,38 +6,27 @@ title: wiseeff,direct_charger
 description: WiseEff vendor binding for wiseeff,direct_charger (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,direct_charger
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,direct_charger$
-  bat_para:
-    type: string
-  resist_para:
-    type: string
-  stage_need_to_jump:
-    type: string
   status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  bat_para:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  resist_para:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  stage_need_to_jump:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   temp_para:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   use_5A:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   volt_para:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   volt_para1:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,direct_charger
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

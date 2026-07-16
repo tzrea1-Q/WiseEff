@@ -6,26 +6,15 @@ title: wiseeff,hisi_vbat_drop_protect
 description: WiseEff vendor binding for wiseeff,hisi_vbat_drop_protect (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,hisi_vbat_drop_protect
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,hisi_vbat_drop_protect$
   status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   vbat_drop_vol_mv:
     $ref: /schemas/types.yaml#/definitions/uint32-array
+  compatible:
+    contains:
+      const: wiseeff,hisi_vbat_drop_protect
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

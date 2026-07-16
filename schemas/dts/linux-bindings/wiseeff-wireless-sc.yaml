@@ -6,34 +6,23 @@ title: wiseeff,wireless_sc
 description: WiseEff vendor binding for wiseeff,wireless_sc (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,wireless_sc
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,wireless_sc$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   bat_para:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   init_para:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   init_para_col:
     $ref: /schemas/types.yaml#/definitions/uint32-array
-  status:
-    type: string
   volt_para00:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   volt_para01:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,wireless_sc
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

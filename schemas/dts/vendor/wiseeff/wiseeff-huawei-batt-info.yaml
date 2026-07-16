@@ -17,3 +17,6 @@ properties:
     valueShape: string-list
     exampleValue: '"okay"'
     constraints: {}
+childNodes:
+  - battery_checker@0
+  - battery_checker@1

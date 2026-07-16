@@ -17,3 +17,5 @@ properties:
     valueShape: string-list
     exampleValue: '"okay"'
     constraints: {}
+childNodes:
+  - scharger_v800

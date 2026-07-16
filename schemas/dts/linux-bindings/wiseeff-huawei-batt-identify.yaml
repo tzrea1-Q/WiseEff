@@ -6,28 +6,17 @@ title: wiseeff,huawei_batt_identify
 description: WiseEff vendor binding for wiseeff,huawei_batt_identify (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,huawei_batt_identify
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,huawei_batt_identify$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   gpios:
     $ref: /schemas/types.yaml#/definitions/phandle-array
   id_voltage_gpiov:
     $ref: /schemas/types.yaml#/definitions/uint32-array
-  status:
-    type: string
+  compatible:
+    contains:
+      const: wiseeff,huawei_batt_identify
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

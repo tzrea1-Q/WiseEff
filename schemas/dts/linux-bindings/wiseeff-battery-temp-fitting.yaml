@@ -6,32 +6,21 @@ title: wiseeff,battery_temp_fitting
 description: WiseEff vendor binding for wiseeff,battery_temp_fitting (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,battery_temp_fitting
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,battery_temp_fitting$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   btf_temp_lth:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   fitting_mode:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   replace_sensor:
-    type: string
-  status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   temp_para:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,battery_temp_fitting
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

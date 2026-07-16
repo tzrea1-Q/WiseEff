@@ -6,33 +6,21 @@ title: sc8562
 description: WiseEff vendor binding for sc8562 (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: sc8562
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^sc8562$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   fcp_support:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   gpio_int:
-    $ref: /schemas/types.yaml#/definitions/phandle-array
-    minItems: 1
-    maxItems: 1
-    items:
-      minItems: 3
-      maxItems: 3
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/phandle-array
+      - items:
+          minItems: 3
+          maxItems: 3
   ic_role:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   reg:
-    $ref: /schemas/types.yaml#/definitions/reg
+    maxItems: 1
   scp_support:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   sense_r_actual:
@@ -41,14 +29,14 @@ properties:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   slave_mode:
     $ref: /schemas/types.yaml#/definitions/uint32-array
-  status:
-    type: string
   vout_ovp_mv:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   watchdog_time:
     $ref: /schemas/types.yaml#/definitions/uint32-array
+  compatible:
+    contains:
+      const: sc8562
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

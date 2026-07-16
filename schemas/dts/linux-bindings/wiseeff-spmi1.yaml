@@ -6,24 +6,18 @@ title: wiseeff,spmi1
 description: WiseEff vendor binding for wiseeff,spmi1 (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,spmi1
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,spmi1$
   status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  scharger_v800:
+    type: object
+  compatible:
+    contains:
+      const: wiseeff,spmi1
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false
+patternProperties:
+  ^.*@[0-9a-fA-F]+$:
+    type: object

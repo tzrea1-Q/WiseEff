@@ -6,24 +6,13 @@ title: wiseeff,fm1230_swi
 description: WiseEff vendor binding for wiseeff,fm1230_swi (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,fm1230_swi
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,fm1230_swi$
   status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,fm1230_swi
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

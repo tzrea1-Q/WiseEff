@@ -6,26 +6,19 @@ title: wiseeff,huawei_batt_info
 description: WiseEff vendor binding for wiseeff,huawei_batt_info (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,huawei_batt_info
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,huawei_batt_info$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   sn-check-type:
     $ref: /schemas/types.yaml#/definitions/uint32-array
-  status:
-    type: string
+  battery_checker@0:
+    type: object
+  battery_checker@1:
+    type: object
+  compatible:
+    contains:
+      const: wiseeff,huawei_batt_info
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

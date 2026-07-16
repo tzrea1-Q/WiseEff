@@ -16,9 +16,10 @@ properties:
     exampleValue: <0x10>
     constraints: {}
   gpio_int:
-    valueShape: u32-array
-    exampleValue: <1>
-    constraints: {}
+    valueShape: mixed
+    exampleValue: <&gpio13 1 0>
+    constraints:
+      cells: 3
   status:
     valueShape: string-list
     exampleValue: '"okay"'

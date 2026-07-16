@@ -6,26 +6,19 @@ title: wiseeff,battery_charge_balance
 description: WiseEff vendor binding for wiseeff,battery_charge_balance (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,battery_charge_balance
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,battery_charge_balance$
   status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   unbalance_th:
     $ref: /schemas/types.yaml#/definitions/uint32-array
+  battery0:
+    type: object
+  battery1:
+    type: object
+  compatible:
+    contains:
+      const: wiseeff,battery_charge_balance
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

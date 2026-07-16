@@ -6,32 +6,21 @@ title: wiseeff,huawei_charger
 description: WiseEff vendor binding for wiseeff,huawei_charger (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,huawei_charger
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,huawei_charger$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   charge_done_sleep_enabled:
-    $comment: needs-review:bool
+    $ref: /schemas/types.yaml#/definitions/flag
   recharge_para:
     $ref: /schemas/types.yaml#/definitions/uint32-array
-  status:
-    type: string
   support_new_pd_process:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   weak_source_sleep_enabled:
-    $comment: needs-review:bool
+    $ref: /schemas/types.yaml#/definitions/flag
+  compatible:
+    contains:
+      const: wiseeff,huawei_charger
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

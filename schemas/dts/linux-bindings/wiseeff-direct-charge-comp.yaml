@@ -6,26 +6,15 @@ title: wiseeff,direct_charge_comp
 description: WiseEff vendor binding for wiseeff,direct_charge_comp (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,direct_charge_comp
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,direct_charge_comp$
   status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   vbat_comp_ic_para:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,direct_charge_comp
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

@@ -6,21 +6,12 @@ title: wiseeff,acceptance-broken
 description: WiseEff vendor binding for wiseeff,acceptance-broken (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,acceptance-broken
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,acceptance-broken$
   reg:
-    $ref: /schemas/types.yaml#/definitions/reg
+    maxItems: 1
+  compatible:
+    contains:
+      const: wiseeff,acceptance-broken
 required:
   - compatible
 additionalProperties: false

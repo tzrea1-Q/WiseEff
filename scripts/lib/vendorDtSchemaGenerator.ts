@@ -1,6 +1,6 @@
 /**
  * Convert WiseEff vendor property specs into Linux dt-schema binding YAML.
- * Fail-closed: no blanket additionalProperties / unevaluatedProperties.
+ * Fail-closed: no blanket additionalProperties; no regex-derived release schemas.
  */
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
@@ -16,6 +16,7 @@ export type VendorProperty = {
     enum?: string[];
     minItems?: number;
     maxItems?: number;
+    required?: boolean;
     description?: string;
   };
   documentation?: string;
@@ -26,7 +27,9 @@ export type VendorSpecDoc = {
   title?: string;
   compatible?: string[];
   commonRefs?: string[];
+  childNodes?: string[];
   properties?: Record<string, VendorProperty>;
+  required?: string[];
   schemaBlockers?: string[];
 };
 
@@ -35,241 +38,354 @@ export type GeneratedBinding = {
   fileName: string;
   body: string;
   blockers: string[];
-  source: "vendor" | "seed-derived" | "gpio-controller-template";
+  source: "vendor" | "gpio-controller-template" | "missing";
 };
 
 const GPIO_CONTROLLER_TEMPLATE: Record<string, VendorProperty> = {
   compatible: { valueShape: "string-list", constraints: {} },
   "gpio-controller": { valueShape: "empty", constraints: {} },
-  "#gpio-cells": { valueShape: "u32-array", exampleValue: "<2>", constraints: { minItems: 1, maxItems: 1 } },
-  status: { valueShape: "string-list", constraints: { enum: ["okay", "disabled", "reserved", "fail"] } }
+  "#gpio-cells": {
+    valueShape: "u32-array",
+    exampleValue: "<2>",
+    constraints: { minItems: 1, maxItems: 1 }
+  },
+  status: {
+    valueShape: "string-list",
+    constraints: { enum: ["okay", "disabled", "reserved", "fail", "fail-needs-probe"] }
+  }
 };
 
-const STANDARD_DEVICE_REF = "/schemas/device.yaml#";
+const KNOWN_SHAPES = new Set([
+  "string-list",
+  "u32-array",
+  "phandle-list",
+  "mixed",
+  "bytes",
+  "empty",
+  "boolean",
+  "bool",
+  "child-node"
+]);
 
-function slug(value: string): string {
+/** Bus / bridge nodes whose children use @unit-address names in seed DTS. */
+const ADDRESSED_CHILD_CONTAINERS = new Set([
+  "wiseeff,board",
+  "wiseeff,amba",
+  "arm,amba-bus",
+  "wiseeff,spmi",
+  "wiseeff,spmi1"
+]);
+
+export function slug(value: string): string {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "root";
 }
 
-function quoteYamlString(value: string): string {
-  if (/[:#{}[\],&*!|>'"%@`]/.test(value) || value.includes("\n")) {
-    return JSON.stringify(value);
-  }
-  return value;
+function cellsConstFromExample(exampleValue: string | undefined): number | null {
+  const match = (exampleValue ?? "").match(/<\s*(\d+)\s*>/);
+  return match ? Number(match[1]) : null;
 }
 
-export function propertyToDtSchema(name: string, prop: VendorProperty): { schema: Record<string, unknown>; blockers: string[] } {
+/**
+ * Map WiseEff valueShape → dtschema property schema.
+ * Unknown shapes / comment-only stubs are hard blockers.
+ */
+export function propertyToDtSchema(
+  name: string,
+  prop: VendorProperty
+): { schema: Record<string, unknown> | null; blockers: string[] } {
   const blockers: string[] = [];
   const constraints = prop.constraints ?? {};
 
+  if (!KNOWN_SHAPES.has(prop.valueShape)) {
+    blockers.push(`schema-blocker: unknown valueShape ${prop.valueShape} for ${name}`);
+    return { schema: null, blockers };
+  }
+
   switch (prop.valueShape) {
+    case "child-node":
+      return { schema: { type: "object" }, blockers };
     case "string-list": {
       if (constraints.enum?.length) {
-        return { schema: { type: "string", enum: constraints.enum }, blockers };
+        return {
+          schema: {
+            allOf: [
+              { $ref: "/schemas/types.yaml#/definitions/non-unique-string-array" },
+              { enum: constraints.enum }
+            ]
+          },
+          blockers
+        };
       }
-      return { schema: { type: "string" }, blockers };
+      return {
+        schema: { $ref: "/schemas/types.yaml#/definitions/non-unique-string-array" },
+        blockers
+      };
     }
     case "u32-array": {
-      const schema: Record<string, unknown> = { $ref: "/schemas/types.yaml#/definitions/uint32-array" };
+      if (name.startsWith("#") && name.endsWith("-cells")) {
+        const constValue = cellsConstFromExample(prop.exampleValue);
+        if (constValue != null) {
+          return {
+            schema: {
+              allOf: [
+                { $ref: "/schemas/types.yaml#/definitions/uint32" },
+                { const: constValue }
+              ]
+            },
+            blockers
+          };
+        }
+        return {
+          schema: { $ref: "/schemas/types.yaml#/definitions/uint32" },
+          blockers
+        };
+      }
+      const schema: Record<string, unknown> = {
+        $ref: "/schemas/types.yaml#/definitions/uint32-array"
+      };
       if (constraints.minItems != null) schema.minItems = constraints.minItems;
       if (constraints.maxItems != null) schema.maxItems = constraints.maxItems;
       return { schema, blockers };
     }
     case "phandle-list":
-      return { schema: { $ref: "/schemas/types.yaml#/definitions/phandle" }, blockers };
+      return {
+        schema: { $ref: "/schemas/types.yaml#/definitions/phandle-array" },
+        blockers
+      };
     case "mixed": {
-      const cells = constraints.cells;
-      if (cells != null && cells > 0) {
+      const example = prop.exampleValue ?? "";
+      if (example.includes("&") || (constraints.cells ?? 0) > 0) {
+        const cellCount = constraints.cells ?? 0;
+        if (cellCount > 0) {
+          return {
+            schema: {
+              allOf: [
+                { $ref: "/schemas/types.yaml#/definitions/phandle-array" },
+                {
+                  items: {
+                    minItems: cellCount,
+                    maxItems: cellCount
+                  }
+                }
+              ]
+            },
+            blockers
+          };
+        }
         return {
-          schema: {
-            $ref: "/schemas/types.yaml#/definitions/phandle-array",
-            minItems: 1,
-            maxItems: 1,
-            items: { minItems: cells, maxItems: cells }
-          },
+          schema: { $ref: "/schemas/types.yaml#/definitions/phandle-array" },
           blockers
         };
       }
-      if ((prop.exampleValue ?? "").includes("&")) {
-        return { schema: { $ref: "/schemas/types.yaml#/definitions/phandle-array" }, blockers };
+      if (/<\s*\d/.test(example) && example.includes(",")) {
+        return {
+          schema: { $ref: "/schemas/types.yaml#/definitions/uint32-matrix" },
+          blockers
+        };
       }
-      blockers.push(`needs-review: mixed property ${name} without cells or phandle example`);
-      return { schema: { $comment: `needs-review:${name}` }, blockers };
+      if (/<\s*\d/.test(example)) {
+        return {
+          schema: { $ref: "/schemas/types.yaml#/definitions/uint32-array" },
+          blockers
+        };
+      }
+      blockers.push(`schema-blocker: mixed property ${name} without phandle/cells evidence`);
+      return { schema: null, blockers };
     }
     case "bytes":
-      return { schema: { $ref: "/schemas/types.yaml#/definitions/hex" }, blockers };
+      return {
+        schema: { $ref: "/schemas/types.yaml#/definitions/uint8-array" },
+        blockers
+      };
     case "empty":
-      return { schema: { type: "object", maxProperties: 0 }, blockers };
     case "boolean":
-      return { schema: { type: "boolean" }, blockers };
+    case "bool":
+      return {
+        schema: { $ref: "/schemas/types.yaml#/definitions/flag" },
+        blockers
+      };
     default:
-      blockers.push(`needs-review: unmapped valueShape ${prop.valueShape} for ${name}`);
-      return { schema: { $comment: `needs-review:${prop.valueShape}` }, blockers };
+      blockers.push(`schema-blocker: unhandled valueShape ${prop.valueShape} for ${name}`);
+      return { schema: null, blockers };
   }
 }
 
-function regPropertyForParent(addressCells = 1, sizeCells = 0): Record<string, unknown> {
-  const itemCells = addressCells + sizeCells;
-  if (itemCells <= 1) {
-    return { $ref: "/schemas/types.yaml#/definitions/reg" };
-  }
-  return {
-    $ref: "/schemas/types.yaml#/definitions/reg",
-    minItems: itemCells,
-    maxItems: itemCells
-  };
+function regSchema(): Record<string, unknown> {
+  return { maxItems: 1 };
 }
 
-export function renderBindingFromVendorSpec(compatible: string, spec: VendorSpecDoc): GeneratedBinding {
-  const idSlug = slug(compatible);
-  const blockers = [...(spec.schemaBlockers ?? [])];
-  const properties: Record<string, unknown> = {
-    compatible: {
-      type: "string",
-      pattern: `^${compatible.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`
+function mergeCommonRefProperties(
+  spec: VendorSpecDoc,
+  vendorDir: string,
+  properties: Record<string, unknown>
+): void {
+  for (const ref of spec.commonRefs ?? []) {
+    const refPath = join(vendorDir, ref.replace(/^wiseeff\//, ""));
+    const common = yaml.load(readFileSync(refPath, "utf8")) as VendorSpecDoc;
+    for (const [name, prop] of Object.entries(common.properties ?? {})) {
+      if (name in properties) continue;
+      const converted = propertyToDtSchema(name, prop);
+      if (converted.schema) properties[name] = converted.schema;
     }
-  };
+  }
+}
 
-  const required = new Set<string>(["compatible"]);
+function buildVendorProperties(
+  compatible: string,
+  spec: VendorSpecDoc,
+  vendorDir: string | null
+): {
+  properties: Record<string, unknown>;
+  blockers: string[];
+  required: Set<string>;
+} {
+  const blockers: string[] = [];
+  const properties: Record<string, unknown> = {};
+  const required = new Set<string>(spec.required?.length ? spec.required : ["compatible"]);
+
+  if (vendorDir) {
+    mergeCommonRefProperties(spec, vendorDir, properties);
+  }
 
   for (const [name, prop] of Object.entries(spec.properties ?? {})) {
     if (name === "compatible") continue;
     const converted = propertyToDtSchema(name, prop);
     blockers.push(...converted.blockers);
+    if (!converted.schema) continue;
+
     if (name === "reg") {
-      properties.reg = regPropertyForParent(1, 0);
-      continue;
-    }
-    if (name.startsWith("#")) {
+      properties.reg = regSchema();
+    } else {
       properties[name] = converted.schema;
-      continue;
     }
-    properties[name] = converted.schema;
-    if (prop.valueShape !== "empty" && name !== "status") {
-      // status is optional on many nodes
-    }
-  }
 
-  if (spec.properties?.status) {
-    required.add("status");
-  }
-
-  const allOf: Array<Record<string, unknown>> = [{ $ref: STANDARD_DEVICE_REF }];
-  if (spec.commonRefs?.length) {
-    for (const ref of spec.commonRefs) {
-      const refSlug = ref.replace(/^wiseeff\//, "").replace(/\.yaml$/, "");
-      allOf.push({ $ref: `http://devicetree.org/schemas/vendor/wiseeff/${slug(refSlug)}.yaml#` });
+    if (prop.constraints?.required === true) {
+      required.add(name);
     }
   }
 
-  const doc = {
+  for (const child of spec.childNodes ?? []) {
+    properties[child] = { type: "object" };
+  }
+
+  properties.compatible = { contains: { const: compatible } };
+
+  if (!spec.required?.includes("status")) {
+    required.delete("status");
+  }
+  required.add("compatible");
+
+  return { properties, blockers, required };
+}
+
+export function renderBindingFromVendorSpec(
+  compatible: string,
+  spec: VendorSpecDoc,
+  source: GeneratedBinding["source"] = "vendor",
+  vendorDir: string | null = null
+): GeneratedBinding {
+  const idSlug = slug(compatible);
+  const blockers = [...(spec.schemaBlockers ?? [])];
+  const { properties, blockers: propBlockers, required } = buildVendorProperties(
+    compatible,
+    spec,
+    vendorDir
+  );
+  blockers.push(...propBlockers);
+
+  if (blockers.some((b) => b.startsWith("schema-blocker:"))) {
+    return {
+      compatible,
+      fileName: `${idSlug}.yaml`,
+      body: "",
+      blockers,
+      source
+    };
+  }
+
+  const doc: Record<string, unknown> = {
     $schema: "http://devicetree.org/meta-schemas/core.yaml#",
     $id: `http://devicetree.org/schemas/vendor/wiseeff/${idSlug}.yaml#`,
     title: spec.title ?? compatible,
     description: `WiseEff vendor binding for ${compatible} (generated from vendor property schema).`,
-    maintainers: ["WiseEff"],
-    allOf,
-    select: {
-      properties: {
-        compatible: {
-          contains: { const: compatible }
-        }
-      },
-      required: ["compatible"]
-    },
-    properties,
-    required: [...required],
-    additionalProperties: false,
-    unevaluatedProperties: false
+    maintainers: ["WiseEff"]
   };
 
-  const body = `%YAML 1.2\n---\n${yaml.dump(doc, { lineWidth: 120, noRefs: true })}`;
+  const isGpio = source === "gpio-controller-template";
+  const isAddressedContainer = ADDRESSED_CHILD_CONTAINERS.has(compatible);
+
+  if (isGpio) {
+    const cellsConst = cellsConstFromExample(spec.properties?.["#gpio-cells"]?.exampleValue) ?? 2;
+    doc.allOf = [
+      { $ref: "/schemas/gpio/gpio.yaml#" },
+      {
+        type: "object",
+        properties: {
+          compatible: properties.compatible,
+          "#gpio-cells": { const: cellsConst },
+          ...(properties.status ? { status: properties.status } : {})
+        },
+        required: ["compatible"],
+        additionalProperties: false,
+        unevaluatedProperties: false
+      }
+    ];
+  } else {
+    doc.properties = properties;
+    doc.required = [...required].sort();
+    doc.additionalProperties = false;
+    doc.unevaluatedProperties = false;
+
+    if (isAddressedContainer) {
+      doc.patternProperties = {
+        "^.*@[0-9a-fA-F]+$": { type: "object" }
+      };
+    }
+  }
+
+  const body = `%YAML 1.2\n---\n${yaml.dump(doc, { lineWidth: 120, noRefs: true, sortKeys: false })}`;
   return {
     compatible,
     fileName: `${idSlug}.yaml`,
     body,
     blockers,
-    source: "vendor"
+    source
   };
-}
-
-function parseSeedPropertiesForCompatible(seedDir: string, compatible: string): Record<string, VendorProperty> {
-  const properties: Record<string, VendorProperty> = {
-    compatible: { valueShape: "string-list", constraints: {} }
-  };
-
-  for (const name of readdirSync(seedDir).filter((entry) => entry.endsWith(".dts"))) {
-    const text = readFileSync(join(seedDir, name), "utf8");
-    const nodePattern = new RegExp(
-      `compatible\\s*=\\s*"${compatible.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[\\s\\S]*?\\};`,
-      "g"
-    );
-    for (const match of text.matchAll(nodePattern)) {
-      const block = match[0] ?? "";
-      for (const propMatch of block.matchAll(/([#a-zA-Z0-9_-]+)\s*=\s*([^;]+);/g)) {
-        const propName = propMatch[1]!;
-        const raw = propMatch[2]!.trim();
-        if (propName === "compatible") continue;
-        if (raw.startsWith("<&")) {
-          const cells = (raw.match(/\s+/g) ?? []).length;
-          properties[propName] = {
-            valueShape: "mixed",
-            exampleValue: raw,
-            constraints: { cells: Math.max(1, cells) }
-          };
-        } else if (raw.startsWith("<")) {
-          properties[propName] = { valueShape: "u32-array", exampleValue: raw, constraints: {} };
-        } else if (raw.startsWith('"')) {
-          properties[propName] = { valueShape: "string-list", exampleValue: raw, constraints: {} };
-        } else if (raw === "") {
-          properties[propName] = { valueShape: "empty", constraints: {} };
-        }
-      }
-    }
-  }
-
-  return properties;
 }
 
 export function buildBindingForCompatible(
   compatible: string,
   vendorByCompatible: Map<string, VendorSpecDoc>,
-  seedDir: string
+  vendorDir: string | null = null
 ): GeneratedBinding {
   if (/^wiseeff,gpio\d+$/i.test(compatible)) {
-    return renderBindingFromVendorSpec(compatible, {
-      title: compatible,
-      compatible: [compatible],
-      properties: GPIO_CONTROLLER_TEMPLATE
-    });
+    return renderBindingFromVendorSpec(
+      compatible,
+      {
+        title: compatible,
+        compatible: [compatible],
+        properties: GPIO_CONTROLLER_TEMPLATE
+      },
+      "gpio-controller-template",
+      vendorDir
+    );
   }
 
   const vendor = vendorByCompatible.get(compatible);
-  if (vendor) {
-    return renderBindingFromVendorSpec(compatible, vendor);
-  }
-
-  const derived = parseSeedPropertiesForCompatible(seedDir, compatible);
-  const propCount = Object.keys(derived).length;
-  if (propCount <= 1) {
+  if (!vendor) {
     return {
       compatible,
       fileName: `${slug(compatible)}.yaml`,
       body: "",
-      blockers: [`schema-blocker: no vendor spec and no seed properties for ${compatible}`],
-      source: "seed-derived"
+      blockers: [`schema-blocker: missing vendor schema for ${compatible}`],
+      source: "missing"
     };
   }
 
-  return renderBindingFromVendorSpec(compatible, {
-    title: compatible,
-    compatible: [compatible],
-    properties: derived,
-    schemaBlockers: [`seed-derived schema for ${compatible} — review recommended`]
-  });
+  return renderBindingFromVendorSpec(compatible, vendor, "vendor", vendorDir);
 }
 
 export function loadVendorSpecs(vendorDir: string): Map<string, VendorSpecDoc> {
@@ -283,6 +399,17 @@ export function loadVendorSpecs(vendorDir: string): Map<string, VendorSpecDoc> {
   return byCompatible;
 }
 
+export function collectReleaseCompatibles(seedDir: string, vendorByCompatible: Map<string, VendorSpecDoc>): string[] {
+  const found = new Set<string>(vendorByCompatible.keys());
+  for (const name of readdirSync(seedDir).filter((entry) => entry.endsWith(".dts"))) {
+    const text = readFileSync(join(seedDir, name), "utf8");
+    for (const match of text.matchAll(/compatible\s*=\s*"([^"]+)"/g)) {
+      found.add(match[1]!);
+    }
+  }
+  return [...found].sort();
+}
+
 export function stableBindingsContentHash(files: Array<{ fileName: string; body: string }>): string {
   const hash = createHash("sha256");
   for (const file of [...files].sort((a, b) => a.fileName.localeCompare(b.fileName))) {
@@ -292,4 +419,12 @@ export function stableBindingsContentHash(files: Array<{ fileName: string; body:
     hash.update("\0");
   }
   return hash.digest("hex");
+}
+
+export function manifestGeneratedAt(): string {
+  const epoch = process.env.SOURCE_DATE_EPOCH?.trim();
+  if (epoch && /^\d+$/.test(epoch)) {
+    return new Date(Number(epoch) * 1000).toISOString();
+  }
+  return "1970-01-01T00:00:00.000Z";
 }

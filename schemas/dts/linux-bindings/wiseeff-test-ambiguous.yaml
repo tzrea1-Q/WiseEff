@@ -6,27 +6,21 @@ title: wiseeff,test-ambiguous
 description: WiseEff vendor binding for wiseeff,test-ambiguous (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,test-ambiguous
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,test-ambiguous$
   reg:
-    $ref: /schemas/types.yaml#/definitions/reg
+    maxItems: 1
   gpio_int:
-    $ref: /schemas/types.yaml#/definitions/uint32-array
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/phandle-array
+      - items:
+          minItems: 3
+          maxItems: 3
   status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,test-ambiguous
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

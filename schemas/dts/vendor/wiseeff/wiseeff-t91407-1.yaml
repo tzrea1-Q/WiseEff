@@ -1,21 +1,19 @@
-$id: wiseeff/wiseeff-battery-cccv.yaml
-title: wiseeff,battery_cccv
+$id: wiseeff/wiseeff-t91407-1.yaml
+title: wiseeff,t91407_1
 source: vendor
 lifecycle: active
 version: 1
-schemaNamespace: vendor/wiseeff,battery_cccv
+schemaNamespace: vendor/wiseeff,t91407_1
 compatible:
-  - wiseeff,battery_cccv
+  - wiseeff,t91407_1
 commonRefs:
   - wiseeff/common-status.yaml
 properties:
-  battery_tbl:
+  compatible:
     valueShape: string-list
-    exampleValue: '"default", "cccv_para0"'
+    exampleValue: '"wiseeff,t91407_1"'
     constraints: {}
   status:
     valueShape: string-list
     exampleValue: '"okay"'
     constraints: {}
-childNodes:
-  - cccv_para0

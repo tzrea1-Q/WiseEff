@@ -17,3 +17,6 @@ properties:
     valueShape: u32-array
     exampleValue: <100 10000>
     constraints: {}
+childNodes:
+  - battery0
+  - battery1

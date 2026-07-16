@@ -6,26 +6,15 @@ title: wiseeff,boost_5v
 description: WiseEff vendor binding for wiseeff,boost_5v (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,boost_5v
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,boost_5v$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   gpio_5v_boost:
     $ref: /schemas/types.yaml#/definitions/phandle-array
-  status:
-    type: string
+  compatible:
+    contains:
+      const: wiseeff,boost_5v
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

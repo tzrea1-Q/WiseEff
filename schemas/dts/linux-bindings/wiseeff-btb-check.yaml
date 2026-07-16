@@ -6,26 +6,15 @@ title: wiseeff,btb_check
 description: WiseEff vendor binding for wiseeff,btb_check (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,btb_check
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,btb_check$
   status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   vol_check_para:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,btb_check
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

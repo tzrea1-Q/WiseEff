@@ -6,34 +6,23 @@ title: huawei,bypass_bst_hl7603
 description: WiseEff vendor binding for huawei,bypass_bst_hl7603 (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: huawei,bypass_bst_hl7603
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^huawei,bypass_bst_hl7603$
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   const_vout:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   gpio_enable:
     $ref: /schemas/types.yaml#/definitions/phandle-array
   ic_role:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   reg:
-    $ref: /schemas/types.yaml#/definitions/reg
+    maxItems: 1
   shutdown_cfg:
-    type: string
-  status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: huawei,bypass_bst_hl7603
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false

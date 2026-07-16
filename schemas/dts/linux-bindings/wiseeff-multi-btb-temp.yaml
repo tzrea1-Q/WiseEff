@@ -6,26 +6,15 @@ title: wiseeff,multi_btb_temp
 description: WiseEff vendor binding for wiseeff,multi_btb_temp (generated from vendor property schema).
 maintainers:
   - WiseEff
-allOf:
-  - $ref: /schemas/device.yaml#
-  - $ref: http://devicetree.org/schemas/vendor/wiseeff/common-status.yaml#
-select:
-  properties:
-    compatible:
-      contains:
-        const: wiseeff,multi_btb_temp
-  required:
-    - compatible
 properties:
-  compatible:
-    type: string
-    pattern: ^wiseeff,multi_btb_temp$
-  sensor-names:
-    type: string
   status:
-    type: string
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  sensor-names:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: wiseeff,multi_btb_temp
 required:
   - compatible
-  - status
 additionalProperties: false
 unevaluatedProperties: false
