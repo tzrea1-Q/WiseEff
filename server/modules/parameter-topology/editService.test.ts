@@ -192,6 +192,7 @@ async function insertPinnedMember(
 const BASE_WITH_IIN = `/dts-v1/;
 / {
 	charging_core: charging_core {
+		compatible = "wiseeff,charging_core";
 		iin_max = <2300>;
 	};
 };
@@ -606,6 +607,136 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
       [CONFIG_SET_ID, fixture.revision.id],
     );
     expect(runs.rows[0]).toMatchObject({ status: "failed", stage: "toolchain" });
+
+    const candidateStatuses = await db!.query<{ status: string }>(
+      `
+      select status from dts_config_revisions
+      where config_set_id = $1 and id <> $2
+      order by revision_number desc
+      limit 1
+      `,
+      [CONFIG_SET_ID, fixture.revision.id],
+    );
+    expect(candidateStatuses.rows[0]?.status).toBe("invalid");
+    expect(candidateStatuses.rows[0]?.status).not.toBe("draft");
+  });
+
+  it("never overwrites candidate needs_mapping to draft when continuity is ambiguous", async () => {
+    const ambiguousBase = `/dts-v1/;
+/ {
+	amba: amba {
+		charging_core: charging_core@0 {
+			compatible = "wiseeff,charging_core";
+			reg = <0x0>;
+			iin_max = <2300>;
+		};
+		twin: twin@0 {
+			compatible = "wiseeff,charging_core";
+			reg = <0x0>;
+		};
+	};
+};
+`;
+    const fixture = await seedConfigAndBinding(db!, auth, {
+      overlayContent: OVERLAY_OVERRIDE,
+      baseContent: ambiguousBase,
+    });
+
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+          },
+          reason: "Must not promote needs_mapping",
+        },
+        { toolchain: passToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: expect.objectContaining({
+        reason: "unresolved-mapping",
+        candidateStatus: "needs_mapping",
+      }),
+    });
+
+    const drafts = await db!.query<{ id: string }>(
+      `select id from parameter_drafts where project_parameter_binding_id = $1`,
+      [fixture.binding.id],
+    );
+    expect(drafts.rows).toHaveLength(0);
+
+    const candidate = await db!.query<{ status: string }>(
+      `
+      select status from dts_config_revisions
+      where config_set_id = $1 and id <> $2
+      order by revision_number desc
+      limit 1
+      `,
+      [CONFIG_SET_ID, fixture.revision.id],
+    );
+    expect(candidate.rows[0]?.status).toBe("needs_mapping");
+  });
+
+  it("toolchain pass is not enough when candidate has open spec review / unmatched occurrence", async () => {
+    const unmatchedOverlay = `/dts-v1/;
+/plugin/;
+
+&charging_core {
+	iin_max = <2700>;
+	mystery_unmatched_gate = <1>;
+};
+`;
+    const fixture = await seedConfigAndBinding(db!, auth, {
+      overlayContent: unmatchedOverlay,
+    });
+
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+          },
+          reason: "Semantic gate must block despite toolchain pass",
+        },
+        { toolchain: passToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: expect.objectContaining({
+        reason: expect.stringMatching(/open-spec-review|unmatched-occurrence/),
+      }),
+    });
+
+    const drafts = await db!.query<{ id: string }>(
+      `select id from parameter_drafts where project_parameter_binding_id = $1`,
+      [fixture.binding.id],
+    );
+    expect(drafts.rows).toHaveLength(0);
+
+    const candidate = await db!.query<{ status: string }>(
+      `
+      select status from dts_config_revisions
+      where config_set_id = $1 and id <> $2
+      order by revision_number desc
+      limit 1
+      `,
+      [CONFIG_SET_ID, fixture.revision.id],
+    );
+    expect(candidate.rows[0]?.status).not.toBe("draft");
+    expect(["resolved", "needs_mapping", "invalid"]).toContain(candidate.rows[0]?.status);
   });
 
   it("edits charging_core.iin_max without modifying sibling &amba or other overlay nodes", async () => {
@@ -613,8 +744,6 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
 /plugin/;
 
 &amba {
-	status = "okay";
-	clock-frequency = <100000>;
 };
 
 &charging_core {
@@ -624,8 +753,8 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     const multiNodeBase = `/dts-v1/;
 / {
 	amba: amba {
-		compatible = "simple-bus";
 		charging_core: charging_core {
+			compatible = "wiseeff,charging_core";
 			iin_max = <2300>;
 		};
 	};
@@ -653,8 +782,7 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     );
 
     expect(draft.candidateOverlayContent).toContain("iin_max = <3000>");
-    expect(draft.candidateOverlayContent).toMatch(/&amba\s*\{[^}]*status\s*=\s*"okay"/s);
-    expect(draft.candidateOverlayContent).toContain("clock-frequency = <100000>");
+    expect(draft.candidateOverlayContent).toMatch(/&amba\s*\{\s*\}/s);
     expect(draft.candidateOverlayContent).not.toMatch(/&amba\s*\{[^}]*iin_max/s);
     expect(await unchangedSourceBytes(draft)).toBe(true);
     expect(draft.baseContent).toBe(multiNodeBase);
@@ -666,7 +794,6 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     const includeContent = `/dts-v1/;
 / {
 	shared: shared {
-		compatible = "wiseeff,shared";
 	};
 };
 `;
@@ -674,7 +801,6 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
 /plugin/;
 
 &shared {
-	status = "disabled";
 };
 `;
     const overlayB = `/dts-v1/;
@@ -689,6 +815,7 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
 
 / {
 	charging_core: charging_core {
+		compatible = "wiseeff,charging_core";
 		iin_max = <2300>;
 	};
 };
@@ -1085,6 +1212,7 @@ describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
     const baseContent = `/dts-v1/;
 / {
 	same_label: charging_core {
+		compatible = "wiseeff,charging_core";
 		iin_max = <2300>;
 	};
 };
@@ -1146,10 +1274,11 @@ describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
     const baseContent = `/dts-v1/;
 / {
 	amba: amba {
-		compatible = "simple-bus";
+		compatible = "wiseeff,charging_core";
 		iin_max = <1111>;
 	};
 	charging_core: charging_core {
+		compatible = "wiseeff,charging_core";
 		iin_max = <2300>;
 	};
 };
@@ -1192,10 +1321,11 @@ describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
     const baseContent = `/dts-v1/;
 / {
 	amba: amba {
-		compatible = "simple-bus";
+		compatible = "wiseeff,charging_core";
 		iin_max = <1111>;
 	};
 	charging_core: charging_core {
+		compatible = "wiseeff,charging_core";
 		iin_max = <2300>;
 	};
 };
@@ -1308,7 +1438,6 @@ describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
     const includeContent = `/dts-v1/;
 / {
 	shared: shared {
-		compatible = "wiseeff,shared";
 	};
 };
 `;
@@ -1316,7 +1445,6 @@ describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
 /plugin/;
 
 &shared {
-	status = "disabled";
 };
 `;
     const overlayB = `/dts-v1/;
@@ -1332,6 +1460,7 @@ describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
 
 / {
 	charging_core: charging_core {
+		compatible = "wiseeff,charging_core";
 		iin_max = <2300>;
 	};
 };

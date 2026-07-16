@@ -23,6 +23,11 @@ import { canEditParameters } from "../parameters/policy";
 import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
 import { ensurePreCutoverLinkedParameterValue } from "../parameters/legacyParameterIdentityAdapter";
 import { upsertDraft } from "../parameters/repository";
+import { countOpenIdentityMappingTasksForRevision } from "./bindingService";
+import {
+  assertCanPromoteCandidateToDraft,
+  type CandidateGateFailureReason,
+} from "./candidateRevisionStateMachine";
 import { ingestConfigRevisionInTransaction } from "./ingestService";
 import {
   getConfigRevisionById,
@@ -976,16 +981,44 @@ export async function createBindingDraft(
   const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
   const candidateRevisionId = ingested.id;
 
-  if (ingested.status === "invalid") {
+  // Fail-closed before toolchain when ingest already left a blocked diagnosable status.
+  // Never overwrite needs_mapping / invalid to draft.
+  if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     const diagnostics = await loadRevisionDiagnostics(db, candidateRevisionId);
-    throw new ApiError("VALIDATION_FAILED", "Candidate config revision failed resolve.", 400, {
-      reason: "resolve-failure",
-      candidateRevisionId,
-      diagnostics,
-    });
+    const reason =
+      ingested.status === "needs_mapping" ? "unresolved-mapping" : "resolve-failure";
+    throw new ApiError(
+      ingested.status === "needs_mapping" ? "CONFLICT" : "VALIDATION_FAILED",
+      ingested.status === "needs_mapping"
+        ? "Candidate config revision has unresolved identity mapping."
+        : "Candidate config revision failed resolve.",
+      ingested.status === "needs_mapping" ? 409 : 400,
+      {
+        reason,
+        candidateRevisionId,
+        candidateStatus: ingested.status,
+        diagnostics,
+      },
+    );
   }
 
-  await assertCandidateToolchainRelease(db, auth, {
+  const semanticCounts = await loadCandidateSemanticGateCounts(db, {
+    organizationId: auth.organization.id,
+    configRevisionId: candidateRevisionId,
+  });
+
+  const earlyGate = assertCanPromoteCandidateToDraft({
+    status: ingested.status,
+    ...semanticCounts,
+    toolchainOk: true,
+    toolchainFailureCode: null,
+  });
+  if (!earlyGate.ok) {
+    await ensureCandidateKeepStatus(db, candidateRevisionId, earlyGate.keepStatus);
+    throw candidateGateError(candidateRevisionId, earlyGate.reason, earlyGate.keepStatus);
+  }
+
+  const toolchainOutcome = await assertCandidateToolchainRelease(db, auth, {
     candidateRevisionId,
     entryFile,
     includeSearchPaths,
@@ -993,6 +1026,17 @@ export async function createBindingDraft(
     files: new Map(candidateMembers.map((member) => [member.fileName, { content: member.content }])),
     toolchain: deps.toolchain ?? createDtsToolchainRunner(),
   });
+
+  const finalGate = assertCanPromoteCandidateToDraft({
+    status: ingested.status,
+    ...semanticCounts,
+    toolchainOk: toolchainOutcome.ok,
+    toolchainFailureCode: toolchainOutcome.failureCode,
+  });
+  if (!finalGate.ok) {
+    await ensureCandidateKeepStatus(db, candidateRevisionId, finalGate.keepStatus);
+    throw candidateGateError(candidateRevisionId, finalGate.reason, finalGate.keepStatus);
+  }
 
   await updateConfigRevisionStatus(db, {
     id: candidateRevisionId,
@@ -1099,6 +1143,130 @@ async function loadRevisionDiagnostics(
   }));
 }
 
+async function loadCandidateSemanticGateCounts(
+  db: Queryable,
+  input: { organizationId: string; configRevisionId: string },
+): Promise<{
+  openIdentityMappings: number;
+  openSpecReviews: number;
+  unmatchedOccurrences: number;
+  ambiguousBindings: number;
+  resolverErrorDiagnostics: number;
+}> {
+  const openIdentityMappings = await countOpenIdentityMappingTasksForRevision(db, input);
+
+  // Structural DTS keys are not parameter-spec review material; exclude from candidate gates.
+  const structuralKeys = [
+    "compatible",
+    "reg",
+    "#address-cells",
+    "#size-cells",
+    "#interrupt-cells",
+    "phandle",
+    "linux,phandle",
+    "device_type",
+    "ranges",
+  ];
+
+  // Candidate gates are revision-scoped (evidence.configRevisionId).
+  const openReviews = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from parameter_spec_review_tasks t
+    where t.organization_id = $1
+      and t.status = 'open'
+      and coalesce(t.source_evidence->>'configRevisionId', '') = $2
+      and coalesce(t.source_evidence->>'propertyKey', '') <> all($3::text[])
+    `,
+    [input.organizationId, input.configRevisionId, structuralKeys],
+  );
+
+  const unmatched = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from parameter_spec_review_tasks t
+    where t.organization_id = $1
+      and t.status = 'open'
+      and coalesce(t.source_evidence->>'configRevisionId', '') = $2
+      and coalesce(t.source_evidence->>'propertyKey', '') <> all($3::text[])
+      and (
+        coalesce(jsonb_array_length(t.candidate_schemas), 0) = 0
+        or coalesce(t.source_evidence->>'inferred', '') = 'true'
+      )
+    `,
+    [input.organizationId, input.configRevisionId, structuralKeys],
+  );
+
+  const resolverErrors = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from dts_validation_diagnostics d
+    inner join dts_validation_runs r on r.id = d.validation_run_id
+    where r.config_revision_id = $1
+      and r.stage = 'resolve'
+      and d.severity = 'error'
+    `,
+    [input.configRevisionId],
+  );
+
+  const openSpecReviews = Number(openReviews.rows[0]?.count ?? 0);
+  return {
+    openIdentityMappings,
+    openSpecReviews,
+    unmatchedOccurrences: Number(unmatched.rows[0]?.count ?? 0),
+    ambiguousBindings: openIdentityMappings,
+    resolverErrorDiagnostics: Number(resolverErrors.rows[0]?.count ?? 0),
+  };
+}
+
+async function ensureCandidateKeepStatus(
+  db: Queryable,
+  candidateRevisionId: string,
+  keepStatus: "needs_mapping" | "invalid" | "resolved",
+): Promise<void> {
+  const current = await db.query<{ status: string }>(
+    `select status from dts_config_revisions where id = $1`,
+    [candidateRevisionId],
+  );
+  if (current.rows[0]?.status === keepStatus) {
+    return;
+  }
+  // Never promote blocked statuses upward; only move resolved → invalid/needs_mapping when needed.
+  if (current.rows[0]?.status === "needs_mapping" || current.rows[0]?.status === "invalid") {
+    return;
+  }
+  await updateConfigRevisionStatus(db, {
+    id: candidateRevisionId,
+    status: keepStatus,
+    resolvedAt: new Date().toISOString(),
+  });
+}
+
+function candidateGateError(
+  candidateRevisionId: string,
+  reason: CandidateGateFailureReason,
+  keepStatus: string,
+): ApiError {
+  const conflictReasons = new Set([
+    "needs-mapping",
+    "unresolved-mapping",
+    "open-spec-review",
+    "unmatched-occurrence",
+    "ambiguous-binding",
+  ]);
+  const isConflict = conflictReasons.has(reason);
+  return new ApiError(
+    isConflict ? "CONFLICT" : "VALIDATION_FAILED",
+    `Candidate config revision failed semantic/toolchain gate (${reason}).`,
+    isConflict ? 409 : 400,
+    {
+      reason,
+      candidateRevisionId,
+      candidateStatus: keepStatus,
+    },
+  );
+}
+
 async function assertCandidateToolchainRelease(
   db: Queryable,
   auth: AuthContext,
@@ -1110,7 +1278,7 @@ async function assertCandidateToolchainRelease(
     files: Map<string, { content: string }>;
     toolchain: DtsToolchainRunner;
   },
-): Promise<void> {
+): Promise<{ ok: true } | { ok: false; failureCode: string | null }> {
   const toolchainResult = await input.toolchain.validate(
     {
       entryFile: input.entryFile,
@@ -1144,7 +1312,7 @@ async function assertCandidateToolchainRelease(
   }
 
   if (toolchainResult.ok) {
-    return;
+    return { ok: true };
   }
 
   await updateConfigRevisionStatus(db, {
@@ -1157,6 +1325,7 @@ async function assertCandidateToolchainRelease(
     reason: "toolchain-failure",
     candidateRevisionId: input.candidateRevisionId,
     failureCode: toolchainResult.failureCode,
+    candidateStatus: "invalid",
     diagnostics: toolchainResult.diagnostics,
   });
 }
