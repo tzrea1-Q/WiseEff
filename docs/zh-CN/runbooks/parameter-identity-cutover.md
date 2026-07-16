@@ -56,7 +56,15 @@ npm run parameter-identities:migrate
 
 Dry-run **只读**：不会 `CREATE`/`ALTER`/`INSERT`/`UPDATE`。基础设施表由正式迁移 `0049` 预建；dry-run 在事务中执行并始终回滚。
 
-检查 JSON：`unmappedRecords`、`ambiguousRecords`、`brokenHistoryChains`、`blockers` 必须为 0 / 空。
+Apply 前检查 JSON 计数：
+
+- `exactMatched` / `reviewedMatched` — 仅可发布的已映射定义
+- `inferredPendingReview` — 必须为 **0**（推断草稿不计为已映射；未审核 inferred 阻断 cutover）
+- `ambiguousRecords` / `unmappedRecords` / `brokenHistoryChains` / `blockers` — 必须为 0 / 空
+
+Dry-run 不得把 inferred 行伪装成已映射。
+
+**TD-042：** 在合法干净非客户快照整库演练（apply → check → cutover → 整库恢复 → 旧 API smoke）完成前，生产 cutover 视为 **BLOCKED**。临时库 / 脏共享库证据不足。
 
 ## 5. 歧义与规格积压检查
 
@@ -149,3 +157,5 @@ npm run smoke:m5
 - [rollback.md](rollback.md)
 - [observability-operations.md](observability-operations.md)
 - 计划：`docs/exec-plans/active/2026-07-16-parameter-topology-schema-management.md`
+- 工作流 review：`docs/exec-plans/active/2026-07-16-parameter-topology-cutover-workflow-review.md`
+- 源码卫生：Vitest `legacyDependencyGuard.test.ts`（仅 migrations/cutovers/adapters 等允许名单；不是运行时中间件）

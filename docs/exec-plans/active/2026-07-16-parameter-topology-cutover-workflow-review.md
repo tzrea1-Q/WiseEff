@@ -20,7 +20,7 @@
 | Implementation agent | Must not push, open PRs, merge PRs, or claim production cutover ready |
 | Parent agent | Review, PR, merge when approved |
 
-**Branch:** `fix/parameter-topology-cutover-workflow-review`  
+**Branch:** `fix/parameter-topology-cutover-workflow-review`
 **Preserved baseline:** `afbb3eab` (and prior topology commits). TD-042 remains BLOCKER without clean non-customer snapshot rehearsal.
 
 ## Success criteria
@@ -96,7 +96,7 @@
 - [x] Real provenance; mapping UI; accurate validate/publish copy; no teaching fallback in API mode
 - [x] Topology acceptance via APIs only; persistent evidence dir separate from Playwright outputDir
 - [x] Fix golden `status="ok"` via standard values or vendor schema (keep fail-closed)
-- [ ] trailing whitespace; docs EN+zh-CN; final gates
+- [x] trailing whitespace; docs EN+zh-CN; final gates
 
 ## Risk & rollback
 
@@ -124,12 +124,12 @@ Rollback: do not apply cutover outside temp DB; restore from snapshot if any reh
 
 ## Documentation Update Gate
 
-- [ ] Update/Review rows handled
-- [ ] `npm run docs:check` passes
-- [ ] OpenAPI matches routes
-- [ ] Topology acceptance evidence regenerable without Playwright wiping it
-- [ ] TD-042 remains explicit BLOCKER until clean-snapshot rehearsal
-- [ ] Plan stays active until parent review
+- [x] Update/Review rows handled
+- [x] `npm run docs:check` passes
+- [x] OpenAPI matches routes
+- [x] Topology acceptance evidence regenerable without Playwright wiping it
+- [x] TD-042 remains explicit BLOCKER until clean-snapshot rehearsal
+- [x] Plan stays active until parent review
 
 ## Verification
 

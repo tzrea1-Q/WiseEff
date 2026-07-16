@@ -18,7 +18,7 @@
 | **实现智能体** | 不得 push、开 PR、合并 PR 或快进本地 `main` |
 | **父智能体** | Review、开 PR、合并后同步 `main` |
 
-**必用分支：** `fix/parameter-topology-e2e-review-blockers`  
+**必用分支：** `fix/parameter-topology-e2e-review-blockers`
 **已审基线：** `a55b8d82`（保留其全部实现提交，不得重写/压平）
 
 ## 全局约束

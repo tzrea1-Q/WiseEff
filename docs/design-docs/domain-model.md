@@ -136,8 +136,15 @@ Path-derived `(name, module)` / full DTS path identity is being replaced by:
 | Schema default / policy target / effective value | Separate fields. Legacy `recommended_value` is migration evidence only and must not auto-promote into default or policy. |
 | `ProjectParameterBinding` | Stable `project × logical-node × spec` binding used by history, drafts, CRs, and exports. |
 | Identity mapping / spec review tasks | Human queues for ambiguous or incomplete migration/governance. Spec-review resolve creates occurrence→spec decisions, project bindings, and reusable matcher overrides; dismiss never pretends a property matched and remains a fail-closed release blocker. |
+| Binding candidate FSM | Centralized candidate states; `needs_mapping` / `invalid` must never be overwritten into `draft`. |
+| Validation gate | Fail-closed toolchain validate; failed re-validation revokes `validated`. Missing Config Set base/manifest fails closed. |
+| Migration match buckets | Reports split `exactMatched` / `reviewedMatched` / `inferredPendingReview` / `ambiguous` / `unmapped` / `broken`. Inferred drafts never count as releasable mapped; unaudited inferred blocks cutover. |
+| Reviewed continuity | Reviewed identity mappings and matcher overrides reuse across later revisons; only stable revisons are continuity baselines. |
+| Config Set manifest | Persisted `entryFile`, `includeSearchPaths`, overlay order, and member roles for each revision. |
 
-HTTP for the semantic surface lives under `/api/v2` (see api-contract). Production cutover is maintenance-only, fail-closed, and whole-snapshot rollback only — see `docs/runbooks/parameter-identity-cutover.md`. Do not dual-write or expose a compatibility projection in production.
+HTTP for the semantic surface lives under `/api/v2` (see api-contract). Production cutover is maintenance-only, fail-closed, and whole-snapshot rollback only — see `docs/runbooks/parameter-identity-cutover.md`. Do not dual-write or expose a compatibility projection in production. Post-cutover activity paths use binding/spec/occurrence IDs only and must not create shadow PPV/definition rows.
+
+**`legacyDependencyGuard`:** Vitest source scanner at `server/modules/parameter-topology/legacyDependencyGuard.test.ts` (not a runtime middleware). It forbids retired flat-identity / shadow tokens under `server/`, `src/`, and `scripts/`, with an allowlist limited to migrations, cutovers, rollback/adapters, transitional adapters, completed-plan docs, tests/e2e, and scripts.
 
 ## State Machines
 

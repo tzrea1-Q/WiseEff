@@ -1,7 +1,7 @@
 # Phase 8 Report — Real Topology Browser Acceptance
 
-**Branch:** `fix/parameter-topology-e2e-review-blockers`  
-**Date:** 2026-07-16  
+**Branch:** `fix/parameter-topology-e2e-review-blockers`
+**Date:** 2026-07-16
 **Verdict:** Topology real-path acceptance **PASSED**. Full-matrix `acceptance:browser` / `acceptance:evidence` **FAILED**. **Not production cutover ready** (TD-042). Request parent review.
 
 ## What changed (Task 8)
@@ -61,9 +61,9 @@ Not claimed fixed in Phase 8; representative failures from `test-results/accepta
 
 ## Browser UI checks (playwright-cli)
 
-Routes: `http://127.0.0.1:5173/parameters`, `http://127.0.0.1:5173/parameter-admin`  
-Viewports: `1440x900`, `768x1024`, `390x844`  
-Console errors: **0** (warnings only)  
+Routes: `http://127.0.0.1:5173/parameters`, `http://127.0.0.1:5173/parameter-admin`
+Viewports: `1440x900`, `768x1024`, `390x844`
+Console errors: **0** (warnings only)
 API: `http://127.0.0.1:8787` healthy during checks.
 
 Canonical screenshots:

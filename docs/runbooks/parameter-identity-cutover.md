@@ -62,7 +62,15 @@ npm run parameter-identities:migrate
 
 Dry-run is **read-only**: it never `CREATE`/`ALTER`/`INSERT`/`UPDATE`. Migration infrastructure tables come from formal migration `0049`. The migrator wraps dry-run in a transaction that always rolls back.
 
-Inspect JSON: `unmappedRecords`, `ambiguousRecords`, `brokenHistoryChains`, and `blockers` must all be zero / empty before apply.
+Inspect JSON counters before apply:
+
+- `exactMatched` / `reviewedMatched` — releasable mapped definitions only
+- `inferredPendingReview` — must be **0** (inferred drafts never count as mapped; unaudited inferred blocks cutover)
+- `ambiguousRecords` / `unmappedRecords` / `brokenHistoryChains` / `blockers` — must all be zero / empty
+
+Dry-run must not mask inferred rows as mapped.
+
+**TD-042:** Until a legal clean non-customer snapshot rehearsal (apply → check → cutover → whole-DB restore → old API smoke) completes, treat production cutover as **BLOCKED**. Temp-DB / dirty shared-DB evidence is not enough.
 
 ## 5. Ambiguity and spec backlog checks
 
@@ -168,3 +176,5 @@ Partial schema undo is forbidden. Restore is the only supported rollback.
 - [rollback.md](rollback.md)
 - [observability-operations.md](observability-operations.md)
 - Plan: `docs/exec-plans/active/2026-07-16-parameter-topology-schema-management.md`
+- Workflow review: `docs/exec-plans/active/2026-07-16-parameter-topology-cutover-workflow-review.md`
+- Source hygiene: Vitest `legacyDependencyGuard.test.ts` (migrations/cutovers/adapters allowlist only; not a runtime middleware)

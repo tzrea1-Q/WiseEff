@@ -278,12 +278,14 @@ Additive semantic surface used by the topology/schema program. Production remain
 | `GET` | `/api/v2/projects/:projectId/parameter-bindings` | Stable project bindings (spec + logical node + effective value). |
 | `GET` | `/api/v2/identity-mapping-tasks` | List open/resolved identity mapping tasks. |
 | `POST` | `/api/v2/identity-mapping-tasks/:taskId/resolve` | Admin resolve a mapping task. |
-| `POST` | `/api/v2/projects/:projectId/config-revisions/:revisionId/validate` | Fail-closed toolchain validate for publish readiness. |
-| `POST` | `/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts` | Typed binding draft with precise Config Set overlay writeback (schema enforced; shared base unchanged). |
+| `POST` | `/api/v2/projects/:projectId/config-revisions/:revisionId/validate` | Fail-closed toolchain validate for publish readiness. Failed re-validation **revokes** a previously `validated` revision (does not leave a stale validated marker). Open identity-mapping or dismissed-but-unmatched spec-review blockers fail closed. |
+| `POST` | `/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts` | Typed binding draft with precise Config Set occurrence/CST-span writeback (schema enforced; shared base unchanged). Post-cutover drafts must not create shadow `project_parameter_values` / `parameter_definitions` rows. |
 
-Value split: responses expose `exampleValue`, `schemaDefault`, `policyTarget`, and `effectiveValue` as distinct fields. Do not collapse them into a business `recommendedValue`.
+Value split: responses expose `exampleValue`, `schemaDefault`, `policyTarget`, and `effectiveValue` as distinct fields. Do not collapse them into a business `recommendedValue`. Topology payloads carry API provenance (`sourceChain` / occurrence spans); clients must not invent teaching fallbacks in API mode.
 
-Cutover/rollback procedure: `docs/runbooks/parameter-identity-cutover.md`.
+Config Set revisions persist a full manifest (`entryFile`, `includeSearchPaths`, overlay order, member roles). Clients and validators must reload that manifest rather than hardcoding `includeSearchPaths=["."]`.
+
+Cutover/rollback procedure: `docs/runbooks/parameter-identity-cutover.md`. **TD-042 remains a BLOCKER** until a clean non-customer snapshot rehearsal completes — do not claim production cutover ready from temp-DB evidence alone.
 
 ## Governance
 

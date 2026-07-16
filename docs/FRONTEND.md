@@ -90,6 +90,8 @@ Semantic library and project topology UI live under `src/components/parameter-to
 
 API mode talks to `/api/v2` (not flat `/api/v1` parameter definition IDs). DTOs keep `exampleValue`, `schemaDefault`, `policyTarget`, and `effectiveValue` separate — no business `recommendedValue`. After cutover, legacy parameter IDs are not projected; callers must use binding/spec IDs.
 
+Provenance, binding detail, and mapping/review queues must come from the API response (`sourceChain`, occurrence spans, task payloads). In API mode do **not** fall back to teaching/mock topology data when the backend is empty or errors. Validate/publish copy must match gate outcomes (`validated` vs fail-closed revoke); never treat `schema-failed` as a success path.
+
 ## Parameter Import Wizard
 
 `ParameterImportWizard` on `/parameter-admin` supports spreadsheet / JSON / DTS fragment / full DTS sources.

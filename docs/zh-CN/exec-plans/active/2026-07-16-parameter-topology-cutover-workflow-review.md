@@ -11,3 +11,5 @@
 **成功标准 / 任务阶段 / 风险回滚 / Documentation Impact Matrix / Verification：** 以英文计划正文为准。中英文成对维护。
 
 **硬性声明：** 无干净非客户快照整库演练时，**TD-042 仍为 BLOCKER**，不得宣称 production cutover ready。不得 push / 开 PR。
+
+**文档门禁（与英文计划同步）：** EN+zh-CN api-contract / domain-model / FRONTEND / cutover runbook / verification-matrix / tech-debt 已对齐；`legacyDependencyGuard` 记为 Vitest 源码扫描（非运行时中间件）；拓扑验收证据目录与 Playwright `outputDir` 分离。计划保持 active 至父代理 review。
