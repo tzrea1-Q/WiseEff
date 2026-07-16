@@ -19,6 +19,7 @@ import {
 } from "../parameter-files/dtsToolchain";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { countOpenSpecReviewTasksForRevision } from "../parameter-specs/repository";
 import { canEditParameters } from "../parameters/policy";
 import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
 import { ensurePreCutoverLinkedParameterValue } from "../parameters/legacyParameterIdentityAdapter";
@@ -1065,6 +1066,7 @@ export async function createBindingDraft(
 
   const semanticCounts = await loadCandidateSemanticGateCounts(db, {
     organizationId: auth.organization.id,
+    projectId: binding.project_id,
     configRevisionId: candidateRevisionId,
   });
 
@@ -1214,7 +1216,7 @@ async function loadRevisionDiagnostics(
 
 async function loadCandidateSemanticGateCounts(
   db: Queryable,
-  input: { organizationId: string; configRevisionId: string },
+  input: { organizationId: string; projectId: string; configRevisionId: string },
 ): Promise<{
   openIdentityMappings: number;
   openSpecReviews: number;
@@ -1237,34 +1239,16 @@ async function loadCandidateSemanticGateCounts(
     "ranges",
   ];
 
-  // Candidate gates are revision-scoped (evidence.configRevisionId).
-  const openReviews = await db.query<{ count: string }>(
-    `
-    select count(*)::text as count
-    from parameter_spec_review_tasks t
-    where t.organization_id = $1
-      and t.status = 'open'
-      and coalesce(t.source_evidence->>'configRevisionId', '') = $2
-      and coalesce(t.source_evidence->>'propertyKey', '') <> all($3::text[])
-    `,
-    [input.organizationId, input.configRevisionId, structuralKeys],
-  );
+  const openSpecReviews = await countOpenSpecReviewTasksForRevision(db, {
+    ...input,
+    excludePropertyKeys: structuralKeys,
+  });
 
-  const unmatched = await db.query<{ count: string }>(
-    `
-    select count(*)::text as count
-    from parameter_spec_review_tasks t
-    where t.organization_id = $1
-      and t.status = 'open'
-      and coalesce(t.source_evidence->>'configRevisionId', '') = $2
-      and coalesce(t.source_evidence->>'propertyKey', '') <> all($3::text[])
-      and (
-        coalesce(jsonb_array_length(t.candidate_schemas), 0) = 0
-        or coalesce(t.source_evidence->>'inferred', '') = 'true'
-      )
-    `,
-    [input.organizationId, input.configRevisionId, structuralKeys],
-  );
+  const unmatchedOccurrences = await countOpenSpecReviewTasksForRevision(db, {
+    ...input,
+    excludePropertyKeys: structuralKeys,
+    unmatchedOnly: true,
+  });
 
   const resolverErrors = await db.query<{ count: string }>(
     `
@@ -1278,11 +1262,11 @@ async function loadCandidateSemanticGateCounts(
     [input.configRevisionId],
   );
 
-  const openSpecReviews = Number(openReviews.rows[0]?.count ?? 0);
+  const openSpecReviewsCount = openSpecReviews;
   return {
     openIdentityMappings,
-    openSpecReviews,
-    unmatchedOccurrences: Number(unmatched.rows[0]?.count ?? 0),
+    openSpecReviews: openSpecReviewsCount,
+    unmatchedOccurrences,
     ambiguousBindings: openIdentityMappings,
     resolverErrorDiagnostics: Number(resolverErrors.rows[0]?.count ?? 0),
   };
@@ -1772,6 +1756,7 @@ export async function applyLockedOverlayWriteback(
 
   const semanticCounts = await loadCandidateSemanticGateCounts(db, {
     organizationId: auth.organization.id,
+    projectId: revision.projectId,
     configRevisionId: ingested.id,
   });
   if (!deps.skipSemanticGates) {

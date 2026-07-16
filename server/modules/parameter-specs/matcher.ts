@@ -310,6 +310,10 @@ export function reviewTasksForDecision(
     return [
       {
         id: randomUUID(),
+        projectId: locate?.projectId,
+        configRevisionId: locate?.configRevisionId,
+        propertyOccurrenceId: locate?.propertyOccurrenceId ?? undefined,
+        blockerScope: "revision",
         sourceEvidence: {
           ...locateEvidence,
           nodeLocator: node.nodeLocator,
@@ -346,6 +350,10 @@ export function reviewTasksForDecision(
   return [
     {
       id: randomUUID(),
+      projectId: locate?.projectId,
+      configRevisionId: locate?.configRevisionId,
+      propertyOccurrenceId: locate?.propertyOccurrenceId ?? undefined,
+      blockerScope: "revision",
       sourceEvidence: {
         ...locateEvidence,
         nodeLocator: node.nodeLocator,

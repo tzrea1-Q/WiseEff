@@ -528,8 +528,8 @@ async function ensureInferredReviewTask(
     `
     insert into parameter_spec_review_tasks (
       id, organization_id, parameter_spec_id, source_evidence,
-      candidate_schemas, project_count, status, reason
-    ) values ($1, $2, $3, $4::jsonb, $5::jsonb, 1, 'open', $6)
+      candidate_schemas, project_count, status, reason, blocker_scope
+    ) values ($1, $2, $3, $4::jsonb, $5::jsonb, 1, 'open', $6, 'platform')
     on conflict (id) do nothing
     `,
     [
@@ -601,14 +601,17 @@ async function ensureAmbiguityTasks(
     await db.query(
       `
       insert into parameter_spec_review_tasks (
-        id, organization_id, parameter_spec_id, source_evidence,
-        candidate_schemas, project_count, status, reason
-      ) values ($1, $2, null, $3::jsonb, $4::jsonb, 1, 'open', $5)
+        id, organization_id, parameter_spec_id, project_id, config_revision_id,
+        source_evidence, candidate_schemas, project_count, status, reason, blocker_scope
+      ) values ($1, $2, null, $3, $4, $5::jsonb, $6::jsonb, 1, 'open', $7,
+        case when $4 is null then 'platform' else 'revision' end)
       on conflict (id) do nothing
       `,
       [
         taskId,
         input.organizationId,
+        input.projectId ?? null,
+        input.configRevisionId ?? null,
         JSON.stringify(input.evidence),
         JSON.stringify(input.parameterSpecIds ?? []),
         input.reason

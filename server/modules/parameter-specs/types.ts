@@ -88,9 +88,15 @@ export type MatchableNode = {
   properties: Record<string, { rawText: string }>;
 };
 
+export type SpecReviewBlockerScope = "revision" | "project" | "platform";
+
 export type SpecReviewTaskDraft = {
   id: string;
   parameterSpecId?: string;
+  projectId?: string;
+  configRevisionId?: string;
+  propertyOccurrenceId?: string;
+  blockerScope?: SpecReviewBlockerScope;
   sourceEvidence: Record<string, unknown>;
   candidateSchemas: unknown[];
   projectCount: number;

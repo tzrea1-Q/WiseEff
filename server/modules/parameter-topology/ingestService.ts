@@ -19,9 +19,10 @@ import {
   reviewTasksForDecision,
 } from "../parameter-specs/matcher";
 import {
-  compatibleFingerprint,
   getParameterSpecRow,
   listMatcherOverridesForProject,
+  matcherOverrideLookupKey,
+  persistedMatcherOverrideLookupKey,
   persistOpenReviewTaskDrafts,
   upsertMatchedDriverSchema,
   upsertMatchedPropertySpec,
@@ -496,14 +497,10 @@ async function buildLogicalRevisionsWithContinuity(
   };
 }
 
-function overrideLookupKey(compatible: string[], propertyKey: string): string {
-  return `${compatibleFingerprint(compatible)}\0${propertyKey}`;
-}
-
 function buildOverrideIndex(overrides: PersistedMatcherOverride[]): Map<string, PersistedMatcherOverride> {
   const index = new Map<string, PersistedMatcherOverride>();
   for (const override of overrides) {
-    index.set(`${override.compatibleFingerprint}\0${override.propertyKey}`, override);
+    index.set(persistedMatcherOverrideLookupKey(override), override);
   }
   return index;
 }
@@ -549,7 +546,13 @@ async function matchBindAndQueueReviews(
         propertyOccurrenceId,
         logicalNodeId,
       };
-      const override = overrideByKey.get(overrideLookupKey(matchable.compatible, propertyKey));
+      const override = overrideByKey.get(
+        matcherOverrideLookupKey({
+          compatible: matchable.compatible,
+          nodeLocator: matchable.nodeLocator,
+          propertyKey,
+        }),
+      );
 
       if (override?.decision === "dismissed") {
         if (propertyOccurrenceId) {

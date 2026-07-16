@@ -59,18 +59,40 @@ export async function insertSpecReviewTask(
   },
 ): Promise<PersistedSpecReviewTask> {
   const id = input.draft.id || randomUUID();
+  const evidence = input.draft.sourceEvidence ?? {};
+  const projectId =
+    input.draft.projectId ??
+    (typeof evidence.projectId === "string" && evidence.projectId.trim() ? evidence.projectId : null);
+  const configRevisionId =
+    input.draft.configRevisionId ??
+    (typeof evidence.configRevisionId === "string" && evidence.configRevisionId.trim()
+      ? evidence.configRevisionId
+      : null);
+  const propertyOccurrenceId =
+    input.draft.propertyOccurrenceId ??
+    (typeof evidence.propertyOccurrenceId === "string" && evidence.propertyOccurrenceId.trim()
+      ? evidence.propertyOccurrenceId
+      : null);
+  const blockerScope = input.draft.blockerScope ?? "revision";
+
   const result = await db.query<ReviewTaskRow>(
     `
     insert into parameter_spec_review_tasks (
-      id, organization_id, parameter_spec_id, source_evidence, candidate_schemas, project_count, status
-    ) values ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7)
+      id, organization_id, parameter_spec_id, project_id, config_revision_id,
+      property_occurrence_id, blocker_scope, source_evidence, candidate_schemas,
+      project_count, status
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11)
     returning *
     `,
     [
       id,
       input.organizationId,
       input.draft.parameterSpecId ?? null,
-      JSON.stringify(input.draft.sourceEvidence),
+      projectId,
+      configRevisionId,
+      propertyOccurrenceId,
+      blockerScope,
+      JSON.stringify(evidence),
       JSON.stringify(input.draft.candidateSchemas),
       input.draft.projectCount,
       input.draft.status,
@@ -299,6 +321,23 @@ export function nodeLocatorFingerprint(nodeLocator?: string | null): string {
   return normalized;
 }
 
+/** Lookup key for matcher overrides: compatible + normalized locator + property (org/project scoped by query). */
+export function matcherOverrideLookupKey(input: {
+  compatible: string[];
+  nodeLocator: string;
+  propertyKey: string;
+}): string {
+  return `${compatibleFingerprint(input.compatible)}\0${nodeLocatorFingerprint(input.nodeLocator)}\0${input.propertyKey}`;
+}
+
+function matcherOverrideIndexKey(override: PersistedMatcherOverride): string {
+  return `${override.compatibleFingerprint}\0${nodeLocatorFingerprint(override.nodeLocator)}\0${override.propertyKey}`;
+}
+
+export function persistedMatcherOverrideLookupKey(override: PersistedMatcherOverride): string {
+  return matcherOverrideIndexKey(override);
+}
+
 export async function listMatcherOverridesForProject(
   db: Queryable,
   input: { organizationId: string; projectId: string },
@@ -416,8 +455,37 @@ export async function upsertOccurrenceSpecDecision(
 
 export async function countOpenSpecReviewTasksForRevision(
   db: Queryable,
-  input: { organizationId: string; configRevisionId: string },
+  input: {
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string;
+    excludePropertyKeys?: string[];
+    unmatchedOnly?: boolean;
+  },
 ): Promise<number> {
+  const values: unknown[] = [
+    input.organizationId,
+    input.projectId,
+    input.configRevisionId,
+  ];
+  const extraConditions: string[] = [];
+
+  if (input.excludePropertyKeys && input.excludePropertyKeys.length > 0) {
+    values.push(input.excludePropertyKeys);
+    extraConditions.push(
+      `coalesce(t.source_evidence->>'propertyKey', '') <> all($${values.length}::text[])`,
+    );
+  }
+
+  if (input.unmatchedOnly) {
+    extraConditions.push(
+      `(
+        coalesce(jsonb_array_length(t.candidate_schemas), 0) = 0
+        or coalesce(t.source_evidence->>'inferred', '') = 'true'
+      )`,
+    );
+  }
+
   const result = await db.query<{ count: string }>(
     `
     select count(*)::text as count
@@ -425,19 +493,112 @@ export async function countOpenSpecReviewTasksForRevision(
     where t.organization_id = $1
       and t.status = 'open'
       and (
-        coalesce(t.source_evidence->>'configRevisionId', '') = $2
-        or t.config_revision_id = $2
-        or exists (
-          select 1
-          from project_parameter_binding_revisions br
-          join project_parameter_bindings b on b.id = br.binding_id
-          where br.config_revision_id = $2
-            and b.parameter_spec_id = t.parameter_spec_id
-            and t.parameter_spec_id is not null
+        (
+          t.blocker_scope = 'revision'
+          and coalesce(
+            nullif(t.config_revision_id, ''),
+            nullif(t.source_evidence->>'configRevisionId', '')
+          ) = $3
+        )
+        or (
+          t.blocker_scope = 'project'
+          and coalesce(
+            nullif(t.project_id, ''),
+            nullif(t.source_evidence->>'projectId', '')
+          ) = $2
+        )
+        or t.blocker_scope = 'platform'
+      )
+      ${extraConditions.length > 0 ? `and ${extraConditions.join(" and ")}` : ""}
+    `,
+    values,
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+/** Backfill scoped columns on legacy review tasks from source_evidence (idempotent). */
+export async function backfillReviewTaskScopeColumns(db: Queryable): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `
+    with updated as (
+      update parameter_spec_review_tasks t
+      set
+        project_id = coalesce(
+          nullif(t.project_id, ''),
+          nullif(t.source_evidence->>'projectId', '')
+        ),
+        config_revision_id = coalesce(
+          nullif(t.config_revision_id, ''),
+          (
+            select cr.id
+            from dts_config_revisions cr
+            where cr.id = nullif(t.source_evidence->>'configRevisionId', '')
+            limit 1
+          )
+        ),
+        property_occurrence_id = coalesce(
+          nullif(t.property_occurrence_id, ''),
+          (
+            select po.id
+            from dts_property_occurrences po
+            where po.id = nullif(t.source_evidence->>'propertyOccurrenceId', '')
+            limit 1
+          )
+        ),
+        blocker_scope = case
+          when coalesce(t.blocker_scope, 'revision') <> 'revision' then t.blocker_scope
+          when coalesce(
+            nullif(t.source_evidence->>'configRevisionId', ''),
+            nullif(t.config_revision_id, '')
+          ) is not null
+            then 'revision'
+          when coalesce(
+            nullif(t.source_evidence->>'projectId', ''),
+            nullif(t.project_id, '')
+          ) is not null
+            then 'project'
+          else 'platform'
+        end
+      where (
+        (
+          t.project_id is distinct from coalesce(
+            nullif(t.project_id, ''),
+            nullif(t.source_evidence->>'projectId', '')
+          )
+        )
+        or (
+          t.config_revision_id is distinct from coalesce(
+            nullif(t.config_revision_id, ''),
+            (
+              select cr.id
+              from dts_config_revisions cr
+              where cr.id = nullif(t.source_evidence->>'configRevisionId', '')
+              limit 1
+            )
+          )
+        )
+        or (
+          t.property_occurrence_id is distinct from coalesce(
+            nullif(t.property_occurrence_id, ''),
+            (
+              select po.id
+              from dts_property_occurrences po
+              where po.id = nullif(t.source_evidence->>'propertyOccurrenceId', '')
+              limit 1
+            )
+          )
+        )
+        or (
+          t.blocker_scope = 'revision'
+          and coalesce(nullif(t.source_evidence->>'configRevisionId', ''), nullif(t.config_revision_id, '')) is null
+          and coalesce(nullif(t.source_evidence->>'projectId', ''), nullif(t.project_id, '')) is null
+          and coalesce(t.source_evidence->>'inferred', '') = 'true'
         )
       )
+      returning 1
+    )
+    select count(*)::text as count from updated
     `,
-    [input.organizationId, input.configRevisionId],
   );
   return Number(result.rows[0]?.count ?? 0);
 }
