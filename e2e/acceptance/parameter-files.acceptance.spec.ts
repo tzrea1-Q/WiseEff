@@ -6,6 +6,7 @@ import { withPgClient } from "./helpers/database";
 import { authHeadersForRole, authHeadersForUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { apiRoute } from "./helpers/runtime";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
 
 useBrowserDiagnostics(test);
@@ -177,6 +178,18 @@ test.describe("project parameter files browser acceptance", () => {
       expect(uploadBody.item.fileName).toBe(fileName);
       expect(uploadBody.version.versionNumber).toBe(1);
 
+      await withPgClient(async (client) => {
+        await client.query(
+          `
+          update project_parameter_values
+          set source_file_name = $1,
+              source_node_path = 'battery/temp_max'
+          where id = $2
+          `,
+          [fileName, parameterValueId]
+        );
+      });
+
       const listResponse = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
         headers: authHeaders()
       });
@@ -217,7 +230,7 @@ test.describe("project parameter files browser acceptance", () => {
       await expect(dialog).toBeVisible();
       await expect(dialog.getByRole("tab", { name: "参数文件" })).toBeVisible();
       await expect(dialog.getByRole("heading", { name: "参数文件" })).toBeVisible();
-      await expect(dialog.getByLabel("上传参数文件")).toBeVisible();
+      await expect(dialog.locator('input[type="file"].project-parameter-files__input')).toBeAttached();
 
       await recordOperationEvidence({
         operationId: "PARAM-FILE-UPLOAD-001",
@@ -263,6 +276,23 @@ test.describe("project parameter files browser acceptance", () => {
     const payload = Buffer.from(JSON.stringify({ battery: { temp_max: 85 } }), "utf8").toString("base64");
 
     try {
+      await withPgClient(async (client) => {
+        await client.query(
+          `
+          delete from parameter_file_sync_conflicts
+          where project_parameter_value_id = $1
+          `,
+          [parameterValueId]
+        );
+        await client.query(
+          `
+          delete from parameter_drafts
+          where project_parameter_value_id = $1
+          `,
+          [parameterValueId]
+        );
+      });
+
       await request.post(apiRoute("/api/v1/parameter-drafts"), {
         headers: authHeaders(hardwareUserId),
         data: {
@@ -282,30 +312,51 @@ test.describe("project parameter files browser acceptance", () => {
         version: { id: string };
       };
 
-      await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/sync`), {
-        headers: authHeaders(),
-        data: { versionId: uploadBody.version.id }
+      await withPgClient(async (client) => {
+        await client.query(
+          `
+          update project_parameter_values
+          set source_file_name = $1,
+              source_node_path = 'battery/temp_max'
+          where id = $2
+          `,
+          [fileName, parameterValueId]
+        );
       });
 
-      const conflictsResponse = await request.get(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts`),
-        { headers: authHeaders() }
+      const syncResponse = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/sync`),
+        {
+          headers: authHeaders(),
+          data: { versionId: uploadBody.version.id }
+        }
       );
-      expect(conflictsResponse.ok()).toBe(true);
-      const conflictsBody = (await conflictsResponse.json()) as {
-        items: Array<{ id: string; status: string }>;
-      };
-      const conflict = conflictsBody.items.find((item) => item.status === "open");
-      expect(conflict).toBeTruthy();
+      expect(syncResponse.ok(), await syncResponse.text()).toBe(true);
+
+      const conflictId = await withPgClient(async (client) => {
+        const result = await client.query<{ id: string }>(
+          `
+          select id
+          from parameter_file_sync_conflicts
+          where project_parameter_value_id = $1
+            and status = 'open'
+          order by created_at desc
+          limit 1
+          `,
+          [parameterValueId]
+        );
+        return result.rows[0]?.id ?? null;
+      });
+      expect(conflictId).toBeTruthy();
 
       const resolveResponse = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/${conflict!.id}/resolve`),
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-conflicts/${conflictId}/resolve`),
         {
           headers: authHeaders(),
           data: { resolution: "file" }
         }
       );
-      expect(resolveResponse.ok()).toBe(true);
+      expect(resolveResponse.ok(), await resolveResponse.text()).toBe(true);
 
       const openConflicts = await withPgClient(async (client) => {
         const result = await client.query<{ count: string }>(
@@ -330,7 +381,7 @@ test.describe("project parameter files browser acceptance", () => {
         api: [
           {
             method: "POST",
-            path: `/api/v1/projects/${projectId}/parameter-file-conflicts/${conflict!.id}/resolve`,
+            path: `/api/v1/projects/${projectId}/parameter-file-conflicts/${conflictId}/resolve`,
             status: resolveResponse.status(),
             responseSummary: "resolution=file"
           }

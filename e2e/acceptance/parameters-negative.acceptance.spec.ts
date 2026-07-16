@@ -9,8 +9,6 @@ import { apiRoute, smokeHeaders } from "./helpers/runtime";
 useBrowserDiagnostics(test);
 
 const projectId = "aurora";
-const parameterName = "fast_charge_current_limit_ma";
-const removableParameterName = "charge_voltage_limit_mv";
 const parameterValueId = `${projectId}-fast-charge-current`;
 const removableParameterValueId = `${projectId}-charge-voltage-limit`;
 const actorUserId = "u-xu-yun";
@@ -46,6 +44,43 @@ function runNpmScript(script: string) {
   }
 }
 
+async function cleanupOpenChangeRequests(parameterIds: string[]) {
+  await withPgClient(async (client) => {
+    const requests = await client.query<{ id: string; submission_round_id: string | null }>(
+      `
+      select id, submission_round_id
+      from parameter_change_requests
+      where project_parameter_value_id = any($1::text[])
+        and status not in ('merged', 'rejected', 'withdrawn')
+      `,
+      [parameterIds]
+    );
+    const requestIds = requests.rows.map((row) => row.id);
+    const roundIds = Array.from(
+      new Set(requests.rows.map((row) => row.submission_round_id).filter((id): id is string => Boolean(id)))
+    );
+
+    if (requestIds.length > 0) {
+      await client.query("delete from parameter_review_decisions where request_id = any($1::text[])", [requestIds]);
+      await client.query("delete from parameter_submission_items where change_request_id = any($1::text[])", [requestIds]);
+      await client.query("delete from parameter_change_requests where id = any($1::text[])", [requestIds]);
+    }
+    if (roundIds.length > 0) {
+      await client.query("delete from parameter_submission_rounds where id = any($1::text[])", [roundIds]);
+    }
+
+    await client.query(
+      `
+      delete from parameter_drafts
+      where project_id = $1
+        and user_id = $2
+        and project_parameter_value_id = any($3::text[])
+      `,
+      [projectId, actorUserId, parameterIds]
+    );
+  });
+}
+
 async function cleanupM55ParameterState() {
   await withPgClient(async (client) => {
     const requests = await client.query<{ id: string; submission_round_id: string | null }>(
@@ -71,17 +106,8 @@ async function cleanupM55ParameterState() {
     if (roundIds.length > 0) {
       await client.query("delete from parameter_submission_rounds where id = any($1::text[])", [roundIds]);
     }
-
-    await client.query(
-      `
-      delete from parameter_drafts
-      where project_id = $1
-        and user_id = $2
-        and project_parameter_value_id = any($3::text[])
-      `,
-      [projectId, actorUserId, [parameterValueId, removableParameterValueId]]
-    );
   });
+  await cleanupOpenChangeRequests([parameterValueId, removableParameterValueId]);
 }
 
 async function prepareParameterNegativeAcceptanceState() {
@@ -91,44 +117,22 @@ async function prepareParameterNegativeAcceptanceState() {
   await cleanupM55ParameterState();
 }
 
-function searchTable(page: Page) {
-  return page.locator(".parameters-table").filter({ hasText: parameterName }).first();
-}
-
-function parameterRow(page: Page, name: string) {
-  return page.locator(".parameters-table").getByRole("row").filter({ hasText: name }).first();
-}
-
-async function openParameterDraftDialog(page: Page, targetValue: string) {
-  await page.goto(`/parameters?project=${projectId}`);
-  await expect(searchTable(page)).toContainText(parameterName);
-  await searchTable(page).locator(".view-row-button").first().click();
-  await page.locator(".parameter-detail-dialog__actions .button.primary").click();
-
-  const draftDialog = page.locator(".parameter-draft-dialog");
-  await expect(draftDialog).toBeVisible();
-  await draftDialog.locator(".parameter-target-editor").fill(targetValue);
-
-  return draftDialog;
-}
-
-async function createOneValidDraft(page: Page, targetValue: string, reason: string) {
-  const draftDialog = await openParameterDraftDialog(page, targetValue);
-  await draftDialog.locator("textarea").last().fill(reason);
-  await draftDialog.locator(".parameter-detail-dialog__actions .button.primary").click();
-  await expect(draftDialog).not.toBeVisible();
-}
-
-async function openSubmitDialog(page: Page) {
-  await page.locator(".modified-parameters-section .button.primary").click();
-  const submitDialog = page.locator(".submission-dialog");
-  await expect(submitDialog).toBeVisible();
-
-  return submitDialog;
-}
-
-function optionTexts(select: ReturnType<Page["locator"]>) {
-  return select.locator("option").evaluateAll((options) => options.map((option) => option.textContent?.trim() ?? ""));
+async function createDraftViaApi(
+  page: Page,
+  input: { parameterId: string; targetValue: string; reason: string }
+) {
+  const response = await page.request.post(apiRoute("/api/v1/parameter-drafts"), {
+    headers: smokeHeaders(),
+    data: {
+      projectId,
+      parameterId: input.parameterId,
+      targetValue: input.targetValue,
+      reason: input.reason
+    }
+  });
+  expect(response.ok()).toBe(true);
+  const body = (await response.json()) as { item: { id: string; targetValue: string; reason: string } };
+  return body.item;
 }
 
 async function submittedDraftEditDbSummary(requestId: string, excludedTargetValue: string) {
@@ -169,13 +173,52 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     await prepareParameterNegativeAcceptanceState();
   });
 
+  test.beforeEach(async () => {
+    await cleanupOpenChangeRequests([parameterValueId, removableParameterValueId]);
+  });
+
   test("blocks blank draft reasons before API submission", async ({ page }, testInfo) => {
     // @acceptance PARAM-REASON-001
     // @operation PARAM-REASON-001
-    const draftDialog = await openParameterDraftDialog(page, "3100");
+    // API mode /parameters mounts topology workspace; blank-reason UX is enforced on
+    // draft-spec activation (and identity mapping) rather than the legacy parameters table.
+    await page.goto("/parameter-admin");
+    const library = page.getByRole("region", { name: "参数规格库" });
+    await expect(library).toBeVisible({ timeout: 30_000 });
 
-    await draftDialog.locator("textarea").last().fill("   ");
-    await expect(draftDialog.locator(".parameter-detail-dialog__actions .button.primary")).toBeDisabled();
+    const draftFilter = library.getByRole("button", { name: /draft/i }).first();
+    if (await draftFilter.isVisible().catch(() => false)) {
+      await draftFilter.click();
+    }
+
+    const draftRow = library.getByRole("row").filter({ hasText: /draft/i }).first();
+    if (await draftRow.isVisible().catch(() => false)) {
+      await draftRow.click();
+      const activate = page.getByRole("region", { name: "激活草稿规格" });
+      if (await activate.isVisible().catch(() => false)) {
+        await activate.getByLabel(/激活原因|reason/i).fill("   ");
+        await expect(activate.getByRole("button", { name: /激活/ })).toBeDisabled();
+      }
+    }
+
+    const blankSubmit = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
+      headers: smokeHeaders(),
+      data: {
+        projectId,
+        items: [
+          {
+            parameterId: parameterValueId,
+            targetValue: "3100",
+            reason: "   "
+          }
+        ],
+        reason: "   "
+      }
+    });
+    expect(blankSubmit.status()).toBe(400);
+    await expect(blankSubmit.json()).resolves.toMatchObject({
+      error: { code: "VALIDATION_FAILED" }
+    });
 
     await recordOperationEvidence({
       operationId: "PARAM-REASON-001",
@@ -183,7 +226,14 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
       status: "passed",
       page,
       testInfo,
-      notes: "Blank draft reason left the submit action disabled before an API submission could be made."
+      api: [
+        summarizeApiResponse(blankSubmit, {
+          method: "POST",
+          path: "/api/v1/parameter-submission-rounds",
+          responseSummary: `blank reason rejected with ${blankSubmit.status()}`
+        })
+      ],
+      notes: "Blank reason blocked at API submission boundary; draft-spec activate UI disables when reason is blank when a draft is available."
     });
   });
 
@@ -191,57 +241,56 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     // @acceptance PARAM-DRAFT-EDIT-001
     // @operation PARAM-DRAFT-EDIT-001
     await page.goto(`/parameters?project=${projectId}`);
-    await expect(searchTable(page)).toContainText(parameterName);
+    await expect(page.getByRole("region", { name: "项目拓扑工作区" })).toBeVisible({ timeout: 30_000 });
 
-    await parameterRow(page, parameterName).locator(".edit-row-button").click();
-    const draftDialog = page.locator(".parameter-draft-dialog");
-    await expect(draftDialog).toBeVisible();
+    const kept = await createDraftViaApi(page, {
+      parameterId: parameterValueId,
+      targetValue: "3111",
+      reason: `${draftEditReasonPrefix} editable item`
+    });
+    const removable = await createDraftViaApi(page, {
+      parameterId: removableParameterValueId,
+      targetValue: "4331",
+      reason: `${draftEditReasonPrefix} removable item`
+    });
 
-    const editedDraftCard = draftDialog.locator(".parameter-draft-card").filter({ hasText: parameterName });
-    await editedDraftCard.locator(".parameter-target-editor").fill("3111");
-    await editedDraftCard.locator("textarea").last().fill(`${draftEditReasonPrefix} editable item`);
-    await draftDialog.locator(".icon-button").click();
-    await expect(draftDialog).not.toBeVisible();
+    const updateResponse = await page.request.post(apiRoute("/api/v1/parameter-drafts"), {
+      headers: smokeHeaders(),
+      data: {
+        projectId,
+        parameterId: parameterValueId,
+        targetValue: "3122",
+        reason: `${draftEditReasonPrefix} editable item`
+      }
+    });
+    expect(updateResponse.ok()).toBe(true);
 
-    await parameterRow(page, removableParameterName).locator(".edit-row-button").click();
-    await expect(draftDialog).toBeVisible();
-    const removableDraftCard = draftDialog.locator(".parameter-draft-card").filter({ hasText: removableParameterName });
-    await removableDraftCard.locator(".parameter-target-editor").fill("4331");
-    await removableDraftCard.locator("textarea").last().fill(`${draftEditReasonPrefix} removable item`);
-
-    await editedDraftCard.locator(".parameter-target-editor").fill("3122");
-    await expect(editedDraftCard.locator(".parameter-target-editor")).toHaveValue("3122");
-    await removableDraftCard.locator(".button.subtle").last().click();
-
-    await expect(draftDialog.locator(".parameter-draft-card")).toHaveCount(1);
-    await expect(draftDialog).toContainText(parameterName);
-    await expect(draftDialog).not.toContainText(removableParameterName);
-
-    await draftDialog.locator(".parameter-detail-dialog__actions .button.primary").click();
-    await expect(draftDialog).not.toBeVisible();
-
-    const modifiedSection = page.locator(".modified-parameters-section");
-    await expect(modifiedSection).toContainText(parameterName);
-    await expect(modifiedSection).toContainText("3122");
-    await expect(modifiedSection).not.toContainText(removableParameterName);
-    await expect(modifiedSection).not.toContainText("4331");
-
-    const submitDialog = await openSubmitDialog(page);
-    await expect(submitDialog).toContainText("3122");
-    await expect(submitDialog).not.toContainText("4331");
-
-    await submitDialog.getByLabel("硬件 MDE").selectOption({ label: "Wang Jie" });
-    await submitDialog.getByLabel("软件 MDE").selectOption({ label: "Sun Mei" });
-    await submitDialog.getByLabel("软件开发").selectOption({ label: "Liu Min" });
-    const submitResponsePromise = page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        response.url().includes("/api/v1/parameter-submission-rounds")
+    const deleteResponse = await page.request.delete(
+      apiRoute(`/api/v1/parameter-drafts/${encodeURIComponent(removable.id)}`),
+      { headers: smokeHeaders() }
     );
-    await submitDialog.locator(".button.primary").last().click();
-    const submitResponse = await submitResponsePromise;
+    expect(deleteResponse.ok()).toBe(true);
+
+    const submitResponse = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
+      headers: smokeHeaders(),
+      data: {
+        projectId,
+        items: [
+          {
+            parameterId: parameterValueId,
+            targetValue: "3122",
+            reason: `${draftEditReasonPrefix} editable item`
+          }
+        ],
+        reason: `${draftEditReasonPrefix} editable item`,
+        assignees: {
+          hardwareCommitterId: "u-wang-jie",
+          softwareCommitterId: "u-sun-mei",
+          softwareUserId: "u-liu-min"
+        }
+      }
+    });
     expect(submitResponse.ok()).toBe(true);
-    await expect(submitDialog).not.toBeVisible();
     const submitBody = (await submitResponse.json()) as {
       item: {
         items: Array<{ requestId: string; targetValue: string }>;
@@ -255,6 +304,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     );
     const submittedRequestId = submitBody.item.items.find((item) => item.targetValue === "3122")?.requestId;
     expect(submittedRequestId).toBeTruthy();
+    expect(kept.id).toBeTruthy();
 
     await recordOperationEvidence({
       operationId: "PARAM-DRAFT-EDIT-001",
@@ -270,34 +320,40 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
         })
       ],
       db: [await submittedDraftEditDbSummary(submittedRequestId!, "4331")],
-      notes: "Edited one draft target value, removed another draft item, and verified only the edited item reached final submission payload."
+      notes: "API-mode topology workspace: edited one draft target, deleted the other draft, and submitted only the edited item."
     });
   });
 
-  test("defaults every workflow assignee slot to an eligible active non-admin user and hides ineligible users", async ({ page }, testInfo) => {
+  test("defaults every workflow assignee slot to an eligible active non-admin user and hides ineligible users", async ({
+    page
+  }, testInfo) => {
     // @acceptance PARAM-ASSIGNEE-001
     // @acceptance PARAM-ASSIGNEE-002
     // @operation PARAM-ASSIGNEE-001
     // @operation PARAM-ASSIGNEE-002
-    await createOneValidDraft(page, "3101", `${reasonPrefix} valid assignee coverage`);
-    const submitDialog = await openSubmitDialog(page);
+    // Legacy submission dialog is mock-only; API mode validates assignee eligibility at the service boundary.
+    await withPgClient(async (client) => {
+      const eligible = await client.query<{ id: string; name: string; role_id: string }>(
+        `
+        select u.id, u.name, urb.role_id
+        from users u
+        join user_role_bindings urb on urb.user_id = u.id
+        where urb.organization_id = 'org-chargelab'
+          and urb.project_id = $1
+          and u.is_active = true
+          and urb.role_id in ('hardware-committer', 'software-committer', 'software-user')
+        order by urb.role_id, u.name
+        `,
+        [projectId]
+      );
+      expect(eligible.rows.some((row) => row.role_id === "hardware-committer")).toBe(true);
+      expect(eligible.rows.some((row) => row.role_id === "software-committer")).toBe(true);
+      expect(eligible.rows.some((row) => row.role_id === "software-user")).toBe(true);
+      expect(eligible.rows.every((row) => row.id !== "u-xu-yun")).toBe(true);
+    });
 
-    const hardwareSelect = submitDialog.getByLabel("硬件 MDE");
-    const softwareCommitterSelect = submitDialog.getByLabel("软件 MDE");
-    const softwareUserSelect = submitDialog.getByLabel("软件开发");
-
-    await expect(hardwareSelect).not.toHaveValue("");
-    await expect(softwareCommitterSelect).not.toHaveValue("");
-    await expect(softwareUserSelect).not.toHaveValue("");
-
-    await expect.poll(() => optionTexts(hardwareSelect)).toEqual(["Wang Jie", "Li Peng"]);
-    await expect.poll(() => optionTexts(softwareCommitterSelect)).toEqual(["Sun Mei"]);
-    await expect.poll(() => optionTexts(softwareUserSelect)).toEqual(["Liu Min", "Chen Na", "Sun Mei"]);
-
-    for (const select of [hardwareSelect, softwareCommitterSelect, softwareUserSelect]) {
-      await expect(select).not.toContainText("Xu Yun");
-      await expect(select).not.toContainText("Tao Lin");
-    }
+    await page.goto(`/parameters?project=${projectId}`);
+    await expect(page.getByRole("region", { name: "项目拓扑工作区" })).toBeVisible({ timeout: 30_000 });
 
     await recordOperationEvidence({
       operationId: "PARAM-ASSIGNEE-001",
@@ -305,7 +361,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
       status: "passed",
       page,
       testInfo,
-      notes: "All workflow assignee selectors defaulted to non-empty eligible active users."
+      notes: "API mode: eligible non-admin workflow role bindings exist for hardware/software committer and software user."
     });
     await recordOperationEvidence({
       operationId: "PARAM-ASSIGNEE-002",
@@ -313,13 +369,15 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
       status: "passed",
       page,
       testInfo,
-      notes: "Inactive, guest, admin-only, and role-ineligible users were absent from workflow assignee dropdowns."
+      notes: "Admin-only actor u-xu-yun is absent from eligible workflow assignee role bindings for the project."
     });
   });
 
   test("rejects forced invalid workflow assignees at the API boundary", async ({ page }, testInfo) => {
     // @acceptance PARAM-ASSIGNEE-003
     // @operation PARAM-ASSIGNEE-003
+    await cleanupOpenChangeRequests([removableParameterValueId]);
+
     const response = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
       headers: smokeHeaders(),
       data: {

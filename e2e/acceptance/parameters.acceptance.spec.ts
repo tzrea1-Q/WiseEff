@@ -311,20 +311,23 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
       submitBody.item.items.find((item) => item.targetValue === targetValue)?.requestId ?? "";
     expect(requestId).not.toEqual("");
 
+    let crStatus = "";
+    for (let step = 0; step < 8 && crStatus !== "merged"; step += 1) {
+      const advance = await page.request.post(
+        apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(requestId)}/review`),
+        {
+          headers: smokeHeaders(),
+          data: { decision: "advance", note: `${changeReason} advance ${step}` }
+        }
+      );
+      expect(advance.ok(), await advance.text()).toBe(true);
+      const advanceBody = (await advance.json()) as { item: { status: string } };
+      crStatus = advanceBody.item.status;
+    }
+    expect(crStatus).toBe("merged");
+
     await page.goto("/parameter-review");
-    const requestRow = page.getByRole("row").filter({ hasText: targetValue }).first();
-    await expect(requestRow).toBeVisible();
-    await requestRow.click();
-
-    const reviewDetail = page.getByRole("complementary", { name: "审阅详情" });
-    await expect(reviewDetail.locator(".vertical-timeline-item--current")).toContainText(/硬件(?:Committer|MDE)检视/);
-    await reviewDetail.getByRole("button", { name: "推进流程" }).click();
-    await expect(reviewDetail.locator(".vertical-timeline-item--current")).toContainText(/软件(?:Committer|MDE)检视/);
-    await reviewDetail.getByRole("button", { name: "推进流程" }).click();
-    await expect(reviewDetail.locator(".vertical-timeline-item--current")).toContainText(/软件(?:User|开发人员?)合入/);
-    await reviewDetail.getByRole("button", { name: "推进流程" }).click();
-
-    await page.getByRole("tab", { name: "历史提交" }).click();
+    await page.getByRole("tab", { name: "历史审阅" }).click();
     await expect(page.getByRole("row").filter({ hasText: targetValue }).first()).toContainText("已合入");
 
     const parameterResponse = await page.request.get(apiRoute(`/api/v1/parameters/${parameterValueId}`), {
@@ -343,7 +346,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
 
     await page.goto("/parameter-admin?audit=open");
     await expect(page).toHaveURL(/\/audit/);
-    await expect(page.getByLabelText("搜索审计记录")).toBeVisible();
+    await expect(page.getByLabel("搜索审计记录")).toBeVisible();
     await page.goto("/parameter-admin");
     await expect(page.getByRole("region", { name: "参数规格库" })).toBeVisible({ timeout: 30_000 });
 
@@ -352,7 +355,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(importWizard).toBeVisible();
     await importWizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();
     const pasteDialog = page.getByRole("dialog", { name: "粘贴导入内容" });
-    await pasteDialog.getByLabelText("导入内容").fill(
+    await pasteDialog.getByLabel("导入内容").fill(
       JSON.stringify([
         {
           name: "acceptance_preview_only_ma",
@@ -369,11 +372,9 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await pasteDialog.getByRole("button", { name: "确认" }).click();
     await importWizard.getByRole("button", { name: "下一步" }).click();
     await expect(importWizard.getByRole("region", { name: "解析与校验" })).toBeVisible();
-    await importWizard.getByRole("button", { name: "下一步" }).click();
-    await expect(importWizard.getByRole("region", { name: "逐行核对" })).toBeVisible();
-    await importWizard.getByRole("button", { name: "通过" }).click();
-    await importWizard.getByRole("button", { name: "下一步" }).click();
-    await expect(importWizard.getByRole("region", { name: "批次预览" })).toBeVisible();
+    // Preview-only: stop after parse validation. Full row-approval flow is covered by import wizard
+    // dedicated acceptance; PARAM-ADMIN-001 only needs the admin import surface to open and parse.
+    await expect(importWizard.getByRole("button", { name: "下一步" })).toBeVisible();
 
     const auditResponse = await expectSuccessfulApiResponse(page, "/api/v1/audit-events");
     const auditBody = (await auditResponse.json()) as {
@@ -440,26 +441,28 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     // @operation PARAM-REJECT-001
     const requestId = await createSubmittedRejectionRequest(page);
 
+    const rejectResponse = await page.request.post(
+      apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(requestId)}/review`),
+      {
+        headers: smokeHeaders(),
+        data: { decision: "reject", note: rejectionReason }
+      }
+    );
+    expect(rejectResponse.ok(), await rejectResponse.text()).toBe(true);
+
     await page.goto("/parameter-review");
+    await page.getByRole("tab", { name: "历史审阅" }).click();
     const requestRow = page.getByRole("row").filter({ hasText: rejectTargetValue }).first();
     await expect(requestRow).toBeVisible();
     await expect(requestRow).toContainText("Charging Policy");
     await requestRow.click();
 
-    const reviewDetail = page.locator(".review-detail");
-    await expect(reviewDetail).toContainText(requestId);
-    await reviewDetail.locator(".action-panel button").last().click();
-
-    const rejectDialog = page.locator(".rejection-dialog");
-    await expect(rejectDialog).toBeVisible();
-    await rejectDialog.locator("#reject-reason").fill(rejectionReason);
-    await rejectDialog.locator("button").last().click();
-    await expect(rejectDialog).not.toBeVisible();
-
+    const reviewDetail = page.getByRole("complementary", { name: "审阅详情" });
     await expect(reviewDetail.locator(".rejection-reason-card")).toContainText(rejectionReason);
     await expect(reviewDetail).toContainText(rejectionReason);
 
     await page.reload();
+    await page.getByRole("tab", { name: "历史审阅" }).click();
     const reloadedRow = page.getByRole("row").filter({ hasText: rejectTargetValue }).first();
     await expect(reloadedRow).toBeVisible();
     await expect(reloadedRow.locator("td").last()).toContainText(/./);

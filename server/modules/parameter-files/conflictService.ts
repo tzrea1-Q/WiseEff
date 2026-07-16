@@ -90,16 +90,7 @@ export async function resolveParameterFileConflict(
       });
     }
 
-    const draftIdToDelete = input.resolution === "file" ? conflict.uiDraftId : conflict.fileDraftId;
-    await tx.query(
-      `
-      delete from parameter_drafts
-      where organization_id = $1
-        and id = $2
-      `,
-      [auth.organization.id, draftIdToDelete]
-    );
-
+    // Resolve before deleting drafts: ui/file draft FKs cascade-delete the conflict row.
     const resolved = await resolveConflict(tx, {
       organizationId: auth.organization.id,
       conflictId: input.conflictId,
@@ -111,6 +102,16 @@ export async function resolveParameterFileConflict(
         conflictId: input.conflictId
       });
     }
+
+    const draftIdToDelete = input.resolution === "file" ? conflict.uiDraftId : conflict.fileDraftId;
+    await tx.query(
+      `
+      delete from parameter_drafts
+      where organization_id = $1
+        and id = $2
+      `,
+      [auth.organization.id, draftIdToDelete]
+    );
 
     await createAuditEvent(tx, {
       id: randomUUID(),

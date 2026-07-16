@@ -198,6 +198,19 @@ async function ensureOpenChangeRequestForSuggest() {
       return;
     }
 
+    const definition = await client.query<{ parameter_definition_id: string }>(
+      `
+      select parameter_definition_id
+      from project_parameter_values
+      where id = $1
+      `,
+      [parameterId]
+    );
+    const parameterDefinitionId = definition.rows[0]?.parameter_definition_id;
+    if (!parameterDefinitionId) {
+      throw new Error(`Missing parameter_definition_id for ${parameterId}`);
+    }
+
     await client.query(
       `
       insert into parameter_change_requests (
@@ -210,7 +223,7 @@ async function ensureOpenChangeRequestForSuggest() {
         reject_reason = null,
         updated_at = now()
       `,
-      [`acceptance-xiaoze-suggest-${parameterId}`, projectId, parameterId, parameterId, actorUserId]
+      [`acceptance-xiaoze-suggest-${parameterId}`, projectId, parameterId, parameterDefinitionId, actorUserId]
     );
   });
 }

@@ -157,7 +157,6 @@ describe("parameter file conflict service", () => {
           created_at: "2026-07-11T10:02:00.000Z"
         }
       ],
-      [],
       [
         {
           id: "conflict-1",
@@ -176,6 +175,7 @@ describe("parameter file conflict service", () => {
           created_at: "2026-07-11T10:02:00.000Z"
         }
       ],
+      [],
       []
     ]);
 
@@ -185,9 +185,12 @@ describe("parameter file conflict service", () => {
     });
 
     expect(resolved.status).toBe("resolved_file");
-    expect(txCalls.some((call) => call.text.includes("delete from parameter_drafts") && call.values[1] === "draft-ui")).toBe(
-      true
+    const resolveCallIndex = txCalls.findIndex((call) => call.text.includes("update parameter_file_sync_conflicts"));
+    const deleteCallIndex = txCalls.findIndex(
+      (call) => call.text.includes("delete from parameter_drafts") && call.values[1] === "draft-ui"
     );
+    expect(resolveCallIndex).toBeGreaterThanOrEqual(0);
+    expect(deleteCallIndex).toBeGreaterThan(resolveCallIndex);
     expect(txCalls.some((call) => call.text.includes("delete from parameter_drafts") && call.values[1] === "draft-file")).toBe(
       false
     );

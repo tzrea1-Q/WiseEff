@@ -54,9 +54,11 @@ test.describe("PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignmen
         content: `/dts-v1/;\n/include/ "pin.dtsi"\n/ { board_id = <0>; };\n`
       }
     });
-    expect(includeResponse.status()).toBe(400);
-    const includeBody = (await includeResponse.json()) as { error: { details?: { code?: string } } };
-    expect(includeBody.error.details?.code).toBe("dts-include-unsupported");
+    // /include/ is owned by config-set resolution; single-file parse-dts must not hard-reject it.
+    expect(includeResponse.status()).toBe(200);
+    const includeBody = (await includeResponse.json()) as { format: string; rows: unknown[] };
+    expect(includeBody.format).toBe("dts-full");
+    expect(Array.isArray(includeBody.rows)).toBe(true);
 
     await page.goto("/parameter-admin");
     await dismissXiaozeHint(page);

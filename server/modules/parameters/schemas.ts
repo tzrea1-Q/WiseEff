@@ -3,6 +3,7 @@ import { z } from "zod";
 import { parameterReviewDecisions, parameterRiskLevels } from "./status";
 
 const nonEmptyString = z.string().min(1);
+const nonBlankString = z.string().trim().min(1);
 const positiveInteger = z.number().int().positive();
 const workflowAssigneesSchema = z.object({
   hardwareCommitterId: nonEmptyString,
@@ -76,7 +77,7 @@ export const saveDraftBodySchema = z.object({
   projectId: nonEmptyString,
   parameterId: nonEmptyString,
   targetValue: z.string(),
-  reason: z.string()
+  reason: nonBlankString
 });
 
 export const submitRoundBodySchema = z.object({
@@ -86,7 +87,7 @@ export const submitRoundBodySchema = z.object({
       z.object({
         parameterId: nonEmptyString,
         targetValue: nonEmptyString,
-        reason: nonEmptyString
+        reason: nonBlankString
       })
     )
     .min(1),
