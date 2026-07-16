@@ -31,6 +31,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 - `exec-plans/active/2026-07-16-parameter-topology-semantic-cutover-round3.md`: third-round — real vendor dt-schema, semantic dashboard/hotspot, inferred stage/finalize, precise merge writeback, scoped matcher/review blockers, manifest backfill, UI unmatched review, strict acceptance (branch `fix/parameter-topology-semantic-cutover-round3`).
 - `exec-plans/active/2026-07-16-parameter-topology-round4-review-blockers.md`: fourth-round — real dt-validate schemas, durable stage→finalize CLI, exact locked merge writeback, scoped matcher/review, honest manifest gates, global-spec hotspots, unmatched create+mismatch audit, acceptance/browser evidence (branch `fix/parameter-topology-round4-review-blockers`).
 - `exec-plans/active/2026-07-16-parameter-topology-round5-review-blockers.md`: fifth-round — immutable base binding revisions, fail-closed writeback deps, stage/finalize phase audit, tenant-owned review resolve, draft→activate createSpec, acceptance fixture honesty (branch `fix/parameter-topology-round5-review-blockers`).
+- `exec-plans/active/2026-07-16-parameter-topology-round6-review-blockers.md`: Round 6 Review blockers — historical scope reconcile, lossless spec identity, global-spec activation authz, full valueShape activate, real merge acceptance, tenant-scoped cleanup, stable test:all (branch `fix/parameter-topology-round6-review-blockers`). TD-042 remains BLOCKER.
 
 ## Completed Plans
 
