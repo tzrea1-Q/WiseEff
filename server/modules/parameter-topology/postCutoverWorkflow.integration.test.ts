@@ -233,6 +233,31 @@ async function seedPreCutoverGraph(db: Database) {
     ) values ($1, $2, $3, $4, 'sc8562', '6E', null)`,
     [`lnr-${logicalNodeId}`, logicalNodeId, configRevisionId, NODE_LOCATOR]
   );
+  const nodeOccurrenceId = "no-pcw-1";
+  const propertyOccurrenceId = "po-pcw-gpio-int";
+  await db.query(
+    `insert into dts_node_occurrences (
+      id, config_revision_id, file_version_id, name, labels, node_path,
+      start_offset, end_offset, start_line, start_column, end_line, end_column,
+      raw_text, ast_json, source_order
+    ) values ($1, $2, $3, 'sc8562', '[]'::jsonb, $4, 0, 100, 1, 1, 5, 2, 'node', '{}'::jsonb, 0)`,
+    [nodeOccurrenceId, configRevisionId, fileVersionId, "amba/i2c@FDF5E000/sc8562@6E"]
+  );
+  await db.query(
+    `insert into dts_property_occurrences (
+      id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+      start_offset, end_offset, start_line, start_column, end_line, end_column,
+      raw_text, ast_json, source_order
+    ) values ($1, $2, $3, $4, $5, 10, 20, 2, 3, 2, 10, '<1>', '{}'::jsonb, 0)`,
+    [propertyOccurrenceId, configRevisionId, nodeOccurrenceId, fileVersionId, PROPERTY_KEY]
+  );
+  await db.query(
+    `insert into dts_occurrence_effects (
+      id, config_revision_id, property_occurrence_id, node_occurrence_id,
+      property_name, effect_kind, source_order
+    ) values ($1, $2, $3, $4, $5, 'set', 1)`,
+    ["oe-pcw-gpio-int", configRevisionId, propertyOccurrenceId, nodeOccurrenceId, PROPERTY_KEY]
+  );
   await db.query(
     `insert into parameter_definitions (
       id, organization_id, name, description, explanation, config_format,
@@ -430,13 +455,13 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
 
         const objectStore = {
           async get() {
-            return Buffer.from("unused");
+            return Buffer.from(seeded.content, "utf8");
           },
-          async put() {
+          async put(input: { bytes: Buffer }) {
             return {
-              storageKey: "unused",
-              checksumSha256: "0".repeat(64),
-              fileSizeBytes: 0
+              storageKey: `${ORG}/writeback-pcw.dts`,
+              checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+              fileSizeBytes: input.bytes.length
             };
           }
         };
@@ -447,8 +472,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           projectParameterBindingId: seeded.bindingId,
           parameterSpecId: seeded.specId
         });
-        // Without occurrence provenance, writeback may skip — but must not throw on legacy tables.
-        expect(writeback.skipped === true || writeback.skipped === false).toBe(true);
+        expect(writeback.skipped).toBe(false);
 
         const deviceId = "device-pcw-1";
         const targetId = "target-pcw-1";

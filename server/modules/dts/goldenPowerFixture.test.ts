@@ -17,7 +17,7 @@ describe("golden power fixture", () => {
     expect(resolved.nodes).toHaveLength(50);
 
     const propertyCount = resolved.nodes.reduce((count, node) => count + node.properties.length, 0);
-    expect(propertyCount).toBe(170);
+    expect(propertyCount).toBe(173);
 
     const phandleCount = resolved.nodes.reduce((count, node) => count + node.phandleRefs.length, 0);
     expect(phandleCount).toBe(18);
@@ -29,7 +29,7 @@ describe("golden power fixture", () => {
       }
     }
     const repeatedKeys = [...keyCounts.entries()].filter(([, count]) => count > 1);
-    expect(repeatedKeys).toHaveLength(24);
+    expect(repeatedKeys).toHaveLength(26);
 
     const gpioIntNodePaths = resolved.nodes
       .filter((node) => node.properties.some((property) => property.name === "gpio_int"))
