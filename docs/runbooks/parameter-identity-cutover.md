@@ -75,14 +75,13 @@ Dry-run must not mask inferred rows as mapped.
 ## 5. Ambiguity and spec backlog checks
 
 ```bash
-# Open identity mapping tasks must be zero before apply.
+# Open identity mapping tasks must be zero before finalize (stage-review may leave open inferred tasks).
 psql "$DATABASE_URL" -c "select count(*) as open_mapping from identity_mapping_tasks where status = 'open';"
-# Open parameter spec review tasks must be zero before apply.
 psql "$DATABASE_URL" -c "select count(*) as open_spec_reviews from parameter_spec_review_tasks where status = 'open';"
 npm run parameter-identities:check
 ```
 
-Resolve every open mapping/spec review in Admin UI (`/parameter-admin`) before continuing. Preflight blockers are stop-ship.
+Resolve every open mapping/spec review in Admin UI (`/parameter-admin`) before **finalize**. Preflight blockers are stop-ship for finalize and cutover; `stage-review` may persist open inferred tasks intentionally.
 
 ## 6. Compile-all configs
 
@@ -95,10 +94,54 @@ npm run dts:config:validate
 
 Every effective DTB / config revision used in production must pass fail-closed toolchain validation.
 
-## 7. Apply migration
+## 7. Stage review (inferred specs and evidence)
+
+Production cutover with inferred parameter specs uses a durable two-phase migration. `stage-review` commits inferred drafts, review tasks, definition-level evidence, and a `staged` migration run in its **own** PostgreSQL transaction. It does **not** write activity/workflow semantic foreign keys (bindings, history FKs, drafts, change requests).
 
 ```bash
 export PARAMETER_IDENTITY_MAINTENANCE_TOKEN='<same token as target env>'
+npm run parameter-identities:migrate -- \
+  --stage-review \
+  --maintenance-token "$PARAMETER_IDENTITY_MAINTENANCE_TOKEN" \
+  --write-lock-confirmed \
+  --db-snapshot-id "$DB_SNAPSHOT_ID" \
+  --object-snapshot-id "$OBJECT_SNAPSHOT_ID"
+```
+
+Capture `migrationRunId` from the report JSON. The run status is `staged` even when `blockers` lists inferred pending review — resolve those in Admin before finalize.
+
+**On failure:** whole-snapshot restore (section 13). Do not retry against a dirty DB.
+
+## 8. Resolve inferred / mapping backlog
+
+In `/parameter-admin`, resolve every open inferred spec review and identity mapping task tied to the staged run. Re-run checks:
+
+```bash
+psql "$DATABASE_URL" -c "select count(*) as open_inferred from parameter_spec_review_tasks where status = 'open' and coalesce(source_evidence->>'inferred','') = 'true';"
+npm run parameter-identities:check
+```
+
+## 9. Finalize migration (activity FKs + bindings)
+
+`finalize` references the staged `migrationRunId`, requires all review/mapping tasks resolved, and atomically writes bindings, binding revisions, value evidence, and activity/workflow semantic FKs in **one** transaction. Failure rolls back finalize only; staged artifacts remain.
+
+```bash
+npm run parameter-identities:migrate -- \
+  --finalize \
+  --migration-run-id '<migrationRunId>' \
+  --maintenance-token "$PARAMETER_IDENTITY_MAINTENANCE_TOKEN" \
+  --write-lock-confirmed
+```
+
+Run status becomes `finalized`. Cutover accepts **only** `finalized` runs.
+
+**On failure:** staged data remains; fix blockers and retry finalize, or whole-snapshot restore (section 13).
+
+### One-shot apply (rehearsal / temp DB only)
+
+For clean snapshots with zero inferred blockers, `--apply` remains a single-transaction shortcut that writes staging + activity together and records `finalized`. It is not suitable when inferred review tasks are still open — use stage → finalize instead.
+
+```bash
 npm run parameter-identities:migrate -- \
   --apply \
   --maintenance-token "$PARAMETER_IDENTITY_MAINTENANCE_TOKEN" \
@@ -107,11 +150,9 @@ npm run parameter-identities:migrate -- \
   --object-snapshot-id "$OBJECT_SNAPSHOT_ID"
 ```
 
-Capture `migrationRunId` from the report JSON.
+**On any failure or non-empty `blockers`:** restore whole snapshot (section 13). Direct apply rollback must not remove artifacts from a prior committed `stage-review`.
 
-**On any failure or non-empty `blockers`:** restore whole snapshot (section 12). Do not retry apply against a dirty DB.
-
-## 8. Atomic schema cutover
+## 10. Atomic schema cutover
 
 ```bash
 npm run parameter-identities:cutover -- --migration-run-id '<migrationRunId>'
@@ -121,7 +162,7 @@ This runs `server/cutovers/2026-07-16-parameter-identity-cutover.sql` inside one
 
 **On failure:** whole-snapshot restore only. Never continue with partial FK swaps or archived tables.
 
-## 9. Postflight
+## 11. Postflight
 
 ```bash
 npm run parameter-identities:check
@@ -131,7 +172,7 @@ curl -sS "$WISEEFF_API_BASE_URL/metrics" | rg 'wiseeff_parameter_identity_|wisee
 
 Expected: check `ok: true`, cutover marker present, migration complete gauge `1`, open mapping gauge `0`.
 
-## 10. Application switch
+## 12. Application switch
 
 Deploy / enable the semantic-identity application build that:
 
@@ -146,7 +187,7 @@ curl -sS -H "Authorization: $TOKEN" "$WISEEFF_API_BASE_URL/api/v2/parameter-spec
 curl -sS -H "Authorization: $TOKEN" "$WISEEFF_API_BASE_URL/health/ready"
 ```
 
-## 11. Observation window
+## 13. Observation window
 
 Watch for at least one release cycle (minimum 30–60 minutes for rehearsal; longer for production):
 
@@ -154,9 +195,9 @@ Watch for at least one release cycle (minimum 30–60 minutes for rehearsal; lon
 - Grafana: WiseEff Overview panels for DTS toolchain, mapping backlog, cutover status
 - Functional: typed binding edit, publish gate, mapping queue empty, no `recommendedValue` business fields
 
-If severity critical fires or mapping backlog reappears, freeze writes again and restore (section 12).
+If severity critical fires or mapping backlog reappears, freeze writes again and restore (section 14).
 
-## 12. Whole-snapshot restore (only rollback)
+## 14. Whole-snapshot restore (only rollback)
 
 ```bash
 # Stop API/workers again if needed, then restore BOTH snapshots together.

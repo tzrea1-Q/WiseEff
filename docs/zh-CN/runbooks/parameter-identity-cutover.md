@@ -74,7 +74,7 @@ psql "$DATABASE_URL" -c "select count(*) as open_spec_reviews from parameter_spe
 npm run parameter-identities:check
 ```
 
-在 Admin UI（`/parameter-admin`）清零所有开放映射/规格审核后再继续。
+在 **finalize** 前于 Admin UI（`/parameter-admin`）清零所有开放映射/规格审核。`stage-review` 可有意保留 open inferred 任务；finalize 与 cutover 前必须清零。
 
 ## 6. 全量编译
 
@@ -85,10 +85,54 @@ npm run dts:config:validate
 
 生产在用配置集须以失败关闭模式通过工具链校验（Admin 或 `POST /api/v2/projects/:projectId/config-revisions/:revisionId/validate`）。
 
-## 7. Apply 迁移
+## 7. Stage review（推断规格与证据）
+
+含 inferred 参数规格的生产 cutover 使用 durable 两阶段迁移。`stage-review` 在**独立** PostgreSQL 事务中提交推断草稿、审核任务、定义级证据与 `staged` 迁移运行；**不**写入 activity/workflow 语义外键（绑定、history FK、草稿、变更请求等）。
 
 ```bash
 export PARAMETER_IDENTITY_MAINTENANCE_TOKEN='<same token as target env>'
+npm run parameter-identities:migrate -- \
+  --stage-review \
+  --maintenance-token "$PARAMETER_IDENTITY_MAINTENANCE_TOKEN" \
+  --write-lock-confirmed \
+  --db-snapshot-id "$DB_SNAPSHOT_ID" \
+  --object-snapshot-id "$OBJECT_SNAPSHOT_ID"
+```
+
+从报告 JSON 保存 `migrationRunId`。即使 `blockers` 含 inferred pending review，运行状态仍为 `staged`——finalize 前须在 Admin 完成审核。
+
+**失败：** 第 14 节整快照恢复。禁止对脏库重试。
+
+## 8. 清零 inferred / 映射积压
+
+在 `/parameter-admin` 解析与 staged 运行相关的全部 open inferred 规格审核与 identity mapping 任务，然后：
+
+```bash
+psql "$DATABASE_URL" -c "select count(*) as open_inferred from parameter_spec_review_tasks where status = 'open' and coalesce(source_evidence->>'inferred','') = 'true';"
+npm run parameter-identities:check
+```
+
+## 9. Finalize 迁移（activity FK + 绑定）
+
+`finalize` 引用 staged `migrationRunId`，要求全部审核/映射任务已 resolved，并在**单事务**中原子写入绑定、绑定 revision、值证据与 activity/workflow 语义 FK。失败仅回滚 finalize；staged 产物保留。
+
+```bash
+npm run parameter-identities:migrate -- \
+  --finalize \
+  --migration-run-id '<migrationRunId>' \
+  --maintenance-token "$PARAMETER_IDENTITY_MAINTENANCE_TOKEN" \
+  --write-lock-confirmed
+```
+
+运行状态变为 `finalized`。Cutover **仅**接受 `finalized` 运行。
+
+**失败：** staged 数据仍在；修复 blocker 后重试 finalize，或整快照恢复（第 14 节）。
+
+### 一次性 apply（演练 / 临时库）
+
+无 inferred blocker 的干净快照可用 `--apply` 单事务捷径（staging + activity 一并写入，状态 `finalized`）。存在 open inferred 审核任务时必须使用 stage → finalize。
+
+```bash
 npm run parameter-identities:migrate -- \
   --apply \
   --maintenance-token "$PARAMETER_IDENTITY_MAINTENANCE_TOKEN" \
@@ -97,11 +141,9 @@ npm run parameter-identities:migrate -- \
   --object-snapshot-id "$OBJECT_SNAPSHOT_ID"
 ```
 
-从报告 JSON 保存 `migrationRunId`。
+**失败或 `blockers` 非空：** 第 14 节整快照恢复。direct apply 回滚不得删除已提交 `stage-review` 的产物。
 
-**失败或 `blockers` 非空：** 执行第 12 节整快照恢复。禁止对脏库重试 apply。
-
-## 8. 原子 Schema Cutover
+## 10. 原子 Schema Cutover
 
 ```bash
 npm run parameter-identities:cutover -- --migration-run-id '<migrationRunId>'
@@ -111,7 +153,7 @@ npm run parameter-identities:cutover -- --migration-run-id '<migrationRunId>'
 
 **失败：** 只能整快照恢复，禁止部分继续。
 
-## 9. Postflight
+## 11. Postflight
 
 ```bash
 npm run parameter-identities:check
@@ -121,7 +163,7 @@ curl -sS "$WISEEFF_API_BASE_URL/metrics" | rg 'wiseeff_parameter_identity_|wisee
 
 期望：`ok: true`、cutover marker 存在、迁移完成 gauge 为 `1`、开放映射 gauge 为 `0`。
 
-## 10. 应用切换
+## 12. 应用切换
 
 启用语义身份应用构建：提供 `/api/v2`，对遗留扁平参数 ID 返回 `410 legacy-parameter-id-retired`，UI 使用源树/生效树。
 
@@ -130,7 +172,7 @@ curl -sS -H "Authorization: $TOKEN" "$WISEEFF_API_BASE_URL/api/v2/parameter-spec
 curl -sS -H "Authorization: $TOKEN" "$WISEEFF_API_BASE_URL/health/ready"
 ```
 
-## 11. 观察窗口
+## 13. 观察窗口
 
 至少观察一个发布周期（演练最少 30–60 分钟）：
 
@@ -138,9 +180,9 @@ curl -sS -H "Authorization: $TOKEN" "$WISEEFF_API_BASE_URL/health/ready"
 - Grafana Overview 中的 DTS 工具链、映射积压、cutover 状态面板
 - 功能：类型化绑定编辑、发布门禁、映射队列为空、无业务 `recommendedValue`
 
-若 critical 告警触发或映射积压再现，再次冻结写入并执行第 12 节。
+若 critical 告警触发或映射积压再现，再次冻结写入并执行第 14 节。
 
-## 12. 整快照恢复（唯一回滚）
+## 14. 整快照恢复（唯一回滚）
 
 ```bash
 echo "Restoring DB_SNAPSHOT_ID=${DB_SNAPSHOT_ID}"
