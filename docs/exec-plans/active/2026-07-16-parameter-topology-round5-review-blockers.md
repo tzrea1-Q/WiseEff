@@ -5,7 +5,7 @@
 
 **Goal:** Close parent-agent Round 4 Review blockers: immutable base binding revisions, fail-closed merge/writeback dependencies, immutable stage/finalize phase audit, tenant-owned review resolution, draft→activate createSpec, and honest acceptance fixtures.
 
-**Branch:** `fix/parameter-topology-round5-review-blockers`  
+**Branch:** `fix/parameter-topology-round5-review-blockers`
 **Preserved baseline:** Round4 `8a6971bd` via `--no-ff` merge. **TD-042 remains BLOCKER — not production cutover ready.**
 
 ## Round 5 fixes landed (implementation evidence)

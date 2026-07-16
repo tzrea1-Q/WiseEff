@@ -5,7 +5,7 @@
 
 **目标：** 关闭父智能体第四轮 Review 阻断：base binding revision 不可变、merge/writeback 真 fail-closed、stage/finalize 不可变 phase 审计、租户拥有校验、createSpec 草稿→激活→裁决、验收去掉 fallback。
 
-**分支：** `fix/parameter-topology-round5-review-blockers`  
+**分支：** `fix/parameter-topology-round5-review-blockers`
 **保留基线：** Round4 `8a6971bd`（`--no-ff` 合并）。**TD-042 仍为 BLOCKER — 非 production cutover ready。**
 
 ## 第五轮已落地修复（实现证据）
