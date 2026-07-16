@@ -11,15 +11,13 @@
     "NOTIF-INBOX-001",
     "NOTIF-READ-001",
     "PARAM-ADMIN-002",
-    "PARAM-DTS-CONFIGSET-001",
-    "PARAM-DTS-DIFF-001",
-    "PARAM-DTS-EDIT-001",
-    "PARAM-DTS-EDIT-002",
-    "PARAM-DTS-IMPACT-001",
-    "PARAM-DTS-RBAC-001",
-    "PARAM-DTS-SEARCH-001",
-    "PARAM-DTS-STRUCTURE-001",
+    "PARAM-CONFIG-PUBLISH-GATE-001",
+    "PARAM-HOME-001",
+    "PARAM-IDENTITY-MAP-001",
     "PARAM-IMPORT-REVIEW-META-001",
+    "PARAM-SPEC-GOVERN-001",
+    "PARAM-TOPOLOGY-BROWSE-001",
+    "PARAM-TOPOLOGY-EDIT-001",
     "PERM-MATRIX-001",
     "PERM-MATRIX-002",
     "PFB-ADMIN-001",
@@ -36,20 +34,22 @@
     "PARAM-ASSIGNEE-001",
     "PARAM-ASSIGNEE-002",
     "PARAM-ASSIGNEE-003",
-    "PARAM-CONFIG-PUBLISH-GATE-001",
     "PARAM-DRAFT-EDIT-001",
+    "PARAM-DTS-CONFIGSET-001",
+    "PARAM-DTS-DIFF-001",
+    "PARAM-DTS-EDIT-001",
+    "PARAM-DTS-EDIT-002",
+    "PARAM-DTS-IMPACT-001",
+    "PARAM-DTS-RBAC-001",
+    "PARAM-DTS-SEARCH-001",
+    "PARAM-DTS-STRUCTURE-001",
     "PARAM-FILE-RESOLVE-001",
     "PARAM-FILE-SYNC-001",
     "PARAM-FILE-UPLOAD-001",
     "PARAM-HAPPY-001",
-    "PARAM-HOME-001",
-    "PARAM-IDENTITY-MAP-001",
     "PARAM-IMPORT-DTS-FULL-001",
     "PARAM-REASON-001",
     "PARAM-REJECT-001",
-    "PARAM-SPEC-GOVERN-001",
-    "PARAM-TOPOLOGY-BROWSE-001",
-    "PARAM-TOPOLOGY-EDIT-001",
     "PERM-GOV-001",
     "PERM-USER-MGMT-001",
     "PFB-AUTHZ-001",
@@ -60,8 +60,6 @@
   ],
   "invalidEvidenceIds": [
     "PARAM-ADMIN-002",
-    "PARAM-DTS-IMPACT-001",
-    "PARAM-DTS-RBAC-001",
     "PARAM-IMPORT-REVIEW-META-001",
     "XIAOZE-PERCEPTION-001",
     "XIAOZE-PERCEPTION-AUTHZ-001"
@@ -76,16 +74,6 @@
       "operationId": "PARAM-ADMIN-002",
       "field": "audit",
       "message": "Audit assertions require at least one audit event summary."
-    },
-    {
-      "operationId": "PARAM-DTS-IMPACT-001",
-      "field": "artifacts",
-      "message": "Evidence requires at least one artifact."
-    },
-    {
-      "operationId": "PARAM-DTS-RBAC-001",
-      "field": "artifacts",
-      "message": "Evidence requires at least one artifact."
     },
     {
       "operationId": "PARAM-IMPORT-REVIEW-META-001",
@@ -138,7 +126,7 @@
           "method": "GET",
           "path": "/api/v1/me",
           "status": 200,
-          "requestId": "9ab42877-77ac-4384-bfaf-ba3d14d5667c",
+          "requestId": "1efecdd9-dfc5-4edf-a4df-b185d0aa522c",
           "responseSummary": "smoke auth accepted for current user"
         }
       ],
@@ -169,7 +157,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/AUTH-RUNTIME-001-api-mode-browser-auth-runtime-parity.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:01:38.031Z"
+      "recordedAt": "2026-07-16T12:24:00.932Z"
     },
     {
       "operationId": "LOG-HAPPY-001",
@@ -183,56 +171,56 @@
         "db",
         "audit"
       ],
-      "notes": "Log 56f4b0fa-b466-420a-8294-07cdcac7d44c completed analysis, linked evidence, recorded feedback, archived successfully, and rejected unsupported upload with a readable failure.",
+      "notes": "Log 4470d656-8aa1-41a1-a6e8-9c665064e89f completed analysis, linked evidence, recorded feedback, archived successfully, and rejected unsupported upload with a readable failure.",
       "artifacts": [
         "test-results/acceptance-operation-evidence/LOG-HAPPY-001-log-upload-complete-evidence-feedback-archive-unsupported.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/logs/56f4b0fa-b466-420a-8294-07cdcac7d44c/archive",
+          "path": "/api/v1/logs/4470d656-8aa1-41a1-a6e8-9c665064e89f/archive",
           "status": 200,
-          "requestId": "5b471f9d-9c12-4adb-80cb-03f071d61a3b",
+          "requestId": "c3228987-013e-4737-9823-d1e0505cfcd1",
           "responseSummary": "archiveState=archived"
         },
         {
           "method": "GET",
           "path": "/api/v1/logs",
           "status": 200,
-          "requestId": "2a5dc13a-f187-418f-af2b-e6e3b4cb2910",
+          "requestId": "5f0ec058-92d7-4487-85bd-4dd5dc12548b",
           "responseSummary": "active logs=0; archived log hidden"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "6818cc68-e6c8-4ea4-ba55-3efeec48bec4",
+          "requestId": "c49751fa-21dd-45e7-81e0-e93233fef0f4",
           "responseSummary": "audit events=50"
         }
       ],
       "db": [
         {
           "table": "log_records",
-          "predicate": "id=56f4b0fa-b466-420a-8294-07cdcac7d44c",
-          "observed": "status=complete; archiveState=archived; currentRunId=08253e42-a64e-4fe2-a292-a58d93c7f919",
+          "predicate": "id=4470d656-8aa1-41a1-a6e8-9c665064e89f",
+          "observed": "status=complete; archiveState=archived; currentRunId=6facfaf0-eaca-43ac-9605-06f606f56a3e",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "b910c6c5-f839-45f1-9788-ac585be577e2",
+          "id": "41937c75-2823-490d-9b97-7a4171372401",
           "kind": "log-feedback",
           "action": "feedback",
-          "targetId": "56f4b0fa-b466-420a-8294-07cdcac7d44c",
-          "requestId": "e08fbf1e-1eec-4e12-a25e-4df06b16163b",
+          "targetId": "4470d656-8aa1-41a1-a6e8-9c665064e89f",
+          "requestId": "5be8d13e-8619-4e20-9752-db5db8f9fd6f",
           "metadataSummary": "rating"
         },
         {
-          "id": "5600ae5b-f7ae-48ee-8287-062eaeb02dff",
+          "id": "5cd86cb3-44be-4e43-815c-cb1ca50ac5a5",
           "kind": "log-archive",
           "action": "archive",
-          "targetId": "56f4b0fa-b466-420a-8294-07cdcac7d44c",
-          "requestId": "5b471f9d-9c12-4adb-80cb-03f071d61a3b",
+          "targetId": "4470d656-8aa1-41a1-a6e8-9c665064e89f",
+          "requestId": "c3228987-013e-4737-9823-d1e0505cfcd1",
           "metadataSummary": "archiveState"
         }
       ],
@@ -263,7 +251,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/LOG-HAPPY-001-log-upload-complete-evidence-feedback-archive-unsupported.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:06:34.839Z"
+      "recordedAt": "2026-07-16T12:28:54.369Z"
     },
     {
       "operationId": "LOG-REANALYZE-001",
@@ -277,47 +265,47 @@
         "db",
         "audit"
       ],
-      "notes": "Log a2cf07a9-73ae-4b80-ad92-3dd21a49f0b3 created rerun ef89756c-6162-4854-aa9f-89aa2f3ec308; UI refreshed the log workbench and audit recorded log-rerun with job metadata.",
+      "notes": "Log 3fd42e02-6e4b-4aa9-9ce8-0dc73f94caff created rerun 6bc8f09c-5b7e-4e97-a257-002b2b208a1c; UI refreshed the log workbench and audit recorded log-rerun with job metadata.",
       "artifacts": [
         "test-results/acceptance-operation-evidence/LOG-REANALYZE-001-completed-log-reanalysis-creates-rerun-job-progress-and-audit.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/logs/a2cf07a9-73ae-4b80-ad92-3dd21a49f0b3/rerun",
+          "path": "/api/v1/logs/3fd42e02-6e4b-4aa9-9ce8-0dc73f94caff/rerun",
           "status": 200,
-          "requestId": "7c5bc894-0765-4216-af1b-e515de81be93",
-          "responseSummary": "created run=ef89756c-6162-4854-aa9f-89aa2f3ec308"
+          "requestId": "59c73a87-f06b-492b-aa1b-e14716cbcca5",
+          "responseSummary": "created run=6bc8f09c-5b7e-4e97-a257-002b2b208a1c"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "d8aa286a-c812-4538-bcee-bb90157bea21",
+          "requestId": "7f3201b7-40c8-4f38-abb9-2cf298def6b4",
           "responseSummary": "audit events=50"
         }
       ],
       "db": [
         {
           "table": "log_records",
-          "predicate": "id=a2cf07a9-73ae-4b80-ad92-3dd21a49f0b3",
-          "observed": "status=complete; archiveState=active; currentRunId=ef89756c-6162-4854-aa9f-89aa2f3ec308",
+          "predicate": "id=3fd42e02-6e4b-4aa9-9ce8-0dc73f94caff",
+          "observed": "status=complete; archiveState=active; currentRunId=6bc8f09c-5b7e-4e97-a257-002b2b208a1c",
           "rowCount": 1
         },
         {
           "table": "log_analysis_runs",
-          "predicate": "id=ef89756c-6162-4854-aa9f-89aa2f3ec308",
-          "observed": "status=complete; progress=100; jobId=82d2efca-2446-4fa2-ae88-90eda7213ca4",
+          "predicate": "id=6bc8f09c-5b7e-4e97-a257-002b2b208a1c",
+          "observed": "status=complete; progress=100; jobId=3a22107c-8aba-421e-a3e3-bedf9b114625",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "bb32037e-9ac8-48c2-b56e-f8760782b8ec",
+          "id": "2fcf24be-ffc3-4896-be74-e540283349a7",
           "kind": "log-rerun",
           "action": "rerun",
-          "targetId": "a2cf07a9-73ae-4b80-ad92-3dd21a49f0b3",
-          "requestId": "7c5bc894-0765-4216-af1b-e515de81be93",
+          "targetId": "3fd42e02-6e4b-4aa9-9ce8-0dc73f94caff",
+          "requestId": "59c73a87-f06b-492b-aa1b-e14716cbcca5",
           "metadataSummary": "jobId,runId"
         }
       ],
@@ -348,7 +336,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/LOG-REANALYZE-001-completed-log-reanalysis-creates-rerun-job-progress-and-audit.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:06:42.992Z"
+      "recordedAt": "2026-07-16T12:29:02.183Z"
     },
     {
       "operationId": "MOD-TREE-AUTHZ-001",
@@ -368,21 +356,21 @@
           "method": "POST",
           "path": "/api/v1/parameter-modules",
           "status": 403,
-          "requestId": "519530a0-b8d2-4462-abb0-0d93ecc5fd5f",
+          "requestId": "7c9d2839-d8aa-47a0-a1b0-737e2d0b8f70",
           "responseSummary": "FORBIDDEN for non-admin"
         },
         {
           "method": "DELETE",
-          "path": "/api/v1/parameter-modules/08597e07-c469-4336-b7b1-a6232ee9046a",
+          "path": "/api/v1/parameter-modules/92b0f564-be3c-4edc-beea-c70d631b1cb8",
           "status": 409,
-          "requestId": "3d0b3829-9952-41bf-912b-824a1e89c4c1",
+          "requestId": "f2c230cb-13bb-4aa0-abe5-3876e9873136",
           "responseSummary": "CONFLICT child modules remain"
         },
         {
           "method": "DELETE",
-          "path": "/api/v1/parameter-modules/63095d49-5c88-4f9f-a423-03085278e2b3",
+          "path": "/api/v1/parameter-modules/095101a8-9da2-4469-8e4e-611b5eec0d18",
           "status": 409,
-          "requestId": "302c304c-e58f-4da2-a0eb-cacc224d5953",
+          "requestId": "8e8e849a-a79c-488b-b2df-b5ece5d0e38a",
           "responseSummary": "CONFLICT parameters remain"
         }
       ],
@@ -413,7 +401,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/MOD-TREE-AUTHZ-001-module-tree-authz-and-delete-guards.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:05:46.456Z"
+      "recordedAt": "2026-07-16T12:28:02.285Z"
     },
     {
       "operationId": "MOD-TREE-DEBUG-001",
@@ -433,15 +421,15 @@
           "method": "POST",
           "path": "/api/v1/debugging/admin/nodes",
           "status": 201,
-          "requestId": "3f0aa26b-0c76-4d86-8c0a-9e33716341b8",
-          "responseSummary": "node=70a85570-49bc-4ee7-a2c9-3b8135cb854f; moduleId=a45a24e3-bbb7-4116-8233-ee50da7ffe9a"
+          "requestId": "8402e56e-863f-4c0a-9eda-9448cf8eaebe",
+          "responseSummary": "node=fdabaf97-1cb8-465c-8592-90c297172f8b; moduleId=d5893bb8-e744-48ba-9a53-505894d88a64"
         },
         {
           "method": "GET",
           "path": "/api/v1/debugging/admin/nodes",
           "status": 200,
-          "requestId": "9280ad24-e159-4716-bd9d-6bfadb982b8c",
-          "responseSummary": "parent filter includes child node 70a85570-49bc-4ee7-a2c9-3b8135cb854f"
+          "requestId": "c86891bc-6f9d-45a7-990f-f1b75a826cde",
+          "responseSummary": "parent filter includes child node fdabaf97-1cb8-465c-8592-90c297172f8b"
         }
       ],
       "trace": {
@@ -471,7 +459,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/MOD-TREE-DEBUG-001-nested-debug-module-subtree-filter.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:05:46.322Z"
+      "recordedAt": "2026-07-16T12:28:02.135Z"
     },
     {
       "operationId": "MOD-TREE-PARAM-001",
@@ -492,21 +480,21 @@
           "method": "POST",
           "path": "/api/v1/parameter-modules",
           "status": 201,
-          "requestId": "d6abed6d-4073-494b-b0aa-559849784ddc",
-          "responseSummary": "parent=f4098079-1242-43b8-88fd-2bba836999c1"
+          "requestId": "f764de81-b327-414c-b286-3a756f89f3f3",
+          "responseSummary": "parent=829054d9-dc05-4671-8635-033fc2a6ea9f"
         },
         {
           "method": "POST",
           "path": "/api/v1/parameter-modules",
           "status": 201,
-          "requestId": "a46a15ce-451d-4779-b758-55d6c1b46e94",
-          "responseSummary": "child=81275eab-2fa8-4e65-976e-edc8105bf882; parentId=f4098079-1242-43b8-88fd-2bba836999c1"
+          "requestId": "0b5077f4-23b5-430a-a69a-230e521f438d",
+          "responseSummary": "child=d150953d-f242-475d-8b5a-16acedfb578c; parentId=829054d9-dc05-4671-8635-033fc2a6ea9f"
         },
         {
           "method": "GET",
           "path": "/api/v1/parameters",
           "status": 200,
-          "requestId": "d8304bd4-ae1b-4057-82b2-aebf31e3619e",
+          "requestId": "425dc614-c0b6-4989-a111-34a093b9c1a3",
           "responseSummary": "subtree includes aurora-fast-charge-current"
         }
       ],
@@ -514,7 +502,7 @@
         {
           "table": "parameter_definitions",
           "predicate": "id=fast-charge-current",
-          "observed": "parameter_module_id=81275eab-2fa8-4e65-976e-edc8105bf882",
+          "observed": "parameter_module_id=d150953d-f242-475d-8b5a-16acedfb578c",
           "rowCount": 1
         }
       ],
@@ -545,7 +533,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/MOD-TREE-PARAM-001-nested-parameter-module-subtree-filter.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:05:45.973Z"
+      "recordedAt": "2026-07-16T12:28:01.803Z"
     },
     {
       "operationId": "MOD-TREE-PARAM-002",
@@ -563,23 +551,23 @@
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/parameter-modules/7fea50e9-6c47-455c-8d41-f836bc215bb2/move",
+          "path": "/api/v1/parameter-modules/a64d9768-4f55-4f8c-acba-4fa803609109/move",
           "status": 200,
-          "requestId": "ec7b502e-b0fe-4dc1-aec4-55133b712eef",
-          "responseSummary": "parentId=b6d12f5a-5b38-420a-bb96-7f9b804141ca"
+          "requestId": "1be7924d-600c-47c1-b784-155046f88a69",
+          "responseSummary": "parentId=fcac5868-5457-436a-bd44-641886288263"
         },
         {
           "method": "GET",
           "path": "/api/v1/parameters",
           "status": 200,
-          "requestId": "1c888b4b-6663-4be6-9ec3-dfb023db6ef2",
-          "responseSummary": "parameter follows moved subtree under b6d12f5a-5b38-420a-bb96-7f9b804141ca"
+          "requestId": "07bcfbb9-91f8-4c09-8975-1ab9e67fb474",
+          "responseSummary": "parameter follows moved subtree under fcac5868-5457-436a-bd44-641886288263"
         },
         {
           "method": "POST",
-          "path": "/api/v1/parameter-modules/b6d12f5a-5b38-420a-bb96-7f9b804141ca/move",
+          "path": "/api/v1/parameter-modules/fcac5868-5457-436a-bd44-641886288263/move",
           "status": 409,
-          "requestId": "c2f3204e-7090-49fd-8f58-dfc4a85ae150",
+          "requestId": "0bc97e25-458c-47a7-ac90-42e01ef16dfe",
           "responseSummary": "CONFLICT cycle rejected"
         }
       ],
@@ -610,7 +598,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/MOD-TREE-PARAM-002-parameter-module-move-and-cycle-guard.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:05:46.172Z"
+      "recordedAt": "2026-07-16T12:28:01.985Z"
     },
     {
       "operationId": "NOTIF-INBOX-001",
@@ -630,14 +618,14 @@
           "method": "GET",
           "path": "/api/v1/notifications/unread-count",
           "status": 200,
-          "requestId": "ad9dcdf0-7f58-42dc-80f4-8d11955ac63e",
+          "requestId": "709aff1a-3395-4f4f-8b80-32982b87e7d5",
           "responseSummary": "unread count loaded"
         },
         {
           "method": "GET",
           "path": "/api/v1/notifications",
           "status": 200,
-          "requestId": "696c584a-a02f-4518-9837-2509c9a29c7e",
+          "requestId": "48fcfe0c-791c-42d4-869f-b5a08eb1b9e7",
           "responseSummary": "notification list loaded"
         }
       ],
@@ -668,7 +656,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/NOTIF-INBOX-001-topbar-notification-inbox-panel.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:06:46.424Z"
+      "recordedAt": "2026-07-16T12:29:06.732Z"
     },
     {
       "operationId": "NOTIF-READ-001",
@@ -687,14 +675,14 @@
           "method": "POST",
           "path": "/api/v1/notifications/mark-all-read",
           "status": 200,
-          "requestId": "61240f60-a724-43b8-8f0e-fcf759d2d161",
+          "requestId": "24aa5eee-5217-4f6b-8f7e-eeea1ad587d7",
           "responseSummary": "mark-all-read succeeded"
         },
         {
           "method": "GET",
           "path": "/api/v1/notifications/unread-count",
           "status": 200,
-          "requestId": "cf16fd17-8c5e-4c01-9181-485a0715906f",
+          "requestId": "8daefa91-e5d4-4050-aa6f-1c2541702bc2",
           "responseSummary": "unread count=0"
         }
       ],
@@ -725,7 +713,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/NOTIF-READ-001-notification-mark-all-read-api.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:06:50.880Z"
+      "recordedAt": "2026-07-16T12:29:12.200Z"
     },
     {
       "operationId": "PARAM-ADMIN-002",
@@ -767,211 +755,53 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-ADMIN-002-parameter-import-wizard-five-step-preview-flow.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:07:08.307Z"
+      "recordedAt": "2026-07-16T12:29:24.227Z"
     },
     {
-      "operationId": "PARAM-DTS-CONFIGSET-001",
-      "title": "config-set and baseline + ConfigSetBaselinePanel",
+      "operationId": "PARAM-CONFIG-PUBLISH-GATE-001",
+      "title": "validate/publish gate and DB reload persistence",
       "status": "passed",
       "role": "Admin",
-      "route": "/parameter-admin/projects",
+      "route": "/parameters",
       "assertions": [
         "ui",
-        "api"
-      ],
-      "notes": "Created config set + baseline via API; ConfigSetBaselinePanel visible on admin projects dialog.",
-      "artifacts": [
-        "test-results/acceptance-operation-evidence/PARAM-DTS-CONFIGSET-001-config-set-and-baseline-configsetbaselinepanel.png"
-      ],
-      "api": [
-        {
-          "method": "POST",
-          "path": "/api/v1/projects/aurora/config-sets",
-          "status": 201,
-          "responseSummary": "configSetId=9ba47962-a057-47ad-a946-0d83dea75227"
-        },
-        {
-          "method": "POST",
-          "path": "/api/v1/projects/aurora/config-sets/9ba47962-a057-47ad-a946-0d83dea75227/baselines",
-          "status": 201,
-          "requestId": "0163981f-30c9-4f66-8eb2-cfa5ce3a3e19",
-          "responseSummary": "baseline=acceptance-bl-f5583f7a"
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "XIAOZE_DETERMINISTIC": "false",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /parameter-admin/projects.",
-          "Run operation PARAM-DTS-CONFIGSET-001: config-set and baseline + ConfigSetBaselinePanel.",
-          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-DTS-CONFIGSET-001-config-set-and-baseline-configsetbaselinepanel.png."
-        ]
-      },
-      "recordedAt": "2026-07-16T10:04:57.611Z"
-    },
-    {
-      "operationId": "PARAM-DTS-DIFF-001",
-      "title": "structured baseline compare / change-set diff",
-      "status": "passed",
-      "role": "Admin",
-      "route": "/api/v1/projects/:projectId/baselines/:baselineId/compare",
-      "assertions": [
         "api",
-        "ui"
+        "db",
+        "audit"
       ],
-      "notes": "Baseline compare returned structuralDiff for the drifted DTS member; StructuredDiffView mounts from ConfigSetBaselinePanel when compare is triggered.",
+      "notes": "PARAM-TOPOLOGY acceptance: successful validate on candidate revision; base revision binding unchanged; bindingId+provenance persist after reload. org=org-chargelab runId=1a807ad0",
       "artifacts": [
-        "test-results/acceptance-operation-evidence/PARAM-DTS-DIFF-001-structured-baseline-compare-change-set-diff.png"
-      ],
-      "api": [
-        {
-          "method": "GET",
-          "path": "/api/v1/projects/aurora/baselines/93cf25d2-e7b2-4d91-903d-a88bee816d9b/compare",
-          "status": 200,
-          "requestId": "bacb85ec-fd35-46f5-8316-0644750c3244",
-          "responseSummary": "diffCount=1"
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "XIAOZE_DETERMINISTIC": "false",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /api/v1/projects/:projectId/baselines/:baselineId/compare.",
-          "Run operation PARAM-DTS-DIFF-001: structured baseline compare / change-set diff.",
-          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-DTS-DIFF-001-structured-baseline-compare-change-set-diff.png."
-        ]
-      },
-      "recordedAt": "2026-07-16T10:04:57.754Z"
-    },
-    {
-      "operationId": "PARAM-DTS-EDIT-001",
-      "title": "typed property contract for StructuredValueEditor",
-      "status": "passed",
-      "role": "Admin",
-      "route": "/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure",
-      "assertions": [
-        "api"
-      ],
-      "notes": "StructuredValueEditor is driven by valueType/rawText from structure; interactive editor mount remains component-tested and playwright-cli follow-up.",
-      "artifacts": [
-        "test-results/acceptance-operation-evidence/PARAM-DTS-EDIT-001-typed-property-contract-for-structuredvalueeditor.png"
-      ],
-      "api": [
-        {
-          "method": "GET",
-          "path": "/api/v1/projects/aurora/parameter-files/82136031-d85c-42d4-9c01-7f8729ce6f5d/versions/04d18579-87e0-4bae-8ab5-64cb8f136823/structure",
-          "status": 200,
-          "requestId": "d506a620-e226-45d6-a5b2-502c7e5245c8",
-          "responseSummary": "valueTypes=string-list,u32-array"
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "XIAOZE_DETERMINISTIC": "false",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure.",
-          "Run operation PARAM-DTS-EDIT-001: typed property contract for StructuredValueEditor.",
-          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-DTS-EDIT-001-typed-property-contract-for-structuredvalueeditor.png."
-        ]
-      },
-      "recordedAt": "2026-07-16T10:04:52.473Z"
-    },
-    {
-      "operationId": "PARAM-DTS-EDIT-002",
-      "title": "structured edit submit with rawText fidelity through merge writeback",
-      "status": "passed",
-      "role": "Admin",
-      "route": "/api/v1/projects/:projectId/dts-structured-edits/submit",
-      "assertions": [
-        "api",
-        "ui",
-        "db"
-      ],
-      "notes": "PARAM-DTS acceptance: structured edit CR used rawText <0x6E>; merge writeback version contains uppercase hex (non-normalized). Structure-browser chrome checked below when projects UI is available.",
-      "artifacts": [
-        "test-results/acceptance-operation-evidence/PARAM-DTS-EDIT-002-structured-edit-submit-with-rawtext-fidelity-through-merge-writeback.png"
+        "test-results/acceptance-operation-evidence/PARAM-CONFIG-PUBLISH-GATE-001-validate-publish-gate-and-db-reload-persistence.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/projects/aurora/dts-structured-edits/submit",
-          "status": 201,
-          "requestId": "776e512a-d638-419b-92b7-7f106bef7600",
-          "responseSummary": "requestId=fe95fbff-7d5b-4f62-841e-c9f1ff043abc; targetValue=<0x6E>"
-        },
-        {
-          "method": "GET",
-          "path": "/api/v1/projects/aurora/parameter-files/e74a12b3-8834-4223-96e4-9ceb71854c38/versions/f22de506-5b8f-4775-b237-aa3563835474/content",
+          "path": "/api/v2/projects/aurora/config-revisions/ed725037-ad7f-49b9-b36f-3b3935d2a47c/validate",
           "status": 200,
-          "responseSummary": "writeback preserves <0x6E>"
+          "requestId": "c76e2663-ae89-4f3d-aa98-25380fcb28ea",
+          "responseSummary": "run=32a5062b-8c84-4af0-a928-87791c566ed2; status=passed"
         }
       ],
       "db": [
         {
-          "table": "parameter_change_requests",
-          "predicate": "id=fe95fbff-7d5b-4f62-841e-c9f1ff043abc",
-          "observed": "target_value=<0x6E>; status=merged",
+          "table": "dts_config_revisions",
+          "predicate": "id=ed725037-ad7f-49b9-b36f-3b3935d2a47c",
+          "observed": "status=validated",
           "rowCount": 1
         },
         {
-          "table": "project_parameter_file_versions",
-          "predicate": "id=f22de506-5b8f-4775-b237-aa3563835474",
-          "observed": "origin=writeback; version_number=2",
+          "table": "project_parameter_binding_revisions",
+          "predicate": "binding=621f5cb6-59c6-4d4e-8a04-7512ccff722a",
+          "observed": "id=621f5cb6-59c6-4d4e-8a04-7512ccff722a; raw=<&gpio13 30 0>",
           "rowCount": 1
+        }
+      ],
+      "audit": [
+        {
+          "id": "d15a5ad2-341f-4de4-8305-476b78757a29",
+          "kind": "parameter-topology-governance",
+          "action": "config-revision-validated",
+          "targetId": "ed725037-ad7f-49b9-b36f-3b3935d2a47c"
         }
       ],
       "trace": {
@@ -996,154 +826,41 @@
       },
       "reproduction": {
         "steps": [
-          "Open route /api/v1/projects/:projectId/dts-structured-edits/submit.",
-          "Run operation PARAM-DTS-EDIT-002: structured edit submit with rawText fidelity through merge writeback.",
-          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-DTS-EDIT-002-structured-edit-submit-with-rawtext-fidelity-through-merge-writeback.png."
+          "Open route /parameters.",
+          "Run operation PARAM-CONFIG-PUBLISH-GATE-001: validate/publish gate and DB reload persistence.",
+          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-CONFIG-PUBLISH-GATE-001-validate-publish-gate-and-db-reload-persistence.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:04:58.590Z"
+      "recordedAt": "2026-07-16T12:29:53.271Z"
     },
     {
-      "operationId": "PARAM-DTS-IMPACT-001",
-      "title": "change-request impact with structural kinds when available",
-      "status": "passed",
-      "role": "Admin, Hardware Committer",
-      "route": "/api/v1/parameter-change-requests",
-      "assertions": [
-        "api"
-      ],
-      "notes": "Impact included structural kinds: compatible, config-set.",
-      "artifacts": [],
-      "api": [
-        {
-          "method": "POST",
-          "path": "/api/v1/parameter-submission-rounds",
-          "status": 201,
-          "requestId": "84d29baf-d95a-4c3d-9e26-96eb6a410aeb",
-          "responseSummary": "requestId=e8a9da9d-d98d-400a-a7d9-6012010480e5"
-        },
-        {
-          "method": "GET",
-          "path": "/api/v1/parameter-change-requests",
-          "status": 200,
-          "requestId": "7ec42de0-6dc3-4c8b-beeb-d1a0a1c7e9f4",
-          "responseSummary": "kinds=parameter,compatible,config-set structural=compatible,config-set"
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "XIAOZE_DETERMINISTIC": "false",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /api/v1/parameter-change-requests.",
-          "Run operation PARAM-DTS-IMPACT-001: change-request impact with structural kinds when available.",
-          "Review operation artifacts: none."
-        ]
-      },
-      "recordedAt": "2026-07-16T10:05:03.092Z"
-    },
-    {
-      "operationId": "PARAM-DTS-RBAC-001",
-      "title": "sensitive node RBAC 403 + critical rule for agent deny",
-      "status": "passed",
-      "role": "Hardware User, Admin",
-      "route": "/api/v1/parameter-submission-rounds",
-      "assertions": [
-        "api",
-        "db"
-      ],
-      "notes": "User without parameter:edit-critical gets 403 on critical path match. Agent actorType=agent critical deny is enforced in assertSensitiveNodeWriteAllowed / action.submitParameterChange (unit-covered); browser Xiaoze agent deny path remains for fuller AG-UI harness if needed.",
-      "artifacts": [],
-      "api": [
-        {
-          "method": "POST",
-          "path": "/api/v1/parameter-submission-rounds",
-          "status": 403,
-          "responseSummary": "hardware-user missing parameter:edit-critical"
-        },
-        {
-          "method": "POST",
-          "path": "/api/v1/parameter-submission-rounds",
-          "status": 201,
-          "requestId": "b9efd75a-ee98-4c3d-be34-132fddad2105",
-          "responseSummary": "admin with edit-critical allowed"
-        }
-      ],
-      "db": [
-        {
-          "table": "dts_sensitive_node_rules",
-          "predicate": "id=acceptance-dts-sensitive-rule-critical",
-          "observed": "risk_tier=critical; required_capability=parameter:edit-critical",
-          "rowCount": 1
-        }
-      ],
-      "trace": {
-        "mode": "retain-on-failure",
-        "path": "test-results/acceptance",
-        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
-      },
-      "report": {
-        "path": "playwright-report/acceptance/index.html",
-        "format": "html"
-      },
-      "runtime": {
-        "mode": "api",
-        "apiBaseUrl": "http://127.0.0.1:8787",
-        "envSummary": {
-          "DATABASE_URL": "set",
-          "OBJECT_STORE_MODE": "local",
-          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
-          "XIAOZE_DETERMINISTIC": "false",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
-        }
-      },
-      "reproduction": {
-        "steps": [
-          "Open route /api/v1/parameter-submission-rounds.",
-          "Run operation PARAM-DTS-RBAC-001: sensitive node RBAC 403 + critical rule for agent deny.",
-          "Review operation artifacts: none."
-        ]
-      },
-      "recordedAt": "2026-07-16T10:05:03.242Z"
-    },
-    {
-      "operationId": "PARAM-DTS-SEARCH-001",
-      "title": "dts-search API and DtsSearchPanel",
+      "operationId": "PARAM-HOME-001",
+      "title": "parameter-home dashboard APIs and in-page controls",
       "status": "passed",
       "role": "Admin",
-      "route": "/api/v1/projects/:projectId/dts-search",
+      "route": "/parameter-home",
       "assertions": [
         "ui",
         "api"
       ],
-      "notes": "dts-search returned chip@6E hits and DtsSearchPanel mounted in manage-files dialog.",
+      "notes": "Dashboard summary/hotspots APIs returned data and /parameter-home rendered time-window and hotspot-dimension controls.",
       "artifacts": [
-        "test-results/acceptance-operation-evidence/PARAM-DTS-SEARCH-001-dts-search-api-and-dtssearchpanel.png"
+        "test-results/acceptance-operation-evidence/PARAM-HOME-001-parameter-home-dashboard-apis-and-in-page-controls.png"
       ],
       "api": [
         {
           "method": "GET",
-          "path": "/api/v1/projects/aurora/dts-search",
+          "path": "/api/v1/parameters/dashboard/summary",
           "status": 200,
-          "requestId": "5f3d0256-e6f0-4d23-b748-f038fc3659f0",
-          "responseSummary": "hits=1"
+          "requestId": "e6f0009b-32ec-472d-9e3f-8e788d0f49aa",
+          "responseSummary": "windowLabel=近 30 天"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/parameters/dashboard/hotspots",
+          "status": 200,
+          "requestId": "f01f8e59-6b0c-4af8-be5b-2fcdc18c20cf",
+          "responseSummary": "items=3"
         }
       ],
       "trace": {
@@ -1168,33 +885,59 @@
       },
       "reproduction": {
         "steps": [
-          "Open route /api/v1/projects/:projectId/dts-search.",
-          "Run operation PARAM-DTS-SEARCH-001: dts-search API and DtsSearchPanel.",
-          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-DTS-SEARCH-001-dts-search-api-and-dtssearchpanel.png."
+          "Open route /parameter-home.",
+          "Run operation PARAM-HOME-001: parameter-home dashboard APIs and in-page controls.",
+          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-HOME-001-parameter-home-dashboard-apis-and-in-page-controls.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:04:57.477Z"
+      "recordedAt": "2026-07-16T12:29:16.806Z"
     },
     {
-      "operationId": "PARAM-DTS-STRUCTURE-001",
-      "title": "structured DTS read for uploaded version",
+      "operationId": "PARAM-IDENTITY-MAP-001",
+      "title": "identity mapping blocker then resolve audit",
       "status": "passed",
       "role": "Admin",
-      "route": "/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure",
+      "route": "/parameters",
       "assertions": [
-        "api"
+        "ui",
+        "api",
+        "db",
+        "audit"
       ],
-      "notes": "PARAM-DTS acceptance: structure API returned 5 nodes including chip@6E.",
+      "notes": "Ambiguous ingest created open-mapping; validate fail-closed; left/right siblings adjudicated independently via API with audit.",
       "artifacts": [
-        "test-results/acceptance-operation-evidence/PARAM-DTS-STRUCTURE-001-structured-dts-read-for-uploaded-version.png"
+        "test-results/acceptance-operation-evidence/PARAM-IDENTITY-MAP-001-identity-mapping-blocker-then-resolve-audit.png"
       ],
       "api": [
         {
-          "method": "GET",
-          "path": "/api/v1/projects/aurora/parameter-files/82136031-d85c-42d4-9c01-7f8729ce6f5d/versions/04d18579-87e0-4bae-8ab5-64cb8f136823/structure",
+          "method": "POST",
+          "path": "/api/v2/projects/aurora/config-revisions/.../validate",
           "status": 200,
-          "requestId": "d506a620-e226-45d6-a5b2-502c7e5245c8",
-          "responseSummary": "nodes=5"
+          "requestId": "af20aedc-d441-424e-8e72-615c3ff6134a",
+          "responseSummary": "failureCode=open-mapping"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v2/identity-mapping-tasks/e5fd9670-6764-45e7-8679-8cdf7dc5a062/resolve",
+          "status": 200,
+          "requestId": "73c0c550-dfeb-4ddc-91f4-32068ebe7c70",
+          "responseSummary": "selected=89318360-e306-46c4-8a80-9a07deeff4de"
+        }
+      ],
+      "db": [
+        {
+          "table": "identity_mapping_tasks",
+          "predicate": "id=e5fd9670-6764-45e7-8679-8cdf7dc5a062",
+          "observed": "status=resolved",
+          "rowCount": 1
+        }
+      ],
+      "audit": [
+        {
+          "id": "c33b8d09-86b9-424c-88d2-1da8b76a9ac4",
+          "kind": "parameter-topology-governance",
+          "action": "identity-mapping-resolved",
+          "targetId": "e5fd9670-6764-45e7-8679-8cdf7dc5a062"
         }
       ],
       "trace": {
@@ -1219,12 +962,12 @@
       },
       "reproduction": {
         "steps": [
-          "Open route /api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure.",
-          "Run operation PARAM-DTS-STRUCTURE-001: structured DTS read for uploaded version.",
-          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-DTS-STRUCTURE-001-structured-dts-read-for-uploaded-version.png."
+          "Open route /parameters.",
+          "Run operation PARAM-IDENTITY-MAP-001: identity mapping blocker then resolve audit.",
+          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-IDENTITY-MAP-001-identity-mapping-blocker-then-resolve-audit.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:04:52.439Z"
+      "recordedAt": "2026-07-16T12:29:45.018Z"
     },
     {
       "operationId": "PARAM-IMPORT-REVIEW-META-001",
@@ -1237,7 +980,7 @@
         "db",
         "audit"
       ],
-      "notes": "batch c1bc0d60-7650-4267-a267-8ee8fbdac193 preview audit metadata contained skippedRows.",
+      "notes": "batch a6cbdfc4-05b2-46e8-bcb8-5e44acb1d130 preview audit metadata contained skippedRows.",
       "artifacts": [],
       "trace": {
         "mode": "retain-on-failure",
@@ -1266,7 +1009,231 @@
           "Review operation artifacts: none."
         ]
       },
-      "recordedAt": "2026-07-16T10:06:59.519Z"
+      "recordedAt": "2026-07-16T12:29:17.374Z"
+    },
+    {
+      "operationId": "PARAM-SPEC-GOVERN-001",
+      "title": "spec search review resolve audit",
+      "status": "passed",
+      "role": "Admin",
+      "route": "/parameter-admin",
+      "assertions": [
+        "ui",
+        "api",
+        "db",
+        "audit"
+      ],
+      "notes": "PARAM-TOPOLOGY acceptance: unmatched review from real ingest; createSpec draft→activate→resolve via API; UI lists distinct gpio_int specs.",
+      "artifacts": [
+        "test-results/acceptance-operation-evidence/PARAM-SPEC-GOVERN-001-spec-search-review-resolve-audit.png"
+      ],
+      "api": [
+        {
+          "method": "GET",
+          "path": "/api/v2/parameter-specs",
+          "status": 200,
+          "requestId": "702a02c9-2fb3-40ac-9b64-a5d3722528ca",
+          "responseSummary": "gpio_int specs=2; distinct sc8562/mt5788"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v2/parameter-spec-review-tasks/608db7ff-71a0-482f-bff2-55df935d356a/resolve",
+          "status": 200,
+          "requestId": "30986d28-ada9-4396-abd1-66432a189b52",
+          "responseSummary": "draftCreated spec=5bf59912-2308-5e96-aeb1-35758a0cd39d"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v2/parameter-specs/5bf59912-2308-5e96-aeb1-35758a0cd39d/activate",
+          "status": 200,
+          "requestId": "0a57e93f-37ac-4d55-a456-e804d65e6698",
+          "responseSummary": "activated draft spec"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v2/parameter-spec-review-tasks/608db7ff-71a0-482f-bff2-55df935d356a/resolve",
+          "status": 200,
+          "requestId": "4e93cde6-2228-4b4a-b66f-e01fa630635d",
+          "responseSummary": "resolved task=608db7ff-71a0-482f-bff2-55df935d356a"
+        }
+      ],
+      "db": [
+        {
+          "table": "parameter_spec_review_tasks",
+          "predicate": "id=608db7ff-71a0-482f-bff2-55df935d356a",
+          "observed": "status=resolved; spec=5bf59912-2308-5e96-aeb1-35758a0cd39d",
+          "rowCount": 1
+        }
+      ],
+      "audit": [
+        {
+          "id": "f7f879b5-9e79-4eb3-85d2-c6df2170be47",
+          "kind": "parameter-topology-governance",
+          "action": "spec-review-resolved",
+          "targetId": "608db7ff-71a0-482f-bff2-55df935d356a"
+        }
+      ],
+      "trace": {
+        "mode": "retain-on-failure",
+        "path": "test-results/acceptance",
+        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
+      },
+      "report": {
+        "path": "playwright-report/acceptance/index.html",
+        "format": "html"
+      },
+      "runtime": {
+        "mode": "api",
+        "apiBaseUrl": "http://127.0.0.1:8787",
+        "envSummary": {
+          "DATABASE_URL": "set",
+          "OBJECT_STORE_MODE": "local",
+          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
+          "XIAOZE_DETERMINISTIC": "false",
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
+        }
+      },
+      "reproduction": {
+        "steps": [
+          "Open route /parameter-admin.",
+          "Run operation PARAM-SPEC-GOVERN-001: spec search review resolve audit.",
+          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-SPEC-GOVERN-001-spec-search-review-resolve-audit.png."
+        ]
+      },
+      "recordedAt": "2026-07-16T12:29:36.863Z"
+    },
+    {
+      "operationId": "PARAM-TOPOLOGY-BROWSE-001",
+      "title": "real source/effective tree and two gpio_int bindings",
+      "status": "passed",
+      "role": "Admin",
+      "route": "/parameters",
+      "assertions": [
+        "ui",
+        "api"
+      ],
+      "notes": "API-mode workspace loads ingested Config Set; topology API 200; two gpio_int bindings with provenance.",
+      "artifacts": [
+        "test-results/acceptance-operation-evidence/PARAM-TOPOLOGY-BROWSE-001-real-source-effective-tree-and-two-gpio-int-bindings.png"
+      ],
+      "api": [
+        {
+          "method": "GET",
+          "path": "/api/v2/projects/aurora/config-sets/.../topology",
+          "status": 200,
+          "requestId": "2c5b57ef-cea7-44c6-b499-7aa5ef72f536",
+          "responseSummary": "status=200 nodes=58; sc8562+mt5788 present"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/projects/aurora/parameter-bindings",
+          "status": 200,
+          "requestId": "a5ce66f7-eb6b-436e-a944-05b66c5a2346",
+          "responseSummary": "gpio_int bindings=39"
+        }
+      ],
+      "trace": {
+        "mode": "retain-on-failure",
+        "path": "test-results/acceptance",
+        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
+      },
+      "report": {
+        "path": "playwright-report/acceptance/index.html",
+        "format": "html"
+      },
+      "runtime": {
+        "mode": "api",
+        "apiBaseUrl": "http://127.0.0.1:8787",
+        "envSummary": {
+          "DATABASE_URL": "set",
+          "OBJECT_STORE_MODE": "local",
+          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
+          "XIAOZE_DETERMINISTIC": "false",
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
+        }
+      },
+      "reproduction": {
+        "steps": [
+          "Open route /parameters.",
+          "Run operation PARAM-TOPOLOGY-BROWSE-001: real source/effective tree and two gpio_int bindings.",
+          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-TOPOLOGY-BROWSE-001-real-source-effective-tree-and-two-gpio-int-bindings.png."
+        ]
+      },
+      "recordedAt": "2026-07-16T12:29:38.635Z"
+    },
+    {
+      "operationId": "PARAM-TOPOLOGY-EDIT-001",
+      "title": "typed edit schema diagnostics, stale 409, compiler failure",
+      "status": "passed",
+      "role": "Admin",
+      "route": "/parameters",
+      "assertions": [
+        "ui",
+        "api"
+      ],
+      "notes": "UI schema cell-count block; stale 409; real bad-DTS fail-closed; successful typed draft writeback+reingest.",
+      "artifacts": [
+        "test-results/acceptance-operation-evidence/PARAM-TOPOLOGY-EDIT-001-typed-edit-schema-diagnostics-stale-409-compiler-failure.png"
+      ],
+      "api": [
+        {
+          "method": "POST",
+          "path": "/api/v2/projects/aurora/parameter-bindings/.../drafts",
+          "status": 409,
+          "requestId": "06e39e65-7a6d-4dfe-8944-7ad1753cac01",
+          "responseSummary": "stale-revision 409"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v2/projects/aurora/config-revisions/87a7dec8-fde9-401c-9313-16905ff47d7b/validate",
+          "status": 200,
+          "requestId": "0688b7b0-3a06-45e6-b08a-362316b9dfc7",
+          "responseSummary": "failureCode=resolve-failed"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v2/projects/aurora/parameter-bindings/.../drafts",
+          "status": 201,
+          "requestId": "713506ea-18de-4ffa-bdfc-63f63a56f0bf",
+          "responseSummary": "draft=a897f2d6-6a05-45e2-bf8c-fa7355896c29; candidate=ed725037-ad7f-49b9-b36f-3b3935d2a47c; raw=<&gpio13 30 0>"
+        }
+      ],
+      "db": [
+        {
+          "table": "project_parameter_file_versions",
+          "predicate": "origin=writeback latest",
+          "observed": "origin=writeback; checksum=06e382e94cb5",
+          "rowCount": 1
+        }
+      ],
+      "trace": {
+        "mode": "retain-on-failure",
+        "path": "test-results/acceptance",
+        "note": "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
+      },
+      "report": {
+        "path": "playwright-report/acceptance/index.html",
+        "format": "html"
+      },
+      "runtime": {
+        "mode": "api",
+        "apiBaseUrl": "http://127.0.0.1:8787",
+        "envSummary": {
+          "DATABASE_URL": "set",
+          "OBJECT_STORE_MODE": "local",
+          "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
+          "XIAOZE_DETERMINISTIC": "false",
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
+        }
+      },
+      "reproduction": {
+        "steps": [
+          "Open route /parameters.",
+          "Run operation PARAM-TOPOLOGY-EDIT-001: typed edit schema diagnostics, stale 409, compiler failure.",
+          "Review operation artifacts: test-results/acceptance-operation-evidence/PARAM-TOPOLOGY-EDIT-001-typed-edit-schema-diagnostics-stale-409-compiler-failure.png."
+        ]
+      },
+      "recordedAt": "2026-07-16T12:29:44.123Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1308,7 +1275,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/PERM-MATRIX-001-visible-route-permissions-for-admin.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:13:29.107Z"
+      "recordedAt": "2026-07-16T12:37:23.847Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1350,7 +1317,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/PERM-MATRIX-001-visible-route-permissions-for-hardware-committer.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:13:27.509Z"
+      "recordedAt": "2026-07-16T12:37:13.797Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1392,7 +1359,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/PERM-MATRIX-001-visible-route-permissions-for-software-committer.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:13:28.324Z"
+      "recordedAt": "2026-07-16T12:37:16.914Z"
     },
     {
       "operationId": "PERM-MATRIX-002",
@@ -1412,7 +1379,7 @@
           "method": "POST",
           "path": "/api/v1/parameter-submission-rounds",
           "status": 400,
-          "requestId": "b89df01c-94d7-4782-ab36-9f1e771e1dc0",
+          "requestId": "9700908e-492e-4c0e-a3e9-f55dcdf06120",
           "responseSummary": "VALIDATION_FAILED for role-ineligible workflow assignees"
         }
       ],
@@ -1443,7 +1410,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/PERM-MATRIX-002-api-workflow-eligibility-stricter-than-visible-role-inclusion.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:13:29.301Z"
+      "recordedAt": "2026-07-16T12:37:24.308Z"
     },
     {
       "operationId": "PFB-ADMIN-001",
@@ -1466,48 +1433,48 @@
           "method": "POST",
           "path": "/api/v1/product-feedback",
           "status": 201,
-          "requestId": "72e69c4b-07f5-43d0-a36e-63ec7d89998a",
-          "responseSummary": "seeded feedback=eb72645f-8ca0-40e3-9018-0df3a75e6242"
+          "requestId": "6c41369a-295c-45b6-a52a-e41532dded7c",
+          "responseSummary": "seeded feedback=1d83445c-1889-4226-8e16-bc02c3d644c9"
         },
         {
           "method": "GET",
-          "path": "/api/v1/product-feedback/eb72645f-8ca0-40e3-9018-0df3a75e6242",
+          "path": "/api/v1/product-feedback/1d83445c-1889-4226-8e16-bc02c3d644c9",
           "status": 200,
-          "requestId": "9d110004-3003-45c8-8701-3910b9f229a1",
+          "requestId": "9040e272-3f56-438d-a534-7982c73ee152",
           "responseSummary": "status=closed; note=set"
         }
       ],
       "db": [
         {
           "table": "product_feedback,product_feedback_attachments",
-          "predicate": "feedbackId=eb72645f-8ca0-40e3-9018-0df3a75e6242",
+          "predicate": "feedbackId=1d83445c-1889-4226-8e16-bc02c3d644c9",
           "observed": "status=closed; adminNote=Acceptance triage note: routed to beta response owner.; submitter=acceptance-product-feedback-user; attachments=1",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "bdd0d888-e6d1-4415-8a11-20b40026a3e8",
+          "id": "e6955601-f233-4f94-b4ea-b960b61c5bec",
           "kind": "product-feedback-update",
           "action": "update",
-          "targetId": "eb72645f-8ca0-40e3-9018-0df3a75e6242",
-          "requestId": "a0decc65-c482-440f-a2d4-b75f195fb086",
+          "targetId": "1d83445c-1889-4226-8e16-bc02c3d644c9",
+          "requestId": "e7d9b5d5-49f0-4653-9a84-73391fbfd11a",
           "metadataSummary": "attachmentCount,feedbackType,nextStatus,pagePath,previousStatus,status"
         },
         {
-          "id": "97b79f2c-df19-4ebd-8d84-c91666c613c7",
+          "id": "5a67a05d-1365-41db-a39d-ca4e198bbae6",
           "kind": "product-feedback-update",
           "action": "update",
-          "targetId": "eb72645f-8ca0-40e3-9018-0df3a75e6242",
-          "requestId": "1a081790-3970-4422-bbfd-96b830127439",
+          "targetId": "1d83445c-1889-4226-8e16-bc02c3d644c9",
+          "requestId": "8262cbde-c928-4776-9995-bec39b3aa5c2",
           "metadataSummary": "attachmentCount,feedbackType,nextStatus,pagePath,previousStatus,status"
         },
         {
-          "id": "3debb7d3-a413-4832-9624-07012d14c83d",
+          "id": "635f50df-ecb6-4b0c-b06c-92abafbf6895",
           "kind": "product-feedback-create",
           "action": "create",
-          "targetId": "eb72645f-8ca0-40e3-9018-0df3a75e6242",
-          "requestId": "72e69c4b-07f5-43d0-a36e-63ec7d89998a",
+          "targetId": "1d83445c-1889-4226-8e16-bc02c3d644c9",
+          "requestId": "6c41369a-295c-45b6-a52a-e41532dded7c",
           "metadataSummary": "attachmentCount,feedbackType,pagePath,status"
         }
       ],
@@ -1538,7 +1505,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/PFB-ADMIN-001-admin-feedback-triage-status-and-note.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:15:35.366Z"
+      "recordedAt": "2026-07-16T12:39:49.668Z"
     },
     {
       "operationId": "PFB-SUBMIT-001",
@@ -1561,32 +1528,32 @@
           "method": "GET",
           "path": "/api/v1/product-feedback",
           "status": 200,
-          "requestId": "6fdb1fb7-af69-4127-8d79-2049ff0158af",
-          "responseSummary": "submitted feedback=9bb22113-05e8-467a-8be5-efb8be2ecf90"
+          "requestId": "bb900f26-4ea0-4db4-9681-bc157648302e",
+          "responseSummary": "submitted feedback=6efb5057-781f-4d63-ac98-f3731918b4aa"
         },
         {
           "method": "GET",
-          "path": "/api/v1/product-feedback/9bb22113-05e8-467a-8be5-efb8be2ecf90",
+          "path": "/api/v1/product-feedback/6efb5057-781f-4d63-ac98-f3731918b4aa",
           "status": 200,
-          "requestId": "ed6819e0-9855-44ec-ab96-36233ac663b9",
+          "requestId": "2906b557-a91b-4f78-b8cd-6207c7bdc35c",
           "responseSummary": "attachments=1"
         }
       ],
       "db": [
         {
           "table": "product_feedback,product_feedback_attachments",
-          "predicate": "feedbackId=9bb22113-05e8-467a-8be5-efb8be2ecf90",
+          "predicate": "feedbackId=6efb5057-781f-4d63-ac98-f3731918b4aa",
           "observed": "status=open; adminNote=none; submitter=u-xu-yun; attachments=1",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "6542449f-e09d-4d1b-8cf7-0a1fdf72ee63",
+          "id": "5a281c65-89a7-46e9-9fca-88bd741e0a7a",
           "kind": "product-feedback-create",
           "action": "create",
-          "targetId": "9bb22113-05e8-467a-8be5-efb8be2ecf90",
-          "requestId": "5e370cdf-f28b-469e-b262-e5e635d250d1",
+          "targetId": "6efb5057-781f-4d63-ac98-f3731918b4aa",
+          "requestId": "4e01e33e-e2ce-4f65-bf33-dc54636f2b95",
           "metadataSummary": "attachmentCount,feedbackType,pagePath,status"
         }
       ],
@@ -1617,7 +1584,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/PFB-SUBMIT-001-sidebar-feedback-submit-with-optional-image.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:15:32.166Z"
+      "recordedAt": "2026-07-16T12:39:43.817Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1659,7 +1626,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/SHELL-DIAG-001-shell-route-debugging-admin.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:16:27.471Z"
+      "recordedAt": "2026-07-16T12:41:00.628Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1701,7 +1668,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/SHELL-DIAG-001-shell-route-debugging.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:16:18.383Z"
+      "recordedAt": "2026-07-16T12:40:46.553Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1743,7 +1710,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/SHELL-DIAG-001-shell-route-home.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:15:50.859Z"
+      "recordedAt": "2026-07-16T12:40:07.841Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1785,7 +1752,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/SHELL-DIAG-001-shell-route-log-admin.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:16:13.199Z"
+      "recordedAt": "2026-07-16T12:40:41.130Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1827,7 +1794,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/SHELL-DIAG-001-shell-route-logs.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:16:09.770Z"
+      "recordedAt": "2026-07-16T12:40:35.819Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1869,7 +1836,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/SHELL-DIAG-001-shell-route-node-debugging.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:16:22.551Z"
+      "recordedAt": "2026-07-16T12:40:53.033Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1911,7 +1878,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/SHELL-DIAG-001-shell-route-parameter-admin.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:16:06.364Z"
+      "recordedAt": "2026-07-16T12:40:29.462Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1953,7 +1920,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/SHELL-DIAG-001-shell-route-parameter-home.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:15:56.977Z"
+      "recordedAt": "2026-07-16T12:40:12.970Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1995,7 +1962,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/SHELL-DIAG-001-shell-route-parameter-review.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:16:02.591Z"
+      "recordedAt": "2026-07-16T12:40:22.850Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -2037,7 +2004,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/SHELL-DIAG-001-shell-route-parameters.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:16:01.818Z"
+      "recordedAt": "2026-07-16T12:40:18.116Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -2079,7 +2046,7 @@
           "Review operation artifacts: test-results/acceptance-operation-evidence/SHELL-DIAG-001-shell-route-user-permissions.png."
         ]
       },
-      "recordedAt": "2026-07-16T10:16:31.386Z"
+      "recordedAt": "2026-07-16T12:41:06.209Z"
     },
     {
       "operationId": "XIAOZE-PERCEPTION-001",
@@ -2098,8 +2065,8 @@
           "method": "POST",
           "path": "/api/v1/agent/xiaoze",
           "status": 200,
-          "requestId": "9ac483f7-69b5-4dcb-988a-7e19770a851f",
-          "responseSummary": "# Project Aurora — Summary\n\nBased on the WiseEff perception tools, here is what I can confirm for project **aurora**:\n\n## Scale\n- **5,866 parameters** in the project\n- **2 open change requests** awaiting review\n\n## Parameter shape (from sam"
+          "requestId": "dfaccb36-4ad7-4195-acaa-125e113ccce0",
+          "responseSummary": "Here's a summary of project **aurora** based on the available data:\n\n- **Parameters:** 9,560 in total. A key [redacted] search on the parameters page surfaced 20 hits, all named `#address-cells` (a standard Device Tree property). 16 of those carry"
         }
       ],
       "trace": {
@@ -2129,7 +2096,7 @@
           "Review operation artifacts: none."
         ]
       },
-      "recordedAt": "2026-07-16T10:20:45.423Z"
+      "recordedAt": "2026-07-16T12:45:28.981Z"
     },
     {
       "operationId": "XIAOZE-PERCEPTION-AUTHZ-001",
@@ -2148,8 +2115,8 @@
           "method": "POST",
           "path": "/api/v1/agent/xiaoze",
           "status": 200,
-          "requestId": "63c51961-b575-4927-9182-94df3f3d163e",
-          "responseSummary": "I can't help with that. The phrasing \"forbidden secret [redacted] details\" suggests you're asking me to expose restricted or hidden information, which I won't do — regardless of how the request is framed.\n\nA few things to clarify:\n\n1. **No \"fo"
+          "requestId": "cf0ac434-cd22-4b37-9a33-ab8e0fb68ed8",
+          "responseSummary": "I'm not able to share that. Project details marked as forbidden/restricted are outside the scope of what I can disclose, regardless of the project name. \n\nWhat I *can* help with on the Parameters page:\n\n- **Search a parameter** by key [redacted] ("
         }
       ],
       "trace": {
@@ -2179,7 +2146,7 @@
           "Review operation artifacts: none."
         ]
       },
-      "recordedAt": "2026-07-16T10:21:03.968Z"
+      "recordedAt": "2026-07-16T12:45:37.322Z"
     }
   ]
 }

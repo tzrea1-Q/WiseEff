@@ -1,8 +1,8 @@
 ## Browser Acceptance Evidence
 
-- Date: 2026-07-16T10:22:23.543Z
-- Branch: `fix/parameter-topology-round4-review-blockers`
-- Commit: `56825183b656a2e2c5bfe7a7306b4ed21d0ee5f2`
+- Date: 2026-07-16T12:47:01.137Z
+- Branch: `fix/parameter-topology-round5-review-blockers`
+- Commit: `4007751896b44dba0c4255c19a5074afba302a39`
 - Dirty worktree: `true`
 - Mode: `local-non-hdc`
 - Status: `failed`
@@ -18,9 +18,9 @@
 
 ## Acceptance Preflight Evidence
 
-- Date: 2026-07-16T10:01:29.500Z
-- Branch: `fix/parameter-topology-round4-review-blockers`
-- Commit: `56825183b656a2e2c5bfe7a7306b4ed21d0ee5f2`
+- Date: 2026-07-16T12:23:54.426Z
+- Branch: `fix/parameter-topology-round5-review-blockers`
+- Commit: `4007751896b44dba0c4255c19a5074afba302a39`
 - Dirty worktree: `false`
 - Pilot outcome: `blocked`
 
@@ -41,7 +41,7 @@
 | frontend runtime | passed | already listening at http://127.0.0.1:5173 |
 | docs:check | passed | ok |
 | contract:check | passed | ok |
-| test:all | passed | ok |
+| test:all | failed | Not implemented: Window's confirm() method<br>Not implemented: navigation to another Document<br>Not implemented: navigation to another Document<br>(node:34378) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.<br>(Use `node --trace-deprecation ...` to show where the warning was created)<br>(node:34378) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.<br>(Use `node --trace-deprecation ...` to show where the warning was created)<br>(node:34378) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.<br>(Use `node --trace-deprecation ...` to show where the warning was created)<br><br>⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯<br><br> FAIL  server/modules/parameter-topology/migration.test.ts > parameter identity stage-review and finalize > finalize failure rolls back activity writes but keeps staged review artifacts<br>Error: Test timed out in 5000ms.<br>If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".<br> ❯ server/modules/parameter-topology/migration.test.ts:1570:3<br>    1568\|   );<br>    1569\|<br>    1570\|   it("finalize failure rolls back activity writes but keeps staged rev…<br>       \|   ^<br>    1571\|     await withTempDatabase(async (db) => {<br>    1572\|       await seedLegacyGraph(db);<br><br>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/9]⎯<br><br> FAIL  server/modules/parameters/dashboard/hotspotRepository.test.ts > hotspot repository > aggregates module-dimension groups with behavioral counts<br> FAIL  server/modules/parameters/dashboard/hotspotRepository.test.ts > hotspot repository > aggregates project-dimension groups with real counts<br> FAIL  server/modules/parameters/dashboard/hotspotRepository.test.ts > hotspot repository > aggregates parameter-dimension groups across projects with project scope counts<br>Error: Hook timed out in 30000ms.<br>If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".<br> ❯ server/modules/parameters/dashboard/hotspotRepository.test.ts:9:3<br>      7\|   let db: InMemoryTestDatabase;<br>      8\|<br>      9\|   beforeEach(async () => {<br>       \|   ^<br>     10\|     db = await createInMemoryTestDatabase();<br>     11\|     await seedParameterDashboardFixture(db);<br><br>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/9]⎯<br><br> FAIL  server/modules/parameters/dashboard/hotspotRepository.test.ts > hotspot repository > aggregates module-dimension groups with behavioral counts<br>Error: Hook timed out in 10000ms.<br>If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".<br> ❯ server/modules/parameters/dashboard/hotspotRepository.test.ts:14:3<br>     12\|   }, 30_000);<br>     13\|<br>     14\|   afterEach(async () => {<br>       \|   ^<br>     15\|     await db.rollback();<br>     16\|   });<br><br>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/9]⎯<br><br> FAIL  server/modules/parameters/dashboard/repository.test.ts > dashboard repository > counts KPIs scoped to org and window<br> FAIL  server/modules/parameters/dashboard/repository.test.ts > dashboard repository > aggregates trend into zero-filled day buckets<br>Error: Hook timed out in 30000ms.<br>If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".<br> ❯ server/modules/parameters/dashboard/repository.test.ts:17:3<br>     15\|   let db: InMemoryTestDatabase;<br>     16\|<br>     17\|   beforeEach(async () => {<br>       \|   ^<br>     18\|     db = await createInMemoryTestDatabase();<br>     19\|     await seedParameterDashboardFixture(db);<br><br>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/9]⎯<br><br> FAIL  server/modules/parameters/dashboard/repository.test.ts > dashboard repository > counts KPIs scoped to org and window<br>Error: Hook timed out in 10000ms.<br>If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".<br> ❯ server/modules/parameters/dashboard/repository.test.ts:22:3<br>     20\|   }, 30_000);<br>     21\|<br>     22\|   afterEach(async () => {<br>       \|   ^<br>     23\|     await db.rollback();<br>     24\|   });<br><br>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/9]⎯<br><br> FAIL  server/modules/parameters/dashboard/service.test.ts > dashboard service > builds a full summary with personal metrics and trend<br>Error: Hook timed out in 60000ms.<br>If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".<br> ❯ server/modules/parameters/dashboard/service.test.ts:24:3<br>     22\|   let db: InMemoryTestDatabase;<br>     23\|<br>     24\|   beforeEach(async () => {<br>       \|   ^<br>     25\|     db = await createInMemoryTestDatabase();<br>     26\|     await seedParameterDashboardFixture(db);<br><br>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/9]⎯<br><br><br><br>> core-efficiency-prototype@0.1.0 test:all<br>> npm test && npm run test:server<br><br><br>> core-efficiency-prototype@0.1.0 test<br>> NODE_OPTIONS='--max-old-space-size=768' tsx scripts/run-vitest.ts<br><br><br> RUN  v4.1.5 /Users/tzrea1/Develop/WiseEff<br><br><br> Test Files  312 passed (312)<br>      Tests  2164 passed (2164)<br>   Start at  20:18:22<br>   Duration  139.37s (transform 40.03s, setup 110.51s, import 200.03s, tests 312.55s, environment 505.11s)<br><br><br>> core-efficiency-prototype@0.1.0 test:server<br>> NODE_OPTIONS='--max-old-space-size=768' vitest run --config vitest.server.config.ts<br><br><br> RUN  v4.1.5 /Users/tzrea1/Develop/WiseEff<br><br> ❯ server/modules/parameter-topology/migration.test.ts (22 tests \| 1 failed) 50773ms<br>     × finalize failure rolls back activity writes but keeps staged review artifacts 5015ms<br> ❯ server/modules/parameters/dashboard/hotspotRepository.test.ts (3 tests \| 3 failed) 103372ms<br>     × aggregates module-dimension groups with behavioral counts 40018ms<br>     × aggregates project-dimension groups with real counts 32680ms<br>     × aggregates parameter-dimension groups across projects with project scope counts 30671ms<br> ❯ server/modules/parameters/dashboard/service.test.ts (5 tests \| 1 failed) 144812ms<br>     × builds a full summary with personal metrics and trend 61678ms<br> ❯ server/modules/parameters/dashboard/repository.test.ts (7 tests \| 2 failed) 163227ms<br>     × counts KPIs scoped to org and window 40014ms<br>     × aggregates trend into zero-filled day buckets 32690ms<br><br> Test Files  4 failed \| 205 passed (209)<br>      Tests  7 failed \| 1492 passed \| 1 skipped (1500)<br>   Start at  20:20:42<br>   Duration  163.95s (transform 8.83s, setup 4.69s, import 36.26s, tests 626.72s, environment 66ms) |
 | build | passed | ok |
 | git diff --check | passed | ok |
 | health live | passed | ok |
@@ -54,125 +54,129 @@
 
 - Status: `failed`
 - Evidence: playwright-report/acceptance/index.html
-- Detail: (node:94622) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+- Detail: (node:42042) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:94622) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:42042) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:95257) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:43784) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:95257) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:43784) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:95880) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:45703) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:95880) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:45703) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:96603) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:47857) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:96603) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:47857) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:96625) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:47864) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:96625) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:47864) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:98520) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:47871) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:98520) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:47871) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:98526) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:47877) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:98526) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:47877) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:98564) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:47885) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:98564) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:47885) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:98571) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:50663) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:98571) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:50663) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:98603) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:50669) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:98603) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:50669) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:99178) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:50697) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:99178) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:50697) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:99738) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:52197) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:99738) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:52197) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:783) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:53708) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:783) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:53708) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:1693) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:54944) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:1693) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:54944) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:3109) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:55755) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:3109) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:55755) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:3843) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:58570) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:3843) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:58570) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:3989) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:60002) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:3989) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:60002) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:4111) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:60145) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:4111) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:60145) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:4236) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:60428) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:4236) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:60428) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:4855) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:60561) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:4855) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:60561) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:5449) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:61553) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:5449) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:61553) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:5897) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:62363) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:5897) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:62363) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:6519) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:62909) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:6519) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:62909) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:6897) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:63639) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:6897) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:63639) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:8597) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:64168) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:8597) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:64168) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:9783) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:65418) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:9783) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:65418) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:11315) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:66733) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:11315) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:66733) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:12262) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:67756) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:12262) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:67756) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:13360) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:68640) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:13360) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:68640) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:14220) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:69870) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
-(node:14220) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(node:69870) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:70907) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:70907) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
 (Use `node --trace-warnings ...` to show where the warning was created)
 
 
@@ -182,14 +186,14 @@
 
 Running 85 tests using 1 worker
 
-  ✓   1 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:154:3 › ADB device-lab preflight validation › discovers the only ready ADB target without requiring a target override (1ms)
+  ✓   1 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:154:3 › ADB device-lab preflight validation › discovers the only ready ADB target without requiring a target override (2ms)
   ✓   2 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:163:3 › ADB device-lab preflight validation › rejects multiple ready ADB targets before configuration (1ms)
   ✓   3 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:172:3 › ADB device-lab preflight validation › validates optional smoke overrides against discovered configuration (0ms)
   ✓   4 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:188:3 › ADB device-lab preflight validation › resolves write confirmation requirements after auto configuration (0ms)
-  ✓   5 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:205:3 › ADB device-lab preflight validation › resolves one ADB inventory row and one shared default smoke binding from the database (2ms)
+  ✓   5 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:205:3 › ADB device-lab preflight validation › resolves one ADB inventory row and one shared default smoke binding from the database (0ms)
   ✓   6 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:227:3 › ADB device-lab preflight validation › rejects missing ADB inventory rows with redacted diagnostics (0ms)
   ✓   7 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:235:3 › ADB device-lab preflight validation › rejects non-readable default smoke bindings (0ms)
-  ✓   8 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:254:3 › ADB device-lab preflight validation › rejects additional ready ADB devices before a hardware run (1ms)
+  ✓   8 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:254:3 › ADB device-lab preflight validation › rejects additional ready ADB devices before a hardware run (0ms)
   ✓   9 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:270:3 › ADB device-lab preflight validation › preserves debugging sessions that still own device leases during cleanup (2ms)
   ✓  10 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:292:3 › ADB device-lab preflight validation › requires explicit write and rollback confirmations when write mode is enabled (0ms)
   ✓  11 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:319:3 › ADB device-lab evidence redaction › shape-summarizes operation and audit identifiers (1ms)
@@ -197,76 +201,76 @@ Running 85 tests using 1 worker
   ✓  13 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:371:3 › ADB device-lab evidence redaction › shape-summarizes target identifiers in failure diagnostics (1ms)
   ✓  14 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:378:3 › ADB device-lab evidence redaction › shape-summarizes API error bodies and operation failure reasons (1ms)
   -  15 [Desktop Chrome] › e2e/acceptance/adb-device-lab.acceptance.spec.ts:939:3 › ADB device-lab full-chain loop › detects and reads a real ADB target, with optional write/readback/rollback
-  ✓  16 [Desktop Chrome] › e2e/acceptance/auth-runtime.acceptance.spec.ts:10:3 › M5.5 auth runtime parity › loads API-mode browser current user with the local dev auth contract (7.2s)
-  ✘  17 [Desktop Chrome] › e2e/acceptance/debugging-admin.acceptance.spec.ts:194:3 › DEBUG-ADMIN-001 debugging admin catalog governance › debugging admin manages an API-backed HDC/ADB catalog node (4.3s)
-  ✘  18 [Desktop Chrome] › e2e/acceptance/debugging-simulator.acceptance.spec.ts:455:3 › M5.4 manual flow E - debugging simulator loop › reads, writes, detects mismatch, rolls back, and records audit evidence (31.3s)
-  ✘  19 [Desktop Chrome] › e2e/acceptance/debugging-simulator.acceptance.spec.ts:547:3 › M5.4 manual flow E - debugging simulator loop › blocks node writes for non-writer roles in UI and forced API calls (31.4s)
-  ✘  20 [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:325:3 › DTS structured product browser acceptance › structure, typed editor contract, search, config-set/baseline, and structured diff (5.7s)
-  ✓  21 [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:596:3 › DTS structured product browser acceptance › structured edit submit preserves rawText through review merge and CST writeback (4.6s)
-  ✓  22 [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:761:3 › DTS structured product browser acceptance › structural impact kinds when DTS bindings exist (188ms)
-  ✓  23 [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:887:3 › DTS structured product browser acceptance › sensitive-node RBAC denies missing capability; agent critical deny is enforced (158ms)
-  ✓  24 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:92:3 › HDC device-lab preflight validation › discovers the only connected HDC target without requiring target override (99ms)
-  ✓  25 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:98:3 › HDC device-lab preflight validation › rejects multiple HDC targets before automatic configuration (113ms)
-  ✓  26 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:102:3 › HDC device-lab preflight validation › auto-prepares a lab-only HDC inventory row and safe temporary smoke binding (91ms)
-  ✓  27 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:127:3 › HDC device-lab preflight validation › disables non-lab HDC bindings before frontend auto-read can touch real hardware (82ms)
-  ✓  28 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:147:3 › HDC device-lab preflight validation › requires explicit write and rollback confirmations before writing HDC hardware (87ms)
+  ✓  16 [Desktop Chrome] › e2e/acceptance/auth-runtime.acceptance.spec.ts:10:3 › M5.5 auth runtime parity › loads API-mode browser current user with the local dev auth contract (5.2s)
+  ✘  17 [Desktop Chrome] › e2e/acceptance/debugging-admin.acceptance.spec.ts:194:3 › DEBUG-ADMIN-001 debugging admin catalog governance › debugging admin manages an API-backed HDC/ADB catalog node (3.6s)
+  ✘  18 [Desktop Chrome] › e2e/acceptance/debugging-simulator.acceptance.spec.ts:455:3 › M5.4 manual flow E - debugging simulator loop › reads, writes, detects mismatch, rolls back, and records audit evidence (31.1s)
+  ✘  19 [Desktop Chrome] › e2e/acceptance/debugging-simulator.acceptance.spec.ts:547:3 › M5.4 manual flow E - debugging simulator loop › blocks node writes for non-writer roles in UI and forced API calls (31.5s)
+  ✘  20 [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:268:3 › DTS structured product browser acceptance › structure, typed editor contract, search, config-set/baseline, and structured diff (252ms)
+  ✘  21 [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:535:3 › DTS structured product browser acceptance › structured edit submit preserves rawText through review merge and CST writeback (202ms)
+  ✘  22 [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:700:3 › DTS structured product browser acceptance › structural impact kinds when DTS bindings exist (221ms)
+  ✘  23 [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:824:3 › DTS structured product browser acceptance › sensitive-node RBAC denies missing capability; agent critical deny is enforced (196ms)
+  ✓  24 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:92:3 › HDC device-lab preflight validation › discovers the only connected HDC target without requiring target override (146ms)
+  ✓  25 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:98:3 › HDC device-lab preflight validation › rejects multiple HDC targets before automatic configuration (122ms)
+  ✓  26 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:102:3 › HDC device-lab preflight validation › auto-prepares a lab-only HDC inventory row and safe temporary smoke binding (118ms)
+  ✓  27 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:127:3 › HDC device-lab preflight validation › disables non-lab HDC bindings before frontend auto-read can touch real hardware (121ms)
+  ✓  28 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:147:3 › HDC device-lab preflight validation › requires explicit write and rollback confirmations before writing HDC hardware (117ms)
   -  29 [Desktop Chrome] › e2e/acceptance/hdc-device-lab.acceptance.spec.ts:773:3 › M5.4 manual flow F - HDC device-lab loop › drives /node-debugging through HDC read, write/readback, audit, and snapshot rollback
-  ✓  30 [Desktop Chrome] › e2e/acceptance/hierarchical-modules.acceptance.spec.ts:202:3 › MOD-TREE hierarchical module acceptance › nested parameter modules support subtree filtering for assigned parameters (192ms)
-  ✓  31 [Desktop Chrome] › e2e/acceptance/hierarchical-modules.acceptance.spec.ts:275:3 › MOD-TREE hierarchical module acceptance › admin can move parameter modules and cycle moves are rejected (191ms)
-  ✓  32 [Desktop Chrome] › e2e/acceptance/hierarchical-modules.acceptance.spec.ts:344:3 › MOD-TREE hierarchical module acceptance › nested debug node modules support subtree filtering for assigned nodes (124ms)
-  ✓  33 [Desktop Chrome] › e2e/acceptance/hierarchical-modules.acceptance.spec.ts:411:3 › MOD-TREE hierarchical module acceptance › module tree mutations require admin and non-empty modules cannot be deleted (148ms)
+  ✓  30 [Desktop Chrome] › e2e/acceptance/hierarchical-modules.acceptance.spec.ts:202:3 › MOD-TREE hierarchical module acceptance › nested parameter modules support subtree filtering for assigned parameters (215ms)
+  ✓  31 [Desktop Chrome] › e2e/acceptance/hierarchical-modules.acceptance.spec.ts:275:3 › MOD-TREE hierarchical module acceptance › admin can move parameter modules and cycle moves are rejected (173ms)
+  ✓  32 [Desktop Chrome] › e2e/acceptance/hierarchical-modules.acceptance.spec.ts:344:3 › MOD-TREE hierarchical module acceptance › nested debug node modules support subtree filtering for assigned nodes (127ms)
+  ✓  33 [Desktop Chrome] › e2e/acceptance/hierarchical-modules.acceptance.spec.ts:411:3 › MOD-TREE hierarchical module acceptance › module tree mutations require admin and non-empty modules cannot be deleted (165ms)
   -  34 [Desktop Chrome] › e2e/acceptance/local-device-bridge.acceptance.spec.ts:181:3 › local device bridge conditional acceptance › pairs bridge and runs bridge-backed detect/read/(optional) write
   -  35 [Desktop Chrome] › e2e/acceptance/local-device-bridge.acceptance.spec.ts:333:3 › local device bridge conditional acceptance › real bridge HDC path (device lab stub)
-  ✓  36 [Desktop Chrome] › e2e/acceptance/log-analysis.acceptance.spec.ts:246:3 › M5.4 manual flow D - log analysis browser acceptance › uploads, completes, links evidence, audits feedback, archives, and records unsupported upload failure (6.2s)
-  ✓  37 [Desktop Chrome] › e2e/acceptance/log-analysis.acceptance.spec.ts:355:3 › M5.4 manual flow D - log analysis browser acceptance › reruns a completed log and records run, job progress, audit, and operation evidence (8.2s)
-  ✓  38 [Desktop Chrome] › e2e/acceptance/notifications.acceptance.spec.ts:11:3 › Notification center acceptance › loads inbox APIs and opens the TopBar notification panel (3.4s)
-  ✓  39 [Desktop Chrome] › e2e/acceptance/notifications.acceptance.spec.ts:50:3 › Notification center acceptance › marks all notifications read through the API (4.5s)
-  ✘  40 [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:232:3 › project parameter files browser acceptance › uploads, lists, and syncs project parameter files (126ms)
-  ✘  41 [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:331:3 › project parameter files browser acceptance › resolves file/UI draft conflicts (123ms)
-  ✘  42 [Desktop Chrome] › e2e/acceptance/parameter-home.acceptance.spec.ts:10:3 › parameter-home production dashboard › loads summary and hotspots APIs and renders in-page dashboard controls (6.7s)
-  ✘  43 [Desktop Chrome] › e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts:31:3 › PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignment › PARAM-IMPORT-DTS-FULL-001 parses full DTS with @address modules via parse-dts (131ms)
-  ✓  44 [Desktop Chrome] › e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts:88:3 › PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignment › PARAM-IMPORT-REVIEW-META-001 stores skippedRows in import preview audit metadata (134ms)
-  ✓  45 [Desktop Chrome] › e2e/acceptance/parameter-import-wizard.acceptance.spec.ts:31:3 › PARAM-ADMIN-002 parameter import wizard browser acceptance › runs the five-step import wizard through preview (8.8s)
-  ✘  46 [Desktop Chrome] › e2e/acceptance/parameter-topology.acceptance.spec.ts:175:3 › Parameter topology / schema browser acceptance › governs specs, browses real topology, edits, maps identity, and gates publish (2.8s)
-  ✘  47 [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:172:3 › M5.5 parameter negative-path browser acceptance › blocks blank draft reasons before API submission (12.9s)
-  ✘  48 [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:190:3 › M5.5 parameter negative-path browser acceptance › edits a draft item and removes another item before final submission (14.8s)
-  ✘  49 [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:277:3 › M5.5 parameter negative-path browser acceptance › defaults every workflow assignee slot to an eligible active non-admin user and hides ineligible users (12.3s)
-  ✘  50 [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:320:3 › M5.5 parameter negative-path browser acceptance › rejects forced invalid workflow assignees at the API boundary (147ms)
-  ✘  51 [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:268:3 › M5.4 manual flow B/C - parameter management browser acceptance › searches, drafts, submits, reviews, persists, audits, and opens admin import preview (1.6m)
-  ✘  52 [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:438:3 › M5.4 manual flow B/C - parameter management browser acceptance › rejects a submitted parameter request and persists rejection reason and audit evidence (12.2s)
-  ✘  53 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Guest (10.6s)
-  ✘  54 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Hardware User (10.8s)
-  ✘  55 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Software User (10.8s)
-  ✓  56 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Hardware Committer (850ms)
-  ✓  57 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Software Committer (778ms)
-  ✓  58 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Admin (787ms)
-  ✓  59 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:112:3 › M5.5 permissions matrix browser acceptance › keeps API-backed workflow eligibility stricter than visible role inclusion (125ms)
-  ✘  60 [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:190:3 › M5.4 manual flow H - permissions and user governance › loads users, shows role/status, and gates user governance to Admin (13.7s)
-  ✘  61 [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:246:3 › M5.4 manual flow H - permissions and user governance › lets Admin manage a non-self user in UI while denying non-Admin access (16.8s)
+  ✓  36 [Desktop Chrome] › e2e/acceptance/log-analysis.acceptance.spec.ts:246:3 › M5.4 manual flow D - log analysis browser acceptance › uploads, completes, links evidence, audits feedback, archives, and records unsupported upload failure (9.4s)
+  ✓  37 [Desktop Chrome] › e2e/acceptance/log-analysis.acceptance.spec.ts:355:3 › M5.4 manual flow D - log analysis browser acceptance › reruns a completed log and records run, job progress, audit, and operation evidence (7.8s)
+  ✓  38 [Desktop Chrome] › e2e/acceptance/notifications.acceptance.spec.ts:11:3 › Notification center acceptance › loads inbox APIs and opens the TopBar notification panel (4.5s)
+  ✓  39 [Desktop Chrome] › e2e/acceptance/notifications.acceptance.spec.ts:50:3 › Notification center acceptance › marks all notifications read through the API (5.5s)
+  ✘  40 [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:160:3 › project parameter files browser acceptance › uploads, lists, and syncs project parameter files (191ms)
+  ✘  41 [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:259:3 › project parameter files browser acceptance › resolves file/UI draft conflicts (148ms)
+  ✓  42 [Desktop Chrome] › e2e/acceptance/parameter-home.acceptance.spec.ts:10:3 › parameter-home production dashboard › loads summary and hotspots APIs and renders in-page dashboard controls (3.5s)
+  ✘  43 [Desktop Chrome] › e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts:31:3 › PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignment › PARAM-IMPORT-DTS-FULL-001 parses full DTS with @address modules via parse-dts (96ms)
+  ✓  44 [Desktop Chrome] › e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts:88:3 › PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignment › PARAM-IMPORT-REVIEW-META-001 stores skippedRows in import preview audit metadata (143ms)
+  ✓  45 [Desktop Chrome] › e2e/acceptance/parameter-import-wizard.acceptance.spec.ts:31:3 › PARAM-ADMIN-002 parameter import wizard browser acceptance › runs the five-step import wizard through preview (6.9s)
+  ✓  46 [Desktop Chrome] › e2e/acceptance/parameter-topology.acceptance.spec.ts:232:3 › Parameter topology / schema browser acceptance › governs specs, browses real topology, edits, maps identity, and gates publish (30.0s)
+  ✘  47 [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:172:3 › M5.5 parameter negative-path browser acceptance › blocks blank draft reasons before API submission (17.6s)
+  ✘  48 [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:190:3 › M5.5 parameter negative-path browser acceptance › edits a draft item and removes another item before final submission (13.6s)
+  ✘  49 [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:277:3 › M5.5 parameter negative-path browser acceptance › defaults every workflow assignee slot to an eligible active non-admin user and hides ineligible users (16.0s)
+  ✘  50 [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:320:3 › M5.5 parameter negative-path browser acceptance › rejects forced invalid workflow assignees at the API boundary (299ms)
+  ✘  51 [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:268:3 › M5.4 manual flow B/C - parameter management browser acceptance › searches, drafts, submits, reviews, persists, audits, and opens admin import preview (1.7m)
+  ✘  52 [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:438:3 › M5.4 manual flow B/C - parameter management browser acceptance › rejects a submitted parameter request and persists rejection reason and audit evidence (17.7s)
+  ✘  53 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Guest (11.9s)
+  ✘  54 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Hardware User (13.1s)
+  ✘  55 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Software User (12.7s)
+  ✓  56 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Hardware Committer (3.2s)
+  ✓  57 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Software Committer (6.6s)
+  ✓  58 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Admin (3.3s)
+  ✓  59 [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:112:3 › M5.5 permissions matrix browser acceptance › keeps API-backed workflow eligibility stricter than visible role inclusion (335ms)
+  ✘  60 [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:190:3 › M5.4 manual flow H - permissions and user governance › loads users, shows role/status, and gates user governance to Admin (19.2s)
+  ✘  61 [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:246:3 › M5.4 manual flow H - permissions and user governance › lets Admin manage a non-self user in UI while denying non-Admin access (17.5s)
   ✘  62 [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:347:3 › M5.4 manual flow H - permissions and user governance › protects API-mode user context with production bearer authentication (5.0s)
-  ✓  63 [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:237:3 › Product feedback browser acceptance › submits sidebar feedback with an optional image and persists it (3.3s)
-  ✓  64 [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:308:3 › Product feedback browser acceptance › lets Admin list, open, triage, close, and note feedback (3.2s)
-  ✘  65 [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:372:3 › Product feedback browser acceptance › blocks non-Admin feedback admin APIs and page access (10.6s)
-  ✓  66 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads / without a runtime crash (4.5s)
-  ✓  67 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /parameter-home without a runtime crash (6.1s)
-  ✓  68 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /parameters without a runtime crash (4.9s)
-  ✓  69 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /parameter-review without a runtime crash (783ms)
-  ✓  70 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /parameter-admin without a runtime crash (3.8s)
-  ✓  71 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /logs without a runtime crash (3.4s)
-  ✓  72 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /log-admin without a runtime crash (3.4s)
-  ✓  73 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /debugging without a runtime crash (5.2s)
-  ✘  74 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /node-debugging without a runtime crash (4.3s)
-  ✓  75 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /debugging-admin without a runtime crash (4.4s)
-  ✓  76 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /user-permissions without a runtime crash (3.9s)
-  ✘  77 [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:227:3 › Xiaoze P1 action › approves a parameter change through the approval chain (26.5s)
-  ✘  78 [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:303:3 › Xiaoze P1 action › resumes with AG-UI native resume entries after interrupt (17.2s)
-  ✘  79 [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:405:3 › Xiaoze P1 action › rejects a parameter change without mutation (17.7s)
-  ✘  80 [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:455:3 › Xiaoze P1 action › denies out-of-permission approval execution with a safe message (16.1s)
-  ✓  81 [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:169:3 › Xiaoze P0 perception › returns a grounded answer for an in-scope project question (17.4s)
-  ✓  82 [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:194:3 › Xiaoze P0 perception › does not leak data for an out-of-scope project question (18.5s)
-  ✘  83 [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:225:3 › Xiaoze P0 perception › rejects unauthenticated xiaoze requests (3.5s)
-  ✘  84 [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:219:3 › Xiaoze P2 planning › completes a multi-step task through approval and observe loop (11.8s)
-  ✘  85 [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:287:3 › Xiaoze P2 planning › returns grounded proactive suggestions when enabled and nothing for unauthorized scope (58ms)
+  ✓  63 [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:237:3 › Product feedback browser acceptance › submits sidebar feedback with an optional image and persists it (6.4s)
+  ✓  64 [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:308:3 › Product feedback browser acceptance › lets Admin list, open, triage, close, and note feedback (5.7s)
+  ✘  65 [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:372:3 › Product feedback browser acceptance › blocks non-Admin feedback admin APIs and page access (11.9s)
+  ✓  66 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads / without a runtime crash (4.9s)
+  ✓  67 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /parameter-home without a runtime crash (5.0s)
+  ✓  68 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /parameters without a runtime crash (5.1s)
+  ✓  69 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /parameter-review without a runtime crash (4.7s)
+  ✓  70 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /parameter-admin without a runtime crash (6.6s)
+  ✓  71 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /logs without a runtime crash (6.3s)
+  ✓  72 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /log-admin without a runtime crash (5.3s)
+  ✓  73 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /debugging without a runtime crash (5.4s)
+  ✘  74 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /node-debugging without a runtime crash (7.1s)
+  ✓  75 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /debugging-admin without a runtime crash (5.3s)
+  ✓  76 [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /user-permissions without a runtime crash (5.7s)
+  ✘  77 [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:227:3 › Xiaoze P1 action › approves a parameter change through the approval chain (7.6s)
+  ✘  78 [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:303:3 › Xiaoze P1 action › resumes with AG-UI native resume entries after interrupt (38.2s)
+  ✘  79 [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:405:3 › Xiaoze P1 action › rejects a parameter change without mutation (13.4s)
+  ✘  80 [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:455:3 › Xiaoze P1 action › denies out-of-permission approval execution with a safe message (14.1s)
+  ✓  81 [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:169:3 › Xiaoze P0 perception › returns a grounded answer for an in-scope project question (13.9s)
+  ✓  82 [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:194:3 › Xiaoze P0 perception › does not leak data for an out-of-scope project question (8.3s)
+  ✘  83 [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:225:3 › Xiaoze P0 perception › rejects unauthenticated xiaoze requests (3.3s)
+  ✘  84 [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:219:3 › Xiaoze P2 planning › completes a multi-step task through approval and observe loop (10.8s)
+  ✘  85 [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:287:3 › Xiaoze P2 planning › returns grounded proactive suggestions when enabled and nothing for unauthorized scope (63ms)
 
 
   1) [Desktop Chrome] › e2e/acceptance/debugging-admin.acceptance.spec.ts:194:3 › DEBUG-ADMIN-001 debugging admin catalog governance › debugging admin manages an API-backed HDC/ADB catalog node
@@ -443,58 +447,35 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  4) [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:325:3 › DTS structured product browser acceptance › structure, typed editor contract, search, config-set/baseline, and structured diff
+  4) [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:268:3 › DTS structured product browser acceptance › structure, typed editor contract, search, config-set/baseline, and structured diff
 
-    error: update or delete on table "project_parameter_file_versions" violates foreign key constraint "dts_config_revision_members_file_version_id_fkey" on table "dts_config_revision_members"
+    ReferenceError: apiRoute is not defined
 
-      271 |           );
-      272 |         }
-    > 273 |         await client.query(`delete from project_parameter_file_versions where file_id = any($1::text[])`, [fileIds]);
-          |         ^
-      274 |         await client.query(`delete from project_parameter_files where id = any($1::text[])`, [fileIds]);
-      275 |       }
-      276 |     }
-        at /Users/tzrea1/Develop/WiseEff/node_modules/pg/lib/client.js:646:17
-        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:273:9
-        at withPgClient (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/database.ts:38:12)
-        at cleanupDtsAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:197:3)
-        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:581:7
+      245 |   content: string
+      246 | ): Promise<{ fileId: string; versionId: string }> {
+    > 247 |   const response = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+          |                                  ^
+      248 |     headers: adminHeaders(),
+      249 |     data: {
+      250 |       fileName,
+        at uploadDtsFile (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:247:34)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:289:29
 
     attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
     Browser diagnostics are installed for unexpected console, page, request, and API failures.
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-    attachment #2: operation-evidence (application/json) ───────────────────────────────────────────
-    test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/attachments/operation-evidence-0fc4dce4675c82e38fca250fd5392837528daed8.json
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    attachment #3: operation-evidence (application/json) ───────────────────────────────────────────
-    test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/attachments/operation-evidence-ea9a1f80fbc0e158b50286e28b4305037a1c465e.json
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    attachment #4: operation-evidence (application/json) ───────────────────────────────────────────
-    test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/attachments/operation-evidence-17bd731c1b7c348beab0f3a9496a3487c1ac7aba.json
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    attachment #5: operation-evidence (application/json) ───────────────────────────────────────────
-    test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/attachments/operation-evidence-bb531d084e0c2274b0f1784d5d6424c46f71bcba.json
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    attachment #6: operation-evidence (application/json) ───────────────────────────────────────────
-    test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/attachments/operation-evidence-09c2535bde03d7648f14e4eadbcb10e93497db4d.json
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    attachment #7: screenshot (image/png) ──────────────────────────────────────────────────────────
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
     test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/test-failed-1.png
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-    attachment #8: video (video/webm) ──────────────────────────────────────────────────────────────
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
     test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/video.webm
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
     Error Context: test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/error-context.md
 
-    attachment #10: trace (application/zip) ────────────────────────────────────────────────────────
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
     test-results/acceptance/dts-structured.acceptance--48cbe-aseline-and-structured-diff-Desktop-Chrome/trace.zip
     Usage:
 
@@ -502,25 +483,136 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  5) [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:232:3 › project parameter files browser acceptance › uploads, lists, and syncs project parameter files
+  5) [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:535:3 › DTS structured product browser acceptance › structured edit submit preserves rawText through review merge and CST writeback
 
-    error: update or delete on table "project_parameter_file_versions" violates foreign key constraint "dts_config_revision_members_file_version_id_fkey" on table "dts_config_revision_members"
+    ReferenceError: apiRoute is not defined
 
-      170 |         [fileIds]
-      171 |       );
-    > 172 |       await client.query(
+      245 |   content: string
+      246 | ): Promise<{ fileId: string; versionId: string }> {
+    > 247 |   const response = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+          |                                  ^
+      248 |     headers: adminHeaders(),
+      249 |     data: {
+      250 |       fileName,
+        at uploadDtsFile (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:247:34)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:547:30
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--eacb5-iew-merge-and-CST-writeback-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--eacb5-iew-merge-and-CST-writeback-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/dts-structured.acceptance--eacb5-iew-merge-and-CST-writeback-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--eacb5-iew-merge-and-CST-writeback-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/dts-structured.acceptance--eacb5-iew-merge-and-CST-writeback-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6) [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:700:3 › DTS structured product browser acceptance › structural impact kinds when DTS bindings exist
+
+    ReferenceError: apiRoute is not defined
+
+      245 |   content: string
+      246 | ): Promise<{ fileId: string; versionId: string }> {
+    > 247 |   const response = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+          |                                  ^
+      248 |     headers: adminHeaders(),
+      249 |     data: {
+      250 |       fileName,
+        at uploadDtsFile (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:247:34)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:708:29
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--fcc89-nds-when-DTS-bindings-exist-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--fcc89-nds-when-DTS-bindings-exist-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/dts-structured.acceptance--fcc89-nds-when-DTS-bindings-exist-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--fcc89-nds-when-DTS-bindings-exist-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/dts-structured.acceptance--fcc89-nds-when-DTS-bindings-exist-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  7) [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:824:3 › DTS structured product browser acceptance › sensitive-node RBAC denies missing capability; agent critical deny is enforced
+
+    ReferenceError: apiRoute is not defined
+
+      245 |   content: string
+      246 | ): Promise<{ fileId: string; versionId: string }> {
+    > 247 |   const response = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+          |                                  ^
+      248 |     headers: adminHeaders(),
+      249 |     data: {
+      250 |       fileName,
+        at uploadDtsFile (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:247:34)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/dts-structured.acceptance.spec.ts:832:13
+
+    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
+    Browser diagnostics are installed for unexpected console, page, request, and API failures.
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--9fda5-t-critical-deny-is-enforced-Desktop-Chrome/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--9fda5-t-critical-deny-is-enforced-Desktop-Chrome/video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/acceptance/dts-structured.acceptance--9fda5-t-critical-deny-is-enforced-Desktop-Chrome/error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/acceptance/dts-structured.acceptance--9fda5-t-critical-deny-is-enforced-Desktop-Chrome/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/acceptance/dts-structured.acceptance--9fda5-t-critical-deny-is-enforced-Desktop-Chrome/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  8) [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:160:3 › project parameter files browser acceptance › uploads, lists, and syncs project parameter files
+
+    error: update or delete on table "parameter_spec_review_tasks" violates foreign key constraint "parameter_spec_matcher_overrides_source_review_task_id_fkey" on table "parameter_spec_matcher_overrides"
+
+       at helpers/semanticFixtureCleanup.ts:182
+
+      180 |         [versionIds]
+      181 |       );
+    > 182 |       await client.query(`delete from dts_property_occurrences where file_version_id = any($1::text[])`, [
           |       ^
-      173 |         `
-      174 |         delete from project_parameter_file_versions
-      175 |         where file_id = any($1::text[])
+      183 |         versionIds
+      184 |       ]);
+      185 |       await client.query(`delete from dts_node_occurrences where file_version_id = any($1::text[])`, [versionIds]);
         at /Users/tzrea1/Develop/WiseEff/node_modules/pg/lib/client.js:646:17
-        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:172:7
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/semanticFixtureCleanup.ts:182:7
         at withPgClient (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/database.ts:38:12)
+        at cleanupSemanticAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/semanticFixtureCleanup.ts:99:3)
         at cleanupParameterFileAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:115:3)
-        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:221:7
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:149:7
         at withPgClient (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/database.ts:38:12)
-        at cleanupAllParameterFileAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:208:3)
-        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:228:5
+        at cleanupAllParameterFileAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:136:3)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:156:5
 
     attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
     Browser diagnostics are installed for unexpected console, page, request, and API failures.
@@ -544,25 +636,28 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  6) [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:331:3 › project parameter files browser acceptance › resolves file/UI draft conflicts
+  9) [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:259:3 › project parameter files browser acceptance › resolves file/UI draft conflicts
 
-    error: update or delete on table "project_parameter_file_versions" violates foreign key constraint "dts_config_revision_members_file_version_id_fkey" on table "dts_config_revision_members"
+    error: update or delete on table "parameter_spec_review_tasks" violates foreign key constraint "parameter_spec_matcher_overrides_source_review_task_id_fkey" on table "parameter_spec_matcher_overrides"
 
-      170 |         [fileIds]
-      171 |       );
-    > 172 |       await client.query(
+       at helpers/semanticFixtureCleanup.ts:182
+
+      180 |         [versionIds]
+      181 |       );
+    > 182 |       await client.query(`delete from dts_property_occurrences where file_version_id = any($1::text[])`, [
           |       ^
-      173 |         `
-      174 |         delete from project_parameter_file_versions
-      175 |         where file_id = any($1::text[])
+      183 |         versionIds
+      184 |       ]);
+      185 |       await client.query(`delete from dts_node_occurrences where file_version_id = any($1::text[])`, [versionIds]);
         at /Users/tzrea1/Develop/WiseEff/node_modules/pg/lib/client.js:646:17
-        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:172:7
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/semanticFixtureCleanup.ts:182:7
         at withPgClient (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/database.ts:38:12)
+        at cleanupSemanticAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/semanticFixtureCleanup.ts:99:3)
         at cleanupParameterFileAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:115:3)
-        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:221:7
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:149:7
         at withPgClient (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/helpers/database.ts:38:12)
-        at cleanupAllParameterFileAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:208:3)
-        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:228:5
+        at cleanupAllParameterFileAcceptanceArtifacts (/Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:136:3)
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-files.acceptance.spec.ts:156:5
 
     attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
     Browser diagnostics are installed for unexpected console, page, request, and API failures.
@@ -586,53 +681,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  7) [Desktop Chrome] › e2e/acceptance/parameter-home.acceptance.spec.ts:10:3 › parameter-home production dashboard › loads summary and hotspots APIs and renders in-page dashboard controls
-
-    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
-
-    Locator: getByText(/近 7 天/)
-    Expected: visible
-    Error: strict mode violation: getByText(/近 7 天/) resolved to 2 elements:
-        1) <button role="radio" tabindex="0" type="button" data-state="on" data-spacing="0" aria-checked="true" data-size="default" data-variant="default" data-slot="toggle-group-item" data-radix-collection-item="" class="shrink-0 group-data-[spacing=0]/toggle-group:rounded-none group-data-[spacing=0]/toggle-group:px-2 focus:z-10 focus-visible:z-10 group-data-[spacing=0]/toggle-group:has-data-[icon=inline-end]:pr-1.5 group-data-[spacing=0]/toggle-group:has-data-[icon=inline-start]:pl-1.5 group-data-horizontal/to…>近 7 天</button> aka getByRole('radio', { name: '近 7 天' })
-        2) <span class="parameter-home__panel-subtitle">近 7 天 · 3 个热区</span> aka getByText('近 7 天 · 3 个热区')
-
-    Call log:
-    [2m  - Expect "toBeVisible" with timeout 10000ms[22m
-    [2m  - waiting for getByText(/近 7 天/)[22m
-
-
-      35 |
-      36 |     await page.getByRole("radio", { name: "近 7 天" }).first().click();
-    > 37 |     await expect(page.getByText(/近 7 天/)).toBeVisible();
-         |                                           ^
-      38 |
-      39 |     await page.getByRole("radio", { name: "模块榜" }).first().click();
-      40 |     await expect(page.getByRole("radio", { name: "模块榜" }).first()).toHaveAttribute("aria-checked", "true");
-        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-home.acceptance.spec.ts:37:43
-
-    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
-    Browser diagnostics are installed for unexpected console, page, request, and API failures.
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
-    test-results/acceptance/parameter-home.acceptance--9a112--in-page-dashboard-controls-Desktop-Chrome/test-failed-1.png
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
-    test-results/acceptance/parameter-home.acceptance--9a112--in-page-dashboard-controls-Desktop-Chrome/video.webm
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    Error Context: test-results/acceptance/parameter-home.acceptance--9a112--in-page-dashboard-controls-Desktop-Chrome/error-context.md
-
-    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
-    test-results/acceptance/parameter-home.acceptance--9a112--in-page-dashboard-controls-Desktop-Chrome/trace.zip
-    Usage:
-
-        npx playwright show-trace test-results/acceptance/parameter-home.acceptance--9a112--in-page-dashboard-controls-Desktop-Chrome/trace.zip
-
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-  8) [Desktop Chrome] › e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts:31:3 › PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignment › PARAM-IMPORT-DTS-FULL-001 parses full DTS with @address modules via parse-dts
+  10) [Desktop Chrome] › e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts:31:3 › PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignment › PARAM-IMPORT-DTS-FULL-001 parses full DTS with @address modules via parse-dts
 
     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
 
@@ -670,45 +719,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  9) [Desktop Chrome] › e2e/acceptance/parameter-topology.acceptance.spec.ts:175:3 › Parameter topology / schema browser acceptance › governs specs, browses real topology, edits, maps identity, and gates publish
-
-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
-
-    Expected: [32mtrue[39m
-    Received: [31mfalse[39m
-
-      282 |       }
-      283 |     );
-    > 284 |     expect(resolveReview.ok()).toBe(true);
-          |                                ^
-      285 |
-      286 |     const reviewDb = await withPgClient(async (client) => {
-      287 |       const result = await client.query<{ status: string; parameter_spec_id: string | null }>(
-        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/parameter-topology.acceptance.spec.ts:284:32
-
-    attachment #1: browser-diagnostics-enabled (text/plain) ────────────────────────────────────────
-    Browser diagnostics are installed for unexpected console, page, request, and API failures.
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
-    test-results/acceptance/parameter-topology.accepta-7f09b--identity-and-gates-publish-Desktop-Chrome/test-failed-1.png
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    attachment #3: video (video/webm) ──────────────────────────────────────────────────────────────
-    test-results/acceptance/parameter-topology.accepta-7f09b--identity-and-gates-publish-Desktop-Chrome/video.webm
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    Error Context: test-results/acceptance/parameter-topology.accepta-7f09b--identity-and-gates-publish-Desktop-Chrome/error-context.md
-
-    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
-    test-results/acceptance/parameter-topology.accepta-7f09b--identity-and-gates-publish-Desktop-Chrome/trace.zip
-    Usage:
-
-        npx playwright show-trace test-results/acceptance/parameter-topology.accepta-7f09b--identity-and-gates-publish-Desktop-Chrome/trace.zip
-
-    ────────────────────────────────────────────────────────────────────────────────────────────────
-
-  10) [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:172:3 › M5.5 parameter negative-path browser acceptance › blocks blank draft reasons before API submission
+  11) [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:172:3 › M5.5 parameter negative-path browser acceptance › blocks blank draft reasons before API submission
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
 
@@ -754,7 +765,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  11) [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:190:3 › M5.5 parameter negative-path browser acceptance › edits a draft item and removes another item before final submission
+  12) [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:190:3 › M5.5 parameter negative-path browser acceptance › edits a draft item and removes another item before final submission
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
 
@@ -799,7 +810,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  12) [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:277:3 › M5.5 parameter negative-path browser acceptance › defaults every workflow assignee slot to an eligible active non-admin user and hides ineligible users
+  13) [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:277:3 › M5.5 parameter negative-path browser acceptance › defaults every workflow assignee slot to an eligible active non-admin user and hides ineligible users
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
 
@@ -846,7 +857,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  13) [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:320:3 › M5.5 parameter negative-path browser acceptance › rejects forced invalid workflow assignees at the API boundary
+  14) [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:320:3 › M5.5 parameter negative-path browser acceptance › rejects forced invalid workflow assignees at the API boundary
 
     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
 
@@ -884,7 +895,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  14) [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:268:3 › M5.4 manual flow B/C - parameter management browser acceptance › searches, drafts, submits, reviews, persists, audits, and opens admin import preview
+  15) [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:268:3 › M5.4 manual flow B/C - parameter management browser acceptance › searches, drafts, submits, reviews, persists, audits, and opens admin import preview
 
     [31mTest timeout of 90000ms exceeded.[39m
 
@@ -913,7 +924,7 @@ Running 85 tests using 1 worker
     [2m      - <div class="submission-dialog submission-detail-dialog">…</div> from <div role="dialog" aria-modal="true" class="modal-backdrop" aria-labelledby="submission-detail-title">…</div> subtree intercepts pointer events[22m
     [2m    - retrying click action[22m
     [2m      - waiting 100ms[22m
-    [2m    42 × waiting for element to be visible, enabled and stable[22m
+    [2m    46 × waiting for element to be visible, enabled and stable[22m
     [2m       - element is visible, enabled and stable[22m
     [2m       - scrolling into view if needed[22m
     [2m       - done scrolling[22m
@@ -941,27 +952,6 @@ Running 85 tests using 1 worker
     [2m       - <div class="submission-dialog submission-detail-dialog">…</div> from <div role="dialog" aria-modal="true" class="modal-backdrop" aria-labelledby="submission-detail-title">…</div> subtree intercepts pointer events[22m
     [2m     - retrying click action[22m
     [2m       - waiting 500ms[22m
-    [2m    - waiting for element to be visible, enabled and stable[22m
-    [2m    - element is visible, enabled and stable[22m
-    [2m    - scrolling into view if needed[22m
-    [2m    - done scrolling[22m
-    [2m    - <div class="submission-dialog submission-detail-dialog">…</div> from <div role="dialog" aria-modal="true" class="modal-backdrop" aria-labelledby="submission-detail-title">…</div> subtree intercepts pointer events[22m
-    [2m  - retrying click action[22m
-    [2m    - waiting 500ms[22m
-    [2m    - waiting for element to be visible, enabled and stable[22m
-    [2m    - element is visible, enabled and stable[22m
-    [2m    - scrolling into view if needed[22m
-    [2m    - done scrolling[22m
-    [2m    - <div role="dialog" aria-modal="true" class="modal-backdrop" aria-labelledby="submission-detail-title">…</div> intercepts pointer events[22m
-    [2m  - retrying click action[22m
-    [2m    - waiting 500ms[22m
-    [2m    - waiting for element to be visible, enabled and stable[22m
-    [2m    - element is visible, enabled and stable[22m
-    [2m    - scrolling into view if needed[22m
-    [2m    - done scrolling[22m
-    [2m    - <div class="submission-dialog submission-detail-dialog">…</div> from <div role="dialog" aria-modal="true" class="modal-backdrop" aria-labelledby="submission-detail-title">…</div> subtree intercepts pointer events[22m
-    [2m  - retrying click action[22m
-    [2m    - waiting 500ms[22m
 
 
       319 |     const reviewDetail = page.getByRole("complementary", { name: "审阅详情" });
@@ -995,12 +985,12 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  15) [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:438:3 › M5.4 manual flow B/C - parameter management browser acceptance › rejects a submitted parameter request and persists rejection reason and audit evidence
+  16) [Desktop Chrome] › e2e/acceptance/parameters.acceptance.spec.ts:438:3 › M5.4 manual flow B/C - parameter management browser acceptance › rejects a submitted parameter request and persists rejection reason and audit evidence
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoContainText[2m([22m[32mexpected[39m[2m)[22m failed
 
     Locator: locator('.review-detail')
-    Expected substring: [32m"ffe53334-28cc-42e2-b98f-241ff9a4598a"[39m
+    Expected substring: [32m"3dfd4fba-06e7-4163-a62d-dfe843810542"[39m
     Received string:    [31m"Aurora 量产平台charge_voltage_limit_mv目标模块为 Charging Policy，由 Xu Yun 提交。查看提交详情（1 项变更）审阅摘要charge_voltage_limit_mv 从 4350 调整为 4333。影响面parametercharge_voltage_limit_mvChanges Charging Policy parameter from 4350 to 4333.HighmoduleCharging PolicyHigh risk module review recommended.High变更历史流程 1当前流程硬件MDE检视当前处理人：Wang Jie。流程 2软件MDE检视软件 MDE：Sun Mei。流程 3软件开发人员合入软件开发人员：Liu Min。推进流程打回修改"[39m
     Timeout: 10000ms
 
@@ -1042,7 +1032,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  16) [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Guest
+  17) [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Guest
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
 
@@ -1087,7 +1077,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  17) [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Hardware User
+  18) [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Hardware User
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
 
@@ -1132,7 +1122,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  18) [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Software User
+  19) [Desktop Chrome] › e2e/acceptance/permissions-matrix.acceptance.spec.ts:78:5 › M5.5 permissions matrix browser acceptance › enforces visible route permissions for Software User
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
 
@@ -1177,7 +1167,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  19) [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:190:3 › M5.4 manual flow H - permissions and user governance › loads users, shows role/status, and gates user governance to Admin
+  20) [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:190:3 › M5.4 manual flow H - permissions and user governance › loads users, shows role/status, and gates user governance to Admin
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
 
@@ -1222,7 +1212,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  20) [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:246:3 › M5.4 manual flow H - permissions and user governance › lets Admin manage a non-self user in UI while denying non-Admin access
+  21) [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:246:3 › M5.4 manual flow H - permissions and user governance › lets Admin manage a non-self user in UI while denying non-Admin access
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
 
@@ -1267,7 +1257,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  21) [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:347:3 › M5.4 manual flow H - permissions and user governance › protects API-mode user context with production bearer authentication
+  22) [Desktop Chrome] › e2e/acceptance/permissions.acceptance.spec.ts:347:3 › M5.4 manual flow H - permissions and user governance › protects API-mode user context with production bearer authentication
 
     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
 
@@ -1305,7 +1295,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  22) [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:372:3 › Product feedback browser acceptance › blocks non-Admin feedback admin APIs and page access
+  23) [Desktop Chrome] › e2e/acceptance/product-feedback.acceptance.spec.ts:372:3 › Product feedback browser acceptance › blocks non-Admin feedback admin APIs and page access
 
     Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
 
@@ -1352,7 +1342,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  23) [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /node-debugging without a runtime crash
+  24) [Desktop Chrome] › e2e/acceptance/shell-navigation.acceptance.spec.ts:41:5 › M5.4 manual flow A - shell navigation › loads /node-debugging without a runtime crash
 
     Error: Browser diagnostics failed:
     - Unexpected API response 409 for /api/v1/debugging/targets/detect
@@ -1395,20 +1385,21 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  24) [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:227:3 › Xiaoze P1 action › approves a parameter change through the approval chain
+  25) [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:227:3 › Xiaoze P1 action › approves a parameter change through the approval chain
 
-    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeTruthy[2m()[22m
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
 
-    Received: [31mundefined[39m
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
 
-      244 |     expect(started.status).toBe(200);
-      245 |     const interruptValue = readInterruptValue(started.events);
-    > 246 |     expect(interruptValue?.approvalId).toBeTruthy();
-          |                                        ^
-      247 |
-      248 |     const resumed = await postXiaoze(request, adminHeaders(), {
-      249 |       threadId,
-        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/xiaoze-action.acceptance.spec.ts:246:40
+      259 |
+      260 |     expect(resumed.status).toBe(200);
+    > 261 |     expect(parseSseEvents(resumed.body).some((event) => event.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
+          |                                                                                                 ^
+      262 |     expect(await countOpenChangeRequests()).toBeGreaterThan(openBefore);
+      263 |
+      264 |     const followUp = await postXiaoze(request, adminHeaders(), {
+        at /Users/tzrea1/Develop/WiseEff/e2e/acceptance/xiaoze-action.acceptance.spec.ts:261:97
 
     Error Context: test-results/acceptance/xiaoze-action.acceptance-X-d1ba6--through-the-approval-chain-Desktop-Chrome/error-context.md
 
@@ -1420,7 +1411,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  25) [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:303:3 › Xiaoze P1 action › resumes with AG-UI native resume entries after interrupt
+  26) [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:303:3 › Xiaoze P1 action › resumes with AG-UI native resume entries after interrupt
 
     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeTruthy[2m()[22m
 
@@ -1445,7 +1436,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  26) [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:405:3 › Xiaoze P1 action › rejects a parameter change without mutation
+  27) [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:405:3 › Xiaoze P1 action › rejects a parameter change without mutation
 
     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeTruthy[2m()[22m
 
@@ -1470,7 +1461,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  27) [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:455:3 › Xiaoze P1 action › denies out-of-permission approval execution with a safe message
+  28) [Desktop Chrome] › e2e/acceptance/xiaoze-action.acceptance.spec.ts:455:3 › Xiaoze P1 action › denies out-of-permission approval execution with a safe message
 
     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeTruthy[2m()[22m
 
@@ -1495,7 +1486,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  28) [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:225:3 › Xiaoze P0 perception › rejects unauthenticated xiaoze requests
+  29) [Desktop Chrome] › e2e/acceptance/xiaoze-perception.acceptance.spec.ts:225:3 › Xiaoze P0 perception › rejects unauthenticated xiaoze requests
 
     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
 
@@ -1521,7 +1512,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  29) [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:219:3 › Xiaoze P2 planning › completes a multi-step task through approval and observe loop
+  30) [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:219:3 › Xiaoze P2 planning › completes a multi-step task through approval and observe loop
 
     Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBeTruthy[2m()[22m
 
@@ -1546,7 +1537,7 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  30) [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:287:3 › Xiaoze P2 planning › returns grounded proactive suggestions when enabled and nothing for unauthorized scope
+  31) [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:287:3 › Xiaoze P2 planning › returns grounded proactive suggestions when enabled and nothing for unauthorized scope
 
     error: insert or update on table "parameter_change_requests" violates foreign key constraint "parameter_change_requests_parameter_definition_id_fkey"
 
@@ -1573,16 +1564,17 @@ Running 85 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  30 failed
+  31 failed
     [Desktop Chrome] › e2e/acceptance/debugging-admin.acceptance.spec.ts:194:3 › DEBUG-ADMIN-001 debugging admin catalog governance › debugging admin manages an API-backed HDC/ADB catalog node
     [Desktop Chrome] › e2e/acceptance/debugging-simulator.acceptance.spec.ts:455:3 › M5.4 manual flow E - debugging simulator loop › reads, writes, detects mismatch, rolls back, and records audit evidence
     [Desktop Chrome] › e2e/acceptance/debugging-simulator.acceptance.spec.ts:547:3 › M5.4 manual flow E - debugging simulator loop › blocks node writes for non-writer roles in UI and forced API calls
-    [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:325:3 › DTS structured product browser acceptance › structure, typed editor contract, search, config-set/baseline, and structured diff
-    [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:232:3 › project parameter files browser acceptance › uploads, lists, and syncs project parameter files
-    [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:331:3 › project parameter files browser acceptance › resolves file/UI draft conflicts
-    [Desktop Chrome] › e2e/acceptance/parameter-home.acceptance.spec.ts:10:3 › parameter-home production dashboard › loads summary and hotspots APIs and renders in-page dashboard controls
+    [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:268:3 › DTS structured product browser acceptance › structure, typed editor contract, search, config-set/baseline, and structured diff
+    [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:535:3 › DTS structured product browser acceptance › structured edit submit preserves rawText through review merge and CST writeback
+    [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:700:3 › DTS structured product browser acceptance › structural impact kinds when DTS bindings exist
+    [Desktop Chrome] › e2e/acceptance/dts-structured.acceptance.spec.ts:824:3 › DTS structured product browser acceptance › sensitive-node RBAC denies missing capability; agent critical deny is enforced
+    [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:160:3 › project parameter files browser acceptance › uploads, lists, and syncs project parameter files
+    [Desktop Chrome] › e2e/acceptance/parameter-files.acceptance.spec.ts:259:3 › project parameter files browser acceptance › resolves file/UI draft conflicts
     [Desktop Chrome] › e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts:31:3 › PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignment › PARAM-IMPORT-DTS-FULL-001 parses full DTS with @address modules via parse-dts
-    [Desktop Chrome] › e2e/acceptance/parameter-topology.acceptance.spec.ts:175:3 › Parameter topology / schema browser acceptance › governs specs, browses real topology, edits, maps identity, and gates publish
     [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:172:3 › M5.5 parameter negative-path browser acceptance › blocks blank draft reasons before API submission
     [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:190:3 › M5.5 parameter negative-path browser acceptance › edits a draft item and removes another item before final submission
     [Desktop Chrome] › e2e/acceptance/parameters-negative.acceptance.spec.ts:277:3 › M5.5 parameter negative-path browser acceptance › defaults every workflow assignee slot to an eligible active non-admin user and hides ineligible users
@@ -1605,7 +1597,7 @@ Running 85 tests using 1 worker
     [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:219:3 › Xiaoze P2 planning › completes a multi-step task through approval and observe loop
     [Desktop Chrome] › e2e/acceptance/xiaoze-planning.acceptance.spec.ts:287:3 › Xiaoze P2 planning › returns grounded proactive suggestions when enabled and nothing for unauthorized scope
   4 skipped
-  51 passed (20.9m)
+  50 passed (23.1m)
 
 ### Workflow Table
 
@@ -1631,21 +1623,19 @@ Running 85 tests using 1 worker
 ### Operation Evidence
 
 - Evidence status: `failed`
-- Covered operation IDs: `26`
-- Missing operation IDs: `DEBUG-ADMIN-001`, `DEBUG-PERM-001`, `DEBUG-SIM-001`, `PARAM-ADMIN-001`, `PARAM-ASSIGNEE-001`, `PARAM-ASSIGNEE-002`, `PARAM-ASSIGNEE-003`, `PARAM-CONFIG-PUBLISH-GATE-001`, `PARAM-DRAFT-EDIT-001`, `PARAM-FILE-RESOLVE-001`, `PARAM-FILE-SYNC-001`, `PARAM-FILE-UPLOAD-001`, `PARAM-HAPPY-001`, `PARAM-HOME-001`, `PARAM-IDENTITY-MAP-001`, `PARAM-IMPORT-DTS-FULL-001`, `PARAM-REASON-001`, `PARAM-REJECT-001`, `PARAM-SPEC-GOVERN-001`, `PARAM-TOPOLOGY-BROWSE-001`, `PARAM-TOPOLOGY-EDIT-001`, `PERM-GOV-001`, `PERM-USER-MGMT-001`, `PFB-AUTHZ-001`, `XIAOZE-ACTION-APPROVE-001`, `XIAOZE-ACTION-AUTHZ-001`, `XIAOZE-ACTION-REJECT-001`, `XIAOZE-ACTION-RESUME-001`
-- Invalid evidence records: `PARAM-ADMIN-002`, `PARAM-DTS-IMPACT-001`, `PARAM-DTS-RBAC-001`, `PARAM-IMPORT-REVIEW-META-001`, `XIAOZE-PERCEPTION-001`, `XIAOZE-PERCEPTION-AUTHZ-001`
-- Validation errors: `10`
+- Covered operation IDs: `24`
+- Missing operation IDs: `DEBUG-ADMIN-001`, `DEBUG-PERM-001`, `DEBUG-SIM-001`, `PARAM-ADMIN-001`, `PARAM-ASSIGNEE-001`, `PARAM-ASSIGNEE-002`, `PARAM-ASSIGNEE-003`, `PARAM-DRAFT-EDIT-001`, `PARAM-DTS-CONFIGSET-001`, `PARAM-DTS-DIFF-001`, `PARAM-DTS-EDIT-001`, `PARAM-DTS-EDIT-002`, `PARAM-DTS-IMPACT-001`, `PARAM-DTS-RBAC-001`, `PARAM-DTS-SEARCH-001`, `PARAM-DTS-STRUCTURE-001`, `PARAM-FILE-RESOLVE-001`, `PARAM-FILE-SYNC-001`, `PARAM-FILE-UPLOAD-001`, `PARAM-HAPPY-001`, `PARAM-IMPORT-DTS-FULL-001`, `PARAM-REASON-001`, `PARAM-REJECT-001`, `PERM-GOV-001`, `PERM-USER-MGMT-001`, `PFB-AUTHZ-001`, `XIAOZE-ACTION-APPROVE-001`, `XIAOZE-ACTION-AUTHZ-001`, `XIAOZE-ACTION-REJECT-001`, `XIAOZE-ACTION-RESUME-001`
+- Invalid evidence records: `PARAM-ADMIN-002`, `PARAM-IMPORT-REVIEW-META-001`, `XIAOZE-PERCEPTION-001`, `XIAOZE-PERCEPTION-AUTHZ-001`
+- Validation errors: `8`
 - PARAM-ADMIN-002 assertions: Evidence is missing required operation assertions: audit.
 - PARAM-ADMIN-002 audit: Audit assertions require at least one audit event summary.
-- PARAM-DTS-IMPACT-001 artifacts: Evidence requires at least one artifact.
-- PARAM-DTS-RBAC-001 artifacts: Evidence requires at least one artifact.
 - PARAM-IMPORT-REVIEW-META-001 artifacts: Evidence requires at least one artifact.
 - PARAM-IMPORT-REVIEW-META-001 api: API assertions require at least one API request/response summary.
 - PARAM-IMPORT-REVIEW-META-001 db: DB assertions require at least one database assertion summary.
 - PARAM-IMPORT-REVIEW-META-001 audit: Audit assertions require at least one audit event summary.
 - XIAOZE-PERCEPTION-001 artifacts: Evidence requires at least one artifact.
 - XIAOZE-PERCEPTION-AUTHZ-001 artifacts: Evidence requires at least one artifact.
-- Evidence records: `38`
+- Evidence records: `36`
 - Evidence index: docs/generated/acceptance-operation-evidence.md
 
 ### Artifact Paths
@@ -1667,8 +1657,8 @@ Running 85 tests using 1 worker
 - Workflow G did not pass browser acceptance.
 - Workflow H did not pass browser acceptance.
 - Workflow I did not pass browser acceptance.
-- Operation evidence is missing required IDs: DEBUG-ADMIN-001, DEBUG-PERM-001, DEBUG-SIM-001, PARAM-ADMIN-001, PARAM-ASSIGNEE-001, PARAM-ASSIGNEE-002, PARAM-ASSIGNEE-003, PARAM-CONFIG-PUBLISH-GATE-001, PARAM-DRAFT-EDIT-001, PARAM-FILE-RESOLVE-001, PARAM-FILE-SYNC-001, PARAM-FILE-UPLOAD-001, PARAM-HAPPY-001, PARAM-HOME-001, PARAM-IDENTITY-MAP-001, PARAM-IMPORT-DTS-FULL-001, PARAM-REASON-001, PARAM-REJECT-001, PARAM-SPEC-GOVERN-001, PARAM-TOPOLOGY-BROWSE-001, PARAM-TOPOLOGY-EDIT-001, PERM-GOV-001, PERM-USER-MGMT-001, PFB-AUTHZ-001, XIAOZE-ACTION-APPROVE-001, XIAOZE-ACTION-AUTHZ-001, XIAOZE-ACTION-REJECT-001, XIAOZE-ACTION-RESUME-001.
-- Operation evidence records are missing review or forensic metadata: PARAM-ADMIN-002, PARAM-DTS-IMPACT-001, PARAM-DTS-RBAC-001, PARAM-IMPORT-REVIEW-META-001, XIAOZE-PERCEPTION-001, XIAOZE-PERCEPTION-AUTHZ-001.
+- Operation evidence is missing required IDs: DEBUG-ADMIN-001, DEBUG-PERM-001, DEBUG-SIM-001, PARAM-ADMIN-001, PARAM-ASSIGNEE-001, PARAM-ASSIGNEE-002, PARAM-ASSIGNEE-003, PARAM-DRAFT-EDIT-001, PARAM-DTS-CONFIGSET-001, PARAM-DTS-DIFF-001, PARAM-DTS-EDIT-001, PARAM-DTS-EDIT-002, PARAM-DTS-IMPACT-001, PARAM-DTS-RBAC-001, PARAM-DTS-SEARCH-001, PARAM-DTS-STRUCTURE-001, PARAM-FILE-RESOLVE-001, PARAM-FILE-SYNC-001, PARAM-FILE-UPLOAD-001, PARAM-HAPPY-001, PARAM-IMPORT-DTS-FULL-001, PARAM-REASON-001, PARAM-REJECT-001, PERM-GOV-001, PERM-USER-MGMT-001, PFB-AUTHZ-001, XIAOZE-ACTION-APPROVE-001, XIAOZE-ACTION-AUTHZ-001, XIAOZE-ACTION-REJECT-001, XIAOZE-ACTION-RESUME-001.
+- Operation evidence records are missing review or forensic metadata: PARAM-ADMIN-002, PARAM-IMPORT-REVIEW-META-001, XIAOZE-PERCEPTION-001, XIAOZE-PERCEPTION-AUTHZ-001.
 - Acceptance preflight did not pass.
 - Local non-HDC mode requires pilot_ready or non_hdc_local preflight outcome.
 - Local non-HDC mode requires HDC to be skipped or absent.
