@@ -50,6 +50,20 @@ async function deleteOrgDashboardData(db: Database) {
     [ORG_ID]
   );
   await db.query(
+    `delete from parameter_spec_matcher_overrides
+     where project_id in (select id from projects where organization_id = $1)
+        or source_review_task_id in (
+          select id from parameter_spec_review_tasks
+          where project_id in (select id from projects where organization_id = $1)
+        )`,
+    [ORG_ID]
+  );
+  await db.query(
+    `delete from parameter_spec_review_tasks
+     where project_id in (select id from projects where organization_id = $1)`,
+    [ORG_ID]
+  );
+  await db.query(
     `delete from project_parameter_binding_revisions
      where binding_id in (
        select id from project_parameter_bindings

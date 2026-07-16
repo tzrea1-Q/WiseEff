@@ -10,7 +10,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const seedDir = join(root, "src/config/dts-seed");
 
 describe("golden power fixture", () => {
-  it("locks the 50-node, 170-property base overlay topology", async () => {
+  it("locks the 50-node, 173-property base overlay topology", async () => {
     const baseSource = await readFile(join(seedDir, "base-power-overlay.dts"), "utf8");
     const resolved = resolveDts(baseSource);
 

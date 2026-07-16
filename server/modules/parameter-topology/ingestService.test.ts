@@ -243,7 +243,7 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
   });
 
   it(
-    "persists 170 golden property occurrences and effective gpio_int in one revision",
+    "persists 173 golden property occurrences and effective gpio_int in one revision",
     async () => {
       const manifest = goldenManifest();
       for (const member of manifest.members) {
@@ -260,7 +260,7 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
       const revision = await ingestConfigRevision(db!, manifest, auth);
 
       expect(revision.status).toBe("resolved");
-      expect(await countTable(db!, "dts_property_occurrences", revision.id)).toBe(170);
+      expect(await countTable(db!, "dts_property_occurrences", revision.id)).toBe(173);
       expect(
         await effectiveProperty(db!, revision.id, "/amba/i2c@FDF5E000/sc8562@6E", "gpio_int"),
       ).toMatchObject({ propertyName: "gpio_int", rawText: "<&gpio13 29 0>" });
@@ -359,8 +359,8 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
         [first.id],
       );
       expect(firstStatus.rows[0]?.status).toBe("resolved");
-      expect(await countTable(db!, "dts_property_occurrences", first.id)).toBe(170);
-      expect(await countTable(db!, "dts_property_occurrences", second.id)).toBe(170);
+      expect(await countTable(db!, "dts_property_occurrences", first.id)).toBe(173);
+      expect(await countTable(db!, "dts_property_occurrences", second.id)).toBe(173);
     },
     60_000
   );

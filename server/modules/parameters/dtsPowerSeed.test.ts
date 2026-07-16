@@ -34,7 +34,7 @@ describe("DTS power seed catalog", () => {
     const resolved = resolveDts(baseSource);
     const resolvedPropertyCount = resolved.nodes.reduce((count, node) => count + node.properties.length, 0);
 
-    expect(resolvedPropertyCount).toBe(170);
+    expect(resolvedPropertyCount).toBe(173);
     expect(seed.parameterLibrary).toHaveLength(resolvedPropertyCount);
     expect(new Set(seed.parameterLibrary.map((parameter) => parameter.id)).size).toBe(resolvedPropertyCount);
     expect(new Set(seed.parameterLibrary.map((parameter) => parameter.sourceNodePath)).size).toBe(

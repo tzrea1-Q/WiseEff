@@ -245,13 +245,13 @@ describe("schema registry matcher", () => {
     expect(tasks[0]?.candidateSchemas.length).toBeGreaterThan(1);
   });
 
-  it("binds all 170 golden overlay properties to distinct reviewed gpio_int specs", () => {
+  it("binds all 173 golden overlay properties to distinct reviewed gpio_int specs", () => {
     const reg = registry();
     const nodes = effectiveOverlayNodes();
     const coverage = bindGoldenOverlayProperties(nodes, reg);
 
-    expect(coverage.totalProperties).toBe(170);
-    expect(coverage.matchedProperties).toBe(170);
+    expect(coverage.totalProperties).toBe(173);
+    expect(coverage.matchedProperties).toBe(173);
     expect(coverage.unmatched).toEqual([]);
     expect(coverage.ambiguous).toEqual([]);
 

@@ -9,6 +9,14 @@ nodename:
 commonRefs:
   - wiseeff/common-status.yaml
 properties:
+  '#address-cells':
+    valueShape: u32-array
+    exampleValue: <1>
+    constraints: {}
+  '#size-cells':
+    valueShape: u32-array
+    exampleValue: <0>
+    constraints: {}
   hold-time:
     valueShape: u32-array
     exampleValue: <0x220022>
