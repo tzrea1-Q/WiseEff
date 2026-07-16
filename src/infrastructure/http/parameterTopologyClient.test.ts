@@ -317,6 +317,38 @@ describe("createHttpParameterTopologyRepository", () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
       "/api/v2/parameter-spec-review-tasks/task-1/resolve"
     );
+
+    const resolveBody = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit | undefined)?.body));
+    expect(resolveBody).toMatchObject({
+      decision: "resolved",
+      parameterSpecId: "pspec:a",
+      reason: "ok"
+    });
+  });
+
+  it("forwards confirmPropertyMismatch and createSpec on resolve", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response({ item: { id: "task-2", status: "resolved" } }));
+
+    const repository = createHttpParameterTopologyRepository(
+      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
+    );
+
+    await repository.resolveSpecReviewTask("task-2", {
+      decision: "resolved",
+      createSpec: true,
+      reason: "create from review",
+      confirmPropertyMismatch: true
+    });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body));
+    expect(body).toEqual({
+      decision: "resolved",
+      createSpec: true,
+      reason: "create from review",
+      confirmPropertyMismatch: true
+    });
   });
 
   it("preserves WiseEffApiError for stale-revision and structured diagnostics", async () => {

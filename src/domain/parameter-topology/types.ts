@@ -211,6 +211,8 @@ export type SpecReviewTaskQuery = {
 export type SpecReviewTaskCandidate = {
   id: string;
   label: string;
+  propertyKey?: string | null;
+  driverModule?: string | null;
 };
 
 export type SpecReviewTask = {
@@ -237,6 +239,8 @@ export type ResolveSpecReviewInput = {
   decision: "resolved" | "dismissed";
   parameterSpecId?: string;
   reason: string;
+  confirmPropertyMismatch?: boolean;
+  createSpec?: boolean;
 };
 
 export type ResolveMappingInput = {

@@ -231,6 +231,96 @@ describe("ParameterAdminPage", () => {
     await waitFor(() => expect(within(queue).getByText("没有待审核的推理规格。")).toBeInTheDocument());
   });
 
+  it("creates a new spec for unmatched review tasks via createSpec resolve", async () => {
+    listSpecReviewTasks
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: "task-unmatched",
+            status: "open",
+            propertyKey: "mystery_prop",
+            driverModule: null,
+            evidence: ["no schema match"],
+            candidates: [],
+            ambiguous: false,
+            projectCount: 1,
+            createdAt: "2026-07-16T01:00:00.000Z"
+          }
+        ],
+        nextCursor: null
+      })
+      .mockResolvedValueOnce({ items: [], nextCursor: null });
+
+    renderPage("", initialState, vi.fn(), createParameterActions(), vi.fn(), "api");
+
+    const queue = await screen.findByRole("region", { name: "规格审核队列" });
+    fireEvent.change(within(queue).getByLabelText("审核原因"), {
+      target: { value: "New manual spec from review" }
+    });
+    fireEvent.click(within(queue).getByRole("button", { name: "创建新规格" }));
+
+    await waitFor(() =>
+      expect(resolveSpecReviewTask).toHaveBeenCalledWith("task-unmatched", {
+        decision: "resolved",
+        createSpec: true,
+        reason: "New manual spec from review"
+      })
+    );
+    await waitFor(() => expect(screen.getByText(/已创建并绑定规格/)).toBeInTheDocument());
+  });
+
+  it("passes confirmPropertyMismatch when approving a library schema with different property key", async () => {
+    listSpecReviewTasks.mockResolvedValueOnce({
+      items: [
+        {
+          id: "task-mismatch",
+          status: "open",
+          propertyKey: "gpio_int",
+          driverModule: "vendor,sc8562",
+          evidence: ["library mismatch"],
+          candidates: [],
+          ambiguous: false,
+          projectCount: 1,
+          createdAt: "2026-07-16T01:00:00.000Z"
+        }
+      ],
+      nextCursor: null
+    });
+    listSpecs.mockResolvedValueOnce([
+      {
+        id: "pspec:other",
+        sourceKind: "manual",
+        specificationKey: "manual/other_key",
+        propertyKey: "other_key",
+        driverModule: "manual",
+        lifecycle: "active",
+        currentVersionId: "ver-1",
+        currentVersion: 1
+      }
+    ]);
+
+    renderPage("", initialState, vi.fn(), createParameterActions(), vi.fn(), "api");
+
+    const queue = await screen.findByRole("region", { name: "规格审核队列" });
+    fireEvent.change(within(queue).getByRole("combobox", { name: "选择 Schema" }), {
+      target: { value: "pspec:other" }
+    });
+    fireEvent.change(within(queue).getByLabelText("审核原因"), {
+      target: { value: "Confirmed cross-key bind" }
+    });
+    fireEvent.click(within(queue).getByLabelText(/高风险/));
+    fireEvent.click(within(queue).getByRole("button", { name: "批准" }));
+
+    await waitFor(() =>
+      expect(resolveSpecReviewTask).toHaveBeenCalledWith("task-mismatch", {
+        decision: "resolved",
+        parameterSpecId: "pspec:other",
+        reason: "Confirmed cross-key bind",
+        confirmPropertyMismatch: true
+      })
+    );
+  });
+
   it("opens definition and values dialogs from row actions", () => {
     renderPage();
     const library = screen.getByRole("region", { name: "项目共享参数库" });

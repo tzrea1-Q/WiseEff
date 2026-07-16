@@ -30,6 +30,8 @@ export type SpecReviewQueueProps = {
   onApprove: (input: SpecReviewApproveInput) => void;
   onDismiss?: (input: { taskId: string; reason: string }) => void;
   onCreateSpec?: (input: { taskId: string; propertyKey: string; driverModule: string | null; reason: string }) => void;
+  pendingTaskId?: string | null;
+  pendingAction?: "approve" | "dismiss" | "create" | null;
 };
 
 type DraftState = {
@@ -51,7 +53,15 @@ function selectedSpec(
   );
 }
 
-export function SpecReviewQueue({ tasks, librarySpecs = [], onApprove, onDismiss, onCreateSpec }: SpecReviewQueueProps) {
+export function SpecReviewQueue({
+  tasks,
+  librarySpecs = [],
+  onApprove,
+  onDismiss,
+  onCreateSpec,
+  pendingTaskId = null,
+  pendingAction = null
+}: SpecReviewQueueProps) {
   const [drafts, setDrafts] = useState<Record<string, DraftState>>({});
 
   const openTasks = useMemo(() => tasks, [tasks]);
@@ -98,6 +108,7 @@ export function SpecReviewQueue({ tasks, librarySpecs = [], onApprove, onDismiss
             const canApprove =
               Boolean(draft.schemaId.trim() && draft.reason.trim()) &&
               (!propertyMismatch || draft.confirmMismatch);
+            const isPending = pendingTaskId === task.id;
 
             return (
               <li key={task.id} className="spec-review-queue__item">
@@ -217,7 +228,7 @@ export function SpecReviewQueue({ tasks, librarySpecs = [], onApprove, onDismiss
                     <button
                       type="button"
                       className="button primary"
-                      disabled={!canApprove}
+                      disabled={!canApprove || isPending}
                       onClick={() =>
                         onApprove({
                           taskId: task.id,
@@ -227,13 +238,13 @@ export function SpecReviewQueue({ tasks, librarySpecs = [], onApprove, onDismiss
                         })
                       }
                     >
-                      批准
+                      {isPending && pendingAction === "approve" ? "批准中…" : "批准"}
                     </button>
                     {onCreateSpec && task.candidates.length === 0 ? (
                       <button
                         type="button"
                         className="button subtle"
-                        disabled={!draft.reason.trim()}
+                        disabled={!draft.reason.trim() || isPending}
                         onClick={() =>
                           onCreateSpec({
                             taskId: task.id,
@@ -243,17 +254,17 @@ export function SpecReviewQueue({ tasks, librarySpecs = [], onApprove, onDismiss
                           })
                         }
                       >
-                        创建新规格
+                        {isPending && pendingAction === "create" ? "创建中…" : "创建新规格"}
                       </button>
                     ) : null}
                     {onDismiss ? (
                       <button
                         type="button"
                         className="button subtle"
-                        disabled={!draft.reason.trim()}
+                        disabled={!draft.reason.trim() || isPending}
                         onClick={() => onDismiss({ taskId: task.id, reason: draft.reason.trim() })}
                       >
-                        驳回
+                        {isPending && pendingAction === "dismiss" ? "驳回中…" : "驳回"}
                       </button>
                     ) : null}
                   </div>

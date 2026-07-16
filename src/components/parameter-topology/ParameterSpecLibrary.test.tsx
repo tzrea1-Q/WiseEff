@@ -224,4 +224,87 @@ describe("SpecReviewQueue", () => {
       reason: "Matched MT5788 by board overlay evidence"
     });
   });
+
+  it("requires mismatch confirmation before approving cross-property schema", () => {
+    const onApprove = vi.fn();
+    const mismatchTask: SpecReviewTaskView = {
+      id: "task-mismatch",
+      propertyKey: "gpio_int",
+      driverModule: "vendor,sc8562",
+      evidence: ["library pick"],
+      candidates: [],
+      ambiguous: false,
+      projectCount: 1
+    };
+    const librarySpecs = [
+      {
+        id: "schema-other",
+        label: "vendor,sc8562 / other_key",
+        propertyKey: "other_key",
+        driverModule: "vendor,sc8562"
+      }
+    ];
+
+    render(
+      <SpecReviewQueue
+        tasks={[mismatchTask]}
+        librarySpecs={librarySpecs}
+        onApprove={onApprove}
+        onDismiss={vi.fn()}
+      />
+    );
+
+    const queue = screen.getByRole("region", { name: "规格审核队列" });
+    fireEvent.change(within(queue).getByRole("combobox", { name: "选择 Schema" }), {
+      target: { value: "schema-other" }
+    });
+    fireEvent.change(within(queue).getByLabelText("审核原因"), {
+      target: { value: "Cross-key bind with governance" }
+    });
+
+    const approve = within(queue).getByRole("button", { name: "批准" });
+    expect(approve).toBeDisabled();
+    expect(within(queue).getByText(/高风险/)).toBeInTheDocument();
+
+    fireEvent.click(within(queue).getByLabelText(/高风险/));
+    expect(approve).toBeEnabled();
+    fireEvent.click(approve);
+
+    expect(onApprove).toHaveBeenCalledWith({
+      taskId: "task-mismatch",
+      parameterSpecId: "schema-other",
+      reason: "Cross-key bind with governance",
+      confirmPropertyMismatch: true
+    });
+  });
+
+  it("shows create-spec action for unmatched tasks and respects pending state", () => {
+    const onCreateSpec = vi.fn();
+    const unmatchedTask: SpecReviewTaskView = {
+      id: "task-unmatched",
+      propertyKey: "mystery_prop",
+      driverModule: null,
+      evidence: ["no schema match"],
+      candidates: [],
+      ambiguous: false,
+      projectCount: 1
+    };
+
+    render(
+      <SpecReviewQueue
+        tasks={[unmatchedTask]}
+        librarySpecs={[]}
+        onApprove={vi.fn()}
+        onDismiss={vi.fn()}
+        onCreateSpec={onCreateSpec}
+        pendingTaskId="task-unmatched"
+        pendingAction="create"
+      />
+    );
+
+    const queue = screen.getByRole("region", { name: "规格审核队列" });
+    expect(within(queue).getByText("未匹配")).toBeInTheDocument();
+    const createButton = within(queue).getByRole("button", { name: "创建中…" });
+    expect(createButton).toBeDisabled();
+  });
 });

@@ -29,6 +29,7 @@ import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdmi
 import { resolveParameterFileRepository } from "./application/parameters/parameterFileRuntime";
 import { createParameterAdminClient } from "./infrastructure/http/parameterAdminClient";
 import { createHttpParameterTopologyRepository } from "./infrastructure/http/parameterTopologyClient";
+import { WiseEffApiError } from "./infrastructure/http/apiClient";
 import { getCoverage } from "./parameterAdminAnalytics";
 import type { ParameterModuleDraft } from "./powerManagementConfig";
 
@@ -64,6 +65,21 @@ function buildParameterAuditCenterPath(projectId: string) {
   return `/audit?${params.toString()}`;
 }
 
+function formatReviewActionError(error: unknown): string {
+  if (error instanceof WiseEffApiError) {
+    if (error.code === "CONFLICT" && error.details.confirmRequired === true) {
+      return "所选规格属性键与任务不一致，请勾选确认后再批准。";
+    }
+    if (error.code === "VALIDATION_FAILED") {
+      return error.message || "审核请求校验失败。";
+    }
+    if (error.code === "CONFLICT") {
+      return error.message || "审核冲突，请刷新队列后重试。";
+    }
+  }
+  return "审核操作失败，请重试。";
+}
+
 export function ParameterAdminPage({
   state,
   dispatch,
@@ -88,6 +104,9 @@ export function ParameterAdminPage({
   const [reviewTasks, setReviewTasks] = useState<SpecReviewTaskView[]>([]);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewActionError, setReviewActionError] = useState<string | null>(null);
+  const [reviewActionSuccess, setReviewActionSuccess] = useState<string | null>(null);
+  const [reviewPendingTaskId, setReviewPendingTaskId] = useState<string | null>(null);
+  const [reviewPendingAction, setReviewPendingAction] = useState<"approve" | "dismiss" | "create" | null>(null);
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
@@ -231,18 +250,27 @@ export function ParameterAdminPage({
   }, [reloadReviewTasks, topologyRepository]);
 
   const handleApproveReview = useCallback(
-    async (input: { taskId: string; parameterSpecId: string; reason: string }) => {
+    async (input: {
+      taskId: string;
+      parameterSpecId: string;
+      reason: string;
+      confirmPropertyMismatch?: boolean;
+    }) => {
       if (!topologyRepository) {
         return;
       }
       setReviewActionError(null);
+      setReviewActionSuccess(null);
+      setReviewPendingTaskId(input.taskId);
+      setReviewPendingAction("approve");
       try {
         await topologyRepository.resolveSpecReviewTask(input.taskId, {
           decision: "resolved",
           parameterSpecId: input.parameterSpecId,
-          reason: input.reason
+          reason: input.reason,
+          confirmPropertyMismatch: input.confirmPropertyMismatch
         });
-        // Spec resolve rewrites occurrence→spec→binding; reload queue + library.
+        setReviewActionSuccess("规格审核已批准。");
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
         if (selectedSpecId) {
           try {
@@ -254,8 +282,11 @@ export function ParameterAdminPage({
             // Keep prior detail if refresh fails; queue/library already refreshed.
           }
         }
-      } catch {
-        setReviewActionError("批准失败，请重试。");
+      } catch (error) {
+        setReviewActionError(formatReviewActionError(error));
+      } finally {
+        setReviewPendingTaskId(null);
+        setReviewPendingAction(null);
       }
     },
     [reloadReviewTasks, reloadSpecs, selectedSpecId, specRows, topologyRepository]
@@ -267,14 +298,48 @@ export function ParameterAdminPage({
         return;
       }
       setReviewActionError(null);
+      setReviewActionSuccess(null);
+      setReviewPendingTaskId(input.taskId);
+      setReviewPendingAction("dismiss");
       try {
         await topologyRepository.resolveSpecReviewTask(input.taskId, {
           decision: "dismissed",
           reason: input.reason
         });
+        setReviewActionSuccess("规格审核已驳回。");
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
-      } catch {
-        setReviewActionError("驳回失败，请重试。");
+      } catch (error) {
+        setReviewActionError(formatReviewActionError(error));
+      } finally {
+        setReviewPendingTaskId(null);
+        setReviewPendingAction(null);
+      }
+    },
+    [reloadReviewTasks, reloadSpecs, topologyRepository]
+  );
+
+  const handleCreateSpecReview = useCallback(
+    async (input: { taskId: string; propertyKey: string; driverModule: string | null; reason: string }) => {
+      if (!topologyRepository) {
+        return;
+      }
+      setReviewActionError(null);
+      setReviewActionSuccess(null);
+      setReviewPendingTaskId(input.taskId);
+      setReviewPendingAction("create");
+      try {
+        await topologyRepository.resolveSpecReviewTask(input.taskId, {
+          decision: "resolved",
+          createSpec: true,
+          reason: input.reason
+        });
+        setReviewActionSuccess(`已创建并绑定规格「${input.propertyKey}」。`);
+        await Promise.all([reloadReviewTasks(), reloadSpecs()]);
+      } catch (error) {
+        setReviewActionError(formatReviewActionError(error));
+      } finally {
+        setReviewPendingTaskId(null);
+        setReviewPendingAction(null);
       }
     },
     [reloadReviewTasks, reloadSpecs, topologyRepository]
@@ -535,6 +600,7 @@ export function ParameterAdminPage({
             reviewQueueSlot={
               <>
                 {reviewActionError ? <p className="form-error" role="alert">{reviewActionError}</p> : null}
+                {reviewActionSuccess ? <p className="permission-inline-note" role="status">{reviewActionSuccess}</p> : null}
                 {reviewLoading && reviewTasks.length === 0 ? (
                   <p className="parameters-table-empty">正在加载规格审核队列…</p>
                 ) : null}
@@ -546,11 +612,16 @@ export function ParameterAdminPage({
                     propertyKey: spec.propertyKey,
                     driverModule: spec.driverModule
                   }))}
+                  pendingTaskId={reviewPendingTaskId}
+                  pendingAction={reviewPendingAction}
                   onApprove={(input) => {
                     void handleApproveReview(input);
                   }}
                   onDismiss={(input) => {
                     void handleDismissReview(input);
+                  }}
+                  onCreateSpec={(input) => {
+                    void handleCreateSpecReview(input);
                   }}
                 />
               </>
