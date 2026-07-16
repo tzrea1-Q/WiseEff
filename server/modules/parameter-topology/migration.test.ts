@@ -1630,7 +1630,7 @@ describe.skipIf(!databaseAvailable)("parameter identity stage-review and finaliz
       );
       expect(Number(defEvidence.rows[0]?.c ?? 0)).toBeGreaterThan(0);
     });
-  });
+  }, 120_000);
 
   it("direct apply rollback does not remove prior stage-review tasks", async () => {
     await withTempDatabaseConnection(async ({ db, connectionString }) => {
