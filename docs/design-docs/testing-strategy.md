@@ -105,3 +105,17 @@ PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dts:toolchain:check
 PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
 npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts server/modules/parameter-specs/draftSpecWorkflow.integration.test.ts server/modules/parameter-topology/migration.test.ts --run
 ```
+
+### Parameter topology Round 6 review blockers
+
+Round 6 closes remaining parent-agent review blockers on branch `fix/parameter-topology-round6-review-blockers`. **TD-042 remains a BLOCKER.**
+
+| Area | Tests / command | Proves |
+| --- | --- | --- |
+| Evidence-only scope reconcile | `0058_*.sql`, `specReviewTenantEvidence.integration.test.ts` | Polluted historical FKs rebuilt/cleared from proven evidence; unproven resolved → open; idempotent + rollback |
+| Lossless spec identity | `specIdentity.test.ts`, `draftSpecWorkflow.integration.test.ts` | `vendor,limit` ≠ `vendor-limit`; sanitize not in hash; collision audit fail-closed |
+| Global activate authz | `globalSpecActivate.authz.test.ts` | Org Admin activate global draft → 403; org draft OK; read/bind global still allowed |
+| Full valueShape activate | `DraftSpecActivatePanel.test.tsx`, `specCompleteness.ts` | gpio_int cellsPerGroup=3 preserved; incomplete shape blocks |
+| Tenant-scoped cleanup | `semanticFixtureCleanup.isolation.test.ts` | Same-name Config Sets in other org/project untouched |
+| Submit→review→merge acceptance | `parameter-topology.acceptance.spec.ts` | Real CR advance to merged writeback; base immutable; no repository status forging |
+| test:all stability | `vitest.server.config.ts`, `testDatabase.ts` advisory lock | Default `npm run test:all` without ad-hoc worker overrides |

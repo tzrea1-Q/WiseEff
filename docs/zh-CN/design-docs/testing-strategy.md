@@ -287,6 +287,20 @@ PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
 npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts server/modules/parameter-specs/draftSpecWorkflow.integration.test.ts server/modules/parameter-topology/migration.test.ts --run
 ```
 
+## 参数拓扑（第六轮）
+
+第六轮在分支 `fix/parameter-topology-round6-review-blockers` 关闭剩余 Review 阻断。**TD-042 仍为 BLOCKER。**
+
+| 领域 | 测试 / 命令 | 证明内容 |
+| --- | --- | --- |
+| Evidence-only scope 校正 | `0058_*.sql`、`specReviewTenantEvidence.integration.test.ts` | 历史污染 FK 按可证 evidence 重建/清空；未证明 resolved→open；幂等与回滚 |
+| 无损规格身份 | `specIdentity.test.ts`、`draftSpecWorkflow.integration.test.ts` | `vendor,limit` ≠ `vendor-limit`；sanitize 不入哈希；碰撞审计 fail-closed |
+| 全局激活权限 | `globalSpecActivate.authz.test.ts` | 组织 Admin 激活全局 draft → 403；本组织 draft 可激活；读/绑定全局仍允许 |
+| 完整 valueShape 激活 | `DraftSpecActivatePanel.test.tsx`、`specCompleteness.ts` | gpio_int cellsPerGroup=3 保留；不完整形状阻断 |
+| 租户作用域清理 | `semanticFixtureCleanup.isolation.test.ts` | 其他组织/项目同名 Config Set 不受影响 |
+| submit→review→merge 验收 | `parameter-topology.acceptance.spec.ts` | 真实 CR 推进至 merged 回写；base 不可变；无 repository 伪造状态 |
+| test:all 稳定性 | `vitest.server.config.ts`、`testDatabase.ts` advisory lock | 默认 `npm run test:all` 无需临时 worker 覆盖 |
+
 ## 10. Documentation Governance
 
 Documentation-impacting work must run `npm run docs:check` plus `git diff --check`. The docs check enforces that active implementation plans carry a documentation impact matrix and update gate.
