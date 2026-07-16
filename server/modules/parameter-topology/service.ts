@@ -31,10 +31,12 @@ import { writeGovernanceAudit } from "./governanceAudit";
 import { getProjectById } from "../parameters/repository";
 import {
   getConfigRevisionById,
+  getLatestConfigRevision,
   insertValidationDiagnostics,
   insertValidationRun,
   listConfigRevisionMembers,
   listEffectiveTopology,
+  listRevisionDiagnostics,
   listSourceTopology,
   updateConfigRevisionStatus,
   type ConfigRevisionMemberRow
@@ -93,18 +95,26 @@ function toPolicyState(value: string | null | undefined): ProjectBindingDto["pol
   return "not_applicable";
 }
 
+const CURRENT_REVISION_ALIASES = new Set(["current", "latest", "head"]);
+
 export async function getTopology(
   db: Database,
   auth: AuthContext,
   input: { projectId: string; configSetId: string; revisionId: string; view: TopologyView }
 ) {
   requireCanView(auth);
-  const revision = await getConfigRevisionById(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    configSetId: input.configSetId,
-    revisionId: input.revisionId
-  });
+  const revision = CURRENT_REVISION_ALIASES.has(input.revisionId)
+    ? await getLatestConfigRevision(db, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        configSetId: input.configSetId
+      })
+    : await getConfigRevisionById(db, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        configSetId: input.configSetId,
+        revisionId: input.revisionId
+      });
   if (!revision) {
     throw new ApiError("NOT_FOUND", "Config revision was not found.", 404, {
       projectId: input.projectId,
@@ -113,6 +123,18 @@ export async function getTopology(
     });
   }
 
+  const members = await listConfigRevisionMembers(db, revision.id);
+  const incompleteBase = !members.some((member) => member.role === "base");
+  const diagnostics = (await listRevisionDiagnostics(db, revision.id)).map((item) => ({
+    severity: item.severity,
+    code: item.code,
+    message: item.message,
+    ...(item.path ? { path: item.path } : {}),
+    ...(item.startLine !== undefined ? { startLine: item.startLine } : {}),
+    ...(item.startColumn !== undefined ? { startColumn: item.startColumn } : {}),
+    ...(item.guidance ? { guidance: item.guidance } : {})
+  }));
+
   if (input.view === "source") {
     const source = await listSourceTopology(db, revision.id);
     return {
@@ -120,6 +142,9 @@ export async function getTopology(
       revisionId: revision.id,
       configSetId: revision.configSetId,
       projectId: revision.projectId,
+      status: revision.status,
+      incompleteBase,
+      diagnostics,
       nodes: source.nodes
     };
   }
@@ -130,6 +155,9 @@ export async function getTopology(
     revisionId: revision.id,
     configSetId: revision.configSetId,
     projectId: revision.projectId,
+    status: revision.status,
+    incompleteBase,
+    diagnostics,
     nodes: effective.nodes
   };
 }

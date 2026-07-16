@@ -87,9 +87,9 @@
 
 **Files:** `ParametersPage.tsx`, `ProjectTopologyWorkspace.tsx`, clients/runtime, tests
 
-- [ ] Load real config set/revision/trees/bindings/tasks/diagnostics; ban teaching fallback in API mode
-- [ ] Edit/publish call real APIs; reload persistence of bindingId + value; loading/empty/error states
-- [ ] Commit: `fix(frontend): load real topology and semantic edit APIs`
+- [x] Load real config set/revision/trees/bindings/tasks/diagnostics; ban teaching fallback in API mode
+- [x] Edit/publish call real APIs; reload persistence of bindingId + value; loading/empty/error states
+- [x] Commit: `fix(frontend): load real topology and semantic edit APIs`
 
 ### Task 6: Spec review queue API + UI
 

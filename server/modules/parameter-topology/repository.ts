@@ -411,6 +411,77 @@ export async function getConfigRevisionById(
   return row ? toRevisionDto(row) : null;
 }
 
+/** Latest non-resolving revision for a config set (head for UI/API consumers). */
+export async function getLatestConfigRevision(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; configSetId: string },
+): Promise<DtsConfigRevisionDto | null> {
+  const result = await db.query<RevisionRow>(
+    `
+    select *
+    from dts_config_revisions
+    where organization_id = $1
+      and project_id = $2
+      and config_set_id = $3
+      and status <> 'resolving'
+    order by revision_number desc
+    limit 1
+    `,
+    [input.organizationId, input.projectId, input.configSetId],
+  );
+  const row = result.rows[0];
+  return row ? toRevisionDto(row) : null;
+}
+
+export async function listRevisionDiagnostics(
+  db: Queryable,
+  configRevisionId: string,
+): Promise<
+  Array<{
+    code: string;
+    severity: string;
+    stage: string;
+    message: string;
+    fileName: string | null;
+    path?: string;
+    startLine?: number;
+    startColumn?: number;
+    guidance?: string;
+  }>
+> {
+  const result = await db.query<{
+    code: string;
+    severity: string;
+    stage: string;
+    message: string;
+    file_name: string | null;
+    start_line: number | string | null;
+    start_column: number | string | null;
+    guidance: string | null;
+  }>(
+    `
+    select d.code, d.severity, d.stage, d.message, d.file_name,
+           d.start_line, d.start_column, d.guidance
+    from dts_validation_diagnostics d
+    inner join dts_validation_runs r on r.id = d.validation_run_id
+    where r.config_revision_id = $1
+    order by d.created_at asc
+    `,
+    [configRevisionId],
+  );
+  return result.rows.map((row) => ({
+    code: row.code,
+    severity: row.severity,
+    stage: row.stage,
+    message: row.message,
+    fileName: row.file_name,
+    ...(row.file_name ? { path: row.file_name } : {}),
+    ...(row.start_line != null ? { startLine: Number(row.start_line) } : {}),
+    ...(row.start_column != null ? { startColumn: Number(row.start_column) } : {}),
+    ...(row.guidance ? { guidance: row.guidance } : {}),
+  }));
+}
+
 type SourceNodeRow = {
   id: string;
   file_version_id: string;

@@ -21,7 +21,9 @@ export type BindingDetailPanelProps = {
   provenanceLabels?: string[];
   mappingTasks?: IdentityMappingTask[];
   canEdit?: boolean;
-  onValidateEdit?: (input: { bindingId: string; rawValue: string }) => BindingEditValidation;
+  onValidateEdit?: (
+    input: { bindingId: string; rawValue: string }
+  ) => BindingEditValidation | Promise<BindingEditValidation>;
   asDialog?: boolean;
 };
 
@@ -38,6 +40,7 @@ export function BindingDetailPanel({
 }: BindingDetailPanelProps) {
   const [draftRaw, setDraftRaw] = useState(binding.rawValue);
   const [diagnostics, setDiagnostics] = useState<TopologyDiagnostic[]>([]);
+  const [validating, setValidating] = useState(false);
 
   const openMappings = mappingTasks.filter((task) => task.status === "open");
   const Wrapper: "section" | "div" = asDialog ? "div" : "section";
@@ -104,7 +107,7 @@ export function BindingDetailPanel({
               ))}
             </ol>
           ) : (
-            <p>power.dtso · gpio_int · set</p>
+            <p>暂无来源链</p>
           )}
         </section>
       )}
@@ -116,7 +119,7 @@ export function BindingDetailPanel({
           <textarea
             aria-label="目标值 raw"
             value={draftRaw}
-            disabled={!canEdit}
+            disabled={!canEdit || validating}
             onChange={(event) => {
               setDraftRaw(event.target.value);
               setDiagnostics([]);
@@ -126,16 +129,19 @@ export function BindingDetailPanel({
         <button
           type="button"
           className="button subtle"
-          disabled={!canEdit}
+          disabled={!canEdit || validating}
           onClick={() => {
-            const result = onValidateEdit?.({ bindingId: binding.id, rawValue: draftRaw }) ?? {
-              valid: true,
-              diagnostics: []
-            };
-            setDiagnostics(result.diagnostics);
+            setValidating(true);
+            void Promise.resolve(onValidateEdit?.({ bindingId: binding.id, rawValue: draftRaw }))
+              .then((result) => {
+                setDiagnostics(result?.diagnostics ?? []);
+              })
+              .finally(() => {
+                setValidating(false);
+              });
           }}
         >
-          校验 / 应用诊断
+          {validating ? "校验中…" : "校验 / 应用诊断"}
         </button>
         {diagnostics.length > 0 ? (
           <ul aria-label="编辑诊断">

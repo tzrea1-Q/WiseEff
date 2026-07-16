@@ -8,12 +8,12 @@ import type {
   SourceTopologyNode,
   TopologyDiagnostic
 } from "@/domain/parameter-topology/types";
+import { ProjectTopologyWorkspace } from "./ProjectTopologyWorkspace";
 import {
-  ProjectTopologyWorkspace,
   TOPOLOGY_TEACHING_BINDINGS,
   TOPOLOGY_TEACHING_EFFECTIVE_NODES,
   TOPOLOGY_TEACHING_SOURCE_NODES
-} from "./ProjectTopologyWorkspace";
+} from "./topologyTeachingFixtures";
 
 afterEach(() => {
   cleanup();
@@ -73,6 +73,15 @@ describe("ProjectTopologyWorkspace", () => {
     expect(workspace.textContent).not.toMatch(/sourceNodePath/);
   });
 
+  it("does not default to teaching fixtures when props are omitted", () => {
+    render(
+      <ProjectTopologyWorkspace projectId="aurora" configSetId="cs-1" revisionId="rev-1" />
+    );
+    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    expect(within(workspace).queryByRole("treeitem", { name: /sc8562@6E/ })).not.toBeInTheDocument();
+    expect(within(workspace).queryByText("<&gpio13 29 0>")).not.toBeInTheDocument();
+  });
+
   it("toggles source and effective modes with occurrence vs provenance", () => {
     renderWorkspace();
     const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
@@ -124,9 +133,9 @@ describe("ProjectTopologyWorkspace", () => {
     expect(detail).toHaveAttribute("data-binding-id", "binding-sc8562-gpio-int");
   });
 
-  it("shows typed edit diagnostics and does not publish while blocked", () => {
+  it("shows typed edit diagnostics and does not publish while blocked", async () => {
     const onPublish = vi.fn();
-    const onValidateEdit = vi.fn().mockReturnValue({
+    const onValidateEdit = vi.fn().mockResolvedValue({
       valid: false,
       diagnostics: [{ message: "cell count must be 3", code: "SCHEMA_CELL_COUNT" }]
     });
@@ -148,7 +157,7 @@ describe("ProjectTopologyWorkspace", () => {
     fireEvent.change(valueInput, { target: { value: "<&gpio13 29>" } });
     fireEvent.click(within(detail).getByRole("button", { name: /校验|应用诊断/i }));
 
-    expect(within(detail).getByText(/cell count must be 3/)).toBeVisible();
+    expect(await within(detail).findByText(/cell count must be 3/)).toBeVisible();
     expect(within(workspace).getByRole("button", { name: /发布/ })).toBeDisabled();
     expect(onPublish).not.toHaveBeenCalled();
   });

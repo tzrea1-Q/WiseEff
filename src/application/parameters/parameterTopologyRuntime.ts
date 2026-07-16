@@ -1,4 +1,8 @@
-import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type {
+  BindingDraftResult,
+  CreateBindingDraftInput,
+  ParameterTopologyRepository
+} from "@/application/ports/ParameterTopologyRepository";
 import type {
   IdentityMappingTask,
   ParameterSpecDetail,
@@ -24,6 +28,7 @@ export type ParameterTopologyRuntimeAction =
   | { type: "TOPOLOGY_MAPPING_TASKS_READY"; tasks: IdentityMappingTask[] }
   | { type: "TOPOLOGY_MAPPING_RESOLVED"; taskId: string }
   | { type: "TOPOLOGY_VALIDATION_READY"; run: ValidationRun }
+  | { type: "TOPOLOGY_DRAFT_READY"; draft: BindingDraftResult }
   | { type: "TOPOLOGY_ERROR"; error: ParameterTopologyMappedError }
   | { type: "TOPOLOGY_CANCELLED" };
 
@@ -120,6 +125,12 @@ export function createParameterTopologyRuntime({ runtimeMode, dispatch, reposito
       return run(
         (api) => api.validateRevision(projectId, revisionId),
         (runResult) => ({ type: "TOPOLOGY_VALIDATION_READY", run: runResult })
+      );
+    },
+    createBindingDraft(projectId: string, bindingId: string, input: CreateBindingDraftInput) {
+      return run(
+        (api) => api.createBindingDraft(projectId, bindingId, input),
+        (draft) => ({ type: "TOPOLOGY_DRAFT_READY", draft })
       );
     }
   };

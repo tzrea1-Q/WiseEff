@@ -148,6 +148,9 @@ export type TopologyTree =
       revisionId: string;
       configSetId: string;
       projectId: string;
+      status?: string;
+      incompleteBase?: boolean;
+      diagnostics?: TopologyDiagnostic[];
       nodes: SourceTopologyNode[];
     }
   | {
@@ -155,6 +158,9 @@ export type TopologyTree =
       revisionId: string;
       configSetId: string;
       projectId: string;
+      status?: string;
+      incompleteBase?: boolean;
+      diagnostics?: TopologyDiagnostic[];
       nodes: EffectiveTopologyNode[];
     };
 

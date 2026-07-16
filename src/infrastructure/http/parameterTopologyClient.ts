@@ -1,4 +1,8 @@
-import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type {
+  BindingDraftResult,
+  CreateBindingDraftInput,
+  ParameterTopologyRepository
+} from "@/application/ports/ParameterTopologyRepository";
 import type {
   IdentityMappingTask,
   ParameterSpecDetail,
@@ -181,6 +185,19 @@ function validationRunFromDto(dto: ValidationRun): ValidationRun {
   };
 }
 
+function bindingDraftFromDto(dto: BindingDraftResult): BindingDraftResult {
+  return {
+    draftId: dto.draftId,
+    candidateRevisionId: dto.candidateRevisionId,
+    rawText: dto.rawText,
+    parameterSpecId: dto.parameterSpecId,
+    projectParameterBindingId: dto.projectParameterBindingId,
+    writeTarget: dto.writeTarget,
+    overlayFileId: dto.overlayFileId,
+    overlayFileName: dto.overlayFileName
+  };
+}
+
 function isAbortError(error: unknown): boolean {
   if (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") {
     return true;
@@ -311,6 +328,13 @@ export function createHttpParameterTopologyRepository(
         {}
       );
       return validationRunFromDto(response.item);
+    },
+    async createBindingDraft(projectId, bindingId, input: CreateBindingDraftInput) {
+      const response = await apiClient.post<ItemEnvelope<BindingDraftResult>>(
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-bindings/${encodeURIComponent(bindingId)}/drafts`,
+        input
+      );
+      return bindingDraftFromDto(response.item);
     }
   };
 }

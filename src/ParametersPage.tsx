@@ -31,10 +31,7 @@ import {
   parameterModuleId
 } from "@/domain/modules/moduleTree";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
-import {
-  ProjectTopologyWorkspace,
-  type TopologyLayoutMode
-} from "@/components/parameter-topology/ProjectTopologyWorkspace";
+import { ApiProjectTopologyWorkspace } from "@/components/parameter-topology/ApiProjectTopologyWorkspace";
 import { useTopologyLayoutMode } from "@/components/parameter-topology/useTopologyLayoutMode";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
@@ -89,7 +86,7 @@ export function ParametersPage({
   const initializationLocked = initializationStatus !== "initialized" && initializationStatus !== "maintenance";
   const effectiveCanEdit = canEdit && !initializationLocked;
   const isApiMode = runtimeMode === "api";
-  const topologyLayoutMode: TopologyLayoutMode = useTopologyLayoutMode();
+  const topologyLayoutMode = useTopologyLayoutMode();
   const [searchQuery, setSearchQuery] = useState("");
   const [riskFilters, setRiskFilters] = useState<Set<ParameterRiskFilter>>(new Set());
   const [moduleFilters, setModuleFilters] = useState<Set<string>>(new Set());
@@ -798,23 +795,12 @@ export function ParametersPage({
               <span>该项目可查看，初始化通过前暂不可提交普通参数变更。</span>
             </div>
           ) : null}
-          <ProjectTopologyWorkspace
+          <ApiProjectTopologyWorkspace
             projectId={resolvedProjectId}
-            configSetId={`${resolvedProjectId}-default-config`}
-            revisionId={`${resolvedProjectId}-head`}
             canEdit={effectiveCanEdit}
             canPublish={effectiveCanEdit}
             layoutMode={topologyLayoutMode}
-            onValidateEdit={({ rawValue }) => {
-              const cells = rawValue.match(/<&[^>]+>/)?.[0]?.split(/\s+/).length ?? 0;
-              if (rawValue.includes("<&") && cells < 3) {
-                return {
-                  valid: false,
-                  diagnostics: [{ message: "cell count must be 3", code: "SCHEMA_CELL_COUNT" }]
-                };
-              }
-              return { valid: true, diagnostics: [] };
-            }}
+            runtimeMode="api"
           />
         </div>
       </WorkbenchLayout>

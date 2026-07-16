@@ -7,7 +7,8 @@ import type {
   SpecQuery,
   TopologyTree,
   TopologyView,
-  ValidationRun
+  ValidationRun,
+  DtsValue
 } from "@/domain/parameter-topology/types";
 
 export type {
@@ -20,6 +21,28 @@ export type {
   TopologyTree,
   TopologyView,
   ValidationRun
+};
+
+export type CreateBindingDraftInput = {
+  baseRevisionId: string;
+  targetValue?: DtsValue;
+  action?: "set" | "delete";
+  reason: string;
+};
+
+export type BindingDraftResult = {
+  draftId: string;
+  candidateRevisionId: string;
+  rawText: string;
+  parameterSpecId: string;
+  projectParameterBindingId: string;
+  writeTarget: {
+    role: string;
+    propertyKey: string;
+    targetRef?: string | null;
+  };
+  overlayFileId: string;
+  overlayFileName: string;
 };
 
 export interface ParameterTopologyRepository {
@@ -35,4 +58,9 @@ export interface ParameterTopologyRepository {
   listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;
   resolveMapping(taskId: string, input: ResolveMappingInput): Promise<void>;
   validateRevision(projectId: string, revisionId: string): Promise<ValidationRun>;
+  createBindingDraft(
+    projectId: string,
+    bindingId: string,
+    input: CreateBindingDraftInput
+  ): Promise<BindingDraftResult>;
 }

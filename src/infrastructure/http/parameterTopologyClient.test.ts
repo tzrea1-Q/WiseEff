@@ -203,6 +203,40 @@ describe("createHttpParameterTopologyRepository", () => {
     expect(run).toMatchObject({ id: "run-1", status: "passed", stage: "toolchain" });
   });
 
+  it("creates a typed binding draft via v2 drafts API", async () => {
+    const fetchMock = fetchQueue({
+      item: {
+        draftId: "draft-1",
+        candidateRevisionId: "rev-2",
+        rawText: "<3000>",
+        parameterSpecId: "spec-1",
+        projectParameterBindingId: "binding-1",
+        writeTarget: { role: "overlay", propertyKey: "iin_max", targetRef: "charging_core" },
+        overlayFileId: "file-1",
+        overlayFileName: "overlay.dts"
+      }
+    });
+    const repository = createHttpParameterTopologyRepository(
+      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
+    );
+
+    const draft = await repository.createBindingDraft("project-1", "binding-1", {
+      baseRevisionId: "rev-1",
+      targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "3000", value: "3000" }]] },
+      reason: "Raise limit"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/api/v2/projects/project-1/parameter-bindings/binding-1/drafts",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(draft).toMatchObject({
+      draftId: "draft-1",
+      candidateRevisionId: "rev-2",
+      projectParameterBindingId: "binding-1"
+    });
+  });
+
   it("lists and gets parameter specs without path identity or recommendedValue", async () => {
     const fetchMock = vi
       .fn()

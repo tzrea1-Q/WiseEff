@@ -20,9 +20,12 @@ vi.mock("./bindingService", () => ({
 
 vi.mock("./repository", () => ({
   getConfigRevisionById: vi.fn(),
+  getLatestConfigRevision: vi.fn(),
   insertValidationRun: vi.fn(),
   listEffectiveTopology: vi.fn(),
   listSourceTopology: vi.fn(),
+  listRevisionDiagnostics: vi.fn(),
+  listConfigRevisionMembers: vi.fn(),
   updateConfigRevisionStatus: vi.fn()
 }));
 
