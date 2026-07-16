@@ -21,7 +21,8 @@ vi.mock("./service", () => ({
   listProjectBindings: vi.fn(),
   listIdentityMappingTasks: vi.fn(),
   resolveIdentityMappingTask: vi.fn(),
-  validateConfigRevision: vi.fn()
+  validateConfigRevision: vi.fn(),
+  createBindingDraft: vi.fn()
 }));
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
@@ -45,6 +46,13 @@ function makeAdminAuth(): AuthContext {
   return makeAuth({
     roles: [{ projectId: null, roleId: "admin" }],
     permissions: ["parameter:view", "parameter:edit", "admin:access"]
+  });
+}
+
+function makeEditorAuth(): AuthContext {
+  return makeAuth({
+    roles: [{ projectId: "project-1", roleId: "hardware-user" }],
+    permissions: ["parameter:view", "parameter:edit"]
   });
 }
 
@@ -291,6 +299,68 @@ describe("parameter semantic v2 routes", () => {
       expect.objectContaining({ user: expect.objectContaining({ id: "user-1" }) }),
       expect.objectContaining({ projectId: "project-1", revisionId: "rev-1" }),
       expect.objectContaining({ requestId: "test-request" }),
+      expect.objectContaining({ objectStore: undefined })
+    );
+  });
+
+  it("POST /api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts forbids viewers without edit", async () => {
+    const response = await requestJson(
+      makeServer({ db: makeDb(), auth: makeAuth() }),
+      "/api/v2/projects/project-1/parameter-bindings/binding-1/drafts",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          baseRevisionId: "rev-1",
+          targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "3000", value: "3000" }]] },
+          reason: "Raise limit"
+        })
+      }
+    );
+    expect(response.status).toBe(403);
+    expect(topologyService.createBindingDraft).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts creates typed draft for editors", async () => {
+    vi.mocked(topologyService.createBindingDraft).mockResolvedValue({
+      draftId: "draft-1",
+      candidateRevisionId: "rev-candidate",
+      rawText: "<3000>",
+      parameterSpecId: "spec-1",
+      projectParameterBindingId: "binding-1",
+      writeTarget: { role: "overlay", propertyKey: "iin_max", targetRef: "charging_core" },
+      overlayFileId: "file-overlay",
+      overlayFileName: "overlay.dts"
+    });
+
+    const response = await requestJson(
+      makeServer({ db: makeDb(), auth: makeEditorAuth() }),
+      "/api/v2/projects/project-1/parameter-bindings/binding-1/drafts",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          baseRevisionId: "rev-1",
+          targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "3000", value: "3000" }]] },
+          reason: "Raise limit"
+        })
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body?.item).toMatchObject({
+      draftId: "draft-1",
+      candidateRevisionId: "rev-candidate",
+      projectParameterBindingId: "binding-1",
+      rawText: "<3000>"
+    });
+    expect(topologyService.createBindingDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ permissions: expect.arrayContaining(["parameter:edit"]) }),
+      expect.objectContaining({
+        projectId: "project-1",
+        bindingId: "binding-1",
+        baseRevisionId: "rev-1",
+        reason: "Raise limit"
+      }),
       expect.objectContaining({ objectStore: undefined })
     );
   });

@@ -2,11 +2,13 @@ import { z } from "zod";
 
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
-import { canAdminParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canEditParameters, canViewParameters } from "../parameters/policy";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
+  createBindingDraftBodySchema,
+  createBindingDraftParamsSchema,
   identityMappingTaskParamsSchema,
   listIdentityMappingTasksQuerySchema,
   projectBindingsParamsSchema,
@@ -18,6 +20,7 @@ import {
   validateConfigRevisionParamsSchema
 } from "./schemas";
 import {
+  createBindingDraft,
   getTopology,
   listIdentityMappingTasks,
   listProjectBindings,
@@ -53,6 +56,12 @@ function requireCanView(auth: AuthContext) {
 function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+  }
+}
+
+function requireCanEdit(auth: AuthContext) {
+  if (!canEditParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
   }
 }
 
@@ -131,5 +140,24 @@ export function registerParameterTopologyRoutes(
       { objectStore: options.objectStore }
     );
     return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanEdit(auth);
+    const params = parseWithSchema(createBindingDraftParamsSchema, request.params);
+    const body = parseWithSchema(createBindingDraftBodySchema, request.body ?? {});
+    const item = await createBindingDraft(
+      db,
+      auth,
+      {
+        projectId: params.projectId,
+        bindingId: params.bindingId,
+        ...body
+      },
+      { objectStore: options.objectStore }
+    );
+    return { status: 201, body: { item } };
   });
 }

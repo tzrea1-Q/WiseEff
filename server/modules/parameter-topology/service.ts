@@ -9,7 +9,7 @@ import {
   type DtsToolchainDiagnostic,
   type DtsToolchainRunner
 } from "../parameter-files/dtsToolchain";
-import { canAdminParameters, canViewParameters } from "../parameters/policy";
+import { canAdminParameters, canEditParameters, canViewParameters } from "../parameters/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
@@ -22,6 +22,11 @@ import {
   resolveIdentityMappingTaskRow,
   selectedCandidateBelongsToRevision
 } from "./bindingService";
+import {
+  createBindingDraft as createBindingDraftEdit,
+  type BindingDraftResult,
+  type CreateBindingDraftDeps
+} from "./editService";
 import { writeGovernanceAudit } from "./governanceAudit";
 import { getProjectById } from "../parameters/repository";
 import {
@@ -35,6 +40,7 @@ import {
   type ConfigRevisionMemberRow
 } from "./repository";
 import type {
+  CreateBindingDraftBody,
   DtsValueDto,
   ProjectBindingDto,
   ResolveIdentityMappingTaskBody,
@@ -46,6 +52,12 @@ import type { PersistedValidationDiagnostic } from "./types";
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+  }
+}
+
+function requireCanEdit(auth: AuthContext) {
+  if (!canEditParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
   }
 }
 
@@ -879,5 +891,81 @@ export async function validateConfigRevision(
     stage,
     artifactHashes,
     toolchain: toolchainPayload
+  };
+}
+
+export type CreateBindingDraftServiceResult = {
+  draftId: string;
+  candidateRevisionId: string;
+  rawText: string;
+  parameterSpecId: string;
+  projectParameterBindingId: string;
+  writeTarget: BindingDraftResult["writeTarget"];
+  overlayFileId: string;
+  overlayFileName: string;
+};
+
+/**
+ * Org-isolated typed binding draft API: precise Config Set writeback + fail-closed validate.
+ */
+export async function createBindingDraft(
+  db: Database,
+  auth: AuthContext,
+  input: {
+    projectId: string;
+    bindingId: string;
+  } & CreateBindingDraftBody,
+  deps: CreateBindingDraftDeps = {}
+): Promise<CreateBindingDraftServiceResult> {
+  requireCanEdit(auth);
+
+  const project = await getProjectById(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId
+  });
+  if (!project) {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+      projectId: input.projectId
+    });
+  }
+
+  const bindingProject = await db.query<{ project_id: string }>(
+    `
+    select project_id
+    from project_parameter_bindings
+    where id = $1 and organization_id = $2
+    limit 1
+    `,
+    [input.bindingId, auth.organization.id]
+  );
+  if (!bindingProject.rows[0] || bindingProject.rows[0].project_id !== input.projectId) {
+    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", 404, {
+      projectId: input.projectId,
+      bindingId: input.bindingId
+    });
+  }
+
+  const draft = await createBindingDraftEdit(
+    db,
+    auth,
+    {
+      bindingId: input.bindingId,
+      baseRevisionId: input.baseRevisionId,
+      targetValue: input.targetValue,
+      action: input.action,
+      reason: input.reason
+    },
+    deps
+  );
+
+  return {
+    draftId: draft.draftId,
+    candidateRevisionId: draft.candidateRevisionId,
+    rawText: draft.rawText,
+    parameterSpecId: draft.parameterSpecId,
+    projectParameterBindingId: draft.projectParameterBindingId,
+    writeTarget: draft.writeTarget,
+    overlayFileId: draft.overlayFileId,
+    overlayFileName: draft.overlayFileName
   };
 }

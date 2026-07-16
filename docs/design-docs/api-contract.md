@@ -278,6 +278,7 @@ Additive semantic surface used by the topology/schema program. Production remain
 | `GET` | `/api/v2/identity-mapping-tasks` | List open/resolved identity mapping tasks. |
 | `POST` | `/api/v2/identity-mapping-tasks/:taskId/resolve` | Admin resolve a mapping task. |
 | `POST` | `/api/v2/projects/:projectId/config-revisions/:revisionId/validate` | Fail-closed toolchain validate for publish readiness. |
+| `POST` | `/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts` | Typed binding draft with precise Config Set overlay writeback (schema enforced; shared base unchanged). |
 
 Value split: responses expose `exampleValue`, `schemaDefault`, `policyTarget`, and `effectiveValue` as distinct fields. Do not collapse them into a business `recommendedValue`.
 

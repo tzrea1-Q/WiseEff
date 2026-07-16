@@ -152,7 +152,7 @@ async function insertPinnedMember(
     fileName: string;
     versionId: string;
     content: string;
-    role: "base" | "overlay";
+    role: "base" | "overlay" | "include";
     sortOrder: number;
   },
 ) {
@@ -467,7 +467,6 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
             groups: [[{ kind: "integer", raw: "99999", value: "99999" }]],
           },
           reason: "Out of range",
-          enforceSchema: true,
         },
         { toolchain: passToolchain },
       ),
@@ -580,5 +579,462 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
       [CONFIG_SET_ID, fixture.revision.id],
     );
     expect(runs.rows[0]).toMatchObject({ status: "failed", stage: "toolchain" });
+  });
+
+  it("edits charging_core.iin_max without modifying sibling &amba or other overlay nodes", async () => {
+    const multiNodeOverlay = `/dts-v1/;
+/plugin/;
+
+&amba {
+	status = "okay";
+	clock-frequency = <100000>;
+};
+
+&charging_core {
+	iin_max = <2700>;
+};
+`;
+    const multiNodeBase = `/dts-v1/;
+/ {
+	amba: amba {
+		compatible = "simple-bus";
+		charging_core: charging_core {
+			iin_max = <2300>;
+		};
+	};
+};
+`;
+    const fixture = await seedConfigAndBinding(db!, auth, {
+      overlayContent: multiNodeOverlay,
+      baseContent: multiNodeBase,
+    });
+
+    const draft = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.binding.id,
+        baseRevisionId: fixture.revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+        },
+        reason: "Raise charging_core only",
+      },
+      { toolchain: passToolchain },
+    );
+
+    expect(draft.candidateOverlayContent).toContain("iin_max = <3000>");
+    expect(draft.candidateOverlayContent).toMatch(/&amba\s*\{[^}]*status\s*=\s*"okay"/s);
+    expect(draft.candidateOverlayContent).toContain("clock-frequency = <100000>");
+    expect(draft.candidateOverlayContent).not.toMatch(/&amba\s*\{[^}]*iin_max/s);
+    expect(await unchangedSourceBytes(draft)).toBe(true);
+    expect(draft.baseContent).toBe(multiNodeBase);
+    expect(draft.baseChecksumBefore).toBe(fixture.baseChecksum);
+    expect(draft.baseChecksumAfter).toBe(fixture.baseChecksum);
+  });
+
+  it("preserves includes, sibling overlays, and entry when building candidate revision", async () => {
+    const includeContent = `/dts-v1/;
+/ {
+	shared: shared {
+		compatible = "wiseeff,shared";
+	};
+};
+`;
+    const overlayA = `/dts-v1/;
+/plugin/;
+
+&shared {
+	status = "disabled";
+};
+`;
+    const overlayB = `/dts-v1/;
+/plugin/;
+
+&charging_core {
+	iin_max = <2700>;
+};
+`;
+    const baseContent = `/dts-v1/;
+/include/ "edit-include.dtsi"
+
+/ {
+	charging_core: charging_core {
+		iin_max = <2300>;
+	};
+};
+`;
+
+    const includeFileId = `file-include-${randomUUID().slice(0, 8)}`;
+    const overlayAFileId = `file-overlay-a-${randomUUID().slice(0, 8)}`;
+    const overlayBFileId = `file-overlay-b-${randomUUID().slice(0, 8)}`;
+    const baseFileId = `file-base-${randomUUID().slice(0, 8)}`;
+    const includeVersionId = `fv-include-${randomUUID().slice(0, 8)}`;
+    const overlayAVersionId = `fv-overlay-a-${randomUUID().slice(0, 8)}`;
+    const overlayBVersionId = `fv-overlay-b-${randomUUID().slice(0, 8)}`;
+    const baseVersionId = `fv-base-${randomUUID().slice(0, 8)}`;
+
+    const baseChecksum = await insertPinnedMember(db!, {
+      fileId: baseFileId,
+      fileName: "edit-base.dts",
+      versionId: baseVersionId,
+      content: baseContent,
+      role: "base",
+      sortOrder: 0,
+    });
+    await insertPinnedMember(db!, {
+      fileId: includeFileId,
+      fileName: "edit-include.dtsi",
+      versionId: includeVersionId,
+      content: includeContent,
+      role: "include",
+      sortOrder: 1,
+    });
+    await insertPinnedMember(db!, {
+      fileId: overlayAFileId,
+      fileName: "edit-overlay-a.dts",
+      versionId: overlayAVersionId,
+      content: overlayA,
+      role: "overlay",
+      sortOrder: 2,
+    });
+    await insertPinnedMember(db!, {
+      fileId: overlayBFileId,
+      fileName: "edit-overlay-b.dts",
+      versionId: overlayBVersionId,
+      content: overlayB,
+      role: "overlay",
+      sortOrder: 3,
+    });
+
+    const manifest: ConfigRevisionManifest = {
+      organizationId: ORG_ID,
+      projectId: PROJECT_ID,
+      configSetId: CONFIG_SET_ID,
+      entryFile: "edit-base.dts",
+      includeSearchPaths: ["."],
+      overlayOrder: ["edit-overlay-a.dts", "edit-overlay-b.dts"],
+      members: [
+        {
+          fileId: baseFileId,
+          fileVersionId: baseVersionId,
+          fileName: "edit-base.dts",
+          role: "base",
+          sortOrder: 0,
+          content: baseContent,
+        },
+        {
+          fileId: includeFileId,
+          fileVersionId: includeVersionId,
+          fileName: "edit-include.dtsi",
+          role: "include",
+          sortOrder: 1,
+          content: includeContent,
+        },
+        {
+          fileId: overlayAFileId,
+          fileVersionId: overlayAVersionId,
+          fileName: "edit-overlay-a.dts",
+          role: "overlay",
+          sortOrder: 2,
+          content: overlayA,
+        },
+        {
+          fileId: overlayBFileId,
+          fileVersionId: overlayBVersionId,
+          fileName: "edit-overlay-b.dts",
+          role: "overlay",
+          sortOrder: 3,
+          content: overlayB,
+        },
+      ],
+    };
+
+    const revision = await ingestConfigRevision(db!, manifest, auth);
+    const logical = await db!.query<{ logical_node_id: string }>(
+      `
+      select logical_node_id
+      from dts_logical_node_revisions
+      where config_revision_id = $1 and node_locator like '%charging_core%'
+      limit 1
+      `,
+      [revision.id],
+    );
+    const binding = await createOrReuseBinding(db!, {
+      organizationId: ORG_ID,
+      key: {
+        projectId: PROJECT_ID,
+        logicalNodeId: logical.rows[0]!.logical_node_id,
+        parameterSpecId: SPEC_ID,
+      },
+    });
+    await upsertBindingRevisionValues(db!, {
+      bindingId: binding.id,
+      configRevisionId: revision.id,
+      parameterSpecVersionId: SPEC_VERSION_ID,
+      values: {
+        typedValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "2700", value: "2700" }]],
+        },
+        rawValue: "<2700>",
+        schemaState: "valid",
+        policyState: "pass",
+      },
+    });
+
+    const draft = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: binding.id,
+        baseRevisionId: revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3200", value: "3200" }]],
+        },
+        reason: "Preserve full config set members",
+      },
+      { toolchain: passToolchain },
+    );
+
+    const candidateMembers = await db!.query<{
+      file_name: string;
+      role: string;
+      file_version_id: string;
+      sort_order: number;
+    }>(
+      `
+      select f.file_name, m.role, m.file_version_id, m.sort_order
+      from dts_config_revision_members m
+      join project_parameter_files f on f.id = m.file_id
+      where m.config_revision_id = $1
+      order by m.sort_order asc
+      `,
+      [draft.candidateRevisionId],
+    );
+    expect(candidateMembers.rows.map((row) => row.file_name)).toEqual([
+      "edit-base.dts",
+      "edit-include.dtsi",
+      "edit-overlay-a.dts",
+      "edit-overlay-b.dts",
+    ]);
+    expect(candidateMembers.rows.map((row) => row.role)).toEqual(["base", "include", "overlay", "overlay"]);
+    expect(candidateMembers.rows[0]?.file_version_id).toBe(baseVersionId);
+    expect(candidateMembers.rows[1]?.file_version_id).toBe(includeVersionId);
+    expect(candidateMembers.rows[2]?.file_version_id).toBe(overlayAVersionId);
+    expect(candidateMembers.rows[3]?.file_version_id).not.toBe(overlayBVersionId);
+    expect(draft.candidateOverlayContent).toContain("3200");
+    expect(draft.candidateOverlayContent).not.toContain("status = \"disabled\"");
+    expect(await unchangedSourceBytes(draft)).toBe(true);
+    expect(draft.baseChecksumAfter).toBe(baseChecksum);
+  });
+
+  it("enforces schema by default without an enforceSchema opt-in", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth);
+
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "99999", value: "99999" }]],
+          },
+          reason: "Out of range without enforceSchema flag",
+        },
+        { toolchain: passToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: expect.objectContaining({ reason: "schema-failure" }),
+    });
+  });
+
+  it("loads member bytes from object store by file version storage key", async () => {
+    const entries = new Map<string, Buffer>();
+    const objectStore = {
+      async put(input: { organizationId: string; fileName: string; contentType: string; bytes: Buffer }) {
+        const checksum = createHash("sha256").update(input.bytes).digest("hex");
+        const storageKey = `${input.organizationId}/${checksum}-${input.fileName}`;
+        entries.set(storageKey, Buffer.from(input.bytes));
+        return {
+          storageKey,
+          fileName: input.fileName,
+          contentType: input.contentType,
+          fileSizeBytes: input.bytes.byteLength,
+          checksumSha256: checksum,
+        };
+      },
+      async get(storageKey: string) {
+        const value = entries.get(storageKey);
+        if (!value) throw new Error(`Missing object: ${storageKey}`);
+        return Buffer.from(value);
+      },
+    };
+
+    const baseFileId = `file-base-${randomUUID().slice(0, 8)}`;
+    const overlayFileId = `file-overlay-${randomUUID().slice(0, 8)}`;
+    const baseVersionId = `fv-base-${randomUUID().slice(0, 8)}`;
+    const overlayVersionId = `fv-overlay-${randomUUID().slice(0, 8)}`;
+    const baseStored = await objectStore.put({
+      organizationId: ORG_ID,
+      fileName: "edit-base.dts",
+      contentType: "text/plain",
+      bytes: Buffer.from(BASE_WITH_IIN, "utf8"),
+    });
+    const overlayStored = await objectStore.put({
+      organizationId: ORG_ID,
+      fileName: "edit-overlay.dts",
+      contentType: "text/plain",
+      bytes: Buffer.from(OVERLAY_OVERRIDE, "utf8"),
+    });
+
+    await db!.query(
+      `
+      insert into project_parameter_files (
+        id, organization_id, project_id, file_name, format, enabled,
+        config_set_id, config_set_role, config_set_sort_order
+      ) values ($1, $2, $3, $4, 'dts', true, $5, 'base', 0)
+      `,
+      [baseFileId, ORG_ID, PROJECT_ID, "edit-base.dts", CONFIG_SET_ID],
+    );
+    await db!.query(
+      `
+      insert into project_parameter_files (
+        id, organization_id, project_id, file_name, format, enabled,
+        config_set_id, config_set_role, config_set_sort_order
+      ) values ($1, $2, $3, $4, 'dts', true, $5, 'overlay', 1)
+      `,
+      [overlayFileId, ORG_ID, PROJECT_ID, "edit-overlay.dts", CONFIG_SET_ID],
+    );
+    await db!.query(
+      `
+      insert into project_parameter_file_versions (
+        id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+      ) values ($1, $2, 1, $3, $4, $5, '{}'::jsonb, 'upload', $6)
+      `,
+      [
+        baseVersionId,
+        baseFileId,
+        baseStored.storageKey,
+        baseStored.checksumSha256,
+        Buffer.byteLength(BASE_WITH_IIN, "utf8"),
+        USER_ID,
+      ],
+    );
+    await db!.query(
+      `
+      insert into project_parameter_file_versions (
+        id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+      ) values ($1, $2, 1, $3, $4, $5, '{}'::jsonb, 'upload', $6)
+      `,
+      [
+        overlayVersionId,
+        overlayFileId,
+        overlayStored.storageKey,
+        overlayStored.checksumSha256,
+        Buffer.byteLength(OVERLAY_OVERRIDE, "utf8"),
+        USER_ID,
+      ],
+    );
+    await db!.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
+      baseVersionId,
+      baseFileId,
+    ]);
+    await db!.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
+      overlayVersionId,
+      overlayFileId,
+    ]);
+
+    const revision = await ingestConfigRevision(
+      db!,
+      {
+        organizationId: ORG_ID,
+        projectId: PROJECT_ID,
+        configSetId: CONFIG_SET_ID,
+        entryFile: "edit-base.dts",
+        includeSearchPaths: ["."],
+        overlayOrder: ["edit-overlay.dts"],
+        members: [
+          {
+            fileId: baseFileId,
+            fileVersionId: baseVersionId,
+            fileName: "edit-base.dts",
+            role: "base",
+            sortOrder: 0,
+            content: BASE_WITH_IIN,
+          },
+          {
+            fileId: overlayFileId,
+            fileVersionId: overlayVersionId,
+            fileName: "edit-overlay.dts",
+            role: "overlay",
+            sortOrder: 1,
+            content: OVERLAY_OVERRIDE,
+          },
+        ],
+      },
+      auth,
+    );
+    const logical = await db!.query<{ logical_node_id: string }>(
+      `
+      select logical_node_id from dts_logical_node_revisions
+      where config_revision_id = $1 and node_locator like '%charging_core%'
+      limit 1
+      `,
+      [revision.id],
+    );
+    const binding = await createOrReuseBinding(db!, {
+      organizationId: ORG_ID,
+      key: {
+        projectId: PROJECT_ID,
+        logicalNodeId: logical.rows[0]!.logical_node_id,
+        parameterSpecId: SPEC_ID,
+      },
+    });
+    await upsertBindingRevisionValues(db!, {
+      bindingId: binding.id,
+      configRevisionId: revision.id,
+      parameterSpecVersionId: SPEC_VERSION_ID,
+      values: {
+        typedValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "2700", value: "2700" }]],
+        },
+        rawValue: "<2700>",
+        schemaState: "valid",
+        policyState: "pass",
+      },
+    });
+
+    const draft = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: binding.id,
+        baseRevisionId: revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3050", value: "3050" }]],
+        },
+        reason: "Object-store backed edit",
+      },
+      { toolchain: passToolchain, objectStore },
+    );
+
+    expect(draft.rawText).toBe("<3050>");
+    expect(draft.candidateOverlayContent).toContain("3050");
+    expect(await unchangedSourceBytes(draft)).toBe(true);
   });
 });

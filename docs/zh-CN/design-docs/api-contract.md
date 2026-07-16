@@ -462,6 +462,7 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | `GET` | `/api/v2/identity-mapping-tasks` | 身份映射任务列表 |
 | `POST` | `/api/v2/identity-mapping-tasks/:taskId/resolve` | Admin 决议映射 |
 | `POST` | `/api/v2/projects/:projectId/config-revisions/:revisionId/validate` | 失败关闭工具链校验 |
+| `POST` | `/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts` | 类型化绑定草稿 + 精确 Config Set overlay 回写（默认强制 schema；共享 base 不变） |
 
 值拆分：`exampleValue` / `schemaDefault` / `policyTarget` / `effectiveValue` 分字段；不得折叠为业务 `recommendedValue`。切换流程见 `docs/runbooks/parameter-identity-cutover.md`。
 

@@ -104,7 +104,31 @@ export const validateConfigRevisionBodySchema = z.object({
   stage: z.string().min(1).optional()
 });
 
+export const createBindingDraftParamsSchema = z.object({
+  projectId: nonEmptyString,
+  bindingId: nonEmptyString
+});
+
+export const createBindingDraftBodySchema = z
+  .object({
+    baseRevisionId: nonEmptyString,
+    targetValue: dtsValueSchema.optional(),
+    action: z.enum(["set", "delete"]).optional(),
+    reason: nonEmptyString
+  })
+  .superRefine((value, ctx) => {
+    const action = value.action ?? "set";
+    if (action === "set" && value.targetValue === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "targetValue is required when action is set.",
+        path: ["targetValue"]
+      });
+    }
+  });
+
 export type ProjectBindingDto = z.infer<typeof projectBindingDtoSchema>;
 export type TopologyView = z.infer<typeof topologyViewSchema>;
 export type ResolveIdentityMappingTaskBody = z.infer<typeof resolveIdentityMappingTaskBodySchema>;
 export type DtsValueDto = z.infer<typeof dtsValueSchema>;
+export type CreateBindingDraftBody = z.infer<typeof createBindingDraftBodySchema>;

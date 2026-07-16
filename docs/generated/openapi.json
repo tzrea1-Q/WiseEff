@@ -2068,6 +2068,70 @@
         }
       }
     },
+    "/api/v2/projects/{projectId}/parameter-bindings/{bindingId}/drafts": {
+      "post": {
+        "operationId": "parameterTopology.createBindingDraft",
+        "summary": "Create a typed parameter binding draft with precise Config Set writeback",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bindingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBindingDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingDraftResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/log-files": {
       "post": {
         "operationId": "logs.uploadFile",
@@ -4737,6 +4801,14 @@
       "ConfigRevisionValidationResponse": {
         "type": "object",
         "x-wiseeff-schema": "ConfigRevisionValidationResponse"
+      },
+      "CreateBindingDraftRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateBindingDraftRequest"
+      },
+      "BindingDraftResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "BindingDraftResponse"
       },
       "LogFileUploadRequest": {
         "type": "object",

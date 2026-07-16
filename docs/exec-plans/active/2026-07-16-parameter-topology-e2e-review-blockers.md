@@ -78,10 +78,10 @@
 
 **Files:** `editService.ts`, routes, writeback, object store loaders, tests
 
-- [ ] Authz/audit/org-scoped v2 draft API; object-store source; binding-targeted CST write
-- [ ] Preserve entry/includes/overlays/order/unmodified versions; re-ingest + fail-closed validate
-- [ ] Schema enforcement default on; multi-overlay/include/phandle/bits tests
-- [ ] Commit: `fix(parameters): precise typed edit and config-set writeback`
+- [x] Authz/audit/org-scoped v2 draft API; object-store source; binding-targeted CST write
+- [x] Preserve entry/includes/overlays/order/unmodified versions; re-ingest + fail-closed validate
+- [x] Schema enforcement default on; multi-overlay/include/phandle/bits tests
+- [x] Commit: `fix(parameters): precise typed edit and config-set writeback`
 
 ### Task 5: Frontend real topology/bindings/edit/publish
 

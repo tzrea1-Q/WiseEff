@@ -316,6 +316,19 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ConfigRevisionValidationResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "parameterTopology.createBindingDraft": {
+    summary: "Create a typed parameter binding draft with precise Config Set writeback",
+    tags: ["parameters"],
+    requestBody: "CreateBindingDraftRequest",
+    responseBody: "BindingDraftResponse",
+    successStatus: 201,
+    additionalResponses: {
+      "400": "ErrorResponse",
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
 
   "logs.uploadFile": {
     summary: "Upload log file",

@@ -2,7 +2,8 @@
  * Typed binding edits → overlay write targets → draft + candidate config revision.
  *
  * Shared base files are never mutated; project differences land in overlay.
- * Release/edit gates fail closed on unresolved mapping and schema ambiguity.
+ * Writes target the binding's stable logical node (never first &ref / charging_core default).
+ * Release/edit gates fail closed on unresolved mapping and schema constraints.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -11,6 +12,7 @@ import type { AuthContext } from "../auth/types";
 import { parseDts, serializeDts, type DtsNodeCst, type DtsPropertyCst } from "../dts";
 import type { DtsValue } from "../dts/types";
 import { renderDtsValue } from "../dts/valueAst";
+import type { ObjectStore } from "../logs/objectStore";
 import {
   createDtsToolchainRunner,
   type DtsToolchainRunner,
@@ -26,7 +28,7 @@ import {
   insertValidationRun,
   updateConfigRevisionStatus,
 } from "./repository";
-import type { ConfigRevisionManifest, PersistedValidationDiagnostic } from "./types";
+import type { ConfigRevisionManifest, ConfigRevisionManifestMember, PersistedValidationDiagnostic } from "./types";
 import { writeGovernanceAudit } from "./governanceAudit";
 import { LEGACY_SQL } from "./migration";
 
@@ -39,13 +41,18 @@ export type CreateBindingDraftInput = {
   targetValue?: DtsValue;
   action?: BindingEditAction;
   reason: string;
-  /** When true, enforce property-spec constraints (schema fail-closed). */
+  /**
+   * @deprecated Schema enforcement is always on for the normal path.
+   * Callers cannot disable it; this field is ignored when false.
+   */
   enforceSchema?: boolean;
 };
 
 export type CreateBindingDraftDeps = {
   /** Injected for tests; production defaults to the real Task 8 runner. */
   toolchain?: DtsToolchainRunner;
+  /** Preferred source of file bytes by version storage key. */
+  objectStore?: ObjectStore;
 };
 
 export type BindingDraftWriteTarget = {
@@ -55,6 +62,7 @@ export type BindingDraftWriteTarget = {
   fileName?: string;
   nodeLocator?: string;
   occurrenceId?: string;
+  targetRef?: string;
 };
 
 export type BindingDraftResult = {
@@ -94,7 +102,7 @@ type RevisionMemberRow = {
   sort_order: number;
   file_name: string;
   checksum: string;
-  content_storage_hint: string | null;
+  storage_key: string;
 };
 
 type EffectRow = {
@@ -106,6 +114,11 @@ type EffectRow = {
   role: "base" | "overlay" | "include" | null;
   raw_text: string | null;
   node_path: string | null;
+  ref_target: string | null;
+  labels: unknown;
+  node_name: string | null;
+  start_offset: number | null;
+  end_offset: number | null;
 };
 
 function requireCanEdit(auth: AuthContext) {
@@ -138,10 +151,7 @@ function cellIntegerValues(value: DtsValue): number[] {
   return out;
 }
 
-function assertSchemaAllows(
-  value: DtsValue,
-  constraints: unknown,
-): void {
+function assertSchemaAllows(value: DtsValue, constraints: unknown): void {
   const min = asConstraintNumber(constraints, "min");
   const max = asConstraintNumber(constraints, "max");
   if (min === undefined && max === undefined) return;
@@ -236,28 +246,27 @@ async function loadRevisionMembers(
       m.sort_order,
       f.file_name,
       v.checksum,
-      v.storage_key as content_storage_hint
+      v.storage_key
     from dts_config_revision_members m
     join project_parameter_files f on f.id = m.file_id
     join project_parameter_file_versions v on v.id = m.file_version_id
     where m.config_revision_id = $1
-    order by m.sort_order asc
+    order by m.sort_order asc, f.file_name asc
     `,
     [configRevisionId],
   );
   return result.rows;
 }
 
+/**
+ * Prefer object-store bytes for the file version. Fall back to parsed_index.sourceText
+ * only for fixtures that never wrote store objects.
+ */
 async function loadFileContentFromVersion(
   db: Queryable,
   fileVersionId: string,
+  objectStore?: ObjectStore,
 ): Promise<string> {
-  // Tests pin content checksum in storage_key; prefer parsed_index/raw when available.
-  // For in-memory fixtures we also stash content via a side table query of occurrence raw
-  // is insufficient — instead re-read from a dedicated helper that uses member content
-  // captured at ingest time through the file version row's checksum match in test DB.
-  // Production writeback uses objectStore; draft creation here uses occurrence-adjacent
-  // reconstruction from the revision member file version when `parsed_index` holds source.
   const result = await db.query<{
     checksum: string;
     storage_key: string;
@@ -276,7 +285,15 @@ async function loadFileContentFromVersion(
     throw new ApiError("NOT_FOUND", "File version was not found for binding edit.", 404, { fileVersionId });
   }
 
-  // Ingest tests store full source in a JSON sidecar key when present.
+  if (objectStore) {
+    try {
+      const bytes = await objectStore.get(row.storage_key);
+      return bytes.toString("utf8");
+    } catch {
+      // Fall through to fixture sidecar when store miss (tests without put).
+    }
+  }
+
   if (row.parsed_index && typeof row.parsed_index === "object" && !Array.isArray(row.parsed_index)) {
     const source = (row.parsed_index as Record<string, unknown>).sourceText;
     if (typeof source === "string") return source;
@@ -288,9 +305,47 @@ async function loadFileContentFromVersion(
   });
 }
 
+function firstLabel(labels: unknown): string | undefined {
+  if (!Array.isArray(labels)) return undefined;
+  const label = labels.map(String).find((value) => value.trim().length > 0);
+  return label;
+}
+
+function locatorLeafLabel(locator: string | null | undefined): string | undefined {
+  if (!locator) return undefined;
+  const leaf = locator.split("/").filter(Boolean).pop();
+  if (!leaf || leaf.includes("@")) return undefined;
+  return leaf;
+}
+
 /**
- * Resolve effective write target for a property: prefer last overlay effect;
- * if only shared base contributes, target a project overlay create/update.
+ * Resolve the overlay &ref label for this binding's logical node.
+ * Never defaults to charging_core or the first &ref in a file.
+ */
+function resolveTargetRef(input: {
+  effect?: EffectRow;
+  nodeLocator: string | null;
+}): string {
+  if (input.effect?.ref_target) return input.effect.ref_target;
+  const label = firstLabel(input.effect?.labels);
+  if (label) return label;
+  if (input.effect?.node_name && !input.effect.node_name.includes("@")) {
+    return input.effect.node_name;
+  }
+  const fromLocator = locatorLeafLabel(input.nodeLocator ?? input.effect?.node_path);
+  if (fromLocator) return fromLocator;
+
+  throw new ApiError("CONFLICT", "Unable to resolve overlay target ref for binding edit.", 409, {
+    reason: "missing-overlay-target-ref",
+    nodeLocator: input.nodeLocator,
+    nodePath: input.effect?.node_path ?? null,
+  });
+}
+
+/**
+ * Resolve effective write target for a property: prefer last overlay effect for
+ * this logical node; if only shared base contributes, target the correct project
+ * overlay + node ref (never mutate shared base).
  */
 async function resolveWriteTarget(
   db: Queryable,
@@ -304,13 +359,14 @@ async function resolveWriteTarget(
   writeTarget: BindingDraftWriteTarget;
   overlayMember: RevisionMemberRow;
   baseMember: RevisionMemberRow;
-  effectiveFromOverlay: boolean;
+  members: RevisionMemberRow[];
+  targetRef: string;
+  occurrenceSpan?: { start: number; end: number };
 }> {
   const members = await loadRevisionMembers(db, input.configRevisionId);
   const baseMember = members.find((m) => m.role === "base");
-  const overlayMember = [...members].reverse().find((m) => m.role === "overlay");
-  if (!baseMember || !overlayMember) {
-    throw new ApiError("CONFLICT", "Config revision missing base/overlay members for edit.", 409, {
+  if (!baseMember) {
+    throw new ApiError("CONFLICT", "Config revision missing base member for edit.", 409, {
       configRevisionId: input.configRevisionId,
     });
   }
@@ -325,11 +381,16 @@ async function resolveWriteTarget(
       f.file_name,
       m.role,
       po.raw_text,
-      no.node_path
+      no.node_path,
+      no.ref_target,
+      no.labels,
+      no.name as node_name,
+      po.start_offset,
+      po.end_offset
     from dts_occurrence_effects oe
     inner join dts_logical_node_revisions lnr on lnr.id = oe.logical_node_revision_id
     left join dts_property_occurrences po on po.id = oe.property_occurrence_id
-    left join dts_node_occurrences no on no.id = oe.node_occurrence_id
+    left join dts_node_occurrences no on no.id = coalesce(oe.node_occurrence_id, po.node_occurrence_id)
     left join dts_config_revision_members m on m.file_version_id = coalesce(po.file_version_id, no.file_version_id)
       and m.config_revision_id = oe.config_revision_id
     left join project_parameter_files f on f.id = m.file_id
@@ -342,7 +403,33 @@ async function resolveWriteTarget(
   );
 
   const top = effects.rows[0];
-  const effectiveFromOverlay = top?.role === "overlay";
+  const overlayEffect = effects.rows.find((row) => row.role === "overlay");
+  const targetRef = resolveTargetRef({
+    effect: overlayEffect ?? top,
+    nodeLocator: input.nodeLocator,
+  });
+
+  let overlayMember: RevisionMemberRow | undefined;
+  if (overlayEffect?.file_id) {
+    overlayMember = members.find((m) => m.file_id === overlayEffect.file_id && m.role === "overlay");
+  }
+  if (!overlayMember) {
+    // Value only from shared base → write into the last project overlay in order.
+    overlayMember = [...members].reverse().find((m) => m.role === "overlay");
+  }
+  if (!overlayMember) {
+    throw new ApiError("CONFLICT", "Config revision missing overlay member for edit.", 409, {
+      configRevisionId: input.configRevisionId,
+    });
+  }
+
+  const effectiveFromOverlay = Boolean(overlayEffect);
+  const occurrenceSpan =
+    effectiveFromOverlay &&
+    overlayEffect?.start_offset != null &&
+    overlayEffect?.end_offset != null
+      ? { start: Number(overlayEffect.start_offset), end: Number(overlayEffect.end_offset) }
+      : undefined;
 
   return {
     writeTarget: {
@@ -351,21 +438,32 @@ async function resolveWriteTarget(
       fileId: overlayMember.file_id,
       fileName: overlayMember.file_name,
       nodeLocator: input.nodeLocator ?? top?.node_path ?? undefined,
-      occurrenceId: effectiveFromOverlay ? (top?.property_occurrence_id ?? undefined) : undefined,
+      occurrenceId: effectiveFromOverlay ? (overlayEffect?.property_occurrence_id ?? undefined) : undefined,
+      targetRef,
     },
     overlayMember,
     baseMember,
-    effectiveFromOverlay,
+    members,
+    targetRef,
+    occurrenceSpan,
   };
 }
 
-function findOverlayTargetNode(root: DtsNodeCst, refName?: string): DtsNodeCst | null {
-  if (root.refTarget && (!refName || root.refTarget === refName)) return root;
+function findOverlayNodeByRef(root: DtsNodeCst, refName: string): DtsNodeCst | null {
+  if (root.refTarget === refName) return root;
   for (const child of root.children) {
     if (child.kind === "node") {
-      const found = findOverlayTargetNode(child, refName);
+      const found = findOverlayNodeByRef(child, refName);
       if (found) return found;
     }
+  }
+  return null;
+}
+
+function findTargetOverlayNode(docRoots: DtsNodeCst[], refName: string): DtsNodeCst | null {
+  for (const root of docRoots) {
+    const found = findOverlayNodeByRef(root, refName);
+    if (found) return found;
   }
   return null;
 }
@@ -374,33 +472,39 @@ function listNodeProperties(node: DtsNodeCst): DtsPropertyCst[] {
   return node.children.filter((child): child is DtsPropertyCst => child.kind === "property");
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Patch or create a property on the binding's target overlay node only.
+ * Never falls back to the first &ref or a hard-coded charging_core label.
+ */
 function ensureOverlayProperty(
   content: string,
-  propertyKey: string,
-  rawText: string | null,
-  action: BindingEditAction,
+  input: {
+    propertyKey: string;
+    rawText: string | null;
+    action: BindingEditAction;
+    targetRef: string;
+  },
 ): string {
-  const doc = parseDts(content);
-  let target: DtsNodeCst | null = null;
-  for (const root of doc.topLevel) {
-    if (root.refTarget) {
-      target = root;
-      break;
-    }
-    target = findOverlayTargetNode(root) ?? target;
-    if (target?.refTarget) break;
+  const { propertyKey, rawText, action, targetRef } = input;
+  if (!targetRef.trim()) {
+    throw new ApiError("CONFLICT", "Overlay write requires an explicit target ref.", 409, {
+      reason: "missing-overlay-target-ref",
+      propertyKey,
+    });
   }
 
-  const ref = target?.refTarget ?? "charging_core";
+  const doc = parseDts(content);
+  const target = findTargetOverlayNode(doc.topLevel, targetRef);
 
   if (action === "delete") {
     const property = target ? listNodeProperties(target).find((p) => p.name === propertyKey) : undefined;
     if (property) {
-      // Replace the full `name = value;` statement with delete-property (span is RHS only).
       const rhs = content.slice(property.span.start, property.span.end);
-      const statement = new RegExp(
-        `${propertyKey}\\s*=\\s*${escapeRegExp(rhs)}\\s*;`,
-      );
+      const statement = new RegExp(`${propertyKey}\\s*=\\s*${escapeRegExp(rhs)}\\s*;`);
       if (statement.test(content)) {
         return content.replace(statement, `/delete-property/ ${propertyKey};`);
       }
@@ -408,31 +512,28 @@ function ensureOverlayProperty(
     if (content.includes(`/delete-property/ ${propertyKey}`)) {
       return content;
     }
-    const refPattern = new RegExp(`(&${ref}\\s*\\{)`);
+    const refPattern = new RegExp(`(&${escapeRegExp(targetRef)}\\s*\\{)`);
     if (refPattern.test(content)) {
       return content.replace(refPattern, `$1\n\t/delete-property/ ${propertyKey};`);
     }
-    return `${content.trimEnd()}\n&${ref} {\n\t/delete-property/ ${propertyKey};\n};\n`;
+    return `${content.trimEnd()}\n&${targetRef} {\n\t/delete-property/ ${propertyKey};\n};\n`;
   }
 
   if (target) {
     const property = listNodeProperties(target).find((p) => p.name === propertyKey);
     if (property) {
+      // Minimal in-place CST span edit for an existing project overlay occurrence.
       property.rawText = rawText ?? "";
       return serializeDts(doc);
     }
   }
 
   const assignment = `\t${propertyKey} = ${rawText};`;
-  const refPattern = new RegExp(`(&${ref}\\s*\\{)`);
+  const refPattern = new RegExp(`(&${escapeRegExp(targetRef)}\\s*\\{)`);
   if (refPattern.test(content)) {
     return content.replace(refPattern, `$1\n${assignment}`);
   }
-  return `${content.trimEnd()}\n&${ref} {\n${assignment}\n};\n`;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `${content.trimEnd()}\n&${targetRef} {\n${assignment}\n};\n`;
 }
 
 /**
@@ -479,8 +580,8 @@ export async function unchangedSourceBytes(draft: BindingDraftResult): Promise<b
 
 /**
  * Create a typed binding draft that patches (or creates) a project overlay target,
- * stores a candidate config revision, re-resolves + toolchain-validates fail-closed,
- * and writes semantic FKs on the draft row.
+ * stores a full candidate config revision (all members preserved), re-resolves +
+ * toolchain-validates fail-closed, and writes semantic FKs on the draft row.
  */
 export async function createBindingDraft(
   db: Database | Queryable,
@@ -509,7 +610,6 @@ export async function createBindingDraft(
     });
   }
 
-  // Stale check: binding must have a revision row for this base revision.
   const bindingRevision = await db.query<{ id: string }>(
     `
     select id from project_parameter_binding_revisions
@@ -539,50 +639,59 @@ export async function createBindingDraft(
     });
   }
 
-  if (action === "set" && input.enforceSchema && input.targetValue) {
+  // Schema enforcement is ON by default; callers cannot turn it off for the normal path.
+  if (action === "set" && input.targetValue) {
     assertSchemaAllows(input.targetValue, binding.constraints);
   }
 
-  const { writeTarget, overlayMember, baseMember } = await resolveWriteTarget(db, {
+  const { writeTarget, overlayMember, baseMember, members, targetRef } = await resolveWriteTarget(db, {
     configRevisionId: revision.id,
     logicalNodeId: binding.logical_node_id,
     propertyKey: binding.property_key,
     nodeLocator: binding.node_locator,
   });
 
-  // Content access: prefer parsed_index.sourceText (set by edit fixtures / callers).
-  // Fall back to reconstructing from a content cache table used in tests via storage of
-  // member content on insert — seed helpers set parsed_index to {}.
-  // For Task 10 tests, we stash source on a session-local map keyed by file version when
-  // loading fails; production path uses object store via writeback after merge.
-  let baseContent: string;
-  let overlayContent: string;
-  try {
-    baseContent = await loadFileContentFromVersion(db, baseMember.file_version_id);
-    overlayContent = await loadFileContentFromVersion(db, overlayMember.file_version_id);
-  } catch (error) {
-    throw new ApiError("CONFLICT", "Overlay/base source text unavailable for typed edit.", 409, {
-      reason: "missing-source-text",
-      baseVersionId: baseMember.file_version_id,
-      overlayVersionId: overlayMember.file_version_id,
-      cause: error instanceof Error ? error.message : String(error),
-    });
+  const memberContents = new Map<string, string>();
+  for (const member of members) {
+    try {
+      const content = await loadFileContentFromVersion(db, member.file_version_id, deps.objectStore);
+      memberContents.set(member.file_version_id, content);
+    } catch (error) {
+      throw new ApiError("CONFLICT", "Config set source text unavailable for typed edit.", 409, {
+        reason: "missing-source-text",
+        fileVersionId: member.file_version_id,
+        fileName: member.file_name,
+        cause: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
+  const baseContent = memberContents.get(baseMember.file_version_id)!;
+  const overlayContent = memberContents.get(overlayMember.file_version_id)!;
   const baseChecksumBefore = checksumOf(baseContent);
-  const rawText =
-    action === "delete" ? "" : renderDtsValue(input.targetValue!, undefined);
+  const rawText = action === "delete" ? "" : renderDtsValue(input.targetValue!, undefined);
 
-  const candidateOverlayContent = ensureOverlayProperty(
-    overlayContent,
-    binding.property_key,
-    action === "delete" ? null : rawText,
+  const candidateOverlayContent = ensureOverlayProperty(overlayContent, {
+    propertyKey: binding.property_key,
+    rawText: action === "delete" ? null : rawText,
     action,
-  );
+    targetRef,
+  });
 
-  // Pin candidate overlay content onto a new file version (never mutates released binding revisions).
   const candidateOverlayVersionId = randomUUID();
   const overlayChecksum = checksumOf(candidateOverlayContent);
+  let candidateStorageKey = `${auth.organization.id}/${overlayChecksum}-candidate-${overlayMember.file_name}`;
+
+  if (deps.objectStore) {
+    const stored = await deps.objectStore.put({
+      organizationId: auth.organization.id,
+      fileName: overlayMember.file_name,
+      contentType: "text/plain",
+      bytes: Buffer.from(candidateOverlayContent, "utf8"),
+    });
+    candidateStorageKey = stored.storageKey;
+  }
+
   await db.query(
     `
     insert into project_parameter_file_versions (
@@ -595,7 +704,7 @@ export async function createBindingDraft(
     [
       candidateOverlayVersionId,
       overlayMember.file_id,
-      `${auth.organization.id}/${overlayChecksum}-candidate-${overlayMember.file_name}`,
+      candidateStorageKey,
       overlayChecksum,
       Buffer.byteLength(candidateOverlayContent, "utf8"),
       JSON.stringify({ sourceText: candidateOverlayContent }),
@@ -603,31 +712,33 @@ export async function createBindingDraft(
     ],
   );
 
+  const overlayOrder = members.filter((m) => m.role === "overlay").map((m) => m.file_name);
+  const entryFile = baseMember.file_name;
+  const includeSearchPaths = ["."];
+
+  const candidateMembers: ConfigRevisionManifestMember[] = members.map((member) => {
+    const isEditedOverlay = member.file_id === overlayMember.file_id;
+    const content = isEditedOverlay
+      ? candidateOverlayContent
+      : memberContents.get(member.file_version_id)!;
+    return {
+      fileId: member.file_id,
+      fileVersionId: isEditedOverlay ? candidateOverlayVersionId : member.file_version_id,
+      fileName: member.file_name,
+      role: member.role,
+      sortOrder: member.sort_order,
+      content,
+    };
+  });
+
   const manifest: ConfigRevisionManifest = {
     organizationId: auth.organization.id,
     projectId: binding.project_id,
     configSetId: revision.configSetId,
-    entryFile: baseMember.file_name,
-    includeSearchPaths: ["."],
-    overlayOrder: [overlayMember.file_name],
-    members: [
-      {
-        fileId: baseMember.file_id,
-        fileVersionId: baseMember.file_version_id,
-        fileName: baseMember.file_name,
-        role: "base",
-        sortOrder: baseMember.sort_order,
-        content: baseContent,
-      },
-      {
-        fileId: overlayMember.file_id,
-        fileVersionId: candidateOverlayVersionId,
-        fileName: overlayMember.file_name,
-        role: "overlay",
-        sortOrder: overlayMember.sort_order,
-        content: candidateOverlayContent,
-      },
-    ],
+    entryFile,
+    includeSearchPaths,
+    overlayOrder,
+    members: candidateMembers,
   };
 
   const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
@@ -644,10 +755,10 @@ export async function createBindingDraft(
 
   await assertCandidateToolchainRelease(db, auth, {
     candidateRevisionId,
-    entryFile: baseMember.file_name,
-    overlayFileName: overlayMember.file_name,
-    baseContent,
-    candidateOverlayContent,
+    entryFile,
+    includeSearchPaths,
+    overlayOrder,
+    files: new Map(candidateMembers.map((member) => [member.fileName, { content: member.content }])),
     toolchain: deps.toolchain ?? createDtsToolchainRunner(),
   });
 
@@ -656,8 +767,6 @@ export async function createBindingDraft(
     status: "draft",
   });
 
-  // Dual-write draft: semantic binding FK required; legacy PPV still NOT NULL so we
-  // create/reuse a shadow PPV keyed by binding when needed.
   const shadowPpv = await ensureShadowParameterValue(db, auth, {
     projectId: binding.project_id,
     bindingId: binding.binding_id,
@@ -690,6 +799,7 @@ export async function createBindingDraft(
       candidateRevisionId,
       propertyKey: binding.property_key,
       writeTargetRole: writeTarget.role,
+      targetRef,
       action,
     },
   });
@@ -755,23 +865,18 @@ async function assertCandidateToolchainRelease(
   input: {
     candidateRevisionId: string;
     entryFile: string;
-    overlayFileName: string;
-    baseContent: string;
-    candidateOverlayContent: string;
+    includeSearchPaths: string[];
+    overlayOrder: string[];
+    files: Map<string, { content: string }>;
     toolchain: DtsToolchainRunner;
   },
 ): Promise<void> {
-  const files = new Map<string, { content: string }>([
-    [input.entryFile, { content: input.baseContent }],
-    [input.overlayFileName, { content: input.candidateOverlayContent }],
-  ]);
-
   const toolchainResult = await input.toolchain.validate(
     {
       entryFile: input.entryFile,
-      includeSearchPaths: ["."],
-      overlayOrder: [input.overlayFileName],
-      files,
+      includeSearchPaths: input.includeSearchPaths,
+      overlayOrder: input.overlayOrder,
+      files: input.files,
     },
     { mode: "release" },
   );
