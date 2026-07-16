@@ -1065,3 +1065,443 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     expect(await unchangedSourceBytes(draft)).toBe(true);
   });
 });
+
+describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
+  let db: InMemoryTestDatabase | undefined;
+  let auth: AuthContext;
+
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await seedGraph(db);
+    auth = makeAuth();
+  });
+
+  afterEach(async () => {
+    await db?.rollback();
+    db = undefined;
+  });
+
+  it("updates only the effective duplicate &same_label occurrence", async () => {
+    const baseContent = `/dts-v1/;
+/ {
+	same_label: charging_core {
+		iin_max = <2300>;
+	};
+};
+`;
+    // Two identical &same_label fragments; effective value is the later occurrence.
+    const overlayContent = `/dts-v1/;
+/plugin/;
+
+&same_label {
+	/* first fragment */
+	iin_max = <1000>;
+};
+
+&same_label {
+	/* effective fragment */
+	iin_max = <2000>;
+};
+`;
+    const fixture = await seedConfigAndBinding(db!, auth, { overlayContent, baseContent });
+
+    const draft = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.binding.id,
+        baseRevisionId: fixture.revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3333", value: "3333" }]],
+        },
+        reason: "Edit effective duplicate label only",
+      },
+      { toolchain: passToolchain },
+    );
+
+    expect(draft.writeTarget).toMatchObject({
+      role: "overlay",
+      propertyKey: "iin_max",
+      occurrenceId: expect.any(String),
+      occurrenceSpan: expect.objectContaining({
+        start: expect.any(Number),
+        end: expect.any(Number),
+      }),
+      checksum: expect.any(String),
+      fileVersionId: expect.any(String),
+      targetRef: "same_label",
+    });
+    expect(draft.candidateOverlayContent).toContain("iin_max = <1000>");
+    expect(draft.candidateOverlayContent).toContain("/* first fragment */");
+    expect(draft.candidateOverlayContent).toContain("/* effective fragment */");
+    expect(draft.candidateOverlayContent).toContain("iin_max = <3333>");
+    expect(draft.candidateOverlayContent).not.toContain("iin_max = <2000>");
+    expect(draft.candidateOverlayContent).not.toContain("&charging_core");
+    expect(await unchangedSourceBytes(draft)).toBe(true);
+  });
+
+  it("updates the selected node when the same property key exists on multiple nodes", async () => {
+    const baseContent = `/dts-v1/;
+/ {
+	amba: amba {
+		compatible = "simple-bus";
+		iin_max = <1111>;
+	};
+	charging_core: charging_core {
+		iin_max = <2300>;
+	};
+};
+`;
+    const overlayContent = `/dts-v1/;
+/plugin/;
+
+&amba {
+	iin_max = <1111>;
+};
+
+&charging_core {
+	iin_max = <2700>;
+};
+`;
+    const fixture = await seedConfigAndBinding(db!, auth, { overlayContent, baseContent });
+
+    const draft = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.binding.id,
+        baseRevisionId: fixture.revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+        },
+        reason: "Edit charging_core only among multi-node keys",
+      },
+      { toolchain: passToolchain },
+    );
+
+    expect(draft.candidateOverlayContent).toMatch(/&amba\s*\{[^}]*iin_max\s*=\s*<1111>/s);
+    expect(draft.candidateOverlayContent).toContain("iin_max = <3000>");
+    expect(draft.candidateOverlayContent).not.toContain("iin_max = <2700>");
+  });
+
+  it("deletes via /delete-property/ into the target occurrence node only", async () => {
+    const baseContent = `/dts-v1/;
+/ {
+	amba: amba {
+		compatible = "simple-bus";
+		iin_max = <1111>;
+	};
+	charging_core: charging_core {
+		iin_max = <2300>;
+	};
+};
+`;
+    const overlayContent = `/dts-v1/;
+/plugin/;
+
+&amba {
+	/delete-property/ iin_max;
+};
+
+&charging_core {
+	iin_max = <2700>;
+};
+`;
+    const fixture = await seedConfigAndBinding(db!, auth, { overlayContent, baseContent });
+
+    const draft = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.binding.id,
+        baseRevisionId: fixture.revision.id,
+        action: "delete",
+        reason: "Delete target occurrence despite existing delete-property elsewhere",
+      },
+      { toolchain: passToolchain },
+    );
+
+    const ambaBlock = draft.candidateOverlayContent.match(/&amba\s*\{[\s\S]*?\};/)?.[0] ?? "";
+    const coreBlock = draft.candidateOverlayContent.match(/&charging_core\s*\{[\s\S]*?\};/)?.[0] ?? "";
+    expect(ambaBlock).toMatch(/\/delete-property\/\s*iin_max/);
+    expect(coreBlock).toMatch(/\/delete-property\/\s*iin_max/);
+    expect(coreBlock).not.toContain("iin_max = <2700>");
+    expect(draft.candidateOverlayContent.match(/\/delete-property\/\s*iin_max/g)?.length).toBe(2);
+  });
+
+  it("rejects stale occurrence span without guessing another match", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth);
+
+    await db!.query(
+      `
+      update dts_property_occurrences
+      set start_offset = start_offset + 50, end_offset = end_offset + 50
+      where id in (
+        select oe.property_occurrence_id
+        from dts_occurrence_effects oe
+        where oe.config_revision_id = $1
+          and oe.property_name = 'iin_max'
+          and oe.property_occurrence_id is not null
+      )
+      `,
+      [fixture.revision.id],
+    );
+
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+          },
+          reason: "Stale span must conflict",
+        },
+        { toolchain: passToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: expect.objectContaining({ reason: "stale-span" }),
+    } satisfies Partial<ApiError>);
+  });
+
+  it("creates base-only override on the selected overlay target node", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth, { overlayContent: OVERLAY_EMPTY });
+
+    const draft = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.binding.id,
+        baseRevisionId: fixture.revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3100", value: "3100" }]],
+        },
+        reason: "Base-only value → project overlay override",
+      },
+      { toolchain: passToolchain },
+    );
+
+    expect(draft.writeTarget).toMatchObject({
+      role: "overlay",
+      propertyKey: "iin_max",
+      targetRef: "charging_core",
+      fileName: "edit-overlay.dts",
+    });
+    expect(draft.candidateOverlayContent).toMatch(/&charging_core\s*\{[\s\S]*iin_max\s*=\s*<3100>/);
+    expect(draft.baseContent).toBe(fixture.baseContent);
+    expect(await unchangedSourceBytes(draft)).toBe(true);
+  });
+
+  it("preserves includes, comments, whitespace, and sibling overlays on round trip", async () => {
+    const includeContent = `/dts-v1/;
+/ {
+	shared: shared {
+		compatible = "wiseeff,shared";
+	};
+};
+`;
+    const overlayA = `/dts-v1/;
+/plugin/;
+
+&shared {
+	status = "disabled";
+};
+`;
+    const overlayB = `/dts-v1/;
+/plugin/;
+
+&charging_core {
+	/* keep comment */
+	iin_max = <2700>;
+};
+`;
+    const baseContent = `/dts-v1/;
+/include/ "edit-include.dtsi"
+
+/ {
+	charging_core: charging_core {
+		iin_max = <2300>;
+	};
+};
+`;
+
+    const includeFileId = `file-include-${randomUUID().slice(0, 8)}`;
+    const overlayAFileId = `file-overlay-a-${randomUUID().slice(0, 8)}`;
+    const overlayBFileId = `file-overlay-b-${randomUUID().slice(0, 8)}`;
+    const baseFileId = `file-base-${randomUUID().slice(0, 8)}`;
+    const includeVersionId = `fv-include-${randomUUID().slice(0, 8)}`;
+    const overlayAVersionId = `fv-overlay-a-${randomUUID().slice(0, 8)}`;
+    const overlayBVersionId = `fv-overlay-b-${randomUUID().slice(0, 8)}`;
+    const baseVersionId = `fv-base-${randomUUID().slice(0, 8)}`;
+
+    await insertPinnedMember(db!, {
+      fileId: baseFileId,
+      fileName: "edit-base.dts",
+      versionId: baseVersionId,
+      content: baseContent,
+      role: "base",
+      sortOrder: 0,
+    });
+    await insertPinnedMember(db!, {
+      fileId: includeFileId,
+      fileName: "edit-include.dtsi",
+      versionId: includeVersionId,
+      content: includeContent,
+      role: "include",
+      sortOrder: 1,
+    });
+    await insertPinnedMember(db!, {
+      fileId: overlayAFileId,
+      fileName: "edit-overlay-a.dts",
+      versionId: overlayAVersionId,
+      content: overlayA,
+      role: "overlay",
+      sortOrder: 2,
+    });
+    await insertPinnedMember(db!, {
+      fileId: overlayBFileId,
+      fileName: "edit-overlay-b.dts",
+      versionId: overlayBVersionId,
+      content: overlayB,
+      role: "overlay",
+      sortOrder: 3,
+    });
+
+    const revision = await ingestConfigRevision(
+      db!,
+      {
+        organizationId: ORG_ID,
+        projectId: PROJECT_ID,
+        configSetId: CONFIG_SET_ID,
+        entryFile: "edit-base.dts",
+        includeSearchPaths: ["."],
+        overlayOrder: ["edit-overlay-a.dts", "edit-overlay-b.dts"],
+        members: [
+          {
+            fileId: baseFileId,
+            fileVersionId: baseVersionId,
+            fileName: "edit-base.dts",
+            role: "base",
+            sortOrder: 0,
+            content: baseContent,
+          },
+          {
+            fileId: includeFileId,
+            fileVersionId: includeVersionId,
+            fileName: "edit-include.dtsi",
+            role: "include",
+            sortOrder: 1,
+            content: includeContent,
+          },
+          {
+            fileId: overlayAFileId,
+            fileVersionId: overlayAVersionId,
+            fileName: "edit-overlay-a.dts",
+            role: "overlay",
+            sortOrder: 2,
+            content: overlayA,
+          },
+          {
+            fileId: overlayBFileId,
+            fileVersionId: overlayBVersionId,
+            fileName: "edit-overlay-b.dts",
+            role: "overlay",
+            sortOrder: 3,
+            content: overlayB,
+          },
+        ],
+      },
+      auth,
+    );
+
+    const logical = await db!.query<{ logical_node_id: string }>(
+      `
+      select logical_node_id
+      from dts_logical_node_revisions
+      where config_revision_id = $1 and node_locator like '%charging_core%'
+      limit 1
+      `,
+      [revision.id],
+    );
+    const binding = await createOrReuseBinding(db!, {
+      organizationId: ORG_ID,
+      key: {
+        projectId: PROJECT_ID,
+        logicalNodeId: logical.rows[0]!.logical_node_id,
+        parameterSpecId: SPEC_ID,
+      },
+    });
+    await upsertBindingRevisionValues(db!, {
+      bindingId: binding.id,
+      configRevisionId: revision.id,
+      parameterSpecVersionId: SPEC_VERSION_ID,
+      values: {
+        typedValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "2700", value: "2700" }]],
+        },
+        rawValue: "<2700>",
+        schemaState: "valid",
+        policyState: "pass",
+      },
+    });
+
+    const draft = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: binding.id,
+        baseRevisionId: revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3200", value: "3200" }]],
+        },
+        reason: "Round-trip preserve non-target text",
+      },
+      { toolchain: passToolchain },
+    );
+
+    expect(draft.candidateOverlayContent).toContain("/* keep comment */");
+    expect(draft.candidateOverlayContent).toContain("iin_max = <3200>");
+    expect(draft.candidateOverlayContent.replace(/\s+/g, " ")).toContain("iin_max = <3200>");
+
+    const withoutTargetValue = (text: string) =>
+      text.replace(/iin_max\s*=\s*<\d+>/, "iin_max = <VALUE>");
+    expect(withoutTargetValue(draft.candidateOverlayContent)).toBe(withoutTargetValue(overlayB));
+
+    const candidateMembers = await db!.query<{ file_name: string; file_version_id: string }>(
+      `
+      select f.file_name, m.file_version_id
+      from dts_config_revision_members m
+      join project_parameter_files f on f.id = m.file_id
+      where m.config_revision_id = $1
+      order by m.sort_order asc
+      `,
+      [draft.candidateRevisionId],
+    );
+    expect(candidateMembers.rows.map((row) => row.file_name)).toEqual([
+      "edit-base.dts",
+      "edit-include.dtsi",
+      "edit-overlay-a.dts",
+      "edit-overlay-b.dts",
+    ]);
+    expect(candidateMembers.rows[0]?.file_version_id).toBe(baseVersionId);
+    expect(candidateMembers.rows[1]?.file_version_id).toBe(includeVersionId);
+    expect(candidateMembers.rows[2]?.file_version_id).toBe(overlayAVersionId);
+    expect(candidateMembers.rows[3]?.file_version_id).not.toBe(overlayBVersionId);
+  });
+});

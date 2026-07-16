@@ -61,8 +61,12 @@ export type BindingDraftWriteTarget = {
   propertyKey: string;
   fileId?: string;
   fileName?: string;
+  fileVersionId?: string;
+  checksum?: string;
   nodeLocator?: string;
   occurrenceId?: string;
+  occurrenceSpan?: { start: number; end: number };
+  nodeSpan?: { start: number; end: number };
   targetRef?: string;
 };
 
@@ -120,6 +124,9 @@ type EffectRow = {
   node_name: string | null;
   start_offset: number | null;
   end_offset: number | null;
+  node_start_offset: number | null;
+  node_end_offset: number | null;
+  file_checksum: string | null;
 };
 
 function requireCanEdit(auth: AuthContext) {
@@ -387,6 +394,8 @@ async function resolveWriteTarget(
   members: RevisionMemberRow[];
   targetRef: string;
   occurrenceSpan?: { start: number; end: number };
+  expectedRawText?: string | null;
+  nodeSpan?: { start: number; end: number };
 }> {
   const members = await loadRevisionMembers(db, input.configRevisionId);
   const baseMember = members.find((m) => m.role === "base");
@@ -411,7 +420,10 @@ async function resolveWriteTarget(
       no.labels,
       no.name as node_name,
       po.start_offset,
-      po.end_offset
+      po.end_offset,
+      no.start_offset as node_start_offset,
+      no.end_offset as node_end_offset,
+      v.checksum as file_checksum
     from dts_occurrence_effects oe
     inner join dts_logical_node_revisions lnr on lnr.id = oe.logical_node_revision_id
     left join dts_property_occurrences po on po.id = oe.property_occurrence_id
@@ -419,6 +431,7 @@ async function resolveWriteTarget(
     left join dts_config_revision_members m on m.file_version_id = coalesce(po.file_version_id, no.file_version_id)
       and m.config_revision_id = oe.config_revision_id
     left join project_parameter_files f on f.id = m.file_id
+    left join project_parameter_file_versions v on v.id = coalesce(po.file_version_id, no.file_version_id)
     where oe.config_revision_id = $1
       and oe.property_name = $2
       and ($3::text is null or lnr.logical_node_id = $3)
@@ -456,14 +469,55 @@ async function resolveWriteTarget(
       ? { start: Number(overlayEffect.start_offset), end: Number(overlayEffect.end_offset) }
       : undefined;
 
+  let nodeSpan: { start: number; end: number } | undefined;
+  if (
+    effectiveFromOverlay &&
+    overlayEffect?.node_start_offset != null &&
+    overlayEffect?.node_end_offset != null
+  ) {
+    nodeSpan = {
+      start: Number(overlayEffect.node_start_offset),
+      end: Number(overlayEffect.node_end_offset),
+    };
+  } else if (input.logicalNodeId) {
+    // Base-only property: still prefer an existing overlay fragment for this logical node.
+    const overlayNode = await db.query<{ start_offset: number; end_offset: number }>(
+      `
+      select no.start_offset, no.end_offset
+      from dts_occurrence_effects oe
+      inner join dts_logical_node_revisions lnr on lnr.id = oe.logical_node_revision_id
+      inner join dts_node_occurrences no on no.id = oe.node_occurrence_id
+      inner join dts_config_revision_members m
+        on m.file_version_id = no.file_version_id and m.config_revision_id = oe.config_revision_id
+      where oe.config_revision_id = $1
+        and lnr.logical_node_id = $2
+        and m.file_id = $3
+        and m.role = 'overlay'
+      order by oe.source_order desc
+      limit 1
+      `,
+      [input.configRevisionId, input.logicalNodeId, overlayMember.file_id],
+    );
+    if (overlayNode.rows[0]) {
+      nodeSpan = {
+        start: Number(overlayNode.rows[0].start_offset),
+        end: Number(overlayNode.rows[0].end_offset),
+      };
+    }
+  }
+
   return {
     writeTarget: {
       role: "overlay",
       propertyKey: input.propertyKey,
       fileId: overlayMember.file_id,
       fileName: overlayMember.file_name,
+      fileVersionId: overlayMember.file_version_id,
+      checksum: overlayMember.checksum,
       nodeLocator: input.nodeLocator ?? top?.node_path ?? undefined,
       occurrenceId: effectiveFromOverlay ? (overlayEffect?.property_occurrence_id ?? undefined) : undefined,
+      occurrenceSpan,
+      nodeSpan,
       targetRef,
     },
     overlayMember,
@@ -471,39 +525,140 @@ async function resolveWriteTarget(
     members,
     targetRef,
     occurrenceSpan,
+    expectedRawText: effectiveFromOverlay ? (overlayEffect?.raw_text ?? null) : undefined,
+    nodeSpan,
   };
 }
 
-function findOverlayNodeByRef(root: DtsNodeCst, refName: string): DtsNodeCst | null {
-  if (root.refTarget === refName) return root;
-  for (const child of root.children) {
-    if (child.kind === "node") {
-      const found = findOverlayNodeByRef(child, refName);
-      if (found) return found;
+function findAllOverlayNodesByRef(nodes: DtsNodeCst[], refName: string): DtsNodeCst[] {
+  const matches: DtsNodeCst[] = [];
+  const walk = (node: DtsNodeCst) => {
+    if (node.refTarget === refName) matches.push(node);
+    for (const child of node.children) {
+      if (child.kind === "node") walk(child);
+    }
+  };
+  for (const node of nodes) walk(node);
+  return matches;
+}
+
+function findPropertyByExactSpan(
+  nodes: DtsNodeCst[],
+  span: { start: number; end: number },
+): { property: DtsPropertyCst; parent: DtsNodeCst } | null {
+  for (const node of nodes) {
+    for (const child of node.children) {
+      if (
+        child.kind === "property" &&
+        child.span.start === span.start &&
+        child.span.end === span.end
+      ) {
+        return { property: child, parent: node };
+      }
+      if (child.kind === "node") {
+        const found = findPropertyByExactSpan([child], span);
+        if (found) return found;
+      }
     }
   }
   return null;
 }
 
-function findTargetOverlayNode(docRoots: DtsNodeCst[], refName: string): DtsNodeCst | null {
-  for (const root of docRoots) {
-    const found = findOverlayNodeByRef(root, refName);
-    if (found) return found;
+function findNodeByExactSpan(nodes: DtsNodeCst[], span: { start: number; end: number }): DtsNodeCst | null {
+  for (const node of nodes) {
+    if (node.span.start === span.start && node.span.end === span.end) return node;
+    for (const child of node.children) {
+      if (child.kind === "node") {
+        const found = findNodeByExactSpan([child], span);
+        if (found) return found;
+      }
+    }
   }
   return null;
 }
 
-function listNodeProperties(node: DtsNodeCst): DtsPropertyCst[] {
-  return node.children.filter((child): child is DtsPropertyCst => child.kind === "property");
+function propertyStatementSpan(
+  content: string,
+  property: DtsPropertyCst,
+  propertyKey: string,
+  parent: DtsNodeCst,
+): { start: number; end: number } {
+  const searchFrom = Math.max(parent.span.start, 0);
+  const nameStart = content.lastIndexOf(propertyKey, property.span.start);
+  if (nameStart < searchFrom) {
+    throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", 409, {
+      reason: "stale-span",
+      propertyKey,
+      span: property.span,
+    });
+  }
+  const between = content.slice(nameStart + propertyKey.length, property.span.start);
+  if (property.rawText.length > 0) {
+    if (!/^\s*=\s*$/.test(between)) {
+      throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", 409, {
+        reason: "stale-span",
+        propertyKey,
+        span: property.span,
+      });
+    }
+  } else if (!/^\s*$/.test(between)) {
+    throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", 409, {
+      reason: "stale-span",
+      propertyKey,
+      span: property.span,
+    });
+  }
+  const semi = content.indexOf(";", property.span.end);
+  if (semi < 0 || semi > parent.span.end) {
+    throw new ApiError("CONFLICT", "Occurrence property statement span is stale.", 409, {
+      reason: "stale-span",
+      propertyKey,
+      span: property.span,
+    });
+  }
+  return { start: nameStart, end: semi + 1 };
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function insertAfterNodeOpenBrace(content: string, node: DtsNodeCst, insertion: string): string {
+  const openBrace = content.indexOf("{", node.span.start);
+  if (openBrace < 0 || openBrace >= node.span.end) {
+    throw new ApiError("CONFLICT", "Unable to locate overlay node body for write.", 409, {
+      reason: "stale-span",
+      nodeSpan: node.span,
+    });
+  }
+  return `${content.slice(0, openBrace + 1)}\n${insertion}${content.slice(openBrace + 1)}`;
+}
+
+function resolveInsertTargetNode(
+  docRoots: DtsNodeCst[],
+  input: { targetRef: string; nodeSpan?: { start: number; end: number } },
+): DtsNodeCst | null {
+  if (input.nodeSpan) {
+    const bySpan = findNodeByExactSpan(docRoots, input.nodeSpan);
+    if (!bySpan) {
+      throw new ApiError("CONFLICT", "Overlay node occurrence span is stale.", 409, {
+        reason: "stale-span",
+        nodeSpan: input.nodeSpan,
+        targetRef: input.targetRef,
+      });
+    }
+    return bySpan;
+  }
+  const matches = findAllOverlayNodesByRef(docRoots, input.targetRef);
+  if (matches.length > 1) {
+    throw new ApiError("CONFLICT", "Ambiguous overlay target ref for binding edit.", 409, {
+      reason: "ambiguous-overlay-target",
+      targetRef: input.targetRef,
+      matchCount: matches.length,
+    });
+  }
+  return matches[0] ?? null;
 }
 
 /**
- * Patch or create a property on the binding's target overlay node only.
- * Never falls back to the first &ref or a hard-coded charging_core label.
+ * Patch or create a property using write identity (checksum + occurrence/node CST span).
+ * Never falls back to the first `&ref` match when an occurrence span is known.
  */
 function ensureOverlayProperty(
   content: string,
@@ -512,6 +667,10 @@ function ensureOverlayProperty(
     rawText: string | null;
     action: BindingEditAction;
     targetRef: string;
+    expectedChecksum: string;
+    occurrenceSpan?: { start: number; end: number };
+    expectedRawText?: string | null;
+    nodeSpan?: { start: number; end: number };
   },
 ): string {
   const { propertyKey, rawText, action, targetRef } = input;
@@ -522,41 +681,76 @@ function ensureOverlayProperty(
     });
   }
 
+  if (checksumOf(content) !== input.expectedChecksum) {
+    throw new ApiError("CONFLICT", "Overlay file checksum is stale for binding edit.", 409, {
+      reason: "stale-checksum",
+      propertyKey,
+      expectedChecksum: input.expectedChecksum,
+      actualChecksum: checksumOf(content),
+    });
+  }
+
   const doc = parseDts(content);
-  const target = findTargetOverlayNode(doc.topLevel, targetRef);
+
+  if (input.occurrenceSpan) {
+    const slice = content.slice(input.occurrenceSpan.start, input.occurrenceSpan.end);
+    if (input.expectedRawText != null && slice !== input.expectedRawText) {
+      throw new ApiError("CONFLICT", "Occurrence CST span is stale for binding edit.", 409, {
+        reason: "stale-span",
+        propertyKey,
+        occurrenceSpan: input.occurrenceSpan,
+      });
+    }
+
+    const located = findPropertyByExactSpan(doc.topLevel, input.occurrenceSpan);
+    if (!located || located.property.name !== propertyKey) {
+      throw new ApiError("CONFLICT", "Occurrence CST span is stale for binding edit.", 409, {
+        reason: "stale-span",
+        propertyKey,
+        occurrenceSpan: input.occurrenceSpan,
+      });
+    }
+
+    if (action === "delete") {
+      const statement = propertyStatementSpan(content, located.property, propertyKey, located.parent);
+      return (
+        content.slice(0, statement.start) +
+        `/delete-property/ ${propertyKey};` +
+        content.slice(statement.end)
+      );
+    }
+
+    located.property.rawText = rawText ?? "";
+    return serializeDts(doc);
+  }
+
+  // Base-only / no overlay occurrence: insert into the precise overlay node (by node span).
+  const target = resolveInsertTargetNode(doc.topLevel, {
+    targetRef,
+    nodeSpan: input.nodeSpan,
+  });
 
   if (action === "delete") {
-    const property = target ? listNodeProperties(target).find((p) => p.name === propertyKey) : undefined;
-    if (property) {
-      const rhs = content.slice(property.span.start, property.span.end);
-      const statement = new RegExp(`${propertyKey}\\s*=\\s*${escapeRegExp(rhs)}\\s*;`);
-      if (statement.test(content)) {
-        return content.replace(statement, `/delete-property/ ${propertyKey};`);
-      }
-    }
-    if (content.includes(`/delete-property/ ${propertyKey}`)) {
-      return content;
-    }
-    const refPattern = new RegExp(`(&${escapeRegExp(targetRef)}\\s*\\{)`);
-    if (refPattern.test(content)) {
-      return content.replace(refPattern, `$1\n\t/delete-property/ ${propertyKey};`);
+    if (target) {
+      const existingDelete = target.children.find(
+        (child) => child.kind === "delete-property" && child.name === propertyKey,
+      );
+      if (existingDelete) return content;
+      return insertAfterNodeOpenBrace(content, target, `\t/delete-property/ ${propertyKey};`);
     }
     return `${content.trimEnd()}\n&${targetRef} {\n\t/delete-property/ ${propertyKey};\n};\n`;
   }
 
+  const assignment = `\t${propertyKey} = ${rawText};`;
   if (target) {
-    const property = listNodeProperties(target).find((p) => p.name === propertyKey);
-    if (property) {
-      // Minimal in-place CST span edit for an existing project overlay occurrence.
-      property.rawText = rawText ?? "";
+    const existing = target.children.find(
+      (child): child is DtsPropertyCst => child.kind === "property" && child.name === propertyKey,
+    );
+    if (existing) {
+      existing.rawText = rawText ?? "";
       return serializeDts(doc);
     }
-  }
-
-  const assignment = `\t${propertyKey} = ${rawText};`;
-  const refPattern = new RegExp(`(&${escapeRegExp(targetRef)}\\s*\\{)`);
-  if (refPattern.test(content)) {
-    return content.replace(refPattern, `$1\n${assignment}`);
+    return insertAfterNodeOpenBrace(content, target, assignment);
   }
   return `${content.trimEnd()}\n&${targetRef} {\n${assignment}\n};\n`;
 }
@@ -669,7 +863,16 @@ export async function createBindingDraft(
     assertSchemaAllows(input.targetValue, binding.constraints);
   }
 
-  const { writeTarget, overlayMember, baseMember, members, targetRef } = await resolveWriteTarget(db, {
+  const {
+    writeTarget,
+    overlayMember,
+    baseMember,
+    members,
+    targetRef,
+    occurrenceSpan,
+    expectedRawText,
+    nodeSpan,
+  } = await resolveWriteTarget(db, {
     configRevisionId: revision.id,
     logicalNodeId: binding.logical_node_id,
     propertyKey: binding.property_key,
@@ -701,6 +904,10 @@ export async function createBindingDraft(
     rawText: action === "delete" ? null : rawText,
     action,
     targetRef,
+    expectedChecksum: overlayMember.checksum,
+    occurrenceSpan,
+    expectedRawText,
+    nodeSpan,
   });
 
   const candidateOverlayVersionId = randomUUID();

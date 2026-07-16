@@ -306,6 +306,19 @@ function takePropertyOccurrenceId(
       return candidateQueue.shift() ?? null;
     }
   }
+  // Overlay `&label` fragments are collected under the ref path (e.g. `/same_label`) while
+  // effective sourceChain entries use the resolved target locator (e.g. `/charging_core`).
+  const filePrefix = `${entry.fileName}\0`;
+  const nameAndRawSuffix = `\0${entry.propertyName}\0${entry.rawText}`;
+  for (const [candidateKey, candidateQueue] of queues) {
+    if (
+      candidateKey.startsWith(filePrefix) &&
+      candidateKey.endsWith(nameAndRawSuffix) &&
+      candidateQueue.length > 0
+    ) {
+      return candidateQueue.shift() ?? null;
+    }
+  }
   return null;
 }
 

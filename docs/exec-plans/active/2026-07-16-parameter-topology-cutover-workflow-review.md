@@ -75,8 +75,8 @@
 
 ### Task 4: Precise occurrence writeback
 
-- [ ] Write by file version + occurrence + CST span + node/property identity
-- [ ] Duplicate `&label` / delete-property / base-only override / stale span golden tests
+- [x] Write by file version + occurrence + CST span + node/property identity
+- [x] Duplicate `&label` / delete-property / base-only override / stale span golden tests
 
 ### Task 5–6: Candidate + validation state machines + manifest
 
