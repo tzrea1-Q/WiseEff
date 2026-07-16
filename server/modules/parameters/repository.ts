@@ -49,6 +49,90 @@ import {
 import { resetParameterIdentityCutoverCache } from "./cutoverAwareIdentity";
 import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
 import { deletePreCutoverProjectParameterValues } from "./legacyParameterIdentityAdapter";
+import type { BindingWriteLockFields } from "../parameter-topology/editService";
+
+export type ParameterWriteLockRow = {
+  base_config_revision_id: string | null;
+  binding_revision_id: string | null;
+  property_occurrence_id: string | null;
+  source_file_version_id: string | null;
+  expected_checksum: string | null;
+  occurrence_span: { start: number; end: number } | null;
+};
+
+export function toWriteLockFields(row: ParameterWriteLockRow): BindingWriteLockFields | null {
+  if (
+    !row.base_config_revision_id ||
+    !row.binding_revision_id ||
+    !row.source_file_version_id ||
+    !row.expected_checksum
+  ) {
+    return null;
+  }
+  return {
+    baseConfigRevisionId: row.base_config_revision_id,
+    bindingRevisionId: row.binding_revision_id,
+    propertyOccurrenceId: row.property_occurrence_id,
+    sourceFileVersionId: row.source_file_version_id,
+    expectedChecksum: row.expected_checksum,
+    occurrenceSpan: row.occurrence_span,
+  };
+}
+
+export async function getDraftWriteLock(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    bindingId: string;
+    userId: string;
+  }
+): Promise<BindingWriteLockFields | null> {
+  const result = await db.query<ParameterWriteLockRow>(
+    `
+    select
+      base_config_revision_id,
+      binding_revision_id,
+      property_occurrence_id,
+      source_file_version_id,
+      expected_checksum,
+      occurrence_span
+    from parameter_drafts
+    where organization_id = $1
+      and project_id = $2
+      and project_parameter_binding_id = $3
+      and user_id = $4
+    limit 1
+    `,
+    [input.organizationId, input.projectId, input.bindingId, input.userId]
+  );
+  const row = result.rows[0];
+  return row ? toWriteLockFields(row) : null;
+}
+
+export async function getChangeRequestWriteLock(
+  db: Queryable,
+  input: { organizationId: string; requestId: string }
+): Promise<BindingWriteLockFields | null> {
+  const result = await db.query<ParameterWriteLockRow>(
+    `
+    select
+      base_config_revision_id,
+      binding_revision_id,
+      property_occurrence_id,
+      source_file_version_id,
+      expected_checksum,
+      occurrence_span
+    from parameter_change_requests
+    where organization_id = $1
+      and id = $2
+    limit 1
+    `,
+    [input.organizationId, input.requestId]
+  );
+  const row = result.rows[0];
+  return row ? toWriteLockFields(row) : null;
+}
 
 export { resetParameterIdentityCutoverCache };
 
@@ -1449,6 +1533,7 @@ export async function upsertDraft(
     /** Semantic binding identity — required for topology-aware drafts. */
     projectParameterBindingId?: string;
     parameterSpecId?: string;
+    writeLock?: BindingWriteLockFields;
   }
 ) {
   if (await mustUseSemanticParameterIdentity(db)) {
@@ -1462,7 +1547,13 @@ export async function upsertDraft(
       targetValue: input.targetValue,
       reason: input.reason,
       origin: input.origin,
-      originFileVersionId: input.originFileVersionId
+      originFileVersionId: input.originFileVersionId,
+      baseConfigRevisionId: input.writeLock?.baseConfigRevisionId,
+      bindingRevisionId: input.writeLock?.bindingRevisionId,
+      propertyOccurrenceId: input.writeLock?.propertyOccurrenceId,
+      sourceFileVersionId: input.writeLock?.sourceFileVersionId,
+      expectedChecksum: input.writeLock?.expectedChecksum,
+      occurrenceSpan: input.writeLock?.occurrenceSpan,
     });
     void input.parameterSpecId;
     if (!row) {
@@ -1785,6 +1876,7 @@ export async function createChangeRequest(
     workflowAssignees?: Partial<ParameterWorkflowAssigneesDto>;
     parameterSpecId?: string;
     projectParameterBindingId?: string;
+    writeLock?: BindingWriteLockFields;
   }
 ) {
   if (await mustUseSemanticParameterIdentity(db)) {
@@ -1796,9 +1888,11 @@ export async function createChangeRequest(
           id, organization_id, submission_round_id, project_id,
           base_version, current_value, target_value, status, submitter_user_id,
           assigned_to_user_id, workflow_hardware_committer_user_id, workflow_software_committer_user_id,
-          workflow_software_user_id, parameter_spec_id, project_parameter_binding_id
+          workflow_software_user_id, parameter_spec_id, project_parameter_binding_id,
+          base_config_revision_id, binding_revision_id, property_occurrence_id,
+          source_file_version_id, expected_checksum, occurrence_span
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21::jsonb)
         returning *
       )
       select
@@ -1847,7 +1941,13 @@ export async function createChangeRequest(
         input.workflowAssignees?.softwareCommitterId ?? null,
         input.workflowAssignees?.softwareUserId ?? null,
         input.parameterSpecId ?? null,
-        bindingId
+        bindingId,
+        input.writeLock?.baseConfigRevisionId ?? null,
+        input.writeLock?.bindingRevisionId ?? null,
+        input.writeLock?.propertyOccurrenceId ?? null,
+        input.writeLock?.sourceFileVersionId ?? null,
+        input.writeLock?.expectedChecksum ?? null,
+        input.writeLock?.occurrenceSpan ? JSON.stringify(input.writeLock.occurrenceSpan) : null
       ]
     );
     return toChangeRequestDto(db, result.rows[0]);
@@ -2794,6 +2894,11 @@ export async function mergeChangeRequest(
           project_parameter_binding_id,
           parameter_spec_id,
           base_config_revision_id,
+          binding_revision_id,
+          property_occurrence_id,
+          source_file_version_id,
+          expected_checksum,
+          occurrence_span,
           base_version,
           target_value
         from parameter_change_requests
@@ -2803,67 +2908,61 @@ export async function mergeChangeRequest(
           and project_parameter_binding_id is not null
         for update
       ),
-      latest_revision as (
-        select
-          request_to_merge.*,
-          coalesce(
-            request_to_merge.base_config_revision_id,
-            (
-              select id
-              from dts_config_revisions
-              where project_id = request_to_merge.project_id
-              order by revision_number desc
-              limit 1
-            )
-          ) as config_revision_id,
-          coalesce(bpr.raw_value, request_to_merge.target_value) as prior_value
+      locked_request as (
+        select request_to_merge.*
         from request_to_merge
-        left join project_parameter_binding_revisions bpr
-          on bpr.binding_id = request_to_merge.project_parameter_binding_id
-         and bpr.config_revision_id = coalesce(
-           request_to_merge.base_config_revision_id,
-           (
-             select id
-             from dts_config_revisions
-             where project_id = request_to_merge.project_id
-             order by revision_number desc
-             limit 1
-           )
-         )
+        where request_to_merge.base_config_revision_id is not null
+          and request_to_merge.binding_revision_id is not null
+          and request_to_merge.source_file_version_id is not null
+          and request_to_merge.expected_checksum is not null
       ),
-      upsert_binding_revision as (
-        insert into project_parameter_binding_revisions (
-          id, binding_id, config_revision_id, parameter_spec_version_id,
-          typed_value, canonical_value, raw_value, schema_state, policy_state
-        )
+      binding_lock as (
         select
-          coalesce(
-            (select id from project_parameter_binding_revisions
-             where binding_id = latest_revision.project_parameter_binding_id
-               and config_revision_id = latest_revision.config_revision_id),
-            latest_revision.project_parameter_binding_id || '-rev'
-          ),
-          latest_revision.project_parameter_binding_id,
-          latest_revision.config_revision_id,
-          (
-            select psv.id
-            from parameter_spec_versions psv
-            where psv.parameter_spec_id = latest_revision.parameter_spec_id
-            order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
-            limit 1
-          ),
-          jsonb_build_object('kind', 'legacy-text', 'value', latest_revision.target_value),
-          jsonb_build_object('kind', 'legacy-text', 'value', latest_revision.target_value),
-          latest_revision.target_value,
-          'merged',
-          'merged'
-        from latest_revision
-        where latest_revision.config_revision_id is not null
-        on conflict (binding_id, config_revision_id) do update set
-          raw_value = excluded.raw_value,
-          typed_value = excluded.typed_value,
-          canonical_value = excluded.canonical_value
-        returning binding_id
+          locked_request.*,
+          bpr.raw_value as prior_value
+        from locked_request
+        inner join project_parameter_binding_revisions bpr
+          on bpr.id = locked_request.binding_revision_id
+         and bpr.binding_id = locked_request.project_parameter_binding_id
+         and bpr.config_revision_id = locked_request.base_config_revision_id
+      ),
+      file_lock as (
+        select binding_lock.*
+        from binding_lock
+        inner join project_parameter_file_versions pfv
+          on pfv.id = binding_lock.source_file_version_id
+         and pfv.checksum = binding_lock.expected_checksum
+      ),
+      occurrence_lock as (
+        select file_lock.*
+        from file_lock
+        where file_lock.property_occurrence_id is null
+           or exists (
+             select 1
+             from dts_property_occurrences po
+             where po.id = file_lock.property_occurrence_id
+               and po.file_version_id = file_lock.source_file_version_id
+               and (
+                 file_lock.occurrence_span is null
+                 or (
+                   po.start_offset = (file_lock.occurrence_span->>'start')::int
+                   and po.end_offset = (file_lock.occurrence_span->>'end')::int
+                 )
+               )
+           )
+      ),
+      updated_binding_revision as (
+        update project_parameter_binding_revisions bpr
+        set
+          raw_value = occurrence_lock.target_value,
+          typed_value = jsonb_build_object('kind', 'legacy-text', 'value', occurrence_lock.target_value),
+          canonical_value = jsonb_build_object('kind', 'legacy-text', 'value', occurrence_lock.target_value),
+          schema_state = 'merged',
+          policy_state = 'merged'
+        from occurrence_lock
+        where bpr.id = occurrence_lock.binding_revision_id
+          and bpr.config_revision_id = occurrence_lock.base_config_revision_id
+        returning bpr.binding_id
       ),
       inserted_history as (
         insert into parameter_history_entries (
@@ -2874,27 +2973,28 @@ export async function mergeChangeRequest(
         select
           $3,
           $1,
-          latest_revision.project_id,
-          coalesce($4, latest_revision.base_version) + 1,
-          latest_revision.target_value,
+          occurrence_lock.project_id,
+          coalesce($4, occurrence_lock.base_version) + 1,
+          occurrence_lock.target_value,
           $5,
-          latest_revision.id,
-          latest_revision.parameter_spec_id,
-          latest_revision.project_parameter_binding_id
-        from latest_revision
+          occurrence_lock.id,
+          occurrence_lock.parameter_spec_id,
+          occurrence_lock.project_parameter_binding_id
+        from occurrence_lock
+        inner join updated_binding_revision on true
         returning id
       )
       select
-        latest_revision.id,
-        latest_revision.project_parameter_binding_id as project_parameter_value_id,
+        occurrence_lock.id,
+        occurrence_lock.project_parameter_binding_id as project_parameter_value_id,
         null::text as parameter_definition_id,
-        latest_revision.parameter_spec_id,
-        latest_revision.project_parameter_binding_id,
-        latest_revision.project_id,
-        latest_revision.target_value,
-        latest_revision.base_version,
-        coalesce($4, latest_revision.base_version) + 1 as new_version
-      from latest_revision
+        occurrence_lock.parameter_spec_id,
+        occurrence_lock.project_parameter_binding_id,
+        occurrence_lock.project_id,
+        occurrence_lock.target_value,
+        occurrence_lock.base_version,
+        coalesce($4, occurrence_lock.base_version) + 1 as new_version
+      from occurrence_lock
       inner join inserted_history on true
       `,
       [

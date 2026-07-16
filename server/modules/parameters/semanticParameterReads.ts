@@ -143,6 +143,12 @@ export async function upsertSemanticDraft(
     reason: string;
     origin?: "manual" | "file_sync";
     originFileVersionId?: string;
+    baseConfigRevisionId?: string;
+    bindingRevisionId?: string;
+    propertyOccurrenceId?: string | null;
+    sourceFileVersionId?: string;
+    expectedChecksum?: string;
+    occurrenceSpan?: { start: number; end: number } | null;
   }
 ) {
   const result = await db.query<{
@@ -157,15 +163,23 @@ export async function upsertSemanticDraft(
     insert into parameter_drafts (
       id, organization_id, project_id, user_id,
       target_value, reason, origin, origin_file_version_id,
-      project_parameter_binding_id
+      project_parameter_binding_id,
+      base_config_revision_id, binding_revision_id, property_occurrence_id,
+      source_file_version_id, expected_checksum, occurrence_span
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb)
     on conflict (project_id, project_parameter_binding_id, user_id)
     do update set
       target_value = excluded.target_value,
       reason = excluded.reason,
       origin = excluded.origin,
       origin_file_version_id = excluded.origin_file_version_id,
+      base_config_revision_id = coalesce(excluded.base_config_revision_id, parameter_drafts.base_config_revision_id),
+      binding_revision_id = coalesce(excluded.binding_revision_id, parameter_drafts.binding_revision_id),
+      property_occurrence_id = coalesce(excluded.property_occurrence_id, parameter_drafts.property_occurrence_id),
+      source_file_version_id = coalesce(excluded.source_file_version_id, parameter_drafts.source_file_version_id),
+      expected_checksum = coalesce(excluded.expected_checksum, parameter_drafts.expected_checksum),
+      occurrence_span = coalesce(excluded.occurrence_span, parameter_drafts.occurrence_span),
       updated_at = now()
     returning id, project_id, project_parameter_binding_id, target_value, reason, updated_at
     `,
@@ -178,7 +192,13 @@ export async function upsertSemanticDraft(
       input.reason,
       input.origin ?? "manual",
       input.originFileVersionId ?? null,
-      input.bindingId
+      input.bindingId,
+      input.baseConfigRevisionId ?? null,
+      input.bindingRevisionId ?? null,
+      input.propertyOccurrenceId ?? null,
+      input.sourceFileVersionId ?? null,
+      input.expectedChecksum ?? null,
+      input.occurrenceSpan ? JSON.stringify(input.occurrenceSpan) : null,
     ]
   );
   return result.rows[0] ?? null;

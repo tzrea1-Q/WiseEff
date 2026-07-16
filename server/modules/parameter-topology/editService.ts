@@ -23,7 +23,7 @@ import { canEditParameters } from "../parameters/policy";
 import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
 import { ensurePreCutoverLinkedParameterValue } from "../parameters/legacyParameterIdentityAdapter";
 import { upsertDraft } from "../parameters/repository";
-import { countOpenIdentityMappingTasksForRevision } from "./bindingService";
+import { countOpenIdentityMappingTasksForRevision, upsertBindingRevisionValues } from "./bindingService";
 import {
   assertCanPromoteCandidateToDraft,
   type CandidateGateFailureReason,
@@ -60,6 +60,8 @@ export type CreateBindingDraftDeps = {
   toolchain?: DtsToolchainRunner;
   /** Preferred source of file bytes by version storage key. */
   objectStore?: ObjectStore;
+  /** Test-only: skip semantic promotion gates after resolve/toolchain. */
+  skipSemanticGates?: boolean;
 };
 
 export type BindingDraftWriteTarget = {
@@ -141,9 +143,29 @@ function requireCanEdit(auth: AuthContext) {
   }
 }
 
-function checksumOf(content: string): string {
+export function checksumOf(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
+
+/** Persisted on drafts/change requests for exact merge writeback identity. */
+export type BindingWriteLockFields = {
+  baseConfigRevisionId: string;
+  bindingRevisionId: string;
+  propertyOccurrenceId?: string | null;
+  sourceFileVersionId: string;
+  expectedChecksum: string;
+  occurrenceSpan?: { start: number; end: number } | null;
+};
+
+export type BindingWriteLockContext = BindingWriteLockFields & {
+  propertyKey: string;
+  targetRef: string;
+  expectedRawText?: string | null;
+  nodeSpan?: { start: number; end: number };
+  overlayFileId: string;
+  overlayFileName: string;
+  overlayFileVersionId: string;
+};
 
 function asConstraintNumber(constraints: unknown, key: "min" | "max"): number | undefined {
   if (!constraints || typeof constraints !== "object" || Array.isArray(constraints)) return undefined;
@@ -300,7 +322,7 @@ async function loadRevisionMembers(
  * Prefer object-store bytes for the file version. Fall back to parsed_index.sourceText
  * only for fixtures that never wrote store objects.
  */
-async function loadFileContentFromVersion(
+export async function loadFileContentFromVersion(
   db: Queryable,
   fileVersionId: string,
   objectStore?: ObjectStore,
@@ -666,7 +688,7 @@ function resolveInsertTargetNode(
  * Patch or create a property using write identity (checksum + occurrence/node CST span).
  * Never falls back to the first `&ref` match when an occurrence span is known.
  */
-function ensureOverlayProperty(
+export function ensureOverlayProperty(
   content: string,
   input: {
     propertyKey: string;
@@ -1090,6 +1112,14 @@ export async function createBindingDraft(
     origin: "manual",
     projectParameterBindingId: binding.binding_id,
     parameterSpecId: binding.parameter_spec_id,
+    writeLock: {
+      baseConfigRevisionId: revision.id,
+      bindingRevisionId: bindingRevision.rows[0]!.id,
+      propertyOccurrenceId: writeTarget.occurrenceId ?? null,
+      sourceFileVersionId: writeTarget.fileVersionId!,
+      expectedChecksum: writeTarget.checksum!,
+      occurrenceSpan: writeTarget.occurrenceSpan ?? null,
+    },
   });
 
   await writeGovernanceAudit(db, auth, {
@@ -1347,4 +1377,439 @@ async function assertCandidateToolchainRelease(
     candidateStatus: "invalid",
     diagnostics: toolchainResult.diagnostics,
   });
+}
+
+/** Resolve exact writeback lock metadata for a binding at a config revision head. */
+export async function resolveBindingWriteLock(
+  db: Queryable,
+  auth: AuthContext,
+  input: { bindingId: string; baseRevisionId?: string },
+): Promise<BindingWriteLockContext> {
+  const binding = await loadBindingContext(db, auth, input.bindingId);
+
+  let baseRevisionId = input.baseRevisionId;
+  if (!baseRevisionId) {
+    const head = await db.query<{ config_revision_id: string }>(
+      `
+      select bpr.config_revision_id
+      from project_parameter_binding_revisions bpr
+      inner join dts_config_revisions cr on cr.id = bpr.config_revision_id
+      where bpr.binding_id = $1
+        and cr.organization_id = $2
+        and cr.project_id = $3
+        and cr.status <> 'resolving'
+      order by cr.revision_number desc
+      limit 1
+      `,
+      [input.bindingId, auth.organization.id, binding.project_id],
+    );
+    baseRevisionId = head.rows[0]?.config_revision_id;
+  }
+  if (!baseRevisionId) {
+    throw new ApiError("CONFLICT", "No config revision is available for binding write lock.", 409, {
+      reason: "stale-revision",
+      bindingId: input.bindingId,
+    });
+  }
+
+  const revision = await getConfigRevisionById(db, {
+    organizationId: auth.organization.id,
+    projectId: binding.project_id,
+    revisionId: baseRevisionId,
+  });
+  if (!revision) {
+    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", 409, {
+      reason: "stale-revision",
+      bindingId: input.bindingId,
+      baseRevisionId,
+    });
+  }
+
+  const bindingRevision = await db.query<{ id: string }>(
+    `
+    select id from project_parameter_binding_revisions
+    where binding_id = $1 and config_revision_id = $2
+    limit 1
+    `,
+    [input.bindingId, baseRevisionId],
+  );
+  if (!bindingRevision.rows[0]) {
+    throw new ApiError("CONFLICT", "Base config revision is stale for this binding.", 409, {
+      reason: "stale-revision",
+      bindingId: input.bindingId,
+      baseRevisionId,
+    });
+  }
+
+  const {
+    writeTarget,
+    overlayMember,
+    occurrenceSpan,
+    expectedRawText,
+    nodeSpan,
+    targetRef,
+  } = await resolveWriteTarget(db, {
+    configRevisionId: baseRevisionId,
+    logicalNodeId: binding.logical_node_id,
+    propertyKey: binding.property_key,
+    nodeLocator: binding.node_locator,
+  });
+
+  if (!writeTarget.fileVersionId || !writeTarget.checksum) {
+    throw new ApiError("CONFLICT", "Write target file version is incomplete for binding lock.", 409, {
+      reason: "missing-write-target",
+      bindingId: input.bindingId,
+    });
+  }
+
+  return {
+    baseConfigRevisionId: baseRevisionId,
+    bindingRevisionId: bindingRevision.rows[0].id,
+    propertyOccurrenceId: writeTarget.occurrenceId ?? null,
+    sourceFileVersionId: writeTarget.fileVersionId,
+    expectedChecksum: writeTarget.checksum,
+    occurrenceSpan: occurrenceSpan ?? writeTarget.occurrenceSpan ?? null,
+    propertyKey: binding.property_key,
+    targetRef,
+    expectedRawText,
+    nodeSpan,
+    overlayFileId: overlayMember.file_id,
+    overlayFileName: overlayMember.file_name,
+    overlayFileVersionId: overlayMember.file_version_id,
+  };
+}
+
+/** Fail-closed verification of persisted write lock before merge/writeback. */
+export async function verifyBindingWriteLock(
+  db: Queryable,
+  lock: BindingWriteLockFields,
+): Promise<void> {
+  const bindingRevision = await db.query<{ id: string; config_revision_id: string }>(
+    `
+    select id, config_revision_id
+    from project_parameter_binding_revisions
+    where id = $1
+    limit 1
+    `,
+    [lock.bindingRevisionId],
+  );
+  const revisionRow = bindingRevision.rows[0];
+  if (!revisionRow || revisionRow.config_revision_id !== lock.baseConfigRevisionId) {
+    throw new ApiError("CONFLICT", "Binding revision lock is stale.", 409, {
+      reason: "stale-binding-revision",
+      bindingRevisionId: lock.bindingRevisionId,
+    });
+  }
+
+  const fileVersion = await db.query<{ id: string; checksum: string }>(
+    `
+    select id, checksum
+    from project_parameter_file_versions
+    where id = $1
+    limit 1
+    `,
+    [lock.sourceFileVersionId],
+  );
+  const fileRow = fileVersion.rows[0];
+  if (!fileRow || fileRow.checksum !== lock.expectedChecksum) {
+    throw new ApiError("CONFLICT", "Source file checksum lock is stale.", 409, {
+      reason: "stale-checksum",
+      sourceFileVersionId: lock.sourceFileVersionId,
+      expectedChecksum: lock.expectedChecksum,
+      actualChecksum: fileRow?.checksum,
+    });
+  }
+
+  if (lock.propertyOccurrenceId) {
+    const occurrence = await db.query<{
+      id: string;
+      start_offset: number;
+      end_offset: number;
+      file_version_id: string;
+    }>(
+      `
+      select id, start_offset, end_offset, file_version_id
+      from dts_property_occurrences
+      where id = $1
+      limit 1
+      `,
+      [lock.propertyOccurrenceId],
+    );
+    const occ = occurrence.rows[0];
+    if (!occ || occ.file_version_id !== lock.sourceFileVersionId) {
+      throw new ApiError("CONFLICT", "Property occurrence lock is stale.", 409, {
+        reason: "stale-occurrence",
+        propertyOccurrenceId: lock.propertyOccurrenceId,
+      });
+    }
+    if (lock.occurrenceSpan) {
+      if (
+        Number(occ.start_offset) !== lock.occurrenceSpan.start ||
+        Number(occ.end_offset) !== lock.occurrenceSpan.end
+      ) {
+        throw new ApiError("CONFLICT", "Occurrence CST span lock is stale.", 409, {
+          reason: "stale-span",
+          propertyOccurrenceId: lock.propertyOccurrenceId,
+          occurrenceSpan: lock.occurrenceSpan,
+        });
+      }
+    }
+  }
+}
+
+export type ApplyLockedOverlayWritebackInput = {
+  lock: BindingWriteLockContext;
+  bindingId: string;
+  parameterSpecId: string;
+  parameterSpecVersionId: string;
+  mergedValue: string;
+  action?: BindingEditAction;
+};
+
+export type ApplyLockedOverlayWritebackResult = {
+  fileId: string;
+  fileVersionId: string;
+  versionNumber: number;
+  candidateRevisionId: string;
+  bindingRevisionId: string;
+};
+
+/**
+ * Patch the locked overlay file via CST span, ingest a candidate revision,
+ * toolchain-validate fail-closed, and upsert binding revision at the candidate.
+ */
+export async function applyLockedOverlayWriteback(
+  db: Database | Queryable,
+  auth: AuthContext,
+  input: ApplyLockedOverlayWritebackInput,
+  deps: CreateBindingDraftDeps = {},
+): Promise<ApplyLockedOverlayWritebackResult> {
+  await verifyBindingWriteLock(db, input.lock);
+
+  const revision = await getConfigRevisionById(db, {
+    organizationId: auth.organization.id,
+    revisionId: input.lock.baseConfigRevisionId,
+  });
+  if (!revision) {
+    throw new ApiError("CONFLICT", "Base config revision is stale for writeback.", 409, {
+      reason: "stale-revision",
+      baseConfigRevisionId: input.lock.baseConfigRevisionId,
+    });
+  }
+
+  const members = await loadRevisionMembers(db, input.lock.baseConfigRevisionId);
+  const baseMember = members.find((member) => member.role === "base");
+  const overlayMember = members.find((member) => member.file_id === input.lock.overlayFileId);
+  if (!baseMember || !overlayMember) {
+    throw new ApiError("CONFLICT", "Config revision members missing for locked writeback.", 409, {
+      reason: "missing-members",
+      baseConfigRevisionId: input.lock.baseConfigRevisionId,
+    });
+  }
+
+  const memberContents = new Map<string, string>();
+  for (const member of members) {
+    memberContents.set(
+      member.file_version_id,
+      await loadFileContentFromVersion(db, member.file_version_id, deps.objectStore),
+    );
+  }
+
+  const overlayContent = memberContents.get(input.lock.sourceFileVersionId);
+  if (overlayContent === undefined) {
+    throw new ApiError("CONFLICT", "Locked overlay file version is not part of the base revision.", 409, {
+      reason: "stale-file-version",
+      sourceFileVersionId: input.lock.sourceFileVersionId,
+    });
+  }
+
+  const action: BindingEditAction = input.action ?? "set";
+  const rawText = action === "delete" ? null : input.mergedValue;
+  const candidateOverlayContent = ensureOverlayProperty(overlayContent, {
+    propertyKey: input.lock.propertyKey,
+    rawText,
+    action,
+    targetRef: input.lock.targetRef,
+    expectedChecksum: input.lock.expectedChecksum,
+    occurrenceSpan: input.lock.occurrenceSpan ?? undefined,
+    expectedRawText: input.lock.expectedRawText,
+    nodeSpan: input.lock.nodeSpan,
+  });
+
+  const candidateOverlayVersionId = randomUUID();
+  const overlayChecksum = checksumOf(candidateOverlayContent);
+  let candidateStorageKey = `${auth.organization.id}/${overlayChecksum}-writeback-${overlayMember.file_name}`;
+
+  if (deps.objectStore) {
+    const stored = await deps.objectStore.put({
+      organizationId: auth.organization.id,
+      fileName: overlayMember.file_name,
+      contentType: "text/plain",
+      bytes: Buffer.from(candidateOverlayContent, "utf8"),
+    });
+    candidateStorageKey = stored.storageKey;
+  }
+
+  const nextVersion = await db.query<{ next: number }>(
+    `
+    select coalesce(max(version_number), 0) + 1 as next
+    from project_parameter_file_versions
+    where file_id = $1
+    `,
+    [overlayMember.file_id],
+  );
+  const versionNumber = Number(nextVersion.rows[0]?.next ?? 1);
+
+  await db.query(
+    `
+    insert into project_parameter_file_versions (
+      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+    ) values ($1, $2, $3, $4, $5, $6, $7::jsonb, 'writeback', $8)
+    `,
+    [
+      candidateOverlayVersionId,
+      overlayMember.file_id,
+      versionNumber,
+      candidateStorageKey,
+      overlayChecksum,
+      Buffer.byteLength(candidateOverlayContent, "utf8"),
+      JSON.stringify({ sourceText: candidateOverlayContent }),
+      auth.user.id,
+    ],
+  );
+
+  await db.query(
+    `
+    update project_parameter_files
+    set current_version_id = $2, updated_at = now()
+    where id = $1
+    `,
+    [overlayMember.file_id, candidateOverlayVersionId],
+  );
+
+  const overlayOrderFromMembers = members
+    .filter((member) => member.role === "overlay")
+    .sort((a, b) => a.sort_order - b.sort_order || a.file_name.localeCompare(b.file_name))
+    .map((member) => member.file_name);
+
+  const candidateMembers: ConfigRevisionManifestMember[] = members.map((member) => {
+    const isEditedOverlay = member.file_id === overlayMember.file_id;
+    const content = isEditedOverlay
+      ? candidateOverlayContent
+      : memberContents.get(member.file_version_id)!;
+    return {
+      fileId: member.file_id,
+      fileVersionId: isEditedOverlay ? candidateOverlayVersionId : member.file_version_id,
+      fileName: member.file_name,
+      role: member.role,
+      sortOrder: member.sort_order,
+      content,
+    };
+  });
+
+  const normalizedManifest = normalizePersistedManifest({
+    entryFile: revision.entryFile ?? baseMember.file_name,
+    includeSearchPaths: revision.includeSearchPaths ?? ["."],
+    overlayOrder:
+      revision.overlayOrder && revision.overlayOrder.length > 0
+        ? revision.overlayOrder
+        : overlayOrderFromMembers,
+    members: candidateMembers,
+  });
+  if (!normalizedManifest.ok) {
+    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, 400, {
+      reason: normalizedManifest.failure.code,
+    });
+  }
+
+  const manifest: ConfigRevisionManifest = {
+    organizationId: auth.organization.id,
+    projectId: revision.projectId,
+    configSetId: revision.configSetId,
+    entryFile: normalizedManifest.manifest.entryFile,
+    includeSearchPaths: normalizedManifest.manifest.includeSearchPaths,
+    overlayOrder: normalizedManifest.manifest.overlayOrder,
+    members: candidateMembers,
+  };
+
+  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
+  if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
+    throw new ApiError(
+      ingested.status === "needs_mapping" ? "CONFLICT" : "VALIDATION_FAILED",
+      ingested.status === "needs_mapping"
+        ? "Writeback candidate revision has unresolved identity mapping."
+        : "Writeback candidate revision failed resolve.",
+      ingested.status === "needs_mapping" ? 409 : 400,
+      {
+        reason: ingested.status === "needs_mapping" ? "unresolved-mapping" : "resolve-failure",
+        candidateRevisionId: ingested.id,
+        candidateStatus: ingested.status,
+      },
+    );
+  }
+
+  const semanticCounts = await loadCandidateSemanticGateCounts(db, {
+    organizationId: auth.organization.id,
+    configRevisionId: ingested.id,
+  });
+  if (!deps.skipSemanticGates) {
+    const earlyGate = assertCanPromoteCandidateToDraft({
+      status: ingested.status,
+      ...semanticCounts,
+      toolchainOk: true,
+      toolchainFailureCode: null,
+    });
+    if (!earlyGate.ok) {
+      await ensureCandidateKeepStatus(db, ingested.id, earlyGate.keepStatus);
+      throw candidateGateError(ingested.id, earlyGate.reason, earlyGate.keepStatus);
+    }
+  }
+
+  const toolchainOutcome = await assertCandidateToolchainRelease(db, auth, {
+    candidateRevisionId: ingested.id,
+    entryFile: normalizedManifest.manifest.entryFile,
+    includeSearchPaths: normalizedManifest.manifest.includeSearchPaths,
+    overlayOrder: normalizedManifest.manifest.overlayOrder,
+    files: new Map(candidateMembers.map((member) => [member.fileName, { content: member.content }])),
+    toolchain: deps.toolchain ?? createDtsToolchainRunner(),
+  });
+
+  if (!deps.skipSemanticGates) {
+    const finalGate = assertCanPromoteCandidateToDraft({
+      status: ingested.status,
+      ...semanticCounts,
+      toolchainOk: toolchainOutcome.ok,
+      toolchainFailureCode: toolchainOutcome.ok ? null : toolchainOutcome.failureCode,
+    });
+    if (!finalGate.ok) {
+      await ensureCandidateKeepStatus(db, ingested.id, finalGate.keepStatus);
+      throw candidateGateError(ingested.id, finalGate.reason, finalGate.keepStatus);
+    }
+  }
+
+  await updateConfigRevisionStatus(db, {
+    id: ingested.id,
+    status: "compiled",
+  });
+
+  const bindingRevision = await upsertBindingRevisionValues(db, {
+    bindingId: input.bindingId,
+    configRevisionId: ingested.id,
+    parameterSpecVersionId: input.parameterSpecVersionId,
+    values: {
+      typedValue: { kind: "legacy-text", value: input.mergedValue },
+      canonicalValue: { kind: "legacy-text", value: input.mergedValue },
+      rawValue: input.mergedValue,
+      schemaState: "merged",
+      policyState: "merged",
+    },
+  });
+
+  return {
+    fileId: overlayMember.file_id,
+    fileVersionId: candidateOverlayVersionId,
+    versionNumber,
+    candidateRevisionId: ingested.id,
+    bindingRevisionId: bindingRevision.id,
+  };
 }

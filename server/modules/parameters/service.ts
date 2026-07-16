@@ -16,7 +16,7 @@ import { ApiError } from "../../shared/http/errors";
 import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
 import { writebackMergedParameterValue } from "../parameter-files/writebackService";
-import { resolveInitializationSuggestion } from "../parameter-topology/editService";
+import { resolveBindingWriteLock, resolveInitializationSuggestion } from "../parameter-topology/editService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
 import { mustUseSemanticParameterIdentity } from "./semanticParameterReads";
@@ -34,6 +34,7 @@ import {
   findOpenChangeRequest,
   findProjectValueBySource,
   getChangeRequestById,
+  getDraftWriteLock,
   getProjectById,
   getProjectParameterForUpdate,
   getSubmissionRoundById,
@@ -1022,6 +1023,12 @@ export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDra
   requireCanEdit(auth);
   await loadParameterForSubmission(db, auth, input.projectId, input.parameterId);
 
+  const bindingId = input.projectParameterBindingId ?? input.parameterId;
+  let writeLock;
+  if (await mustUseSemanticParameterIdentity(db)) {
+    writeLock = await resolveBindingWriteLock(db, auth, { bindingId });
+  }
+
   return upsertDraft(db, {
     id: randomUUID(),
     organizationId: auth.organization.id,
@@ -1032,7 +1039,8 @@ export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDra
     reason: input.reason,
     origin: "manual",
     projectParameterBindingId: input.projectParameterBindingId,
-    parameterSpecId: input.parameterSpecId
+    parameterSpecId: input.parameterSpecId,
+    writeLock,
   });
 }
 
@@ -1144,6 +1152,21 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         parameterSpecId = bindingSpec.rows[0]?.parameter_spec_id;
       }
 
+      const writeLock =
+        projectParameterBindingId && (await mustUseSemanticParameterIdentity(tx))
+          ? await getDraftWriteLock(tx, {
+              organizationId: auth.organization.id,
+              projectId: input.projectId,
+              bindingId: projectParameterBindingId,
+              userId: auth.user.id,
+            })
+          : null;
+      if (projectParameterBindingId && (await mustUseSemanticParameterIdentity(tx)) && !writeLock) {
+        throw new ApiError("CONFLICT", "Draft is missing exact writeback lock metadata.", 409, {
+          parameterId: parameter.id,
+        });
+      }
+
       const request = await createChangeRequest(tx, {
         id: randomUUID(),
         organizationId: auth.organization.id,
@@ -1159,7 +1182,8 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         assignedToUserId: workflowAssignees?.hardwareCommitterId,
         workflowAssignees,
         parameterSpecId,
-        projectParameterBindingId
+        projectParameterBindingId,
+        writeLock: writeLock ?? undefined,
       });
 
       const submissionItem = await createSubmissionItem(tx, {
@@ -1668,9 +1692,13 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
           parameterDefinitionId: merged.parameterDefinitionId,
           mergedValue: merged.targetValue,
           projectParameterBindingId: merged.projectParameterBindingId,
-          parameterSpecId: merged.parameterSpecId
+          parameterSpecId: merged.parameterSpecId,
+          changeRequestId: input.requestId,
         },
-        context
+        {
+          ...context,
+          skipToolchain: process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN === "1",
+        }
       );
     }
 
