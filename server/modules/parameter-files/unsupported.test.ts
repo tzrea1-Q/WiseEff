@@ -8,9 +8,9 @@ const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__"
 const sample = readFileSync(fixturePath, "utf8");
 
 describe("detectUnsupportedDtsConstructs", () => {
-  it("only flags /include/ after structured parsing support (P1)", () => {
+  it("does not flag /include/ (config-set resolver owns include diagnostics)", () => {
     const findings = detectUnsupportedDtsConstructs(sample);
-    expect(findings.map((f) => f.code)).toEqual(["include"]);
+    expect(findings).toEqual([]);
   });
 
   it("returns empty when include is absent even with @address and &label", () => {
@@ -24,14 +24,8 @@ describe("detectUnsupportedDtsConstructs", () => {
     expect(findings).toEqual([]);
   });
 
-  it("returns structured warning with message and sample", () => {
-    const findings = detectUnsupportedDtsConstructs(sample);
-    expect(findings).toHaveLength(1);
-    expect(findings[0]).toMatchObject({
-      code: "include",
-      message: expect.any(String),
-      sample: expect.any(String),
-    });
-    expect(findings[0].sample.length).toBeGreaterThan(0);
+  it("returns empty for teaching sample that still contains /include/", () => {
+    expect(sample).toContain("/include/");
+    expect(detectUnsupportedDtsConstructs(sample)).toEqual([]);
   });
 });

@@ -30,6 +30,12 @@ import {
   collectSubtreeModuleIds,
   parameterModuleId
 } from "@/domain/modules/moduleTree";
+import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import {
+  ProjectTopologyWorkspace,
+  type TopologyLayoutMode
+} from "@/components/parameter-topology/ProjectTopologyWorkspace";
+import { useTopologyLayoutMode } from "@/components/parameter-topology/useTopologyLayoutMode";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 
@@ -64,6 +70,8 @@ type ParametersPageProps = {
   topBarProjectId?: string;
   canEdit?: boolean;
   initializationStatus?: ProjectInitializationStatus;
+  /** API mode mounts the topology workspace; mock keeps the flat table workflow. */
+  runtimeMode?: WiseEffRuntimeMode;
 };
 
 export function ParametersPage({
@@ -75,10 +83,13 @@ export function ParametersPage({
   effectiveProjectId,
   topBarProjectId,
   canEdit = true,
-  initializationStatus = "initialized"
+  initializationStatus = "initialized",
+  runtimeMode = "mock"
 }: ParametersPageProps) {
   const initializationLocked = initializationStatus !== "initialized" && initializationStatus !== "maintenance";
   const effectiveCanEdit = canEdit && !initializationLocked;
+  const isApiMode = runtimeMode === "api";
+  const topologyLayoutMode: TopologyLayoutMode = useTopologyLayoutMode();
   const [searchQuery, setSearchQuery] = useState("");
   const [riskFilters, setRiskFilters] = useState<Set<ParameterRiskFilter>>(new Set());
   const [moduleFilters, setModuleFilters] = useState<Set<string>>(new Set());
@@ -749,7 +760,23 @@ export function ParametersPage({
   };
   useTopBarActions(
     <>
-      <button className="button subtle" type="button" onClick={() => exportProjectParametersAsExcel(filteredParameters, activeProject.code)}>
+      <button
+        className="button subtle"
+        type="button"
+        onClick={() =>
+          exportProjectParametersAsExcel(
+            filteredParameters.map((parameter) => ({
+              propertyKey: parameter.name,
+              driverModule: parameter.module,
+              instanceName: parameter.modulePath?.at(-1) ?? null,
+              locator: parameter.sourceNodePath ?? null,
+              effectiveValue: { kind: "strings" as const, values: [parameter.currentValue] },
+              schemaVersion: null
+            })),
+            activeProject.code
+          )
+        }
+      >
         导出 Excel
       </button>
       {effectiveCanEdit ? (
@@ -760,6 +787,39 @@ export function ParametersPage({
     </>,
     [activeProject.code, filteredParameters]
   );
+
+  if (isApiMode) {
+    return (
+      <WorkbenchLayout title="项目参数用户工作台">
+        <div className="parameters-page-layout">
+          {initializationLocked ? (
+            <div className="permission-inline-note" role="status">
+              <strong>初始化待审阅</strong>
+              <span>该项目可查看，初始化通过前暂不可提交普通参数变更。</span>
+            </div>
+          ) : null}
+          <ProjectTopologyWorkspace
+            projectId={resolvedProjectId}
+            configSetId={`${resolvedProjectId}-default-config`}
+            revisionId={`${resolvedProjectId}-head`}
+            canEdit={effectiveCanEdit}
+            canPublish={effectiveCanEdit}
+            layoutMode={topologyLayoutMode}
+            onValidateEdit={({ rawValue }) => {
+              const cells = rawValue.match(/<&[^>]+>/)?.[0]?.split(/\s+/).length ?? 0;
+              if (rawValue.includes("<&") && cells < 3) {
+                return {
+                  valid: false,
+                  diagnostics: [{ message: "cell count must be 3", code: "SCHEMA_CELL_COUNT" }]
+                };
+              }
+              return { valid: true, diagnostics: [] };
+            }}
+          />
+        </div>
+      </WorkbenchLayout>
+    );
+  }
 
   return (
     <WorkbenchLayout

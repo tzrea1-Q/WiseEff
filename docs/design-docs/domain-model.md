@@ -124,6 +124,21 @@ A **structured change set** aggregates node/property-level diffs from baseline c
 
 **Sensitive node RBAC:** org/project rules in `dts_sensitive_node_rules` match `path` or `compatible` patterns to a risk tier (`high` \| `critical`) and required capability (default `parameter:edit-critical`). Writes that hit a rule without the capability return `403`. Agent (`actorType=agent`) writes that hit `critical` are always denied and audited as `parameter-sensitive-node-denied` with `requireHuman: true` — a human must perform the change.
 
+### Semantic topology identity (additive → atomic cutover)
+
+Path-derived `(name, module)` / full DTS path identity is being replaced by:
+
+| Concept | Meaning |
+| --- | --- |
+| Source tree | All DTS/DTSI/overlay occurrences with file + span provenance. |
+| Effective tree | Overlay-resolved logical nodes/properties with ordered `sourceChain`. |
+| `ParameterSpec` / `ParameterSpecVersion` | Stable specification identity; `example_value` is illustrative only and never drives DB constraints or release policy. |
+| Schema default / policy target / effective value | Separate fields. Legacy `recommended_value` is migration evidence only and must not auto-promote into default or policy. |
+| `ProjectParameterBinding` | Stable `project × logical-node × spec` binding used by history, drafts, CRs, and exports. |
+| Identity mapping / spec review tasks | Human queues for ambiguous or incomplete migration/governance. |
+
+HTTP for the semantic surface lives under `/api/v2` (see api-contract). Production cutover is maintenance-only, fail-closed, and whole-snapshot rollback only — see `docs/runbooks/parameter-identity-cutover.md`. Do not dual-write or expose a compatibility projection in production.
+
 ## State Machines
 
 Parameter requests, log analysis runs, product feedback triage, debugging sessions, and Agent approvals should move through explicit states. Tests and browser acceptance should verify invalid transitions, terminal-state behavior, and audit invariants.

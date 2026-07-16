@@ -121,7 +121,9 @@ export const submitStructuredEditsBodySchema = z.object({
         nodePath: z.string(),
         propertyName: nonEmptyString,
         rawText: z.string(),
-        reason: z.string().optional()
+        reason: z.string().optional(),
+        projectParameterBindingId: nonEmptyString.optional(),
+        parameterSpecId: nonEmptyString.optional()
       })
     )
     .min(1),

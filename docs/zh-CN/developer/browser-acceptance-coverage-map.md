@@ -42,6 +42,11 @@
 - `PARAM-FILE-CONFLICT-001`：Admin 裁决 file/UI 草稿冲突，可选择保留文件值或 UI 值（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-IMPORT-DTS-FULL-001`：完整 `.dts` 经 `parse-dts` 产出带 `@address` 的 module 路径；`/include/` 被拒绝；向导显示服务端解析提示（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。
 - `PARAM-IMPORT-REVIEW-META-001`：带 `reviewMetadata.skippedRows` 的导入预览写入 `batch-import` 审计 metadata（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。
+- `PARAM-SPEC-GOVERN-001`：Admin 在 `/parameter-admin` 检索参数规格、打开详情，并决议规格审核任务（含治理审计）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-TOPOLOGY-BROWSE-001`：用户在 `/parameters` 切换源树/生效树，搜索两个 `gpio_int` 绑定并打开详情，不以路径作身份（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-TOPOLOGY-EDIT-001`：类型化绑定编辑展示 Schema 诊断，并拒绝过期/缺失 revision（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-IDENTITY-MAP-001`：未解析覆盖目标与身份映射任务可观测并可决议，含审计证据（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-CONFIG-PUBLISH-GATE-001`：编辑/编译诊断阻断发布；干净 revision 可校验并通过审计；刷新后语义绑定 id 持久（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 
 ## 同类中文文档
 

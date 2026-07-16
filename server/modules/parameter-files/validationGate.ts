@@ -7,14 +7,19 @@ import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { listConfigSetMemberFiles } from "./baselineRepository";
-import { getConfigSetById } from "./configSetRepository";
+import { getConfigSetById, getFileConfigSetMembership } from "./configSetRepository";
 import {
-  createSubprocessDtcValidator,
   readDtsValidationMode,
   type DtcDiagnostic,
   type DtcValidator,
   type ValidationMode
 } from "./dtcValidator";
+import {
+  createDtsToolchainRunner,
+  toToolchainMode,
+  type DtsToolchainRunner,
+  type DtsToolchainResult
+} from "./dtsToolchain";
 import { getFileVersionById, getProjectParameterFileById } from "./repository";
 
 export type ValidationGateResult = {
@@ -22,17 +27,24 @@ export type ValidationGateResult = {
   mode: ValidationMode;
   requiresConfirmation: boolean;
   diagnostics: DtcDiagnostic[];
-  compiler: "dtc" | "unavailable";
+  compiler: "dtc" | "unavailable" | DtsToolchainResult["compiler"];
+  artifacts?: DtsToolchainResult["artifacts"];
+  failureCode?: DtsToolchainResult["failureCode"];
 };
 
 export type ValidationGateInput = {
   configSetId: string;
   mode?: ValidationMode;
+  /** When true (releaseBaseline), warn/off are rejected before validation. */
+  forRelease?: boolean;
 };
 
 export type ValidationGateDeps = {
   objectStore: ObjectStore;
+  /** Legacy file-by-file stub/injector retained for unit tests. */
   validator?: DtcValidator;
+  /** Preferred complete config-set toolchain runner. */
+  toolchain?: DtsToolchainRunner;
 };
 
 function countErrors(diagnostics: DtcDiagnostic[]) {
@@ -42,7 +54,7 @@ function countErrors(diagnostics: DtcDiagnostic[]) {
 function computeRequiresConfirmation(result: {
   ok: boolean;
   mode: ValidationMode;
-  compiler: "dtc" | "unavailable";
+  compiler: ValidationGateResult["compiler"];
 }) {
   if (result.mode === "off") {
     return false;
@@ -51,6 +63,13 @@ function computeRequiresConfirmation(result: {
     return true;
   }
   if (result.compiler === "unavailable" && result.ok) {
+    return true;
+  }
+  if (
+    typeof result.compiler === "object" &&
+    result.ok &&
+    (!result.compiler.dtc || !result.compiler.fdtoverlay || !result.compiler.dtschema)
+  ) {
     return true;
   }
   return false;
@@ -64,7 +83,7 @@ async function writeValidationGateAudit(
     projectId: string | null;
     ok: boolean;
     mode: ValidationMode;
-    compiler: "dtc" | "unavailable";
+    compiler: ValidationGateResult["compiler"];
     diagnostics: DtcDiagnostic[];
     requiresConfirmation: boolean;
   },
@@ -95,6 +114,22 @@ async function writeValidationGateAudit(
   });
 }
 
+function toGateDiagnostics(result: DtsToolchainResult): DtcDiagnostic[] {
+  return result.diagnostics.map((diagnostic) => ({
+    file: diagnostic.file,
+    line: diagnostic.line,
+    severity: diagnostic.severity,
+    message: diagnostic.message
+  }));
+}
+
+function compilerSummary(result: DtsToolchainResult): ValidationGateResult["compiler"] {
+  if (!result.compiler.dtc && !result.compiler.fdtoverlay && !result.compiler.dtschema) {
+    return "unavailable";
+  }
+  return result.compiler;
+}
+
 export async function runValidationGate(
   db: Database,
   auth: AuthContext,
@@ -110,11 +145,87 @@ export async function runValidationGate(
     throw new ApiError("NOT_FOUND", "Config set not found.", 404, { configSetId: input.configSetId });
   }
 
-  const members = await listConfigSetMemberFiles(db, input.configSetId);
-  const validator = deps.validator ?? createSubprocessDtcValidator();
   const mode = input.mode ?? readDtsValidationMode();
 
-  const dtsFiles: Array<{ name: string; content: string }> = [];
+  if (input.forRelease && (mode === "warn" || mode === "off")) {
+    throw new ApiError(
+      "CONFLICT",
+      "Release baseline rejects warn/off DTS validation; fail-closed release mode is required.",
+      409,
+      { code: "dts-release-mode-required", mode }
+    );
+  }
+
+  const members = await listConfigSetMemberFiles(db, input.configSetId);
+
+  // Prefer injected legacy validator for focused unit tests.
+  if (deps.validator) {
+    const validator = deps.validator;
+    const dtsFiles: Array<{ name: string; content: string }> = [];
+    for (const member of members) {
+      if (!member.currentVersionId) {
+        continue;
+      }
+
+      const file = await getProjectParameterFileById(db, {
+        organizationId: auth.organization.id,
+        fileId: member.fileId
+      });
+      if (!file || file.format !== "dts") {
+        continue;
+      }
+
+      const version = await getFileVersionById(db, { versionId: member.currentVersionId });
+      if (!version) {
+        continue;
+      }
+
+      const content = await deps.objectStore.get(version.storageKey);
+      dtsFiles.push({ name: member.fileName, content: content.toString("utf8") });
+    }
+
+    const validation = await validator.validate(dtsFiles, { mode });
+    const requiresConfirmation = computeRequiresConfirmation(validation);
+
+    await writeValidationGateAudit(
+      db,
+      auth,
+      {
+        configSetId: input.configSetId,
+        projectId: configSet.projectId,
+        ok: validation.ok,
+        mode: validation.mode,
+        compiler: validation.compiler,
+        diagnostics: validation.diagnostics,
+        requiresConfirmation
+      },
+      context
+    );
+
+    if (!validation.ok) {
+      throw new ApiError("CONFLICT", "DTS validation failed.", 409, {
+        code: "dts-validation-failed",
+        diagnostics: validation.diagnostics,
+        mode: validation.mode,
+        compiler: validation.compiler
+      });
+    }
+
+    return {
+      ok: validation.ok,
+      mode: validation.mode,
+      requiresConfirmation,
+      diagnostics: validation.diagnostics,
+      compiler: validation.compiler
+    };
+  }
+
+  const toolchain = deps.toolchain ?? createDtsToolchainRunner();
+  const files = new Map<string, { content: string }>();
+  const overlays: Array<{ name: string; sortOrder: number }> = [];
+  let entryFile: string | null = null;
+  let entrySort = Number.POSITIVE_INFINITY;
+
   for (const member of members) {
     if (!member.currentVersionId) {
       continue;
@@ -133,12 +244,82 @@ export async function runValidationGate(
       continue;
     }
 
-    const content = await deps.objectStore.get(version.storageKey);
-    dtsFiles.push({ name: member.fileName, content: content.toString("utf8") });
+    const membership = await getFileConfigSetMembership(db, {
+      organizationId: auth.organization.id,
+      fileId: member.fileId
+    });
+    const role = membership?.configSetRole ?? "misc";
+    const sortOrder = membership?.configSetSortOrder ?? 0;
+    const content = (await deps.objectStore.get(version.storageKey)).toString("utf8");
+    files.set(member.fileName, { content });
+
+    if (role === "base" && sortOrder <= entrySort) {
+      entryFile = member.fileName;
+      entrySort = sortOrder;
+    } else if (role === "overlay") {
+      overlays.push({ name: member.fileName, sortOrder });
+    }
   }
 
-  const validation = await validator.validate(dtsFiles, { mode });
-  const requiresConfirmation = computeRequiresConfirmation(validation);
+  if (!entryFile) {
+    // Fall back to first file when roles are not annotated (legacy config sets).
+    entryFile = [...files.keys()][0] ?? null;
+  }
+
+  if (!entryFile) {
+    const empty: ValidationGateResult = {
+      ok: true,
+      mode,
+      requiresConfirmation: mode === "warn",
+      diagnostics: [],
+      compiler: "unavailable"
+    };
+    await writeValidationGateAudit(
+      db,
+      auth,
+      {
+        configSetId: input.configSetId,
+        projectId: configSet.projectId,
+        ok: empty.ok,
+        mode: empty.mode,
+        compiler: empty.compiler,
+        diagnostics: empty.diagnostics,
+        requiresConfirmation: empty.requiresConfirmation
+      },
+      context
+    );
+    return empty;
+  }
+
+  overlays.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+
+  const toolchainMode = input.forRelease ? "release" : toToolchainMode(mode);
+  const toolchainResult = await toolchain.validate(
+    {
+      entryFile,
+      includeSearchPaths: [],
+      overlayOrder: overlays.map((item) => item.name),
+      files
+    },
+    { mode: toolchainMode }
+  );
+
+  const diagnostics = toGateDiagnostics(toolchainResult);
+  const gateMode: ValidationMode =
+    mode === "warn" || mode === "off" || mode === "block" ? mode : "block";
+  const mapped: ValidationGateResult = {
+    ok: toolchainResult.ok,
+    mode: gateMode,
+    requiresConfirmation: computeRequiresConfirmation({
+      ok: toolchainResult.ok,
+      mode: gateMode,
+      compiler: compilerSummary(toolchainResult)
+    }),
+    diagnostics,
+    compiler: compilerSummary(toolchainResult),
+    artifacts: toolchainResult.artifacts,
+    failureCode: toolchainResult.failureCode
+  };
 
   await writeValidationGateAudit(
     db,
@@ -146,29 +327,25 @@ export async function runValidationGate(
     {
       configSetId: input.configSetId,
       projectId: configSet.projectId,
-      ok: validation.ok,
-      mode: validation.mode,
-      compiler: validation.compiler,
-      diagnostics: validation.diagnostics,
-      requiresConfirmation
+      ok: mapped.ok,
+      mode: mapped.mode,
+      compiler: mapped.compiler,
+      diagnostics: mapped.diagnostics,
+      requiresConfirmation: mapped.requiresConfirmation
     },
     context
   );
 
-  if (!validation.ok) {
+  if (!mapped.ok) {
     throw new ApiError("CONFLICT", "DTS validation failed.", 409, {
       code: "dts-validation-failed",
-      diagnostics: validation.diagnostics,
-      mode: validation.mode,
-      compiler: validation.compiler
+      diagnostics: mapped.diagnostics,
+      mode: mapped.mode,
+      compiler: mapped.compiler,
+      failureCode: mapped.failureCode,
+      artifacts: mapped.artifacts
     });
   }
 
-  return {
-    ok: validation.ok,
-    mode: validation.mode,
-    requiresConfirmation,
-    diagnostics: validation.diagnostics,
-    compiler: validation.compiler
-  };
+  return mapped;
 }

@@ -10,6 +10,7 @@ This guide gets WiseEff running locally for API-mode development and acceptance 
 - npm 11 or a compatible npm version.
 - Docker Desktop or Docker Engine for the one-command local PostgreSQL path.
 - PostgreSQL reachable from `DATABASE_URL` if you run the services manually.
+- Device Tree Compiler (`dtc`). Install it through the repository bootstrap below; M1 seed treats it as required.
 - Optional: live Xiaoze LLM credentials (`AGENT_API_*`) if you are testing non-deterministic Agent behavior.
 
 ## First Setup
@@ -17,7 +18,33 @@ This guide gets WiseEff running locally for API-mode development and acceptance 
 ```bash
 npm ci
 copy .env.example .env
+npm run dtc:bootstrap
+npm run dtc:check -- --required
 ```
+
+`dtc:bootstrap` uses Homebrew on macOS, `device-tree-compiler` on Debian/Ubuntu, and `dtc` on Alpine/RHEL-family Linux. To verify the checked-in Aurora/Nebula/Atlas seed overlays independently, run:
+
+```bash
+npm run dtc:seed:compile
+```
+
+The overlays may report `reg_format` / `ranges_format` warnings when compiled without their external base DTS. Compiler errors or an unavailable compiler fail the command and block M1 seeding.
+
+For fail-closed production publish validation (dtc + fdtoverlay + dt-validate):
+
+```bash
+npm run dts:toolchain:check
+npm run dts:config:validate
+```
+
+Semantic identity migration rehearsal (dry-run by default; apply only in a maintenance window):
+
+```bash
+npm run parameter-identities:migrate
+npm run parameter-identities:check
+```
+
+Operator procedure: [../runbooks/parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md).
 
 On PowerShell, edit `.env` and fill only these blank values when testing live Xiaoze LLM behavior:
 
@@ -73,7 +100,7 @@ npm run db:seed:m3
 Seeds are ordered by milestone:
 
 - `db:seed:m0`: organization, users, roles, and project foundation.
-- `db:seed:m1`: parameter-management data.
+- `db:seed:m1`: 12 compatibility parameters plus 170 source-bound DTS definitions, 510 project values, three project DTS file versions, structural node/property/phandle rows, and one compiled seed baseline per project. It runs the required dtc gate first.
 - `db:seed:m2`: log-analysis sample data.
 - `db:seed:m3`: simulator debugging device and catalog.
 

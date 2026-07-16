@@ -13,14 +13,15 @@ type OverviewRow = {
 type ParameterSearchRow = {
   id: string;
   name: string;
-  description: string;
-  explanation: string;
-  module: string;
-  default_range: string;
-  unit: string;
+  description: string | null;
+  explanation: string | null;
+  module: string | null;
+  default_range: string | null;
+  unit: string | null;
   project_id: string;
   current_value: string | null;
-  recommended_value: string | null;
+  policy_target: string | null;
+  schema_default: string | null;
   risk: string | null;
 };
 
@@ -57,7 +58,7 @@ export function createPerceptionTools(options: ToolOptions): AgentToolDefinition
         const { rows } = await options.db.query<OverviewRow>(
           `
 select $2::text as project_id,
-       (select count(*)::int from project_parameter_values ppv where ppv.project_id = $2 and ppv.organization_id = $1) as parameter_count,
+       (select count(*)::int from project_parameter_bindings b where b.project_id = $2 and b.organization_id = $1) as parameter_count,
        (select count(*)::int from parameter_change_requests pcr
         where pcr.project_id = $2
           and pcr.organization_id = $1
@@ -85,25 +86,51 @@ select $2::text as project_id,
         const pattern = query ? `%${query}%` : "%";
         const { rows } = await options.db.query<ParameterSearchRow>(
           `
-select pd.id,
-       pd.name,
-       pd.description,
-       pd.explanation,
-       pd.module,
-       pd.default_range,
-       pd.unit,
-       ppv.project_id,
-       ppv.current_value,
-       ppv.recommended_value,
-       pd.risk
-from parameter_definitions pd
-join project_parameter_values ppv
-  on ppv.parameter_definition_id = pd.id
- and ppv.organization_id = pd.organization_id
-where pd.organization_id = $1
-  and ($2::text is null or ppv.project_id = $2)
-  and ($3::text = '%' or pd.name ilike $3 or pd.description ilike $3 or pd.explanation ilike $3)
-order by pd.name asc
+select b.id,
+       coalesce(psv.display_name, dps.property_key, ps.specification_key) as name,
+       psv.description,
+       dps.documentation as explanation,
+       nullif(split_part(ps.specification_key, '/', 1), '') as module,
+       null::text as default_range,
+       dps.units as unit,
+       b.project_id,
+       coalesce(bpr.raw_value, bpr.canonical_value #>> '{}') as current_value,
+       ppt.target_value #>> '{}' as policy_target,
+       psv.schema_default #>> '{}' as schema_default,
+       null::text as risk
+from project_parameter_bindings b
+inner join parameter_specs ps
+  on ps.id = b.parameter_spec_id
+left join dts_property_specs dps
+  on dps.parameter_spec_id = ps.id
+left join parameter_spec_versions psv
+  on psv.parameter_spec_id = ps.id
+ and psv.id = (
+   select psv2.id from parameter_spec_versions psv2
+   where psv2.parameter_spec_id = ps.id
+   order by psv2.version desc
+   limit 1
+ )
+left join lateral (
+  select raw_value, canonical_value
+  from project_parameter_binding_revisions
+  where binding_id = b.id
+  order by created_at desc
+  limit 1
+) bpr on true
+left join parameter_policy_targets ppt
+  on ppt.parameter_spec_id = ps.id
+ and ppt.organization_id = b.organization_id
+where b.organization_id = $1
+  and ($2::text is null or b.project_id = $2)
+  and (
+    $3::text = '%'
+    or coalesce(psv.display_name, '') ilike $3
+    or coalesce(dps.property_key, '') ilike $3
+    or coalesce(psv.description, '') ilike $3
+    or coalesce(dps.documentation, '') ilike $3
+  )
+order by coalesce(psv.display_name, dps.property_key, ps.specification_key) asc
 limit 20
           `,
           [context.auth.organization.id, projectId ?? null, pattern]
@@ -124,7 +151,8 @@ limit 20
               unit: row.unit,
               project_id: row.project_id,
               current_value: row.current_value,
-              recommended_value: row.recommended_value,
+              policy_target: row.policy_target,
+              schema_default: row.schema_default,
               risk: row.risk
             }))
           },
@@ -132,7 +160,7 @@ limit 20
             type: "parameter" as const,
             id: row.id,
             label: row.name,
-            href: `/parameters?parameterId=${encodeURIComponent(row.id)}`,
+            href: `/parameters?bindingId=${encodeURIComponent(row.id)}`,
             snippet: row.description || row.explanation || row.current_value || undefined
           }))
         };

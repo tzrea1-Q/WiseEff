@@ -47,6 +47,11 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `MOD-TREE-AUTHZ-001` | C | Yes | Non-admin cannot mutate module trees and deleting non-empty modules returns 409. | `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` |
 | `PARAM-FILE-ADMIN-001` | C | Yes | Admin uploads a project parameter file, lists versions, manual sync creates a `file_sync` draft, and the project files panel renders in `/parameter-admin/projects`. | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
 | `PARAM-FILE-CONFLICT-001` | C | Yes | Admin resolves an open file/UI draft conflict by keeping the file or UI value. | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
+| `PARAM-SPEC-GOVERN-001` | C | Yes | Admin searches parameter specs, opens detail, and resolves a spec review task with governance audit. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-TOPOLOGY-BROWSE-001` | B | Yes | Users toggle source/effective topology, search two `gpio_int` bindings, and open binding detail without path-as-identity. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-TOPOLOGY-EDIT-001` | B | Yes | Typed binding edits surface schema diagnostics and reject stale/missing revision edits. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-IDENTITY-MAP-001` | B | Yes | Unresolved overlay targets and open identity mapping tasks are visible and resolvable with audit evidence. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-CONFIG-PUBLISH-GATE-001` | B | Yes | Publish is blocked by edit/compiler diagnostics; clean revisions validate with audit and semantic binding ids persist after reload. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 
 ## Interpretation
 

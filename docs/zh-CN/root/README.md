@@ -58,7 +58,11 @@ npm run docs:check
 npm run selfhost:check
 npm run observability:check
 npm run queue:check -- --base-url http://127.0.0.1:8787
+npm run dts:toolchain:check
+npm run parameter-identities:check
 ```
+
+参数语义身份切换（仅维护窗口）见 [parameter-identity-cutover.md](../../runbooks/parameter-identity-cutover.md)。
 
 ## Linux 服务器部署命令
 

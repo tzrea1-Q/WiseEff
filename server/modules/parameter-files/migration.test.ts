@@ -24,6 +24,12 @@ const projectDeleteCascadeMigrationPath = path.join(
   "migrations",
   "0046_project_delete_cascade.sql"
 );
+const phandleTargetDeleteMigrationPath = path.join(
+  root,
+  "server",
+  "migrations",
+  "0047_dts_phandle_target_on_delete.sql"
+);
 
 describe("0041_project_parameter_files migration", () => {
   it("defines required tables, columns, and indexes", () => {
@@ -203,5 +209,15 @@ describe("0046_project_delete_cascade migration", () => {
     expect(sql).toContain("on delete set null");
     // Idempotent, append-only pattern.
     expect(sql).toContain("drop constraint %I");
+  });
+});
+
+describe("0047 DTS phandle target delete migration", () => {
+  it("allows node cleanup while preserving unresolved reference evidence", () => {
+    const sql = readFileSync(phandleTargetDeleteMigrationPath, "utf8");
+
+    expect(sql).toContain("drop constraint if exists dts_phandle_refs_resolved_target_node_id_fkey");
+    expect(sql).toContain("foreign key (resolved_target_node_id)");
+    expect(sql).toContain("on delete set null");
   });
 });

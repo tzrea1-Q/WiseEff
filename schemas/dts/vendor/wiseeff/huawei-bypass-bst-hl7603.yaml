@@ -1,0 +1,39 @@
+$id: wiseeff/huawei-bypass-bst-hl7603.yaml
+title: huawei,bypass_bst_hl7603
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,bypass_bst_hl7603
+compatible:
+  - huawei,bypass_bst_hl7603
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  compatible:
+    valueShape: string-list
+    exampleValue: '"huawei,bypass_bst_hl7603"'
+    constraints: {}
+  const_vout:
+    valueShape: u32-array
+    exampleValue: <3600>
+    constraints: {}
+  gpio_enable:
+    valueShape: mixed
+    exampleValue: <&gpio10 5 0>
+    constraints: {}
+  ic_role:
+    valueShape: string-list
+    exampleValue: '"0"'
+    constraints: {}
+  reg:
+    valueShape: u32-array
+    exampleValue: <0x77>
+    constraints: {}
+  shutdown_cfg:
+    valueShape: string-list
+    exampleValue: "\"0xb\", \"2\", \"2850\",\n\t\t\t\t\"0xc\", \"2\", \"2850\""
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"ok"'
+    constraints: {}

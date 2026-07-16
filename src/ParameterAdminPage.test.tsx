@@ -122,7 +122,7 @@ describe("ParameterAdminPage", () => {
     expect(within(library).getAllByRole("button", { name: "项目参数" }).length).toBeGreaterThan(0);
   });
 
-  it("shows an empty library in API mode when runtime parameters are empty", () => {
+  it("uses the semantic spec library in API mode instead of state.parameters", async () => {
     renderPage(
       "",
       {
@@ -140,8 +140,13 @@ describe("ParameterAdminPage", () => {
       "api"
     );
 
-    expect(screen.getByText("还没有任何参数。从下方开始")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "参数规格库" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "项目共享参数库" })).not.toBeInTheDocument();
     expect(screen.queryByText(/fast_charge_current_limit_ma/)).not.toBeInTheDocument();
+    expect(screen.queryByText("还没有任何参数。从下方开始")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/没有匹配的参数规格|0 \/ 0 项/)).toBeInTheDocument();
+    });
   });
 
   it("opens definition and values dialogs from row actions", () => {

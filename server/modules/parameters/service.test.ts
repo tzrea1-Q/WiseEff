@@ -98,7 +98,7 @@ function parameterRow(overrides: Record<string, unknown> = {}) {
     unit: "mA",
     risk: "High",
     current_value: "3200",
-    recommended_value: "3000",
+    initSuggestionText: "3000",
     value_version: 7,
     updated_at: "2026-05-25T02:00:00.000Z",
     ...overrides
@@ -118,7 +118,7 @@ function definitionRow(overrides: Record<string, unknown> = {}) {
     risk: "High",
     project_parameter_value_id: "param-1",
     current_value: "3200",
-    recommended_value: "3000",
+    initSuggestionText: "3000",
     value_version: 7,
     ...overrides
   };
@@ -252,18 +252,13 @@ describe("parameter service", () => {
     ).toThrow(expect.objectContaining({ code: "FORBIDDEN" }) as unknown as ApiError);
   });
 
-  it("parseDtsImportForAuth rejects /include/ with dts-include-unsupported", () => {
+  it("parseDtsImportForAuth no longer rejects /include/ at upload-parse time", () => {
     expect(() =>
       parseDtsImportForAuth(makeAdminAuth(), {
         sourceName: "board.dts",
         content: `/dts-v1/;\n/include/ "pin.dtsi"\n/ { board_id = <0>; };\n`
       })
-    ).toThrow(
-      expect.objectContaining({
-        code: "VALIDATION_FAILED",
-        details: { code: "dts-include-unsupported" }
-      }) as unknown as ApiError
-    );
+    ).not.toThrow();
   });
 
   it("invalid import item shape returns validation failed", async () => {
@@ -345,7 +340,7 @@ describe("parameter service", () => {
           unit: "C",
           default_range: "40 - 90",
           current_value: "70",
-          recommended_value: "68",
+          initSuggestionText: "68",
           project_parameter_value_id: "param-unchanged",
           value_version: 2
         }),
@@ -357,7 +352,7 @@ describe("parameter service", () => {
           unit: "V",
           default_range: "300 - 450",
           current_value: "400",
-          recommended_value: "395",
+          initSuggestionText: "395",
           project_parameter_value_id: "param-conflict",
           value_version: 5
         })
@@ -582,21 +577,21 @@ describe("parameter service", () => {
           id: "definition-recommended-delta",
           name: "recommended_delta",
           current_value: "100",
-          recommended_value: "100",
+          initSuggestionText: "100",
           project_parameter_value_id: "param-recommended-delta"
         }),
         definitionRow({
           id: "definition-zero-baseline",
           name: "zero_baseline_delta",
           current_value: "100",
-          recommended_value: "0",
+          initSuggestionText: "0",
           project_parameter_value_id: "param-zero-baseline"
         }),
         definitionRow({
           id: "definition-nonnumeric-baseline",
           name: "nonnumeric_delta",
           current_value: "100",
-          recommended_value: "auto",
+          initSuggestionText: "auto",
           project_parameter_value_id: "param-nonnumeric-baseline"
         })
       ],
@@ -1292,6 +1287,7 @@ describe("parameter service", () => {
       "3100",
       "Reduce thermal risk.",
       "manual",
+      null,
       null
     ]);
     expect(calls[2].text).toContain("user_id = $2");
@@ -1338,6 +1334,7 @@ describe("parameter service", () => {
           created_at: "2026-05-25T05:00:00.000Z"
         }
       ],
+      [],
       [
         {
           id: "request-1",
@@ -1373,6 +1370,7 @@ describe("parameter service", () => {
           reason: "Reduce thermal risk."
         }
       ],
+      [],
       [],
       [
         {
@@ -1467,6 +1465,7 @@ describe("parameter service", () => {
           created_at: "2026-05-25T05:00:00.000Z"
         }
       ],
+      [],
       [
         changeRequestRow({
           status: "hardware_review",
@@ -1535,6 +1534,7 @@ describe("parameter service", () => {
           created_at: "2026-05-25T05:00:00.000Z"
         }
       ],
+      [],
       [
         changeRequestRow({
           status: "hardware_review",
@@ -1714,6 +1714,7 @@ describe("parameter service", () => {
           created_at: "2026-05-25T05:00:00.000Z"
         }
       ],
+      [],
       [
         {
           id: "request-1",

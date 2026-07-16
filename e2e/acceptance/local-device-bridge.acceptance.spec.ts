@@ -332,6 +332,7 @@ test.describe("local device bridge conditional acceptance", () => {
 
   test("real bridge HDC path (device lab stub)", async ({ page, request }, testInfo) => {
     // @acceptance BRIDGE-HDC-001
+    // @operation BRIDGE-HDC-001
     // Manual device-lab evidence only: requires a pre-paired bridge process, hdc on PATH,
     // and a USB-connected device. CI keeps this skipped unless DEVICE_BRIDGE_HDC_AVAILABLE=true.
     test.skip(

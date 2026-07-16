@@ -18,6 +18,7 @@ Runbooks describe repeatable operational procedures. They complement the design 
 - [Self-Hosted Release And Rollback](release-rollback.md): M6.6 release-candidate, capacity, target synthetic, and rollback rehearsal procedure.
 - [Monitoring And Alerting](monitoring-alerting.md): signals, alerts, and first triage.
 - [Observability Operations](observability-operations.md): Prometheus, alert rules, Grafana dashboards, and M6.5 alert response.
+- [Parameter Identity Cutover](parameter-identity-cutover.md): maintenance-window write freeze, dry-run/apply, atomic cutover, observation, and whole-snapshot restore for semantic parameter identity.
 - [Incidents](incidents.md): severity, evidence, handoff, and closure for operational incidents.
 - [HDC Device Lab](hdc-device-lab.md): real-device evidence collection.
 - [ADB Device Lab](adb-device-lab.md): local real-device ADB evidence collection.

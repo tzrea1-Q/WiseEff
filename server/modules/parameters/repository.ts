@@ -40,6 +40,7 @@ import {
   type ParameterSubmissionRoundStatus
 } from "./status";
 import { buildChangeRequestImpact } from "./impact";
+import { LEGACY_SQL } from "../parameter-topology/migration";
 
 export type ImportPreviewClassification = "added" | "updated" | "unchanged" | "conflict";
 
@@ -101,7 +102,7 @@ type ParameterRow = {
   unit: string;
   risk: ParameterRiskLevel;
   current_value: string;
-  recommended_value: string;
+  initSuggestionText: string;
   source_file_name?: string | null;
   source_node_path?: string | null;
   updated_at: string | Date;
@@ -119,7 +120,7 @@ type ParameterDefinitionImportRow = {
   risk: ParameterRiskLevel;
   project_parameter_value_id: string | null;
   current_value: string | null;
-  recommended_value: string | null;
+  initSuggestionText: string | null;
   value_version: number | string | null;
 };
 
@@ -156,7 +157,7 @@ type ProjectParameterForUpdateRow = {
   unit: string;
   risk: ParameterRiskLevel;
   current_value: string;
-  recommended_value: string;
+  initSuggestionText: string;
   value_version: number | string;
   source_file_name?: string | null;
   source_node_path?: string | null;
@@ -314,6 +315,8 @@ export type ChangeRequestMergeResult = {
   targetValue: string;
   baseVersion: number;
   newVersion: number;
+  parameterSpecId?: string;
+  projectParameterBindingId?: string;
 };
 
 type ChangeRequestMergeRow = {
@@ -324,6 +327,8 @@ type ChangeRequestMergeRow = {
   target_value: string;
   base_version: number | string;
   new_version: number | string;
+  parameter_spec_id?: string | null;
+  project_parameter_binding_id?: string | null;
 };
 
 type SubmissionItemRow = {
@@ -469,7 +474,7 @@ function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] =
     modulePath,
     projectId: row.project_id,
     currentValue: row.current_value,
-    recommendedValue: row.recommended_value,
+    recommendedValue: row.initSuggestionText,
     range: row.default_range,
     unit: row.unit,
     risk: row.risk,
@@ -544,7 +549,7 @@ function toProjectParameterForUpdate(row: ProjectParameterForUpdateRow): Project
     unit: row.unit,
     risk: row.risk,
     currentValue: row.current_value,
-    recommendedValue: row.recommended_value,
+    recommendedValue: row.initSuggestionText,
     valueVersion: Number(row.value_version),
     sourceFileName: row.source_file_name ?? undefined,
     sourceNodePath: row.source_node_path ?? undefined
@@ -713,7 +718,9 @@ function toChangeRequestMergeResult(row: ChangeRequestMergeRow): ChangeRequestMe
     projectId: row.project_id,
     targetValue: row.target_value,
     baseVersion: Number(row.base_version),
-    newVersion: Number(row.new_version)
+    newVersion: Number(row.new_version),
+    parameterSpecId: row.parameter_spec_id ?? undefined,
+    projectParameterBindingId: row.project_parameter_binding_id ?? undefined
   };
 }
 
@@ -730,7 +737,7 @@ function toParameterDefinitionImportCandidate(row: ParameterDefinitionImportRow)
     risk: row.risk,
     projectParameterValueId: row.project_parameter_value_id ?? undefined,
     currentValue: row.current_value ?? undefined,
-    recommendedValue: row.recommended_value ?? undefined,
+    recommendedValue: row.initSuggestionText ?? undefined,
     valueVersion: row.value_version === null ? undefined : Number(row.value_version)
   };
 }
@@ -1108,7 +1115,7 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
       pd.unit,
       pd.risk,
       ppv.current_value,
-      ppv.recommended_value,
+      ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.source_file_name,
       ppv.source_node_path,
       ppv.updated_at
@@ -1141,7 +1148,7 @@ export async function getParameterById(db: Queryable, query: { organizationId: s
       pd.unit,
       pd.risk,
       ppv.current_value,
-      ppv.recommended_value,
+      ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.source_file_name,
       ppv.source_node_path,
       ppv.updated_at
@@ -1240,21 +1247,29 @@ export async function upsertDraft(
     reason: string;
     origin?: "manual" | "file_sync";
     originFileVersionId?: string;
+    /** Semantic binding identity — required for topology-aware drafts. */
+    projectParameterBindingId?: string;
+    parameterSpecId?: string;
   }
 ) {
   const result = await db.query<DraftRow>(
     `
     insert into parameter_drafts (
       id, organization_id, project_id, project_parameter_value_id, user_id,
-      target_value, reason, origin, origin_file_version_id
+      target_value, reason, origin, origin_file_version_id,
+      project_parameter_binding_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     on conflict (project_id, project_parameter_value_id, user_id)
     do update set
       target_value = excluded.target_value,
       reason = excluded.reason,
       origin = excluded.origin,
       origin_file_version_id = excluded.origin_file_version_id,
+      project_parameter_binding_id = coalesce(
+        excluded.project_parameter_binding_id,
+        parameter_drafts.project_parameter_binding_id
+      ),
       updated_at = now()
     returning id, project_id, project_parameter_value_id, target_value, reason, updated_at
     `,
@@ -1267,9 +1282,13 @@ export async function upsertDraft(
       input.targetValue,
       input.reason,
       input.origin ?? "manual",
-      input.originFileVersionId ?? null
+      input.originFileVersionId ?? null,
+      input.projectParameterBindingId ?? null
     ]
   );
+
+  // parameter_spec_id is stored on change requests / history; drafts carry binding id.
+  void input.parameterSpecId;
 
   return toDraftDto(result.rows[0]);
 }
@@ -1361,15 +1380,18 @@ export async function insertFileSyncConflict(
     uiDraftId: string;
     fileValue: string;
     uiDraftValue: string;
+    parameterSpecId?: string;
+    projectParameterBindingId?: string;
   }
 ) {
   const result = await db.query<FileSyncConflictRow>(
     `
     insert into parameter_file_sync_conflicts (
       id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
-      file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status
+      file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status,
+      parameter_spec_id, project_parameter_binding_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open')
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open', $11, $12)
     returning *
     `,
     [
@@ -1382,7 +1404,9 @@ export async function insertFileSyncConflict(
       input.fileDraftId,
       input.uiDraftId,
       input.fileValue,
-      input.uiDraftValue
+      input.uiDraftValue,
+      input.parameterSpecId ?? null,
+      input.projectParameterBindingId ?? null
     ]
   );
 
@@ -1504,6 +1528,8 @@ export async function createChangeRequest(
     submitterUserId: string;
     assignedToUserId?: string;
     workflowAssignees?: Partial<ParameterWorkflowAssigneesDto>;
+    parameterSpecId?: string;
+    projectParameterBindingId?: string;
   }
 ) {
   const result = await db.query<ChangeRequestRow>(
@@ -1513,9 +1539,9 @@ export async function createChangeRequest(
         id, organization_id, submission_round_id, project_id, project_parameter_value_id,
         parameter_definition_id, base_version, current_value, target_value, status, submitter_user_id,
         assigned_to_user_id, workflow_hardware_committer_user_id, workflow_software_committer_user_id,
-        workflow_software_user_id
+        workflow_software_user_id, parameter_spec_id, project_parameter_binding_id
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       returning *
     )
     select
@@ -1565,7 +1591,9 @@ export async function createChangeRequest(
       input.assignedToUserId ?? null,
       input.workflowAssignees?.hardwareCommitterId ?? null,
       input.workflowAssignees?.softwareCommitterId ?? null,
-      input.workflowAssignees?.softwareUserId ?? null
+      input.workflowAssignees?.softwareUserId ?? null,
+      input.parameterSpecId ?? null,
+      input.projectParameterBindingId ?? null
     ]
   );
 
@@ -1612,6 +1640,7 @@ export async function createSubmissionItem(
     currentValue: string;
     targetValue: string;
     reason: string;
+    projectParameterBindingId?: string;
   }
 ) {
   const result = await db.query<SubmissionItemRow>(
@@ -1619,9 +1648,9 @@ export async function createSubmissionItem(
     with inserted as (
       insert into parameter_submission_items (
         id, organization_id, submission_round_id, change_request_id, project_parameter_value_id,
-        current_value, target_value, reason
+        current_value, target_value, reason, project_parameter_binding_id
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       returning *
     )
     select
@@ -1648,7 +1677,8 @@ export async function createSubmissionItem(
       input.parameterId,
       input.currentValue,
       input.targetValue,
-      input.reason
+      input.reason,
+      input.projectParameterBindingId ?? null
     ]
   );
 
@@ -2173,6 +2203,8 @@ export async function mergeChangeRequest(
         project_id,
         project_parameter_value_id,
         parameter_definition_id,
+        parameter_spec_id,
+        project_parameter_binding_id,
         base_version,
         target_value
       from parameter_change_requests
@@ -2195,6 +2227,8 @@ export async function mergeChangeRequest(
         request_to_merge.id,
         request_to_merge.project_parameter_value_id,
         request_to_merge.parameter_definition_id,
+        request_to_merge.parameter_spec_id,
+        request_to_merge.project_parameter_binding_id,
         request_to_merge.project_id,
         request_to_merge.target_value,
         request_to_merge.base_version,
@@ -2203,7 +2237,8 @@ export async function mergeChangeRequest(
     inserted_history as (
       insert into parameter_history_entries (
         id, organization_id, project_id, parameter_definition_id, project_parameter_value_id,
-        version, value, changed_by_user_id, request_id
+        version, value, changed_by_user_id, request_id,
+        parameter_spec_id, project_parameter_binding_id
       )
       select
         $5,
@@ -2214,7 +2249,9 @@ export async function mergeChangeRequest(
         new_version,
         target_value,
         $4,
-        id
+        id,
+        parameter_spec_id,
+        project_parameter_binding_id
       from updated_value
       returning id
     )
@@ -2275,7 +2312,7 @@ export async function getProjectParameterForUpdate(
       pd.unit,
       pd.risk,
       ppv.current_value,
-      ppv.recommended_value,
+      ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.value_version,
       ppv.source_file_name,
       ppv.source_node_path
@@ -2415,7 +2452,7 @@ export async function insertProjectParameterValueWithSource(
     `
     insert into project_parameter_values (
       id, organization_id, project_id, parameter_definition_id,
-      current_value, recommended_value, updated_by_user_id,
+      current_value, ${LEGACY_SQL.recommendedValueColumn}, updated_by_user_id,
       source_file_name, source_node_path
     )
     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -2464,7 +2501,7 @@ export async function listParameterDefinitionsForImport(
       pd.risk,
       ppv.id as project_parameter_value_id,
       ppv.current_value,
-      ppv.recommended_value,
+      ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
       ppv.value_version
     from parameter_definitions pd
     left join project_parameter_values ppv on ppv.parameter_definition_id = pd.id
@@ -2555,13 +2592,13 @@ export async function applyAddedImportItem(
     ),
     inserted_value as (
       insert into project_parameter_values (
-        id, organization_id, project_id, parameter_definition_id, current_value, recommended_value, updated_by_user_id
+        id, organization_id, project_id, parameter_definition_id, current_value, ${LEGACY_SQL.recommendedValueColumn}, updated_by_user_id
       )
       select $4, $1, $2, inserted_definition.id, $11, $12, $3
       from inserted_definition
       on conflict (project_id, parameter_definition_id) do update set
         current_value = excluded.current_value,
-        recommended_value = excluded.recommended_value,
+        ${LEGACY_SQL.recommendedValueColumn} = excluded.${LEGACY_SQL.recommendedValueColumn},
         value_version = project_parameter_values.value_version + 1,
         updated_by_user_id = excluded.updated_by_user_id,
         updated_at = now()
@@ -2638,7 +2675,7 @@ export async function applyUpdatedImportItem(
         ppv.project_id,
         ppv.parameter_definition_id,
         ppv.current_value,
-        ppv.recommended_value,
+        ppv.${LEGACY_SQL.recommendedValueColumn} as "initSuggestionText",
         ppv.value_version
       from project_parameter_values ppv
       inner join upserted_definition on upserted_definition.id = ppv.parameter_definition_id
@@ -2647,7 +2684,7 @@ export async function applyUpdatedImportItem(
     ),
     inserted_value as (
       insert into project_parameter_values (
-        id, organization_id, project_id, parameter_definition_id, current_value, recommended_value, updated_by_user_id
+        id, organization_id, project_id, parameter_definition_id, current_value, ${LEGACY_SQL.recommendedValueColumn}, updated_by_user_id
       )
       select $4, $1, $2, upserted_definition.id, $11, $12, $3
       from upserted_definition
@@ -2657,7 +2694,7 @@ export async function applyUpdatedImportItem(
     updated_value as (
       update project_parameter_values ppv
       set current_value = $11,
-        recommended_value = $12,
+        ${LEGACY_SQL.recommendedValueColumn} = $12,
         value_version = ppv.value_version + 1,
         updated_by_user_id = $3,
         updated_at = now()
@@ -2667,7 +2704,7 @@ export async function applyUpdatedImportItem(
         and ppv.parameter_definition_id = upserted_definition.id
         and (
           ppv.current_value is distinct from $11
-          or ppv.recommended_value is distinct from $12
+          or ppv.${LEGACY_SQL.recommendedValueColumn} is distinct from $12
         )
       returning ppv.id, ppv.project_id, ppv.parameter_definition_id, ppv.current_value, ppv.value_version
     ),

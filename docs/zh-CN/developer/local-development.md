@@ -17,6 +17,36 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
+## dtc 与 M1 全量种子
+
+首次运行 M1 seed 前安装并检查 Device Tree Compiler：
+
+```bash
+npm run dtc:bootstrap
+npm run dtc:check -- --required
+npm run dtc:seed:compile
+```
+
+bootstrap 在 macOS 使用 Homebrew，在 Debian/Ubuntu 使用 `device-tree-compiler`，在 Alpine 与 RHEL 系 Linux 使用 `dtc` 包。`db:seed:m1` 会先用真实 dtc 编译 Aurora、Nebula、Atlas 三份 overlay；编译器缺失或出现 error 时停止写库。脱离外部 base DTS 单独编译 overlay 时，`reg_format` / `ranges_format` warning 可保留，但不能有 error。
+
+完整失败关闭工具链与配置校验：
+
+```bash
+npm run dts:toolchain:check
+npm run dts:config:validate
+```
+
+语义身份迁移演练（默认 dry-run；仅维护窗口 `--apply`）：
+
+```bash
+npm run parameter-identities:migrate
+npm run parameter-identities:check
+```
+
+操作流程见 [parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md)。
+
+M1 seed 包含 12 个兼容参数、170 个 DTS 来源参数、510 个项目参数值、三份 DTS 文件版本、完整节点/属性/phandle 结构，以及每项目一个已编译 seed baseline。
+
 ## 同类中文文档
 
 - [docs/zh-CN/developer/README.md](README.md)

@@ -1368,3 +1368,26 @@ describe("ParametersPage · 布局与 Sheet", () => {
     expect(container.querySelector(".parameters-bottom-actions")).not.toBeInTheDocument();
   });
 });
+
+describe("ParametersPage API topology workspace", () => {
+  it("mounts ProjectTopologyWorkspace instead of flat sourceNodePath tables", () => {
+    render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={initialState}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          runtimeMode="api"
+          canEdit
+        />
+      </TopBarActionsHarness>
+    );
+
+    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    expect(within(workspace).getByRole("treeitem", { name: /amba/ })).toBeVisible();
+    expect(within(workspace).getByRole("radio", { name: "生效树" })).toBeChecked();
+    expect(screen.queryByRole("table", { name: "检索参数表" })).not.toBeInTheDocument();
+    expect(workspace.textContent).not.toMatch(/sourceNodePath/);
+  });
+});

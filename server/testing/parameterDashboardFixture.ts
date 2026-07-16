@@ -1,4 +1,5 @@
 import type { Database } from "../shared/database/client";
+import { LEGACY_SQL } from "../modules/parameter-topology/migration";
 
 const ORG_ID = "org-chargelab";
 const ORG_NAME = "ChargeLab";
@@ -36,6 +37,69 @@ async function deleteOrgDashboardData(db: Database) {
   await db.query("delete from project_parameter_values where organization_id = $1", [ORG_ID]);
   await db.query("delete from parameter_definitions where organization_id = $1", [ORG_ID]);
   await db.query("delete from project_modules where organization_id = $1", [ORG_ID]);
+
+  // Semantic topology FKs block project/file deletes after migration 0048.
+  await db.query(
+    `delete from identity_mapping_tasks
+     where project_id in (select id from projects where organization_id = $1)`,
+    [ORG_ID]
+  );
+  await db.query(
+    `delete from project_parameter_binding_revisions
+     where binding_id in (
+       select id from project_parameter_bindings
+       where project_id in (select id from projects where organization_id = $1)
+     )`,
+    [ORG_ID]
+  );
+  await db.query(
+    `delete from project_parameter_bindings
+     where project_id in (select id from projects where organization_id = $1)`,
+    [ORG_ID]
+  );
+  await db.query(
+    `update project_parameter_files
+     set current_version_id = null, config_set_id = null
+     where project_id in (select id from projects where organization_id = $1)`,
+    [ORG_ID]
+  );
+  await db.query(
+    `delete from dts_release_baseline
+     where config_set_id in (
+       select id from dts_config_set
+       where project_id in (select id from projects where organization_id = $1)
+     )`,
+    [ORG_ID]
+  );
+  await db.query(
+    `delete from dts_config_set
+     where project_id in (select id from projects where organization_id = $1)`,
+    [ORG_ID]
+  );
+  await db.query(
+    `delete from dts_logical_nodes
+     where project_id in (select id from projects where organization_id = $1)`,
+    [ORG_ID]
+  );
+  await db.query(
+    `delete from dts_sensitive_node_rules
+     where project_id in (select id from projects where organization_id = $1)`,
+    [ORG_ID]
+  );
+  await db.query(
+    `delete from project_parameter_file_versions
+     where file_id in (
+       select id from project_parameter_files
+       where project_id in (select id from projects where organization_id = $1)
+     )`,
+    [ORG_ID]
+  );
+  await db.query(
+    `delete from project_parameter_files
+     where project_id in (select id from projects where organization_id = $1)`,
+    [ORG_ID]
+  );
+
   await db.query("delete from projects where organization_id = $1", [ORG_ID]);
   await db.query("delete from users where organization_id = $1 and id = $2", [ORG_ID, INACTIVE_USER_ID]);
 }
@@ -112,7 +176,7 @@ export async function seedParameterDashboardFixture(db: Database) {
       await db.query(
         `insert into project_parameter_values (
            id, organization_id, project_id, parameter_definition_id,
-           current_value, recommended_value, value_version, updated_by_user_id
+           current_value, ${LEGACY_SQL.recommendedValueColumn}, value_version, updated_by_user_id
          ) values ($1, $2, $3, $4, $5, $6, 1, $7)`,
         [valueId, ORG_ID, project.id, definition.id, current, recommended, ACTIVE_USER_ID]
       );

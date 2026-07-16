@@ -23,6 +23,9 @@ export type WritebackMergedParameterValueInput = {
   projectId: string;
   parameterDefinitionId: string;
   mergedValue: string;
+  /** Semantic identity — preferred over definition id when present. */
+  projectParameterBindingId?: string;
+  parameterSpecId?: string;
 };
 
 export type WritebackServiceContext = AuditCorrelationContext;
@@ -120,6 +123,8 @@ async function createWritebackAudit(
     fileId: string;
     fileName: string;
     versionNumber: number;
+    projectParameterBindingId?: string;
+    parameterSpecId?: string;
   },
   context: WritebackServiceContext = {}
 ) {
@@ -138,6 +143,8 @@ async function createWritebackAudit(
     metadata: {
       fileName: input.fileName,
       parameterDefinitionId: input.parameterDefinitionId,
+      projectParameterBindingId: input.projectParameterBindingId,
+      parameterSpecId: input.parameterSpecId,
       sourceNodePath: input.nodePath,
       versionNumber: input.versionNumber
     },
@@ -297,7 +304,9 @@ export async function writebackMergedParameterValue(
       nodePath: source.sourceNodePath,
       fileId: file.id,
       fileName: file.fileName,
-      versionNumber: version.versionNumber
+      versionNumber: version.versionNumber,
+      projectParameterBindingId: input.projectParameterBindingId,
+      parameterSpecId: input.parameterSpecId
     },
     context
   );

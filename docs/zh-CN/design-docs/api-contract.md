@@ -448,6 +448,23 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 
 审计 kind 与 action：`config-set`（`created`、`updated`、`member_changed`）、`baseline`（`created`、`rolled_back`、`released`）、`validation.gate`（`run`）、`export`（`file`、`config-set`）。
 
+## 语义参数拓扑（`/api/v2`）
+
+拓扑/Schema 程序的语义表面。生产对身份、dt-schema、`dtc`、`fdtoverlay` 失败关闭。维护窗口 cutover 后，遗留扁平参数 ID 返回 `410`（`details.code=legacy-parameter-id-retired`），不做兼容投影。
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/v2/parameter-specs` | 列出版本化参数规格 |
+| `GET` | `/api/v2/parameter-specs/:specId` | 规格详情（example/default/policy 分字段） |
+| `POST` | `/api/v2/parameter-spec-review-tasks/:taskId/resolve` | Admin 决议规格审核 |
+| `GET` | `/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology` | 源树或生效树（`?view=source\|effective`） |
+| `GET` | `/api/v2/projects/:projectId/parameter-bindings` | 稳定项目绑定 |
+| `GET` | `/api/v2/identity-mapping-tasks` | 身份映射任务列表 |
+| `POST` | `/api/v2/identity-mapping-tasks/:taskId/resolve` | Admin 决议映射 |
+| `POST` | `/api/v2/projects/:projectId/config-revisions/:revisionId/validate` | 失败关闭工具链校验 |
+
+值拆分：`exampleValue` / `schemaDefault` / `policyTarget` / `effectiveValue` 分字段；不得折叠为业务 `recommendedValue`。切换流程见 `docs/runbooks/parameter-identity-cutover.md`。
+
 ## 8. Jobs 与进度
 
 | 方法 | 路径 | 说明 |

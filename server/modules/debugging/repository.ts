@@ -1204,6 +1204,8 @@ export async function insertNodeOperation(
     parameterId: string | null;
     nodeId?: string | null;
     parameterDefinitionId?: string | null;
+    parameterSpecId?: string | null;
+    projectParameterBindingId?: string | null;
     protocol?: DebugConnectionProtocol;
     nodePath: string;
     operationType: DebugOperationType;
@@ -1235,9 +1237,10 @@ export async function insertNodeOperation(
       failure_reason, duration_ms, approval_id, snapshot_id,
       value_kind, value_format, normalization_mode,
       requested_value_digest, previous_value_digest, readback_value_digest, value_preview,
-      actor_user_id
+      actor_user_id,
+      parameter_spec_id, project_parameter_binding_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
     returning ${nodeOperationColumns}
     `,
     [
@@ -1267,7 +1270,9 @@ export async function insertNodeOperation(
       input.previousValueDigest ?? null,
       input.readbackValueDigest ?? null,
       input.valuePreview ?? null,
-      input.actorUserId
+      input.actorUserId,
+      input.parameterSpecId ?? null,
+      input.projectParameterBindingId ?? null
     ]
   );
 

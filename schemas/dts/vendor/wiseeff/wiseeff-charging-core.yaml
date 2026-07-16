@@ -1,0 +1,31 @@
+$id: wiseeff/wiseeff-charging-core.yaml
+title: wiseeff,charging_core
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/wiseeff,charging_core
+compatible:
+  - wiseeff,charging_core
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  ichg_max:
+    valueShape: u32-array
+    exampleValue: <2500>
+    constraints: {}
+  iin_max:
+    valueShape: u32-array
+    exampleValue: <2300>
+    constraints: {}
+  iterm_table:
+    valueShape: string-list
+    exampleValue: "\"-32767\", \"10\", \"200\",\n\t\t\"10\", \"20\", \"400\",\n\t\t\"45\", \"32767\", \"200\""
+    constraints: {}
+  jeita_table:
+    valueShape: string-list
+    exampleValue: "\"-32767\", \"1\", \"2300\", \"0\", \"4200\", \"0\",\n\t\t\"10\", \"35\", \"2300\", \"3000\", \"4530\", \"3\",\n\t\t\"55\", \"32767\", \"2300\", \"0\", \"4195\", \"0\""
+    constraints: {}
+  status:
+    valueShape: string-list
+    exampleValue: '"ok"'
+    constraints: {}

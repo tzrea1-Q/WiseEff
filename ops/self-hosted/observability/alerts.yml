@@ -121,3 +121,36 @@ groups:
           summary: WiseEff host disk free space is low
           description: Host filesystem free space is below 15 percent on a monitored mount.
           runbook_url: docs/runbooks/observability-operations.md#wiseeffhostdiskpressure
+
+      - alert: WiseEffDtsToolchainUnavailable
+        expr: wiseeff_dts_toolchain_ready == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: dts-toolchain
+        annotations:
+          summary: WiseEff DTS toolchain is unavailable
+          description: dtc, fdtoverlay, or dt-validate is missing; production publish validation will fail closed.
+          runbook_url: docs/runbooks/parameter-identity-cutover.md#3-toolchain-health
+
+      - alert: WiseEffIdentityMappingBacklog
+        expr: wiseeff_identity_mapping_tasks_open > 0
+        for: 30m
+        labels:
+          severity: warning
+          component: parameter-identity
+        annotations:
+          summary: WiseEff identity mapping backlog persists
+          description: Open identity mapping tasks have remained above zero for more than 30 minutes.
+          runbook_url: docs/runbooks/parameter-identity-cutover.md#5-ambiguity-and-spec-backlog-checks
+
+      - alert: WiseEffConfigPublishValidationBypass
+        expr: increase(wiseeff_config_publish_results_total{result="bypassed"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          component: dts-publish
+        annotations:
+          summary: WiseEff production publish validation was bypassed
+          description: A config publish/validate path recorded a bypassed toolchain result. Production must remain fail-closed.
+          runbook_url: docs/runbooks/parameter-identity-cutover.md#6-compile-all-configs

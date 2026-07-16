@@ -1,0 +1,26 @@
+$id: wiseeff/nodename-scharger-v800-buck.yaml
+title: scharger_v800_buck
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/scharger_v800_buck
+nodename:
+  - scharger_v800_buck
+properties:
+  cur_balance_mos:
+    valueShape: u32-array
+    exampleValue: <2>
+    constraints: {}
+  pswovp_sw_flag:
+    valueShape: string-list
+    exampleValue: '"rxsw", "1", "0", "1"'
+    constraints: {}
+  r_charger_uohm:
+    valueShape: u32-array
+    exampleValue: <1000>
+    constraints: {}
+    units: uOhm
+  usbovp_sw_flag:
+    valueShape: string-list
+    exampleValue: '"buck", "0", "1", "1"'
+    constraints: {}

@@ -215,6 +215,7 @@ describe("createParameterRuntimeActions", () => {
 
     expect(repository.listProjects).toHaveBeenCalledTimes(1);
     expect(repository.listParameters).toHaveBeenCalledTimes(1);
+    expect(repository.listParameters).toHaveBeenCalledWith({ projectId: "api-project", limit: 500 });
     expect(repository.listChangeRequests).toHaveBeenCalledTimes(1);
     expect(repository.listSubmissionRounds).toHaveBeenCalledTimes(1);
     expect(repository.listDrafts).toHaveBeenCalledTimes(1);
@@ -226,6 +227,33 @@ describe("createParameterRuntimeActions", () => {
       parameterSubmissionRounds: [apiRound],
       parameterDrafts: [apiDraft]
     });
+  });
+
+  it("refresh loads and combines a complete parameter list per project", async () => {
+    const dispatch = vi.fn();
+    const secondProject = { id: "api-project-2", name: "API Project 2", code: "API2" };
+    const secondParameter = { ...apiParameter, id: "api-project-param-2", projectId: secondProject.id };
+    const listParameters = vi.fn().mockImplementation(async ({ projectId }: { projectId?: string }) =>
+      projectId === secondProject.id ? [secondParameter] : [apiParameter]
+    );
+    const repository = createRepository({
+      listProjects: vi.fn().mockResolvedValue([...apiProjects, secondProject]),
+      listParameters
+    });
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
+
+    await actions.refresh();
+
+    expect(listParameters).toHaveBeenCalledTimes(2);
+    expect(listParameters).toHaveBeenNthCalledWith(1, { projectId: "api-project", limit: 500 });
+    expect(listParameters).toHaveBeenNthCalledWith(2, { projectId: "api-project-2", limit: 500 });
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "HYDRATE_PARAMETER_RUNTIME",
+        projects: [...apiProjects, secondProject],
+        parameters: [apiParameter, secondParameter]
+      })
+    );
   });
 
   it("loads a single parameter detail from the repository in api mode", async () => {

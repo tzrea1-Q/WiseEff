@@ -119,7 +119,9 @@ describe("parameter file conflict service", () => {
       "draft-file",
       "draft-ui",
       "85",
-      "82"
+      "82",
+      null,
+      null
     ]);
   });
 

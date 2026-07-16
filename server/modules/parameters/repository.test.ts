@@ -139,7 +139,7 @@ describe("parameter repository", () => {
         unit: "mA",
         risk: "High",
         current_value: "3200",
-        recommended_value: "3000",
+        initSuggestionText: "3000",
         source_file_name: "config.json",
         source_node_path: "battery/temp_max",
         updated_at: updatedAt
@@ -200,7 +200,7 @@ describe("parameter repository", () => {
         unit: "mA",
         risk: "High",
         current_value: "3200",
-        recommended_value: "3000",
+        initSuggestionText: "3000",
         source_file_name: "config.json",
         source_node_path: "battery/temp_max",
         updated_at: updatedAt
@@ -317,6 +317,7 @@ describe("parameter repository", () => {
       "3100",
       "Reduce thermal risk.",
       "manual",
+      null,
       null
     ]);
     expect(draft).toMatchObject({ id: "draft-1", parameterId: "param-1", targetValue: "3100" });
@@ -430,7 +431,8 @@ describe("parameter repository", () => {
       "param-1",
       "3200",
       "3100",
-      "Reduce thermal risk."
+      "Reduce thermal risk.",
+      null
     ]);
   });
 
@@ -503,7 +505,9 @@ describe("parameter repository", () => {
       "u-hardware",
       "u-hardware",
       "u-software-committer",
-      "u-software-user"
+      "u-software-user",
+      null,
+      null
     ]);
     expect(request).toMatchObject({
       assignedTo: "u-hardware",
@@ -863,7 +867,7 @@ describe("parameter repository", () => {
           risk: "High",
           project_parameter_value_id: "param-1",
           current_value: "3200",
-          recommended_value: "3000",
+          initSuggestionText: "3000",
           value_version: 7
         }
       ]

@@ -16,6 +16,11 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run build` | TypeScript and Vite production build | TypeScript, routing, shared type, or package changes. |
 | `npm run docs:check` | Documentation governance | Any non-trivial plan or documentation structure change. |
 | `git diff --check` | Whitespace safety | Before committing or handing off. |
+| `npm run dtc:check -- --required` | A real Device Tree Compiler is present on PATH | Before M1 seeding, DTS validation work, or self-hosted image acceptance. |
+| `npm run dtc:seed:compile` | All three committed project seed overlays compile with real `dtc -@` | After changing DTS fixtures, seed generation, validation, or dtc deployment wiring. |
+| `npm run dts:toolchain:check` | dtc + fdtoverlay + dt-validate present at pinned versions | Before release-mode publish work or identity cutover rehearsal. |
+| `npm run parameter-identities:check` | Read-only preflight/postflight for semantic identity migration | Before/after maintenance-window cutover; see runbook. |
+| `npm run parameter-identities:migrate` | Dry-run (default) or gated `--apply` historical identity migration | Cutover rehearsal only; never dual-write in production. |
 | `npm run acceptance:coverage` | Requirement-level browser acceptance coverage markers | Adding or changing browser acceptance requirements or UI/API interaction behavior. |
 | `npm run acceptance:operations` | Operation-level browser coverage metadata | Adding or changing concrete user operations, roles, permissions, UI controls, or API-backed interaction behavior. |
 | `npm run acceptance:models` | M5.9 state-model and contract invariants for parameter review, log tasks, debugging, and permissions | Changing workflow state transitions, seeded fixtures, permission contracts, or API/domain rules behind browser acceptance. |
@@ -52,6 +57,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | Gate | Command | Requires | Use when |
 | --- | --- | --- | --- |
 | M1 parameter management | `npm run test:m2` | PostgreSQL and M0/M1 seeds | Parameter API/runtime changes. |
+| M1 full DTS seed | `npm run dtc:check -- --required` plus `npm run dtc:seed:compile`, `npm run db:seed:m1` twice, and focused seed tests | Real dtc, PostgreSQL, local/S3 object store | DTS seed catalog, source binding, structure, baseline, compiler, or idempotency changes. |
 | M2 log analysis | `npm run test:m2` | PostgreSQL, local object store, M0-M2 seeds | Log upload, worker, object store, log UI/API changes. |
 | M3 debugging | `npm run test:m3-5` | PostgreSQL, simulator gateway, M0/M1/M3 seeds | Debugging service/gateway/runtime changes. |
 | M3.5 commercial readiness | `npm run test:m3-5` | PostgreSQL, object-store root, simulator gateway | Readiness, production config, leases, request/audit correlation. |

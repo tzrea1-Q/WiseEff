@@ -302,6 +302,7 @@ test.describe("Xiaoze P1 action", () => {
 
   test("resumes with AG-UI native resume entries after interrupt", async ({ request }, testInfo) => {
     // @acceptance XIAOZE-ACTION-RESUME-001
+    // @operation XIAOZE-ACTION-RESUME-001
     const openBefore = await countOpenChangeRequests();
     const thread = `${threadId}-native-resume`;
     const started = await postXiaoze(request, adminHeaders(), {
@@ -403,6 +404,7 @@ test.describe("Xiaoze P1 action", () => {
 
   test("rejects a parameter change without mutation", async ({ request }, testInfo) => {
     // @acceptance XIAOZE-ACTION-REJECT-001
+    // @operation XIAOZE-ACTION-REJECT-001
     const openBefore = await countOpenChangeRequests();
     const started = await postXiaoze(request, adminHeaders(), {
       threadId: `${threadId}-reject`,
@@ -452,6 +454,7 @@ test.describe("Xiaoze P1 action", () => {
 
   test("denies out-of-permission approval execution with a safe message", async ({ request }, testInfo) => {
     // @acceptance XIAOZE-ACTION-AUTHZ-001
+    // @operation XIAOZE-ACTION-AUTHZ-001
     const openBefore = await countOpenChangeRequests();
     const started = await postXiaoze(request, adminHeaders(), {
       threadId: `${threadId}-authz`,
