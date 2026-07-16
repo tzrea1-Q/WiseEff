@@ -350,7 +350,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       {
         headers: adminHeaders(),
         data: {
-          valueShape: { kind: "cells", bits: 32 },
+          valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
           constraints: { cells: 1 },
           documentation: `${descriptionPrefix} acceptance mystery cells`,
           reason: `${descriptionPrefix} activate draft spec for ${mysteryProp}`
