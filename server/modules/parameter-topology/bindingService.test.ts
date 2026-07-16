@@ -226,9 +226,10 @@ describe("createOrReuseBinding + upsertBindingRevisionValues", () => {
         if (text.includes("from project_parameter_bindings") && text.includes("select")) {
           const found = [...store.values()].find(
             (row) =>
-              row.key.projectId === values[0] &&
-              row.key.logicalNodeId === values[1] &&
-              row.key.parameterSpecId === values[2],
+              row.key.projectId === values[1] &&
+              row.key.logicalNodeId === values[2] &&
+              row.key.parameterSpecId === values[3] &&
+              values[0] === "org-1",
           );
           return { rows: found ? [{ id: found.id, ...rowFields(found) }] : [], rowCount: found ? 1 : 0 };
         }

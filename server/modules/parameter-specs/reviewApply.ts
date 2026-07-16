@@ -5,13 +5,22 @@ import {
   upsertBindingRevisionValues,
 } from "../parameter-topology/bindingService";
 import { updateConfigRevisionStatus } from "../parameter-topology/repository";
+import { DRAFT_PROVENANCE_KEY } from "./specCompleteness";
+import { buildManualSpecIds } from "./specIdentity";
 import {
+  draftValueShapeToJson,
+  inferDraftValueShapeFromOccurrence,
+} from "./valueShapeInference";
+import {
+  assertBindingBelongsToTenant,
   compatibleFingerprint,
   getParameterSpecRow,
   upsertOccurrenceSpecDecision,
   upsertMatcherOverride,
+  validateSpecReviewTenantEvidence,
   type PersistedSpecReviewTask,
   type ParameterSpecDetailRow,
+  type ValidatedSpecReviewLocate,
 } from "./repository";
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -101,7 +110,7 @@ export function requireLocateEvidence(evidence: SpecReviewEvidence, taskId: stri
 
 async function loadPropertyValueForBinding(
   db: Queryable,
-  input: { propertyOccurrenceId: string; configRevisionId: string },
+  locate: Pick<ValidatedSpecReviewLocate, "propertyOccurrenceId" | "configRevisionId">,
 ): Promise<{ typedValue: unknown; canonicalValue: unknown; rawValue: string | null }> {
   const result = await db.query<{
     raw_text: string;
@@ -113,13 +122,13 @@ async function loadPropertyValueForBinding(
     where id = $1 and config_revision_id = $2
     limit 1
     `,
-    [input.propertyOccurrenceId, input.configRevisionId],
+    [locate.propertyOccurrenceId, locate.configRevisionId],
   );
   const row = result.rows[0];
   if (!row) {
     throw new ApiError("NOT_FOUND", "Property occurrence was not found for this review task.", 404, {
-      propertyOccurrenceId: input.propertyOccurrenceId,
-      configRevisionId: input.configRevisionId,
+      propertyOccurrenceId: locate.propertyOccurrenceId,
+      configRevisionId: locate.configRevisionId,
     });
   }
   const typedValue =
@@ -131,6 +140,22 @@ async function loadPropertyValueForBinding(
     canonicalValue: typedValue,
     rawValue: row.raw_text,
   };
+}
+
+async function resolveTenantLocateEvidence(
+  db: Queryable,
+  input: {
+    task: PersistedSpecReviewTask;
+    organizationId: string;
+  },
+): Promise<ValidatedSpecReviewLocate> {
+  const evidence = parseSpecReviewEvidence(input.task);
+  const locate = requireLocateEvidence(evidence, input.task.id);
+  return validateSpecReviewTenantEvidence(db, {
+    organizationId: input.organizationId,
+    taskId: input.task.id,
+    locate,
+  });
 }
 
 /**
@@ -148,13 +173,13 @@ export async function applyResolvedSpecReview(
     reason: string;
   },
 ): Promise<{ bindingId: string; projectId: string; configRevisionId: string }> {
-  const evidence = parseSpecReviewEvidence(input.task);
-  const locate = requireLocateEvidence(evidence, input.task.id);
-
-  const values = await loadPropertyValueForBinding(db, {
-    propertyOccurrenceId: locate.propertyOccurrenceId,
-    configRevisionId: locate.configRevisionId,
+  const locate = await resolveTenantLocateEvidence(db, {
+    task: input.task,
+    organizationId: input.organizationId,
   });
+  const evidence = parseSpecReviewEvidence(input.task);
+
+  const values = await loadPropertyValueForBinding(db, locate);
 
   const binding = await createOrReuseBinding(db, {
     organizationId: input.organizationId,
@@ -163,6 +188,12 @@ export async function applyResolvedSpecReview(
       logicalNodeId: locate.logicalNodeId,
       parameterSpecId: input.parameterSpecId,
     },
+  });
+
+  await assertBindingBelongsToTenant(db, {
+    organizationId: input.organizationId,
+    projectId: locate.projectId,
+    bindingId: binding.id,
   });
 
   await upsertBindingRevisionValues(db, {
@@ -174,6 +205,11 @@ export async function applyResolvedSpecReview(
       canonicalValue: values.canonicalValue,
       rawValue: values.rawValue ?? undefined,
       schemaState: "reviewed",
+    },
+    tenant: {
+      organizationId: input.organizationId,
+      projectId: locate.projectId,
+      configRevisionId: locate.configRevisionId,
     },
   });
 
@@ -223,8 +259,11 @@ export async function applyDismissedSpecReview(
     reason: string;
   },
 ): Promise<{ projectId: string; configRevisionId: string }> {
+  const locate = await resolveTenantLocateEvidence(db, {
+    task: input.task,
+    organizationId: input.organizationId,
+  });
   const evidence = parseSpecReviewEvidence(input.task);
-  const locate = requireLocateEvidence(evidence, input.task.id);
 
   await upsertOccurrenceSpecDecision(db, {
     organizationId: input.organizationId,
@@ -356,9 +395,17 @@ export function assertPropertyKeyMatchOrConfirmed(
   return { mismatchConfirmed: false, taskPropertyKey, specPropertyKey };
 }
 
+export type DraftSpecProvenance = {
+  sourceReviewTaskId: string;
+  propertyOccurrenceId: string;
+  configRevisionId: string;
+  reviewerUserId: string;
+  createdAt: string;
+};
+
 /**
- * Create an org-owned manual parameter spec for unmatched review resolution.
- * Reuses an existing org spec when the stable id already exists.
+ * Create an org-owned manual draft parameter spec for unmatched review tasks.
+ * Reuses an existing org spec when the stable id already exists (idempotent).
  */
 export async function createOrgManualParameterSpec(
   db: Queryable,
@@ -366,23 +413,43 @@ export async function createOrgManualParameterSpec(
     organizationId: string;
     propertyKey: string;
     driverModule: string | null;
+    sourceReviewTaskId: string;
+    propertyOccurrenceId: string;
+    configRevisionId: string;
+    reviewerUserId: string;
+    occurrenceAstJson: unknown;
+    occurrenceRawText: string | null;
   },
-): Promise<{ parameterSpecId: string; parameterSpecVersionId: string; created: boolean }> {
-  const schemaNamespace = input.driverModule ?? "manual";
-  const specificationKey = `${schemaNamespace}/${input.propertyKey}`;
-  const parameterSpecId = `pspec:${input.organizationId}:${schemaNamespace}:${input.propertyKey}`;
-  const parameterSpecVersionId = `${parameterSpecId}:v1`;
-  const dtsPropertySpecId = `dps:${parameterSpecId}`;
+): Promise<{ parameterSpecId: string; parameterSpecVersionId: string; created: boolean; valueShape: Record<string, unknown> }> {
+  const ids = buildManualSpecIds({
+    organizationId: input.organizationId,
+    propertyKey: input.propertyKey,
+    driverModule: input.driverModule,
+  });
+  const inferredShape = inferDraftValueShapeFromOccurrence({
+    propertyKey: input.propertyKey,
+    astJson: input.occurrenceAstJson,
+    rawText: input.occurrenceRawText,
+  });
+  const valueShape = draftValueShapeToJson(inferredShape);
+  const provenance: DraftSpecProvenance = {
+    sourceReviewTaskId: input.sourceReviewTaskId,
+    propertyOccurrenceId: input.propertyOccurrenceId,
+    configRevisionId: input.configRevisionId,
+    reviewerUserId: input.reviewerUserId,
+    createdAt: new Date().toISOString(),
+  };
 
   const existing = await getParameterSpecRow(db, {
     organizationId: input.organizationId,
-    specId: parameterSpecId,
+    specId: ids.parameterSpecId,
   });
   if (existing?.currentVersionId) {
     return {
-      parameterSpecId,
+      parameterSpecId: ids.parameterSpecId,
       parameterSpecVersionId: existing.currentVersionId,
       created: false,
+      valueShape,
     };
   }
 
@@ -392,22 +459,22 @@ export async function createOrgManualParameterSpec(
     values ($1, $2, 'manual', $3)
     on conflict (id) do nothing
     `,
-    [parameterSpecId, input.organizationId, specificationKey],
+    [ids.parameterSpecId, input.organizationId, ids.specificationKey],
   );
   await db.query(
     `
     insert into parameter_spec_versions (
       id, parameter_spec_id, version, display_name, description, value_shape,
       schema_default, example_value, lifecycle
-    ) values ($1, $2, 1, $3, $4, $5::jsonb, null, null, 'active')
+    ) values ($1, $2, 1, $3, $4, $5::jsonb, null, null, 'draft')
     on conflict (id) do nothing
     `,
     [
-      parameterSpecVersionId,
-      parameterSpecId,
+      ids.parameterSpecVersionId,
+      ids.parameterSpecId,
       input.propertyKey,
-      `Manual spec created from review for ${input.propertyKey}`,
-      JSON.stringify({ kind: "unknown" }),
+      `Draft manual spec inferred from review task ${input.sourceReviewTaskId}`,
+      JSON.stringify(valueShape),
     ],
   );
   await db.query(
@@ -415,17 +482,23 @@ export async function createOrgManualParameterSpec(
     insert into dts_property_specs (
       id, parameter_spec_id, driver_schema_id, property_key, schema_namespace,
       units, constraints, documentation
-    ) values ($1, $2, null, $3, $4, null, '{}'::jsonb, $5)
+    ) values ($1, $2, null, $3, $4, null, $5::jsonb, $6)
     on conflict (id) do nothing
     `,
     [
-      dtsPropertySpecId,
-      parameterSpecId,
+      ids.dtsPropertySpecId,
+      ids.parameterSpecId,
       input.propertyKey,
-      schemaNamespace,
-      `Created from unmatched spec review for ${input.propertyKey}`,
+      ids.schemaNamespace,
+      JSON.stringify({ [DRAFT_PROVENANCE_KEY]: provenance }),
+      `Draft from unmatched review for ${input.propertyKey}; activate after completing constraints.`,
     ],
   );
 
-  return { parameterSpecId, parameterSpecVersionId, created: true };
+  return {
+    parameterSpecId: ids.parameterSpecId,
+    parameterSpecVersionId: ids.parameterSpecVersionId,
+    created: true,
+    valueShape,
+  };
 }

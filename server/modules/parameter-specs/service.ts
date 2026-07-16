@@ -13,7 +13,9 @@ import {
   parseSpecReviewEvidence,
   refreshConfigRevisionAfterSpecReview,
   requireOrgOrGlobalSpec,
+  requireLocateEvidence,
 } from "./reviewApply";
+import { assertSpecActivatable, assertSpecResolvable } from "./specCompleteness";
 import {
   countOpenSpecReviewTasksForRevision,
   getParameterSpecRow,
@@ -24,8 +26,10 @@ import {
   resolveSpecReviewTaskRow,
   type PersistedSpecReviewTask,
   type SpecReviewTaskListCursor,
+  validateSpecReviewTenantEvidence,
 } from "./repository";
 import type {
+  ActivateParameterSpecBody,
   ListParameterSpecsQuery,
   ListSpecReviewTasksQuery,
   ParameterSpecDetailDto,
@@ -231,13 +235,49 @@ function sameResolvedChoice(
   task: PersistedSpecReviewTask,
   input: ResolveSpecReviewTaskBody & { taskId: string },
 ): boolean {
+  if (input.createSpec) {
+    return task.status === "open";
+  }
   if (task.status !== input.decision) return false;
   if (input.decision === "dismissed") return true;
   return task.parameterSpecId === input.parameterSpecId;
 }
 
+const DRAFT_CREATED_MESSAGE =
+  "Draft spec created; complete value shape/constraints and activate before resolve.";
+
+async function loadOccurrenceForDraft(
+  db: Database,
+  input: { propertyOccurrenceId: string; configRevisionId: string },
+): Promise<{ astJson: unknown; rawText: string | null }> {
+  const result = await db.query<{ ast_json: unknown; raw_text: string }>(
+    `
+    select ast_json, raw_text
+    from dts_property_occurrences
+    where id = $1 and config_revision_id = $2
+    limit 1
+    `,
+    [input.propertyOccurrenceId, input.configRevisionId],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw new ApiError("NOT_FOUND", "Property occurrence was not found for draft spec creation.", 404, input);
+  }
+  return { astJson: row.ast_json, rawText: row.raw_text ?? null };
+}
+
+export type ResolveSpecReviewTaskResult = {
+  id: string;
+  status: "open" | "resolved" | "dismissed";
+  parameterSpecId?: string | null;
+  reason?: string | null;
+  draftCreated?: boolean;
+  message?: string;
+};
+
 /**
  * Apply review decision (occurrence→spec→binding + matcher override) in one transaction.
+ * createSpec only creates a draft spec and leaves the task open.
  * Dismiss is fail-closed: no binding is created; release/validate still blocks.
  */
 export async function resolveSpecReviewTask(
@@ -245,7 +285,7 @@ export async function resolveSpecReviewTask(
   auth: AuthContext,
   input: ResolveSpecReviewTaskBody & { taskId: string },
   context: AuditCorrelationContext = {},
-): Promise<{ id: string; status: "resolved" | "dismissed"; parameterSpecId?: string; reason?: string }> {
+): Promise<ResolveSpecReviewTaskResult> {
   requireCanAdmin(auth);
 
   return db.transaction(async (tx) => {
@@ -265,6 +305,15 @@ export async function resolveSpecReviewTask(
         });
       }
       if (sameResolvedChoice(known, input)) {
+        if (input.createSpec) {
+          return {
+            id: known.id,
+            status: "open",
+            parameterSpecId: known.parameterSpecId,
+            draftCreated: true,
+            message: DRAFT_CREATED_MESSAGE,
+          };
+        }
         return {
           id: known.id,
           status: known.status === "open" ? input.decision : known.status,
@@ -279,6 +328,14 @@ export async function resolveSpecReviewTask(
       });
     }
 
+    const evidence = parseSpecReviewEvidence(locked);
+    const locate = requireLocateEvidence(evidence, locked.id);
+    await validateSpecReviewTenantEvidence(tx, {
+      organizationId: auth.organization.id,
+      taskId: locked.id,
+      locate,
+    });
+
     let applied: { projectId: string; configRevisionId: string; bindingId?: string };
     let parameterSpecId = input.parameterSpecId;
     let createdSpec = false;
@@ -288,38 +345,77 @@ export async function resolveSpecReviewTask(
       specPropertyKey: null,
     };
 
-    if (input.decision === "resolved") {
-      if (input.createSpec) {
-        if (locked.candidateSchemas.length > 0) {
-          throw new ApiError(
-            "VALIDATION_FAILED",
-            "Cannot create a new spec when review task candidates exist; select from the library.",
-            400,
-            { taskId: input.taskId },
-          );
-        }
-        const evidence = parseSpecReviewEvidence(locked);
-        const taskPropertyKey = evidence.propertyKey;
-        if (!taskPropertyKey) {
-          throw new ApiError(
-            "VALIDATION_FAILED",
-            "Review task evidence is missing propertyKey required to create a spec.",
-            400,
-            { taskId: input.taskId },
-          );
-        }
-        const driverModule =
-          asString(asRecord(locked.sourceEvidence).driverModule) ??
-          asString(asRecord(locked.candidateSchemas[0] ?? {}).schemaNamespace);
-        const created = await createOrgManualParameterSpec(tx, {
-          organizationId: auth.organization.id,
-          propertyKey: taskPropertyKey,
-          driverModule,
-        });
-        parameterSpecId = created.parameterSpecId;
-        createdSpec = created.created;
+    if (input.decision === "resolved" && input.createSpec) {
+      if (locked.candidateSchemas.length > 0) {
+        throw new ApiError(
+          "VALIDATION_FAILED",
+          "Cannot create a new spec when review task candidates exist; select from the library.",
+          400,
+          { taskId: input.taskId },
+        );
       }
+      const taskPropertyKey = evidence.propertyKey;
+      if (!taskPropertyKey) {
+        throw new ApiError(
+          "VALIDATION_FAILED",
+          "Review task evidence is missing propertyKey required to create a spec.",
+          400,
+          { taskId: input.taskId },
+        );
+      }
+      const driverModule =
+        asString(asRecord(locked.sourceEvidence).driverModule) ??
+        asString(asRecord(locked.candidateSchemas[0] ?? {}).schemaNamespace);
+      const occurrence = await loadOccurrenceForDraft(tx, {
+        propertyOccurrenceId: locate.propertyOccurrenceId,
+        configRevisionId: locate.configRevisionId,
+      });
+      const created = await createOrgManualParameterSpec(tx, {
+        organizationId: auth.organization.id,
+        propertyKey: taskPropertyKey,
+        driverModule,
+        sourceReviewTaskId: locked.id,
+        propertyOccurrenceId: locate.propertyOccurrenceId,
+        configRevisionId: locate.configRevisionId,
+        reviewerUserId: auth.user.id,
+        occurrenceAstJson: occurrence.astJson,
+        occurrenceRawText: occurrence.rawText,
+      });
 
+      await writeGovernanceAudit(
+        tx,
+        auth,
+        {
+          action: "spec-draft-created",
+          projectId: locate.projectId,
+          targetType: "parameter-spec",
+          targetId: created.parameterSpecId,
+          metadata: {
+            taskId: locked.id,
+            parameterSpecId: created.parameterSpecId,
+            parameterSpecVersionId: created.parameterSpecVersionId,
+            created: created.created,
+            valueShapeKind: created.valueShape.kind ?? null,
+            propertyKey: taskPropertyKey,
+            configRevisionId: locate.configRevisionId,
+            propertyOccurrenceId: locate.propertyOccurrenceId,
+            reviewerUserId: auth.user.id,
+            reasonHash: hashReason(input.reason),
+          },
+        },
+        context,
+      );
+
+      return {
+        id: locked.id,
+        status: "open",
+        parameterSpecId: created.parameterSpecId,
+        draftCreated: true,
+        message: DRAFT_CREATED_MESSAGE,
+      };
+    }
+
+    if (input.decision === "resolved") {
       if (!parameterSpecId) {
         throw new ApiError("VALIDATION_FAILED", "parameterSpecId is required when resolving a review task.", 400);
       }
@@ -327,6 +423,7 @@ export async function resolveSpecReviewTask(
         organizationId: auth.organization.id,
         parameterSpecId,
       });
+      assertSpecResolvable(allowedSpec);
       const mismatch = assertPropertyKeyMatchOrConfirmed(
         locked,
         allowedSpec,
@@ -432,4 +529,88 @@ function hashReason(reason: string) {
     hash = (hash * 31 + reason.charCodeAt(i)) >>> 0;
   }
   return `r${hash.toString(16)}`;
+}
+
+export async function activateParameterSpec(
+  db: Database,
+  auth: AuthContext,
+  input: ActivateParameterSpecBody & { specId: string },
+  context: AuditCorrelationContext = {},
+): Promise<{ item: ParameterSpecDetailDto }> {
+  requireCanAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    const spec = await requireOrgOrGlobalSpec(tx, {
+      organizationId: auth.organization.id,
+      parameterSpecId: input.specId,
+    });
+    if (spec.lifecycle !== "draft") {
+      throw new ApiError("CONFLICT", "Only draft parameter specs can be activated.", 409, {
+        parameterSpecId: input.specId,
+        lifecycle: spec.lifecycle,
+      });
+    }
+
+    const nextConstraints = {
+      ...(spec.constraints ?? {}),
+      ...input.constraints,
+    };
+    assertSpecActivatable({
+      parameterSpecId: input.specId,
+      valueShape: input.valueShape,
+      constraints: nextConstraints,
+      documentation: input.documentation,
+    });
+
+    await tx.query(
+      `
+      update parameter_spec_versions
+      set
+        display_name = coalesce($3, display_name),
+        description = coalesce($4, description),
+        value_shape = $5::jsonb,
+        lifecycle = 'active'
+      where id = $1 and parameter_spec_id = $2
+      `,
+      [
+        spec.currentVersionId,
+        input.specId,
+        input.displayName ?? spec.displayName,
+        input.description ?? spec.description,
+        JSON.stringify(input.valueShape),
+      ],
+    );
+    await tx.query(
+      `
+      update dts_property_specs
+      set constraints = $2::jsonb, documentation = $3
+      where parameter_spec_id = $1
+      `,
+      [input.specId, JSON.stringify(nextConstraints), input.documentation],
+    );
+
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: "spec-activated",
+        targetType: "parameter-spec",
+        targetId: input.specId,
+        metadata: {
+          parameterSpecId: input.specId,
+          parameterSpecVersionId: spec.currentVersionId,
+          valueShapeKind:
+            input.valueShape && typeof input.valueShape === "object" && "kind" in input.valueShape
+              ? String((input.valueShape as { kind: unknown }).kind)
+              : null,
+          reasonHash: hashReason(input.reason),
+          previousLifecycle: spec.lifecycle,
+        },
+      },
+      context,
+    );
+
+    const refreshed = await getParameterSpec(tx, auth, input.specId);
+    return refreshed;
+  });
 }

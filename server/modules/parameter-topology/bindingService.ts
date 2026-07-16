@@ -15,6 +15,7 @@ import {
   type LogicalNodeSnapshot,
 } from "../dts/identity";
 import type { Queryable } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
 import { updateConfigRevisionStatus } from "./repository";
 import type { ConfigRevisionStatus } from "./types";
 
@@ -246,18 +247,19 @@ function toMappingTask(row: IdentityMappingTaskRow): IdentityMappingTask {
 
 export async function findBindingByKey(
   db: Queryable,
-  key: ProjectPropertyBindingKey,
+  input: { organizationId: string } & ProjectPropertyBindingKey,
 ): Promise<ProjectParameterBinding | null> {
   const result = await db.query<BindingRow>(
     `
     select id, organization_id, project_id, logical_node_id, parameter_spec_id, created_at
     from project_parameter_bindings
-    where project_id = $1
-      and logical_node_id is not distinct from $2
-      and parameter_spec_id = $3
+    where organization_id = $1
+      and project_id = $2
+      and logical_node_id is not distinct from $3
+      and parameter_spec_id = $4
     limit 1
     `,
-    [key.projectId, key.logicalNodeId, key.parameterSpecId],
+    [input.organizationId, input.projectId, input.logicalNodeId, input.parameterSpecId],
   );
   const row = result.rows[0];
   return row ? toBinding(row) : null;
@@ -271,7 +273,10 @@ export async function createOrReuseBinding(
     id?: string;
   },
 ): Promise<ProjectParameterBinding> {
-  const existing = await findBindingByKey(db, input.key);
+  const existing = await findBindingByKey(db, {
+    organizationId: input.organizationId,
+    ...input.key,
+  });
   if (existing) return existing;
 
   const id = input.id ?? randomUUID();
@@ -305,8 +310,44 @@ export async function upsertBindingRevisionValues(
     parameterSpecVersionId: string;
     values: BindingRevisionValues;
     id?: string;
+    tenant?: {
+      organizationId: string;
+      projectId: string;
+      configRevisionId: string;
+    };
   },
 ): Promise<ProjectParameterBindingRevision> {
+  if (input.tenant) {
+    const scope = await db.query<{ id: string }>(
+      `
+      select b.id
+      from project_parameter_bindings b
+      inner join dts_config_revisions cr on cr.id = $4
+      inner join projects p on p.id = cr.project_id and p.organization_id = $1
+      where b.id = $2
+        and b.organization_id = $1
+        and b.project_id = $3
+        and cr.organization_id = $1
+        and cr.project_id = $3
+        and cr.id = $4
+      limit 1
+      `,
+      [
+        input.tenant.organizationId,
+        input.bindingId,
+        input.tenant.projectId,
+        input.tenant.configRevisionId,
+      ],
+    );
+    if (!scope.rows[0]) {
+      throw new ApiError(
+        "NOT_FOUND",
+        "Project parameter binding revision could not be verified for this organization.",
+        404,
+        { bindingId: input.bindingId, configRevisionId: input.configRevisionId },
+      );
+    }
+  }
   const id = input.id ?? randomUUID();
   const result = await db.query<BindingRevisionRow>(
     `

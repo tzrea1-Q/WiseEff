@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Queryable } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
 import type { DriverSchema, PropertySpec, SpecReviewTaskDraft } from "./types";
 
 type ReviewTaskRow = {
@@ -353,6 +354,153 @@ export async function listMatcherOverridesForProject(
   return result.rows.map(toMatcherOverride);
 }
 
+export type ValidatedSpecReviewLocate = {
+  organizationId: string;
+  projectId: string;
+  configRevisionId: string;
+  configSetId: string;
+  propertyOccurrenceId: string;
+  logicalNodeId: string;
+  propertyKey: string;
+};
+
+type ValidatedSpecReviewLocateRow = {
+  organization_id: string;
+  project_id: string;
+  config_revision_id: string;
+  config_set_id: string;
+  property_occurrence_id: string;
+  logical_node_id: string;
+  property_key: string;
+};
+
+/**
+ * Tenant-scoped join: task org + project org + revision org/project + occurrence on revision
+ * + logical node org/project/config set + node revision on same config revision.
+ */
+export async function validateSpecReviewTenantEvidence(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    taskId: string;
+    locate: {
+      projectId: string;
+      configRevisionId: string;
+      propertyOccurrenceId: string;
+      logicalNodeId: string;
+      propertyKey: string;
+    };
+  },
+): Promise<ValidatedSpecReviewLocate> {
+  const result = await db.query<ValidatedSpecReviewLocateRow>(
+    `
+    select
+      t.organization_id,
+      p.id as project_id,
+      cr.id as config_revision_id,
+      cr.config_set_id,
+      po.id as property_occurrence_id,
+      ln.id as logical_node_id,
+      po.property_name as property_key
+    from parameter_spec_review_tasks t
+    inner join projects p
+      on p.id = $3
+     and p.organization_id = t.organization_id
+    inner join dts_config_revisions cr
+      on cr.id = $4
+     and cr.organization_id = t.organization_id
+     and cr.project_id = p.id
+    inner join dts_property_occurrences po
+      on po.id = $5
+     and po.config_revision_id = cr.id
+     and po.property_name = $7
+    inner join dts_logical_nodes ln
+      on ln.id = $6
+     and ln.organization_id = t.organization_id
+     and ln.project_id = p.id
+     and ln.config_set_id = cr.config_set_id
+    inner join dts_logical_node_revisions lnr
+      on lnr.logical_node_id = ln.id
+     and lnr.config_revision_id = cr.id
+    where t.id = $2
+      and t.organization_id = $1
+    limit 1
+    `,
+    [
+      input.organizationId,
+      input.taskId,
+      input.locate.projectId,
+      input.locate.configRevisionId,
+      input.locate.propertyOccurrenceId,
+      input.locate.logicalNodeId,
+      input.locate.propertyKey,
+    ],
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw new ApiError(
+      "NOT_FOUND",
+      "Review task evidence could not be verified for this organization.",
+      404,
+      { taskId: input.taskId },
+    );
+  }
+  return {
+    organizationId: row.organization_id,
+    projectId: row.project_id,
+    configRevisionId: row.config_revision_id,
+    configSetId: row.config_set_id,
+    propertyOccurrenceId: row.property_occurrence_id,
+    logicalNodeId: row.logical_node_id,
+    propertyKey: row.property_key,
+  };
+}
+
+export async function assertProjectBelongsToOrganization(
+  db: Queryable,
+  input: { organizationId: string; projectId: string },
+): Promise<void> {
+  const result = await db.query<{ id: string }>(
+    `
+    select id
+    from projects
+    where id = $2 and organization_id = $1
+    limit 1
+    `,
+    [input.organizationId, input.projectId],
+  );
+  if (!result.rows[0]) {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+      projectId: input.projectId,
+    });
+  }
+}
+
+export async function assertBindingBelongsToTenant(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; bindingId: string },
+): Promise<void> {
+  const result = await db.query<{ id: string }>(
+    `
+    select id
+    from project_parameter_bindings
+    where id = $3
+      and organization_id = $1
+      and project_id = $2
+    limit 1
+    `,
+    [input.organizationId, input.projectId, input.bindingId],
+  );
+  if (!result.rows[0]) {
+    throw new ApiError(
+      "NOT_FOUND",
+      "Project parameter binding could not be verified for this organization.",
+      404,
+      { bindingId: input.bindingId },
+    );
+  }
+}
+
 export async function upsertMatcherOverride(
   db: Queryable,
   input: {
@@ -369,6 +517,10 @@ export async function upsertMatcherOverride(
     createdByUserId: string;
   },
 ): Promise<PersistedMatcherOverride> {
+  await assertProjectBelongsToOrganization(db, {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+  });
   const id = input.id ?? randomUUID();
   const locatorFingerprint = nodeLocatorFingerprint(input.nodeLocator);
   const result = await db.query<MatcherOverrideRow>(
@@ -421,6 +573,49 @@ export async function upsertOccurrenceSpecDecision(
     reviewTaskId?: string | null;
   },
 ): Promise<void> {
+  await assertProjectBelongsToOrganization(db, {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+  });
+  const revision = await db.query<{ id: string }>(
+    `
+    select cr.id
+    from dts_config_revisions cr
+    inner join projects p on p.id = cr.project_id and p.organization_id = $1
+    where cr.id = $2
+      and cr.organization_id = $1
+      and cr.project_id = $3
+    limit 1
+    `,
+    [input.organizationId, input.configRevisionId, input.projectId],
+  );
+  if (!revision.rows[0]) {
+    throw new ApiError(
+      "NOT_FOUND",
+      "Config revision could not be verified for this organization.",
+      404,
+      { configRevisionId: input.configRevisionId },
+    );
+  }
+  const occurrence = await db.query<{ id: string }>(
+    `
+    select po.id
+    from dts_property_occurrences po
+    where po.id = $1
+      and po.config_revision_id = $2
+      and po.property_name = $3
+    limit 1
+    `,
+    [input.propertyOccurrenceId, input.configRevisionId, input.propertyKey],
+  );
+  if (!occurrence.rows[0]) {
+    throw new ApiError(
+      "NOT_FOUND",
+      "Property occurrence could not be verified for this organization.",
+      404,
+      { propertyOccurrenceId: input.propertyOccurrenceId },
+    );
+  }
   const id = input.id ?? randomUUID();
   await db.query(
     `
@@ -516,85 +711,129 @@ export async function countOpenSpecReviewTasksForRevision(
   return Number(result.rows[0]?.count ?? 0);
 }
 
-/** Backfill scoped columns on legacy review tasks from source_evidence (idempotent). */
+/** Backfill scoped columns on legacy review tasks from source_evidence (idempotent, tenant-validated). */
 export async function backfillReviewTaskScopeColumns(db: Queryable): Promise<number> {
   const result = await db.query<{ count: string }>(
     `
-    with updated as (
-      update parameter_spec_review_tasks t
-      set
-        project_id = coalesce(
+    with scoped as (
+      select
+        t.id,
+        coalesce(
           nullif(t.project_id, ''),
-          nullif(t.source_evidence->>'projectId', '')
-        ),
-        config_revision_id = coalesce(
+          (
+            select p.id
+            from projects p
+            where p.id = nullif(t.source_evidence->>'projectId', '')
+              and p.organization_id = t.organization_id
+            limit 1
+          )
+        ) as validated_project_id,
+        coalesce(
           nullif(t.config_revision_id, ''),
           (
             select cr.id
             from dts_config_revisions cr
+            inner join projects p
+              on p.id = cr.project_id
+             and p.organization_id = t.organization_id
             where cr.id = nullif(t.source_evidence->>'configRevisionId', '')
+              and cr.organization_id = t.organization_id
+              and p.id = coalesce(
+                nullif(t.project_id, ''),
+                nullif(t.source_evidence->>'projectId', '')
+              )
             limit 1
           )
-        ),
-        property_occurrence_id = coalesce(
+        ) as validated_config_revision_id,
+        coalesce(
           nullif(t.property_occurrence_id, ''),
           (
             select po.id
             from dts_property_occurrences po
+            inner join dts_config_revisions cr on cr.id = po.config_revision_id
+            inner join projects p
+              on p.id = cr.project_id
+             and p.organization_id = t.organization_id
             where po.id = nullif(t.source_evidence->>'propertyOccurrenceId', '')
+              and cr.organization_id = t.organization_id
+              and cr.id = coalesce(
+                nullif(t.config_revision_id, ''),
+                nullif(t.source_evidence->>'configRevisionId', '')
+              )
+              and p.id = coalesce(
+                nullif(t.project_id, ''),
+                nullif(t.source_evidence->>'projectId', '')
+              )
             limit 1
           )
-        ),
-        blocker_scope = case
-          when coalesce(t.blocker_scope, 'revision') <> 'revision' then t.blocker_scope
-          when coalesce(
-            nullif(t.source_evidence->>'configRevisionId', ''),
-            nullif(t.config_revision_id, '')
-          ) is not null
-            then 'revision'
-          when coalesce(
-            nullif(t.source_evidence->>'projectId', ''),
-            nullif(t.project_id, '')
-          ) is not null
-            then 'project'
-          else 'platform'
-        end
-      where (
-        (
-          t.project_id is distinct from coalesce(
-            nullif(t.project_id, ''),
-            nullif(t.source_evidence->>'projectId', '')
+        ) as validated_property_occurrence_id,
+        nullif(t.source_evidence->>'projectId', '') as requested_project_id,
+        nullif(t.source_evidence->>'configRevisionId', '') as requested_config_revision_id,
+        nullif(t.source_evidence->>'propertyOccurrenceId', '') as requested_property_occurrence_id,
+        t.source_evidence,
+        t.blocker_scope
+      from parameter_spec_review_tasks t
+    ),
+    computed as (
+      select
+        s.id,
+        s.validated_project_id as project_id,
+        s.validated_config_revision_id as config_revision_id,
+        s.validated_property_occurrence_id as property_occurrence_id,
+        case
+          when s.validated_config_revision_id is not null then 'revision'
+          when s.validated_project_id is not null then 'project'
+          when coalesce(s.source_evidence->>'inferred', '') = 'true' then 'platform'
+          when s.requested_project_id is not null
+            or s.requested_config_revision_id is not null
+            or s.requested_property_occurrence_id is not null
+            then 'platform'
+          else coalesce(nullif(s.blocker_scope, ''), 'revision')
+        end as blocker_scope,
+        case
+          when (
+            s.requested_project_id is not null
+            and s.validated_project_id is null
           )
-        )
-        or (
-          t.config_revision_id is distinct from coalesce(
-            nullif(t.config_revision_id, ''),
-            (
-              select cr.id
-              from dts_config_revisions cr
-              where cr.id = nullif(t.source_evidence->>'configRevisionId', '')
-              limit 1
+          or (
+            s.requested_config_revision_id is not null
+            and s.validated_config_revision_id is null
+          )
+          or (
+            s.requested_property_occurrence_id is not null
+            and s.validated_property_occurrence_id is null
+          )
+            then coalesce(s.source_evidence, '{}'::jsonb) || jsonb_build_object(
+              'scopeBackfill',
+              jsonb_build_object(
+                'code', 'invalid_review_evidence',
+                'requestedProjectId', s.requested_project_id,
+                'requestedConfigRevisionId', s.requested_config_revision_id,
+                'requestedPropertyOccurrenceId', s.requested_property_occurrence_id,
+                'migration', 'repository-backfill'
+              )
             )
-          )
+          else s.source_evidence
+        end as source_evidence
+      from scoped s
+    ),
+    updated as (
+      update parameter_spec_review_tasks t
+      set
+        project_id = c.project_id,
+        config_revision_id = c.config_revision_id,
+        property_occurrence_id = c.property_occurrence_id,
+        blocker_scope = c.blocker_scope,
+        source_evidence = c.source_evidence
+      from computed c
+      where t.id = c.id
+        and (
+          t.project_id is distinct from c.project_id
+          or t.config_revision_id is distinct from c.config_revision_id
+          or t.property_occurrence_id is distinct from c.property_occurrence_id
+          or t.blocker_scope is distinct from c.blocker_scope
+          or t.source_evidence is distinct from c.source_evidence
         )
-        or (
-          t.property_occurrence_id is distinct from coalesce(
-            nullif(t.property_occurrence_id, ''),
-            (
-              select po.id
-              from dts_property_occurrences po
-              where po.id = nullif(t.source_evidence->>'propertyOccurrenceId', '')
-              limit 1
-            )
-          )
-        )
-        or (
-          t.blocker_scope = 'revision'
-          and coalesce(nullif(t.source_evidence->>'configRevisionId', ''), nullif(t.config_revision_id, '')) is null
-          and coalesce(nullif(t.source_evidence->>'projectId', ''), nullif(t.project_id, '')) is null
-          and coalesce(t.source_evidence->>'inferred', '') = 'true'
-        )
-      )
       returning 1
     )
     select count(*)::text as count from updated
