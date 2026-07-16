@@ -274,14 +274,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(mysteryTask!.id)}/resolve`),
       {
         headers: adminHeaders(),
-        data: {
-          decision: "resolved",
-          parameterSpecId: mysteryTask!.candidateSchemas?.[0]?.id ?? specSc!.id,
-          reason: `${descriptionPrefix} approve mystery/unmatched review`
-        }
+        data: mysteryTask!.candidateSchemas?.[0]?.id
+          ? {
+              decision: "resolved",
+              parameterSpecId: mysteryTask!.candidateSchemas[0].id,
+              reason: `${descriptionPrefix} approve mystery/unmatched review`
+            }
+          : {
+              decision: "resolved",
+              createSpec: true,
+              reason: `${descriptionPrefix} create-and-resolve unmatched review`
+            }
       }
     );
-    expect(resolveReview.ok()).toBe(true);
+    expect(resolveReview.ok(), await resolveReview.text()).toBe(true);
 
     const reviewDb = await withPgClient(async (client) => {
       const result = await client.query<{ status: string; parameter_spec_id: string | null }>(
@@ -534,17 +540,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       item: { status: string; failureCode?: string | null };
     };
     expect(compileBody.item.status).toBe("failed");
-    expect(compileBody.item.failureCode).toBeTruthy();
-    expect([
-      "compile-failed",
-      "resolve-failed",
-      "toolchain-unavailable",
-      "schema-failed",
-      "invalid-revision",
-      "open-review",
-      "open-mapping",
-      "empty-config-set"
-    ]).toContain(compileBody.item.failureCode);
+    expect(compileBody.item.failureCode).toBe("resolve-failed");
 
     // Successful typed edit → precise DTS writeback + re-ingest (createBindingDraft).
     await resolveReviewsForCurrentRevision(request, revisionId, projectId);
