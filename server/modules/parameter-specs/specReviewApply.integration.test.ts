@@ -101,6 +101,14 @@ async function seedGraph(db: InMemoryTestDatabase) {
     `,
     [SPEC_VERSION_ID, SPEC_ID],
   );
+  await db.query(
+    `
+    insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, constraints, documentation)
+    values ($1, $2, $3, 'manual', '{"cells": 1}'::jsonb, 'Manual reviewed mystery spec')
+    on conflict (id) do nothing
+    `,
+    [`dps:${SPEC_ID}`, SPEC_ID, PROPERTY_KEY],
+  );
 }
 
 async function insertPinnedMember(
@@ -398,6 +406,14 @@ describe.skipIf(!databaseAvailable)("spec review apply integration", () => {
       values ($1, $2, $3, $4)
       `,
       [dismissLogicalNodeId, ORG_ID, PROJECT_ID, CONFIG_SET_ID],
+    );
+    await db!.query(
+      `
+      insert into dts_logical_node_revisions (
+        id, logical_node_id, config_revision_id, node_locator, name
+      ) values ($1, $2, $3, '/ghost2@1', 'ghost2')
+      `,
+      [randomUUID(), dismissLogicalNodeId, revision1.id],
     );
     const dismissNodeOcc = randomUUID();
     await db!.query(

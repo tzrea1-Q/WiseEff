@@ -122,8 +122,8 @@ async function seedGraph(db: InMemoryTestDatabase) {
     );
     await db.query(
       `
-      insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, constraints)
-      values ($1, $2, $3, 'manual', '{}'::jsonb)
+      insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, constraints, documentation)
+      values ($1, $2, $3, 'manual', '{"cells": 1}'::jsonb, 'Manual twin mystery spec')
       on conflict (id) do nothing
       `,
       [dpsId, specId, PROPERTY_KEY],
