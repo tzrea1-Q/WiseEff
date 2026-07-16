@@ -35,7 +35,7 @@
 3. fail-closed validation + 工具链钉扎（已完成）  
 4. typed edit / writeback API（已完成）  
 5. 前端真实数据接通（已完成）  
-6. 规格审核队列  
+6. 规格审核队列（已完成）  
 7. 迁移 / cutover  
 8. 验收 / 文档 / 终态门禁  
 

@@ -4,7 +4,10 @@ import type {
   ParameterSpecSummary,
   ProjectParameterBinding,
   ResolveMappingInput,
+  ResolveSpecReviewInput,
   SpecQuery,
+  SpecReviewTaskListResult,
+  SpecReviewTaskQuery,
   TopologyTree,
   TopologyView,
   ValidationRun,
@@ -17,7 +20,10 @@ export type {
   ParameterSpecSummary,
   ProjectParameterBinding,
   ResolveMappingInput,
+  ResolveSpecReviewInput,
   SpecQuery,
+  SpecReviewTaskListResult,
+  SpecReviewTaskQuery,
   TopologyTree,
   TopologyView,
   ValidationRun
@@ -48,6 +54,8 @@ export type BindingDraftResult = {
 export interface ParameterTopologyRepository {
   listSpecs(query: SpecQuery): Promise<ParameterSpecSummary[]>;
   getSpec(specId: string): Promise<ParameterSpecDetail>;
+  listSpecReviewTasks(query?: SpecReviewTaskQuery): Promise<SpecReviewTaskListResult>;
+  resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput): Promise<void>;
   listBindings(projectId: string, revisionId: string): Promise<ProjectParameterBinding[]>;
   getTopology(
     projectId: string,

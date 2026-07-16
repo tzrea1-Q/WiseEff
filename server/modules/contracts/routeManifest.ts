@@ -184,6 +184,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterSpecs.listReviewTasks",
+    method: "GET",
+    path: "/api/v2/parameter-spec-review-tasks",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterSpecs.resolveReviewTask",
     method: "POST",
     path: "/api/v2/parameter-spec-review-tasks/:taskId/resolve",

@@ -9,7 +9,11 @@ import type {
   ParameterSpecSummary,
   ProjectParameterBinding,
   ResolveMappingInput,
+  ResolveSpecReviewInput,
   SpecQuery,
+  SpecReviewTask,
+  SpecReviewTaskListResult,
+  SpecReviewTaskQuery,
   TopologyTree,
   TopologyView,
   ValidationRun
@@ -23,6 +27,8 @@ import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 export type ParameterTopologyRuntimeAction =
   | { type: "TOPOLOGY_SPECS_READY"; specs: ParameterSpecSummary[] }
   | { type: "TOPOLOGY_SPEC_READY"; spec: ParameterSpecDetail }
+  | { type: "TOPOLOGY_SPEC_REVIEW_TASKS_READY"; tasks: SpecReviewTask[]; nextCursor: string | null }
+  | { type: "TOPOLOGY_SPEC_REVIEW_RESOLVED"; taskId: string }
   | { type: "TOPOLOGY_BINDINGS_READY"; projectId: string; revisionId: string; bindings: ProjectParameterBinding[] }
   | { type: "TOPOLOGY_TREE_READY"; tree: TopologyTree }
   | { type: "TOPOLOGY_MAPPING_TASKS_READY"; tasks: IdentityMappingTask[] }
@@ -93,6 +99,25 @@ export function createParameterTopologyRuntime({ runtimeMode, dispatch, reposito
     },
     getSpec(specId: string) {
       return run((api) => api.getSpec(specId), (spec) => ({ type: "TOPOLOGY_SPEC_READY", spec }));
+    },
+    listSpecReviewTasks(query: SpecReviewTaskQuery = {}) {
+      return run(
+        (api) => api.listSpecReviewTasks(query),
+        (result: SpecReviewTaskListResult) => ({
+          type: "TOPOLOGY_SPEC_REVIEW_TASKS_READY",
+          tasks: result.items,
+          nextCursor: result.nextCursor
+        })
+      );
+    },
+    resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput) {
+      return run(
+        async (api) => {
+          await api.resolveSpecReviewTask(taskId, input);
+          return taskId;
+        },
+        (resolvedTaskId) => ({ type: "TOPOLOGY_SPEC_REVIEW_RESOLVED", taskId: resolvedTaskId })
+      );
     },
     listBindings(projectId: string, revisionId: string) {
       return run(

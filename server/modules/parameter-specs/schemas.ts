@@ -46,6 +46,34 @@ export const parameterSpecReviewTaskParamsSchema = z.object({
   taskId: nonEmptyString
 });
 
+export const specReviewTaskStatusSchema = z.enum(["open", "resolved", "dismissed"]);
+
+export const listSpecReviewTasksQuerySchema = z.object({
+  status: specReviewTaskStatusSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  cursor: z.string().optional()
+});
+
+export const parameterSpecReviewCandidateDtoSchema = z.object({
+  id: nonEmptyString,
+  label: nonEmptyString
+});
+
+export const parameterSpecReviewTaskDtoSchema = z.object({
+  id: nonEmptyString,
+  status: specReviewTaskStatusSchema,
+  parameterSpecId: z.string().nullable().optional(),
+  propertyKey: z.string().nullable(),
+  driverModule: z.string().nullable(),
+  evidence: z.array(z.string()),
+  candidates: z.array(parameterSpecReviewCandidateDtoSchema),
+  ambiguous: z.boolean(),
+  projectCount: z.number().int(),
+  createdAt: nonEmptyString,
+  resolvedAt: z.string().nullable().optional(),
+  reason: z.string().nullable().optional()
+});
+
 export const resolveSpecReviewTaskBodySchema = z
   .object({
     decision: z.enum(["resolved", "dismissed"]),
@@ -65,4 +93,6 @@ export const resolveSpecReviewTaskBodySchema = z
 export type ParameterSpecSummaryDto = z.infer<typeof parameterSpecSummaryDtoSchema>;
 export type ParameterSpecDetailDto = z.infer<typeof parameterSpecDetailDtoSchema>;
 export type ListParameterSpecsQuery = z.infer<typeof listParameterSpecsQuerySchema>;
+export type ListSpecReviewTasksQuery = z.infer<typeof listSpecReviewTasksQuerySchema>;
+export type ParameterSpecReviewTaskDto = z.infer<typeof parameterSpecReviewTaskDtoSchema>;
 export type ResolveSpecReviewTaskBody = z.infer<typeof resolveSpecReviewTaskBodySchema>;

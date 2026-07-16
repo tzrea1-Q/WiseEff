@@ -1766,6 +1766,36 @@
         }
       }
     },
+    "/api/v2/parameter-spec-review-tasks": {
+      "get": {
+        "operationId": "parameterSpecs.listReviewTasks",
+        "summary": "List organization-scoped parameter specification review tasks",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSpecReviewTaskListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/parameter-spec-review-tasks/{taskId}/resolve": {
       "post": {
         "operationId": "parameterSpecs.resolveReviewTask",
@@ -4765,6 +4795,10 @@
       "ParameterSpecDetailResponse": {
         "type": "object",
         "x-wiseeff-schema": "ParameterSpecDetailResponse"
+      },
+      "ParameterSpecReviewTaskListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterSpecReviewTaskListResponse"
       },
       "ResolveParameterSpecReviewTaskRequest": {
         "type": "object",

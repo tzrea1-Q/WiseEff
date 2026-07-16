@@ -8,11 +8,16 @@ import {
   getParameterSpecRow,
   getSpecReviewTaskById,
   listParameterSpecRows,
-  resolveSpecReviewTaskRow
+  listSpecReviewTaskRows,
+  resolveSpecReviewTaskRow,
+  type PersistedSpecReviewTask,
+  type SpecReviewTaskListCursor
 } from "./repository";
 import type {
   ListParameterSpecsQuery,
+  ListSpecReviewTasksQuery,
   ParameterSpecDetailDto,
+  ParameterSpecReviewTaskDto,
   ParameterSpecSummaryDto,
   ResolveSpecReviewTaskBody
 } from "./schemas";
@@ -27,6 +32,95 @@ function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+/** Prefer parameterSpecId; map legacy propspec version ids to pspec ids. */
+export function resolveCandidateSpecId(candidate: Record<string, unknown>): string | null {
+  const parameterSpecId = asString(candidate.parameterSpecId);
+  if (parameterSpecId) return parameterSpecId;
+  const id = asString(candidate.id);
+  if (!id) return null;
+  if (id.startsWith("pspec:")) return id;
+  if (id.startsWith("propspec:")) {
+    return id.replace(/^propspec:/, "pspec:").replace(/:v\d+$/, "");
+  }
+  return id;
+}
+
+function candidateLabel(candidate: Record<string, unknown>, id: string): string {
+  const schemaNamespace = asString(candidate.schemaNamespace);
+  const propertyKey = asString(candidate.propertyKey);
+  const compatible = asString(candidate.compatible);
+  if (schemaNamespace && propertyKey) return `${schemaNamespace} / ${propertyKey}`;
+  if (compatible && schemaNamespace) return `${compatible} (${schemaNamespace})`;
+  if (schemaNamespace) return schemaNamespace;
+  return id;
+}
+
+export function toReviewTaskDto(task: PersistedSpecReviewTask): ParameterSpecReviewTaskDto {
+  const evidenceRecord = asRecord(task.sourceEvidence);
+  const evidence = asStringArray(evidenceRecord.evidence);
+  const propertyKey = asString(evidenceRecord.propertyKey);
+  const candidates = task.candidateSchemas
+    .map((raw) => {
+      const candidate = asRecord(raw);
+      const id = resolveCandidateSpecId(candidate);
+      if (!id) return null;
+      return { id, label: candidateLabel(candidate, id) };
+    })
+    .filter((item): item is { id: string; label: string } => item != null);
+
+  const firstCandidate = asRecord(task.candidateSchemas[0] ?? {});
+  const driverModule = asString(firstCandidate.schemaNamespace);
+
+  return {
+    id: task.id,
+    status: task.status,
+    parameterSpecId: task.parameterSpecId ?? null,
+    propertyKey,
+    driverModule,
+    evidence,
+    candidates,
+    ambiguous: candidates.length > 1,
+    projectCount: task.projectCount,
+    createdAt: task.createdAt,
+    resolvedAt: task.resolvedAt ?? null,
+    reason: task.reason ?? null
+  };
+}
+
+function decodeReviewCursor(cursor: string | undefined): SpecReviewTaskListCursor | null {
+  if (!cursor) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as {
+      createdAt?: unknown;
+      id?: unknown;
+    };
+    if (typeof parsed.createdAt !== "string" || typeof parsed.id !== "string") {
+      throw new Error("invalid cursor shape");
+    }
+    return { createdAt: parsed.createdAt, id: parsed.id };
+  } catch {
+    throw new ApiError("VALIDATION_FAILED", "Invalid review task cursor.", 400, { cursor });
+  }
+}
+
+function encodeReviewCursor(cursor: SpecReviewTaskListCursor | null): string | null {
+  if (!cursor) return null;
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
 
 export async function listParameterSpecs(
@@ -91,6 +185,26 @@ export async function getParameterSpec(
   };
 }
 
+export async function listSpecReviewTasks(
+  db: Database,
+  auth: AuthContext,
+  query: ListSpecReviewTasksQuery = {}
+): Promise<{ items: ParameterSpecReviewTaskDto[]; nextCursor: string | null }> {
+  requireCanAdmin(auth);
+  const limit = query.limit ?? 50;
+  const cursor = decodeReviewCursor(query.cursor);
+  const result = await listSpecReviewTaskRows(db, {
+    organizationId: auth.organization.id,
+    status: query.status,
+    limit,
+    cursor
+  });
+  return {
+    items: result.items.map(toReviewTaskDto),
+    nextCursor: encodeReviewCursor(result.nextCursor)
+  };
+}
+
 export async function resolveSpecReviewTask(
   db: Database,
   auth: AuthContext,
@@ -105,6 +219,22 @@ export async function resolveSpecReviewTask(
   });
   if (!existing) {
     throw new ApiError("NOT_FOUND", "Parameter spec review task was not found.", 404, { taskId: input.taskId });
+  }
+
+  if (input.decision === "resolved") {
+    const parameterSpecId = input.parameterSpecId;
+    if (!parameterSpecId) {
+      throw new ApiError("VALIDATION_FAILED", "parameterSpecId is required when resolving a review task.", 400);
+    }
+    const allowedSpec = await getParameterSpecRow(db, {
+      organizationId: auth.organization.id,
+      specId: parameterSpecId
+    });
+    if (!allowedSpec) {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found for this organization.", 404, {
+        parameterSpecId
+      });
+    }
   }
 
   const resolved = await resolveSpecReviewTaskRow(db, {
@@ -132,7 +262,9 @@ export async function resolveSpecReviewTask(
         parameterSpecId: resolved.parameterSpecId ?? input.parameterSpecId ?? null,
         decision: input.decision,
         reasonHash: hashReason(input.reason),
-        projectCount: existing.projectCount
+        projectCount: existing.projectCount,
+        propertyKey: asString(asRecord(existing.sourceEvidence).propertyKey),
+        previousStatus: existing.status
       }
     },
     context

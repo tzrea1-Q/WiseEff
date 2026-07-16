@@ -300,7 +300,8 @@ export function reviewTasksForDecision(
         candidateSchemas: decision.candidates.map((candidate) =>
           "propertyKey" in candidate
             ? {
-                id: candidate.id,
+                id: candidate.parameterSpecId,
+                parameterSpecVersionId: candidate.id,
                 propertyKey: candidate.propertyKey,
                 schemaNamespace: candidate.schemaNamespace,
                 source: candidate.source,

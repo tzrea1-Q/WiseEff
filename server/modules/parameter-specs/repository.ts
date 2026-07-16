@@ -109,6 +109,57 @@ export async function listOpenSpecReviewTasks(
   return result.rows.map(toDto);
 }
 
+export type SpecReviewTaskListCursor = {
+  createdAt: string;
+  id: string;
+};
+
+export async function listSpecReviewTaskRows(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    status?: "open" | "resolved" | "dismissed";
+    limit: number;
+    cursor?: SpecReviewTaskListCursor | null;
+  },
+): Promise<{ items: PersistedSpecReviewTask[]; nextCursor: SpecReviewTaskListCursor | null }> {
+  const values: unknown[] = [input.organizationId];
+  const conditions = ["organization_id = $1"];
+
+  if (input.status) {
+    values.push(input.status);
+    conditions.push(`status = $${values.length}`);
+  }
+
+  if (input.cursor) {
+    values.push(input.cursor.createdAt, input.cursor.id);
+    conditions.push(
+      `(created_at, id) > ($${values.length - 1}::timestamptz, $${values.length}::text)`,
+    );
+  }
+
+  values.push(input.limit + 1);
+  const result = await db.query<ReviewTaskRow>(
+    `
+    select *
+    from parameter_spec_review_tasks
+    where ${conditions.join(" and ")}
+    order by created_at asc, id asc
+    limit $${values.length}
+    `,
+    values,
+  );
+
+  const hasMore = result.rows.length > input.limit;
+  const rows = hasMore ? result.rows.slice(0, input.limit) : result.rows;
+  const items = rows.map(toDto);
+  const last = items[items.length - 1];
+  return {
+    items,
+    nextCursor: hasMore && last ? { createdAt: last.createdAt, id: last.id } : null,
+  };
+}
+
 export async function getSpecReviewTaskById(
   db: Queryable,
   input: { organizationId: string; taskId: string },

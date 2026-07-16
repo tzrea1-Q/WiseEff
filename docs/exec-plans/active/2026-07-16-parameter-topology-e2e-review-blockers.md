@@ -95,8 +95,8 @@
 
 **Files:** `parameter-specs/routes|service`, `ParameterAdminPage.tsx`, `SpecReviewQueue.tsx`
 
-- [ ] List/resolve APIs with org isolation; frontend loads/refreshes; cross-org 404; audit
-- [ ] Commit: `fix(parameters): wire parameter spec review queue`
+- [x] List/resolve APIs with org isolation; frontend loads/refreshes; cross-org 404; audit
+- [x] Commit: `fix(parameters): wire parameter spec review queue`
 
 ### Task 7: Migration dry-run read-only + cutover runtime sync
 

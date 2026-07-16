@@ -277,6 +277,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ParameterSpecDetailResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "parameterSpecs.listReviewTasks": {
+    summary: "List organization-scoped parameter specification review tasks",
+    tags: ["parameters"],
+    responseBody: "ParameterSpecReviewTaskListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
   "parameterSpecs.resolveReviewTask": {
     summary: "Resolve a parameter specification review task",
     tags: ["parameters"],

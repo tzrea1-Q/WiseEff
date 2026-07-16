@@ -18,6 +18,8 @@ function createRepository(
   return {
     listSpecs: vi.fn(),
     getSpec: vi.fn(),
+    listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    resolveSpecReviewTask: vi.fn().mockResolvedValue(undefined),
     listBindings: vi.fn().mockResolvedValue(TOPOLOGY_TEACHING_BINDINGS),
     getTopology: vi.fn(async (_projectId, _configSetId, revisionId, view) => {
       if (view === "source") {

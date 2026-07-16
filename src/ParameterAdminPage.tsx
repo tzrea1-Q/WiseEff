@@ -86,6 +86,8 @@ export function ParameterAdminPage({
   const [selectedSpecId, setSelectedSpecId] = useState<string | null>(null);
   const [specDetail, setSpecDetail] = useState<ParameterSpecDetailView | null>(null);
   const [reviewTasks, setReviewTasks] = useState<SpecReviewTaskView[]>([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewActionError, setReviewActionError] = useState<string | null>(null);
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
@@ -181,6 +183,89 @@ export function ParameterAdminPage({
       cancelled = true;
     };
   }, [topologyRepository]);
+
+  const reloadReviewTasks = useCallback(async () => {
+    if (!topologyRepository) {
+      setReviewTasks([]);
+      return;
+    }
+    setReviewLoading(true);
+    setReviewActionError(null);
+    try {
+      const result = await topologyRepository.listSpecReviewTasks({ status: "open", limit: 50 });
+      setReviewTasks(
+        result.items.map((task) => ({
+          id: task.id,
+          propertyKey: task.propertyKey ?? "unknown",
+          driverModule: task.driverModule,
+          evidence: task.evidence,
+          candidates: task.candidates,
+          ambiguous: task.ambiguous,
+          projectCount: task.projectCount
+        }))
+      );
+    } catch {
+      setReviewTasks([]);
+      setReviewActionError("无法加载规格审核队列。");
+    } finally {
+      setReviewLoading(false);
+    }
+  }, [topologyRepository]);
+
+  useEffect(() => {
+    if (!topologyRepository) {
+      setReviewTasks([]);
+      return undefined;
+    }
+    let cancelled = false;
+    reloadReviewTasks().catch(() => {
+      if (!cancelled) {
+        setReviewTasks([]);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadReviewTasks, topologyRepository]);
+
+  const handleApproveReview = useCallback(
+    async (input: { taskId: string; parameterSpecId: string; reason: string }) => {
+      if (!topologyRepository) {
+        return;
+      }
+      setReviewActionError(null);
+      try {
+        await topologyRepository.resolveSpecReviewTask(input.taskId, {
+          decision: "resolved",
+          parameterSpecId: input.parameterSpecId,
+          reason: input.reason
+        });
+        await reloadReviewTasks();
+      } catch {
+        setReviewActionError("批准失败，请重试。");
+      }
+    },
+    [reloadReviewTasks, topologyRepository]
+  );
+
+  const handleDismissReview = useCallback(
+    async (input: { taskId: string; reason: string }) => {
+      if (!topologyRepository) {
+        return;
+      }
+      setReviewActionError(null);
+      try {
+        await topologyRepository.resolveSpecReviewTask(input.taskId, {
+          decision: "dismissed",
+          reason: input.reason
+        });
+        await reloadReviewTasks();
+      } catch {
+        setReviewActionError("驳回失败，请重试。");
+      }
+    },
+    [reloadReviewTasks, topologyRepository]
+  );
 
   const handleSelectSpec = useCallback(
     async (specId: string) => {
@@ -435,15 +520,21 @@ export function ParameterAdminPage({
             detail={specDetail}
             onSelectSpec={handleSelectSpec}
             reviewQueueSlot={
-              <SpecReviewQueue
-                tasks={reviewTasks}
-                onApprove={(input) => {
-                  setReviewTasks((current) => current.filter((task) => task.id !== input.taskId));
-                }}
-                onDismiss={(input) => {
-                  setReviewTasks((current) => current.filter((task) => task.id !== input.taskId));
-                }}
-              />
+              <>
+                {reviewActionError ? <p className="form-error" role="alert">{reviewActionError}</p> : null}
+                {reviewLoading && reviewTasks.length === 0 ? (
+                  <p className="parameters-table-empty">正在加载规格审核队列…</p>
+                ) : null}
+                <SpecReviewQueue
+                  tasks={reviewTasks}
+                  onApprove={(input) => {
+                    void handleApproveReview(input);
+                  }}
+                  onDismiss={(input) => {
+                    void handleDismissReview(input);
+                  }}
+                />
+              </>
             }
           />
         ) : library.length === 0 ? (

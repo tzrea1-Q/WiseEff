@@ -13,6 +13,7 @@ import * as topologyService from "./service";
 vi.mock("../parameter-specs/service", () => ({
   listParameterSpecs: vi.fn(),
   getParameterSpec: vi.fn(),
+  listSpecReviewTasks: vi.fn(),
   resolveSpecReviewTask: vi.fn()
 }));
 
@@ -137,6 +138,47 @@ describe("parameter semantic v2 routes", () => {
     });
     expect(response.status).toBe(403);
     expect(specService.resolveSpecReviewTask).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/v2/parameter-spec-review-tasks requires parameter admin", async () => {
+    const response = await requestJson(
+      makeServer({ db: makeDb(), auth: makeAuth() }),
+      "/api/v2/parameter-spec-review-tasks?status=open"
+    );
+    expect(response.status).toBe(403);
+    expect(specService.listSpecReviewTasks).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/v2/parameter-spec-review-tasks lists open tasks for admins", async () => {
+    vi.mocked(specService.listSpecReviewTasks).mockResolvedValue({
+      items: [
+        {
+          id: "task-1",
+          status: "open",
+          propertyKey: "gpio_int",
+          driverModule: "vendor,sc8562",
+          evidence: ["ambiguous"],
+          candidates: [{ id: "pspec:a", label: "a / gpio_int" }],
+          ambiguous: false,
+          projectCount: 1,
+          createdAt: "2026-07-16T01:00:00.000Z"
+        }
+      ],
+      nextCursor: null
+    });
+
+    const response = await requestJson<{ items: Array<{ id: string }>; nextCursor: string | null }>(
+      makeServer({ db: makeDb(), auth: makeAdminAuth() }),
+      "/api/v2/parameter-spec-review-tasks?status=open&limit=25"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body?.items[0]?.id).toBe("task-1");
+    expect(specService.listSpecReviewTasks).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ organization: { id: "org-1", name: "ChargeLab" } }),
+      expect.objectContaining({ status: "open", limit: 25 })
+    );
   });
 
   it("POST /api/v2/parameter-spec-review-tasks/:taskId/resolve lets admins approve", async () => {

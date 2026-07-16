@@ -276,6 +276,49 @@ describe("createHttpParameterTopologyRepository", () => {
     expect(detail).not.toHaveProperty("recommendedValue");
   });
 
+  it("lists and resolves parameter spec review tasks", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response({
+          items: [
+            {
+              id: "task-1",
+              status: "open",
+              propertyKey: "gpio_int",
+              driverModule: "vendor,sc8562",
+              evidence: ["ambiguous"],
+              candidates: [{ id: "pspec:a", label: "vendor,sc8562 / gpio_int" }],
+              ambiguous: false,
+              projectCount: 1,
+              createdAt: "2026-07-16T01:00:00.000Z"
+            }
+          ],
+          nextCursor: "cursor-1"
+        })
+      )
+      .mockResolvedValueOnce(response({ item: { id: "task-1", status: "resolved" } }));
+
+    const repository = createHttpParameterTopologyRepository(
+      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
+    );
+
+    const listed = await repository.listSpecReviewTasks({ status: "open", limit: 20 });
+    expect(listed.items[0]).toMatchObject({ id: "task-1", propertyKey: "gpio_int" });
+    expect(listed.nextCursor).toBe("cursor-1");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/v2/parameter-spec-review-tasks");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("status=open");
+
+    await repository.resolveSpecReviewTask("task-1", {
+      decision: "resolved",
+      parameterSpecId: "pspec:a",
+      reason: "ok"
+    });
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
+      "/api/v2/parameter-spec-review-tasks/task-1/resolve"
+    );
+  });
+
   it("preserves WiseEffApiError for stale-revision and structured diagnostics", async () => {
     const fetchMock = vi.fn(async () =>
       response(

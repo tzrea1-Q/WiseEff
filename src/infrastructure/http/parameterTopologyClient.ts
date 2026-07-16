@@ -8,7 +8,11 @@ import type {
   ParameterSpecDetail,
   ParameterSpecSummary,
   ProjectParameterBinding,
+  ResolveSpecReviewInput,
   SpecQuery,
+  SpecReviewTask,
+  SpecReviewTaskListResult,
+  SpecReviewTaskQuery,
   TopologyDiagnostic,
   TopologyTree,
   ValidationRun
@@ -37,6 +41,7 @@ export type ProjectBindingDto = {
 
 export type ParameterSpecSummaryDto = ParameterSpecSummary;
 export type ParameterSpecDetailDto = ParameterSpecDetail;
+export type SpecReviewTaskDto = SpecReviewTask;
 
 export type ParameterTopologyMappedError =
   | {
@@ -86,6 +91,14 @@ function buildSpecsPath(query: SpecQuery = {}) {
   if (query.driverModule) params.set("driverModule", query.driverModule);
   if (query.propertyKey) params.set("propertyKey", query.propertyKey);
   return appendQuery("/api/v2/parameter-specs", params);
+}
+
+function buildSpecReviewTasksPath(query: SpecReviewTaskQuery = {}) {
+  const params = new URLSearchParams();
+  if (query.status) params.set("status", query.status);
+  if (query.limit != null) params.set("limit", String(query.limit));
+  if (query.cursor) params.set("cursor", query.cursor);
+  return appendQuery("/api/v2/parameter-spec-review-tasks", params);
 }
 
 function buildBindingsPath(projectId: string, revisionId: string) {
@@ -158,6 +171,23 @@ export function specDetailFromDto(dto: ParameterSpecDetailDto): ParameterSpecDet
     documentation: dto.documentation,
     compatiblePatterns: dto.compatiblePatterns,
     policyTarget: dto.policyTarget
+  };
+}
+
+export function specReviewTaskFromDto(dto: SpecReviewTaskDto): SpecReviewTask {
+  return {
+    id: dto.id,
+    status: dto.status,
+    parameterSpecId: dto.parameterSpecId,
+    propertyKey: dto.propertyKey,
+    driverModule: dto.driverModule,
+    evidence: dto.evidence,
+    candidates: dto.candidates.map((candidate) => ({ id: candidate.id, label: candidate.label })),
+    ambiguous: dto.ambiguous,
+    projectCount: dto.projectCount,
+    createdAt: dto.createdAt,
+    resolvedAt: dto.resolvedAt,
+    reason: dto.reason
   };
 }
 
@@ -297,6 +327,21 @@ export function createHttpParameterTopologyRepository(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}`
       );
       return specDetailFromDto(response.item);
+    },
+    async listSpecReviewTasks(query = {}) {
+      const response = await apiClient.get<{ items: SpecReviewTaskDto[]; nextCursor: string | null }>(
+        buildSpecReviewTasksPath(query)
+      );
+      return {
+        items: response.items.map(specReviewTaskFromDto),
+        nextCursor: response.nextCursor
+      } satisfies SpecReviewTaskListResult;
+    },
+    async resolveSpecReviewTask(taskId, input: ResolveSpecReviewInput) {
+      await apiClient.post<ItemEnvelope<{ id: string; status: string }>>(
+        `/api/v2/parameter-spec-review-tasks/${encodeURIComponent(taskId)}/resolve`,
+        input
+      );
     },
     async listBindings(projectId, revisionId) {
       const response = await apiClient.get<ItemsEnvelope<ProjectBindingDto>>(

@@ -178,6 +178,45 @@ export type IdentityMappingTask = {
   resolvedAt?: string | null;
 };
 
+export type SpecReviewTaskStatus = "open" | "resolved" | "dismissed";
+
+export type SpecReviewTaskQuery = {
+  status?: SpecReviewTaskStatus;
+  limit?: number;
+  cursor?: string;
+};
+
+export type SpecReviewTaskCandidate = {
+  id: string;
+  label: string;
+};
+
+export type SpecReviewTask = {
+  id: string;
+  status: SpecReviewTaskStatus;
+  parameterSpecId?: string | null;
+  propertyKey: string | null;
+  driverModule: string | null;
+  evidence: string[];
+  candidates: SpecReviewTaskCandidate[];
+  ambiguous: boolean;
+  projectCount: number;
+  createdAt: string;
+  resolvedAt?: string | null;
+  reason?: string | null;
+};
+
+export type SpecReviewTaskListResult = {
+  items: SpecReviewTask[];
+  nextCursor: string | null;
+};
+
+export type ResolveSpecReviewInput = {
+  decision: "resolved" | "dismissed";
+  parameterSpecId?: string;
+  reason: string;
+};
+
 export type ResolveMappingInput = {
   decision: "resolved" | "dismissed";
   selectedLogicalNodeId?: string;

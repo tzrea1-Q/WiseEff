@@ -272,7 +272,8 @@ Additive semantic surface used by the topology/schema program. Production remain
 | --- | --- | --- |
 | `GET` | `/api/v2/parameter-specs` | List versioned parameter specs (property key, driver module, locator fields separated). |
 | `GET` | `/api/v2/parameter-specs/:specId` | Spec detail including example/default/policy metadata (`example_value` is informational). |
-| `POST` | `/api/v2/parameter-spec-review-tasks/:taskId/resolve` | Admin resolve/dismiss a spec review task. |
+| `GET` | `/api/v2/parameter-spec-review-tasks` | Org-scoped, paginated, status-filtered spec review queue (`?status=&limit=&cursor=`). |
+| `POST` | `/api/v2/parameter-spec-review-tasks/:taskId/resolve` | Admin resolve/dismiss a spec review task (`parameterSpecId` must be org-owned or global). |
 | `GET` | `/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology` | Source or effective tree (`?view=source\|effective`). |
 | `GET` | `/api/v2/projects/:projectId/parameter-bindings` | Stable project bindings (spec + logical node + effective value). |
 | `GET` | `/api/v2/identity-mapping-tasks` | List open/resolved identity mapping tasks. |

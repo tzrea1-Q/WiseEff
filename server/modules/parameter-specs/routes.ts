@@ -7,11 +7,12 @@ import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   listParameterSpecsQuerySchema,
+  listSpecReviewTasksQuerySchema,
   parameterSpecParamsSchema,
   parameterSpecReviewTaskParamsSchema,
   resolveSpecReviewTaskBodySchema
 } from "./schemas";
-import { getParameterSpec, listParameterSpecs, resolveSpecReviewTask } from "./service";
+import { getParameterSpec, listParameterSpecs, listSpecReviewTasks, resolveSpecReviewTask } from "./service";
 
 function requireDb(db: Database | undefined) {
   if (!db) {
@@ -66,6 +67,15 @@ export function registerParameterSpecRoutes(
     requireCanView(auth);
     const params = parseWithSchema(parameterSpecParamsSchema, request.params);
     const result = await getParameterSpec(db, auth, params.specId);
+    return { status: 200, body: result };
+  });
+
+  router.get("/api/v2/parameter-spec-review-tasks", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const query = parseWithSchema(listSpecReviewTasksQuerySchema, flattenQuery(request.query));
+    const result = await listSpecReviewTasks(db, auth, query);
     return { status: 200, body: result };
   });
 
