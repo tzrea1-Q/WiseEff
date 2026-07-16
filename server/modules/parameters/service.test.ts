@@ -16,21 +16,25 @@ function createFakeDb(
   results: QueuedResult[] = [],
   options: {
     readConflictChecksFromQueue?: boolean;
+    /** When true, semantic/post-cutover identity path is active. */
+    semanticCutoverComplete?: boolean;
   } = {}
 ) {
   const calls: QueryCall[] = [];
   const txCalls: QueryCall[] = [];
   const transactions: QueryCall[][] = [];
   const readConflictChecksFromQueue = options.readConflictChecksFromQueue ?? false;
+  const semanticCutoverComplete = options.semanticCutoverComplete ?? false;
 
   const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
     const call = { text, values };
     // Cutover probes must not consume the queued fixture rows.
     if (text.includes("parameter_identity_cutovers")) {
-      return { rows: [{ c: "0" } as Row], rowCount: 1 };
+      return { rows: [{ c: semanticCutoverComplete ? "1" : "0" } as Row], rowCount: 1 };
     }
     if (text.includes("information_schema.tables") && text.includes("parameter_definitions")) {
-      return { rows: [{ c: "1" } as Row], rowCount: 1 };
+      // When cutover is complete, legacy flat tables are retired.
+      return { rows: [{ c: semanticCutoverComplete ? "0" : "1" } as Row], rowCount: 1 };
     }
     target.push(call);
     if (!readConflictChecksFromQueue && text.includes("from parameter_file_sync_conflicts")) {
@@ -2086,5 +2090,128 @@ describe("parameter service", () => {
     expect(softwareReview.status).toBe("software_review");
     expect(softwareMerge.status).toBe("software_merge");
     expect(merged.status).toBe("merged");
+  });
+
+  describe("post-cutover semantic merge fail-closed preflight", () => {
+    const mergeAuth = () =>
+      makeAuth({
+        roles: [{ projectId: null, roleId: "admin" }],
+        permissions: [
+          "parameter:view",
+          "parameter:edit",
+          "parameter:review",
+          "parameter:merge",
+          "admin:access"
+        ]
+      });
+
+    it("rejects semantic merge when objectStore is missing", async () => {
+      const { db, txCalls } = createFakeDb(
+        [[changeRequestRow({ status: "software_merge", risk: "Medium" })], []],
+        { semanticCutoverComplete: true }
+      );
+
+      await expect(
+        reviewChange(db, mergeAuth(), {
+          requestId: "request-1",
+          decision: "advance",
+          expectedVersion: 7
+        })
+      ).rejects.toMatchObject(
+        new ApiError("CONFLICT", "Semantic merge requires object storage for DTS writeback.", 409, {
+          requestId: "request-1"
+        })
+      );
+
+      expect(txCalls.some((call) => call.text.includes("insert into parameter_history_entries"))).toBe(false);
+      expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
+      expect(txCalls.some((call) => call.text.includes("update parameter_change_requests") && call.values?.includes("merged"))).toBe(
+        false
+      );
+    });
+
+    it("rejects semantic merge when projectId is missing", async () => {
+      const { db, txCalls } = createFakeDb(
+        [[changeRequestRow({ status: "software_merge", risk: "Medium", project_id: null })], []],
+        { semanticCutoverComplete: true }
+      );
+
+      await expect(
+        reviewChange(
+          db,
+          mergeAuth(),
+          { requestId: "request-1", decision: "advance", expectedVersion: 7 },
+          { objectStore: { get: async () => Buffer.alloc(0), put: async () => ({ storageKey: "x", checksumSha256: "y", fileSizeBytes: 0 }) } as never }
+        )
+      ).rejects.toMatchObject(
+        new ApiError("CONFLICT", "Semantic merge requires a project-scoped change request.", 409, {
+          requestId: "request-1"
+        })
+      );
+
+      expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
+    });
+
+    it("rejects semantic merge when binding identity is missing", async () => {
+      const { db, txCalls } = createFakeDb(
+        [
+          [
+            changeRequestRow({
+              status: "software_merge",
+              risk: "Medium",
+              project_parameter_value_id: ""
+            })
+          ],
+          []
+        ],
+        { semanticCutoverComplete: true }
+      );
+
+      await expect(
+        reviewChange(
+          db,
+          mergeAuth(),
+          { requestId: "request-1", decision: "advance", expectedVersion: 7 },
+          { objectStore: { get: async () => Buffer.alloc(0), put: async () => ({ storageKey: "x", checksumSha256: "y", fileSizeBytes: 0 }) } as never }
+        )
+      ).rejects.toMatchObject(
+        new ApiError("CONFLICT", "Semantic merge requires a project parameter binding write lock.", 409, {
+          requestId: "request-1"
+        })
+      );
+
+      expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
+    });
+
+    it("does not honor WISEEFF_WRITEBACK_SKIP_TOOLCHAIN env bypass", async () => {
+      const previous = process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN;
+      process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN = "1";
+      try {
+        const { db, txCalls } = createFakeDb(
+          [[changeRequestRow({ status: "software_merge", risk: "Medium" })], []],
+          { semanticCutoverComplete: true }
+        );
+
+        await expect(
+          reviewChange(db, mergeAuth(), {
+            requestId: "request-1",
+            decision: "advance",
+            expectedVersion: 7
+          })
+        ).rejects.toMatchObject(
+          new ApiError("CONFLICT", "Semantic merge requires object storage for DTS writeback.", 409, {
+            requestId: "request-1"
+          })
+        );
+
+        expect(txCalls.some((call) => call.values?.includes("parameter-merge"))).toBe(false);
+      } finally {
+        if (previous === undefined) {
+          delete process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN;
+        } else {
+          process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN = previous;
+        }
+      }
+    });
   });
 });

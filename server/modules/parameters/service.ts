@@ -15,7 +15,7 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
-import { writebackMergedParameterValue } from "../parameter-files/writebackService";
+import { writebackMergedParameterValue, type WritebackServiceContext } from "../parameter-files/writebackService";
 import { resolveBindingWriteLock, resolveInitializationSuggestion } from "../parameter-topology/editService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
@@ -92,6 +92,14 @@ import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeli
 type ServiceContext = AuditCorrelationContext & {
   objectStore?: ObjectStore;
   actorType?: "user" | "agent" | "system";
+  /**
+   * Test-only: inject a fake DTC toolchain runner for semantic merge writeback.
+   * Production routes must omit this so writeback uses the pinned host runner.
+   * There is no environment-variable bypass.
+   */
+  toolchain?: WritebackServiceContext["toolchain"];
+  /** Test-only: skip semantic promotion gates after resolve/toolchain. */
+  skipSemanticGates?: boolean;
 };
 
 export type SaveDraftInput = {
@@ -389,7 +397,7 @@ function requireCanReviewStage(auth: AuthContext, projectId: string | undefined,
 }
 
 function requireCanMerge(auth: AuthContext, projectId: string | undefined) {
-  if (projectId && canMergeParameters(auth, projectId)) return;
+  if (canMergeParameters(auth, projectId)) return;
 
   throw new ApiError("FORBIDDEN", "Parameter merge role is required for this project.", 403);
 }

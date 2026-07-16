@@ -31,6 +31,7 @@ import {
   updateChangeRequestStatus,
   upsertDraft
 } from "../parameters/repository";
+import { reviewChange } from "../parameters/service";
 import { resolveBindingWriteLock } from "./editService";
 import {
   applyParameterIdentityCutover,
@@ -887,4 +888,245 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
     },
     120_000
   );
+
+  async function assertMergeRolledBack(db: Database, requestId: string, bindingId: string, baseRevisionId: string) {
+    const status = await db.query<{ status: string }>(
+      `select status from parameter_change_requests where id = $1`,
+      [requestId]
+    );
+    expect(status.rows[0]?.status).toBe("software_merge");
+
+    const history = await listParameterHistory(db, {
+      organizationId: ORG,
+      parameterId: bindingId
+    });
+    expect(history.filter((entry) => entry.value === "<9>")).toHaveLength(0);
+
+    const candidate = await db.query<{ c: string }>(
+      `select count(*)::text as c from project_parameter_binding_revisions
+       where binding_id = $1 and raw_value = '<9>'`,
+      [bindingId]
+    );
+    expect(Number(candidate.rows[0]?.c ?? 0)).toBe(0);
+
+    const base = await db.query<{ raw_value: string | null }>(
+      `select raw_value from project_parameter_binding_revisions
+       where binding_id = $1 and config_revision_id = $2`,
+      [bindingId, baseRevisionId]
+    );
+    expect(base.rows[0]?.raw_value).toBe("<1>");
+
+    const audits = await db.query<{ c: string }>(
+      `select count(*)::text as c from audit_events
+       where organization_id = $1 and kind = 'parameter-merge' and target_id = $2`,
+      [ORG, requestId]
+    );
+    expect(Number(audits.rows[0]?.c ?? 0)).toBe(0);
+  }
+
+  function failingToolchain(failureCode: "compile-failed" | "schema-failed" | "version-mismatch" | "toolchain-unavailable", stage: "dtc" | "fdtoverlay" | "dt-validate" | "toolchain") {
+    return {
+      async validate() {
+        return {
+          ok: false as const,
+          mode: "release" as const,
+          compiler: { dtc: "1.8.1", fdtoverlay: "1.8.1", dtschema: "2026.6" },
+          diagnostics: [
+            {
+              file: "<toolchain>",
+              severity: "error" as const,
+              code: failureCode,
+              message: `injected ${failureCode}`,
+              stage
+            }
+          ],
+          artifacts: {},
+          failureCode
+        };
+      },
+      async probe() {
+        return {
+          dtc: { path: "/usr/bin/dtc", version: "1.8.1" },
+          fdtoverlay: { path: "/usr/bin/fdtoverlay", version: "1.8.1" },
+          dtschema: { path: "/usr/bin/dt-validate", version: "2026.6" }
+        };
+      }
+    };
+  }
+
+  it(
+    "fail-closes semantic merge without objectStore and leaves software_merge",
+    async () => {
+      await withTempDatabase(async (db) => {
+        const seeded = await seedPreCutoverGraph(db);
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-pcw-fc-os",
+          objectSnapshotId: "obj-snap-pcw-fc-os"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        resetParameterIdentityCutoverCache();
+
+        const auth = makeAuth();
+        const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
+        const round = await createSubmissionRound(db, {
+          id: randomUUID(),
+          organizationId: ORG,
+          projectId: PROJECT,
+          submitterUserId: USER,
+          status: "submitted",
+          summary: "fail-closed objectStore"
+        });
+        const request = await createChangeRequest(db, {
+          id: randomUUID(),
+          organizationId: ORG,
+          submissionRoundId: round.id,
+          projectId: PROJECT,
+          parameterId: seeded.bindingId,
+          parameterDefinitionId: seeded.specId,
+          baseVersion: 1,
+          currentValue: "<1>",
+          targetValue: "<9>",
+          status: "software_merge",
+          submitterUserId: USER,
+          parameterSpecId: seeded.specId,
+          projectParameterBindingId: seeded.bindingId,
+          writeLock
+        });
+
+        await expect(
+          reviewChange(db, auth, {
+            requestId: request.id,
+            decision: "advance",
+            expectedVersion: 1
+          })
+        ).rejects.toMatchObject({
+          code: "CONFLICT",
+          message: expect.stringContaining("object storage")
+        });
+
+        await assertMergeRolledBack(db, request.id, seeded.bindingId, writeLock.baseConfigRevisionId);
+
+        process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN = "1";
+        try {
+          await expect(
+            reviewChange(db, auth, {
+              requestId: request.id,
+              decision: "advance",
+              expectedVersion: 1
+            })
+          ).rejects.toMatchObject({
+            code: "CONFLICT",
+            message: expect.stringContaining("object storage")
+          });
+          await assertMergeRolledBack(db, request.id, seeded.bindingId, writeLock.baseConfigRevisionId);
+        } finally {
+          delete process.env.WISEEFF_WRITEBACK_SKIP_TOOLCHAIN;
+        }
+
+        const writebackSource = await fs.readFile(
+          path.join(projectRoot, "server/modules/parameter-files/writebackService.ts"),
+          "utf8"
+        );
+        const serviceSource = await fs.readFile(
+          path.join(projectRoot, "server/modules/parameters/service.ts"),
+          "utf8"
+        );
+        expect(writebackSource).not.toContain("WISEEFF_WRITEBACK_SKIP_TOOLCHAIN");
+        expect(serviceSource).not.toContain("WISEEFF_WRITEBACK_SKIP_TOOLCHAIN");
+      });
+    },
+    120_000
+  );
+
+  for (const caseDef of [
+    { name: "dtc", failureCode: "compile-failed" as const, stage: "dtc" as const },
+    { name: "fdtoverlay", failureCode: "compile-failed" as const, stage: "fdtoverlay" as const },
+    { name: "dt-schema", failureCode: "schema-failed" as const, stage: "dt-validate" as const },
+    { name: "version-mismatch", failureCode: "version-mismatch" as const, stage: "toolchain" as const },
+    { name: "toolchain-unavailable", failureCode: "toolchain-unavailable" as const, stage: "toolchain" as const }
+  ]) {
+    it(
+      `fail-closes semantic merge when toolchain ${caseDef.name} fails`,
+      async () => {
+        await withTempDatabase(async (db) => {
+          const seeded = await seedPreCutoverGraph(db);
+          const report = await migrateParameterIdentities(db, {
+            mode: "apply",
+            organizationId: ORG,
+            ...applyGates,
+            dbSnapshotId: `db-snap-pcw-fc-${caseDef.name}`,
+            objectSnapshotId: `obj-snap-pcw-fc-${caseDef.name}`
+          });
+          expect(report.blockers).toEqual([]);
+          await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+          resetParameterIdentityCutoverCache();
+
+          const auth = makeAuth();
+          const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
+          const round = await createSubmissionRound(db, {
+            id: randomUUID(),
+            organizationId: ORG,
+            projectId: PROJECT,
+            submitterUserId: USER,
+            status: "submitted",
+            summary: `fail-closed ${caseDef.name}`
+          });
+          const request = await createChangeRequest(db, {
+            id: randomUUID(),
+            organizationId: ORG,
+            submissionRoundId: round.id,
+            projectId: PROJECT,
+            parameterId: seeded.bindingId,
+            parameterDefinitionId: seeded.specId,
+            baseVersion: 1,
+            currentValue: "<1>",
+            targetValue: "<9>",
+            status: "software_merge",
+            submitterUserId: USER,
+            parameterSpecId: seeded.specId,
+            projectParameterBindingId: seeded.bindingId,
+            writeLock
+          });
+
+          const objectStore = {
+            async get(key: string) {
+              if (key.includes("overlay")) {
+                return Buffer.from(seeded.overlayContent, "utf8");
+              }
+              return Buffer.from(seeded.content, "utf8");
+            },
+            async put(input: { bytes: Buffer }) {
+              return {
+                storageKey: `${ORG}/fc-${caseDef.name}.dts`,
+                checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+                fileSizeBytes: input.bytes.length
+              };
+            }
+          };
+
+          await expect(
+            reviewChange(
+              db,
+              auth,
+              { requestId: request.id, decision: "advance", expectedVersion: 1 },
+              {
+                objectStore: objectStore as never,
+                toolchain: failingToolchain(caseDef.failureCode, caseDef.stage) as never
+              }
+            )
+          ).rejects.toMatchObject({
+            code: "CONFLICT",
+            status: 409
+          });
+
+          await assertMergeRolledBack(db, request.id, seeded.bindingId, writeLock.baseConfigRevisionId);
+        });
+      },
+      120_000
+    );
+  }
 });
