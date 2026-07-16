@@ -6,10 +6,14 @@ import { canAdminParameters, canViewParameters } from "../parameters/policy";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
+  applyReviewedIdentityMapping,
+  countOpenIdentityMappingTasksForRevision,
   getIdentityMappingTaskById,
   listIdentityMappingTaskRows,
   listProjectBindingRows,
-  resolveIdentityMappingTaskRow
+  lockOpenIdentityMappingTask,
+  resolveIdentityMappingTaskRow,
+  selectedCandidateBelongsToRevision
 } from "./bindingService";
 import { writeGovernanceAudit } from "./governanceAudit";
 import { getProjectById } from "../parameters/repository";
@@ -193,70 +197,120 @@ export async function resolveIdentityMappingTask(
 ) {
   requireCanAdmin(auth);
 
-  const existing = await getIdentityMappingTaskById(db, {
-    organizationId: auth.organization.id,
-    taskId: input.taskId
-  });
-  if (!existing) {
-    throw new ApiError("NOT_FOUND", "Identity mapping task was not found.", 404, { taskId: input.taskId });
-  }
-
-  if (
-    input.decision === "resolved" &&
-    input.selectedLogicalNodeId &&
-    !existing.candidateLogicalNodeIds.includes(input.selectedLogicalNodeId)
-  ) {
-    throw new ApiError("VALIDATION_FAILED", "selectedLogicalNodeId must be one of the candidate ids.", 400, {
-      selectedLogicalNodeId: input.selectedLogicalNodeId,
-      candidates: existing.candidateLogicalNodeIds
+  return db.transaction(async (tx) => {
+    const existing = await lockOpenIdentityMappingTask(tx, {
+      organizationId: auth.organization.id,
+      taskId: input.taskId
     });
-  }
+    if (!existing) {
+      const known = await getIdentityMappingTaskById(tx, {
+        organizationId: auth.organization.id,
+        taskId: input.taskId
+      });
+      if (!known) {
+        throw new ApiError("NOT_FOUND", "Identity mapping task was not found.", 404, {
+          taskId: input.taskId
+        });
+      }
+      throw new ApiError("CONFLICT", "Identity mapping task is not open.", 409, { taskId: input.taskId });
+    }
 
-  const resolved = await resolveIdentityMappingTaskRow(db, {
-    taskId: input.taskId,
-    organizationId: auth.organization.id,
-    status: input.decision,
-    selectedLogicalNodeId: input.selectedLogicalNodeId,
-    reviewerUserId: auth.user.id,
-    reason: input.reason
-  });
-  if (!resolved) {
-    throw new ApiError("CONFLICT", "Identity mapping task is not open.", 409, { taskId: input.taskId });
-  }
+    if (
+      input.decision === "resolved" &&
+      input.selectedLogicalNodeId &&
+      !existing.candidateLogicalNodeIds.includes(input.selectedLogicalNodeId)
+    ) {
+      throw new ApiError("VALIDATION_FAILED", "selectedLogicalNodeId must be one of the candidate ids.", 400, {
+        selectedLogicalNodeId: input.selectedLogicalNodeId,
+        candidates: existing.candidateLogicalNodeIds
+      });
+    }
 
-  if (input.decision === "resolved") {
-    await updateConfigRevisionStatus(db, {
-      id: existing.configRevisionId,
-      status: "resolved"
-    });
-  }
+    if (input.decision === "resolved" && input.selectedLogicalNodeId) {
+      const belongs = await selectedCandidateBelongsToRevision(tx, {
+        organizationId: auth.organization.id,
+        projectId: existing.projectId,
+        configRevisionId: existing.configRevisionId,
+        selectedLogicalNodeId: input.selectedLogicalNodeId
+      });
+      if (!belongs) {
+        throw new ApiError(
+          "VALIDATION_FAILED",
+          "selectedLogicalNodeId must belong to the same organization, project, and config revision.",
+          400,
+          {
+            selectedLogicalNodeId: input.selectedLogicalNodeId,
+            configRevisionId: existing.configRevisionId
+          }
+        );
+      }
 
-  await writeGovernanceAudit(
-    db,
-    auth,
-    {
-      action: input.decision === "resolved" ? "identity-mapping-resolved" : "identity-mapping-dismissed",
-      projectId: existing.projectId,
-      targetType: "identity-mapping-task",
-      targetId: resolved.id,
-      metadata: {
-        taskId: resolved.id,
+      await applyReviewedIdentityMapping(tx, {
+        organizationId: auth.organization.id,
+        projectId: existing.projectId,
         configRevisionId: existing.configRevisionId,
         previousLogicalNodeId: existing.previousLogicalNodeId,
-        selectedLogicalNodeId: input.selectedLogicalNodeId ?? null,
-        candidateCount: existing.candidateLogicalNodeIds.length,
-        evidenceHash: evidenceHash(existing.evidence),
-        reasonHash: evidenceHash(input.reason)
-      }
-    },
-    context
-  );
+        selectedLogicalNodeId: input.selectedLogicalNodeId
+      });
+    }
 
-  return {
-    id: resolved.id,
-    status: resolved.status,
-    selectedLogicalNodeId: input.selectedLogicalNodeId
-  };
+    const resolved = await resolveIdentityMappingTaskRow(tx, {
+      taskId: input.taskId,
+      organizationId: auth.organization.id,
+      status: input.decision,
+      selectedLogicalNodeId: input.selectedLogicalNodeId,
+      reviewerUserId: auth.user.id,
+      reason: input.reason
+    });
+    if (!resolved) {
+      throw new ApiError("CONFLICT", "Identity mapping task is not open.", 409, { taskId: input.taskId });
+    }
+
+    const openRemaining = await countOpenIdentityMappingTasksForRevision(tx, {
+      organizationId: auth.organization.id,
+      configRevisionId: existing.configRevisionId
+    });
+
+    // Dismiss never clears identity ambiguity. Resolve clears needs_mapping only when
+    // every open mapping task is gone and this resolve path completed without errors.
+    const nextStatus =
+      input.decision === "resolved" && openRemaining === 0 ? "resolved" : "needs_mapping";
+
+    await updateConfigRevisionStatus(tx, {
+      id: existing.configRevisionId,
+      status: nextStatus,
+      resolvedAt: nextStatus === "resolved" ? new Date().toISOString() : null
+    });
+
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: input.decision === "resolved" ? "identity-mapping-resolved" : "identity-mapping-dismissed",
+        projectId: existing.projectId,
+        targetType: "identity-mapping-task",
+        targetId: resolved.id,
+        metadata: {
+          taskId: resolved.id,
+          configRevisionId: existing.configRevisionId,
+          previousLogicalNodeId: existing.previousLogicalNodeId,
+          selectedLogicalNodeId: input.selectedLogicalNodeId ?? null,
+          candidateCount: existing.candidateLogicalNodeIds.length,
+          openMappingTasksRemaining: openRemaining,
+          revisionStatus: nextStatus,
+          evidenceHash: evidenceHash(existing.evidence),
+          reasonHash: evidenceHash(input.reason)
+        }
+      },
+      context
+    );
+
+    return {
+      id: resolved.id,
+      status: resolved.status,
+      selectedLogicalNodeId: input.selectedLogicalNodeId
+    };
+  });
 }
 
 export async function validateConfigRevision(

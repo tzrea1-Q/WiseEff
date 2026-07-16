@@ -448,6 +448,175 @@ export async function listIdentityMappingTaskRows(
   return result.rows.map(toMappingTask);
 }
 
+export async function lockOpenIdentityMappingTask(
+  db: Queryable,
+  input: { organizationId: string; taskId: string },
+): Promise<IdentityMappingTask | null> {
+  const result = await db.query<IdentityMappingTaskRow>(
+    `
+    select *
+    from identity_mapping_tasks
+    where id = $1 and organization_id = $2 and status = 'open'
+    for update
+    `,
+    [input.taskId, input.organizationId],
+  );
+  const row = result.rows[0];
+  return row ? toMappingTask(row) : null;
+}
+
+export async function countOpenIdentityMappingTasksForRevision(
+  db: Queryable,
+  input: { organizationId: string; configRevisionId: string },
+): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from identity_mapping_tasks
+    where organization_id = $1
+      and config_revision_id = $2
+      and status = 'open'
+    `,
+    [input.organizationId, input.configRevisionId],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+/**
+ * True when the selected candidate logical node belongs to the same org/project/revision.
+ */
+export async function selectedCandidateBelongsToRevision(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string;
+    selectedLogicalNodeId: string;
+  },
+): Promise<boolean> {
+  const result = await db.query<{ id: string }>(
+    `
+    select lnr.id
+    from dts_logical_node_revisions lnr
+    inner join dts_logical_nodes ln on ln.id = lnr.logical_node_id
+    inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
+    where lnr.logical_node_id = $1
+      and lnr.config_revision_id = $2
+      and ln.organization_id = $3
+      and ln.project_id = $4
+      and cr.organization_id = $3
+      and cr.project_id = $4
+    limit 1
+    `,
+    [
+      input.selectedLogicalNodeId,
+      input.configRevisionId,
+      input.organizationId,
+      input.projectId,
+    ],
+  );
+  return Boolean(result.rows[0]);
+}
+
+/**
+ * Apply a reviewed continuity choice: remap the selected candidate onto the previous
+ * stable logical identity, then reuse/create bindings and recompute binding revisions
+ * for affected properties on this config revision.
+ */
+export async function applyReviewedIdentityMapping(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string;
+    previousLogicalNodeId: string | null;
+    selectedLogicalNodeId: string;
+  },
+): Promise<void> {
+  const stableLogicalNodeId = input.previousLogicalNodeId ?? input.selectedLogicalNodeId;
+
+  const provisionalRevisions = await db.query<{
+    id: string;
+    binding_id: string;
+    parameter_spec_id: string;
+    parameter_spec_version_id: string;
+    typed_value: unknown;
+    canonical_value: unknown;
+    raw_value: string | null;
+    schema_state: string | null;
+    policy_state: string | null;
+  }>(
+    `
+    select
+      br.id,
+      br.binding_id,
+      b.parameter_spec_id,
+      br.parameter_spec_version_id,
+      br.typed_value,
+      br.canonical_value,
+      br.raw_value,
+      br.schema_state,
+      br.policy_state
+    from project_parameter_binding_revisions br
+    inner join project_parameter_bindings b on b.id = br.binding_id
+    where br.config_revision_id = $1
+      and b.project_id = $2
+      and b.logical_node_id = $3
+    `,
+    [input.configRevisionId, input.projectId, input.selectedLogicalNodeId],
+  );
+
+  if (stableLogicalNodeId !== input.selectedLogicalNodeId) {
+    await db.query(
+      `
+      update dts_logical_node_revisions
+      set parent_logical_node_id = $3
+      where config_revision_id = $1
+        and parent_logical_node_id = $2
+      `,
+      [input.configRevisionId, input.selectedLogicalNodeId, stableLogicalNodeId],
+    );
+
+    await db.query(
+      `
+      update dts_logical_node_revisions
+      set logical_node_id = $3
+      where config_revision_id = $1
+        and logical_node_id = $2
+      `,
+      [input.configRevisionId, input.selectedLogicalNodeId, stableLogicalNodeId],
+    );
+  }
+
+  for (const row of provisionalRevisions.rows) {
+    const binding = await createOrReuseBinding(db, {
+      organizationId: input.organizationId,
+      key: {
+        projectId: input.projectId,
+        logicalNodeId: stableLogicalNodeId,
+        parameterSpecId: row.parameter_spec_id,
+      },
+    });
+
+    await upsertBindingRevisionValues(db, {
+      bindingId: binding.id,
+      configRevisionId: input.configRevisionId,
+      parameterSpecVersionId: row.parameter_spec_version_id,
+      values: {
+        typedValue: row.typed_value,
+        canonicalValue: row.canonical_value ?? undefined,
+        rawValue: row.raw_value ?? undefined,
+        schemaState: row.schema_state ?? undefined,
+        policyState: row.policy_state ?? undefined,
+      },
+    });
+
+    if (binding.id !== row.binding_id) {
+      await db.query(`delete from project_parameter_binding_revisions where id = $1`, [row.id]);
+    }
+  }
+}
+
 export async function resolveIdentityMappingTaskRow(
   db: Queryable,
   input: {
