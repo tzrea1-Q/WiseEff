@@ -81,8 +81,8 @@
 ### Task 5–6: Candidate + validation state machines + manifest
 
 - [x] Central candidate FSM; never promote needs_mapping/invalid to draft
-- [ ] Failed re-validation revokes validated; missing base fail-closed
-- [ ] Persist entryFile/includeSearchPaths/overlay order/member roles; path safety
+- [x] Failed re-validation revokes validated; missing base fail-closed
+- [x] Persist entryFile/includeSearchPaths/overlay order/member roles; path safety
 
 ### Task 7–8: Migration honesty + continuity
 

@@ -19,10 +19,27 @@ type RevisionRow = {
   config_set_id: string;
   revision_number: number | string;
   status: ConfigRevisionStatus;
+  entry_file: string | null;
+  include_search_paths: unknown;
+  overlay_order: unknown;
   created_by_user_id: string | null;
   created_at: string | Date;
   resolved_at: string | Date | null;
 };
+
+function parseStringArray(value: unknown): string[] | undefined {
+  if (value == null) return undefined;
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed) ? parsed.map(String) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
 
 function dateTimeToIso(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value;
@@ -36,6 +53,9 @@ function toRevisionDto(row: RevisionRow): DtsConfigRevisionDto {
     configSetId: row.config_set_id,
     revisionNumber: Number(row.revision_number),
     status: row.status,
+    entryFile: row.entry_file ?? undefined,
+    includeSearchPaths: parseStringArray(row.include_search_paths),
+    overlayOrder: parseStringArray(row.overlay_order),
     createdByUserId: row.created_by_user_id ?? undefined,
     createdAt: dateTimeToIso(row.created_at),
     resolvedAt: row.resolved_at ? dateTimeToIso(row.resolved_at) : undefined,
@@ -64,13 +84,17 @@ export async function insertConfigRevision(
     revisionNumber: number;
     status: ConfigRevisionStatus;
     createdByUserId?: string;
+    entryFile?: string;
+    includeSearchPaths?: string[];
+    overlayOrder?: string[];
   },
 ): Promise<DtsConfigRevisionDto> {
   const result = await db.query<RevisionRow>(
     `
     insert into dts_config_revisions (
-      id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id
-    ) values ($1, $2, $3, $4, $5, $6, $7)
+      id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id,
+      entry_file, include_search_paths, overlay_order
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)
     returning *
     `,
     [
@@ -81,9 +105,38 @@ export async function insertConfigRevision(
       input.revisionNumber,
       input.status,
       input.createdByUserId ?? null,
+      input.entryFile ?? null,
+      JSON.stringify(input.includeSearchPaths ?? []),
+      JSON.stringify(input.overlayOrder ?? []),
     ],
   );
   return toRevisionDto(result.rows[0]);
+}
+
+export async function updateConfigRevisionManifest(
+  db: Queryable,
+  input: {
+    id: string;
+    entryFile: string;
+    includeSearchPaths: string[];
+    overlayOrder: string[];
+  },
+): Promise<void> {
+  await db.query(
+    `
+    update dts_config_revisions
+    set entry_file = $2,
+        include_search_paths = $3::jsonb,
+        overlay_order = $4::jsonb
+    where id = $1
+    `,
+    [
+      input.id,
+      input.entryFile,
+      JSON.stringify(input.includeSearchPaths),
+      JSON.stringify(input.overlayOrder),
+    ],
+  );
 }
 
 export async function updateConfigRevisionStatus(

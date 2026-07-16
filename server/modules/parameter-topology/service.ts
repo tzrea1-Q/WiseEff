@@ -34,6 +34,10 @@ import {
 import { writeGovernanceAudit } from "./governanceAudit";
 import { getProjectById } from "../parameters/repository";
 import {
+  clearStatusAfterValidationFailure,
+  normalizePersistedManifest,
+} from "./configRevisionManifest";
+import {
   getConfigRevisionById,
   getLatestConfigRevision,
   insertValidationDiagnostics,
@@ -53,7 +57,7 @@ import type {
   TopologyView
 } from "./schemas";
 import { dtsValueSchema, projectBindingDtoSchema } from "./schemas";
-import type { PersistedValidationDiagnostic } from "./types";
+import type { ConfigRevisionStatus, PersistedValidationDiagnostic } from "./types";
 
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
@@ -462,6 +466,7 @@ async function persistFailedValidation(
     diagnostics: PersistedValidationDiagnostic[];
     toolchain?: Record<string, unknown>;
     artifactHashes?: Record<string, unknown>;
+    currentStatus?: string;
   },
   context: AuditCorrelationContext
 ) {
@@ -478,6 +483,25 @@ async function persistFailedValidation(
   if (input.diagnostics.length > 0) {
     await insertValidationDiagnostics(db, runId, input.diagnostics);
   }
+
+  const currentStatus =
+    (input.currentStatus as ConfigRevisionStatus | undefined) ??
+    (
+      await db.query<{ status: ConfigRevisionStatus }>(
+        `select status from dts_config_revisions where id = $1`,
+        [input.revisionId]
+      )
+    ).rows[0]?.status ??
+    "resolved";
+  const nextStatus = clearStatusAfterValidationFailure(currentStatus, input.failureCode);
+  if (nextStatus !== currentStatus) {
+    await updateConfigRevisionStatus(db, {
+      id: input.revisionId,
+      status: nextStatus,
+      resolvedAt: new Date().toISOString()
+    });
+  }
+
   await writeGovernanceAudit(
     db,
     auth,
@@ -493,6 +517,7 @@ async function persistFailedValidation(
         stage: input.stage,
         status: "failed",
         failureCode: input.failureCode,
+        revisionStatus: nextStatus,
         artifactHashes: input.artifactHashes ?? {}
       }
     },
@@ -699,9 +724,14 @@ export async function validateConfigRevision(
   }
 
   const files = new Map<string, { fileVersionId: string; content: string }>();
-  const overlays: Array<{ name: string; sortOrder: number }> = [];
-  let entryFile: string | null = null;
-  let entrySort = Number.POSITIVE_INFINITY;
+  const memberDtos = members.map((member) => ({
+    fileId: member.fileId,
+    fileVersionId: member.fileVersionId,
+    fileName: member.fileName,
+    role: member.role as import("./types").ConfigRevisionManifestMember["role"],
+    sortOrder: member.sortOrder,
+    content: "",
+  }));
 
   for (const member of members) {
     const content = await loadMemberContent(member, deps.objectStore);
@@ -715,6 +745,7 @@ export async function validateConfigRevision(
           configSetId: revision.configSetId,
           stage,
           failureCode: "missing-content",
+          currentStatus: revision.status,
           diagnostics: toPersistedDiagnostics(
             [
               {
@@ -733,18 +764,60 @@ export async function validateConfigRevision(
       );
     }
     files.set(member.fileName, { fileVersionId: member.fileVersionId, content });
-    if (member.role === "base" && member.sortOrder <= entrySort) {
-      entryFile = member.fileName;
-      entrySort = member.sortOrder;
-    } else if (member.role === "overlay") {
-      overlays.push({ name: member.fileName, sortOrder: member.sortOrder });
-    }
+    const dto = memberDtos.find((item) => item.fileVersionId === member.fileVersionId);
+    if (dto) dto.content = content;
   }
 
-  if (!entryFile) {
-    entryFile = [...files.keys()][0] ?? null;
+  // Prefer persisted revision manifest; never invent entry from arbitrary first file.
+  const persistedEntry = revision.entryFile;
+  const persistedIncludes = revision.includeSearchPaths;
+  const persistedOverlays = revision.overlayOrder;
+  const fallbackOverlayOrder = members
+    .filter((member) => member.role === "overlay")
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.fileName.localeCompare(b.fileName))
+    .map((member) => member.fileName);
+
+  const normalized = normalizePersistedManifest({
+    entryFile: persistedEntry ?? "",
+    includeSearchPaths: persistedIncludes ?? [],
+    overlayOrder: persistedOverlays && persistedOverlays.length > 0 ? persistedOverlays : fallbackOverlayOrder,
+    members: memberDtos,
+  });
+
+  if (!normalized.ok) {
+    const failureCode =
+      normalized.failure.code === "missing-base" || normalized.failure.code === "missing-entry-file"
+        ? ("empty-config-set" as ValidateFailureCode)
+        : ("resolve-failed" as ValidateFailureCode);
+    return persistFailedValidation(
+      db,
+      auth,
+      {
+        revisionId: revision.id,
+        projectId: revision.projectId,
+        configSetId: revision.configSetId,
+        stage,
+        failureCode,
+        currentStatus: revision.status,
+        diagnostics: toPersistedDiagnostics(
+          [
+            {
+              code: normalized.failure.code,
+              severity: "error",
+              stage,
+              message: normalized.failure.message,
+              fileName: "<config-set>"
+            }
+          ],
+          stage,
+          normalized.failure.code
+        )
+      },
+      context
+    );
   }
-  if (!entryFile || files.size === 0) {
+
+  if (files.size === 0) {
     return persistFailedValidation(
       db,
       auth,
@@ -754,6 +827,7 @@ export async function validateConfigRevision(
         configSetId: revision.configSetId,
         stage,
         failureCode: "empty-config-set",
+        currentStatus: revision.status,
         diagnostics: toPersistedDiagnostics(
           [
             {
@@ -772,9 +846,9 @@ export async function validateConfigRevision(
     );
   }
 
-  overlays.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
-  const overlayOrder = overlays.map((item) => item.name);
-  const includeSearchPaths = ["."];
+  const entryFile = normalized.manifest.entryFile;
+  const overlayOrder = normalized.manifest.overlayOrder;
+  const includeSearchPaths = normalized.manifest.includeSearchPaths;
 
   const resolved = resolveDtsConfigSet({
     entryFile,

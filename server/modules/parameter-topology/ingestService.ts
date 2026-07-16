@@ -31,6 +31,7 @@ import {
 import { loadSchemaRegistry } from "../parameter-specs/schemaLoader";
 import type { MatchableNode, SchemaRegistry, SpecReviewTaskDraft } from "../parameter-specs/types";
 import type { Database, Queryable } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
 import {
   createOrReuseBinding,
   persistAmbiguousIdentityMapping,
@@ -38,6 +39,7 @@ import {
   upsertBindingRevisionValues,
   type ContinuityAmbiguous,
 } from "./bindingService";
+import { normalizePersistedManifest } from "./configRevisionManifest";
 import {
   insertConfigRevision,
   insertConfigRevisionMembers,
@@ -660,6 +662,18 @@ async function ingestConfigRevisionTx(
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
 ): Promise<DtsConfigRevisionDto> {
+  const normalized = normalizePersistedManifest({
+    entryFile: manifest.entryFile,
+    includeSearchPaths: manifest.includeSearchPaths,
+    overlayOrder: manifest.overlayOrder,
+    members: manifest.members,
+  });
+  if (!normalized.ok) {
+    throw new ApiError("VALIDATION_FAILED", normalized.failure.message, 400, {
+      reason: normalized.failure.code,
+    });
+  }
+
   const revisionNumber = await nextConfigRevisionNumber(tx, manifest.configSetId);
   let revision = await insertConfigRevision(tx, {
     id: randomUUID(),
@@ -669,6 +683,9 @@ async function ingestConfigRevisionTx(
     revisionNumber,
     status: "resolving",
     createdByUserId: auth.user.id,
+    entryFile: normalized.manifest.entryFile,
+    includeSearchPaths: normalized.manifest.includeSearchPaths,
+    overlayOrder: normalized.manifest.overlayOrder,
   });
 
   await insertConfigRevisionMembers(tx, revision.id, manifest.members);
@@ -685,9 +702,9 @@ async function ingestConfigRevisionTx(
   let resolved;
   try {
     resolved = resolveDtsConfigSet({
-      entryFile: manifest.entryFile,
-      includeSearchPaths: manifest.includeSearchPaths,
-      overlayOrder: manifest.overlayOrder,
+      entryFile: normalized.manifest.entryFile,
+      includeSearchPaths: normalized.manifest.includeSearchPaths,
+      overlayOrder: normalized.manifest.overlayOrder,
       files,
     });
   } catch (error) {

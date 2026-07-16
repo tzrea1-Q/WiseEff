@@ -28,6 +28,7 @@ import {
   assertCanPromoteCandidateToDraft,
   type CandidateGateFailureReason,
 } from "./candidateRevisionStateMachine";
+import { normalizePersistedManifest } from "./configRevisionManifest";
 import { ingestConfigRevisionInTransaction } from "./ingestService";
 import {
   getConfigRevisionById,
@@ -949,9 +950,10 @@ export async function createBindingDraft(
     ],
   );
 
-  const overlayOrder = members.filter((m) => m.role === "overlay").map((m) => m.file_name);
-  const entryFile = baseMember.file_name;
-  const includeSearchPaths = ["."];
+  const overlayOrderFromMembers = members
+    .filter((m) => m.role === "overlay")
+    .sort((a, b) => a.sort_order - b.sort_order || a.file_name.localeCompare(b.file_name))
+    .map((m) => m.file_name);
 
   const candidateMembers: ConfigRevisionManifestMember[] = members.map((member) => {
     const isEditedOverlay = member.file_id === overlayMember.file_id;
@@ -968,13 +970,30 @@ export async function createBindingDraft(
     };
   });
 
+  // Reload persisted base revision manifest — never invent includeSearchPaths=["."] alone.
+  const persistedIncludes = revision.includeSearchPaths;
+  const persistedOverlays = revision.overlayOrder;
+  const persistedEntry = revision.entryFile ?? baseMember.file_name;
+  const normalizedManifest = normalizePersistedManifest({
+    entryFile: persistedEntry,
+    includeSearchPaths: persistedIncludes ?? ["."],
+    overlayOrder:
+      persistedOverlays && persistedOverlays.length > 0 ? persistedOverlays : overlayOrderFromMembers,
+    members: candidateMembers,
+  });
+  if (!normalizedManifest.ok) {
+    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, 400, {
+      reason: normalizedManifest.failure.code,
+    });
+  }
+
   const manifest: ConfigRevisionManifest = {
     organizationId: auth.organization.id,
     projectId: binding.project_id,
     configSetId: revision.configSetId,
-    entryFile,
-    includeSearchPaths,
-    overlayOrder,
+    entryFile: normalizedManifest.manifest.entryFile,
+    includeSearchPaths: normalizedManifest.manifest.includeSearchPaths,
+    overlayOrder: normalizedManifest.manifest.overlayOrder,
     members: candidateMembers,
   };
 
@@ -1020,9 +1039,9 @@ export async function createBindingDraft(
 
   const toolchainOutcome = await assertCandidateToolchainRelease(db, auth, {
     candidateRevisionId,
-    entryFile,
-    includeSearchPaths,
-    overlayOrder,
+    entryFile: normalizedManifest.manifest.entryFile,
+    includeSearchPaths: normalizedManifest.manifest.includeSearchPaths,
+    overlayOrder: normalizedManifest.manifest.overlayOrder,
     files: new Map(candidateMembers.map((member) => [member.fileName, { content: member.content }])),
     toolchain: deps.toolchain ?? createDtsToolchainRunner(),
   });

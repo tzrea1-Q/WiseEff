@@ -483,4 +483,98 @@ describe.skipIf(!databaseAvailable)("validateConfigRevision fail-closed", () => 
     expect(run?.toolchain).toMatchObject({ dtc: "1.8.1", fdtoverlay: "1.8.1", dtschema: "2026.6" });
     expect(run?.artifact_hashes).toMatchObject({ effectiveDtbSha256: "b".repeat(64) });
   });
+
+  it("revokes validated publishability when re-validation fails", async () => {
+    const revision = await seedRevision(db!, auth);
+    await clearOpenReviews(db!);
+    await db!.query(`update dts_config_revisions set status = 'validated' where id = $1`, [revision.id]);
+
+    const result = await validateConfigRevision(
+      db!,
+      auth,
+      { projectId: PROJECT_ID, revisionId: revision.id },
+      {},
+      {
+        toolchain: makeToolchain(
+          toolchainResult({
+            ok: false,
+            failureCode: "compile-failed",
+            diagnostics: [
+              {
+                file: "<toolchain>",
+                severity: "error",
+                code: "compile-failed",
+                stage: "dtc",
+                message: "dtc failed on re-validation"
+              }
+            ]
+          })
+        )
+      }
+    );
+
+    expect(result.status).toBe("failed");
+    const status = await revisionStatus(db!, revision.id);
+    expect(status).not.toBe("validated");
+    expect(["invalid", "validation_failed"]).toContain(status);
+  });
+
+  it("fail-closes when role=base / entryFile is missing instead of picking the first file", async () => {
+    const revision = await seedRevision(db!, auth);
+    await clearOpenReviews(db!);
+    await db!.query(`update dts_config_revision_members set role = 'overlay' where config_revision_id = $1`, [
+      revision.id,
+    ]);
+    await db!.query(`update dts_config_revisions set entry_file = null, status = 'resolved' where id = $1`, [
+      revision.id,
+    ]);
+
+    const result = await validateConfigRevision(
+      db!,
+      auth,
+      { projectId: PROJECT_ID, revisionId: revision.id },
+      {},
+      { toolchain: makeToolchain(toolchainResult()) }
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result).toMatchObject({ failureCode: "empty-config-set" });
+    expect(await revisionStatus(db!, revision.id)).not.toBe("validated");
+  });
+
+  it("reloads persisted includeSearchPaths and overlay order for validate", async () => {
+    const revision = await seedRevision(db!, auth);
+    await clearOpenReviews(db!);
+    await db!.query(
+      `
+      update dts_config_revisions
+      set status = 'resolved',
+          include_search_paths = '["include","."]'::jsonb,
+          overlay_order = '["validate-overlay.dts"]'::jsonb
+      where id = $1
+      `,
+      [revision.id]
+    );
+
+    const result = await validateConfigRevision(
+      db!,
+      auth,
+      { projectId: PROJECT_ID, revisionId: revision.id },
+      {},
+      { toolchain: makeToolchain(toolchainResult()) }
+    );
+
+    expect(result.status).toBe("passed");
+    const stored = await db!.query<{
+      include_search_paths: unknown;
+      overlay_order: unknown;
+      entry_file: string | null;
+    }>(
+      `select entry_file, include_search_paths, overlay_order from dts_config_revisions where id = $1`,
+      [revision.id]
+    );
+    expect(stored.rows[0]?.entry_file).toBe("validate-base.dts");
+    expect(stored.rows[0]?.include_search_paths).toEqual(["include", "."]);
+    expect(stored.rows[0]?.overlay_order).toEqual(["validate-overlay.dts"]);
+  });
 });

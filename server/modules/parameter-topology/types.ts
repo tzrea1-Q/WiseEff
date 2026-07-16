@@ -8,6 +8,7 @@ export type ConfigRevisionStatus =
   | "invalid"
   | "resolved"
   | "validated"
+  | "validation_failed"
   | "compiled"
   | "pending_approval"
   | "published";
@@ -44,6 +45,9 @@ export type DtsConfigRevisionDto = {
   configSetId: string;
   revisionNumber: number;
   status: ConfigRevisionStatus;
+  entryFile?: string;
+  includeSearchPaths?: string[];
+  overlayOrder?: string[];
   createdByUserId?: string;
   createdAt: string;
   resolvedAt?: string;

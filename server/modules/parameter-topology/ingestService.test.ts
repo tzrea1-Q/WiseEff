@@ -402,4 +402,169 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
     },
     60_000
   );
+
+  it("persists and reloads entryFile, includeSearchPaths, overlay order, and member roles", async () => {
+    const base = `/dts-v1/;
+/include/ "inc/shared.dtsi"
+/ {
+	charging_core: charging_core {
+		compatible = "wiseeff,charging_core";
+		iin_max = <2300>;
+	};
+};
+`;
+    const include = `/dts-v1/;
+/ {
+	shared: shared {};
+};
+`;
+    const overlayA = `/dts-v1/;
+/plugin/;
+&charging_core { iin_max = <2400>; };
+`;
+    const overlayB = `/dts-v1/;
+/plugin/;
+&charging_core { iin_max = <2500>; };
+`;
+
+    const members = [
+      {
+        fileId: "mf-base",
+        fileVersionId: "mfv-base",
+        fileName: "board.dts",
+        role: "base" as const,
+        sortOrder: 0,
+        content: base,
+      },
+      {
+        fileId: "mf-inc",
+        fileVersionId: "mfv-inc",
+        fileName: "inc/shared.dtsi",
+        role: "include" as const,
+        sortOrder: 1,
+        content: include,
+      },
+      {
+        fileId: "mf-ov-a",
+        fileVersionId: "mfv-ov-a",
+        fileName: "ov-a.dts",
+        role: "overlay" as const,
+        sortOrder: 2,
+        content: overlayA,
+      },
+      {
+        fileId: "mf-ov-b",
+        fileVersionId: "mfv-ov-b",
+        fileName: "ov-b.dts",
+        role: "overlay" as const,
+        sortOrder: 3,
+        content: overlayB,
+      },
+    ];
+
+    for (const member of members) {
+      await insertPinnedMember(db!, {
+        fileId: member.fileId,
+        fileName: member.fileName,
+        versionId: member.fileVersionId,
+        content: member.content,
+        role: member.role === "base" ? "base" : "overlay",
+        sortOrder: member.sortOrder,
+      });
+    }
+
+    const revision = await ingestConfigRevision(
+      db!,
+      {
+        organizationId: ORG_ID,
+        projectId: PROJECT_ID,
+        configSetId: CONFIG_SET_ID,
+        entryFile: "board.dts",
+        includeSearchPaths: ["inc", "."],
+        overlayOrder: ["ov-b.dts", "ov-a.dts"],
+        members,
+      },
+      auth,
+    );
+
+    expect(revision.entryFile).toBe("board.dts");
+    expect(revision.includeSearchPaths).toEqual(["inc", "."]);
+    expect(revision.overlayOrder).toEqual(["ov-b.dts", "ov-a.dts"]);
+
+    const reloaded = await db!.query<{
+      entry_file: string;
+      include_search_paths: unknown;
+      overlay_order: unknown;
+    }>(
+      `select entry_file, include_search_paths, overlay_order from dts_config_revisions where id = $1`,
+      [revision.id],
+    );
+    expect(reloaded.rows[0]).toMatchObject({
+      entry_file: "board.dts",
+      include_search_paths: ["inc", "."],
+      overlay_order: ["ov-b.dts", "ov-a.dts"],
+    });
+
+    const roles = await db!.query<{ file_name: string; role: string; sort_order: number }>(
+      `
+      select f.file_name, m.role, m.sort_order
+      from dts_config_revision_members m
+      join project_parameter_files f on f.id = m.file_id
+      where m.config_revision_id = $1
+      order by m.sort_order asc
+      `,
+      [revision.id],
+    );
+    expect(roles.rows.map((row) => ({ name: row.file_name, role: row.role, sort: Number(row.sort_order) }))).toEqual([
+      { name: "board.dts", role: "base", sort: 0 },
+      { name: "inc/shared.dtsi", role: "include", sort: 1 },
+      { name: "ov-a.dts", role: "overlay", sort: 2 },
+      { name: "ov-b.dts", role: "overlay", sort: 3 },
+    ]);
+  });
+
+  it("fail-closes ingest when role=base is missing", async () => {
+    await insertPinnedMember(db!, {
+      fileId: "only-ov",
+      fileName: "only-overlay.dts",
+      versionId: "only-ov-v",
+      content: `/dts-v1/;
+/plugin/;
+&root { status = "okay"; };
+`,
+      role: "overlay",
+      sortOrder: 0,
+    });
+
+    await expect(
+      ingestConfigRevision(
+        db!,
+        {
+          organizationId: ORG_ID,
+          projectId: PROJECT_ID,
+          configSetId: CONFIG_SET_ID,
+          entryFile: "only-overlay.dts",
+          includeSearchPaths: ["."],
+          overlayOrder: ["only-overlay.dts"],
+          members: [
+            {
+              fileId: "only-ov",
+              fileVersionId: "only-ov-v",
+              fileName: "only-overlay.dts",
+              role: "overlay",
+              sortOrder: 0,
+              content: `/dts-v1/;
+/plugin/;
+&root { status = "okay"; };
+`,
+            },
+          ],
+        },
+        auth,
+      ),
+    ).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: expect.objectContaining({ reason: "missing-base" }),
+    });
+  });
 });
