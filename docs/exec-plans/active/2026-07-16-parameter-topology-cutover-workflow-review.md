@@ -88,8 +88,8 @@
 
 - [x] Report exactMatched / reviewedMatched / inferredPendingReview / ambiguous / unmapped / broken
 - [x] Cutover blocks unaudited inferred; dry-run does not mask inferred as mapped
-- [ ] Reviewed mapping evidence reused on next ingest; only stable revisons are continuity baselines
-- [ ] R1/R2/R3 continuity tests
+- [x] Reviewed mapping evidence reused on next ingest; only stable revisons are continuity baselines
+- [x] R1/R2/R3 continuity tests
 
 ### Task 9–11: Frontend, acceptance, hygiene
 

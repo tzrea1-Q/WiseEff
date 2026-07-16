@@ -617,6 +617,138 @@ export async function applyReviewedIdentityMapping(
   }
 }
 
+/** Fingerprint of a human-selected candidate for reuse on later revisons. */
+export type ContinuityReuseEvidence = {
+  selectedLogicalNodeId: string;
+  selectedNodeLocator?: string;
+  selectedName?: string;
+  selectedUnitAddress?: string;
+};
+
+export function continuityReuseFromTaskEvidence(
+  evidence: Record<string, unknown>,
+  selectedLogicalNodeId: string,
+): ContinuityReuseEvidence {
+  const candidates = Array.isArray(evidence.candidates) ? evidence.candidates : [];
+  const selected = candidates.find(
+    (entry) =>
+      entry &&
+      typeof entry === "object" &&
+      !Array.isArray(entry) &&
+      (entry as { logicalNodeId?: unknown }).logicalNodeId === selectedLogicalNodeId,
+  ) as
+    | { logicalNodeId?: string; nodeLocator?: string; name?: string; unitAddress?: string }
+    | undefined;
+
+  return {
+    selectedLogicalNodeId,
+    selectedNodeLocator:
+      typeof selected?.nodeLocator === "string" ? selected.nodeLocator : undefined,
+    selectedName: typeof selected?.name === "string" ? selected.name : undefined,
+    selectedUnitAddress:
+      typeof selected?.unitAddress === "string" ? selected.unitAddress : undefined,
+  };
+}
+
+export type ReviewedContinuityDecision = {
+  previousLogicalNodeId: string;
+  selectedNodeLocator?: string;
+  selectedName?: string;
+  selectedUnitAddress?: string;
+};
+
+/**
+ * Load resolved human continuity decisions for reuse on subsequent revisons.
+ * Only decisions whose source revision is a stable continuity baseline are returned.
+ */
+export async function listReviewedContinuityDecisions(
+  db: Queryable,
+  input: { configSetId: string; previousLogicalNodeIds: string[] },
+): Promise<ReviewedContinuityDecision[]> {
+  if (input.previousLogicalNodeIds.length === 0) return [];
+
+  const result = await db.query<{
+    previous_logical_node_id: string;
+    evidence: unknown;
+  }>(
+    `
+    select t.previous_logical_node_id, t.evidence
+    from identity_mapping_tasks t
+    inner join dts_config_revisions cr on cr.id = t.config_revision_id
+    where cr.config_set_id = $1
+      and t.status = 'resolved'
+      and t.previous_logical_node_id = any($2::text[])
+      and cr.status = any($3::text[])
+    order by t.resolved_at desc nulls last, t.created_at desc
+    `,
+    [
+      input.configSetId,
+      input.previousLogicalNodeIds,
+      ["resolved", "validated", "compiled", "pending_approval", "published"],
+    ],
+  );
+
+  const seen = new Set<string>();
+  const decisions: ReviewedContinuityDecision[] = [];
+  for (const row of result.rows) {
+    const previousId = row.previous_logical_node_id;
+    if (!previousId || seen.has(previousId)) continue;
+    seen.add(previousId);
+    const evidence =
+      row.evidence && typeof row.evidence === "object" && !Array.isArray(row.evidence)
+        ? (row.evidence as Record<string, unknown>)
+        : typeof row.evidence === "string"
+          ? (JSON.parse(row.evidence) as Record<string, unknown>)
+          : {};
+    const selectedLogicalNodeId =
+      typeof evidence.selectedLogicalNodeId === "string" ? evidence.selectedLogicalNodeId : null;
+    if (!selectedLogicalNodeId) continue;
+    const reuse = continuityReuseFromTaskEvidence(evidence, selectedLogicalNodeId);
+    decisions.push({
+      previousLogicalNodeId: previousId,
+      selectedNodeLocator: reuse.selectedNodeLocator,
+      selectedName: reuse.selectedName,
+      selectedUnitAddress: reuse.selectedUnitAddress,
+    });
+  }
+  return decisions;
+}
+
+/**
+ * Attach reviewedMappingTo onto previous snapshots by matching candidate fingerprints
+ * from prior human continuity decisions.
+ */
+export function applyReviewedContinuityToSnapshots(
+  previous: LogicalNodeSnapshot[],
+  candidates: LogicalNodeCandidate[],
+  decisions: ReviewedContinuityDecision[],
+): LogicalNodeSnapshot[] {
+  if (decisions.length === 0) return previous;
+  const byPrevious = new Map(decisions.map((d) => [d.previousLogicalNodeId, d]));
+
+  return previous.map((snapshot) => {
+    const decision = byPrevious.get(snapshot.logicalNodeId);
+    if (!decision) return snapshot;
+
+    const match =
+      candidates.find(
+        (candidate) =>
+          decision.selectedNodeLocator &&
+          candidate.nodeLocator === decision.selectedNodeLocator,
+      ) ??
+      candidates.find(
+        (candidate) =>
+          decision.selectedName &&
+          candidate.name === decision.selectedName &&
+          (decision.selectedUnitAddress === undefined ||
+            candidate.unitAddress === decision.selectedUnitAddress),
+      );
+
+    if (!match) return snapshot;
+    return { ...snapshot, reviewedMappingTo: match.logicalNodeId };
+  });
+}
+
 export async function resolveIdentityMappingTaskRow(
   db: Queryable,
   input: {
@@ -626,12 +758,21 @@ export async function resolveIdentityMappingTaskRow(
     selectedLogicalNodeId?: string | null;
     reviewerUserId: string;
     reason: string;
+    continuityReuse?: ContinuityReuseEvidence | null;
   },
 ): Promise<IdentityMappingTask | null> {
   const evidencePatch =
-    input.selectedLogicalNodeId != null
-      ? JSON.stringify({ selectedLogicalNodeId: input.selectedLogicalNodeId })
-      : null;
+    input.continuityReuse != null
+      ? JSON.stringify({
+          selectedLogicalNodeId: input.continuityReuse.selectedLogicalNodeId,
+          selectedNodeLocator: input.continuityReuse.selectedNodeLocator ?? null,
+          selectedName: input.continuityReuse.selectedName ?? null,
+          selectedUnitAddress: input.continuityReuse.selectedUnitAddress ?? null,
+          continuityReusable: true,
+        })
+      : input.selectedLogicalNodeId != null
+        ? JSON.stringify({ selectedLogicalNodeId: input.selectedLogicalNodeId })
+        : null;
 
   const result = await db.query<IdentityMappingTaskRow>(
     `

@@ -18,6 +18,7 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
   applyReviewedIdentityMapping,
+  continuityReuseFromTaskEvidence,
   countOpenIdentityMappingTasksForRevision,
   getIdentityMappingTaskById,
   listIdentityMappingTaskRows,
@@ -313,13 +314,19 @@ export async function resolveIdentityMappingTask(
       });
     }
 
+    const continuityReuse =
+      input.decision === "resolved" && input.selectedLogicalNodeId
+        ? continuityReuseFromTaskEvidence(existing.evidence, input.selectedLogicalNodeId)
+        : null;
+
     const resolved = await resolveIdentityMappingTaskRow(tx, {
       taskId: input.taskId,
       organizationId: auth.organization.id,
       status: input.decision,
       selectedLogicalNodeId: input.selectedLogicalNodeId,
       reviewerUserId: auth.user.id,
-      reason: input.reason
+      reason: input.reason,
+      continuityReuse
     });
     if (!resolved) {
       throw new ApiError("CONFLICT", "Identity mapping task is not open.", 409, { taskId: input.taskId });

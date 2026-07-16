@@ -35,6 +35,8 @@ import { ApiError } from "../../shared/http/errors";
 import {
   createOrReuseBinding,
   persistAmbiguousIdentityMapping,
+  applyReviewedContinuityToSnapshots,
+  listReviewedContinuityDecisions,
   resolveLogicalContinuity,
   upsertBindingRevisionValues,
   type ContinuityAmbiguous,
@@ -352,7 +354,7 @@ async function buildLogicalRevisionsWithContinuity(
     configSetId: input.configSetId,
     beforeRevisionNumber: input.revisionNumber,
   });
-  const previousSnapshots = previousRows.map(toPreviousSnapshot);
+  const previousSnapshotsBase = previousRows.map(toPreviousSnapshot);
 
   const sorted = [...input.effectiveNodes.values()]
     .filter((node) => !node.deleted)
@@ -395,6 +397,15 @@ async function buildLogicalRevisionsWithContinuity(
   }
 
   const candidates = [...provisionalByLocator.values()];
+  const reviewedDecisions = await listReviewedContinuityDecisions(tx, {
+    configSetId: input.configSetId,
+    previousLogicalNodeIds: previousSnapshotsBase.map((row) => row.logicalNodeId),
+  });
+  const previousSnapshots = applyReviewedContinuityToSnapshots(
+    previousSnapshotsBase,
+    candidates,
+    reviewedDecisions,
+  );
   const claimedProvisional = new Set<string>();
   const stableByProvisional = new Map<string, string>();
   const ambiguous: ContinuityBuildResult["ambiguous"] = [];

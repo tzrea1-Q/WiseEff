@@ -172,12 +172,23 @@ export function matchLogicalNode(
   }
 
   if (matches.length > 1) {
+    // Human-reviewed continuity is exclusive: when exactly one candidate carries
+    // reviewed-mapping evidence, reuse that decision instead of re-opening ambiguity.
+    const reviewed = matches.filter((entry) => entry.evidence.includes("reviewed-mapping"));
+    if (reviewed.length === 1) {
+      return {
+        kind: "matched",
+        value: reviewed[0]!.candidate,
+        evidence: reviewed[0]!.evidence,
+      };
+    }
+    const ambiguousPool = reviewed.length > 1 ? reviewed : matches;
     return {
       kind: "ambiguous",
-      candidates: matches.map((entry) => entry.candidate),
+      candidates: ambiguousPool.map((entry) => entry.candidate),
       evidence: [
         `previous=${previous.logicalNodeId}`,
-        ...matches.flatMap((entry) => entry.evidence),
+        ...ambiguousPool.flatMap((entry) => entry.evidence),
       ],
     };
   }

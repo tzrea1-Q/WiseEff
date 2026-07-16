@@ -153,4 +153,28 @@ describe("matchLogicalNode", () => {
       evidence: expect.arrayContaining(["reviewed-mapping"]),
     });
   });
+
+  it("reviewed mapping uniquely wins when other candidates also look deterministic", () => {
+    const previous = previousSc8562({
+      reviewedMappingTo: "logical-left",
+    });
+    const left = candidate({
+      logicalNodeId: "logical-left",
+      nodeLocator: "/amba/i2c@FDF5E000/left@6E",
+      name: "left",
+      unitAddress: "6E",
+    });
+    const right = candidate({
+      logicalNodeId: "logical-right",
+      nodeLocator: "/amba/i2c@FDF5E000/right@6E",
+      name: "right",
+      unitAddress: "6E",
+    });
+
+    expect(matchLogicalNode(previous, [left, right])).toMatchObject({
+      kind: "matched",
+      value: expect.objectContaining({ logicalNodeId: "logical-left" }),
+      evidence: expect.arrayContaining(["reviewed-mapping"]),
+    });
+  });
 });

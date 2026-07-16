@@ -751,6 +751,15 @@ export async function listEffectiveTopology(
   };
 }
 
+/** Config revision statuses that may serve as identity continuity baselines. */
+export const CONTINUITY_BASELINE_STATUSES = [
+  "resolved",
+  "validated",
+  "compiled",
+  "pending_approval",
+  "published",
+] as const;
+
 export type PreviousLogicalNodeRow = {
   logicalNodeId: string;
   nodeLocator: string;
@@ -762,7 +771,10 @@ export type PreviousLogicalNodeRow = {
   reg?: string;
 };
 
-/** Load logical-node snapshots from the latest prior revision of a config set. */
+/**
+ * Load logical-node snapshots from the latest prior *stable* revision of a config set.
+ * needs_mapping / invalid / resolving / draft / validation_failed are never baselines.
+ */
 export async function listPreviousLogicalNodeSnapshots(
   db: Queryable,
   input: { configSetId: string; beforeRevisionNumber: number },
@@ -773,11 +785,11 @@ export async function listPreviousLogicalNodeSnapshots(
     from dts_config_revisions
     where config_set_id = $1
       and revision_number < $2
-      and status not in ('invalid', 'resolving')
+      and status = any($3::text[])
     order by revision_number desc
     limit 1
     `,
-    [input.configSetId, input.beforeRevisionNumber],
+    [input.configSetId, input.beforeRevisionNumber, [...CONTINUITY_BASELINE_STATUSES]],
   );
   const previousRevisionId = revisionResult.rows[0]?.id;
   if (!previousRevisionId) return [];
