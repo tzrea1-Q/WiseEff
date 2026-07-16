@@ -152,6 +152,7 @@ async function requireMigrationInfrastructure(db: Queryable): Promise<void> {
     where table_schema = 'public'
       and table_name in (
         'parameter_identity_migration_runs',
+        'parameter_identity_migration_phases',
         'parameter_identity_cutovers'
       )
     `
@@ -160,6 +161,9 @@ async function requireMigrationInfrastructure(db: Queryable): Promise<void> {
   const missing: string[] = [];
   if (!present.has("parameter_identity_migration_runs")) {
     missing.push("parameter_identity_migration_runs");
+  }
+  if (!present.has("parameter_identity_migration_phases")) {
+    missing.push("parameter_identity_migration_phases");
   }
   if (!present.has("parameter_identity_cutovers")) {
     missing.push("parameter_identity_cutovers");
@@ -515,6 +519,7 @@ async function ensureInferredReviewTask(
     module: string;
     propertyKey: string;
     spec: SpecCandidate;
+    migrationRunId?: string | null;
   }
 ): Promise<void> {
   if (!input.apply) return;
@@ -528,8 +533,9 @@ async function ensureInferredReviewTask(
     `
     insert into parameter_spec_review_tasks (
       id, organization_id, parameter_spec_id, source_evidence,
-      candidate_schemas, project_count, status, reason, blocker_scope
-    ) values ($1, $2, $3, $4::jsonb, $5::jsonb, 1, 'open', $6, 'platform')
+      candidate_schemas, project_count, status, reason, blocker_scope,
+      migration_run_id
+    ) values ($1, $2, $3, $4::jsonb, $5::jsonb, 1, 'open', $6, 'platform', $7)
     on conflict (id) do nothing
     `,
     [
@@ -544,7 +550,8 @@ async function ensureInferredReviewTask(
         specificationKey: input.spec.specificationKey
       }),
       JSON.stringify([input.spec.parameterSpecId]),
-      `inferred draft parameter spec for ${input.module}/${input.propertyKey} requires review`
+      `inferred draft parameter spec for ${input.module}/${input.propertyKey} requires review`,
+      input.migrationRunId ?? null
     ]
   );
 }
@@ -560,6 +567,7 @@ async function ensureAmbiguityTasks(
     candidateLogicalNodeIds?: string[];
     parameterSpecIds?: string[];
     evidence: Record<string, unknown>;
+    migrationRunId?: string | null;
   }
 ): Promise<void> {
   if (!input.apply) return;
@@ -576,8 +584,8 @@ async function ensureAmbiguityTasks(
       `
       insert into identity_mapping_tasks (
         id, organization_id, project_id, config_revision_id,
-        candidate_logical_node_ids, evidence, status, reason
-      ) values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, 'open', $7)
+        candidate_logical_node_ids, evidence, status, reason, migration_run_id
+      ) values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, 'open', $7, $8)
       on conflict (id) do nothing
       `,
       [
@@ -587,7 +595,8 @@ async function ensureAmbiguityTasks(
         input.configRevisionId,
         JSON.stringify(input.candidateLogicalNodeIds ?? []),
         JSON.stringify(input.evidence),
-        input.reason
+        input.reason,
+        input.migrationRunId ?? null
       ]
     );
   }
@@ -602,9 +611,10 @@ async function ensureAmbiguityTasks(
       `
       insert into parameter_spec_review_tasks (
         id, organization_id, parameter_spec_id, project_id, config_revision_id,
-        source_evidence, candidate_schemas, project_count, status, reason, blocker_scope
+        source_evidence, candidate_schemas, project_count, status, reason, blocker_scope,
+        migration_run_id
       ) values ($1, $2, null, $3, $4, $5::jsonb, $6::jsonb, 1, 'open', $7,
-        case when $4 is null then 'platform' else 'revision' end)
+        case when $4 is null then 'platform' else 'revision' end, $8)
       on conflict (id) do nothing
       `,
       [
@@ -614,7 +624,8 @@ async function ensureAmbiguityTasks(
         input.configRevisionId ?? null,
         JSON.stringify(input.evidence),
         JSON.stringify(input.parameterSpecIds ?? []),
-        input.reason
+        input.reason,
+        input.migrationRunId ?? null
       ]
     );
   }
@@ -825,17 +836,21 @@ type StagedMigrationRunRow = {
   status: string;
   db_snapshot_id: string | null;
   object_snapshot_id: string | null;
+  report?: unknown;
 };
 
 async function loadStagedMigrationRun(
   db: Queryable,
-  migrationRunId: string
+  migrationRunId: string,
+  options?: { forUpdate?: boolean }
 ): Promise<StagedMigrationRunRow> {
+  const lockClause = options?.forUpdate ? "for update" : "";
   const result = await db.query<StagedMigrationRunRow>(
     `
-    select id, mode, status, db_snapshot_id, object_snapshot_id
+    select id, mode, status, db_snapshot_id, object_snapshot_id, report
     from parameter_identity_migration_runs
     where id = $1
+    ${lockClause}
     `,
     [migrationRunId]
   );
@@ -856,15 +871,20 @@ async function loadStagedMigrationRun(
   return row;
 }
 
-async function assertFinalizePrerequisites(db: Queryable, organizationId?: string): Promise<void> {
-  const orgClause = organizationId?.trim() ? "and organization_id = $1" : "";
-  const orgParams = organizationId?.trim() ? [organizationId.trim()] : [];
+async function assertFinalizePrerequisites(
+  db: Queryable,
+  migrationRunId: string,
+  organizationId?: string
+): Promise<void> {
+  const orgClause = organizationId?.trim() ? "and organization_id = $2" : "";
+  const orgParams = organizationId?.trim() ? [migrationRunId, organizationId.trim()] : [migrationRunId];
 
   const openInferred = await db.query<{ c: string }>(
     `
     select count(*)::text as c
     from parameter_spec_review_tasks
-    where status = 'open'
+    where migration_run_id = $1
+      and status = 'open'
       and coalesce(source_evidence->>'inferred', '') = 'true'
       ${orgClause}
     `,
@@ -878,7 +898,8 @@ async function assertFinalizePrerequisites(db: Queryable, organizationId?: strin
     `
     select count(*)::text as c
     from identity_mapping_tasks
-    where status = 'open'
+    where migration_run_id = $1
+      and status = 'open'
       ${orgClause}
     `,
     orgParams
@@ -886,6 +907,81 @@ async function assertFinalizePrerequisites(db: Queryable, organizationId?: strin
   if (Number(openMapping.rows[0]?.c ?? 0) > 0) {
     throw new Error("finalize blocked: open identity mapping tasks remain");
   }
+}
+
+async function insertMigrationPhase(
+  db: Queryable,
+  input: {
+    migrationRunId: string;
+    phase: "stage-review" | "finalize";
+    status: "staged" | "finalized" | "completed";
+    report: ParameterIdentityMigrationReport;
+    dbSnapshotId: string | null;
+    objectSnapshotId: string | null;
+  }
+): Promise<void> {
+  await db.query(
+    `
+    insert into parameter_identity_migration_phases (
+      id, migration_run_id, phase, status, report,
+      db_snapshot_id, object_snapshot_id, completed_at
+    ) values ($1, $2, $3, $4, $5::jsonb, $6, $7, now())
+    `,
+    [
+      randomUUID(),
+      input.migrationRunId,
+      input.phase,
+      input.status,
+      JSON.stringify(input.report),
+      input.dbSnapshotId,
+      input.objectSnapshotId
+    ]
+  );
+}
+
+async function loadSuccessfulFinalizePhase(
+  db: Queryable,
+  migrationRunId: string
+): Promise<{ report: unknown }> {
+  const phase = await db.query<{ report: unknown }>(
+    `
+    select report
+    from parameter_identity_migration_phases
+    where migration_run_id = $1
+      and phase = 'finalize'
+      and status = 'finalized'
+    order by completed_at desc nulls last, created_at desc
+    limit 1
+    `,
+    [migrationRunId]
+  );
+  if (!phase.rows[0]) {
+    throw new Error(
+      `cutover requires successful finalize phase for migration run ${migrationRunId}`
+    );
+  }
+  return phase.rows[0];
+}
+
+async function ensureMigrationRunShell(
+  db: Queryable,
+  input: {
+    migrationRunId: string;
+    mode: "stage-review" | "apply";
+    dbSnapshotId: string | null;
+    objectSnapshotId: string | null;
+  }
+): Promise<void> {
+  await db.query(
+    `
+    insert into parameter_identity_migration_runs (
+      id, mode, status, report, db_snapshot_id, object_snapshot_id,
+      write_lock_confirmed
+    ) values ($1, $2, 'staged', '{}'::jsonb, $3, $4, true)
+    on conflict (id) do nothing
+    `,
+    [input.migrationRunId, input.mode, input.dbSnapshotId, input.objectSnapshotId]
+  );
 }
 
 export async function migrateParameterIdentities(
@@ -899,8 +995,6 @@ export async function migrateParameterIdentities(
     if (!options.migrationRunId?.trim()) {
       throw new Error("finalize requires --migration-run-id from a prior stage-review run");
     }
-    await loadStagedMigrationRun(db, options.migrationRunId.trim());
-    await assertFinalizePrerequisites(db, options.organizationId);
   }
 
   if (options.mode === "apply" || options.mode === "stage-review" || options.mode === "finalize") {
@@ -939,7 +1033,10 @@ async function runParameterIdentityMigration(
 
   let stagedRun: StagedMigrationRunRow | null = null;
   if (options.mode === "finalize") {
-    stagedRun = await loadStagedMigrationRun(db, options.migrationRunId!.trim());
+    stagedRun = await loadStagedMigrationRun(db, options.migrationRunId!.trim(), {
+      forUpdate: true
+    });
+    await assertFinalizePrerequisites(db, options.migrationRunId!.trim(), options.organizationId);
   }
 
   const dbSnapshotId = options.dbSnapshotId?.trim() || stagedRun?.db_snapshot_id || null;
@@ -955,6 +1052,15 @@ async function runParameterIdentityMigration(
           objectSnapshotId ?? "dry-run",
           writesStaging || writesActivity ? "apply" : "dry-run-fixed"
         ]);
+
+  if (options.mode === "stage-review" || options.mode === "apply") {
+    await ensureMigrationRunShell(db, {
+      migrationRunId,
+      mode: options.mode,
+      dbSnapshotId,
+      objectSnapshotId
+    });
+  }
 
   const blockers: string[] = [];
   let unmappedRecords = 0;
@@ -1063,7 +1169,8 @@ async function runParameterIdentityMigration(
           module: def.module,
           propertyKey,
           candidateSpecificationKeys: activeCandidates.map((c) => c.specificationKey)
-        }
+        },
+        migrationRunId: persistStaging ? migrationRunId : null
       });
       continue;
     } else {
@@ -1093,7 +1200,8 @@ async function runParameterIdentityMigration(
           definitionId: def.id,
           module: def.module,
           propertyKey,
-          spec
+          spec,
+          migrationRunId: persistStaging ? migrationRunId : null
         });
       }
     }
@@ -1184,7 +1292,8 @@ async function runParameterIdentityMigration(
           projectParameterValueId: value.id,
           sourceFileName: value.source_file_name,
           sourceNodePath: value.source_node_path
-        }
+        },
+        migrationRunId: persistStaging ? migrationRunId : null
       });
       continue;
     }
@@ -1249,7 +1358,8 @@ async function runParameterIdentityMigration(
               sourceFileName: value.source_file_name,
               sourceNodePath: value.source_node_path,
               propertyKey
-            }
+            },
+            migrationRunId: persistStaging ? migrationRunId : null
           });
         }
       }
@@ -1296,7 +1406,8 @@ async function runParameterIdentityMigration(
               sourceFileName: value.source_file_name,
               sourceNodePath: value.source_node_path,
               configRevisionId
-            }
+            },
+            migrationRunId: persistStaging ? migrationRunId : null
           });
           continue;
         }
@@ -1803,34 +1914,83 @@ async function runParameterIdentityMigration(
     }
   };
 
-  if (writesStaging || options.mode === "finalize") {
-    const runStatus =
-      options.mode === "stage-review"
-        ? "staged"
-        : "finalized";
-    await db.query(
-      `
-      insert into parameter_identity_migration_runs (
-        id, mode, status, report, db_snapshot_id, object_snapshot_id,
-        write_lock_confirmed, completed_at
-      ) values ($1, $2, $3, $4::jsonb, $5, $6, true, now())
-      on conflict (id) do update set
-        mode = excluded.mode,
-        status = excluded.status,
-        report = excluded.report,
-        db_snapshot_id = excluded.db_snapshot_id,
-        object_snapshot_id = excluded.object_snapshot_id,
-        completed_at = excluded.completed_at
-      `,
-      [
+  if (writesStaging || options.mode === "finalize" || options.mode === "apply") {
+    if (options.mode === "stage-review") {
+      await db.query(
+        `
+        update parameter_identity_migration_runs
+        set
+          mode = $2,
+          status = 'staged',
+          report = $3::jsonb,
+          db_snapshot_id = $4,
+          object_snapshot_id = $5,
+          completed_at = now()
+        where id = $1
+        `,
+        [
+          migrationRunId,
+          options.mode,
+          JSON.stringify(report),
+          dbSnapshotId,
+          objectSnapshotId
+        ]
+      );
+      await insertMigrationPhase(db, {
         migrationRunId,
-        options.mode,
-        runStatus,
-        JSON.stringify(report),
+        phase: "stage-review",
+        status: "staged",
+        report,
         dbSnapshotId,
         objectSnapshotId
-      ]
-    );
+      });
+    } else if (options.mode === "finalize") {
+      await insertMigrationPhase(db, {
+        migrationRunId,
+        phase: "finalize",
+        status: "finalized",
+        report,
+        dbSnapshotId,
+        objectSnapshotId
+      });
+      await db.query(
+        `
+        update parameter_identity_migration_runs
+        set status = 'finalized', completed_at = now()
+        where id = $1 and status = 'staged'
+        `,
+        [migrationRunId]
+      );
+    } else if (options.mode === "apply") {
+      await db.query(
+        `
+        update parameter_identity_migration_runs
+        set
+          mode = $2,
+          status = 'finalized',
+          report = $3::jsonb,
+          db_snapshot_id = $4,
+          object_snapshot_id = $5,
+          completed_at = now()
+        where id = $1
+        `,
+        [
+          migrationRunId,
+          options.mode,
+          JSON.stringify(report),
+          dbSnapshotId,
+          objectSnapshotId
+        ]
+      );
+      await insertMigrationPhase(db, {
+        migrationRunId,
+        phase: "finalize",
+        status: "finalized",
+        report,
+        dbSnapshotId,
+        objectSnapshotId
+      });
+    }
   }
 
   return report;
@@ -1848,14 +2008,15 @@ export async function applyParameterIdentityCutover(
   const database = requireTransactionalDb(db);
   await requireMigrationInfrastructure(db);
 
-  const run = await db.query<{ status: string; report: unknown }>(
-    `select status, report from parameter_identity_migration_runs where id = $1`,
+  const run = await db.query<{ status: string }>(
+    `select status from parameter_identity_migration_runs where id = $1`,
     [options.migrationRunId]
   );
   if (!run.rows[0] || run.rows[0].status !== "finalized") {
     throw new Error(`cutover requires finalized migration run ${options.migrationRunId}`);
   }
-  const report = run.rows[0].report as Partial<ParameterIdentityMigrationReport> | null;
+  const finalizePhase = await loadSuccessfulFinalizePhase(db, options.migrationRunId);
+  const report = finalizePhase.report as Partial<ParameterIdentityMigrationReport> | null;
   const inferredPending =
     typeof report?.inferredPendingReview === "number" ? report.inferredPendingReview : 0;
   if (inferredPending > 0) {

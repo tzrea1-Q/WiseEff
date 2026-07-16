@@ -108,7 +108,7 @@ npm run parameter-identities:migrate -- \
   --object-snapshot-id "$OBJECT_SNAPSHOT_ID"
 ```
 
-Capture `migrationRunId` from the report JSON. The run status is `staged` even when `blockers` lists inferred pending review — resolve those in Admin before finalize.
+Capture `migrationRunId` from the report JSON. The run status is `staged` even when `blockers` lists inferred pending review — resolve those in Admin before finalize. Each `stage-review` also appends an immutable row to `parameter_identity_migration_phases` (phase=`stage-review`); finalize appends a separate phase row and only then flips the logical run to `finalized` without overwriting the staged report.
 
 **On failure:** whole-snapshot restore (section 13). Do not retry against a dirty DB.
 
@@ -123,7 +123,7 @@ npm run parameter-identities:check
 
 ## 9. Finalize migration (activity FKs + bindings)
 
-`finalize` references the staged `migrationRunId`, requires all review/mapping tasks resolved, and atomically writes bindings, binding revisions, value evidence, and activity/workflow semantic FKs in **one** transaction. Failure rolls back finalize only; staged artifacts remain.
+`finalize` references the staged `migrationRunId`, requires all review/mapping tasks **for that run** resolved, and atomically writes bindings, binding revisions, value evidence, and activity/workflow semantic FKs in **one** transaction. Failure rolls back finalize only; staged artifacts and the `stage-review` phase row remain. On success, a new `parameter_identity_migration_phases` row (phase=`finalize`) is appended and the logical run status becomes `finalized`.
 
 ```bash
 npm run parameter-identities:migrate -- \
@@ -133,7 +133,7 @@ npm run parameter-identities:migrate -- \
   --write-lock-confirmed
 ```
 
-Run status becomes `finalized`. Cutover accepts **only** `finalized` runs.
+Run status becomes `finalized`. Cutover accepts **only** `finalized` runs that also have a successful `finalize` phase row; forged run status or staged-only runs are rejected.
 
 **On failure:** staged data remains; fix blockers and retry finalize, or whole-snapshot restore (section 13).
 

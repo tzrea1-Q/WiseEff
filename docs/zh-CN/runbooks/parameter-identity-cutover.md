@@ -99,7 +99,7 @@ npm run parameter-identities:migrate -- \
   --object-snapshot-id "$OBJECT_SNAPSHOT_ID"
 ```
 
-从报告 JSON 保存 `migrationRunId`。即使 `blockers` 含 inferred pending review，运行状态仍为 `staged`——finalize 前须在 Admin 完成审核。
+从报告 JSON 保存 `migrationRunId`。即使 `blockers` 含 inferred pending review，运行状态仍为 `staged`——finalize 前须在 Admin 完成审核。每次 `stage-review` 还会在 `parameter_identity_migration_phases` 追加不可变行（phase=`stage-review`）；finalize 追加独立 phase 行后，才将逻辑运行翻转为 `finalized`，且不会覆盖 staged 报告。
 
 **失败：** 第 14 节整快照恢复。禁止对脏库重试。
 
@@ -114,7 +114,7 @@ npm run parameter-identities:check
 
 ## 9. Finalize 迁移（activity FK + 绑定）
 
-`finalize` 引用 staged `migrationRunId`，要求全部审核/映射任务已 resolved，并在**单事务**中原子写入绑定、绑定 revision、值证据与 activity/workflow 语义 FK。失败仅回滚 finalize；staged 产物保留。
+`finalize` 引用 staged `migrationRunId`，要求**该运行**关联的全部审核/映射任务已 resolved，并在**单事务**中原子写入绑定、绑定 revision、值证据与 activity/workflow 语义 FK。失败仅回滚 finalize；staged 产物与 `stage-review` phase 行保留。成功时会追加新的 `parameter_identity_migration_phases` 行（phase=`finalize`），逻辑运行状态变为 `finalized`。
 
 ```bash
 npm run parameter-identities:migrate -- \
@@ -124,7 +124,7 @@ npm run parameter-identities:migrate -- \
   --write-lock-confirmed
 ```
 
-运行状态变为 `finalized`。Cutover **仅**接受 `finalized` 运行。
+运行状态变为 `finalized`。Cutover **仅**接受带有成功 `finalize` phase 行的 `finalized` 运行；仅 staged、伪造状态或缺少 finalize phase 的运行会被拒绝。
 
 **失败：** staged 数据仍在；修复 blocker 后重试 finalize，或整快照恢复（第 14 节）。
 
