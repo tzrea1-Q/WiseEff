@@ -16,8 +16,8 @@ begin
   from parameter_identity_migration_runs
   where id = '{{MIGRATION_RUN_ID}}';
 
-  if run_status is distinct from 'completed' then
-    raise exception 'cutover blocked: migration run % is not completed (status=%)',
+  if run_status is distinct from 'finalized' then
+    raise exception 'cutover blocked: migration run % is not finalized (status=%)',
       '{{MIGRATION_RUN_ID}}', coalesce(run_status, '<missing>');
   end if;
 

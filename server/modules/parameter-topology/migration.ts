@@ -802,17 +802,86 @@ function assertApplyGates(options: MigrateParameterIdentitiesOptions): void {
     "";
   if (!expected) {
     throw new Error(
-      `apply requires ${EXPECTED_MAINTENANCE_TOKEN_ENV} or expectedMaintenanceToken`
+      `${options.mode} requires ${EXPECTED_MAINTENANCE_TOKEN_ENV} or expectedMaintenanceToken`
     );
   }
   if (!options.maintenanceToken || options.maintenanceToken !== expected) {
-    throw new Error("apply requires a valid maintenance token");
+    throw new Error(`${options.mode} requires a valid maintenance token`);
   }
   if (!options.writeLockConfirmed) {
-    throw new Error("apply requires write lock confirmation");
+    throw new Error(`${options.mode} requires write lock confirmation`);
   }
-  if (!options.dbSnapshotId?.trim() || !options.objectSnapshotId?.trim()) {
-    throw new Error("apply requires db and object snapshot identifiers");
+  if (options.mode !== "finalize" && (!options.dbSnapshotId?.trim() || !options.objectSnapshotId?.trim())) {
+    throw new Error(`${options.mode} requires db and object snapshot identifiers`);
+  }
+}
+
+type StagedMigrationRunRow = {
+  id: string;
+  mode: string;
+  status: string;
+  db_snapshot_id: string | null;
+  object_snapshot_id: string | null;
+};
+
+async function loadStagedMigrationRun(
+  db: Queryable,
+  migrationRunId: string
+): Promise<StagedMigrationRunRow> {
+  const result = await db.query<StagedMigrationRunRow>(
+    `
+    select id, mode, status, db_snapshot_id, object_snapshot_id
+    from parameter_identity_migration_runs
+    where id = $1
+    `,
+    [migrationRunId]
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error(`finalize requires staged migration run ${migrationRunId}`);
+  }
+  if (row.status !== "staged") {
+    throw new Error(
+      `finalize requires migration run ${migrationRunId} with status staged (found ${row.status})`
+    );
+  }
+  if (row.mode !== "stage-review") {
+    throw new Error(
+      `finalize requires migration run ${migrationRunId} from stage-review (found mode ${row.mode})`
+    );
+  }
+  return row;
+}
+
+async function assertFinalizePrerequisites(db: Queryable, organizationId?: string): Promise<void> {
+  const orgClause = organizationId?.trim() ? "and organization_id = $1" : "";
+  const orgParams = organizationId?.trim() ? [organizationId.trim()] : [];
+
+  const openInferred = await db.query<{ c: string }>(
+    `
+    select count(*)::text as c
+    from parameter_spec_review_tasks
+    where status = 'open'
+      and coalesce(source_evidence->>'inferred', '') = 'true'
+      ${orgClause}
+    `,
+    orgParams
+  );
+  if (Number(openInferred.rows[0]?.c ?? 0) > 0) {
+    throw new Error("finalize blocked: open inferred parameter spec review tasks remain");
+  }
+
+  const openMapping = await db.query<{ c: string }>(
+    `
+    select count(*)::text as c
+    from identity_mapping_tasks
+    where status = 'open'
+      ${orgClause}
+    `,
+    orgParams
+  );
+  if (Number(openMapping.rows[0]?.c ?? 0) > 0) {
+    throw new Error("finalize blocked: open identity mapping tasks remain");
   }
 }
 
@@ -822,6 +891,14 @@ export async function migrateParameterIdentities(
 ): Promise<ParameterIdentityMigrationReport> {
   assertApplyGates(options);
   await requireMigrationInfrastructure(db);
+
+  if (options.mode === "finalize") {
+    if (!options.migrationRunId?.trim()) {
+      throw new Error("finalize requires --migration-run-id from a prior stage-review run");
+    }
+    await loadStagedMigrationRun(db, options.migrationRunId.trim());
+    await assertFinalizePrerequisites(db, options.organizationId);
+  }
 
   if (options.mode === "apply" || options.mode === "stage-review" || options.mode === "finalize") {
     return requireTransactionalDb(db).transaction((tx) =>
@@ -852,19 +929,29 @@ async function runParameterIdentityMigration(
   db: Queryable,
   options: MigrateParameterIdentitiesOptions
 ): Promise<ParameterIdentityMigrationReport> {
-  const writesStaging =
-    options.mode === "apply" || options.mode === "stage-review" || options.mode === "finalize";
+  const writesStaging = options.mode === "apply" || options.mode === "stage-review";
   const writesActivity = options.mode === "apply" || options.mode === "finalize";
-  const apply = writesStaging;
+  const persistStaging = writesStaging;
+  const persistActivity = writesActivity;
+
+  let stagedRun: StagedMigrationRunRow | null = null;
+  if (options.mode === "finalize") {
+    stagedRun = await loadStagedMigrationRun(db, options.migrationRunId!.trim());
+  }
+
+  const dbSnapshotId = options.dbSnapshotId?.trim() || stagedRun?.db_snapshot_id || null;
+  const objectSnapshotId = options.objectSnapshotId?.trim() || stagedRun?.object_snapshot_id || null;
+
   const migrationRunId =
-    options.migrationRunId ??
-    stableSemanticId("parameter_identity_migration_run", [
-      options.mode,
-      options.dbSnapshotId ?? "dry-run",
-      options.objectSnapshotId ?? "dry-run",
-      // Keep dry-run ids stable per mode; apply uses snapshot ids for determinism across restores.
-      apply ? "apply" : "dry-run-fixed"
-    ]);
+    options.mode === "finalize"
+      ? options.migrationRunId!.trim()
+      : options.migrationRunId ??
+        stableSemanticId("parameter_identity_migration_run", [
+          options.mode,
+          dbSnapshotId ?? "dry-run",
+          objectSnapshotId ?? "dry-run",
+          writesStaging || writesActivity ? "apply" : "dry-run-fixed"
+        ]);
 
   const blockers: string[] = [];
   let unmappedRecords = 0;
@@ -962,7 +1049,7 @@ async function runParameterIdentityMigration(
         `ambiguous definition ${def.id}: ${activeCandidates.map((c) => c.parameterSpecId).join(",")}`
       );
       await ensureAmbiguityTasks(db, {
-        apply,
+        apply: persistStaging,
         organizationId: def.organization_id,
         projectId: values.rows.find((v) => v.parameter_definition_id === def.id)?.project_id ?? "unknown",
         configRevisionId: null,
@@ -996,9 +1083,9 @@ async function runParameterIdentityMigration(
             propertyKey
           });
         matchKind = "inferred";
-        await ensureInferredSpec(db, spec, def.organization_id, apply);
+        await ensureInferredSpec(db, spec, def.organization_id, persistStaging);
         await ensureInferredReviewTask(db, {
-          apply,
+          apply: persistStaging,
           organizationId: def.organization_id,
           definitionId: def.id,
           module: def.module,
@@ -1026,7 +1113,7 @@ async function runParameterIdentityMigration(
     }
 
     const evidenceId = await insertEvidence(db, {
-      apply,
+      apply: persistStaging,
       organizationId: def.organization_id,
       legacyKind: "parameter_definition",
       legacyId: def.id,
@@ -1051,7 +1138,7 @@ async function runParameterIdentityMigration(
     });
     evidenceRows += 1;
     definitionMap.set(def.id, { spec, evidenceId, matchKind });
-    if (apply) {
+    if (persistStaging) {
       await db.query(
         `
         update parameter_specs
@@ -1084,7 +1171,7 @@ async function runParameterIdentityMigration(
         `ambiguous logical node for value ${value.id} path=${value.source_node_path}: ${resolvedNode.logicalNodeIds.join(",")}`
       );
       await ensureAmbiguityTasks(db, {
-        apply,
+        apply: persistStaging,
         organizationId: value.organization_id,
         projectId: value.project_id,
         configRevisionId: null,
@@ -1148,7 +1235,7 @@ async function runParameterIdentityMigration(
         );
         if (latestRevision.rows[0]?.id) {
           await ensureAmbiguityTasks(db, {
-            apply,
+            apply: persistStaging,
             organizationId: value.organization_id,
             projectId: value.project_id,
             configRevisionId: latestRevision.rows[0].id,
@@ -1192,7 +1279,7 @@ async function runParameterIdentityMigration(
             `ambiguous driver spec for value ${value.id}: ${exactDriver.map((c) => c.parameterSpecId).join(",")}`
           );
           await ensureAmbiguityTasks(db, {
-            apply,
+            apply: persistStaging,
             organizationId: value.organization_id,
             projectId: value.project_id,
             configRevisionId,
@@ -1235,7 +1322,7 @@ async function runParameterIdentityMigration(
 
     // Never promote recommended_value into schema_default or policy_target.
     const evidenceId = await insertEvidence(db, {
-      apply,
+      apply: persistActivity,
       organizationId: value.organization_id,
       legacyKind: "project_parameter_value",
       legacyId: value.id,
@@ -1681,7 +1768,7 @@ async function runParameterIdentityMigration(
   }
 
   if (writesActivity && blockers.length > 0) {
-    throw new Error(`apply blocked: ${blockers.join("; ")}`);
+    throw new Error(`${options.mode} blocked: ${blockers.join("; ")}`);
   }
 
   const mappedDefinitions = exactMatched + reviewedMatched;
@@ -1713,15 +1800,11 @@ async function runParameterIdentityMigration(
     }
   };
 
-  if (writesStaging) {
+  if (writesStaging || options.mode === "finalize") {
     const runStatus =
       options.mode === "stage-review"
         ? "staged"
-        : blockers.length === 0
-          ? options.mode === "finalize"
-            ? "finalized"
-            : "completed"
-          : "blocked";
+        : "finalized";
     await db.query(
       `
       insert into parameter_identity_migration_runs (
@@ -1732,6 +1815,8 @@ async function runParameterIdentityMigration(
         mode = excluded.mode,
         status = excluded.status,
         report = excluded.report,
+        db_snapshot_id = excluded.db_snapshot_id,
+        object_snapshot_id = excluded.object_snapshot_id,
         completed_at = excluded.completed_at
       `,
       [
@@ -1739,8 +1824,8 @@ async function runParameterIdentityMigration(
         options.mode,
         runStatus,
         JSON.stringify(report),
-        options.dbSnapshotId ?? null,
-        options.objectSnapshotId ?? null
+        dbSnapshotId,
+        objectSnapshotId
       ]
     );
   }
@@ -1764,8 +1849,8 @@ export async function applyParameterIdentityCutover(
     `select status, report from parameter_identity_migration_runs where id = $1`,
     [options.migrationRunId]
   );
-  if (!run.rows[0] || !["completed", "finalized"].includes(run.rows[0].status)) {
-    throw new Error(`cutover requires completed/finalized migration run ${options.migrationRunId}`);
+  if (!run.rows[0] || run.rows[0].status !== "finalized") {
+    throw new Error(`cutover requires finalized migration run ${options.migrationRunId}`);
   }
   const report = run.rows[0].report as Partial<ParameterIdentityMigrationReport> | null;
   const inferredPending =
@@ -1900,7 +1985,7 @@ export async function checkParameterIdentityCutover(db: Queryable): Promise<{
     `select count(*)::text as c from parameter_identity_cutovers`
   );
   const runs = await db.query<{ c: string }>(
-    `select count(*)::text as c from parameter_identity_migration_runs where status = 'completed'`
+    `select count(*)::text as c from parameter_identity_migration_runs where status = 'finalized'`
   );
 
   // After cutover, active workflow tables must not retain FKs to archived PPV tables.

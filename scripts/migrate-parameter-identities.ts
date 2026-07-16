@@ -13,13 +13,39 @@ function readOption(args: string[], name: string): string | undefined {
   return args[index + 1];
 }
 
+function resolveMode(args: string[]): "dry-run" | "stage-review" | "finalize" | "apply" {
+  const stageReview = hasFlag(args, "--stage-review");
+  const finalize = hasFlag(args, "--finalize");
+  const apply = hasFlag(args, "--apply");
+  const selected = [
+    stageReview ? "stage-review" : null,
+    finalize ? "finalize" : null,
+    apply ? "apply" : null
+  ].filter(Boolean);
+
+  if (selected.length > 1) {
+    throw new Error(
+      "Mutually exclusive modes: use exactly one of --dry-run (default), --stage-review, --finalize, or --apply"
+    );
+  }
+  if (finalize) return "finalize";
+  if (stageReview) return "stage-review";
+  if (apply) return "apply";
+  return "dry-run";
+}
+
 async function main() {
   const args = process.argv.slice(2);
-  const apply = hasFlag(args, "--apply");
+  const mode = resolveMode(args);
   const maintenanceToken = readOption(args, "--maintenance-token");
+  const migrationRunId = readOption(args, "--migration-run-id");
   const dbSnapshotId = readOption(args, "--db-snapshot-id");
   const objectSnapshotId = readOption(args, "--object-snapshot-id");
   const writeLockConfirmed = hasFlag(args, "--write-lock-confirmed");
+
+  if (mode === "finalize" && !migrationRunId?.trim()) {
+    throw new Error("finalize requires --migration-run-id from a prior stage-review run");
+  }
 
   const env = loadServerEnv(process.env);
   if (!env.DATABASE_URL) {
@@ -28,7 +54,8 @@ async function main() {
 
   const db = createPostgresDatabase(env.DATABASE_URL);
   const report = await migrateParameterIdentities(db, {
-    mode: apply ? "apply" : "dry-run",
+    mode,
+    migrationRunId: migrationRunId?.trim(),
     maintenanceToken,
     dbSnapshotId,
     objectSnapshotId,
@@ -39,7 +66,7 @@ async function main() {
 
   console.log(JSON.stringify(report, null, 2));
 
-  if (report.blockers.length > 0) {
+  if (report.blockers.length > 0 && mode !== "stage-review") {
     process.exitCode = 2;
   }
 }

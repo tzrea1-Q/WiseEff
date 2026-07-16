@@ -259,7 +259,7 @@ async function refreshParameterTopologyMetrics(db: Database | undefined, metrics
       db.query<{ c: string }>(`select count(*)::text as c from identity_mapping_tasks where status = 'open'`),
       db.query<{ c: string }>(`select count(*)::text as c from parameter_spec_review_tasks where status = 'open'`),
       db.query<{ c: string }>(
-        `select count(*)::text as c from parameter_identity_migration_runs where status = 'completed'`
+        `select count(*)::text as c from parameter_identity_migration_runs where status = 'finalized'`
       ),
       db.query<{ c: string }>(`select count(*)::text as c from parameter_identity_cutovers`)
     ]);
