@@ -6,7 +6,7 @@ import { withPgClient } from "./helpers/database";
 import { authHeadersForRole, authHeadersForUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence } from "./helpers/operationEvidence";
-import { apiRoute } from "./helpers/runtime";
+import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
 
 useBrowserDiagnostics(test);
 
@@ -112,107 +112,14 @@ async function seedParameterFileAcceptanceFixture() {
 }
 
 async function cleanupParameterFileAcceptanceArtifacts(fileName: string) {
+  await cleanupSemanticAcceptanceArtifacts({
+    organizationId,
+    projectId,
+    fileNames: [fileName],
+    projectParameterValueIds: [parameterValueId]
+  });
+
   await withPgClient(async (client) => {
-    const files = await client.query<{ id: string }>(
-      `
-      select id
-      from project_parameter_files
-      where organization_id = $1 and project_id = $2 and file_name = $3
-      `,
-      [organizationId, projectId, fileName]
-    );
-    const fileIds = files.rows.map((row) => row.id);
-
-    if (fileIds.length > 0) {
-      const versions = await client.query<{ id: string }>(
-        `
-        select id
-        from project_parameter_file_versions
-        where file_id = any($1::text[])
-        `,
-        [fileIds]
-      );
-      const versionIds = versions.rows.map((row) => row.id);
-
-      await client.query(
-        `
-        delete from parameter_file_sync_conflicts
-        where project_parameter_value_id = $1
-           or file_version_id = any($2::text[])
-        `,
-        [parameterValueId, versionIds]
-      );
-
-      if (versionIds.length > 0) {
-        await client.query(
-          `
-          update parameter_drafts
-          set origin_file_version_id = null
-          where origin_file_version_id = any($1::text[])
-          `,
-          [versionIds]
-        );
-        await client.query(
-          `
-          delete from parameter_drafts
-          where origin_file_version_id = any($1::text[])
-          `,
-          [versionIds]
-        );
-        await client.query(
-          `
-          delete from dts_config_revision_members
-          where file_version_id = any($1::text[])
-          `,
-          [versionIds]
-        );
-        await client.query(
-          `
-          delete from dts_property_occurrences
-          where file_version_id = any($1::text[])
-          `,
-          [versionIds]
-        );
-        await client.query(
-          `
-          delete from dts_node_occurrences
-          where file_version_id = any($1::text[])
-          `,
-          [versionIds]
-        );
-      }
-
-      await client.query(
-        `
-        update project_parameter_files
-        set current_version_id = null
-        where id = any($1::text[])
-        `,
-        [fileIds]
-      );
-      await client.query(
-        `
-        delete from project_parameter_file_versions
-        where file_id = any($1::text[])
-        `,
-        [fileIds]
-      );
-      await client.query(
-        `
-        delete from project_parameter_files
-        where id = any($1::text[])
-        `,
-        [fileIds]
-      );
-    }
-
-    await client.query(
-      `
-      delete from parameter_drafts
-      where project_parameter_value_id = $1
-      `,
-      [parameterValueId]
-    );
     await client.query(
       `
       update project_parameter_values

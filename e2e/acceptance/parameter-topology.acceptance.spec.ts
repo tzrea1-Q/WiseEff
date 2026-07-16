@@ -2,11 +2,18 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { expect, test, type APIRequestContext, type Page } from "playwright/test";
 
+import {
+  pickReviewCandidate,
+  requireMappingCandidate,
+  requireMappingTask,
+  requireReviewTask
+} from "./helpers/acceptanceTaskLookup";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
+import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
 import { ensureAuroraSemanticTopology } from "./helpers/topologyFixture";
 
 useBrowserDiagnostics(test, {
@@ -134,6 +141,51 @@ async function waitForRevision(
   throw new Error(`Timed out waiting for revision on config set ${configSetId}`);
 }
 
+async function waitForReviewTask(
+  request: APIRequestContext,
+  criteria: {
+    projectId: string;
+    configRevisionId: string;
+    propertyKey: string;
+  },
+  timeoutMs = 20_000
+) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const list = await request.get(
+      apiRoute(
+        `/api/v2/parameter-spec-review-tasks?status=open&projectId=${encodeURIComponent(criteria.projectId)}&configRevisionId=${encodeURIComponent(criteria.configRevisionId)}&limit=50`
+      ),
+      { headers: adminHeaders() }
+    );
+    expect(list.ok()).toBe(true);
+    const body = (await list.json()) as {
+      items: Array<{
+        id: string;
+        propertyKey?: string | null;
+        candidateSchemas?: Array<{ id: string; label?: string }>;
+        candidates?: Array<{ id: string; label?: string }>;
+        sourceEvidence?: { propertyKey?: string; configRevisionId?: string; projectId?: string };
+      }>;
+    };
+    try {
+      return requireReviewTask(body.items, criteria);
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+  }
+  const finalList = await request.get(
+    apiRoute(
+      `/api/v2/parameter-spec-review-tasks?status=open&projectId=${encodeURIComponent(criteria.projectId)}&configRevisionId=${encodeURIComponent(criteria.configRevisionId)}&limit=50`
+    ),
+    { headers: adminHeaders() }
+  );
+  const finalBody = (await finalList.json()) as {
+    items: Array<{ id: string; propertyKey?: string | null }>;
+  };
+  return requireReviewTask(finalBody.items, criteria);
+}
+
 async function resolveReviewsForCurrentRevision(
   request: APIRequestContext,
   revisionId: string,
@@ -149,13 +201,18 @@ async function resolveReviewsForCurrentRevision(
   const body = (await list.json()) as {
     items: Array<{
       id: string;
-      propertyKey?: string;
-      candidateSchemas?: Array<{ id: string; propertyKey?: string }>;
+      propertyKey?: string | null;
+      sourceEvidence?: { propertyKey?: string; nodeLocator?: string };
+      candidateSchemas?: Array<{ id: string; propertyKey?: string; label?: string }>;
+      candidates?: Array<{ id: string; propertyKey?: string | null; label?: string }>;
     }>;
   };
   for (const task of body.items) {
-    expect(task.candidateSchemas?.length ?? 0, `task ${task.id} must expose candidates`).toBeGreaterThan(0);
-    const parameterSpecId = task.candidateSchemas![0]!.id;
+    const candidate = pickReviewCandidate(task, {
+      propertyKey: task.propertyKey ?? task.sourceEvidence?.propertyKey,
+      nodeLocator: task.sourceEvidence?.nodeLocator
+    });
+    const parameterSpecId = candidate.id;
     const resolve = await request.post(
       apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
       {
@@ -188,6 +245,12 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // @operation PARAM-CONFIG-PUBLISH-GATE-001
     test.setTimeout(300_000);
 
+    const runSuffix = randomUUID().slice(0, 8);
+    const createdConfigSetNames: string[] = [];
+    const createdFileNames: string[] = [];
+    const createdParameterSpecIds: string[] = [];
+
+    try {
     // 1) Upload/ingest complete Config Set via official API (no business DB mutation).
     const topology = await ensureAuroraSemanticTopology(request);
     let { configSetId, revisionId } = topology;
@@ -212,12 +275,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(specMt).toBeTruthy();
     expect(specSc!.id).not.toBe(specMt!.id);
 
-    // 2/3) Generate unmatched review via real ingest on a throwaway Config Set, then resolve.
-    const reviewSuffix = randomUUID().slice(0, 8);
+    // 2/3) Generate unmatched review via real ingest on a throwaway Config Set, then draft→activate→resolve.
+    const reviewSuffix = runSuffix;
+    const reviewCsName = `acceptance-review-${reviewSuffix}`;
+    createdConfigSetNames.push(reviewCsName);
     const reviewCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
       headers: adminHeaders(),
       data: {
-        name: `acceptance-review-${reviewSuffix}`,
+        name: reviewCsName,
         description: `${descriptionPrefix} unmatched review`
       }
     });
@@ -235,6 +300,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 };
 `;
     const mysteryName = `acceptance-mystery-${reviewSuffix}.dts`;
+    createdFileNames.push(mysteryName);
     const mysteryUpload = await uploadDts(request, mysteryName, reviewDts);
     await request.post(
       apiRoute(`/api/v1/projects/${projectId}/config-sets/${reviewCsBody.item.id}/files`),
@@ -246,45 +312,62 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await uploadDts(request, mysteryName, reviewDts);
     const reviewRevision = await waitForRevision(reviewCsBody.item.id, () => true);
 
-    const openReviews = await request.get(
-      apiRoute(`/api/v2/parameter-spec-review-tasks?status=open&limit=50`),
-      { headers: adminHeaders() }
-    );
-    expect(openReviews.ok()).toBe(true);
-    const openReviewBody = (await openReviews.json()) as {
-      items: Array<{
-        id: string;
-        candidateSchemas?: Array<{ id: string; label?: string }>;
-        sourceEvidence?: { propertyKey?: string; configRevisionId?: string };
-      }>;
-    };
     const mysteryProp = `acceptance_mystery_${reviewSuffix}`;
-    const mysteryTask =
-      openReviewBody.items.find(
-        (item) =>
-          item.sourceEvidence?.propertyKey === mysteryProp ||
-          item.sourceEvidence?.configRevisionId === reviewRevision.id
-      ) ?? openReviewBody.items[0];
-    expect(
-      mysteryTask,
-      `expected open review for ${mysteryProp}; open=${openReviewBody.items.length}`
-    ).toBeTruthy();
+    const mysteryTask = await waitForReviewTask(request, {
+      projectId,
+      configRevisionId: reviewRevision.id,
+      propertyKey: mysteryProp
+    });
 
-    const resolveReview = await request.post(
-      apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(mysteryTask!.id)}/resolve`),
+    const createDraft = await request.post(
+      apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(mysteryTask.id)}/resolve`),
       {
         headers: adminHeaders(),
-        data: mysteryTask!.candidateSchemas?.[0]?.id
-          ? {
-              decision: "resolved",
-              parameterSpecId: mysteryTask!.candidateSchemas[0].id,
-              reason: `${descriptionPrefix} approve mystery/unmatched review`
-            }
-          : {
-              decision: "resolved",
-              createSpec: true,
-              reason: `${descriptionPrefix} create-and-resolve unmatched review`
-            }
+        data: {
+          decision: "resolved",
+          createSpec: true,
+          reason: `${descriptionPrefix} create draft spec for unmatched review`
+        }
+      }
+    );
+    expect(createDraft.ok(), await createDraft.text()).toBe(true);
+    const createDraftBody = (await createDraft.json()) as {
+      item: {
+        status: string;
+        draftCreated?: boolean;
+        parameterSpecId?: string | null;
+        message?: string;
+      };
+    };
+    expect(createDraftBody.item.status).toBe("open");
+    expect(createDraftBody.item.draftCreated).toBe(true);
+    expect(createDraftBody.item.parameterSpecId).toBeTruthy();
+    const draftSpecId = createDraftBody.item.parameterSpecId!;
+    createdParameterSpecIds.push(draftSpecId);
+
+    const activateDraft = await request.post(
+      apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(draftSpecId)}/activate`),
+      {
+        headers: adminHeaders(),
+        data: {
+          valueShape: { kind: "cells", bits: 32 },
+          constraints: { cells: 1 },
+          documentation: `${descriptionPrefix} acceptance mystery cells`,
+          reason: `${descriptionPrefix} activate draft spec for ${mysteryProp}`
+        }
+      }
+    );
+    expect(activateDraft.ok(), await activateDraft.text()).toBe(true);
+
+    const resolveReview = await request.post(
+      apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(mysteryTask.id)}/resolve`),
+      {
+        headers: adminHeaders(),
+        data: {
+          decision: "resolved",
+          parameterSpecId: draftSpecId,
+          reason: `${descriptionPrefix} resolve after draft activation`
+        }
       }
     );
     expect(resolveReview.ok(), await resolveReview.text()).toBe(true);
@@ -292,11 +375,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const reviewDb = await withPgClient(async (client) => {
       const result = await client.query<{ status: string; parameter_spec_id: string | null }>(
         `select status, parameter_spec_id from parameter_spec_review_tasks where id = $1`,
-        [mysteryTask!.id]
+        [mysteryTask.id]
       );
       return {
         table: "parameter_spec_review_tasks",
-        predicate: `id=${mysteryTask!.id}`,
+        predicate: `id=${mysteryTask.id}`,
         observed: result.rows[0]
           ? `status=${result.rows[0].status}; spec=${result.rows[0].parameter_spec_id}`
           : "missing",
@@ -315,7 +398,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       (item) =>
         item.kind === "parameter-topology-governance" &&
         item.action === "spec-review-resolved" &&
-        item.targetId === mysteryTask!.id
+        item.targetId === mysteryTask.id
     );
     expect(reviewAuditItem).toBeTruthy();
 
@@ -350,10 +433,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           path: "/api/v2/parameter-specs",
           responseSummary: `gpio_int specs=${gpioSpecs.length}; distinct sc8562/mt5788`
         }),
+        summarizeApiResponse(createDraft, {
+          method: "POST",
+          path: `/api/v2/parameter-spec-review-tasks/${mysteryTask.id}/resolve`,
+          responseSummary: `draftCreated spec=${draftSpecId}`
+        }),
+        summarizeApiResponse(activateDraft, {
+          method: "POST",
+          path: `/api/v2/parameter-specs/${draftSpecId}/activate`,
+          responseSummary: "activated draft spec"
+        }),
         summarizeApiResponse(resolveReview, {
           method: "POST",
-          path: `/api/v2/parameter-spec-review-tasks/${mysteryTask!.id}/resolve`,
-          responseSummary: `resolved task=${mysteryTask!.id}`
+          path: `/api/v2/parameter-spec-review-tasks/${mysteryTask.id}/resolve`,
+          responseSummary: `resolved task=${mysteryTask.id}`
         })
       ],
       db: [reviewDb],
@@ -362,10 +455,10 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           id: reviewAuditItem?.id,
           kind: "parameter-topology-governance",
           action: "spec-review-resolved",
-          targetId: mysteryTask!.id
+          targetId: mysteryTask.id
         }
       ],
-      notes: `${descriptionPrefix}: unmatched review from real ingest; resolved via API; UI lists distinct gpio_int specs.`
+      notes: `${descriptionPrefix}: unmatched review from real ingest; createSpec draft→activate→resolve via API; UI lists distinct gpio_int specs.`
     });
 
     // Browse real topology (API must be 200 — never [200,404]).
@@ -429,6 +522,21 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     ).toBeTruthy();
     expect(mtBinding).toBeTruthy();
     expect(scBinding!.id).not.toBe(mtBinding!.id);
+    // Same-compatible sibling nodes keep independent specs/bindings (sc8562 vs mt5788 gpio_int).
+    expect(scBinding!.driverModule).not.toBe(mtBinding!.driverModule);
+
+    const baseBindingSnapshot = await withPgClient(async (client) => {
+      const result = await client.query<{ raw_value: string | null }>(
+        `
+        select br.raw_value
+        from project_parameter_binding_revisions br
+        where br.binding_id = $1 and br.config_revision_id = $2
+        `,
+        [scBinding!.id, revisionId]
+      );
+      return result.rows[0]?.raw_value ?? null;
+    });
+    expect(baseBindingSnapshot).toBeTruthy();
 
     await workspace.getByRole("searchbox", { name: "搜索绑定" }).fill("gpio_int");
     const gpioCells = workspace.getByRole("cell", { name: "gpio_int" });
@@ -501,10 +609,12 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await detail.getByLabel("目标值 raw").fill(originalRaw);
 
     // Fail-closed blocker from REAL bad DTS (accurate failure code).
-    const suffix = randomUUID().slice(0, 8);
+    const suffix = runSuffix;
     const brokenBaseName = `acceptance-broken-base-${suffix}.dts`;
     const brokenOverlayName = `acceptance-broken-overlay-${suffix}.dts`;
     const brokenCsName = `acceptance-broken-cs-${suffix}`;
+    createdFileNames.push(brokenBaseName, brokenOverlayName);
+    createdConfigSetNames.push(brokenCsName);
     const brokenBaseUpload = await uploadDts(request, brokenBaseName, brokenBase);
     const brokenOverlayUpload = await uploadDts(request, brokenOverlayName, brokenOverlay);
     const brokenCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
@@ -632,15 +742,18 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     // Identity mapping via real ambiguous ingest (throwaway Config Set).
-    const mapSuffix = randomUUID().slice(0, 8);
+    const mapSuffix = runSuffix;
+    const mapCsName = `acceptance-map-${mapSuffix}`;
+    createdConfigSetNames.push(mapCsName);
     const mapCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
       headers: adminHeaders(),
-      data: { name: `acceptance-map-${mapSuffix}`, description: `${descriptionPrefix} identity map` }
+      data: { name: mapCsName, description: `${descriptionPrefix} identity map` }
     });
     expect(mapCs.status()).toBe(201);
     const mapCsBody = (await mapCs.json()) as { item: { id: string } };
     const r1Name = `acceptance-map-r1-${mapSuffix}.dts`;
     const r2Name = `acceptance-map-r2-${mapSuffix}.dts`;
+    createdFileNames.push(r1Name, r2Name);
     const r1Upload = await uploadDts(request, r1Name, mappingR1);
     await request.post(
       apiRoute(`/api/v1/projects/${projectId}/config-sets/${mapCsBody.item.id}/files`),
@@ -699,32 +812,38 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         };
       }>;
     };
-    const openMapTask = mappingBody.items.find(
-      (item) => item.configRevisionId === r2Revision.id
-    ) ?? mappingBody.items[0];
-    expect(openMapTask).toBeTruthy();
-    const selected =
-      openMapTask!.evidence?.candidates?.find((c) => c.nodeLocator.includes("left")) ??
-      openMapTask!.evidence?.candidates?.[0];
-    expect(selected?.logicalNodeId).toBeTruthy();
+    const openMapTask = requireMappingTask(mappingBody.items, {
+      projectId,
+      configRevisionId: r2Revision.id
+    });
+    const leftCandidate = requireMappingCandidate(
+      openMapTask,
+      (candidate) => candidate.nodeLocator.includes("left"),
+      "left sibling node"
+    );
+    const rightCandidate = requireMappingCandidate(
+      openMapTask,
+      (candidate) => candidate.nodeLocator.includes("right"),
+      "right sibling node"
+    );
+    expect(leftCandidate.logicalNodeId).not.toBe(rightCandidate.logicalNodeId);
 
     const resolveMapping = await request.post(
-      apiRoute(`/api/v2/identity-mapping-tasks/${encodeURIComponent(openMapTask!.id)}/resolve`),
+      apiRoute(`/api/v2/identity-mapping-tasks/${encodeURIComponent(openMapTask.id)}/resolve`),
       {
         headers: adminHeaders(),
         data: {
           decision: "resolved",
-          selectedLogicalNodeId: selected!.logicalNodeId,
-          reason: `${descriptionPrefix} resolve mapping via real ingest task`
+          selectedLogicalNodeId: leftCandidate.logicalNodeId,
+          reason: `${descriptionPrefix} resolve mapping for left sibling via real ingest task`
         }
       }
     );
     expect(resolveMapping.ok()).toBe(true);
 
-    // Resolve any remaining open mapping tasks on this revision.
     const stillOpenMaps = await request.get(
       apiRoute(
-        `/api/v2/identity-mapping-tasks?projectId=${encodeURIComponent(projectId)}&status=open`
+        `/api/v2/identity-mapping-tasks?projectId=${encodeURIComponent(projectId)}&status=open&configRevisionId=${encodeURIComponent(r2Revision.id)}`
       ),
       { headers: adminHeaders() }
     );
@@ -732,18 +851,21 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       items: Array<{
         id: string;
         configRevisionId?: string;
-        evidence?: { candidates?: Array<{ logicalNodeId: string }> };
+        evidence?: { candidates?: Array<{ logicalNodeId: string; nodeLocator: string }> };
       }>;
     };
-    for (const task of stillOpenBody.items.filter((item) => item.configRevisionId === r2Revision.id)) {
-      const pick = task.evidence?.candidates?.[0];
-      if (!pick) continue;
+    for (const task of stillOpenBody.items) {
+      const pick = requireMappingCandidate(
+        task,
+        (candidate) => candidate.nodeLocator.includes("right"),
+        "remaining right sibling mapping"
+      );
       await request.post(apiRoute(`/api/v2/identity-mapping-tasks/${encodeURIComponent(task.id)}/resolve`), {
         headers: adminHeaders(),
         data: {
           decision: "resolved",
           selectedLogicalNodeId: pick.logicalNodeId,
-          reason: `${descriptionPrefix} clear remaining map`
+          reason: `${descriptionPrefix} resolve right sibling mapping`
         }
       });
     }
@@ -751,11 +873,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const mappingDb = await withPgClient(async (client) => {
       const result = await client.query<{ status: string }>(
         `select status from identity_mapping_tasks where id = $1`,
-        [openMapTask!.id]
+        [openMapTask.id]
       );
       return {
         table: "identity_mapping_tasks",
-        predicate: `id=${openMapTask!.id}`,
+        predicate: `id=${openMapTask.id}`,
         observed: result.rows[0] ? `status=${result.rows[0].status}` : "missing",
         rowCount: result.rowCount ?? result.rows.length
       };
@@ -772,7 +894,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       (item) =>
         item.kind === "parameter-topology-governance" &&
         item.action === "identity-mapping-resolved" &&
-        item.targetId === openMapTask!.id
+        item.targetId === openMapTask.id
     );
     expect(mappingAuditItem).toBeTruthy();
 
@@ -793,8 +915,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         }),
         summarizeApiResponse(resolveMapping, {
           method: "POST",
-          path: `/api/v2/identity-mapping-tasks/${openMapTask!.id}/resolve`,
-          responseSummary: `selected=${selected!.logicalNodeId}`
+          path: `/api/v2/identity-mapping-tasks/${openMapTask.id}/resolve`,
+          responseSummary: `selected=${leftCandidate.logicalNodeId}`
         })
       ],
       db: [mappingDb],
@@ -803,14 +925,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           id: mappingAuditItem?.id,
           kind: "parameter-topology-governance",
           action: "identity-mapping-resolved",
-          targetId: openMapTask!.id
+          targetId: openMapTask.id
         }
       ],
-      notes: "Ambiguous ingest created open-mapping; validate fail-closed; resolve via API with audit."
+      notes: "Ambiguous ingest created open-mapping; validate fail-closed; left/right siblings adjudicated independently via API with audit."
     });
 
     // 10) SUCCESSFUL validate on golden/candidate path (not schema-failed-as-success).
-    const validateTargetId = draftBody.item.candidateRevisionId || revisionId;
+    const validateTargetId = draftBody.item.candidateRevisionId;
+    expect(validateTargetId).toBeTruthy();
+    expect(validateTargetId).not.toBe(revisionId);
     await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
 
     const validateResponse = await request.post(
@@ -842,6 +966,21 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       };
     });
     expect(publishDb.observed).toContain("validated");
+
+    const baseRevisionUnchanged = await withPgClient(async (client) => {
+      const result = await client.query<{ raw_value: string | null; status: string }>(
+        `
+        select br.raw_value, cr.status
+        from project_parameter_binding_revisions br
+        inner join dts_config_revisions cr on cr.id = br.config_revision_id
+        where br.binding_id = $1 and br.config_revision_id = $2
+        `,
+        [scBinding!.id, revisionId]
+      );
+      return result.rows[0];
+    });
+    expect(baseRevisionUnchanged?.raw_value).toBe(baseBindingSnapshot);
+    expect(baseRevisionUnchanged?.status).not.toBe("validated");
 
     const publishAudit = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
       headers: adminHeaders()
@@ -922,7 +1061,23 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           targetId: validateTargetId
         }
       ],
-      notes: `${descriptionPrefix}: successful validate (not schema-failed); bindingId+provenance persist after reload. org=${organizationId} runId=${randomUUID().slice(0, 8)}`
+      notes: `${descriptionPrefix}: successful validate on candidate revision; base revision binding unchanged; bindingId+provenance persist after reload. org=${organizationId} runId=${runSuffix}`
     });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        configSetNames: createdConfigSetNames,
+        fileNames: createdFileNames,
+        parameterSpecIds: createdParameterSpecIds
+      });
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        configSetNames: createdConfigSetNames,
+        fileNames: createdFileNames,
+        parameterSpecIds: createdParameterSpecIds
+      });
+    }
   });
 });

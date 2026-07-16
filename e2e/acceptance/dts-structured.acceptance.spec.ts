@@ -6,7 +6,7 @@ import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
-import { apiRoute } from "./helpers/runtime";
+import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
 
 useBrowserDiagnostics(test);
 
@@ -193,113 +193,33 @@ async function seedDtsAcceptanceFixture() {
   });
 }
 
-async function cleanupDtsAcceptanceArtifacts(fileNames: string[]) {
-  await withPgClient(async (client) => {
-    const valueIds = [parameterValueId, sensitiveParameterValueId];
-    const requests = await client.query<{ id: string; submission_round_id: string | null }>(
-      `
-      select id, submission_round_id
-      from parameter_change_requests
-      where project_parameter_value_id = any($1::text[])
-      `,
-      [valueIds]
-    );
-    const requestIds = requests.rows.map((row) => row.id);
-    const roundIds = Array.from(
-      new Set(requests.rows.map((row) => row.submission_round_id).filter((id): id is string => Boolean(id)))
-    );
-    if (requestIds.length > 0) {
-      await client.query(`delete from parameter_review_decisions where request_id = any($1::text[])`, [requestIds]);
-      await client.query(`delete from parameter_submission_items where change_request_id = any($1::text[])`, [
-        requestIds
-      ]);
-      await client.query(`delete from parameter_history_entries where request_id = any($1::text[])`, [requestIds]);
-      await client.query(`delete from parameter_change_requests where id = any($1::text[])`, [requestIds]);
-    }
-    if (roundIds.length > 0) {
-      await client.query(`delete from parameter_submission_rounds where id = any($1::text[])`, [roundIds]);
-    }
-    await client.query(`delete from parameter_drafts where project_parameter_value_id = any($1::text[])`, [valueIds]);
+async function cleanupDtsAcceptanceArtifacts(
+  fileNames: string[],
+  options?: { configSetNames?: string[]; baselineNames?: string[] }
+) {
+  await cleanupSemanticAcceptanceArtifacts({
+    organizationId,
+    projectId,
+    fileNames,
+    configSetNames: options?.configSetNames,
+    projectParameterValueIds: [parameterValueId, sensitiveParameterValueId]
+  });
 
-    if (fileNames.length > 0) {
-      const files = await client.query<{ id: string }>(
+  await withPgClient(async (client) => {
+    if (options?.baselineNames && options.baselineNames.length > 0) {
+      await client.query(
         `
-        select id
-        from project_parameter_files
-        where organization_id = $1 and project_id = $2 and file_name = any($3::text[])
+        delete from dts_release_baseline
+        where name = any($1::text[])
         `,
-        [organizationId, projectId, fileNames]
+        [options.baselineNames]
       );
-      const fileIds = files.rows.map((row) => row.id);
-      if (fileIds.length > 0) {
-        const versions = await client.query<{ id: string }>(
-          `
-          select id
-          from project_parameter_file_versions
-          where file_id = any($1::text[])
-          `,
-          [fileIds]
-        );
-        const versionIds = versions.rows.map((row) => row.id);
-        if (versionIds.length > 0) {
-          await client.query(
-            `
-            delete from dts_config_revision_members
-            where file_version_id = any($1::text[])
-            `,
-            [versionIds]
-          );
-          await client.query(
-            `
-            delete from dts_property_occurrences
-            where file_version_id = any($1::text[])
-            `,
-            [versionIds]
-          );
-          await client.query(
-            `
-            delete from dts_node_occurrences
-            where file_version_id = any($1::text[])
-            `,
-            [versionIds]
-          );
-        }
-        await client.query(
-          `
-          delete from dts_release_baseline_members
-          where file_id = any($1::text[])
-             or file_version_id = any($2::text[])
-          `,
-          [fileIds, versionIds]
-        );
-        await client.query(
-          `
-          update project_parameter_files
-          set current_version_id = null,
-              config_set_id = null,
-              config_set_role = null,
-              config_set_sort_order = 0
-          where id = any($1::text[])
-          `,
-          [fileIds]
-        );
-        if (versionIds.length > 0) {
-          await client.query(
-            `
-            update parameter_drafts
-            set origin_file_version_id = null
-            where origin_file_version_id = any($1::text[])
-            `,
-            [versionIds]
-          );
-        }
-        await client.query(`delete from project_parameter_file_versions where file_id = any($1::text[])`, [fileIds]);
-        await client.query(`delete from project_parameter_files where id = any($1::text[])`, [fileIds]);
-      }
     }
 
     await client.query(`delete from dts_sensitive_node_rules where id = $1`, [sensitiveRuleId]);
-    await client.query(`delete from project_parameter_values where id = any($1::text[])`, [valueIds]);
+    await client.query(`delete from project_parameter_values where id = any($1::text[])`, [
+      [parameterValueId, sensitiveParameterValueId]
+    ]);
     await client.query(`delete from parameter_definitions where id = any($1::text[])`, [
       [parameterDefinitionId, sensitiveParameterDefinitionId]
     ]);
@@ -601,17 +521,13 @@ test.describe("DTS structured product browser acceptance", () => {
         notes: "Baseline compare returned structuralDiff for the drifted DTS member; StructuredDiffView mounts from ConfigSetBaselinePanel when compare is triggered."
       });
     } finally {
-      await cleanupDtsAcceptanceArtifacts([primaryFileName, peerFileName]);
-      await withPgClient(async (client) => {
-        await client.query(
-          `
-          delete from dts_release_baseline
-          where name = $1
-             or config_set_id in (select id from dts_config_set where name = $2)
-          `,
-          [baselineName, configSetName]
-        );
-        await client.query(`delete from dts_config_set where name = $1`, [configSetName]);
+      await cleanupDtsAcceptanceArtifacts([primaryFileName, peerFileName], {
+        configSetNames: [configSetName],
+        baselineNames: [baselineName]
+      });
+      await cleanupDtsAcceptanceArtifacts([primaryFileName, peerFileName], {
+        configSetNames: [configSetName],
+        baselineNames: [baselineName]
       });
     }
   });
@@ -900,10 +816,8 @@ test.describe("DTS structured product browser acceptance", () => {
             : "Impact returned parameter template items; structural kinds (compatible/config-set/phandle) deferred when binding/resolve did not produce peers in this fixture — keep required true, revisit with richer DTS fixtures if needed."
       });
     } finally {
-      await cleanupDtsAcceptanceArtifacts([fileName, peerFileName]);
-      await withPgClient(async (client) => {
-        await client.query(`delete from dts_config_set where name = $1`, [configSetName]);
-      });
+      await cleanupDtsAcceptanceArtifacts([fileName, peerFileName], { configSetNames: [configSetName] });
+      await cleanupDtsAcceptanceArtifacts([fileName, peerFileName], { configSetNames: [configSetName] });
     }
   });
 
