@@ -21,6 +21,7 @@ import {
   countOpenSpecReviewTasksForRevision,
 } from "./repository";
 import { listSpecReviewTasks, resolveCandidateSpecId, resolveSpecReviewTask, toReviewTaskDto } from "./service";
+import { assertSpecResolvable } from "./specCompleteness";
 
 vi.mock("./repository", () => ({
   getParameterSpecRow: vi.fn(),
@@ -30,6 +31,12 @@ vi.mock("./repository", () => ({
   lockOpenSpecReviewTask: vi.fn(),
   resolveSpecReviewTaskRow: vi.fn(),
   countOpenSpecReviewTasksForRevision: vi.fn(),
+  validateSpecReviewTenantEvidence: vi.fn(async (_db, input) => input.locate),
+}));
+
+vi.mock("./specCompleteness", () => ({
+  assertSpecResolvable: vi.fn(),
+  assertSpecActivatable: vi.fn(),
 }));
 
 vi.mock("./reviewApply", () => ({
@@ -54,6 +61,13 @@ vi.mock("./reviewApply", () => ({
   })),
   refreshConfigRevisionAfterSpecReview: vi.fn(),
   requireOrgOrGlobalSpec: vi.fn(),
+  requireLocateEvidence: vi.fn((evidence: { projectId?: string; configRevisionId?: string; propertyOccurrenceId?: string; logicalNodeId?: string; propertyKey?: string }) => ({
+    projectId: evidence.projectId ?? "project-1",
+    configRevisionId: evidence.configRevisionId ?? "rev-1",
+    propertyOccurrenceId: evidence.propertyOccurrenceId ?? "po-1",
+    logicalNodeId: evidence.logicalNodeId ?? "ln-1",
+    propertyKey: evidence.propertyKey ?? "gpio_int",
+  })),
 }));
 
 vi.mock("../parameter-topology/governanceAudit", () => ({
@@ -108,6 +122,7 @@ const openTask = {
 describe("parameter spec review service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(assertSpecResolvable).mockImplementation(() => undefined);
     vi.mocked(countOpenSpecReviewTasksForRevision).mockResolvedValue(0);
     vi.mocked(countOpenIdentityMappingTasksForRevision).mockResolvedValue(0);
     vi.mocked(refreshConfigRevisionAfterSpecReview).mockResolvedValue("resolved");
@@ -489,7 +504,7 @@ describe("parameter spec review service", () => {
     );
   });
 
-  it("resolveSpecReviewTask createSpec creates manual spec and resolves unmatched task", async () => {
+  it("resolveSpecReviewTask createSpec creates draft and keeps task open", async () => {
     const unmatchedTask = {
       ...openTask,
       candidateSchemas: [],
@@ -499,64 +514,55 @@ describe("parameter spec review service", () => {
       },
     };
     vi.mocked(lockOpenSpecReviewTask).mockResolvedValue(unmatchedTask);
+    const txQuery = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          ast_json: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "1", value: "1" }]] },
+          raw_text: "<1>",
+        },
+      ],
+    });
+    const db = {
+      query: vi.fn(),
+      transaction: vi.fn(async (fn: (tx: { query: typeof txQuery }) => unknown) => fn({ query: txQuery })),
+    } as unknown as Database;
     vi.mocked(createOrgManualParameterSpec).mockResolvedValue({
-      parameterSpecId: "pspec:org-1:manual:mystery_prop",
-      parameterSpecVersionId: "pspec:org-1:manual:mystery_prop:v1",
+      parameterSpecId: "spec-draft-1",
+      parameterSpecVersionId: "spec-draft-1-v1",
       created: true,
-    });
-    vi.mocked(requireOrgOrGlobalSpec).mockResolvedValue({
-      id: "pspec:org-1:manual:mystery_prop",
-      sourceKind: "manual",
-      specificationKey: "manual/mystery_prop",
-      propertyKey: "mystery_prop",
-      driverModule: "manual",
-      lifecycle: "active",
-      currentVersionId: "pspec:org-1:manual:mystery_prop:v1",
-      currentVersion: 1,
-      displayName: null,
-      description: null,
-      valueShape: null,
-      schemaDefault: null,
-      exampleValue: null,
-      schemaNamespace: "manual",
-      units: null,
-      constraints: null,
-      documentation: null,
-      compatiblePatterns: null,
-      policyTarget: null,
-    });
-    vi.mocked(applyResolvedSpecReview).mockResolvedValue({
-      bindingId: "binding-new",
-      projectId: "project-1",
-      configRevisionId: "rev-1",
-    });
-    vi.mocked(resolveSpecReviewTaskRow).mockResolvedValue({
-      ...unmatchedTask,
-      parameterSpecId: "pspec:org-1:manual:mystery_prop",
-      status: "resolved",
-      reason: "Created from review",
-      resolvedAt: "2026-07-16T02:00:00.000Z",
+      valueShape: { kind: "cells", bits: 32 },
     });
 
-    await resolveSpecReviewTask(makeDb(), makeAuth(), {
+    const result = await resolveSpecReviewTask(db, makeAuth(), {
       taskId: "task-1",
       decision: "resolved",
       createSpec: true,
       reason: "Created from review",
     });
 
-    expect(createOrgManualParameterSpec).toHaveBeenCalledWith(expect.anything(), {
-      organizationId: "org-1",
-      propertyKey: "mystery_prop",
-      driverModule: null,
+    expect(createOrgManualParameterSpec).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: "org-1",
+        propertyKey: "mystery_prop",
+        sourceReviewTaskId: "task-1",
+      }),
+    );
+    expect(result).toMatchObject({
+      status: "open",
+      draftCreated: true,
+      parameterSpecId: "spec-draft-1",
     });
     expect(writeGovernanceAudit).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
       expect.objectContaining({
-        metadata: expect.objectContaining({ createdSpec: true }),
+        action: "spec-draft-created",
+        metadata: expect.objectContaining({ created: true }),
       }),
       expect.anything(),
     );
+    expect(applyResolvedSpecReview).not.toHaveBeenCalled();
+    expect(resolveSpecReviewTaskRow).not.toHaveBeenCalled();
   });
 });

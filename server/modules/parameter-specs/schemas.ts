@@ -105,9 +105,29 @@ export const resolveSpecReviewTaskBodySchema = z
     }
   });
 
+export const activateParameterSpecBodySchema = z.object({
+  valueShape: z.record(z.string(), z.unknown()),
+  constraints: z.record(z.string(), z.unknown()).default({}),
+  documentation: nonEmptyString,
+  displayName: z.string().optional(),
+  description: z.string().optional(),
+  reason: nonEmptyString,
+});
+
+export const resolveSpecReviewTaskResultSchema = z.object({
+  id: nonEmptyString,
+  status: specReviewTaskStatusSchema,
+  parameterSpecId: z.string().nullable().optional(),
+  reason: z.string().nullable().optional(),
+  draftCreated: z.boolean().optional(),
+  message: z.string().optional(),
+});
+
 export type ParameterSpecSummaryDto = z.infer<typeof parameterSpecSummaryDtoSchema>;
 export type ParameterSpecDetailDto = z.infer<typeof parameterSpecDetailDtoSchema>;
 export type ListParameterSpecsQuery = z.infer<typeof listParameterSpecsQuerySchema>;
 export type ListSpecReviewTasksQuery = z.infer<typeof listSpecReviewTasksQuerySchema>;
 export type ParameterSpecReviewTaskDto = z.infer<typeof parameterSpecReviewTaskDtoSchema>;
 export type ResolveSpecReviewTaskBody = z.infer<typeof resolveSpecReviewTaskBodySchema>;
+export type ActivateParameterSpecBody = z.infer<typeof activateParameterSpecBodySchema>;
+export type ResolveSpecReviewTaskResultDto = z.infer<typeof resolveSpecReviewTaskResultSchema>;

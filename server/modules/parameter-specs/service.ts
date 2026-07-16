@@ -1,7 +1,7 @@
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import { canAdminParameters, canViewParameters } from "../parameters/policy";
-import type { Database } from "../../shared/database/client";
+import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { writeGovernanceAudit } from "../parameter-topology/governanceAudit";
 import { countOpenIdentityMappingTasksForRevision } from "../parameter-topology/bindingService";
@@ -247,7 +247,7 @@ const DRAFT_CREATED_MESSAGE =
   "Draft spec created; complete value shape/constraints and activate before resolve.";
 
 async function loadOccurrenceForDraft(
-  db: Database,
+  db: Queryable,
   input: { propertyOccurrenceId: string; configRevisionId: string },
 ): Promise<{ astJson: unknown; rawText: string | null }> {
   const result = await db.query<{ ast_json: unknown; raw_text: string }>(
@@ -610,7 +610,35 @@ export async function activateParameterSpec(
       context,
     );
 
-    const refreshed = await getParameterSpec(tx, auth, input.specId);
-    return refreshed;
+    const refreshed = await getParameterSpecRow(tx, {
+      organizationId: auth.organization.id,
+      specId: input.specId,
+    });
+    if (!refreshed) {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+    }
+    return {
+      item: {
+        id: refreshed.id,
+        sourceKind: refreshed.sourceKind,
+        specificationKey: refreshed.specificationKey,
+        propertyKey: refreshed.propertyKey,
+        driverModule: refreshed.driverModule,
+        lifecycle: refreshed.lifecycle,
+        currentVersionId: refreshed.currentVersionId,
+        currentVersion: refreshed.currentVersion,
+        displayName: refreshed.displayName,
+        description: refreshed.description,
+        valueShape: refreshed.valueShape,
+        schemaDefault: refreshed.schemaDefault,
+        exampleValue: refreshed.exampleValue,
+        schemaNamespace: refreshed.schemaNamespace,
+        units: refreshed.units,
+        constraints: refreshed.constraints,
+        documentation: refreshed.documentation,
+        compatiblePatterns: refreshed.compatiblePatterns,
+        policyTarget: refreshed.policyTarget,
+      },
+    };
   });
 }

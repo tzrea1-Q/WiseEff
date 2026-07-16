@@ -6,13 +6,20 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
+  activateParameterSpecBodySchema,
   listParameterSpecsQuerySchema,
   listSpecReviewTasksQuerySchema,
   parameterSpecParamsSchema,
   parameterSpecReviewTaskParamsSchema,
   resolveSpecReviewTaskBodySchema
 } from "./schemas";
-import { getParameterSpec, listParameterSpecs, listSpecReviewTasks, resolveSpecReviewTask } from "./service";
+import {
+  activateParameterSpec,
+  getParameterSpec,
+  listParameterSpecs,
+  listSpecReviewTasks,
+  resolveSpecReviewTask,
+} from "./service";
 
 function requireDb(db: Database | undefined) {
   if (!db) {
@@ -92,5 +99,24 @@ export function registerParameterSpecRoutes(
       { requestId: request.requestId }
     );
     return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/activate", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(activateParameterSpecBodySchema, request.body ?? {});
+    const result = await activateParameterSpec(
+      db,
+      auth,
+      {
+        ...body,
+        constraints: body.constraints ?? {},
+        specId: params.specId,
+      },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
   });
 }

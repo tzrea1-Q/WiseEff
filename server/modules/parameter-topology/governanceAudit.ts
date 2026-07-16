@@ -8,6 +8,8 @@ import type { Queryable } from "../../shared/database/client";
 export type GovernanceAuditAction =
   | "spec-review-resolved"
   | "spec-review-dismissed"
+  | "spec-draft-created"
+  | "spec-activated"
   | "identity-mapping-resolved"
   | "identity-mapping-dismissed"
   | "config-revision-validated"
