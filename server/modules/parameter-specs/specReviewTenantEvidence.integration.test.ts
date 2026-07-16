@@ -44,6 +44,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const migrationsDir = path.join(projectRoot, "server", "migrations");
 const migration0055 = "0055_parameter_spec_review_task_scope_backfill.sql";
 const migration0057 = "0057_parameter_spec_review_task_scope_reconcile.sql";
+const migration0058 = "0058_parameter_spec_review_task_scope_evidence_only.sql";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -749,6 +750,291 @@ describe.skipIf(!databaseAvailable)("0055/0057 review task scope backfill", () =
       expect(updated).toBeGreaterThanOrEqual(0);
       const idempotent = await backfillReviewTaskScopeColumns(db);
       expect(idempotent).toBe(0);
+    });
+  });
+});
+
+describe.skipIf(!databaseAvailable)("0058 evidence-only scope reconcile from polluted 0055 state", () => {
+  it("clears cross-tenant FKs preserved by 0057 coalesce, keeps valid rows, and rolls back mid-failure", async () => {
+    await withTempDatabase(async (db) => {
+      await applyMigrationsThrough(db, migration0057);
+      await seedGraph(db);
+
+      const validRevisionId = randomUUID();
+      const crossRevisionId = randomUUID();
+      await db.query(
+        `
+        insert into dts_config_revisions (
+          id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id
+        ) values
+          ($1, $2, $3, $4, 1, 'resolved', $5),
+          ($6, $7, $8, $9, 1, 'resolved', $5)
+        `,
+        [
+          validRevisionId,
+          ORG_A,
+          PROJECT_A,
+          CONFIG_SET_A,
+          USER_ID,
+          crossRevisionId,
+          ORG_B,
+          PROJECT_B,
+          CONFIG_SET_B,
+        ],
+      );
+
+      const validOccurrenceId = randomUUID();
+      const crossOccurrenceId = randomUUID();
+      const nodeOccA = randomUUID();
+      const nodeOccB = randomUUID();
+      const fileVersionA = randomUUID();
+      const fileVersionB = randomUUID();
+      const fileIdA = randomUUID();
+      const fileIdB = randomUUID();
+      await db.query(
+        `
+        insert into project_parameter_files (id, organization_id, project_id, file_name, format, enabled)
+        values ($1, $2, $3, 'a.dts', 'dts', true), ($4, $5, $6, 'b.dts', 'dts', true)
+        `,
+        [fileIdA, ORG_A, PROJECT_A, fileIdB, ORG_B, PROJECT_B],
+      );
+      await db.query(
+        `
+        insert into project_parameter_file_versions (
+          id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+        ) values ($1, $2, 1, 'k-a', 'abc', 1, '{}'::jsonb, 'upload', $3),
+               ($4, $5, 1, 'k-b', 'def', 1, '{}'::jsonb, 'upload', $3)
+        `,
+        [fileVersionA, fileIdA, USER_ID, fileVersionB, fileIdB],
+      );
+      await db.query(
+        `
+        insert into dts_node_occurrences (
+          id, config_revision_id, file_version_id, name, labels, node_path,
+          start_offset, end_offset, start_line, start_column, end_line, end_column,
+          raw_text, ast_json, source_order
+        ) values ($1, $2, $3, 'n', '[]'::jsonb, '/n', 0, 1, 1, 1, 1, 2, 'n', '{}'::jsonb, 0),
+               ($4, $5, $6, 'n', '[]'::jsonb, '/n', 0, 1, 1, 1, 1, 2, 'n', '{}'::jsonb, 0)
+        `,
+        [nodeOccA, validRevisionId, fileVersionA, nodeOccB, crossRevisionId, fileVersionB],
+      );
+      await db.query(
+        `
+        insert into dts_property_occurrences (
+          id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+          start_offset, end_offset, start_line, start_column, end_line, end_column,
+          raw_text, ast_json, source_order
+        ) values ($1, $2, $3, $4, 'p', 0, 1, 1, 1, 1, 2, '<1>', '{}'::jsonb, 0),
+               ($5, $6, $7, $8, 'p', 0, 1, 1, 1, 1, 2, '<1>', '{}'::jsonb, 0)
+        `,
+        [
+          validOccurrenceId,
+          validRevisionId,
+          nodeOccA,
+          fileVersionA,
+          crossOccurrenceId,
+          crossRevisionId,
+          nodeOccB,
+          fileVersionB,
+        ],
+      );
+
+      const validTaskId = randomUUID();
+      const pollutedTaskId = randomUUID();
+      // Simulate historical old-0055 pollution already written into task FKs
+      // (0057 coalesce would preserve these incorrect values).
+      await db.query(
+        `
+        insert into parameter_spec_review_tasks (
+          id, organization_id, parameter_spec_id, source_evidence, candidate_schemas,
+          project_count, status, reviewer_user_id, reason, resolved_at,
+          project_id, config_revision_id, property_occurrence_id, blocker_scope
+        ) values
+          (
+            $1, $2, $3, $4::jsonb, '[]'::jsonb, 1, 'resolved', $5, 'ok', now(),
+            $6, $7, $8, 'revision'
+          ),
+          (
+            $9, $2, $3, $10::jsonb, '[]'::jsonb, 1, 'resolved', $5, 'polluted', now(),
+            $11, $12, $13, 'revision'
+          )
+        `,
+        [
+          validTaskId,
+          ORG_A,
+          SPEC_A,
+          JSON.stringify({
+            projectId: PROJECT_A,
+            configRevisionId: validRevisionId,
+            propertyOccurrenceId: validOccurrenceId,
+            propertyKey: PROPERTY_KEY,
+          }),
+          USER_ID,
+          PROJECT_A,
+          validRevisionId,
+          validOccurrenceId,
+          pollutedTaskId,
+          JSON.stringify({
+            // Evidence claims org-A project, but columns were polluted to org-B.
+            projectId: PROJECT_A,
+            configRevisionId: validRevisionId,
+            propertyOccurrenceId: validOccurrenceId,
+            propertyKey: PROPERTY_KEY,
+          }),
+          PROJECT_B,
+          crossRevisionId,
+          crossOccurrenceId,
+        ],
+      );
+
+      // Prove 0057-style coalesce would keep pollution if re-applied to polluted columns.
+      await applySingleMigration(db, migration0057);
+      const stillPolluted = await db.query<{
+        project_id: string | null;
+        config_revision_id: string | null;
+        property_occurrence_id: string | null;
+        status: string;
+      }>(
+        `select project_id, config_revision_id, property_occurrence_id, status
+         from parameter_spec_review_tasks where id = $1`,
+        [pollutedTaskId],
+      );
+      expect(stillPolluted.rows[0]).toMatchObject({
+        project_id: PROJECT_B,
+        config_revision_id: crossRevisionId,
+        property_occurrence_id: crossOccurrenceId,
+        status: "resolved",
+      });
+
+      // Mid-migration failure must roll back completely.
+      await db.query("begin");
+      try {
+        const sql = await fs.readFile(path.join(migrationsDir, migration0058), "utf8");
+        await db.query(sql);
+        await db.query("select 1 / 0");
+        await db.query("commit");
+      } catch {
+        await db.query("rollback");
+      }
+      const afterRollback = await db.query<{ project_id: string | null; status: string }>(
+        `select project_id, status from parameter_spec_review_tasks where id = $1`,
+        [pollutedTaskId],
+      );
+      expect(afterRollback.rows[0]).toMatchObject({
+        project_id: PROJECT_B,
+        status: "resolved",
+      });
+
+      await applySingleMigration(db, migration0058);
+
+      const rebuilt = await db.query<{
+        project_id: string | null;
+        config_revision_id: string | null;
+        property_occurrence_id: string | null;
+        status: string;
+        parameter_spec_id: string | null;
+        blocker_scope: string;
+        source_evidence: Record<string, unknown>;
+      }>(
+        `select project_id, config_revision_id, property_occurrence_id, status,
+                parameter_spec_id, blocker_scope, source_evidence
+         from parameter_spec_review_tasks where id = $1`,
+        [pollutedTaskId],
+      );
+      // Evidence proves PROJECT_A chain — polluted columns rebuilt from evidence only.
+      expect(rebuilt.rows[0]).toMatchObject({
+        project_id: PROJECT_A,
+        config_revision_id: validRevisionId,
+        property_occurrence_id: validOccurrenceId,
+        status: "resolved",
+        parameter_spec_id: SPEC_A,
+        blocker_scope: "revision",
+      });
+      expect(rebuilt.rows[0]?.source_evidence.scopeBackfill).toMatchObject({
+        migration: "0058",
+        clearedPriorProjectId: PROJECT_B,
+        provenProjectId: PROJECT_A,
+      });
+
+      const kept = await db.query<{
+        project_id: string | null;
+        config_revision_id: string | null;
+        property_occurrence_id: string | null;
+        status: string;
+        parameter_spec_id: string | null;
+      }>(
+        `select project_id, config_revision_id, property_occurrence_id, status, parameter_spec_id
+         from parameter_spec_review_tasks where id = $1`,
+        [validTaskId],
+      );
+      expect(kept.rows[0]).toMatchObject({
+        project_id: PROJECT_A,
+        config_revision_id: validRevisionId,
+        property_occurrence_id: validOccurrenceId,
+        status: "resolved",
+        parameter_spec_id: SPEC_A,
+      });
+
+      // Unproven / cross-tenant evidence: clear FKs and reopen so finalize cannot treat as resolved.
+      const unprovenTaskId = randomUUID();
+      await db.query(
+        `
+        insert into parameter_spec_review_tasks (
+          id, organization_id, parameter_spec_id, source_evidence, candidate_schemas,
+          project_count, status, reviewer_user_id, resolved_at,
+          project_id, config_revision_id, property_occurrence_id, blocker_scope
+        ) values (
+          $1, $2, $3, $4::jsonb, '[]'::jsonb, 1, 'resolved', $5, now(),
+          $6, $7, $8, 'revision'
+        )
+        `,
+        [
+          unprovenTaskId,
+          ORG_A,
+          SPEC_A,
+          JSON.stringify({
+            projectId: PROJECT_B,
+            configRevisionId: crossRevisionId,
+            propertyOccurrenceId: crossOccurrenceId,
+            propertyKey: PROPERTY_KEY,
+          }),
+          USER_ID,
+          PROJECT_B,
+          crossRevisionId,
+          crossOccurrenceId,
+        ],
+      );
+      await applySingleMigration(db, migration0058);
+      const unproven = await db.query<{
+        project_id: string | null;
+        status: string;
+        parameter_spec_id: string | null;
+        blocker_scope: string;
+        source_evidence: Record<string, unknown>;
+      }>(
+        `select project_id, status, parameter_spec_id, blocker_scope, source_evidence
+         from parameter_spec_review_tasks where id = $1`,
+        [unprovenTaskId],
+      );
+      expect(unproven.rows[0]?.project_id).toBeNull();
+      expect(unproven.rows[0]?.status).toBe("open");
+      expect(unproven.rows[0]?.parameter_spec_id).toBeNull();
+      expect(unproven.rows[0]?.blocker_scope).toBe("platform");
+      expect(unproven.rows[0]?.source_evidence.scopeBackfill).toMatchObject({
+        migration: "0058",
+        code: "polluted_or_unproven_scope",
+      });
+
+      // Idempotent second apply.
+      await applySingleMigration(db, migration0058);
+      const again = await db.query<{ status: string; project_id: string | null }>(
+        `select status, project_id from parameter_spec_review_tasks where id = $1`,
+        [pollutedTaskId],
+      );
+      expect(again.rows[0]).toMatchObject({
+        status: "resolved",
+        project_id: PROJECT_A,
+      });
     });
   });
 });
