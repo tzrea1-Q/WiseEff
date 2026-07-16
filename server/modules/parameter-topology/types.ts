@@ -13,6 +13,8 @@ export type ConfigRevisionStatus =
   | "pending_approval"
   | "published";
 
+export type ConfigRevisionManifestState = "complete" | "needs_review";
+
 export type ConfigRevisionMemberRole = ConfigSetRole | "base" | "overlay" | "include";
 
 export type ConfigRevisionManifestMember = {
@@ -48,6 +50,7 @@ export type DtsConfigRevisionDto = {
   entryFile?: string;
   includeSearchPaths?: string[];
   overlayOrder?: string[];
+  manifestState?: ConfigRevisionManifestState;
   createdByUserId?: string;
   createdAt: string;
   resolvedAt?: string;

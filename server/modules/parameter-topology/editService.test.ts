@@ -397,6 +397,38 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     } satisfies Partial<ApiError>);
   });
 
+  it("rejects needs_review manifest with manifest-needs-review failureCode", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth);
+    await db!.query(`update dts_config_revisions set manifest_state = 'needs_review' where id = $1`, [
+      fixture.revision.id,
+    ]);
+
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+          },
+          reason: "blocked manifest",
+        },
+        { toolchain: passToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: expect.objectContaining({
+        reason: "manifest-needs-review",
+        failureCode: "manifest-needs-review",
+      }),
+    } satisfies Partial<ApiError>);
+  });
+
   it("creates project overlay instead of mutating shared base", async () => {
     const fixture = await seedConfigAndBinding(db!, auth, { overlayContent: OVERLAY_EMPTY });
 

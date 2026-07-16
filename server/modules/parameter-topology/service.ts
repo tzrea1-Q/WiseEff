@@ -35,7 +35,9 @@ import {
 import { writeGovernanceAudit } from "./governanceAudit";
 import { getProjectById } from "../parameters/repository";
 import {
+  assertManifestStateReady,
   clearStatusAfterValidationFailure,
+  MANIFEST_NEEDS_REVIEW_FAILURE_CODE,
   normalizePersistedManifest,
 } from "./configRevisionManifest";
 import {
@@ -399,7 +401,8 @@ type ValidateFailureCode =
   | "overlay-order"
   | "path-escape"
   | "timeout"
-  | "missing-content";
+  | "missing-content"
+  | typeof MANIFEST_NEEDS_REVIEW_FAILURE_CODE;
 
 async function countSchemaPolicyBlockers(db: Queryable, configRevisionId: string): Promise<number> {
   const result = await db.query<{ count: string }>(
@@ -576,6 +579,36 @@ export async function validateConfigRevision(
   const stage = input.stage ?? "toolchain";
   const members = await listConfigRevisionMembers(db, revision.id);
 
+  const manifestGate = assertManifestStateReady(revision.manifestState);
+  if (manifestGate) {
+    return persistFailedValidation(
+      db,
+      auth,
+      {
+        revisionId: revision.id,
+        projectId: revision.projectId,
+        configSetId: revision.configSetId,
+        stage: "manifest",
+        failureCode: MANIFEST_NEEDS_REVIEW_FAILURE_CODE,
+        currentStatus: revision.status,
+        diagnostics: toPersistedDiagnostics(
+          [
+            {
+              code: MANIFEST_NEEDS_REVIEW_FAILURE_CODE,
+              severity: "error",
+              stage: "manifest",
+              message: manifestGate.message,
+              fileName: "<config-set>",
+            },
+          ],
+          "manifest",
+          MANIFEST_NEEDS_REVIEW_FAILURE_CODE,
+        ),
+      },
+      context,
+    );
+  }
+
   if (members.length === 0) {
     return persistFailedValidation(
       db,
@@ -638,7 +671,8 @@ export async function validateConfigRevision(
 
   const openReviews = await countOpenSpecReviewTasksForRevision(db, {
     organizationId: auth.organization.id,
-    configRevisionId: revision.id
+    projectId: revision.projectId,
+    configRevisionId: revision.id,
   });
   if (openReviews > 0) {
     return persistFailedValidation(

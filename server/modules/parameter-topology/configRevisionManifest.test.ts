@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertManifestEntryAndBase,
+  assertManifestStateReady,
   clearStatusAfterValidationFailure,
   isManifestPathEscape,
+  MANIFEST_NEEDS_REVIEW_FAILURE_CODE,
   normalizeIncludeSearchPaths,
   normalizeManifestLogicalPath,
   normalizePersistedManifest,
@@ -99,6 +101,16 @@ describe("normalizePersistedManifest", () => {
   });
 });
 
+describe("assertManifestStateReady fail-closed", () => {
+  it("blocks needs_review revisions", () => {
+    expect(assertManifestStateReady("complete")).toBeNull();
+    expect(assertManifestStateReady(undefined)).toBeNull();
+    expect(assertManifestStateReady("needs_review")).toMatchObject({
+      code: MANIFEST_NEEDS_REVIEW_FAILURE_CODE,
+    });
+  });
+});
+
 describe("clearStatusAfterValidationFailure", () => {
   it("revokes validated publishability", () => {
     expect(clearStatusAfterValidationFailure("validated", "compile-failed")).toBe("invalid");
@@ -106,6 +118,9 @@ describe("clearStatusAfterValidationFailure", () => {
       "validation_failed",
     );
     expect(clearStatusAfterValidationFailure("validated", "open-mapping")).toBe("needs_mapping");
+    expect(clearStatusAfterValidationFailure("validated", "manifest-needs-review")).toBe(
+      "validation_failed",
+    );
   });
 
   it("keeps resolved for non-validated soft failures", () => {

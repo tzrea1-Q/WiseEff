@@ -291,6 +291,26 @@ describe.skipIf(!databaseAvailable)("validateConfigRevision fail-closed", () => 
     expect(await latestRun(db!, revision.id)).toMatchObject({ status: "failed" });
   });
 
+  it("fails closed when manifest_state is needs_review", async () => {
+    const revision = await seedRevision(db!, auth);
+    await db!.query(`update dts_config_revisions set manifest_state = 'needs_review' where id = $1`, [
+      revision.id,
+    ]);
+
+    const result = await validateConfigRevision(
+      db!,
+      auth,
+      { projectId: PROJECT_ID, revisionId: revision.id },
+      {},
+      { toolchain: makeToolchain(toolchainResult()) },
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result).toMatchObject({ failureCode: "manifest-needs-review" });
+    expect(await revisionStatus(db!, revision.id)).not.toBe("validated");
+    expect(await latestRun(db!, revision.id, "manifest")).toMatchObject({ status: "failed" });
+  });
+
   it("fails when dtc is unavailable", async () => {
     const revision = await seedRevision(db!, auth);
     await clearOpenReviews(db!);

@@ -28,7 +28,11 @@ import {
   assertCanPromoteCandidateToDraft,
   type CandidateGateFailureReason,
 } from "./candidateRevisionStateMachine";
-import { normalizePersistedManifest } from "./configRevisionManifest";
+import {
+  assertManifestStateReady,
+  MANIFEST_NEEDS_REVIEW_FAILURE_CODE,
+  normalizePersistedManifest,
+} from "./configRevisionManifest";
 import { ingestConfigRevisionInTransaction } from "./ingestService";
 import {
   getConfigRevisionById,
@@ -38,6 +42,20 @@ import {
 } from "./repository";
 import type { ConfigRevisionManifest, ConfigRevisionManifestMember, PersistedValidationDiagnostic } from "./types";
 import { writeGovernanceAudit } from "./governanceAudit";
+
+function throwIfManifestNeedsReview(revision: { id: string; manifestState?: string }): void {
+  const gate = assertManifestStateReady(
+    revision.manifestState as "complete" | "needs_review" | undefined,
+  );
+  if (!gate) {
+    return;
+  }
+  throw new ApiError("CONFLICT", gate.message, 409, {
+    reason: MANIFEST_NEEDS_REVIEW_FAILURE_CODE,
+    failureCode: MANIFEST_NEEDS_REVIEW_FAILURE_CODE,
+    configRevisionId: revision.id,
+  });
+}
 
 export type BindingEditAction = "set" | "delete";
 
@@ -857,6 +875,8 @@ export async function createBindingDraft(
     });
   }
 
+  throwIfManifestNeedsReview(revision);
+
   const bindingRevision = await db.query<{ id: string }>(
     `
     select id from project_parameter_binding_revisions
@@ -1596,6 +1616,8 @@ export async function applyLockedOverlayWriteback(
       baseConfigRevisionId: input.lock.baseConfigRevisionId,
     });
   }
+
+  throwIfManifestNeedsReview(revision);
 
   const members = await loadRevisionMembers(db, input.lock.baseConfigRevisionId);
   const baseMember = members.find((member) => member.role === "base");

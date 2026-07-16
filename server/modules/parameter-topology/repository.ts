@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import type {
   ConfigRevisionManifestMember,
+  ConfigRevisionManifestState,
   ConfigRevisionStatus,
   DtsConfigRevisionDto,
   PersistedLogicalNodeRevision,
@@ -22,6 +23,7 @@ type RevisionRow = {
   entry_file: string | null;
   include_search_paths: unknown;
   overlay_order: unknown;
+  manifest_state: ConfigRevisionManifestState;
   created_by_user_id: string | null;
   created_at: string | Date;
   resolved_at: string | Date | null;
@@ -56,6 +58,7 @@ function toRevisionDto(row: RevisionRow): DtsConfigRevisionDto {
     entryFile: row.entry_file ?? undefined,
     includeSearchPaths: parseStringArray(row.include_search_paths),
     overlayOrder: parseStringArray(row.overlay_order),
+    manifestState: row.manifest_state ?? "complete",
     createdByUserId: row.created_by_user_id ?? undefined,
     createdAt: dateTimeToIso(row.created_at),
     resolvedAt: row.resolved_at ? dateTimeToIso(row.resolved_at) : undefined,
@@ -93,8 +96,8 @@ export async function insertConfigRevision(
     `
     insert into dts_config_revisions (
       id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id,
-      entry_file, include_search_paths, overlay_order
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)
+      entry_file, include_search_paths, overlay_order, manifest_state
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, 'complete')
     returning *
     `,
     [

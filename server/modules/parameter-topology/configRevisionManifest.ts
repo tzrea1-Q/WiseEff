@@ -4,7 +4,7 @@
 
 import posixPath from "node:path/posix";
 
-import type { ConfigRevisionManifest, ConfigRevisionManifestMember, ConfigRevisionStatus } from "./types";
+import type { ConfigRevisionManifest, ConfigRevisionManifestMember, ConfigRevisionManifestState, ConfigRevisionStatus } from "./types";
 
 export type PersistedConfigRevisionManifest = {
   entryFile: string;
@@ -13,9 +13,30 @@ export type PersistedConfigRevisionManifest = {
 };
 
 export type ManifestValidationFailure = {
-  code: "missing-base" | "missing-entry-file" | "path-escape" | "empty-manifest";
+  code:
+    | "missing-base"
+    | "missing-entry-file"
+    | "path-escape"
+    | "empty-manifest"
+    | "manifest-needs-review";
   message: string;
 };
+
+export const MANIFEST_NEEDS_REVIEW_FAILURE_CODE = "manifest-needs-review" as const;
+
+/** Fail-closed when historical backfill left manifest fields operator-reviewable. */
+export function assertManifestStateReady(
+  manifestState: ConfigRevisionManifestState | undefined,
+): ManifestValidationFailure | null {
+  if (manifestState === "needs_review") {
+    return {
+      code: MANIFEST_NEEDS_REVIEW_FAILURE_CODE,
+      message:
+        "Config revision manifest requires operator review before validate, edit, release, or writeback.",
+    };
+  }
+  return null;
+}
 
 /** Structural DTS path segments that escape the logical manifest workspace. */
 export function isManifestPathEscape(normalized: string): boolean {
