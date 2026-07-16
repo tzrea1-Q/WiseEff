@@ -99,6 +99,7 @@ type DefinitionRow = {
   name: string;
   module: string;
   description: string;
+  risk: string;
 };
 
 type ValueRow = {
@@ -890,13 +891,13 @@ async function runParameterIdentityMigration(
   const definitions = await db.query<DefinitionRow>(
     orgFilter
       ? `
-    select id, organization_id, name, module, description
+    select id, organization_id, name, module, description, risk
     from parameter_definitions
     where organization_id = $1
     order by id
     `
       : `
-    select id, organization_id, name, module, description
+    select id, organization_id, name, module, description, risk
     from parameter_definitions
     order by id
     `,
@@ -1047,6 +1048,17 @@ async function runParameterIdentityMigration(
     });
     evidenceRows += 1;
     definitionMap.set(def.id, { spec, evidenceId, matchKind });
+    if (apply) {
+      await db.query(
+        `
+        update parameter_specs
+        set risk = $2,
+            semantic_module = $3
+        where id = $1
+        `,
+        [spec.parameterSpecId, def.risk, def.module]
+      );
+    }
   }
 
   for (const value of values.rows) {

@@ -1,7 +1,6 @@
 /**
- * Flat parameter-identity SQL names. Production activity code must import these
- * constants rather than embedding retired table/column literals.
- * literal strings live only here (+ migrations/cutovers/adapters).
+ * Flat parameter-identity SQL names. Post-cutover dashboard/hotspot code must use
+ * semanticParameterIdentityNames instead. Literal strings live only here (+ migrations/cutovers/adapters).
  */
 export const LEGACY_IDENTITY_SQL = {
   definitionsTable: "parameter_definitions",

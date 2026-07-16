@@ -18,11 +18,18 @@ const ALLOWED_PATH_SUBSTRINGS = [
   "/parameter-topology/migration.test.ts",
   "/parameters/legacyParameterIdentityAdapter.ts",
   "/parameters/legacyParameterIdentityNames.ts",
+  "/parameters/dashboard/legacyDashboardAdapter.ts",
+  "/parameters/semanticParameterIdentityNames.ts",
   "/docs/exec-plans/completed/",
   "/docs/zh-CN/exec-plans/completed/",
   "/legacyDependencyGuard.test.ts",
   "/testing/",
   "/scripts/"
+] as const;
+
+const ACTIVE_DASHBOARD_REPO_PATHS = [
+  "server/modules/parameters/dashboard/repository.ts",
+  "server/modules/parameters/dashboard/hotspotRepository.ts"
 ] as const;
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs"]);
@@ -38,6 +45,12 @@ const FORBIDDEN_ACTIVITY_TOKENS = [
   "recommended_value",
   "source_node_path as parameter",
   "DTS_IDENTITY_FALLBACK_MODE"
+] as const;
+
+const FORBIDDEN_DASHBOARD_IMPORT_MARKERS = [
+  "LEGACY_IDENTITY_SQL",
+  "legacyParameterIdentityNames",
+  "legacyParameterIdentityAdapter"
 ] as const;
 
 function isAllowedPath(absolutePath: string): boolean {
@@ -102,6 +115,31 @@ export async function listProductionHits(token: string): Promise<string[]> {
   return hits.sort();
 }
 
+export async function listLegacyIdentityTemplateInterpolationHits(
+  relativePaths?: readonly string[]
+): Promise<string[]> {
+  const targets =
+    relativePaths ??
+    (await (async () => {
+      const files: string[] = [];
+      for (const root of SCAN_ROOTS) {
+        await walkFiles(path.join(REPO_ROOT, root), files);
+      }
+      return files
+        .filter((file) => !isAllowedPath(file))
+        .map((file) => path.relative(REPO_ROOT, file).replace(/\\/g, "/"));
+    })());
+
+  const hits: string[] = [];
+  for (const relativePath of targets) {
+    const text = await readFile(path.join(REPO_ROOT, relativePath), "utf8");
+    if (text.includes("${LEGACY_IDENTITY_SQL")) {
+      hits.push(relativePath);
+    }
+  }
+  return hits.sort();
+}
+
 describe("legacy parameter identity dependency guard", () => {
   it(
     "has no activity-runtime dependency on legacy parameter identity",
@@ -116,5 +154,31 @@ describe("legacy parameter identity dependency guard", () => {
       expect(failures, failures.join("\n\n")).toEqual([]);
     },
     60_000
+  );
+
+  it(
+    "keeps active dashboard repos free of legacy identity imports",
+    async () => {
+      const failures: string[] = [];
+      for (const relativePath of ACTIVE_DASHBOARD_REPO_PATHS) {
+        const text = await readFile(path.join(REPO_ROOT, relativePath), "utf8");
+        for (const marker of FORBIDDEN_DASHBOARD_IMPORT_MARKERS) {
+          if (text.includes(marker)) {
+            failures.push(`${relativePath}: ${marker}`);
+          }
+        }
+      }
+      expect(failures, failures.join("\n")).toEqual([]);
+    },
+    30_000
+  );
+
+  it(
+    "has no LEGACY_IDENTITY_SQL template interpolation in active dashboard repos",
+    async () => {
+      const hits = await listLegacyIdentityTemplateInterpolationHits(ACTIVE_DASHBOARD_REPO_PATHS);
+      expect(hits, hits.join("\n")).toEqual([]);
+    },
+    30_000
   );
 });

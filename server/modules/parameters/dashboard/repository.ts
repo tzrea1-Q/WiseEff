@@ -1,5 +1,6 @@
 import type { Database } from "../../../shared/database/client";
-import { LEGACY_IDENTITY_SQL } from "../legacyParameterIdentityNames";
+import { mustUseSemanticParameterIdentity } from "../semanticParameterReads";
+import { SEMANTIC_IDENTITY_SQL, SEMANTIC_RISK_EXPR } from "../semanticParameterIdentityNames";
 import {
   actionableReviewStatusesForRole,
   ADMIN_GOVERNANCE_AUDIT_APPS,
@@ -7,6 +8,12 @@ import {
   sqlInList,
   type PersonalRoleLevel
 } from "./personalMetrics";
+import {
+  aggregateRiskDistributionLegacy,
+  countCommitterPersonalKpisLegacy,
+  countKpisLegacy,
+  countUserPersonalKpisLegacy
+} from "./legacyDashboardAdapter";
 
 type OrgScope = { organizationId: string; projectId: string | null };
 type PersonalKpiInput = OrgScope & {
@@ -36,8 +43,12 @@ export async function countKpis(
   db: Database,
   input: OrgScope & { windowStart: string }
 ) {
+  if (!(await mustUseSemanticParameterIdentity(db))) {
+    return countKpisLegacy(db, input);
+  }
+
   const params = [input.organizationId, input.windowStart, input.projectId];
-  const projectFilter = input.projectId ? "and ppv.project_id = $3" : "";
+  const projectFilter = input.projectId ? "and b.project_id = $3" : "";
   const rows = await db.query<{
     total_parameters: string;
     managed_projects: string;
@@ -47,8 +58,8 @@ export async function countKpis(
   }>(
     `
     select
-      (select count(*) from ${LEGACY_IDENTITY_SQL.valuesTable} ppv
-         join projects p on p.id = ppv.project_id
+      (select count(*) from ${SEMANTIC_IDENTITY_SQL.bindingsTable} b
+         join projects p on p.id = b.project_id
         where p.organization_id = $1 ${projectFilter}) as total_parameters,
       (select count(*) from projects p where p.organization_id = $1
         ${input.projectId ? "and p.id = $3" : ""}) as managed_projects,
@@ -58,10 +69,10 @@ export async function countKpis(
       (select count(distinct h.changed_by_user_id) from parameter_history_entries h
         where h.organization_id = $1 and h.changed_at >= $2
         ${input.projectId ? "and h.project_id = $3" : ""}) as active_contributors,
-      (select count(*) from ${LEGACY_IDENTITY_SQL.valuesTable} ppv
-         join projects p on p.id = ppv.project_id
-         join ${LEGACY_IDENTITY_SQL.definitionsTable} d on d.id = ppv.parameter_definition_id
-        where p.organization_id = $1 and d.risk = 'High' ${projectFilter}) as high_risk_parameters
+      (select count(*) from ${SEMANTIC_IDENTITY_SQL.bindingsTable} b
+         join projects p on p.id = b.project_id
+         join ${SEMANTIC_IDENTITY_SQL.specsTable} ps on ps.id = b.parameter_spec_id
+        where p.organization_id = $1 and ${SEMANTIC_RISK_EXPR} = 'High' ${projectFilter}) as high_risk_parameters
     `,
     input.projectId ? params : [input.organizationId, input.windowStart]
   );
@@ -148,6 +159,10 @@ export async function countPersonalKpis(db: Database, input: PersonalKpiInput) {
 }
 
 async function countUserPersonalKpis(db: Database, input: PersonalKpiInput) {
+  if (!(await mustUseSemanticParameterIdentity(db))) {
+    return countUserPersonalKpisLegacy(db, input);
+  }
+
   const historyProjectFilter = input.projectId ? "and h.project_id = $4" : "";
   const workflowProjectFilter = input.projectId ? "and r.project_id = $4" : "";
   const args = input.projectId
@@ -171,11 +186,11 @@ async function countUserPersonalKpis(db: Database, input: PersonalKpiInput) {
           and r.created_at >= $3
           ${workflowProjectFilter}) as workflow_count,
       (select count(*) from parameter_history_entries h
-        join ${LEGACY_IDENTITY_SQL.definitionsTable} d on d.id = h.parameter_definition_id
+        join ${SEMANTIC_IDENTITY_SQL.specsTable} ps on ps.id = h.parameter_spec_id
         where h.organization_id = $1
           and h.changed_by_user_id = $2
           and h.changed_at >= $3
-          and d.risk = 'High'
+          and ${SEMANTIC_RISK_EXPR} = 'High'
           ${historyProjectFilter}) as high_risk_touch_count
     `,
     args
@@ -191,6 +206,10 @@ async function countUserPersonalKpis(db: Database, input: PersonalKpiInput) {
 }
 
 async function countCommitterPersonalKpis(db: Database, input: PersonalKpiInput) {
+  if (!(await mustUseSemanticParameterIdentity(db))) {
+    return countCommitterPersonalKpisLegacy(db, input);
+  }
+
   const reviewStatuses = actionableReviewStatusesForRole(input.perspectiveRoleId);
   const reviewStatusFilter = reviewStatuses.length > 0 ? `and cr.status in (${sqlInList(reviewStatuses)})` : "and false";
   const decisionProjectFilter = input.projectId ? "and cr.project_id = $4" : "";
@@ -223,11 +242,11 @@ async function countCommitterPersonalKpis(db: Database, input: PersonalKpiInput)
           ${decisionProjectFilter}) as requests_processed,
       (select count(distinct rd.request_id) from parameter_review_decisions rd
         join parameter_change_requests cr on cr.id = rd.request_id
-        join ${LEGACY_IDENTITY_SQL.definitionsTable} d on d.id = cr.parameter_definition_id
+        join ${SEMANTIC_IDENTITY_SQL.specsTable} ps on ps.id = cr.parameter_spec_id
         where rd.organization_id = $1
           and rd.reviewer_user_id = $2
           and rd.created_at >= $3
-          and d.risk = 'High'
+          and ${SEMANTIC_RISK_EXPR} = 'High'
           ${decisionProjectFilter}) as high_risk_reviews,
       (select count(*) from parameter_change_requests cr
         where cr.organization_id = $1
@@ -235,10 +254,10 @@ async function countCommitterPersonalKpis(db: Database, input: PersonalKpiInput)
           ${reviewStatusFilter}
           ${queueProjectFilter}) as pending_reviews,
       (select count(*) from parameter_change_requests cr
-        join ${LEGACY_IDENTITY_SQL.definitionsTable} d on d.id = cr.parameter_definition_id
+        join ${SEMANTIC_IDENTITY_SQL.specsTable} ps on ps.id = cr.parameter_spec_id
         where cr.organization_id = $1
           and cr.status not in ('merged', 'rejected', 'withdrawn')
-          and d.risk = 'High'
+          and ${SEMANTIC_RISK_EXPR} = 'High'
           ${reviewStatusFilter}
           ${queueProjectFilter}) as high_risk_queue
     `,
@@ -511,6 +530,10 @@ export async function aggregateRiskDistribution(
   db: Database,
   input: OrgScope
 ): Promise<Array<{ projectId: string; projectCode: string; projectName: string; high: number; medium: number; low: number; total: number }>> {
+  if (!(await mustUseSemanticParameterIdentity(db))) {
+    return aggregateRiskDistributionLegacy(db, input);
+  }
+
   const projectFilter = input.projectId ? "and p.id = $2" : "";
   const args = input.projectId ? [input.organizationId, input.projectId] : [input.organizationId];
   const rows = await db.query<{
@@ -523,12 +546,12 @@ export async function aggregateRiskDistribution(
   }>(
     `
     select p.id as project_id, p.code as project_code, p.name as project_name,
-           count(*) filter (where d.risk = 'High') as high,
-           count(*) filter (where d.risk = 'Medium') as medium,
-           count(*) filter (where d.risk = 'Low') as low
+           count(*) filter (where ${SEMANTIC_RISK_EXPR} = 'High') as high,
+           count(*) filter (where ${SEMANTIC_RISK_EXPR} = 'Medium') as medium,
+           count(*) filter (where ${SEMANTIC_RISK_EXPR} = 'Low') as low
       from projects p
-      join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.project_id = p.id
-      join ${LEGACY_IDENTITY_SQL.definitionsTable} d on d.id = ppv.parameter_definition_id
+      join ${SEMANTIC_IDENTITY_SQL.bindingsTable} b on b.project_id = p.id
+      join ${SEMANTIC_IDENTITY_SQL.specsTable} ps on ps.id = b.parameter_spec_id
      where p.organization_id = $1 ${projectFilter}
      group by p.id, p.code, p.name
      order by p.code asc

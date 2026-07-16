@@ -1,7 +1,8 @@
 /**
- * Cutover-aware identity helpers. After parameter identity cutover, active
- * workflow tables no longer join renamed legacy PPV/definition tables.
+ * Cutover-aware identity helpers. After parameter identity cutover, dashboard/hotspot
+ * and activity workflow tables must not join renamed legacy PPV/definition tables.
  */
+export { mustUseSemanticParameterIdentity } from "./semanticParameterReads";
 import type { Queryable } from "../../shared/database/client";
 import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
 
