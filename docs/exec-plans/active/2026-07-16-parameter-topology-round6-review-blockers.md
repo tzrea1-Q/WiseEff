@@ -74,6 +74,14 @@ Plan
 
 Blocking before plan completion: every `Update`/`Review` row updated or explicitly unchanged with evidence; `npm run docs:check` passes; TD-042 not closed.
 
+## Execution checkpoint (2026-07-17)
+
+- T1–T4 and T6 are implemented with focused PG/unit/component coverage. T7 root causes were isolated to leaked API-mode topology clients, shared dashboard fixture identities, and concurrent queries on one transactional PG client; the standard `npm run test:all` passed three consecutive runs after namespace/runtime/query serialization fixes.
+- T5 now requires the real Software User → Hardware Committer → Software Committer → Software User role sequence and correlates merge request, writeback audit, candidate revision, history, and immutable base evidence. It also refuses to start the business write unless `parameter_identity_cutovers` proves a dedicated post-cutover acceptance database.
+- The current shared local database has no cutover marker, so the topology acceptance stops at the post-cutover precondition. It is not valid merge/writeback success evidence, must not be cut over in place, and leaves T5/T8 acceptance evidence blocked pending a dedicated disposable post-cutover database.
+- Playwright CLI covered `/parameters` and `/parameter-admin` at 1440×900, 768×1024, and 390×844. It verified three-cell `gpio_int`, incomplete-shape blocking, global-draft governance, related API traffic, zero at-rest console errors, and no horizontal page overflow. The intentional direct global-activate negative returned `403` and generated the expected browser resource error separately from the clean-page console checks.
+- `npm run docs:check` passed on 2026-07-17. The execution plan remains active because the dedicated post-cutover full acceptance/evidence run is still blocked. TD-042 remains BLOCKER.
+
 ## Risks & rollback
 
 | Risk | Mitigation |

@@ -166,6 +166,16 @@ curl -sS "$WISEEFF_API_BASE_URL/metrics" | rg 'wiseeff_parameter_identity_|wisee
 
 期望：`ok: true`、cutover marker 存在、迁移完成 gauge 为 `1`、开放映射 gauge 为 `0`。
 
+### 专用拓扑验收数据库
+
+完整 submit→review→merge→writeback 验收是 **cutover 后**测试。只能在按上述流程完成 migration/finalize/cutover 的可丢弃专用验收库上运行，且下列查询应返回唯一适用 marker：
+
+```bash
+psql "$DATABASE_URL" -c "select id, migration_run_id, applied_at from parameter_identity_cutovers;"
+```
+
+验收套件在创建 typed-edit 业务写入前检查该 marker。对 cutover 前数据库，零行是预期的失败关闭结果。不得仅为满足测试而对共享开发库就地 cutover，也不得把 draft preview revision 当作语义 merge candidate。
+
 ## 12. 应用切换
 
 启用语义身份应用构建：提供 `/api/v2`，对遗留扁平参数 ID 返回 `410 legacy-parameter-id-retired`，UI 使用源树/生效树。

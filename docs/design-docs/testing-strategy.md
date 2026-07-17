@@ -117,5 +117,7 @@ Round 6 closes remaining parent-agent review blockers on branch `fix/parameter-t
 | Global activate authz | `globalSpecActivate.authz.test.ts` | Org Admin activate global draft → 403; org draft OK; read/bind global still allowed |
 | Full valueShape activate | `DraftSpecActivatePanel.test.tsx`, `specCompleteness.ts` | gpio_int cellsPerGroup=3 preserved; incomplete shape blocks |
 | Tenant-scoped cleanup | `semanticFixtureCleanup.isolation.test.ts` | Same-name Config Sets in other org/project untouched |
-| Submit→review→merge acceptance | `parameter-topology.acceptance.spec.ts` | Real CR advance to merged writeback; base immutable; no repository status forging |
-| test:all stability | `vitest.server.config.ts`, `testDatabase.ts` advisory lock | Default `npm run test:all` without ad-hoc worker overrides |
+| Submit→review→merge acceptance | `parameter-topology.acceptance.spec.ts` | Requires the real role chain and merge/writeback evidence. A dedicated database with a `parameter_identity_cutovers` marker is mandatory; a pre-cutover/shared DB fails before the business write and is not success evidence. |
+| test:all stability | App API-runtime isolation, unique dashboard fixture namespaces, FIFO queries on each transactional PG client | Default `npm run test:all` without ad-hoc worker overrides or global timeout inflation |
+
+Do not cut over a shared developer/acceptance database merely to make the topology acceptance green. Prepare a disposable database, run the documented migration/finalize/cutover sequence there, and keep TD-042 open until the separate clean-snapshot rehearsal is complete.

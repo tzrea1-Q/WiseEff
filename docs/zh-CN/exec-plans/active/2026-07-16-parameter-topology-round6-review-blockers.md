@@ -74,6 +74,14 @@
 
 计划完成前：每个 Update/Review 行已更新或有证据标明未变；`npm run docs:check` 通过；不得关闭 TD-042。
 
+## 执行检查点（2026-07-17）
+
+- T1–T4 与 T6 已实现，并有聚焦 PG/单元/组件测试。T7 的根因是 API 模式拓扑客户端泄漏、dashboard fixture 共用身份，以及同一事务 PG client 上的并发查询；修复命名空间/运行时/查询串行后，标准 `npm run test:all` 连续三次通过。
+- T5 现在强制 Software User → Hardware Committer → Software Committer → Software User 的真实角色链，并关联 merge request、writeback audit、candidate revision、history 与 base 不可变证据。业务写入前还必须由 `parameter_identity_cutovers` 证明当前是专用的 cutover 后验收库。
+- 当前共享本地库没有 cutover marker，因此拓扑验收在 cutover 后前置条件处停止。该结果不是 merge/writeback 成功证据，不得对共享库就地 cutover；T5/T8 仍等待专用、可丢弃的 cutover 后验收库。
+- Playwright CLI 已在 1440×900、768×1024、390×844 覆盖 `/parameters` 与 `/parameter-admin`，验证三单元 `gpio_int`、不完整 shape 阻断、global draft 治理、相关 API、静态页面 console error 为 0 且无水平溢出。故意发起的 global activate 负例单独返回 `403`，并产生预期的浏览器资源错误，不与静态页面 console 检查混合。
+- `npm run docs:check` 已于 2026-07-17 通过。由于专用 cutover 后全量 acceptance/evidence 仍被阻断，本执行计划继续保持 active。TD-042 仍为 BLOCKER。
+
 ## 风险与回滚
 
 | 风险 | 缓解 |

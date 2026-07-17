@@ -175,6 +175,16 @@ curl -sS "$WISEEFF_API_BASE_URL/metrics" | rg 'wiseeff_parameter_identity_|wisee
 
 Expected: check `ok: true`, cutover marker present, migration complete gauge `1`, open mapping gauge `0`.
 
+### Dedicated topology acceptance database
+
+The full submit→review→merge→writeback acceptance is a **post-cutover** test. Run it only against a disposable acceptance database that completed the migration/finalize/cutover sequence above and for which this query returns exactly one applicable marker:
+
+```bash
+psql "$DATABASE_URL" -c "select id, migration_run_id, applied_at from parameter_identity_cutovers;"
+```
+
+The acceptance suite checks that marker before creating the typed-edit business write. Zero rows is an expected fail-closed result for a pre-cutover database. Never cut over a shared developer database in place just to satisfy this test, and never treat a draft preview revision as the semantic merge candidate.
+
 ## 12. Application switch
 
 Deploy / enable the semantic-identity application build that:
