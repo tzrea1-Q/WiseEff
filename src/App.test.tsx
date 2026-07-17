@@ -2905,7 +2905,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
       const topbar = document.querySelector<HTMLElement>(".topbar");
       expect(topbar).not.toBeNull();
-      expect(within(topbar as HTMLElement).getByRole("combobox", { name: "项目" })).toBeInTheDocument();
+      expect(within(topbar as HTMLElement).getByRole("combobox", { name: "项目" })).toHaveClass(
+        "topbar-project-select"
+      );
     });
 
     ["/parameter-home", "/logs", "/log-admin", "/node-debugging", "/debugging-admin"].forEach((path) => {

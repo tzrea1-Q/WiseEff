@@ -3236,6 +3236,7 @@ function TopBar({
         {showProjectSelector ? (
           <SelectControl
             ariaLabel="项目"
+            className="topbar-project-select"
             value={selectedProjectId}
             onValueChange={handleProjectChange}
             options={projectOptions}

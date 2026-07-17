@@ -17,4 +17,15 @@ describe("topbar control styles", () => {
     expect(searchboxStyles).toContain("padding: 0 12px;");
     expect(searchInputStyles).toContain("height: 100%;");
   });
+
+  it("constrains the project selector to the narrow topbar width", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+    const mobileRule = css.match(
+      /@media \(max-width: 900px\)[\s\S]*?\.topbar-project-select\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+
+    expect(mobileRule).toContain("width: 100%;");
+    expect(mobileRule).toContain("max-width: 100%;");
+    expect(mobileRule).toContain("min-width: 0;");
+  });
 });

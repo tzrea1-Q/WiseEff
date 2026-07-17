@@ -11622,6 +11622,12 @@ td small {
     width: 100%;
   }
 
+  .topbar-project-select {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
   .topbar-page-actions {
     justify-content: flex-start;
     width: 100%;
