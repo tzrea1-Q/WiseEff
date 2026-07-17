@@ -49,6 +49,18 @@ describe("specCompleteness", () => {
     ).toThrow(/length/i);
   });
 
+  it("rejects fractional cell shapes and constraints", () => {
+    expect(hasCompleteConstraints({ kind: "cells" }, { cells: 1.5 })).toBe(false);
+    expect(() =>
+      assertSpecActivatable({
+        parameterSpecId: "spec-fractional-cells",
+        valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1.5 },
+        constraints: { cells: 1.5 },
+        documentation: "docs",
+      }),
+    ).toThrow(/whole number|integer/i);
+  });
+
   it("rejects activation payloads that conflict with inferred fields", () => {
     expect(() =>
       assertSpecActivatable({

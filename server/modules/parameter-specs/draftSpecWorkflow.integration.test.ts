@@ -251,6 +251,38 @@ describe.skipIf(!databaseAvailable)("draft spec workflow integration", () => {
       }),
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 } satisfies Partial<ApiError>);
 
+    await db!.query(
+      `update parameter_spec_versions
+       set value_shape = '{"kind":"cells","bits":32,"groups":1,"cellsPerGroup":1.5}'::jsonb
+       where parameter_spec_id = $1`,
+      [ids.parameterSpecId],
+    );
+    await expect(
+      activateParameterSpec(db!, makeAuth(), {
+        specId: ids.parameterSpecId,
+        valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1.5 },
+        constraints: { cells: 1.5 },
+        documentation: "Invalid fractional cell shape",
+        reason: "Must fail closed",
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 } satisfies Partial<ApiError>);
+    const rejectedActivation = await db!.query<{ lifecycle: string }>(
+      `select lifecycle from parameter_spec_versions where parameter_spec_id = $1`,
+      [ids.parameterSpecId],
+    );
+    expect(rejectedActivation.rows[0]?.lifecycle).toBe("draft");
+    const rejectedAudit = await db!.query<{ count: string }>(
+      `select count(*)::text as count from audit_events where target_id = $1 and action = 'spec-activated'`,
+      [ids.parameterSpecId],
+    );
+    expect(Number(rejectedAudit.rows[0]?.count ?? 0)).toBe(0);
+    await db!.query(
+      `update parameter_spec_versions
+       set value_shape = '{"kind":"cells","bits":32,"groups":1,"cellsPerGroup":1}'::jsonb
+       where parameter_spec_id = $1`,
+      [ids.parameterSpecId],
+    );
+
     await activateParameterSpec(db!, makeAuth(), {
       specId: ids.parameterSpecId,
       valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },

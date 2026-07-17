@@ -81,4 +81,37 @@ describe("DraftSpecActivatePanel", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/length/i);
     expect(screen.getByRole("button", { name: "激活规格" })).toBeDisabled();
   });
+
+  it("resets inferred cells and operator input when the selected draft changes", () => {
+    const { rerender } = render(
+      <DraftSpecActivatePanel detail={draftDetail()} onActivate={() => undefined} />,
+    );
+    fireEvent.change(screen.getByLabelText("单元格数量约束"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("规格说明"), { target: { value: "previous docs" } });
+    fireEvent.change(screen.getByLabelText("激活原因"), { target: { value: "previous reason" } });
+
+    rerender(
+      <DraftSpecActivatePanel
+        detail={draftDetail({
+          id: "spec-next",
+          propertyKey: "interrupt-count",
+          valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
+        })}
+        onActivate={() => undefined}
+      />,
+    );
+
+    expect((screen.getByLabelText("单元格数量约束") as HTMLInputElement).value).toBe("1");
+    expect((screen.getByLabelText("规格说明") as HTMLTextAreaElement).value).toBe("");
+    expect((screen.getByLabelText("激活原因") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("rejects a fractional cell constraint", () => {
+    render(<DraftSpecActivatePanel detail={draftDetail()} onActivate={() => undefined} />);
+    fireEvent.change(screen.getByLabelText("单元格数量约束"), { target: { value: "1.5" } });
+    fireEvent.change(screen.getByLabelText("规格说明"), { target: { value: "docs" } });
+    fireEvent.change(screen.getByLabelText("激活原因"), { target: { value: "reason" } });
+
+    expect(screen.getByRole("button", { name: "激活规格" })).toBeDisabled();
+  });
 });

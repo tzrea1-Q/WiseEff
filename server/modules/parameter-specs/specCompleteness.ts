@@ -33,7 +33,7 @@ export function hasCompleteConstraints(valueShape: unknown, constraints: Record<
     case "cells":
     case "u32-array":
     case "phandle-list":
-      return typeof rules.cells === "number" && Number.isFinite(rules.cells);
+      return typeof rules.cells === "number" && Number.isInteger(rules.cells) && rules.cells > 0;
     default:
       return false;
   }
@@ -76,10 +76,10 @@ export function assertSpecActivatable(input: {
         : typeof record.cells === "number"
           ? record.cells
           : null;
-    if (cellsPerGroup == null || !Number.isFinite(cellsPerGroup) || cellsPerGroup < 1) {
+    if (cellsPerGroup == null || !Number.isInteger(cellsPerGroup) || cellsPerGroup < 1) {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Cell-array valueShape must include cellsPerGroup or cells.",
+        "Cell-array valueShape must include cellsPerGroup or cells as a positive whole number.",
         400,
         { parameterSpecId: input.parameterSpecId, valueShapeKind: kind },
       );
@@ -98,7 +98,19 @@ export function assertSpecActivatable(input: {
         { parameterSpecId: input.parameterSpecId, valueShapeKind: kind },
       );
     }
-    if (typeof input.constraints?.cells === "number" && input.constraints.cells !== cellsPerGroup) {
+    const constraintCells = input.constraints?.cells;
+    if (
+      typeof constraintCells === "number" &&
+      (!Number.isInteger(constraintCells) || constraintCells < 1)
+    ) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Cell constraint must be a positive whole number.",
+        400,
+        { parameterSpecId: input.parameterSpecId, constraintCells },
+      );
+    }
+    if (typeof constraintCells === "number" && constraintCells !== cellsPerGroup) {
       throw new ApiError(
         "VALIDATION_FAILED",
         "Cell constraint conflicts with inferred cellsPerGroup.",
@@ -106,7 +118,7 @@ export function assertSpecActivatable(input: {
         {
           parameterSpecId: input.parameterSpecId,
           inferredCellsPerGroup: cellsPerGroup,
-          constraintCells: input.constraints.cells,
+          constraintCells,
         },
       );
     }

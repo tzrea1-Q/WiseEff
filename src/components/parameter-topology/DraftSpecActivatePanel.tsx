@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { ParameterSpecDetailView } from "./ParameterSpecDetail";
 
@@ -22,10 +22,14 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 function inferredCellCount(shape: Record<string, unknown>): number | null {
-  if (typeof shape.cellsPerGroup === "number" && Number.isFinite(shape.cellsPerGroup)) {
+  if (
+    typeof shape.cellsPerGroup === "number" &&
+    Number.isInteger(shape.cellsPerGroup) &&
+    shape.cellsPerGroup > 0
+  ) {
     return shape.cellsPerGroup;
   }
-  if (typeof shape.cells === "number" && Number.isFinite(shape.cells)) {
+  if (typeof shape.cells === "number" && Number.isInteger(shape.cells) && shape.cells > 0) {
     return shape.cells;
   }
   return null;
@@ -111,9 +115,16 @@ export function DraftSpecActivatePanel({ detail, onActivate, pending = false }: 
   const [documentation, setDocumentation] = useState("");
   const [reason, setReason] = useState("");
   const inferred = useMemo(() => valueShapeFromDetail(detail), [detail]);
+  const shapeSignature = JSON.stringify(detail.valueShape ?? null);
   const valueShape = inferred.shape;
   const cellCount = valueShape ? inferredCellCount(valueShape) : null;
   const [cells, setCells] = useState(cellCount != null ? String(cellCount) : "");
+
+  useEffect(() => {
+    setCells(cellCount != null ? String(cellCount) : "");
+    setDocumentation("");
+    setReason("");
+  }, [cellCount, detail.id, shapeSignature]);
 
   const needsCells =
     valueShape != null &&
@@ -128,7 +139,7 @@ export function DraftSpecActivatePanel({ detail, onActivate, pending = false }: 
     Boolean(documentation.trim() && reason.trim()) &&
     !unsupported &&
     valueShape != null &&
-    (!needsCells || (Number(cells) > 0 && Number.isFinite(Number(cells)))) &&
+    (!needsCells || (Number.isInteger(Number(cells)) && Number(cells) > 0)) &&
     !pending;
 
   return (
@@ -156,6 +167,7 @@ export function DraftSpecActivatePanel({ detail, onActivate, pending = false }: 
             aria-label="单元格数量约束"
             type="number"
             min={1}
+            step={1}
             value={cells}
             onChange={(event) => setCells(event.target.value)}
           />
