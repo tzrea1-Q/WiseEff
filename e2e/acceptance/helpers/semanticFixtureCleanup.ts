@@ -74,18 +74,22 @@ async function resolveFileIds(
   client: Client,
   organizationId: string,
   projectId: string,
-  fileNames: string[]
+  fileNames: string[],
+  configSetIds: string[]
 ): Promise<string[]> {
-  if (fileNames.length === 0) return [];
+  if (fileNames.length === 0 && configSetIds.length === 0) return [];
   const result = await client.query<{ id: string }>(
     `
     select id
     from project_parameter_files
     where organization_id = $1
       and project_id = $2
-      and file_name = any($3::text[])
+      and (
+        file_name = any($3::text[])
+        or config_set_id = any($4::text[])
+      )
     `,
-    [organizationId, projectId, fileNames]
+    [organizationId, projectId, fileNames, configSetIds]
   );
   return result.rows.map((row) => row.id);
 }
@@ -125,7 +129,13 @@ export async function cleanupSemanticAcceptanceArtifacts(
       scope.configSetNames ?? []
     );
     const revisionIds = await resolveRevisionIds(client, configSetIds);
-    const fileIds = await resolveFileIds(client, scope.organizationId, scope.projectId, scope.fileNames ?? []);
+    const fileIds = await resolveFileIds(
+      client,
+      scope.organizationId,
+      scope.projectId,
+      scope.fileNames ?? [],
+      configSetIds
+    );
     const versionIds = await resolveVersionIds(client, fileIds);
 
     await deleteChangeRequestChain(client, scope.projectParameterValueIds ?? []);
