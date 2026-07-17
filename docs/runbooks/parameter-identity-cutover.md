@@ -177,13 +177,13 @@ Expected: check `ok: true`, cutover marker present, migration complete gauge `1`
 
 ### Dedicated topology acceptance database
 
-The full submit→review→merge→writeback acceptance is a **post-cutover** test. Run it only against a disposable acceptance database that completed the migration/finalize/cutover sequence above and for which this query returns exactly one applicable marker:
+The full submit→review→merge→writeback acceptance is a **post-cutover** test. `parameter-topology.acceptance.spec.ts` creates its own `wiseeff_acceptance_disposable_*` database on the PostgreSQL server named by `DATABASE_URL`, applies all migrations plus identity apply/cutover, and writes a test-only marker. It starts isolated API/frontend ports and drops the database only after rechecking the generated name, marker purpose, and exact cutover migration run.
 
 ```bash
 psql "$DATABASE_URL" -c "select id, migration_run_id, applied_at from parameter_identity_cutovers;"
 ```
 
-The acceptance suite checks that marker before creating the typed-edit business write. Zero rows is an expected fail-closed result for a pre-cutover database. Never cut over a shared developer database in place just to satisfy this test, and never treat a draft preview revision as the semantic merge candidate.
+The acceptance suite checks that marker before creating the typed-edit business write. Never point cleanup at a shared database, cut over a shared developer database in place, or treat a draft preview revision as the semantic merge candidate. This disposable flow does not replace the TD-042 clean non-customer snapshot apply→cutover→whole-DB restore rehearsal.
 
 ## 12. Application switch
 

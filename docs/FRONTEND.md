@@ -53,7 +53,7 @@ In `api` mode, `src/infrastructure/http/parameterClient.ts` maps `ParameterRepos
 
 Page action flow:
 
-- `/parameters` filters project parameters, opens details/history, creates local drafts, submits selected draft items, and sends assignees to the submission API.
+- `/parameters` keeps the real source/effective topology workspace and the API-backed draft/submission table together. Before opening the submit preview it loads `GET /api/v1/projects/:projectId/parameter-workflow-assignees`; all three selectors fail closed when a role has no eligible candidate, and the server revalidates selected ids.
 - `/parameter-review` lists pending and merged requests, advances or rejects workflow steps through `reviewChange`, and refreshes state after each server response.
 - `/parameter-admin` keeps direct library editing in mock mode; in API mode, parameter writes go through import batches or review flows instead of mutating client state directly.
 

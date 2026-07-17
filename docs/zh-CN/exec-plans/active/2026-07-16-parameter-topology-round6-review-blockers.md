@@ -76,11 +76,11 @@
 
 ## 执行检查点（2026-07-17）
 
-- T1–T4 与 T6 已实现，并有聚焦 PG/单元/组件测试。T7 的根因是 API 模式拓扑客户端泄漏、dashboard fixture 共用身份，以及同一事务 PG client 上的并发查询；修复命名空间/运行时/查询串行后，标准 `npm run test:all` 连续三次通过。
-- T5 现在强制 Software User → Hardware Committer → Software Committer → Software User 的真实角色链，并关联 merge request、writeback audit、candidate revision、history 与 base 不可变证据。业务写入前还必须由 `parameter_identity_cutovers` 证明当前是专用的 cutover 后验收库。
-- 当前共享本地库没有 cutover marker，因此拓扑验收在 cutover 后前置条件处停止。该结果不是 merge/writeback 成功证据，不得对共享库就地 cutover；T5/T8 仍等待专用、可丢弃的 cutover 后验收库。
-- Playwright CLI 已在 1440×900、768×1024、390×844 覆盖 `/parameters` 与 `/parameter-admin`，验证三单元 `gpio_int`、不完整 shape 阻断、global draft 治理、相关 API、静态页面 console error 为 0 且无水平溢出。故意发起的 global activate 负例单独返回 `403`，并产生预期的浏览器资源错误，不与静态页面 console 检查混合。
-- `npm run docs:check` 已于 2026-07-17 通过。由于专用 cutover 后全量 acceptance/evidence 仍被阻断，本执行计划继续保持 active。TD-042 仍为 BLOCKER。
+- T1/T2 复审项已关闭：污染任务即使 evidence 不含 scope ID 也会重新打开；finalize 阻断该迁移运行的全部 open task；手工实体 ID 与持久化 `specificationKey` 均采用无损摘要，同组织可同时保存两个碰撞样例。
+- T4 复审项已关闭：规格或 valueShape 切换时重置激活表单，前后端均拒绝小数 cell 数。
+- T5 自动创建并销毁带 marker 校验的 `wiseeff_acceptance_disposable_*` 数据库，执行全部 migration、真实 identity apply+cutover，并跑通 Software User → Hardware Committer → Software Committer → Software User 的正式 submit/review/merge/writeback/reload 链路。candidate binding 保存合法三单元 phandle AST，base config/binding revision 保持不变。
+- 曾被弱化的 `PARAM-ASSIGNEE-001/002` 与参数审阅 operation 已恢复可见 UI 操作。API 模式从组织+项目作用域接口读取 eligible assignee；浏览器验收在每个角色 UI 操作前切换 production HMAC 身份。
+- 源代码与聚焦验收已提交至 `6fe14cae`。全量 browser/evidence 重新生成及最终门禁仍待执行，因此计划继续 active。TD-042 仍为 BLOCKER：尚未执行干净非客户快照 apply→cutover→整库恢复演练。
 
 ## 风险与回滚
 

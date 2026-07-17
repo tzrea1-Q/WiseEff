@@ -20,6 +20,7 @@ WiseEff security centers on identity, authorization, audit, Agent tool governanc
 - M6.2 production auth uses `AUTH_MODE=production` with `AUTH_PROVIDER=oidc` for OIDC discovery/JWKS validation, then resolves the effective `AuthContext` from WiseEff PostgreSQL user and role tables.
 - WiseEff local account auth uses `AUTH_PROVIDER=local`, salted `scrypt` password hashes, hashed opaque session tokens, and the same database-backed `AuthContext` resolution as `/api/v1/me`.
 - The M5 HMAC verifier remains available for local smoke/test profiles only; it is not target-environment identity evidence.
+- Browser acceptance for workflow role boundaries runs the API in production auth mode with test-only HMAC tokens and switches the actual browser credential for every actor. Development `x-wiseeff-user` injection or one Admin token is not valid Hardware/Software Committer or Software User UI evidence.
 - Backend user governance lives under `/api/v1/users` and requires `users:manage`, durable role updates, self-lockout prevention, and audit evidence.
 - M0 audit boundary lives in `server/modules/audit/`.
 - M1 parameter write routes live in `server/modules/parameters/`; they validate payloads, enforce server-side permissions, and write audit evidence for submits, review decisions, merges, and imports.

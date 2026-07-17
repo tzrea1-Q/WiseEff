@@ -79,7 +79,7 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 
 参数管理：
 
-- `/parameters`：筛选参数、查看详情和历史、创建草稿、提交本轮修改。
+- `/parameters`：同时保留真实源树/生效树拓扑与 API 草稿/提交表。打开提交预览前通过 `GET /api/v1/projects/:projectId/parameter-workflow-assignees` 加载三类候选人；任一角色无 eligible candidate 时失败关闭，提交时服务端再次校验所选 ID。
 - `/parameter-review`：查看待审请求、推进或拒绝流程。
 - `/parameter-admin`：mock mode 下保留直接管理体验；API mode 下写入应走 import/review 流程。批量导入向导（`ParameterImportWizard`）对完整 `.dts` / `.dtsi` 通过 `ParameterRepository.parseDtsImport` → `POST /api/v1/parameter-import/parse-dts`（或 mock CST 派生）解析，**不再**对 `dts-full` 静默回退 `parseDtsFragment`；含 `/include/` 时展示可读错误。跳过行汇总为 `reviewMetadata` 挂到 create preview / apply。大于 2MB 的 DTS 提示「将使用服务端解析」。
 

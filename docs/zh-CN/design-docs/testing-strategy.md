@@ -298,10 +298,11 @@ npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.int
 | 全局激活权限 | `globalSpecActivate.authz.test.ts` | 组织 Admin 激活全局 draft → 403；本组织 draft 可激活；读/绑定全局仍允许 |
 | 完整 valueShape 激活 | `DraftSpecActivatePanel.test.tsx`、`specCompleteness.ts` | gpio_int cellsPerGroup=3 保留；不完整形状阻断 |
 | 租户作用域清理 | `semanticFixtureCleanup.isolation.test.ts` | 其他组织/项目同名 Config Set 不受影响 |
-| submit→review→merge 验收 | `parameter-topology.acceptance.spec.ts` | 强制真实角色链与 merge/writeback 证据。必须使用带 `parameter_identity_cutovers` marker 的专用数据库；cutover 前/共享库在业务写入前失败，不构成成功证据 |
+| submit→review→merge 验收 | `parameter-topology.acceptance.spec.ts`、`disposablePostCutoverRuntime.ts` | 自动创建可丢弃数据库，执行 migrations+identity cutover，校验 marker/run 一致性，再证明真实角色链、writeback、candidate AST、reload 与 base 不可变，最后销毁数据库 |
+| assignee/审阅 UI 验收 | `parameters-negative.acceptance.spec.ts`、`parameters.acceptance.spec.ts` | 三个可见下拉框使用 API 作用域 eligible user；production HMAC 浏览器身份分别执行硬件、软件与合入 UI 操作。不得用 DB 角色查询或同一 Admin token 替代 |
 | test:all 稳定性 | App API runtime 隔离、dashboard fixture 唯一命名空间、每个事务 PG client 的 FIFO 查询 | 默认 `npm run test:all` 无需临时 worker 覆盖或全局提高 timeout |
 
-不得为了让拓扑验收变绿而对共享开发/验收库就地 cutover。应准备可丢弃的专用库，在其上执行文档化的 migration/finalize/cutover 流程；独立的干净快照演练完成前，TD-042 仍保持开放。
+不得为了让拓扑验收变绿而对共享开发/验收库就地 cutover。拓扑 spec 自主管理 `wiseeff_acceptance_disposable_*` 数据库，并在破坏性清理前校验 test marker。独立的干净快照演练完成前，TD-042 仍保持开放。
 
 ## 10. Documentation Governance
 

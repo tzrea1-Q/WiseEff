@@ -233,7 +233,9 @@ Sensitive-node guards apply on submit/merge/writeback paths: missing `parameter:
 
 ## Config Sets, Release Baselines, and the Validation Gate (P2)
 
-Board-level config sets aggregate a project's parameter files into one buildable unit; release baselines snapshot a config set for compare/rollback/release; the validation gate runs `dtc` before a baseline can be released. All routes below require `canAdminParameters` (`admin:access`); non-admin callers get `403`. Admin UI for this surface ships in P3 (`ConfigSetBaselinePanel` on `/parameter-admin/projects`).
+Board-level config sets aggregate a project's parameter files into one buildable unit; release baselines snapshot a config set for compare/rollback/release; the validation gate runs `dtc` before a baseline can be released. `GET /api/v1/projects/:projectId/config-sets` requires `parameter:view` so the user topology workspace can load it. Config Set mutations, baselines, export, and release remain Admin-only.
+
+`GET /api/v1/projects/:projectId/parameter-workflow-assignees` requires `parameter:edit` and returns `{ item: { hardwareCommitters, softwareCommitters, softwareUsers } }`. Candidates are active users proven by caller-organization plus exact-project role bindings. Admin-only, inactive, guest, cross-project, and cross-organization users are excluded; submission revalidates every selected id server-side.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -294,7 +296,7 @@ Dashboard hotspots (`GET /api/v1/parameters/dashboard/hotspots`) include **globa
 
 **Round 5 evidence (branch `fix/parameter-topology-round5-review-blockers`):** immutable base vs candidate binding revisions on merge/writeback; semantic merge fail-closed without `objectStore`/project/write-lock/toolchain; immutable `parameter_identity_migration_phases` rows with `migration_run_id` task linkage; tenant-scoped review resolve; manual spec draft→`activate`→resolve; acceptance helpers `acceptanceTaskLookup` / `semanticFixtureCleanup` (no `items[0]` fallbacks).
 
-**Round 6 evidence (branch `fix/parameter-topology-round6-review-blockers`):** migration `0058` evidence-only review-task scope reconcile (polluted FKs cleared/rebuilt); lossless manual spec IDs (`vendor,limit` ≠ `vendor-limit`); org Admin cannot activate global drafts; full valueShape activate path; topology acceptance requires the real submit→review→merge role chain and post-cutover writeback evidence; tenant-scoped fixture cleanup; API-runtime/fixture/query isolation under `test:all`. The current shared local DB is pre-cutover, so the topology acceptance correctly stops before its business write and is not a successful merge evidence run.
+**Round 6 evidence (branch `fix/parameter-topology-round6-review-blockers`):** migration `0058` evidence-only review-task scope reconcile (including missing-evidence reopen); lossless manual entity IDs and persisted specification keys (`vendor,limit` ≠ `vendor-limit`); org Admin cannot activate global drafts; full valueShape activate path; tenant-scoped cleanup; API-runtime/fixture/query isolation under `test:all`. Topology acceptance creates a marker-verified disposable post-cutover database and passes the real submit→review→merge→writeback→reload role chain. This is implementation acceptance only; TD-042 still blocks production cutover readiness.
 
 Cutover/rollback procedure: `docs/runbooks/parameter-identity-cutover.md`. **TD-042 remains a BLOCKER** until a clean non-customer snapshot rehearsal completes — round 4–6 fixes do not clear production cutover readiness.
 

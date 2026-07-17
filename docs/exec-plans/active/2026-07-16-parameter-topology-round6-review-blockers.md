@@ -76,11 +76,11 @@ Blocking before plan completion: every `Update`/`Review` row updated or explicit
 
 ## Execution checkpoint (2026-07-17)
 
-- T1–T4 and T6 are implemented with focused PG/unit/component coverage. T7 root causes were isolated to leaked API-mode topology clients, shared dashboard fixture identities, and concurrent queries on one transactional PG client; the standard `npm run test:all` passed three consecutive runs after namespace/runtime/query serialization fixes.
-- T5 now requires the real Software User → Hardware Committer → Software Committer → Software User role sequence and correlates merge request, writeback audit, candidate revision, history, and immutable base evidence. It also refuses to start the business write unless `parameter_identity_cutovers` proves a dedicated post-cutover acceptance database.
-- The current shared local database has no cutover marker, so the topology acceptance stops at the post-cutover precondition. It is not valid merge/writeback success evidence, must not be cut over in place, and leaves T5/T8 acceptance evidence blocked pending a dedicated disposable post-cutover database.
-- Playwright CLI covered `/parameters` and `/parameter-admin` at 1440×900, 768×1024, and 390×844. It verified three-cell `gpio_int`, incomplete-shape blocking, global-draft governance, related API traffic, zero at-rest console errors, and no horizontal page overflow. The intentional direct global-activate negative returned `403` and generated the expected browser resource error separately from the clean-page console checks.
-- `npm run docs:check` passed on 2026-07-17. The execution plan remains active because the dedicated post-cutover full acceptance/evidence run is still blocked. TD-042 remains BLOCKER.
+- T1/T2 follow-up findings are closed: unproven polluted tasks reopen even without evidence IDs; finalize blocks every open migration-run task; manual entity IDs and persisted `specificationKey` values are lossless and coexist in one organization.
+- T4 follow-up is closed: activation state resets on spec/valueShape changes and frontend/backend reject fractional cell counts.
+- T5 creates and destroys a marker-verified `wiseeff_acceptance_disposable_*` database, applies every migration, runs real identity apply+cutover, and passes the formal Software User → Hardware Committer → Software Committer → Software User submit/review/merge/writeback/reload chain. The candidate binding stores a valid three-cell phandle AST; base config/binding revisions remain unchanged.
+- The previously weakened `PARAM-ASSIGNEE-001/002` and parameter-review operations again use visible UI controls. API mode loads organization+project-scoped eligible assignees, and browser acceptance switches production HMAC identities before each role-specific UI action.
+- Source and focused acceptance work is committed through `6fe14cae`. Full browser/evidence regeneration and the remaining final gate matrix are pending, so the plan remains active. TD-042 remains BLOCKER because no clean non-customer snapshot apply→cutover→whole-DB restore rehearsal has run.
 
 ## Risks & rollback
 

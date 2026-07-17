@@ -18,6 +18,7 @@ WiseEff 安全边界围绕身份、授权、审计、Agent tool governance、设
 - `AUTH_PROVIDER=oidc` 是目标自托管生产身份推荐路径。API 通过 discovery/JWKS 校验 OIDC token，再从 WiseEff PostgreSQL 加载有效用户、角色和权限。
 - `AUTH_PROVIDER=local` 是 WiseEff 自有本地账号路径。密码只保存 salted `scrypt` 哈希；`auth_sessions` 只保存不透明 session token 的 SHA-256 哈希；`/api/v1/me` 仍从 PostgreSQL 重新加载激活状态、角色和权限。
 - `AUTH_PROVIDER=hmac` 只用于本地 smoke/test，不是目标环境身份验收证据。
+- 工作流角色边界的浏览器验收以 production auth mode + test-only HMAC token 运行，并为每个 actor 切换真实浏览器凭据。development `x-wiseeff-user` 注入或同一个 Admin token 不能作为 Hardware/Software Committer、Software User 的 UI 证据。
 - 生产路由不能回退到 development user，也不能把 token role claim 当作最终授权来源。
 
 OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_verified=true` 时，WiseEff 才允许用 email 作为迁移期 fallback 绑定；否则只按稳定 `sub` 匹配。错误 issuer、错误 audience、过期 token、not-yet-valid token、无签名 token、签名错误或不支持的角色 id 都应被拒绝。

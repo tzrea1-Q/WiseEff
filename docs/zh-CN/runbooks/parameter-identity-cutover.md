@@ -168,13 +168,13 @@ curl -sS "$WISEEFF_API_BASE_URL/metrics" | rg 'wiseeff_parameter_identity_|wisee
 
 ### 专用拓扑验收数据库
 
-完整 submit→review→merge→writeback 验收是 **cutover 后**测试。只能在按上述流程完成 migration/finalize/cutover 的可丢弃专用验收库上运行，且下列查询应返回唯一适用 marker：
+完整 submit→review→merge→writeback 验收是 **cutover 后**测试。`parameter-topology.acceptance.spec.ts` 会在 `DATABASE_URL` 指向的 PostgreSQL 服务上自行创建 `wiseeff_acceptance_disposable_*` 数据库，执行全部 migration 与 identity apply/cutover，写入 test-only marker，并启动隔离 API/前端端口。销毁前会再次校验生成库名、marker purpose 与准确 cutover migration run。
 
 ```bash
 psql "$DATABASE_URL" -c "select id, migration_run_id, applied_at from parameter_identity_cutovers;"
 ```
 
-验收套件在创建 typed-edit 业务写入前检查该 marker。对 cutover 前数据库，零行是预期的失败关闭结果。不得仅为满足测试而对共享开发库就地 cutover，也不得把 draft preview revision 当作语义 merge candidate。
+验收套件在创建 typed-edit 业务写入前检查该 marker。不得把 cleanup 指向共享库，不得仅为满足测试而对共享开发库就地 cutover，也不得把 draft preview revision 当作语义 merge candidate。该可丢弃流程不能替代 TD-042 所要求的干净非客户快照 apply→cutover→整库恢复演练。
 
 ## 12. 应用切换
 
