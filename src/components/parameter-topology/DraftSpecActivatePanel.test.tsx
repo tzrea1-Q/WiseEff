@@ -1,6 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
+import { fireEvent, render, screen, cleanup } from "@testing-library/react";
 
 import { DraftSpecActivatePanel } from "./DraftSpecActivatePanel";
 import type { ParameterSpecDetailView } from "./ParameterSpecDetail";
@@ -31,6 +30,23 @@ describe("DraftSpecActivatePanel", () => {
     render(<DraftSpecActivatePanel detail={draftDetail()} onActivate={() => undefined} />);
     expect(screen.getByLabelText("推断值形状摘要").textContent).toContain("cellsPerGroup=3");
     expect((screen.getByLabelText("单元格数量约束") as HTMLInputElement).value).toBe("3");
+  });
+
+  it("submits full inferred valueShape on activate (gpio_int three-cell)", () => {
+    const onActivate = vi.fn();
+    render(<DraftSpecActivatePanel detail={draftDetail()} onActivate={onActivate} />);
+    fireEvent.change(screen.getByLabelText("规格说明"), {
+      target: { value: "GPIO interrupt cells for sc8562" },
+    });
+    fireEvent.change(screen.getByLabelText("激活原因"), {
+      target: { value: "Inferred three-cell phandle group from occurrence" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "激活规格" }));
+    expect(onActivate).toHaveBeenCalledTimes(1);
+    expect(onActivate.mock.calls[0]?.[0]).toMatchObject({
+      valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
+      constraints: expect.objectContaining({ cells: 3 }),
+    });
   });
 
   it("blocks activation when valueShape is missing", () => {

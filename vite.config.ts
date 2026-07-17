@@ -2,6 +2,7 @@ import { configDefaults, defineConfig } from "vitest/config";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
@@ -109,6 +110,12 @@ export default defineConfig({
     environment: "jsdom",
     exclude: [...configDefaults.exclude, ...siblingWorktreeExclude, "e2e/**", "server/**"],
     setupFiles: "./src/test/setup.ts",
+    // Cap jsdom workers so heavy page suites (e.g. NodeDebugging) do not starve
+    // shared timers/DOM under `npm run test:all` when paired with server forks.
+    maxWorkers: process.env.VITEST_MAX_WORKERS
+      ? Number(process.env.VITEST_MAX_WORKERS)
+      : Math.min(4, Math.max(1, Math.floor(os.cpus().length / 2) || 1)),
+    fileParallelism: true,
     env: {
       VITE_WISEEFF_RUNTIME_MODE: "mock"
     },
