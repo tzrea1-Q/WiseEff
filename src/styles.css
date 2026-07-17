@@ -19309,6 +19309,22 @@ body.xiaoze-popup-resize-active {
   background: #fff;
 }
 
+.binding-detail-panel__header,
+.binding-detail-panel__meta,
+.binding-detail-panel__meta > div,
+.binding-detail-panel section {
+  min-width: 0;
+}
+
+.binding-detail-panel__header p,
+.binding-detail-panel__meta dd,
+.binding-detail-panel section p,
+.binding-detail-panel section li,
+.binding-detail-panel code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .binding-detail-panel textarea {
   width: 100%;
   min-height: 72px;

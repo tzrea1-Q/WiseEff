@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -255,6 +256,22 @@ describe("ProjectTopologyWorkspace", () => {
     fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
     expect(within(workspace).getByRole("region", { name: "绑定详情" })).toBeVisible();
     expect(within(workspace).getByRole("navigation", { name: "拓扑导航" })).toHaveTextContent(/树|属性|详情/);
+  });
+
+  it("wraps long binding identity and provenance tokens inside the mobile detail pane", () => {
+    const styles = readFileSync("src/styles.css", "utf8");
+    const minWidthRule =
+      styles.match(
+        /\.binding-detail-panel__header,\s*\.binding-detail-panel__meta,\s*\.binding-detail-panel__meta > div,\s*\.binding-detail-panel section\s*\{[^}]*\}/s
+      )?.[0] ?? "";
+    const tokenRule =
+      styles.match(
+        /\.binding-detail-panel__header p,\s*\.binding-detail-panel__meta dd,\s*\.binding-detail-panel section p,\s*\.binding-detail-panel section li,\s*\.binding-detail-panel code\s*\{[^}]*\}/s
+      )?.[0] ?? "";
+
+    expect(minWidthRule).toMatch(/min-width:\s*0/);
+    expect(tokenRule).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(tokenRule).toMatch(/word-break:\s*break-word/);
   });
 });
 
