@@ -161,6 +161,10 @@ function nodeRow(page: Page, name: string) {
   return page.getByRole("row").filter({ hasText: name });
 }
 
+function savedIndicator(page: Page) {
+  return page.getByRole("toolbar", { name: "调试管理后台页面操作" }).getByText("已保存");
+}
+
 async function configureProtocolBindings(page: Page, nodeName: string, suffix: string) {
   await nodeRow(page, nodeName).getByRole("button", { name: "路径绑定" }).click();
   const bindingsDialog = page.getByRole("dialog", { name: `${nodeName} 路径绑定` });
@@ -169,13 +173,13 @@ async function configureProtocolBindings(page: Page, nodeName: string, suffix: s
   await hdcPanel.getByLabel("HDC 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/hdc`);
   await hdcPanel.getByRole("checkbox").check();
   await bindingsDialog.getByRole("button", { name: "保存 HDC binding" }).click();
-  await expect(page.getByText("已保存")).toBeVisible({ timeout: 30_000 });
+  await expect(savedIndicator(page)).toBeVisible({ timeout: 30_000 });
 
   const adbPanel = bindingsDialog.locator(".debug-admin-binding-panel").filter({ hasText: "ADB" });
   await adbPanel.getByLabel("ADB 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/adb`);
   await adbPanel.getByRole("checkbox").check();
   await bindingsDialog.getByRole("button", { name: "保存 ADB binding" }).click();
-  await expect(page.getByText("已保存")).toBeVisible({ timeout: 30_000 });
+  await expect(savedIndicator(page)).toBeVisible({ timeout: 30_000 });
 
   await bindingsDialog.getByRole("button", { name: "取消" }).click();
 }
@@ -207,7 +211,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await createDialog.getByLabel("名称").fill(nodeName);
     await createDialog.getByLabel("简述").fill("Acceptance debug node");
     await createDialog.getByRole("button", { name: "保存" }).click();
-    await expect(page.getByText("已保存")).toBeVisible({ timeout: 30_000 });
+    await expect(savedIndicator(page)).toBeVisible({ timeout: 30_000 });
 
     await configureProtocolBindings(page, nodeName, suffix);
     await expect(nodeRow(page, nodeName)).toBeVisible();
@@ -217,8 +221,8 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await definitionDialog.getByLabel("名称").fill(editedName);
     await definitionDialog.getByLabel("详细描述").fill("Acceptance node detailed description");
     await definitionDialog.getByRole("button", { name: "保存" }).click();
-    await expect(page.getByText("已保存")).toBeVisible({ timeout: 30_000 });
-    await definitionDialog.getByRole("button", { name: "取消" }).click();
+    await expect(savedIndicator(page)).toBeVisible({ timeout: 30_000 });
+    await expect(definitionDialog).not.toBeVisible({ timeout: 30_000 });
     await expect(nodeRow(page, editedName)).toBeVisible();
 
     const listResponse = await page.request.get(apiRoute("/api/v1/debugging/admin/nodes?includeArchived=true"), {
@@ -247,7 +251,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await expect(page.getByText(editedName)).toBeVisible({ timeout: 30_000 });
     await nodeRow(page, editedName).getByRole("button", { name: "禁用" }).click();
     await page.getByRole("button", { name: /^禁用$/ }).click();
-    await expect(page.getByText("已禁用")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("toolbar", { name: "调试管理后台页面操作" }).getByText("已禁用")).toBeVisible({ timeout: 30_000 });
 
     const restoreResponse = await page.request.patch(apiRoute(`/api/v1/debugging/admin/nodes/${encodeURIComponent(created!.id)}`), {
       headers: smokeHeaders(),

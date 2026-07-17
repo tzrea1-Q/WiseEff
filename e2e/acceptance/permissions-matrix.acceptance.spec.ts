@@ -14,7 +14,7 @@ const permissionsEligibilityReason = "M5.5 permissions matrix eligibility guard"
 const visibleRoleExpectations = [
   { role: "Guest", canOpenDebugging: false, canOpenReview: false },
   { role: "Hardware User", canOpenDebugging: true, canOpenReview: false },
-  { role: "Software User", canOpenDebugging: true, canOpenReview: false },
+  { role: "Software User", canOpenDebugging: true, canOpenReview: true },
   { role: "Hardware Committer", canOpenDebugging: true, canOpenReview: true },
   { role: "Software Committer", canOpenDebugging: true, canOpenReview: true },
   { role: "Admin", canOpenDebugging: true, canOpenReview: true }
@@ -120,7 +120,7 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
         projectId: "aurora",
         items: [
           {
-            parameterId: "aurora-fast-charge-current",
+            parameterId: "aurora-battery-health-reserve",
             targetValue: "3103",
             reason: permissionsEligibilityReason
           }

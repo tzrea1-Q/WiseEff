@@ -315,9 +315,14 @@ export type DebugRuntimeNodeDto = {
   nodePath: string;
   accessMode: DebugParameterAccessMode;
   enabled: boolean;
+  valueKind?: DebugValueKind;
+  valueFormat?: DebugValueFormat;
+  normalizationMode?: DebugNormalizationMode;
+  maxValueBytes?: number | null;
 };
 
 export function debugRuntimeNodeToDebugParameter(dto: DebugRuntimeNodeDto): DebugParameter {
+  const valueMetadata = resolveDebugValueMetadata(dto);
   return {
     id: dto.id,
     name: dto.name,
@@ -335,7 +340,11 @@ export function debugRuntimeNodeToDebugParameter(dto: DebugRuntimeNodeDto): Debu
     nodePath: dto.nodePath,
     accessMode: dto.accessMode,
     selectedProtocol: dto.protocol,
-    enabled: dto.enabled
+    enabled: dto.enabled,
+    valueKind: valueMetadata.valueKind,
+    valueFormat: valueMetadata.valueFormat,
+    normalizationMode: valueMetadata.normalizationMode,
+    maxValueBytes: valueMetadata.maxValueBytes ?? null
   };
 }
 

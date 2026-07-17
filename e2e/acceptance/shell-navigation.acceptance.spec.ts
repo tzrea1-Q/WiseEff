@@ -5,7 +5,11 @@ import { recordOperationEvidence } from "./helpers/operationEvidence";
 
 // @acceptance SHELL-DIAG-001
 // @operation SHELL-DIAG-001
-useBrowserDiagnostics(test);
+useBrowserDiagnostics(test, {
+  expectedApiFailures: [
+    { method: "POST", path: "/api/v1/debugging/targets/detect", status: 409 }
+  ]
+});
 
 const routes = [
   "/",

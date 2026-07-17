@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   debugDeviceFromDto,
   debugParameterFromDto,
+  debugRuntimeNodeToDebugParameter,
   debugSnapshotFromDto,
   debugTargetFromDto,
   nodeOperationFromDto,
@@ -9,6 +10,7 @@ import {
   nodeWriteResultFromDto,
   type DebugDeviceDto,
   type DebugParameterDto,
+  type DebugRuntimeNodeDto,
   type DebugSnapshotDto,
   type DebugTargetDto,
   type NodeOperationDto
@@ -86,6 +88,32 @@ const rollbackPendingSnapshotDto: DebugSnapshotDto = {
 };
 
 describe("debugging dto mappers", () => {
+  it("preserves complex value metadata for split-catalog runtime nodes", () => {
+    const parameter = debugRuntimeNodeToDebugParameter({
+      id: "dbg-config-json",
+      name: "Config JSON overlay",
+      description: "Canonical JSON object.",
+      writeFormatExample: '{"enabled":true}',
+      writeFormatHint: "Enter a valid JSON object.",
+      module: "Diagnostics",
+      protocol: "hdc",
+      nodePath: "/sys/class/debug/config_json",
+      accessMode: "RW",
+      enabled: true,
+      valueKind: "complex",
+      valueFormat: "json",
+      normalizationMode: "json-canonical",
+      maxValueBytes: 4096
+    } as DebugRuntimeNodeDto);
+
+    expect(parameter).toMatchObject({
+      valueKind: "complex",
+      valueFormat: "json",
+      normalizationMode: "json-canonical",
+      maxValueBytes: 4096
+    });
+  });
+
   it("maps debug device status to the existing domain literal", () => {
     expect(debugDeviceFromDto(deviceDto)).toMatchObject({
       id: "device-1",

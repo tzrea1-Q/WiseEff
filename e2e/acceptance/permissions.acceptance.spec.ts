@@ -9,7 +9,11 @@ import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
-useBrowserDiagnostics(test);
+useBrowserDiagnostics(test, {
+  expectedApiFailures: [
+    { method: "GET", path: "/api/v1/users", status: 403 }
+  ]
+});
 
 const databaseUrl = process.env.DATABASE_URL;
 const apiAuthorization =

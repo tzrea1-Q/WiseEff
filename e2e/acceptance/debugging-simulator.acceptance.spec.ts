@@ -246,6 +246,59 @@ async function seedComplexSimulatorParameters(client: Client) {
 
   await client.query(
     `
+    insert into debug_nodes (
+      id, organization_id, name, description, detailed_description,
+      write_format_example, write_format_hint, module,
+      value_kind, value_format, normalization_mode, max_value_bytes,
+      enabled, archived_at, archived_by, archive_reason, updated_at
+    )
+    values (
+      $1, 'org-chargelab', 'Config JSON overlay',
+      'Simulator complex JSON node for acceptance validation.',
+      'Canonical JSON object used to verify exact complex-value writeback.',
+      $2, 'Enter a valid JSON object.', 'Diagnostics',
+      'complex', 'json', 'json-canonical', 4096,
+      true, null, null, null, now()
+    )
+    on conflict (id) do update set
+      name = excluded.name,
+      description = excluded.description,
+      detailed_description = excluded.detailed_description,
+      write_format_example = excluded.write_format_example,
+      write_format_hint = excluded.write_format_hint,
+      module = excluded.module,
+      value_kind = excluded.value_kind,
+      value_format = excluded.value_format,
+      normalization_mode = excluded.normalization_mode,
+      max_value_bytes = excluded.max_value_bytes,
+      enabled = true,
+      archived_at = null,
+      archived_by = null,
+      archive_reason = null,
+      updated_at = now()
+    `,
+    [complexJsonParameterId, complexJsonTargetValue]
+  );
+
+  await client.query(
+    `
+    insert into debug_node_bindings (
+      id, organization_id, node_id, protocol, node_path, access_mode, enabled, notes, updated_at
+    )
+    values ($1, 'org-chargelab', $2, 'hdc', '/sys/class/debug/config_json', 'RW', true,
+      'Seeded complex JSON runtime node binding.', now())
+    on conflict (node_id, protocol) do update set
+      node_path = excluded.node_path,
+      access_mode = excluded.access_mode,
+      enabled = true,
+      notes = excluded.notes,
+      updated_at = now()
+    `,
+    [`${complexJsonParameterId}:hdc`, complexJsonParameterId]
+  );
+
+  await client.query(
+    `
     insert into debugging_parameter_node_bindings (
       id, organization_id, parameter_id, protocol, node_path, access_mode, enabled, notes, metadata, updated_at
     )
@@ -460,6 +513,10 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
     await expectSimulatorOnline(page);
 
     const fastChargeRow = parameterRow(page, "Fast charge current");
+    // The simulator gateway is process-local state, while the fixture reset above is PostgreSQL-only.
+    // Establish the safety baseline through the same UI write boundary exercised by the workflow so
+    // isolated reruns do not inherit a previous acceptance write from a long-lived API process.
+    await setTargetAndWrite(page, "Fast charge current", "3000");
     await expect(fastChargeRow).toContainText("3000", { timeout: 30_000 });
 
     await setTargetAndWrite(page, "Fast charge current", "3100");
