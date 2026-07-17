@@ -841,6 +841,7 @@ describe.skipIf(!databaseAvailable)("0058 evidence-only scope reconcile from pol
 
       const validTaskId = randomUUID();
       const pollutedTaskId = randomUUID();
+      const missingEvidenceTaskId = randomUUID();
       // Simulate historical old-0055 pollution already written into task FKs
       // (0057 coalesce would preserve these incorrect values).
       await db.query(
@@ -884,6 +885,27 @@ describe.skipIf(!databaseAvailable)("0058 evidence-only scope reconcile from pol
           PROJECT_B,
           crossRevisionId,
           crossOccurrenceId,
+        ],
+      );
+
+      await db.query(
+        `
+        insert into parameter_spec_review_tasks (
+          id, organization_id, parameter_spec_id, source_evidence, candidate_schemas,
+          project_count, status, reviewer_user_id, reason, resolved_at,
+          project_id, blocker_scope
+        ) values (
+          $1, $2, $3, $4::jsonb, '[]'::jsonb, 1, 'resolved', $5,
+          'polluted scope without evidence ids', now(), $6, 'revision'
+        )
+        `,
+        [
+          missingEvidenceTaskId,
+          ORG_A,
+          SPEC_A,
+          JSON.stringify({ propertyKey: PROPERTY_KEY }),
+          USER_ID,
+          PROJECT_B,
         ],
       );
 
@@ -1025,31 +1047,65 @@ describe.skipIf(!databaseAvailable)("0058 evidence-only scope reconcile from pol
         code: "polluted_or_unproven_scope",
       });
 
+      const missingEvidence = await db.query<{
+        project_id: string | null;
+        config_revision_id: string | null;
+        property_occurrence_id: string | null;
+        status: string;
+        parameter_spec_id: string | null;
+        reviewer_user_id: string | null;
+        resolved_at: Date | null;
+        blocker_scope: string;
+        source_evidence: Record<string, unknown>;
+      }>(
+        `select project_id, config_revision_id, property_occurrence_id, status,
+                parameter_spec_id, reviewer_user_id, resolved_at, blocker_scope, source_evidence
+         from parameter_spec_review_tasks where id = $1`,
+        [missingEvidenceTaskId],
+      );
+      expect(missingEvidence.rows[0]).toMatchObject({
+        project_id: null,
+        config_revision_id: null,
+        property_occurrence_id: null,
+        status: "open",
+        parameter_spec_id: null,
+        reviewer_user_id: null,
+        resolved_at: null,
+        blocker_scope: "platform",
+      });
+      expect(missingEvidence.rows[0]?.source_evidence.scopeBackfill).toMatchObject({
+        migration: "0058",
+        code: "missing_or_unproven_evidence_chain",
+        clearedPriorProjectId: PROJECT_B,
+      });
+
       // Idempotent second apply: no scoped value or diagnostic metadata changes.
       const beforeSecondApply = await db.query<{
+        id: string;
         project_id: string | null;
         config_revision_id: string | null;
         property_occurrence_id: string | null;
         status: string;
         source_evidence: Record<string, unknown>;
       }>(
-        `select project_id, config_revision_id, property_occurrence_id, status, source_evidence
-         from parameter_spec_review_tasks where id = $1`,
-        [pollutedTaskId],
+        `select id, project_id, config_revision_id, property_occurrence_id, status, source_evidence
+         from parameter_spec_review_tasks where id = any($1::text[]) order by id`,
+        [[pollutedTaskId, missingEvidenceTaskId]],
       );
       await applySingleMigration(db, migration0058);
       const again = await db.query<{
+        id: string;
         project_id: string | null;
         config_revision_id: string | null;
         property_occurrence_id: string | null;
         status: string;
         source_evidence: Record<string, unknown>;
       }>(
-        `select project_id, config_revision_id, property_occurrence_id, status, source_evidence
-         from parameter_spec_review_tasks where id = $1`,
-        [pollutedTaskId],
+        `select id, project_id, config_revision_id, property_occurrence_id, status, source_evidence
+         from parameter_spec_review_tasks where id = any($1::text[]) order by id`,
+        [[pollutedTaskId, missingEvidenceTaskId]],
       );
-      expect(again.rows[0]).toEqual(beforeSecondApply.rows[0]);
+      expect(again.rows).toEqual(beforeSecondApply.rows);
     });
   });
 });

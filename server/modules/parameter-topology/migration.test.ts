@@ -1511,7 +1511,7 @@ describe.skipIf(!databaseAvailable)("parameter identity stage-review and finaliz
             organizationId: ORG,
             ...applyGates
           })
-        ).rejects.toThrow(/finalize blocked: open inferred/i);
+        ).rejects.toThrow(/finalize blocked: open parameter spec review tasks remain/i);
 
         const inferredTask = await db.query<{ id: string; parameter_spec_id: string; migration_run_id: string }>(
           `
@@ -1525,6 +1525,22 @@ describe.skipIf(!databaseAvailable)("parameter identity stage-review and finaliz
         const specId = inferredTask.rows[0]?.parameter_spec_id;
         expect(specId).toBeTruthy();
         expect(inferredTask.rows[0]?.migration_run_id).toBe(staged.migrationRunId);
+        await db.query(
+          `
+          update parameter_spec_review_tasks
+          set source_evidence = source_evidence - 'inferred'
+          where id = $1
+          `,
+          [inferredTask.rows[0]!.id]
+        );
+        await expect(
+          migrateParameterIdentities(db, {
+            mode: "finalize",
+            migrationRunId: staged.migrationRunId,
+            organizationId: ORG,
+            ...applyGates
+          })
+        ).rejects.toThrow(/finalize blocked: open parameter spec review tasks remain/i);
         await db.query(
           `
           update parameter_spec_review_tasks

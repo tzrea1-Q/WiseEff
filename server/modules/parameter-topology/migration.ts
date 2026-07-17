@@ -879,19 +879,18 @@ async function assertFinalizePrerequisites(
   const orgClause = organizationId?.trim() ? "and organization_id = $2" : "";
   const orgParams = organizationId?.trim() ? [migrationRunId, organizationId.trim()] : [migrationRunId];
 
-  const openInferred = await db.query<{ c: string }>(
+  const openSpecReviews = await db.query<{ c: string }>(
     `
     select count(*)::text as c
     from parameter_spec_review_tasks
     where migration_run_id = $1
       and status = 'open'
-      and coalesce(source_evidence->>'inferred', '') = 'true'
       ${orgClause}
     `,
     orgParams
   );
-  if (Number(openInferred.rows[0]?.c ?? 0) > 0) {
-    throw new Error("finalize blocked: open inferred parameter spec review tasks remain");
+  if (Number(openSpecReviews.rows[0]?.c ?? 0) > 0) {
+    throw new Error("finalize blocked: open parameter spec review tasks remain");
   }
 
   const openMapping = await db.query<{ c: string }>(

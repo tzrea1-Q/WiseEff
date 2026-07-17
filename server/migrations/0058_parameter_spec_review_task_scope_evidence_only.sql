@@ -8,10 +8,21 @@ with evidence_scope as (
     t.id,
     t.organization_id,
     t.status,
+    t.parameter_spec_id as prior_parameter_spec_id,
+    t.project_id as prior_project_id,
+    t.config_revision_id as prior_config_revision_id,
+    t.property_occurrence_id as prior_property_occurrence_id,
     t.source_evidence,
     nullif(t.source_evidence->>'projectId', '') as evidence_project_id,
     nullif(t.source_evidence->>'configRevisionId', '') as evidence_config_revision_id,
     nullif(t.source_evidence->>'propertyOccurrenceId', '') as evidence_property_occurrence_id,
+    (
+      select ps.id
+      from parameter_specs ps
+      where ps.id = t.parameter_spec_id
+        and (ps.organization_id = t.organization_id or ps.organization_id is null)
+      limit 1
+    ) as proven_parameter_spec_id,
     (
       select p.id
       from projects p
@@ -61,6 +72,52 @@ with evidence_scope as (
     ) as proven_property_occurrence_id
   from parameter_spec_review_tasks t
 ),
+evaluated as (
+  select
+    e.*,
+    (
+      (
+        e.evidence_project_id is not null
+        and e.proven_project_id is null
+      )
+      or (
+        e.evidence_config_revision_id is not null
+        and e.proven_config_revision_id is null
+      )
+      or (
+        e.evidence_property_occurrence_id is not null
+        and e.proven_property_occurrence_id is null
+      )
+      or (
+        e.prior_project_id is not null
+        and e.evidence_project_id is null
+      )
+      or (
+        e.prior_config_revision_id is not null
+        and e.evidence_config_revision_id is null
+      )
+      or (
+        e.prior_property_occurrence_id is not null
+        and e.evidence_property_occurrence_id is null
+      )
+      or (
+        e.prior_parameter_spec_id is not null
+        and e.proven_parameter_spec_id is null
+      )
+      or coalesce(e.source_evidence->'scopeBackfill'->>'code', '') in (
+        'polluted_or_unproven_scope',
+        'missing_or_unproven_evidence_chain'
+      )
+    ) as has_unproven_scope,
+    (
+      (e.prior_project_id is not null and e.evidence_project_id is null)
+      or (e.prior_config_revision_id is not null and e.evidence_config_revision_id is null)
+      or (e.prior_property_occurrence_id is not null and e.evidence_property_occurrence_id is null)
+      or coalesce(e.source_evidence->'scopeBackfill'->>'code', '') =
+        'missing_or_unproven_evidence_chain'
+    ) as has_missing_evidence_chain
+  from evidence_scope e
+),
 computed as (
   select
     e.id,
@@ -68,6 +125,7 @@ computed as (
     e.proven_config_revision_id as config_revision_id,
     e.proven_property_occurrence_id as property_occurrence_id,
     case
+      when e.has_unproven_scope then 'platform'
       when e.proven_config_revision_id is not null then 'revision'
       when e.proven_project_id is not null then 'project'
       when coalesce(e.source_evidence->>'inferred', '') = 'true' then 'platform'
@@ -78,32 +136,7 @@ computed as (
       else 'revision'
     end as blocker_scope,
     case
-      when e.status = 'resolved'
-        and (
-          (
-            e.evidence_project_id is not null
-            and e.proven_project_id is null
-          )
-          or (
-            e.evidence_config_revision_id is not null
-            and e.proven_config_revision_id is null
-          )
-          or (
-            e.evidence_property_occurrence_id is not null
-            and e.proven_property_occurrence_id is null
-          )
-          or (
-            coalesce(e.source_evidence->>'projectId', '') <> ''
-            and e.proven_project_id is null
-            and exists (
-              select 1
-              from parameter_spec_review_tasks t2
-              where t2.id = e.id
-                and t2.project_id is not null
-                and t2.project_id is distinct from e.proven_project_id
-            )
-          )
-        )
+      when e.status in ('resolved', 'dismissed') and e.has_unproven_scope
         then 'open'
       else e.status
     end as status,
@@ -121,6 +154,8 @@ computed as (
         ),
         'code',
           case
+            when e.has_missing_evidence_chain
+              then 'missing_or_unproven_evidence_chain'
             when (
               e.evidence_project_id is not null
               and e.proven_project_id is null
@@ -133,22 +168,25 @@ computed as (
               e.evidence_property_occurrence_id is not null
               and e.proven_property_occurrence_id is null
             )
+            or (
+              e.prior_parameter_spec_id is not null
+              and e.proven_parameter_spec_id is null
+            )
               then 'polluted_or_unproven_scope'
             else coalesce(e.source_evidence->'scopeBackfill'->>'code', 'evidence_scope_ok')
           end,
         'clearedPriorProjectId',
-          (
-            select t3.project_id
-            from parameter_spec_review_tasks t3
-            where t3.id = e.id
-              and t3.project_id is distinct from e.proven_project_id
-          ),
+          case
+            when e.prior_project_id is distinct from e.proven_project_id
+              then e.prior_project_id
+            else e.source_evidence->'scopeBackfill'->>'clearedPriorProjectId'
+          end,
         'provenProjectId', e.proven_project_id,
         'provenConfigRevisionId', e.proven_config_revision_id,
         'provenPropertyOccurrenceId', e.proven_property_occurrence_id
       )
     ) as source_evidence
-  from evidence_scope e
+  from evaluated e
 )
 update parameter_spec_review_tasks t
 set
@@ -170,4 +208,12 @@ where t.id = c.id
     or t.blocker_scope is distinct from c.blocker_scope
     or t.status is distinct from c.status
     or t.source_evidence is distinct from c.source_evidence
+    or (
+      c.status = 'open'
+      and (
+        t.resolved_at is not null
+        or t.reviewer_user_id is not null
+        or t.parameter_spec_id is not null
+      )
+    )
   );
