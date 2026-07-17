@@ -71,6 +71,16 @@ async function restoreImportTargetSnapshot(snapshot: ImportTargetSnapshot) {
     try {
       await client.query(
         `
+        delete from parameter_history_entries
+        where project_parameter_value_id = $1
+          and version > $2
+          and request_id is null
+          and changed_by_user_id = 'u-xu-yun'
+        `,
+        [snapshot.value_id, snapshot.value_version]
+      );
+      await client.query(
+        `
         update parameter_definitions
         set description = $2,
             explanation = $3,
@@ -140,6 +150,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
   test.beforeEach(async () => {
     importTargetSnapshot = await loadImportTargetSnapshot();
     expect(importTargetSnapshot).toBeTruthy();
+    await restoreImportTargetSnapshot(importTargetSnapshot!);
   });
 
   test.afterEach(async () => {

@@ -140,12 +140,21 @@ function searchTable(page: Page) {
   return page.locator(".parameters-table").filter({ hasText: parameterName }).first();
 }
 
+async function dismissXiaozeHint(page: Page) {
+  const dismiss = page.getByRole("button", { name: "不再提示" });
+  await dismiss.waitFor({ state: "visible", timeout: 2_000 }).catch(() => undefined);
+  if (await dismiss.isVisible().catch(() => false)) {
+    await dismiss.click();
+  }
+}
+
 async function openParameterDraftDialog(page: Page, targetValue: string) {
   await page.goto(`/parameters?project=${projectId}`);
   await expect(searchTable(page)).toContainText(parameterName);
   const row = searchTable(page).getByRole("row").filter({ hasText: parameterName }).first();
   await expect(row).toBeVisible();
   await row.locator(".view-row-button").click();
+  await dismissXiaozeHint(page);
   await page.locator(".parameter-detail-dialog__actions .button.primary").click();
   const draftDialog = page.locator(".parameter-draft-dialog");
   await expect(draftDialog).toBeVisible();
@@ -159,10 +168,7 @@ async function createOneValidDraft(page: Page, targetValue: string, reason: stri
   const draftDialog = await openParameterDraftDialog(page, targetValue);
   const targetCard = draftDialog.locator(".parameter-draft-card").filter({ hasText: parameterName }).first();
   await targetCard.getByLabel(/修改原因/).fill(reason);
-  const dismissXiaozeHint = page.getByRole("button", { name: "不再提示" });
-  if (await dismissXiaozeHint.isVisible().catch(() => false)) {
-    await dismissXiaozeHint.click();
-  }
+  await dismissXiaozeHint(page);
   await draftDialog.locator(".parameter-detail-dialog__actions .button.primary").click();
   await expect(draftDialog).not.toBeVisible();
 }
