@@ -30,6 +30,37 @@ describe("specCompleteness", () => {
     ).toThrow(/Unsupported/);
   });
 
+  it("rejects incomplete cell and byte shapes", () => {
+    expect(() =>
+      assertSpecActivatable({
+        parameterSpecId: "spec-cells",
+        valueShape: { kind: "cells", cellsPerGroup: 3 },
+        constraints: { cells: 3 },
+        documentation: "docs",
+      }),
+    ).toThrow(/bits.*groups/i);
+    expect(() =>
+      assertSpecActivatable({
+        parameterSpecId: "spec-bytes",
+        valueShape: { kind: "bytes" },
+        constraints: { minLength: 1 },
+        documentation: "docs",
+      }),
+    ).toThrow(/length/i);
+  });
+
+  it("rejects activation payloads that conflict with inferred fields", () => {
+    expect(() =>
+      assertSpecActivatable({
+        parameterSpecId: "spec-gpio",
+        storedValueShape: { kind: "phandle-list", bits: 32, groups: 1, cellsPerGroup: 3 },
+        valueShape: { kind: "phandle-list", bits: 16, groups: 1, cellsPerGroup: 3 },
+        constraints: { cells: 3 },
+        documentation: "docs",
+      }),
+    ).toThrow(/conflicts with inferred/i);
+  });
+
   it("rejects resolving draft specs", () => {
     expect(() =>
       assertSpecResolvable({

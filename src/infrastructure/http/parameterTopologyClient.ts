@@ -146,6 +146,7 @@ export function bindingFromDto(dto: ProjectBindingDto): ProjectParameterBinding 
 export function specSummaryFromDto(dto: ParameterSpecSummaryDto): ParameterSpecSummary {
   return {
     id: dto.id,
+    organizationId: dto.organizationId ?? null,
     sourceKind: dto.sourceKind,
     specificationKey: dto.specificationKey,
     propertyKey: dto.propertyKey,

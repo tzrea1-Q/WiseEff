@@ -59,4 +59,26 @@ describe("DraftSpecActivatePanel", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/缺少完整 valueShape/);
     expect(screen.getByRole("button", { name: "激活规格" })).toBeDisabled();
   });
+
+  it("blocks activation when inferred cell grouping is incomplete", () => {
+    render(
+      <DraftSpecActivatePanel
+        detail={draftDetail({ valueShape: { kind: "cells", cellsPerGroup: 3 } })}
+        onActivate={() => undefined}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toMatch(/bits.*groups/i);
+    expect(screen.getByRole("button", { name: "激活规格" })).toBeDisabled();
+  });
+
+  it("blocks activation when inferred byte length is missing", () => {
+    render(
+      <DraftSpecActivatePanel
+        detail={draftDetail({ valueType: "bytes", valueShape: { kind: "bytes" } })}
+        onActivate={() => undefined}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toMatch(/length/i);
+    expect(screen.getByRole("button", { name: "激活规格" })).toBeDisabled();
+  });
 });

@@ -68,6 +68,29 @@ function valueShapeFromDetail(detail: ParameterSpecDetailView): {
         blockReason: "单元格分组信息不完整（缺少 cellsPerGroup/cells），无法激活。",
       };
     }
+    if (
+      (kind === "cells" || kind === "phandle-list" || kind === "u32-array") &&
+      (typeof fromDetail.bits !== "number" ||
+        typeof fromDetail.groups !== "number" ||
+        !Number.isInteger(fromDetail.groups) ||
+        fromDetail.groups < 1)
+    ) {
+      return {
+        shape: fromDetail,
+        blockReason: "单元格分组信息不完整（缺少有效 bits 或 groups），无法激活。",
+      };
+    }
+    if (
+      kind === "bytes" &&
+      (typeof fromDetail.length !== "number" ||
+        !Number.isInteger(fromDetail.length) ||
+        fromDetail.length < 0)
+    ) {
+      return {
+        shape: fromDetail,
+        blockReason: "字节数组缺少明确 length，无法激活。",
+      };
+    }
     return { shape: { ...fromDetail }, blockReason: null };
   }
 

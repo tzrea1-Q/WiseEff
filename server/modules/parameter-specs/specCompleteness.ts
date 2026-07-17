@@ -84,12 +84,49 @@ export function assertSpecActivatable(input: {
         { parameterSpecId: input.parameterSpecId, valueShapeKind: kind },
       );
     }
+    if (
+      typeof record.bits !== "number" ||
+      ![8, 16, 32, 64].includes(record.bits) ||
+      typeof record.groups !== "number" ||
+      !Number.isInteger(record.groups) ||
+      record.groups < 1
+    ) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Cell-array valueShape must include valid bits and groups.",
+        400,
+        { parameterSpecId: input.parameterSpecId, valueShapeKind: kind },
+      );
+    }
+    if (typeof input.constraints?.cells === "number" && input.constraints.cells !== cellsPerGroup) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Cell constraint conflicts with inferred cellsPerGroup.",
+        400,
+        {
+          parameterSpecId: input.parameterSpecId,
+          inferredCellsPerGroup: cellsPerGroup,
+          constraintCells: input.constraints.cells,
+        },
+      );
+    }
+  }
+  if (kind === "bytes") {
+    const length = (shape as Record<string, unknown>).length;
+    if (typeof length !== "number" || !Number.isInteger(length) || length < 0) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Byte-array valueShape must include an exact length.",
+        400,
+        { parameterSpecId: input.parameterSpecId, valueShapeKind: kind },
+      );
+    }
   }
   if (input.storedValueShape && typeof input.storedValueShape === "object" && !Array.isArray(input.storedValueShape)) {
     const stored = input.storedValueShape as Record<string, unknown>;
     const incoming = shape as Record<string, unknown>;
-    for (const key of ["bits", "groups", "cellsPerGroup", "length", "cells"] as const) {
-      if (stored[key] != null && incoming[key] != null && stored[key] !== incoming[key]) {
+    for (const key of ["kind", "bits", "groups", "cellsPerGroup", "length", "cells"] as const) {
+      if (stored[key] != null && incoming[key] !== stored[key]) {
         throw new ApiError(
           "VALIDATION_FAILED",
           "Activation valueShape conflicts with inferred draft shape.",

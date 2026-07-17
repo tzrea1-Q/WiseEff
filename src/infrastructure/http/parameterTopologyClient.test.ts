@@ -41,6 +41,7 @@ const bindingDto: ProjectBindingDto = {
 
 const specDetailDto: ParameterSpecDetailDto = {
   id: "spec-1",
+  organizationId: null,
   sourceKind: "dts",
   specificationKey: "sc8562/gpio_int",
   propertyKey: "gpio_int",
@@ -76,6 +77,7 @@ describe("parameterTopologyClient DTO mapping", () => {
   it("keeps exampleValue, schemaDefault, and policyTarget separate on specs", () => {
     const mapped = specDetailFromDto(specDetailDto);
     expect(mapped).toMatchObject({
+      organizationId: null,
       propertyKey: "gpio_int",
       driverModule: "sc8562",
       exampleValue: specDetailDto.exampleValue,

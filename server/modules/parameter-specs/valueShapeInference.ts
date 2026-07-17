@@ -8,8 +8,8 @@ export type DraftValueShape =
   | { kind: "string-list" }
   | { kind: "cells"; bits: 8 | 16 | 32 | 64; groups: number; cellsPerGroup: number }
   | { kind: "bytes"; length: number }
-  | { kind: "phandle-list"; cells: number }
-  | { kind: "u32-array"; cells: number }
+  | { kind: "phandle-list"; bits: 8 | 16 | 32 | 64; groups: number; cellsPerGroup: number }
+  | { kind: "u32-array"; bits: 32; groups: number; cellsPerGroup: number }
   | { kind: "mixed" }
   | { kind: "unknown" };
 
@@ -40,10 +40,19 @@ function inferFromDtsValue(value: DtsValue): DraftValueShape {
     case "cells": {
       const groups = value.groups.length;
       const cellsPerGroup = value.groups[0]?.length ?? 0;
+      if (
+        groups < 1 ||
+        cellsPerGroup < 1 ||
+        value.groups.some((group) => group.length !== cellsPerGroup)
+      ) {
+        return { kind: "unknown" };
+      }
       const hasPhandle = value.groups.some((group) => group.some((cell) => cell.kind === "phandle"));
-      const hasInteger = value.groups.some((group) => group.some((cell) => cell.kind === "integer"));
-      if (hasPhandle && !hasInteger) {
-        return { kind: "phandle-list", cells: cellsPerGroup };
+      if (hasPhandle) {
+        if (!value.groups.every((group) => group[0]?.kind === "phandle")) {
+          return { kind: "unknown" };
+        }
+        return { kind: "phandle-list", bits: value.bits, groups, cellsPerGroup };
       }
       return { kind: "cells", bits: value.bits, groups, cellsPerGroup };
     }

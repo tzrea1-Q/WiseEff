@@ -54,6 +54,61 @@ describe("inferDraftValueShapeFromOccurrence", () => {
     ).toEqual({ kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 });
   });
 
+  it("preserves gpio phandle-array bits, groups, and three cells per group", () => {
+    expect(
+      inferDraftValueShapeFromOccurrence({
+        propertyKey: "gpio_int",
+        astJson: {
+          kind: "cells",
+          bits: 32,
+          groups: [[
+            { kind: "phandle", label: "gpio13" },
+            { kind: "integer", raw: "29", value: "29" },
+            { kind: "integer", raw: "0", value: "0" },
+          ]],
+        },
+        rawText: "<&gpio13 29 0>",
+      }),
+    ).toEqual({ kind: "phandle-list", bits: 32, groups: 1, cellsPerGroup: 3 });
+  });
+
+  it("preserves multi-group cell-array structure", () => {
+    expect(
+      inferDraftValueShapeFromOccurrence({
+        propertyKey: "ranges",
+        astJson: {
+          kind: "cells",
+          bits: 8,
+          groups: [
+            [{ kind: "integer", raw: "1", value: "1" }],
+            [{ kind: "integer", raw: "2", value: "2" }],
+          ],
+        },
+        rawText: "/bits/ 8 <1>, <2>",
+      }),
+    ).toEqual({ kind: "cells", bits: 8, groups: 2, cellsPerGroup: 1 });
+  });
+
+  it("marks unequal cell groups unknown instead of guessing one group width", () => {
+    expect(
+      inferDraftValueShapeFromOccurrence({
+        propertyKey: "broken-groups",
+        astJson: {
+          kind: "cells",
+          bits: 32,
+          groups: [
+            [{ kind: "integer", raw: "1", value: "1" }],
+            [
+              { kind: "integer", raw: "2", value: "2" },
+              { kind: "integer", raw: "3", value: "3" },
+            ],
+          ],
+        },
+        rawText: "<1>, <2 3>",
+      }),
+    ).toEqual({ kind: "unknown" });
+  });
+
   it("infers bytes from bracket literals", () => {
     expect(
       inferDraftValueShapeFromOccurrence({
