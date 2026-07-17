@@ -74,13 +74,16 @@ Plan
 
 Blocking before plan completion: every `Update`/`Review` row updated or explicitly unchanged with evidence; `npm run docs:check` passes; TD-042 not closed.
 
-## Execution checkpoint (2026-07-17)
+## Execution checkpoint (2026-07-18)
 
 - T1/T2 follow-up findings are closed: unproven polluted tasks reopen even without evidence IDs; finalize blocks every open migration-run task; manual entity IDs and persisted `specificationKey` values are lossless and coexist in one organization.
 - T4 follow-up is closed: activation state resets on spec/valueShape changes and frontend/backend reject fractional cell counts.
 - T5 creates and destroys a marker-verified `wiseeff_acceptance_disposable_*` database, applies every migration, runs real identity apply+cutover, and passes the formal Software User → Hardware Committer → Software Committer → Software User submit/review/merge/writeback/reload chain. The candidate binding stores a valid three-cell phandle AST; base config/binding revisions remain unchanged.
 - The previously weakened `PARAM-ASSIGNEE-001/002` and parameter-review operations again use visible UI controls. API mode loads organization+project-scoped eligible assignees, and browser acceptance switches production HMAC identities before each role-specific UI action.
-- Source and focused acceptance work is committed through `6fe14cae`. Full browser/evidence regeneration and the remaining final gate matrix are pending, so the plan remains active. TD-042 remains BLOCKER because no clean non-customer snapshot apply→cutover→whole-DB restore rehearsal has run.
+- Browser-visible behavior was verified with `playwright-cli` at 1440×900, 768×1024, and 390×844 on `/parameters` and `/parameter-admin`. The real API topology exposes the `sc8562@6E` `gpio_int = <&gpio13 29 0>` occurrence; the disposable admin fixture preserved `phandle-list`, `bits=32`, `groups=1`, and `cellsPerGroup=3`, reset stale form state, rejected fractional/incomplete cells, activated the org-owned draft through HTTP 200, hid global-draft activation, and returned HTTP 403 for a forced global activate. Console errors were zero. A 390px topbar overflow found during this pass was fixed in `51bc0608`; both pages then reported document overflow false.
+- Full `acceptance:browser` evidence was regenerated from clean source commit `51bc06085df382754197270611cc25e990e19758` (`Dirty worktree: false`). Playwright completed 85 tests: 81 expected/pass, four hardware-conditional skips, zero failures/errors. Requirement coverage is 59/59; operation evidence is 56/56 with 71 records, zero invalid records, and zero validation errors. `npm run acceptance:evidence` exits zero. The outer runner remains failed only because pilot readiness is externally blocked by `deviceGateway`, `xiaozeLlm`, and `backups`.
+- Three recorded default `npm run test:all` runs (logs 2/3/4) exited zero with identical totals: frontend 314 files, 2178 passed / 5 skipped; server 214 files, 1531 passed / 1 skipped. No ad-hoc worker override was used.
+- Toolchain verification passes with dtc 1.8.1, fdtoverlay 1.8.1, and dtschema 2026.6. Aurora, Nebula, and Atlas all compile with empty diagnostics. Final generated evidence/docs commit and post-commit gates are still pending, so the plan remains active. TD-042 remains BLOCKER because no clean non-customer snapshot apply→cutover→whole-DB restore rehearsal has run.
 
 ## Risks & rollback
 

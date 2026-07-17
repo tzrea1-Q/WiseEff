@@ -74,13 +74,16 @@
 
 计划完成前：每个 Update/Review 行已更新或有证据标明未变；`npm run docs:check` 通过；不得关闭 TD-042。
 
-## 执行检查点（2026-07-17）
+## 执行检查点（2026-07-18）
 
 - T1/T2 复审项已关闭：污染任务即使 evidence 不含 scope ID 也会重新打开；finalize 阻断该迁移运行的全部 open task；手工实体 ID 与持久化 `specificationKey` 均采用无损摘要，同组织可同时保存两个碰撞样例。
 - T4 复审项已关闭：规格或 valueShape 切换时重置激活表单，前后端均拒绝小数 cell 数。
 - T5 自动创建并销毁带 marker 校验的 `wiseeff_acceptance_disposable_*` 数据库，执行全部 migration、真实 identity apply+cutover，并跑通 Software User → Hardware Committer → Software Committer → Software User 的正式 submit/review/merge/writeback/reload 链路。candidate binding 保存合法三单元 phandle AST，base config/binding revision 保持不变。
 - 曾被弱化的 `PARAM-ASSIGNEE-001/002` 与参数审阅 operation 已恢复可见 UI 操作。API 模式从组织+项目作用域接口读取 eligible assignee；浏览器验收在每个角色 UI 操作前切换 production HMAC 身份。
-- 源代码与聚焦验收已提交至 `6fe14cae`。全量 browser/evidence 重新生成及最终门禁仍待执行，因此计划继续 active。TD-042 仍为 BLOCKER：尚未执行干净非客户快照 apply→cutover→整库恢复演练。
+- 已用 `playwright-cli` 在 1440×900、768×1024、390×844 三种视口验收 `/parameters` 与 `/parameter-admin`。真实 API 拓扑显示 `sc8562@6E` 的 `gpio_int = <&gpio13 29 0>`；disposable 管理夹具完整保留 `phandle-list`、`bits=32`、`groups=1`、`cellsPerGroup=3`，验证了切换规格后表单重置、小数/缺失 cell 阻断、本组织草稿经真实 HTTP 200 激活、global draft 无可用激活入口以及强制 global 激活返回 HTTP 403。console error 为 0。验收中发现的 390px topbar 溢出已在 `51bc0608` 修复，两个页面随后均为 document overflow=false。
+- 已从干净 source commit `51bc06085df382754197270611cc25e990e19758` 重新生成完整 `acceptance:browser` 证据（`Dirty worktree: false`）。Playwright 共 85 项：81 expected/pass、4 项硬件条件 skip、0 failure/error。需求覆盖 59/59；operation evidence 覆盖 56/56，共 71 条记录，0 invalid、0 validation error；`npm run acceptance:evidence` exit 0。外层 runner 仅因 pilot readiness 的外部 `deviceGateway`、`xiaozeLlm`、`backups` 阻断而保持 failed。
+- 已记录三次默认 `npm run test:all`（日志 2/3/4）且均 exit 0，结果一致：前端 314 files，2178 passed / 5 skipped；服务端 214 files，1531 passed / 1 skipped。未使用临时 worker 参数。
+- 工具链门禁通过：dtc 1.8.1、fdtoverlay 1.8.1、dtschema 2026.6；Aurora、Nebula、Atlas 均真实编译成功且 diagnostics 为空。最终 generated evidence/docs 提交和提交后门禁仍待执行，因此计划继续 active。TD-042 仍为 BLOCKER：尚未执行干净非客户快照 apply→cutover→整库恢复演练。
 
 ## 风险与回滚
 
