@@ -1,15 +1,18 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import type { ComponentProps } from "react";
+import { StrictMode, type ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ParameterImportWizard } from "./ParameterImportWizard";
 import { fillPasteImportContent } from "./testHelpers";
 import { initialState } from "@/mockData";
 
-function renderWizard(overrides: Partial<ComponentProps<typeof ParameterImportWizard>> = {}) {
+function renderWizard(
+  overrides: Partial<ComponentProps<typeof ParameterImportWizard>> = {},
+  options: { strict?: boolean } = {}
+) {
   const dispatch = vi.fn();
   const onClose = vi.fn();
   const onNavigate = vi.fn();
-  const utils = render(
+  const wizard = (
     <ParameterImportWizard
       open
       onClose={onClose}
@@ -22,6 +25,7 @@ function renderWizard(overrides: Partial<ComponentProps<typeof ParameterImportWi
       {...overrides}
     />
   );
+  const utils = render(options.strict ? <StrictMode>{wizard}</StrictMode> : wizard);
   return { ...utils, dispatch, onClose, onNavigate };
 }
 
@@ -311,5 +315,71 @@ describe("ParameterImportWizard", () => {
         }
       })
     );
+  });
+
+  it("creates one preview when StrictMode replays the Step 4 effect", async () => {
+    const createImportPreview = vi.fn().mockResolvedValue({
+      id: "batch-strict",
+      projectId: initialState.activeProjectId,
+      sourceName: "pasted-import.txt",
+      status: "previewed",
+      createdAt: "2026-07-17T00:00:00.000Z",
+      summary: { added: 0, updated: 1, unchanged: 0, conflict: 0, highRisk: 0 },
+      items: [
+        {
+          id: "fast_charge_current_limit_ma",
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy",
+          risk: "High",
+          unit: "mA",
+          range: "2500 - 4500",
+          currentValue: "3200",
+          recommendedValue: "3400",
+          classification: "updated",
+          riskFlag: false
+        }
+      ]
+    });
+    renderWizard(
+      {
+        parameterActions: {
+          getParameter: vi.fn(),
+          submitChanges: vi.fn(),
+          stashChanges: vi.fn(),
+          discardDrafts: vi.fn(),
+          withdrawSubmissionRound: vi.fn(),
+          reviewChange: vi.fn(),
+          createImportPreview,
+          applyImportBatch: vi.fn(),
+          parseDtsImport: vi.fn().mockResolvedValue({ format: "dts-full", rows: [] }),
+          refresh: vi.fn()
+        }
+      },
+      { strict: true }
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    fillPasteImportContent(
+      dialog,
+      JSON.stringify([
+        {
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy",
+          currentValue: "3200",
+          recommendedValue: "3400",
+          range: "2500 - 4500",
+          unit: "mA",
+          risk: "High"
+        }
+      ])
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    await within(dialog).findByRole("region", { name: "解析与校验" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "通过" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    await within(dialog).findByRole("region", { name: "批次预览" });
+    expect(createImportPreview).toHaveBeenCalledTimes(1);
   });
 });

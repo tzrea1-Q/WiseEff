@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch } from "react";
+import { useEffect, useRef, useState, type Dispatch } from "react";
 import type { AppAction } from "@/App";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterImportBatchDto, ParameterImportBatchItem } from "@/application/ports/ParameterRepository";
@@ -60,6 +60,7 @@ export function StepBatchPreview({
 }: StepBatchPreviewProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const previewRequestRef = useRef<ReturnType<ParameterPageActions["createImportPreview"]> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,12 +79,13 @@ export function StepBatchPreview({
           return;
         }
 
-        const result = await parameterActions.createImportPreview({
+        previewRequestRef.current ??= parameterActions.createImportPreview({
           projectId: targetProjectId,
           sourceName: sourceName || "手动粘贴",
           items,
           reviewMetadata: buildImportReviewMetadata(reviewedRows)
         });
+        const result = await previewRequestRef.current;
         if (cancelled) {
           return;
         }

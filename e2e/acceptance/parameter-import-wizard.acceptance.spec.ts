@@ -214,43 +214,51 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
         id: string;
         status: string;
         summary: Record<string, number>;
+        audit_id: string;
+        audit_kind: string;
+        audit_action: string;
+        audit_target_id: string | null;
+        audit_trace_id: string | null;
+        audit_metadata: Record<string, unknown>;
       }>(
         `
-        select id, status, summary
-        from parameter_import_batches
-        where organization_id = $1
-          and project_id = $2
-          and source_name = 'pasted-import.txt'
-          and created_at >= $3
-        order by created_at desc
+        select
+          b.id,
+          b.status,
+          b.summary,
+          a.id as audit_id,
+          a.kind as audit_kind,
+          a.action as audit_action,
+          a.target_id as audit_target_id,
+          a.trace_id as audit_trace_id,
+          a.metadata as audit_metadata
+        from parameter_import_batches b
+        inner join audit_events a
+          on a.organization_id = b.organization_id
+         and a.kind = 'batch-import'
+         and a.action = 'apply'
+         and a.target_id = b.id
+        where b.organization_id = $1
+          and b.project_id = $2
+          and b.source_name = 'pasted-import.txt'
+          and b.created_at >= $3
+        order by a.created_at desc
         limit 1
         `,
         [organizationId, projectId, workflowStartedAt]
       );
       const batch = batchResult.rows[0] ?? null;
-      const auditResult = batch
-        ? await client.query<{
-            id: string;
-            kind: string;
-            action: string;
-            target_id: string | null;
-            trace_id: string | null;
-            metadata: Record<string, unknown>;
-          }>(
-            `
-            select id, kind, action, target_id, trace_id, metadata
-            from audit_events
-            where organization_id = $1
-              and kind = 'batch-import'
-              and action = 'apply'
-              and target_id = $2
-            order by created_at desc
-            limit 1
-            `,
-            [organizationId, batch.id]
-          )
-        : { rows: [] };
-      return { batch, audit: auditResult.rows[0] ?? null };
+      const audit = batch
+        ? {
+            id: batch.audit_id,
+            kind: batch.audit_kind,
+            action: batch.audit_action,
+            target_id: batch.audit_target_id,
+            trace_id: batch.audit_trace_id,
+            metadata: batch.audit_metadata
+          }
+        : null;
+      return { batch, audit };
     });
     expect(applied.batch).toMatchObject({ status: "applied" });
     expect(applied.audit).toBeTruthy();
