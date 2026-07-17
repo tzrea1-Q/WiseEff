@@ -5,6 +5,7 @@ import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
+import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 
 useBrowserDiagnostics(test);
 
@@ -68,6 +69,16 @@ async function seedWorkflowUsers() {
           is_active = excluded.is_active
         `,
         [userId, name, email, title]
+      );
+      await client.query(
+        `
+        delete from user_role_bindings
+        where user_id = $1
+          and organization_id = 'org-chargelab'
+          and (project_id = $2 or project_id is null)
+          and role_id <> $3
+        `,
+        [userId, projectId, roleId]
       );
       await client.query(
         `
@@ -283,7 +294,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     }
 
     const submitResponse = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-      headers: smokeHeaders(),
+      headers: authHeadersForRole("software-user"),
       data: {
         projectId,
         items: [
@@ -311,22 +322,36 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
       submitBody.item.items.find((item) => item.targetValue === targetValue)?.requestId ?? "";
     expect(requestId).not.toEqual("");
 
-    let crStatus = "";
-    for (let step = 0; step < 8 && crStatus !== "merged"; step += 1) {
-      const advance = await page.request.post(
-        apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(requestId)}/review`),
-        {
-          headers: smokeHeaders(),
-          data: { decision: "advance", note: `${changeReason} advance ${step}` }
-        }
+    const advanceInUi = async (
+      role: "hardware-committer" | "software-committer" | "software-user",
+      expectedStage: RegExp,
+    ) => {
+      await signInBrowserAsRole(page, role, "/parameter-review");
+      const expectedActor = role === "hardware-committer" ? "Wang Jie" : role === "software-committer" ? "Sun Mei" : "Liu Min";
+      await expect(page.getByRole("button", { name: "打开用户菜单" })).toContainText(expectedActor);
+      const requestRow = page.getByRole("row").filter({ hasText: targetValue }).first();
+      await expect(requestRow).toBeVisible({ timeout: 30_000 });
+      await requestRow.click();
+      const submissionDetail = page.getByRole("dialog", { name: "提交详情" });
+      await expect(submissionDetail).toBeVisible();
+      await submissionDetail.getByRole("button", { name: "关闭" }).click();
+      const reviewDetail = page.getByRole("complementary", { name: "审阅详情" });
+      await expect(reviewDetail.locator(".vertical-timeline-item--current")).toContainText(expectedStage);
+      const responsePromise = page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        response.url().includes(`/api/v1/parameter-change-requests/${encodeURIComponent(requestId)}/review`),
       );
-      expect(advance.ok(), await advance.text()).toBe(true);
-      const advanceBody = (await advance.json()) as { item: { status: string } };
-      crStatus = advanceBody.item.status;
-    }
-    expect(crStatus).toBe("merged");
+      await reviewDetail.getByRole("button", {
+        name: role === "software-user" ? "确认合入" : "推进流程",
+      }).click();
+      const response = await responsePromise;
+      expect(response.ok(), await response.text()).toBe(true);
+    };
 
-    await page.goto("/parameter-review");
+    await advanceInUi("hardware-committer", /硬件(?:Committer|MDE)检视/);
+    await advanceInUi("software-committer", /软件(?:Committer|MDE)检视/);
+    await advanceInUi("software-user", /软件(?:User|开发人员?)合入/);
+
     await page.getByRole("tab", { name: "历史审阅" }).click();
     await expect(page.getByRole("row").filter({ hasText: targetValue }).first()).toContainText("已合入");
 
@@ -344,7 +369,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     const workspaceAfter = page.getByRole("region", { name: "项目拓扑工作区" });
     await expect(workspaceAfter).toBeVisible({ timeout: 30_000 });
 
-    await page.goto("/parameter-admin?audit=open");
+    await signInBrowserAsRole(page, "admin", "/parameter-admin?audit=open");
     await expect(page).toHaveURL(/\/audit/);
     await expect(page.getByLabel("搜索审计记录")).toBeVisible();
     await page.goto("/parameter-admin");

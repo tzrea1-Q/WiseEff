@@ -6,6 +6,7 @@ export type PlaywrightWebServerOptions = {
   reuseExistingServer: boolean;
   frontendCommand?: string;
   includeXiaozeProactive?: boolean;
+  authMode?: "development" | "production";
 };
 
 export function portFromUrl(value: string, fallback: string) {
@@ -33,7 +34,8 @@ export function buildPlaywrightWebServers({
   apiURL,
   reuseExistingServer,
   frontendCommand = `npx vite --host 127.0.0.1 --port ${portFromUrl(baseURL, "5173")} --strictPort`,
-  includeXiaozeProactive = false
+  includeXiaozeProactive = false,
+  authMode,
 }: PlaywrightWebServerOptions): NonNullable<PlaywrightTestConfig["webServer"]> {
   const apiAuthorization = resolveApiAuthorization();
   const apiAuthProvider = resolveApiAuthProvider(apiAuthorization);
@@ -45,7 +47,7 @@ export function buildPlaywrightWebServers({
       env: {
         PORT: apiPort,
         XIAOZE_DETERMINISTIC: "true",
-        AUTH_MODE: process.env.AUTH_MODE ?? "production",
+        AUTH_MODE: authMode ?? process.env.AUTH_MODE ?? "production",
         AUTH_PROVIDER: apiAuthProvider,
         ...(process.env.AUTH_TOKEN_ISSUER ? { AUTH_TOKEN_ISSUER: process.env.AUTH_TOKEN_ISSUER } : {}),
         ...(process.env.AUTH_TOKEN_HMAC_SECRET ? { AUTH_TOKEN_HMAC_SECRET: process.env.AUTH_TOKEN_HMAC_SECRET } : {}),

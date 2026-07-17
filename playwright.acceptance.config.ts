@@ -43,6 +43,7 @@ export default defineConfig({
         baseURL,
         apiURL,
         reuseExistingServer,
+        authMode: "production",
         includeXiaozeProactive: true
       })
 });

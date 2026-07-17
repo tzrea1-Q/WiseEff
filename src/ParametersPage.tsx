@@ -16,6 +16,7 @@ import { ParameterDraftDialog } from "./components/ParameterDraftDialog";
 import { shouldSummarizeComplexParameter } from "./parameterValueKind";
 import { useTopBarActions } from "./components/layout";
 import type { ParameterPageActions } from "./app/routes";
+import type { WorkflowAssigneeCandidates } from "@/application/ports/ParameterRepository";
 import type { ProjectInitializationStatus } from "./domain/parameters/types";
 import {
   findOpenChangeRequestForParameter,
@@ -104,6 +105,11 @@ export function ParametersPage({
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
   const [submittingRound, setSubmittingRound] = useState(false);
   const [stashingRound, setStashingRound] = useState(false);
+  const [apiWorkflowCandidates, setApiWorkflowCandidates] = useState<WorkflowAssigneeCandidates>({
+    hardwareCommitters: [],
+    softwareCommitters: [],
+    softwareUsers: [],
+  });
   const previousUserIdRef = useRef(state.currentUserId);
   const resolvedProjectId = effectiveProjectId || state.activeProjectId;
   const selectedProjectParameters = useMemo(
@@ -178,7 +184,7 @@ export function ParametersPage({
     projectParameters.find((parameter) => parameter.id === selectedId) ??
     projectParameters[0];
   const activeUsers = useMemo(() => state.users.filter((user) => user.isActive), [state.users]);
-  const workflowCandidates = useMemo(
+  const mockWorkflowCandidates = useMemo(
     () => ({
       hardwareCommitters: activeUsers.filter((user) => roleCanBeAssignedToWorkflowSlot(user.roleId, "hardwareCommitter")),
       softwareCommitters: activeUsers.filter((user) => roleCanBeAssignedToWorkflowSlot(user.roleId, "softwareCommitter")),
@@ -186,6 +192,25 @@ export function ParametersPage({
     }),
     [activeUsers]
   );
+  const workflowCandidates = isApiMode ? apiWorkflowCandidates : mockWorkflowCandidates;
+
+  useEffect(() => {
+    if (!isApiMode || !parameterActions?.listWorkflowAssignees) return undefined;
+    let cancelled = false;
+    setApiWorkflowCandidates({ hardwareCommitters: [], softwareCommitters: [], softwareUsers: [] });
+    parameterActions.listWorkflowAssignees(resolvedProjectId)
+      .then((candidates) => {
+        if (!cancelled) setApiWorkflowCandidates(candidates);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setApiWorkflowCandidates({ hardwareCommitters: [], softwareCommitters: [], softwareUsers: [] });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isApiMode, parameterActions, resolvedProjectId]);
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
   const activeInitializationDraft = state.parameterInitializationDrafts.find(
     (draft) => draft.projectId === resolvedProjectId
@@ -790,30 +815,6 @@ export function ParametersPage({
     [activeProject.code, filteredParameters]
   );
 
-  if (isApiMode) {
-    return (
-      <WorkbenchLayout title="项目参数用户工作台">
-        <div className="parameters-page-layout">
-          {initializationLocked ? (
-            <div className="permission-inline-note" role="status">
-              <strong>初始化待审阅</strong>
-              <span>该项目可查看，初始化通过前暂不可提交普通参数变更。</span>
-            </div>
-          ) : null}
-          <ApiProjectTopologyWorkspace
-            projectId={resolvedProjectId}
-            canEdit={effectiveCanEdit}
-            canPublish={effectiveCanEdit}
-            layoutMode={topologyLayoutMode}
-            runtimeMode="api"
-            topologyRepository={topologyRepository}
-            listConfigSets={listConfigSets}
-          />
-        </div>
-      </WorkbenchLayout>
-    );
-  }
-
   return (
     <WorkbenchLayout
       title="项目参数用户工作台"
@@ -824,6 +825,17 @@ export function ParametersPage({
             <strong>初始化待审阅</strong>
             <span>该项目可查看，初始化通过前暂不可提交普通参数变更。</span>
           </div>
+        ) : null}
+        {isApiMode ? (
+          <ApiProjectTopologyWorkspace
+            projectId={resolvedProjectId}
+            canEdit={effectiveCanEdit}
+            canPublish={effectiveCanEdit}
+            layoutMode={topologyLayoutMode}
+            runtimeMode="api"
+            topologyRepository={topologyRepository}
+            listConfigSets={listConfigSets}
+          />
         ) : null}
         <div className="workbench-one-col parameters-workbench-main">
           <section className="workbench-main">
@@ -974,9 +986,9 @@ function ParameterSubmissionDialog({
 }: {
   items: Array<ParameterDraftItem & { parameter: ParameterRecord }>;
   candidates: {
-    hardwareCommitters: PrototypeState["users"];
-    softwareCommitters: PrototypeState["users"];
-    softwareUsers: PrototypeState["users"];
+    hardwareCommitters: Array<{ id: string; name: string }>;
+    softwareCommitters: Array<{ id: string; name: string }>;
+    softwareUsers: Array<{ id: string; name: string }>;
   };
   onCancel: () => void;
   onConfirm: (assignees: { hardwareCommitterId: string; softwareCommitterId: string; softwareUserId: string }) => void;

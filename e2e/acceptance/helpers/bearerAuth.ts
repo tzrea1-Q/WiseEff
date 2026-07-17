@@ -28,6 +28,20 @@ const roleLabels: Record<AcceptanceRoleId, string> = {
   admin: "Admin"
 };
 
+async function writeBrowserTokenBeforeRoute(page: Page, token: string, route: string) {
+  const storageRoute = /^https?:\/\//u.test(route)
+    ? new URL("/favicon.svg", route).toString()
+    : "/favicon.svg";
+  await page.goto(storageRoute, { waitUntil: "domcontentloaded" });
+  await page.evaluate(
+    ([storageKey, authToken]) => {
+      window.localStorage.setItem(storageKey, authToken);
+    },
+    [LOCAL_AUTH_TOKEN_STORAGE_KEY, token] as const,
+  );
+  await page.goto(route, { waitUntil: "domcontentloaded" });
+}
+
 export function acceptanceRoleLabel(roleId: AcceptanceRoleId) {
   return roleLabels[roleId];
 }
@@ -108,13 +122,7 @@ export async function signInBrowserAsRole(page: Page, roleId: AcceptanceRoleId, 
   }
 
   const token = authorization.replace(/^Bearer\s+/u, "");
-  await page.addInitScript(
-    ([storageKey, authToken]) => {
-      window.localStorage.setItem(storageKey, authToken);
-    },
-    [LOCAL_AUTH_TOKEN_STORAGE_KEY, token] as const
-  );
-  await page.goto(route, { waitUntil: "domcontentloaded" });
+  await writeBrowserTokenBeforeRoute(page, token, route);
 }
 
 export async function signInBrowserAsRoleLabel(page: Page, roleLabel: string, route = "/parameter-home") {
@@ -139,11 +147,5 @@ export async function signInBrowserAsUser(
   }
 
   const token = authorization.replace(/^Bearer\s+/u, "");
-  await page.addInitScript(
-    ([storageKey, authToken]) => {
-      window.localStorage.setItem(storageKey, authToken);
-    },
-    [LOCAL_AUTH_TOKEN_STORAGE_KEY, token] as const
-  );
-  await page.goto(route, { waitUntil: "domcontentloaded" });
+  await writeBrowserTokenBeforeRoute(page, token, route);
 }

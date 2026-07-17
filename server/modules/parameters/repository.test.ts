@@ -24,6 +24,7 @@ import {
   listParameterHistory,
   listParameters,
   listParameterDefinitionsForImport,
+  listEligibleWorkflowAssignees,
   listReviewDecisions,
   listProjects,
   listSubmissionRounds,
@@ -73,6 +74,31 @@ function createFakeDb(rowsOrQueue: QueuedResult[] = []) {
 }
 
 describe("parameter repository", () => {
+  it("lists active workflow assignees only from the requested organization and project", async () => {
+    const { db, calls } = createFakeDb([[
+      { id: "u-hw", name: "Hardware", role_id: "hardware-committer" },
+      { id: "u-sw", name: "Software", role_id: "software-committer" },
+      { id: "u-user", name: "Developer", role_id: "software-user" },
+    ]]);
+
+    await expect(listEligibleWorkflowAssignees(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+    })).resolves.toEqual({
+      hardwareCommitters: [{ id: "u-hw", name: "Hardware" }],
+      softwareCommitters: [{ id: "u-sw", name: "Software" }],
+      softwareUsers: [
+        { id: "u-sw", name: "Software" },
+        { id: "u-user", name: "Developer" },
+      ],
+    });
+    expect(calls[0]?.values).toEqual(["org-1", "project-1"]);
+    expect(calls[0]?.text).toContain("users.organization_id = $1");
+    expect(calls[0]?.text).toContain("urb.organization_id = $1");
+    expect(calls[0]?.text).toContain("urb.project_id = $2");
+    expect(calls[0]?.text).toContain("users.is_active = true");
+  });
+
   it("listProjects filters by organization", async () => {
     const { db, calls } = createFakeDb([
       { id: "aurora", name: "Aurora", code: "AUR" },

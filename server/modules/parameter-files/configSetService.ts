@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createAuditEvent } from "../audit/repository";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
-import { canAdminParameters } from "../parameters/policy";
+import { canAdminParameters, canViewParameters } from "../parameters/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
@@ -25,6 +25,12 @@ export type ConfigSetServiceContext = AuditCorrelationContext;
 function requireParameterFileAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "admin:access" });
+  }
+}
+
+function requireParameterFileView(auth: AuthContext) {
+  if (!canViewParameters(auth) && !canAdminParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "parameter:view" });
   }
 }
 
@@ -107,7 +113,7 @@ export async function createConfigSet(
 }
 
 export async function listConfigSets(db: Queryable, auth: AuthContext, projectId: string): Promise<ConfigSetDto[]> {
-  requireParameterFileAdmin(auth);
+  requireParameterFileView(auth);
   return listConfigSetsByProject(db, { organizationId: auth.organization.id, projectId });
 }
 

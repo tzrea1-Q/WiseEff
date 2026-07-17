@@ -56,6 +56,14 @@ export type SubmitParameterChangesInput = {
   };
 };
 
+export type WorkflowAssigneeCandidate = { id: string; name: string };
+
+export type WorkflowAssigneeCandidates = {
+  hardwareCommitters: WorkflowAssigneeCandidate[];
+  softwareCommitters: WorkflowAssigneeCandidate[];
+  softwareUsers: WorkflowAssigneeCandidate[];
+};
+
 export type ReviewParameterChangeInput = {
   requestId: string;
   decision: "advance" | "reject";
@@ -174,6 +182,7 @@ export interface ParameterRepository {
   deleteDraft(draftId: string): Promise<void>;
   listChangeRequests(query?: ChangeRequestListQuery): Promise<ChangeRequest[]>;
   listSubmissionRounds(query?: SubmissionRoundListQuery): Promise<ParameterSubmissionRound[]>;
+  listWorkflowAssignees(projectId: string): Promise<WorkflowAssigneeCandidates>;
   submitParameterChanges(input: SubmitParameterChangesInput): Promise<ParameterSubmissionRound>;
   withdrawSubmissionRound(roundId: string): Promise<ParameterSubmissionRound>;
   reviewChange(input: ReviewParameterChangeInput): Promise<ChangeRequest>;

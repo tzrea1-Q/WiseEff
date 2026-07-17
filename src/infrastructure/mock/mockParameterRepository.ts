@@ -421,6 +421,21 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       );
       return state.parameters.filter((parameter) => matchesQuery(parameter, query, moduleNodes)).map(cloneParameterRecord);
     },
+    async listWorkflowAssignees() {
+      const users = readMockState(runtime).users.filter((user) => user.isActive);
+      const candidate = (user: (typeof users)[number]) => ({ id: user.id, name: user.name });
+      return {
+        hardwareCommitters: users
+          .filter((user) => roleSupportsWorkflowSlot(user.roleId, "hardwareCommitter"))
+          .map(candidate),
+        softwareCommitters: users
+          .filter((user) => roleSupportsWorkflowSlot(user.roleId, "softwareCommitter"))
+          .map(candidate),
+        softwareUsers: users
+          .filter((user) => roleSupportsWorkflowSlot(user.roleId, "softwareUser"))
+          .map(candidate),
+      };
+    },
     async getParameter(parameterId: string): Promise<ParameterRecord> {
       const parameter = readMockState(runtime).parameters.find((row) => row.id === parameterId);
       if (!parameter) throw new Error(`Parameter not found: ${parameterId}`);

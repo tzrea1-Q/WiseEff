@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { applyImportBatch, createImportPreview, listDrafts, parseDtsImportForAuth, reviewChange, saveDraft, submitParameterChanges } from "./service";
+import { applyImportBatch, createImportPreview, listDrafts, listWorkflowAssignees, parseDtsImportForAuth, reviewChange, saveDraft, submitParameterChanges } from "./service";
 import { createImportBatchBodySchema } from "./schemas";
 
 type QueryCall = {
@@ -134,6 +134,30 @@ function definitionRow(overrides: Record<string, unknown> = {}) {
     ...overrides
   };
 }
+
+describe("workflow assignee discovery", () => {
+  it("returns only project-scoped candidates for parameter editors", async () => {
+    const { db, calls } = createFakeDb([[
+      { id: "u-hw", name: "Hardware", role_id: "hardware-committer" },
+      { id: "u-sw", name: "Software", role_id: "software-committer" },
+    ]]);
+
+    await expect(listWorkflowAssignees(db, makeAuth(), "project-1")).resolves.toEqual({
+      hardwareCommitters: [{ id: "u-hw", name: "Hardware" }],
+      softwareCommitters: [{ id: "u-sw", name: "Software" }],
+      softwareUsers: [{ id: "u-sw", name: "Software" }],
+    });
+    expect(calls[0]?.values).toEqual(["org-1", "project-1"]);
+  });
+
+  it("rejects callers without parameter edit permission before querying candidates", async () => {
+    const { db, calls } = createFakeDb();
+    await expect(
+      listWorkflowAssignees(db, makeAuth({ permissions: ["parameter:view"] }), "project-1"),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    expect(calls).toHaveLength(0);
+  });
+});
 
 function importBatchRow(overrides: Record<string, unknown> = {}) {
   return {

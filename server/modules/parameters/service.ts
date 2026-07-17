@@ -45,6 +45,7 @@ import {
   insertProjectParameterValueWithSource,
   insertReviewDecision,
   listParameterDefinitionsForImport,
+  listEligibleWorkflowAssignees,
   listChangeRequests as listChangeRequestRows,
   listDraftsForUser,
   listReviewDecisions,
@@ -1059,6 +1060,14 @@ export async function deleteDraft(db: Queryable, auth: AuthContext, draftId: str
     organizationId: auth.organization.id,
     userId: auth.user.id,
     draftId
+  });
+}
+
+export async function listWorkflowAssignees(db: Queryable, auth: AuthContext, projectId: string) {
+  requireCanEdit(auth);
+  return listEligibleWorkflowAssignees(db, {
+    organizationId: auth.organization.id,
+    projectId,
   });
 }
 

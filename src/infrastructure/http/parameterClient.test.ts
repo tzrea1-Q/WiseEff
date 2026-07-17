@@ -133,6 +133,22 @@ const importBatchDto: ParameterImportBatchDto = {
 };
 
 describe("createHttpParameterRepository", () => {
+  it("loads project-scoped workflow assignee candidates", async () => {
+    const candidates = {
+      hardwareCommitters: [{ id: "u-hw", name: "Hardware" }],
+      softwareCommitters: [{ id: "u-sw", name: "Software" }],
+      softwareUsers: [{ id: "u-user", name: "Developer" }],
+    };
+    const fetchMock = fetchQueue({ item: candidates });
+    const repository = createHttpParameterRepository(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(repository.listWorkflowAssignees("aurora/one")).resolves.toEqual(candidates);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/projects/aurora%2Fone/parameter-workflow-assignees",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("lists parameters with encoded filters", async () => {
     const fetchMock = fetchQueue({ items: [parameterDto] });
     const repository = createHttpParameterRepository(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));

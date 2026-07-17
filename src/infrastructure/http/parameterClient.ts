@@ -6,7 +6,8 @@ import type {
   ParameterListQuery,
   ParameterRepository,
   ReviewParameterChangeInput,
-  SubmissionRoundListQuery
+  SubmissionRoundListQuery,
+  WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
 import { createApiClient, WiseEffApiError } from "./apiClient";
 import {
@@ -166,6 +167,12 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
     async listSubmissionRounds(query?: SubmissionRoundListQuery) {
       const response = await apiClient.get<ItemsEnvelope<ParameterSubmissionRoundDto>>(buildSubmissionRoundsPath(query));
       return response.items.map(submissionRoundFromDto);
+    },
+    async listWorkflowAssignees(projectId: string) {
+      const response = await apiClient.get<ItemEnvelope<WorkflowAssigneeCandidates>>(
+        `/api/v1/projects/${encodeURIComponent(projectId)}/parameter-workflow-assignees`,
+      );
+      return response.item;
     },
     async submitParameterChanges(input) {
       const response = await apiClient.post<ItemEnvelope<ParameterSubmissionRoundDto>>("/api/v1/parameter-submission-rounds", input);

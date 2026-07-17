@@ -26,6 +26,7 @@ import {
   listDrafts,
   listParameterModulesForAuth,
   listSubmissionRounds,
+  listWorkflowAssignees,
   moveParameterModuleForAuth,
   parseDtsImportForAuth,
   resolveParameterListQuery,
@@ -416,6 +417,15 @@ export function registerParameterRoutes(
     const item = await submitParameterChanges(db, auth, body, { requestId: request.requestId });
 
     return { status: 201, body: { item } };
+  });
+
+  router.get("/api/v1/projects/:projectId/parameter-workflow-assignees", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const item = await listWorkflowAssignees(db, auth, params.projectId);
+
+    return { status: 200, body: { item } };
   });
 
   router.get("/api/v1/parameter-submission-rounds", async (request) => {

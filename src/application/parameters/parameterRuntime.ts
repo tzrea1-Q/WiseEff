@@ -135,6 +135,7 @@ export type ParameterRuntimeActions = {
   discardDrafts(input: DiscardParameterDraftsInput): Promise<ParameterRuntimeVoidResult>;
   withdrawSubmissionRound(roundId: string): Promise<ParameterRuntimeVoidResult>;
   reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
+  listWorkflowAssignees(projectId: string): ReturnType<ParameterRepository["listWorkflowAssignees"]>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
@@ -213,6 +214,12 @@ export function createParameterRuntimeActions({
   };
 
   return {
+    async listWorkflowAssignees(projectId) {
+      if (runtimeMode !== "api") {
+        return { hardwareCommitters: [], softwareCommitters: [], softwareUsers: [] };
+      }
+      return requireRepository(repository).listWorkflowAssignees(projectId);
+    },
     async getParameter(parameterId) {
       if (runtimeMode !== "api") {
         throw new Error("Parameter detail loading is only available in api runtime mode.");

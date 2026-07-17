@@ -2050,6 +2050,39 @@ export async function hasEligibleWorkflowAssignee(
   return result.rows.length > 0;
 }
 
+export async function listEligibleWorkflowAssignees(
+  db: Queryable,
+  input: { organizationId: string; projectId: string },
+) {
+  const result = await db.query<{ id: string; name: string; role_id: string }>(
+    `
+    select distinct users.id, users.name, urb.role_id
+    from users
+    inner join user_role_bindings urb on urb.user_id = users.id
+    where users.organization_id = $1
+      and users.is_active = true
+      and urb.organization_id = $1
+      and urb.project_id = $2
+      and urb.role_id in ('hardware-committer', 'software-committer', 'software-user')
+    order by users.name asc, users.id asc, urb.role_id asc
+    `,
+    [input.organizationId, input.projectId],
+  );
+  const candidate = (row: { id: string; name: string }) => ({ id: row.id, name: row.name });
+
+  return {
+    hardwareCommitters: result.rows
+      .filter((row) => row.role_id === "hardware-committer")
+      .map(candidate),
+    softwareCommitters: result.rows
+      .filter((row) => row.role_id === "software-committer")
+      .map(candidate),
+    softwareUsers: result.rows
+      .filter((row) => row.role_id === "software-user" || row.role_id === "software-committer")
+      .map(candidate),
+  };
+}
+
 export async function createSubmissionItem(
   db: Queryable,
   input: {

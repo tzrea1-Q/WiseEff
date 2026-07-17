@@ -9,6 +9,7 @@ import { apiRoute, smokeHeaders } from "./helpers/runtime";
 useBrowserDiagnostics(test);
 
 const projectId = "aurora";
+const parameterName = "fast_charge_current_limit_ma";
 const parameterValueId = `${projectId}-fast-charge-current`;
 const removableParameterValueId = `${projectId}-charge-voltage-limit`;
 const actorUserId = "u-xu-yun";
@@ -133,6 +134,46 @@ async function createDraftViaApi(
   expect(response.ok()).toBe(true);
   const body = (await response.json()) as { item: { id: string; targetValue: string; reason: string } };
   return body.item;
+}
+
+function searchTable(page: Page) {
+  return page.locator(".parameters-table").filter({ hasText: parameterName }).first();
+}
+
+async function openParameterDraftDialog(page: Page, targetValue: string) {
+  await page.goto(`/parameters?project=${projectId}`);
+  await expect(searchTable(page)).toContainText(parameterName);
+  const row = searchTable(page).getByRole("row").filter({ hasText: parameterName }).first();
+  await expect(row).toBeVisible();
+  await row.locator(".view-row-button").click();
+  await page.locator(".parameter-detail-dialog__actions .button.primary").click();
+  const draftDialog = page.locator(".parameter-draft-dialog");
+  await expect(draftDialog).toBeVisible();
+  const targetCard = draftDialog.locator(".parameter-draft-card").filter({ hasText: parameterName }).first();
+  await expect(targetCard).toBeVisible();
+  await targetCard.locator(".parameter-target-editor").fill(targetValue);
+  return draftDialog;
+}
+
+async function createOneValidDraft(page: Page, targetValue: string, reason: string) {
+  const draftDialog = await openParameterDraftDialog(page, targetValue);
+  const targetCard = draftDialog.locator(".parameter-draft-card").filter({ hasText: parameterName }).first();
+  await targetCard.getByLabel(/修改原因/).fill(reason);
+  await draftDialog.locator(".parameter-detail-dialog__actions .button.primary").click();
+  await expect(draftDialog).not.toBeVisible();
+}
+
+async function openSubmitDialog(page: Page) {
+  await page.locator(".modified-parameters-section .button.primary").click();
+  const submitDialog = page.locator(".submission-dialog");
+  await expect(submitDialog).toBeVisible();
+  return submitDialog;
+}
+
+function optionTexts(select: ReturnType<Page["locator"]>) {
+  return select.locator("option").evaluateAll((options) =>
+    options.map((option) => option.textContent?.trim() ?? "").sort(),
+  );
 }
 
 async function submittedDraftEditDbSummary(requestId: string, excludedTargetValue: string) {
@@ -331,29 +372,23 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     // @acceptance PARAM-ASSIGNEE-002
     // @operation PARAM-ASSIGNEE-001
     // @operation PARAM-ASSIGNEE-002
-    // Legacy submission dialog is mock-only; API mode validates assignee eligibility at the service boundary.
-    await withPgClient(async (client) => {
-      const eligible = await client.query<{ id: string; name: string; role_id: string }>(
-        `
-        select u.id, u.name, urb.role_id
-        from users u
-        join user_role_bindings urb on urb.user_id = u.id
-        where urb.organization_id = 'org-chargelab'
-          and urb.project_id = $1
-          and u.is_active = true
-          and urb.role_id in ('hardware-committer', 'software-committer', 'software-user')
-        order by urb.role_id, u.name
-        `,
-        [projectId]
-      );
-      expect(eligible.rows.some((row) => row.role_id === "hardware-committer")).toBe(true);
-      expect(eligible.rows.some((row) => row.role_id === "software-committer")).toBe(true);
-      expect(eligible.rows.some((row) => row.role_id === "software-user")).toBe(true);
-      expect(eligible.rows.every((row) => row.id !== "u-xu-yun")).toBe(true);
-    });
+    await createOneValidDraft(page, "3101", `${reasonPrefix} valid assignee coverage`);
+    const submitDialog = await openSubmitDialog(page);
+    const hardwareSelect = submitDialog.getByLabel("硬件 MDE");
+    const softwareCommitterSelect = submitDialog.getByLabel("软件 MDE");
+    const softwareUserSelect = submitDialog.getByLabel("软件开发");
 
-    await page.goto(`/parameters?project=${projectId}`);
-    await expect(page.getByRole("region", { name: "项目拓扑工作区" })).toBeVisible({ timeout: 30_000 });
+    await expect(hardwareSelect).not.toHaveValue("");
+    await expect(softwareCommitterSelect).not.toHaveValue("");
+    await expect(softwareUserSelect).not.toHaveValue("");
+    await expect.poll(() => optionTexts(hardwareSelect)).toEqual(["Li Peng", "Wang Jie"]);
+    await expect.poll(() => optionTexts(softwareCommitterSelect)).toEqual(["Sun Mei"]);
+    await expect.poll(() => optionTexts(softwareUserSelect)).toEqual(["Chen Na", "Liu Min", "Sun Mei"]);
+
+    for (const select of [hardwareSelect, softwareCommitterSelect, softwareUserSelect]) {
+      await expect(select).not.toContainText("Xu Yun");
+      await expect(select).not.toContainText("Tao Lin");
+    }
 
     await recordOperationEvidence({
       operationId: "PARAM-ASSIGNEE-001",
@@ -361,7 +396,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
       status: "passed",
       page,
       testInfo,
-      notes: "API mode: eligible non-admin workflow role bindings exist for hardware/software committer and software user."
+      notes: "All three visible workflow selectors defaulted to non-empty project-scoped eligible active users."
     });
     await recordOperationEvidence({
       operationId: "PARAM-ASSIGNEE-002",
@@ -369,7 +404,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
       status: "passed",
       page,
       testInfo,
-      notes: "Admin-only actor u-xu-yun is absent from eligible workflow assignee role bindings for the project."
+      notes: "Visible dropdown options exactly excluded inactive, guest, admin-only, and role-ineligible users."
     });
   });
 

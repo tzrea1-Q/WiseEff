@@ -98,13 +98,13 @@ describe("configSet service authorization", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
   });
 
-  it("listConfigSets rejects non-admin auth with 403", async () => {
-    const { db } = createFakeDb();
+  it("listConfigSets allows parameter viewers and keeps organization/project scope", async () => {
+    const { db, txCalls } = createFakeDb([[configSetRow()]]);
 
-    await expect(listConfigSets(db, viewerAuth(), "project-1")).rejects.toMatchObject({
-      code: "FORBIDDEN",
-      status: 403
-    });
+    await expect(listConfigSets(db, viewerAuth(), "project-1")).resolves.toMatchObject([
+      { id: "dcs-1", projectId: "project-1" }
+    ]);
+    expect(txCalls[0]?.values).toEqual(["org-1", "project-1"]);
   });
 });
 

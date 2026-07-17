@@ -413,7 +413,7 @@ export function registerParameterFileRoutes(
   router.get("/api/v1/projects/:projectId/config-sets", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    requireCanAdmin(auth);
+    requireCanView(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const items = await listConfigSets(db, auth, params.projectId);
 

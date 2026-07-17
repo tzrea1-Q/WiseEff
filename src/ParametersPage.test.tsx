@@ -1370,16 +1370,26 @@ describe("ParametersPage · 布局与 Sheet", () => {
 });
 
 describe("ParametersPage API topology workspace", () => {
-  it("mounts API topology workspace instead of flat sourceNodePath tables", async () => {
+  it("keeps the real topology and loads server-filtered assignees for API submission", async () => {
+    const listWorkflowAssignees = vi.fn().mockResolvedValue({
+      hardwareCommitters: [{ id: "u-hw", name: "Hardware API" }],
+      softwareCommitters: [{ id: "u-sw", name: "Software API" }],
+      softwareUsers: [{ id: "u-user", name: "Developer API" }],
+    });
     render(
       <TopBarActionsHarness>
         <ParametersPage
-          state={initialState}
+          state={createParametersPageState()}
           dispatch={vi.fn()}
           onNavigate={vi.fn()}
           search=""
           runtimeMode="api"
           canEdit
+          parameterActions={{
+            ...createParameterActions(),
+            listWorkflowAssignees,
+          }}
+          listConfigSets={async () => []}
         />
       </TopBarActionsHarness>
     );
@@ -1388,7 +1398,16 @@ describe("ParametersPage API topology workspace", () => {
     // Loading / empty / error are all valid — never teaching fallback with fabricated ids.
     expect(workspace.getAttribute("data-config-set-id") ?? "").not.toMatch(/-default-config$/);
     expect(workspace.getAttribute("data-revision-id") ?? "").not.toMatch(/-head$/);
-    expect(screen.queryByRole("table", { name: "检索参数表" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "检索参数表" })).toBeInTheDocument();
+    await waitFor(() => expect(listWorkflowAssignees).toHaveBeenCalledWith(initialState.activeProjectId));
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("修改原因"), { target: { value: "API assignee proof" } });
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
+    const dialog = await screen.findByRole("dialog", { name: /提交本轮参数/ });
+    expect(within(within(dialog).getByLabelText("硬件 MDE")).getAllByRole("option").map((item) => item.textContent)).toEqual(["Hardware API"]);
+    expect(within(within(dialog).getByLabelText("软件 MDE")).getAllByRole("option").map((item) => item.textContent)).toEqual(["Software API"]);
+    expect(within(within(dialog).getByLabelText("软件开发")).getAllByRole("option").map((item) => item.textContent)).toEqual(["Developer API"]);
     expect(workspace.textContent).not.toMatch(/sourceNodePath/);
     expect(workspace.textContent).not.toMatch(/aurora-default-config|aurora-head/);
   });

@@ -12,6 +12,7 @@ import type {
 } from "@/application/ports/ParameterRepository";
 import type {
   ParameterRuntimeActionFailure,
+  ParameterRuntimeActions,
   ParameterRuntimeRefreshOptions,
   ParameterRuntimeRefreshResult,
   ParameterRuntimeVoidResult
@@ -54,6 +55,7 @@ export type ParameterPageActions = {
   discardDrafts(input: DiscardParameterDraftsInput): Promise<ParameterRuntimeVoidResult>;
   withdrawSubmissionRound(roundId: string): Promise<ParameterRuntimeVoidResult>;
   reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
+  listWorkflowAssignees?: ParameterRuntimeActions["listWorkflowAssignees"];
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;

@@ -8,6 +8,7 @@ import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import { registerParameterFileRoutes } from "./routes";
 import * as service from "./service";
+import * as configSetService from "./configSetService";
 
 vi.mock("./service", () => ({
   uploadProjectParameterFile: vi.fn(),
@@ -32,6 +33,13 @@ vi.mock("./syncService", () => ({
 
 vi.mock("./conflictService", () => ({
   resolveParameterFileConflict: vi.fn()
+}));
+
+vi.mock("./configSetService", () => ({
+  addConfigSetFile: vi.fn(),
+  createConfigSet: vi.fn(),
+  listConfigSets: vi.fn(),
+  removeConfigSetFile: vi.fn()
 }));
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
@@ -78,6 +86,27 @@ function makeServer(options: { db?: Database; objectStore?: ObjectStore; auth?: 
 describe("parameter file routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("GET config sets allows active parameter viewers without admin permission", async () => {
+    const db = makeDb();
+    const items = [{ id: "set-1", name: "default" }];
+    vi.mocked(configSetService.listConfigSets).mockResolvedValue(items as never);
+
+    const response = await requestJson<{ items: typeof items }>(
+      makeServer({
+        db,
+        auth: makeAuth({
+          roles: [{ projectId: "project-1", roleId: "software-user" }],
+          permissions: ["parameter:view", "parameter:edit"]
+        })
+      }),
+      "/api/v1/projects/project-1/config-sets"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items });
+    expect(configSetService.listConfigSets).toHaveBeenCalledWith(db, expect.any(Object), "project-1");
   });
 
   it("POST /api/v1/projects/:projectId/parameter-files returns 201 with file dto", async () => {

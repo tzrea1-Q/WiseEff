@@ -35,6 +35,7 @@ vi.mock("./service", () => ({
   deleteParameterModuleForAuth: vi.fn(),
   listChangeRequests: vi.fn(),
   listDrafts: vi.fn(),
+  listWorkflowAssignees: vi.fn(),
   listParameterModulesForAuth: vi.fn(),
   listSubmissionRounds: vi.fn(),
   moveParameterModuleForAuth: vi.fn(),
@@ -95,6 +96,25 @@ describe("parameter routes", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [project] });
     expect(repository.listProjects).toHaveBeenCalledWith(db, { organizationId: "org-1" });
+  });
+
+  it("GET project workflow assignees returns service-filtered candidates", async () => {
+    const db = makeDb();
+    const candidates = {
+      hardwareCommitters: [{ id: "u-hw", name: "Hardware" }],
+      softwareCommitters: [{ id: "u-sw", name: "Software" }],
+      softwareUsers: [{ id: "u-user", name: "Developer" }],
+    };
+    vi.mocked(service.listWorkflowAssignees).mockResolvedValue(candidates);
+
+    const response = await requestJson<{ item: typeof candidates }>(
+      makeServer({ db }),
+      "/api/v1/projects/aurora/parameter-workflow-assignees",
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ item: candidates });
+    expect(service.listWorkflowAssignees).toHaveBeenCalledWith(db, makeAuth(), "aurora");
   });
 
   it("GET /api/v1/parameters passes filters", async () => {
