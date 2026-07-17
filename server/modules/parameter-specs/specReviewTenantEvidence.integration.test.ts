@@ -1025,16 +1025,31 @@ describe.skipIf(!databaseAvailable)("0058 evidence-only scope reconcile from pol
         code: "polluted_or_unproven_scope",
       });
 
-      // Idempotent second apply.
-      await applySingleMigration(db, migration0058);
-      const again = await db.query<{ status: string; project_id: string | null }>(
-        `select status, project_id from parameter_spec_review_tasks where id = $1`,
+      // Idempotent second apply: no scoped value or diagnostic metadata changes.
+      const beforeSecondApply = await db.query<{
+        project_id: string | null;
+        config_revision_id: string | null;
+        property_occurrence_id: string | null;
+        status: string;
+        source_evidence: Record<string, unknown>;
+      }>(
+        `select project_id, config_revision_id, property_occurrence_id, status, source_evidence
+         from parameter_spec_review_tasks where id = $1`,
         [pollutedTaskId],
       );
-      expect(again.rows[0]).toMatchObject({
-        status: "resolved",
-        project_id: PROJECT_A,
-      });
+      await applySingleMigration(db, migration0058);
+      const again = await db.query<{
+        project_id: string | null;
+        config_revision_id: string | null;
+        property_occurrence_id: string | null;
+        status: string;
+        source_evidence: Record<string, unknown>;
+      }>(
+        `select project_id, config_revision_id, property_occurrence_id, status, source_evidence
+         from parameter_spec_review_tasks where id = $1`,
+        [pollutedTaskId],
+      );
+      expect(again.rows[0]).toEqual(beforeSecondApply.rows[0]);
     });
   });
 });

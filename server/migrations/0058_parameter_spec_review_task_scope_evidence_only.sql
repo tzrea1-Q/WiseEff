@@ -111,7 +111,14 @@ computed as (
       'scopeBackfill',
       coalesce(e.source_evidence->'scopeBackfill', '{}'::jsonb) || jsonb_build_object(
         'migration', '0058',
-        'reconciledAt', to_jsonb(now()::text),
+        'reconciledAt', coalesce(
+          case
+            when e.source_evidence->'scopeBackfill'->>'migration' = '0058'
+              then e.source_evidence->'scopeBackfill'->'reconciledAt'
+            else null
+          end,
+          to_jsonb(now()::text)
+        ),
         'code',
           case
             when (
