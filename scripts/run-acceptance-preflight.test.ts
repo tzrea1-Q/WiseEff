@@ -102,10 +102,43 @@ describe("acceptance preflight helpers", () => {
 
     expect(services.map((service) => service.name)).toEqual(["api runtime", "frontend runtime"]);
     expect(services[0].env).toMatchObject({ PORT: "8787", XIAOZE_DETERMINISTIC: "true" });
+    expect(services[0].args).toEqual(["exec", "tsx", "--", "server/index.ts"]);
     expect(services[1].env).toMatchObject({
       VITE_WISEEFF_RUNTIME_MODE: "api",
       VITE_WISEEFF_API_BASE_URL: "http://127.0.0.1:8787",
       VITE_WISEEFF_API_AUTHORIZATION: "Bearer smoke"
+    });
+    expect(services[1].args).toEqual([
+      "exec",
+      "vite",
+      "--",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "5173",
+      "--strictPort"
+    ]);
+  });
+
+  it("starts the frontend on the port selected by --frontend-url", () => {
+    const services = planRuntimeServices(
+      {
+        envFile: ".env",
+        runGates: false,
+        checkFrontend: true,
+        frontendUrl: "http://127.0.0.1:5175",
+        startRuntime: true,
+        requirePilotReady: false
+      },
+      {
+        WISEEFF_API_BASE_URL: "http://127.0.0.1:18787",
+        VITE_WISEEFF_API_BASE_URL: "http://127.0.0.1:18787"
+      }
+    );
+
+    expect(services[1]).toMatchObject({
+      url: "http://127.0.0.1:5175",
+      args: ["exec", "vite", "--", "--host", "127.0.0.1", "--port", "5175", "--strictPort"]
     });
   });
 
@@ -155,6 +188,9 @@ describe("acceptance preflight helpers", () => {
       npm_config_env_file: "E:/Prototypes/0525/WiseEff/.env",
       npm_config_mode: "local-non-hdc",
       VITE_WISEEFF_RUNTIME_MODE: "api",
+      WISEEFF_API_BASE_URL: "http://127.0.0.1:18787",
+      VITE_WISEEFF_API_BASE_URL: "http://127.0.0.1:18787",
+      VITE_WISEEFF_API_AUTHORIZATION: "Bearer acceptance",
       M5_CONTRACT_CHECK_PASSED: "true",
       M5_CONTRACT_ARTIFACT_CHECKED_AT: "2026-06-02T00:00:00Z",
       M5_BACKUP_RESTORE_DRILL_AT: "2026-06-02T00:00:00Z",
@@ -168,6 +204,9 @@ describe("acceptance preflight helpers", () => {
     expect(env).not.toHaveProperty("npm_config_env_file");
     expect(env).not.toHaveProperty("npm_config_mode");
     expect(env.VITE_WISEEFF_RUNTIME_MODE).toBe("mock");
+    expect(env).not.toHaveProperty("WISEEFF_API_BASE_URL");
+    expect(env).not.toHaveProperty("VITE_WISEEFF_API_BASE_URL");
+    expect(env).not.toHaveProperty("VITE_WISEEFF_API_AUTHORIZATION");
     expect(env).not.toHaveProperty("M5_CONTRACT_CHECK_PASSED");
     expect(env).not.toHaveProperty("M5_CONTRACT_ARTIFACT_CHECKED_AT");
     expect(env).not.toHaveProperty("M5_BACKUP_RESTORE_DRILL_AT");

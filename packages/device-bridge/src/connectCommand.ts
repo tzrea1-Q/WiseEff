@@ -121,6 +121,7 @@ export type StartBridgeFn = (config: BridgeConfig) => Promise<{ exitCode: number
 
 export type ConnectCommandDependencies = CliDependencies & {
   ensureBridgeRunning: (deps: EnsureBridgeRunningDependencies) => Promise<{ exitCode: number }>;
+  stopLocalBridgeHealthListener: typeof stopLocalBridgeHealthListener;
   execPath: string;
   cliPath: string;
   platform: NodeJS.Platform;
@@ -172,7 +173,7 @@ export async function runConnectCommand(
   if (explicitWebOrigin && config.webOrigin !== explicitWebOrigin) {
     config = { ...config, webOrigin: explicitWebOrigin };
     await deps.saveConfig(config);
-    await stopLocalBridgeHealthListener(deps.platform);
+    await deps.stopLocalBridgeHealthListener(deps.platform);
   }
 
   const webOriginChanged = Boolean(explicitWebOrigin && existing?.webOrigin !== explicitWebOrigin);

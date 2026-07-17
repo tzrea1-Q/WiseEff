@@ -99,12 +99,17 @@ describe("device bridge cli", () => {
     const capture = createStdoutCapture();
     const startPromise = runCli(["start"], {
       loadConfig: async () => null,
-      stdout: capture.stdout
+      stdout: capture.stdout,
+      healthPort: 0
     });
 
     let healthReady = false;
+    let healthUrl: string | undefined;
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      const response = await fetch("http://127.0.0.1:18787/health").catch(() => null);
+      healthUrl ??= capture.logs
+        .find((line) => line.startsWith("Bridge standby started. Health: "))
+        ?.slice("Bridge standby started. Health: ".length);
+      const response = healthUrl ? await fetch(healthUrl).catch(() => null) : null;
       if (response?.ok) {
         const body = (await response.json()) as { paired?: boolean };
         healthReady = body.paired === false;
@@ -119,6 +124,8 @@ describe("device bridge cli", () => {
     const exitCode = await startPromise;
 
     expect(healthReady).toBe(true);
+    expect(healthUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/health$/);
+    expect(healthUrl).not.toBe("http://127.0.0.1:18787/health");
     expect(exitCode).toBe(0);
     expect(capture.logs.some((line) => line.includes("Bridge standby started"))).toBe(true);
   });

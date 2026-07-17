@@ -27,6 +27,7 @@ function createConnectDeps(overrides: Partial<{
   saveConfig: (config: BridgeConfig) => Promise<void>;
   stdout: ReturnType<typeof createStdoutCapture>;
   ensureBridgeRunning: ReturnType<typeof vi.fn>;
+  stopLocalBridgeHealthListener: ReturnType<typeof vi.fn>;
 }>) {
   const stdout = overrides.stdout ?? createStdoutCapture();
   return {
@@ -37,6 +38,9 @@ function createConnectDeps(overrides: Partial<{
     ensureBridgeRunning:
       overrides.ensureBridgeRunning ??
       vi.fn(async () => ({ exitCode: 0 })),
+    stopLocalBridgeHealthListener:
+      overrides.stopLocalBridgeHealthListener ??
+      vi.fn(async () => undefined),
     execPath: "/usr/bin/node",
     cliPath: "/opt/wiseeff/cli.js",
     platform: "darwin" as NodeJS.Platform
@@ -81,9 +85,16 @@ describe("connectCommand", () => {
     const saveConfig = vi.fn(async () => undefined);
     const loadConfig = vi.fn(async () => pairedConfig);
     const ensureBridgeRunning = vi.fn(async () => ({ exitCode: 0 }));
+    const stopLocalBridgeHealthListener = vi.fn(async () => undefined);
 
     const result = await runConnectCommand(
-      createConnectDeps({ fetchImpl: vi.fn() as typeof fetch, loadConfig, saveConfig, ensureBridgeRunning }),
+      createConnectDeps({
+        fetchImpl: vi.fn() as typeof fetch,
+        loadConfig,
+        saveConfig,
+        ensureBridgeRunning,
+        stopLocalBridgeHealthListener
+      }),
       { server: "https://wiseeff.example.com", webOrigin: "https://wiseeff.example.com" }
     );
 
@@ -94,6 +105,7 @@ describe("connectCommand", () => {
       })
     );
     expect(ensureBridgeRunning).toHaveBeenCalled();
+    expect(stopLocalBridgeHealthListener).toHaveBeenCalledWith("darwin");
   });
 
   it("pairs when code provided and config missing, then ensures bridge running", async () => {

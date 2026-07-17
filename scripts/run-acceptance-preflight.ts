@@ -114,7 +114,7 @@ export function planRuntimeServices(options: PreflightOptions, env: RuntimeEnv):
     services.push({
       name: "api runtime",
       command: "npm",
-      args: ["run", "dev:api"],
+      args: ["exec", "tsx", "--", "server/index.ts"],
       url: `${apiBaseUrl}/health/live`,
       env: {
         ...env,
@@ -127,10 +127,21 @@ export function planRuntimeServices(options: PreflightOptions, env: RuntimeEnv):
   }
 
   if (options.checkFrontend && isLocalHttpUrl(options.frontendUrl)) {
+    const frontendUrl = new URL(options.frontendUrl);
+    const frontendPort = frontendUrl.port || "80";
     services.push({
       name: "frontend runtime",
       command: "npm",
-      args: ["run", "dev"],
+      args: [
+        "exec",
+        "vite",
+        "--",
+        "--host",
+        frontendUrl.hostname,
+        "--port",
+        frontendPort,
+        "--strictPort"
+      ],
       url: options.frontendUrl,
       env: {
         ...env,
@@ -240,6 +251,9 @@ const testGateEnvDenylist = [
   "npm_config_skip_frontend",
   "npm_config_skip_gates",
   "npm_config_start_runtime",
+  "WISEEFF_API_BASE_URL",
+  "VITE_WISEEFF_API_BASE_URL",
+  "VITE_WISEEFF_API_AUTHORIZATION",
   "VITE_WISEEFF_RUNTIME_MODE",
   "M5_CONTRACT_CHECK_PASSED",
   "M5_CONTRACT_ARTIFACT_CHECKED_AT",

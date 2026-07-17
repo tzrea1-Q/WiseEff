@@ -22,6 +22,7 @@ import {
   type StartBridgeFn
 } from "./connectCommand";
 import { ensureBridgeRunning, spawnDetachedConnect } from "./ensureBridgeRunning";
+import { stopLocalBridgeHealthListener } from "./localBridgeProcess";
 import { kickOffInstallTools, runToolsInstallCliCommand } from "./toolsInstallCli";
 import { parseBridgeUrl } from "./urlScheme";
 import { createProxiedFetch } from "./proxyFetch";
@@ -142,6 +143,7 @@ function createHttpConnectHandler(
   const connectDeps = {
     ...deps,
     ensureBridgeRunning: overrides.ensureBridgeRunning ?? ensureBridgeRunning,
+    stopLocalBridgeHealthListener,
     execPath: overrides.execPath ?? process.execPath,
     cliPath: runtimePaths.cliPath,
     platform: runtimePaths.platform
@@ -270,9 +272,10 @@ async function runStartCommand(
 
 async function runStandbyStartCommand(
   deps: CliDependencies,
-  runtimePaths: { cliPath: string; platform: NodeJS.Platform }
+  runtimePaths: { cliPath: string; platform: NodeJS.Platform },
+  healthPort = 18_787
 ): Promise<number> {
-  const existingHealth = await deps.fetchImpl("http://127.0.0.1:18787/health").catch(() => null);
+  const existingHealth = await deps.fetchImpl(`http://127.0.0.1:${healthPort}/health`).catch(() => null);
   if (existingHealth?.ok) {
     deps.stdout.log("Bridge service already running.");
     return 0;
@@ -294,6 +297,7 @@ async function runStandbyStartCommand(
 
   try {
     const health = await startHealthServer({
+      port: healthPort,
       getState: () => status,
       onConnect: createHttpConnectHandler(deps, runtimePaths),
       onHealthRead: async () => {
@@ -385,6 +389,7 @@ export async function runCli(
     mkdir?: MacosLaunchAgentDependencies["mkdir"];
     writeFile?: MacosLaunchAgentDependencies["writeFile"];
     unlink?: MacosLaunchAgentDependencies["unlink"];
+    healthPort?: number;
   } = {}
 ) {
   const existingConfig = await (overrides.loadConfig ?? (() => loadBridgeConfig()))().catch(() => null);
@@ -405,6 +410,7 @@ export async function runCli(
   const connectDeps = {
     ...deps,
     ensureBridgeRunning: overrides.ensureBridgeRunning ?? ensureBridgeRunning,
+    stopLocalBridgeHealthListener,
     execPath: overrides.execPath ?? process.execPath,
     cliPath: overrides.cliPath ?? CLI_ENTRY_PATH,
     platform: overrides.platform ?? process.platform
@@ -564,7 +570,7 @@ export async function runCli(
       platform: overrides.platform ?? process.platform
     };
     if (!config) {
-      return runStandbyStartCommand(deps, runtimePaths);
+      return runStandbyStartCommand(deps, runtimePaths, overrides.healthPort);
     }
     const result = await runStartCommand(deps, config, runtimePaths);
     return result.exitCode;
