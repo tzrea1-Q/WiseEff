@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -84,5 +85,32 @@ describe("manual spec identity", () => {
     expect(collisions).toHaveLength(1);
     expect(collisions[0]?.losslessLeftId).not.toBe(collisions[0]?.losslessRightId);
     expect(collisions[0]?.legacyParameterSpecId).toBeTruthy();
+  });
+
+  it("property: distinct raw driver/property tuples keep distinct stable ids", () => {
+    fc.assert(
+      fc.property(
+        fc.record({
+          driverModule: fc.option(fc.string({ maxLength: 32 }), { nil: null }),
+          propertyKey: fc.string({ minLength: 1, maxLength: 32 }),
+        }),
+        fc.record({
+          driverModule: fc.option(fc.string({ maxLength: 32 }), { nil: null }),
+          propertyKey: fc.string({ minLength: 1, maxLength: 32 }),
+        }),
+        (left, right) => {
+          fc.pre(
+            left.propertyKey !== right.propertyKey ||
+              (left.driverModule ?? "") !== (right.driverModule ?? ""),
+          );
+          const leftIds = buildManualSpecIds({ organizationId: "org-property", ...left });
+          const rightIds = buildManualSpecIds({ organizationId: "org-property", ...right });
+          expect(leftIds.parameterSpecId).not.toBe(rightIds.parameterSpecId);
+          expect(leftIds.parameterSpecVersionId).not.toBe(rightIds.parameterSpecVersionId);
+          expect(leftIds.dtsPropertySpecId).not.toBe(rightIds.dtsPropertySpecId);
+        },
+      ),
+      { numRuns: 500 },
+    );
   });
 });

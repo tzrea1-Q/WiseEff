@@ -2124,6 +2124,49 @@ export async function checkParameterIdentityCutover(db: Queryable): Promise<{
     blockers.push("unaudited inferred migration evidence remains");
   }
 
+  // Round 6 collision audit: old manual-spec IDs hashed a sanitized property
+  // segment. Distinct raw keys that collapse to the same legacy segment must be
+  // reported and block cutover; never rewrite referenced IDs in place.
+  try {
+    const manualSpecCollisions = await db.query<{
+      parameter_spec_id: string;
+      property_keys: string[];
+    }>(
+      `
+      with raw_keys as (
+        select distinct
+          t.parameter_spec_id,
+          t.source_evidence->>'propertyKey' as raw_property_key,
+          trim(both '-' from regexp_replace(
+            lower(trim(t.source_evidence->>'propertyKey')),
+            '[^-a-z0-9_.@+]+',
+            '-',
+            'g'
+          )) as legacy_property_segment
+        from parameter_spec_review_tasks t
+        inner join parameter_specs ps on ps.id = t.parameter_spec_id
+        where t.parameter_spec_id is not null
+          and ps.source_kind = 'manual'
+          and nullif(t.source_evidence->>'propertyKey', '') is not null
+      )
+      select parameter_spec_id,
+             array_agg(raw_property_key order by raw_property_key) as property_keys
+      from raw_keys
+      group by parameter_spec_id, legacy_property_segment
+      having count(*) > 1
+      order by parameter_spec_id, legacy_property_segment
+      `
+    );
+    for (const collision of manualSpecCollisions.rows) {
+      blockers.push(
+        `manual spec identity collision ${collision.parameter_spec_id}: ${collision.property_keys.join(" | ")}`
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    blockers.push(`cutover check SQL failed (manual spec identity collisions): ${message}`);
+  }
+
   let nullHistoryCount = 0;
   try {
     const nullHistory = await db.query<{ c: string }>(

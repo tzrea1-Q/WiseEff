@@ -714,6 +714,35 @@ describe.skipIf(!databaseAvailable)("parameter identity migration", () => {
     expect(result.blockers.some((b) => /permission denied/i.test(b))).toBe(true);
   });
 
+  it("checker fail-closes when one manual spec is referenced by distinct raw property keys", async () => {
+    await seedLegacyGraph(db!);
+    const collidedSpecId = "manual-spec-legacy-sanitize-collision";
+    await db!.query(
+      `insert into parameter_specs (id, organization_id, source_kind, specification_key)
+       values ($1, $2, 'manual', 'manual/vendor-limit')`,
+      [collidedSpecId, ORG]
+    );
+    await db!.query(
+      `
+      insert into parameter_spec_review_tasks (
+        id, organization_id, parameter_spec_id, source_evidence,
+        candidate_schemas, project_count, status, reviewer_user_id, reason, resolved_at
+      ) values
+        ('review-collision-comma', $1, $2, '{"propertyKey":"vendor,limit"}'::jsonb,
+         '[]'::jsonb, 1, 'resolved', $3, 'legacy collision evidence', now()),
+        ('review-collision-hyphen', $1, $2, '{"propertyKey":"vendor-limit"}'::jsonb,
+         '[]'::jsonb, 1, 'resolved', $3, 'legacy collision evidence', now())
+      `,
+      [ORG, collidedSpecId, USER]
+    );
+
+    const result = await checkParameterIdentityCutover(db!);
+    expect(result.ok).toBe(false);
+    expect(result.blockers).toContain(
+      `manual spec identity collision ${collidedSpecId}: vendor,limit | vendor-limit`
+    );
+  });
+
   it("apply writes evidence, semantic FKs, and audit links without promoting recommended_value", async () => {
     const seeded = await seedLegacyGraph(db!);
     const report = await migrateParameterIdentities(db!, {
