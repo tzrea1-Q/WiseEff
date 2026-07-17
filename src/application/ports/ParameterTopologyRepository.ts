@@ -38,6 +38,7 @@ export type CreateBindingDraftInput = {
 
 export type BindingDraftResult = {
   draftId: string;
+  parameterId: string;
   candidateRevisionId: string;
   rawText: string;
   parameterSpecId: string;

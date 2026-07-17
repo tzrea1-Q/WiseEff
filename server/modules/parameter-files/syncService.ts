@@ -7,6 +7,7 @@ import {
   findProjectValueBySource,
   upsertFileSyncDraft
 } from "../parameters/repository";
+import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { detectFileUiDraftConflict } from "./conflictService";
@@ -47,6 +48,12 @@ export async function syncFileVersion(
   }
 
   if (version.origin === "writeback") {
+    return { draftsCreated: 0, unchanged: 0, unmatched: 0, skipped: true, identityFallbackUses: 0 };
+  }
+
+  // Semantic config ingest owns source identity after cutover. The adapter below
+  // is intentionally limited to the retired flat parameter tables.
+  if (await mustUseSemanticParameterIdentity(db)) {
     return { draftsCreated: 0, unchanged: 0, unmatched: 0, skipped: true, identityFallbackUses: 0 };
   }
 

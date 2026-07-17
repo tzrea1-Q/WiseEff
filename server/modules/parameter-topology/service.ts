@@ -1051,6 +1051,7 @@ export async function validateConfigRevision(
 
 export type CreateBindingDraftServiceResult = {
   draftId: string;
+  parameterId: string;
   candidateRevisionId: string;
   rawText: string;
   parameterSpecId: string;
@@ -1115,6 +1116,7 @@ export async function createBindingDraft(
 
   return {
     draftId: draft.draftId,
+    parameterId: draft.parameterId,
     candidateRevisionId: draft.candidateRevisionId,
     rawText: draft.rawText,
     parameterSpecId: draft.parameterSpecId,

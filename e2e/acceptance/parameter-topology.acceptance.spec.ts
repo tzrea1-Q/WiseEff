@@ -9,6 +9,10 @@ import {
   requireReviewTask
 } from "./helpers/acceptanceTaskLookup";
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import {
+  startDisposablePostCutoverRuntime,
+  type DisposablePostCutoverRuntime,
+} from "./helpers/disposablePostCutoverRuntime";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
@@ -208,11 +212,69 @@ async function resolveReviewsForCurrentRevision(
     }>;
   };
   for (const task of body.items) {
-    const candidate = pickReviewCandidate(task, {
-      propertyKey: task.propertyKey ?? task.sourceEvidence?.propertyKey,
-      nodeLocator: task.sourceEvidence?.nodeLocator
-    });
-    const parameterSpecId = candidate.id;
+    const candidates = task.candidateSchemas ?? task.candidates ?? [];
+    let parameterSpecId: string;
+    if (candidates.length > 0) {
+      parameterSpecId = pickReviewCandidate(task, {
+        propertyKey: task.propertyKey ?? task.sourceEvidence?.propertyKey,
+        nodeLocator: task.sourceEvidence?.nodeLocator
+      }).id;
+    } else {
+      const createDraft = await request.post(
+        apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
+        {
+          headers: adminHeaders(),
+          data: {
+            decision: "resolved",
+            createSpec: true,
+            reason: `${descriptionPrefix} create occurrence-derived draft for ${task.id}`
+          }
+        }
+      );
+      expect(createDraft.ok(), `create draft spec for review ${task.id}`).toBe(true);
+      const created = (await createDraft.json()) as { item: { parameterSpecId?: string | null } };
+      parameterSpecId = created.item.parameterSpecId ?? "";
+      expect(parameterSpecId, `review ${task.id} did not return a draft spec id`).toBeTruthy();
+
+      const detailResponse = await request.get(
+        apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}`),
+        { headers: adminHeaders() }
+      );
+      expect(detailResponse.ok(), `load draft spec ${parameterSpecId}`).toBe(true);
+      const detailBody = (await detailResponse.json()) as {
+        item: { lifecycle?: string; valueShape?: Record<string, unknown> | null };
+      };
+      const shape = detailBody.item.valueShape;
+      expect(shape && typeof shape.kind === "string", `draft ${parameterSpecId} missing valueShape`).toBeTruthy();
+      const kind = String(shape!.kind);
+      let constraints: Record<string, unknown> = {};
+      if (kind === "cells" || kind === "u32-array" || kind === "phandle-list") {
+        const cells = shape!.cellsPerGroup ?? shape!.cells;
+        expect(Number.isInteger(cells) && Number(cells) > 0, `draft ${parameterSpecId} missing cells`).toBe(true);
+        constraints = { cells };
+      } else if (kind === "bytes") {
+        const length = shape!.length;
+        expect(Number.isInteger(length) && Number(length) >= 0, `draft ${parameterSpecId} missing byte length`).toBe(true);
+        constraints = { minLength: length, maxLength: length };
+      } else {
+        expect(["bool", "empty", "string", "string-list"]).toContain(kind);
+      }
+      if (detailBody.item.lifecycle !== "active") {
+        const activate = await request.post(
+          apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}/activate`),
+          {
+            headers: adminHeaders(),
+            data: {
+              valueShape: shape,
+              constraints,
+              documentation: `${descriptionPrefix} occurrence-derived acceptance spec`,
+              reason: `${descriptionPrefix} activate occurrence-derived acceptance spec`
+            }
+          }
+        );
+        expect(activate.ok(), `activate draft spec ${parameterSpecId}: ${await activate.text()}`).toBe(true);
+      }
+    }
     const resolve = await request.post(
       apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
       {
@@ -229,6 +291,45 @@ async function resolveReviewsForCurrentRevision(
 }
 
 test.describe("Parameter topology / schema browser acceptance", () => {
+  let disposableRuntime: DisposablePostCutoverRuntime;
+  const originalEnvironment = {
+    databaseUrl: process.env.DATABASE_URL,
+    apiUrl: process.env.VITE_WISEEFF_API_BASE_URL,
+    wiseEffApiUrl: process.env.WISEEFF_API_BASE_URL,
+    authIssuer: process.env.AUTH_TOKEN_ISSUER,
+    authSecret: process.env.AUTH_TOKEN_HMAC_SECRET,
+  };
+
+  test.beforeAll(async () => {
+    test.setTimeout(120_000);
+    const baseDatabaseUrl = originalEnvironment.databaseUrl?.trim();
+    if (!baseDatabaseUrl) throw new Error("DATABASE_URL is required to create the disposable topology database.");
+    disposableRuntime = await startDisposablePostCutoverRuntime(baseDatabaseUrl, {
+      label: "parameter_topology",
+      apiPort: 18888,
+      frontendPort: 5174,
+    });
+    process.env.DATABASE_URL = disposableRuntime.databaseUrl;
+    process.env.VITE_WISEEFF_API_BASE_URL = disposableRuntime.apiUrl;
+    process.env.WISEEFF_API_BASE_URL = disposableRuntime.apiUrl;
+    process.env.AUTH_TOKEN_ISSUER = disposableRuntime.authIssuer;
+    process.env.AUTH_TOKEN_HMAC_SECRET = disposableRuntime.authSecret;
+  });
+
+  test.afterAll(async () => {
+    test.setTimeout(60_000);
+    await disposableRuntime?.dispose();
+    const restore = (key: string, value: string | undefined) => {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    };
+    restore("DATABASE_URL", originalEnvironment.databaseUrl);
+    restore("VITE_WISEEFF_API_BASE_URL", originalEnvironment.apiUrl);
+    restore("WISEEFF_API_BASE_URL", originalEnvironment.wiseEffApiUrl);
+    restore("AUTH_TOKEN_ISSUER", originalEnvironment.authIssuer);
+    restore("AUTH_TOKEN_HMAC_SECRET", originalEnvironment.authSecret);
+  });
+
   test("governs specs, browses real topology, edits, maps identity, and gates publish", async ({
     page,
     request
@@ -402,7 +503,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     );
     expect(reviewAuditItem).toBeTruthy();
 
-    await signInBrowserAsRole(page, "admin", "/parameter-admin");
+    await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
     await dismissXiaozeHint(page);
     const specLibrary = page.getByRole("region", { name: "参数规格库" });
     await expect(specLibrary).toBeVisible({ timeout: 30_000 });
@@ -462,7 +563,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     // Browse real topology (API must be 200 — never [200,404]).
-    await page.goto(`/parameters?project=${projectId}`);
+    await signInBrowserAsRole(
+      page,
+      "admin",
+      `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`,
+    );
     await dismissXiaozeHint(page);
     const workspace = page.getByRole("region", { name: "项目拓扑工作区" });
     await expect(workspace).toBeVisible({ timeout: 30_000 });
@@ -655,20 +760,33 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     // Successful typed edit draft, then real submit → review → merge → writeback.
     const semanticCutover = await withPgClient(async (client) => {
-      const result = await client.query<{ id: string; migration_run_id: string }>(
+      const result = await client.query<{
+        database_name: string;
+        purpose: string;
+        marker_migration_run_id: string;
+        cutover_migration_run_id: string;
+      }>(
         `
-        select id, migration_run_id
-        from parameter_identity_cutovers
-        order by cutover_at desc
-        limit 1
-        `
+        select current_database() as database_name,
+               marker.purpose,
+               marker.migration_run_id as marker_migration_run_id,
+               cutover.migration_run_id as cutover_migration_run_id
+        from wiseeff_acceptance_test_markers marker
+        inner join parameter_identity_cutovers cutover
+          on cutover.migration_run_id = marker.migration_run_id
+        where marker.purpose = 'parameter-topology'
+          and marker.migration_run_id = $1
+        `,
+        [disposableRuntime.migrationRunId]
       );
       return result.rows[0] ?? null;
     });
-    expect(
-      semanticCutover,
-      "PARAM-TOPOLOGY-EDIT-001 requires a dedicated post-cutover acceptance database; legacy writeback cannot prove semantic merge"
-    ).toBeTruthy();
+    expect(semanticCutover).toMatchObject({
+      database_name: disposableRuntime.databaseName,
+      purpose: "parameter-topology",
+      marker_migration_run_id: disposableRuntime.migrationRunId,
+      cutover_migration_run_id: disposableRuntime.migrationRunId,
+    });
 
     await resolveReviewsForCurrentRevision(request, revisionId, projectId);
     const editedRaw = "<&gpio13 30 0>";
@@ -699,12 +817,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const draftBody = (await successfulDraft.json()) as {
       item: {
         draftId: string;
+        parameterId: string;
         candidateRevisionId: string;
         rawText?: string;
         projectParameterBindingId?: string;
       };
     };
     expect(draftBody.item.candidateRevisionId).toBeTruthy();
+    expect(draftBody.item.parameterId).toBe(scBinding!.id);
     expect(draftBody.item.rawText ?? editedRaw).toMatch(/30/);
     // Draft-time candidate is preview only — no open CR for this binding yet.
     const openCrBefore = await withPgClient(async (client) => {
@@ -721,54 +841,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
     expect(openCrBefore).toBe(0);
 
-    const draftIdentity = await withPgClient(async (client) => {
-      const byId = await client.query<{
-        project_parameter_value_id: string;
-        project_parameter_binding_id: string | null;
-        target_value: string;
-      }>(
-        `
-        select project_parameter_value_id, project_parameter_binding_id, target_value
-        from parameter_drafts
-        where id = $1
-        `,
-        [draftBody.item.draftId]
-      );
-      if (byId.rows[0]) return byId.rows[0];
-      const byBinding = await client.query<{
-        project_parameter_value_id: string;
-        project_parameter_binding_id: string | null;
-        target_value: string;
-      }>(
-        `
-        select project_parameter_value_id, project_parameter_binding_id, target_value
-        from parameter_drafts
-        where organization_id = $1
-          and project_id = $2
-          and project_parameter_binding_id = $3
-        order by updated_at desc
-        limit 1
-        `,
-        [organizationId, projectId, scBinding!.id]
-      );
-      return byBinding.rows[0] ?? null;
-    });
-    expect(
-      draftIdentity?.project_parameter_value_id,
-      `draft missing for draftId=${draftBody.item.draftId} binding=${scBinding!.id}`
-    ).toBeTruthy();
-
     const submitRound = await request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
       headers: authHeadersForRole("software-user"),
       data: {
         projectId,
         items: [
           {
-            parameterId: draftIdentity!.project_parameter_value_id,
-            targetValue: draftIdentity!.target_value ?? draftBody.item.rawText ?? editedRaw,
+            parameterId: draftBody.item.parameterId,
+            targetValue: draftBody.item.rawText ?? editedRaw,
             reason: `${descriptionPrefix} submit typed edit for merge`,
-            projectParameterBindingId:
-              draftIdentity!.project_parameter_binding_id ?? scBinding!.id,
+            projectParameterBindingId: draftBody.item.projectParameterBindingId ?? scBinding!.id,
             parameterSpecId: scBinding!.parameterSpecId
           }
         ],

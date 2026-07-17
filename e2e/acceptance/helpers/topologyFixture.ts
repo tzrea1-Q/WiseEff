@@ -13,7 +13,6 @@ const overlaySource = readFileSync(join(root, "src/config/dts-seed/aurora-power-
 
 const organizationId = "org-chargelab";
 const projectId = "aurora";
-const defaultConfigSetId = "dcs-default-aurora";
 const baseFileName = "wiseeff-power-base.dts";
 const overlayFileName = "wiseeff-power-overlay.dts";
 
@@ -65,8 +64,18 @@ export async function ensureAuroraSemanticTopology(
     throw new Error(`list config-sets failed: ${setsResponse.status()}`);
   }
   const setsBody = (await setsResponse.json()) as { items: Array<{ id: string; name: string }> };
-  const configSetId =
-    setsBody.items.find((item) => item.name === "default")?.id ?? defaultConfigSetId;
+  let configSetId = setsBody.items.find((item) => item.name === "default")?.id;
+  if (!configSetId) {
+    const createSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+      headers: adminHeaders(),
+      data: { name: "default", description: "Disposable acceptance semantic topology" }
+    });
+    if (!createSet.ok()) {
+      throw new Error(`create default config-set failed: ${createSet.status()} ${await createSet.text()}`);
+    }
+    const createBody = (await createSet.json()) as { item: { id: string } };
+    configSetId = createBody.item.id;
+  }
 
   const filesResponse = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
     headers: adminHeaders()

@@ -3632,8 +3632,41 @@ async function listSubmissionItemsByRoundIds(
   db: Queryable,
   query: { organizationId: string; roundIds: string[] }
 ) {
+  const semantic = await mustUseSemanticParameterIdentity(db);
   const result = await db.query<SubmissionItemRow & { submission_round_id: string }>(
+    semantic
+      ? `
+    select
+      psi.submission_round_id,
+      psi.change_request_id,
+      coalesce(psi.project_parameter_binding_id, pcr.project_parameter_binding_id) as project_parameter_value_id,
+      coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as name,
+      split_part(ps.specification_key, '/', 1) as module,
+      psi.current_value,
+      psi.target_value,
+      coalesce(psv.value_shape->>'unit', '') as unit,
+      'Low' as risk,
+      coalesce(psv.value_shape->>'kind', 'legacy-text') as value_kind,
+      'DTS' as config_format,
+      psi.reason
+    from parameter_submission_items psi
+    inner join parameter_change_requests pcr on pcr.id = psi.change_request_id
+    inner join project_parameter_bindings b
+      on b.id = coalesce(psi.project_parameter_binding_id, pcr.project_parameter_binding_id)
+    inner join parameter_specs ps on ps.id = coalesce(pcr.parameter_spec_id, b.parameter_spec_id)
+    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    left join lateral (
+      select version.*
+      from parameter_spec_versions version
+      where version.parameter_spec_id = ps.id
+      order by case when version.lifecycle = 'active' then 0 else 1 end, version.version desc
+      limit 1
+    ) psv on true
+    where psi.organization_id = $1
+      and psi.submission_round_id = any($2::text[])
+    order by psi.id asc
     `
+      : `
     select
       psi.submission_round_id,
       psi.change_request_id,

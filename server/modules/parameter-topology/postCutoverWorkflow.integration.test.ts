@@ -419,6 +419,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         ]);
 
         const auth = makeAuth();
+        const mergedGpioValue = "<&gpio13 30 0>";
         const writeLock = await resolveBindingWriteLock(db, auth, { bindingId: seeded.bindingId });
         expect(writeLock.baseConfigRevisionId).toBeTruthy();
         expect(writeLock.bindingRevisionId).toBeTruthy();
@@ -430,7 +431,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           projectId: PROJECT,
           parameterId: seeded.bindingId,
           userId: USER,
-          targetValue: "<9>",
+          targetValue: mergedGpioValue,
           reason: "post-cutover typed draft",
           projectParameterBindingId: seeded.bindingId,
           parameterSpecId: seeded.specId,
@@ -447,7 +448,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         const stored = reloaded.find((item) => item.projectParameterBindingId === seeded.bindingId);
         expect(stored?.id).toBe(draftId);
         expect(stored?.parameterId).toBe(seeded.bindingId);
-        expect(stored?.targetValue).toBe("<9>");
+        expect(stored?.targetValue).toBe(mergedGpioValue);
 
         const draftLockRow = await db.query<{
           base_config_revision_id: string | null;
@@ -497,7 +498,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           parameterDefinitionId: seeded.specId,
           baseVersion: 1,
           currentValue: "<1>",
-          targetValue: "<9>",
+          targetValue: mergedGpioValue,
           status: "software_merge",
           submitterUserId: USER,
           parameterSpecId: seeded.specId,
@@ -511,7 +512,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           changeRequestId: request.id,
           parameterId: seeded.bindingId,
           currentValue: "<1>",
-          targetValue: "<9>",
+          targetValue: mergedGpioValue,
           reason: "post-cutover",
           projectParameterBindingId: seeded.bindingId
         });
@@ -533,8 +534,8 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           organizationId: ORG,
           parameterId: seeded.bindingId
         });
-        expect(history.some((entry) => entry.value === "<9>")).toBe(true);
-        expect(history.filter((entry) => entry.value === "<9>")).toHaveLength(1);
+        expect(history.some((entry) => entry.value === mergedGpioValue)).toBe(true);
+        expect(history.filter((entry) => entry.value === mergedGpioValue)).toHaveLength(1);
 
         const baseBindingRaw = await db.query<{ raw_value: string | null; config_revision_id: string }>(
           `select raw_value, config_revision_id from project_parameter_binding_revisions
@@ -561,7 +562,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         const writeback = await writebackMergedParameterValue(db, objectStore as never, auth, {
           projectId: PROJECT,
           parameterDefinitionId: seeded.specId,
-          mergedValue: "<9>",
+          mergedValue: mergedGpioValue,
           projectParameterBindingId: seeded.bindingId,
           parameterSpecId: seeded.specId,
           changeRequestId: request.id,
@@ -598,12 +599,27 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           );
           expect(stillBase.rows[0]?.raw_value).toBe("<1>");
 
-          const candidateBinding = await db.query<{ raw_value: string | null }>(
-            `select raw_value from project_parameter_binding_revisions
+          const candidateBinding = await db.query<{
+            raw_value: string | null;
+            typed_value: unknown;
+            canonical_value: unknown;
+          }>(
+            `select raw_value, typed_value, canonical_value from project_parameter_binding_revisions
              where binding_id = $1 and config_revision_id = $2`,
             [seeded.bindingId, writeback.candidateRevisionId]
           );
-          expect(candidateBinding.rows[0]?.raw_value).toBe("<9>");
+          const expectedTypedValue = {
+            kind: "cells",
+            bits: 32,
+            groups: [[
+              { kind: "phandle", label: "gpio13" },
+              { kind: "integer", raw: "30", value: "30" },
+              { kind: "integer", raw: "0", value: "0" },
+            ]],
+          };
+          expect(candidateBinding.rows[0]?.raw_value).toBe(mergedGpioValue);
+          expect(candidateBinding.rows[0]?.typed_value).toEqual(expectedTypedValue);
+          expect(candidateBinding.rows[0]?.canonical_value).toEqual(expectedTypedValue);
         }
 
         const reloadedBinding = await db.query<{ raw_value: string | null; config_revision_id: string }>(
@@ -613,7 +629,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
            limit 1`,
           [seeded.bindingId]
         );
-        expect(reloadedBinding.rows[0]?.raw_value).toBe("<9>");
+        expect(reloadedBinding.rows[0]?.raw_value).toBe(mergedGpioValue);
         if (!writeback.skipped) {
           expect(reloadedBinding.rows[0]?.config_revision_id).toBe(writeback.candidateRevisionId);
         }
@@ -625,7 +641,9 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
            limit 1`,
           [seeded.overlayFileId]
         );
-        expect(overlayVersion.rows[0]?.parsed_index?.sourceText).toMatch(/gpio_int\s*=\s*<9>/);
+        expect(overlayVersion.rows[0]?.parsed_index?.sourceText).toMatch(
+          /gpio_int\s*=\s*<&gpio13 30 0>/,
+        );
         expect(seeded.content).toContain("gpio_int = <1>;");
 
         const deviceId = "device-pcw-1";
@@ -658,7 +676,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           nodePath: SOURCE_NODE_PATH,
           operationType: "read",
           status: "succeeded",
-          readValue: "<9>",
+          readValue: mergedGpioValue,
           durationMs: 1,
           actorUserId: USER
         });

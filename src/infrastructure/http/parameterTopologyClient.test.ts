@@ -209,6 +209,7 @@ describe("createHttpParameterTopologyRepository", () => {
     const fetchMock = fetchQueue({
       item: {
         draftId: "draft-1",
+        parameterId: "binding-1",
         candidateRevisionId: "rev-2",
         rawText: "<3000>",
         parameterSpecId: "spec-1",
@@ -234,6 +235,7 @@ describe("createHttpParameterTopologyRepository", () => {
     );
     expect(draft).toMatchObject({
       draftId: "draft-1",
+      parameterId: "binding-1",
       candidateRevisionId: "rev-2",
       projectParameterBindingId: "binding-1"
     });

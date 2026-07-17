@@ -354,6 +354,7 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
 
     expect(draft.writeTarget).toMatchObject({ role: "overlay", propertyKey: "iin_max" });
     expect(draft.projectParameterBindingId).toBe(fixture.binding.id);
+    expect(draft.parameterId).toBeTruthy();
     expect(draft.parameterSpecId).toBe(SPEC_ID);
     expect(draft.candidateRevisionId).toBeTruthy();
     expect(draft.rawText).toBe("<3000>");

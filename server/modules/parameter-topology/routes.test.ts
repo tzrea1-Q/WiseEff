@@ -416,6 +416,7 @@ describe("parameter semantic v2 routes", () => {
   it("POST /api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts creates typed draft for editors", async () => {
     vi.mocked(topologyService.createBindingDraft).mockResolvedValue({
       draftId: "draft-1",
+      parameterId: "binding-1",
       candidateRevisionId: "rev-candidate",
       rawText: "<3000>",
       parameterSpecId: "spec-1",
@@ -441,6 +442,7 @@ describe("parameter semantic v2 routes", () => {
     expect(response.status).toBe(201);
     expect(response.body?.item).toMatchObject({
       draftId: "draft-1",
+      parameterId: "binding-1",
       candidateRevisionId: "rev-candidate",
       projectParameterBindingId: "binding-1",
       rawText: "<3000>"

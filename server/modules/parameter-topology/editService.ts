@@ -11,7 +11,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { AuthContext } from "../auth/types";
 import { parseDts, serializeDts, type DtsNodeCst, type DtsPropertyCst } from "../dts";
 import type { DtsValue } from "../dts/types";
-import { renderDtsValue } from "../dts/valueAst";
+import { parseDtsValue, renderDtsValue } from "../dts/valueAst";
 import type { ObjectStore } from "../logs/objectStore";
 import {
   createDtsToolchainRunner,
@@ -99,6 +99,8 @@ export type BindingDraftWriteTarget = {
 
 export type BindingDraftResult = {
   draftId: string;
+  /** Identifier accepted by the submission API (binding id after cutover). */
+  parameterId: string;
   writeTarget: BindingDraftWriteTarget;
   candidateRevisionId: string;
   rawText: string;
@@ -1163,6 +1165,7 @@ export async function createBindingDraft(
 
   return {
     draftId,
+    parameterId: draftParameterId,
     writeTarget,
     candidateRevisionId,
     rawText,
@@ -1799,13 +1802,14 @@ export async function applyLockedOverlayWriteback(
     status: "compiled",
   });
 
+  const mergedTypedValue = parseDtsValue(input.lock.propertyKey, input.mergedValue).value;
   const bindingRevision = await upsertBindingRevisionValues(db, {
     bindingId: input.bindingId,
     configRevisionId: ingested.id,
     parameterSpecVersionId: input.parameterSpecVersionId,
     values: {
-      typedValue: { kind: "legacy-text", value: input.mergedValue },
-      canonicalValue: { kind: "legacy-text", value: input.mergedValue },
+      typedValue: mergedTypedValue,
+      canonicalValue: mergedTypedValue,
       rawValue: input.mergedValue,
       schemaState: "merged",
       policyState: "merged",

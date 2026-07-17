@@ -50,6 +50,7 @@ function createRepository(
     validateRevision: vi.fn().mockResolvedValue({ id: "run-1", status: "passed", stage: "toolchain" }),
     createBindingDraft: vi.fn().mockResolvedValue({
       draftId: "draft-1",
+      parameterId: "binding-sc8562-gpio-int",
       candidateRevisionId: "rev-candidate-2",
       rawText: "<&gpio13 29 0>",
       parameterSpecId: "spec-sc8562-gpio-int",

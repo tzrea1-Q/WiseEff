@@ -220,6 +220,7 @@ function validationRunFromDto(dto: ValidationRun): ValidationRun {
 function bindingDraftFromDto(dto: BindingDraftResult): BindingDraftResult {
   return {
     draftId: dto.draftId,
+    parameterId: dto.parameterId,
     candidateRevisionId: dto.candidateRevisionId,
     rawText: dto.rawText,
     parameterSpecId: dto.parameterSpecId,

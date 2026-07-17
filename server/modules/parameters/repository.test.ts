@@ -585,6 +585,59 @@ describe("parameter repository", () => {
     });
   });
 
+  it("lists post-cutover submission items without retired flat identity tables", async () => {
+    const calls: QueryCall[] = [];
+    const db: Queryable = {
+      query: async <Row,>(text: string, values: unknown[] = []) => {
+        if (text.includes("parameter_identity_cutovers")) {
+          return { rows: [{ c: "1" } as Row], rowCount: 1 };
+        }
+        calls.push({ text, values });
+        if (text.includes("from parameter_submission_rounds psr")) {
+          return {
+            rows: [{
+              id: "round-semantic",
+              project_id: "project-1",
+              project_name: "Aurora",
+              submitter: "Liu Min",
+              status: "hardware_review",
+              summary: "Semantic submission",
+              created_at: "2026-07-17T00:00:00.000Z"
+            } as Row],
+            rowCount: 1
+          };
+        }
+        if (text.includes("from parameter_submission_items psi")) {
+          return {
+            rows: [{
+              submission_round_id: "round-semantic",
+              change_request_id: "request-semantic",
+              project_parameter_value_id: "binding-1",
+              name: "gpio_int",
+              module: "manual",
+              current_value: "<&gpio13 29 0>",
+              target_value: "<&gpio13 30 0>",
+              unit: "",
+              risk: "Low",
+              value_kind: "phandle-list",
+              config_format: "DTS",
+              reason: "typed edit"
+            } as Row],
+            rowCount: 1
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      }
+    };
+
+    const rounds = await listSubmissionRounds(db, { organizationId: "org-chargelab" });
+
+    expect(rounds[0]?.items[0]).toMatchObject({ parameterId: "binding-1", name: "gpio_int" });
+    const itemSql = calls.find((call) => call.text.includes("from parameter_submission_items psi"))?.text ?? "";
+    expect(itemSql).not.toContain("project_parameter_values");
+    expect(itemSql).toContain("project_parameter_bindings");
+  });
+
   it("findOpenChangeRequest and getProjectParameterForUpdate use organization scoped parameter ids", async () => {
     const { db, calls } = createFakeDb([[], []]);
 
