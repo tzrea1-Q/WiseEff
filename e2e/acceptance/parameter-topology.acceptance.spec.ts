@@ -587,7 +587,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         `/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(scBinding!.id)}/drafts`
       ),
       {
-        headers: adminHeaders(),
+        headers: authHeadersForRole("software-user"),
         data: {
           baseRevisionId: "missing-revision-stale",
           targetValue: {
@@ -654,6 +654,22 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(compileBody.item.failureCode).toBe("resolve-failed");
 
     // Successful typed edit draft, then real submit → review → merge → writeback.
+    const semanticCutover = await withPgClient(async (client) => {
+      const result = await client.query<{ id: string; migration_run_id: string }>(
+        `
+        select id, migration_run_id
+        from parameter_identity_cutovers
+        order by cutover_at desc
+        limit 1
+        `
+      );
+      return result.rows[0] ?? null;
+    });
+    expect(
+      semanticCutover,
+      "PARAM-TOPOLOGY-EDIT-001 requires a dedicated post-cutover acceptance database; legacy writeback cannot prove semantic merge"
+    ).toBeTruthy();
+
     await resolveReviewsForCurrentRevision(request, revisionId, projectId);
     const editedRaw = "<&gpio13 30 0>";
     const successfulDraft = await request.post(
@@ -661,7 +677,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         `/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(scBinding!.id)}/drafts`
       ),
       {
-        headers: adminHeaders(),
+        headers: authHeadersForRole("software-user"),
         data: {
           baseRevisionId: revisionId,
           targetValue: {
@@ -743,7 +759,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     ).toBeTruthy();
 
     const submitRound = await request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-      headers: adminHeaders(),
+      headers: authHeadersForRole("software-user"),
       data: {
         projectId,
         items: [
@@ -766,25 +782,79 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
     expect(submitRound.status(), await submitRound.text()).toBe(201);
     const submitBody = (await submitRound.json()) as {
-      item: { items: Array<{ requestId: string; parameterId: string }> };
+      item: { status: string; items: Array<{ requestId: string; parameterId: string }> };
     };
     const changeRequestId = submitBody.item.items[0]?.requestId;
     expect(changeRequestId).toBeTruthy();
+    expect(submitBody.item.status).toBe("hardware_review");
 
-    let crStatus = "";
-    for (let step = 0; step < 8 && crStatus !== "merged"; step += 1) {
-      const advance = await request.post(
-        apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(changeRequestId!)}/review`),
-        {
-          headers: adminHeaders(),
-          data: { decision: "advance", note: `${descriptionPrefix} advance step ${step}` }
-        }
+    const hardwareReview = await request.post(
+      apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(changeRequestId!)}/review`),
+      {
+        headers: authHeadersForRole("hardware-committer"),
+        data: { decision: "advance", note: `${descriptionPrefix} hardware review` }
+      }
+    );
+    expect(hardwareReview.ok(), await hardwareReview.text()).toBe(true);
+    const hardwareReviewBody = (await hardwareReview.json()) as { item: { status: string } };
+    expect(hardwareReviewBody.item.status).toBe("software_review");
+
+    const softwareReview = await request.post(
+      apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(changeRequestId!)}/review`),
+      {
+        headers: authHeadersForRole("software-committer"),
+        data: { decision: "advance", note: `${descriptionPrefix} software review` }
+      }
+    );
+    expect(softwareReview.ok(), await softwareReview.text()).toBe(true);
+    const softwareReviewBody = (await softwareReview.json()) as { item: { status: string } };
+    expect(softwareReviewBody.item.status).toBe("software_merge");
+
+    const beforeMerge = await withPgClient(async (client) => {
+      const result = await client.query<{
+        status: string;
+        history_count: string;
+        merge_audit_count: string;
+        writeback_audit_count: string;
+      }>(
+        `
+        select
+          cr.status,
+          (select count(*)::text from parameter_history_entries h where h.request_id = cr.id) as history_count,
+          (
+            select count(*)::text from audit_events ae
+            where ae.kind = 'parameter-merge' and ae.target_id = cr.id
+          ) as merge_audit_count,
+          (
+            select count(*)::text from audit_events ae
+            where ae.kind = 'parameter-writeback-to-file'
+              and ae.metadata ->> 'projectParameterBindingId' = cr.project_parameter_binding_id
+              and ae.created_at >= cr.created_at
+          ) as writeback_audit_count
+        from parameter_change_requests cr
+        where cr.id = $1
+        `,
+        [changeRequestId]
       );
-      expect(advance.ok(), await advance.text()).toBe(true);
-      const advanceBody = (await advance.json()) as { item: { status: string } };
-      crStatus = advanceBody.item.status;
-    }
-    expect(crStatus).toBe("merged");
+      return result.rows[0];
+    });
+    expect(beforeMerge?.status).toBe("software_merge");
+    expect(Number(beforeMerge?.history_count ?? 0)).toBe(0);
+    expect(Number(beforeMerge?.merge_audit_count ?? 0)).toBe(0);
+    expect(Number(beforeMerge?.writeback_audit_count ?? 0)).toBe(0);
+
+    const semanticMerge = await request.post(
+      apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(changeRequestId!)}/review`),
+      {
+        headers: authHeadersForRole("software-user"),
+        data: { decision: "advance", note: `${descriptionPrefix} semantic merge` }
+      }
+    );
+    expect(semanticMerge.ok(), await semanticMerge.text()).toBe(true);
+    const semanticMergeBody = (await semanticMerge.json()) as { item: { status: string } };
+    expect(semanticMergeBody.item.status).toBe("merged");
+    const mergeRequestId = semanticMerge.headers()["x-request-id"];
+    expect(mergeRequestId).toBeTruthy();
 
     const mergeEvidence = await withPgClient(async (client) => {
       const cr = await client.query<{
@@ -801,36 +871,76 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         `,
         [scBinding!.id, revisionId]
       );
-      const latest = await client.query<{
+      const writebackAudit = await client.query<{
+        id: string;
+        trace_id: string;
+        target_id: string | null;
+        candidate_revision_id: string | null;
+      }>(
+        `
+        select
+          id,
+          trace_id,
+          target_id,
+          metadata ->> 'candidateRevisionId' as candidate_revision_id
+        from audit_events
+        where kind = 'parameter-writeback-to-file'
+          and trace_id = $1
+        order by created_at desc
+        limit 1
+        `,
+        [mergeRequestId]
+      );
+      const candidateRevisionId = writebackAudit.rows[0]?.candidate_revision_id ?? null;
+      const candidate = await client.query<{
         raw_value: string | null;
         config_revision_id: string;
       }>(
         `
         select raw_value, config_revision_id
         from project_parameter_binding_revisions
-        where binding_id = $1
+        where binding_id = $1 and config_revision_id = $2
+        `,
+        [scBinding!.id, candidateRevisionId]
+      );
+      const writeback = await client.query<{ id: string; origin: string; checksum: string }>(
+        `
+        select id, checksum, origin
+        from project_parameter_file_versions
+        where file_id = $1 and origin = 'writeback'
         order by created_at desc
         limit 1
         `,
-        [scBinding!.id]
+        [writebackAudit.rows[0]?.target_id]
       );
-      const writeback = await client.query<{ origin: string; checksum: string }>(
+      const completion = await client.query<{
+        history_count: string;
+        merge_audit_count: string;
+      }>(
         `
-        select checksum, origin
-        from project_parameter_file_versions
-        where origin = 'writeback'
-        order by created_at desc
-        limit 1
-        `
+        select
+          (select count(*)::text from parameter_history_entries where request_id = $1) as history_count,
+          (
+            select count(*)::text from audit_events
+            where kind = 'parameter-merge' and target_id = $1 and trace_id = $2
+          ) as merge_audit_count
+        `,
+        [changeRequestId, mergeRequestId]
       );
       return {
         crStatus: cr.rows[0]?.status ?? null,
         bindingId: cr.rows[0]?.project_parameter_binding_id ?? null,
         baseRaw: base.rows[0]?.raw_value ?? null,
-        latestRaw: latest.rows[0]?.raw_value ?? null,
-        latestRevisionId: latest.rows[0]?.config_revision_id ?? null,
+        latestRaw: candidate.rows[0]?.raw_value ?? null,
+        latestRevisionId: candidate.rows[0]?.config_revision_id ?? null,
+        writebackAuditId: writebackAudit.rows[0]?.id ?? null,
+        writebackTraceId: writebackAudit.rows[0]?.trace_id ?? null,
+        writebackFileId: writebackAudit.rows[0]?.target_id ?? null,
+        writebackVersionId: writeback.rows[0]?.id ?? null,
         writebackOrigin: writeback.rows[0]?.origin ?? null,
-        writebackChecksum: writeback.rows[0]?.checksum?.slice(0, 12) ?? null
+        writebackChecksum: writeback.rows[0]?.checksum?.slice(0, 12) ?? null,
+        historyCount: Number(completion.rows[0]?.history_count ?? 0),
+        mergeAuditCount: Number(completion.rows[0]?.merge_audit_count ?? 0)
       };
     });
     expect(mergeEvidence.crStatus).toBe("merged");
@@ -838,17 +948,19 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(mergeEvidence.baseRaw).toBe(baseBindingSnapshot);
     expect(mergeEvidence.latestRevisionId).toBeTruthy();
     expect(mergeEvidence.latestRevisionId).not.toBe(revisionId);
+    expect(mergeEvidence.latestRevisionId).not.toBe(draftBody.item.candidateRevisionId);
     expect(mergeEvidence.latestRaw ?? "").toMatch(/30/);
+    expect(mergeEvidence.writebackAuditId).toBeTruthy();
+    expect(mergeEvidence.writebackTraceId).toBe(mergeRequestId);
+    expect(mergeEvidence.writebackVersionId).toBeTruthy();
     expect(mergeEvidence.writebackOrigin).toBe("writeback");
-    // Semantic merge refuses skipped writeback; merged CR proves writeback.skipped === false.
-    expect(mergeEvidence.crStatus === "merged" && mergeEvidence.writebackOrigin === "writeback").toBe(
-      true
-    );
+    expect(mergeEvidence.historyCount).toBe(1);
+    expect(mergeEvidence.mergeAuditCount).toBe(1);
 
     const writebackDb = {
       table: "project_parameter_file_versions",
       predicate: "origin=writeback latest",
-      observed: `origin=${mergeEvidence.writebackOrigin}; checksum=${mergeEvidence.writebackChecksum}; candidate=${mergeEvidence.latestRevisionId}`,
+      observed: `origin=${mergeEvidence.writebackOrigin}; checksum=${mergeEvidence.writebackChecksum}; candidate=${mergeEvidence.latestRevisionId}; history=${mergeEvidence.historyCount}; mergeAudit=${mergeEvidence.mergeAuditCount}`,
       rowCount: 1
     };
 
@@ -856,11 +968,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       operationId: "PARAM-TOPOLOGY-EDIT-001",
       title: "typed edit submit review merge writeback",
       status: "passed",
-      role: "Admin",
+      role: "Software User + Hardware/Software Committers",
       route: "/parameters",
       page,
       testInfo,
-      assertions: ["ui", "api"],
+      assertions: ["ui", "api", "db", "audit"],
       api: [
         summarizeApiResponse(staleEdit, {
           method: "POST",
@@ -881,9 +993,34 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           method: "POST",
           path: "/api/v1/parameter-submission-rounds",
           responseSummary: `requestId=${changeRequestId}`
+        }),
+        summarizeApiResponse(hardwareReview, {
+          method: "POST",
+          path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
+          responseSummary: `role=hardware-committer; status=${hardwareReviewBody.item.status}`
+        }),
+        summarizeApiResponse(softwareReview, {
+          method: "POST",
+          path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
+          responseSummary: `role=software-committer; status=${softwareReviewBody.item.status}`
+        }),
+        summarizeApiResponse(semanticMerge, {
+          method: "POST",
+          path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
+          responseSummary: `role=software-user; status=${semanticMergeBody.item.status}; writeback.skipped=false; candidate=${mergeEvidence.latestRevisionId}`
         })
       ],
       db: [writebackDb],
+      audit: [
+        {
+          id: mergeEvidence.writebackAuditId ?? undefined,
+          kind: "parameter-writeback-to-file",
+          action: "writeback",
+          targetId: mergeEvidence.writebackFileId,
+          requestId: mergeEvidence.writebackTraceId ?? undefined,
+          metadataSummary: `candidateRevisionId=${mergeEvidence.latestRevisionId}; skipped=false`
+        }
+      ],
       notes:
         "UI schema cell-count block; stale 409; real bad-DTS fail-closed; typed draft → submit → review → semantic merge writeback (base immutable, candidate new, skipped=false)."
     });
@@ -1082,11 +1219,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const validateTargetId = mergeEvidence.latestRevisionId!;
     expect(validateTargetId).toBeTruthy();
     expect(validateTargetId).not.toBe(revisionId);
-    // Prefer a distinct merge candidate; draft preview may coincide when semantic
-    // cutover writeback is not yet active on the shared acceptance DB (TD-042).
-    if (validateTargetId === draftBody.item.candidateRevisionId) {
-      expect(mergeEvidence.latestRaw ?? "").toMatch(/30/);
-    }
+    expect(validateTargetId).not.toBe(draftBody.item.candidateRevisionId);
     await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
 
     const validateResponse = await request.post(
