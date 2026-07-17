@@ -197,6 +197,39 @@ describe.skipIf(!databaseAvailable)("draft spec workflow integration", () => {
     expect(audit.rows.some((row) => row.action === "spec-draft-created")).toBe(true);
   });
 
+  it("persists vendor,limit and vendor-limit as two distinct org manual specs", async () => {
+    const comma = await ingestAndFindTask(db!, "vendor,limit", "<1>");
+    const hyphen = await ingestAndFindTask(db!, "vendor-limit", "<2>");
+
+    const commaDraft = await resolveSpecReviewTask(db!, makeAuth(), {
+      taskId: comma.task.id,
+      decision: "resolved",
+      createSpec: true,
+      reason: "Create comma-key draft",
+    });
+    const hyphenDraft = await resolveSpecReviewTask(db!, makeAuth(), {
+      taskId: hyphen.task.id,
+      decision: "resolved",
+      createSpec: true,
+      reason: "Create hyphen-key draft",
+    });
+
+    expect(commaDraft.parameterSpecId).not.toBe(hyphenDraft.parameterSpecId);
+    const persisted = await db!.query<{ id: string; specification_key: string; property_key: string }>(
+      `
+      select ps.id, ps.specification_key, dps.property_key
+      from parameter_specs ps
+      inner join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      where ps.organization_id = $1
+        and dps.property_key = any($2::text[])
+      order by dps.property_key
+      `,
+      [ORG_ID, ["vendor,limit", "vendor-limit"]],
+    );
+    expect(persisted.rows).toHaveLength(2);
+    expect(new Set(persisted.rows.map((row) => row.specification_key)).size).toBe(2);
+  });
+
   it("rejects resolve/release with draft spec and activates before binding", async () => {
     const { task, revision } = await ingestAndFindTask(db!, "gpio_int", "<2>");
     const ids = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "gpio_int", driverModule: null });

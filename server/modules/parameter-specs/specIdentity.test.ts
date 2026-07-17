@@ -28,6 +28,9 @@ describe("manual spec identity", () => {
     expect(comma.parameterSpecId).not.toBe(hyphen.parameterSpecId);
     expect(comma.parameterSpecVersionId).not.toBe(hyphen.parameterSpecVersionId);
     expect(comma.dtsPropertySpecId).not.toBe(hyphen.dtsPropertySpecId);
+    expect(comma.specificationKey).not.toBe(hyphen.specificationKey);
+    expect(comma.specificationKey).toMatch(/^manual\/vendor-limit-[0-9a-f]{24}$/);
+    expect(hyphen.specificationKey).toMatch(/^manual\/vendor-limit-[0-9a-f]{24}$/);
   });
 
   it("legacy sanitize formula still collides (documents why audit exists)", () => {

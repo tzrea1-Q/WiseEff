@@ -15,6 +15,18 @@ export function canonicalIdentityPart(field: string, value: string): string {
   return `${field}:${value.length}:${value}`;
 }
 
+function manualSpecificationKeyDigest(input: { propertyKey: string; driverModule: string }): string {
+  return createHash("sha256")
+    .update(
+      [
+        canonicalIdentityPart("driverModule", input.driverModule),
+        canonicalIdentityPart("propertyKey", input.propertyKey),
+      ].join("\u001f"),
+    )
+    .digest("hex")
+    .slice(0, 24);
+}
+
 /** Legacy (lossy) hash formula used before Round 6 — for collision audits only. */
 export function buildLegacyManualSpecIds(input: {
   organizationId: string;
@@ -61,8 +73,12 @@ export function buildManualSpecIds(input: {
   const rawDriver = input.driverModule ?? "";
   const schemaNamespace = sanitizeSpecSegment(input.driverModule ?? "manual");
   const propertySegment = sanitizeSpecSegment(input.propertyKey);
-  // Readable key may collide across raw keys; uniqueness is the hashed id, not this string alone.
-  const specificationKey = `${schemaNamespace}/${propertySegment}`;
+  // specification_key is also covered by a database uniqueness constraint. Keep
+  // the readable prefix, but derive uniqueness from the same lossless raw tuple.
+  const specificationKey = `${schemaNamespace}/${propertySegment}-${manualSpecificationKeyDigest({
+    driverModule: rawDriver,
+    propertyKey: input.propertyKey,
+  })}`;
   const parameterSpecId = stableSemanticId("parameter_spec", [
     canonicalIdentityPart("organizationId", input.organizationId),
     "manual",
