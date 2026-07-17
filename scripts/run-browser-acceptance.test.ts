@@ -96,6 +96,11 @@ describe("browser acceptance runner", () => {
   it("builds the local non-HDC preflight command", () => {
     expect(buildPreflightCommand(parseBrowserAcceptanceArgs([], {}))).toEqual({
       command: npmCommand(),
+      env: {
+        DEBUG_DEVICE_GATEWAY_MODE: "simulator",
+        HDC_DEVICE_LAB_AVAILABLE: "false",
+        DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
+      },
       args: [
         "run",
         "acceptance:preflight",
@@ -172,10 +177,16 @@ describe("browser acceptance runner", () => {
   });
 
   it("builds headed and headless Playwright commands without overriding config reporters", () => {
-    expect(buildBrowserAcceptanceCommand(parseBrowserAcceptanceArgs([], {}))).toEqual({
+    const command = buildBrowserAcceptanceCommand(parseBrowserAcceptanceArgs([], {}));
+    expect(command).toEqual({
       command: npmCommand(),
       args: ["run", "acceptance:e2e", "--"],
       env: expect.any(Object)
+    });
+    expect(command.env).toMatchObject({
+      DEBUG_DEVICE_GATEWAY_MODE: "simulator",
+      HDC_DEVICE_LAB_AVAILABLE: "false",
+      DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
     });
 
     expect(buildBrowserAcceptanceCommand(parseBrowserAcceptanceArgs(["--headed"], {}))).toEqual({

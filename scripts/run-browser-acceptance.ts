@@ -236,7 +236,19 @@ export function buildPreflightCommand(options: BrowserAcceptanceOptions): Comman
     args.push("--no-start-runtime");
   }
 
-  return { command: npmCommand(), args };
+  return {
+    command: npmCommand(),
+    args,
+    ...(options.mode === "local-non-hdc"
+      ? {
+          env: {
+            DEBUG_DEVICE_GATEWAY_MODE: "simulator",
+            HDC_DEVICE_LAB_AVAILABLE: "false",
+            DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
+          }
+        }
+      : {})
+  };
 }
 
 export function loadEnvContent(content: string, baseEnv: RuntimeEnv = process.env): RuntimeEnv {
@@ -276,6 +288,12 @@ export function buildBrowserAcceptanceCommand(
 export function buildPlaywrightEnv(options: BrowserAcceptanceOptions, loadedEnv: RuntimeEnv = process.env): RuntimeEnv {
   const env: RuntimeEnv = { ...loadedEnv };
   env.WISEEFF_ACCEPTANCE_FRONTEND_URL = options.frontendUrl;
+
+  if (options.mode === "local-non-hdc") {
+    env.DEBUG_DEVICE_GATEWAY_MODE = "simulator";
+    env.HDC_DEVICE_LAB_AVAILABLE = "false";
+    env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION = "true";
+  }
 
   if (options.mode === "target-non-hdc" || !options.startRuntime || !options.skipPreflight) {
     env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME = "true";

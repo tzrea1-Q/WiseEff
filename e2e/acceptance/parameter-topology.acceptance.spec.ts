@@ -306,8 +306,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     if (!baseDatabaseUrl) throw new Error("DATABASE_URL is required to create the disposable topology database.");
     disposableRuntime = await startDisposablePostCutoverRuntime(baseDatabaseUrl, {
       label: "parameter_topology",
-      apiPort: 18888,
-      frontendPort: 5174,
     });
     process.env.DATABASE_URL = disposableRuntime.databaseUrl;
     process.env.VITE_WISEEFF_API_BASE_URL = disposableRuntime.apiUrl;

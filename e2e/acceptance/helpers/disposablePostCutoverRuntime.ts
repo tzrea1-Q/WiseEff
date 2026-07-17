@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { rm } from "node:fs/promises";
+import { createServer } from "node:net";
 import path from "node:path";
 import pg from "pg";
 
@@ -63,6 +64,33 @@ export function assertDisposableDatabaseIdentity(identity: DisposableDatabaseIde
   ) {
     throw new Error("Refusing disposable database use: migration run marker does not match the applied cutover.");
   }
+}
+
+export async function allocateLoopbackPort(options: {
+  min?: number;
+  max?: number;
+  excluded?: ReadonlySet<number>;
+} = {}) {
+  const excluded = options.excluded ?? new Set<number>();
+  const candidates = options.min === undefined
+    ? [0]
+    : Array.from(
+        { length: (options.max ?? options.min) - options.min + 1 },
+        (_, index) => options.min! + index,
+      );
+  for (const candidate of candidates) {
+    const port = await new Promise<number | null>((resolve, reject) => {
+      const server = createServer();
+      server.once("error", () => resolve(null));
+      server.listen(candidate, "127.0.0.1", () => {
+        const address = server.address();
+        const allocated = address && typeof address === "object" ? address.port : 0;
+        server.close((error) => (error ? reject(error) : resolve(allocated)));
+      });
+    });
+    if (port && !excluded.has(port)) return port;
+  }
+  throw new Error(`No disposable loopback port is available in ${options.min ?? "ephemeral"}-${options.max ?? "ephemeral"}.`);
 }
 
 function databaseUrlFor(baseUrl: string, databaseName: string) {
@@ -261,8 +289,12 @@ export async function startDisposablePostCutoverRuntime(
   const databaseName = buildDisposableDatabaseName(options.label ?? "topology");
   const databaseUrl = databaseUrlFor(baseDatabaseUrl, databaseName);
   const adminUrl = adminDatabaseUrl(baseDatabaseUrl);
-  const apiPort = options.apiPort ?? 18787;
-  const frontendPort = options.frontendPort ?? 15173;
+  const apiPort = options.apiPort ?? (await allocateLoopbackPort());
+  const frontendPort = options.frontendPort ?? (await allocateLoopbackPort({
+    min: 5_173,
+    max: 5_199,
+    excluded: new Set([apiPort]),
+  }));
   const apiUrl = `http://127.0.0.1:${apiPort}`;
   const frontendUrl = `http://127.0.0.1:${frontendPort}`;
   const authIssuer = "wiseeff-disposable-acceptance";

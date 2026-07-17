@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  allocateLoopbackPort,
   assertDisposableDatabaseIdentity,
   buildDisposableDatabaseName,
 } from "../e2e/acceptance/helpers/disposablePostCutoverRuntime";
 
 describe("disposable post-cutover acceptance database safety", () => {
+  it("allocates a loopback runtime port instead of relying on a shared fixed port", async () => {
+    const port = await allocateLoopbackPort({ min: 5_190, max: 5_199 });
+    expect(port).toBeGreaterThanOrEqual(5_190);
+    expect(port).toBeLessThanOrEqual(5_199);
+    expect(port).not.toBe(18_888);
+    expect(port).not.toBe(5_174);
+  });
+
   it("uses the dedicated destructive-test database prefix", () => {
     const databaseName = buildDisposableDatabaseName("parameter_topology_round6");
     expect(databaseName).toMatch(
