@@ -5,7 +5,11 @@ import { expect, test } from "playwright/test";
 
 import { withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
-import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
+import {
+  recordOperationEvidence,
+  summarizeApiResponse,
+  writeOperationJsonArtifact
+} from "./helpers/operationEvidence";
 
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
@@ -270,10 +274,19 @@ test.describe("Xiaoze P2 planning", () => {
     expect(resumed.status).toBe(200);
     expect(resumed.events.some((event) => event.type === "RUN_ERROR")).toBe(false);
     expect(resumed.events.some((event) => event.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
-    expect(await countOpenChangeRequests()).toBeGreaterThan(openBefore);
+    const openAfter = await countOpenChangeRequests();
+    expect(openAfter).toBeGreaterThan(openBefore);
 
     const finalText = readAssistantText(resumed.events).toLowerCase();
     expect(finalText.includes("change") || finalText.includes("request") || finalText.includes("citation")).toBe(true);
+    const planArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-plan-multistep.json", {
+      approvalId: interruptValue?.approvalId,
+      startedStatus: started.status,
+      resumedStatus: resumed.status,
+      openBefore,
+      openAfter,
+      finalText
+    });
 
     await recordOperationEvidence({
       operationId: "XIAOZE-PLAN-MULTISTEP-001",
@@ -281,6 +294,7 @@ test.describe("Xiaoze P2 planning", () => {
       status: "passed",
       route: "/parameters",
       testInfo,
+      artifacts: [planArtifact],
       api: [
         summarizeApiResponse(started.response, {
           method: "POST",
@@ -321,6 +335,12 @@ test.describe("Xiaoze P2 planning", () => {
     expect(forbiddenResponse.status()).toBe(200);
     const forbiddenBody = (await forbiddenResponse.json()) as { suggestions?: unknown[] };
     expect(forbiddenBody.suggestions ?? []).toEqual([]);
+    const proactiveArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-proactive-suggest.json", {
+      enabledStatus: enabledResponse.status(),
+      enabledSuggestions: enabledBody.suggestions,
+      forbiddenStatus: forbiddenResponse.status(),
+      forbiddenSuggestionCount: forbiddenBody.suggestions?.length ?? 0
+    });
 
     await recordOperationEvidence({
       operationId: "XIAOZE-PROACTIVE-001",
@@ -328,6 +348,7 @@ test.describe("Xiaoze P2 planning", () => {
       status: "passed",
       route: "/parameters",
       testInfo,
+      artifacts: [proactiveArtifact],
       api: [
         summarizeApiResponse(enabledResponse, {
           method: "POST",

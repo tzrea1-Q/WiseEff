@@ -2,6 +2,7 @@ import "dotenv/config";
 import { expect, test, type Page } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { withPgClient } from "./helpers/database";
 
 useBrowserDiagnostics(test);
 
@@ -13,6 +14,114 @@ async function dismissXiaozeHint(page: Page) {
 }
 
 const importParameterName = "charge_voltage_limit_mv";
+const organizationId = "org-chargelab";
+const projectId = "aurora";
+
+type ImportTargetSnapshot = {
+  definition_id: string;
+  value_id: string;
+  description: string;
+  explanation: string;
+  config_format: string;
+  module: string;
+  default_range: string;
+  unit: string;
+  risk: string;
+  current_value: string;
+  recommended_value: string;
+  value_version: number;
+  updated_by_user_id: string | null;
+};
+
+let importTargetSnapshot: ImportTargetSnapshot | null = null;
+
+async function loadImportTargetSnapshot() {
+  return withPgClient(async (client) => {
+    const result = await client.query<ImportTargetSnapshot>(
+      `
+      select
+        pd.id as definition_id,
+        ppv.id as value_id,
+        pd.description,
+        pd.explanation,
+        pd.config_format,
+        pd.module,
+        pd.default_range,
+        pd.unit,
+        pd.risk,
+        ppv.current_value,
+        ppv.recommended_value,
+        ppv.value_version,
+        ppv.updated_by_user_id
+      from parameter_definitions pd
+      inner join project_parameter_values ppv on ppv.parameter_definition_id = pd.id
+      where pd.organization_id = $1
+        and ppv.project_id = $2
+        and pd.name = $3
+      `,
+      [organizationId, projectId, importParameterName]
+    );
+    return result.rows[0] ?? null;
+  });
+}
+
+async function restoreImportTargetSnapshot(snapshot: ImportTargetSnapshot) {
+  await withPgClient(async (client) => {
+    await client.query("begin");
+    try {
+      await client.query(
+        `
+        update parameter_definitions
+        set description = $2,
+            explanation = $3,
+            config_format = $4,
+            module = $5,
+            default_range = $6,
+            unit = $7,
+            risk = $8
+        where id = $1
+          and organization_id = $9
+        `,
+        [
+          snapshot.definition_id,
+          snapshot.description,
+          snapshot.explanation,
+          snapshot.config_format,
+          snapshot.module,
+          snapshot.default_range,
+          snapshot.unit,
+          snapshot.risk,
+          organizationId
+        ]
+      );
+      await client.query(
+        `
+        update project_parameter_values
+        set current_value = $2,
+            recommended_value = $3,
+            value_version = $4,
+            updated_by_user_id = $5
+        where id = $1
+          and organization_id = $6
+          and project_id = $7
+        `,
+        [
+          snapshot.value_id,
+          snapshot.current_value,
+          snapshot.recommended_value,
+          snapshot.value_version,
+          snapshot.updated_by_user_id,
+          organizationId,
+          projectId
+        ]
+      );
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    }
+  });
+}
 
 const importPayload = JSON.stringify([
   {
@@ -28,9 +137,22 @@ const importPayload = JSON.stringify([
 ]);
 
 test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () => {
+  test.beforeEach(async () => {
+    importTargetSnapshot = await loadImportTargetSnapshot();
+    expect(importTargetSnapshot).toBeTruthy();
+  });
+
+  test.afterEach(async () => {
+    if (importTargetSnapshot) {
+      await restoreImportTargetSnapshot(importTargetSnapshot);
+      importTargetSnapshot = null;
+    }
+  });
+
   test("runs the five-step import wizard through preview", async ({ page }, testInfo) => {
     // @acceptance PARAM-ADMIN-002
     // @operation PARAM-ADMIN-002
+    const workflowStartedAt = new Date();
     await page.goto("/parameter-admin");
     await dismissXiaozeHint(page);
 
@@ -73,6 +195,54 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     await expect(confirmApply).toBeVisible();
     await expect(confirmApply).toContainText("AUR-Prod");
     await expect(confirmApply).toContainText("更新");
+    await confirmApply.getByRole("button", { name: "确认应用" }).click();
+    await expect(wizard).not.toBeVisible({ timeout: 30_000 });
+
+    const applied = await withPgClient(async (client) => {
+      const batchResult = await client.query<{
+        id: string;
+        status: string;
+        summary: Record<string, number>;
+      }>(
+        `
+        select id, status, summary
+        from parameter_import_batches
+        where organization_id = $1
+          and project_id = $2
+          and source_name = 'pasted-import.txt'
+          and created_at >= $3
+        order by created_at desc
+        limit 1
+        `,
+        [organizationId, projectId, workflowStartedAt]
+      );
+      const batch = batchResult.rows[0] ?? null;
+      const auditResult = batch
+        ? await client.query<{
+            id: string;
+            kind: string;
+            action: string;
+            target_id: string | null;
+            trace_id: string | null;
+            metadata: Record<string, unknown>;
+          }>(
+            `
+            select id, kind, action, target_id, trace_id, metadata
+            from audit_events
+            where organization_id = $1
+              and kind = 'batch-import'
+              and action = 'apply'
+              and target_id = $2
+            order by created_at desc
+            limit 1
+            `,
+            [organizationId, batch.id]
+          )
+        : { rows: [] };
+      return { batch, audit: auditResult.rows[0] ?? null };
+    });
+    expect(applied.batch).toMatchObject({ status: "applied" });
+    expect(applied.audit).toBeTruthy();
 
     await recordOperationEvidence({
       operationId: "PARAM-ADMIN-002",
@@ -80,8 +250,26 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
       status: "passed",
       page,
       testInfo,
-      assertions: ["ui"],
-      notes: `Wizard reached confirm step for existing parameter ${importParameterName}; apply intentionally not committed in this smoke to avoid mutating shared DB values.`
+      assertions: ["ui", "audit"],
+      db: [
+        {
+          table: "parameter_import_batches",
+          predicate: `organizationId=${organizationId}; projectId=${projectId}; id=${applied.batch?.id}`,
+          observed: `status=${applied.batch?.status}; updated=${applied.batch?.summary.updated ?? 0}`,
+          rowCount: applied.batch ? 1 : 0
+        }
+      ],
+      audit: [
+        {
+          id: applied.audit?.id,
+          kind: applied.audit!.kind,
+          action: applied.audit!.action,
+          targetId: applied.audit?.target_id,
+          requestId: applied.audit?.trace_id ?? undefined,
+          metadataSummary: `batchId=${applied.batch?.id}; status=${applied.batch?.status}`
+        }
+      ],
+      notes: `Wizard applied an update for ${importParameterName}; the acceptance fixture restores the original definition and project value after evidence capture.`
     });
   });
 });

@@ -5,7 +5,11 @@ import { expect, test, type APIRequestContext, type Page } from "playwright/test
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
-import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
+import {
+  recordOperationEvidence,
+  summarizeApiResponse,
+  writeOperationJsonArtifact
+} from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
 
@@ -790,8 +794,12 @@ test.describe("DTS structured product browser acceptance", () => {
       const kinds = new Set(change!.impact.map((item) => item.kind));
       expect(kinds.has("parameter")).toBe(true);
       const structuralKinds = ["compatible", "config-set", "phandle"].filter((kind) => kinds.has(kind));
-      // Prefer structural kinds when DTS bindings are present; keep required green if only template lands.
-      expect(structuralKinds.length > 0 || kinds.has("parameter")).toBe(true);
+      expect(structuralKinds.length).toBeGreaterThan(0);
+      const impactArtifact = await writeOperationJsonArtifact(testInfo, "parameter-dts-impact.json", {
+        requestId,
+        impact: change!.impact,
+        structuralKinds
+      });
 
       await recordOperationEvidence({
         operationId: "PARAM-DTS-IMPACT-001",
@@ -799,6 +807,7 @@ test.describe("DTS structured product browser acceptance", () => {
         status: "passed",
         testInfo,
         assertions: ["api"],
+        artifacts: [impactArtifact],
         api: [
           summarizeApiResponse(submitResponse, {
             method: "POST",
@@ -811,10 +820,7 @@ test.describe("DTS structured product browser acceptance", () => {
             responseSummary: `kinds=${[...kinds].join(",")} structural=${structuralKinds.join(",") || "none"}`
           })
         ],
-        notes:
-          structuralKinds.length > 0
-            ? `Impact included structural kinds: ${structuralKinds.join(", ")}.`
-            : "Impact returned parameter template items; structural kinds (compatible/config-set/phandle) deferred when binding/resolve did not produce peers in this fixture — keep required true, revisit with richer DTS fixtures if needed."
+        notes: `Impact included structural kinds: ${structuralKinds.join(", ")}.`
       });
     } finally {
       await cleanupDtsAcceptanceArtifacts([fileName, peerFileName], { configSetNames: [configSetName] });
@@ -906,6 +912,11 @@ test.describe("DTS structured product browser acceptance", () => {
           required_capability: "parameter:edit-critical"
         })
       );
+      const rbacArtifact = await writeOperationJsonArtifact(testInfo, "parameter-dts-rbac.json", {
+        denied: { status: denied.status(), error: deniedBody.error },
+        allowed: { status: allowed.status() },
+        rule: ruleRow
+      });
 
       // Agent critical deny is not exposed as a bare HTTP route; harness covers the same rule
       // surface (critical + parameter:edit-critical) and relies on unit coverage of actorType=agent.
@@ -915,6 +926,7 @@ test.describe("DTS structured product browser acceptance", () => {
         status: "passed",
         testInfo,
         assertions: ["api", "db"],
+        artifacts: [rbacArtifact],
         api: [
           {
             method: "POST",

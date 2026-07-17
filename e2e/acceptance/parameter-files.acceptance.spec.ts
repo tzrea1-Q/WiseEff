@@ -5,7 +5,7 @@ import { expect, test, type Page } from "playwright/test";
 import { withPgClient } from "./helpers/database";
 import { authHeadersForRole, authHeadersForUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { recordOperationEvidence, writeOperationJsonArtifact } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
 
@@ -196,6 +196,25 @@ test.describe("project parameter files browser acceptance", () => {
       expect(listResponse.ok()).toBe(true);
       const listBody = (await listResponse.json()) as { items: Array<{ fileName: string }> };
       expect(listBody.items.some((item) => item.fileName === fileName)).toBe(true);
+      const fileDbRow = await withPgClient(async (client) => {
+        const result = await client.query<{ id: string; file_name: string; version_number: number }>(
+          `
+          select f.id, f.file_name, v.version_number
+          from project_parameter_files f
+          inner join project_parameter_file_versions v on v.id = f.current_version_id
+          where f.organization_id = $1
+            and f.project_id = $2
+            and f.file_name = $3
+          `,
+          [organizationId, projectId, fileName]
+        );
+        return result.rows[0] ?? null;
+      });
+      expect(fileDbRow).toMatchObject({
+        id: uploadBody.item.id,
+        file_name: fileName,
+        version_number: 1
+      });
 
       const syncResponse = await request.post(
         apiRoute(`/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/sync`),
@@ -222,6 +241,18 @@ test.describe("project parameter files browser acceptance", () => {
         return result.rows[0];
       });
       expect(draftRow).toEqual(expect.objectContaining({ target_value: "85", origin: "file_sync" }));
+      const fileDbEvidence = {
+        table: "project_parameter_files/project_parameter_file_versions",
+        predicate: `organizationId=${organizationId}; projectId=${projectId}; fileName=${fileName}`,
+        observed: `fileId=${fileDbRow?.id}; fileName=${fileDbRow?.file_name}; version=${fileDbRow?.version_number}`,
+        rowCount: fileDbRow ? 1 : 0
+      };
+      const syncDbEvidence = {
+        table: "parameter_drafts",
+        predicate: `projectParameterValueId=${parameterValueId}; origin=file_sync`,
+        observed: `targetValue=${draftRow?.target_value}; origin=${draftRow?.origin}`,
+        rowCount: draftRow ? 1 : 0
+      };
 
       await page.goto("/parameter-admin/projects");
       await dismissXiaozeHint(page);
@@ -246,7 +277,8 @@ test.describe("project parameter files browser acceptance", () => {
             status: uploadResponse.status(),
             responseSummary: `file=${fileName}`
           }
-        ]
+        ],
+        db: [fileDbEvidence]
       });
       await recordOperationEvidence({
         operationId: "PARAM-FILE-SYNC-001",
@@ -262,7 +294,8 @@ test.describe("project parameter files browser acceptance", () => {
             status: syncResponse.status(),
             responseSummary: `draftsCreated=${syncBody.item.draftsCreated}`
           }
-        ]
+        ],
+        db: [syncDbEvidence]
       });
     } finally {
       await cleanupParameterFileAcceptanceArtifacts(fileName);
@@ -371,6 +404,12 @@ test.describe("project parameter files browser acceptance", () => {
         return Number(result.rows[0]?.count ?? 0);
       });
       expect(openConflicts).toBe(0);
+      const resolveArtifact = await writeOperationJsonArtifact(testInfo, "parameter-file-conflict-resolution.json", {
+        conflictId,
+        resolution: "file",
+        status: resolveResponse.status(),
+        openConflicts
+      });
 
       await recordOperationEvidence({
         operationId: "PARAM-FILE-RESOLVE-001",
@@ -378,12 +417,21 @@ test.describe("project parameter files browser acceptance", () => {
         status: "passed",
         testInfo,
         assertions: ["api", "db"],
+        artifacts: [resolveArtifact],
         api: [
           {
             method: "POST",
             path: `/api/v1/projects/${projectId}/parameter-file-conflicts/${conflictId}/resolve`,
             status: resolveResponse.status(),
             responseSummary: "resolution=file"
+          }
+        ],
+        db: [
+          {
+            table: "parameter_file_sync_conflicts",
+            predicate: `projectParameterValueId=${parameterValueId}; status=open`,
+            observed: `openConflicts=${openConflicts}; resolvedConflictId=${conflictId}`,
+            rowCount: openConflicts
           }
         ]
       });

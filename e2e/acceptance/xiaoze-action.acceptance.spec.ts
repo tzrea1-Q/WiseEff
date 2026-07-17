@@ -5,7 +5,11 @@ import { expect, test } from "playwright/test";
 
 import { withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
-import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
+import {
+  recordOperationEvidence,
+  summarizeApiResponse,
+  writeOperationJsonArtifact
+} from "./helpers/operationEvidence";
 
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
@@ -164,9 +168,16 @@ async function countOpenChangeRequests() {
 
 async function latestAgentAuditForSession(sessionId: string) {
   return withPgClient(async (client) => {
-    const result = await client.query<{ action: string; actor_type: string }>(
+    const result = await client.query<{
+      id: string;
+      kind: string;
+      action: string;
+      actor_type: string;
+      target_id: string | null;
+      trace_id: string | null;
+    }>(
       `
-      select action, actor_type
+      select id, kind, action, actor_type, target_id, trace_id
       from audit_events
       where metadata->>'sessionId' = $1
       order by created_at desc
@@ -259,7 +270,8 @@ test.describe("Xiaoze P1 action", () => {
 
     expect(resumed.status).toBe(200);
     expect(parseSseEvents(resumed.body).some((event) => event.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
-    expect(await countOpenChangeRequests()).toBeGreaterThan(openBefore);
+    const openAfterApprove = await countOpenChangeRequests();
+    expect(openAfterApprove).toBeGreaterThan(openBefore);
 
     const followUp = await postXiaoze(request, adminHeaders(), {
       threadId,
@@ -276,7 +288,17 @@ test.describe("Xiaoze P1 action", () => {
     expect(followUp.events.some((event) => event.type === "RUN_ERROR")).toBe(false);
 
     const auditRows = await latestAgentAuditForSession(threadId);
-    expect(auditRows.some((row) => row.action === "approval-executed" && row.actor_type === "agent")).toBe(true);
+    const approvalAudit = auditRows.find((row) => row.action === "approval-executed" && row.actor_type === "agent");
+    expect(approvalAudit).toBeTruthy();
+    const approveArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-action-approve.json", {
+      approvalId: interruptValue?.approvalId,
+      startedStatus: started.status,
+      resumedStatus: resumed.status,
+      followUpStatus: followUp.status,
+      openBefore,
+      openAfterApprove,
+      audit: approvalAudit
+    });
 
     await recordOperationEvidence({
       operationId: "XIAOZE-ACTION-APPROVE-001",
@@ -284,6 +306,7 @@ test.describe("Xiaoze P1 action", () => {
       status: "passed",
       route: "/parameters",
       testInfo,
+      artifacts: [approveArtifact],
       api: [
         summarizeApiResponse(started.response, {
           method: "POST",
@@ -295,6 +318,16 @@ test.describe("Xiaoze P1 action", () => {
           path: "/api/v1/agent/xiaoze",
           responseSummary: "approved"
         })
+      ],
+      audit: [
+        {
+          id: approvalAudit?.id,
+          kind: approvalAudit!.kind,
+          action: approvalAudit!.action,
+          targetId: approvalAudit?.target_id,
+          requestId: approvalAudit?.trace_id ?? undefined,
+          metadataSummary: `actorType=${approvalAudit?.actor_type}; sessionId=${threadId}`
+        }
       ],
       notes: "Xiaoze action approval executed a parameter change request with agent audit evidence."
     });
@@ -344,7 +377,8 @@ test.describe("Xiaoze P1 action", () => {
 
     expect(resumed.status).toBe(200);
     expect(parseSseEvents(resumed.body).some((event) => event.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
-    expect(await countOpenChangeRequests()).toBeGreaterThan(openBefore);
+    const openAfterNativeApprove = await countOpenChangeRequests();
+    expect(openAfterNativeApprove).toBeGreaterThan(openBefore);
 
     const rejectStarted = await postXiaoze(request, adminHeaders(), {
       threadId: `${thread}-reject`,
@@ -359,7 +393,7 @@ test.describe("Xiaoze P1 action", () => {
     });
     const rejectInterrupt = readInterruptValue(rejectStarted.events);
     const rejectApprovalId = String(rejectInterrupt?.approvalId ?? "");
-    const openAfterApprove = await countOpenChangeRequests();
+    const openBeforeNativeReject = await countOpenChangeRequests();
     const rejected = await postXiaoze(request, adminHeaders(), {
       threadId: `${thread}-reject`,
       runId: `run-resume-native-reject-${Date.now()}`,
@@ -378,7 +412,18 @@ test.describe("Xiaoze P1 action", () => {
     });
 
     expect(rejected.status).toBe(200);
-    expect(await countOpenChangeRequests()).toBe(openAfterApprove);
+    const openAfterNativeReject = await countOpenChangeRequests();
+    expect(openAfterNativeReject).toBe(openBeforeNativeReject);
+    const resumeArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-action-native-resume.json", {
+      approvalId,
+      rejectApprovalId,
+      approveStatus: resumed.status,
+      rejectStatus: rejected.status,
+      openBefore,
+      openAfterNativeApprove,
+      openBeforeNativeReject,
+      openAfterNativeReject
+    });
 
     await recordOperationEvidence({
       operationId: "XIAOZE-ACTION-RESUME-001",
@@ -386,6 +431,7 @@ test.describe("Xiaoze P1 action", () => {
       status: "passed",
       route: "/parameters",
       testInfo,
+      artifacts: [resumeArtifact],
       api: [
         summarizeApiResponse(resumed.response, {
           method: "POST",
@@ -433,7 +479,14 @@ test.describe("Xiaoze P1 action", () => {
     });
 
     expect(resumed.status).toBe(200);
-    expect(await countOpenChangeRequests()).toBe(openBefore);
+    const openAfter = await countOpenChangeRequests();
+    expect(openAfter).toBe(openBefore);
+    const rejectArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-action-reject.json", {
+      approvalId: interruptValue?.approvalId,
+      resumedStatus: resumed.status,
+      openBefore,
+      openAfter
+    });
 
     await recordOperationEvidence({
       operationId: "XIAOZE-ACTION-REJECT-001",
@@ -441,6 +494,7 @@ test.describe("Xiaoze P1 action", () => {
       status: "passed",
       route: "/parameters",
       testInfo,
+      artifacts: [rejectArtifact],
       api: [
         summarizeApiResponse(resumed.response, {
           method: "POST",
@@ -488,7 +542,15 @@ test.describe("Xiaoze P1 action", () => {
       .map((event) => String(event.delta ?? ""))
       .join("");
     expect(answer.toLowerCase()).toMatch(/not permitted|forbidden|无权限/);
-    expect(await countOpenChangeRequests()).toBe(openBefore);
+    const openAfter = await countOpenChangeRequests();
+    expect(openAfter).toBe(openBefore);
+    const authzArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-action-authz-denied.json", {
+      approvalId: interruptValue?.approvalId,
+      resumedStatus: resumed.status,
+      answer,
+      openBefore,
+      openAfter
+    });
 
     await recordOperationEvidence({
       operationId: "XIAOZE-ACTION-AUTHZ-001",
@@ -496,6 +558,7 @@ test.describe("Xiaoze P1 action", () => {
       status: "passed",
       route: "/parameters",
       testInfo,
+      artifacts: [authzArtifact],
       api: [
         summarizeApiResponse(resumed.response, {
           method: "POST",

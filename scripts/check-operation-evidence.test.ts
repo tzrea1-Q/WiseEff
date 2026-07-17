@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   evaluateOperationEvidence,
   readOperationEvidenceRecords,
@@ -9,7 +9,12 @@ import {
   writeOperationEvidenceIndex,
   type OperationEvidenceRecord
 } from "./check-operation-evidence";
-import { operationEvidenceFileName, recordOperationEvidence, summarizeApiResponse } from "../e2e/acceptance/helpers/operationEvidence";
+import {
+  operationEvidenceFileName,
+  recordOperationEvidence,
+  summarizeApiResponse,
+  writeOperationJsonArtifact
+} from "../e2e/acceptance/helpers/operationEvidence";
 
 describe("operation evidence helper", () => {
   it("builds stable evidence file names from operation id and title", () => {
@@ -84,6 +89,31 @@ describe("operation evidence helper", () => {
       requestId: "req-123",
       responseSummary: "authorization [redacted] token=[redacted]"
     });
+  });
+
+  it("writes an attached JSON artifact from observed operation data", async () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-operation-artifact-"));
+    const attach = vi.fn();
+    const testInfo = {
+      outputPath: (name: string) => join(root, name),
+      attach
+    };
+
+    try {
+      const artifactPath = await writeOperationJsonArtifact(
+        testInfo as never,
+        "observed-response.json",
+        { status: 200, result: "allowed" }
+      );
+
+      expect(JSON.parse(readFileSync(artifactPath, "utf8"))).toEqual({ status: 200, result: "allowed" });
+      expect(attach).toHaveBeenCalledWith("operation-json-evidence", {
+        path: artifactPath,
+        contentType: "application/json"
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

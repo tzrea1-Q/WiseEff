@@ -5,7 +5,11 @@ import { expect, test } from "playwright/test";
 
 import { withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
-import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
+import {
+  recordOperationEvidence,
+  summarizeApiResponse,
+  writeOperationJsonArtifact
+} from "./helpers/operationEvidence";
 
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
@@ -173,6 +177,11 @@ test.describe("Xiaoze P0 perception", () => {
     expect(result.status).toBe(200);
     const answer = readSseText(result.body);
     expect(answer.toLowerCase()).toMatch(/project|parameter|parameters/);
+    const groundedArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-perception-grounded.json", {
+      status: result.status,
+      projectId,
+      answer
+    });
 
     await recordOperationEvidence({
       operationId: "XIAOZE-PERCEPTION-001",
@@ -180,6 +189,7 @@ test.describe("Xiaoze P0 perception", () => {
       status: "passed",
       route: "/parameters",
       testInfo,
+      artifacts: [groundedArtifact],
       api: [
         summarizeApiResponse(result.response, {
           method: "POST",
@@ -204,6 +214,11 @@ test.describe("Xiaoze P0 perception", () => {
     const answer = readSseText(result.body);
     expect(answer.toLowerCase()).toMatch(/not permitted|cannot|无权限|forbidden/);
     expect(answer.toLowerCase()).not.toMatch(/secret-project: \d+ parameters/);
+    const authzArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-perception-authz.json", {
+      status: result.status,
+      requestedProjectId: "secret-project",
+      answer
+    });
 
     await recordOperationEvidence({
       operationId: "XIAOZE-PERCEPTION-AUTHZ-001",
@@ -211,6 +226,7 @@ test.describe("Xiaoze P0 perception", () => {
       status: "passed",
       route: "/parameters",
       testInfo,
+      artifacts: [authzArtifact],
       api: [
         summarizeApiResponse(result.response, {
           method: "POST",

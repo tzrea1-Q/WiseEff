@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Page, TestInfo } from "playwright/test";
 import { acceptanceOperations, type AcceptanceOperationAssertion } from "../operationMatrix";
 
@@ -82,6 +82,21 @@ export function operationEvidenceFileName(operationId: string, title: string) {
     .replace(/^-+|-+$/g, "");
 
   return `${operationId}-${titleSlug || "operation-evidence"}.json`;
+}
+
+export async function writeOperationJsonArtifact(
+  testInfo: TestInfo,
+  fileName: string,
+  observed: unknown
+) {
+  const artifactPath = testInfo.outputPath(fileName);
+  mkdirSync(dirname(artifactPath), { recursive: true });
+  writeFileSync(artifactPath, `${JSON.stringify(observed, null, 2)}\n`, "utf8");
+  await testInfo.attach("operation-json-evidence", {
+    path: artifactPath,
+    contentType: "application/json"
+  });
+  return artifactPath;
 }
 
 export async function recordOperationEvidence(input: RecordOperationEvidenceInput) {

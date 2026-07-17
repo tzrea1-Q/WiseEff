@@ -2,7 +2,11 @@ import "dotenv/config";
 import { expect, test, type Page } from "playwright/test";
 import { authHeadersForRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { recordOperationEvidence } from "./helpers/operationEvidence";
+import {
+  recordOperationEvidence,
+  summarizeApiResponse,
+  writeOperationJsonArtifact
+} from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
 
@@ -83,6 +87,18 @@ test.describe("PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignmen
       page,
       testInfo,
       assertions: ["ui", "api"],
+      api: [
+        summarizeApiResponse(parseResponse, {
+          method: "POST",
+          path: "/api/v1/parameter-import/parse-dts",
+          responseSummary: `format=${parsed.format}; rows=${parsed.rows.length}; distinctPaths=${new Set(paths).size}`
+        }),
+        summarizeApiResponse(includeResponse, {
+          method: "POST",
+          path: "/api/v1/parameter-import/parse-dts",
+          responseSummary: `includeFormat=${includeBody.format}; rows=${includeBody.rows.length}`
+        })
+      ],
       notes: "parse-dts returned distinct @0/@1 paths; wizard showed server-parse hint and 3 rows."
     });
   });
@@ -118,9 +134,16 @@ test.describe("PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignmen
     expect(preview.item.id).toBeTruthy();
 
     const audit = await withPgClient(async (client) => {
-      const result = await client.query<{ kind: string; action: string; metadata: Record<string, unknown> }>(
+      const result = await client.query<{
+        id: string;
+        kind: string;
+        action: string;
+        target_id: string | null;
+        trace_id: string | null;
+        metadata: Record<string, unknown>;
+      }>(
         `
-        select kind, action, metadata
+        select id, kind, action, target_id, trace_id, metadata
         from audit_events
         where organization_id = 'org-chargelab'
           and kind = 'batch-import'
@@ -136,6 +159,11 @@ test.describe("PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignmen
     expect(audit).toBeTruthy();
     expect(audit!.action).toBe("preview");
     expect(audit!.metadata).toMatchObject({ reviewMetadata });
+    const reviewMetadataArtifact = await writeOperationJsonArtifact(testInfo, "parameter-import-review-metadata.json", {
+      batchId: preview.item.id,
+      previewStatus: previewResponse.status(),
+      audit
+    });
 
     await recordOperationEvidence({
       operationId: "PARAM-IMPORT-REVIEW-META-001",
@@ -143,6 +171,32 @@ test.describe("PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignmen
       status: "passed",
       testInfo,
       assertions: ["api", "db", "audit"],
+      artifacts: [reviewMetadataArtifact],
+      api: [
+        summarizeApiResponse(previewResponse, {
+          method: "POST",
+          path: "/api/v1/parameter-import-batches",
+          responseSummary: `batchId=${preview.item.id}; skippedRows=${reviewMetadata.skippedRows.length}`
+        })
+      ],
+      db: [
+        {
+          table: "audit_events",
+          predicate: `organizationId=org-chargelab; kind=batch-import; targetId=${preview.item.id}`,
+          observed: `action=${audit?.action}; skippedRows=${reviewMetadata.skippedRows.length}`,
+          rowCount: audit ? 1 : 0
+        }
+      ],
+      audit: [
+        {
+          id: audit?.id,
+          kind: audit!.kind,
+          action: audit!.action,
+          targetId: audit?.target_id,
+          requestId: audit?.trace_id ?? undefined,
+          metadataSummary: `reviewMetadata.skippedRows=${reviewMetadata.skippedRows.length}`
+        }
+      ],
       notes: `batch ${preview.item.id} preview audit metadata contained skippedRows.`
     });
   });
