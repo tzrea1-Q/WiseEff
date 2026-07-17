@@ -116,6 +116,8 @@ export async function cleanupSemanticAcceptanceArtifacts(
   scope: SemanticFixtureCleanupScope
 ): Promise<void> {
   await withPgClient(async (client) => {
+    await client.query("begin");
+    try {
     const configSetIds = await resolveConfigSetIds(
       client,
       scope.organizationId,
@@ -320,6 +322,11 @@ export async function cleanupSemanticAcceptanceArtifacts(
         scope.parameterSpecIds
       ]);
       await client.query(`delete from parameter_specs where id = any($1::text[])`, [scope.parameterSpecIds]);
+    }
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
     }
   });
 }

@@ -130,4 +130,70 @@ describe.skipIf(!databaseAvailable)("semanticFixtureCleanup tenant isolation", (
       await wipeSharedName();
     }
   });
+
+  it("rolls back earlier fixture deletes when a later cleanup step fails", async () => {
+    await wipeSharedName();
+    const ids = await ensureTenantGraph();
+    const fileId = `file-cleanup-tx-${randomUUID().slice(0, 8)}`;
+    const fileName = `cleanup-tx-${randomUUID().slice(0, 8)}.dts`;
+    const token = randomUUID().replace(/-/g, "");
+    const functionName = `wiseeff_cleanup_fail_${token}`;
+    const triggerName = `wiseeff_cleanup_fail_${token}`;
+
+    await withPgClient(async (client) => {
+      await client.query(
+        `
+        insert into project_parameter_files (
+          id, organization_id, project_id, file_name, format, enabled, config_set_id,
+          config_set_role, config_set_sort_order
+        ) values ($1, $2, $3, $4, 'dts', true, $5, 'base', 0)
+        `,
+        [fileId, ORG_A, PROJECT_A1, fileName, ids.a1],
+      );
+      await client.query(
+        `create function ${functionName}() returns trigger language plpgsql as $$
+         begin
+           if old.id = '${ids.a1}' then
+             raise exception 'injected semantic cleanup failure';
+           end if;
+           return old;
+         end $$`,
+      );
+      await client.query(
+        `create trigger ${triggerName}
+         before delete on dts_config_set
+         for each row execute function ${functionName}()`,
+      );
+    });
+
+    try {
+      await expect(
+        cleanupSemanticAcceptanceArtifacts({
+          organizationId: ORG_A,
+          projectId: PROJECT_A1,
+          configSetNames: [SHARED_NAME],
+          fileNames: [fileName],
+        }),
+      ).rejects.toThrow(/injected semantic cleanup failure/);
+
+      await withPgClient(async (client) => {
+        const files = await client.query<{ count: string }>(
+          `select count(*)::text as count from project_parameter_files where id = $1`,
+          [fileId],
+        );
+        const configSets = await client.query<{ count: string }>(
+          `select count(*)::text as count from dts_config_set where id = $1`,
+          [ids.a1],
+        );
+        expect(Number(files.rows[0]?.count ?? 0)).toBe(1);
+        expect(Number(configSets.rows[0]?.count ?? 0)).toBe(1);
+      });
+    } finally {
+      await withPgClient(async (client) => {
+        await client.query(`drop trigger if exists ${triggerName} on dts_config_set`);
+        await client.query(`drop function if exists ${functionName}()`);
+      });
+      await wipeSharedName();
+    }
+  });
 });
