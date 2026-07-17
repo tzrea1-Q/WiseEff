@@ -71,6 +71,7 @@ import {
 } from "@/application/parameters/dashboardState";
 import { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { ParameterDraftDto, ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
+import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { canAccessPage, canPerform } from "@/app/permissions";
 import {
   applyInitializationDraftToConfig,
@@ -2091,6 +2092,8 @@ type AppProps = {
   initialAppState?: PrototypeState;
   logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
+  parameterTopologyRepository?: ParameterTopologyRepository;
+  listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
   runtimeMode?: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
@@ -2102,7 +2105,9 @@ function App({
   debuggingGateway,
   initialAppState = initialState,
   logAnalysisRepository,
+  listParameterConfigSets,
   parameterRepository,
+  parameterTopologyRepository,
   productFeedbackRepository,
   runtimeMode = wiseEffRuntimeMode,
   userGovernanceActions
@@ -2116,7 +2121,9 @@ function App({
         initialAppState={initialAppState}
         key={mockDataFingerprint}
         logAnalysisRepository={logAnalysisRepository}
+        listParameterConfigSets={listParameterConfigSets}
         parameterRepository={parameterRepository}
+        parameterTopologyRepository={parameterTopologyRepository}
         productFeedbackRepository={productFeedbackRepository}
         runtimeMode={runtimeMode}
         userGovernanceActions={userGovernanceActions}
@@ -2131,7 +2138,9 @@ function AppShell({
   debuggingGateway,
   initialAppState,
   logAnalysisRepository,
+  listParameterConfigSets,
   parameterRepository,
+  parameterTopologyRepository,
   productFeedbackRepository,
   runtimeMode,
   userGovernanceActions
@@ -2141,7 +2150,9 @@ function AppShell({
   debuggingGateway?: DebuggingGateway;
   initialAppState: PrototypeState;
   logAnalysisRepository?: LogAnalysisRepository;
+  listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   parameterRepository?: ParameterRepository;
+  parameterTopologyRepository?: ParameterTopologyRepository;
   productFeedbackRepository?: ProductFeedbackRepository;
   runtimeMode: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
@@ -2622,6 +2633,8 @@ function AppShell({
                 debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
+                parameterTopologyRepository={parameterTopologyRepository}
+                listParameterConfigSets={listParameterConfigSets}
                 productFeedbackRepository={productFeedbackRepositoryClient}
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
@@ -2660,6 +2673,8 @@ function AppShell({
                 debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
+                parameterTopologyRepository={parameterTopologyRepository}
+                listParameterConfigSets={listParameterConfigSets}
                 productFeedbackRepository={productFeedbackRepositoryClient}
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}

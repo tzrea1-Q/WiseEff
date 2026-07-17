@@ -18,8 +18,14 @@ import { selectModuleTreeFilter } from "./test/moduleTreeTestHelpers";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
+import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
+import {
+  TOPOLOGY_TEACHING_BINDINGS,
+  TOPOLOGY_TEACHING_EFFECTIVE_NODES,
+  TOPOLOGY_TEACHING_SOURCE_NODES
+} from "@/components/parameter-topology/topologyTeachingFixtures";
 
 const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
@@ -92,6 +98,53 @@ function createAppParameterRepository(overrides: Partial<ParameterRepository> = 
     parseDtsImport: vi.fn().mockResolvedValue({ format: "dts-full", rows: [] }),
     ...overrides
   };
+}
+
+function createAppParameterTopologyRepository(
+  overrides: Partial<ParameterTopologyRepository> = {}
+): ParameterTopologyRepository {
+  return {
+    listSpecs: vi.fn().mockResolvedValue([]),
+    getSpec: vi.fn(),
+    activateParameterSpec: vi.fn(),
+    listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    resolveSpecReviewTask: vi.fn().mockResolvedValue(undefined),
+    listBindings: vi.fn().mockResolvedValue(TOPOLOGY_TEACHING_BINDINGS),
+    getTopology: vi.fn(async (projectId, configSetId, revisionId, view) => {
+      const resolvedRevisionId = revisionId === "current" ? "rev-app-test" : revisionId;
+      if (view === "source") {
+        return {
+          view: "source" as const,
+          revisionId: resolvedRevisionId,
+          configSetId,
+          projectId,
+          status: "resolved",
+          incompleteBase: false,
+          diagnostics: [],
+          nodes: TOPOLOGY_TEACHING_SOURCE_NODES
+        };
+      }
+      return {
+        view: "effective" as const,
+        revisionId: resolvedRevisionId,
+        configSetId,
+        projectId,
+        status: "resolved",
+        incompleteBase: false,
+        diagnostics: [],
+        nodes: TOPOLOGY_TEACHING_EFFECTIVE_NODES
+      };
+    }),
+    listMappingTasks: vi.fn().mockResolvedValue([]),
+    resolveMapping: vi.fn().mockResolvedValue(undefined),
+    validateRevision: vi.fn().mockResolvedValue({ id: "run-app-test", status: "passed", stage: "toolchain" }),
+    createBindingDraft: vi.fn(),
+    ...overrides
+  };
+}
+
+function createAppConfigSetList() {
+  return vi.fn().mockResolvedValue([{ id: "config-set-app-test", name: "default" }]);
 }
 
 function createAppDebuggingGateway(overrides: Partial<DebuggingGateway> = {}): DebuggingGateway {
@@ -286,7 +339,15 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("does not render WiseAgent FAB in api mode", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App authClient={createResolvedAuthClient()} runtimeMode="api" />);
+    render(
+      <App
+        authClient={createResolvedAuthClient()}
+        parameterRepository={createAppParameterRepository()}
+        parameterTopologyRepository={createAppParameterTopologyRepository()}
+        listParameterConfigSets={createAppConfigSetList()}
+        runtimeMode="api"
+      />
+    );
 
     expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
   });
@@ -592,6 +653,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
             permissions: ["admin:access", "users:manage"]
           }))
         }}
+        parameterRepository={createAppParameterRepository()}
+        parameterTopologyRepository={createAppParameterTopologyRepository()}
+        listParameterConfigSets={createAppConfigSetList()}
         userGovernanceActions={userGovernanceActions}
       />
     );
@@ -662,6 +726,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         }
       ])
     });
+    const parameterTopologyRepository = createAppParameterTopologyRepository();
+    const listParameterConfigSets = createAppConfigSetList();
 
     render(
       <App
@@ -683,12 +749,21 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
           }))
         }}
         parameterRepository={createAppParameterRepository()}
+        parameterTopologyRepository={parameterTopologyRepository}
+        listParameterConfigSets={listParameterConfigSets}
         userGovernanceActions={userGovernanceActions}
       />
     );
 
-    expect(await screen.findByLabelText("项目拓扑工作区")).toBeInTheDocument();
     expect(await screen.findAllByText("gpio_int")).not.toHaveLength(0);
+    expect(screen.getByLabelText("项目拓扑工作区")).toBeInTheDocument();
+    expect(parameterTopologyRepository.getTopology).toHaveBeenCalledWith(
+      initialState.activeProjectId,
+      "config-set-app-test",
+      "current",
+      "effective"
+    );
+    expect(listParameterConfigSets).toHaveBeenCalledWith(initialState.activeProjectId);
     expect(userGovernanceActions.listUsers).not.toHaveBeenCalled();
   });
 
@@ -730,6 +805,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   it("hydrates parameter runtime data from the API repository after auth", async () => {
     window.history.replaceState(null, "", "/parameters");
     const parameterRepository = createAppParameterRepository();
+    const parameterTopologyRepository = createAppParameterTopologyRepository();
+    const listParameterConfigSets = createAppConfigSetList();
 
     render(
       <App
@@ -750,17 +827,21 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
         }}
         initialAppState={{ ...initialState, activeRoleId: "user" }}
         parameterRepository={parameterRepository}
+        parameterTopologyRepository={parameterTopologyRepository}
+        listParameterConfigSets={listParameterConfigSets}
         runtimeMode="api"
       />
     );
 
-    expect(await screen.findByLabelText("项目拓扑工作区")).toBeInTheDocument();
     expect(await screen.findAllByText("gpio_int")).not.toHaveLength(0);
+    expect(screen.getByLabelText("项目拓扑工作区")).toBeInTheDocument();
     expect(parameterRepository.listProjects).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listParameters).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listChangeRequests).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listSubmissionRounds).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listDrafts).toHaveBeenCalledTimes(1);
+    expect(parameterTopologyRepository.getTopology).toHaveBeenCalled();
+    expect(listParameterConfigSets).toHaveBeenCalledWith(initialState.activeProjectId);
   });
 
   it("hydrates debugging runtime data from the API gateway after auth", async () => {

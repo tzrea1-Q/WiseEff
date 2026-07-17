@@ -109,11 +109,6 @@ export default defineConfig({
     environment: "jsdom",
     exclude: [...configDefaults.exclude, ...siblingWorktreeExclude, "e2e/**", "server/**"],
     setupFiles: "./src/test/setup.ts",
-    // Under `npm run test:all`, jsdom suites share the machine with server forks.
-    // Keep assertions strict; only raise the default 5s budget so first-paint
-    // renders are not flaked by transient CPU contention.
-    testTimeout: 15_000,
-    hookTimeout: 15_000,
     env: {
       VITE_WISEEFF_RUNTIME_MODE: "mock"
     },

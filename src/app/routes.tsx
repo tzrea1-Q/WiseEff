@@ -22,6 +22,7 @@ import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingR
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
+import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { AppAction } from "@/App";
 import type { DashboardWindow, HotspotDimension, OverviewScope } from "@/domain/parameters/dashboardTypes";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
@@ -69,6 +70,8 @@ export type PageProps = {
   debuggingRuntimeReady?: boolean;
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
+  parameterTopologyRepository?: ParameterTopologyRepository;
+  listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
   userGovernanceActions?: UserGovernanceActions;
   runtimeMode?: WiseEffRuntimeMode;
@@ -103,6 +106,8 @@ export function PageRouter({
   debuggingRuntimeReady = true,
   logActions,
   parameterActions,
+  parameterTopologyRepository,
+  listParameterConfigSets,
   productFeedbackRepository,
   userGovernanceActions,
   runtimeMode,
@@ -158,6 +163,8 @@ export function PageRouter({
           onNavigate={onNavigate}
           search={search}
           parameterActions={parameterActions}
+          topologyRepository={parameterTopologyRepository}
+          listConfigSets={listParameterConfigSets}
           effectiveProjectId={effectiveParametersProjectId}
           canEdit={canEditParameters}
           initializationStatus={activeProjectInitializationStatus}

@@ -32,6 +32,7 @@ import {
 } from "@/domain/modules/moduleTree";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { ApiProjectTopologyWorkspace } from "@/components/parameter-topology/ApiProjectTopologyWorkspace";
+import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { useTopologyLayoutMode } from "@/components/parameter-topology/useTopologyLayoutMode";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
@@ -63,6 +64,8 @@ type ParametersPageProps = {
   onNavigate: (path: string) => void;
   search: string;
   parameterActions?: ParameterPageActions;
+  topologyRepository?: ParameterTopologyRepository;
+  listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   effectiveProjectId?: string;
   topBarProjectId?: string;
   canEdit?: boolean;
@@ -77,6 +80,8 @@ export function ParametersPage({
   onNavigate,
   search,
   parameterActions,
+  topologyRepository,
+  listConfigSets,
   effectiveProjectId,
   topBarProjectId,
   canEdit = true,
@@ -801,6 +806,8 @@ export function ParametersPage({
             canPublish={effectiveCanEdit}
             layoutMode={topologyLayoutMode}
             runtimeMode="api"
+            topologyRepository={topologyRepository}
+            listConfigSets={listConfigSets}
           />
         </div>
       </WorkbenchLayout>
