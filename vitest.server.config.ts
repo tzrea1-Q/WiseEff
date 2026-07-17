@@ -22,9 +22,6 @@ export default defineConfig({
     maxWorkers: process.env.VITEST_SERVER_MAX_WORKERS
       ? Number(process.env.VITEST_SERVER_MAX_WORKERS)
       : defaultMaxWorkers,
-    fileParallelism: true,
-    // Heavy migration/ingest suites + fixture lock queue need headroom above 60s.
-    testTimeout: 180_000,
-    hookTimeout: 180_000
+    fileParallelism: true
   }
 });

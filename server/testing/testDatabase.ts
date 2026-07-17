@@ -1,7 +1,12 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { createDatabase, type Database } from "../shared/database/client";
+import {
+  createDatabase,
+  type Database,
+  type Queryable,
+  type QueryResult
+} from "../shared/database/client";
 import { applyMigrations } from "../shared/database/migrations";
 
 const projectRoot = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
@@ -17,6 +22,23 @@ let migrationsApplied = false;
 export type InMemoryTestDatabase = Database & {
   rollback: () => Promise<void>;
 };
+
+export function createSerializedTestQueryable(
+  execute: <Row>(text: string, values?: unknown[]) => Promise<QueryResult<Row>>
+): Queryable {
+  let queue: Promise<void> = Promise.resolve();
+
+  return {
+    query: <Row>(text: string, values: unknown[] = []) => {
+      const pending = queue.then(() => execute<Row>(text, values));
+      queue = pending.then(
+        () => undefined,
+        () => undefined
+      );
+      return pending;
+    }
+  };
+}
 
 function resolveTestDatabaseUrl() {
   return (
@@ -95,12 +117,10 @@ export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase
     throw error;
   }
 
-  const queryable = {
-    query: async (text: string, values: unknown[] = []) => {
+  const queryable = createSerializedTestQueryable(async (text, values = []) => {
       const result = await client.query(text, values);
       return { rows: result.rows, rowCount: result.rowCount };
-    }
-  };
+  });
 
   // Keep all writes inside the outer BEGIN so afterEach rollback isolates tests.
   // createDatabase().transaction() issues COMMIT and would persist nested service writes.
@@ -109,7 +129,7 @@ export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase
     transaction: async <T,>(fn: (tx: typeof queryable) => Promise<T>) => fn(queryable),
     rollback: async () => {
       try {
-        await client.query("rollback");
+        await queryable.query("rollback");
       } finally {
         if (lockHeld) {
           await client.query("select pg_advisory_unlock($1)", [FIXTURE_ADVISORY_LOCK]).catch(() => undefined);

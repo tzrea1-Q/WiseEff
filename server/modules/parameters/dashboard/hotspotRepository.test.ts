@@ -1,6 +1,9 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { createInMemoryTestDatabase, type InMemoryTestDatabase } from "../../../testing/testDatabase";
-import { seedParameterDashboardFixture } from "../../../testing/parameterDashboardFixture";
+import {
+  PARAMETER_DASHBOARD_FIXTURE,
+  seedParameterDashboardFixture
+} from "../../../testing/parameterDashboardFixture";
 import { aggregateHotspotGroups } from "./hotspotRepository";
 
 describe("hotspot repository", () => {
@@ -9,7 +12,7 @@ describe("hotspot repository", () => {
   beforeEach(async () => {
     db = await createInMemoryTestDatabase();
     await seedParameterDashboardFixture(db);
-  }, 180_000);
+  });
 
   afterEach(async () => {
     await db.rollback();
@@ -17,7 +20,7 @@ describe("hotspot repository", () => {
 
   it("aggregates module-dimension groups with behavioral counts", async () => {
     const groups = await aggregateHotspotGroups(db, {
-      organizationId: "org-chargelab",
+      organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId,
       projectId: null,
       dimension: "module",
       windowStart: "2026-06-07T00:00:00Z",
@@ -30,7 +33,7 @@ describe("hotspot repository", () => {
 
   it("aggregates project-dimension groups with real counts", async () => {
     const groups = await aggregateHotspotGroups(db, {
-      organizationId: "org-chargelab",
+      organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId,
       projectId: null,
       dimension: "project",
       windowStart: "2026-06-07T00:00:00Z",
@@ -45,7 +48,7 @@ describe("hotspot repository", () => {
 
   it("aggregates parameter-dimension groups across projects with project scope counts", async () => {
     const groups = await aggregateHotspotGroups(db, {
-      organizationId: "org-chargelab",
+      organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId,
       projectId: null,
       dimension: "parameter",
       windowStart: "2026-06-07T00:00:00Z",

@@ -11,7 +11,10 @@ import { createDatabase, type Database } from "../../../shared/database/client";
 import { applyMigrations } from "../../../shared/database/migrations";
 import { createHttpServer } from "../../../shared/http/server";
 import { createRouter } from "../../../shared/http/router";
-import { isTestDatabaseAvailable } from "../../../testing/testDatabase";
+import {
+  createSerializedTestQueryable,
+  isTestDatabaseAvailable
+} from "../../../testing/testDatabase";
 import { requestJson } from "../../../test/testClient";
 import type { AuthContext } from "../../auth/types";
 import { resetParameterIdentityCutoverCache } from "../cutoverAwareIdentity";
@@ -94,12 +97,12 @@ async function withTempDatabase(fn: (db: Database) => Promise<void>) {
   const connectionString = adminConnectionString(dbName);
   const client = new pg.Client({ connectionString });
   await client.connect();
-  const db = createDatabase({
-    query: async (text, values = []) => {
+  const db = createDatabase(
+    createSerializedTestQueryable(async (text, values = []) => {
       const result = await client.query(text, values);
       return { rows: result.rows, rowCount: result.rowCount };
-    }
-  });
+    })
+  );
 
   try {
     await applyMigrations(db, migrationsDir);

@@ -1,6 +1,9 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { createInMemoryTestDatabase, type InMemoryTestDatabase } from "../../../testing/testDatabase";
-import { seedParameterDashboardFixture } from "../../../testing/parameterDashboardFixture";
+import {
+  PARAMETER_DASHBOARD_FIXTURE,
+  seedParameterDashboardFixture
+} from "../../../testing/parameterDashboardFixture";
 import type { Database } from "../../../shared/database/client";
 import {
   countKpis,
@@ -17,14 +20,14 @@ describe("dashboard repository", () => {
   beforeEach(async () => {
     db = await createInMemoryTestDatabase();
     await seedParameterDashboardFixture(db);
-  }, 180_000);
+  });
 
   afterEach(async () => {
     await db.rollback();
   });
 
   it("counts KPIs scoped to org and window", async () => {
-    const kpis = await countKpis(db, { organizationId: "org-chargelab", projectId: null, windowStart: "2026-06-07T00:00:00Z" });
+    const kpis = await countKpis(db, { organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId, projectId: null, windowStart: "2026-06-07T00:00:00Z" });
     expect(kpis.totalParameters).toBeGreaterThan(0);
     expect(kpis.managedProjects).toBeGreaterThan(0);
     expect(kpis.highRiskParameters).toBeGreaterThanOrEqual(1);
@@ -32,7 +35,7 @@ describe("dashboard repository", () => {
 
   it("aggregates trend into zero-filled day buckets", async () => {
     const points = await aggregateTrend(db, {
-      organizationId: "org-chargelab",
+      organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId,
       projectId: null,
       windowStart: "2026-06-07T00:00:00Z",
       windowEnd: "2026-07-07T00:00:00Z",
@@ -43,16 +46,16 @@ describe("dashboard repository", () => {
   });
 
   it("aggregates risk distribution by project without scaling", async () => {
-    const buckets = await aggregateRiskDistribution(db, { organizationId: "org-chargelab", projectId: null });
-    const aurora = buckets.find((b) => b.projectId === "aurora");
+    const buckets = await aggregateRiskDistribution(db, { organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId, projectId: null });
+    const aurora = buckets.find((b) => b.projectId === PARAMETER_DASHBOARD_FIXTURE.projectIds.aurora);
     expect(aurora).toBeDefined();
     expect(aurora!.high + aurora!.medium + aurora!.low).toBe(aurora!.total);
   });
 
   it("aggregates workbench signals", async () => {
     const signals = await aggregateWorkbenchSignals(db, {
-      organizationId: "org-chargelab",
-      userId: "u-xu-yun",
+      organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId,
+      userId: PARAMETER_DASHBOARD_FIXTURE.activeUserId,
       projectId: null
     });
     expect(signals.reviewQueue).toBeGreaterThanOrEqual(0);
@@ -155,9 +158,9 @@ describe("dashboard repository", () => {
 
   it("counts committer personal KPIs from review decisions", async () => {
     const result = await countPersonalKpis(db, {
-      organizationId: "org-chargelab",
+      organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId,
       projectId: null,
-      userId: "u-xu-yun",
+      userId: PARAMETER_DASHBOARD_FIXTURE.activeUserId,
       windowStart: "2026-06-01T00:00:00.000Z",
       perspectiveRoleId: "hardware-committer",
       workbenchSignals: {

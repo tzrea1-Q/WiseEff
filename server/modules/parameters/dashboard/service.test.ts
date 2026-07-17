@@ -1,19 +1,25 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import type { AuthContext } from "../../auth/types";
 import { createInMemoryTestDatabase, type InMemoryTestDatabase } from "../../../testing/testDatabase";
-import { seedParameterDashboardFixture } from "../../../testing/parameterDashboardFixture";
+import {
+  PARAMETER_DASHBOARD_FIXTURE,
+  seedParameterDashboardFixture
+} from "../../../testing/parameterDashboardFixture";
 import { getDashboardSummary, getDashboardHotspots } from "./service";
 
 const auth: AuthContext = {
   user: {
-    id: "u-xu-yun",
-    organizationId: "org-chargelab",
+    id: PARAMETER_DASHBOARD_FIXTURE.activeUserId,
+    organizationId: PARAMETER_DASHBOARD_FIXTURE.organizationId,
     name: "Xu Yun",
     email: "xu@chargelab.cn",
     title: "Platform Owner",
     isActive: true
   },
-  organization: { id: "org-chargelab", name: "ChargeLab" },
+  organization: {
+    id: PARAMETER_DASHBOARD_FIXTURE.organizationId,
+    name: PARAMETER_DASHBOARD_FIXTURE.organizationName
+  },
   roles: [{ projectId: null, roleId: "admin" }],
   permissions: ["parameter:view", "parameter:edit", "admin:access"]
 };
@@ -24,7 +30,7 @@ describe("dashboard service", () => {
   beforeEach(async () => {
     db = await createInMemoryTestDatabase();
     await seedParameterDashboardFixture(db);
-  }, 180_000);
+  });
 
   afterEach(async () => {
     await db.rollback();
