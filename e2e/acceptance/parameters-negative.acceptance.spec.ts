@@ -159,6 +159,10 @@ async function createOneValidDraft(page: Page, targetValue: string, reason: stri
   const draftDialog = await openParameterDraftDialog(page, targetValue);
   const targetCard = draftDialog.locator(".parameter-draft-card").filter({ hasText: parameterName }).first();
   await targetCard.getByLabel(/修改原因/).fill(reason);
+  const dismissXiaozeHint = page.getByRole("button", { name: "不再提示" });
+  if (await dismissXiaozeHint.isVisible().catch(() => false)) {
+    await dismissXiaozeHint.click();
+  }
   await draftDialog.locator(".parameter-detail-dialog__actions .button.primary").click();
   await expect(draftDialog).not.toBeVisible();
 }

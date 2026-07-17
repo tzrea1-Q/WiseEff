@@ -12,7 +12,7 @@ async function dismissXiaozeHint(page: Page) {
   }
 }
 
-const importParameterName = "fast_charge_current_limit_ma";
+const importParameterName = "charge_voltage_limit_mv";
 
 const importPayload = JSON.stringify([
   {
@@ -20,9 +20,9 @@ const importPayload = JSON.stringify([
     module: "Charging Policy",
     risk: "High",
     unit: "mA",
-    range: "2500 - 4500",
-    currentValue: "3200",
-    recommendedValue: "3200",
+    range: "4200 - 4500",
+    currentValue: "4350",
+    recommendedValue: "4310",
     description: "Browser acceptance import wizard row"
   }
 ]);
@@ -63,7 +63,10 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
 
     const batchPreview = wizard.getByRole("region", { name: "批次预览" });
     await expect(batchPreview).toBeVisible({ timeout: 30_000 });
-    await expect(batchPreview).toContainText("新增");
+    const previewRow = batchPreview.getByRole("row").filter({ hasText: importParameterName });
+    await expect(previewRow).toContainText("更新");
+    await expect(previewRow.getByRole("checkbox", { name: `选择 ${importParameterName}` })).toBeChecked();
+    await expect(wizard.getByRole("button", { name: "下一步" })).toBeEnabled();
     await wizard.getByRole("button", { name: "下一步" }).click();
 
     const confirmApply = wizard.getByRole("region", { name: "确认应用" });

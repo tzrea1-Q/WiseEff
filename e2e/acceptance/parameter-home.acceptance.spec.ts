@@ -34,7 +34,8 @@ test.describe("parameter-home production dashboard", () => {
     await expect(page.getByRole("group", { name: "热榜维度" }).first()).toBeVisible();
 
     await page.getByRole("radio", { name: "近 7 天" }).first().click();
-    await expect(page.getByText(/近 7 天/)).toBeVisible();
+    await expect(page.getByRole("radio", { name: "近 7 天" }).first()).toHaveAttribute("aria-checked", "true");
+    await expect(page.locator(".parameter-home__panel-subtitle")).toContainText("近 7 天");
 
     await page.getByRole("radio", { name: "模块榜" }).first().click();
     await expect(page.getByRole("radio", { name: "模块榜" }).first()).toHaveAttribute("aria-checked", "true");
