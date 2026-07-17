@@ -446,6 +446,9 @@ export function deriveBrowserAcceptanceWorkflowsFromPlaywrightReport(
 }
 
 async function main() {
+  // Capture the source state before preflight/Playwright update tracked generated evidence.
+  // The final report describes the code under test, not its own output files.
+  const sourceMetadata = getGitMetadata();
   const options = parseBrowserAcceptanceArgs(process.argv.slice(2));
   const loadedEnv = loadEnvFile(options.envFile, process.env);
   const preflightCommand = buildPreflightCommand(options);
@@ -496,7 +499,7 @@ async function main() {
   });
   const evidence = buildEvidence({
     date: new Date().toISOString(),
-    metadata: getGitMetadata(),
+    metadata: sourceMetadata,
     mode: options.mode,
     status: evaluation.status,
     preflight,
