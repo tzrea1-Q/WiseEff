@@ -155,6 +155,8 @@ export function ApiProjectTopologyWorkspace({
   );
   const listConfigSetsRef = useRef(listConfigSets);
   listConfigSetsRef.current = listConfigSets;
+  const activeProjectIdRef = useRef(projectId);
+  activeProjectIdRef.current = projectId;
 
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
   const [reloadToken, setReloadToken] = useState(0);
@@ -180,7 +182,7 @@ export function ApiProjectTopologyWorkspace({
   }, [projectId]);
 
   useEffect(() => {
-    if (!pendingDraft) return undefined;
+    if (!pendingDraft || pendingDraft.projectId !== projectId) return undefined;
     if (!listWorkflowAssignees) {
       setWorkflowCandidates(null);
       setWorkflowCandidatesError("正式提交入口未配置项目角色候选人，已阻止提交。");
@@ -189,7 +191,7 @@ export function ApiProjectTopologyWorkspace({
     let cancelled = false;
     setWorkflowCandidates(null);
     setWorkflowCandidatesError(null);
-    listWorkflowAssignees(projectId)
+    listWorkflowAssignees(pendingDraft.projectId)
       .then((candidates) => {
         if (!cancelled) setWorkflowCandidates(candidates);
       })
@@ -275,13 +277,20 @@ export function ApiProjectTopologyWorkspace({
     }
 
     try {
-      const draft = await repository.createBindingDraft(projectId, input.bindingId, {
+      const requestProjectId = projectId;
+      const draft = await repository.createBindingDraft(requestProjectId, input.bindingId, {
         baseRevisionId: loadState.revisionId,
         targetValue,
         reason: input.reason
       });
-      setPendingDraft({ ...draft, reason: input.reason });
-      setPreferredRevision({ projectId, revisionId: draft.candidateRevisionId });
+      if (activeProjectIdRef.current !== requestProjectId) {
+        return {
+          valid: false,
+          diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿响应。", code: "PROJECT_CHANGED" }]
+        };
+      }
+      setPendingDraft({ ...draft, projectId: requestProjectId, reason: input.reason });
+      setPreferredRevision({ projectId: requestProjectId, revisionId: draft.candidateRevisionId });
       setReloadToken((token) => token + 1);
       return { valid: true, diagnostics: [] };
     } catch (error) {
@@ -437,7 +446,7 @@ export function ApiProjectTopologyWorkspace({
           void handleResolveMapping(taskId, input);
         }}
       />
-      {pendingDraft ? (
+      {pendingDraft?.projectId === projectId ? (
         <BindingDraftSubmissionPanel
           key={pendingDraft.draftId}
           projectId={projectId}

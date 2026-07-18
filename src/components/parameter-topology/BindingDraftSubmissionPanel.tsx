@@ -5,7 +5,7 @@ import type {
 } from "@/application/ports/ParameterRepository";
 import type { BindingDraftResult } from "@/application/ports/ParameterTopologyRepository";
 
-export type PendingBindingDraft = BindingDraftResult & { reason: string };
+export type PendingBindingDraft = BindingDraftResult & { projectId: string; reason: string };
 
 export type BindingDraftSubmissionPanelProps = {
   projectId: string;

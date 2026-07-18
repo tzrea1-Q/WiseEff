@@ -131,7 +131,7 @@ describe("ApiProjectTopologyWorkspace", () => {
 
   it("calls createBindingDraft then reloads with candidate revision", async () => {
     const repository = createRepository();
-    const { fireEvent } = await import("@testing-library/react");
+    const { act, fireEvent } = await import("@testing-library/react");
 
     render(
       <ApiProjectTopologyWorkspace
@@ -270,6 +270,89 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
   });
 
+  it("ignores an Aurora draft response that resolves after switching to Nebula", async () => {
+    const { act, fireEvent } = await import("@testing-library/react");
+    let resolveDraft!: (value: Awaited<ReturnType<ParameterTopologyRepository["createBindingDraft"]>>) => void;
+    const draftPromise = new Promise<Awaited<ReturnType<ParameterTopologyRepository["createBindingDraft"]>>>((resolve) => {
+      resolveDraft = resolve;
+    });
+    const createBindingDraft = vi.fn(() => draftPromise);
+    const repository = createRepository({ createBindingDraft });
+    const listConfigSets = vi.fn(async (projectId: string) => [
+      { id: `dcs-default-${projectId}`, name: "default" }
+    ]);
+    const listWorkflowAssignees = vi.fn().mockResolvedValue({
+      hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+      softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+      softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+    });
+    const { rerender } = render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+        listWorkflowAssignees={listWorkflowAssignees}
+      />
+    );
+
+    await screen.findByRole("treeitem", { name: /sc8562@6E/ });
+    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
+    const detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    fireEvent.change(within(detail).getByLabelText("修改原因"), {
+      target: { value: "Aurora request must not leak" }
+    });
+    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/i }));
+    await waitFor(() => expect(createBindingDraft).toHaveBeenCalledWith(
+      "aurora",
+      "binding-sc8562-gpio-int",
+      expect.any(Object)
+    ));
+
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="nebula"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+        listWorkflowAssignees={listWorkflowAssignees}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+        "data-revision-id",
+        "rev-real-1"
+      );
+    });
+
+    await act(async () => {
+      resolveDraft({
+        draftId: "draft-aurora-late",
+        parameterId: "binding-sc8562-gpio-int",
+        candidateRevisionId: "rev-aurora-late",
+        rawText: "<&gpio13 30 0>",
+        parameterSpecId: "spec-sc8562-gpio-int",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
+        overlayFileId: "file-overlay",
+        overlayFileName: "overlay.dts"
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "绑定变更提交" })).not.toBeInTheDocument();
+    });
+    expect(listWorkflowAssignees).not.toHaveBeenCalled();
+    expect(repository.getTopology).not.toHaveBeenCalledWith(
+      "nebula",
+      "dcs-default-nebula",
+      "rev-aurora-late",
+      "effective"
+    );
+  });
+
   it("clears project-scoped mapping feedback when switching projects", async () => {
     const { fireEvent } = await import("@testing-library/react");
     const repository = createRepository({
@@ -389,7 +472,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/ }));
 
     const submission = await screen.findByRole("region", { name: "绑定变更提交" });
-    expect(listWorkflowAssignees).toHaveBeenCalledWith("aurora");
+    await waitFor(() => expect(listWorkflowAssignees).toHaveBeenCalledWith("aurora"));
     expect(await within(submission).findByLabelText("硬件 MDE")).toHaveValue("u-hw");
     expect(within(submission).getByLabelText("软件 MDE")).toHaveValue("u-sw");
     expect(within(submission).getByLabelText("软件开发")).toHaveValue("u-user");
