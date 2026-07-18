@@ -49,14 +49,15 @@ npm run dts:config:validate
 
 ## 4. Dry-run 迁移
 
-先应用全部前向 SQL migration。接受 cutover 后 typed draft 前，`schema_migrations` 必须包含 `0059` 至 `0062`。0060 先记录并删除历史 candidate-less manual draft；前向迁移 0061 关闭 origin 缺口，记录并删除**所有**剩余缺少 `candidate_config_revision_id` 的草稿，包括 `file_sync` 与冲突衍生行，并在 `parameter_draft_identity_invalidations` 保留 origin/file-version 标识。这是明确失效，不是猜测回填：通知受影响用户，并要求其在 cutover 后通过 typed binding editor 重建；禁止给旧草稿随意关联 candidate。0062 将已审核的 `set|delete` action 持久贯穿 draft、submission item 与 change request。
+先应用全部前向 SQL migration。接受 cutover 后 typed draft 前，`schema_migrations` 必须包含 `0059` 至 `0063`。0060/0061 跨全部 origin 记录并删除 candidate-less draft；0062 持久化 `set|delete`；0063 在 submission item 与 change request 上持久化 exact candidate revision。禁止为已有工作流行猜测 candidate：0063 后仍为空的历史行必须拒绝并通过 typed edit 重建。
 
-若数据库已处于 0059 或 0060，必须在写冻结期间、应用剩余 migration 前记录**所有** candidate-less 草稿。0061 后活动 candidate-less 数必须为 0，invalidation evidence 必须覆盖迁移前标识与 origin；带 candidate 的合法草稿保留。Cutover 后遗留草稿保存和仅含 `parameterId` 的提交返回 `409`；精确提交还会锁定 draft 行。`set` 证明 candidate binding raw value 一致；`delete` 证明 candidate 中不存在替代 binding revision 且存在匹配 delete occurrence effect。两种 action 都保留精确 write lock，矛盾证明失败关闭。
+写冻结期间记录 candidate-less draft 数与 candidate 为空的活动 semantic request。0061 后活动 candidate-less draft 必须为 0；0063 后所有新提交 item/request 必须共享一个非空 candidate ID。精确提交锁定 draft+candidate/evidence，证明 set/delete 后原子推进 `draft -> pending_approval`；merge 再锁定并复核 exact candidate。对 0063 前 candidate 为空的活动 semantic request 必须 reject 后重建，禁止 merge 或猜测回填。
 
 ```bash
-psql "$DATABASE_URL" -c "select name from schema_migrations where name in ('0059_binding_draft_submission_identity.sql', '0060_parameter_draft_candidate_identity_gate.sql', '0061_parameter_draft_candidate_identity_all_origins.sql', '0062_parameter_change_action.sql') order by name;"
-psql "$DATABASE_URL" -c "select table_name, column_name from information_schema.columns where table_schema = 'public' and ((table_name = 'parameter_drafts' and column_name in ('candidate_config_revision_id', 'action')) or (table_name in ('parameter_submission_items', 'parameter_change_requests') and column_name = 'action')) order by table_name, column_name;"
+psql "$DATABASE_URL" -c "select name from schema_migrations where name between '0059_binding_draft_submission_identity.sql' and '0063_parameter_submission_candidate_identity.sql' order by name;"
+psql "$DATABASE_URL" -c "select table_name, column_name from information_schema.columns where table_schema = 'public' and table_name in ('parameter_drafts', 'parameter_submission_items', 'parameter_change_requests') and column_name in ('candidate_config_revision_id', 'action') order by table_name, column_name;"
 psql "$DATABASE_URL" -c "select count(*) as active_drafts_without_candidate from parameter_drafts where candidate_config_revision_id is null;"
+psql "$DATABASE_URL" -c "select count(*) as blocked_open_requests_without_candidate from parameter_change_requests where status not in ('merged','rejected','withdrawn') and project_parameter_binding_id is not null and candidate_config_revision_id is null;"
 psql "$DATABASE_URL" -c "select organization_id, project_id, draft_origin, count(*) as invalidated_drafts from parameter_draft_identity_invalidations group by organization_id, project_id, draft_origin order by organization_id, project_id, draft_origin;"
 ```
 
