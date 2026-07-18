@@ -165,9 +165,10 @@
 - 同一提交增加确定性的双连接 PostgreSQL 回归。并发 typed edit 会等待 draft 行锁；submission 消费旧 draft 并提交后，编辑事务重建较新的 draft，因此新 value/reason 不会作为丢更新被删除。
 - `713133b6` 将 pending draft 与所属项目绑定，并拒绝项目切换后迟到的 create-draft 响应。Deferred-response 组件回归证明 Aurora 响应不能回灌 Nebula 面板或加载 Nebula 候选人；load effect 的断言已使用 `waitFor`。
 - `0fc167e6` 新增前向 migration `0060_parameter_draft_candidate_identity_gate.sql`。它不会为 0059 前数据猜测 candidate：缺少 candidate identity 的 manual draft 会在不记录 value/reason 的情况下写入 `parameter_draft_identity_invalidations`，随后从活动 draft 表删除，并要求用户通过 typed editor 重建。PostgreSQL 升级测试覆盖 0059 状态、注入失败回滚、报告计数与幂等。
-- 精确身份/并发 PG 流程、0060 schema 升级、HTTP routes 和项目工作区组件的聚焦验证已通过（组合运行中服务端 97 项、组件 10 项）。一次标准 `npm run test:all` 通过：前端 2,190 passed / 5 skipped，服务端 1,540 passed / 1 skipped；最终重复门禁会与本实现检查点分开记录。
+- 精确身份/并发 PG 流程、0060 schema 升级、HTTP routes 和项目工作区组件的聚焦验证已通过（最终聚焦运行服务端 44 项、组件 10 项）。标准 `npm run test:all` 最终连续三次通过；每次均为前端 2,190 passed / 5 skipped、服务端 1,540 passed / 1 skipped。
 - 浏览器验收使用 disposable API `http://127.0.0.1:52857` 与前端 `http://127.0.0.1:5174/parameters`。通过可见项目控件从 Aurora 切换到 Nebula；Nebula 加载自身 current revision `a491efaf-648b-4652-830d-49c79a27e5d2`，未显示错误空状态，也未保留 pending draft。`playwright-cli` 在 1440×900、768×1024、390×844 完成 snapshot/screenshot，console error 为 0，无 document-level 横向溢出，Nebula current/source/binding/mapping 请求均返回 200。验收后 disposable 数据库已销毁，两个端口已释放。
-- 最近一次完整 full evidence namespace 的 source commit 仍是 `4fcc707a4c8a8a12860a2e4ad36051990e66385b`；聚焦运行不会破坏它，但它不能证明更新后的源码。Round 6 新 HEAD 在声称最终完整浏览器证据前必须重跑 full evidence。外部 readiness 与 TD-042 继续阻断，且不宣称 production ready、cutover ready 或可合并。
+- 标准 full run 使用干净 source `186c3f73ff5629931fd7a0b32ec9969fc2011fea` 连接用户自有 `8787` runtime，并准确失败：preflight 受 `deviceGateway`、`xiaozeLlm`、`backups` 阻断；该 runtime 的 HDC/development-auth 状态产生 69 passed / 11 failed / 4 skipped，operation coverage 为 49/56。失败 evidence 由 `0d639e40` 保留，且未替换 `latest-full`。
+- 另一次从干净 source `0d639e40ba5e4004c7602ad389e4b07cc354317a` 运行，使用隔离端口 5174/18787、production HMAC、simulator 与 deterministic Xiaoze，未触碰 8787。Playwright 共 84 项：80 passed / 4 项硬件条件 skipped / 0 failed；workflow A–E、G–I 通过；requirements 59/59；operation evidence 56/56、71 records、0 invalid、0 validation error。`npm run acceptance:evidence` 通过，`latest-full.json` SHA-256 更新为 `a8ecd8a150c0f8d2beff029a368d9b85a3f5612d6426071b01e7cec52198e1d0`。该次外层 runner 仅因显式跳过 preflight 保持 failed，不能覆盖真实外部 preflight blocker。TD-042 继续为 BLOCKER，且不宣称 production ready、cutover ready 或可合并。
 
 ## 风险与回滚
 
