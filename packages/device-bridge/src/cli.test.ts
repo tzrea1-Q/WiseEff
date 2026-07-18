@@ -116,19 +116,37 @@ describe("device bridge cli", () => {
       platform: "linux"
     });
 
-    const healthUrl = await healthUrlReady;
-    const response = await fetch(healthUrl);
-    const body = (await response.json()) as { paired?: boolean };
+    const readiness = await Promise.race([
+      healthUrlReady.then((healthUrl) => ({ type: "ready" as const, healthUrl })),
+      startPromise.then(
+        (exitCode) => ({ type: "exited" as const, exitCode }),
+        (error: unknown) => ({ type: "failed" as const, error })
+      )
+    ]);
+    if (readiness.type === "exited") {
+      throw new Error(`Bridge standby exited before logging readiness (exit code ${readiness.exitCode}).`);
+    }
+    if (readiness.type === "failed") {
+      const message = readiness.error instanceof Error ? readiness.error.message : String(readiness.error);
+      throw new Error(`Bridge standby failed before logging readiness: ${message}`);
+    }
 
-    process.emit("SIGTERM");
-    const exitCode = await startPromise;
+    let exitCode: number | undefined;
+    try {
+      const response = await fetch(readiness.healthUrl);
+      const body = (await response.json()) as { paired?: boolean };
 
-    expect(response.ok).toBe(true);
-    expect(body.paired).toBe(false);
-    expect(healthUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/health$/);
-    expect(healthUrl).not.toBe("http://127.0.0.1:18787/health");
+      expect(response.ok).toBe(true);
+      expect(body.paired).toBe(false);
+      expect(readiness.healthUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/health$/);
+      expect(readiness.healthUrl).not.toBe("http://127.0.0.1:18787/health");
+      expect(capture.logs.some((line) => line.includes("Bridge standby started"))).toBe(true);
+    } finally {
+      process.emit("SIGTERM");
+      exitCode = await startPromise;
+    }
+
     expect(exitCode).toBe(0);
-    expect(capture.logs.some((line) => line.includes("Bridge standby started"))).toBe(true);
     expect(capture.logs).toContain("Bridge stopped.");
   });
 
