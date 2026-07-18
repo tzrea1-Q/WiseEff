@@ -234,6 +234,18 @@
 
 文档门禁：分别更新每份受影响的中英文文档及 `docs/generated/db-schema.md`，然后执行 `npm run docs:check`。锁顺序固定为提交时 draft 后 candidate、合入时 request 后 candidate；竞态测试必须证明等待、释放且无死锁。不得为历史 request 猜测 candidate。应用回滚时新增 nullable 字段无害；事务回滚由 disposable DB 测试证明。验证矩阵包括聚焦 repository/service/HTTP/PG/schema、topology acceptance、`test:all`、contract/docs/build/toolchain/seed/selfhost、干净 source evidence 和 `git diff --check main...HEAD`。
 
+### 后续执行结果 5
+
+- `8c1df608` 新增前向迁移 `0063_parameter_submission_candidate_identity.sql`、candidate/evidence 行锁、原子 `draft -> pending_approval`、item/request 持久身份、merge 时 candidate/status/set-delete proof 复核及 submit/review/merge 审计关联。PG migration 测试覆盖注入回滚与幂等；历史 nullable request 不猜测回填并 fail-closed。
+- 确定性双连接 PostgreSQL 测试真实观察到 candidate 状态写连接在 submission 释放事务前处于 `Lock` 等待。聚焦 schema/repository/service/HTTP/PG 共 6 files / 137 tests 通过；set 拒绝状态/raw-value 漂移，delete 在 history/成功 audit 前拒绝已变化的 tombstone effect。
+- `b1c69c2e` 扩展 disposable topology acceptance，断言 draft candidate 原样复制到两个工作流行、审核期间保持 `pending_approval`，并在真实 set/delete 角色合入前复核。聚焦 topology acceptance 1/1 通过。
+- `003014de` 同步中英文 domain、API、testing、verification、cutover、technical debt 和 generated schema 到 0063；contract/docs/build 通过。
+- 默认 `npm run test:all` 连续三次通过，未覆盖 worker/timeout，计数一致：前端 316 files / 2,191 passed / 5 skipped；服务端 215 files / 1,550 passed / 1 skipped。
+- 项目钉扎工具链通过：dtc 1.8.1、fdtoverlay 1.8.1、dtschema 2026.6；Aurora、Nebula、Atlas diagnostics 为空；`selfhost:check` 通过。
+- 标准干净 source `003014de6b013fbf082d91d887d067253a445649` browser acceptance 仍准确失败：preflight 受外部 `deviceGateway`、`xiaozeLlm`、`backups` 阻断；共享 8787 的 HDC/development-auth runtime 为 69 passed / 11 failed / 4 项硬件条件 skipped，operation evidence 49/56；topology 本身通过。
+- 另一个以干净 source `04e46b87f9db8879e3cded8cc526447524a04c52` 运行的隔离 5174/18787 production-HMAC、simulator、deterministic-Xiaoze 矩阵为 80 passed / 4 项硬件条件 skipped / 0 failed；workflow A–E、G–I 通过；requirements 59/59；operation evidence 56/56、71 records、0 invalid、0 validation error；`acceptance:evidence` 通过。Run ID 为 `full-20260718T123157160Z-04e46b87f9db`，`latest-full.json` SHA-256 为 `d432dd7eb6b1d6c9266366ac471af6cd75ae104f9771af562862c44c6c7f1eb1`。隔离 outer runner 仅因显式跳过 preflight 保持 failed，不能覆盖真实 blocker。
+- TD-042 继续为 BLOCKER：尚未执行干净非客户快照 apply→cutover→整库 restore 演练；不宣称可合并、production ready 或 cutover ready。
+
 ## 风险与回滚
 
 | 风险 | 缓解 |

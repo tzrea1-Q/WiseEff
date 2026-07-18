@@ -234,6 +234,18 @@ The parent review remains `Request changes` because exact candidate proof is not
 
 Documentation gate: update each impacted English and Chinese document separately plus `docs/generated/db-schema.md`, then run `npm run docs:check`. Lock order is draft then candidate at submission, and request then candidate at merge; the race test must prove blocking/release without deadlock. Never infer a candidate for historical requests. Application rollback leaves additive nullable columns harmless; transaction rollback is proven in a disposable database. Verification includes focused repository/service/HTTP/PG/schema tests, topology acceptance, `test:all`, contract/docs/build/toolchain/seed/selfhost, clean-source evidence, and `git diff --check main...HEAD`.
 
+### Follow-up execution outcome 5
+
+- `8c1df608` adds forward migration `0063_parameter_submission_candidate_identity.sql`, candidate/evidence row locking, atomic `draft -> pending_approval`, durable item/request identity, merge-time candidate/status/set/delete proof revalidation, and submit/review/merge audit correlation. PostgreSQL migration tests cover injected rollback and idempotency; historical nullable requests are never guessed and fail closed.
+- The deterministic two-connection PostgreSQL test observed the candidate status writer waiting on a real `Lock` until submission released its transaction. Focused schema/repository/service/HTTP/PG verification passed 6 files / 137 tests. Set merge rejects status/raw-value drift; delete merge rejects a changed tombstone effect before any history or success audit.
+- `b1c69c2e` extends disposable topology acceptance to assert the draft candidate is copied unchanged to both workflow rows, remains `pending_approval` through review, and is the identity revalidated before the real set/delete role merge. The focused topology acceptance passed 1/1.
+- `003014de` synchronizes the separate English/Chinese domain, API, testing, verification, cutover, technical-debt, and generated-schema documentation through 0063. Contract, docs, and build gates pass.
+- Default `npm run test:all` passed three consecutive runs with identical counts and no worker/timeout override: frontend 316 files / 2,191 passed / 5 skipped; server 215 files / 1,550 passed / 1 skipped.
+- Project-pinned toolchain checks pass at dtc 1.8.1, fdtoverlay 1.8.1, dtschema 2026.6. Aurora, Nebula, and Atlas compile with empty diagnostics; `selfhost:check` passes.
+- Standard clean-source browser acceptance at `003014de6b013fbf082d91d887d067253a445649` accurately remains failed: preflight is blocked by external `deviceGateway`, `xiaozeLlm`, and `backups`; the shared 8787 HDC/development-auth runtime produced 69 passed / 11 failed / 4 hardware-condition skips and operation evidence 49/56. Topology itself passed.
+- A separate clean-source run at `04e46b87f9db8879e3cded8cc526447524a04c52` used isolated 5174/18787 production-HMAC, simulator, and deterministic-Xiaoze services. Playwright completed 80 passed / 4 hardware-condition skips / 0 failed; workflows A–E and G–I passed; requirements 59/59; operation evidence 56/56 with 71 records, zero invalid records, and zero validation errors. `acceptance:evidence` passes. Run ID is `full-20260718T123157160Z-04e46b87f9db`; `latest-full.json` SHA-256 is `d432dd7eb6b1d6c9266366ac471af6cd75ae104f9771af562862c44c6c7f1eb1`. The outer isolated runner remains failed only because preflight was explicitly skipped and does not override the real blockers.
+- TD-042 remains BLOCKER: no clean non-customer snapshot apply→cutover→whole-database restore rehearsal has run. No merge-ready, production-ready, or cutover-ready claim is made.
+
 ## Risks & rollback
 
 | Risk | Mitigation |
