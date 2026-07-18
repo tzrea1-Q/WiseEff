@@ -20,6 +20,9 @@
 8. Bilingual docs updated; `npm run docs:check` passes; TD-042 stays BLOCKER.
 9. Default-shell toolchain discovery resolves the pinned project-local dtschema venv for the check script, API runtime, seed compiler, and topology acceptance; no personal Python path export is required.
 10. API-mode `/parameters` renders only the binding-centric topology/edit/submission surface. Legacy flat tables and `recommendedValue` draft semantics remain mock-only; submit, role review, and merge are exercised through real UI/API boundaries.
+11. A `projectId` change resets every project-scoped workspace value before loading the new project: preferred revision, pending draft, assignee candidates/errors, publish message, and mapping message. The new project always starts from its `current` revision.
+12. Evidence-grade operation records and artifacts are stored under one immutable `runId + sourceCommit` namespace outside Playwright's disposable output directory. Focused runs cannot replace or damage the latest completed full-run evidence, and the checker rejects mixed-run/mixed-commit records.
+13. Binding-draft submission uses an explicit wire identity (`draftId`, `projectParameterBindingId`, and `parameterSpecId`) rather than overloading legacy `parameterId`; the server validates organization, project, binding/spec consistency, candidate revision/write lock, while the legacy flat submission contract remains supported only as an explicit separate item shape.
 
 ## Task map
 
@@ -35,6 +38,9 @@
 | T8 | Docs/browser/evidence | Bilingual docs + playwright-cli + gates |
 | T9 | `dt-validate` depends on a developer PATH export | Project-local venv bootstrap + shared binary resolver + default-shell acceptance |
 | T10 | API mode renders the legacy recommended-value workbench | API/mock render isolation + binding draft submission UI + role review/merge UI acceptance |
+| T11 | Candidate revision leaks across project changes | Atomic project-scope reset + rerender regression |
+| T12 | Focused Playwright runs delete full-run evidence artifacts | Immutable evidence run namespace + latest-full publication + mixed-run rejection |
+| T13 | Submission schema strips semantic binding/spec identity | Explicit binding-draft wire item + server tenant/spec/write-lock validation |
 
 ## Task dependencies
 
@@ -61,6 +67,9 @@ Plan
 | Toolchain | `dts:toolchain:check`, `dtc:seed:compile` |
 | Default-shell toolchain | clear personal Python bin from `PATH`; shared resolver unit tests; bootstrap project venv; check + API topology acceptance without PATH injection |
 | API-mode semantic UI | `ParametersPage` absence assertions; binding edit/submission component tests; Playwright typed edit → submit → role review → merge |
+| Project switch isolation | Component `rerender` from Aurora candidate to Nebula; first Nebula topology request uses `current`; no stale project messages/draft |
+| Evidence stability | Full-run evidence → focused topology run → `acceptance:evidence` still passes; mixed `runId`/commit and missing artifacts fail closed |
+| Submission identity | Schema unit tests, HTTP/PG success, cross-project/mismatched spec/stale draft negatives, and legacy item regression |
 
 ## Documentation Impact Matrix
 
@@ -75,6 +84,7 @@ Plan
 | Frontend | Update | `docs/FRONTEND.md` + zh-CN |
 | Security / authz | Review/Update | `docs/SECURITY.md` + global-spec governance notes |
 | Tech debt | Review | TD-042 stays BLOCKER |
+| Acceptance evidence | Update | `e2e/acceptance/helpers/operationEvidence.ts`; browser runner/checker tests; testing/verification docs and zh-CN companions |
 
 ## Documentation Update Gate
 
@@ -109,6 +119,21 @@ Parent Review remains `Request changes` for two P1 findings. Both findings are a
 - The standard outer `npm run acceptance:browser` from clean source `1abb57f2` accurately failed: preflight was externally blocked by `deviceGateway`, `xiaozeLlm`, and `backups`; the user-owned 8787 runtime was also configured for HDC/development auth, producing 69 passed / 11 failed / 4 skipped. Diagnostic evidence is retained in `bb2e3e61`.
 - A separate clean-source run from `bb2e3e6160b05930ecc8a7e5a0a88ab22fcd7bab` used isolated ports 5174/18787 with production HMAC, simulator, and deterministic Xiaoze without touching 8787. Playwright completed 84 tests: 80 passed / 4 hardware-conditional skipped / 0 failed; workflows A–E and G–I passed; requirements are 59/59; operation evidence is 56/56 with 71 records, zero invalid records, and zero validation errors. `npm run acceptance:evidence` exits zero. Its outer runner status remains failed solely because preflight was explicitly skipped; it does not override the real external preflight blocker.
 - TD-042 remains BLOCKER. No clean non-customer snapshot apply→cutover→whole-database restore rehearsal has been executed, so this plan does not claim production readiness, cutover readiness, or merge readiness without parent Review.
+
+## Parent Review follow-up checkpoint 2 (2026-07-18)
+
+Parent Review remains `Request changes` for T11–T13. Root-cause inspection confirms all three findings before implementation:
+
+- T11: the project-change effect clears pending draft and assignees but retains `preferredRevisionId`; the load effect therefore requests a project-A candidate under project B and maps the resulting 404 to a false empty state.
+- T12: operation JSON records persist under `test-results/acceptance-operation-evidence`, while JSON/screenshot artifacts written with `testInfo.outputPath()` live under Playwright's disposable `test-results/acceptance`. A focused run clears the latter without atomically replacing the former.
+- T13: the frontend sends semantic IDs, but `submitRoundBodySchema` declares only `parameterId`, `targetValue`, and `reason`, so Zod strips binding/spec identity. The service currently succeeds by treating a binding ID as legacy `parameterId` and re-deriving state indirectly.
+
+Implementation order and TDD gate:
+
+1. Add a component `rerender` regression, observe the foreign revision request, then reset all project-scoped state before the new load.
+2. Add run-manifest/checker/runner tests that reproduce focused-run artifact deletion and mixed-run aggregation, then move evidence-grade artifacts into immutable full-run namespaces and publish `latest-full` only after a complete run.
+3. Add schema and HTTP/PG RED tests for explicit binding-draft identities and tenant/spec/write-lock mismatches, then introduce a separate binding item shape without weakening legacy submissions.
+4. Update bilingual API/testing/verification/frontend documentation, run browser project-switch acceptance, then execute the full verification matrix. External readiness and TD-042 remain explicit blockers.
 
 ## Risks & rollback
 

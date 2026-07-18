@@ -20,6 +20,9 @@
 8. 双语文档更新；`npm run docs:check` 通过；TD-042 保持 BLOCKER。
 9. 默认 shell 下，检查脚本、API runtime、seed 编译与拓扑验收都从项目本地 dtschema venv 解析固定工具链，不再要求导出个人 Python 路径。
 10. API 模式 `/parameters` 只渲染 binding-centric 拓扑、编辑与提交表面；遗留扁平表格和 `recommendedValue` 草稿语义仅保留在 mock，真实提交、角色审核和合入走正式 UI/API 边界。
+11. `projectId` 改变时，在加载新项目前清除全部项目作用域状态：preferred revision、待提交草稿、候选人/错误、发布消息和映射消息；新项目必须从自身 `current` revision 开始加载。
+12. 可交付的 operation record 与 artifact 存放在 Playwright 临时输出目录之外、按 `runId + sourceCommit` 唯一隔离的不可变目录中；聚焦运行不能覆盖或破坏最近一次完整运行证据，checker 必须拒绝混合 run/commit。
+13. Binding draft 提交使用明确的 wire identity（`draftId`、`projectParameterBindingId`、`parameterSpecId`），不再用 legacy `parameterId` 冒充 binding；服务端验证组织、项目、binding/spec 一致性和 candidate revision/write lock，同时仅通过独立 item shape 保留遗留扁平提交合同。
 
 ## 任务映射
 
@@ -35,6 +38,9 @@
 | T8 | 文档/浏览器/证据 | 双语文档 + playwright-cli + 门禁 |
 | T9 | `dt-validate` 依赖开发者 PATH 导出 | 项目本地 venv bootstrap + 共享二进制解析器 + 默认 shell 验收 |
 | T10 | API 模式渲染遗留推荐值工作台 | API/mock 渲染隔离 + binding 草稿提交 UI + 角色审核/合入 UI 验收 |
+| T11 | 切换项目时泄漏上一项目 candidate revision | 原子清除项目状态 + rerender 回归测试 |
+| T12 | 聚焦 Playwright 会删除完整运行的 evidence artifact | 不可变 evidence run 目录 + latest-full 发布 + 混合运行拒绝 |
+| T13 | 提交 schema 剥离 binding/spec 语义身份 | 显式 binding-draft wire item + 服务端租户/spec/write-lock 校验 |
 
 ## 任务依赖
 
@@ -61,6 +67,9 @@
 | 工具链 | `dts:toolchain:check`、`dtc:seed:compile` |
 | 默认 shell 工具链 | 从 `PATH` 移除个人 Python bin；共享 resolver 单测；bootstrap 项目 venv；不注入 PATH 运行检查和 API 拓扑验收 |
 | API 模式语义 UI | `ParametersPage` 缺席断言；binding 编辑/提交组件测试；Playwright typed edit → submit → 角色审核 → merge |
+| 项目切换隔离 | 组件从 Aurora candidate `rerender` 到 Nebula；Nebula 首次请求使用 `current`；旧消息/草稿不残留 |
+| Evidence 稳定性 | 完整证据 → 聚焦 topology 运行 → `acceptance:evidence` 仍通过；混合 `runId`/commit 与缺失 artifact 均 fail-closed |
+| 提交身份 | Schema 单测、HTTP/PG 成功、跨项目/规格不匹配/stale draft 负向，以及 legacy item 回归 |
 
 ## 文档影响矩阵
 
@@ -75,6 +84,7 @@
 | 前端 | 更新 | `docs/FRONTEND.md` + 中文 |
 | 安全 / 授权 | 审阅/更新 | `docs/SECURITY.md` + 全局规格治理说明 |
 | 技术债 | 审阅 | TD-042 保持 BLOCKER |
+| 验收证据 | 更新 | `e2e/acceptance/helpers/operationEvidence.ts`；browser runner/checker 测试；测试/验证文档及中文配对 |
 
 ## 文档更新门禁
 
@@ -109,6 +119,21 @@
 - 从干净 source `1abb57f2` 运行标准外层 `npm run acceptance:browser`，结果准确为 failed：preflight 受外部 `deviceGateway`、`xiaozeLlm`、`backups` 阻断；用户已有 8787 同时配置为 HDC/development auth，Playwright 为 69 passed / 11 failed / 4 skipped。诊断证据保存在 `bb2e3e61`。
 - 另一次从干净 source `bb2e3e6160b05930ecc8a7e5a0a88ab22fcd7bab` 运行，使用隔离端口 5174/18787、production HMAC、simulator 与 deterministic Xiaoze，未触碰 8787。Playwright 共 84 项：80 passed / 4 项硬件条件 skipped / 0 failed；workflow A–E、G–I 通过；requirements 59/59；operation evidence 56/56、71 records、0 invalid、0 validation error；`npm run acceptance:evidence` exit 0。该次外层 runner 仅因显式跳过 preflight 保持 failed，不能覆盖真实外部 preflight blocker。
 - TD-042 保持 BLOCKER。尚未执行干净非客户快照 apply→cutover→整库 restore 演练，因此本计划不宣称 production ready、cutover ready，也不会在父智能体 Review 前宣称可合并。
+
+## 父智能体 Review 后续检查点 2（2026-07-18）
+
+父智能体仍为 `Request changes`，要求关闭 T11–T13。实现前的根因检查确认三项 finding 均成立：
+
+- T11：项目切换 effect 清除了 pending draft 和候选人，却保留 `preferredRevisionId`；load effect 因而会在项目 B 下请求项目 A candidate，并把 404 映射成错误的空状态。
+- T12：operation JSON 记录持久化在 `test-results/acceptance-operation-evidence`，而通过 `testInfo.outputPath()` 写入的 JSON/截图位于 Playwright 会清空的 `test-results/acceptance`。聚焦运行会删除后者，却不会原子替换前者。
+- T13：前端发送语义 ID，但 `submitRoundBodySchema` 只声明 `parameterId`、`targetValue` 和 `reason`，Zod 会剥离 binding/spec identity。当前 service 依赖把 binding ID 填入 legacy `parameterId` 后再间接推断状态。
+
+实现顺序与 TDD 门禁：
+
+1. 先增加组件 `rerender` 回归并观察跨项目 revision 请求，再在新项目加载前清除全部项目作用域状态。
+2. 先增加 run manifest/checker/runner 测试，复现聚焦运行删除 artifact 和混合 run 聚合，再把可交付 artifact 移到不可变完整运行目录，仅在完整成功后发布 `latest-full`。
+3. 先增加显式 binding draft identity 的 schema 与 HTTP/PG RED 测试，以及租户/spec/write-lock mismatch 负向，再引入独立 binding item shape，不放宽 legacy 提交。
+4. 更新中英文 API/测试/验证/前端文档，执行浏览器跨项目验收和全量验证矩阵。外部 readiness 与 TD-042 继续如实保留为 blocker。
 
 ## 风险与回滚
 
