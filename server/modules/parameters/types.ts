@@ -158,6 +158,7 @@ export type ChangeRequestDto = {
   currentValue: string;
   targetValue: string;
   action: ParameterChangeAction;
+  candidateConfigRevisionId?: string;
   submitter: string;
   submitterUserId?: string;
   createdAt: string;
@@ -184,6 +185,7 @@ export type ParameterSubmissionItemDto = {
   currentValue: string;
   targetValue: string;
   action: ParameterChangeAction;
+  candidateConfigRevisionId?: string;
   unit: string;
   risk: ParameterRiskLevel;
   reason: string;

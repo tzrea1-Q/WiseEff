@@ -59,6 +59,7 @@ import {
   listSubmissionRounds as listSubmissionRoundRows,
   markImportBatchApplied,
   mergeChangeRequest,
+  promoteBindingDraftCandidateForReview,
   type ParameterDefinitionImportCandidate,
   type PersistedImportBatchItem,
   type ProjectParameterValueMatch,
@@ -721,6 +722,7 @@ function buildChangeRequestAuditMetadata(
     currentValue: request.currentValue,
     targetValue: request.targetValue,
     changeAction: request.action,
+    candidateConfigRevisionId: request.candidateConfigRevisionId,
     risk: parameterImpact?.risk,
     reason: parameterImpact?.note,
     submitter: request.submitter,
@@ -1216,6 +1218,22 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
 
     await assertWorkflowAssigneesAreEligible(tx, auth, input.projectId, workflowAssignees);
 
+    for (const { item, exactDraft } of parameters) {
+      if (!("draftId" in item) || !exactDraft?.candidateConfigRevisionId) continue;
+      const promoted = await promoteBindingDraftCandidateForReview(tx, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        draftId: item.draftId,
+        candidateConfigRevisionId: exactDraft.candidateConfigRevisionId
+      });
+      if (!promoted) {
+        throw new ApiError("CONFLICT", "Binding draft candidate changed before review promotion.", 409, {
+          draftId: item.draftId,
+          candidateConfigRevisionId: exactDraft.candidateConfigRevisionId
+        });
+      }
+    }
+
     const status = workflowAssignees ? "hardware_review" : "submitted";
     const round = await createSubmissionRound(tx, {
       id: randomUUID(),
@@ -1308,6 +1326,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         workflowAssignees,
         parameterSpecId,
         projectParameterBindingId,
+        candidateConfigRevisionId: exactDraft?.candidateConfigRevisionId ?? undefined,
         writeLock: writeLock ?? undefined,
       });
 
@@ -1321,7 +1340,8 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         targetValue: item.targetValue,
         action: "draftId" in item ? item.action ?? "set" : "set",
         reason: item.reason,
-        projectParameterBindingId
+        projectParameterBindingId,
+        candidateConfigRevisionId: exactDraft?.candidateConfigRevisionId ?? undefined
       });
 
       if ("draftId" in item) {
@@ -1366,7 +1386,10 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
           if (exactDraft) return [exactDraft.parameterSpecId];
           return "draftId" in item || !item.parameterSpecId ? [] : [item.parameterSpecId];
         }),
-        actions: parameters.map(({ item }) => ("draftId" in item ? item.action ?? "set" : "set"))
+        actions: parameters.map(({ item }) => ("draftId" in item ? item.action ?? "set" : "set")),
+        candidateConfigRevisionIds: parameters.flatMap(({ exactDraft }) =>
+          exactDraft?.candidateConfigRevisionId ? [exactDraft.candidateConfigRevisionId] : []
+        )
       },
       traceId: context.requestId ?? randomUUID()
     });

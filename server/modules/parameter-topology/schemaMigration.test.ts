@@ -13,6 +13,7 @@ const migration0048 = "0048_parameter_topology_schema_shadow.sql";
 const migration0060 = "0060_parameter_draft_candidate_identity_gate.sql";
 const migration0061 = "0061_parameter_draft_candidate_identity_all_origins.sql";
 const migration0062 = "0062_parameter_change_action.sql";
+const migration0063 = "0063_parameter_submission_candidate_identity.sql";
 
 const REQUIRED_TABLES = [
   "parameter_specs",
@@ -226,7 +227,13 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
       expect(await columnExists(db, "parameter_change_requests", "project_parameter_binding_id")).toBe(
         true
       );
+      expect(await columnExists(db, "parameter_change_requests", "candidate_config_revision_id")).toBe(
+        true
+      );
       expect(await columnExists(db, "parameter_submission_items", "project_parameter_binding_id")).toBe(
+        true
+      );
+      expect(await columnExists(db, "parameter_submission_items", "candidate_config_revision_id")).toBe(
         true
       );
       expect(await columnExists(db, "parameter_file_sync_conflicts", "parameter_spec_id")).toBe(true);
@@ -335,7 +342,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
       expect(await columnExists(db, "parameter_draft_identity_invalidations", "draft_id")).toBe(false);
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([migration0060, migration0061, migration0062]);
+      expect(pending).toEqual([migration0060, migration0061, migration0062, migration0063]);
       expect((await db.query(`select id from parameter_drafts order by id`)).rows).toEqual([]);
       expect(
         (
@@ -473,7 +480,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
       expect(await columnExists(db, "parameter_draft_identity_invalidations", "draft_origin")).toBe(false);
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([migration0061, migration0062]);
+      expect(pending).toEqual([migration0061, migration0062, migration0063]);
       expect((await db.query(`select id from parameter_drafts order by id`)).rows).toEqual([
         { id: "draft-0061-valid" }
       ]);
@@ -527,7 +534,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
       }
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([migration0062]);
+      expect(pending).toEqual([migration0062, migration0063]);
 
       for (const table of ["parameter_drafts", "parameter_submission_items", "parameter_change_requests"]) {
         expect(await columnDefinition(db, table, "action")).toEqual({
@@ -535,6 +542,37 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
           column_default: "'set'::text"
         });
         expect(await hasActionCheck(db, table)).toBe(true);
+      }
+      expect(await applyMigrations(db, migrationsDir)).toEqual([]);
+    });
+  });
+
+  it("adds durable candidate identity to submitted workflow rows transactionally and idempotently", async () => {
+    await withTempDatabase(async (db) => {
+      await applyMigrationsThrough(db, migration0063);
+      for (const table of ["parameter_submission_items", "parameter_change_requests"]) {
+        expect(await columnExists(db, table, "candidate_config_revision_id")).toBe(false);
+      }
+
+      const migrationSql = await fs.readFile(path.join(migrationsDir, migration0063), "utf8");
+      await db.query("begin");
+      await expect(
+        (async () => {
+          await db.query(migrationSql);
+          await db.query("select * from deliberate_0063_failure");
+        })()
+      ).rejects.toBeTruthy();
+      await db.query("rollback");
+      for (const table of ["parameter_submission_items", "parameter_change_requests"]) {
+        expect(await columnExists(db, table, "candidate_config_revision_id")).toBe(false);
+      }
+
+      expect(await applyMigrations(db, migrationsDir)).toEqual([migration0063]);
+      for (const table of ["parameter_submission_items", "parameter_change_requests"]) {
+        expect(await columnDefinition(db, table, "candidate_config_revision_id")).toEqual({
+          is_nullable: "YES",
+          column_default: null
+        });
       }
       expect(await applyMigrations(db, migrationsDir)).toEqual([]);
     });

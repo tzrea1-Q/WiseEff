@@ -381,6 +381,66 @@ async function seedPreCutoverGraph(db: Database) {
   };
 }
 
+async function seedPendingSetCandidate(
+  db: Database,
+  seeded: Awaited<ReturnType<typeof seedPreCutoverGraph>>,
+  input: { candidateRevisionId: string; targetValue: string; revisionNumber?: number }
+) {
+  await db.query(
+    `insert into dts_config_revisions (
+       id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id,
+       entry_file, include_search_paths, overlay_order, manifest_state
+     )
+     select $1, organization_id, project_id, config_set_id, $2, 'pending_approval', $3,
+            entry_file, include_search_paths, overlay_order, manifest_state
+     from dts_config_revisions where id = $4`,
+    [input.candidateRevisionId, input.revisionNumber ?? 90, USER, seeded.configRevisionId]
+  );
+  await db.query(
+    `insert into project_parameter_binding_revisions (
+       id, binding_id, config_revision_id, parameter_spec_version_id,
+       typed_value, canonical_value, raw_value, schema_state, policy_state
+     )
+     select $1, binding_id, $2, parameter_spec_version_id,
+            typed_value, canonical_value, $3, schema_state, policy_state
+     from project_parameter_binding_revisions
+     where binding_id = $4 and config_revision_id = $5`,
+    [`bpr-${input.candidateRevisionId}`, input.candidateRevisionId, input.targetValue, seeded.bindingId, seeded.configRevisionId]
+  );
+  return input.candidateRevisionId;
+}
+
+async function seedPendingDeleteCandidate(
+  db: Database,
+  seeded: Awaited<ReturnType<typeof seedPreCutoverGraph>>,
+  input: { candidateRevisionId: string; revisionNumber?: number }
+) {
+  await db.query(
+    `insert into dts_config_revisions (
+       id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id,
+       entry_file, include_search_paths, overlay_order, manifest_state
+     )
+     select $1, organization_id, project_id, config_set_id, $2, 'pending_approval', $3,
+            entry_file, include_search_paths, overlay_order, manifest_state
+     from dts_config_revisions where id = $4`,
+    [input.candidateRevisionId, input.revisionNumber ?? 91, USER, seeded.configRevisionId]
+  );
+  const logicalNodeRevisionId = `lnr-${input.candidateRevisionId}`;
+  await db.query(
+    `insert into dts_logical_node_revisions (
+       id, logical_node_id, config_revision_id, node_locator, name, unit_address, parent_logical_node_id
+     ) values ($1, $2, $3, $4, 'sc8562', '6E', null)`,
+    [logicalNodeRevisionId, expectedLogicalNodeId(), input.candidateRevisionId, NODE_LOCATOR]
+  );
+  await db.query(
+    `insert into dts_occurrence_effects (
+       id, config_revision_id, logical_node_revision_id, property_name, effect_kind, source_order
+     ) values ($1, $2, $3, $4, 'delete', 1)`,
+    [`oe-${input.candidateRevisionId}`, input.candidateRevisionId, logicalNodeRevisionId, PROPERTY_KEY]
+  );
+  return input.candidateRevisionId;
+}
+
 describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", () => {
   it(
     "submits an exact binding draft identity and rejects project/spec/candidate/write-lock mismatches",
@@ -511,13 +571,16 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
 
         const round = await submit();
         expect(round.items).toHaveLength(1);
+        expect(round.items[0]?.candidateConfigRevisionId).toBe(candidateRevisionId);
         const persisted = await db.query<{
           project_parameter_binding_id: string;
           parameter_spec_id: string;
           base_config_revision_id: string;
           binding_revision_id: string;
+          candidate_config_revision_id: string;
         }>(
-          `select project_parameter_binding_id, parameter_spec_id, base_config_revision_id, binding_revision_id
+          `select project_parameter_binding_id, parameter_spec_id, base_config_revision_id, binding_revision_id,
+                  candidate_config_revision_id
            from parameter_change_requests where submission_round_id = $1`,
           [round.id]
         );
@@ -525,8 +588,26 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           project_parameter_binding_id: seeded.bindingId,
           parameter_spec_id: seeded.specId,
           base_config_revision_id: writeLock.baseConfigRevisionId,
-          binding_revision_id: writeLock.bindingRevisionId
+          binding_revision_id: writeLock.bindingRevisionId,
+          candidate_config_revision_id: candidateRevisionId
         });
+        expect(
+          (
+            await db.query<{ candidate_config_revision_id: string }>(
+              `select candidate_config_revision_id from parameter_submission_items
+               where submission_round_id = $1`,
+              [round.id]
+            )
+          ).rows
+        ).toEqual([{ candidate_config_revision_id: candidateRevisionId }]);
+        expect(
+          (
+            await db.query<{ status: string }>(
+              `select status from dts_config_revisions where id = $1`,
+              [candidateRevisionId]
+            )
+          ).rows
+        ).toEqual([{ status: "pending_approval" }]);
         const audit = await db.query<{ metadata: Record<string, unknown> }>(
           `select metadata from audit_events
            where project_id = $1 and kind = 'parameter-submit'
@@ -536,7 +617,8 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         expect(audit.rows[0]?.metadata).toMatchObject({
           bindingDraftIds: [draftId],
           projectParameterBindingIds: [seeded.bindingId],
-          parameterSpecIds: [seeded.specId]
+          parameterSpecIds: [seeded.specId],
+          candidateConfigRevisionIds: [candidateRevisionId]
         });
         expect((await db.query(`select 1 from parameter_drafts where id = $1`, [draftId])).rows).toHaveLength(0);
       });
@@ -844,6 +926,149 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
   );
 
   it(
+    "locks and promotes the exact candidate before workflow creation under a two-connection race",
+    async () => {
+      await withTempDatabase(async (db, connectionString) => {
+        const seeded = await seedPreCutoverGraph(db);
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-candidate-concurrency",
+          objectSnapshotId: "obj-snap-candidate-concurrency"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        resetParameterIdentityCutoverCache();
+        await db.query(`delete from parameter_drafts where organization_id = $1 and project_id = $2`, [ORG, PROJECT]);
+
+        const candidateRevisionId = "rev-pcw-candidate-concurrent";
+        const targetValue = "<&gpio13 30 0>";
+        await db.query(
+          `insert into dts_config_revisions (
+             id, organization_id, project_id, config_set_id, revision_number, status,
+             created_by_user_id, entry_file, include_search_paths, overlay_order, manifest_state
+           ) values ($1, $2, $3, $4, 2, 'draft', $5, 'pcw-base.dts', '["."]'::jsonb,
+             '["pcw-overlay.dts"]'::jsonb, 'complete')`,
+          [candidateRevisionId, ORG, PROJECT, CONFIG_SET, USER]
+        );
+        await db.query(
+          `insert into project_parameter_binding_revisions (
+             id, binding_id, config_revision_id, parameter_spec_version_id,
+             typed_value, canonical_value, raw_value, schema_state, policy_state
+           )
+           select $1, binding_id, $2, parameter_spec_version_id,
+             typed_value, canonical_value, $3, schema_state, policy_state
+           from project_parameter_binding_revisions
+           where binding_id = $4 and config_revision_id = $5`,
+          ["bpr-pcw-candidate-concurrent", candidateRevisionId, targetValue, seeded.bindingId, seeded.configRevisionId]
+        );
+        const writeLock = await resolveBindingWriteLock(db, makeAuth(), {
+          bindingId: seeded.bindingId,
+          baseRevisionId: seeded.configRevisionId
+        });
+        const draftId = "draft-pcw-candidate-concurrent";
+        await upsertDraft(db, {
+          id: draftId,
+          organizationId: ORG,
+          projectId: PROJECT,
+          parameterId: seeded.bindingId,
+          userId: USER,
+          targetValue,
+          reason: "candidate lock race",
+          projectParameterBindingId: seeded.bindingId,
+          parameterSpecId: seeded.specId,
+          candidateConfigRevisionId: candidateRevisionId,
+          writeLock
+        });
+
+        const submitClient = new pg.Client({ connectionString });
+        const mutateClient = new pg.Client({ connectionString });
+        await submitClient.connect();
+        await mutateClient.connect();
+        let releaseCandidateRead!: () => void;
+        const candidateReadReleased = new Promise<void>((resolve) => { releaseCandidateRead = resolve; });
+        let signalCandidateRead!: () => void;
+        const candidateRead = new Promise<void>((resolve) => { signalCandidateRead = resolve; });
+        let intercepted = false;
+        const submitDbBase = createDatabase({
+          query: async (text, values = []) => {
+            const result = await submitClient.query(text, values);
+            return { rows: result.rows, rowCount: result.rowCount };
+          }
+        });
+        const submitDb: Database = {
+          query: submitDbBase.query,
+          transaction: (fn) => submitDbBase.transaction((tx) => fn({
+            query: async (text, values = []) => {
+              const result = await tx.query(text, values);
+              if (!intercepted && text.includes("from parameter_drafts d")) {
+                intercepted = true;
+                signalCandidateRead();
+                await candidateReadReleased;
+              }
+              return result;
+            }
+          }))
+        };
+
+        try {
+          const submission = submitParameterChanges(submitDb, makeAuth(), {
+            projectId: PROJECT,
+            items: [{
+              draftId,
+              projectParameterBindingId: seeded.bindingId,
+              parameterSpecId: seeded.specId,
+              targetValue,
+              reason: "candidate lock race"
+            }]
+          });
+          await candidateRead;
+          const mutatorPid = await mutateClient.query<{ pid: number }>("select pg_backend_pid() as pid");
+          const mutation = mutateClient.query(
+            `update dts_config_revisions set status = 'invalid' where id = $1`,
+            [candidateRevisionId]
+          );
+
+          let lockObserved = false;
+          for (let attempt = 0; attempt < 50; attempt += 1) {
+            const activity = await db.query<{ wait_event_type: string | null }>(
+              `select wait_event_type from pg_stat_activity where pid = $1`,
+              [mutatorPid.rows[0]!.pid]
+            );
+            if (activity.rows[0]?.wait_event_type === "Lock") {
+              lockObserved = true;
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+
+          releaseCandidateRead();
+          const [round] = await Promise.all([submission, mutation]);
+          expect(lockObserved).toBe(true);
+          expect(
+            (
+              await db.query<{ candidate_config_revision_id: string }>(
+                `select candidate_config_revision_id from parameter_change_requests
+                 where submission_round_id = $1`,
+                [round.id]
+              )
+            ).rows
+          ).toEqual([{ candidate_config_revision_id: candidateRevisionId }]);
+          expect(
+            (await db.query<{ status: string }>(`select status from dts_config_revisions where id = $1`, [candidateRevisionId])).rows
+          ).toEqual([{ status: "invalid" }]);
+        } finally {
+          releaseCandidateRead();
+          await submitClient.end().catch(() => undefined);
+          await mutateClient.end().catch(() => undefined);
+        }
+      });
+    },
+    90_000
+  );
+
+  it(
     "merges a persisted delete action through locked writeback without a replacement binding revision",
     async () => {
       await withTempDatabase(async (db) => {
@@ -868,6 +1093,9 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           bindingId: seeded.bindingId,
           baseRevisionId: seeded.configRevisionId
         });
+        const submittedCandidateRevisionId = await seedPendingDeleteCandidate(db, seeded, {
+          candidateRevisionId: "rev-pcw-delete-reviewed-candidate"
+        });
         const round = await createSubmissionRound(db, {
           id: "round-pcw-delete-merge",
           organizationId: ORG,
@@ -891,6 +1119,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           submitterUserId: USER,
           parameterSpecId: seeded.specId,
           projectParameterBindingId: seeded.bindingId,
+          candidateConfigRevisionId: submittedCandidateRevisionId,
           writeLock
         });
         expect(request.action).toBe("delete");
@@ -907,6 +1136,54 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             };
           }
         };
+        await db.query(
+          `update dts_occurrence_effects set effect_kind = 'set'
+           where config_revision_id = $1 and property_name = $2`,
+          [submittedCandidateRevisionId, PROPERTY_KEY]
+        );
+        await expect(
+          reviewChange(
+            db,
+            auth,
+            { requestId: request.id, decision: "advance", note: "Reject stale delete proof" },
+            {
+              objectStore: objectStore as never,
+              toolchain: {
+                async validate() {
+                  return {
+                    ok: true,
+                    mode: "release" as const,
+                    compiler: { dtc: "test", fdtoverlay: "test", dtschema: "test" },
+                    diagnostics: [],
+                    artifacts: {}
+                  };
+                },
+                async probe() {
+                  return {
+                    dtc: { path: "/usr/bin/dtc", version: "test" },
+                    fdtoverlay: { path: "/usr/bin/fdtoverlay", version: "test" },
+                    dtschema: { path: "/usr/bin/dt-validate", version: "test" }
+                  };
+                }
+              },
+              skipSemanticGates: true,
+              requestId: "trace-pcw-delete-merge-stale-proof"
+            }
+          )
+        ).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+        expect(
+          (
+            await db.query<{ count: string }>(
+              `select count(*)::text as count from parameter_history_entries where request_id = $1`,
+              [request.id]
+            )
+          ).rows[0]?.count
+        ).toBe("0");
+        await db.query(
+          `update dts_occurrence_effects set effect_kind = 'delete'
+           where config_revision_id = $1 and property_name = $2`,
+          [submittedCandidateRevisionId, PROPERTY_KEY]
+        );
         const merged = await reviewChange(
           db,
           auth,
@@ -1107,6 +1384,10 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           status: "submitted",
           summary: "post-cutover submit"
         });
+        const reviewedCandidateRevisionId = await seedPendingSetCandidate(db, seeded, {
+          candidateRevisionId: "rev-pcw-reviewed-set",
+          targetValue: mergedGpioValue
+        });
         const request = await createChangeRequest(db, {
           id: randomUUID(),
           organizationId: ORG,
@@ -1121,6 +1402,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           submitterUserId: USER,
           parameterSpecId: seeded.specId,
           projectParameterBindingId: seeded.bindingId,
+          candidateConfigRevisionId: reviewedCandidateRevisionId,
           writeLock,
         });
         await createSubmissionItem(db, {
@@ -1132,7 +1414,8 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           currentValue: "<1>",
           targetValue: mergedGpioValue,
           reason: "post-cutover",
-          projectParameterBindingId: seeded.bindingId
+          projectParameterBindingId: seeded.bindingId,
+          candidateConfigRevisionId: reviewedCandidateRevisionId
         });
 
         const merged = await mergeChangeRequest(db, {
@@ -1350,6 +1633,10 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           status: "submitted",
           summary: "stale merge"
         });
+        const reviewedCandidateRevisionId = await seedPendingSetCandidate(db, seeded, {
+          candidateRevisionId: "rev-pcw-stale-reviewed-set",
+          targetValue: "<9>"
+        });
         const requestWithoutLock = await createChangeRequest(db, {
           id: randomUUID(),
           organizationId: ORG,
@@ -1363,7 +1650,8 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           status: "software_merge",
           submitterUserId: USER,
           parameterSpecId: seeded.specId,
-          projectParameterBindingId: seeded.bindingId
+          projectParameterBindingId: seeded.bindingId,
+          candidateConfigRevisionId: reviewedCandidateRevisionId
         });
         const missingLockMerge = await mergeChangeRequest(db, {
           historyId: randomUUID(),
@@ -1373,7 +1661,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(missingLockMerge).toBeNull();
 
-        const request = await createChangeRequest(db, {
+        const requestWithoutCandidate = await createChangeRequest(db, {
           id: randomUUID(),
           organizationId: ORG,
           submissionRoundId: round.id,
@@ -1389,6 +1677,64 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           projectParameterBindingId: seeded.bindingId,
           writeLock
         });
+        expect(
+          await mergeChangeRequest(db, {
+            historyId: randomUUID(),
+            organizationId: ORG,
+            requestId: requestWithoutCandidate.id,
+            actorUserId: USER
+          })
+        ).toBeNull();
+
+        const request = await createChangeRequest(db, {
+          id: randomUUID(),
+          organizationId: ORG,
+          submissionRoundId: round.id,
+          projectId: PROJECT,
+          parameterId: seeded.bindingId,
+          parameterDefinitionId: seeded.specId,
+          baseVersion: 1,
+          currentValue: "<1>",
+          targetValue: "<9>",
+          status: "software_merge",
+          submitterUserId: USER,
+          parameterSpecId: seeded.specId,
+          projectParameterBindingId: seeded.bindingId,
+          candidateConfigRevisionId: reviewedCandidateRevisionId,
+          writeLock
+        });
+        await db.query(`update dts_config_revisions set status = 'invalid' where id = $1`, [
+          reviewedCandidateRevisionId
+        ]);
+        expect(
+          await mergeChangeRequest(db, {
+            historyId: randomUUID(),
+            organizationId: ORG,
+            requestId: request.id,
+            actorUserId: USER
+          })
+        ).toBeNull();
+        await db.query(`update dts_config_revisions set status = 'pending_approval' where id = $1`, [
+          reviewedCandidateRevisionId
+        ]);
+        await db.query(
+          `update project_parameter_binding_revisions set raw_value = '<10>'
+           where binding_id = $1 and config_revision_id = $2`,
+          [seeded.bindingId, reviewedCandidateRevisionId]
+        );
+        expect(
+          await mergeChangeRequest(db, {
+            historyId: randomUUID(),
+            organizationId: ORG,
+            requestId: request.id,
+            actorUserId: USER
+          })
+        ).toBeNull();
+        await db.query(
+          `update project_parameter_binding_revisions set raw_value = '<9>'
+           where binding_id = $1 and config_revision_id = $2`,
+          [seeded.bindingId, reviewedCandidateRevisionId]
+        );
         await db.query(
           `update project_parameter_file_versions set checksum = 'stale-checksum' where id = $1`,
           [writeLock.sourceFileVersionId]
@@ -1431,6 +1777,10 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           status: "submitted",
           summary: "stale writeback"
         });
+        const reviewedCandidateRevisionId = await seedPendingSetCandidate(db, seeded, {
+          candidateRevisionId: "rev-pcw-stale-writeback-reviewed-set",
+          targetValue: "<9>"
+        });
         const request = await createChangeRequest(db, {
           id: randomUUID(),
           organizationId: ORG,
@@ -1445,6 +1795,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           submitterUserId: USER,
           parameterSpecId: seeded.specId,
           projectParameterBindingId: seeded.bindingId,
+          candidateConfigRevisionId: reviewedCandidateRevisionId,
           writeLock
         });
         await mergeChangeRequest(db, {
@@ -1538,12 +1889,15 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
     });
     expect(history.filter((entry) => entry.value === "<9>")).toHaveLength(0);
 
-    const candidate = await db.query<{ c: string }>(
-      `select count(*)::text as c from project_parameter_binding_revisions
-       where binding_id = $1 and raw_value = '<9>'`,
+    const generatedCandidate = await db.query<{ c: string }>(
+      `select count(*)::text as c
+       from project_parameter_binding_revisions bpr
+       inner join dts_config_revisions cr on cr.id = bpr.config_revision_id
+       where bpr.binding_id = $1 and bpr.raw_value = '<9>'
+         and cr.status <> 'pending_approval'`,
       [bindingId]
     );
-    expect(Number(candidate.rows[0]?.c ?? 0)).toBe(0);
+    expect(Number(generatedCandidate.rows[0]?.c ?? 0)).toBe(0);
 
     const base = await db.query<{ raw_value: string | null }>(
       `select raw_value from project_parameter_binding_revisions
@@ -1616,6 +1970,10 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           status: "submitted",
           summary: "fail-closed objectStore"
         });
+        const reviewedCandidateRevisionId = await seedPendingSetCandidate(db, seeded, {
+          candidateRevisionId: "rev-pcw-fc-object-store-reviewed-set",
+          targetValue: "<9>"
+        });
         const request = await createChangeRequest(db, {
           id: randomUUID(),
           organizationId: ORG,
@@ -1630,6 +1988,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           submitterUserId: USER,
           parameterSpecId: seeded.specId,
           projectParameterBindingId: seeded.bindingId,
+          candidateConfigRevisionId: reviewedCandidateRevisionId,
           writeLock
         });
 
@@ -1711,6 +2070,10 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             status: "submitted",
             summary: `fail-closed ${caseDef.name}`
           });
+          const reviewedCandidateRevisionId = await seedPendingSetCandidate(db, seeded, {
+            candidateRevisionId: `rev-pcw-fc-${caseDef.name}-reviewed-set`,
+            targetValue: "<9>"
+          });
           const request = await createChangeRequest(db, {
             id: randomUUID(),
             organizationId: ORG,
@@ -1725,6 +2088,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             submitterUserId: USER,
             parameterSpecId: seeded.specId,
             projectParameterBindingId: seeded.bindingId,
+            candidateConfigRevisionId: reviewedCandidateRevisionId,
             writeLock
           });
 

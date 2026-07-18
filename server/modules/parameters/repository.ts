@@ -157,75 +157,87 @@ export async function getBindingDraftForSubmission(
     }
   >(
     `
+    with locked_draft as materialized (
+      select d.*, b.parameter_spec_id, b.logical_node_id
+      from parameter_drafts d
+      inner join project_parameter_bindings b
+        on b.id = d.project_parameter_binding_id
+       and b.organization_id = d.organization_id
+       and b.project_id = d.project_id
+      where d.organization_id = $1
+        and d.project_id = $2
+        and d.user_id = $3
+        and d.id = $4
+      limit 1
+      for update of d
+    ),
+    locked_candidate as materialized (
+      select candidate.id, candidate.status, candidate.config_set_id
+      from dts_config_revisions candidate
+      inner join locked_draft d
+        on candidate.id = d.candidate_config_revision_id
+       and candidate.organization_id = d.organization_id
+       and candidate.project_id = d.project_id
+      inner join dts_config_revisions base_candidate
+        on base_candidate.id = d.base_config_revision_id
+       and base_candidate.organization_id = d.organization_id
+       and base_candidate.project_id = d.project_id
+       and base_candidate.config_set_id = candidate.config_set_id
+      for update of candidate
+    ),
+    locked_candidate_bindings as materialized (
+      select candidate_bpr.id, candidate_bpr.raw_value
+      from project_parameter_binding_revisions candidate_bpr
+      inner join locked_draft d
+        on candidate_bpr.binding_id = d.project_parameter_binding_id
+       and candidate_bpr.config_revision_id = d.candidate_config_revision_id
+      inner join locked_candidate candidate
+        on candidate.id = candidate_bpr.config_revision_id
+      for update of candidate_bpr
+    ),
+    locked_delete_effects as materialized (
+      select candidate_effect.id
+      from dts_logical_node_revisions candidate_lnr
+      inner join dts_occurrence_effects candidate_effect
+        on candidate_effect.logical_node_revision_id = candidate_lnr.id
+       and candidate_effect.config_revision_id = candidate_lnr.config_revision_id
+      inner join locked_draft d
+        on candidate_lnr.logical_node_id = d.logical_node_id
+       and candidate_lnr.config_revision_id = d.candidate_config_revision_id
+      inner join locked_candidate candidate
+        on candidate.id = candidate_lnr.config_revision_id
+      inner join dts_property_specs candidate_property
+        on candidate_property.parameter_spec_id = d.parameter_spec_id
+       and candidate_effect.property_name = candidate_property.property_key
+      where candidate_effect.effect_kind = 'delete'
+      for update of candidate_lnr, candidate_effect
+    )
     select
       d.id,
       d.project_id,
       d.project_parameter_binding_id,
-      b.parameter_spec_id,
+      d.parameter_spec_id,
       d.candidate_config_revision_id,
-      cr.status as candidate_status,
+      candidate.status as candidate_status,
       exists (
-        select 1
-        from project_parameter_binding_revisions candidate_bpr
-        where candidate_bpr.binding_id = b.id
-          and candidate_bpr.config_revision_id = d.candidate_config_revision_id
+        select 1 from locked_candidate_bindings
       ) as candidate_has_binding_revision,
       exists (
-        select 1
-        from project_parameter_binding_revisions candidate_bpr
-        where candidate_bpr.binding_id = b.id
-          and candidate_bpr.config_revision_id = d.candidate_config_revision_id
-          and candidate_bpr.raw_value = d.target_value
+        select 1 from locked_candidate_bindings candidate_bpr
+        where candidate_bpr.raw_value = d.target_value
       ) as candidate_value_matches_draft,
       (
-        not exists (
-          select 1
-          from project_parameter_binding_revisions candidate_bpr
-          where candidate_bpr.binding_id = b.id
-            and candidate_bpr.config_revision_id = d.candidate_config_revision_id
-        )
-        and exists (
-          select 1
-          from dts_logical_node_revisions candidate_lnr
-          inner join dts_occurrence_effects candidate_effect
-            on candidate_effect.logical_node_revision_id = candidate_lnr.id
-           and candidate_effect.config_revision_id = d.candidate_config_revision_id
-          inner join dts_property_specs candidate_property
-            on candidate_property.parameter_spec_id = b.parameter_spec_id
-          where candidate_lnr.logical_node_id = b.logical_node_id
-            and candidate_lnr.config_revision_id = d.candidate_config_revision_id
-            and candidate_effect.property_name = candidate_property.property_key
-            and candidate_effect.effect_kind = 'delete'
-        )
+        not exists (select 1 from locked_candidate_bindings)
+        and exists (select 1 from locked_delete_effects)
       ) as candidate_delete_tombstone,
       case d.action
         when 'set' then exists (
-          select 1
-          from project_parameter_binding_revisions candidate_bpr
-          where candidate_bpr.binding_id = b.id
-            and candidate_bpr.config_revision_id = d.candidate_config_revision_id
-            and candidate_bpr.raw_value = d.target_value
+          select 1 from locked_candidate_bindings candidate_bpr
+          where candidate_bpr.raw_value = d.target_value
         )
         when 'delete' then (
-          not exists (
-            select 1
-            from project_parameter_binding_revisions candidate_bpr
-            where candidate_bpr.binding_id = b.id
-              and candidate_bpr.config_revision_id = d.candidate_config_revision_id
-          )
-          and exists (
-            select 1
-            from dts_logical_node_revisions candidate_lnr
-            inner join dts_occurrence_effects candidate_effect
-              on candidate_effect.logical_node_revision_id = candidate_lnr.id
-             and candidate_effect.config_revision_id = d.candidate_config_revision_id
-            inner join dts_property_specs candidate_property
-              on candidate_property.parameter_spec_id = b.parameter_spec_id
-            where candidate_lnr.logical_node_id = b.logical_node_id
-              and candidate_lnr.config_revision_id = d.candidate_config_revision_id
-              and candidate_effect.property_name = candidate_property.property_key
-              and candidate_effect.effect_kind = 'delete'
-          )
+          not exists (select 1 from locked_candidate_bindings)
+          and exists (select 1 from locked_delete_effects)
         )
         else false
       end as candidate_action_proven,
@@ -233,7 +245,7 @@ export async function getBindingDraftForSubmission(
         select 1
         from project_parameter_binding_revisions locked_bpr
         where locked_bpr.id = d.binding_revision_id
-          and locked_bpr.binding_id = b.id
+          and locked_bpr.binding_id = d.project_parameter_binding_id
           and locked_bpr.config_revision_id = d.base_config_revision_id
       ) as write_lock_matches_binding,
       d.target_value,
@@ -245,28 +257,8 @@ export async function getBindingDraftForSubmission(
       d.source_file_version_id,
       d.expected_checksum,
       d.occurrence_span
-    from parameter_drafts d
-    inner join project_parameter_bindings b
-      on b.id = d.project_parameter_binding_id
-      and b.organization_id = d.organization_id
-      and b.project_id = d.project_id
-    left join dts_config_revisions cr
-      on cr.id = d.candidate_config_revision_id
-      and cr.organization_id = d.organization_id
-      and cr.project_id = d.project_id
-      and cr.config_set_id = (
-        select base_cr.config_set_id
-        from dts_config_revisions base_cr
-        where base_cr.id = d.base_config_revision_id
-          and base_cr.organization_id = d.organization_id
-          and base_cr.project_id = d.project_id
-      )
-    where d.organization_id = $1
-      and d.project_id = $2
-      and d.user_id = $3
-      and d.id = $4
-    limit 1
-    for update of d
+    from locked_draft d
+    left join locked_candidate candidate on candidate.id = d.candidate_config_revision_id
     `,
     [input.organizationId, input.projectId, input.userId, input.draftId]
   );
@@ -289,6 +281,40 @@ export async function getBindingDraftForSubmission(
     writeLock: toWriteLockFields(row),
     writeLockMatchesBinding: row.write_lock_matches_binding
   };
+}
+
+export async function promoteBindingDraftCandidateForReview(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    draftId: string;
+    candidateConfigRevisionId: string;
+  }
+): Promise<boolean> {
+  const result = await db.query<{ id: string }>(
+    `
+    update dts_config_revisions candidate
+    set status = 'pending_approval'
+    from parameter_drafts draft
+    inner join dts_config_revisions base_candidate
+      on base_candidate.id = draft.base_config_revision_id
+     and base_candidate.organization_id = draft.organization_id
+     and base_candidate.project_id = draft.project_id
+    where draft.id = $1
+      and draft.organization_id = $2
+      and draft.project_id = $3
+      and draft.candidate_config_revision_id = $4
+      and candidate.id = draft.candidate_config_revision_id
+      and candidate.organization_id = draft.organization_id
+      and candidate.project_id = draft.project_id
+      and candidate.config_set_id = base_candidate.config_set_id
+      and candidate.status = 'draft'
+    returning candidate.id
+    `,
+    [input.draftId, input.organizationId, input.projectId, input.candidateConfigRevisionId]
+  );
+  return result.rows.length === 1;
 }
 
 export async function getChangeRequestWriteLock(
@@ -537,6 +563,7 @@ type ChangeRequestRow = {
   current_value: string;
   target_value: string;
   action?: ParameterChangeAction;
+  candidate_config_revision_id?: string | null;
   submitter: string;
   submitter_user_id?: string;
   status: ParameterChangeRequestStatus;
@@ -597,6 +624,7 @@ export type ChangeRequestMergeResult = {
   newVersion: number;
   parameterSpecId?: string;
   projectParameterBindingId?: string;
+  candidateConfigRevisionId?: string;
 };
 
 type ChangeRequestMergeRow = {
@@ -610,6 +638,7 @@ type ChangeRequestMergeRow = {
   new_version: number | string;
   parameter_spec_id?: string | null;
   project_parameter_binding_id?: string | null;
+  candidate_config_revision_id?: string | null;
 };
 
 type SubmissionItemRow = {
@@ -620,6 +649,7 @@ type SubmissionItemRow = {
   current_value: string;
   target_value: string;
   action?: ParameterChangeAction;
+  candidate_config_revision_id?: string | null;
   unit: string;
   risk: ParameterRiskLevel;
   reason: string;
@@ -869,6 +899,7 @@ function toSubmissionItemDto(row: SubmissionItemRow): ParameterSubmissionItemDto
     currentValue: row.current_value,
     targetValue: row.target_value,
     action: row.action ?? "set",
+    candidateConfigRevisionId: row.candidate_config_revision_id ?? undefined,
     unit: row.unit,
     risk: row.risk,
     reason: row.reason,
@@ -967,6 +998,7 @@ async function toChangeRequestDto(db: Queryable, row: ChangeRequestRow): Promise
     currentValue: row.current_value,
     targetValue: row.target_value,
     action: row.action ?? "set",
+    candidateConfigRevisionId: row.candidate_config_revision_id ?? undefined,
     submitter: row.submitter,
     submitterUserId: row.submitter_user_id,
     createdAt,
@@ -1021,6 +1053,9 @@ function toChangeRequestMergeResult(row: ChangeRequestMergeRow): ChangeRequestMe
     ...(row.parameter_spec_id ? { parameterSpecId: row.parameter_spec_id } : {}),
     ...(row.project_parameter_binding_id
       ? { projectParameterBindingId: row.project_parameter_binding_id }
+      : {}),
+    ...(row.candidate_config_revision_id
+      ? { candidateConfigRevisionId: row.candidate_config_revision_id }
       : {})
   };
 }
@@ -2088,6 +2123,7 @@ export async function createChangeRequest(
     workflowAssignees?: Partial<ParameterWorkflowAssigneesDto>;
     parameterSpecId?: string;
     projectParameterBindingId?: string;
+    candidateConfigRevisionId?: string;
     writeLock?: BindingWriteLockFields;
   }
 ) {
@@ -2101,10 +2137,11 @@ export async function createChangeRequest(
           base_version, current_value, target_value, status, submitter_user_id,
           assigned_to_user_id, workflow_hardware_committer_user_id, workflow_software_committer_user_id,
           workflow_software_user_id, parameter_spec_id, project_parameter_binding_id,
+          candidate_config_revision_id,
           base_config_revision_id, binding_revision_id, property_occurrence_id,
           source_file_version_id, expected_checksum, occurrence_span, action
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21::jsonb, $22)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22::jsonb, $23)
         returning *
       )
       select
@@ -2117,6 +2154,7 @@ export async function createChangeRequest(
         inserted.current_value,
         inserted.target_value,
         inserted.action,
+        inserted.candidate_config_revision_id,
         users.name as submitter,
         inserted.status,
         'Low' as risk,
@@ -2155,6 +2193,7 @@ export async function createChangeRequest(
         input.workflowAssignees?.softwareUserId ?? null,
         input.parameterSpecId ?? null,
         bindingId,
+        input.candidateConfigRevisionId ?? null,
         input.writeLock?.baseConfigRevisionId ?? null,
         input.writeLock?.bindingRevisionId ?? null,
         input.writeLock?.propertyOccurrenceId ?? null,
@@ -2189,6 +2228,7 @@ export async function createChangeRequest(
       inserted.current_value,
       inserted.target_value,
       inserted.action,
+      inserted.candidate_config_revision_id,
       users.name as submitter,
       inserted.status,
       pd.risk,
@@ -2312,6 +2352,7 @@ export async function createSubmissionItem(
     action?: ParameterChangeAction;
     reason: string;
     projectParameterBindingId?: string;
+    candidateConfigRevisionId?: string;
   }
 ) {
   if (await mustUseSemanticParameterIdentity(db)) {
@@ -2321,9 +2362,10 @@ export async function createSubmissionItem(
       with inserted as (
         insert into parameter_submission_items (
           id, organization_id, submission_round_id, change_request_id,
-          current_value, target_value, reason, project_parameter_binding_id, action
+          current_value, target_value, reason, project_parameter_binding_id,
+          candidate_config_revision_id, action
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         returning *
       )
       select
@@ -2334,6 +2376,7 @@ export async function createSubmissionItem(
         inserted.current_value,
         inserted.target_value,
         inserted.action,
+        inserted.candidate_config_revision_id,
         coalesce(psv.value_shape->>'unit', '') as unit,
         'Low' as risk,
         coalesce(psv.value_shape->>'kind', 'legacy-text') as value_kind,
@@ -2360,6 +2403,7 @@ export async function createSubmissionItem(
         input.targetValue,
         input.reason,
         bindingId,
+        input.candidateConfigRevisionId ?? null,
         input.action ?? "set"
       ]
     );
@@ -2588,6 +2632,7 @@ export async function listChangeRequests(
       pcr.current_value,
       pcr.target_value,
       pcr.action,
+      pcr.candidate_config_revision_id,
       users.name as submitter,
       pcr.submitter_user_id,
       pcr.status,
@@ -2641,6 +2686,7 @@ export async function listChangeRequests(
       pcr.current_value,
       pcr.target_value,
       pcr.action,
+      pcr.candidate_config_revision_id,
       users.name as submitter,
       pcr.submitter_user_id,
       pcr.status,
@@ -2695,6 +2741,7 @@ export async function findOpenChangeRequest(
         pcr.current_value,
         pcr.target_value,
         pcr.action,
+        pcr.candidate_config_revision_id,
         users.name as submitter,
         pcr.submitter_user_id,
         pcr.status,
@@ -2749,6 +2796,7 @@ export async function findOpenChangeRequest(
       pcr.current_value,
       pcr.target_value,
       pcr.action,
+      pcr.candidate_config_revision_id,
       users.name as submitter,
       pcr.submitter_user_id,
       pcr.status,
@@ -2803,6 +2851,7 @@ export async function getChangeRequestById(
         pcr.current_value,
         pcr.target_value,
         pcr.action,
+        pcr.candidate_config_revision_id,
         users.name as submitter,
         pcr.submitter_user_id,
         pcr.status,
@@ -2856,6 +2905,7 @@ export async function getChangeRequestById(
       pcr.current_value,
       pcr.target_value,
       pcr.action,
+      pcr.candidate_config_revision_id,
       users.name as submitter,
       pcr.submitter_user_id,
       pcr.status,
@@ -3060,6 +3110,7 @@ export async function updateChangeRequestStatus(
         current_value,
         target_value,
         action,
+        candidate_config_revision_id,
         (select name from users where id = parameter_change_requests.submitter_user_id) as submitter,
         status,
         'Low' as risk,
@@ -3155,6 +3206,7 @@ export async function mergeChangeRequest(
           project_id,
           project_parameter_binding_id,
           parameter_spec_id,
+          candidate_config_revision_id,
           base_config_revision_id,
           binding_revision_id,
           property_occurrence_id,
@@ -3171,13 +3223,72 @@ export async function mergeChangeRequest(
           and project_parameter_binding_id is not null
         for update
       ),
-      locked_request as (
+      candidate_lock as materialized (
         select request_to_merge.*
         from request_to_merge
-        where request_to_merge.base_config_revision_id is not null
-          and request_to_merge.binding_revision_id is not null
-          and request_to_merge.source_file_version_id is not null
-          and request_to_merge.expected_checksum is not null
+        inner join dts_config_revisions base_candidate
+          on base_candidate.id = request_to_merge.base_config_revision_id
+         and base_candidate.organization_id = request_to_merge.organization_id
+         and base_candidate.project_id = request_to_merge.project_id
+        inner join dts_config_revisions candidate
+          on candidate.id = request_to_merge.candidate_config_revision_id
+         and candidate.organization_id = request_to_merge.organization_id
+         and candidate.project_id = request_to_merge.project_id
+         and candidate.config_set_id = base_candidate.config_set_id
+         and candidate.status = 'pending_approval'
+        for update of candidate
+      ),
+      locked_set_proof as materialized (
+        select candidate_bpr.id
+        from candidate_lock
+        inner join project_parameter_binding_revisions candidate_bpr
+          on candidate_bpr.binding_id = candidate_lock.project_parameter_binding_id
+         and candidate_bpr.config_revision_id = candidate_lock.candidate_config_revision_id
+         and candidate_bpr.raw_value = candidate_lock.target_value
+        where candidate_lock.action = 'set'
+        for update of candidate_bpr
+      ),
+      locked_delete_proof as materialized (
+        select candidate_effect.id
+        from candidate_lock
+        inner join project_parameter_bindings binding
+          on binding.id = candidate_lock.project_parameter_binding_id
+         and binding.organization_id = candidate_lock.organization_id
+         and binding.project_id = candidate_lock.project_id
+         and binding.parameter_spec_id = candidate_lock.parameter_spec_id
+        inner join dts_logical_node_revisions candidate_lnr
+          on candidate_lnr.logical_node_id = binding.logical_node_id
+         and candidate_lnr.config_revision_id = candidate_lock.candidate_config_revision_id
+        inner join dts_occurrence_effects candidate_effect
+          on candidate_effect.logical_node_revision_id = candidate_lnr.id
+         and candidate_effect.config_revision_id = candidate_lock.candidate_config_revision_id
+         and candidate_effect.effect_kind = 'delete'
+        inner join dts_property_specs candidate_property
+          on candidate_property.parameter_spec_id = binding.parameter_spec_id
+         and candidate_property.property_key = candidate_effect.property_name
+        where candidate_lock.action = 'delete'
+        for update of candidate_lnr, candidate_effect
+      ),
+      locked_request as (
+        select candidate_lock.*
+        from candidate_lock
+        where candidate_lock.base_config_revision_id is not null
+          and candidate_lock.binding_revision_id is not null
+          and candidate_lock.source_file_version_id is not null
+          and candidate_lock.expected_checksum is not null
+          and (
+            (candidate_lock.action = 'set' and exists (select 1 from locked_set_proof))
+            or (
+              candidate_lock.action = 'delete'
+              and not exists (
+                select 1
+                from project_parameter_binding_revisions candidate_bpr
+                where candidate_bpr.binding_id = candidate_lock.project_parameter_binding_id
+                  and candidate_bpr.config_revision_id = candidate_lock.candidate_config_revision_id
+              )
+              and exists (select 1 from locked_delete_proof)
+            )
+          )
       ),
       binding_lock as (
         select
@@ -3239,6 +3350,7 @@ export async function mergeChangeRequest(
         null::text as parameter_definition_id,
         occurrence_lock.parameter_spec_id,
         occurrence_lock.project_parameter_binding_id,
+        occurrence_lock.candidate_config_revision_id,
         occurrence_lock.project_id,
         occurrence_lock.target_value,
         occurrence_lock.action,
@@ -3911,6 +4023,7 @@ async function listSubmissionItemsByRoundIds(
       psi.current_value,
       psi.target_value,
       psi.action,
+      psi.candidate_config_revision_id,
       coalesce(psv.value_shape->>'unit', '') as unit,
       'Low' as risk,
       coalesce(psv.value_shape->>'kind', 'legacy-text') as value_kind,
@@ -3943,6 +4056,7 @@ async function listSubmissionItemsByRoundIds(
       psi.current_value,
       psi.target_value,
       psi.action,
+      psi.candidate_config_revision_id,
       pd.unit,
       pd.risk,
       pd.value_kind,
