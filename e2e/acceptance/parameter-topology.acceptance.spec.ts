@@ -956,11 +956,15 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const submitRound = await submitRoundPromise;
     expect(submitRound.status(), await submitRound.text()).toBe(201);
     const submitBody = (await submitRound.json()) as {
-      item: { status: string; items: Array<{ requestId: string; parameterId: string }> };
+      item: {
+        status: string;
+        items: Array<{ requestId: string; parameterId: string; candidateConfigRevisionId?: string }>;
+      };
     };
     const changeRequestId = submitBody.item.items[0]?.requestId;
     expect(changeRequestId).toBeTruthy();
     expect(submitBody.item.status).toBe("hardware_review");
+    expect(submitBody.item.items[0]?.candidateConfigRevisionId).toBe(draftBody.item.candidateRevisionId);
     await expect(submissionPanel.getByText(/已提交正式审核/)).toBeVisible();
     await submissionPanel.getByRole("button", { name: "查看审核队列" }).click();
 
@@ -1015,6 +1019,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const beforeMerge = await withPgClient(async (client) => {
       const result = await client.query<{
         status: string;
+        candidate_config_revision_id: string;
+        candidate_status: string;
         history_count: string;
         merge_audit_count: string;
         writeback_audit_count: string;
@@ -1022,6 +1028,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         `
         select
           cr.status,
+          cr.candidate_config_revision_id,
+          candidate.status as candidate_status,
           (select count(*)::text from parameter_history_entries h where h.request_id = cr.id) as history_count,
           (
             select count(*)::text from audit_events ae
@@ -1034,6 +1042,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
               and ae.created_at >= cr.created_at
           ) as writeback_audit_count
         from parameter_change_requests cr
+        inner join dts_config_revisions candidate on candidate.id = cr.candidate_config_revision_id
         where cr.id = $1
         `,
         [changeRequestId]
@@ -1041,6 +1050,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       return result.rows[0];
     });
     expect(beforeMerge?.status).toBe("software_merge");
+    expect(beforeMerge?.candidate_config_revision_id).toBe(draftBody.item.candidateRevisionId);
+    expect(beforeMerge?.candidate_status).toBe("pending_approval");
     expect(Number(beforeMerge?.history_count ?? 0)).toBe(0);
     expect(Number(beforeMerge?.merge_audit_count ?? 0)).toBe(0);
     expect(Number(beforeMerge?.writeback_audit_count ?? 0)).toBe(0);
@@ -1250,18 +1261,30 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const deleteSubmitBody = (await deleteSubmit.json()) as {
       item: {
         status: string;
-        items: Array<{ requestId: string; action: "delete"; targetValue: string }>;
+        items: Array<{
+          requestId: string;
+          action: "delete";
+          targetValue: string;
+          candidateConfigRevisionId?: string;
+        }>;
       };
     };
     const deleteRequestId = deleteSubmitBody.item.items[0]?.requestId;
     expect(deleteRequestId).toBeTruthy();
     expect(deleteSubmitBody.item.status).toBe("hardware_review");
-    expect(deleteSubmitBody.item.items[0]).toMatchObject({ action: "delete", targetValue: "" });
+    expect(deleteSubmitBody.item.items[0]).toMatchObject({
+      action: "delete",
+      targetValue: "",
+      candidateConfigRevisionId: deleteDraftBody.item.candidateRevisionId
+    });
 
     const deleteBeforeMerge = await withPgClient(async (client) => {
       const result = await client.query<{
         request_action: string;
         item_action: string;
+        request_candidate_id: string;
+        item_candidate_id: string;
+        candidate_status: string;
         history_count: string;
         merge_audit_count: string;
         writeback_audit_count: string;
@@ -1269,6 +1292,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         `select
            cr.action as request_action,
            psi.action as item_action,
+           cr.candidate_config_revision_id as request_candidate_id,
+           psi.candidate_config_revision_id as item_candidate_id,
+           candidate.status as candidate_status,
            (select count(*)::text from parameter_history_entries where request_id = cr.id) as history_count,
            (select count(*)::text from audit_events where kind = 'parameter-merge' and target_id = cr.id) as merge_audit_count,
            (
@@ -1278,6 +1304,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
            ) as writeback_audit_count
          from parameter_change_requests cr
          inner join parameter_submission_items psi on psi.change_request_id = cr.id
+         inner join dts_config_revisions candidate on candidate.id = cr.candidate_config_revision_id
          where cr.id = $1`,
         [deleteRequestId]
       );
@@ -1286,6 +1313,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(deleteBeforeMerge).toEqual({
       request_action: "delete",
       item_action: "delete",
+      request_candidate_id: deleteDraftBody.item.candidateRevisionId,
+      item_candidate_id: deleteDraftBody.item.candidateRevisionId,
+      candidate_status: "pending_approval",
       history_count: "0",
       merge_audit_count: "0",
       writeback_audit_count: "0"
