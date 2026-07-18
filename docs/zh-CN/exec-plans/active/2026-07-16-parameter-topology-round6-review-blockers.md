@@ -246,6 +246,16 @@
 - 另一个以干净 source `04e46b87f9db8879e3cded8cc526447524a04c52` 运行的隔离 5174/18787 production-HMAC、simulator、deterministic-Xiaoze 矩阵为 80 passed / 4 项硬件条件 skipped / 0 failed；workflow A–E、G–I 通过；requirements 59/59；operation evidence 56/56、71 records、0 invalid、0 validation error；`acceptance:evidence` 通过。Run ID 为 `full-20260718T123157160Z-04e46b87f9db`，`latest-full.json` SHA-256 为 `d432dd7eb6b1d6c9266366ac471af6cd75ae104f9771af562862c44c6c7f1eb1`。隔离 outer runner 仅因显式跳过 preflight 保持 failed，不能覆盖真实 blocker。
 - TD-042 继续为 BLOCKER：尚未执行干净非客户快照 apply→cutover→整库 restore 演练；不宣称可合并、production ready 或 cutover ready。
 
+## 父智能体 Review 后续检查点 6（2026-07-19）
+
+Review 发现本地 readiness gate 漂移：`/api/v1/operations/pilot-readiness` 已返回 canonical blocker `xiaozeLlm`，但 preflight consumer 仍检查退役名称 `agentProvider`，因此 deterministic 本地 allowlist 无法识别真实 API 响应。
+
+- Task 0 通过 `89a8dace`、`dad470e6`、`1d945fce`、`2f901271` 修复 device-bridge standby 测试基线竞态：测试现在等待真实 readiness 日志、验证 shutdown、失败时完成清理并保留主要断言错误。在实现检查点 HEAD `c10b8379` 上，新运行的 `npm run bridge:test -- packages/device-bridge/src/cli.test.ts` 为 1 个文件 / 12 个测试通过。
+- Task 1 在 `a4155bc7` 将退役 allowlist literal 替换为 `xiaozeLlm`；`c10b8379` 随后收紧 exact-set 匹配以拒绝重复项，并补充顺序无关与未知 blocker 输入的覆盖。在该检查点上，新运行的 `npm test -- scripts/run-acceptance-preflight.test.ts` 为 1 个文件 / 27 个测试通过。
+- 修复后，这条兼容路径只能返回 `non_hdc_local`，不能产生 `pilot_ready`；它仅在 preflight 启动本地 deterministic Xiaoze runtime 时适用。target 和 full-pilot 模式仍保持严格。
+- `deviceGateway`、`xiaozeLlm`、`backups` 仍如实列为 blockers；`backups` 仅允许作为既有的本地非客户证据 blocker。本检查点不记录标准 acceptance 成功。
+- TD-042 保持不变，继续为 BLOCKER：尚未执行干净非客户快照 apply→cutover→整库 restore 演练；不宣称 production ready、cutover ready、pilot ready 或可合并。
+
 ## 风险与回滚
 
 | 风险 | 缓解 |
@@ -264,5 +274,5 @@
 
 - 不执行生产 cutover；不使用客户库/快照。
 - 非 production ready；非 cutover ready；未经父智能体 Review 不可合并。
-- `deviceGateway` / `backups` 等外部阻断如实报告。
+- `deviceGateway` / `xiaozeLlm` / `backups` 等外部阻断如实报告。
 - 若无已设计的 platform 治理入口，对 global 规格激活 fail-closed。

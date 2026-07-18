@@ -77,7 +77,7 @@ Steps through runtime health checks can be automated for local non-HDC acceptanc
 npm run acceptance:preflight
 ```
 
-This command loads `.env`, records branch/commit/worktree state, starts missing local API/frontend runtime services for localhost URLs and leaves them running for browser acceptance, runs the repository gates, checks the API health endpoints, verifies `/api/v1/me`, and accepts local non-HDC readiness when `deviceGateway` is the only blocker. When the script starts the local deterministic Agent provider, it may also accept `deviceGateway` plus `agentProvider`; target and full-pilot modes remain strict. Use `npm run acceptance:preflight -- --skip-gates` for a faster API-only rerun after the gates already passed.
+This command loads `.env`, records branch/commit/worktree state, starts missing local API/frontend runtime services for localhost URLs and leaves them running for browser acceptance, runs the repository gates, checks the API health endpoints, verifies `/api/v1/me`, and accepts local non-HDC readiness when `deviceGateway` is the only blocker. When preflight starts the local deterministic Xiaoze runtime, it may also accept `deviceGateway` plus `xiaozeLlm`, with `backups` allowed only as the existing local non-customer evidence blocker; target and full-pilot modes remain strict. Use `npm run acceptance:preflight -- --skip-gates` for a faster API-only rerun after the gates already passed.
 
 Optional flags after `--`:
 
@@ -272,7 +272,7 @@ Expected:
 - `/api/v1/me` returns the expected admin identity in production-auth mode.
 - `/api/v1/operations/pilot-readiness` returns either `pilot_ready` or an honest `blocked` response with actionable reasons.
 
-For local non-HDC review, `deviceGateway` may remain the only blocked gate. If preflight auto-starts the local deterministic Agent provider, `agentProvider` may also remain blocked. Record that either case is local non-HDC evidence, not full pilot-ready evidence.
+For local non-HDC review, `deviceGateway` may remain the only blocked gate. When preflight auto-starts the local deterministic Xiaoze runtime, `deviceGateway` plus `xiaozeLlm` may remain blocked, and `backups` may join them only as the existing local non-customer evidence blocker. Record the accepted outcome as `non_hdc_local`; this does not clear any blocker or relax target and full-pilot evidence requirements.
 
 For strict target-environment pilot evidence, run:
 

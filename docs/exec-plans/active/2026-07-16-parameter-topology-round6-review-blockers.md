@@ -246,6 +246,16 @@ Documentation gate: update each impacted English and Chinese document separately
 - A separate clean-source run at `04e46b87f9db8879e3cded8cc526447524a04c52` used isolated 5174/18787 production-HMAC, simulator, and deterministic-Xiaoze services. Playwright completed 80 passed / 4 hardware-condition skips / 0 failed; workflows A–E and G–I passed; requirements 59/59; operation evidence 56/56 with 71 records, zero invalid records, and zero validation errors. `acceptance:evidence` passes. Run ID is `full-20260718T123157160Z-04e46b87f9db`; `latest-full.json` SHA-256 is `d432dd7eb6b1d6c9266366ac471af6cd75ae104f9771af562862c44c6c7f1eb1`. The outer isolated runner remains failed only because preflight was explicitly skipped and does not override the real blockers.
 - TD-042 remains BLOCKER: no clean non-customer snapshot apply→cutover→whole-database restore rehearsal has run. No merge-ready, production-ready, or cutover-ready claim is made.
 
+## Parent Review follow-up checkpoint 6 (2026-07-19)
+
+Review found a local readiness gate drift: `/api/v1/operations/pilot-readiness` already returned the canonical `xiaozeLlm` blocker, while the preflight consumer still checked the retired `agentProvider` name. The deterministic local allowlist therefore could not recognize the API response.
+
+- Task 0 repaired the device-bridge standby test baseline race across `89a8dace`, `dad470e6`, `1d945fce`, and `2f901271`: the test now waits for the actual readiness log, verifies shutdown, cleans up on failure, and preserves the primary assertion error. At the implementation checkpoint HEAD `c10b8379`, a fresh `npm run bridge:test -- packages/device-bridge/src/cli.test.ts` passed 1 file / 12 tests.
+- Task 1 replaced the retired allowlist literal with `xiaozeLlm` in `a4155bc7`; `c10b8379` then tightened exact-set matching to reject duplicates and added coverage for order-independent and unknown blocker inputs. A fresh `npm test -- scripts/run-acceptance-preflight.test.ts` at that checkpoint passed 1 file / 27 tests.
+- After the fix, this compatibility path can return only `non_hdc_local`; it cannot produce `pilot_ready`. It applies only when preflight starts the local deterministic Xiaoze runtime. Target and full-pilot modes remain strict.
+- `deviceGateway`, `xiaozeLlm`, and `backups` remain honestly listed as blockers; `backups` is allowed only as the existing local non-customer evidence blocker. No standard acceptance success is recorded by this checkpoint.
+- TD-042 remains unchanged as BLOCKER because the clean non-customer snapshot apply→cutover→full-database restore rehearsal has not run. No production-ready, cutover-ready, pilot-ready, or merge-ready claim is made.
+
 ## Risks & rollback
 
 | Risk | Mitigation |
@@ -264,5 +274,5 @@ Documentation gate: update each impacted English and Chinese document separately
 
 - No production cutover; no customer DB/snapshots.
 - Not production ready; not cutover ready; not merge-ready without parent Review.
-- External pilot blockers (`deviceGateway`, `backups`) reported honestly if still present.
+- External pilot blockers (`deviceGateway`, `xiaozeLlm`, `backups`) reported honestly if still present.
 - Platform-admin for global specs: fail-closed unless a designed platform governance path already exists.

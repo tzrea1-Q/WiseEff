@@ -17,6 +17,10 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
+### 本地 readiness 操作契约
+
+本地 preflight 在 `deviceGateway` 是唯一 blocker 时可以返回 `non_hdc_local`。只有在 preflight 自动启动本地 deterministic Xiaoze runtime 时，它还可以把 `deviceGateway` 加 `xiaozeLlm` 接受为 `non_hdc_local`；`backups` 仅可作为既有的本地非客户证据 blocker 与这两个 blocker 同时存在。该例外不会清除任何 blocker，target 和 full-pilot 模式仍保持严格。
+
 ## 补充验收流程
 
 ### F2. ADB Device-Lab Loop
