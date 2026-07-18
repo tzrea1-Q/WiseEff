@@ -145,6 +145,20 @@ Implementation order and TDD gate:
 - In-app browser verification used disposable API `http://127.0.0.1:50645` and frontend `http://127.0.0.1:5174/parameters`. Aurora candidate `185c2846-78da-4c18-9ec8-be851f317858` was created through the visible typed-edit UI; switching the project control to Nebula loaded revision `8e211c47-4e0a-45e4-bffa-6d01350f2376`, cleared the submission panel, and did not display the false “no semantic revision” state. Snapshots/screenshots at 1440×900, 768×1024, and 390×844 had zero console errors and no document-level horizontal overflow. The disposable runtime was stopped and its ports released after verification.
 - The standard outer acceptance gate remains blocked by external `deviceGateway`, `xiaozeLlm`, and `backups` readiness. TD-042 remains BLOCKER because the clean non-customer snapshot apply→cutover→whole-database restore rehearsal has not run; no production, cutover, or merge-ready claim is made.
 
+## Parent Review follow-up checkpoint 3 (2026-07-18)
+
+Parent Review remains `Request changes` for two P1 and three P2 findings. Root-cause inspection confirms: post-cutover service dispatch still accepts legacy item/save shapes; exact submission reads drafts without a row lock and does not compare the candidate binding value; an in-flight project-A draft response can update project-B UI state; one new assignee assertion races its effect; and migration 0059 leaves pre-existing semantic drafts without candidate identity.
+
+Implementation and TDD order:
+
+1. Add post-cutover PG/HTTP RED cases for legacy save/submit rejection and candidate-value mismatch, then make semantic mode accept only the explicit binding-draft contract and compare the candidate binding revision value with the locked draft.
+2. Add a deterministic two-connection PostgreSQL concurrency test, prove an edit can race the unlocked submission read, then lock `parameter_drafts d` with `FOR UPDATE OF d` and verify the edit cannot be silently deleted.
+3. Add a deferred-promise project-switch component test and ignore responses whose captured project generation no longer matches the active project. Bind pending drafts and assignee loading to their owning project.
+4. Replace the immediate assignee-effect assertion with `waitFor` and rerun standard `test:all` repeatedly.
+5. Add forward migration 0060 instead of rewriting deployed 0059. Fail closed by invalidating pre-0060 semantic drafts that cannot prove an exact candidate chain, record deterministic migration evidence, add upgrade/idempotency/rollback PG tests, and document the rebuild requirement in both runbooks.
+
+Documentation gate: update this plan, API/domain/testing/frontend behavior, and the English/Chinese identity cutover runbooks. TD-042 and external readiness remain blockers.
+
 ## Risks & rollback
 
 | Risk | Mitigation |

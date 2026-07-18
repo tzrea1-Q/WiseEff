@@ -145,6 +145,20 @@
 - in-app browser 使用 disposable API `http://127.0.0.1:50645` 与前端 `http://127.0.0.1:5174/parameters` 验收。先通过可见 typed-edit UI 创建 Aurora candidate `185c2846-78da-4c18-9ec8-be851f317858`，再通过项目控件切换到 Nebula；页面加载 revision `8e211c47-4e0a-45e4-bffa-6d01350f2376`，提交面板被清除，且没有出现错误的“无语义修订”状态。1440×900、768×1024、390×844 三个视口均完成 snapshot/screenshot，console error 为 0，document-level 无横向溢出。验收结束后 disposable runtime 已停止且端口已释放。
 - 标准外层 acceptance 门禁继续受外部 `deviceGateway`、`xiaozeLlm`、`backups` readiness 阻断。TD-042 仍为 BLOCKER，因为干净非客户快照 apply→cutover→整库 restore 演练尚未执行；不宣称 production ready、cutover ready 或可合并。
 
+## 父智能体 Review 后续检查点 3（2026-07-18）
+
+父智能体继续 `Request changes`，包含两个 P1 和三个 P2。根因核对确认：cutover 后 service dispatch 仍接受 legacy item/save；精确提交读取 draft 时未加行锁，也未比较 candidate binding revision 的值；项目 A 的未完成草稿响应可以回灌项目 B；一个新增 assignee 断言与 effect 存在竞态；0059 会让升级前 semantic draft 缺少 candidate identity。
+
+实现与 TDD 顺序：
+
+1. 先增加 cutover 后 legacy save/submit 拒绝、candidate value mismatch 的 PG/HTTP RED 测试；semantic mode 仅接受显式 binding-draft 合同，并比较 candidate binding revision 与锁定 draft 的值。
+2. 增加双连接真实 PostgreSQL 并发测试，先证明未加锁读取会与编辑竞态，再使用 `FOR UPDATE OF d` 锁定 `parameter_drafts d`，证明新编辑不会被静默删除。
+3. 增加 deferred Promise 跨项目组件测试；仅在捕获的项目世代仍为当前项目时接收响应，并把 pending draft 与 assignee 加载绑定到其所属项目。
+4. 将 assignee effect 的即时断言改为 `waitFor`，连续执行标准 `test:all`。
+5. 不修改已部署 0059，新增前向 migration 0060。对无法证明精确 candidate chain 的旧 semantic draft fail-closed 失效，记录确定性迁移 evidence，增加升级/幂等/回滚 PG 测试，并在中英文 runbook 明确要求重建。
+
+文档门禁：更新本计划、API/domain/testing/frontend 行为和中英文 identity cutover runbook。TD-042 与外部 readiness 继续保留为 blocker。
+
 ## 风险与回滚
 
 | 风险 | 缓解 |
