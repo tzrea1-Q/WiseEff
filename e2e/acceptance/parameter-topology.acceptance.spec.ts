@@ -967,13 +967,15 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const advanceReviewInUi = async (
       role: "hardware-committer" | "software-committer" | "software-user",
       expectedStage: RegExp,
+      targetRequestId = changeRequestId!,
+      rowText = editedRaw,
     ) => {
       await signInBrowserAsRole(
         page,
         role,
         `${disposableRuntime.frontendUrl}/parameter-review`,
       );
-      const requestRow = page.getByRole("row").filter({ hasText: editedRaw }).first();
+      const requestRow = page.getByRole("row").filter({ hasText: rowText }).first();
       await expect(requestRow).toBeVisible({ timeout: 30_000 });
       await requestRow.click();
       const reviewDetail = page.getByRole("complementary", { name: "审阅详情" });
@@ -985,14 +987,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await expect(reviewDetail.locator(".vertical-timeline-item--current")).toContainText(expectedStage);
       const responsePromise = page.waitForResponse((response) =>
         response.request().method() === "POST" &&
-        response.url().includes(`/api/v1/parameter-change-requests/${encodeURIComponent(changeRequestId!)}/review`)
+        response.url().includes(`/api/v1/parameter-change-requests/${encodeURIComponent(targetRequestId)}/review`)
       );
       await reviewDetail.getByRole("button", {
         name: role === "software-user" ? "确认合入" : "推进流程"
       }).click();
       const response = await responsePromise;
       expect(response.ok(), await response.text()).toBe(true);
-      const body = (await response.json()) as { item: { status: string } };
+      const body = (await response.json()) as {
+        item: { status: string; action?: "set" | "delete"; targetValue?: string };
+      };
       return { response, body };
     };
 
@@ -1150,10 +1154,293 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(mergeEvidence.historyCount).toBe(1);
     expect(mergeEvidence.mergeAuditCount).toBe(1);
 
+    // A real typed delete uses the public API for the currently UI-less delete control,
+    // then the same visible role-review UI and semantic merge/writeback boundary.
+    const deleteReason = `${descriptionPrefix} delete gpio_int through formal review`;
+    const deleteBaseBindingSnapshot = await withPgClient(async (client) => {
+      const result = await client.query<{ raw_value: string | null }>(
+        `select raw_value from project_parameter_binding_revisions
+         where binding_id = $1 and config_revision_id = $2`,
+        [mtBinding!.id, mergeEvidence.latestRevisionId]
+      );
+      return result.rows[0]?.raw_value ?? null;
+    });
+    expect(deleteBaseBindingSnapshot).toBeTruthy();
+    const deleteDraft = await request.post(
+      apiRoute(
+        `/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(mtBinding!.id)}/drafts`
+      ),
+      {
+        headers: authHeadersForRole("software-user"),
+        data: {
+          baseRevisionId: mergeEvidence.latestRevisionId,
+          action: "delete",
+          reason: deleteReason
+        }
+      }
+    );
+    expect(deleteDraft.status(), await deleteDraft.text()).toBe(201);
+    const deleteDraftBody = (await deleteDraft.json()) as {
+      item: {
+        draftId: string;
+        candidateRevisionId: string;
+        rawText: string;
+        action: "delete";
+        parameterSpecId: string;
+        projectParameterBindingId: string;
+      };
+    };
+    expect(deleteDraftBody.item).toMatchObject({
+      action: "delete",
+      rawText: "",
+      projectParameterBindingId: mtBinding!.id
+    });
+    const deleteCandidateBeforeSubmit = await withPgClient(async (client) => {
+      const result = await client.query<{
+        binding_revision_count: string;
+        delete_effect_count: string;
+      }>(
+        `select
+           (
+             select count(*)::text from project_parameter_binding_revisions
+             where binding_id = $1 and config_revision_id = $2
+           ) as binding_revision_count,
+           (
+             select count(*)::text from dts_occurrence_effects oe
+             inner join dts_logical_node_revisions lnr on lnr.id = oe.logical_node_revision_id
+             inner join project_parameter_bindings b on b.logical_node_id = lnr.logical_node_id
+             inner join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+             where b.id = $1
+               and oe.config_revision_id = $2
+               and lnr.config_revision_id = $2
+               and oe.effect_kind = 'delete'
+               and oe.property_name = dps.property_key
+           ) as delete_effect_count`,
+        [mtBinding!.id, deleteDraftBody.item.candidateRevisionId]
+      );
+      return result.rows[0];
+    });
+    expect(deleteCandidateBeforeSubmit).toEqual({
+      binding_revision_count: "0",
+      delete_effect_count: "1"
+    });
+
+    const deleteSubmit = await request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
+      headers: authHeadersForRole("software-user"),
+      data: {
+        projectId,
+        items: [
+          {
+            draftId: deleteDraftBody.item.draftId,
+            projectParameterBindingId: deleteDraftBody.item.projectParameterBindingId,
+            parameterSpecId: deleteDraftBody.item.parameterSpecId,
+            action: "delete",
+            targetValue: "",
+            reason: deleteReason
+          }
+        ],
+        assignees: {
+          hardwareCommitterId: "u-wang-jie",
+          softwareCommitterId: "u-sun-mei",
+          softwareUserId: "u-liu-min"
+        }
+      }
+    });
+    expect(deleteSubmit.status(), await deleteSubmit.text()).toBe(201);
+    const deleteSubmitBody = (await deleteSubmit.json()) as {
+      item: {
+        status: string;
+        items: Array<{ requestId: string; action: "delete"; targetValue: string }>;
+      };
+    };
+    const deleteRequestId = deleteSubmitBody.item.items[0]?.requestId;
+    expect(deleteRequestId).toBeTruthy();
+    expect(deleteSubmitBody.item.status).toBe("hardware_review");
+    expect(deleteSubmitBody.item.items[0]).toMatchObject({ action: "delete", targetValue: "" });
+
+    const deleteBeforeMerge = await withPgClient(async (client) => {
+      const result = await client.query<{
+        request_action: string;
+        item_action: string;
+        history_count: string;
+        merge_audit_count: string;
+        writeback_audit_count: string;
+      }>(
+        `select
+           cr.action as request_action,
+           psi.action as item_action,
+           (select count(*)::text from parameter_history_entries where request_id = cr.id) as history_count,
+           (select count(*)::text from audit_events where kind = 'parameter-merge' and target_id = cr.id) as merge_audit_count,
+           (
+             select count(*)::text from audit_events
+             where kind = 'parameter-writeback-to-file'
+               and metadata ->> 'changeRequestId' = cr.id
+           ) as writeback_audit_count
+         from parameter_change_requests cr
+         inner join parameter_submission_items psi on psi.change_request_id = cr.id
+         where cr.id = $1`,
+        [deleteRequestId]
+      );
+      return result.rows[0];
+    });
+    expect(deleteBeforeMerge).toEqual({
+      request_action: "delete",
+      item_action: "delete",
+      history_count: "0",
+      merge_audit_count: "0",
+      writeback_audit_count: "0"
+    });
+
+    const { response: deleteHardwareReview, body: deleteHardwareBody } = await advanceReviewInUi(
+      "hardware-committer",
+      /硬件(?:Committer|MDE)检视/,
+      deleteRequestId!,
+      "gpio_int"
+    );
+    expect(deleteHardwareBody.item.status).toBe("software_review");
+    const { response: deleteSoftwareReview, body: deleteSoftwareBody } = await advanceReviewInUi(
+      "software-committer",
+      /软件(?:Committer|MDE)检视/,
+      deleteRequestId!,
+      "gpio_int"
+    );
+    expect(deleteSoftwareBody.item.status).toBe("software_merge");
+    const { response: deleteMerge, body: deleteMergeBody } = await advanceReviewInUi(
+      "software-user",
+      /软件(?:User|开发人员?)合入/,
+      deleteRequestId!,
+      "gpio_int"
+    );
+    expect(deleteMergeBody.item).toMatchObject({ status: "merged", action: "delete", targetValue: "" });
+    const deleteMergeRequestId = deleteMerge.headers()["x-request-id"];
+    expect(deleteMergeRequestId).toBeTruthy();
+
+    const deleteMergeEvidence = await withPgClient(async (client) => {
+      const writebackAudit = await client.query<{
+        id: string;
+        trace_id: string;
+        target_id: string;
+        candidate_revision_id: string;
+        change_action: string;
+      }>(
+        `select id, trace_id, target_id,
+                metadata ->> 'candidateRevisionId' as candidate_revision_id,
+                metadata ->> 'changeAction' as change_action
+         from audit_events
+         where kind = 'parameter-writeback-to-file' and trace_id = $1
+         order by created_at desc limit 1`,
+        [deleteMergeRequestId]
+      );
+      const candidateRevisionId = writebackAudit.rows[0]?.candidate_revision_id;
+      const completion = await client.query<{
+        action: string;
+        value: string;
+        binding_revision_count: string;
+        delete_effect_count: string;
+        merge_audit_count: string;
+        source_text: string | null;
+      }>(
+        `select
+           cr.action,
+           phe.value,
+           (
+             select count(*)::text from project_parameter_binding_revisions
+             where binding_id = cr.project_parameter_binding_id and config_revision_id = $2
+           ) as binding_revision_count,
+           (
+             select count(*)::text from dts_occurrence_effects oe
+             inner join dts_logical_node_revisions lnr on lnr.id = oe.logical_node_revision_id
+             inner join project_parameter_bindings b on b.logical_node_id = lnr.logical_node_id
+             inner join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+             where b.id = cr.project_parameter_binding_id
+               and oe.config_revision_id = $2
+               and lnr.config_revision_id = $2
+               and oe.effect_kind = 'delete'
+               and oe.property_name = dps.property_key
+           ) as delete_effect_count,
+           (
+             select count(*)::text from audit_events
+             where kind = 'parameter-merge' and target_id = cr.id and trace_id = $3
+           ) as merge_audit_count,
+           (
+             select parsed_index ->> 'sourceText' from project_parameter_file_versions
+             where file_id = $4 order by version_number desc limit 1
+           ) as source_text
+         from parameter_change_requests cr
+         inner join parameter_history_entries phe on phe.request_id = cr.id
+         where cr.id = $1`,
+        [deleteRequestId, candidateRevisionId, deleteMergeRequestId, writebackAudit.rows[0]?.target_id]
+      );
+      return {
+        writebackAuditId: writebackAudit.rows[0]?.id ?? null,
+        traceId: writebackAudit.rows[0]?.trace_id ?? null,
+        fileId: writebackAudit.rows[0]?.target_id ?? null,
+        candidateRevisionId: candidateRevisionId ?? null,
+        changeAction: writebackAudit.rows[0]?.change_action ?? null,
+        action: completion.rows[0]?.action ?? null,
+        historyValue: completion.rows[0]?.value ?? null,
+        bindingRevisionCount: Number(completion.rows[0]?.binding_revision_count ?? 0),
+        deleteEffectCount: Number(completion.rows[0]?.delete_effect_count ?? 0),
+        mergeAuditCount: Number(completion.rows[0]?.merge_audit_count ?? 0),
+        sourceText: completion.rows[0]?.source_text ?? ""
+      };
+    });
+    expect(deleteMergeEvidence).toMatchObject({
+      traceId: deleteMergeRequestId,
+      changeAction: "delete",
+      action: "delete",
+      historyValue: "",
+      bindingRevisionCount: 0,
+      deleteEffectCount: 1,
+      mergeAuditCount: 1
+    });
+    expect(deleteMergeEvidence.candidateRevisionId).toBeTruthy();
+    expect(deleteMergeEvidence.candidateRevisionId).not.toBe(mergeEvidence.latestRevisionId);
+    expect(deleteMergeEvidence.sourceText).toMatch(/\/delete-property\/\s*gpio_int/);
+    const setCandidateStillImmutable = await withPgClient(async (client) => {
+      const result = await client.query<{ raw_value: string | null }>(
+        `select raw_value from project_parameter_binding_revisions
+         where binding_id = $1 and config_revision_id = $2`,
+        [mtBinding!.id, mergeEvidence.latestRevisionId]
+      );
+      return result.rows[0]?.raw_value ?? null;
+    });
+    expect(setCandidateStillImmutable).toBe(deleteBaseBindingSnapshot);
+
+    const deleteReload = await request.get(
+      apiRoute(
+        `/api/v2/projects/${projectId}/parameter-bindings?revisionId=${encodeURIComponent(deleteMergeEvidence.candidateRevisionId!)}`
+      ),
+      { headers: authHeadersForRole("software-user") }
+    );
+    expect(deleteReload.ok(), await deleteReload.text()).toBe(true);
+    const deleteReloadBody = (await deleteReload.json()) as { items: Array<{ id: string }> };
+    expect(deleteReloadBody.items.some((item) => item.id === mtBinding!.id)).toBe(false);
+    await signInBrowserAsRole(
+      page,
+      "software-user",
+      `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
+    );
+    const deleteReloadWorkspace = page.getByRole("region", { name: "项目拓扑工作区" });
+    await expect(deleteReloadWorkspace).toHaveAttribute(
+      "data-revision-id",
+      deleteMergeEvidence.candidateRevisionId!,
+      { timeout: 30_000 }
+    );
+    await deleteReloadWorkspace.getByRole("searchbox", { name: "搜索绑定" }).fill("gpio_int");
+    await expect(deleteReloadWorkspace.getByRole("cell", { name: "mt5788@55", exact: true })).toHaveCount(0);
+    await expect(deleteReloadWorkspace.getByRole("cell", { name: "sc8562@6E", exact: true })).toBeVisible();
+
     const writebackDb = {
       table: "project_parameter_file_versions",
       predicate: "origin=writeback latest",
       observed: `origin=${mergeEvidence.writebackOrigin}; checksum=${mergeEvidence.writebackChecksum}; candidate=${mergeEvidence.latestRevisionId}; history=${mergeEvidence.historyCount}; mergeAudit=${mergeEvidence.mergeAuditCount}`,
+      rowCount: 1
+    };
+    const deleteWritebackDb = {
+      table: "dts_occurrence_effects, project_parameter_binding_revisions, parameter_history_entries",
+      predicate: `delete candidate=${deleteMergeEvidence.candidateRevisionId}`,
+      observed: `action=${deleteMergeEvidence.action}; tombstones=${deleteMergeEvidence.deleteEffectCount}; candidateBindings=${deleteMergeEvidence.bindingRevisionCount}; historyValue=empty; mergeAudit=${deleteMergeEvidence.mergeAuditCount}`,
       rowCount: 1
     };
 
@@ -1201,9 +1488,29 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           method: "POST",
           path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
           responseSummary: `role=software-user; status=${semanticMergeBody.item.status}; writeback.skipped=false; candidate=${mergeEvidence.latestRevisionId}`
+        }),
+        summarizeApiResponse(deleteDraft, {
+          method: "POST",
+          path: `/api/v2/projects/${projectId}/parameter-bindings/.../drafts`,
+          responseSummary: `action=delete; tombstoneCandidate=${deleteDraftBody.item.candidateRevisionId}`
+        }),
+        summarizeApiResponse(deleteSubmit, {
+          method: "POST",
+          path: "/api/v1/parameter-submission-rounds",
+          responseSummary: `action=delete; requestId=${deleteRequestId}`
+        }),
+        summarizeApiResponse(deleteMerge, {
+          method: "POST",
+          path: `/api/v1/parameter-change-requests/${deleteRequestId}/review`,
+          responseSummary: `role=software-user; action=delete; status=${deleteMergeBody.item.status}; writeback.skipped=false; candidate=${deleteMergeEvidence.candidateRevisionId}`
+        }),
+        summarizeApiResponse(deleteReload, {
+          method: "GET",
+          path: `/api/v2/projects/${projectId}/parameter-bindings?revisionId=${deleteMergeEvidence.candidateRevisionId}`,
+          responseSummary: `deleted binding present=false; candidate=${deleteMergeEvidence.candidateRevisionId}`
         })
       ],
-      db: [writebackDb],
+      db: [writebackDb, deleteWritebackDb],
       audit: [
         {
           id: mergeEvidence.writebackAuditId ?? undefined,
@@ -1212,10 +1519,18 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           targetId: mergeEvidence.writebackFileId,
           requestId: mergeEvidence.writebackTraceId ?? undefined,
           metadataSummary: `candidateRevisionId=${mergeEvidence.latestRevisionId}; skipped=false`
+        },
+        {
+          id: deleteMergeEvidence.writebackAuditId ?? undefined,
+          kind: "parameter-writeback-to-file",
+          action: "writeback",
+          targetId: deleteMergeEvidence.fileId,
+          requestId: deleteMergeEvidence.traceId ?? undefined,
+          metadataSummary: `changeAction=delete; candidateRevisionId=${deleteMergeEvidence.candidateRevisionId}; skipped=false`
         }
       ],
       notes:
-        "API mode contains no legacy recommended-value workbench; UI schema cell-count block; stale 409; real bad-DTS fail-closed; typed draft → UI submit → role UI review → semantic merge writeback (base immutable, candidate new, skipped=false)."
+        "API mode contains no legacy recommended-value workbench; UI schema cell-count block; stale 409; real bad-DTS fail-closed; set and delete typed drafts both traverse formal submit → visible role review → semantic merge/writeback. Delete is created through the public API because no delete UI exists, carries a same-chain tombstone, preserves prior revisions, creates no replacement binding revision, and remains absent after API/UI reload."
     });
     await recordOperationEvidence({
       operationId: "PARAM-HAPPY-001",

@@ -1307,6 +1307,7 @@ describe("parameter service", () => {
       projectId: "project-1",
       parameterId: "param-1",
       targetValue: "3100",
+      action: "set",
       reason: "Reduce thermal risk.",
       updatedAt: "2026-05-25T04:00:00.000Z"
     });
@@ -1323,6 +1324,7 @@ describe("parameter service", () => {
       "Reduce thermal risk.",
       "manual",
       null,
+      "set",
       null,
       null
     ]);

@@ -212,6 +212,7 @@ describe("createHttpParameterTopologyRepository", () => {
         parameterId: "binding-1",
         candidateRevisionId: "rev-2",
         rawText: "<3000>",
+        action: "set",
         parameterSpecId: "spec-1",
         projectParameterBindingId: "binding-1",
         writeTarget: { role: "overlay", propertyKey: "iin_max", targetRef: "charging_core" },
@@ -237,6 +238,7 @@ describe("createHttpParameterTopologyRepository", () => {
       draftId: "draft-1",
       parameterId: "binding-1",
       candidateRevisionId: "rev-2",
+      action: "set",
       projectParameterBindingId: "binding-1"
     });
   });

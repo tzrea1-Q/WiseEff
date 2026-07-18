@@ -41,6 +41,7 @@ export type BindingDraftResult = {
   parameterId: string;
   candidateRevisionId: string;
   rawText: string;
+  action: "set" | "delete";
   parameterSpecId: string;
   projectParameterBindingId: string;
   writeTarget: {

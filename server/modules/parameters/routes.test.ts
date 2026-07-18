@@ -310,6 +310,7 @@ describe("parameter routes", () => {
             draftId: "draft-binding-1",
             projectParameterBindingId: "binding-1",
             parameterSpecId: "spec-1",
+            action: "set",
             targetValue: "<&gpio13 30 0>",
             reason: "Move GPIO line"
           }
@@ -332,8 +333,59 @@ describe("parameter routes", () => {
             draftId: "draft-binding-1",
             projectParameterBindingId: "binding-1",
             parameterSpecId: "spec-1",
+            action: "set",
             targetValue: "<&gpio13 30 0>",
             reason: "Move GPIO line"
+          }
+        ]
+      }),
+      { requestId: "test-request" }
+    );
+  });
+
+  it("submit route preserves a binding delete tombstone at the HTTP boundary", async () => {
+    const db = makeDb();
+    vi.mocked(service.submitParameterChanges).mockResolvedValue({
+      id: "round-binding-delete",
+      projectId: "aurora",
+      projectName: "Aurora",
+      submitter: "Riley Chen",
+      createdAt: "2026-07-18T05:00:00.000Z",
+      status: "submitted",
+      summary: "Delete binding property.",
+      items: []
+    });
+
+    const response = await requestJson(makeServer({ db }), "/api/v1/parameter-submission-rounds", {
+      method: "POST",
+      body: JSON.stringify({
+        projectId: "aurora",
+        items: [
+          {
+            draftId: "draft-binding-delete",
+            projectParameterBindingId: "binding-1",
+            parameterSpecId: "spec-1",
+            action: "delete",
+            targetValue: "",
+            reason: "Remove obsolete GPIO override"
+          }
+        ]
+      })
+    });
+
+    expect(response.status).toBe(201);
+    expect(service.submitParameterChanges).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      expect.objectContaining({
+        items: [
+          {
+            draftId: "draft-binding-delete",
+            projectParameterBindingId: "binding-1",
+            parameterSpecId: "spec-1",
+            action: "delete",
+            targetValue: "",
+            reason: "Remove obsolete GPIO override"
           }
         ]
       }),

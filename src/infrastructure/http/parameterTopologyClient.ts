@@ -223,6 +223,7 @@ function bindingDraftFromDto(dto: BindingDraftResult): BindingDraftResult {
     parameterId: dto.parameterId,
     candidateRevisionId: dto.candidateRevisionId,
     rawText: dto.rawText,
+    action: dto.action,
     parameterSpecId: dto.parameterSpecId,
     projectParameterBindingId: dto.projectParameterBindingId,
     writeTarget: dto.writeTarget,

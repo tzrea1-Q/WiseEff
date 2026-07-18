@@ -6,6 +6,8 @@ import type {
   ParameterSubmissionRoundStatus
 } from "./status";
 
+export type ParameterChangeAction = "set" | "delete";
+
 export type ProjectDto = {
   id: string;
   name: string;
@@ -89,6 +91,7 @@ export type ParameterDraftDto = {
    */
   parameterId: string;
   targetValue: string;
+  action: ParameterChangeAction;
   reason: string;
   updatedAt: string;
   /** Semantic binding identity for topology-aware drafts. */
@@ -105,6 +108,7 @@ export type BindingParameterDraftDto = {
   projectParameterBindingId: string;
   parameterSpecId: string;
   targetValue: string;
+  action: ParameterChangeAction;
   reason: string;
   updatedAt: string;
 };
@@ -153,6 +157,7 @@ export type ChangeRequestDto = {
   title: string;
   currentValue: string;
   targetValue: string;
+  action: ParameterChangeAction;
   submitter: string;
   submitterUserId?: string;
   createdAt: string;
@@ -178,6 +183,7 @@ export type ParameterSubmissionItemDto = {
   module: string;
   currentValue: string;
   targetValue: string;
+  action: ParameterChangeAction;
   unit: string;
   risk: ParameterRiskLevel;
   reason: string;

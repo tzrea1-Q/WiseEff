@@ -140,6 +140,7 @@ export async function upsertSemanticDraft(
     bindingId: string;
     userId: string;
     targetValue: string;
+    action?: "set" | "delete";
     reason: string;
     origin?: "manual" | "file_sync";
     originFileVersionId?: string;
@@ -157,6 +158,7 @@ export async function upsertSemanticDraft(
     project_id: string;
     project_parameter_binding_id: string;
     target_value: string;
+    action: "set" | "delete";
     reason: string;
     updated_at: string | Date;
   }>(
@@ -164,18 +166,20 @@ export async function upsertSemanticDraft(
     insert into parameter_drafts (
       id, organization_id, project_id, user_id,
       target_value, reason, origin, origin_file_version_id,
+      action,
       project_parameter_binding_id,
       base_config_revision_id, binding_revision_id, property_occurrence_id,
       source_file_version_id, expected_checksum, occurrence_span,
       candidate_config_revision_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17)
     on conflict (project_id, project_parameter_binding_id, user_id)
     do update set
       target_value = excluded.target_value,
       reason = excluded.reason,
       origin = excluded.origin,
       origin_file_version_id = excluded.origin_file_version_id,
+      action = excluded.action,
       base_config_revision_id = coalesce(excluded.base_config_revision_id, parameter_drafts.base_config_revision_id),
       binding_revision_id = coalesce(excluded.binding_revision_id, parameter_drafts.binding_revision_id),
       property_occurrence_id = coalesce(excluded.property_occurrence_id, parameter_drafts.property_occurrence_id),
@@ -187,7 +191,7 @@ export async function upsertSemanticDraft(
         parameter_drafts.candidate_config_revision_id
       ),
       updated_at = now()
-    returning id, project_id, project_parameter_binding_id, target_value, reason, updated_at
+    returning id, project_id, project_parameter_binding_id, target_value, action, reason, updated_at
     `,
     [
       input.id,
@@ -198,6 +202,7 @@ export async function upsertSemanticDraft(
       input.reason,
       input.origin ?? "manual",
       input.originFileVersionId ?? null,
+      input.action ?? "set",
       input.bindingId,
       input.baseConfigRevisionId ?? null,
       input.bindingRevisionId ?? null,

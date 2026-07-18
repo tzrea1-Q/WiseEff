@@ -9,6 +9,7 @@ import type {
   ParameterSubmissionItemDto,
   ParameterSubmissionRoundDto,
   ParameterWorkflowAssigneesDto,
+  ParameterChangeAction,
   ProjectAdminDetailDto,
   ProjectAdminSummaryDto,
   ProjectDto,
@@ -119,7 +120,10 @@ export type BindingDraftForSubmission = {
   candidateStatus: string | null;
   candidateHasBindingRevision: boolean;
   candidateValueMatchesDraft: boolean;
+  candidateDeleteTombstone: boolean;
+  candidateActionProven: boolean;
   targetValue: string;
+  action: ParameterChangeAction;
   reason: string;
   writeLock: BindingWriteLockFields | null;
   writeLockMatchesBinding: boolean;
@@ -144,8 +148,11 @@ export async function getBindingDraftForSubmission(
       candidate_status: string | null;
       candidate_has_binding_revision: boolean;
       candidate_value_matches_draft: boolean;
+      candidate_delete_tombstone: boolean;
+      candidate_action_proven: boolean;
       write_lock_matches_binding: boolean;
       target_value: string;
+      action: ParameterChangeAction;
       reason: string;
     }
   >(
@@ -170,6 +177,58 @@ export async function getBindingDraftForSubmission(
           and candidate_bpr.config_revision_id = d.candidate_config_revision_id
           and candidate_bpr.raw_value = d.target_value
       ) as candidate_value_matches_draft,
+      (
+        not exists (
+          select 1
+          from project_parameter_binding_revisions candidate_bpr
+          where candidate_bpr.binding_id = b.id
+            and candidate_bpr.config_revision_id = d.candidate_config_revision_id
+        )
+        and exists (
+          select 1
+          from dts_logical_node_revisions candidate_lnr
+          inner join dts_occurrence_effects candidate_effect
+            on candidate_effect.logical_node_revision_id = candidate_lnr.id
+           and candidate_effect.config_revision_id = d.candidate_config_revision_id
+          inner join dts_property_specs candidate_property
+            on candidate_property.parameter_spec_id = b.parameter_spec_id
+          where candidate_lnr.logical_node_id = b.logical_node_id
+            and candidate_lnr.config_revision_id = d.candidate_config_revision_id
+            and candidate_effect.property_name = candidate_property.property_key
+            and candidate_effect.effect_kind = 'delete'
+        )
+      ) as candidate_delete_tombstone,
+      case d.action
+        when 'set' then exists (
+          select 1
+          from project_parameter_binding_revisions candidate_bpr
+          where candidate_bpr.binding_id = b.id
+            and candidate_bpr.config_revision_id = d.candidate_config_revision_id
+            and candidate_bpr.raw_value = d.target_value
+        )
+        when 'delete' then (
+          not exists (
+            select 1
+            from project_parameter_binding_revisions candidate_bpr
+            where candidate_bpr.binding_id = b.id
+              and candidate_bpr.config_revision_id = d.candidate_config_revision_id
+          )
+          and exists (
+            select 1
+            from dts_logical_node_revisions candidate_lnr
+            inner join dts_occurrence_effects candidate_effect
+              on candidate_effect.logical_node_revision_id = candidate_lnr.id
+             and candidate_effect.config_revision_id = d.candidate_config_revision_id
+            inner join dts_property_specs candidate_property
+              on candidate_property.parameter_spec_id = b.parameter_spec_id
+            where candidate_lnr.logical_node_id = b.logical_node_id
+              and candidate_lnr.config_revision_id = d.candidate_config_revision_id
+              and candidate_effect.property_name = candidate_property.property_key
+              and candidate_effect.effect_kind = 'delete'
+          )
+        )
+        else false
+      end as candidate_action_proven,
       exists (
         select 1
         from project_parameter_binding_revisions locked_bpr
@@ -178,6 +237,7 @@ export async function getBindingDraftForSubmission(
           and locked_bpr.config_revision_id = d.base_config_revision_id
       ) as write_lock_matches_binding,
       d.target_value,
+      d.action,
       d.reason,
       d.base_config_revision_id,
       d.binding_revision_id,
@@ -221,7 +281,10 @@ export async function getBindingDraftForSubmission(
     candidateStatus: row.candidate_status,
     candidateHasBindingRevision: row.candidate_has_binding_revision,
     candidateValueMatchesDraft: row.candidate_value_matches_draft,
+    candidateDeleteTombstone: row.candidate_delete_tombstone,
+    candidateActionProven: row.candidate_action_proven,
     targetValue: row.target_value,
+    action: row.action,
     reason: row.reason,
     writeLock: toWriteLockFields(row),
     writeLockMatchesBinding: row.write_lock_matches_binding
@@ -398,6 +461,7 @@ type DraftRow = {
   project_parameter_value_id: string;
   user_id?: string;
   target_value: string;
+  action?: ParameterChangeAction;
   reason: string;
   origin?: "manual" | "file_sync";
   origin_file_version_id?: string | null;
@@ -411,6 +475,7 @@ export type ParameterDraftWithOrigin = {
   projectId: string;
   projectParameterValueId: string;
   targetValue: string;
+  action: ParameterChangeAction;
   origin: "manual" | "file_sync";
   originFileVersionId?: string;
   updatedAt: string;
@@ -471,6 +536,7 @@ type ChangeRequestRow = {
   title: string;
   current_value: string;
   target_value: string;
+  action?: ParameterChangeAction;
   submitter: string;
   submitter_user_id?: string;
   status: ParameterChangeRequestStatus;
@@ -526,6 +592,7 @@ export type ChangeRequestMergeResult = {
   parameterDefinitionId: string;
   projectId: string;
   targetValue: string;
+  action: ParameterChangeAction;
   baseVersion: number;
   newVersion: number;
   parameterSpecId?: string;
@@ -538,6 +605,7 @@ type ChangeRequestMergeRow = {
   parameter_definition_id: string;
   project_id: string;
   target_value: string;
+  action?: ParameterChangeAction;
   base_version: number | string;
   new_version: number | string;
   parameter_spec_id?: string | null;
@@ -551,6 +619,7 @@ type SubmissionItemRow = {
   module: string;
   current_value: string;
   target_value: string;
+  action?: ParameterChangeAction;
   unit: string;
   risk: ParameterRiskLevel;
   reason: string;
@@ -723,9 +792,10 @@ function toDraftDto(row: DraftRow): ParameterDraftDto {
     projectId: row.project_id,
     parameterId,
     targetValue: row.target_value,
+    action: row.action ?? "set",
     reason: row.reason,
     updatedAt: dateTimeToIso(row.updated_at),
-    projectParameterBindingId: bindingId
+    ...(bindingId ? { projectParameterBindingId: bindingId } : {})
   };
 }
 
@@ -736,6 +806,7 @@ function toDraftWithOrigin(row: DraftRow): ParameterDraftWithOrigin {
     projectId: row.project_id,
     projectParameterValueId: row.project_parameter_value_id,
     targetValue: row.target_value,
+    action: row.action ?? "set",
     origin: row.origin ?? "manual",
     originFileVersionId: row.origin_file_version_id ?? undefined,
     updatedAt: dateTimeToIso(row.updated_at)
@@ -797,6 +868,7 @@ function toSubmissionItemDto(row: SubmissionItemRow): ParameterSubmissionItemDto
     module: row.module,
     currentValue: row.current_value,
     targetValue: row.target_value,
+    action: row.action ?? "set",
     unit: row.unit,
     risk: row.risk,
     reason: row.reason,
@@ -847,6 +919,9 @@ function waitingHoursSince(value: string | Date) {
 }
 
 function buildChangeRequestSummary(row: ChangeRequestRow): string {
+  if (row.action === "delete") {
+    return `${row.title} 将从目标配置中删除。`;
+  }
   const valueKind = resolveParameterValueKind({
     value_kind: row.value_kind ?? null,
     config_format: row.config_format ?? ""
@@ -891,6 +966,7 @@ async function toChangeRequestDto(db: Queryable, row: ChangeRequestRow): Promise
     title: row.title,
     currentValue: row.current_value,
     targetValue: row.target_value,
+    action: row.action ?? "set",
     submitter: row.submitter,
     submitterUserId: row.submitter_user_id,
     createdAt,
@@ -939,10 +1015,13 @@ function toChangeRequestMergeResult(row: ChangeRequestMergeRow): ChangeRequestMe
     parameterDefinitionId: row.parameter_definition_id,
     projectId: row.project_id,
     targetValue: row.target_value,
+    action: row.action ?? "set",
     baseVersion: Number(row.base_version),
     newVersion: Number(row.new_version),
-    parameterSpecId: row.parameter_spec_id ?? undefined,
-    projectParameterBindingId: row.project_parameter_binding_id ?? undefined
+    ...(row.parameter_spec_id ? { parameterSpecId: row.parameter_spec_id } : {}),
+    ...(row.project_parameter_binding_id
+      ? { projectParameterBindingId: row.project_parameter_binding_id }
+      : {})
   };
 }
 
@@ -1583,6 +1662,7 @@ export async function listDraftsForUser(
       project_id,
       coalesce(project_parameter_binding_id, '') as project_parameter_value_id,
       target_value,
+      action,
       reason,
       updated_at,
       project_parameter_binding_id
@@ -1591,7 +1671,7 @@ export async function listDraftsForUser(
     order by updated_at desc
     `
       : `
-    select id, project_id, project_parameter_value_id, target_value, reason, updated_at, project_parameter_binding_id
+    select id, project_id, project_parameter_value_id, target_value, action, reason, updated_at, project_parameter_binding_id
     from parameter_drafts
     where ${where.join("\n      and ")}
     order by updated_at desc
@@ -1616,6 +1696,7 @@ export async function listDraftsForParameterValue(
       project_id,
       coalesce(project_parameter_binding_id, '') as project_parameter_value_id,
       target_value,
+      action,
       origin,
       origin_file_version_id,
       updated_at,
@@ -1625,7 +1706,7 @@ export async function listDraftsForParameterValue(
     order by updated_at desc, id asc
     `
       : `
-    select id, user_id, project_id, project_parameter_value_id, target_value, origin, origin_file_version_id, updated_at, project_parameter_binding_id
+    select id, user_id, project_id, project_parameter_value_id, target_value, action, origin, origin_file_version_id, updated_at, project_parameter_binding_id
     from parameter_drafts
     where project_parameter_value_id = $1
     order by updated_at desc, id asc
@@ -1645,6 +1726,7 @@ export async function upsertDraft(
     parameterId: string;
     userId: string;
     targetValue: string;
+    action?: ParameterChangeAction;
     reason: string;
     origin?: "manual" | "file_sync";
     originFileVersionId?: string;
@@ -1664,6 +1746,7 @@ export async function upsertDraft(
       bindingId,
       userId: input.userId,
       targetValue: input.targetValue,
+      action: input.action,
       reason: input.reason,
       origin: input.origin,
       originFileVersionId: input.originFileVersionId,
@@ -1684,6 +1767,7 @@ export async function upsertDraft(
       project_id: row.project_id,
       project_parameter_value_id: bindingId,
       target_value: row.target_value,
+      action: row.action,
       reason: row.reason,
       updated_at: row.updated_at,
       project_parameter_binding_id: row.project_parameter_binding_id
@@ -1695,15 +1779,16 @@ export async function upsertDraft(
     insert into parameter_drafts (
       id, organization_id, project_id, project_parameter_value_id, user_id,
       target_value, reason, origin, origin_file_version_id,
-      project_parameter_binding_id, candidate_config_revision_id
+      action, project_parameter_binding_id, candidate_config_revision_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     on conflict (project_id, project_parameter_value_id, user_id)
     do update set
       target_value = excluded.target_value,
       reason = excluded.reason,
       origin = excluded.origin,
       origin_file_version_id = excluded.origin_file_version_id,
+      action = excluded.action,
       project_parameter_binding_id = coalesce(
         excluded.project_parameter_binding_id,
         parameter_drafts.project_parameter_binding_id
@@ -1713,7 +1798,7 @@ export async function upsertDraft(
         parameter_drafts.candidate_config_revision_id
       ),
       updated_at = now()
-    returning id, project_id, project_parameter_value_id, target_value, reason, updated_at
+    returning id, project_id, project_parameter_value_id, target_value, action, reason, updated_at
     `,
     [
       input.id,
@@ -1725,6 +1810,7 @@ export async function upsertDraft(
       input.reason,
       input.origin ?? "manual",
       input.originFileVersionId ?? null,
+      input.action ?? "set",
       input.projectParameterBindingId ?? null,
       input.candidateConfigRevisionId ?? null
     ]
@@ -1995,6 +2081,7 @@ export async function createChangeRequest(
     baseVersion: number;
     currentValue: string;
     targetValue: string;
+    action?: ParameterChangeAction;
     status: ParameterChangeRequestStatus;
     submitterUserId: string;
     assignedToUserId?: string;
@@ -2015,9 +2102,9 @@ export async function createChangeRequest(
           assigned_to_user_id, workflow_hardware_committer_user_id, workflow_software_committer_user_id,
           workflow_software_user_id, parameter_spec_id, project_parameter_binding_id,
           base_config_revision_id, binding_revision_id, property_occurrence_id,
-          source_file_version_id, expected_checksum, occurrence_span
+          source_file_version_id, expected_checksum, occurrence_span, action
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21::jsonb)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21::jsonb, $22)
         returning *
       )
       select
@@ -2029,6 +2116,7 @@ export async function createChangeRequest(
         coalesce(split_part(ps.specification_key, '/', 2), ps.specification_key, '') as title,
         inserted.current_value,
         inserted.target_value,
+        inserted.action,
         users.name as submitter,
         inserted.status,
         'Low' as risk,
@@ -2072,7 +2160,8 @@ export async function createChangeRequest(
         input.writeLock?.propertyOccurrenceId ?? null,
         input.writeLock?.sourceFileVersionId ?? null,
         input.writeLock?.expectedChecksum ?? null,
-        input.writeLock?.occurrenceSpan ? JSON.stringify(input.writeLock.occurrenceSpan) : null
+        input.writeLock?.occurrenceSpan ? JSON.stringify(input.writeLock.occurrenceSpan) : null,
+        input.action ?? "set"
       ]
     );
     return toChangeRequestDto(db, result.rows[0]);
@@ -2085,9 +2174,9 @@ export async function createChangeRequest(
         id, organization_id, submission_round_id, project_id, project_parameter_value_id,
         parameter_definition_id, base_version, current_value, target_value, status, submitter_user_id,
         assigned_to_user_id, workflow_hardware_committer_user_id, workflow_software_committer_user_id,
-        workflow_software_user_id, parameter_spec_id, project_parameter_binding_id
+        workflow_software_user_id, parameter_spec_id, project_parameter_binding_id, action
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       returning *
     )
     select
@@ -2099,6 +2188,7 @@ export async function createChangeRequest(
       pd.name as title,
       inserted.current_value,
       inserted.target_value,
+      inserted.action,
       users.name as submitter,
       inserted.status,
       pd.risk,
@@ -2139,7 +2229,8 @@ export async function createChangeRequest(
       input.workflowAssignees?.softwareCommitterId ?? null,
       input.workflowAssignees?.softwareUserId ?? null,
       input.parameterSpecId ?? null,
-      input.projectParameterBindingId ?? null
+      input.projectParameterBindingId ?? null,
+      input.action ?? "set"
     ]
   );
 
@@ -2218,6 +2309,7 @@ export async function createSubmissionItem(
     parameterId: string;
     currentValue: string;
     targetValue: string;
+    action?: ParameterChangeAction;
     reason: string;
     projectParameterBindingId?: string;
   }
@@ -2229,9 +2321,9 @@ export async function createSubmissionItem(
       with inserted as (
         insert into parameter_submission_items (
           id, organization_id, submission_round_id, change_request_id,
-          current_value, target_value, reason, project_parameter_binding_id
+          current_value, target_value, reason, project_parameter_binding_id, action
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         returning *
       )
       select
@@ -2241,6 +2333,7 @@ export async function createSubmissionItem(
         split_part(ps.specification_key, '/', 1) as module,
         inserted.current_value,
         inserted.target_value,
+        inserted.action,
         coalesce(psv.value_shape->>'unit', '') as unit,
         'Low' as risk,
         coalesce(psv.value_shape->>'kind', 'legacy-text') as value_kind,
@@ -2266,7 +2359,8 @@ export async function createSubmissionItem(
         input.currentValue,
         input.targetValue,
         input.reason,
-        bindingId
+        bindingId,
+        input.action ?? "set"
       ]
     );
     return toSubmissionItemDto(result.rows[0]);
@@ -2277,9 +2371,9 @@ export async function createSubmissionItem(
     with inserted as (
       insert into parameter_submission_items (
         id, organization_id, submission_round_id, change_request_id, project_parameter_value_id,
-        current_value, target_value, reason, project_parameter_binding_id
+        current_value, target_value, reason, project_parameter_binding_id, action
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       returning *
     )
     select
@@ -2289,6 +2383,7 @@ export async function createSubmissionItem(
       pd.module,
       inserted.current_value,
       inserted.target_value,
+      inserted.action,
       pd.unit,
       pd.risk,
       pd.value_kind,
@@ -2307,7 +2402,8 @@ export async function createSubmissionItem(
       input.currentValue,
       input.targetValue,
       input.reason,
-      input.projectParameterBindingId ?? null
+      input.projectParameterBindingId ?? null,
+      input.action ?? "set"
     ]
   );
 
@@ -2491,6 +2587,7 @@ export async function listChangeRequests(
       coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as title,
       pcr.current_value,
       pcr.target_value,
+      pcr.action,
       users.name as submitter,
       pcr.submitter_user_id,
       pcr.status,
@@ -2543,6 +2640,7 @@ export async function listChangeRequests(
       pd.name as title,
       pcr.current_value,
       pcr.target_value,
+      pcr.action,
       users.name as submitter,
       pcr.submitter_user_id,
       pcr.status,
@@ -2596,6 +2694,7 @@ export async function findOpenChangeRequest(
         coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as title,
         pcr.current_value,
         pcr.target_value,
+        pcr.action,
         users.name as submitter,
         pcr.submitter_user_id,
         pcr.status,
@@ -2649,6 +2748,7 @@ export async function findOpenChangeRequest(
       pd.name as title,
       pcr.current_value,
       pcr.target_value,
+      pcr.action,
       users.name as submitter,
       pcr.submitter_user_id,
       pcr.status,
@@ -2702,6 +2802,7 @@ export async function getChangeRequestById(
         coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as title,
         pcr.current_value,
         pcr.target_value,
+        pcr.action,
         users.name as submitter,
         pcr.submitter_user_id,
         pcr.status,
@@ -2754,6 +2855,7 @@ export async function getChangeRequestById(
       pd.name as title,
       pcr.current_value,
       pcr.target_value,
+      pcr.action,
       users.name as submitter,
       pcr.submitter_user_id,
       pcr.status,
@@ -2957,6 +3059,7 @@ export async function updateChangeRequestStatus(
         ) as title,
         current_value,
         target_value,
+        action,
         (select name from users where id = parameter_change_requests.submitter_user_id) as submitter,
         status,
         'Low' as risk,
@@ -3007,6 +3110,7 @@ export async function updateChangeRequestStatus(
       (select name from ${LEGACY_IDENTITY_SQL.definitionsTable} where id = parameter_change_requests.parameter_definition_id) as title,
       current_value,
       target_value,
+      action,
       (select name from users where id = parameter_change_requests.submitter_user_id) as submitter,
       status,
       (select risk from ${LEGACY_IDENTITY_SQL.definitionsTable} where id = parameter_change_requests.parameter_definition_id) as risk,
@@ -3058,7 +3162,8 @@ export async function mergeChangeRequest(
           expected_checksum,
           occurrence_span,
           base_version,
-          target_value
+          target_value,
+          action
         from parameter_change_requests
         where organization_id = $1
           and id = $2
@@ -3136,6 +3241,7 @@ export async function mergeChangeRequest(
         occurrence_lock.project_parameter_binding_id,
         occurrence_lock.project_id,
         occurrence_lock.target_value,
+        occurrence_lock.action,
         occurrence_lock.base_version,
         coalesce($4, occurrence_lock.base_version) + 1 as new_version
       from occurrence_lock
@@ -3166,7 +3272,8 @@ export async function mergeChangeRequest(
         parameter_spec_id,
         project_parameter_binding_id,
         base_version,
-        target_value
+        target_value,
+        action
       from parameter_change_requests
       where organization_id = $1
         and id = $2
@@ -3191,6 +3298,7 @@ export async function mergeChangeRequest(
         request_to_merge.project_parameter_binding_id,
         request_to_merge.project_id,
         request_to_merge.target_value,
+        request_to_merge.action,
         request_to_merge.base_version,
         ppv.value_version as new_version
     ),
@@ -3802,6 +3910,7 @@ async function listSubmissionItemsByRoundIds(
       split_part(ps.specification_key, '/', 1) as module,
       psi.current_value,
       psi.target_value,
+      psi.action,
       coalesce(psv.value_shape->>'unit', '') as unit,
       'Low' as risk,
       coalesce(psv.value_shape->>'kind', 'legacy-text') as value_kind,
@@ -3833,6 +3942,7 @@ async function listSubmissionItemsByRoundIds(
       pd.module,
       psi.current_value,
       psi.target_value,
+      psi.action,
       pd.unit,
       pd.risk,
       pd.value_kind,

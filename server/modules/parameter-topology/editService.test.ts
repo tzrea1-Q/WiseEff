@@ -519,8 +519,35 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
 
     expect(draft.writeTarget).toMatchObject({ role: "overlay", propertyKey: "iin_max" });
     expect(draft.rawText).toBe("");
+    expect(draft.action).toBe("delete");
     expect(draft.candidateOverlayContent).toMatch(/\/delete-property\/\s*iin_max/);
     expect(await unchangedSourceBytes(draft)).toBe(true);
+    expect(
+      (
+        await db!.query<{ action: string; target_value: string }>(
+          `select action, target_value from parameter_drafts where id = $1`,
+          [draft.draftId],
+        )
+      ).rows
+    ).toEqual([{ action: "delete", target_value: "" }]);
+    expect(
+      (
+        await db!.query(
+          `select id from project_parameter_binding_revisions
+           where binding_id = $1 and config_revision_id = $2`,
+          [fixture.binding.id, draft.candidateRevisionId],
+        )
+      ).rows
+    ).toEqual([]);
+    expect(
+      (
+        await db!.query<{ effect_kind: string }>(
+          `select effect_kind from dts_occurrence_effects
+           where config_revision_id = $1 and property_name = 'iin_max'`,
+          [draft.candidateRevisionId],
+        )
+      ).rows
+    ).toContainEqual({ effect_kind: "delete" });
   });
 
   it("rejects cell-count schema failures from vendor constraints", async () => {

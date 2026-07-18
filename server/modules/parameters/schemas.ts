@@ -93,10 +93,30 @@ const bindingDraftSubmissionItemSchema = z
     draftId: nonEmptyString,
     projectParameterBindingId: nonEmptyString,
     parameterSpecId: nonEmptyString,
-    targetValue: nonEmptyString,
+    action: z.enum(["set", "delete"]).default("set"),
+    targetValue: z.string(),
     reason: nonBlankString
   })
-  .strict();
+  .strict()
+  .superRefine((item, context) => {
+    if (item.action === "set" && item.targetValue.length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.too_small,
+        type: "string",
+        minimum: 1,
+        inclusive: true,
+        path: ["targetValue"],
+        message: "Set submissions require a non-empty target value."
+      });
+    }
+    if (item.action === "delete" && item.targetValue !== "") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["targetValue"],
+        message: "Delete submissions require an empty target tombstone."
+      });
+    }
+  });
 
 export const submitRoundBodySchema = z.object({
   projectId: nonEmptyString,

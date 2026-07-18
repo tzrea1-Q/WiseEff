@@ -104,6 +104,7 @@ export type BindingDraftResult = {
   writeTarget: BindingDraftWriteTarget;
   candidateRevisionId: string;
   rawText: string;
+  action: BindingEditAction;
   parameterSpecId: string;
   projectParameterBindingId: string;
   /** Base member content after draft (must equal pre-edit for shared-base protection). */
@@ -1133,6 +1134,7 @@ export async function createBindingDraft(
     targetValue: rawText,
     reason: input.reason,
     origin: "manual",
+    action,
     projectParameterBindingId: binding.binding_id,
     parameterSpecId: binding.parameter_spec_id,
     candidateConfigRevisionId: candidateRevisionId,
@@ -1169,6 +1171,7 @@ export async function createBindingDraft(
     writeTarget,
     candidateRevisionId,
     rawText,
+    action,
     parameterSpecId: binding.parameter_spec_id,
     projectParameterBindingId: binding.binding_id,
     baseContent,
@@ -1578,7 +1581,7 @@ export type ApplyLockedOverlayWritebackResult = {
   fileVersionId: string;
   versionNumber: number;
   candidateRevisionId: string;
-  bindingRevisionId: string;
+  bindingRevisionId?: string;
 };
 
 /**
@@ -1802,25 +1805,29 @@ export async function applyLockedOverlayWriteback(
     status: "compiled",
   });
 
-  const mergedTypedValue = parseDtsValue(input.lock.propertyKey, input.mergedValue).value;
-  const bindingRevision = await upsertBindingRevisionValues(db, {
-    bindingId: input.bindingId,
-    configRevisionId: ingested.id,
-    parameterSpecVersionId: input.parameterSpecVersionId,
-    values: {
-      typedValue: mergedTypedValue,
-      canonicalValue: mergedTypedValue,
-      rawValue: input.mergedValue,
-      schemaState: "merged",
-      policyState: "merged",
-    },
-  });
+  let bindingRevisionId: string | undefined;
+  if (action === "set") {
+    const mergedTypedValue = parseDtsValue(input.lock.propertyKey, input.mergedValue).value;
+    const bindingRevision = await upsertBindingRevisionValues(db, {
+      bindingId: input.bindingId,
+      configRevisionId: ingested.id,
+      parameterSpecVersionId: input.parameterSpecVersionId,
+      values: {
+        typedValue: mergedTypedValue,
+        canonicalValue: mergedTypedValue,
+        rawValue: input.mergedValue,
+        schemaState: "merged",
+        policyState: "merged",
+      },
+    });
+    bindingRevisionId = bindingRevision.id;
+  }
 
   return {
     fileId: overlayMember.file_id,
     fileVersionId: candidateOverlayVersionId,
     versionNumber,
     candidateRevisionId: ingested.id,
-    bindingRevisionId: bindingRevision.id,
+    ...(bindingRevisionId ? { bindingRevisionId } : {}),
   };
 }

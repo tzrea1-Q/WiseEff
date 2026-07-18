@@ -351,6 +351,7 @@ describe("parameter repository", () => {
       "Reduce thermal risk.",
       "manual",
       null,
+      "set",
       null,
       null
     ]);
@@ -466,7 +467,8 @@ describe("parameter repository", () => {
       "3200",
       "3100",
       "Reduce thermal risk.",
-      null
+      null,
+      "set"
     ]);
   });
 
@@ -541,7 +543,8 @@ describe("parameter repository", () => {
       "u-software-committer",
       "u-software-user",
       null,
-      null
+      null,
+      "set"
     ]);
     expect(request).toMatchObject({
       assignedTo: "u-hardware",
@@ -900,6 +903,7 @@ describe("parameter repository", () => {
       parameterDefinitionId: "definition-1",
       projectId: "project-1",
       targetValue: "3100",
+      action: "set",
       baseVersion: 7,
       newVersion: 8
     });
@@ -1273,6 +1277,7 @@ describe("parameter repository", () => {
         projectId: "project-1",
         projectParameterValueId: "param-1",
         targetValue: "85",
+        action: "set",
         origin: "file_sync",
         originFileVersionId: "version-1",
         updatedAt: "2026-07-11T10:00:00.000Z"
@@ -1283,6 +1288,7 @@ describe("parameter repository", () => {
         projectId: "project-1",
         projectParameterValueId: "param-1",
         targetValue: "82",
+        action: "set",
         origin: "manual",
         originFileVersionId: undefined,
         updatedAt: "2026-07-11T10:01:00.000Z"

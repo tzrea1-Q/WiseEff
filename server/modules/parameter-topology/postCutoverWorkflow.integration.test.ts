@@ -545,6 +545,134 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
   );
 
   it(
+    "submits delete only with an exact candidate tombstone and persists the action",
+    async () => {
+      await withTempDatabase(async (db) => {
+        const seeded = await seedPreCutoverGraph(db);
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-binding-delete-submit",
+          objectSnapshotId: "obj-snap-binding-delete-submit"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        resetParameterIdentityCutoverCache();
+        await db.query(`delete from parameter_drafts where organization_id = $1 and project_id = $2`, [
+          ORG,
+          PROJECT
+        ]);
+
+        const candidateRevisionId = "rev-pcw-binding-delete-candidate";
+        await db.query(
+          `insert into dts_config_revisions (
+             id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id,
+             entry_file, include_search_paths, overlay_order, manifest_state
+           )
+           select $1, organization_id, project_id, config_set_id, 99, 'draft', $2,
+                  entry_file, include_search_paths, overlay_order, manifest_state
+           from dts_config_revisions where id = $3`,
+          [candidateRevisionId, USER, seeded.configRevisionId]
+        );
+        const candidateLogicalNodeRevisionId = "lnr-pcw-binding-delete-candidate";
+        await db.query(
+          `insert into dts_logical_node_revisions (
+             id, logical_node_id, config_revision_id, node_locator, name, unit_address, parent_logical_node_id
+           ) values ($1, $2, $3, $4, 'sc8562', '6E', null)`,
+          [candidateLogicalNodeRevisionId, expectedLogicalNodeId(), candidateRevisionId, NODE_LOCATOR]
+        );
+        const writeLock = await resolveBindingWriteLock(db, makeAuth(), {
+          bindingId: seeded.bindingId,
+          baseRevisionId: seeded.configRevisionId
+        });
+        const draftId = "draft-pcw-binding-delete";
+        await upsertDraft(db, {
+          id: draftId,
+          organizationId: ORG,
+          projectId: PROJECT,
+          parameterId: seeded.bindingId,
+          userId: USER,
+          targetValue: "",
+          reason: "Delete gpio_int through formal review",
+          action: "delete",
+          projectParameterBindingId: seeded.bindingId,
+          parameterSpecId: seeded.specId,
+          candidateConfigRevisionId: candidateRevisionId,
+          writeLock
+        });
+
+        const submitDelete = () =>
+          submitParameterChanges(db, makeAuth(), {
+            projectId: PROJECT,
+            items: [
+              {
+                draftId,
+                projectParameterBindingId: seeded.bindingId,
+                parameterSpecId: seeded.specId,
+                action: "delete",
+                targetValue: "",
+                reason: "Delete gpio_int through formal review"
+              }
+            ]
+          });
+
+        await expect(submitDelete()).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
+        await db.query(
+          `insert into dts_occurrence_effects (
+             id, config_revision_id, logical_node_revision_id, property_name, effect_kind, source_order
+           ) values ($1, $2, $3, $4, 'delete', 1)`,
+          ["oe-pcw-binding-delete-candidate", candidateRevisionId, candidateLogicalNodeRevisionId, PROPERTY_KEY]
+        );
+        await db.query(
+          `insert into project_parameter_binding_revisions (
+             id, binding_id, config_revision_id, parameter_spec_version_id,
+             typed_value, canonical_value, raw_value, schema_state, policy_state
+           )
+           select $1, binding_id, $2, parameter_spec_version_id,
+                  typed_value, canonical_value, raw_value, schema_state, policy_state
+           from project_parameter_binding_revisions
+           where binding_id = $3 and config_revision_id = $4`,
+          ["bpr-pcw-binding-delete-contradiction", candidateRevisionId, seeded.bindingId, seeded.configRevisionId]
+        );
+        await expect(submitDelete()).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+        await db.query(`delete from project_parameter_binding_revisions where id = $1`, [
+          "bpr-pcw-binding-delete-contradiction"
+        ]);
+
+        const round = await submitDelete();
+        expect(round.items[0]).toMatchObject({ action: "delete", targetValue: "" });
+        expect((await db.query(`select id from parameter_drafts where id = $1`, [draftId])).rows).toEqual([]);
+        expect(
+          (
+            await db.query<{ action: string; target_value: string }>(
+              `select action, target_value from parameter_change_requests where submission_round_id = $1`,
+              [round.id]
+            )
+          ).rows
+        ).toEqual([{ action: "delete", target_value: "" }]);
+        expect(
+          (
+            await db.query<{ action: string; target_value: string }>(
+              `select action, target_value from parameter_submission_items where submission_round_id = $1`,
+              [round.id]
+            )
+          ).rows
+        ).toEqual([{ action: "delete", target_value: "" }]);
+        const audit = await db.query<{ metadata: Record<string, unknown> }>(
+          `select metadata from audit_events
+           where project_id = $1 and kind = 'parameter-submit'
+           order by created_at desc limit 1`,
+          [PROJECT]
+        );
+        expect(audit.rows[0]?.metadata).toMatchObject({ actions: ["delete"] });
+      });
+    },
+    90_000
+  );
+
+  it(
     "locks the exact draft so a concurrent typed edit survives submission cleanup",
     async () => {
       await withTempDatabase(async (db, connectionString) => {
@@ -710,6 +838,163 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           await submitClient.end().catch(() => undefined);
           await editClient.end().catch(() => undefined);
         }
+      });
+    },
+    90_000
+  );
+
+  it(
+    "merges a persisted delete action through locked writeback without a replacement binding revision",
+    async () => {
+      await withTempDatabase(async (db) => {
+        const seeded = await seedPreCutoverGraph(db);
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-binding-delete-merge",
+          objectSnapshotId: "obj-snap-binding-delete-merge"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        resetParameterIdentityCutoverCache();
+        await db.query(`delete from parameter_drafts where organization_id = $1 and project_id = $2`, [
+          ORG,
+          PROJECT
+        ]);
+
+        const auth = makeAuth();
+        const writeLock = await resolveBindingWriteLock(db, auth, {
+          bindingId: seeded.bindingId,
+          baseRevisionId: seeded.configRevisionId
+        });
+        const round = await createSubmissionRound(db, {
+          id: "round-pcw-delete-merge",
+          organizationId: ORG,
+          projectId: PROJECT,
+          submitterUserId: USER,
+          status: "software_merge",
+          summary: "delete gpio_int"
+        });
+        const request = await createChangeRequest(db, {
+          id: "cr-pcw-delete-merge",
+          organizationId: ORG,
+          submissionRoundId: round.id,
+          projectId: PROJECT,
+          parameterId: seeded.bindingId,
+          parameterDefinitionId: seeded.specId,
+          baseVersion: 1,
+          currentValue: "<1>",
+          targetValue: "",
+          action: "delete",
+          status: "software_merge",
+          submitterUserId: USER,
+          parameterSpecId: seeded.specId,
+          projectParameterBindingId: seeded.bindingId,
+          writeLock
+        });
+        expect(request.action).toBe("delete");
+
+        const objectStore = {
+          async get(key: string) {
+            return Buffer.from(key.includes("overlay") ? seeded.overlayContent : seeded.content, "utf8");
+          },
+          async put(input: { bytes: Buffer }) {
+            return {
+              storageKey: `${ORG}/delete-writeback-pcw.dts`,
+              checksumSha256: createHash("sha256").update(input.bytes).digest("hex"),
+              fileSizeBytes: input.bytes.length
+            };
+          }
+        };
+        const merged = await reviewChange(
+          db,
+          auth,
+          { requestId: request.id, decision: "advance", note: "Apply reviewed delete" },
+          {
+            objectStore: objectStore as never,
+            toolchain: {
+              async validate() {
+                return {
+                  ok: true,
+                  mode: "release" as const,
+                  compiler: { dtc: "test", fdtoverlay: "test", dtschema: "test" },
+                  diagnostics: [],
+                  artifacts: {}
+                };
+              },
+              async probe() {
+                return {
+                  dtc: { path: "/usr/bin/dtc", version: "test" },
+                  fdtoverlay: { path: "/usr/bin/fdtoverlay", version: "test" },
+                  dtschema: { path: "/usr/bin/dt-validate", version: "test" }
+                };
+              }
+            },
+            skipSemanticGates: true,
+            requestId: "trace-pcw-delete-merge"
+          }
+        );
+        expect(merged).toMatchObject({ status: "merged", action: "delete", targetValue: "" });
+
+        const writebackAudit = await db.query<{
+          metadata: { candidateRevisionId?: string; changeAction?: string };
+        }>(
+          `select metadata from audit_events
+           where kind = 'parameter-writeback-to-file' and trace_id = $1
+           order by created_at desc limit 1`,
+          ["trace-pcw-delete-merge"]
+        );
+        const candidateRevisionId = writebackAudit.rows[0]?.metadata.candidateRevisionId;
+        expect(writebackAudit.rows[0]?.metadata.changeAction).toBe("delete");
+        expect(candidateRevisionId).toBeTruthy();
+        expect(
+          (
+            await db.query(
+              `select id from project_parameter_binding_revisions
+               where binding_id = $1 and config_revision_id = $2`,
+              [seeded.bindingId, candidateRevisionId]
+            )
+          ).rows
+        ).toEqual([]);
+        expect(
+          (
+            await db.query<{ raw_value: string | null }>(
+              `select raw_value from project_parameter_binding_revisions
+               where binding_id = $1 and config_revision_id = $2`,
+              [seeded.bindingId, seeded.configRevisionId]
+            )
+          ).rows[0]?.raw_value
+        ).toBe("<1>");
+        expect(
+          (
+            await db.query<{ parsed_index: { sourceText?: string } }>(
+              `select parsed_index from project_parameter_file_versions
+               where file_id = $1 order by version_number desc limit 1`,
+              [seeded.overlayFileId]
+            )
+          ).rows[0]?.parsed_index.sourceText
+        ).toMatch(/\/delete-property\/\s*gpio_int/);
+        expect(
+          (
+            await db.query<{ effect_kind: string }>(
+              `select effect_kind from dts_occurrence_effects
+               where config_revision_id = $1 and property_name = $2`,
+              [candidateRevisionId, PROPERTY_KEY]
+            )
+          ).rows
+        ).toContainEqual({ effect_kind: "delete" });
+        expect(
+          (
+            await db.query<{ action: string; value: string }>(
+              `select pcr.action, phe.value
+               from parameter_change_requests pcr
+               inner join parameter_history_entries phe on phe.request_id = pcr.id
+               where pcr.id = $1`,
+              [request.id]
+            )
+          ).rows
+        ).toEqual([{ action: "delete", value: "" }]);
       });
     },
     90_000

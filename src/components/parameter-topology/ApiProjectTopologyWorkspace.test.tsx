@@ -53,6 +53,7 @@ function createRepository(
       parameterId: "binding-sc8562-gpio-int",
       candidateRevisionId: "rev-candidate-2",
       rawText: "<&gpio13 29 0>",
+      action: "set",
       parameterSpecId: "spec-sc8562-gpio-int",
       projectParameterBindingId: "binding-sc8562-gpio-int",
       writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
@@ -333,6 +334,7 @@ describe("ApiProjectTopologyWorkspace", () => {
         parameterId: "binding-sc8562-gpio-int",
         candidateRevisionId: "rev-aurora-late",
         rawText: "<&gpio13 30 0>",
+        action: "set",
         parameterSpecId: "spec-sc8562-gpio-int",
         projectParameterBindingId: "binding-sc8562-gpio-int",
         writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
@@ -430,6 +432,7 @@ describe("ApiProjectTopologyWorkspace", () => {
         parameterId: "binding-sc8562-gpio-int",
         candidateRevisionId: "rev-candidate-2",
         rawText: "<&gpio13 30 0>",
+        action: "set",
         parameterSpecId: "spec-sc8562-gpio-int",
         projectParameterBindingId: "binding-sc8562-gpio-int",
         writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
@@ -486,6 +489,7 @@ describe("ApiProjectTopologyWorkspace", () => {
         items: [
           {
             draftId: "draft-typed-1",
+            action: "set",
             targetValue: "<&gpio13 30 0>",
             reason: "Raise gpio line for typed workflow",
             projectParameterBindingId: "binding-sc8562-gpio-int",

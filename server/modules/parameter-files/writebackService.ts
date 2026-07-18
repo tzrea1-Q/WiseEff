@@ -18,6 +18,7 @@ import { getChangeRequestWriteLock } from "../parameters/repository";
 import {
   applyLockedOverlayWriteback,
   resolveBindingWriteLock,
+  type BindingEditAction,
   type BindingWriteLockContext,
   type BindingWriteLockFields,
 } from "../parameter-topology/editService";
@@ -37,6 +38,7 @@ export type WritebackMergedParameterValueInput = {
    */
   parameterDefinitionId: string;
   mergedValue: string;
+  action?: BindingEditAction;
   /** Semantic identity — required for post-cutover writeback. */
   projectParameterBindingId?: string;
   parameterSpecId?: string;
@@ -278,6 +280,7 @@ async function createWritebackAudit(
     projectParameterBindingId?: string;
     parameterSpecId?: string;
     candidateRevisionId?: string;
+    action: BindingEditAction;
   },
   context: WritebackServiceContext = {}
 ) {
@@ -301,6 +304,7 @@ async function createWritebackAudit(
       sourceNodePath: input.nodePath,
       versionNumber: input.versionNumber,
       candidateRevisionId: input.candidateRevisionId,
+      changeAction: input.action,
     },
     traceId: context.requestId ?? randomUUID()
   });
@@ -416,6 +420,7 @@ export async function writebackMergedParameterValue(
         parameterSpecId: input.parameterSpecId ?? input.parameterDefinitionId,
         parameterSpecVersionId,
         mergedValue: input.mergedValue,
+        action: input.action ?? "set",
       },
       {
         objectStore,
@@ -437,6 +442,7 @@ export async function writebackMergedParameterValue(
         projectParameterBindingId: input.projectParameterBindingId,
         parameterSpecId: input.parameterSpecId,
         candidateRevisionId: applied.candidateRevisionId,
+        action: input.action ?? "set",
       },
       context,
     );
@@ -447,7 +453,7 @@ export async function writebackMergedParameterValue(
       versionId: applied.fileVersionId,
       versionNumber: applied.versionNumber,
       candidateRevisionId: applied.candidateRevisionId,
-      bindingRevisionId: applied.bindingRevisionId,
+      ...(applied.bindingRevisionId ? { bindingRevisionId: applied.bindingRevisionId } : {}),
     };
   }
 
@@ -534,7 +540,8 @@ export async function writebackMergedParameterValue(
       fileName: file.fileName,
       versionNumber: version.versionNumber,
       projectParameterBindingId: input.projectParameterBindingId,
-      parameterSpecId: input.parameterSpecId
+      parameterSpecId: input.parameterSpecId,
+      action: input.action ?? "set"
     },
     context
   );

@@ -57,6 +57,7 @@ export type SubmitParameterChangesInput = {
         draftId: string;
         projectParameterBindingId: string;
         parameterSpecId: string;
+        action?: "set" | "delete";
         targetValue: string;
         reason: string;
       }

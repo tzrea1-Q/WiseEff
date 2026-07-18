@@ -90,7 +90,7 @@ import {
 } from "./schemas";
 import { parseDtsImportSource } from "./importDtsParse";
 import { getNextParameterStatus, parameterStatusLabels, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
-import type { ChangeRequestDto, ParameterImportSourceItemDto, ParameterImportSummaryDto, ParameterModuleDto } from "./types";
+import type { ChangeRequestDto, ParameterChangeAction, ParameterImportSourceItemDto, ParameterImportSummaryDto, ParameterModuleDto } from "./types";
 import { buildSubmissionWorkflowTrail } from "../../../src/domain/parameters/submissionWorkflowTrail";
 import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeline";
 
@@ -129,6 +129,7 @@ export type SubmitParameterChangesInput = {
         draftId: string;
         projectParameterBindingId: string;
         parameterSpecId: string;
+        action?: ParameterChangeAction;
         targetValue: string;
         reason: string;
       }
@@ -719,6 +720,7 @@ function buildChangeRequestAuditMetadata(
     module: request.module,
     currentValue: request.currentValue,
     targetValue: request.targetValue,
+    changeAction: request.action,
     risk: parameterImpact?.risk,
     reason: parameterImpact?.note,
     submitter: request.submitter,
@@ -1139,22 +1141,29 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
             parameterSpecId: item.parameterSpecId
           });
         }
-        if (loadedDraft.targetValue !== item.targetValue || loadedDraft.reason !== item.reason) {
-          throw new ApiError("CONFLICT", "Binding draft value or reason changed before submission.", 409, {
+        const submittedAction = item.action ?? "set";
+        if (
+          loadedDraft.action !== submittedAction ||
+          loadedDraft.targetValue !== item.targetValue ||
+          loadedDraft.reason !== item.reason
+        ) {
+          throw new ApiError("CONFLICT", "Binding draft action, value, or reason changed before submission.", 409, {
             draftId: item.draftId
           });
         }
         if (
           !loadedDraft.candidateConfigRevisionId ||
           loadedDraft.candidateStatus !== "draft" ||
-          !loadedDraft.candidateHasBindingRevision ||
-          !loadedDraft.candidateValueMatchesDraft
+          !loadedDraft.candidateActionProven
         ) {
-          throw new ApiError("CONFLICT", "Binding draft candidate revision is missing, stale, or value-mismatched.", 409, {
+          throw new ApiError("CONFLICT", "Binding draft candidate revision is missing, stale, or action-mismatched.", 409, {
             draftId: item.draftId,
+            action: submittedAction,
             candidateConfigRevisionId: loadedDraft.candidateConfigRevisionId,
             candidateStatus: loadedDraft.candidateStatus,
-            candidateValueMatchesDraft: loadedDraft.candidateValueMatchesDraft
+            candidateHasBindingRevision: loadedDraft.candidateHasBindingRevision,
+            candidateValueMatchesDraft: loadedDraft.candidateValueMatchesDraft,
+            candidateDeleteTombstone: loadedDraft.candidateDeleteTombstone
           });
         }
         if (!loadedDraft.writeLock || !loadedDraft.writeLockMatchesBinding) {
@@ -1292,6 +1301,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         baseVersion: parameter.valueVersion,
         currentValue: parameter.currentValue,
         targetValue: item.targetValue,
+        action: "draftId" in item ? item.action ?? "set" : "set",
         status,
         submitterUserId: auth.user.id,
         assignedToUserId: workflowAssignees?.hardwareCommitterId,
@@ -1309,6 +1319,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         parameterId: parameter.id,
         currentValue: parameter.currentValue,
         targetValue: item.targetValue,
+        action: "draftId" in item ? item.action ?? "set" : "set",
         reason: item.reason,
         projectParameterBindingId
       });
@@ -1354,7 +1365,8 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         parameterSpecIds: parameters.flatMap(({ item, exactDraft }) => {
           if (exactDraft) return [exactDraft.parameterSpecId];
           return "draftId" in item || !item.parameterSpecId ? [] : [item.parameterSpecId];
-        })
+        }),
+        actions: parameters.map(({ item }) => ("draftId" in item ? item.action ?? "set" : "set"))
       },
       traceId: context.requestId ?? randomUUID()
     });
@@ -1818,6 +1830,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
           projectId: request.projectId!,
           parameterDefinitionId: merged.parameterDefinitionId,
           mergedValue: merged.targetValue,
+          action: merged.action,
           projectParameterBindingId: merged.projectParameterBindingId,
           parameterSpecId: merged.parameterSpecId,
           changeRequestId: input.requestId,
@@ -1878,6 +1891,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
           projectId: request.projectId,
           parameterDefinitionId: merged.parameterDefinitionId,
           mergedValue: merged.targetValue,
+          action: merged.action,
           projectParameterBindingId: merged.projectParameterBindingId,
           parameterSpecId: merged.parameterSpecId,
           changeRequestId: input.requestId,

@@ -1054,6 +1054,7 @@ export type CreateBindingDraftServiceResult = {
   parameterId: string;
   candidateRevisionId: string;
   rawText: string;
+  action: "set" | "delete";
   parameterSpecId: string;
   projectParameterBindingId: string;
   writeTarget: BindingDraftResult["writeTarget"];
@@ -1119,6 +1120,7 @@ export async function createBindingDraft(
     parameterId: draft.parameterId,
     candidateRevisionId: draft.candidateRevisionId,
     rawText: draft.rawText,
+    action: draft.action,
     parameterSpecId: draft.parameterSpecId,
     projectParameterBindingId: draft.projectParameterBindingId,
     writeTarget: draft.writeTarget,

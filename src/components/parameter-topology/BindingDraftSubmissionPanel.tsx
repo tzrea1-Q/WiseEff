@@ -56,8 +56,8 @@ export function BindingDraftSubmissionPanel({
       </header>
       <dl>
         <div>
-          <dt>目标值</dt>
-          <dd><code>{draft.rawText}</code></dd>
+          <dt>{draft.action === "delete" ? "操作" : "目标值"}</dt>
+          <dd><code>{draft.action === "delete" ? "删除属性" : draft.rawText}</code></dd>
         </div>
         <div>
           <dt>修改原因</dt>
@@ -105,6 +105,7 @@ export function BindingDraftSubmissionPanel({
               items: [
                 {
                   draftId: draft.draftId,
+                  action: draft.action,
                   targetValue: draft.rawText,
                   reason: draft.reason,
                   projectParameterBindingId: draft.projectParameterBindingId,

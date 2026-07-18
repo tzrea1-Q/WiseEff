@@ -12,6 +12,7 @@ const migrationsDir = path.join(projectRoot, "server", "migrations");
 const migration0048 = "0048_parameter_topology_schema_shadow.sql";
 const migration0060 = "0060_parameter_draft_candidate_identity_gate.sql";
 const migration0061 = "0061_parameter_draft_candidate_identity_all_origins.sql";
+const migration0062 = "0062_parameter_change_action.sql";
 
 const REQUIRED_TABLES = [
   "parameter_specs",
@@ -79,6 +80,33 @@ async function columnExists(db: Database, table: string, column: string): Promis
     [table, column]
   );
   return Boolean(result.rows[0]?.exists);
+}
+
+async function columnDefinition(db: Database, table: string, column: string) {
+  const result = await db.query<{ is_nullable: string; column_default: string | null }>(
+    `select is_nullable, column_default
+     from information_schema.columns
+     where table_schema = 'public' and table_name = $1 and column_name = $2`,
+    [table, column]
+  );
+  return result.rows[0] ?? null;
+}
+
+async function hasActionCheck(db: Database, table: string): Promise<boolean> {
+  const result = await db.query<{ present: boolean }>(
+    `select exists (
+       select 1
+       from pg_constraint c
+       inner join pg_class rel on rel.oid = c.conrelid
+       inner join pg_namespace nsp on nsp.oid = rel.relnamespace
+       where nsp.nspname = 'public'
+         and rel.relname = $1
+         and c.contype = 'c'
+         and pg_get_constraintdef(c.oid) ilike '%action%set%delete%'
+     ) as present`,
+    [table]
+  );
+  return Boolean(result.rows[0]?.present);
 }
 
 async function exampleValueHasEnforcingConstraint(db: Database): Promise<boolean> {
@@ -307,7 +335,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
       expect(await columnExists(db, "parameter_draft_identity_invalidations", "draft_id")).toBe(false);
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([migration0060, migration0061]);
+      expect(pending).toEqual([migration0060, migration0061, migration0062]);
       expect((await db.query(`select id from parameter_drafts order by id`)).rows).toEqual([]);
       expect(
         (
@@ -445,7 +473,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
       expect(await columnExists(db, "parameter_draft_identity_invalidations", "draft_origin")).toBe(false);
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([migration0061]);
+      expect(pending).toEqual([migration0061, migration0062]);
       expect((await db.query(`select id from parameter_drafts order by id`)).rows).toEqual([
         { id: "draft-0061-valid" }
       ]);
@@ -487,6 +515,27 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
           origin_file_version_id: null
         }
       ]);
+      expect(await applyMigrations(db, migrationsDir)).toEqual([]);
+    });
+  });
+
+  it("adds durable set/delete action columns with fail-closed defaults and checks", async () => {
+    await withTempDatabase(async (db) => {
+      await applyMigrationsThrough(db, migration0062);
+      for (const table of ["parameter_drafts", "parameter_submission_items", "parameter_change_requests"]) {
+        expect(await columnExists(db, table, "action")).toBe(false);
+      }
+
+      const pending = await applyMigrations(db, migrationsDir);
+      expect(pending).toEqual([migration0062]);
+
+      for (const table of ["parameter_drafts", "parameter_submission_items", "parameter_change_requests"]) {
+        expect(await columnDefinition(db, table, "action")).toEqual({
+          is_nullable: "NO",
+          column_default: "'set'::text"
+        });
+        expect(await hasActionCheck(db, table)).toBe(true);
+      }
       expect(await applyMigrations(db, migrationsDir)).toEqual([]);
     });
   });
