@@ -55,11 +55,15 @@ Expected: tools present **and** versions match `tools/dts-toolchain/versions.jso
 
 ## 4. Dry-run migration
 
-Apply all forward SQL migrations first. In particular, `0059_binding_draft_submission_identity.sql` must exist in `schema_migrations` and `parameter_drafts.candidate_config_revision_id` must exist before accepting post-cutover typed drafts. This link lets submission prove the exact draft→binding/spec→candidate/write-lock chain; do not emulate it by overloading legacy `parameterId`.
+Apply all forward SQL migrations first. In particular, both `0059_binding_draft_submission_identity.sql` and `0060_parameter_draft_candidate_identity_gate.sql` must exist in `schema_migrations` before accepting post-cutover typed drafts. Migration 0060 records every pre-existing manual draft without a candidate revision in `parameter_draft_identity_invalidations`, then deletes that active draft. This is intentional invalidation, not a guessed backfill: notify affected users and require them to recreate the edit through the typed binding editor after cutover. Never attach an arbitrary candidate to preserve an old draft.
+
+If the database is already at 0059, capture the pre-0060 count during the write freeze before applying 0060. After migration, the active count must be zero and the invalidation count must equal the captured count. Legacy draft-save and `parameterId`-only submission return `409` after cutover. Exact submission additionally locks the draft row and proves the candidate binding revision raw value equals the draft value.
 
 ```bash
-psql "$DATABASE_URL" -c "select name from schema_migrations where name = '0059_binding_draft_submission_identity.sql';"
+psql "$DATABASE_URL" -c "select name from schema_migrations where name in ('0059_binding_draft_submission_identity.sql', '0060_parameter_draft_candidate_identity_gate.sql') order by name;"
 psql "$DATABASE_URL" -c "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'parameter_drafts' and column_name = 'candidate_config_revision_id';"
+psql "$DATABASE_URL" -c "select count(*) as active_manual_drafts_without_candidate from parameter_drafts where origin = 'manual' and candidate_config_revision_id is null;"
+psql "$DATABASE_URL" -c "select organization_id, project_id, count(*) as invalidated_drafts from parameter_draft_identity_invalidations group by organization_id, project_id order by organization_id, project_id;"
 ```
 
 ```bash

@@ -49,11 +49,15 @@ npm run dts:config:validate
 
 ## 4. Dry-run 迁移
 
-先应用全部前向 SQL migration。接受 cutover 后 typed draft 前，`schema_migrations` 必须包含 `0059_binding_draft_submission_identity.sql`，且 `parameter_drafts.candidate_config_revision_id` 必须存在。该关联用于证明精确的 draft→binding/spec→candidate/write-lock 链路；不得用重载遗留 `parameterId` 代替。
+先应用全部前向 SQL migration。接受 cutover 后 typed draft 前，`schema_migrations` 必须同时包含 `0059_binding_draft_submission_identity.sql` 和 `0060_parameter_draft_candidate_identity_gate.sql`。0060 会把所有缺少 candidate revision 的历史 manual draft 记录到 `parameter_draft_identity_invalidations`，然后从活动草稿中删除。这是明确失效，不是猜测回填：通知受影响用户，并要求其在 cutover 后通过 typed binding editor 重建；禁止给旧草稿随意关联 candidate。
+
+若数据库已处于 0059，必须在写冻结期间、应用 0060 前记录存量数。迁移后活动存量必须为 0，invalidation 数必须与迁移前计数一致。Cutover 后遗留草稿保存和仅含 `parameterId` 的提交返回 `409`；精确提交还会锁定 draft 行，并证明 candidate binding revision raw value 与草稿值一致。
 
 ```bash
-psql "$DATABASE_URL" -c "select name from schema_migrations where name = '0059_binding_draft_submission_identity.sql';"
+psql "$DATABASE_URL" -c "select name from schema_migrations where name in ('0059_binding_draft_submission_identity.sql', '0060_parameter_draft_candidate_identity_gate.sql') order by name;"
 psql "$DATABASE_URL" -c "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'parameter_drafts' and column_name = 'candidate_config_revision_id';"
+psql "$DATABASE_URL" -c "select count(*) as active_manual_drafts_without_candidate from parameter_drafts where origin = 'manual' and candidate_config_revision_id is null;"
+psql "$DATABASE_URL" -c "select organization_id, project_id, count(*) as invalidated_drafts from parameter_draft_identity_invalidations group by organization_id, project_id order by organization_id, project_id;"
 ```
 
 ```bash

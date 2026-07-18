@@ -159,6 +159,16 @@ Implementation and TDD order:
 
 Documentation gate: update this plan, API/domain/testing/frontend behavior, and the English/Chinese identity cutover runbooks. TD-042 and external readiness remain blockers.
 
+### Follow-up execution outcome 3
+
+- `7e571f7c` closes the post-cutover legacy bypass: semantic mode rejects legacy draft saves and parameterId-only submissions with `409`, exact submission locks the owned draft and proves the candidate binding revision raw value equals the draft target before creating a round.
+- The same change adds a deterministic two-connection PostgreSQL regression. A concurrent typed edit waits on the draft row lock while submission consumes the old draft, then recreates the newer draft after commit; the new value/reason are not deleted as a lost update.
+- `713133b6` binds pending drafts to their project and rejects late create-draft responses after a project switch. The deferred-response component regression proves an Aurora response cannot repopulate the Nebula panel or load Nebula assignees; the load-effect assertion now uses `waitFor`.
+- `0fc167e6` adds forward migration `0060_parameter_draft_candidate_identity_gate.sql`. It does not guess a candidate for pre-0059 data: manual drafts without candidate identity are recorded without value/reason in `parameter_draft_identity_invalidations`, removed from the active draft table, and must be recreated through the typed editor. The PostgreSQL upgrade test covers the 0059 state, injected rollback, report counts, and idempotency.
+- Focused verification passed for the exact-identity/concurrency PG workflow, 0060 schema upgrade, HTTP routes, and the project workspace component (97 focused server assertions and 10 component assertions in the combined runs). One standard `npm run test:all` run passed with frontend 2,190 passed / 5 skipped and server 1,540 passed / 1 skipped; final repeated gates remain recorded separately from this implementation checkpoint.
+- Browser verification used disposable API `http://127.0.0.1:52857` and frontend `http://127.0.0.1:5174/parameters`. The visible project control switched Aurora to Nebula; Nebula loaded its own current revision `a491efaf-648b-4652-830d-49c79a27e5d2`, did not show the false empty state, and did not retain a pending draft. `playwright-cli` snapshots/screenshots at 1440×900, 768×1024, and 390×844 reported zero console errors, no document-level horizontal overflow, and 200 responses for the Nebula current/source/binding/mapping requests. The disposable database was destroyed and both ports were released.
+- The last complete full evidence namespace still has source commit `4fcc707a4c8a8a12860a2e4ad36051990e66385b`; it is preserved by focused runs but is not evidence for this newer source. A new full evidence run must be generated before claiming final full-browser evidence for the Round 6 HEAD. External readiness and TD-042 remain blockers, and no production, cutover, or merge-ready claim is made.
+
 ## Risks & rollback
 
 | Risk | Mitigation |
