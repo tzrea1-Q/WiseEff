@@ -100,6 +100,16 @@
 - TDD 门禁：先让 resolver 与渲染隔离测试失败；binding 提交测试须断言 typed identity/value/reason 和服务端过滤的角色候选；Playwright 必须用可见的编辑/提交/审核/合入交互替换直接推进业务状态的 API。
 - 文档门禁：从中英文开发、测试、验证和 cutover 文档移除个人 `~/Library/Python/...` PATH 指引；记录项目 bootstrap/解析顺序以及遗留参数工作台仅限 mock。
 
+### 续修执行结果
+
+- T9 已在 `858d8751` 关闭：`npm run dts:toolchain:bootstrap` 创建被忽略的项目 venv，CLI check 与 API runtime 共用同一解析器。默认 shell 不添加个人 Python PATH 时，`npm run dts:toolchain:check` 直接通过：dtc/fdtoverlay 1.8.1、dtschema 2026.6；Aurora、Nebula、Atlas diagnostics 均为空。
+- T10 由 `e9eb025f`、`0843cc75`、`1abb57f2` 关闭：API mode 只渲染 binding-centric 拓扑工作区；typed edit 保留 candidate/binding/spec/value/reason；可见的项目作用域处理人下拉框经公开接口 submit；真实角色 UI 完成 review 与 semantic merge/writeback。`PARAM-ASSIGNEE-001/002` 现已在 disposable 全链路中精确断言默认值与排除集合，不再依赖已移除的遗留表格。
+- in-app browser 使用 disposable post-cutover API/数据库验收 `http://127.0.0.1:5173/parameters`，视口为 1440×900、768×1024、390×844。遗留表格、`recommendedValue` 文案和遗留 Excel 导出计数均为 0；可见 `gpio_int` 编辑保留 `<&gpio13 30 0>`，三类处理人来自 API，并提交正式审核；console error 为 0。验收发现的 390px 拓扑树溢出已在 `7de8f56c` 修复，最终 document width 为 390px、无横向滚动。截图为 `work/ui-checks/parameter-topology-round6-followup-*.png`。
+- 在续修 source 状态连续运行三次默认 `npm run test:all`，均 exit 0 且计数一致，无 worker override：前端 315 files、2182 passed / 5 skipped；后端 214 files、1534 passed / 1 skipped。
+- 从干净 source `1abb57f2` 运行标准外层 `npm run acceptance:browser`，结果准确为 failed：preflight 受外部 `deviceGateway`、`xiaozeLlm`、`backups` 阻断；用户已有 8787 同时配置为 HDC/development auth，Playwright 为 69 passed / 11 failed / 4 skipped。诊断证据保存在 `bb2e3e61`。
+- 另一次从干净 source `bb2e3e6160b05930ecc8a7e5a0a88ab22fcd7bab` 运行，使用隔离端口 5174/18787、production HMAC、simulator 与 deterministic Xiaoze，未触碰 8787。Playwright 共 84 项：80 passed / 4 项硬件条件 skipped / 0 failed；workflow A–E、G–I 通过；requirements 59/59；operation evidence 56/56、71 records、0 invalid、0 validation error；`npm run acceptance:evidence` exit 0。该次外层 runner 仅因显式跳过 preflight 保持 failed，不能覆盖真实外部 preflight blocker。
+- TD-042 保持 BLOCKER。尚未执行干净非客户快照 apply→cutover→整库 restore 演练，因此本计划不宣称 production ready、cutover ready，也不会在父智能体 Review 前宣称可合并。
+
 ## 风险与回滚
 
 | 风险 | 缓解 |
