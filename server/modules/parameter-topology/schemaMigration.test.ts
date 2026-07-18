@@ -11,6 +11,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const migrationsDir = path.join(projectRoot, "server", "migrations");
 const migration0048 = "0048_parameter_topology_schema_shadow.sql";
 const migration0060 = "0060_parameter_draft_candidate_identity_gate.sql";
+const migration0061 = "0061_parameter_draft_candidate_identity_all_origins.sql";
 
 const REQUIRED_TABLES = [
   "parameter_specs",
@@ -306,7 +307,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
       expect(await columnExists(db, "parameter_draft_identity_invalidations", "draft_id")).toBe(false);
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([migration0060]);
+      expect(pending).toEqual([migration0060, migration0061]);
       expect((await db.query(`select id from parameter_drafts order by id`)).rows).toEqual([]);
       expect(
         (
@@ -329,6 +330,161 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
           draft_id: "draft-0060-semantic",
           project_parameter_binding_id: "binding-0060",
           invalidation_reason: "missing-candidate-config-revision"
+        }
+      ]);
+      expect(await applyMigrations(db, migrationsDir)).toEqual([]);
+    });
+  });
+
+  it("invalidates every candidate-less draft after 0060, including file_sync conflict rows", async () => {
+    await withTempDatabase(async (db) => {
+      await applyMigrationsThrough(db, migration0061);
+      await db.query(`insert into organizations (id, name) values ('org-0061', 'Org 0061')`);
+      await db.query(
+        `insert into users (id, organization_id, name, email, title)
+         values
+           ('user-0061-manual', 'org-0061', 'Manual 0061', 'manual-0061@example.com', 'Engineer'),
+           ('user-0061-file', 'org-0061', 'File 0061', 'file-0061@example.com', 'Engineer'),
+           ('user-0061-ui', 'org-0061', 'UI 0061', 'ui-0061@example.com', 'Engineer'),
+           ('user-0061-valid', 'org-0061', 'Valid 0061', 'valid-0061@example.com', 'Engineer')`
+      );
+      await db.query(
+        `insert into projects (id, organization_id, name, code)
+         values ('project-0061', 'org-0061', 'Project 0061', 'P0061')`
+      );
+      await db.query(
+        `insert into parameter_definitions (
+           id, organization_id, name, description, explanation, config_format,
+           module, default_range, unit, risk
+         ) values (
+           'definition-0061', 'org-0061', 'gpio_int', 'desc', 'explain', 'DTS',
+           'manual', 'n/a', '', 'Medium'
+         )`
+      );
+      await db.query(
+        `insert into project_parameter_values (
+           id, organization_id, project_id, parameter_definition_id,
+           current_value, recommended_value, updated_by_user_id
+         ) values (
+           'ppv-0061', 'org-0061', 'project-0061', 'definition-0061',
+           '<&gpio13 29 0>', '', 'user-0061-manual'
+         )`
+      );
+      await db.query(
+        `insert into parameter_specs (id, organization_id, source_kind, specification_key)
+         values ('spec-0061', 'org-0061', 'manual', 'manual/gpio-int-0061')`
+      );
+      await db.query(
+        `insert into project_parameter_bindings (
+           id, organization_id, project_id, logical_node_id, parameter_spec_id
+         ) values ('binding-0061', 'org-0061', 'project-0061', null, 'spec-0061')`
+      );
+      await db.query(
+        `insert into dts_config_set (id, organization_id, project_id, name)
+         values ('config-set-0061', 'org-0061', 'project-0061', 'Config 0061')`
+      );
+      await db.query(
+        `insert into dts_config_revisions (
+           id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id
+         ) values (
+           'candidate-0061', 'org-0061', 'project-0061', 'config-set-0061', 1, 'draft', 'user-0061-valid'
+         )`
+      );
+      await db.query(
+        `insert into project_parameter_files (
+           id, organization_id, project_id, file_name, format
+         ) values ('file-0061', 'org-0061', 'project-0061', 'board.dts', 'dts')`
+      );
+      await db.query(
+        `insert into project_parameter_file_versions (
+           id, file_id, version_number, storage_key, checksum, size_bytes, origin, created_by_user_id
+         ) values (
+           'file-version-0061', 'file-0061', 1, 'test/0061-board.dts', 'checksum-0061', 1,
+           'upload', 'user-0061-file'
+         )`
+      );
+      await db.query(
+        `insert into parameter_drafts (
+           id, organization_id, project_id, project_parameter_value_id, user_id,
+           target_value, reason, origin, origin_file_version_id,
+           project_parameter_binding_id, candidate_config_revision_id
+         ) values
+           ('draft-0061-manual', 'org-0061', 'project-0061', 'ppv-0061', 'user-0061-manual',
+            '<&gpio13 30 0>', 'manual without candidate', 'manual', null, 'binding-0061', null),
+           ('draft-0061-file', 'org-0061', 'project-0061', 'ppv-0061', 'user-0061-file',
+            '<&gpio13 31 0>', 'resolved file conflict', 'file_sync', 'file-version-0061', 'binding-0061', null),
+           ('draft-0061-ui', 'org-0061', 'project-0061', 'ppv-0061', 'user-0061-ui',
+            '<&gpio13 32 0>', 'conflicting ui draft', 'manual', null, 'binding-0061', null),
+           ('draft-0061-valid', 'org-0061', 'project-0061', 'ppv-0061', 'user-0061-valid',
+            '<&gpio13 33 0>', 'candidate-backed draft', 'manual', null, 'binding-0061', 'candidate-0061')`
+      );
+      await db.query(
+        `insert into parameter_file_sync_conflicts (
+           id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
+           file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value,
+           status, resolved_by_user_id, resolved_at, parameter_spec_id, project_parameter_binding_id
+         ) values (
+           'conflict-0061', 'org-0061', 'project-0061', 'ppv-0061', 'definition-0061',
+           'file-version-0061', 'draft-0061-file', 'draft-0061-ui', '<&gpio13 31 0>', '<&gpio13 32 0>',
+           'resolved_file', 'user-0061-manual', now(), 'spec-0061', 'binding-0061'
+         )`
+      );
+
+      const migrationSql = await fs.readFile(path.join(migrationsDir, migration0061), "utf8");
+      await db.query("begin");
+      await expect(
+        (async () => {
+          await db.query(migrationSql);
+          await db.query("select * from deliberate_0061_failure");
+        })()
+      ).rejects.toBeTruthy();
+      await db.query("rollback");
+      expect((await db.query(`select id from parameter_drafts order by id`)).rows).toHaveLength(4);
+      expect((await db.query(`select id from parameter_file_sync_conflicts`)).rows).toHaveLength(1);
+      expect((await db.query(`select draft_id from parameter_draft_identity_invalidations`)).rows).toEqual([]);
+      expect(await columnExists(db, "parameter_draft_identity_invalidations", "draft_origin")).toBe(false);
+
+      const pending = await applyMigrations(db, migrationsDir);
+      expect(pending).toEqual([migration0061]);
+      expect((await db.query(`select id from parameter_drafts order by id`)).rows).toEqual([
+        { id: "draft-0061-valid" }
+      ]);
+      expect((await db.query(`select id from parameter_file_sync_conflicts`)).rows).toEqual([]);
+      expect(
+        (
+          await db.query<{
+            draft_id: string;
+            project_parameter_binding_id: string | null;
+            invalidation_reason: string;
+            draft_origin: string | null;
+            origin_file_version_id: string | null;
+          }>(
+            `select draft_id, project_parameter_binding_id, invalidation_reason,
+                    draft_origin, origin_file_version_id
+             from parameter_draft_identity_invalidations order by draft_id`
+          )
+        ).rows
+      ).toEqual([
+        {
+          draft_id: "draft-0061-file",
+          project_parameter_binding_id: "binding-0061",
+          invalidation_reason: "missing-candidate-config-revision",
+          draft_origin: "file_sync",
+          origin_file_version_id: "file-version-0061"
+        },
+        {
+          draft_id: "draft-0061-manual",
+          project_parameter_binding_id: "binding-0061",
+          invalidation_reason: "missing-candidate-config-revision",
+          draft_origin: "manual",
+          origin_file_version_id: null
+        },
+        {
+          draft_id: "draft-0061-ui",
+          project_parameter_binding_id: "binding-0061",
+          invalidation_reason: "missing-candidate-config-revision",
+          draft_origin: "manual",
+          origin_file_version_id: null
         }
       ]);
       expect(await applyMigrations(db, migrationsDir)).toEqual([]);
