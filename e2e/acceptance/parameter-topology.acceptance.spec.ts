@@ -335,11 +335,13 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // @acceptance PARAM-SPEC-GOVERN-001
     // @acceptance PARAM-TOPOLOGY-BROWSE-001
     // @acceptance PARAM-TOPOLOGY-EDIT-001
+    // @acceptance PARAM-HAPPY-001
     // @acceptance PARAM-IDENTITY-MAP-001
     // @acceptance PARAM-CONFIG-PUBLISH-GATE-001
     // @operation PARAM-SPEC-GOVERN-001
     // @operation PARAM-TOPOLOGY-BROWSE-001
     // @operation PARAM-TOPOLOGY-EDIT-001
+    // @operation PARAM-HAPPY-001
     // @operation PARAM-IDENTITY-MAP-001
     // @operation PARAM-CONFIG-PUBLISH-GATE-001
     test.setTimeout(300_000);
@@ -570,6 +572,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const workspace = page.getByRole("region", { name: "项目拓扑工作区" });
     await expect(workspace).toBeVisible({ timeout: 30_000 });
     await expect(workspace).toHaveAttribute("data-config-set-id", configSetId);
+    await expect(page.getByRole("region", { name: "检索参数表" })).toHaveCount(0);
+    await expect(page.getByText("推荐值", { exact: false })).toHaveCount(0);
 
     await workspace.getByRole("radio", { name: "源树" }).check();
     await expect(workspace.getByRole("treeitem", { name: /amba/ }).first()).toBeVisible({
@@ -681,7 +685,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // 5) Typed edit diagnostics + stale 409 + successful draft (writeback + re-ingest inside API).
     const originalRaw = scBinding!.rawValue;
     await detail.getByLabel("目标值 raw").fill("<&gpio13 29>");
-    await detail.getByRole("button", { name: /校验|应用诊断/ }).click();
+    await detail.getByLabel("修改原因").fill(`${descriptionPrefix} invalid cell-count probe`);
+    await detail.getByRole("button", { name: /创建草稿/ }).click();
     await expect(workspace.getByRole("list", { name: "编辑诊断" })).toBeVisible({ timeout: 20_000 });
     await expect(workspace.getByRole("list", { name: "编辑诊断" })).toContainText(/cell count must be 3/);
 
@@ -788,29 +793,28 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await resolveReviewsForCurrentRevision(request, revisionId, projectId);
     const editedRaw = "<&gpio13 30 0>";
-    const successfulDraft = await request.post(
-      apiRoute(
-        `/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(scBinding!.id)}/drafts`
-      ),
-      {
-        headers: authHeadersForRole("software-user"),
-        data: {
-          baseRevisionId: revisionId,
-          targetValue: {
-            kind: "cells",
-            bits: 32,
-            groups: [
-              [
-                { kind: "phandle", label: "gpio13" },
-                { kind: "integer", raw: "30", value: "30" },
-                { kind: "integer", raw: "0", value: "0" }
-              ]
-            ]
-          },
-          reason: `${descriptionPrefix} successful typed edit writeback`
-        }
-      }
+    const typedEditReason = `${descriptionPrefix} successful typed edit writeback`;
+    await signInBrowserAsRole(
+      page,
+      "software-user",
+      `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`,
     );
+    await dismissXiaozeHint(page);
+    const editWorkspace = page.getByRole("region", { name: "项目拓扑工作区" });
+    await expect(editWorkspace).toHaveAttribute("data-config-set-id", configSetId, { timeout: 30_000 });
+    await editWorkspace.getByRole("searchbox", { name: "搜索绑定" }).fill("gpio_int");
+    await expect.poll(async () => editWorkspace.getByRole("cell", { name: "gpio_int" }).count()).toBeGreaterThanOrEqual(2);
+    await editWorkspace.getByRole("cell", { name: "sc8562@6E", exact: true }).click();
+    const editDetail = editWorkspace.getByRole("region", { name: "绑定详情" });
+    await expect(editDetail).toHaveAttribute("data-binding-id", scBinding!.id);
+    await editDetail.getByLabel("目标值 raw").fill(editedRaw);
+    await editDetail.getByLabel("修改原因").fill(typedEditReason);
+    const successfulDraftPromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" &&
+      response.url().includes(`/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(scBinding!.id)}/drafts`)
+    );
+    await editDetail.getByRole("button", { name: /创建草稿/ }).click();
+    const successfulDraft = await successfulDraftPromise;
     expect(successfulDraft.status(), await successfulDraft.text()).toBe(201);
     const draftBody = (await successfulDraft.json()) as {
       item: {
@@ -839,27 +843,19 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
     expect(openCrBefore).toBe(0);
 
-    const submitRound = await request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-      headers: authHeadersForRole("software-user"),
-      data: {
-        projectId,
-        items: [
-          {
-            parameterId: draftBody.item.parameterId,
-            targetValue: draftBody.item.rawText ?? editedRaw,
-            reason: `${descriptionPrefix} submit typed edit for merge`,
-            projectParameterBindingId: draftBody.item.projectParameterBindingId ?? scBinding!.id,
-            parameterSpecId: scBinding!.parameterSpecId
-          }
-        ],
-        reason: `${descriptionPrefix} submit typed edit for merge`,
-        assignees: {
-          hardwareCommitterId: "u-wang-jie",
-          softwareCommitterId: "u-sun-mei",
-          softwareUserId: "u-liu-min"
-        }
-      }
-    });
+    const submissionPanel = page.getByRole("region", { name: "绑定变更提交" });
+    await expect(submissionPanel).toBeVisible();
+    await submissionPanel.getByLabel("硬件 MDE").selectOption("u-wang-jie");
+    await submissionPanel.getByLabel("软件 MDE").selectOption("u-sun-mei");
+    await submissionPanel.getByLabel("软件开发").selectOption("u-liu-min");
+    await expect(submissionPanel.getByLabel("硬件 MDE")).toHaveValue("u-wang-jie");
+    await expect(submissionPanel.getByLabel("软件 MDE")).toHaveValue("u-sun-mei");
+    await expect(submissionPanel.getByLabel("软件开发")).toHaveValue("u-liu-min");
+    const submitRoundPromise = page.waitForResponse((response) =>
+      response.request().method() === "POST" && response.url().includes("/api/v1/parameter-submission-rounds")
+    );
+    await submissionPanel.getByRole("button", { name: "提交审核" }).click();
+    const submitRound = await submitRoundPromise;
     expect(submitRound.status(), await submitRound.text()).toBe(201);
     const submitBody = (await submitRound.json()) as {
       item: { status: string; items: Array<{ requestId: string; parameterId: string }> };
@@ -867,27 +863,51 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const changeRequestId = submitBody.item.items[0]?.requestId;
     expect(changeRequestId).toBeTruthy();
     expect(submitBody.item.status).toBe("hardware_review");
+    await expect(submissionPanel.getByText(/已提交正式审核/)).toBeVisible();
+    await submissionPanel.getByRole("button", { name: "查看审核队列" }).click();
 
-    const hardwareReview = await request.post(
-      apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(changeRequestId!)}/review`),
-      {
-        headers: authHeadersForRole("hardware-committer"),
-        data: { decision: "advance", note: `${descriptionPrefix} hardware review` }
-      }
+    const advanceReviewInUi = async (
+      role: "hardware-committer" | "software-committer" | "software-user",
+      expectedStage: RegExp,
+    ) => {
+      await signInBrowserAsRole(
+        page,
+        role,
+        `${disposableRuntime.frontendUrl}/parameter-review`,
+      );
+      const requestRow = page.getByRole("row").filter({ hasText: editedRaw }).first();
+      await expect(requestRow).toBeVisible({ timeout: 30_000 });
+      await requestRow.click();
+      const reviewDetail = page.getByRole("complementary", { name: "审阅详情" });
+      await expect(reviewDetail).toBeVisible();
+      await reviewDetail.getByRole("button", { name: /查看提交详情/ }).click();
+      const submissionDetail = page.getByRole("dialog", { name: "提交详情" });
+      await expect(submissionDetail).toBeVisible();
+      await submissionDetail.getByRole("button", { name: "关闭" }).click();
+      await expect(reviewDetail.locator(".vertical-timeline-item--current")).toContainText(expectedStage);
+      const responsePromise = page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        response.url().includes(`/api/v1/parameter-change-requests/${encodeURIComponent(changeRequestId!)}/review`)
+      );
+      await reviewDetail.getByRole("button", {
+        name: role === "software-user" ? "确认合入" : "推进流程"
+      }).click();
+      const response = await responsePromise;
+      expect(response.ok(), await response.text()).toBe(true);
+      const body = (await response.json()) as { item: { status: string } };
+      return { response, body };
+    };
+
+    const { response: hardwareReview, body: hardwareReviewBody } = await advanceReviewInUi(
+      "hardware-committer",
+      /硬件(?:Committer|MDE)检视/,
     );
-    expect(hardwareReview.ok(), await hardwareReview.text()).toBe(true);
-    const hardwareReviewBody = (await hardwareReview.json()) as { item: { status: string } };
     expect(hardwareReviewBody.item.status).toBe("software_review");
 
-    const softwareReview = await request.post(
-      apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(changeRequestId!)}/review`),
-      {
-        headers: authHeadersForRole("software-committer"),
-        data: { decision: "advance", note: `${descriptionPrefix} software review` }
-      }
+    const { response: softwareReview, body: softwareReviewBody } = await advanceReviewInUi(
+      "software-committer",
+      /软件(?:Committer|MDE)检视/,
     );
-    expect(softwareReview.ok(), await softwareReview.text()).toBe(true);
-    const softwareReviewBody = (await softwareReview.json()) as { item: { status: string } };
     expect(softwareReviewBody.item.status).toBe("software_merge");
 
     const beforeMerge = await withPgClient(async (client) => {
@@ -923,15 +943,10 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(Number(beforeMerge?.merge_audit_count ?? 0)).toBe(0);
     expect(Number(beforeMerge?.writeback_audit_count ?? 0)).toBe(0);
 
-    const semanticMerge = await request.post(
-      apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(changeRequestId!)}/review`),
-      {
-        headers: authHeadersForRole("software-user"),
-        data: { decision: "advance", note: `${descriptionPrefix} semantic merge` }
-      }
+    const { response: semanticMerge, body: semanticMergeBody } = await advanceReviewInUi(
+      "software-user",
+      /软件(?:User|开发人员?)合入/,
     );
-    expect(semanticMerge.ok(), await semanticMerge.text()).toBe(true);
-    const semanticMergeBody = (await semanticMerge.json()) as { item: { status: string } };
     expect(semanticMergeBody.item.status).toBe("merged");
     const mergeRequestId = semanticMerge.headers()["x-request-id"];
     expect(mergeRequestId).toBeTruthy();
@@ -1102,7 +1117,47 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         }
       ],
       notes:
-        "UI schema cell-count block; stale 409; real bad-DTS fail-closed; typed draft → submit → review → semantic merge writeback (base immutable, candidate new, skipped=false)."
+        "API mode contains no legacy recommended-value workbench; UI schema cell-count block; stale 409; real bad-DTS fail-closed; typed draft → UI submit → role UI review → semantic merge writeback (base immutable, candidate new, skipped=false)."
+    });
+    await recordOperationEvidence({
+      operationId: "PARAM-HAPPY-001",
+      title: "binding-centric parameter submit review merge persistence audit",
+      status: "passed",
+      role: "Software User + Hardware/Software Committers + Admin",
+      route: "/parameters → /parameter-review",
+      page,
+      testInfo,
+      assertions: ["ui", "api", "db", "audit"],
+      api: [
+        summarizeApiResponse(successfulDraft, {
+          method: "POST",
+          path: `/api/v2/projects/${projectId}/parameter-bindings/.../drafts`,
+          responseSummary: `typed draft=${draftBody.item.draftId}`
+        }),
+        summarizeApiResponse(submitRound, {
+          method: "POST",
+          path: "/api/v1/parameter-submission-rounds",
+          responseSummary: `UI submitted request=${changeRequestId}`
+        }),
+        summarizeApiResponse(semanticMerge, {
+          method: "POST",
+          path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
+          responseSummary: `role UI merge=${semanticMergeBody.item.status}; candidate=${mergeEvidence.latestRevisionId}`
+        })
+      ],
+      db: [writebackDb],
+      audit: [
+        {
+          id: mergeEvidence.writebackAuditId ?? undefined,
+          kind: "parameter-writeback-to-file",
+          action: "writeback",
+          targetId: mergeEvidence.writebackFileId,
+          requestId: mergeEvidence.writebackTraceId ?? undefined,
+          metadataSummary: `candidateRevisionId=${mergeEvidence.latestRevisionId}; skipped=false`
+        }
+      ],
+      notes:
+        "Binding-centric API-mode UI searched gpio_int, created the typed candidate, submitted with scoped assignees, advanced all three visible role stages, persisted writeback, and emitted audit evidence without rendering recommendedValue compatibility UI."
     });
 
     // Identity mapping via real ambiguous ingest (throwaway Config Set).
@@ -1362,6 +1417,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(publishAuditItem).toBeTruthy();
 
     // 8) Reload bindingId/value/provenance from DB after UI reload.
+    await page.goto(`${disposableRuntime.frontendUrl}/parameters?project=${projectId}`);
     await page.reload();
     await dismissXiaozeHint(page);
     const workspaceAfter = page.getByRole("region", { name: "项目拓扑工作区" });

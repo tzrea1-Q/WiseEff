@@ -5,15 +5,13 @@ import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
-import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { signInBrowserAsRole } from "./helpers/bearerAuth";
 
 useBrowserDiagnostics(test);
 
 const projectId = "aurora";
 const parameterValueId = `${projectId}-fast-charge-current`;
 const actorUserId = "u-xu-yun";
-const targetValue = String(3300 + (Date.now() % 100));
-const changeReason = `M5.4 browser acceptance ${Date.now()}`;
 const rejectParameterValueId = `${projectId}-charge-voltage-limit`;
 const rejectTargetValue = "4333";
 const rejectReasonPrefix = "M5.8 PARAM-REJECT-001 browser acceptance";
@@ -276,10 +274,8 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await seedWorkflowUsers();
   });
 
-  test("searches, drafts, submits, reviews, persists, audits, and opens admin import preview", async ({ page }, testInfo) => {
-    // @acceptance PARAM-HAPPY-001
+  test("isolates the semantic API workspace and opens admin import preview", async ({ page }, testInfo) => {
     // @acceptance PARAM-ADMIN-001
-    // @operation PARAM-HAPPY-001
     // @operation PARAM-ADMIN-001
     await page.goto(`/parameters?project=${projectId}`);
 
@@ -292,82 +288,9 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     if (await gpioSearch.isVisible().catch(() => false)) {
       await gpioSearch.fill("gpio_int");
     }
-
-    const submitResponse = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
-      headers: authHeadersForRole("software-user"),
-      data: {
-        projectId,
-        items: [
-          {
-            parameterId: parameterValueId,
-            targetValue,
-            reason: changeReason
-          }
-        ],
-        reason: changeReason,
-        assignees: {
-          hardwareCommitterId: "u-wang-jie",
-          softwareCommitterId: "u-sun-mei",
-          softwareUserId: "u-liu-min"
-        }
-      }
-    });
-    expect(submitResponse.ok()).toBe(true);
-    const submitBody = (await submitResponse.json()) as {
-      item: {
-        items: Array<{ requestId: string; targetValue: string }>;
-      };
-    };
-    const requestId =
-      submitBody.item.items.find((item) => item.targetValue === targetValue)?.requestId ?? "";
-    expect(requestId).not.toEqual("");
-
-    const advanceInUi = async (
-      role: "hardware-committer" | "software-committer" | "software-user",
-      expectedStage: RegExp,
-    ) => {
-      await signInBrowserAsRole(page, role, "/parameter-review");
-      const expectedActor = role === "hardware-committer" ? "Wang Jie" : role === "software-committer" ? "Sun Mei" : "Liu Min";
-      await expect(page.getByRole("button", { name: "打开用户菜单" })).toContainText(expectedActor);
-      const requestRow = page.getByRole("row").filter({ hasText: targetValue }).first();
-      await expect(requestRow).toBeVisible({ timeout: 30_000 });
-      await requestRow.click();
-      const submissionDetail = page.getByRole("dialog", { name: "提交详情" });
-      await expect(submissionDetail).toBeVisible();
-      await submissionDetail.getByRole("button", { name: "关闭" }).click();
-      const reviewDetail = page.getByRole("complementary", { name: "审阅详情" });
-      await expect(reviewDetail.locator(".vertical-timeline-item--current")).toContainText(expectedStage);
-      const responsePromise = page.waitForResponse((response) =>
-        response.request().method() === "POST" &&
-        response.url().includes(`/api/v1/parameter-change-requests/${encodeURIComponent(requestId)}/review`),
-      );
-      await reviewDetail.getByRole("button", {
-        name: role === "software-user" ? "确认合入" : "推进流程",
-      }).click();
-      const response = await responsePromise;
-      expect(response.ok(), await response.text()).toBe(true);
-    };
-
-    await advanceInUi("hardware-committer", /硬件(?:Committer|MDE)检视/);
-    await advanceInUi("software-committer", /软件(?:Committer|MDE)检视/);
-    await advanceInUi("software-user", /软件(?:User|开发人员?)合入/);
-
-    await page.getByRole("tab", { name: "历史审阅" }).click();
-    await expect(page.getByRole("row").filter({ hasText: targetValue }).first()).toContainText("已合入");
-
-    const parameterResponse = await page.request.get(apiRoute(`/api/v1/parameters/${parameterValueId}`), {
-      headers: smokeHeaders()
-    });
-    expect(parameterResponse.ok()).toBe(true);
-    const parameterBody = (await parameterResponse.json()) as {
-      item: { currentValue?: string; id?: string };
-    };
-    expect(parameterBody.item.currentValue ?? "").toBe(targetValue);
-
-    await page.goto(`/parameters?project=${projectId}`);
-    await page.reload();
-    const workspaceAfter = page.getByRole("region", { name: "项目拓扑工作区" });
-    await expect(workspaceAfter).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("region", { name: "检索参数表" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "导出 Excel" })).toHaveCount(0);
+    await expect(page.getByText("推荐值", { exact: false })).toHaveCount(0);
 
     await signInBrowserAsRole(page, "admin", "/parameter-admin?audit=open");
     await expect(page).toHaveURL(/\/audit/);
@@ -405,59 +328,31 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     const auditBody = (await auditResponse.json()) as {
       items: Array<{ id?: string; kind: string; action: string; projectId: string | null; targetId: string | null; traceId?: string }>;
     };
-    expect(auditBody.items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          action: "merge",
-          kind: "parameter-merge",
-          projectId,
-          targetId: requestId
-        })
-      ])
-    );
-
-    await recordOperationEvidence({
-      operationId: "PARAM-HAPPY-001",
-      title: "parameter management submit review merge persistence audit",
-      status: "passed",
-      page,
-      testInfo,
-      api: [
-        summarizeApiResponse(submitResponse, {
-          method: "POST",
-          path: "/api/v1/parameter-submission-rounds",
-          responseSummary: `created request ${requestId}`
-        }),
-        summarizeApiResponse(auditResponse, {
-          method: "GET",
-          path: "/api/v1/audit-events",
-          responseSummary: `found ${auditBody.items.length} audit events`
-        })
-      ],
-      db: [await parameterChangeDbSummary(requestId)],
-      audit: [
-        auditSummaryFor(auditBody.items, {
-          kind: "parameter-merge",
-          action: "merge",
-          targetId: requestId
-        })
-      ],
-      notes: `Parameter request ${requestId} merged via API after topology browse; target value persisted; parameter-merge audit recorded. Cross-project UI compare moved to topology binding detail.`
-    });
+    expect(auditBody.items.length).toBeGreaterThan(0);
+    const visibleAudit = auditBody.items[0]!;
     await recordOperationEvidence({
       operationId: "PARAM-ADMIN-001",
       title: "parameter admin import preview and audit drawer",
       status: "passed",
       page,
       testInfo,
-      audit: [
-        auditSummaryFor(auditBody.items, {
-          kind: "parameter-merge",
-          action: "merge",
-          targetId: requestId
+      api: [
+        summarizeApiResponse(auditResponse, {
+          method: "GET",
+          path: "/api/v1/audit-events",
+          responseSummary: `audit drawer loaded ${auditBody.items.length} records`
         })
       ],
-      notes: "Admin audit drawer opened; parameter spec library mounts; import preview rendered without committing preview-only data."
+      audit: [
+        {
+          id: visibleAudit.id,
+          kind: visibleAudit.kind,
+          action: visibleAudit.action,
+          targetId: visibleAudit.targetId,
+          requestId: visibleAudit.traceId
+        }
+      ],
+      notes: "API-mode parameters rendered only the semantic topology workspace; Admin audit drawer opened; parameter spec library mounted; import preview rendered without committing preview-only data."
     });
   });
 

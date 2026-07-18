@@ -17,7 +17,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-ASSIGNEE-001` | P0 | parameters | automated | `/parameters` | Hardware User | ui | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
 | `PARAM-ASSIGNEE-002` | P0 | parameters | automated | `/parameters` | Hardware User | ui | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
 | `PARAM-ASSIGNEE-003` | P0 | parameters | automated | `/api/v1/parameter-submission-rounds` | Hardware User | api | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
-| `PARAM-HAPPY-001` | P0 | parameters | automated | `/parameters` | Hardware User, Hardware Committer, Software Committer, Software User, Admin | ui, api, db, audit | `e2e/acceptance/parameters.acceptance.spec.ts` |
+| `PARAM-HAPPY-001` | P0 | parameters | automated | `/parameters` | Hardware User, Hardware Committer, Software Committer, Software User, Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-HOME-001` | P1 | parameters | automated | `/parameter-home` | Admin | ui, api | `e2e/acceptance/parameter-home.acceptance.spec.ts` |
 | `PARAM-ADMIN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, audit | `e2e/acceptance/parameters.acceptance.spec.ts` |
 | `PARAM-ADMIN-002` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, audit | `e2e/acceptance/parameter-import-wizard.acceptance.spec.ts` |
@@ -61,11 +61,11 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-DTS-SEARCH-001` | P1 | parameters | automated | `/api/v1/projects/:projectId/dts-search` | Admin | ui, api | `e2e/acceptance/dts-structured.acceptance.spec.ts` |
 | `PARAM-DTS-IMPACT-001` | P1 | parameters | automated | `/api/v1/parameter-change-requests` | Admin, Hardware Committer | api | `e2e/acceptance/dts-structured.acceptance.spec.ts` |
 | `PARAM-DTS-RBAC-001` | P0 | parameters | automated | `/api/v1/parameter-submission-rounds` | Hardware User, Admin | api, db | `e2e/acceptance/dts-structured.acceptance.spec.ts` |
-| `PARAM-SPEC-GOVERN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` (real ingested specs) |
-| `PARAM-TOPOLOGY-BROWSE-001` | P0 | parameters | automated | `/parameters` | Admin, Hardware User | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` (topology API 200 + real tree) |
-| `PARAM-TOPOLOGY-EDIT-001` | P0 | parameters | automated | `/parameters` | Hardware User, Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` (drafts schema + 409 + compile fail) |
-| `PARAM-IDENTITY-MAP-001` | P1 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` (open-mapping gate) |
-| `PARAM-CONFIG-PUBLISH-GATE-001` | P0 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` (validate + DB reload) |
+| `PARAM-SPEC-GOVERN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-TOPOLOGY-BROWSE-001` | P0 | parameters | automated | `/parameters` | Admin, Hardware User | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-TOPOLOGY-EDIT-001` | P0 | parameters | automated | `/parameters` | Software User, Hardware Committer, Software Committer, Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-IDENTITY-MAP-001` | P1 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-CONFIG-PUBLISH-GATE-001` | P0 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 
 ## Deferred Or Conditional Operations
 

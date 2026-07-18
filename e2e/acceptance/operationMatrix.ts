@@ -155,10 +155,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameters",
     roles: ["Hardware User", "Hardware Committer", "Software Committer", "Software User", "Admin"],
-    action: "Search, draft, submit, review, merge, persist, and audit a parameter change.",
+    action: "Search a semantic binding, create a typed draft, submit it, review by assigned roles, merge, persist, and audit the writeback.",
     coverage: "automated",
     acceptanceIds: ["PARAM-HAPPY-001"],
-    specFiles: ["e2e/acceptance/parameters.acceptance.spec.ts"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
     assertions: ["ui", "api", "db", "audit"]
   },
   {
@@ -713,12 +713,12 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     priority: "P0",
     area: "parameters",
     route: "/parameters",
-    roles: ["Hardware User", "Admin"],
-    action: "Apply typed binding drafts with schema diagnostics, reject stale revisions with 409, and fail-closed compile validate.",
+    roles: ["Software User", "Hardware Committer", "Software Committer", "Admin"],
+    action: "Apply typed binding drafts with schema diagnostics, reject stale revisions with 409, submit through UI, and fail-closed semantic merge/writeback validation.",
     coverage: "automated",
     acceptanceIds: ["PARAM-TOPOLOGY-EDIT-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
-    assertions: ["ui", "api"]
+    assertions: ["ui", "api", "db", "audit"]
   },
   {
     id: "PARAM-IDENTITY-MAP-001",
