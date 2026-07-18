@@ -1,8 +1,8 @@
 ## Browser Acceptance Evidence
 
-- Date: 2026-07-18T03:28:48.325Z
+- Date: 2026-07-18T05:07:32.029Z
 - Branch: `fix/parameter-topology-round6-review-blockers`
-- Commit: `bb2e3e6160b05930ecc8a7e5a0a88ab22fcd7bab`
+- Commit: `4fcc707a4c8a8a12860a2e4ad36051990e66385b`
 - Dirty worktree: `false`
 - Mode: `local-non-hdc`
 - Status: `failed`
@@ -57,6 +57,7 @@
 
 - test-results/acceptance/preflight-evidence.md
 - test-results/acceptance/results.json
+- test-results/acceptance-evidence-runs/runs/4fcc707a4c8a8a12860a2e4ad36051990e66385b/full-20260718T045954503Z-4fcc707a4c8a
 - test-results/acceptance
 - playwright-report/acceptance
 - docs/generated/acceptance-operation-evidence.md

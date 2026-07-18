@@ -135,6 +135,16 @@
 3. 先增加显式 binding draft identity 的 schema 与 HTTP/PG RED 测试，以及租户/spec/write-lock mismatch 负向，再引入独立 binding item shape，不放宽 legacy 提交。
 4. 更新中英文 API/测试/验证/前端文档，执行浏览器跨项目验收和全量验证矩阵。外部 readiness 与 TD-042 继续如实保留为 blocker。
 
+### 后续执行结果 2
+
+- T11 已由 `a585162b` 与 `4fcc707a` 关闭：workspace 将 preferred revision 与所属项目一起保存；切换项目时清除 preferred revision、draft、候选人、发布消息和映射消息；草稿使用数据库实际返回的持久化 ID。组件 rerender 回归与真实 topology acceptance 都先创建 Aurora candidate，再切到 Nebula，断言加载 Nebula 自身 `current` revision、没有伪 404，然后切回 Aurora 继续正式工作流。
+- T12 已由 `b0c9d644` 关闭：可交付 record/artifact 位于 `test-results/acceptance-evidence-runs/runs/<sourceCommit>/<runId>`；只有完成的 full run 才发布 `latest-full.json`。聚焦 topology 运行不再清除或重新发布 full namespace；checker 会拒绝缺失 artifact 和混合 run/commit 输入。
+- T13 已由 `c3da65ea` 关闭：提交 wire contract 增加独立 binding-draft item，显式携带 `draftId`、`projectParameterBindingId`、`parameterSpecId`。Schema、service 与 HTTP/PG 测试证明组织、项目、spec、candidate 和 write lock 校验，同时保留彼此独立的 legacy flat-item 合同。
+- 干净 source commit `4fcc707a4c8a8a12860a2e4ad36051990e66385b` 生成 full run `full-20260718T045954503Z-4fcc707a4c8a`：Playwright 80 passed / 4 项硬件条件 skipped / 0 failed；requirements 59/59；operations 56/56；71 条 evidence record；0 invalid；0 validation error。`latest-full.json` SHA-256 为 `ed93176d505d7e9a418bb0573d20a93a8c9ad6aeebec0c8bed7bcd0947068531`。
+- 随后聚焦 topology acceptance 通过；latest-full manifest hash 未改变，`npm run acceptance:evidence` 仍 exit 0；不可变 full namespace 中 71 个 record 文件和 71 个被引用 artifact 均保持存在。
+- in-app browser 使用 disposable API `http://127.0.0.1:50645` 与前端 `http://127.0.0.1:5174/parameters` 验收。先通过可见 typed-edit UI 创建 Aurora candidate `185c2846-78da-4c18-9ec8-be851f317858`，再通过项目控件切换到 Nebula；页面加载 revision `8e211c47-4e0a-45e4-bffa-6d01350f2376`，提交面板被清除，且没有出现错误的“无语义修订”状态。1440×900、768×1024、390×844 三个视口均完成 snapshot/screenshot，console error 为 0，document-level 无横向溢出。验收结束后 disposable runtime 已停止且端口已释放。
+- 标准外层 acceptance 门禁继续受外部 `deviceGateway`、`xiaozeLlm`、`backups` readiness 阻断。TD-042 仍为 BLOCKER，因为干净非客户快照 apply→cutover→整库 restore 演练尚未执行；不宣称 production ready、cutover ready 或可合并。
+
 ## 风险与回滚
 
 | 风险 | 缓解 |

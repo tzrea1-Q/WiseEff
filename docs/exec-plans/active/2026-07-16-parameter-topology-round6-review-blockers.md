@@ -135,6 +135,16 @@ Implementation order and TDD gate:
 3. Add schema and HTTP/PG RED tests for explicit binding-draft identities and tenant/spec/write-lock mismatches, then introduce a separate binding item shape without weakening legacy submissions.
 4. Update bilingual API/testing/verification/frontend documentation, run browser project-switch acceptance, then execute the full verification matrix. External readiness and TD-042 remain explicit blockers.
 
+### Follow-up execution outcome 2
+
+- T11 is closed by `a585162b` and `4fcc707a`: the workspace stores the preferred revision together with its owning project, clears preferred revision/draft/assignee/publish/mapping state on project changes, and uses the persisted draft ID returned by the database. The component rerender regression and the real topology acceptance both create an Aurora candidate, switch to Nebula, assert Nebula loads its own `current` revision without a false 404, and then switch back before continuing the formal workflow.
+- T12 is closed by `b0c9d644`: evidence-grade records and artifacts live under `test-results/acceptance-evidence-runs/runs/<sourceCommit>/<runId>`, and `latest-full.json` is published only for a completed full run. A focused topology run no longer clears or republishes the full namespace; the checker rejects missing artifacts and mixed run/commit input.
+- T13 is closed by `c3da65ea`: the submission wire contract has a separate binding-draft item with `draftId`, `projectParameterBindingId`, and `parameterSpecId`. Schema, service, and HTTP/PG tests prove tenant/project/spec/candidate/write-lock validation while preserving the independent legacy flat-item contract.
+- Clean source commit `4fcc707a4c8a8a12860a2e4ad36051990e66385b` produced full run `full-20260718T045954503Z-4fcc707a4c8a`: Playwright 80 passed / 4 hardware-conditional skipped / 0 failed; requirements 59/59; operations 56/56; 71 evidence records; 0 invalid records; 0 validation errors. `latest-full.json` SHA-256 was `ed93176d505d7e9a418bb0573d20a93a8c9ad6aeebec0c8bed7bcd0947068531`.
+- After that full run, a focused topology acceptance passed. The latest-full manifest hash remained unchanged and `npm run acceptance:evidence` still exited zero; all 71 record files and 71 referenced artifacts remained present in the immutable full namespace.
+- In-app browser verification used disposable API `http://127.0.0.1:50645` and frontend `http://127.0.0.1:5174/parameters`. Aurora candidate `185c2846-78da-4c18-9ec8-be851f317858` was created through the visible typed-edit UI; switching the project control to Nebula loaded revision `8e211c47-4e0a-45e4-bffa-6d01350f2376`, cleared the submission panel, and did not display the false “no semantic revision” state. Snapshots/screenshots at 1440×900, 768×1024, and 390×844 had zero console errors and no document-level horizontal overflow. The disposable runtime was stopped and its ports released after verification.
+- The standard outer acceptance gate remains blocked by external `deviceGateway`, `xiaozeLlm`, and `backups` readiness. TD-042 remains BLOCKER because the clean non-customer snapshot apply→cutover→whole-database restore rehearsal has not run; no production, cutover, or merge-ready claim is made.
+
 ## Risks & rollback
 
 | Risk | Mitigation |
