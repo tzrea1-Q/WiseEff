@@ -479,8 +479,15 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       return readMockState(runtime).parameterSubmissionRounds.filter((round) => matchesSubmissionRoundQuery(round, query)).map(cloneSubmissionRound);
     },
     async submitParameterChanges(input: SubmitParameterChangesInput): Promise<ParameterSubmissionRound> {
+      if (input.items.some((item) => "draftId" in item)) {
+        throw new Error("Binding draft submission is only available in API runtime mode.");
+      }
+      const items = input.items.map((item) => {
+        if ("draftId" in item) throw new Error("Binding draft submission is only available in API runtime mode.");
+        return item;
+      });
       const before = readMockState(runtime);
-      const next = submitParameterRound(before, { ...input, projects, roles, buildRuntimeReviewFields });
+      const next = submitParameterRound(before, { ...input, items, projects, roles, buildRuntimeReviewFields });
       writeMockState(runtime, next);
       return cloneSubmissionRound(next.parameterSubmissionRounds[0]);
     },

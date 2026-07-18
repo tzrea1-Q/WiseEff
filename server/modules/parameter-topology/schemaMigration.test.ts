@@ -190,6 +190,7 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
         true
       );
       expect(await columnExists(db, "parameter_drafts", "project_parameter_binding_id")).toBe(true);
+      expect(await columnExists(db, "parameter_drafts", "candidate_config_revision_id")).toBe(true);
       expect(await columnExists(db, "parameter_change_requests", "parameter_spec_id")).toBe(true);
       expect(await columnExists(db, "parameter_change_requests", "project_parameter_binding_id")).toBe(
         true

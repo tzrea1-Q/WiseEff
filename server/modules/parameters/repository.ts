@@ -110,6 +110,113 @@ export async function getDraftWriteLock(
   return row ? toWriteLockFields(row) : null;
 }
 
+export type BindingDraftForSubmission = {
+  id: string;
+  projectId: string;
+  bindingId: string;
+  parameterSpecId: string;
+  candidateConfigRevisionId: string | null;
+  candidateStatus: string | null;
+  candidateHasBindingRevision: boolean;
+  targetValue: string;
+  reason: string;
+  writeLock: BindingWriteLockFields | null;
+  writeLockMatchesBinding: boolean;
+};
+
+export async function getBindingDraftForSubmission(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    userId: string;
+    draftId: string;
+  }
+): Promise<BindingDraftForSubmission | null> {
+  const result = await db.query<
+    ParameterWriteLockRow & {
+      id: string;
+      project_id: string;
+      project_parameter_binding_id: string;
+      parameter_spec_id: string;
+      candidate_config_revision_id: string | null;
+      candidate_status: string | null;
+      candidate_has_binding_revision: boolean;
+      write_lock_matches_binding: boolean;
+      target_value: string;
+      reason: string;
+    }
+  >(
+    `
+    select
+      d.id,
+      d.project_id,
+      d.project_parameter_binding_id,
+      b.parameter_spec_id,
+      d.candidate_config_revision_id,
+      cr.status as candidate_status,
+      exists (
+        select 1
+        from project_parameter_binding_revisions candidate_bpr
+        where candidate_bpr.binding_id = b.id
+          and candidate_bpr.config_revision_id = d.candidate_config_revision_id
+      ) as candidate_has_binding_revision,
+      exists (
+        select 1
+        from project_parameter_binding_revisions locked_bpr
+        where locked_bpr.id = d.binding_revision_id
+          and locked_bpr.binding_id = b.id
+          and locked_bpr.config_revision_id = d.base_config_revision_id
+      ) as write_lock_matches_binding,
+      d.target_value,
+      d.reason,
+      d.base_config_revision_id,
+      d.binding_revision_id,
+      d.property_occurrence_id,
+      d.source_file_version_id,
+      d.expected_checksum,
+      d.occurrence_span
+    from parameter_drafts d
+    inner join project_parameter_bindings b
+      on b.id = d.project_parameter_binding_id
+      and b.organization_id = d.organization_id
+      and b.project_id = d.project_id
+    left join dts_config_revisions cr
+      on cr.id = d.candidate_config_revision_id
+      and cr.organization_id = d.organization_id
+      and cr.project_id = d.project_id
+      and cr.config_set_id = (
+        select base_cr.config_set_id
+        from dts_config_revisions base_cr
+        where base_cr.id = d.base_config_revision_id
+          and base_cr.organization_id = d.organization_id
+          and base_cr.project_id = d.project_id
+      )
+    where d.organization_id = $1
+      and d.project_id = $2
+      and d.user_id = $3
+      and d.id = $4
+    limit 1
+    `,
+    [input.organizationId, input.projectId, input.userId, input.draftId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    bindingId: row.project_parameter_binding_id,
+    parameterSpecId: row.parameter_spec_id,
+    candidateConfigRevisionId: row.candidate_config_revision_id,
+    candidateStatus: row.candidate_status,
+    candidateHasBindingRevision: row.candidate_has_binding_revision,
+    targetValue: row.target_value,
+    reason: row.reason,
+    writeLock: toWriteLockFields(row),
+    writeLockMatchesBinding: row.write_lock_matches_binding
+  };
+}
+
 export async function getChangeRequestWriteLock(
   db: Queryable,
   input: { organizationId: string; requestId: string }
@@ -1534,6 +1641,7 @@ export async function upsertDraft(
     projectParameterBindingId?: string;
     parameterSpecId?: string;
     writeLock?: BindingWriteLockFields;
+    candidateConfigRevisionId?: string;
   }
 ) {
   if (await mustUseSemanticParameterIdentity(db)) {
@@ -1554,6 +1662,7 @@ export async function upsertDraft(
       sourceFileVersionId: input.writeLock?.sourceFileVersionId,
       expectedChecksum: input.writeLock?.expectedChecksum,
       occurrenceSpan: input.writeLock?.occurrenceSpan,
+      candidateConfigRevisionId: input.candidateConfigRevisionId,
     });
     void input.parameterSpecId;
     if (!row) {
@@ -1575,9 +1684,9 @@ export async function upsertDraft(
     insert into parameter_drafts (
       id, organization_id, project_id, project_parameter_value_id, user_id,
       target_value, reason, origin, origin_file_version_id,
-      project_parameter_binding_id
+      project_parameter_binding_id, candidate_config_revision_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     on conflict (project_id, project_parameter_value_id, user_id)
     do update set
       target_value = excluded.target_value,
@@ -1587,6 +1696,10 @@ export async function upsertDraft(
       project_parameter_binding_id = coalesce(
         excluded.project_parameter_binding_id,
         parameter_drafts.project_parameter_binding_id
+      ),
+      candidate_config_revision_id = coalesce(
+        excluded.candidate_config_revision_id,
+        parameter_drafts.candidate_config_revision_id
       ),
       updated_at = now()
     returning id, project_id, project_parameter_value_id, target_value, reason, updated_at
@@ -1601,7 +1714,8 @@ export async function upsertDraft(
       input.reason,
       input.origin ?? "manual",
       input.originFileVersionId ?? null,
-      input.projectParameterBindingId ?? null
+      input.projectParameterBindingId ?? null,
+      input.candidateConfigRevisionId ?? null
     ]
   );
 

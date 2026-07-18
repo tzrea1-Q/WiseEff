@@ -235,7 +235,14 @@ export function createParameterRuntimeActions({
     },
     async submitChanges(input) {
       if (runtimeMode !== "api") {
-        dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: input.items, reason: input.reason, assignees: input.assignees });
+        if (input.items.some((item) => "draftId" in item)) {
+          throw new Error("Binding draft submission is only available in API runtime mode.");
+        }
+        const items = input.items.map((item) => {
+          if ("draftId" in item) throw new Error("Binding draft submission is only available in API runtime mode.");
+          return item;
+        });
+        dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items, reason: input.reason, assignees: input.assignees });
         return undefined;
       }
 

@@ -362,12 +362,15 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
 
     const stored = await db!.query<{
       project_parameter_binding_id: string | null;
+      candidate_config_revision_id: string | null;
       target_value: string;
     }>(
-      `select project_parameter_binding_id, target_value from parameter_drafts where id = $1`,
+      `select project_parameter_binding_id, candidate_config_revision_id, target_value
+       from parameter_drafts where id = $1`,
       [draft.draftId],
     );
     expect(stored.rows[0]?.project_parameter_binding_id).toBe(fixture.binding.id);
+    expect(stored.rows[0]?.candidate_config_revision_id).toBe(draft.candidateRevisionId);
     expect(stored.rows[0]?.target_value).toBe("<3000>");
   });
 

@@ -80,16 +80,28 @@ export const saveDraftBodySchema = z.object({
   reason: nonBlankString
 });
 
+const legacySubmissionItemSchema = z
+  .object({
+    parameterId: nonEmptyString,
+    targetValue: nonEmptyString,
+    reason: nonBlankString
+  })
+  .strict();
+
+const bindingDraftSubmissionItemSchema = z
+  .object({
+    draftId: nonEmptyString,
+    projectParameterBindingId: nonEmptyString,
+    parameterSpecId: nonEmptyString,
+    targetValue: nonEmptyString,
+    reason: nonBlankString
+  })
+  .strict();
+
 export const submitRoundBodySchema = z.object({
   projectId: nonEmptyString,
   items: z
-    .array(
-      z.object({
-        parameterId: nonEmptyString,
-        targetValue: nonEmptyString,
-        reason: nonBlankString
-      })
-    )
+    .array(z.union([bindingDraftSubmissionItemSchema, legacySubmissionItemSchema]))
     .min(1),
   reason: z.string().optional(),
   assignees: workflowAssigneesSchema.optional()

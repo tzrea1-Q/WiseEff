@@ -16,7 +16,11 @@ import { ApiError } from "../../shared/http/errors";
 import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
 import { writebackMergedParameterValue, type WritebackServiceContext } from "../parameter-files/writebackService";
-import { resolveBindingWriteLock, resolveInitializationSuggestion } from "../parameter-topology/editService";
+import {
+  resolveBindingWriteLock,
+  resolveInitializationSuggestion,
+  verifyBindingWriteLock
+} from "../parameter-topology/editService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
 import { mustUseSemanticParameterIdentity } from "./semanticParameterReads";
@@ -34,6 +38,7 @@ import {
   findOpenChangeRequest,
   findProjectValueBySource,
   getChangeRequestById,
+  getBindingDraftForSubmission,
   getDraftWriteLock,
   getProjectById,
   getProjectParameterForUpdate,
@@ -114,13 +119,23 @@ export type SaveDraftInput = {
 
 export type SubmitParameterChangesInput = {
   projectId: string;
-  items: Array<{
-    parameterId: string;
-    targetValue: string;
-    reason: string;
-    projectParameterBindingId?: string;
-    parameterSpecId?: string;
-  }>;
+  items: Array<
+    | {
+        parameterId: string;
+        targetValue: string;
+        reason: string;
+        /** Internal structured-edit compatibility; not accepted by the legacy HTTP item schema. */
+        projectParameterBindingId?: string;
+        parameterSpecId?: string;
+      }
+    | {
+        draftId: string;
+        projectParameterBindingId: string;
+        parameterSpecId: string;
+        targetValue: string;
+        reason: string;
+      }
+  >;
   reason?: string;
   assignees?: {
     hardwareCommitterId?: string;
@@ -241,7 +256,7 @@ export async function submitStructuredEdits(
   }
 
   const seenKeys = new Set<string>();
-  const items: SubmitParameterChangesInput["items"] = [];
+  const items: Array<Extract<SubmitParameterChangesInput["items"][number], { parameterId: string }>> = [];
 
   for (const edit of input.edits) {
     const key = `${edit.fileId}:${sourceNodePathForStructuredEdit(edit)}`;
@@ -424,13 +439,14 @@ function assertUniqueSubmissionParameters(items: SubmitParameterChangesInput["it
   const parameterIds = new Set<string>();
 
   for (const item of items) {
-    if (parameterIds.has(item.parameterId)) {
+    const parameterId = "draftId" in item ? item.projectParameterBindingId : item.parameterId;
+    if (parameterIds.has(parameterId)) {
       throw new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", 400, {
-        parameterId: item.parameterId
+        parameterId
       });
     }
 
-    parameterIds.add(item.parameterId);
+    parameterIds.add(parameterId);
   }
 }
 
@@ -1081,18 +1097,82 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
   const workflowAssignees = getCompleteWorkflowAssignees(input);
 
   return db.transaction(async (tx) => {
-    const parameters = [];
+    const useSemanticIdentity = await mustUseSemanticParameterIdentity(tx);
+    const parameters: Array<{
+      item: SubmitParameterChangesInput["items"][number];
+      parameter: Awaited<ReturnType<typeof loadParameterForSubmission>>;
+      parameterId: string;
+      exactDraft?: NonNullable<Awaited<ReturnType<typeof getBindingDraftForSubmission>>>;
+    }> = [];
     for (const item of input.items) {
-      const parameter = await loadParameterForSubmission(tx, auth, input.projectId, item.parameterId);
+      let parameterId: string;
+      let exactDraft: NonNullable<Awaited<ReturnType<typeof getBindingDraftForSubmission>>> | undefined;
+      if ("draftId" in item) {
+        if (!useSemanticIdentity) {
+          throw new ApiError("CONFLICT", "Binding draft submission requires completed semantic identity cutover.", 409, {
+            draftId: item.draftId
+          });
+        }
+        const loadedDraft = await getBindingDraftForSubmission(tx, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          userId: auth.user.id,
+          draftId: item.draftId
+        });
+        if (!loadedDraft) {
+          throw new ApiError("NOT_FOUND", "Binding draft was not found for this project.", 404, {
+            draftId: item.draftId,
+            projectId: input.projectId
+          });
+        }
+        if (
+          loadedDraft.bindingId !== item.projectParameterBindingId ||
+          loadedDraft.parameterSpecId !== item.parameterSpecId
+        ) {
+          throw new ApiError("CONFLICT", "Binding draft identity does not match the submitted binding/spec.", 409, {
+            draftId: item.draftId,
+            projectParameterBindingId: item.projectParameterBindingId,
+            parameterSpecId: item.parameterSpecId
+          });
+        }
+        if (loadedDraft.targetValue !== item.targetValue || loadedDraft.reason !== item.reason) {
+          throw new ApiError("CONFLICT", "Binding draft value or reason changed before submission.", 409, {
+            draftId: item.draftId
+          });
+        }
+        if (
+          !loadedDraft.candidateConfigRevisionId ||
+          loadedDraft.candidateStatus !== "draft" ||
+          !loadedDraft.candidateHasBindingRevision
+        ) {
+          throw new ApiError("CONFLICT", "Binding draft candidate revision is missing or no longer draft.", 409, {
+            draftId: item.draftId,
+            candidateConfigRevisionId: loadedDraft.candidateConfigRevisionId,
+            candidateStatus: loadedDraft.candidateStatus
+          });
+        }
+        if (!loadedDraft.writeLock || !loadedDraft.writeLockMatchesBinding) {
+          throw new ApiError("CONFLICT", "Binding draft is missing exact writeback lock metadata.", 409, {
+            draftId: item.draftId
+          });
+        }
+        await verifyBindingWriteLock(tx, loadedDraft.writeLock);
+        parameterId = loadedDraft.bindingId;
+        exactDraft = loadedDraft;
+      } else {
+        parameterId = item.parameterId;
+      }
+
+      const parameter = await loadParameterForSubmission(tx, auth, input.projectId, parameterId);
       const openRequest = await findOpenChangeRequest(tx, {
         organizationId: auth.organization.id,
         projectId: input.projectId,
-        parameterId: item.parameterId
+        parameterId
       });
 
       if (openRequest) {
         throw new ApiError("CONFLICT", "Parameter already has an open change request.", 409, {
-          parameterId: item.parameterId,
+          parameterId,
           requestId: openRequest.id
         });
       }
@@ -1101,7 +1181,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       });
       if (hasConflict) {
         throw new ApiError("CONFLICT", "Parameter has an open file sync conflict.", 409, {
-          parameterId: item.parameterId
+          parameterId
         });
       }
 
@@ -1116,7 +1196,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         });
       }
 
-      parameters.push({ item, parameter });
+      parameters.push({ item, parameter, parameterId, exactDraft });
     }
 
     await assertWorkflowAssigneesAreEligible(tx, auth, input.projectId, workflowAssignees);
@@ -1132,56 +1212,68 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
     });
 
     const items = [];
-    for (const { item, parameter } of parameters) {
-      const useSemanticIdentity = await mustUseSemanticParameterIdentity(tx);
-      const draftIdentity = await tx.query<{
-        project_parameter_binding_id: string | null;
-      }>(
-        useSemanticIdentity
-          ? `
-        select project_parameter_binding_id
-        from parameter_drafts
-        where organization_id = $1
-          and project_id = $2
-          and project_parameter_binding_id = $3
-          and user_id = $4
-        limit 1
-        `
-          : `
-        select project_parameter_binding_id
-        from parameter_drafts
-        where organization_id = $1
-          and project_id = $2
-          and project_parameter_value_id = $3
-          and user_id = $4
-        limit 1
-        `,
-        [auth.organization.id, input.projectId, parameter.id, auth.user.id]
-      );
-      const projectParameterBindingId =
-        item.projectParameterBindingId ?? draftIdentity.rows[0]?.project_parameter_binding_id ?? undefined;
-      let parameterSpecId = item.parameterSpecId;
-      if (!parameterSpecId && projectParameterBindingId) {
-        const bindingSpec = await tx.query<{ parameter_spec_id: string }>(
-          `select parameter_spec_id from project_parameter_bindings where id = $1 limit 1`,
-          [projectParameterBindingId]
-        );
-        parameterSpecId = bindingSpec.rows[0]?.parameter_spec_id;
-      }
+    for (const { item, parameter, exactDraft } of parameters) {
+      let projectParameterBindingId: string | undefined;
+      let parameterSpecId: string | undefined;
+      let writeLock;
 
-      const writeLock =
-        projectParameterBindingId && (await mustUseSemanticParameterIdentity(tx))
-          ? await getDraftWriteLock(tx, {
-              organizationId: auth.organization.id,
-              projectId: input.projectId,
-              bindingId: projectParameterBindingId,
-              userId: auth.user.id,
-            })
-          : null;
-      if (projectParameterBindingId && (await mustUseSemanticParameterIdentity(tx)) && !writeLock) {
-        throw new ApiError("CONFLICT", "Draft is missing exact writeback lock metadata.", 409, {
-          parameterId: parameter.id,
-        });
+      if ("draftId" in item) {
+        projectParameterBindingId = exactDraft!.bindingId;
+        parameterSpecId = exactDraft!.parameterSpecId;
+        writeLock = exactDraft!.writeLock;
+      } else {
+        const draftIdentity = await tx.query<{
+          project_parameter_binding_id: string | null;
+        }>(
+          useSemanticIdentity
+            ? `
+          select project_parameter_binding_id
+          from parameter_drafts
+          where organization_id = $1
+            and project_id = $2
+            and project_parameter_binding_id = $3
+            and user_id = $4
+          limit 1
+          `
+            : `
+          select project_parameter_binding_id
+          from parameter_drafts
+          where organization_id = $1
+            and project_id = $2
+            and project_parameter_value_id = $3
+            and user_id = $4
+          limit 1
+          `,
+          [auth.organization.id, input.projectId, parameter.id, auth.user.id]
+        );
+        projectParameterBindingId =
+          item.projectParameterBindingId ?? draftIdentity.rows[0]?.project_parameter_binding_id ?? undefined;
+        parameterSpecId = item.parameterSpecId;
+        if (!parameterSpecId && projectParameterBindingId) {
+          const bindingSpec = await tx.query<{ parameter_spec_id: string }>(
+            `select parameter_spec_id
+             from project_parameter_bindings
+             where id = $1 and organization_id = $2 and project_id = $3
+             limit 1`,
+            [projectParameterBindingId, auth.organization.id, input.projectId]
+          );
+          parameterSpecId = bindingSpec.rows[0]?.parameter_spec_id;
+        }
+
+        writeLock =
+          projectParameterBindingId && useSemanticIdentity
+            ? await getDraftWriteLock(tx, {
+                organizationId: auth.organization.id,
+                projectId: input.projectId,
+                bindingId: projectParameterBindingId,
+                userId: auth.user.id
+              })
+            : null;
+        if (projectParameterBindingId && useSemanticIdentity && !writeLock) {
+          throw new ApiError("CONFLICT", "Draft is missing exact writeback lock metadata.", 409, {
+            parameterId: parameter.id
+          });
+        }
       }
 
       const request = await createChangeRequest(tx, {
@@ -1215,12 +1307,20 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         projectParameterBindingId
       });
 
-      await deleteDraftForParameter(tx, {
-        organizationId: auth.organization.id,
-        userId: auth.user.id,
-        projectId: input.projectId,
-        parameterId: parameter.id
-      });
+      if ("draftId" in item) {
+        await deleteDraftRow(tx, {
+          organizationId: auth.organization.id,
+          userId: auth.user.id,
+          draftId: item.draftId
+        });
+      } else {
+        await deleteDraftForParameter(tx, {
+          organizationId: auth.organization.id,
+          userId: auth.user.id,
+          projectId: input.projectId,
+          parameterId: parameter.id
+        });
+      }
 
       items.push(submissionItem);
     }
@@ -1239,7 +1339,16 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       targetId: round.id,
       metadata: {
         itemCount: items.length,
-        status
+        status,
+        bindingDraftIds: parameters.flatMap(({ item }) => ("draftId" in item ? [item.draftId] : [])),
+        projectParameterBindingIds: parameters.flatMap(({ item, exactDraft }) => {
+          if (exactDraft) return [exactDraft.bindingId];
+          return "draftId" in item || !item.projectParameterBindingId ? [] : [item.projectParameterBindingId];
+        }),
+        parameterSpecIds: parameters.flatMap(({ item, exactDraft }) => {
+          if (exactDraft) return [exactDraft.parameterSpecId];
+          return "draftId" in item || !item.parameterSpecId ? [] : [item.parameterSpecId];
+        })
       },
       traceId: context.requestId ?? randomUUID()
     });

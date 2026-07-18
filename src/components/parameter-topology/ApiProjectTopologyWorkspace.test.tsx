@@ -402,7 +402,7 @@ describe("ApiProjectTopologyWorkspace", () => {
         projectId: "aurora",
         items: [
           {
-            parameterId: "binding-sc8562-gpio-int",
+            draftId: "draft-typed-1",
             targetValue: "<&gpio13 30 0>",
             reason: "Raise gpio line for typed workflow",
             projectParameterBindingId: "binding-sc8562-gpio-int",

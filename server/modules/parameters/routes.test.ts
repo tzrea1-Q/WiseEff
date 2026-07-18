@@ -287,6 +287,89 @@ describe("parameter routes", () => {
     );
   });
 
+  it("submit route preserves explicit binding draft identity", async () => {
+    const db = makeDb();
+    const round = {
+      id: "round-binding-1",
+      projectId: "aurora",
+      projectName: "Aurora",
+      submitter: "Riley Chen",
+      createdAt: "2026-07-18T05:00:00.000Z",
+      status: "hardware_review" as const,
+      summary: "Binding draft submitted.",
+      items: []
+    };
+    vi.mocked(service.submitParameterChanges).mockResolvedValue(round);
+
+    const response = await requestJson<{ item: typeof round }>(makeServer({ db }), "/api/v1/parameter-submission-rounds", {
+      method: "POST",
+      body: JSON.stringify({
+        projectId: "aurora",
+        items: [
+          {
+            draftId: "draft-binding-1",
+            projectParameterBindingId: "binding-1",
+            parameterSpecId: "spec-1",
+            targetValue: "<&gpio13 30 0>",
+            reason: "Move GPIO line"
+          }
+        ],
+        assignees: {
+          hardwareCommitterId: "u-hardware",
+          softwareCommitterId: "u-software-committer",
+          softwareUserId: "u-software-user"
+        }
+      })
+    });
+
+    expect(response.status).toBe(201);
+    expect(service.submitParameterChanges).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      expect.objectContaining({
+        items: [
+          {
+            draftId: "draft-binding-1",
+            projectParameterBindingId: "binding-1",
+            parameterSpecId: "spec-1",
+            targetValue: "<&gpio13 30 0>",
+            reason: "Move GPIO line"
+          }
+        ]
+      }),
+      { requestId: "test-request" }
+    );
+  });
+
+  it("submit route rejects partial or mixed binding draft identity", async () => {
+    const db = makeDb();
+
+    for (const item of [
+      {
+        draftId: "draft-binding-1",
+        projectParameterBindingId: "binding-1",
+        targetValue: "<&gpio13 30 0>",
+        reason: "Missing spec"
+      },
+      {
+        parameterId: "binding-1",
+        draftId: "draft-binding-1",
+        projectParameterBindingId: "binding-1",
+        parameterSpecId: "spec-1",
+        targetValue: "<&gpio13 30 0>",
+        reason: "Mixed legacy and binding identity"
+      }
+    ]) {
+      const response = await requestJson<{ error: { code: string } }>(makeServer({ db }), "/api/v1/parameter-submission-rounds", {
+        method: "POST",
+        body: JSON.stringify({ projectId: "aurora", items: [item] })
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    }
+    expect(service.submitParameterChanges).not.toHaveBeenCalled();
+  });
+
   it("submit route rejects partial workflow assignees before the service", async () => {
     const db = makeDb();
 

@@ -31,7 +31,7 @@ import {
   updateChangeRequestStatus,
   upsertDraft
 } from "../parameters/repository";
-import { reviewChange } from "../parameters/service";
+import { reviewChange, submitParameterChanges } from "../parameters/service";
 import { resolveBindingWriteLock } from "./editService";
 import {
   applyParameterIdentityCutover,
@@ -382,6 +382,139 @@ async function seedPreCutoverGraph(db: Database) {
 }
 
 describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", () => {
+  it(
+    "submits an exact binding draft identity and rejects project/spec/candidate/write-lock mismatches",
+    async () => {
+      await withTempDatabase(async (db) => {
+        const seeded = await seedPreCutoverGraph(db);
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-binding-submit",
+          objectSnapshotId: "obj-snap-binding-submit"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        resetParameterIdentityCutoverCache();
+
+        await db.query(`delete from parameter_drafts where organization_id = $1 and project_id = $2`, [ORG, PROJECT]);
+        const candidateRevisionId = "rev-pcw-binding-submit-candidate";
+        await db.query(
+          `insert into dts_config_revisions (
+             id, organization_id, project_id, config_set_id, revision_number, status,
+             created_by_user_id, entry_file, include_search_paths, overlay_order, manifest_state
+           ) values ($1, $2, $3, $4, 2, 'draft', $5, 'pcw-base.dts', '["."]'::jsonb,
+             '["pcw-overlay.dts"]'::jsonb, 'complete')`,
+          [candidateRevisionId, ORG, PROJECT, CONFIG_SET, USER]
+        );
+        await db.query(
+          `insert into project_parameter_binding_revisions (
+             id, binding_id, config_revision_id, parameter_spec_version_id,
+             typed_value, canonical_value, raw_value, schema_state, policy_state
+           )
+           select $1, binding_id, $2, parameter_spec_version_id,
+             typed_value, canonical_value, raw_value, schema_state, policy_state
+           from project_parameter_binding_revisions
+           where binding_id = $3 and config_revision_id = $4`,
+          ["bpr-pcw-binding-submit-candidate", candidateRevisionId, seeded.bindingId, seeded.configRevisionId]
+        );
+        const writeLock = await resolveBindingWriteLock(db, makeAuth(), {
+          bindingId: seeded.bindingId,
+          baseRevisionId: seeded.configRevisionId
+        });
+        const draftId = "draft-pcw-binding-submit";
+        const targetValue = "<&gpio13 30 0>";
+        const reason = "Submit the exact typed binding draft";
+        await upsertDraft(db, {
+          id: draftId,
+          organizationId: ORG,
+          projectId: PROJECT,
+          parameterId: seeded.bindingId,
+          userId: USER,
+          targetValue,
+          reason,
+          projectParameterBindingId: seeded.bindingId,
+          parameterSpecId: seeded.specId,
+          candidateConfigRevisionId: candidateRevisionId,
+          writeLock
+        });
+
+        const submit = (overrides: Record<string, string> = {}, projectId = PROJECT) =>
+          submitParameterChanges(db, makeAuth(), {
+            projectId,
+            items: [
+              {
+                draftId,
+                projectParameterBindingId: seeded.bindingId,
+                parameterSpecId: seeded.specId,
+                targetValue,
+                reason,
+                ...overrides
+              }
+            ]
+          });
+
+        await expect(submit({ parameterSpecId: "spec-mismatch" })).rejects.toMatchObject({
+          code: "CONFLICT",
+          status: 409
+        });
+        await expect(submit({}, "project-other")).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+
+        await db.query(`update dts_config_revisions set status = 'invalid' where id = $1`, [candidateRevisionId]);
+        await expect(submit()).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+        await db.query(`update dts_config_revisions set status = 'draft' where id = $1`, [candidateRevisionId]);
+
+        await db.query(`update parameter_drafts set expected_checksum = 'stale-checksum' where id = $1`, [draftId]);
+        await expect(submit()).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+        await db.query(`update parameter_drafts set expected_checksum = $2 where id = $1`, [
+          draftId,
+          writeLock.expectedChecksum
+        ]);
+
+        const before = await db.query<{ requests: string; audits: string }>(
+          `select
+             (select count(*)::text from parameter_change_requests where project_id = $1 and id <> 'cr-pcw-seed') as requests,
+             (select count(*)::text from audit_events where project_id = $1 and kind = 'parameter-submit') as audits`,
+          [PROJECT]
+        );
+        expect(before.rows[0]).toEqual({ requests: "0", audits: "0" });
+
+        const round = await submit();
+        expect(round.items).toHaveLength(1);
+        const persisted = await db.query<{
+          project_parameter_binding_id: string;
+          parameter_spec_id: string;
+          base_config_revision_id: string;
+          binding_revision_id: string;
+        }>(
+          `select project_parameter_binding_id, parameter_spec_id, base_config_revision_id, binding_revision_id
+           from parameter_change_requests where submission_round_id = $1`,
+          [round.id]
+        );
+        expect(persisted.rows[0]).toMatchObject({
+          project_parameter_binding_id: seeded.bindingId,
+          parameter_spec_id: seeded.specId,
+          base_config_revision_id: writeLock.baseConfigRevisionId,
+          binding_revision_id: writeLock.bindingRevisionId
+        });
+        const audit = await db.query<{ metadata: Record<string, unknown> }>(
+          `select metadata from audit_events
+           where project_id = $1 and kind = 'parameter-submit'
+           order by created_at desc limit 1`,
+          [PROJECT]
+        );
+        expect(audit.rows[0]?.metadata).toMatchObject({
+          bindingDraftIds: [draftId],
+          projectParameterBindingIds: [seeded.bindingId],
+          parameterSpecIds: [seeded.specId]
+        });
+        expect((await db.query(`select 1 from parameter_drafts where id = $1`, [draftId])).rows).toHaveLength(0);
+      });
+    },
+    90_000
+  );
+
   it(
     "runs list/draft/submit/review/merge/history/writeback/debug/delete without shadow PPV",
     async () => {

@@ -1136,6 +1136,7 @@ export async function createBindingDraft(
     origin: "manual",
     projectParameterBindingId: binding.binding_id,
     parameterSpecId: binding.parameter_spec_id,
+    candidateConfigRevisionId: candidateRevisionId,
     writeLock: {
       baseConfigRevisionId: revision.id,
       bindingRevisionId: bindingRevision.rows[0]!.id,

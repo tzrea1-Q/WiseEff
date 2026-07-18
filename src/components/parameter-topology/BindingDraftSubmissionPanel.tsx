@@ -104,7 +104,7 @@ export function BindingDraftSubmissionPanel({
               projectId,
               items: [
                 {
-                  parameterId: draft.parameterId,
+                  draftId: draft.draftId,
                   targetValue: draft.rawText,
                   reason: draft.reason,
                   projectParameterBindingId: draft.projectParameterBindingId,

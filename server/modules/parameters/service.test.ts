@@ -1323,6 +1323,7 @@ describe("parameter service", () => {
       "Reduce thermal risk.",
       "manual",
       null,
+      null,
       null
     ]);
     expect(calls[2].text).toContain("user_id = $2");
