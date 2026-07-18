@@ -274,6 +274,18 @@ describe("ProjectTopologyWorkspace", () => {
     expect(tokenRule).toMatch(/overflow-wrap:\s*anywhere/);
     expect(tokenRule).toMatch(/word-break:\s*break-word/);
   });
+
+  it("allows topology panes and long locator labels to shrink inside the mobile viewport", () => {
+    const styles = readFileSync("src/styles.css", "utf8");
+    const paneItemRule =
+      styles.match(/\.project-topology-workspace__panes\s*>\s*\*\s*\{[^}]*\}/s)?.[0] ?? "";
+    const treeTokenRule =
+      styles.match(/\.topology-tree__item code,\s*\.topology-tree__item small\s*\{[^}]*\}/s)?.[0] ?? "";
+
+    expect(paneItemRule).toMatch(/min-width:\s*0/);
+    expect(treeTokenRule).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(treeTokenRule).toMatch(/word-break:\s*break-word/);
+  });
 });
 
 describe("topology teaching fixtures", () => {

@@ -19183,6 +19183,10 @@ body.xiaoze-popup-resize-active {
   align-items: start;
 }
 
+.project-topology-workspace__panes > * {
+  min-width: 0;
+}
+
 .project-topology-workspace--tablet .project-topology-workspace__panes,
 .project-topology-workspace--mobile .project-topology-workspace__panes {
   grid-template-columns: 1fr;
@@ -19276,6 +19280,12 @@ body.xiaoze-popup-resize-active {
 .topology-tree__item small {
   color: var(--muted, #667085);
   font-size: 0.75rem;
+}
+
+.topology-tree__item code,
+.topology-tree__item small {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .binding-property-table {
