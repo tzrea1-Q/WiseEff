@@ -10,6 +10,7 @@ import { isTestDatabaseAvailable } from "../../testing/testDatabase";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const migrationsDir = path.join(projectRoot, "server", "migrations");
 const migration0048 = "0048_parameter_topology_schema_shadow.sql";
+const migration0060 = "0060_parameter_draft_candidate_identity_gate.sql";
 
 const REQUIRED_TABLES = [
   "parameter_specs",
@@ -35,7 +36,8 @@ const REQUIRED_TABLES = [
   "dts_validation_runs",
   "dts_validation_diagnostics",
   "audit_subject_links",
-  "legacy_parameter_migration_evidence"
+  "legacy_parameter_migration_evidence",
+  "parameter_draft_identity_invalidations"
 ] as const;
 
 const databaseAvailable = await isTestDatabaseAvailable();
@@ -235,6 +237,101 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
 
       const again = await applyMigrations(db, migrationsDir);
       expect(again).toEqual([]);
+    });
+  });
+
+  it("invalidates pre-0060 manual drafts without candidate identity transactionally and idempotently", async () => {
+    await withTempDatabase(async (db) => {
+      await applyMigrationsThrough(db, migration0060);
+      await db.query(`insert into organizations (id, name) values ('org-0060', 'Org 0060')`);
+      await db.query(
+        `insert into users (id, organization_id, name, email, title)
+         values
+           ('user-0060', 'org-0060', 'User 0060', 'user-0060@example.com', 'Engineer'),
+           ('user-0060-semantic', 'org-0060', 'Semantic User 0060', 'user-0060-semantic@example.com', 'Engineer')`
+      );
+      await db.query(
+        `insert into projects (id, organization_id, name, code)
+         values ('project-0060', 'org-0060', 'Project 0060', 'P0060')`
+      );
+      await db.query(
+        `insert into parameter_definitions (
+           id, organization_id, name, description, explanation, config_format,
+           module, default_range, unit, risk
+         ) values (
+           'definition-0060', 'org-0060', 'gpio_int', 'desc', 'explain', 'DTS',
+           'manual', 'n/a', '', 'Medium'
+         )`
+      );
+      await db.query(
+        `insert into project_parameter_values (
+           id, organization_id, project_id, parameter_definition_id,
+           current_value, recommended_value, updated_by_user_id
+         ) values (
+           'ppv-0060', 'org-0060', 'project-0060', 'definition-0060',
+           '<&gpio13 29 0>', '', 'user-0060'
+         )`
+      );
+      await db.query(
+        `insert into parameter_specs (id, organization_id, source_kind, specification_key)
+         values ('spec-0060', 'org-0060', 'manual', 'manual/gpio-int-0060')`
+      );
+      await db.query(
+        `insert into project_parameter_bindings (
+           id, organization_id, project_id, logical_node_id, parameter_spec_id
+         ) values ('binding-0060', 'org-0060', 'project-0060', null, 'spec-0060')`
+      );
+      await db.query(
+        `insert into parameter_drafts (
+           id, organization_id, project_id, project_parameter_value_id, user_id,
+           target_value, reason, origin, project_parameter_binding_id,
+           candidate_config_revision_id
+         ) values
+           ('draft-0060-legacy', 'org-0060', 'project-0060', 'ppv-0060', 'user-0060',
+            '<&gpio13 30 0>', 'legacy draft', 'manual', null, null),
+           ('draft-0060-semantic', 'org-0060', 'project-0060', 'ppv-0060', 'user-0060-semantic',
+            '<&gpio13 31 0>', 'semantic draft', 'manual', 'binding-0060', null)`
+      );
+
+      const migrationSql = await fs.readFile(path.join(migrationsDir, migration0060), "utf8");
+      await db.query("begin");
+      await expect(
+        (async () => {
+          await db.query(migrationSql);
+          await db.query("select * from deliberate_0060_failure");
+        })()
+      ).rejects.toBeTruthy();
+      await db.query("rollback");
+      expect((await db.query(`select id from parameter_drafts order by id`)).rows).toHaveLength(2);
+      expect(await columnExists(db, "parameter_draft_identity_invalidations", "draft_id")).toBe(false);
+
+      const pending = await applyMigrations(db, migrationsDir);
+      expect(pending).toEqual([migration0060]);
+      expect((await db.query(`select id from parameter_drafts order by id`)).rows).toEqual([]);
+      expect(
+        (
+          await db.query<{
+            draft_id: string;
+            project_parameter_binding_id: string | null;
+            invalidation_reason: string;
+          }>(
+            `select draft_id, project_parameter_binding_id, invalidation_reason
+             from parameter_draft_identity_invalidations order by draft_id`
+          )
+        ).rows
+      ).toEqual([
+        {
+          draft_id: "draft-0060-legacy",
+          project_parameter_binding_id: null,
+          invalidation_reason: "missing-candidate-config-revision"
+        },
+        {
+          draft_id: "draft-0060-semantic",
+          project_parameter_binding_id: "binding-0060",
+          invalidation_reason: "missing-candidate-config-revision"
+        }
+      ]);
+      expect(await applyMigrations(db, migrationsDir)).toEqual([]);
     });
   });
 });
