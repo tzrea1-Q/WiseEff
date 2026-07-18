@@ -197,6 +197,18 @@
 5. 扩展 disposable topology acceptance，以第二个真实请求完成属性删除的 submit → Hardware Committer → Software Committer → Software User merge。断言 base revision/binding 不变、`writeback.skipped=false`、candidate 中属性与 binding 均不存在、reload 后仍保持删除，并且完整 writeback+validate 前无成功 audit。
 6. 从迁移人工重推导数据库摘要，更新中英文 domain/API/testing/cutover 文档，执行完整门禁，然后重新生成干净 source evidence。外部 readiness 与 TD-042 继续为 blocker。
 
+### 后续执行结果 4
+
+- `7e948d54` 新增前向 migration `0061_parameter_draft_candidate_identity_all_origins.sql`。真实 PostgreSQL 升级先停在 0060，插入 candidate-less manual、`file_sync`、resolved-file-conflict 草稿和一个 candidate-backed 对照。注入失败会完整回滚；成功运行记录 origin/file-version evidence，经正常 FK cascade 删除所有 candidate-less 行并保留对照，幂等重跑无新增 migration。
+- `93610634` 新增 migration `0062_parameter_change_action.sql`，将 `set|delete` 贯穿 typed draft、submission item、change request、DTO、audit、candidate proof 与 locked writeback。Delete proof 要求 candidate 中不存在 binding revision，并在同一 evidence chain 中存在匹配 logical node/property spec 的 delete effect。真实回写输出 `/delete-property/`，执行 re-ingest/validate，记录空 history tombstone，保持 base config/binding revision 不变，且不创建替代 candidate binding revision。
+- Disposable topology acceptance 现通过公开 typed-draft/submission 边界执行一个 set 和一个 delete 请求，再用可见 Hardware Committer → Software Committer → Software User 审核/合入控件推进。干净 source 聚焦运行 1/1 通过；PostgreSQL/schema 聚焦 21/21，前端 action/workspace/client 聚焦 24/24。
+- `48328c99` 更新 generated database summary，以及彼此独立的中英文 domain、API、testing、frontend、verification 与 cutover 文档。Runbook 现要求 0061 对全部 origin 执行门禁，并说明 0062 delete tombstone 处置。`docs:check` 与 `git diff --check` 通过。
+- 默认 `npm run test:all` 未覆盖 worker 参数并连续三次通过。每次均为前端 316 files / 2,191 passed / 5 skipped，服务端 215 files / 1,548 passed / 1 skipped；独立前后端全测总数相同。
+- `playwright-cli` 在 1440×900、768×1024、390×844 验收 `http://127.0.0.1:5173/parameters` 与 `/parameter-admin`。搜索并打开 `sc8562@6E` 的 `gpio_int = <&gpio13 29 0>` binding/spec detail；移动端 tree→property→detail 导航可操作。每个视口均有 snapshot/screenshot、console error 为 0、topology/spec network 请求成功且 document overflow=false。截图为 `work/ui-checks/parameter-topology-round6-delete-*.png`。产品当前没有 delete authoring 控件；delete 面板显示由组件测试证明，公开 API 创建/提交及 UI 角色链由 disposable acceptance 证明，不伪造不存在的控件。
+- 标准干净 source `npm run acceptance:browser` 在 `48328c99` 准确失败：preflight 受外部 `deviceGateway`、`xiaozeLlm`、`backups` 阻断；用户拥有的 8787 HDC/development-auth runtime 产生 69 passed / 11 failed / 4 项硬件条件 skipped，operation coverage 49/56。该诊断 evidence 由 `889fd29b` 保留。
+- 另一个以 `889fd29b26372823d955a09e7c4a6ce8f8ac8ea7` 为干净 source 的运行使用隔离 5174/18787 production-HMAC、simulator 与 deterministic-Xiaoze 服务。Playwright 共 84 项：80 passed / 4 项硬件条件 skipped / 0 failed；workflow A–E、G–I 通过；requirements 59/59；operation evidence 56/56、71 条 record、0 invalid、0 validation error。`npm run acceptance:evidence` 通过；`latest-full.json` SHA-256 为 `f4a71b053231f52602d7e87d761dcc992cadbc392638d92ba3f17b63a33913c3`。隔离 outer status 仅因显式 skip preflight 而 failed，不能覆盖真实 readiness blocker。
+- 工具链门禁解析项目钉扎的 dtc 1.8.1、fdtoverlay 1.8.1、dtschema 2026.6；Aurora、Nebula、Atlas 编译 diagnostics 为空。TD-042 继续保持 BLOCKER：尚未执行干净非客户快照 apply→cutover→整库 restore 演练；不宣称 production ready、cutover ready 或可合并。
+
 ## 风险与回滚
 
 | 风险 | 缓解 |
