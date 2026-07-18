@@ -14,8 +14,8 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PFB-AUTHZ-001` | P1 | product-feedback | automated | `/feedback-admin` | Hardware User | ui, api, db, screenshot | `e2e/acceptance/product-feedback.acceptance.spec.ts` |
 | `SHELL-DIAG-001` | P0 | shell | automated | `core routes` | Admin | ui | `e2e/acceptance/shell-navigation.acceptance.spec.ts` |
 | `PARAM-REASON-001` | P0 | parameters | automated | `/parameters` | Hardware User | ui | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
-| `PARAM-ASSIGNEE-001` | P0 | parameters | automated | `/parameters` | Hardware User | ui | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
-| `PARAM-ASSIGNEE-002` | P0 | parameters | automated | `/parameters` | Hardware User | ui | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
+| `PARAM-ASSIGNEE-001` | P0 | parameters | automated | `/parameters` | Software User | ui | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ASSIGNEE-002` | P0 | parameters | automated | `/parameters` | Software User | ui | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-ASSIGNEE-003` | P0 | parameters | automated | `/api/v1/parameter-submission-rounds` | Hardware User | api | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
 | `PARAM-HAPPY-001` | P0 | parameters | automated | `/parameters` | Hardware User, Hardware Committer, Software Committer, Software User, Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-HOME-001` | P1 | parameters | automated | `/parameter-home` | Admin | ui, api | `e2e/acceptance/parameter-home.acceptance.spec.ts` |

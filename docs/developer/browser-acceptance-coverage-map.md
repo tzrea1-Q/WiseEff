@@ -11,10 +11,10 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `AUTH-RUNTIME-001` | A | Yes | API-mode browser runtime loads the current user with the same auth contract used by local development. | `e2e/acceptance/auth-runtime.acceptance.spec.ts` |
 | `SHELL-DIAG-001` | A | Yes | Core routes fail acceptance on unexpected console errors, page errors, request failures, or critical WiseEff API `4xx/5xx` responses. | `e2e/acceptance/shell-navigation.acceptance.spec.ts`; shared diagnostics helper |
 | `PARAM-REASON-001` | B | Yes | Parameter drafts cannot be submitted with an empty or blank reason. | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
-| `PARAM-ASSIGNEE-001` | B | Yes | Parameter submission defaults every workflow slot to an eligible active non-admin user. | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
-| `PARAM-ASSIGNEE-002` | B | Yes | Workflow assignee dropdowns hide inactive, guest, admin-only, and role-ineligible users. | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
+| `PARAM-ASSIGNEE-001` | B | Yes | The binding-centric submission panel defaults every workflow slot to an eligible active non-admin user. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ASSIGNEE-002` | B | Yes | Binding-centric workflow assignee dropdowns hide inactive, guest, admin-only, and role-ineligible users. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-ASSIGNEE-003` | B | Yes | Forced invalid workflow assignees are rejected at the API boundary and surfaced by the UI flow. | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
-| `PARAM-HAPPY-001` | B | Yes | Parameter search, draft, submit, review, merge, persistence, and audit happy path works. | `e2e/acceptance/parameters.acceptance.spec.ts` |
+| `PARAM-HAPPY-001` | B | Yes | Binding search, typed draft, visible assignee selection, submit, role-specific review, semantic merge/writeback, reload, persistence, and audit happy path works. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-HOME-001` | B | Yes | Parameter home dashboard loads summary/hotspots from API data and supports in-page window and hotspot-dimension controls. | `e2e/acceptance/parameter-home.acceptance.spec.ts` |
 | `PARAM-ADMIN-001` | C | Yes | Parameter admin import preview and audit drawer remain available to Admin. | `e2e/acceptance/parameters.acceptance.spec.ts` |
 | `PARAM-ADMIN-002` | C | No | Admin can run the five-step parameter import wizard (target project, multi-format source, per-row review, batch preview, apply). | `e2e/acceptance/parameter-import-wizard.acceptance.spec.ts` |

@@ -336,12 +336,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // @acceptance PARAM-TOPOLOGY-BROWSE-001
     // @acceptance PARAM-TOPOLOGY-EDIT-001
     // @acceptance PARAM-HAPPY-001
+    // @acceptance PARAM-ASSIGNEE-001
+    // @acceptance PARAM-ASSIGNEE-002
     // @acceptance PARAM-IDENTITY-MAP-001
     // @acceptance PARAM-CONFIG-PUBLISH-GATE-001
     // @operation PARAM-SPEC-GOVERN-001
     // @operation PARAM-TOPOLOGY-BROWSE-001
     // @operation PARAM-TOPOLOGY-EDIT-001
     // @operation PARAM-HAPPY-001
+    // @operation PARAM-ASSIGNEE-001
+    // @operation PARAM-ASSIGNEE-002
     // @operation PARAM-IDENTITY-MAP-001
     // @operation PARAM-CONFIG-PUBLISH-GATE-001
     test.setTimeout(300_000);
@@ -845,12 +849,65 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     const submissionPanel = page.getByRole("region", { name: "绑定变更提交" });
     await expect(submissionPanel).toBeVisible();
-    await submissionPanel.getByLabel("硬件 MDE").selectOption("u-wang-jie");
-    await submissionPanel.getByLabel("软件 MDE").selectOption("u-sun-mei");
-    await submissionPanel.getByLabel("软件开发").selectOption("u-liu-min");
-    await expect(submissionPanel.getByLabel("硬件 MDE")).toHaveValue("u-wang-jie");
-    await expect(submissionPanel.getByLabel("软件 MDE")).toHaveValue("u-sun-mei");
-    await expect(submissionPanel.getByLabel("软件开发")).toHaveValue("u-liu-min");
+    const hardwareAssignee = submissionPanel.getByLabel("硬件 MDE");
+    const softwareCommitterAssignee = submissionPanel.getByLabel("软件 MDE");
+    const softwareUserAssignee = submissionPanel.getByLabel("软件开发");
+    const optionTexts = async (select: typeof hardwareAssignee) =>
+      (await select.locator("option").allTextContents()).map((text) => text.trim()).sort();
+    await expect(hardwareAssignee).not.toHaveValue("");
+    await expect(softwareCommitterAssignee).not.toHaveValue("");
+    await expect(softwareUserAssignee).not.toHaveValue("");
+    await expect.poll(() => optionTexts(hardwareAssignee)).toEqual(["Li Peng", "Wang Jie"]);
+    await expect.poll(() => optionTexts(softwareCommitterAssignee)).toEqual(["Sun Mei"]);
+    await expect.poll(() => optionTexts(softwareUserAssignee)).toEqual(["Chen Na", "Liu Min", "Sun Mei"]);
+    for (const select of [hardwareAssignee, softwareCommitterAssignee, softwareUserAssignee]) {
+      await expect(select).not.toContainText("Xu Yun");
+      await expect(select).not.toContainText("Tao Lin");
+    }
+    await recordOperationEvidence({
+      operationId: "PARAM-ASSIGNEE-001",
+      title: "binding workflow assignee defaults are eligible",
+      status: "passed",
+      role: "Software User",
+      route: "/parameters",
+      page,
+      testInfo,
+      assertions: ["ui", "api"],
+      api: [
+        {
+          method: "GET",
+          path: `/api/v1/projects/${projectId}/parameter-workflow-assignees`,
+          status: 200,
+          responseSummary: "project-scoped eligible assignees populated all three visible selectors"
+        }
+      ],
+      notes: "Binding-centric submit panel defaulted every workflow selector to an eligible active user."
+    });
+    await recordOperationEvidence({
+      operationId: "PARAM-ASSIGNEE-002",
+      title: "binding workflow assignee dropdowns hide ineligible users",
+      status: "passed",
+      role: "Software User",
+      route: "/parameters",
+      page,
+      testInfo,
+      assertions: ["ui", "api"],
+      api: [
+        {
+          method: "GET",
+          path: `/api/v1/projects/${projectId}/parameter-workflow-assignees`,
+          status: 200,
+          responseSummary: "exact role-specific option sets excluded admin, inactive, guest, and role-ineligible users"
+        }
+      ],
+      notes: "Visible binding workflow selectors exposed only the exact project-scoped eligible option sets."
+    });
+    await hardwareAssignee.selectOption("u-wang-jie");
+    await softwareCommitterAssignee.selectOption("u-sun-mei");
+    await softwareUserAssignee.selectOption("u-liu-min");
+    await expect(hardwareAssignee).toHaveValue("u-wang-jie");
+    await expect(softwareCommitterAssignee).toHaveValue("u-sun-mei");
+    await expect(softwareUserAssignee).toHaveValue("u-liu-min");
     const submitRoundPromise = page.waitForResponse((response) =>
       response.request().method() === "POST" && response.url().includes("/api/v1/parameter-submission-rounds")
     );

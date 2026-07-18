@@ -136,54 +136,12 @@ async function createDraftViaApi(
   return body.item;
 }
 
-function searchTable(page: Page) {
-  return page.locator(".parameters-table").filter({ hasText: parameterName }).first();
-}
-
 async function dismissXiaozeHint(page: Page) {
   const dismiss = page.getByRole("button", { name: "不再提示" });
   await dismiss.waitFor({ state: "visible", timeout: 2_000 }).catch(() => undefined);
   if (await dismiss.isVisible().catch(() => false)) {
     await dismiss.click();
   }
-}
-
-async function openParameterDraftDialog(page: Page, targetValue: string) {
-  await page.goto(`/parameters?project=${projectId}`);
-  await expect(searchTable(page)).toContainText(parameterName);
-  const row = searchTable(page).getByRole("row").filter({ hasText: parameterName }).first();
-  await expect(row).toBeVisible();
-  await row.locator(".view-row-button").click();
-  await dismissXiaozeHint(page);
-  await page.locator(".parameter-detail-dialog__actions .button.primary").click();
-  const draftDialog = page.locator(".parameter-draft-dialog");
-  await expect(draftDialog).toBeVisible();
-  const targetCard = draftDialog.locator(".parameter-draft-card").filter({ hasText: parameterName }).first();
-  await expect(targetCard).toBeVisible();
-  await targetCard.locator(".parameter-target-editor").fill(targetValue);
-  return draftDialog;
-}
-
-async function createOneValidDraft(page: Page, targetValue: string, reason: string) {
-  const draftDialog = await openParameterDraftDialog(page, targetValue);
-  const targetCard = draftDialog.locator(".parameter-draft-card").filter({ hasText: parameterName }).first();
-  await targetCard.getByLabel(/修改原因/).fill(reason);
-  await dismissXiaozeHint(page);
-  await draftDialog.locator(".parameter-detail-dialog__actions .button.primary").click();
-  await expect(draftDialog).not.toBeVisible();
-}
-
-async function openSubmitDialog(page: Page) {
-  await page.locator(".modified-parameters-section .button.primary").click();
-  const submitDialog = page.locator(".submission-dialog");
-  await expect(submitDialog).toBeVisible();
-  return submitDialog;
-}
-
-function optionTexts(select: ReturnType<Page["locator"]>) {
-  return select.locator("option").evaluateAll((options) =>
-    options.map((option) => option.textContent?.trim() ?? "").sort(),
-  );
 }
 
 async function submittedDraftEditDbSummary(requestId: string, excludedTargetValue: string) {
@@ -372,49 +330,6 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
       ],
       db: [await submittedDraftEditDbSummary(submittedRequestId!, "4331")],
       notes: "API-mode topology workspace: edited one draft target, deleted the other draft, and submitted only the edited item."
-    });
-  });
-
-  test("defaults every workflow assignee slot to an eligible active non-admin user and hides ineligible users", async ({
-    page
-  }, testInfo) => {
-    // @acceptance PARAM-ASSIGNEE-001
-    // @acceptance PARAM-ASSIGNEE-002
-    // @operation PARAM-ASSIGNEE-001
-    // @operation PARAM-ASSIGNEE-002
-    await createOneValidDraft(page, "3101", `${reasonPrefix} valid assignee coverage`);
-    const submitDialog = await openSubmitDialog(page);
-    const hardwareSelect = submitDialog.getByLabel("硬件 MDE");
-    const softwareCommitterSelect = submitDialog.getByLabel("软件 MDE");
-    const softwareUserSelect = submitDialog.getByLabel("软件开发");
-
-    await expect(hardwareSelect).not.toHaveValue("");
-    await expect(softwareCommitterSelect).not.toHaveValue("");
-    await expect(softwareUserSelect).not.toHaveValue("");
-    await expect.poll(() => optionTexts(hardwareSelect)).toEqual(["Li Peng", "Wang Jie"]);
-    await expect.poll(() => optionTexts(softwareCommitterSelect)).toEqual(["Sun Mei"]);
-    await expect.poll(() => optionTexts(softwareUserSelect)).toEqual(["Chen Na", "Liu Min", "Sun Mei"]);
-
-    for (const select of [hardwareSelect, softwareCommitterSelect, softwareUserSelect]) {
-      await expect(select).not.toContainText("Xu Yun");
-      await expect(select).not.toContainText("Tao Lin");
-    }
-
-    await recordOperationEvidence({
-      operationId: "PARAM-ASSIGNEE-001",
-      title: "workflow assignee defaults are eligible",
-      status: "passed",
-      page,
-      testInfo,
-      notes: "All three visible workflow selectors defaulted to non-empty project-scoped eligible active users."
-    });
-    await recordOperationEvidence({
-      operationId: "PARAM-ASSIGNEE-002",
-      title: "workflow assignee dropdowns hide ineligible users",
-      status: "passed",
-      page,
-      testInfo,
-      notes: "Visible dropdown options exactly excluded inactive, guest, admin-only, and role-ineligible users."
     });
   });
 

@@ -118,11 +118,11 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     priority: "P0",
     area: "parameters",
     route: "/parameters",
-    roles: ["Hardware User"],
+    roles: ["Software User"],
     action: "Default every workflow assignee slot to an eligible active user.",
     coverage: "automated",
     acceptanceIds: ["PARAM-ASSIGNEE-001"],
-    specFiles: ["e2e/acceptance/parameters-negative.acceptance.spec.ts"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
     assertions: ["ui"]
   },
   {
@@ -130,11 +130,11 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     priority: "P0",
     area: "parameters",
     route: "/parameters",
-    roles: ["Hardware User"],
+    roles: ["Software User"],
     action: "Hide inactive, guest, admin-only, and role-ineligible users from assignee dropdowns.",
     coverage: "automated",
     acceptanceIds: ["PARAM-ASSIGNEE-002"],
-    specFiles: ["e2e/acceptance/parameters-negative.acceptance.spec.ts"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
     assertions: ["ui"]
   },
   {
