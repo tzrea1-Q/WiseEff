@@ -252,6 +252,33 @@ describe("acceptance preflight helpers", () => {
     });
   });
 
+  it.each([
+    {
+      blockedBy: ["xiaozeLlm", "deviceGateway"],
+      detail: "Accepted for local non-HDC preflight; deviceGateway and xiaozeLlm remain blocked."
+    },
+    {
+      blockedBy: ["backups", "xiaozeLlm", "deviceGateway"],
+      detail: "Accepted for local non-HDC preflight; deviceGateway, xiaozeLlm, and backups remain blocked."
+    }
+  ])("accepts local non-HDC readiness regardless of blocker order: $blockedBy", ({ blockedBy, detail }) => {
+    expect(evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy })).toEqual({
+      accepted: true,
+      outcome: "non_hdc_local",
+      detail
+    });
+  });
+
+  it.each([
+    ["two-blocker allowlist", ["deviceGateway", "xiaozeLlm", "xiaozeLlm"]],
+    ["three-blocker allowlist", ["deviceGateway", "xiaozeLlm", "backups", "backups"]]
+  ])("rejects duplicated blockers in the %s", (_name, blockedBy) => {
+    expect(evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy })).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
+    });
+  });
+
   it("rejects the retired agentProvider blocker", () => {
     expect(
       evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway", "agentProvider"] })
@@ -285,6 +312,19 @@ describe("acceptance preflight helpers", () => {
   it("rejects extra pilot-readiness blockers", () => {
     expect(
       evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway", "backups"] })
+    ).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
+    });
+  });
+
+  it("rejects an unknown pilot-readiness blocker", () => {
+    expect(
+      evaluatePilotReadiness({
+        ok: false,
+        status: "blocked",
+        blockedBy: ["deviceGateway", "xiaozeLlm", "unknownGate"]
+      })
     ).toMatchObject({
       accepted: false,
       outcome: "blocked"

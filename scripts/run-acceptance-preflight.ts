@@ -208,6 +208,7 @@ export function evaluatePilotReadiness(
   if (
     !options.requirePilotReady &&
     options.startRuntime !== false &&
+    blockedBy.length === 2 &&
     blockerSet.size === 2 &&
     blockerSet.has("deviceGateway") &&
     blockerSet.has("xiaozeLlm")
@@ -222,6 +223,7 @@ export function evaluatePilotReadiness(
   if (
     !options.requirePilotReady &&
     options.startRuntime !== false &&
+    blockedBy.length === 3 &&
     blockerSet.size === 3 &&
     blockerSet.has("deviceGateway") &&
     blockerSet.has("xiaozeLlm") &&
