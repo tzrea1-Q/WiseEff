@@ -301,11 +301,12 @@ npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.int
 | 全局激活权限 | `globalSpecActivate.authz.test.ts` | 组织 Admin 激活全局 draft → 403；本组织 draft 可激活；读/绑定全局仍允许 |
 | 完整 valueShape 激活 | `DraftSpecActivatePanel.test.tsx`、`specCompleteness.ts` | gpio_int cellsPerGroup=3 保留；不完整形状阻断 |
 | 租户作用域清理 | `semanticFixtureCleanup.isolation.test.ts` | 其他组织/项目同名 Config Set 不受影响 |
-| submit→review→merge 验收 | `parameter-topology.acceptance.spec.ts`、`disposablePostCutoverRuntime.ts` | 自动创建可丢弃数据库，执行 migrations+identity cutover，校验 marker/run 一致性，再证明真实角色链、writeback、candidate AST、reload 与 base 不可变，最后销毁数据库 |
+| submit→review→merge 验收 | `parameter-topology.acceptance.spec.ts`、`disposablePostCutoverRuntime.ts` | 自动创建可丢弃数据库，执行 migrations+identity cutover，校验 marker/run 一致性，再证明真实 set/delete 角色链、writeback、candidate AST/tombstone、reload 与 base 不可变，最后销毁数据库。因无 delete UI 控件，delete 创建/提交走公开 API；角色决议与 merge 仍走 UI。 |
 | assignee/审阅 UI 验收 | `parameters-negative.acceptance.spec.ts`、`parameters.acceptance.spec.ts` | 三个可见下拉框使用 API 作用域 eligible user；production HMAC 浏览器身份分别执行硬件、软件与合入 UI 操作。不得用 DB 角色查询或同一 Admin token 替代 |
 | 项目切换隔离 | `ApiProjectTopologyWorkspace.test.tsx` rerender + deferred-response 回归、浏览器交互 | 项目 A 的 candidate/draft/message 不得影响项目 B；B 从 `current` 开始；迟到的 A 草稿响应被忽略且不能加载 B 候选人。 |
 | Evidence 运行隔离 | `check-operation-evidence.test.ts`、`run-browser-acceptance.test.ts` | 完整 record/artifact 共享 run+commit 目录；focused 保留 `latest-full`；混合运行 fail-closed。 |
-| Binding 提交身份 | `routes.test.ts`、`postCutoverWorkflow.integration.test.ts`、迁移 `0059`/`0060` | HTTP 保留 `draftId`/binding/spec；cutover 后拒绝遗留 save/submit；服务端锁 draft 并证明 candidate raw value/write lock。两个真实 PG 连接证明并发 typed edit 等待并在清理后保留；升级测试证明旧无 candidate 草稿被记录/失效，且支持回滚与幂等。 |
+| Binding 提交身份 | `routes.test.ts`、`postCutoverWorkflow.integration.test.ts`、迁移 `0059`–`0062` | HTTP 保留 `draftId`/binding/spec/action；cutover 后拒绝遗留 save/submit；服务端锁 draft 并证明 candidate set value 或 delete tombstone/write lock。两个真实 PG 连接证明并发 typed edit 等待并在清理后保留。升级测试证明 0061 跨 origin 失效 manual、`file_sync` 与冲突衍生 candidate-less 草稿，同时保留 candidate-backed 草稿，并支持回滚与幂等。 |
+| Typed delete 生命周期 | `schemas.test.ts`、`postCutoverWorkflow.integration.test.ts`、`parameter-topology.acceptance.spec.ts` | `delete` 要求空 target，贯穿 draft/submission/CR/audit，证明 candidate binding 缺失及匹配 occurrence effect，写出 `/delete-property/`，re-ingest/validate 后不产生替代 binding revision，并在真实角色审核/合入/reload 后保持缺失。 |
 | test:all 稳定性 | App API runtime 隔离、dashboard fixture 唯一命名空间、每个事务 PG client 的 FIFO 查询 | 默认 `npm run test:all` 无需临时 worker 覆盖或全局提高 timeout |
 
 不得为了让拓扑验收变绿而对共享开发/验收库就地 cutover。拓扑 spec 自主管理 `wiseeff_acceptance_disposable_*` 数据库，并在破坏性清理前校验 test marker。独立的干净快照演练完成前，TD-042 仍保持开放。
