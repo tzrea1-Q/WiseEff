@@ -234,21 +234,30 @@ describe("acceptance preflight helpers", () => {
 
   it("accepts local non-HDC readiness when deterministic agent and device gateway are the only blockers", () => {
     expect(
-      evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway", "agentProvider"] })
+      evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway", "xiaozeLlm"] })
     ).toEqual({
       accepted: true,
       outcome: "non_hdc_local",
-      detail: "Accepted for local non-HDC preflight; deviceGateway and agentProvider remain blocked."
+      detail: "Accepted for local non-HDC preflight; deviceGateway and xiaozeLlm remain blocked."
     });
   });
 
   it("accepts local non-HDC readiness when backup evidence is also blocked", () => {
     expect(
-      evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway", "agentProvider", "backups"] })
+      evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway", "xiaozeLlm", "backups"] })
     ).toEqual({
       accepted: true,
       outcome: "non_hdc_local",
-      detail: "Accepted for local non-HDC preflight; deviceGateway, agentProvider, and backups remain blocked."
+      detail: "Accepted for local non-HDC preflight; deviceGateway, xiaozeLlm, and backups remain blocked."
+    });
+  });
+
+  it("rejects the retired agentProvider blocker", () => {
+    expect(
+      evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway", "agentProvider"] })
+    ).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
     });
   });
 
@@ -264,7 +273,7 @@ describe("acceptance preflight helpers", () => {
   it("rejects deterministic agent readiness blockers when runtime startup is disabled", () => {
     expect(
       evaluatePilotReadiness(
-        { ok: false, status: "blocked", blockedBy: ["deviceGateway", "agentProvider"] },
+        { ok: false, status: "blocked", blockedBy: ["deviceGateway", "xiaozeLlm"] },
         { requirePilotReady: false, startRuntime: false }
       )
     ).toMatchObject({

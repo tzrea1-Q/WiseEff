@@ -210,12 +210,12 @@ export function evaluatePilotReadiness(
     options.startRuntime !== false &&
     blockerSet.size === 2 &&
     blockerSet.has("deviceGateway") &&
-    blockerSet.has("agentProvider")
+    blockerSet.has("xiaozeLlm")
   ) {
     return {
       accepted: true,
       outcome: "non_hdc_local",
-      detail: "Accepted for local non-HDC preflight; deviceGateway and agentProvider remain blocked."
+      detail: "Accepted for local non-HDC preflight; deviceGateway and xiaozeLlm remain blocked."
     };
   }
 
@@ -224,13 +224,13 @@ export function evaluatePilotReadiness(
     options.startRuntime !== false &&
     blockerSet.size === 3 &&
     blockerSet.has("deviceGateway") &&
-    blockerSet.has("agentProvider") &&
+    blockerSet.has("xiaozeLlm") &&
     blockerSet.has("backups")
   ) {
     return {
       accepted: true,
       outcome: "non_hdc_local",
-      detail: "Accepted for local non-HDC preflight; deviceGateway, agentProvider, and backups remain blocked."
+      detail: "Accepted for local non-HDC preflight; deviceGateway, xiaozeLlm, and backups remain blocked."
     };
   }
 
