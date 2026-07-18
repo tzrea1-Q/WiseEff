@@ -127,11 +127,13 @@ describe("device bridge cli", () => {
       throw new Error(`Bridge standby exited before logging readiness (exit code ${readiness.exitCode}).`);
     }
     if (readiness.type === "failed") {
-      const message = readiness.error instanceof Error ? readiness.error.message : String(readiness.error);
-      throw new Error(`Bridge standby failed before logging readiness: ${message}`);
+      throw new Error("Bridge standby failed before logging readiness.", { cause: readiness.error });
     }
 
     let exitCode: number | undefined;
+    let primaryError: unknown;
+    let hasPrimaryError = false;
+    const cleanupErrors: unknown[] = [];
     try {
       const response = await fetch(readiness.healthUrl);
       const body = (await response.json()) as { paired?: boolean };
@@ -141,9 +143,35 @@ describe("device bridge cli", () => {
       expect(readiness.healthUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/health$/);
       expect(readiness.healthUrl).not.toBe("http://127.0.0.1:18787/health");
       expect(capture.logs.some((line) => line.includes("Bridge standby started"))).toBe(true);
+    } catch (error) {
+      primaryError = error;
+      hasPrimaryError = true;
     } finally {
-      process.emit("SIGTERM");
-      exitCode = await startPromise;
+      try {
+        process.emit("SIGTERM");
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+      try {
+        exitCode = await startPromise;
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+
+    if (hasPrimaryError && cleanupErrors.length > 0) {
+      throw new AggregateError([primaryError, ...cleanupErrors], "Bridge standby verification and cleanup failed.", {
+        cause: primaryError
+      });
+    }
+    if (hasPrimaryError) {
+      throw primaryError;
+    }
+    if (cleanupErrors.length === 1) {
+      throw cleanupErrors[0];
+    }
+    if (cleanupErrors.length > 1) {
+      throw new AggregateError(cleanupErrors, "Bridge standby cleanup failed.");
     }
 
     expect(exitCode).toBe(0);
