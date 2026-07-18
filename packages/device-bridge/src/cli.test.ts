@@ -129,6 +129,7 @@ describe("device bridge cli", () => {
     expect(healthUrl).not.toBe("http://127.0.0.1:18787/health");
     expect(exitCode).toBe(0);
     expect(capture.logs.some((line) => line.includes("Bridge standby started"))).toBe(true);
+    expect(capture.logs).toContain("Bridge stopped.");
   });
 
   it("reads local health state for status command", async () => {
