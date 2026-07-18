@@ -209,6 +209,31 @@
 - 另一个以 `889fd29b26372823d955a09e7c4a6ce8f8ac8ea7` 为干净 source 的运行使用隔离 5174/18787 production-HMAC、simulator 与 deterministic-Xiaoze 服务。Playwright 共 84 项：80 passed / 4 项硬件条件 skipped / 0 failed；workflow A–E、G–I 通过；requirements 59/59；operation evidence 56/56、71 条 record、0 invalid、0 validation error。`npm run acceptance:evidence` 通过；`latest-full.json` SHA-256 为 `f4a71b053231f52602d7e87d761dcc992cadbc392638d92ba3f17b63a33913c3`。隔离 outer status 仅因显式 skip preflight 而 failed，不能覆盖真实 readiness blocker。
 - 工具链门禁解析项目钉扎的 dtc 1.8.1、fdtoverlay 1.8.1、dtschema 2026.6；Aurora、Nebula、Atlas 编译 diagnostics 为空。TD-042 继续保持 BLOCKER：尚未执行干净非客户快照 apply→cutover→整库 restore 演练；不宣称 production ready、cutover ready 或可合并。
 
+## 父智能体 Review 后续检查点 5（2026-07-18）
+
+父智能体继续 `Request changes`，因为 exact candidate 证据尚未具备事务持久性。代码核查确认 finding 成立：提交只锁定 `parameter_drafts`，读取 candidate 状态和 action proof 时没有锁 candidate revision；创建工作流记录后删除 draft，且 `parameter_submission_items` 与 `parameter_change_requests` 都没有复制 `candidate_config_revision_id`。
+
+### 成功标准与 TDD 顺序
+
+1. 新增前向 migration `0063`，在 submission item 和 change request 上持久化 exact candidate revision，并增加外键与索引。历史行无法安全重建 candidate，因此保持 nullable；post-cutover review/merge 遇到缺失身份必须 fail-closed。
+2. 实现前先增加 RED PostgreSQL 测试：draft/item/request 持久化同一个 candidate ID；确定性的双连接状态竞态；`set` 与 `delete` merge 拒绝 candidate 缺失、跨 scope、状态变化、值不匹配或 action proof 不匹配；migration 覆盖升级、注入失败回滚和幂等。
+3. 提交事务锁定 draft 和对应 candidate revision，证明同一组织、项目、Config Set 和精确 action chain，原子执行 `draft -> pending_approval` 后才创建工作流记录。
+4. 审核与合入持续保留 exact candidate 身份。merge 在 history/writeback 前再次锁定 candidate，复核 `pending_approval` 及持久化的 set binding-revision proof 或 delete tombstone proof。
+5. Audit 和 API 工作流数据暴露 candidate identity，用于关联提交证据和审核请求；acceptance 不得新增 repository/DB 业务绕过。
+
+### Documentation Impact Matrix 与 Update Gate
+
+| 文档 | 影响 / 必须更新 |
+| --- | --- |
+| 中英文 domain model | 记录持久 candidate 审核身份、`draft -> pending_approval` 和历史行 fail-closed |
+| 中英文 API contract | 记录工作流响应的 candidate identity 与 merge 冲突 |
+| 中英文 testing/verification | 记录双连接 PG 竞态和 merge 复核门禁 |
+| 中英文 identity cutover runbook | 增加 0063 前后检查及历史行拒绝后重建处置 |
+| Generated DB schema | 同步新增 FK 和索引到 0063 |
+| 中英文 active plan | 同步成功标准、回滚和真实命令证据 |
+
+文档门禁：分别更新每份受影响的中英文文档及 `docs/generated/db-schema.md`，然后执行 `npm run docs:check`。锁顺序固定为提交时 draft 后 candidate、合入时 request 后 candidate；竞态测试必须证明等待、释放且无死锁。不得为历史 request 猜测 candidate。应用回滚时新增 nullable 字段无害；事务回滚由 disposable DB 测试证明。验证矩阵包括聚焦 repository/service/HTTP/PG/schema、topology acceptance、`test:all`、contract/docs/build/toolchain/seed/selfhost、干净 source evidence 和 `git diff --check main...HEAD`。
+
 ## 风险与回滚
 
 | 风险 | 缓解 |

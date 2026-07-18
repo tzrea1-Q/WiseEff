@@ -209,6 +209,31 @@ Implementation and TDD order:
 - A separate clean-source run from `889fd29b26372823d955a09e7c4a6ce8f8ac8ea7` used isolated 5174/18787 production-HMAC, simulator, and deterministic-Xiaoze services. Playwright completed 84 tests: 80 passed / 4 hardware-conditional skipped / 0 failed; workflows A–E and G–I passed; requirements were 59/59; operation evidence was 56/56 with 71 records, zero invalid records, and zero validation errors. `npm run acceptance:evidence` passed; `latest-full.json` SHA-256 is `f4a71b053231f52602d7e87d761dcc992cadbc392638d92ba3f17b63a33913c3`. The isolated outer status remains failed solely because preflight was explicitly skipped and does not override the real readiness blockers.
 - Toolchain gates resolve project-pinned dtc 1.8.1, fdtoverlay 1.8.1, and dtschema 2026.6. Aurora, Nebula, and Atlas compile with empty diagnostics. TD-042 remains BLOCKER because no clean non-customer snapshot apply→cutover→whole-database restore rehearsal has run; no production, cutover, or merge-ready claim is made.
 
+## Parent review follow-up checkpoint 5 (2026-07-18)
+
+The parent review remains `Request changes` because exact candidate proof is not transactionally durable. The finding is confirmed: submission locks only `parameter_drafts`, reads candidate status/action proof without locking the candidate revision, deletes the draft after creating workflow records, and does not copy `candidate_config_revision_id` to either `parameter_submission_items` or `parameter_change_requests`.
+
+### Success criteria and TDD sequence
+
+1. Add forward-only migration `0063`. Persist the exact candidate revision on submission items and change requests with foreign keys and indexes. Existing rows remain nullable because their candidate cannot be reconstructed safely; post-cutover review/merge fails closed when identity is absent.
+2. Add RED PostgreSQL tests first: persistence of one candidate ID across draft/item/request; a deterministic two-connection status race; merge rejection for missing, foreign, status-changed, value-mismatched, and action-mismatched candidates for both `set` and `delete`; migration upgrade, injected rollback, and idempotency.
+3. Submission locks the draft and its candidate revision, proves the same organization/project/config set and exact action chain, atomically transitions `draft -> pending_approval`, and only then creates workflow records.
+4. Review and merge retain the exact candidate identity. Merge locks that candidate and re-checks `pending_approval` plus the persisted set binding-revision proof or delete tombstone proof before history/writeback begins.
+5. Audit and API workflow data expose candidate identity so submitted evidence can be correlated with the reviewed request. Acceptance may not add repository/DB business bypasses.
+
+### Documentation Impact Matrix and Update Gate
+
+| Artifact | Impact / required update |
+| --- | --- |
+| Domain model (English/Chinese) | Document durable candidate review identity, `draft -> pending_approval`, and historical fail-closed rows |
+| API contract (English/Chinese) | Document candidate identity in workflow responses and merge conflicts |
+| Testing/verification (English/Chinese) | Document two-connection PG race and merge revalidation gates |
+| Identity cutover runbook (English/Chinese) | Add 0063 pre/post checks and reject/recreate remediation for historical rows |
+| Generated DB schema | Record new FKs and indexes through 0063 |
+| Active plan (English/Chinese) | Keep success, rollback, and real command evidence synchronized |
+
+Documentation gate: update each impacted English and Chinese document separately plus `docs/generated/db-schema.md`, then run `npm run docs:check`. Lock order is draft then candidate at submission, and request then candidate at merge; the race test must prove blocking/release without deadlock. Never infer a candidate for historical requests. Application rollback leaves additive nullable columns harmless; transaction rollback is proven in a disposable database. Verification includes focused repository/service/HTTP/PG/schema tests, topology acceptance, `test:all`, contract/docs/build/toolchain/seed/selfhost, clean-source evidence, and `git diff --check main...HEAD`.
+
 ## Risks & rollback
 
 | Risk | Mitigation |
