@@ -1,5 +1,5 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -15,6 +15,14 @@ import {
 } from "../e2e/acceptance/helpers/evidence";
 import { acceptanceOperations } from "../e2e/acceptance/operationMatrix";
 import { acceptanceRequirements } from "../e2e/acceptance/requirements";
+import {
+  defaultEvidenceRunsRoot,
+  evidenceRunEnv,
+  prepareEvidenceRun,
+  publishLatestFullEvidenceRun,
+  resolveEvidenceRunContext,
+  type EvidenceRunContext
+} from "../e2e/acceptance/helpers/evidenceRun";
 import { evaluateAcceptanceCoverage, readAcceptanceSpecFiles } from "./check-acceptance-coverage";
 import { evaluateOperationMatrix, type OperationMatrixResult } from "./check-acceptance-operation-matrix";
 import {
@@ -74,7 +82,6 @@ export type DefaultWorkflowInput = {
 const defaultPreflightEvidenceOut = "test-results/acceptance/preflight-evidence.md";
 const defaultEvidenceOut = "docs/generated/acceptance-browser-evidence.md";
 const defaultPlaywrightJsonReport = "test-results/acceptance/results.json";
-const defaultOperationEvidenceRoot = "test-results/acceptance-operation-evidence";
 const defaultOperationEvidenceOut = "docs/generated/acceptance-operation-evidence.md";
 const defaultOperationEvidenceJsonOut = "docs/generated/acceptance-operation-evidence/index.json";
 const commandMaxBuffer = 64 * 1024 * 1024;
@@ -274,7 +281,8 @@ export function loadEnvContent(content: string, baseEnv: RuntimeEnv = process.en
 
 export function buildBrowserAcceptanceCommand(
   options: BrowserAcceptanceOptions,
-  loadedEnv: RuntimeEnv = process.env
+  loadedEnv: RuntimeEnv = process.env,
+  evidenceRun?: EvidenceRunContext
 ): CommandInvocation {
   const args = ["run", "acceptance:e2e", "--"];
 
@@ -282,12 +290,19 @@ export function buildBrowserAcceptanceCommand(
     args.push("--headed");
   }
 
-  return { command: npmCommand(), args, env: buildPlaywrightEnv(options, loadedEnv) };
+  return { command: npmCommand(), args, env: buildPlaywrightEnv(options, loadedEnv, evidenceRun) };
 }
 
-export function buildPlaywrightEnv(options: BrowserAcceptanceOptions, loadedEnv: RuntimeEnv = process.env): RuntimeEnv {
+export function buildPlaywrightEnv(
+  options: BrowserAcceptanceOptions,
+  loadedEnv: RuntimeEnv = process.env,
+  evidenceRun?: EvidenceRunContext
+): RuntimeEnv {
   const env: RuntimeEnv = { ...loadedEnv };
   env.WISEEFF_ACCEPTANCE_FRONTEND_URL = options.frontendUrl;
+  if (evidenceRun) {
+    Object.assign(env, evidenceRunEnv(evidenceRun));
+  }
 
   if (options.mode === "local-non-hdc") {
     env.DEBUG_DEVICE_GATEWAY_MODE = "simulator";
@@ -300,6 +315,21 @@ export function buildPlaywrightEnv(options: BrowserAcceptanceOptions, loadedEnv:
   }
 
   return env;
+}
+
+export function createFullEvidenceRun(
+  metadata: { commit: string },
+  now = new Date().toISOString(),
+  root = defaultEvidenceRunsRoot
+) {
+  const timestamp = now.replace(/[^0-9A-Za-z]/g, "");
+  const commit = metadata.commit || "unknown";
+  return resolveEvidenceRunContext({
+    WISEEFF_ACCEPTANCE_EVIDENCE_ROOT: root,
+    WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID: `full-${timestamp}-${commit.slice(0, 12)}`,
+    WISEEFF_ACCEPTANCE_EVIDENCE_SOURCE_COMMIT: commit,
+    WISEEFF_ACCEPTANCE_EVIDENCE_RUN_KIND: "full"
+  });
 }
 
 export function resolvePlaywrightHdcStatus(env: RuntimeEnv): BrowserAcceptanceHdcStatus {
@@ -449,6 +479,7 @@ async function main() {
   // Capture the source state before preflight/Playwright update tracked generated evidence.
   // The final report describes the code under test, not its own output files.
   const sourceMetadata = getGitMetadata();
+  const evidenceRun = createFullEvidenceRun(sourceMetadata);
   const options = parseBrowserAcceptanceArgs(process.argv.slice(2));
   const loadedEnv = loadEnvFile(options.envFile, process.env);
   const preflightCommand = buildPreflightCommand(options);
@@ -462,8 +493,8 @@ async function main() {
         detail: "--skip-preflight was provided."
       };
 
-  const playwrightCommand = buildBrowserAcceptanceCommand(options, loadedEnv);
-  clearOperationEvidenceRecords();
+  const playwrightCommand = buildBrowserAcceptanceCommand(options, loadedEnv, evidenceRun);
+  prepareEvidenceRun(evidenceRun);
   const playwright = runPlaywright(playwrightCommand);
   const workflows = readBrowserAcceptanceWorkflows(defaultPlaywrightJsonReport, {
     playwrightStatus: playwright.status,
@@ -481,13 +512,17 @@ async function main() {
   });
   const operationEvidence = evaluateOperationEvidence({
     operations: acceptanceOperations,
-    records: readOperationEvidenceRecords(defaultOperationEvidenceRoot)
+    records: readOperationEvidenceRecords(evidenceRun.recordsRoot),
+    expectedRun: { runId: evidenceRun.runId, sourceCommit: evidenceRun.sourceCommit }
   });
   writeOperationEvidenceIndex({
     evaluation: operationEvidence,
     markdownOut: defaultOperationEvidenceOut,
     jsonOut: defaultOperationEvidenceJsonOut
   });
+  if (playwright.status === "passed" && operationEvidence.status === "passed" && !sourceMetadata.dirty) {
+    publishLatestFullEvidenceRun(evidenceRun);
+  }
   const evaluation = evaluateBrowserAcceptanceRun({
     mode: options.mode,
     preflight,
@@ -510,6 +545,7 @@ async function main() {
     artifactPaths: [
       defaultPreflightEvidenceOut,
       defaultPlaywrightJsonReport,
+      evidenceRun.runRoot,
       "test-results/acceptance",
       "playwright-report/acceptance",
       defaultOperationEvidenceOut,
@@ -522,10 +558,6 @@ async function main() {
   writeFileSync(options.evidenceOut, evidence, "utf8");
   console.log(evidence);
   process.exit(evaluation.status === "passed" ? 0 : 1);
-}
-
-function clearOperationEvidenceRecords(root = defaultOperationEvidenceRoot) {
-  rmSync(root, { recursive: true, force: true });
 }
 
 function runPreflight(command: CommandInvocation) {

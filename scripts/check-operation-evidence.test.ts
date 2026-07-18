@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -15,6 +15,12 @@ import {
   summarizeApiResponse,
   writeOperationJsonArtifact
 } from "../e2e/acceptance/helpers/operationEvidence";
+import {
+  prepareEvidenceRun,
+  publishLatestFullEvidenceRun,
+  readLatestFullEvidenceRun,
+  resolveEvidenceRunContext
+} from "../e2e/acceptance/helpers/evidenceRun";
 
 describe("operation evidence helper", () => {
   it("builds stable evidence file names from operation id and title", () => {
@@ -115,9 +121,153 @@ describe("operation evidence helper", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("keeps JSON artifacts outside Playwright's disposable output directory", async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), "wiseeff-playwright-output-"));
+    const evidenceRoot = mkdtempSync(join(tmpdir(), "wiseeff-evidence-runs-"));
+    const attach = vi.fn();
+    const testInfo = {
+      file: "/repo/e2e/acceptance/focused.acceptance.spec.ts",
+      titlePath: ["focused suite", "focused operation"],
+      outputPath: (name: string) => join(outputRoot, name),
+      attach
+    };
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_ROOT", evidenceRoot);
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID", "full-run-123");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_SOURCE_COMMIT", "abc123");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_RUN_KIND", "full");
+
+    try {
+      const artifactPath = await writeOperationJsonArtifact(
+        testInfo as never,
+        "observed-response.json",
+        { status: 200 }
+      );
+
+      expect(artifactPath).toContain(join(evidenceRoot, "runs", "abc123", "full-run-123", "artifacts"));
+      rmSync(outputRoot, { recursive: true, force: true });
+      expect(existsSync(artifactPath)).toBe(true);
+      expect(attach).toHaveBeenCalledWith("operation-json-evidence", {
+        path: artifactPath,
+        contentType: "application/json"
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(outputRoot, { recursive: true, force: true });
+      rmSync(evidenceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("records run and source commit identity in the same immutable namespace", async () => {
+    const evidenceRoot = mkdtempSync(join(tmpdir(), "wiseeff-evidence-runs-"));
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_ROOT", evidenceRoot);
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID", "full-run-456");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_SOURCE_COMMIT", "def456");
+    vi.stubEnv("WISEEFF_ACCEPTANCE_EVIDENCE_RUN_KIND", "full");
+
+    try {
+      const result = await recordOperationEvidence({
+        operationId: "PARAM-HAPPY-001",
+        title: "namespaced record",
+        status: "passed"
+      });
+
+      expect(result.path).toContain(join(evidenceRoot, "runs", "def456", "full-run-456", "records"));
+      expect(result.record).toMatchObject({
+        runId: "full-run-456",
+        sourceCommit: "def456",
+        runKind: "full"
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(evidenceRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("operation evidence checker", () => {
+  it("publishes only completed full runs as latest evidence", () => {
+    const evidenceRoot = mkdtempSync(join(tmpdir(), "wiseeff-evidence-runs-"));
+    const full = resolveEvidenceRunContext({
+      WISEEFF_ACCEPTANCE_EVIDENCE_ROOT: evidenceRoot,
+      WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID: "full-run-1",
+      WISEEFF_ACCEPTANCE_EVIDENCE_SOURCE_COMMIT: "abc123",
+      WISEEFF_ACCEPTANCE_EVIDENCE_RUN_KIND: "full"
+    });
+    const focused = resolveEvidenceRunContext({
+      WISEEFF_ACCEPTANCE_EVIDENCE_ROOT: evidenceRoot,
+      WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID: "focused-run-2",
+      WISEEFF_ACCEPTANCE_EVIDENCE_SOURCE_COMMIT: "abc123",
+      WISEEFF_ACCEPTANCE_EVIDENCE_RUN_KIND: "focused"
+    });
+
+    try {
+      prepareEvidenceRun(full);
+      publishLatestFullEvidenceRun(full);
+      expect(readLatestFullEvidenceRun(evidenceRoot)).toMatchObject({
+        runId: "full-run-1",
+        sourceCommit: "abc123",
+        runKind: "full"
+      });
+
+      prepareEvidenceRun(focused);
+      expect(() => publishLatestFullEvidenceRun(focused)).toThrow(/full evidence run/i);
+      expect(readLatestFullEvidenceRun(evidenceRoot)).toMatchObject({
+        runId: "full-run-1",
+        sourceCommit: "abc123"
+      });
+    } finally {
+      rmSync(evidenceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects records mixed across run IDs or source commits", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-operation-evidence-"));
+    const artifactPath = join(root, "artifact.png");
+    writeFileSync(artifactPath, "fake-png", "utf8");
+    const baseRecord = {
+      status: "passed" as const,
+      role: "Admin",
+      route: "/parameters",
+      assertions: ["ui" as const],
+      artifacts: [artifactPath],
+      runtime: { mode: "api", apiBaseUrl: "http://127.0.0.1:8787" },
+      report: { path: "playwright-report/acceptance/index.html", format: "html" as const },
+      trace: { mode: "retain-on-failure" as const, path: "test-results/acceptance" },
+      reproduction: { steps: ["Open parameters", "Verify operation"] }
+    };
+
+    try {
+      const result = evaluateOperationEvidence({
+        operations: [{ id: "PARAM-HAPPY-001", priority: "P0", coverage: "automated" }],
+        expectedRun: { runId: "full-run-1", sourceCommit: "abc123" },
+        records: [
+          {
+            ...baseRecord,
+            operationId: "PARAM-HAPPY-001",
+            runId: "full-run-1",
+            sourceCommit: "abc123"
+          },
+          {
+            ...baseRecord,
+            operationId: "PARAM-HAPPY-001:foreign",
+            runId: "focused-run-2",
+            sourceCommit: "def456"
+          }
+        ]
+      });
+
+      expect(result.status).toBe("failed");
+      expect(result.validationErrors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ operationId: "PARAM-HAPPY-001:foreign", field: "run" })
+        ])
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("fails when a required automated operation has no evidence record", () => {
     const result = evaluateOperationEvidence({
       operations: [{ id: "PARAM-DRAFT-EDIT-001", priority: "P0", coverage: "automated" }],

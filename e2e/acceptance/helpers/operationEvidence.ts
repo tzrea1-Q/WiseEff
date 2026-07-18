@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Page, TestInfo } from "playwright/test";
 import { acceptanceOperations, type AcceptanceOperationAssertion } from "../operationMatrix";
+import { resolveEvidenceRunContext } from "./evidenceRun";
 
 export type OperationEvidenceStatus = "passed" | "failed" | "skipped";
 
@@ -72,8 +74,6 @@ export type RecordOperationEvidenceInput = {
   reproduction?: OperationEvidenceReproductionSummary;
 };
 
-const evidenceRoot = "test-results/acceptance-operation-evidence";
-
 export function operationEvidenceFileName(operationId: string, title: string) {
   const titleSlug = title
     .trim()
@@ -89,7 +89,11 @@ export async function writeOperationJsonArtifact(
   fileName: string,
   observed: unknown
 ) {
-  const artifactPath = testInfo.outputPath(fileName);
+  const run = resolveEvidenceRunContext();
+  const testIdentity = testInfo as TestInfo & { file?: string; titlePath?: string[] };
+  const identity = [testIdentity.file ?? "unknown-spec", ...(testIdentity.titlePath ?? []), fileName].join("\0");
+  const identityHash = createHash("sha256").update(identity).digest("hex").slice(0, 16);
+  const artifactPath = join(run.artifactsRoot, identityHash, basename(fileName));
   mkdirSync(dirname(artifactPath), { recursive: true });
   writeFileSync(artifactPath, `${JSON.stringify(observed, null, 2)}\n`, "utf8");
   await testInfo.attach("operation-json-evidence", {
@@ -100,20 +104,25 @@ export async function writeOperationJsonArtifact(
 }
 
 export async function recordOperationEvidence(input: RecordOperationEvidenceInput) {
-  mkdirSync(evidenceRoot, { recursive: true });
+  const run = resolveEvidenceRunContext();
+  mkdirSync(run.recordsRoot, { recursive: true });
+  mkdirSync(run.artifactsRoot, { recursive: true });
 
   const fileName = operationEvidenceFileName(input.operationId, input.title);
-  const jsonPath = join(evidenceRoot, fileName);
+  const jsonPath = join(run.recordsRoot, fileName);
   const artifacts = [...(input.artifacts ?? [])];
   const operation = operationForEvidence(input.operationId);
 
   if (input.page) {
-    const screenshotPath = jsonPath.replace(/\.json$/, ".png");
+    const screenshotPath = join(run.artifactsRoot, fileName.replace(/\.json$/, ".png"));
     await input.page.screenshot({ path: screenshotPath, fullPage: true });
     artifacts.push(screenshotPath);
   }
 
   const record = {
+    runId: run.runId,
+    sourceCommit: run.sourceCommit,
+    runKind: run.runKind,
     operationId: input.operationId,
     title: input.title,
     status: input.status,

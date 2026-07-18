@@ -2,10 +2,17 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { acceptanceOperations, type AcceptanceOperationAssertion } from "../e2e/acceptance/operationMatrix";
+import {
+  defaultEvidenceRunsRoot,
+  readLatestFullEvidenceRun
+} from "../e2e/acceptance/helpers/evidenceRun";
 
 export type OperationEvidenceStatus = "passed" | "failed" | "skipped";
 
 export type OperationEvidenceRecord = {
+  runId?: string;
+  sourceCommit?: string;
+  runKind?: "full" | "focused";
   operationId: string;
   status: OperationEvidenceStatus;
   title?: string;
@@ -66,6 +73,8 @@ export type OperationEvidenceOperation = {
 
 export type OperationEvidenceEvaluation = {
   status: "passed" | "failed";
+  runId?: string;
+  sourceCommit?: string;
   coveredOperationIds: string[];
   missingOperationIds: string[];
   invalidEvidenceIds: string[];
@@ -75,13 +84,14 @@ export type OperationEvidenceEvaluation = {
 
 export type OperationEvidenceValidationError = {
   operationId: string;
-  field: "role" | "route" | "assertions" | "artifacts" | "api" | "db" | "audit" | "runtime" | "report" | "trace" | "reproduction";
+  field: "run" | "role" | "route" | "assertions" | "artifacts" | "api" | "db" | "audit" | "runtime" | "report" | "trace" | "reproduction";
   message: string;
 };
 
 export type EvaluateOperationEvidenceInput = {
   operations: OperationEvidenceOperation[];
   records: OperationEvidenceRecord[];
+  expectedRun?: { runId: string; sourceCommit: string };
 };
 
 const defaultEvidenceRoot = "test-results/acceptance-operation-evidence";
@@ -103,13 +113,21 @@ export function evaluateOperationEvidence(input: EvaluateOperationEvidenceInput)
     .map((operation) => operation.id)
     .sort();
   const operationById = new Map(input.operations.map((operation) => [operation.id, operation]));
-  const validationErrors = input.records
+  const runValidationErrors = input.expectedRun
+    ? input.records.flatMap((record) => validateRunIdentity(record, input.expectedRun!))
+    : [];
+  const validationErrors = [
+    ...runValidationErrors,
+    ...input.records
     .filter((record) => record.status === "passed")
-    .flatMap((record) => validateReviewMetadata(record, operationById.get(parentOperationId(record.operationId))));
+    .flatMap((record) => validateReviewMetadata(record, operationById.get(parentOperationId(record.operationId))))
+  ];
   const invalidEvidenceIds = Array.from(new Set(validationErrors.map((error) => error.operationId))).sort();
 
   return {
     status: missingOperationIds.length === 0 && validationErrors.length === 0 ? "passed" : "failed",
+    runId: input.expectedRun?.runId,
+    sourceCommit: input.expectedRun?.sourceCommit,
     coveredOperationIds,
     missingOperationIds,
     invalidEvidenceIds,
@@ -139,6 +157,8 @@ export function renderOperationEvidenceMarkdown(evaluation: OperationEvidenceEva
     "# Operation Evidence Index",
     "",
     `- Status: \`${evaluation.status}\``,
+    `- Run ID: ${evaluation.runId ? `\`${evaluation.runId}\`` : "_legacy / unscoped_"}`,
+    `- Source commit: ${evaluation.sourceCommit ? `\`${evaluation.sourceCommit}\`` : "_legacy / unscoped_"}`,
     `- Covered operations: \`${evaluation.coveredOperationIds.length}\``,
     `- Missing operations: ${formatInlineCodeList(evaluation.missingOperationIds)}`,
     `- Invalid evidence records: ${formatInlineCodeList(evaluation.invalidEvidenceIds)}`,
@@ -149,6 +169,23 @@ export function renderOperationEvidenceMarkdown(evaluation: OperationEvidenceEva
     ...rows,
     ""
   ].join("\n");
+}
+
+function validateRunIdentity(
+  record: OperationEvidenceRecord,
+  expectedRun: { runId: string; sourceCommit: string }
+): OperationEvidenceValidationError[] {
+  if (record.runId === expectedRun.runId && record.sourceCommit === expectedRun.sourceCommit && record.runKind === "full") {
+    return [];
+  }
+
+  return [
+    {
+      operationId: record.operationId,
+      field: "run",
+      message: `Evidence belongs to run ${record.runId ?? "missing"} at ${record.sourceCommit ?? "missing"}; expected full run ${expectedRun.runId} at ${expectedRun.sourceCommit}.`
+    }
+  ];
 }
 
 export function writeOperationEvidenceIndex(input: {
@@ -360,9 +397,13 @@ function formatReplaySummary(record: OperationEvidenceRecord) {
 }
 
 export function runOperationEvidenceCheck() {
+  const latestRun = readLatestFullEvidenceRun(defaultEvidenceRunsRoot);
   const evaluation = evaluateOperationEvidence({
     operations: acceptanceOperations,
-    records: readOperationEvidenceRecords()
+    records: readOperationEvidenceRecords(latestRun?.recordsRoot ?? defaultEvidenceRoot),
+    expectedRun: latestRun
+      ? { runId: latestRun.runId, sourceCommit: latestRun.sourceCommit }
+      : undefined
   });
 
   writeOperationEvidenceIndex({

@@ -7,6 +7,7 @@ import {
   deriveBrowserAcceptanceWorkflowsFromPlaywrightReport,
   buildDefaultBrowserAcceptanceWorkflows,
   buildPreflightCommand,
+  createFullEvidenceRun,
   commandUsesShell,
   evaluateBrowserAcceptanceRun,
   loadEnvContent,
@@ -193,6 +194,22 @@ describe("browser acceptance runner", () => {
       command: npmCommand(),
       args: ["run", "acceptance:e2e", "--", "--headed"],
       env: expect.any(Object)
+    });
+  });
+
+  it("injects one full run and source commit namespace into Playwright", () => {
+    const run = createFullEvidenceRun(
+      { branch: "fix/evidence", commit: "abc123", dirty: false },
+      "2026-07-18T04:00:00.000Z",
+      "/tmp/wiseeff-evidence"
+    );
+    const command = buildBrowserAcceptanceCommand(parseBrowserAcceptanceArgs([], {}), {}, run);
+
+    expect(command.env).toMatchObject({
+      WISEEFF_ACCEPTANCE_EVIDENCE_ROOT: "/tmp/wiseeff-evidence",
+      WISEEFF_ACCEPTANCE_EVIDENCE_RUN_ID: "full-20260718T040000000Z-abc123",
+      WISEEFF_ACCEPTANCE_EVIDENCE_SOURCE_COMMIT: "abc123",
+      WISEEFF_ACCEPTANCE_EVIDENCE_RUN_KIND: "full"
     });
   });
 
