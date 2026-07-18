@@ -18,6 +18,8 @@
 6. Fixture 清理按 organizationId+projectId+name 解析 Config Set；跨组织/项目同名数据不受影响。
 7. 默认 `npm run test:all` 稳定，无需临时 maxWorkers；从根因隔离 migration/dashboard。
 8. 双语文档更新；`npm run docs:check` 通过；TD-042 保持 BLOCKER。
+9. 默认 shell 下，检查脚本、API runtime、seed 编译与拓扑验收都从项目本地 dtschema venv 解析固定工具链，不再要求导出个人 Python 路径。
+10. API 模式 `/parameters` 只渲染 binding-centric 拓扑、编辑与提交表面；遗留扁平表格和 `recommendedValue` 草稿语义仅保留在 mock，真实提交、角色审核和合入走正式 UI/API 边界。
 
 ## 任务映射
 
@@ -31,6 +33,8 @@
 | T6 | cleanup 仅按 name 查 Config Set | 租户作用域解析 + PG 隔离测试 |
 | T7 | test:all PG 竞态 | 标准 vitest/npm 脚本固化隔离 |
 | T8 | 文档/浏览器/证据 | 双语文档 + playwright-cli + 门禁 |
+| T9 | `dt-validate` 依赖开发者 PATH 导出 | 项目本地 venv bootstrap + 共享二进制解析器 + 默认 shell 验收 |
+| T10 | API 模式渲染遗留推荐值工作台 | API/mock 渲染隔离 + binding 草稿提交 UI + 角色审核/合入 UI 验收 |
 
 ## 任务依赖
 
@@ -55,6 +59,8 @@
 | Cleanup | 跨组织/项目同名 Config Set PG 测试 |
 | 稳定性 | 默认配置连续 `npm run test:all` ×3 |
 | 工具链 | `dts:toolchain:check`、`dtc:seed:compile` |
+| 默认 shell 工具链 | 从 `PATH` 移除个人 Python bin；共享 resolver 单测；bootstrap 项目 venv；不注入 PATH 运行检查和 API 拓扑验收 |
+| API 模式语义 UI | `ParametersPage` 缺席断言；binding 编辑/提交组件测试；Playwright typed edit → submit → 角色审核 → merge |
 
 ## 文档影响矩阵
 
@@ -84,6 +90,15 @@
 - 已从干净 source commit `51bc06085df382754197270611cc25e990e19758` 重新生成完整 `acceptance:browser` 证据（`Dirty worktree: false`）。Playwright 共 85 项：81 expected/pass、4 项硬件条件 skip、0 failure/error。需求覆盖 59/59；operation evidence 覆盖 56/56，共 71 条记录，0 invalid、0 validation error；`npm run acceptance:evidence` exit 0。外层 runner 仅因 pilot readiness 的外部 `deviceGateway`、`xiaozeLlm`、`backups` 阻断而保持 failed。
 - 已记录三次默认 `npm run test:all`（日志 2/3/4）且均 exit 0，结果一致：前端 314 files，2178 passed / 5 skipped；服务端 214 files，1531 passed / 1 skipped。未使用临时 worker 参数。
 - 工具链门禁通过：dtc 1.8.1、fdtoverlay 1.8.1、dtschema 2026.6；Aurora、Nebula、Atlas 均真实编译成功且 diagnostics 为空。Generated evidence/docs 已记录在 `4c199b3a`；提交后 contract/docs/build、独立前后端测试、默认 `test:all`、工具链、self-host、operation evidence、diff 门禁均通过。计划仅因明确的外部 pilot/cutover 阻断继续 active。TD-042 仍为 BLOCKER：尚未执行干净非客户快照 apply→cutover→整库恢复演练。
+
+## 父智能体 Review 续修检查点（2026-07-18）
+
+父智能体仍为 `Request changes`，包含两个 P1。复现确认：默认 shell 无法解析 `dt-validate`；API 模式 `/parameters` 在拓扑工作区之后继续进入遗留 `recommendedValue` 表格/草稿表面。
+
+- T9 设计：从固定 `tools/dts-toolchain/requirements.txt` 创建忽略提交的 `.wiseeff-tools/dts-toolchain` venv；提供显式 bootstrap；API runner 与 CLI check 共用同一解析器。项目本地二进制优先，非法显式 override 失败关闭，runtime 校验不得自动联网安装或修改宿主机。
+- T10 设计：API 模式只渲染 `ApiProjectTopologyWorkspace`；遗留 table/detail/draft/export 仅保留 mock。Binding 编辑必须填写原因，保留 `/api/v2` 返回的 typed binding/candidate 身份，并通过 `/api/v1/parameter-submission-rounds` 提交。Hardware Committer、Software Committer、Software User 继续在真实 `/parameter-review` UI 操作。
+- TDD 门禁：先让 resolver 与渲染隔离测试失败；binding 提交测试须断言 typed identity/value/reason 和服务端过滤的角色候选；Playwright 必须用可见的编辑/提交/审核/合入交互替换直接推进业务状态的 API。
+- 文档门禁：从中英文开发、测试、验证和 cutover 文档移除个人 `~/Library/Python/...` PATH 指引；记录项目 bootstrap/解析顺序以及遗留参数工作台仅限 mock。
 
 ## 风险与回滚
 

@@ -18,6 +18,8 @@
 6. Fixture cleanup resolves Config Sets by organizationId+projectId+name; cross-org/project same-name sets untouched.
 7. Default `npm run test:all` is stable without ad-hoc maxWorkers; migration/dashboard isolation fixed at root cause.
 8. Bilingual docs updated; `npm run docs:check` passes; TD-042 stays BLOCKER.
+9. Default-shell toolchain discovery resolves the pinned project-local dtschema venv for the check script, API runtime, seed compiler, and topology acceptance; no personal Python path export is required.
+10. API-mode `/parameters` renders only the binding-centric topology/edit/submission surface. Legacy flat tables and `recommendedValue` draft semantics remain mock-only; submit, role review, and merge are exercised through real UI/API boundaries.
 
 ## Task map
 
@@ -31,6 +33,8 @@
 | T6 | Cleanup Config Set by name only | Tenant-scoped resolve + PG isolation tests |
 | T7 | test:all PG races | Worker/DB isolation in standard vitest/npm scripts |
 | T8 | Docs/browser/evidence | Bilingual docs + playwright-cli + gates |
+| T9 | `dt-validate` depends on a developer PATH export | Project-local venv bootstrap + shared binary resolver + default-shell acceptance |
+| T10 | API mode renders the legacy recommended-value workbench | API/mock render isolation + binding draft submission UI + role review/merge UI acceptance |
 
 ## Task dependencies
 
@@ -55,6 +59,8 @@ Plan
 | Cleanup | cross-org/project same-name Config Set PG test |
 | Stability | `npm run test:all` ×3 default config |
 | Toolchain | `dts:toolchain:check`, `dtc:seed:compile` |
+| Default-shell toolchain | clear personal Python bin from `PATH`; shared resolver unit tests; bootstrap project venv; check + API topology acceptance without PATH injection |
+| API-mode semantic UI | `ParametersPage` absence assertions; binding edit/submission component tests; Playwright typed edit → submit → role review → merge |
 
 ## Documentation Impact Matrix
 
@@ -84,6 +90,15 @@ Blocking before plan completion: every `Update`/`Review` row updated or explicit
 - Full `acceptance:browser` evidence was regenerated from clean source commit `51bc06085df382754197270611cc25e990e19758` (`Dirty worktree: false`). Playwright completed 85 tests: 81 expected/pass, four hardware-conditional skips, zero failures/errors. Requirement coverage is 59/59; operation evidence is 56/56 with 71 records, zero invalid records, and zero validation errors. `npm run acceptance:evidence` exits zero. The outer runner remains failed only because pilot readiness is externally blocked by `deviceGateway`, `xiaozeLlm`, and `backups`.
 - Three recorded default `npm run test:all` runs (logs 2/3/4) exited zero with identical totals: frontend 314 files, 2178 passed / 5 skipped; server 214 files, 1531 passed / 1 skipped. No ad-hoc worker override was used.
 - Toolchain verification passes with dtc 1.8.1, fdtoverlay 1.8.1, and dtschema 2026.6. Aurora, Nebula, and Atlas all compile with empty diagnostics. Generated evidence/docs were recorded in `4c199b3a`; post-commit contract/docs/build, standalone frontend/server tests, default `test:all`, toolchain, self-host, operation-evidence, and diff gates all pass. The plan remains active only for the explicitly external pilot/cutover blockers. TD-042 remains BLOCKER because no clean non-customer snapshot apply→cutover→whole-DB restore rehearsal has run.
+
+## Parent Review follow-up checkpoint (2026-07-18)
+
+Parent Review remains `Request changes` for two P1 findings. Both findings are accepted after reproduction: a default shell cannot resolve `dt-validate`, and API-mode `/parameters` continues below the topology workspace into the legacy `recommendedValue` table/draft surface.
+
+- T9 design: create an ignored `.wiseeff-tools/dts-toolchain` venv from the pinned `tools/dts-toolchain/requirements.txt`; expose an explicit bootstrap command; resolve all three binaries through one shared resolver used by the API runner and CLI check. Project-local binaries take precedence, an invalid explicit override fails closed, and runtime validation never auto-installs or mutates the host.
+- T10 design: API mode renders only `ApiProjectTopologyWorkspace`; legacy table/detail/draft/export UI remains mock-only. Binding edits require an explicit reason, retain the typed binding/candidate identity returned by `/api/v2`, and expose a submission panel backed by `/api/v1/parameter-submission-rounds`. Hardware Committer, Software Committer, and Software User actions continue through the real `/parameter-review` UI.
+- TDD gate: resolver and render-isolation tests must fail before implementation; binding submit tests must assert typed identity/value/reason and server-filtered role candidates; Playwright must replace direct business-state API advancement with visible edit/submit/review/merge interactions.
+- Documentation gate: remove personal `~/Library/Python/...` PATH guidance from EN/zh-CN developer, testing, verification, and cutover docs; document project bootstrap/resolution order and the mock-only legacy parameter workbench.
 
 ## Risks & rollback
 
