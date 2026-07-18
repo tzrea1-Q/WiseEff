@@ -158,7 +158,12 @@ export function ApiProjectTopologyWorkspace({
 
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
   const [reloadToken, setReloadToken] = useState(0);
-  const [preferredRevisionId, setPreferredRevisionId] = useState<string | undefined>();
+  const [preferredRevision, setPreferredRevision] = useState<{
+    projectId: string;
+    revisionId: string;
+  } | null>(null);
+  const preferredRevisionId =
+    preferredRevision?.projectId === projectId ? preferredRevision.revisionId : undefined;
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
   const [mappingMessage, setMappingMessage] = useState<string | null>(null);
   const [pendingDraft, setPendingDraft] = useState<PendingBindingDraft | null>(null);
@@ -166,9 +171,12 @@ export function ApiProjectTopologyWorkspace({
   const [workflowCandidatesError, setWorkflowCandidatesError] = useState<string | null>(null);
 
   useEffect(() => {
+    setPreferredRevision(null);
     setPendingDraft(null);
     setWorkflowCandidates(null);
     setWorkflowCandidatesError(null);
+    setPublishMessage(null);
+    setMappingMessage(null);
   }, [projectId]);
 
   useEffect(() => {
@@ -273,7 +281,7 @@ export function ApiProjectTopologyWorkspace({
         reason: input.reason
       });
       setPendingDraft({ ...draft, reason: input.reason });
-      setPreferredRevisionId(draft.candidateRevisionId);
+      setPreferredRevision({ projectId, revisionId: draft.candidateRevisionId });
       setReloadToken((token) => token + 1);
       return { valid: true, diagnostics: [] };
     } catch (error) {
@@ -343,7 +351,7 @@ export function ApiProjectTopologyWorkspace({
     try {
       await repository.resolveMapping(taskId, input);
       setMappingMessage(input.decision === "resolved" ? "映射已确认，正在刷新拓扑…" : "映射已驳回，正在刷新拓扑…");
-      setPreferredRevisionId(undefined);
+      setPreferredRevision(null);
       setReloadToken((token) => token + 1);
     } catch (error) {
       const mapped = mapParameterTopologyError(error);

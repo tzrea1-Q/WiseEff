@@ -175,6 +175,171 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
   });
 
+  it("drops the previous project's candidate revision and draft before loading the next project", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const { WiseEffApiError } = await import("@/infrastructure/http/apiClient");
+    const getTopology = vi.fn(async (projectId: string, configSetId: string, revisionId: string, view: "source" | "effective") => {
+      if (projectId === "nebula" && revisionId === "rev-candidate-2") {
+        throw new WiseEffApiError("NOT_FOUND", "foreign candidate revision", {}, "req-project-switch");
+      }
+      const resolvedRevisionId = revisionId === "current" ? `rev-${projectId}-current` : revisionId;
+      return view === "source"
+        ? {
+            view: "source" as const,
+            revisionId: resolvedRevisionId,
+            configSetId,
+            projectId,
+            status: "resolved",
+            incompleteBase: false,
+            diagnostics: [],
+            nodes: TOPOLOGY_TEACHING_SOURCE_NODES
+          }
+        : {
+            view: "effective" as const,
+            revisionId: resolvedRevisionId,
+            configSetId,
+            projectId,
+            status: "resolved",
+            incompleteBase: false,
+            diagnostics: [],
+            nodes: TOPOLOGY_TEACHING_EFFECTIVE_NODES
+          };
+    });
+    const repository = createRepository({ getTopology });
+    const listConfigSets = vi.fn(async (projectId: string) => [
+      { id: `dcs-default-${projectId}`, name: "default" }
+    ]);
+    const { rerender } = render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await screen.findByRole("treeitem", { name: /sc8562@6E/ });
+    const auroraWorkspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    fireEvent.click(within(auroraWorkspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(auroraWorkspace).getByRole("cell", { name: "gpio_int" }));
+    const detail = within(auroraWorkspace).getByRole("region", { name: "绑定详情" });
+    fireEvent.change(within(detail).getByLabelText("修改原因"), {
+      target: { value: "Create Aurora candidate before switching projects" }
+    });
+    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/i }));
+
+    await screen.findByRole("region", { name: "绑定变更提交" });
+    await waitFor(() => {
+      expect(getTopology).toHaveBeenCalledWith(
+        "aurora",
+        "dcs-default-aurora",
+        "rev-candidate-2",
+        "effective"
+      );
+    });
+
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="nebula"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await waitFor(() => {
+      expect(getTopology).toHaveBeenCalledWith(
+        "nebula",
+        "dcs-default-nebula",
+        "current",
+        "effective"
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "绑定变更提交" })).not.toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+        "data-revision-id",
+        "rev-nebula-current"
+      );
+    });
+    expect(getTopology).not.toHaveBeenCalledWith(
+      "nebula",
+      "dcs-default-nebula",
+      "rev-candidate-2",
+      "effective"
+    );
+  });
+
+  it("clears project-scoped mapping feedback when switching projects", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const repository = createRepository({
+      listMappingTasks: vi.fn(async (projectId: string) =>
+        projectId === "aurora"
+          ? [
+              {
+                id: "map-project-switch",
+                projectId: "aurora",
+                configRevisionId: "rev-real-1",
+                previousLogicalNodeId: "logical-old",
+                candidateLogicalNodeIds: ["logical-sc8562"],
+                status: "open" as const,
+                reason: "ambiguous",
+                createdAt: "2026-07-18T00:00:00.000Z",
+                evidence: {
+                  previousNodeLocator: "/amba/i2c@FDF5E000/sc8562@6E",
+                  evidence: ["unit-address"],
+                  candidates: [
+                    {
+                      logicalNodeId: "logical-sc8562",
+                      nodeLocator: "/amba/i2c@FDF5E000/sc8562@6E",
+                      name: "sc8562"
+                    }
+                  ]
+                }
+              }
+            ]
+          : []
+      ),
+      resolveMapping: vi.fn().mockResolvedValue(undefined)
+    });
+    const listConfigSets = vi.fn(async (projectId: string) => [
+      { id: `dcs-default-${projectId}`, name: "default" }
+    ]);
+    const { rerender } = render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    const review = await screen.findByRole("region", { name: "映射审核" });
+    fireEvent.change(within(review).getByRole("combobox", { name: "选择映射候选" }), {
+      target: { value: "logical-sc8562" }
+    });
+    fireEvent.change(within(review).getByLabelText("映射确认原因"), {
+      target: { value: "Confirm Aurora identity" }
+    });
+    fireEvent.click(within(review).getByRole("button", { name: "确认映射" }));
+    expect(await screen.findByText(/映射已确认/)).toBeVisible();
+
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="nebula"
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+        "data-revision-id",
+        "rev-real-1"
+      );
+    });
+    expect(screen.queryByText(/映射已确认/)).not.toBeInTheDocument();
+  });
+
   it("submits a typed binding draft with server-filtered role assignees", async () => {
     const repository = createRepository({
       createBindingDraft: vi.fn().mockResolvedValue({
