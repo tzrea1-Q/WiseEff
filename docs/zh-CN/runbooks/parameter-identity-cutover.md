@@ -49,6 +49,13 @@ npm run dts:config:validate
 
 ## 4. Dry-run 迁移
 
+先应用全部前向 SQL migration。接受 cutover 后 typed draft 前，`schema_migrations` 必须包含 `0059_binding_draft_submission_identity.sql`，且 `parameter_drafts.candidate_config_revision_id` 必须存在。该关联用于证明精确的 draft→binding/spec→candidate/write-lock 链路；不得用重载遗留 `parameterId` 代替。
+
+```bash
+psql "$DATABASE_URL" -c "select name from schema_migrations where name = '0059_binding_draft_submission_identity.sql';"
+psql "$DATABASE_URL" -c "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'parameter_drafts' and column_name = 'candidate_config_revision_id';"
+```
+
 ```bash
 npm run parameter-identities:migrate
 ```

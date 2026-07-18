@@ -27,6 +27,8 @@ WiseEff's test strategy upgrades the prototype into a product-quality gate. The 
 
 Browser acceptance covers requirement IDs and operation IDs from `docs/developer/browser-acceptance-coverage-map.md` and `docs/developer/user-operation-coverage-matrix.md`. Evidence-grade runs write replayable records under `docs/generated/acceptance-operation-evidence.md` and its index.
 
+Evidence-grade artifacts do not live in Playwright's disposable `outputDir`. The full browser runner creates `test-results/acceptance-evidence-runs/runs/<sourceCommit>/<runId>/{records,artifacts}` and atomically publishes `latest-full.json` only after a clean-source full Playwright run and its operation evidence both pass. Records carry the same `runId` and `sourceCommit`; `npm run acceptance:evidence` rejects mixed identities and missing artifacts. Direct focused `acceptance:e2e` runs use an unpublished focused namespace and cannot replace or delete the latest full-run evidence.
+
 Debugging admin catalog changes are covered by `DEBUG-ADMIN-001` in `e2e/acceptance/debugging-admin.acceptance.spec.ts`. The acceptance flow exercises Admin UI, API, DB persistence, and audit evidence for parameter create/edit/archive/restore plus HDC/ADB binding management and complex value metadata editing.
 
 Hierarchical module trees are covered by `MOD-TREE-PARAM-001/002`, `MOD-TREE-DEBUG-001`, and `MOD-TREE-AUTHZ-001` in `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` (nested create, subtree filter, move/cycle guard, authz, and non-empty delete guards).
@@ -120,6 +122,9 @@ Round 6 closes remaining parent-agent review blockers on branch `fix/parameter-t
 | Tenant-scoped cleanup | `semanticFixtureCleanup.isolation.test.ts` | Same-name Config Sets in other org/project untouched |
 | Submit→review→merge acceptance | `parameter-topology.acceptance.spec.ts`, `disposablePostCutoverRuntime.ts` | Automatically creates a disposable DB, applies migrations+identity cutover, verifies marker/run identity, then proves the real role chain, writeback, candidate AST, reload, and base immutability before dropping the DB. |
 | Assignee/review UI acceptance | `parameters-negative.acceptance.spec.ts`, `parameters.acceptance.spec.ts` | Three visible selectors use API-scoped eligible users; production HMAC browser identities perform each hardware/software/merge UI action. DB role queries or one Admin token cannot replace these operations. |
+| Project switch isolation | `ApiProjectTopologyWorkspace.test.tsx` rerender regression + browser interaction | A project-A candidate/draft/messages cannot influence project B; B starts at `current`. |
+| Evidence run isolation | `check-operation-evidence.test.ts`, `run-browser-acceptance.test.ts` | Full records/artifacts share one run+commit namespace; focused runs preserve `latest-full`; mixed runs fail closed. |
+| Binding submission identity | `routes.test.ts`, `postCutoverWorkflow.integration.test.ts`, migration `0059` | HTTP keeps `draftId`/binding/spec; server proves candidate and write lock; cross-project, mismatch, non-draft candidate, and stale checksum create no CR/success audit. |
 | test:all stability | App API-runtime isolation, unique dashboard fixture namespaces, FIFO queries on each transactional PG client | Default `npm run test:all` without ad-hoc worker overrides or global timeout inflation |
 
 Do not cut over a shared developer/acceptance database merely to make the topology acceptance green. The topology spec owns a disposable `wiseeff_acceptance_disposable_*` database and verifies its test marker before destructive cleanup. Keep TD-042 open until the separate clean-snapshot rehearsal is complete.

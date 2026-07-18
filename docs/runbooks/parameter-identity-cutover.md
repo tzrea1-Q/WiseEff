@@ -55,6 +55,13 @@ Expected: tools present **and** versions match `tools/dts-toolchain/versions.jso
 
 ## 4. Dry-run migration
 
+Apply all forward SQL migrations first. In particular, `0059_binding_draft_submission_identity.sql` must exist in `schema_migrations` and `parameter_drafts.candidate_config_revision_id` must exist before accepting post-cutover typed drafts. This link lets submission prove the exact draft→binding/spec→candidate/write-lock chain; do not emulate it by overloading legacy `parameterId`.
+
+```bash
+psql "$DATABASE_URL" -c "select name from schema_migrations where name = '0059_binding_draft_submission_identity.sql';"
+psql "$DATABASE_URL" -c "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'parameter_drafts' and column_name = 'candidate_config_revision_id';"
+```
+
 ```bash
 npm run parameter-identities:migrate
 ```

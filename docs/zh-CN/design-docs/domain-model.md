@@ -185,6 +185,7 @@ stateDiagram-v2
 | 厂商 dt-schema | Linux-binding JSON schema 由属性规格确定性生成（非宽松 `additionalProperties: true` 占位）。黄金 DTB 须通过真实 `dt-validate`；负例 fixture 须按预期失败。 |
 | 迁移 CLI 阶段 | `parameter-identities:migrate` 提供 `dry-run`（默认）、可运维 `stage-review`（推断草稿与审核任务单事务提交）、原子 `finalize`（活动 FK + binding）。Cutover 仅接受 `finalized` 运行。 |
 | 不可变 base 与 candidate binding revision | 锁定合入/回写仅 ingest **candidate** config revision，并只在该 revision 上 upsert `project_parameter_binding_revisions`。锁定的 **base** config revision 及其 binding revision 行不可变；合入值写在 candidate revision。身份过期 → `409`。 |
+| Binding draft 提交身份 | 拓扑 draft 精确拥有 `draftId`、binding、spec、candidate config revision（`parameter_drafts.candidate_config_revision_id`，迁移 `0059`）、value/reason 与 write lock。提交必须在同一组织/项目/用户下证明完整链路；不得再用 binding ID 冒充遗留 `parameterId`。 |
 | Fail-closed 回写依赖 | Cutover 后语义合入须注入 `objectStore`、项目范围变更请求、精确 write lock 与真实 DTC 工具链校验。跳过回写或缺依赖均失败关闭；生产路径无 `WISEEFF_WRITEBACK_SKIP_TOOLCHAIN`。 |
 | 迁移 phase 审计 | `stage-review` 与 `finalize` 各向 `parameter_identity_migration_phases` 追加不可变行（不覆盖既有 phase 载荷）。Cutover 仅接受带成功 `finalize` phase 行的运行。 |
 | 迁移运行任务关联 | `stage-review` 创建的 inferred 规格审核与身份映射任务携带 `migration_run_id`；`finalize` 要求该运行关联任务全部 resolved 后才写入 activity FK。 |

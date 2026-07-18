@@ -84,6 +84,8 @@ MVP 必须覆盖：
 
 M5.10 之后，浏览器 E2E 还承担审计级证据生成职责。每个自动化 operation 必须写入 `docs/generated/acceptance-operation-evidence.md` 和 `docs/generated/acceptance-operation-evidence/index.json` 可复核记录；当 operation matrix 声明 `api`、`db` 或 `audit` 断言时，证据必须包含对应的 API 请求/响应、数据库状态和审计事件摘要。缺少这些摘要时，`npm run acceptance:evidence` 应失败。
 
+证据级 artifact 不得放在 Playwright 会清空的 `outputDir`。完整 browser runner 在 `test-results/acceptance-evidence-runs/runs/<sourceCommit>/<runId>/{records,artifacts}` 创建同一运行目录，仅当干净 source 的完整 Playwright 与 operation evidence 均通过时，才原子发布 `latest-full.json`。Record 必须携带相同 `runId` 与 `sourceCommit`；`npm run acceptance:evidence` 拒绝混合身份和缺失 artifact。直接聚焦的 `acceptance:e2e` 使用未发布 focused 目录，不能覆盖或删除最近完整运行证据。
+
 调试管理 catalog 变更由 `e2e/acceptance/debugging-admin.acceptance.spec.ts` 中的 `DEBUG-ADMIN-001` 覆盖。该验收流程覆盖管理界面、API、数据库持久化和审计证据，验证参数新增、编辑、归档、恢复、HDC/ADB binding 管理，以及复杂值元数据编辑。
 
 多层级模块树由 `e2e/acceptance/hierarchical-modules.acceptance.spec.ts` 中的 `MOD-TREE-PARAM-001/002`、`MOD-TREE-DEBUG-001`、`MOD-TREE-AUTHZ-001` 覆盖（嵌套创建、子树筛选、移动/循环守卫、authz、非空删除 409）。
@@ -301,6 +303,9 @@ npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.int
 | 租户作用域清理 | `semanticFixtureCleanup.isolation.test.ts` | 其他组织/项目同名 Config Set 不受影响 |
 | submit→review→merge 验收 | `parameter-topology.acceptance.spec.ts`、`disposablePostCutoverRuntime.ts` | 自动创建可丢弃数据库，执行 migrations+identity cutover，校验 marker/run 一致性，再证明真实角色链、writeback、candidate AST、reload 与 base 不可变，最后销毁数据库 |
 | assignee/审阅 UI 验收 | `parameters-negative.acceptance.spec.ts`、`parameters.acceptance.spec.ts` | 三个可见下拉框使用 API 作用域 eligible user；production HMAC 浏览器身份分别执行硬件、软件与合入 UI 操作。不得用 DB 角色查询或同一 Admin token 替代 |
+| 项目切换隔离 | `ApiProjectTopologyWorkspace.test.tsx` rerender 回归 + 浏览器交互 | 项目 A 的 candidate/draft/message 不得影响项目 B；B 从 `current` 开始。 |
+| Evidence 运行隔离 | `check-operation-evidence.test.ts`、`run-browser-acceptance.test.ts` | 完整 record/artifact 共享 run+commit 目录；focused 保留 `latest-full`；混合运行 fail-closed。 |
+| Binding 提交身份 | `routes.test.ts`、`postCutoverWorkflow.integration.test.ts`、迁移 `0059` | HTTP 保留 `draftId`/binding/spec；服务端证明 candidate/write lock；跨项目、身份不匹配、candidate 非 draft、stale checksum 不产生 CR/成功审计。 |
 | test:all 稳定性 | App API runtime 隔离、dashboard fixture 唯一命名空间、每个事务 PG client 的 FIFO 查询 | 默认 `npm run test:all` 无需临时 worker 覆盖或全局提高 timeout |
 
 不得为了让拓扑验收变绿而对共享开发/验收库就地 cutover。拓扑 spec 自主管理 `wiseeff_acceptance_disposable_*` 数据库，并在破坏性清理前校验 test marker。独立的干净快照演练完成前，TD-042 仍保持开放。
