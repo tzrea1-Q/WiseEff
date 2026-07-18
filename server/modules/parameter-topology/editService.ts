@@ -1124,9 +1124,8 @@ export async function createBindingDraft(
     draftParameterId = linked.id;
   }
 
-  const draftId = randomUUID();
-  await upsertDraft(db, {
-    id: draftId,
+  const persistedDraft = await upsertDraft(db, {
+    id: randomUUID(),
     organizationId: auth.organization.id,
     projectId: binding.project_id,
     parameterId: draftParameterId,
@@ -1146,7 +1145,7 @@ export async function createBindingDraft(
       occurrenceSpan: writeTarget.occurrenceSpan ?? null,
     },
   });
-
+  const draftId = persistedDraft.id;
   await writeGovernanceAudit(db, auth, {
     action: "binding-edited",
     projectId: binding.project_id,

@@ -18,7 +18,7 @@ import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute } from "./helpers/runtime";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
-import { ensureAuroraSemanticTopology } from "./helpers/topologyFixture";
+import { ensureAuroraSemanticTopology, ensureProjectSemanticTopology } from "./helpers/topologyFixture";
 
 useBrowserDiagnostics(test, {
   expectedApiFailures: [
@@ -357,6 +357,12 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     try {
     // 1) Upload/ingest complete Config Set via official API (no business DB mutation).
+    const createNebula = await request.post(apiRoute("/api/v1/parameters/admin/projects"), {
+      headers: adminHeaders(),
+      data: { id: "nebula", name: "Nebula 高频调试项目", code: "NEB-RD" }
+    });
+    expect([201, 409]).toContain(createNebula.status());
+    const nebulaTopology = await ensureProjectSemanticTopology(request, "nebula");
     const topology = await ensureAuroraSemanticTopology(request);
     let { configSetId, revisionId } = topology;
 
@@ -805,22 +811,26 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     );
     await dismissXiaozeHint(page);
     const editWorkspace = page.getByRole("region", { name: "项目拓扑工作区" });
-    await expect(editWorkspace).toHaveAttribute("data-config-set-id", configSetId, { timeout: 30_000 });
-    await editWorkspace.getByRole("searchbox", { name: "搜索绑定" }).fill("gpio_int");
-    await expect.poll(async () => editWorkspace.getByRole("cell", { name: "gpio_int" }).count()).toBeGreaterThanOrEqual(2);
-    await editWorkspace.getByRole("cell", { name: "sc8562@6E", exact: true }).click();
-    const editDetail = editWorkspace.getByRole("region", { name: "绑定详情" });
-    await expect(editDetail).toHaveAttribute("data-binding-id", scBinding!.id);
-    await editDetail.getByLabel("目标值 raw").fill(editedRaw);
-    await editDetail.getByLabel("修改原因").fill(typedEditReason);
-    const successfulDraftPromise = page.waitForResponse((response) =>
-      response.request().method() === "POST" &&
-      response.url().includes(`/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(scBinding!.id)}/drafts`)
-    );
-    await editDetail.getByRole("button", { name: /创建草稿/ }).click();
-    const successfulDraft = await successfulDraftPromise;
+    const createTypedDraftInAurora = async () => {
+      await expect(editWorkspace).toHaveAttribute("data-config-set-id", configSetId, { timeout: 30_000 });
+      await editWorkspace.getByRole("searchbox", { name: "搜索绑定" }).fill("gpio_int");
+      await expect.poll(async () => editWorkspace.getByRole("cell", { name: "gpio_int" }).count()).toBeGreaterThanOrEqual(2);
+      await editWorkspace.getByRole("cell", { name: "sc8562@6E", exact: true }).click();
+      const editDetail = editWorkspace.getByRole("region", { name: "绑定详情" });
+      await expect(editDetail).toHaveAttribute("data-binding-id", scBinding!.id);
+      await editDetail.getByLabel("目标值 raw").fill(editedRaw);
+      await editDetail.getByLabel("修改原因").fill(typedEditReason);
+      const responsePromise = page.waitForResponse((response) =>
+        response.request().method() === "POST" &&
+        response.url().includes(`/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(scBinding!.id)}/drafts`)
+      );
+      await editDetail.getByRole("button", { name: /创建草稿/ }).click();
+      return responsePromise;
+    };
+
+    let successfulDraft = await createTypedDraftInAurora();
     expect(successfulDraft.status(), await successfulDraft.text()).toBe(201);
-    const draftBody = (await successfulDraft.json()) as {
+    let draftBody = (await successfulDraft.json()) as {
       item: {
         draftId: string;
         parameterId: string;
@@ -832,6 +842,37 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(draftBody.item.candidateRevisionId).toBeTruthy();
     expect(draftBody.item.parameterId).toBe(scBinding!.id);
     expect(draftBody.item.rawText ?? editedRaw).toMatch(/30/);
+
+    // A candidate from Aurora must never be requested under Nebula after the visible project switch.
+    const nebulaCurrentResponse = page.waitForResponse((response) =>
+      response.request().method() === "GET" &&
+      response.url().includes(`/api/v2/projects/nebula/config-sets/${encodeURIComponent(nebulaTopology.configSetId)}/revisions/current/topology`) &&
+      response.url().includes("view=effective")
+    );
+    await page.getByRole("combobox", { name: "项目" }).click();
+    await page.getByRole("option", { name: /Nebula 高频调试项目/ }).click();
+    expect((await nebulaCurrentResponse).status()).toBe(200);
+    await expect(editWorkspace).toHaveAttribute("data-project-id", "nebula");
+    await expect(editWorkspace).toHaveAttribute("data-revision-id", nebulaTopology.revisionId);
+    await expect(page.getByRole("region", { name: "绑定变更提交" })).toHaveCount(0);
+    await expect(page.getByText(/尚未生成语义配置修订/)).toHaveCount(0);
+
+    const auroraCurrentResponse = page.waitForResponse((response) =>
+      response.request().method() === "GET" &&
+      response.url().includes(`/api/v2/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/revisions/current/topology`) &&
+      response.url().includes("view=effective")
+    );
+    await page.getByRole("combobox", { name: "项目" }).click();
+    await page.getByRole("option", { name: /Aurora/ }).click();
+    expect((await auroraCurrentResponse).status()).toBe(200);
+    await expect(editWorkspace).toHaveAttribute("data-project-id", projectId);
+    await expect(editWorkspace).not.toHaveAttribute("data-revision-id", "");
+
+    // The project switch intentionally discarded the first pending draft UI; recreate it on Aurora current.
+    successfulDraft = await createTypedDraftInAurora();
+    expect(successfulDraft.status(), await successfulDraft.text()).toBe(201);
+    draftBody = (await successfulDraft.json()) as typeof draftBody;
+    expect(draftBody.item.candidateRevisionId).toBeTruthy();
     // Draft-time candidate is preview only — no open CR for this binding yet.
     const openCrBefore = await withPgClient(async (client) => {
       const result = await client.query<{ c: string }>(

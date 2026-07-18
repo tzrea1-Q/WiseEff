@@ -9,10 +9,12 @@ import { apiRoute } from "./runtime";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const baseSource = readFileSync(join(root, "src/config/dts-seed/wiseeff-power-base.dts"), "utf8");
-const overlaySource = readFileSync(join(root, "src/config/dts-seed/aurora-power-overlay.dts"), "utf8");
+const overlaySources: Record<string, string> = {
+  aurora: readFileSync(join(root, "src/config/dts-seed/aurora-power-overlay.dts"), "utf8"),
+  nebula: readFileSync(join(root, "src/config/dts-seed/nebula-power-overlay.dts"), "utf8")
+};
 
 const organizationId = "org-chargelab";
-const projectId = "aurora";
 const baseFileName = "wiseeff-power-base.dts";
 const overlayFileName = "wiseeff-power-overlay.dts";
 
@@ -28,6 +30,7 @@ export type SemanticTopologyContext = {
 
 async function uploadDts(
   request: APIRequestContext,
+  projectId: string,
   fileName: string,
   content: string
 ): Promise<{ fileId: string; versionId: string }> {
@@ -54,9 +57,12 @@ async function uploadDts(
  * Always re-uploads committed seed overlays so acceptance picks up seed fixes
  * (e.g. status=okay) without business-table SQL mutation.
  */
-export async function ensureAuroraSemanticTopology(
-  request: APIRequestContext
+export async function ensureProjectSemanticTopology(
+  request: APIRequestContext,
+  projectId: "aurora" | "nebula"
 ): Promise<SemanticTopologyContext> {
+  const overlaySource = overlaySources[projectId];
+  if (!overlaySource) throw new Error(`No committed topology overlay exists for ${projectId}.`);
   const setsResponse = await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
     headers: adminHeaders()
   });
@@ -89,9 +95,9 @@ export async function ensureAuroraSemanticTopology(
   let baseFileId = filesBody.items.find((item) => item.fileName === baseFileName)?.id;
   let overlayFileId = filesBody.items.find((item) => item.fileName === overlayFileName)?.id;
 
-  const uploadedBase = await uploadDts(request, baseFileName, baseSource);
+  const uploadedBase = await uploadDts(request, projectId, baseFileName, baseSource);
   baseFileId = uploadedBase.fileId;
-  const uploadedOverlay = await uploadDts(request, overlayFileName, overlaySource);
+  const uploadedOverlay = await uploadDts(request, projectId, overlayFileName, overlaySource);
   overlayFileId = uploadedOverlay.fileId;
 
   const addBase = await request.post(
@@ -119,7 +125,7 @@ export async function ensureAuroraSemanticTopology(
   }
 
   // Re-upload overlay to trigger production maybeIngestSemanticConfigRevision.
-  await uploadDts(request, overlayFileName, overlaySource);
+  await uploadDts(request, projectId, overlayFileName, overlaySource);
 
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const ready = await withPgClient(async (client) => {
@@ -165,6 +171,10 @@ export async function ensureAuroraSemanticTopology(
   }
 
   throw new Error(
-    "Timed out waiting for aurora default Config Set semantic ingest (gpio_int bindings)."
+    `Timed out waiting for ${projectId} default Config Set semantic ingest (gpio_int bindings).`
   );
+}
+
+export function ensureAuroraSemanticTopology(request: APIRequestContext) {
+  return ensureProjectSemanticTopology(request, "aurora");
 }

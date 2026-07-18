@@ -374,6 +374,49 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     expect(stored.rows[0]?.target_value).toBe("<3000>");
   });
 
+  it("returns the persisted draft identity when the same binding draft is recreated", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth);
+    const create = (raw: string, reason: string) =>
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw, value: raw }]],
+          },
+          reason,
+        },
+        { toolchain: passToolchain },
+      );
+
+    const first = await create("3000", "Initial binding draft");
+    const second = await create("3100", "Replacement binding draft");
+
+    const stored = await db!.query<{
+      id: string;
+      candidate_config_revision_id: string | null;
+      target_value: string;
+    }>(
+      `select id, candidate_config_revision_id, target_value
+       from parameter_drafts
+       where organization_id = $1
+         and project_id = $2
+         and user_id = $3
+         and project_parameter_binding_id = $4`,
+      [ORG_ID, PROJECT_ID, USER_ID, fixture.binding.id],
+    );
+
+    expect(stored.rows).toHaveLength(1);
+    expect(second.draftId).toBe(first.draftId);
+    expect(second.draftId).toBe(stored.rows[0]!.id);
+    expect(stored.rows[0]!.candidate_config_revision_id).toBe(second.candidateRevisionId);
+    expect(stored.rows[0]!.target_value).toBe("<3100>");
+  });
+
   it("rejects stale base revision with structured conflict", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
     const staleId = randomUUID();
