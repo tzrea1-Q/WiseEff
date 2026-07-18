@@ -23,6 +23,9 @@
 11. A `projectId` change resets every project-scoped workspace value before loading the new project: preferred revision, pending draft, assignee candidates/errors, publish message, and mapping message. The new project always starts from its `current` revision.
 12. Evidence-grade operation records and artifacts are stored under one immutable `runId + sourceCommit` namespace outside Playwright's disposable output directory. Focused runs cannot replace or damage the latest completed full-run evidence, and the checker rejects mixed-run/mixed-commit records.
 13. Binding-draft submission uses an explicit wire identity (`draftId`, `projectParameterBindingId`, and `parameterSpecId`) rather than overloading legacy `parameterId`; the server validates organization, project, binding/spec consistency, candidate revision/write lock, while the legacy flat submission contract remains supported only as an explicit separate item shape.
+14. A forward migration invalidates every active draft without an exact candidate revision, including `file_sync` and conflict-derived rows; the 0060→0061 PostgreSQL upgrade, rollback, report, and idempotency path is proven without rewriting 0060.
+15. Typed binding action `set|delete` is durable across draft, submission item, change request, candidate proof, audit, and locked writeback. Delete requires an evidence-chain tombstone in the exact candidate, removes the property after real review/merge/re-ingest, and never creates a replacement binding revision for the deleted value.
+16. The human-maintained database schema summary reflects migrations 0053/0059/0060+ and every new Round6 action/invalidation column, constraint, index, and table.
 
 ## Task map
 
@@ -41,6 +44,9 @@
 | T11 | Candidate revision leaks across project changes | Atomic project-scope reset + rerender regression |
 | T12 | Focused Playwright runs delete full-run evidence artifacts | Immutable evidence run namespace + latest-full publication + mixed-run rejection |
 | T13 | Submission schema strips semantic binding/spec identity | Explicit binding-draft wire item + server tenant/spec/write-lock validation |
+| T14 | 0060 leaves candidate-less `file_sync` drafts active | Forward all-origin invalidation migration + PG upgrade/rollback/idempotency tests |
+| T15 | Typed `action=delete` cannot submit or merge | Persist action + exact candidate tombstone proof + delete writeback acceptance |
+| T16 | Generated database summary is stale | Manually re-derive `docs/generated/db-schema.md` from migrations (TD-004) |
 
 ## Task dependencies
 
@@ -70,6 +76,9 @@ Plan
 | Project switch isolation | Component `rerender` from Aurora candidate to Nebula; first Nebula topology request uses `current`; no stale project messages/draft |
 | Evidence stability | Full-run evidence → focused topology run → `acceptance:evidence` still passes; mixed `runId`/commit and missing artifacts fail closed |
 | Submission identity | Schema unit tests, HTTP/PG success, cross-project/mismatched spec/stale draft negatives, and legacy item regression |
+| Candidate-less draft gate | Real PG: apply through 0060, insert manual/file_sync/conflict-derived drafts, apply 0061, inject rollback, rerun idempotently |
+| Delete workflow | Schema/HTTP/PG tests plus real delete draft → submit → role review → semantic merge/writeback → re-ingest/reload acceptance |
+| Generated DB summary | Compare documented columns/constraints/indexes with 0053/0059/0060+ and run `npm run docs:check` |
 
 ## Documentation Impact Matrix
 
@@ -85,6 +94,7 @@ Plan
 | Security / authz | Review/Update | `docs/SECURITY.md` + global-spec governance notes |
 | Tech debt | Review | TD-042 stays BLOCKER |
 | Acceptance evidence | Update | `e2e/acceptance/helpers/operationEvidence.ts`; browser runner/checker tests; testing/verification docs and zh-CN companions |
+| Generated database schema | Update | `docs/generated/db-schema.md` (manual summary; no generator exists, tracked by TD-004) |
 
 ## Documentation Update Gate
 
@@ -169,6 +179,23 @@ Documentation gate: update this plan, API/domain/testing/frontend behavior, and 
 - Browser verification used disposable API `http://127.0.0.1:52857` and frontend `http://127.0.0.1:5174/parameters`. The visible project control switched Aurora to Nebula; Nebula loaded its own current revision `a491efaf-648b-4652-830d-49c79a27e5d2`, did not show the false empty state, and did not retain a pending draft. `playwright-cli` snapshots/screenshots at 1440×900, 768×1024, and 390×844 reported zero console errors, no document-level horizontal overflow, and 200 responses for the Nebula current/source/binding/mapping requests. The disposable database was destroyed and both ports were released.
 - The standard full run against the user-owned `8787` runtime used clean source `186c3f73ff5629931fd7a0b32ec9969fc2011fea` and accurately failed: preflight was blocked by `deviceGateway`, `xiaozeLlm`, and `backups`; that runtime's HDC/development-auth state produced 69 passed / 11 failed / 4 skipped and 49/56 operation coverage. Its failed evidence is preserved by `0d639e40` and did not replace `latest-full`.
 - A separate clean-source run from `0d639e40ba5e4004c7602ad389e4b07cc354317a` used isolated ports 5174/18787 with production HMAC, simulator, and deterministic Xiaoze without touching 8787. Playwright completed 84 tests: 80 passed / 4 hardware-conditional skipped / 0 failed; workflows A–E and G–I passed; requirements were 59/59; operation evidence was 56/56 with 71 records, zero invalid records, and zero validation errors. `npm run acceptance:evidence` passed and `latest-full.json` SHA-256 became `a8ecd8a150c0f8d2beff029a368d9b85a3f5612d6426071b01e7cec52198e1d0`. The outer isolated runner remains failed solely because preflight was explicitly skipped; it does not override the real external preflight blocker. TD-042 remains BLOCKER, and no production, cutover, or merge-ready claim is made.
+
+## Parent Review follow-up checkpoint 4 (2026-07-18)
+
+Parent Review remains `Request changes` for two P1 and one P2 finding. Code/data-flow inspection confirms all three before implementation:
+
+- 0060 filters both its evidence insert and delete by `origin = 'manual'`; a candidate-less `file_sync` draft survives the cutover even though file sync skips and legacy submission is rejected.
+- The typed draft endpoint creates a valid delete candidate (`rawText = ''` and `/delete-property/`), but the exact submission schema rejects the empty target, no workflow table stores the action, candidate proof only accepts an existing matching binding revision, and semantic writeback defaults to `set`.
+- `docs/generated/db-schema.md` is a manually maintained summary (TD-004); there is no `db:schema:docs` command, and its `parameter_drafts` section omits 0053/0059/0060 state.
+
+Implementation and TDD order:
+
+1. Add a real PostgreSQL RED upgrade that applies through 0060, inserts candidate-less manual and `file_sync` rows (including a resolved-file conflict lineage), and proves the non-manual rows survive. Add forward migration 0061 to record and delete every candidate-less draft regardless of origin; verify injected rollback and idempotent rerun.
+2. Add schema/HTTP/PG RED cases for a binding submission item `{ action: 'delete', targetValue: '' }`. Add migration 0062 with checked `action` columns on `parameter_drafts`, `parameter_submission_items`, and `parameter_change_requests`; default existing rows to `set` and make exact binding submission carry the persisted action.
+3. Prove delete candidates with one exact evidence chain: candidate revision belongs to the draft's organization/project/config set, contains no binding revision for the binding, and contains a `delete` occurrence effect for the binding's logical node plus property spec. Reject missing, mixed, or contradictory tombstones.
+4. Pass the persisted action into locked semantic writeback. `delete` emits `/delete-property/`, re-ingests and validates fail-closed, and intentionally returns no new binding revision. Record action in submit/merge/writeback audit metadata and expose it in workflow DTOs.
+5. Extend the disposable topology acceptance with a second real request that deletes the property through submit → Hardware Committer → Software Committer → Software User merge. Assert base revision/binding immutability, `writeback.skipped=false`, candidate property/binding absence, reload persistence, and no success audit before full writeback+validation.
+6. Manually re-derive the database summary from the migrations, update bilingual domain/API/testing/cutover docs, run the complete gates, then regenerate clean-source evidence. External readiness and TD-042 remain blockers.
 
 ## Risks & rollback
 

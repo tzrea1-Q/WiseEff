@@ -23,6 +23,9 @@
 11. `projectId` 改变时，在加载新项目前清除全部项目作用域状态：preferred revision、待提交草稿、候选人/错误、发布消息和映射消息；新项目必须从自身 `current` revision 开始加载。
 12. 可交付的 operation record 与 artifact 存放在 Playwright 临时输出目录之外、按 `runId + sourceCommit` 唯一隔离的不可变目录中；聚焦运行不能覆盖或破坏最近一次完整运行证据，checker 必须拒绝混合 run/commit。
 13. Binding draft 提交使用明确的 wire identity（`draftId`、`projectParameterBindingId`、`parameterSpecId`），不再用 legacy `parameterId` 冒充 binding；服务端验证组织、项目、binding/spec 一致性和 candidate revision/write lock，同时仅通过独立 item shape 保留遗留扁平提交合同。
+14. 新的前向迁移会失效所有缺少精确 candidate revision 的活动草稿，包括 `file_sync` 和冲突衍生行；使用真实 PostgreSQL 证明 0060→0061 升级、回滚、报告和幂等，且不重写 0060。
+15. Typed binding 的 `set|delete` action 会持久贯穿 draft、submission item、change request、candidate proof、audit 和 locked writeback。Delete 必须在同一条精确 candidate evidence chain 中存在 tombstone，完成真实审核/合入/re-ingest 后属性消失，且不会为已删除值创建替代 binding revision。
+16. 人工维护的数据库 schema 摘要准确反映 0053/0059/0060+ 以及本轮新增的 action/invalidation 字段、约束、索引和表。
 
 ## 任务映射
 
@@ -41,6 +44,9 @@
 | T11 | 切换项目时泄漏上一项目 candidate revision | 原子清除项目状态 + rerender 回归测试 |
 | T12 | 聚焦 Playwright 会删除完整运行的 evidence artifact | 不可变 evidence run 目录 + latest-full 发布 + 混合运行拒绝 |
 | T13 | 提交 schema 剥离 binding/spec 语义身份 | 显式 binding-draft wire item + 服务端租户/spec/write-lock 校验 |
+| T14 | 0060 保留缺少 candidate 的 `file_sync` 草稿 | 前向全 origin 失效迁移 + PG 升级/回滚/幂等测试 |
+| T15 | Typed `action=delete` 无法提交或合入 | 持久化 action + 精确 candidate tombstone proof + delete writeback acceptance |
+| T16 | 生成数据库摘要过期 | 从迁移人工重推导 `docs/generated/db-schema.md`（TD-004） |
 
 ## 任务依赖
 
@@ -70,6 +76,9 @@
 | 项目切换隔离 | 组件从 Aurora candidate `rerender` 到 Nebula；Nebula 首次请求使用 `current`；旧消息/草稿不残留 |
 | Evidence 稳定性 | 完整证据 → 聚焦 topology 运行 → `acceptance:evidence` 仍通过；混合 `runId`/commit 与缺失 artifact 均 fail-closed |
 | 提交身份 | Schema 单测、HTTP/PG 成功、跨项目/规格不匹配/stale draft 负向，以及 legacy item 回归 |
+| 无 candidate 草稿门禁 | 真实 PG：迁移到 0060，插入 manual/file_sync/冲突衍生草稿，执行 0061，注入回滚并幂等重跑 |
+| Delete 工作流 | Schema/HTTP/PG 测试 + 真实 delete draft → submit → 角色审核 → semantic merge/writeback → re-ingest/reload acceptance |
+| 生成 DB 摘要 | 将文档字段/约束/索引与 0053/0059/0060+ 对照，并运行 `npm run docs:check` |
 
 ## 文档影响矩阵
 
@@ -85,6 +94,7 @@
 | 安全 / 授权 | 审阅/更新 | `docs/SECURITY.md` + 全局规格治理说明 |
 | 技术债 | 审阅 | TD-042 保持 BLOCKER |
 | 验收证据 | 更新 | `e2e/acceptance/helpers/operationEvidence.ts`；browser runner/checker 测试；测试/验证文档及中文配对 |
+| 生成数据库 schema | 更新 | `docs/generated/db-schema.md`（人工摘要；仓库无生成器，由 TD-004 跟踪） |
 
 ## 文档更新门禁
 
@@ -169,6 +179,23 @@
 - 浏览器验收使用 disposable API `http://127.0.0.1:52857` 与前端 `http://127.0.0.1:5174/parameters`。通过可见项目控件从 Aurora 切换到 Nebula；Nebula 加载自身 current revision `a491efaf-648b-4652-830d-49c79a27e5d2`，未显示错误空状态，也未保留 pending draft。`playwright-cli` 在 1440×900、768×1024、390×844 完成 snapshot/screenshot，console error 为 0，无 document-level 横向溢出，Nebula current/source/binding/mapping 请求均返回 200。验收后 disposable 数据库已销毁，两个端口已释放。
 - 标准 full run 使用干净 source `186c3f73ff5629931fd7a0b32ec9969fc2011fea` 连接用户自有 `8787` runtime，并准确失败：preflight 受 `deviceGateway`、`xiaozeLlm`、`backups` 阻断；该 runtime 的 HDC/development-auth 状态产生 69 passed / 11 failed / 4 skipped，operation coverage 为 49/56。失败 evidence 由 `0d639e40` 保留，且未替换 `latest-full`。
 - 另一次从干净 source `0d639e40ba5e4004c7602ad389e4b07cc354317a` 运行，使用隔离端口 5174/18787、production HMAC、simulator 与 deterministic Xiaoze，未触碰 8787。Playwright 共 84 项：80 passed / 4 项硬件条件 skipped / 0 failed；workflow A–E、G–I 通过；requirements 59/59；operation evidence 56/56、71 records、0 invalid、0 validation error。`npm run acceptance:evidence` 通过，`latest-full.json` SHA-256 更新为 `a8ecd8a150c0f8d2beff029a368d9b85a3f5612d6426071b01e7cec52198e1d0`。该次外层 runner 仅因显式跳过 preflight 保持 failed，不能覆盖真实外部 preflight blocker。TD-042 继续为 BLOCKER，且不宣称 production ready、cutover ready 或可合并。
+
+## 父智能体 Review 后续检查点 4（2026-07-18）
+
+父智能体继续 `Request changes`，包含两个 P1 和一个 P2。实现前的代码/数据流核查确认三项均成立：
+
+- 0060 的 evidence insert 和 delete 都用 `origin = 'manual'` 过滤；缺少 candidate 的 `file_sync` 草稿会在 cutover 后继续存在，但此时 file sync 会跳过且 legacy submission 已被拒绝。
+- Typed draft 端点可以创建有效 delete candidate（`rawText = ''` 和 `/delete-property/`），但精确提交 schema 拒绝空 target；工作流表均未保存 action；candidate proof 只接受存在且值匹配的 binding revision；semantic writeback 默认执行 `set`。
+- `docs/generated/db-schema.md` 是人工摘要（TD-004），仓库没有 `db:schema:docs` 命令；其中 `parameter_drafts` 小节遗漏 0053/0059/0060 状态。
+
+实现与 TDD 顺序：
+
+1. 新增真实 PostgreSQL RED 升级测试：迁移到 0060 后插入缺少 candidate 的 manual 与 `file_sync` 行（含 resolved-file conflict 血缘），先证明非 manual 行残留。新增前向 0061，不区分 origin 地记录并删除所有 candidate-less draft；验证注入失败回滚与幂等重跑。
+2. 新增 binding submission item `{ action: 'delete', targetValue: '' }` 的 schema/HTTP/PG RED。新增 0062，为 `parameter_drafts`、`parameter_submission_items`、`parameter_change_requests` 增加受 check 约束的 `action` 字段；既有行默认 `set`，精确 binding 提交必须携带持久化 action。
+3. 使用同一条精确 evidence chain 证明 delete candidate：candidate revision 属于 draft 的组织/项目/config set，不存在该 binding 的 binding revision，且候选 revision 对 binding 的 logical node + property spec 存在 `delete` occurrence effect。缺失、混合或矛盾 tombstone 必须拒绝。
+4. 将持久化 action 传入 locked semantic writeback。`delete` 生成 `/delete-property/`，执行 fail-closed re-ingest/validate，并且有意不产生新 binding revision。Submit/merge/writeback audit metadata 记录 action，workflow DTO 对外暴露 action。
+5. 扩展 disposable topology acceptance，以第二个真实请求完成属性删除的 submit → Hardware Committer → Software Committer → Software User merge。断言 base revision/binding 不变、`writeback.skipped=false`、candidate 中属性与 binding 均不存在、reload 后仍保持删除，并且完整 writeback+validate 前无成功 audit。
+6. 从迁移人工重推导数据库摘要，更新中英文 domain/API/testing/cutover 文档，执行完整门禁，然后重新生成干净 source evidence。外部 readiness 与 TD-042 继续为 blocker。
 
 ## 风险与回滚
 
