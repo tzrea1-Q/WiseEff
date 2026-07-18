@@ -23,12 +23,15 @@ import { isCliEntryPoint, resolveCliEntryPath, runCli } from "./cli";
 import { resolveBridgeBinPath } from "./macosLaunchAgent";
 import type { BridgeConfig } from "./config";
 
-function createStdoutCapture() {
+function createStdoutCapture(onLog?: (message: string) => void) {
   const logs: string[] = [];
   const errors: string[] = [];
   return {
     stdout: {
-      log: vi.fn((message: string) => logs.push(message)),
+      log: vi.fn((message: string) => {
+        logs.push(message);
+        onLog?.(message);
+      }),
       error: vi.fn((message: string) => errors.push(message))
     },
     logs,
@@ -96,34 +99,32 @@ describe("device bridge cli", () => {
   });
 
   it("starts standby health service when start runs without config", async () => {
-    const capture = createStdoutCapture();
+    let resolveHealthUrl: (url: string) => void;
+    const healthUrlReady = new Promise<string>((resolve) => {
+      resolveHealthUrl = resolve;
+    });
+    const standbyPrefix = "Bridge standby started. Health: ";
+    const capture = createStdoutCapture((message) => {
+      if (message.startsWith(standbyPrefix)) {
+        resolveHealthUrl(message.slice(standbyPrefix.length));
+      }
+    });
     const startPromise = runCli(["start"], {
       loadConfig: async () => null,
       stdout: capture.stdout,
-      healthPort: 0
+      healthPort: 0,
+      platform: "linux"
     });
 
-    let healthReady = false;
-    let healthUrl: string | undefined;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      healthUrl ??= capture.logs
-        .find((line) => line.startsWith("Bridge standby started. Health: "))
-        ?.slice("Bridge standby started. Health: ".length);
-      const response = healthUrl ? await fetch(healthUrl).catch(() => null) : null;
-      if (response?.ok) {
-        const body = (await response.json()) as { paired?: boolean };
-        healthReady = body.paired === false;
-        if (healthReady) {
-          break;
-        }
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
+    const healthUrl = await healthUrlReady;
+    const response = await fetch(healthUrl);
+    const body = (await response.json()) as { paired?: boolean };
 
     process.emit("SIGTERM");
     const exitCode = await startPromise;
 
-    expect(healthReady).toBe(true);
+    expect(response.ok).toBe(true);
+    expect(body.paired).toBe(false);
     expect(healthUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/health$/);
     expect(healthUrl).not.toBe("http://127.0.0.1:18787/health");
     expect(exitCode).toBe(0);
