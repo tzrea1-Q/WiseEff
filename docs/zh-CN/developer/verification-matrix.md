@@ -23,7 +23,8 @@
 | --- | --- | --- |
 | `npm run dtc:check -- --required` | PATH 上存在真实 Device Tree Compiler | M1 seed、DTS 校验或自托管镜像验收前使用。 |
 | `npm run dtc:seed:compile` | Aurora、Nebula、Atlas 三份已提交 overlay 均通过真实 `dtc -@` 编译 | 修改 DTS fixture、seed 生成、验证门禁或 dtc 部署流程后使用。 |
-| `npm run dts:toolchain:check -- --required` | dtc + fdtoverlay + dt-validate 存在且版本与 `tools/dts-toolchain/versions.json` 一致（缺失、无法解析或不匹配均失败） | 发布模式校验或身份切换演练前。确保 `dt-validate` 在 `PATH`（macOS 提示：`~/Library/Python/3.9/bin`）。 |
+| `npm run dts:toolchain:bootstrap` | 安装/检查 dtc、fdtoverlay，并把钉扎 dtschema 安装到忽略提交的 `.wiseeff-tools/dts-toolchain` | 首次本地设置，或修改 requirements/version pin 后。 |
+| `npm run dts:toolchain:check -- --required` | API/CLI 共享解析器找到 dtc + fdtoverlay + 项目本地 dt-validate，且版本与钉扎一致 | 发布模式校验或身份切换演练前；不得把个人 Python PATH 导出作为必要步骤。 |
 | `npm run parameter-identities:check` | 语义身份迁移只读预检/后检 | 维护窗口前后；见 cutover runbook。 |
 | `npm run parameter-identities:migrate` | 默认 dry-run，或门禁后的 `--apply` 历史迁移 | 仅切换演练；生产禁止双写。 |
 | `npm run test:server -- server/modules/parameter-topology/legacyDependencyGuard.test.ts --run` | Vitest **源码扫描**（非运行时中间件），禁止在 migrations/cutovers/adapters/scripts/tests 之外出现已退役扁平身份/shadow token | 修改 cutover 后工作流、可能重新引入遗留 SQL 或 shadow PPV helper 后。 |

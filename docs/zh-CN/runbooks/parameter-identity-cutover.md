@@ -13,9 +13,7 @@
 - 已部署包含迁移 `0048`、`/api/v2` 语义 API 与本 runbook 的维护目标构建。
 - 操作员持有与目标环境一致的 `PARAMETER_IDENTITY_MAINTENANCE_TOKEN`。
 - 具备 [backup-restore.md](../../runbooks/backup-restore.md) 中的 PostgreSQL 与对象存储备份工具。
-- `PATH` 上可用 `dtc`、`fdtoverlay`、`dt-validate`，且版本与 `tools/dts-toolchain/versions.json` 钉扎一致（dtc/fdtoverlay `1.8.1`，dtschema `2026.6`）。
-- macOS 上 pip 安装的 `dt-validate` 常见于 `~/Library/Python/3.9/bin`，发布检查前请加入 `PATH`：
-  `export PATH="$HOME/Library/Python/3.9/bin:$PATH"`。
+- 在部署 checkout 执行 `npm run dts:toolchain:bootstrap`，准备忽略提交的项目 venv `.wiseeff-tools/dts-toolchain`。API 与 release check 共用同一解析器和 `tools/dts-toolchain/versions.json` 钉扎版本（dtc/fdtoverlay `1.8.1`，dtschema `2026.6`）；不得依赖操作员个人 Python PATH。
 
 ## 1. 写冻结
 
@@ -41,6 +39,7 @@ echo "OBJECT_SNAPSHOT_ID=${OBJECT_SNAPSHOT_ID}"
 ## 3. 工具链健康
 
 ```bash
+npm run dts:toolchain:bootstrap
 npm run dts:toolchain:check -- --required
 npm run dtc:check -- --required
 npm run dts:config:validate

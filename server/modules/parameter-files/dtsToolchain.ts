@@ -115,6 +115,58 @@ function repoRootFromModule(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 }
 
+export type DtsToolchainCommands = {
+  dtc: string;
+  fdtoverlay: string;
+  dtschema: string;
+};
+
+export type ResolveDtsToolchainCommandsOptions = {
+  rootDir?: string;
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
+};
+
+function projectToolchainBinDir(rootDir: string, platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string {
+  const configuredDir = env.WISEEFF_DTS_TOOLCHAIN_DIR?.trim();
+  const toolchainDir = configuredDir || join(rootDir, ".wiseeff-tools", "dts-toolchain");
+  return join(toolchainDir, platform === "win32" ? "Scripts" : "bin");
+}
+
+function projectCommandCandidate(binDir: string, command: string, platform: NodeJS.Platform): string {
+  return join(binDir, platform === "win32" ? `${command}.exe` : command);
+}
+
+/**
+ * Resolve every DTS binary through one deterministic policy shared by API and CLI checks.
+ * Explicit overrides are returned verbatim so a typo fails closed instead of silently
+ * falling back. Otherwise the ignored repository-local venv/toolchain wins over PATH.
+ */
+export function resolveDtsToolchainCommands(
+  options: ResolveDtsToolchainCommandsOptions = {}
+): DtsToolchainCommands {
+  const rootDir = options.rootDir ?? repoRootFromModule();
+  const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
+  const localBin = projectToolchainBinDir(rootDir, platform, env);
+  const managedDirConfigured = Boolean(env.WISEEFF_DTS_TOOLCHAIN_DIR?.trim());
+  const resolveCommand = (input: {
+    overrideKey: "WISEEFF_DTC_PATH" | "WISEEFF_FDTOVERLAY_PATH" | "WISEEFF_DT_VALIDATE_PATH";
+    command: string;
+  }) => {
+    const override = env[input.overrideKey]?.trim();
+    if (override) return override;
+    const local = projectCommandCandidate(localBin, input.command, platform);
+    return managedDirConfigured || existsSync(local) ? local : input.command;
+  };
+
+  return {
+    dtc: resolveCommand({ overrideKey: "WISEEFF_DTC_PATH", command: "dtc" }),
+    fdtoverlay: resolveCommand({ overrideKey: "WISEEFF_FDTOVERLAY_PATH", command: "fdtoverlay" }),
+    dtschema: resolveCommand({ overrideKey: "WISEEFF_DT_VALIDATE_PATH", command: "dt-validate" })
+  };
+}
+
 /** Committed Linux dt-schema bindings generated from WiseEff vendor/golden compatibles. */
 export function resolveLinuxBindingsDir(rootDir: string = repoRootFromModule()): string | null {
   const fromEnv = process.env.WISEEFF_DT_SCHEMA_BINDINGS_DIR?.trim();
@@ -139,10 +191,10 @@ export function loadPinnedToolchainVersions(
   };
 }
 
-function minimalEnv(): NodeJS.ProcessEnv {
+function minimalEnv(sourceEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
-  if (process.env.PATH) {
-    env.PATH = process.env.PATH;
+  if (sourceEnv.PATH) {
+    env.PATH = sourceEnv.PATH;
   }
   return env;
 }
@@ -252,9 +304,10 @@ async function probeCommand(
   spawnFn: SpawnFn,
   command: string,
   args: string[],
+  env: NodeJS.ProcessEnv,
   timeoutMs = 3_000
 ): Promise<DtsToolchainToolProbe> {
-  const result = await runProcess(spawnFn, command, args, { cwd: tmpdir(), env: minimalEnv() }, timeoutMs);
+  const result = await runProcess(spawnFn, command, args, { cwd: tmpdir(), env: minimalEnv(env) }, timeoutMs);
   if (result.spawnError || result.timedOut || result.code !== 0) {
     return { path: null, version: null };
   }
@@ -264,11 +317,16 @@ async function probeCommand(
   };
 }
 
-export async function probeDtsToolchain(spawnFn: SpawnFn = nodeSpawn): Promise<DtsToolchainProbe> {
+export async function probeDtsToolchain(
+  spawnFn: SpawnFn = nodeSpawn,
+  options: ResolveDtsToolchainCommandsOptions = {}
+): Promise<DtsToolchainProbe> {
+  const env = options.env ?? process.env;
+  const commands = resolveDtsToolchainCommands({ ...options, env });
   const [dtc, fdtoverlay, dtschema] = await Promise.all([
-    probeCommand(spawnFn, "dtc", ["--version"]),
-    probeCommand(spawnFn, "fdtoverlay", ["--version"]),
-    probeCommand(spawnFn, "dt-validate", ["--version"])
+    probeCommand(spawnFn, commands.dtc, ["--version"], env),
+    probeCommand(spawnFn, commands.fdtoverlay, ["--version"], env),
+    probeCommand(spawnFn, commands.dtschema, ["--version"], env)
   ]);
   return { dtc, fdtoverlay, dtschema };
 }

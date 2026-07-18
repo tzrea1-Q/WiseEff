@@ -1,12 +1,13 @@
-import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { probeDtc, type DtcProbeResult } from "./check-dtc";
+import type { DtcProbeResult } from "./check-dtc";
 import {
   checkPinnedToolchainVersions,
   extractSemverLike,
   loadPinnedToolchainVersions,
+  probeDtsToolchain as probeRuntimeDtsToolchain,
+  type DtsToolchainToolProbe,
   type PinnedDtsToolchainVersions
 } from "../server/modules/parameter-files/dtsToolchain";
 
@@ -28,29 +29,14 @@ export type ToolchainProbeResult = {
   ok: boolean;
 };
 
-function probeVersionedCommand(command: string, args: string[]): {
+function commandProbeResult(command: string, probe: DtsToolchainToolProbe): {
   available: boolean;
   version: string | null;
   error: string | null;
 } {
-  const result = spawnSync(command, args, { encoding: "utf8" });
-  const raw = (result.stdout ?? "").trim() || (result.stderr ?? "").trim();
-  if (result.error) {
-    return { available: false, version: null, error: result.error.message };
-  }
-  if (result.status === 0) {
-    const version = extractSemverLike(raw);
-    return {
-      available: true,
-      version: version ?? (raw || null),
-      error: version ? null : `Unparseable ${command} version output: ${raw || "(empty)"}`
-    };
-  }
-  return {
-    available: false,
-    version: null,
-    error: raw || `${command} executable was not found on PATH`
-  };
+  return probe.path
+    ? { available: true, version: probe.version, error: null }
+    : { available: false, version: null, error: `${command} unavailable through the shared DTS binary resolver` };
 }
 
 export function loadPinnedVersions(
@@ -91,17 +77,18 @@ export function evaluateToolchainProbe(input: {
   };
 }
 
-export function probeDtsToolchain(): ToolchainProbeResult {
+export async function probeDtsToolchain(): Promise<ToolchainProbeResult> {
   const pinned = loadPinnedVersions();
-  const dtc = probeDtc();
-  const fdtoverlay = probeVersionedCommand("fdtoverlay", ["--version"]);
-  const dtschema = probeVersionedCommand("dt-validate", ["--version"]);
+  const runtimeProbe = await probeRuntimeDtsToolchain();
+  const dtc = commandProbeResult("dtc", runtimeProbe.dtc);
+  const fdtoverlay = commandProbeResult("fdtoverlay", runtimeProbe.fdtoverlay);
+  const dtschema = commandProbeResult("dt-validate", runtimeProbe.dtschema);
   return evaluateToolchainProbe({ dtc, fdtoverlay, dtschema, pinned });
 }
 
 async function main() {
   const required = process.argv.includes("--required");
-  const result = probeDtsToolchain();
+  const result = await probeDtsToolchain();
   console.log(JSON.stringify(result, null, 2));
 
   if (required && !result.ok) {
@@ -119,10 +106,9 @@ async function main() {
         versionLine +
         `Pinned: dtc ${result.pinned.dtc.version} @ ${result.pinned.dtc.commit}, dtschema ${result.pinned.dtschema}.\n` +
         `Install guidance:\n` +
-        `  - dtc/fdtoverlay: npm run dtc:bootstrap (or brew/apk/apt package device-tree-compiler)\n` +
-        `  - dtschema: python3 -m pip install -r tools/dts-toolchain/requirements.txt\n` +
-        `  - ensure dt-validate is on PATH (often ~/.local/bin or ~/Library/Python/*/bin)\n` +
-        `  - macOS tip: export PATH="$HOME/Library/Python/3.9/bin:$PATH"`
+        `  - install the pinned project toolchain: npm run dts:toolchain:bootstrap\n` +
+        `  - the API runtime and this check share .wiseeff-tools/dts-toolchain; no personal PATH export is required\n` +
+        `  - optional controlled overrides: WISEEFF_DTC_PATH, WISEEFF_FDTOVERLAY_PATH, WISEEFF_DT_VALIDATE_PATH`
     );
     process.exitCode = 1;
   }

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ChildProcess, spawn as nodeSpawn } from "node:child_process";
@@ -11,6 +11,8 @@ import {
   createDtsToolchainRunner,
   extractSemverLike,
   loadPinnedToolchainVersions,
+  probeDtsToolchain,
+  resolveDtsToolchainCommands,
   type DtsToolchainConfigSet,
   type DtsToolchainProbe
 } from "./dtsToolchain";
@@ -112,6 +114,74 @@ describe("loadPinnedToolchainVersions", () => {
     expect(pinned).toEqual({
       dtc: { version: "1.8.1", commit: "8f48565e5cfedc74d3f7512f1e0188e9d85dc1de" },
       dtschema: "2026.6"
+    });
+  });
+});
+
+describe("resolveDtsToolchainCommands", () => {
+  it("prefers the project-local pinned venv when dt-validate is absent from PATH", async () => {
+    const rootDir = trackingTmpDirFactory();
+    const localBin = join(rootDir, ".wiseeff-tools", "dts-toolchain", "bin");
+    const localDtValidate = join(localBin, "dt-validate");
+    mkdirSync(localBin, { recursive: true });
+    writeFileSync(localDtValidate, "#!/bin/sh\n");
+
+    const commands = resolveDtsToolchainCommands({
+      rootDir,
+      platform: "darwin",
+      env: { PATH: "/usr/bin:/bin" }
+    });
+
+    expect(commands).toEqual({
+      dtc: "dtc",
+      fdtoverlay: "fdtoverlay",
+      dtschema: localDtValidate
+    });
+
+    const invoked: string[] = [];
+    const probe = await probeDtsToolchain(
+      fakeSpawnScript((command) => {
+        invoked.push(command);
+        if (command === "dtc") return { stdout: "Version: DTC 1.8.1" };
+        if (command === "fdtoverlay") return { stdout: "1.8.1" };
+        if (command === localDtValidate) return { stdout: "2026.6" };
+        return { code: 1 };
+      }),
+      { rootDir, platform: "darwin", env: { PATH: "/usr/bin:/bin" } }
+    );
+
+    expect(probe.dtschema).toEqual({ path: localDtValidate, version: "2026.6" });
+    expect(invoked).toContain(localDtValidate);
+  });
+
+  it("honors an explicit binary override so an invalid override fails instead of falling back", () => {
+    const commands = resolveDtsToolchainCommands({
+      rootDir: trackingTmpDirFactory(),
+      platform: "darwin",
+      env: {
+        PATH: "/usr/bin:/bin",
+        WISEEFF_DT_VALIDATE_PATH: "/missing/pinned/dt-validate"
+      }
+    });
+
+    expect(commands.dtschema).toBe("/missing/pinned/dt-validate");
+  });
+
+  it("fails closed through an explicitly configured managed toolchain directory", () => {
+    const managedDir = "/missing/managed/dts-toolchain";
+    const commands = resolveDtsToolchainCommands({
+      rootDir: trackingTmpDirFactory(),
+      platform: "darwin",
+      env: {
+        PATH: "/usr/bin:/bin",
+        WISEEFF_DTS_TOOLCHAIN_DIR: managedDir
+      }
+    });
+
+    expect(commands).toEqual({
+      dtc: join(managedDir, "bin", "dtc"),
+      fdtoverlay: join(managedDir, "bin", "fdtoverlay"),
+      dtschema: join(managedDir, "bin", "dt-validate")
     });
   });
 });

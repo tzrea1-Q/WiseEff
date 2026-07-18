@@ -261,8 +261,9 @@ npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <ar
 拓扑发布前工具链门禁：
 
 ```bash
-PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dts:toolchain:check
-PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
+npm run dts:toolchain:bootstrap
+npm run dts:toolchain:check
+npm run dtc:seed:compile
 npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameter-topology/migration.test.ts server/modules/parameter-specs/matcherScope.integration.test.ts --run
 ```
 
@@ -282,8 +283,8 @@ npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modu
 第五轮工具链门禁（同第四轮）：
 
 ```bash
-PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dts:toolchain:check
-PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
+npm run dts:toolchain:check
+npm run dtc:seed:compile
 npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts server/modules/parameter-specs/draftSpecWorkflow.integration.test.ts server/modules/parameter-topology/migration.test.ts --run
 ```
 

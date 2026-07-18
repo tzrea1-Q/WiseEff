@@ -91,7 +91,7 @@ P2 配置集基线校验门禁用系统 `dtc` 二进制编译用户提供的 DTS
 - **固定 argv，无 shell 拼接**：文件名和路径作为 `spawn` 的 argv 元素传入，从不拼接进 shell 字符串，DTS 文件名无法注入 shell 元字符。
 - **可审计的降级路径**：`dtc` 不在 `PATH` 上时，校验器按 `DTS_VALIDATION_MODE` 降级（`block` 失败关闭，`warn`/`off` 放行并记录诊断），而不是静默跳过校验；每次门禁运行——包括降级场景——都写 `validation.gate` 审计事件（见 `docs/zh-CN/developer/environment-variables.md`）。
 - **可选 dt-schema 钩子**：当 `DTS_ENABLE_DT_SCHEMA=1`（或 `enableDtSchema`）时，校验器可合并注入的 schema runner 诊断。缺工具默认按 warning 降级（`DTS_DT_SCHEMA_MODE=warn`）；仅 `DTS_DT_SCHEMA_MODE=block` 才把不可用抬升为硬错误。
-- **生产失败关闭发布**：release 模式工具链校验（`dtc` + `fdtoverlay` + `dt-validate`）不得绕过。绕过触发 critical 告警 `WiseEffConfigPublishValidationBypass`。语义身份切换仅限维护窗口且只能整快照恢复——见 `docs/runbooks/parameter-identity-cutover.md`。迁移证据保留遗留 ID/值，但不得把 `recommended_value` 自动提升为 schema default 或 policy。在干净非客户快照演练完成前，**TD-042 仍为 BLOCKER**。
+- **生产失败关闭发布**：release 模式工具链校验（`dtc` + `fdtoverlay` + `dt-validate`）不得绕过。API 与 CLI 门禁共用项目/受管二进制解析器；无效显式路径失败关闭，runtime 不自动安装工具。绕过触发 critical 告警 `WiseEffConfigPublishValidationBypass`。语义身份切换仅限维护窗口且只能整快照恢复——见 `docs/runbooks/parameter-identity-cutover.md`。迁移证据保留遗留 ID/值，但不得把 `recommended_value` 自动提升为 schema default 或 policy。在干净非客户快照演练完成前，**TD-042 仍为 BLOCKER**。
 - **容器化沙箱评估（TD-040 / B5）**：**本期不实现**。评估结论：维持受限 OS 子进程（`tmpdir` + 仅 PATH 环境 + 硬超时 + 固定 argv）作为默认隔离边界。若后续威胁模型需要强于当前子进程的隔离，再单独立项评估容器/gVisor 方案。
 
 **导出数据分级：** `exportFile`/`exportConfigSet` 返回的正是项目已存储的同一份 DTS/JSON 参数内容（不含凭据、token 或跨租户数据），因此导出响应的敏感级别与源参数文件相同，均要求 `admin:access`，与配置集/基线其他接口一致。导出 bundle 通过 HTTP 响应体返回，供调用方手动提交到 Git；后端不会把它写入共享或公开位置，持久化导出 bundle 的调用方需要自行套用与源仓库一致的访问控制。

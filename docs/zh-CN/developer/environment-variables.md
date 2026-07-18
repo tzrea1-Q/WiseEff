@@ -52,6 +52,8 @@
 | 变量 | 本地默认值 | 用途 | 说明 |
 | --- | --- | --- | --- |
 | `DTS_VALIDATION_MODE` | `block`（代码默认；`.env.example` 未设置） | P2 配置集基线发布门禁 | `block`：`dtc` 报错或 `dtc` 二进制不可用时，`releaseBaseline` 返回 `409` 阻断发布。`warn`：始终放行，但标记 `requiresConfirmation: true`。`off`：完全跳过校验（不会调用 `dtc`）。自托管目标未安装 `dtc` 时可设为 `warn`。 |
+| `WISEEFF_DTS_TOOLCHAIN_DIR` | `<repo>/.wiseeff-tools/dts-toolchain` | DTS release 校验 | 可选受控工具链目录；API 与 CLI check 优先解析其 `bin`（Windows 为 `Scripts`），再查 PATH。 |
+| `WISEEFF_DTC_PATH` / `WISEEFF_FDTOVERLAY_PATH` / `WISEEFF_DT_VALIDATE_PATH` | 未设置 | DTS release 校验 | 受管部署可指定精确二进制；无效 override 失败关闭，不静默回退。 |
 | `DTS_IDENTITY_FALLBACK_MODE` | `allow`（代码默认） | 文件同步 / 结构化编辑身份解析 | 无 `source_*` 绑定时可回退 `(name, module)`。`allow` 保留回退并累计 `identityFallbackUses`；`warn` 允许回退并写 `parameter-file-identity-fallback` 审计；`deny` 时 sync 回退路径 `409 VALIDATION_FAILED`，结构化编辑仍可 insert 新 PPV+source（新绑定≠ fallback）。 |
 | `DTS_ENABLE_DT_SCHEMA` | 关闭（`0` / 未设置） | `dtc` 之后的可选 dt-schema 绑定校验 | 设为 `1`/`true`/`on` 启用可选 schema 钩子（`enableDtSchema` / 可注入 `schemaRunner`）。 |
 | `DTS_DT_SCHEMA_MODE` | `warn` | schema 工具缺失 / 失败策略 | `warn`：缺工具只记 warning，不硬失败；`block`：在外层校验模式非 `warn` 时把不可用抬升为硬错误。 |

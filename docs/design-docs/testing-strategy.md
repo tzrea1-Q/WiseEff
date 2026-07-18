@@ -80,8 +80,9 @@ Round 4 closes parent-agent review blockers on branch `fix/parameter-topology-ro
 Toolchain gate before topology release work:
 
 ```bash
-PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dts:toolchain:check
-PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
+npm run dts:toolchain:bootstrap
+npm run dts:toolchain:check
+npm run dtc:seed:compile
 npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameter-topology/migration.test.ts server/modules/parameter-specs/matcherScope.integration.test.ts --run
 ```
 
@@ -101,8 +102,8 @@ Round 5 closes parent-agent review blockers on branch `fix/parameter-topology-ro
 Round 5 toolchain gate (same as round 4):
 
 ```bash
-PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dts:toolchain:check
-PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
+npm run dts:toolchain:check
+npm run dtc:seed:compile
 npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts server/modules/parameter-specs/draftSpecWorkflow.integration.test.ts server/modules/parameter-topology/migration.test.ts --run
 ```
 

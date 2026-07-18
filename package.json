@@ -54,6 +54,7 @@
     "dts:linux-bindings:generate": "tsx scripts/generate-linux-dt-bindings.ts",
     "dtc:check": "tsx scripts/check-dtc.ts",
     "dtc:bootstrap": "tsx scripts/bootstrap-dtc.ts",
+    "dts:toolchain:bootstrap": "npm run dtc:bootstrap && tsx scripts/bootstrap-dts-toolchain.ts",
     "dtc:seed:compile": "tsx scripts/compile-dts-seed.ts",
     "dts:toolchain:check": "tsx scripts/check-dts-toolchain.ts --required",
     "dts:config:validate": "tsx scripts/validate-dts-config-set.ts",

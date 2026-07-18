@@ -13,9 +13,7 @@ Evidence path for rehearsals: `work/cutover-rehearsal/<YYYYMMDD-HHMM>/`.
 - Feature build that includes migration `0048`, semantic APIs under `/api/v2`, and this runbook is already deployed to the maintenance target (or staged beside it).
 - Operator holds `PARAMETER_IDENTITY_MAINTENANCE_TOKEN` matching the target env.
 - PostgreSQL and object-store backup tooling from [backup-restore.md](backup-restore.md) are available.
-- DTS toolchain binaries (`dtc`, `fdtoverlay`, `dt-validate`) are on `PATH` at the pinned versions in `tools/dts-toolchain/versions.json` (dtc/fdtoverlay `1.8.1`, dtschema `2026.6`).
-- On macOS, `dt-validate` from pip is often under `~/Library/Python/3.9/bin` — export it onto `PATH` before release checks:
-  `export PATH="$HOME/Library/Python/3.9/bin:$PATH"`.
+- Run `npm run dts:toolchain:bootstrap` in the deployed checkout. It prepares the ignored project venv `.wiseeff-tools/dts-toolchain`; the API and release checks use the same resolver and pinned versions in `tools/dts-toolchain/versions.json` (dtc/fdtoverlay `1.8.1`, dtschema `2026.6`). Do not rely on an operator's personal Python PATH.
 
 ## 1. Write freeze
 
@@ -47,6 +45,7 @@ Whole-snapshot restore later must use **both** IDs together.
 ## 3. Toolchain health
 
 ```bash
+npm run dts:toolchain:bootstrap
 npm run dts:toolchain:check -- --required
 npm run dtc:check -- --required
 npm run dts:config:validate

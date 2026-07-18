@@ -18,11 +18,11 @@ This guide gets WiseEff running locally for API-mode development and acceptance 
 ```bash
 npm ci
 copy .env.example .env
-npm run dtc:bootstrap
-npm run dtc:check -- --required
+npm run dts:toolchain:bootstrap
+npm run dts:toolchain:check -- --required
 ```
 
-`dtc:bootstrap` uses Homebrew on macOS, `device-tree-compiler` on Debian/Ubuntu, and `dtc` on Alpine/RHEL-family Linux. To verify the checked-in Aurora/Nebula/Atlas seed overlays independently, run:
+`dts:toolchain:bootstrap` first installs/checks dtc through the existing platform package bootstrap, then creates the ignored project venv at `.wiseeff-tools/dts-toolchain` and installs the pinned dtschema requirement. API runtime, seed scripts, and the check command share that resolver; a personal Python bin directory is not required on `PATH`. To verify the checked-in Aurora/Nebula/Atlas seed overlays independently, run:
 
 ```bash
 npm run dtc:seed:compile
@@ -33,13 +33,12 @@ The overlays may report `reg_format` / `ranges_format` warnings when compiled wi
 For fail-closed production publish validation (dtc + fdtoverlay + dt-validate at pinned versions from `tools/dts-toolchain/versions.json`):
 
 ```bash
-# macOS: ensure pip-installed dt-validate is on PATH
-export PATH="$HOME/Library/Python/3.9/bin:$PATH"
+npm run dts:toolchain:bootstrap
 npm run dts:toolchain:check -- --required
 npm run dts:config:validate
 ```
 
-`dts:toolchain:check --required` compares probed versions to the pin file and fails on missing tools, unparseable version output, or mismatch.
+`dts:toolchain:check --required` compares resolved versions to the pin file and fails on missing tools, unparseable version output, or mismatch. Controlled deployments may provide `WISEEFF_DTC_PATH`, `WISEEFF_FDTOVERLAY_PATH`, or `WISEEFF_DT_VALIDATE_PATH`; an invalid explicit override fails closed instead of falling back.
 
 Semantic identity migration rehearsal (dry-run by default; apply only in a maintenance window):
 

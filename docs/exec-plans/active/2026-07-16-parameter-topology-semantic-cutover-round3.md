@@ -69,8 +69,9 @@ Rollback: feature branch only; no production cutover; restore snapshot if rehear
 ```bash
 npm run contract:check && npm run docs:check && npm run build
 npm run test:server && npm test && npm run test:all
-PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dts:toolchain:check
-PATH="$HOME/Library/Python/3.9/bin:$PATH" npm run dtc:seed:compile
+npm run dts:toolchain:bootstrap
+npm run dts:toolchain:check
+npm run dtc:seed:compile
 npm run selfhost:check && git diff --check
 ```
 
