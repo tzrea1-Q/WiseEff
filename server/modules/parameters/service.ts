@@ -17,7 +17,6 @@ import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
 import { writebackMergedParameterValue, type WritebackServiceContext } from "../parameter-files/writebackService";
 import {
-  resolveBindingWriteLock,
   resolveInitializationSuggestion,
   verifyBindingWriteLock
 } from "../parameter-topology/editService";
@@ -113,8 +112,6 @@ export type SaveDraftInput = {
   parameterId: string;
   targetValue: string;
   reason: string;
-  projectParameterBindingId?: string;
-  parameterSpecId?: string;
 };
 
 export type SubmitParameterChangesInput = {
@@ -1046,13 +1043,15 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
 
 export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDraftInput) {
   requireCanEdit(auth);
-  await loadParameterForSubmission(db, auth, input.projectId, input.parameterId);
-
-  const bindingId = input.projectParameterBindingId ?? input.parameterId;
-  let writeLock;
   if (await mustUseSemanticParameterIdentity(db)) {
-    writeLock = await resolveBindingWriteLock(db, auth, { bindingId });
+    throw new ApiError(
+      "CONFLICT",
+      "Legacy parameter drafts are retired after semantic identity cutover; create a typed binding draft instead.",
+      409,
+      { projectId: input.projectId }
+    );
   }
+  await loadParameterForSubmission(db, auth, input.projectId, input.parameterId);
 
   return upsertDraft(db, {
     id: randomUUID(),
@@ -1063,9 +1062,6 @@ export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDra
     targetValue: input.targetValue,
     reason: input.reason,
     origin: "manual",
-    projectParameterBindingId: input.projectParameterBindingId,
-    parameterSpecId: input.parameterSpecId,
-    writeLock,
   });
 }
 
@@ -1098,6 +1094,14 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
 
   return db.transaction(async (tx) => {
     const useSemanticIdentity = await mustUseSemanticParameterIdentity(tx);
+    if (useSemanticIdentity && input.items.some((item) => !("draftId" in item))) {
+      throw new ApiError(
+        "CONFLICT",
+        "Legacy parameter submission is retired after semantic identity cutover; submit an exact binding draft.",
+        409,
+        { projectId: input.projectId }
+      );
+    }
     const parameters: Array<{
       item: SubmitParameterChangesInput["items"][number];
       parameter: Awaited<ReturnType<typeof loadParameterForSubmission>>;
@@ -1143,12 +1147,14 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         if (
           !loadedDraft.candidateConfigRevisionId ||
           loadedDraft.candidateStatus !== "draft" ||
-          !loadedDraft.candidateHasBindingRevision
+          !loadedDraft.candidateHasBindingRevision ||
+          !loadedDraft.candidateValueMatchesDraft
         ) {
-          throw new ApiError("CONFLICT", "Binding draft candidate revision is missing or no longer draft.", 409, {
+          throw new ApiError("CONFLICT", "Binding draft candidate revision is missing, stale, or value-mismatched.", 409, {
             draftId: item.draftId,
             candidateConfigRevisionId: loadedDraft.candidateConfigRevisionId,
-            candidateStatus: loadedDraft.candidateStatus
+            candidateStatus: loadedDraft.candidateStatus,
+            candidateValueMatchesDraft: loadedDraft.candidateValueMatchesDraft
           });
         }
         if (!loadedDraft.writeLock || !loadedDraft.writeLockMatchesBinding) {

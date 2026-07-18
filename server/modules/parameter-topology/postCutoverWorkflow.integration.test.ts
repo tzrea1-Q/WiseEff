@@ -31,7 +31,7 @@ import {
   updateChangeRequestStatus,
   upsertDraft
 } from "../parameters/repository";
-import { reviewChange, submitParameterChanges } from "../parameters/service";
+import { reviewChange, saveDraft, submitParameterChanges } from "../parameters/service";
 import { resolveBindingWriteLock } from "./editService";
 import {
   applyParameterIdentityCutover,
@@ -99,7 +99,7 @@ async function withAdminClient<T>(fn: (client: pg.Client) => Promise<T>): Promis
   }
 }
 
-async function withTempDatabase(fn: (db: Database) => Promise<void>) {
+async function withTempDatabase(fn: (db: Database, connectionString: string) => Promise<void>) {
   const dbName = `wiseeff_pcw_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`.replace(
     /[^a-z0-9_]/gi,
     ""
@@ -120,7 +120,7 @@ async function withTempDatabase(fn: (db: Database) => Promise<void>) {
 
   try {
     await applyMigrations(db, migrationsDir);
-    await fn(db);
+    await fn(db, connectionString);
   } finally {
     await client.end().catch(() => undefined);
     await withAdminClient(async (admin) => {
@@ -398,6 +398,27 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
         resetParameterIdentityCutoverCache();
 
+        await expect(
+          saveDraft(db, makeAuth(), {
+            projectId: PROJECT,
+            parameterId: seeded.bindingId,
+            targetValue: "<&gpio13 31 0>",
+            reason: "legacy save must be rejected after cutover"
+          })
+        ).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+        await expect(
+          submitParameterChanges(db, makeAuth(), {
+            projectId: PROJECT,
+            items: [
+              {
+                parameterId: seeded.bindingId,
+                targetValue: "<&gpio13 31 0>",
+                reason: "legacy submit must be rejected after cutover"
+              }
+            ]
+          })
+        ).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+
         await db.query(`delete from parameter_drafts where organization_id = $1 and project_id = $2`, [ORG, PROJECT]);
         const candidateRevisionId = "rev-pcw-binding-submit-candidate";
         await db.query(
@@ -455,6 +476,14 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             ]
           });
 
+        await expect(submit()).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+        await db.query(
+          `update project_parameter_binding_revisions
+           set raw_value = $2
+           where id = $1`,
+          ["bpr-pcw-binding-submit-candidate", targetValue]
+        );
+
         await expect(submit({ parameterSpecId: "spec-mismatch" })).rejects.toMatchObject({
           code: "CONFLICT",
           status: 409
@@ -510,6 +539,177 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           parameterSpecIds: [seeded.specId]
         });
         expect((await db.query(`select 1 from parameter_drafts where id = $1`, [draftId])).rows).toHaveLength(0);
+      });
+    },
+    90_000
+  );
+
+  it(
+    "locks the exact draft so a concurrent typed edit survives submission cleanup",
+    async () => {
+      await withTempDatabase(async (db, connectionString) => {
+        const seeded = await seedPreCutoverGraph(db);
+        const report = await migrateParameterIdentities(db, {
+          mode: "apply",
+          organizationId: ORG,
+          ...applyGates,
+          dbSnapshotId: "db-snap-binding-concurrency",
+          objectSnapshotId: "obj-snap-binding-concurrency"
+        });
+        expect(report.blockers).toEqual([]);
+        await applyParameterIdentityCutover(db, { migrationRunId: report.migrationRunId });
+        resetParameterIdentityCutoverCache();
+        await db.query(`delete from parameter_drafts where organization_id = $1 and project_id = $2`, [ORG, PROJECT]);
+
+        const candidateRevisionId = "rev-pcw-binding-concurrent-candidate";
+        const submittedValue = "<&gpio13 30 0>";
+        await db.query(
+          `insert into dts_config_revisions (
+             id, organization_id, project_id, config_set_id, revision_number, status,
+             created_by_user_id, entry_file, include_search_paths, overlay_order, manifest_state
+           ) values ($1, $2, $3, $4, 2, 'draft', $5, 'pcw-base.dts', '["."]'::jsonb,
+             '["pcw-overlay.dts"]'::jsonb, 'complete')`,
+          [candidateRevisionId, ORG, PROJECT, CONFIG_SET, USER]
+        );
+        await db.query(
+          `insert into project_parameter_binding_revisions (
+             id, binding_id, config_revision_id, parameter_spec_version_id,
+             typed_value, canonical_value, raw_value, schema_state, policy_state
+           )
+           select $1, binding_id, $2, parameter_spec_version_id,
+             typed_value, canonical_value, $3, schema_state, policy_state
+           from project_parameter_binding_revisions
+           where binding_id = $4 and config_revision_id = $5`,
+          [
+            "bpr-pcw-binding-concurrent-candidate",
+            candidateRevisionId,
+            submittedValue,
+            seeded.bindingId,
+            seeded.configRevisionId
+          ]
+        );
+        const writeLock = await resolveBindingWriteLock(db, makeAuth(), {
+          bindingId: seeded.bindingId,
+          baseRevisionId: seeded.configRevisionId
+        });
+        const draftId = "draft-pcw-binding-concurrent";
+        await upsertDraft(db, {
+          id: draftId,
+          organizationId: ORG,
+          projectId: PROJECT,
+          parameterId: seeded.bindingId,
+          userId: USER,
+          targetValue: submittedValue,
+          reason: "submit snapshot",
+          projectParameterBindingId: seeded.bindingId,
+          parameterSpecId: seeded.specId,
+          candidateConfigRevisionId: candidateRevisionId,
+          writeLock
+        });
+
+        const submitClient = new pg.Client({ connectionString });
+        const editClient = new pg.Client({ connectionString });
+        await submitClient.connect();
+        await editClient.connect();
+        let releaseDraftRead!: () => void;
+        const draftReadReleased = new Promise<void>((resolve) => {
+          releaseDraftRead = resolve;
+        });
+        let signalDraftRead!: () => void;
+        const draftRead = new Promise<void>((resolve) => {
+          signalDraftRead = resolve;
+        });
+        let intercepted = false;
+        const submitDbBase = createDatabase({
+          query: async (text, values = []) => {
+            const result = await submitClient.query(text, values);
+            return { rows: result.rows, rowCount: result.rowCount };
+          }
+        });
+        const submitDb: Database = {
+          query: submitDbBase.query,
+          transaction: (fn) =>
+            submitDbBase.transaction((tx) =>
+              fn({
+                query: async (text, values = []) => {
+                  const result = await tx.query(text, values);
+                  if (!intercepted && text.includes("from parameter_drafts d")) {
+                    intercepted = true;
+                    signalDraftRead();
+                    await draftReadReleased;
+                  }
+                  return result;
+                }
+              })
+            )
+        };
+        const editDb = createDatabase({
+          query: async (text, values = []) => {
+            const result = await editClient.query(text, values);
+            return { rows: result.rows, rowCount: result.rowCount };
+          }
+        });
+
+        try {
+          const submission = submitParameterChanges(submitDb, makeAuth(), {
+            projectId: PROJECT,
+            items: [
+              {
+                draftId,
+                projectParameterBindingId: seeded.bindingId,
+                parameterSpecId: seeded.specId,
+                targetValue: submittedValue,
+                reason: "submit snapshot"
+              }
+            ]
+          });
+          await draftRead;
+
+          const editorPid = await editClient.query<{ pid: number }>("select pg_backend_pid() as pid");
+          const concurrentEdit = upsertDraft(editDb, {
+            id: "draft-pcw-binding-concurrent-new",
+            organizationId: ORG,
+            projectId: PROJECT,
+            parameterId: seeded.bindingId,
+            userId: USER,
+            targetValue: "<&gpio13 32 0>",
+            reason: "concurrent edit survives",
+            projectParameterBindingId: seeded.bindingId,
+            parameterSpecId: seeded.specId,
+            candidateConfigRevisionId: candidateRevisionId,
+            writeLock
+          });
+
+          let lockObserved = false;
+          for (let attempt = 0; attempt < 50; attempt += 1) {
+            const activity = await db.query<{ wait_event_type: string | null }>(
+              `select wait_event_type from pg_stat_activity where pid = $1`,
+              [editorPid.rows[0]!.pid]
+            );
+            if (activity.rows[0]?.wait_event_type === "Lock") {
+              lockObserved = true;
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+
+          releaseDraftRead();
+          await Promise.all([submission, concurrentEdit]);
+          const survivingDraft = await db.query<{ target_value: string; reason: string }>(
+            `select target_value, reason from parameter_drafts
+             where organization_id = $1 and project_id = $2
+               and project_parameter_binding_id = $3 and user_id = $4`,
+            [ORG, PROJECT, seeded.bindingId, USER]
+          );
+          expect(lockObserved).toBe(true);
+          expect(survivingDraft.rows).toEqual([
+            { target_value: "<&gpio13 32 0>", reason: "concurrent edit survives" }
+          ]);
+        } finally {
+          releaseDraftRead();
+          await submitClient.end().catch(() => undefined);
+          await editClient.end().catch(() => undefined);
+        }
       });
     },
     90_000

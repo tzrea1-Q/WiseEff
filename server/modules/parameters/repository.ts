@@ -118,6 +118,7 @@ export type BindingDraftForSubmission = {
   candidateConfigRevisionId: string | null;
   candidateStatus: string | null;
   candidateHasBindingRevision: boolean;
+  candidateValueMatchesDraft: boolean;
   targetValue: string;
   reason: string;
   writeLock: BindingWriteLockFields | null;
@@ -142,6 +143,7 @@ export async function getBindingDraftForSubmission(
       candidate_config_revision_id: string | null;
       candidate_status: string | null;
       candidate_has_binding_revision: boolean;
+      candidate_value_matches_draft: boolean;
       write_lock_matches_binding: boolean;
       target_value: string;
       reason: string;
@@ -161,6 +163,13 @@ export async function getBindingDraftForSubmission(
         where candidate_bpr.binding_id = b.id
           and candidate_bpr.config_revision_id = d.candidate_config_revision_id
       ) as candidate_has_binding_revision,
+      exists (
+        select 1
+        from project_parameter_binding_revisions candidate_bpr
+        where candidate_bpr.binding_id = b.id
+          and candidate_bpr.config_revision_id = d.candidate_config_revision_id
+          and candidate_bpr.raw_value = d.target_value
+      ) as candidate_value_matches_draft,
       exists (
         select 1
         from project_parameter_binding_revisions locked_bpr
@@ -197,6 +206,7 @@ export async function getBindingDraftForSubmission(
       and d.user_id = $3
       and d.id = $4
     limit 1
+    for update of d
     `,
     [input.organizationId, input.projectId, input.userId, input.draftId]
   );
@@ -210,6 +220,7 @@ export async function getBindingDraftForSubmission(
     candidateConfigRevisionId: row.candidate_config_revision_id,
     candidateStatus: row.candidate_status,
     candidateHasBindingRevision: row.candidate_has_binding_revision,
+    candidateValueMatchesDraft: row.candidate_value_matches_draft,
     targetValue: row.target_value,
     reason: row.reason,
     writeLock: toWriteLockFields(row),
