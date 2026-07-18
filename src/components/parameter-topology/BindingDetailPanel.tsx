@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   EffectiveTopologyEffect,
   IdentityMappingTask,
@@ -22,7 +22,7 @@ export type BindingDetailPanelProps = {
   mappingTasks?: IdentityMappingTask[];
   canEdit?: boolean;
   onValidateEdit?: (
-    input: { bindingId: string; rawValue: string }
+    input: { bindingId: string; rawValue: string; reason: string }
   ) => BindingEditValidation | Promise<BindingEditValidation>;
   asDialog?: boolean;
 };
@@ -39,8 +39,15 @@ export function BindingDetailPanel({
   asDialog = false
 }: BindingDetailPanelProps) {
   const [draftRaw, setDraftRaw] = useState(binding.rawValue);
+  const [draftReason, setDraftReason] = useState("");
   const [diagnostics, setDiagnostics] = useState<TopologyDiagnostic[]>([]);
   const [validating, setValidating] = useState(false);
+
+  useEffect(() => {
+    setDraftRaw(binding.rawValue);
+    setDraftReason("");
+    setDiagnostics([]);
+  }, [binding.id, binding.rawValue]);
 
   const openMappings = mappingTasks.filter((task) => task.status === "open");
   const Wrapper: "section" | "div" = asDialog ? "div" : "section";
@@ -128,13 +135,27 @@ export function BindingDetailPanel({
             }}
           />
         </label>
+        <label>
+          修改原因
+          <textarea
+            aria-label="修改原因"
+            value={draftReason}
+            disabled={!canEdit || validating}
+            onChange={(event) => {
+              setDraftReason(event.target.value);
+              setDiagnostics([]);
+            }}
+          />
+        </label>
         <button
           type="button"
           className="button subtle"
-          disabled={!canEdit || validating}
+          disabled={!canEdit || validating || !draftReason.trim()}
           onClick={() => {
             setValidating(true);
-            void Promise.resolve(onValidateEdit?.({ bindingId: binding.id, rawValue: draftRaw }))
+            void Promise.resolve(
+              onValidateEdit?.({ bindingId: binding.id, rawValue: draftRaw, reason: draftReason.trim() })
+            )
               .then((result) => {
                 setDiagnostics(result?.diagnostics ?? []);
               })
@@ -143,7 +164,7 @@ export function BindingDetailPanel({
               });
           }}
         >
-          {validating ? "校验中…" : "校验 / 应用诊断"}
+          {validating ? "创建中…" : "校验并创建草稿"}
         </button>
         {diagnostics.length > 0 ? (
           <ul aria-label="编辑诊断">

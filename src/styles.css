@@ -19341,3 +19341,29 @@ body.xiaoze-popup-resize-active {
   max-width: min(480px, 92vw);
   margin: 24px auto;
 }
+
+.binding-draft-submission {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.binding-draft-submission header,
+.binding-draft-submission dl,
+.binding-draft-submission dl > div,
+.binding-draft-submission dd,
+.binding-draft-submission code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.binding-draft-submission__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

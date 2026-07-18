@@ -47,7 +47,13 @@ export type ParameterDraftDto = {
 
 export type SubmitParameterChangesInput = {
   projectId: string;
-  items: Array<{ parameterId: string; targetValue: string; reason: string }>;
+  items: Array<{
+    parameterId: string;
+    targetValue: string;
+    reason: string;
+    projectParameterBindingId?: string;
+    parameterSpecId?: string;
+  }>;
   reason?: string;
   assignees?: {
     hardwareCommitterId: string;

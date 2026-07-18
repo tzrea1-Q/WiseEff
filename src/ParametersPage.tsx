@@ -16,7 +16,6 @@ import { ParameterDraftDialog } from "./components/ParameterDraftDialog";
 import { shouldSummarizeComplexParameter } from "./parameterValueKind";
 import { useTopBarActions } from "./components/layout";
 import type { ParameterPageActions } from "./app/routes";
-import type { WorkflowAssigneeCandidates } from "@/application/ports/ParameterRepository";
 import type { ProjectInitializationStatus } from "./domain/parameters/types";
 import {
   findOpenChangeRequestForParameter,
@@ -105,11 +104,6 @@ export function ParametersPage({
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
   const [submittingRound, setSubmittingRound] = useState(false);
   const [stashingRound, setStashingRound] = useState(false);
-  const [apiWorkflowCandidates, setApiWorkflowCandidates] = useState<WorkflowAssigneeCandidates>({
-    hardwareCommitters: [],
-    softwareCommitters: [],
-    softwareUsers: [],
-  });
   const previousUserIdRef = useRef(state.currentUserId);
   const resolvedProjectId = effectiveProjectId || state.activeProjectId;
   const selectedProjectParameters = useMemo(
@@ -192,25 +186,7 @@ export function ParametersPage({
     }),
     [activeUsers]
   );
-  const workflowCandidates = isApiMode ? apiWorkflowCandidates : mockWorkflowCandidates;
-
-  useEffect(() => {
-    if (!isApiMode || !parameterActions?.listWorkflowAssignees) return undefined;
-    let cancelled = false;
-    setApiWorkflowCandidates({ hardwareCommitters: [], softwareCommitters: [], softwareUsers: [] });
-    parameterActions.listWorkflowAssignees(resolvedProjectId)
-      .then((candidates) => {
-        if (!cancelled) setApiWorkflowCandidates(candidates);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setApiWorkflowCandidates({ hardwareCommitters: [], softwareCommitters: [], softwareUsers: [] });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isApiMode, parameterActions, resolvedProjectId]);
+  const workflowCandidates = mockWorkflowCandidates;
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
   const activeInitializationDraft = state.parameterInitializationDrafts.find(
     (draft) => draft.projectId === resolvedProjectId
@@ -787,32 +763,34 @@ export function ParametersPage({
   };
   useTopBarActions(
     <>
-      <button
-        className="button subtle"
-        type="button"
-        onClick={() =>
-          exportProjectParametersAsExcel(
-            filteredParameters.map((parameter) => ({
-              propertyKey: parameter.name,
-              driverModule: parameter.module,
-              instanceName: parameter.modulePath?.at(-1) ?? null,
-              locator: parameter.sourceNodePath ?? null,
-              effectiveValue: { kind: "strings" as const, values: [parameter.currentValue] },
-              schemaVersion: null
-            })),
-            activeProject.code
-          )
-        }
-      >
-        导出 Excel
-      </button>
+      {!isApiMode ? (
+        <button
+          className="button subtle"
+          type="button"
+          onClick={() =>
+            exportProjectParametersAsExcel(
+              filteredParameters.map((parameter) => ({
+                propertyKey: parameter.name,
+                driverModule: parameter.module,
+                instanceName: parameter.modulePath?.at(-1) ?? null,
+                locator: parameter.sourceNodePath ?? null,
+                effectiveValue: { kind: "strings" as const, values: [parameter.currentValue] },
+                schemaVersion: null
+              })),
+              activeProject.code
+            )
+          }
+        >
+          导出 Excel
+        </button>
+      ) : null}
       {effectiveCanEdit ? (
         <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-submissions")}>
           历史提交
         </button>
       ) : null}
     </>,
-    [activeProject.code, filteredParameters]
+    [activeProject.code, effectiveCanEdit, filteredParameters, isApiMode, onNavigate]
   );
 
   return (
@@ -835,9 +813,13 @@ export function ParametersPage({
             runtimeMode="api"
             topologyRepository={topologyRepository}
             listConfigSets={listConfigSets}
+            listWorkflowAssignees={parameterActions?.listWorkflowAssignees}
+            submitBindingChanges={parameterActions?.submitChanges}
+            onNavigate={onNavigate}
           />
-        ) : null}
-        <div className="workbench-one-col parameters-workbench-main">
+        ) : (
+          <>
+          <div className="workbench-one-col parameters-workbench-main">
           <section className="workbench-main">
             {modifiedParameters.length > 0 ? (
               <section className="modified-parameters-section" aria-label="本轮已修改参数区">
@@ -917,7 +899,7 @@ export function ParametersPage({
             />
           </section>
         </div>
-        {effectiveCanEdit && draftItems.length > 0 && sheetOpen ? (
+          {effectiveCanEdit && draftItems.length > 0 && sheetOpen ? (
           <ParameterDraftDialog
             open
             title="修改草稿"
@@ -932,9 +914,11 @@ export function ParametersPage({
             onSubmit={submitParameterToModifiedTable}
             onViewSubmissions={() => onNavigate("/parameter-submissions")}
           />
-        ) : null}
+          ) : null}
+          </>
+        )}
       </div>
-      {confirmOpen && previewItems.length > 0 ? (
+      {!isApiMode && confirmOpen && previewItems.length > 0 ? (
         <ParameterSubmissionDialog
           items={previewItems}
           candidates={workflowCandidates}
@@ -943,7 +927,7 @@ export function ParametersPage({
           submitting={submittingRound}
         />
       ) : null}
-      {viewingParameter ? (
+      {!isApiMode && viewingParameter ? (
         <ParameterDetailDialog
           parameter={viewingParameter}
           parameters={state.parameters}

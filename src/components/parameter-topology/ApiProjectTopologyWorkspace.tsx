@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type {
+  SubmitParameterChangesInput,
+  WorkflowAssigneeCandidates
+} from "@/application/ports/ParameterRepository";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type {
@@ -21,6 +25,10 @@ import {
   type TopologyLayoutMode
 } from "./ProjectTopologyWorkspace";
 import type { BindingEditValidation } from "./BindingDetailPanel";
+import {
+  BindingDraftSubmissionPanel,
+  type PendingBindingDraft
+} from "./BindingDraftSubmissionPanel";
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
@@ -31,6 +39,11 @@ export type ApiProjectTopologyWorkspaceProps = {
   /** Test seam — inject repositories instead of constructing HTTP clients. */
   topologyRepository?: ParameterTopologyRepository;
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
+  listWorkflowAssignees?: (projectId: string) => Promise<WorkflowAssigneeCandidates>;
+  submitBindingChanges?: (
+    input: SubmitParameterChangesInput
+  ) => Promise<void | { notification: string; alreadyNotified?: boolean }>;
+  onNavigate?: (path: string) => void;
 };
 
 type LoadState =
@@ -131,7 +144,10 @@ export function ApiProjectTopologyWorkspace({
   layoutMode = "desktop",
   runtimeMode = "api",
   topologyRepository,
-  listConfigSets
+  listConfigSets,
+  listWorkflowAssignees,
+  submitBindingChanges,
+  onNavigate = () => undefined
 }: ApiProjectTopologyWorkspaceProps) {
   const repository = useMemo(
     () => topologyRepository ?? (runtimeMode === "api" ? createHttpParameterTopologyRepository() : null),
@@ -145,6 +161,39 @@ export function ApiProjectTopologyWorkspace({
   const [preferredRevisionId, setPreferredRevisionId] = useState<string | undefined>();
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
   const [mappingMessage, setMappingMessage] = useState<string | null>(null);
+  const [pendingDraft, setPendingDraft] = useState<PendingBindingDraft | null>(null);
+  const [workflowCandidates, setWorkflowCandidates] = useState<WorkflowAssigneeCandidates | null>(null);
+  const [workflowCandidatesError, setWorkflowCandidatesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPendingDraft(null);
+    setWorkflowCandidates(null);
+    setWorkflowCandidatesError(null);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!pendingDraft) return undefined;
+    if (!listWorkflowAssignees) {
+      setWorkflowCandidates(null);
+      setWorkflowCandidatesError("正式提交入口未配置项目角色候选人，已阻止提交。");
+      return undefined;
+    }
+    let cancelled = false;
+    setWorkflowCandidates(null);
+    setWorkflowCandidatesError(null);
+    listWorkflowAssignees(projectId)
+      .then((candidates) => {
+        if (!cancelled) setWorkflowCandidates(candidates);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setWorkflowCandidatesError(error instanceof Error ? error.message : "无法加载项目角色候选人。");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [listWorkflowAssignees, pendingDraft, projectId]);
 
   useEffect(() => {
     if (!repository) {
@@ -185,6 +234,7 @@ export function ApiProjectTopologyWorkspace({
   const handleValidateEdit = async (input: {
     bindingId: string;
     rawValue: string;
+    reason: string;
   }): Promise<BindingEditValidation> => {
     if (!repository || loadState.kind !== "ready") {
       return {
@@ -220,8 +270,9 @@ export function ApiProjectTopologyWorkspace({
       const draft = await repository.createBindingDraft(projectId, input.bindingId, {
         baseRevisionId: loadState.revisionId,
         targetValue,
-        reason: "Topology workspace typed edit"
+        reason: input.reason
       });
+      setPendingDraft({ ...draft, reason: input.reason });
       setPreferredRevisionId(draft.candidateRevisionId);
       setReloadToken((token) => token + 1);
       return { valid: true, diagnostics: [] };
@@ -378,6 +429,22 @@ export function ApiProjectTopologyWorkspace({
           void handleResolveMapping(taskId, input);
         }}
       />
+      {pendingDraft ? (
+        <BindingDraftSubmissionPanel
+          key={pendingDraft.draftId}
+          projectId={projectId}
+          draft={pendingDraft}
+          candidates={workflowCandidates}
+          candidatesError={workflowCandidatesError}
+          onSubmit={async (input) => {
+            if (!submitBindingChanges) {
+              return { notification: "正式 binding 提交入口未配置，已阻止提交。" };
+            }
+            return submitBindingChanges(input);
+          }}
+          onNavigate={onNavigate}
+        />
+      ) : null}
     </>
   );
 }

@@ -165,7 +165,8 @@ describe("ProjectTopologyWorkspace", () => {
     const detail = within(workspace).getByRole("region", { name: "绑定详情" });
     const valueInput = within(detail).getByLabelText(/目标值|原始值|raw/i);
     fireEvent.change(valueInput, { target: { value: "<&gpio13 29>" } });
-    fireEvent.click(within(detail).getByRole("button", { name: /校验|应用诊断/i }));
+    fireEvent.change(within(detail).getByLabelText("修改原因"), { target: { value: "Invalid cell count probe" } });
+    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/i }));
 
     expect(await within(detail).findByText(/cell count must be 3/)).toBeVisible();
     expect(within(workspace).getByRole("button", { name: "校验" })).toBeDisabled();

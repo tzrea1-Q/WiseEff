@@ -85,6 +85,7 @@ Semantic library and project topology UI live under `src/components/parameter-to
 - Parameter specs + spec review queue (`/parameter-admin`)
 - Source vs effective topology browse and search on `/parameters`
 - Typed binding edit with schema diagnostics
+- Binding-centric typed draft submission with project-scoped Hardware Committer, Software Committer, and Software User assignees; subsequent stages run on the real `/parameter-review` UI
 - Identity mapping task resolution
 - Fail-closed config revision validate/publish gate
 - **Unmatched spec review:** `SpecReviewQueue` exposes create-spec for unmatched tasks (`createSpec: true` on resolve). Library resolve with a property-key mismatch requires explicit `confirmPropertyMismatch: true` before the client calls `POST .../parameter-spec-review-tasks/:taskId/resolve`.
@@ -92,6 +93,8 @@ Semantic library and project topology UI live under `src/components/parameter-to
 - Dashboard hotspots include global vendor specs for tenant-bound projects (API aggregates `organization_id IS NULL` specs).
 
 API mode talks to `/api/v2` (not flat `/api/v1` parameter definition IDs). DTOs keep `exampleValue`, `schemaDefault`, `policyTarget`, and `effectiveValue` separate — no business `recommendedValue`. After cutover, legacy parameter IDs are not projected; callers must use binding/spec IDs.
+
+On `/parameters`, API mode renders only `ApiProjectTopologyWorkspace` and its binding draft submission panel. The legacy `ParametersTable`, recommendation-drift labels, recommended-value draft initialization, flat detail dialog, and flat export remain mock-only. A typed edit requires an explicit reason, preserves the returned binding/spec/candidate identities, and submits through the formal submission API before assigned roles act in `/parameter-review`.
 
 Provenance, binding detail, and mapping/review queues must come from the API response (`sourceChain`, occurrence spans, task payloads). In API mode do **not** fall back to teaching/mock topology data when the backend is empty or errors. Validate/publish copy must match gate outcomes (`validated` vs fail-closed revoke); never treat `schema-failed` as a success path.
 

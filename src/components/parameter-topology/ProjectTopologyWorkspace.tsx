@@ -39,7 +39,7 @@ export type ProjectTopologyWorkspaceProps = {
   publishActionLabel?: "校验" | "发布";
   layoutMode?: TopologyLayoutMode;
   onValidateEdit?: (
-    input: { bindingId: string; rawValue: string }
+    input: { bindingId: string; rawValue: string; reason: string }
   ) => BindingEditValidation | Promise<BindingEditValidation>;
   onPublish?: () => void;
   onResolveMapping?: (taskId: string, input: ResolveMappingInput) => void | Promise<void>;
@@ -193,6 +193,7 @@ export function ProjectTopologyWorkspace({
   const handleValidateEdit = async (input: {
     bindingId: string;
     rawValue: string;
+    reason: string;
   }): Promise<BindingEditValidation> => {
     const result = (await onValidateEdit?.(input)) ?? { valid: true, diagnostics: [] };
     setEditBlocked(!result.valid);

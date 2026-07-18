@@ -149,7 +149,10 @@ describe("ApiProjectTopologyWorkspace", () => {
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
     fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
     const detail = within(workspace).getByRole("region", { name: "绑定详情" });
-    fireEvent.click(within(detail).getByRole("button", { name: /校验|应用诊断/i }));
+    fireEvent.change(within(detail).getByLabelText("修改原因"), {
+      target: { value: "Create a typed binding draft" }
+    });
+    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/i }));
 
     await waitFor(() => {
       expect(repository.createBindingDraft).toHaveBeenCalledWith(
@@ -157,7 +160,7 @@ describe("ApiProjectTopologyWorkspace", () => {
         "binding-sc8562-gpio-int",
         expect.objectContaining({
           baseRevisionId: "rev-real-1",
-          reason: expect.any(String)
+          reason: "Create a typed binding draft"
         })
       );
     });
@@ -170,6 +173,86 @@ describe("ApiProjectTopologyWorkspace", () => {
         "effective"
       );
     });
+  });
+
+  it("submits a typed binding draft with server-filtered role assignees", async () => {
+    const repository = createRepository({
+      createBindingDraft: vi.fn().mockResolvedValue({
+        draftId: "draft-typed-1",
+        parameterId: "binding-sc8562-gpio-int",
+        candidateRevisionId: "rev-candidate-2",
+        rawText: "<&gpio13 30 0>",
+        parameterSpecId: "spec-sc8562-gpio-int",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
+        overlayFileId: "file-overlay",
+        overlayFileName: "overlay.dts"
+      })
+    });
+    const listWorkflowAssignees = vi.fn().mockResolvedValue({
+      hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+      softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+      softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+    });
+    const submitBindingChanges = vi.fn().mockResolvedValue(undefined);
+    const onNavigate = vi.fn();
+    const { fireEvent } = await import("@testing-library/react");
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listWorkflowAssignees={listWorkflowAssignees}
+        submitBindingChanges={submitBindingChanges}
+        onNavigate={onNavigate}
+      />
+    );
+
+    await screen.findByRole("treeitem", { name: /sc8562@6E/ });
+    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
+    const detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    fireEvent.change(within(detail).getByLabelText("目标值 raw"), {
+      target: { value: "<&gpio13 30 0>" }
+    });
+    fireEvent.change(within(detail).getByLabelText("修改原因"), {
+      target: { value: "Raise gpio line for typed workflow" }
+    });
+    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/ }));
+
+    const submission = await screen.findByRole("region", { name: "绑定变更提交" });
+    expect(listWorkflowAssignees).toHaveBeenCalledWith("aurora");
+    expect(await within(submission).findByLabelText("硬件 MDE")).toHaveValue("u-hw");
+    expect(within(submission).getByLabelText("软件 MDE")).toHaveValue("u-sw");
+    expect(within(submission).getByLabelText("软件开发")).toHaveValue("u-user");
+    const submitButton = within(submission).getByRole("button", { name: "提交审核" });
+    await waitFor(() => expect(submitButton).toBeEnabled());
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(submitBindingChanges).toHaveBeenCalledWith({
+        projectId: "aurora",
+        items: [
+          {
+            parameterId: "binding-sc8562-gpio-int",
+            targetValue: "<&gpio13 30 0>",
+            reason: "Raise gpio line for typed workflow",
+            projectParameterBindingId: "binding-sc8562-gpio-int",
+            parameterSpecId: "spec-sc8562-gpio-int"
+          }
+        ],
+        assignees: {
+          hardwareCommitterId: "u-hw",
+          softwareCommitterId: "u-sw",
+          softwareUserId: "u-user"
+        }
+      });
+    });
+    fireEvent.click(within(submission).getByRole("button", { name: "查看审核队列" }));
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-review");
   });
 
   it("publish calls fail-closed validateRevision", async () => {
