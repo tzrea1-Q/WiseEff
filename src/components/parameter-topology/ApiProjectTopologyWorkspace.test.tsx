@@ -80,12 +80,12 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-config-set-id",
         "dcs-default-aurora"
       );
     });
-    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     expect(workspace).toHaveAttribute("data-revision-id", "rev-real-1");
     expect(workspace.getAttribute("data-config-set-id")).not.toMatch(/-default-config$/);
     expect(workspace.getAttribute("data-revision-id")).not.toMatch(/-head$/);
@@ -144,12 +144,12 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await waitFor(() => {
-      expect(within(screen.getByRole("region", { name: "项目拓扑工作区" })).getByRole("treeitem", { name: /sc8562@6E/ })).toBeVisible();
+      expect(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("treeitem", { name: /sc8562@6E/ })).toBeVisible();
     });
-    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
-    fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
-    const detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    const detail = screen.getByRole("dialog", { name: /参数详情/ });
     fireEvent.change(within(detail).getByLabelText("修改原因"), {
       target: { value: "Create a typed binding draft" }
     });
@@ -220,10 +220,10 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await screen.findByRole("treeitem", { name: /sc8562@6E/ });
-    const auroraWorkspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    const auroraWorkspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(auroraWorkspace).getByRole("treeitem", { name: /sc8562@6E/ }));
-    fireEvent.click(within(auroraWorkspace).getByRole("cell", { name: "gpio_int" }));
-    const detail = within(auroraWorkspace).getByRole("region", { name: "绑定详情" });
+    fireEvent.click(within(auroraWorkspace).getByRole("button", { name: /查看 gpio_int/ }));
+    const detail = screen.getByRole("dialog", { name: /参数详情/ });
     fireEvent.change(within(detail).getByLabelText("修改原因"), {
       target: { value: "Create Aurora candidate before switching projects" }
     });
@@ -258,7 +258,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     await waitFor(() => {
       expect(screen.queryByRole("region", { name: "绑定变更提交" })).not.toBeInTheDocument();
-      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-revision-id",
         "rev-nebula-current"
       );
@@ -298,10 +298,10 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await screen.findByRole("treeitem", { name: /sc8562@6E/ });
-    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
-    fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
-    const detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    const detail = screen.getByRole("dialog", { name: /参数详情/ });
     fireEvent.change(within(detail).getByLabelText("修改原因"), {
       target: { value: "Aurora request must not leak" }
     });
@@ -322,7 +322,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       />
     );
     await waitFor(() => {
-      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-revision-id",
         "rev-real-1"
       );
@@ -417,7 +417,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-revision-id",
         "rev-real-1"
       );
@@ -462,10 +462,10 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await screen.findByRole("treeitem", { name: /sc8562@6E/ });
-    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
-    fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
-    const detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    const detail = screen.getByRole("dialog", { name: /参数详情/ });
     fireEvent.change(within(detail).getByLabelText("目标值 raw"), {
       target: { value: "<&gpio13 30 0>" }
     });
@@ -553,10 +553,10 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await screen.findByRole("treeitem", { name: /sc8562@6E/ });
-    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
-    fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
-    const detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    const detail = screen.getByRole("dialog", { name: /参数详情/ });
 
     fireEvent.change(within(detail).getByLabelText("目标值 raw"), {
       target: { value: "<&gpio13 30 0>" }
@@ -566,18 +566,22 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/ }));
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(workspace).toHaveAttribute("data-revision-id", "candidate-first"));
+    await waitFor(() => expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute("data-revision-id", "candidate-first"));
 
-    fireEvent.change(within(detail).getByLabelText("目标值 raw"), {
+    const replacementWorkspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(replacementWorkspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(replacementWorkspace).getByRole("button", { name: /查看 gpio_int/ }));
+    const replacementDetail = screen.getByRole("dialog", { name: /参数详情/ });
+    fireEvent.change(within(replacementDetail).getByLabelText("目标值 raw"), {
       target: { value: "<&gpio13 31 0>" }
     });
-    fireEvent.change(within(detail).getByLabelText("修改原因"), {
+    fireEvent.change(within(replacementDetail).getByLabelText("修改原因"), {
       target: { value: "Replacement typed change" }
     });
-    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/ }));
+    fireEvent.click(within(replacementDetail).getByRole("button", { name: /创建草稿/ }));
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
     await waitFor(() => {
-      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-revision-id",
         "candidate-replacement"
       );
@@ -632,10 +636,10 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await screen.findByRole("treeitem", { name: /sc8562@6E/ });
-    let workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    let workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
-    fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
-    let detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    let detail = screen.getByRole("dialog", { name: /参数详情/ });
     fireEvent.change(within(detail).getByLabelText("目标值 raw"), {
       target: { value: "<&gpio13 30 0>" }
     });
@@ -652,11 +656,12 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(tray).getByRole("button", { name: "移出本轮修改" })).toBeDisabled();
     expect(within(tray).getByLabelText("硬件 MDE")).toBeDisabled();
 
-    workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
-    detail = within(workspace).getByRole("region", { name: "绑定详情" });
-    expect(within(detail).getByLabelText("目标值 raw")).toBeDisabled();
-    expect(within(detail).getByRole("button", { name: /创建草稿/ })).toBeDisabled();
-    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/ }));
+    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    detail = screen.getByRole("dialog", { name: /参数详情/ });
+    expect(within(detail).queryByLabelText("目标值 raw")).not.toBeInTheDocument();
+    expect(within(detail).queryByRole("button", { name: /创建草稿/ })).not.toBeInTheDocument();
     expect(createBindingDraft).toHaveBeenCalledTimes(1);
 
     rerender(
@@ -670,14 +675,15 @@ describe("ApiProjectTopologyWorkspace", () => {
       />
     );
     await waitFor(() => {
-      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-config-set-id",
         "dcs-default-nebula"
       );
     });
-    workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
-    fireEvent.click(within(workspace).getAllByRole("cell", { name: "gpio_int" })[0]);
-    const nebulaDetail = within(workspace).getByRole("region", { name: "绑定详情" });
+    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    const nebulaDetail = screen.getByRole("dialog", { name: /参数详情/ });
     expect(within(nebulaDetail).getByLabelText("目标值 raw")).toBeEnabled();
 
     rerender(
@@ -691,15 +697,16 @@ describe("ApiProjectTopologyWorkspace", () => {
       />
     );
     await waitFor(() => {
-      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-config-set-id",
         "dcs-default-aurora"
       );
     });
-    workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
-    fireEvent.click(within(workspace).getAllByRole("cell", { name: "gpio_int" })[0]);
-    const lockedAuroraDetail = within(workspace).getByRole("region", { name: "绑定详情" });
-    expect(within(lockedAuroraDetail).getByLabelText("目标值 raw")).toBeDisabled();
+    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    const lockedAuroraDetail = screen.getByRole("dialog", { name: /参数详情/ });
+    expect(within(lockedAuroraDetail).queryByLabelText("目标值 raw")).not.toBeInTheDocument();
 
     await act(async () => {
       resolveSubmit();
@@ -752,10 +759,10 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await screen.findByRole("treeitem", { name: /sc8562@6E/ });
-    let workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    let workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
-    fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
-    let detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    let detail = screen.getByRole("dialog", { name: /参数详情/ });
     fireEvent.change(within(detail).getByLabelText("目标值 raw"), {
       target: { value: "<&gpio13 30 0>" }
     });
@@ -764,15 +771,17 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/ }));
     await waitFor(() => {
-      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-revision-id",
         "candidate-first"
       );
     });
     await screen.findByRole("region", { name: "绑定变更提交" });
 
-    workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
-    detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    detail = screen.getByRole("dialog", { name: /参数详情/ });
     fireEvent.change(within(detail).getByLabelText("目标值 raw"), {
       target: { value: "<&gpio13 31 0>" }
     });
@@ -782,14 +791,13 @@ describe("ApiProjectTopologyWorkspace", () => {
     fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/ }));
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
 
-    let tray = screen.getByRole("region", { name: "绑定变更提交" });
-    const blockedSubmit = within(tray).getByRole("button", { name: "提交审核" });
+    let tray = screen.getByRole("region", { name: "绑定变更提交", hidden: true });
+    const blockedSubmit = within(tray).getByText("提交审核").closest("button") as HTMLButtonElement;
     expect(blockedSubmit).toBeDisabled();
-    expect(within(tray).getByRole("alert")).toHaveTextContent(/正在创建 typed draft/);
+    expect(within(tray).getByRole("alert", { hidden: true })).toHaveTextContent(/正在创建 typed draft/);
     fireEvent.click(blockedSubmit);
     expect(submitBindingChanges).not.toHaveBeenCalled();
-    expect(within(detail).getByRole("button", { name: /创建中/ })).toBeDisabled();
-    fireEvent.click(within(detail).getByRole("button", { name: /创建中/ }));
+    expect(within(detail).queryByRole("button", { name: /创建草稿/ })).not.toBeInTheDocument();
     expect(createBindingDraft).toHaveBeenCalledTimes(2);
 
     rerender(
@@ -803,14 +811,15 @@ describe("ApiProjectTopologyWorkspace", () => {
       />
     );
     await waitFor(() => {
-      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-config-set-id",
         "dcs-default-nebula"
       );
     });
-    workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
-    fireEvent.click(within(workspace).getAllByRole("cell", { name: "gpio_int" })[0]);
-    expect(within(workspace).getByLabelText("目标值 raw")).toBeEnabled();
+    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    expect(screen.getByLabelText("目标值 raw")).toBeEnabled();
 
     rerender(
       <ApiProjectTopologyWorkspace
@@ -823,14 +832,15 @@ describe("ApiProjectTopologyWorkspace", () => {
       />
     );
     await waitFor(() => {
-      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-config-set-id",
         "dcs-default-aurora"
       );
     });
-    workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
-    fireEvent.click(within(workspace).getAllByRole("cell", { name: "gpio_int" })[0]);
-    expect(within(workspace).getByLabelText("目标值 raw")).toBeDisabled();
+    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    expect(screen.queryByLabelText("目标值 raw")).not.toBeInTheDocument();
 
     await act(async () => {
       resolveReplacement({
@@ -848,7 +858,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       await replacementRequest;
     });
     await waitFor(() => {
-      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-revision-id",
         "candidate-replacement"
       );
@@ -899,24 +909,26 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await screen.findByRole("treeitem", { name: /sc8562@6E/ });
-    let workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    let workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
-    fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
-    let detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    let detail = screen.getByRole("dialog", { name: /参数详情/ });
     fireEvent.change(within(detail).getByLabelText("修改原因"), {
       target: { value: "Create existing draft" }
     });
     fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/ }));
     await screen.findByRole("region", { name: "绑定变更提交" });
     await waitFor(() => {
-      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-revision-id",
         "candidate-existing"
       );
     });
 
-    workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
-    detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    detail = screen.getByRole("dialog", { name: /参数详情/ });
     fireEvent.change(within(detail).getByLabelText("目标值 raw"), {
       target: { value: "<&gpio13 31 0>" }
     });
@@ -925,15 +937,15 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/ }));
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
-    let tray = screen.getByRole("region", { name: "绑定变更提交" });
-    expect(within(tray).getByRole("button", { name: "提交审核" })).toBeDisabled();
+    let tray = screen.getByRole("region", { name: "绑定变更提交", hidden: true });
+    expect(within(tray).getByRole("button", { name: "提交审核", hidden: true })).toBeDisabled();
 
     await act(async () => {
       rejectReplacement(new Error("replacement rejected"));
       await replacementRequest.catch(() => undefined);
     });
-    tray = screen.getByRole("region", { name: "绑定变更提交" });
-    const submit = within(tray).getByRole("button", { name: "提交审核" });
+    tray = screen.getByRole("region", { name: "绑定变更提交", hidden: true });
+    const submit = within(tray).getByText("提交审核").closest("button") as HTMLButtonElement;
     await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
     await waitFor(() => expect(submitBindingChanges).toHaveBeenCalledTimes(1));
@@ -954,9 +966,9 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await waitFor(() => {
-      expect(within(screen.getByRole("region", { name: "项目拓扑工作区" })).getByRole("button", { name: "校验" })).toBeEnabled();
+      expect(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" })).toBeEnabled();
     });
-    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     expect(within(workspace).queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
     fireEvent.click(within(workspace).getByRole("button", { name: "校验" }));
 

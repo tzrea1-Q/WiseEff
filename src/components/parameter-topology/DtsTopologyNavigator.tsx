@@ -9,6 +9,8 @@ export type DtsTopologyNavigatorProps = {
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string) => void;
   ariaLabel?: string;
+  /** API workbench keeps the mature browse experience open on first load. */
+  expandAllByDefault?: boolean;
 };
 
 type TreeIndex = {
@@ -85,11 +87,14 @@ export function DtsTopologyNavigator({
   nodes,
   selectedNodeId,
   onSelectNode,
-  ariaLabel
+  ariaLabel,
+  expandAllByDefault = false
 }: DtsTopologyNavigatorProps) {
   const index = useMemo(() => indexTree(nodes), [nodes]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
-    () => new Set(expansionPath(index, selectedNodeId))
+    () => expandAllByDefault
+      ? new Set([...index.byId.values()].filter((node) => node.children.length > 0).map((node) => node.id))
+      : new Set(expansionPath(index, selectedNodeId))
   );
   const [activeNodeId, setActiveNodeId] = useState<string | null>(() => {
     const initialVisibleIds = visibleNodeIds(

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
@@ -21,7 +21,6 @@ import {
 } from "@/infrastructure/http/parameterTopologyClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import {
-  ProjectTopologyWorkspace,
   type TopologyLayoutMode
 } from "./ProjectTopologyWorkspace";
 import type { BindingEditValidation } from "./BindingDetailPanel";
@@ -29,6 +28,9 @@ import {
   DtsBindingDraftTray,
   type PendingBindingDraft
 } from "./DtsBindingDraftTray";
+import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
+import { IdentityMappingReview } from "./IdentityMappingReview";
+import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
@@ -411,6 +413,37 @@ export function ApiProjectTopologyWorkspace({
       }
     : undefined;
 
+  const sourceRows = useMemo(() => {
+    if (loadState.kind !== "ready") return [];
+    return buildDtsWorkbenchRows({
+      projectId,
+      configRevisionId: loadState.revisionId,
+      view: "source",
+      bindings: loadState.bindings,
+      sourceNodes: loadState.sourceNodes,
+      effectiveNodes: loadState.effectiveNodes,
+      mappingTasks: loadState.mappingTasks
+    });
+  }, [loadState, projectId]);
+
+  const effectiveRows = useMemo(() => {
+    if (loadState.kind !== "ready") return [];
+    return buildDtsWorkbenchRows({
+      projectId,
+      configRevisionId: loadState.revisionId,
+      view: "effective",
+      bindings: loadState.bindings,
+      sourceNodes: loadState.sourceNodes,
+      effectiveNodes: loadState.effectiveNodes,
+      mappingTasks: loadState.mappingTasks
+    });
+  }, [loadState, projectId]);
+
+  // Selection is owned by the semantic workbench. These stable seams allow the
+  // API coordinator to add side effects later without changing row identity.
+  const handleSelectBinding = useCallback((_bindingId: string) => undefined, []);
+  const handleEditBinding = useCallback((_bindingId: string) => undefined, []);
+
   /** Validate only — no publish/release transition exists on this surface. */
   const handleValidate = async () => {
     if (!repository || loadState.kind !== "ready") return;
@@ -460,7 +493,7 @@ export function ApiProjectTopologyWorkspace({
 
   if (loadState.kind === "loading") {
     return (
-      <section className="project-topology-workspace" aria-label="项目拓扑工作区" aria-busy="true">
+      <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台" aria-busy="true">
         <p role="status">正在加载项目拓扑与绑定…</p>
       </section>
     );
@@ -468,7 +501,7 @@ export function ApiProjectTopologyWorkspace({
 
   if (loadState.kind === "empty") {
     return (
-      <section className="project-topology-workspace" aria-label="项目拓扑工作区">
+      <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台">
         <div className="project-topology-workspace__empty" role="status">
           {loadState.message}
         </div>
@@ -478,7 +511,7 @@ export function ApiProjectTopologyWorkspace({
 
   if (loadState.kind === "error") {
     return (
-      <section className="project-topology-workspace" aria-label="项目拓扑工作区">
+      <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台">
         <div className="project-topology-workspace__error" role="alert">
           {loadState.code === "NOT_FOUND" ? "未找到拓扑资源（404）。" : null}
           {loadState.message}
@@ -497,63 +530,95 @@ export function ApiProjectTopologyWorkspace({
         ? "修订状态：invalid — 解析/编译失败，修复后方可编辑或发布。"
         : null;
 
+  const canEditSemantic =
+    canEdit &&
+    !loadState.incompleteBase &&
+    loadState.status !== "invalid" &&
+    loadState.status !== "needs_mapping" &&
+    !projectMutationKind;
+
+  const draftBindingIds = new Set(projectDrafts.map((draft) => draft.projectParameterBindingId));
+  const currentEdits = projectDrafts.length > 0 ? (
+    <DtsBindingDraftTray
+      projectId={projectId}
+      drafts={projectDrafts}
+      candidates={workflowCandidates}
+      candidatesError={workflowCandidatesError}
+      externalBlocker={
+        projectMutationKind === "draft"
+          ? "该项目正在创建 typed draft，正式提交已暂时锁定。"
+          : null
+      }
+      onRemove={(draftId) => {
+        setPendingDrafts((current) => current.filter((draft) => draft.draftId !== draftId));
+      }}
+      onSubmit={handleSubmitBindingChanges}
+      onNavigate={onNavigate}
+    />
+  ) : null;
+
   return (
-    <>
-      {statusBanner ? (
-        <p className="project-topology-workspace__status" role="status">
-          {statusBanner}
-        </p>
-      ) : null}
-      {publishMessage ? (
-        <p className="project-topology-workspace__publish-message" role="status">
-          {publishMessage}
-        </p>
-      ) : null}
-      {mappingMessage ? (
-        <p className="project-topology-workspace__mapping-message" role="status">
-          {mappingMessage}
-        </p>
-      ) : null}
-      <ProjectTopologyWorkspace
+      <DtsParameterWorkbench
         projectId={projectId}
         configSetId={loadState.configSetId}
         revisionId={loadState.revisionId}
+        layoutMode={layoutMode}
         sourceNodes={loadState.sourceNodes}
         effectiveNodes={loadState.effectiveNodes}
-        bindings={loadState.bindings}
-        mappingTasks={loadState.mappingTasks}
-        diagnostics={loadState.diagnostics}
-        incompleteBase={loadState.incompleteBase}
-        canEdit={canEdit && loadState.status !== "invalid" && !projectMutationKind}
-        canPublish={canPublish}
-        publishActionLabel="校验"
-        layoutMode={layoutMode}
-        onValidateEdit={handleValidateEdit}
-        onPublish={() => {
-          void handleValidate();
-        }}
-        onResolveMapping={(taskId, input) => {
-          void handleResolveMapping(taskId, input);
-        }}
+        sourceRows={sourceRows}
+        effectiveRows={effectiveRows}
+        draftBindingIds={draftBindingIds}
+        canEdit={canEditSemantic}
+        onSelectBinding={handleSelectBinding}
+        onEditBinding={handleEditBinding}
+        onCreateDraft={handleValidateEdit}
+        currentEdits={currentEdits}
+        expandAllNodesByDefault
+        governanceContent={(
+          <>
+            {statusBanner ? (
+              <p className="project-topology-workspace__status" role="status">
+                {statusBanner}
+              </p>
+            ) : null}
+            {publishMessage ? (
+              <p className="project-topology-workspace__publish-message" role="status">
+                {publishMessage}
+              </p>
+            ) : null}
+            {mappingMessage ? (
+              <p className="project-topology-workspace__mapping-message" role="status">
+                {mappingMessage}
+              </p>
+            ) : null}
+            {loadState.incompleteBase ? (
+              <p role="alert">缺少 base 配置，当前拓扑不完整；已阻止类型化编辑与校验。</p>
+            ) : null}
+            {loadState.diagnostics.length > 0 ? (
+              <section aria-label="编译诊断">
+                <ul>
+                  {loadState.diagnostics.map((diagnostic) => (
+                    <li key={`${diagnostic.code ?? ""}:${diagnostic.message}`}>
+                      {diagnostic.severity ? `[${diagnostic.severity}] ` : null}
+                      {diagnostic.message}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+            <IdentityMappingReview
+              tasks={loadState.mappingTasks}
+              onResolve={(taskId, input) => {
+                void handleResolveMapping(taskId, input);
+              }}
+            />
+            {canPublish ? (
+              <button type="button" className="button primary" disabled={!canEditSemantic} onClick={() => void handleValidate()}>
+                校验
+              </button>
+            ) : null}
+          </>
+        )}
       />
-      {projectDrafts.length > 0 ? (
-        <DtsBindingDraftTray
-          projectId={projectId}
-          drafts={projectDrafts}
-          candidates={workflowCandidates}
-          candidatesError={workflowCandidatesError}
-          externalBlocker={
-            projectMutationKind === "draft"
-              ? "该项目正在创建 typed draft，正式提交已暂时锁定。"
-              : null
-          }
-          onRemove={(draftId) => {
-            setPendingDrafts((current) => current.filter((draft) => draft.draftId !== draftId));
-          }}
-          onSubmit={handleSubmitBindingChanges}
-          onNavigate={onNavigate}
-        />
-      ) : null}
-    </>
   );
 }

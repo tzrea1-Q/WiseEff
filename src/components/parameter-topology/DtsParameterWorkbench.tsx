@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   buildDtsTopologyTree,
@@ -22,6 +22,10 @@ import { DtsTopologyNavigator } from "./DtsTopologyNavigator";
 type GovernanceFilter = "all" | DtsWorkbenchGovernanceState;
 
 export type DtsParameterWorkbenchProps = {
+  projectId?: string;
+  configSetId?: string;
+  revisionId?: string;
+  layoutMode?: "desktop" | "tablet" | "mobile";
   sourceRows: DtsParameterWorkbenchRow[];
   effectiveRows: DtsParameterWorkbenchRow[];
   sourceNodes: SourceTopologyNode[];
@@ -36,6 +40,11 @@ export type DtsParameterWorkbenchProps = {
     rawValue: string;
     reason: string;
   }) => Promise<BindingEditValidation>;
+  /** Optional mature-workbench current-edits tray rendered inside the DTS region. */
+  currentEdits?: ReactNode;
+  /** Validation and mapping governance controls remain in the same semantic region. */
+  governanceContent?: ReactNode;
+  expandAllNodesByDefault?: boolean;
 };
 
 function selectedSubtreeBindingIds(
@@ -66,6 +75,10 @@ function selectedSubtreeBindingIds(
 }
 
 export function DtsParameterWorkbench({
+  projectId,
+  configSetId,
+  revisionId,
+  layoutMode = "desktop",
   sourceRows,
   effectiveRows,
   sourceNodes,
@@ -75,7 +88,10 @@ export function DtsParameterWorkbench({
   initialView = "effective",
   onSelectBinding,
   onEditBinding,
-  onCreateDraft
+  onCreateDraft,
+  currentEdits,
+  governanceContent,
+  expandAllNodesByDefault = false
 }: DtsParameterWorkbenchProps) {
   const [view, setView] = useState<TopologyView>(initialView);
   const [query, setQuery] = useState("");
@@ -174,7 +190,10 @@ export function DtsParameterWorkbench({
     <section
       role="region"
       aria-label="DTS 参数工作台"
-      className="dts-parameter-workbench"
+      className={`dts-parameter-workbench dts-parameter-workbench--${layoutMode}`}
+      data-project-id={projectId}
+      data-config-set-id={configSetId}
+      data-revision-id={revisionId}
     >
       <header className="dts-parameter-workbench__header">
         <div>
@@ -245,6 +264,7 @@ export function DtsParameterWorkbench({
             view={view}
             nodes={tree}
             selectedNodeId={effectiveSelectedNodeId}
+            expandAllByDefault={expandAllNodesByDefault}
             onSelectNode={(nodeId) => setSelectedNodeId((current) => current === nodeId ? null : nodeId)}
           />
         </div>
@@ -262,6 +282,16 @@ export function DtsParameterWorkbench({
           ) : null}
         </div>
       </div>
+      {currentEdits ? (
+        <div className="dts-parameter-workbench__current-edits">
+          {currentEdits}
+        </div>
+      ) : null}
+      {governanceContent ? (
+        <div className="dts-parameter-workbench__governance-content">
+          {governanceContent}
+        </div>
+      ) : null}
       {selectedRow ? (
         <DtsBindingDetailDialog
           row={selectedRow}

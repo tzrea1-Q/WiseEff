@@ -1593,7 +1593,13 @@ describe("ParametersPage API topology workspace", () => {
       </TopBarActionsHarness>
     );
 
-    const workspace = await screen.findByRole("region", { name: "DTS 参数工作台" });
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-revision-id",
+        API_SENTINEL_REVISION_ID
+      );
+    });
+    const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     expect(within(workspace).getByRole("searchbox", { name: "搜索 DTS 参数" })).toBeInTheDocument();
     expect(within(workspace).getByRole("tree", { name: "生效 DTS 拓扑" })).toBeInTheDocument();
     const semanticRow = await within(workspace).findByRole("row", { name: new RegExp(API_SENTINEL_PROPERTY) });
