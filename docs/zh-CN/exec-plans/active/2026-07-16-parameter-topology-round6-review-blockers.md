@@ -267,9 +267,9 @@ Review 发现本地 readiness gate 漂移：`/api/v1/operations/pilot-readiness`
 
 ## 父智能体 Review 后续检查点 8（2026-07-19）
 
-- 首次默认共享 8787、未绕过门禁的运行保留为独立诊断：deterministic API 重启后 preflight 通过，但浏览器矩阵因共享 runtime/auth/gateway 边界最终为 69 passed / 11 failed / 4 项 HDC 或本地设备硬件条件 skipped。该诊断没有被下面的隔离证据覆盖或删除。
+- 首次默认共享 8787、未绕过门禁的运行保留为独立本地诊断：deterministic API 重启后 preflight 通过，但浏览器矩阵因共享 runtime/auth/gateway 边界最终为 69 passed / 11 failed / 4 项 HDC 或本地设备硬件条件 skipped。其本地产物有意不发布为 generated 审计证据；本摘要不应被理解为持久化的失败 artifact 或第二个验收结果，也不会覆盖下面的隔离证据。
 - 一次成功的隔离本地运行使用 source commit `f3b66dce16d2e919833a22e8764a0827c096d0a8`，API `http://127.0.0.1:18787`，前端 `http://127.0.0.1:5174`，API simulator、deterministic Xiaoze 与本地 runtime。精确命令为 `npm run acceptance:browser -- --mode local-non-hdc --frontend-url http://127.0.0.1:5174`，未使用 `--skip-preflight` 或 `--skip-gates`；preflight outcome 为 `non_hdc_local`，且 `Dirty worktree: false`。
-- 该隔离运行共 84 项 Playwright：80 passed / 4 项 HDC 或本地设备硬件条件 skipped / 0 failed。workflow A–E、G–I 通过；F skipped。requirements 59/59；operation evidence 56/56，71 条 record、0 invalid、0 validation error。Run ID：`full-20260719T081615349Z-f3b66dce16d2`。`npm run acceptance:evidence` exit 0。发布的 `latest-full` SHA-256 为 `9428820846ec215aca9e93851df8e873acbad09e23f21c4db705a51a1e8fa57f`。
+- 该隔离运行共 84 项 Playwright：80 passed / 4 项 HDC 或本地设备硬件条件 skipped / 0 failed。workflow A–E、G–I 通过；F skipped。requirements 59/59；operation evidence 56/56，71 条 record、0 invalid、0 validation error。外层 runtime 使用 API `18787`；其中 8 个 topology operation 使用 disposable post-cutover API `50265`，但所有 record 仍位于同一个不可变 run/source 命名空间。Run ID：`full-20260719T081615349Z-f3b66dce16d2`。`npm run acceptance:evidence` exit 0。发布的 `latest-full` SHA-256 为 `9428820846ec215aca9e93851df8e873acbad09e23f21c4db705a51a1e8fa57f`。
 - 本检查点仅证明本地 `non_hdc_local` evidence。TD-042 继续为 BLOCKER，因为没有干净非客户 apply→cutover→整库 restore 演练证据。不宣称 production ready、pilot ready、cutover ready 或可合并。
 
 ## 风险与回滚
