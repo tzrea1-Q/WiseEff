@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -201,6 +202,7 @@ function renderWorkbench(overrides?: Partial<React.ComponentProps<typeof DtsPara
     canEdit: true,
     onSelectBinding: vi.fn(),
     onEditBinding: vi.fn(),
+    onCreateDraft: vi.fn().mockResolvedValue({ valid: true, diagnostics: [] }),
     ...overrides
   };
   return { ...render(<DtsParameterWorkbench {...props} />), props };
@@ -337,7 +339,56 @@ describe("DtsParameterWorkbench", () => {
     }));
     expect(onSelectBinding).toHaveBeenCalledWith("binding-gpio-int");
     expect(screen.queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /gpio_int/ })).toHaveAttribute("aria-selected", "true");
+    expect(document.querySelector('[data-binding-id="binding-gpio-int"]')).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens the selected semantic binding in the mature detail dialog", () => {
+    renderWorkbench({ canEdit: false });
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "查看 gpio_int（sc8562@6E · sc8562 · /amba/i2c@FDF5E000/sc8562@6E）"
+    }));
+
+    const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
+    expect(within(dialog).getByRole("heading", { name: "身份" })).toBeInTheDocument();
+    expect(within(dialog).getByText("binding-gpio-int")).toBeInTheDocument();
+    expect(within(dialog).getByText("logical-sc8562")).toBeInTheDocument();
+    expect(within(dialog).getByText("当前接口未提供规格详情")).toBeInTheDocument();
+  });
+
+  it("opens view and edit actions in the same detail flow and focuses typed editing on edit", async () => {
+    const user = userEvent.setup();
+    const { props } = renderWorkbench();
+
+    await user.click(screen.getByRole("button", {
+      name: "继续编辑 gpio_int（sc8562@6E · sc8562 · /amba/i2c@FDF5E000/sc8562@6E）"
+    }));
+
+    const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
+    expect(within(dialog).getByRole("textbox", { name: "目标值 raw" })).toHaveFocus();
+    expect(props.onSelectBinding).toHaveBeenCalledWith("binding-gpio-int");
+    expect(props.onEditBinding).toHaveBeenCalledWith("binding-gpio-int");
+  });
+
+  it("closes only the selected binding and restores the opener without clearing filters or draft identity", async () => {
+    const user = userEvent.setup();
+    renderWorkbench();
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索 DTS 参数" }), {
+      target: { value: "gpio13" }
+    });
+    const opener = screen.getByRole("button", {
+      name: "查看 gpio_int（sc8562@6E · sc8562 · /amba/i2c@FDF5E000/sc8562@6E）"
+    });
+
+    await user.click(opener);
+    await user.click(within(screen.getByRole("dialog", { name: "gpio_int 参数详情" }))
+      .getByRole("button", { name: "关闭参数详情" }));
+
+    await waitFor(() => expect(opener).toHaveFocus());
+    expect(screen.queryByRole("dialog", { name: "gpio_int 参数详情" })).not.toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "搜索 DTS 参数" })).toHaveValue("gpio13");
+    expect(screen.getByTestId("draft-binding-gpio-int")).toHaveTextContent("草稿");
+    expect(visibleBindingRows()).toHaveLength(1);
   });
 
   it("does not render an inert edit action when its handler is absent", () => {

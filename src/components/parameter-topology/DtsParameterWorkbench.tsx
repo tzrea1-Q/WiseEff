@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   buildDtsTopologyTree,
@@ -14,6 +14,8 @@ import type {
   DtsWorkbenchGovernanceState
 } from "@/domain/parameter-topology/workbenchTypes";
 
+import type { BindingEditValidation } from "./BindingDetailPanel";
+import { DtsBindingDetailDialog } from "./DtsBindingDetailDialog";
 import { DtsParameterWorkbenchTable } from "./DtsParameterWorkbenchTable";
 import { DtsTopologyNavigator } from "./DtsTopologyNavigator";
 
@@ -29,6 +31,11 @@ export type DtsParameterWorkbenchProps = {
   initialView?: TopologyView;
   onSelectBinding: (bindingId: string) => void;
   onEditBinding?: (bindingId: string) => void;
+  onCreateDraft?: (input: {
+    bindingId: string;
+    rawValue: string;
+    reason: string;
+  }) => Promise<BindingEditValidation>;
 };
 
 function selectedSubtreeBindingIds(
@@ -67,13 +74,17 @@ export function DtsParameterWorkbench({
   canEdit,
   initialView = "effective",
   onSelectBinding,
-  onEditBinding
+  onEditBinding,
+  onCreateDraft
 }: DtsParameterWorkbenchProps) {
   const [view, setView] = useState<TopologyView>(initialView);
   const [query, setQuery] = useState("");
   const [governanceFilter, setGovernanceFilter] = useState<GovernanceFilter>("all");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedBindingId, setSelectedBindingId] = useState<string | null>(null);
+  const [detailIntent, setDetailIntent] = useState<"view" | "edit">("view");
+  const detailOpenerRef = useRef<HTMLElement | null>(null);
+  const pendingFocusRestoreRef = useRef<HTMLElement | null>(null);
 
   const currentRows = view === "source" ? sourceRows : effectiveRows;
   const tree = useMemo(
@@ -111,8 +122,21 @@ export function DtsParameterWorkbench({
   );
 
   const selectBinding = (bindingId: string) => {
+    detailOpenerRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
     setSelectedBindingId(bindingId);
+    setDetailIntent("view");
     onSelectBinding(bindingId);
+  };
+
+  const editBinding = (bindingId: string) => {
+    detailOpenerRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : detailOpenerRef.current;
+    setSelectedBindingId(bindingId);
+    setDetailIntent("edit");
+    onEditBinding?.(bindingId);
   };
 
   const switchView = (nextView: TopologyView) => {
@@ -125,6 +149,25 @@ export function DtsParameterWorkbench({
     setQuery("");
     setGovernanceFilter("all");
     setSelectedNodeId(null);
+  };
+
+  const selectedRow = selectedBindingId
+    ? currentRows.find((row) => row.bindingId === selectedBindingId) ?? null
+    : null;
+
+  useEffect(() => {
+    if (selectedBindingId || !pendingFocusRestoreRef.current) return;
+    const opener = pendingFocusRestoreRef.current;
+    pendingFocusRestoreRef.current = null;
+    queueMicrotask(() => {
+      if (opener.isConnected) opener.focus();
+    });
+  }, [selectedBindingId]);
+
+  const closeDetail = () => {
+    pendingFocusRestoreRef.current = detailOpenerRef.current;
+    detailOpenerRef.current = null;
+    setSelectedBindingId(null);
   };
 
   return (
@@ -212,13 +255,22 @@ export function DtsParameterWorkbench({
             draftBindingIds={draftBindingIds}
             canEdit={canEdit}
             onSelectBinding={selectBinding}
-            onEditBinding={onEditBinding}
+            onEditBinding={onEditBinding && onCreateDraft ? editBinding : undefined}
           />
           {visibleRows.length === 0 ? (
             <p className="dts-parameter-workbench__empty">当前筛选范围内没有参数。</p>
           ) : null}
         </div>
       </div>
+      {selectedRow ? (
+        <DtsBindingDetailDialog
+          row={selectedRow}
+          canEdit={canEdit && Boolean(onCreateDraft)}
+          focusEditorOnOpen={detailIntent === "edit"}
+          onClose={closeDetail}
+          onCreateDraft={onCreateDraft ?? (() => Promise.reject(new Error("当前未配置语义草稿创建能力")))}
+        />
+      ) : null}
     </section>
   );
 }

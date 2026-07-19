@@ -1,0 +1,250 @@
+import { useRef, useState } from "react";
+import { CircleX } from "lucide-react";
+
+import type { DtsValue } from "@/domain/parameter-topology/types";
+import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+
+import type { BindingEditValidation } from "./BindingDetailPanel";
+
+export type DtsBindingDetailDialogProps = {
+  row: DtsParameterWorkbenchRow;
+  canEdit: boolean;
+  onClose: () => void;
+  onCreateDraft: (input: {
+    bindingId: string;
+    rawValue: string;
+    reason: string;
+  }) => Promise<BindingEditValidation>;
+  focusEditorOnOpen?: boolean;
+};
+
+type SubmissionState = "idle" | "pending" | "success" | "failure";
+
+function IdentityField({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd><code>{value ?? "不可用"}</code></dd>
+    </div>
+  );
+}
+
+function formatEffectiveValue(value: DtsValue): string {
+  switch (value.kind) {
+    case "boolean":
+      return "property present";
+    case "empty":
+      return "empty";
+    case "strings":
+      return value.values.map((item) => JSON.stringify(item)).join(", ");
+    case "bytes":
+      return `[${value.values.map((item) => item.toString(16).padStart(2, "0")).join(" ")}]`;
+    case "cells":
+      return value.groups
+        .map((group) => `<${group.map((cell) => cell.kind === "phandle" ? `&${cell.label}` : cell.raw).join(" ")}>`)
+        .join(", ");
+    case "mixed":
+      return value.segments.map((segment) => {
+        if (segment.kind === "string") return segment.raw;
+        return `/bits/ ${segment.bits} <${segment.cells.map((cell) => cell.kind === "phandle" ? `&${cell.label}` : cell.raw).join(" ")}>`;
+      }).join(" ");
+  }
+}
+
+function readableError(error: unknown): string {
+  return error instanceof Error && error.message.trim()
+    ? error.message
+    : "服务端暂时无法创建草稿，请稍后重试。";
+}
+
+export function DtsBindingDetailDialog({
+  row,
+  canEdit,
+  onClose,
+  onCreateDraft,
+  focusEditorOnOpen = false
+}: DtsBindingDetailDialogProps) {
+  const rawValueRef = useRef<HTMLTextAreaElement | null>(null);
+  const [rawValue, setRawValue] = useState(row.rawValue);
+  const [reason, setReason] = useState("");
+  const [submissionState, setSubmissionState] = useState<SubmissionState>("idle");
+  const [diagnostics, setDiagnostics] = useState<BindingEditValidation["diagnostics"]>([]);
+  const [failureMessage, setFailureMessage] = useState("");
+  const isPending = submissionState === "pending";
+  const canSubmit = canEdit && !isPending && Boolean(reason.trim());
+
+  const clearValidation = () => {
+    setSubmissionState("idle");
+    setDiagnostics([]);
+    setFailureMessage("");
+  };
+
+  const createDraft = async () => {
+    if (!canSubmit) return;
+    setSubmissionState("pending");
+    setDiagnostics([]);
+    setFailureMessage("");
+    try {
+      const result = await onCreateDraft({
+        bindingId: row.bindingId,
+        rawValue,
+        reason: reason.trim()
+      });
+      setDiagnostics(result.diagnostics);
+      setSubmissionState(result.valid ? "success" : "failure");
+      if (!result.valid) setFailureMessage("服务端校验未通过");
+    } catch (error) {
+      setSubmissionState("failure");
+      setFailureMessage(readableError(error));
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => {
+      if (!open) onClose();
+    }}>
+      <DialogContent
+        aria-label={`${row.propertyKey} 参数详情`}
+        className="dts-binding-detail-dialog max-h-[calc(100vh-2rem)] max-w-5xl overflow-y-auto"
+        showCloseButton={false}
+        onOpenAutoFocus={(event) => {
+          if (!focusEditorOnOpen || !canEdit) return;
+          event.preventDefault();
+          rawValueRef.current?.focus();
+        }}
+      >
+        <DialogHeader className="dts-binding-detail-dialog__header flex-row items-start justify-between">
+          <div>
+            <DialogTitle>{row.propertyKey} 参数详情</DialogTitle>
+            <DialogDescription>
+              {row.instanceName ?? "器件实例不可用"} · {row.driverModule ?? row.compatible ?? "驱动不可用"}
+            </DialogDescription>
+          </div>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭参数详情" onClick={onClose}>
+            <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
+          </Button>
+        </DialogHeader>
+
+        <div className="dts-binding-detail-dialog__content grid gap-4">
+          <section aria-labelledby="dts-binding-identity-title">
+            <h3 id="dts-binding-identity-title">身份</h3>
+            <dl className="grid gap-2 sm:grid-cols-2">
+              <IdentityField label="Binding ID" value={row.bindingId} />
+              <IdentityField label="Parameter Spec ID" value={row.parameterSpecId} />
+              <IdentityField label="Spec Version ID" value={row.parameterSpecVersionId} />
+              <IdentityField label="Logical Node ID" value={row.logicalNodeId} />
+            </dl>
+            <p>当前接口未提供规格详情</p>
+          </section>
+
+          <section aria-labelledby="dts-binding-location-title">
+            <h3 id="dts-binding-location-title">DTS 位置</h3>
+            <dl className="grid gap-2 sm:grid-cols-2">
+              <IdentityField label="器件 / 驱动" value={[row.instanceName, row.driverModule].filter(Boolean).join(" · ") || null} />
+              <IdentityField label="Compatible" value={row.compatible} />
+              <IdentityField label="完整路径" value={row.topologyPath} />
+              <IdentityField label="Source node path" value={row.sourceNodePath} />
+              <IdentityField label="Source occurrence" value={row.sourceOccurrenceId} />
+              <IdentityField
+                label="Source file / line"
+                value={row.sourceFileName ? `${row.sourceFileName} · ${row.sourceLine ? `L${row.sourceLine}` : "行号不可用"}` : null}
+              />
+            </dl>
+          </section>
+
+          <section aria-labelledby="dts-binding-provenance-title">
+            <h3 id="dts-binding-provenance-title">来源链</h3>
+            {row.effects.length > 0 ? (
+              <ol>
+                {row.effects.map((effect) => (
+                  <li key={effect.id}>
+                    <code>{effect.effectKind} · order {effect.sourceOrder} · {effect.nodeOccurrenceId ?? "source occurrence 不可用"}</code>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>当前接口未提供来源 effect。</p>
+            )}
+          </section>
+
+          <section aria-labelledby="dts-binding-contract-title">
+            <h3 id="dts-binding-contract-title">值与约束</h3>
+            <dl className="grid gap-2 sm:grid-cols-2">
+              <IdentityField label="Raw value" value={row.rawValue} />
+              <IdentityField label="Effective value" value={formatEffectiveValue(row.effectiveValue)} />
+              <IdentityField label="Value shape" value={row.valueShapeSummary} />
+              <IdentityField
+                label="Governance"
+                value={`schema: ${row.schemaState} · policy: ${row.policyState} · governance: ${row.governanceState} · mapping: ${row.mappingOpen ? "open" : "resolved"}`}
+              />
+            </dl>
+          </section>
+
+          <section aria-labelledby="dts-binding-edit-title">
+            <h3 id="dts-binding-edit-title">类型化编辑</h3>
+            {canEdit ? (
+              <div className="grid gap-3">
+                <Label htmlFor="dts-binding-raw-value">目标值 raw</Label>
+                <Textarea
+                  id="dts-binding-raw-value"
+                  ref={rawValueRef}
+                  value={rawValue}
+                  disabled={isPending}
+                  onChange={(event) => {
+                    setRawValue(event.target.value);
+                    clearValidation();
+                  }}
+                />
+                <Label htmlFor="dts-binding-edit-reason">修改原因</Label>
+                <Textarea
+                  id="dts-binding-edit-reason"
+                  value={reason}
+                  disabled={isPending}
+                  onChange={(event) => {
+                    setReason(event.target.value);
+                    clearValidation();
+                  }}
+                />
+                <Button type="button" disabled={!canSubmit} onClick={() => void createDraft()}>
+                  {isPending ? "创建中…" : "校验并创建草稿"}
+                </Button>
+                {submissionState === "success" ? (
+                  <p role="status">服务端校验通过，草稿已创建</p>
+                ) : null}
+                {submissionState === "failure" ? (
+                  <p role="alert">{failureMessage}</p>
+                ) : null}
+                {diagnostics.length > 0 ? (
+                  <ul aria-label="编辑诊断">
+                    {diagnostics.map((diagnostic) => (
+                      <li key={`${diagnostic.code ?? "diagnostic"}:${diagnostic.message}`}>
+                        {diagnostic.code ? `${diagnostic.code}: ` : null}{diagnostic.message}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : (
+              <p>当前账号仅可查看此绑定。</p>
+            )}
+          </section>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>关闭</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
