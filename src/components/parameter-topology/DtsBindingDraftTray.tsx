@@ -91,6 +91,10 @@ export function DtsBindingDraftTray({
   onSubmit,
   onNavigate
 }: DtsBindingDraftTrayProps) {
+  const [candidateSnapshot, setCandidateSnapshot] = useState(() => ({
+    candidates,
+    error: candidatesError
+  }));
   const [hardwareCommitterId, setHardwareCommitterId] = useState("");
   const [softwareCommitterId, setSoftwareCommitterId] = useState("");
   const [softwareUserId, setSoftwareUserId] = useState("");
@@ -99,15 +103,31 @@ export function DtsBindingDraftTray({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const requestGenerationRef = useRef(0);
   const mountedRef = useRef(true);
+  const activeRequestRef = useRef<{
+    generation: number;
+    signature: string;
+  } | null>(null);
 
   const batchSignature = useMemo(
     () => draftBatchSignature(projectId, drafts),
     [drafts, projectId]
   );
-  const currentSignatureRef = useRef(batchSignature);
-  currentSignatureRef.current = batchSignature;
+  const requestSignature = useMemo(
+    () => JSON.stringify({
+      batchSignature,
+      assignees: {
+        hardwareCommitterId,
+        softwareCommitterId,
+        softwareUserId
+      }
+    }),
+    [batchSignature, hardwareCommitterId, softwareCommitterId, softwareUserId]
+  );
+  const currentRequestSignatureRef = useRef(requestSignature);
+  currentRequestSignatureRef.current = requestSignature;
 
   useEffect(() => {
+    if (activeRequestRef.current) return;
     requestGenerationRef.current += 1;
     setSubmitting(false);
     setSubmitted(false);
@@ -123,10 +143,15 @@ export function DtsBindingDraftTray({
   }, []);
 
   useEffect(() => {
+    if (submitting || submitted || activeRequestRef.current) return;
+    setCandidateSnapshot({ candidates, error: candidatesError });
     setHardwareCommitterId(candidates?.hardwareCommitters[0]?.id ?? "");
     setSoftwareCommitterId(candidates?.softwareCommitters[0]?.id ?? "");
     setSoftwareUserId(candidates?.softwareUsers[0]?.id ?? "");
-  }, [candidates]);
+  }, [candidates, candidatesError, submitted, submitting]);
+
+  const displayedCandidates = candidateSnapshot.candidates;
+  const displayedCandidatesError = candidateSnapshot.error;
 
   const draftIdentityError = useMemo(
     () => identityBlocker(projectId, drafts),
@@ -134,16 +159,16 @@ export function DtsBindingDraftTray({
   );
   const candidateError = useMemo(() => candidateBlocker(drafts), [drafts]);
   const actionValueError = useMemo(() => actionValueBlocker(drafts), [drafts]);
-  const roleError = candidates && !(hardwareCommitterId && softwareCommitterId && softwareUserId)
+  const roleError = displayedCandidates && !(hardwareCommitterId && softwareCommitterId && softwareUserId)
     ? "项目缺少完整的硬件 MDE、软件 MDE 或软件开发候选人，已阻止提交。"
     : null;
   const submissionEntryError = onSubmit
     ? null
     : "正式 binding 提交入口未配置，已阻止提交。";
-  const blocker = candidatesError ?? draftIdentityError ?? actionValueError ?? candidateError ?? roleError ?? submissionEntryError;
+  const blocker = displayedCandidatesError ?? draftIdentityError ?? actionValueError ?? candidateError ?? roleError ?? submissionEntryError;
   const canSubmit = Boolean(
     drafts.length > 0 &&
-    candidates &&
+    displayedCandidates &&
     !blocker &&
     !submitting &&
     !submitted
@@ -174,6 +199,7 @@ export function DtsBindingDraftTray({
                 type="button"
                 className="button subtle"
                 aria-label="移出本轮修改"
+                disabled={submitting}
                 onClick={() => onRemove(draft.draftId)}
               >
                 移除
@@ -196,28 +222,28 @@ export function DtsBindingDraftTray({
         ))}
       </div>
 
-      {!candidates && !candidatesError ? <p role="status">正在加载项目角色候选人…</p> : null}
-      {candidates ? (
+      {!displayedCandidates && !displayedCandidatesError ? <p role="status">正在加载项目角色候选人…</p> : null}
+      {displayedCandidates ? (
         <div className="submission-assignee-grid" aria-label="后续流程处理人">
           <label>
             硬件 MDE
-            <select aria-label="硬件 MDE" value={hardwareCommitterId} onChange={(event) => setHardwareCommitterId(event.target.value)}>
-              {candidates.hardwareCommitters.length === 0 ? <option value="">无可用候选人</option> : null}
-              {candidates.hardwareCommitters.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+            <select aria-label="硬件 MDE" value={hardwareCommitterId} disabled={submitting || submitted} onChange={(event) => setHardwareCommitterId(event.target.value)}>
+              {displayedCandidates.hardwareCommitters.length === 0 ? <option value="">无可用候选人</option> : null}
+              {displayedCandidates.hardwareCommitters.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
             </select>
           </label>
           <label>
             软件 MDE
-            <select aria-label="软件 MDE" value={softwareCommitterId} onChange={(event) => setSoftwareCommitterId(event.target.value)}>
-              {candidates.softwareCommitters.length === 0 ? <option value="">无可用候选人</option> : null}
-              {candidates.softwareCommitters.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+            <select aria-label="软件 MDE" value={softwareCommitterId} disabled={submitting || submitted} onChange={(event) => setSoftwareCommitterId(event.target.value)}>
+              {displayedCandidates.softwareCommitters.length === 0 ? <option value="">无可用候选人</option> : null}
+              {displayedCandidates.softwareCommitters.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
             </select>
           </label>
           <label>
             软件开发
-            <select aria-label="软件开发" value={softwareUserId} onChange={(event) => setSoftwareUserId(event.target.value)}>
-              {candidates.softwareUsers.length === 0 ? <option value="">无可用候选人</option> : null}
-              {candidates.softwareUsers.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+            <select aria-label="软件开发" value={softwareUserId} disabled={submitting || submitted} onChange={(event) => setSoftwareUserId(event.target.value)}>
+              {displayedCandidates.softwareUsers.length === 0 ? <option value="">无可用候选人</option> : null}
+              {displayedCandidates.softwareUsers.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
             </select>
           </label>
         </div>
@@ -234,13 +260,22 @@ export function DtsBindingDraftTray({
           disabled={!canSubmit}
           onClick={() => {
             if (!onSubmit || !canSubmit) return;
-            const requestSignature = batchSignature;
+            const submittedRequestSignature = requestSignature;
             const requestGeneration = requestGenerationRef.current + 1;
             requestGenerationRef.current = requestGeneration;
+            activeRequestRef.current = {
+              generation: requestGeneration,
+              signature: submittedRequestSignature
+            };
             const requestIsCurrent = () =>
               mountedRef.current &&
               requestGenerationRef.current === requestGeneration &&
-              currentSignatureRef.current === requestSignature;
+              currentRequestSignatureRef.current === submittedRequestSignature;
+            const requestIsActive = () =>
+              mountedRef.current &&
+              requestGenerationRef.current === requestGeneration &&
+              activeRequestRef.current?.generation === requestGeneration &&
+              activeRequestRef.current.signature === submittedRequestSignature;
             setSubmitting(true);
             setSubmitError(null);
             void onSubmit({
@@ -268,7 +303,14 @@ export function DtsBindingDraftTray({
                 setSubmitError(error instanceof Error ? error.message : "提交审核失败。");
               })
               .finally(() => {
-                if (requestIsCurrent()) setSubmitting(false);
+                if (!requestIsActive()) return;
+                activeRequestRef.current = null;
+                if (!requestIsCurrent()) {
+                  requestGenerationRef.current += 1;
+                  setSubmitted(false);
+                  setSubmitError(null);
+                }
+                setSubmitting(false);
               });
           }}
         >

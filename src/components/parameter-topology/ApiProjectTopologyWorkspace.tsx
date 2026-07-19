@@ -157,6 +157,7 @@ export function ApiProjectTopologyWorkspace({
   listConfigSetsRef.current = listConfigSets;
   const activeProjectIdRef = useRef(projectId);
   activeProjectIdRef.current = projectId;
+  const submittingProjectIdsRef = useRef(new Set<string>());
 
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
   const [reloadToken, setReloadToken] = useState(0);
@@ -171,8 +172,12 @@ export function ApiProjectTopologyWorkspace({
   const [pendingDrafts, setPendingDrafts] = useState<PendingBindingDraft[]>([]);
   const [workflowCandidates, setWorkflowCandidates] = useState<WorkflowAssigneeCandidates | null>(null);
   const [workflowCandidatesError, setWorkflowCandidatesError] = useState<string | null>(null);
+  const [submittingProjectIds, setSubmittingProjectIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
   const projectDrafts = pendingDrafts.filter((draft) => draft.projectId === projectId);
   const hasProjectDrafts = projectDrafts.length > 0;
+  const projectSubmissionInFlight = submittingProjectIds.has(projectId);
 
   useEffect(() => {
     setPreferredRevision(null);
@@ -255,6 +260,17 @@ export function ApiProjectTopologyWorkspace({
     rawValue: string;
     reason: string;
   }): Promise<BindingEditValidation> => {
+    if (submittingProjectIdsRef.current.has(projectId)) {
+      return {
+        valid: false,
+        diagnostics: [
+          {
+            message: "该项目的正式提交仍在处理中，服务端 mutation 落定前不能创建或替换草稿。",
+            code: "SUBMISSION_IN_PROGRESS"
+          }
+        ]
+      };
+    }
     if (!repository || loadState.kind !== "ready") {
       return {
         valid: false,
@@ -349,6 +365,31 @@ export function ApiProjectTopologyWorkspace({
       };
     }
   };
+
+  const handleSubmitBindingChanges = submitBindingChanges
+    ? async (input: SubmitParameterChangesInput) => {
+        const submittingProjectId = input.projectId;
+        if (submittingProjectIdsRef.current.has(submittingProjectId)) {
+          return { notification: "该项目已有正式提交正在处理中，已阻止重复提交。" };
+        }
+        submittingProjectIdsRef.current.add(submittingProjectId);
+        setSubmittingProjectIds((current) => {
+          const next = new Set(current);
+          next.add(submittingProjectId);
+          return next;
+        });
+        try {
+          return await submitBindingChanges(input);
+        } finally {
+          submittingProjectIdsRef.current.delete(submittingProjectId);
+          setSubmittingProjectIds((current) => {
+            const next = new Set(current);
+            next.delete(submittingProjectId);
+            return next;
+          });
+        }
+      }
+    : undefined;
 
   /** Validate only — no publish/release transition exists on this surface. */
   const handleValidate = async () => {
@@ -463,7 +504,7 @@ export function ApiProjectTopologyWorkspace({
         mappingTasks={loadState.mappingTasks}
         diagnostics={loadState.diagnostics}
         incompleteBase={loadState.incompleteBase}
-        canEdit={canEdit && loadState.status !== "invalid"}
+        canEdit={canEdit && loadState.status !== "invalid" && !projectSubmissionInFlight}
         canPublish={canPublish}
         publishActionLabel="校验"
         layoutMode={layoutMode}
@@ -484,7 +525,7 @@ export function ApiProjectTopologyWorkspace({
           onRemove={(draftId) => {
             setPendingDrafts((current) => current.filter((draft) => draft.draftId !== draftId));
           }}
-          onSubmit={submitBindingChanges}
+          onSubmit={handleSubmitBindingChanges}
           onNavigate={onNavigate}
         />
       ) : null}

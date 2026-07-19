@@ -592,6 +592,124 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(tray).getByText("1 项")).toBeVisible();
   });
 
+  it("locks only the submitting project until the real submit mutation settles", async () => {
+    let resolveSubmit!: () => void;
+    const pendingSubmit = new Promise<void>((resolve) => {
+      resolveSubmit = resolve;
+    });
+    const submitBindingChanges = vi.fn(() => pendingSubmit);
+    const createBindingDraft = vi.fn().mockResolvedValue({
+      draftId: "draft-project-lock",
+      parameterId: "binding-sc8562-gpio-int",
+      candidateRevisionId: "candidate-project-lock",
+      rawText: "<&gpio13 30 0>",
+      action: "set" as const,
+      parameterSpecId: "spec-sc8562-gpio-int",
+      projectParameterBindingId: "binding-sc8562-gpio-int",
+      writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
+      overlayFileId: "file-overlay",
+      overlayFileName: "overlay.dts"
+    });
+    const repository = createRepository({ createBindingDraft });
+    const listConfigSets = vi.fn(async (projectId: string) => [
+      { id: `dcs-default-${projectId}`, name: "default" }
+    ]);
+    const listWorkflowAssignees = vi.fn().mockResolvedValue({
+      hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+      softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+      softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+    });
+    const { act, fireEvent } = await import("@testing-library/react");
+    const { rerender } = render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+        listWorkflowAssignees={listWorkflowAssignees}
+        submitBindingChanges={submitBindingChanges}
+      />
+    );
+
+    await screen.findByRole("treeitem", { name: /sc8562@6E/ });
+    let workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
+    let detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    fireEvent.change(within(detail).getByLabelText("目标值 raw"), {
+      target: { value: "<&gpio13 30 0>" }
+    });
+    fireEvent.change(within(detail).getByLabelText("修改原因"), {
+      target: { value: "Lock Aurora while submitting" }
+    });
+    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/ }));
+
+    const tray = await screen.findByRole("region", { name: "绑定变更提交" });
+    const submit = within(tray).getByRole("button", { name: "提交审核" });
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
+    expect(submitBindingChanges).toHaveBeenCalledTimes(1);
+    expect(within(tray).getByRole("button", { name: "移出本轮修改" })).toBeDisabled();
+    expect(within(tray).getByLabelText("硬件 MDE")).toBeDisabled();
+
+    workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    expect(within(detail).getByLabelText("目标值 raw")).toBeDisabled();
+    expect(within(detail).getByRole("button", { name: /创建草稿/ })).toBeDisabled();
+    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/ }));
+    expect(createBindingDraft).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="nebula"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+        listWorkflowAssignees={listWorkflowAssignees}
+        submitBindingChanges={submitBindingChanges}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+        "data-config-set-id",
+        "dcs-default-nebula"
+      );
+    });
+    workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    fireEvent.click(within(workspace).getAllByRole("cell", { name: "gpio_int" })[0]);
+    const nebulaDetail = within(workspace).getByRole("region", { name: "绑定详情" });
+    expect(within(nebulaDetail).getByLabelText("目标值 raw")).toBeEnabled();
+
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+        listWorkflowAssignees={listWorkflowAssignees}
+        submitBindingChanges={submitBindingChanges}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "项目拓扑工作区" })).toHaveAttribute(
+        "data-config-set-id",
+        "dcs-default-aurora"
+      );
+    });
+    workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
+    fireEvent.click(within(workspace).getAllByRole("cell", { name: "gpio_int" })[0]);
+    const lockedAuroraDetail = within(workspace).getByRole("region", { name: "绑定详情" });
+    expect(within(lockedAuroraDetail).getByLabelText("目标值 raw")).toBeDisabled();
+
+    await act(async () => {
+      resolveSubmit();
+      await pendingSubmit;
+    });
+    await waitFor(() => {
+      expect(within(lockedAuroraDetail).getByLabelText("目标值 raw")).toBeEnabled();
+    });
+  });
+
   it("publish calls fail-closed validateRevision", async () => {
     const repository = createRepository();
     const { fireEvent } = await import("@testing-library/react");

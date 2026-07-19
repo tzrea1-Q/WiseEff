@@ -292,17 +292,24 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    const newSubmit = await screen.findByRole("button", { name: "提交审核" });
-    await waitFor(() => expect(newSubmit).toBeEnabled());
-    fireEvent.click(newSubmit);
-    expect(onSubmit).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "提交中…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "移出本轮修改" })).toBeDisabled();
+    expect(screen.getByLabelText("硬件 MDE")).toBeDisabled();
+    expect(screen.getByLabelText("软件 MDE")).toBeDisabled();
+    expect(screen.getByLabelText("软件开发")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "移出本轮修改" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交中…" }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolveOld();
       await oldRequest;
     });
     expect(screen.queryByText(/已提交正式审核/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "提交中…" })).toBeDisabled();
+    const newSubmit = await screen.findByRole("button", { name: "提交审核" });
+    await waitFor(() => expect(newSubmit).toBeEnabled());
+    fireEvent.click(newSubmit);
+    expect(onSubmit).toHaveBeenCalledTimes(2);
 
     await act(async () => {
       resolveNew();
@@ -353,17 +360,73 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    const newSubmit = await screen.findByRole("button", { name: "提交审核" });
-    await waitFor(() => expect(newSubmit).toBeEnabled());
+    expect(screen.getByRole("button", { name: "提交中…" })).toBeDisabled();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
     await act(async () => {
       rejectOld(new Error("old request failed"));
       await oldRequest.catch(() => undefined);
     });
     expect(screen.queryByText("old request failed")).not.toBeInTheDocument();
+    const newSubmit = await screen.findByRole("button", { name: "提交审核" });
+    await waitFor(() => expect(newSubmit).toBeEnabled());
     expect(newSubmit).toBeEnabled();
 
     fireEvent.click(newSubmit);
     expect(await screen.findByText(/已提交正式审核/)).toBeVisible();
     expect(onSubmit).toHaveBeenCalledTimes(2);
+  });
+
+  it("freezes the sent assignees when candidates rerender during submission and keeps them after success", async () => {
+    let resolveSubmit!: () => void;
+    const pendingSubmit = new Promise<void>((resolve) => {
+      resolveSubmit = resolve;
+    });
+    const onSubmit = vi.fn(() => pendingSubmit);
+    const { rerender } = render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    expect(onSubmit.mock.calls[0][0].assignees).toEqual({
+      hardwareCommitterId: "u-hw",
+      softwareCommitterId: "u-sw",
+      softwareUserId: "u-user"
+    });
+
+    rerender(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        candidates={{
+          hardwareCommitters: [{ id: "new-hw", name: "New Hardware" }],
+          softwareCommitters: [{ id: "new-sw", name: "New Software" }],
+          softwareUsers: [{ id: "new-user", name: "New User" }]
+        }}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("硬件 MDE")).toHaveValue("u-hw");
+    expect(screen.getByLabelText("软件 MDE")).toHaveValue("u-sw");
+    expect(screen.getByLabelText("软件开发")).toHaveValue("u-user");
+    expect(screen.getByLabelText("硬件 MDE")).toBeDisabled();
+
+    await act(async () => {
+      resolveSubmit();
+      await pendingSubmit;
+    });
+    expect(await screen.findByText(/已提交正式审核/)).toBeVisible();
+    expect(screen.getByLabelText("硬件 MDE")).toHaveValue("u-hw");
+    expect(screen.getByLabelText("软件 MDE")).toHaveValue("u-sw");
+    expect(screen.getByLabelText("软件开发")).toHaveValue("u-user");
   });
 });
