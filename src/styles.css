@@ -19425,6 +19425,9 @@ body.xiaoze-popup-resize-active {
 .dts-parameter-workbench--status[aria-busy="true"] [role="status"],
 .dts-parameter-workbench--status .project-topology-workspace__empty,
 .dts-parameter-workbench--status .project-topology-workspace__error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin: 0;
   padding: 16px;
   color: var(--dts-workbench-muted);
@@ -19434,6 +19437,19 @@ body.xiaoze-popup-resize-active {
   font-size: 13px;
   line-height: 1.55;
   overflow-wrap: anywhere;
+}
+
+.dts-status-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.dts-status-icon--spin {
+  animation: dts-status-spin 1.1s linear infinite;
+}
+
+@keyframes dts-status-spin {
+  to { transform: rotate(360deg); }
 }
 
 .dts-parameter-workbench--status .project-topology-workspace__error {
@@ -19673,7 +19689,10 @@ body.xiaoze-popup-resize-active {
 }
 
 .dts-workbench-list {
-  overflow: hidden;
+  /* Keep every semantic column/action reachable if the app shell leaves a
+   * narrower content rail than the viewport suggests. */
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .dts-parameter-workbench__navigator-title {
@@ -20220,24 +20239,6 @@ body.xiaoze-popup-resize-active {
 .dts-binding-detail-dialog__content code {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-}
-
-/* The app shell keeps a fixed navigation rail on desktop. Stack the topology
- * before the table becomes narrower than its semantic columns, preserving all
- * actions without an inaccessible clipped list. */
-@media (max-width: 1500px) {
-  .dts-parameter-workbench__body {
-    grid-template-columns: 1fr;
-  }
-
-  .dts-workbench-topology {
-    position: static;
-    max-height: 310px;
-  }
-
-  .dts-topology-navigator {
-    max-height: 240px;
-  }
 }
 
 @media (max-width: 1200px) {

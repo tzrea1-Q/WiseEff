@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, Info, LoaderCircle } from "lucide-react";
 import type {
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
@@ -532,7 +533,7 @@ export function ApiProjectTopologyWorkspace({
   if (loadState.kind === "loading") {
     return (
       <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台" aria-busy="true">
-        <p role="status">正在加载项目拓扑与绑定…</p>
+        <p role="status"><LoaderCircle className="dts-status-icon dts-status-icon--spin" size={17} strokeWidth={2} aria-hidden="true" />正在加载项目拓扑与绑定…</p>
       </section>
     );
   }
@@ -541,6 +542,7 @@ export function ApiProjectTopologyWorkspace({
     return (
       <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台">
         <div className="project-topology-workspace__empty" role="status">
+          <Info className="dts-status-icon" size={17} strokeWidth={2} aria-hidden="true" />
           {loadState.message}
         </div>
       </section>
@@ -551,6 +553,7 @@ export function ApiProjectTopologyWorkspace({
     return (
       <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台">
         <div className="project-topology-workspace__error" role="alert">
+          <AlertCircle className="dts-status-icon" size={17} strokeWidth={2} aria-hidden="true" />
           {loadState.code === "NOT_FOUND" ? "未找到拓扑资源（404）。" : null}
           {loadState.message}
           <button type="button" className="button subtle" onClick={() => setReloadToken((t) => t + 1)}>
