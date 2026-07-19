@@ -14,7 +14,7 @@ import {
 
 const deterministicXiaozeGateMessage = "Deterministic Xiaoze mode is not acceptable for pilot readiness.";
 
-function localNonHdcBodyWithDeterministicXiaozeEvidence(blockedBy: string[]) {
+function localNonHdcBodyWithDeterministicXiaozeEvidence(blockedBy: unknown) {
   return {
     ok: false,
     status: "blocked",
@@ -241,6 +241,13 @@ describe("acceptance preflight helpers", () => {
     });
   });
 
+  it("rejects pilot readiness with blockers despite pilot_ready status", () => {
+    expect(evaluatePilotReadiness({ ok: true, status: "pilot_ready", blockedBy: ["unknownGate"] })).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
+    });
+  });
+
   it("accepts local non-HDC readiness only when deviceGateway is the only blocker", () => {
     expect(evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway"] })).toEqual({
       accepted: true,
@@ -332,6 +339,34 @@ describe("acceptance preflight helpers", () => {
   });
 
   it.each([
+    ["ok true", { ok: true, status: "unexpected" }],
+    ["unexpected status", { ok: false, status: "unexpected" }]
+  ])("rejects non-blocked top-level readiness with %s", (_name, topLevel) => {
+    expect(
+      evaluatePilotReadiness({
+        ...localNonHdcBodyWithDeterministicXiaozeEvidence(["deviceGateway", "xiaozeLlm"]),
+        ...topLevel
+      })
+    ).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
+    });
+  });
+
+  it.each([
+    ["nested arrays", [["deviceGateway"], ["xiaozeLlm"]]],
+    ["non-string blocker", ["deviceGateway", 42]],
+    ["non-array blockers", "deviceGateway,xiaozeLlm"]
+  ])("rejects malformed blockedBy with %s", (_name, blockedBy) => {
+    expect(
+      evaluatePilotReadiness(localNonHdcBodyWithDeterministicXiaozeEvidence(blockedBy))
+    ).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
+    });
+  });
+
+  it.each([
     ["null gates", null],
     ["array gates", []],
     ["non-object gates", "invalid"],
@@ -392,6 +427,33 @@ describe("acceptance preflight helpers", () => {
         localNonHdcBodyWithDeterministicXiaozeEvidence(["deviceGateway", "xiaozeLlm"]),
         { requirePilotReady: false, startRuntime: false }
       )
+    ).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
+    });
+  });
+
+  it("rejects the three-blocker local readiness when runtime startup is disabled", () => {
+    expect(
+      evaluatePilotReadiness(
+        localNonHdcBodyWithDeterministicXiaozeEvidence(["deviceGateway", "xiaozeLlm", "backups"]),
+        { requirePilotReady: false, startRuntime: false }
+      )
+    ).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
+    });
+  });
+
+  it.each([
+    ["two-blocker", ["deviceGateway", "xiaozeLlm"]],
+    ["three-blocker", ["deviceGateway", "xiaozeLlm", "backups"]]
+  ])("rejects %s local readiness when full pilot readiness is required", (_name, blockedBy) => {
+    expect(
+      evaluatePilotReadiness(localNonHdcBodyWithDeterministicXiaozeEvidence(blockedBy), {
+        requirePilotReady: true,
+        startRuntime: true
+      })
     ).toMatchObject({
       accepted: false,
       outcome: "blocked"

@@ -186,10 +186,18 @@ export function evaluatePilotReadiness(
     startRuntime: true
   }
 ): { accepted: boolean; outcome: PilotOutcome; detail: string } {
-  const blockedBy = Array.isArray(body.blockedBy) ? body.blockedBy.map(String) : [];
+  if (!isStringArray(body.blockedBy)) {
+    return {
+      accepted: false,
+      outcome: "blocked",
+      detail: "Pilot-readiness is blocked by: unknown."
+    };
+  }
+
+  const blockedBy = body.blockedBy;
   const blockerSet = new Set(blockedBy);
 
-  if (body.ok === true && body.status === "pilot_ready") {
+  if (body.ok === true && body.status === "pilot_ready" && blockedBy.length === 0) {
     return {
       accepted: true,
       outcome: "pilot_ready",
@@ -197,7 +205,9 @@ export function evaluatePilotReadiness(
     };
   }
 
-  if (!options.requirePilotReady && blockedBy.length === 1 && blockedBy[0] === "deviceGateway") {
+  const isBlockedReadiness = body.ok === false && body.status === "blocked";
+
+  if (isBlockedReadiness && !options.requirePilotReady && blockedBy.length === 1 && blockedBy[0] === "deviceGateway") {
     return {
       accepted: true,
       outcome: "non_hdc_local",
@@ -208,6 +218,7 @@ export function evaluatePilotReadiness(
   const hasDeterministicXiaozeGateEvidence = hasCanonicalDeterministicXiaozeGateEvidence(body);
 
   if (
+    isBlockedReadiness &&
     !options.requirePilotReady &&
     options.startRuntime !== false &&
     hasDeterministicXiaozeGateEvidence &&
@@ -224,6 +235,7 @@ export function evaluatePilotReadiness(
   }
 
   if (
+    isBlockedReadiness &&
     !options.requirePilotReady &&
     options.startRuntime !== false &&
     hasDeterministicXiaozeGateEvidence &&
@@ -262,6 +274,10 @@ function hasCanonicalDeterministicXiaozeGateEvidence(body: Record<string, unknow
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && Array.from(value).every((item) => typeof item === "string");
 }
 
 const testGateEnvDenylist = [
