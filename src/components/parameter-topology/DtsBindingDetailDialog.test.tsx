@@ -104,6 +104,9 @@ describe("DtsBindingDetailDialog", () => {
     renderDialog();
 
     const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
+    expect(document.querySelector('[data-slot="dialog-overlay"]')).toHaveClass(
+      "dts-binding-detail-dialog__overlay"
+    );
     for (const heading of ["身份", "DTS 位置", "来源链", "值与约束", "类型化编辑"]) {
       expect(within(dialog).getByRole("heading", { name: heading })).toBeInTheDocument();
     }

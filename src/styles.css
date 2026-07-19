@@ -20447,6 +20447,10 @@ body.xiaoze-popup-resize-active {
     min-height: 44px;
   }
 
+  .dts-parameter-workbench__governance-content :is(button, .button, input, select, textarea) {
+    min-height: 44px;
+  }
+
   .dts-draft-tray .dts-binding-draft-tray,
   .dts-draft-tray.binding-draft-submission,
   .dts-binding-draft-tray.dts-draft-tray {
@@ -20500,5 +20504,11 @@ body.xiaoze-popup-resize-active {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+
+  .dts-binding-detail-dialog,
+  .dts-binding-detail-dialog__overlay {
+    animation: none !important;
+    transition: none !important;
   }
 }

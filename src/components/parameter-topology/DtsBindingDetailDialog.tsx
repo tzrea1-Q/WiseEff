@@ -180,6 +180,7 @@ export function DtsBindingDetailDialog({
       <DialogContent
         aria-label={`${row.propertyKey} 参数详情`}
         className="dts-binding-detail-dialog max-h-[calc(100vh-2rem)] max-w-5xl overflow-y-auto"
+        overlayClassName="dts-binding-detail-dialog__overlay"
         showCloseButton={false}
         onOpenAutoFocus={(event) => {
           if (!focusEditorOnOpen || !canEdit) return;

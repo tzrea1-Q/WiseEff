@@ -278,6 +278,8 @@ describe("DtsParameterWorkbench", () => {
     expect(styles).toMatch(/min-height:\s*44px/);
     expect(styles).toContain("--dts-workbench-muted: #52657d");
     expect(styles).not.toContain("--dts-workbench-muted: #5e6b7e");
+    expect(styles).toMatch(/\.dts-parameter-workbench__governance-content\s+:is\([^}]+\)[\s\S]*min-height:\s*44px/);
+    expect(styles).toMatch(/prefers-reduced-motion[\s\S]*\.dts-binding-detail-dialog__overlay[\s\S]*animation:\s*none/);
   });
 
   it("renders the semantic workbench contract and exact mature table headers", () => {
