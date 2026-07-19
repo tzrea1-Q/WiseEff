@@ -1,19 +1,19 @@
 ## Browser Acceptance Evidence
 
-- Date: 2026-07-18T12:39:41.430Z
+- Date: 2026-07-19T08:25:40.807Z
 - Branch: `fix/parameter-topology-round6-review-blockers`
-- Commit: `04e46b87f9db8879e3cded8cc526447524a04c52`
+- Commit: `f3b66dce16d2e919833a22e8764a0827c096d0a8`
 - Dirty worktree: `false`
 - Mode: `local-non-hdc`
-- Status: `failed`
+- Status: `passed`
 
 ### Preflight Result
 
-- Status: `skipped`
-- Outcome: `unknown`
-- HDC: `unknown`
+- Status: `passed`
+- Outcome: `non_hdc_local`
+- HDC: `skipped`
 - Evidence: test-results/acceptance/preflight-evidence.md
-- Detail: --skip-preflight was provided.
+- Detail: ok
 
 ### Playwright Result
 
@@ -57,7 +57,7 @@
 
 - test-results/acceptance/preflight-evidence.md
 - test-results/acceptance/results.json
-- test-results/acceptance-evidence-runs/runs/04e46b87f9db8879e3cded8cc526447524a04c52/full-20260718T123157160Z-04e46b87f9db
+- test-results/acceptance-evidence-runs/runs/f3b66dce16d2e919833a22e8764a0827c096d0a8/full-20260719T081615349Z-f3b66dce16d2
 - test-results/acceptance
 - playwright-report/acceptance
 - docs/generated/acceptance-operation-evidence.md
@@ -65,6 +65,4 @@
 
 ### Blockers
 
-- Acceptance preflight did not pass.
-- Local non-HDC mode requires pilot_ready or non_hdc_local preflight outcome.
-- Local non-HDC mode requires HDC to be skipped or absent.
+- _none_

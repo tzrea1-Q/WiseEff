@@ -265,6 +265,13 @@ Review found a local readiness gate drift: `/api/v1/operations/pilot-readiness` 
 - This documentation task then ran `npm run docs:check` (exit 0; `Documentation governance check passed.`) and `git diff --check` (exit 0). No standard acceptance success is recorded; `deviceGateway`, `xiaozeLlm`, and `backups` remain honest blockers, with `backups` allowed only as the existing local non-customer evidence blocker.
 - TD-042 remains unchanged as BLOCKER. No production-ready, cutover-ready, pilot-ready, or merge-ready claim is made.
 
+## Parent Review follow-up checkpoint 8 (2026-07-19)
+
+- The first default shared-8787, no-bypass run remains a separate diagnosis: preflight passed after a deterministic API restart, but the browser matrix then failed with 69 passed / 11 failed / 4 HDC or local-device hardware-conditional skips because of shared runtime/auth/gateway boundaries. This diagnosis is retained and is not overwritten by the isolated evidence below.
+- A successful isolated local run used source commit `f3b66dce16d2e919833a22e8764a0827c096d0a8`, API `http://127.0.0.1:18787`, frontend `http://127.0.0.1:5174`, the API simulator, deterministic Xiaoze, and the local runtime. The exact command was `npm run acceptance:browser -- --mode local-non-hdc --frontend-url http://127.0.0.1:5174` with neither `--skip-preflight` nor `--skip-gates`; preflight outcome was `non_hdc_local` and `Dirty worktree: false`.
+- That isolated run reported 84 Playwright tests: 80 passed / 4 HDC or local-device hardware-conditional skipped / 0 failed. Workflows A–E and G–I passed; F was skipped. Requirement coverage was 59/59; operation coverage was 56/56 with 71 records, zero invalid records, and zero validation errors. Run ID: `full-20260719T081615349Z-f3b66dce16d2`. `npm run acceptance:evidence` exited 0. The published `latest-full` SHA-256 is `9428820846ec215aca9e93851df8e873acbad09e23f21c4db705a51a1e8fa57f`.
+- Only local `non_hdc_local` evidence is proven by this checkpoint. TD-042 remains BLOCKER because no clean non-customer apply→cutover→whole-database restore rehearsal is present. No production-ready, pilot-ready, cutover-ready, or merge-ready claim is made.
+
 ## Risks & rollback
 
 | Risk | Mitigation |
