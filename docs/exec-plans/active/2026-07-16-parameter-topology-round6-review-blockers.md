@@ -90,6 +90,7 @@ Plan
 | Testing strategy | Update | `docs/design-docs/testing-strategy.md` + zh-CN |
 | Verification matrix | Update | `docs/developer/verification-matrix.md` + zh-CN |
 | Cutover / identity runbook | Update | `docs/runbooks/parameter-identity-cutover.md` + zh-CN |
+| Local readiness operator contract | Update | docs/runbooks/manual-acceptance.md + docs/zh-CN/runbooks/manual-acceptance.md |
 | Frontend | Update | `docs/FRONTEND.md` + zh-CN |
 | Security / authz | Review/Update | `docs/SECURITY.md` + global-spec governance notes |
 | Tech debt | Review | TD-042 stays BLOCKER |

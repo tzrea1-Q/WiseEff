@@ -90,6 +90,7 @@
 | 测试策略 | 更新 | `docs/design-docs/testing-strategy.md` + 中文 |
 | 验证矩阵 | 更新 | `docs/developer/verification-matrix.md` + 中文 |
 | Cutover / 身份 runbook | 更新 | `docs/runbooks/parameter-identity-cutover.md` + 中文 |
+| 本地 readiness 操作契约 | 更新 | docs/runbooks/manual-acceptance.md + docs/zh-CN/runbooks/manual-acceptance.md |
 | 前端 | 更新 | `docs/FRONTEND.md` + 中文 |
 | 安全 / 授权 | 审阅/更新 | `docs/SECURITY.md` + 全局规格治理说明 |
 | 技术债 | 审阅 | TD-042 保持 BLOCKER |
