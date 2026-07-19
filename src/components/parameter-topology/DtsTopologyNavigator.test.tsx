@@ -95,6 +95,8 @@ describe("DtsTopologyNavigator", () => {
     expect(sc8562).toHaveAttribute("aria-selected", "true");
     expect(sc8562).toHaveAttribute("tabindex", "0");
     expect(within(navigator).getAllByText("1 个待处理").length).toBeGreaterThan(0);
+    const attention = within(sc8562).getByText("1 个待处理");
+    expect(attention.parentElement).toHaveClass("dts-topology-navigator__meta");
   });
 
   it("uses root-only default expansion when there is no selection", () => {

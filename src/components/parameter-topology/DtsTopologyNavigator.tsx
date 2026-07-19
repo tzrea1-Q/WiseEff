@@ -242,13 +242,15 @@ export function DtsTopologyNavigator({
               ) : null}
             </span>
             <code className="dts-topology-navigator__label">{node.label}</code>
-            <span className="dts-topology-navigator__count">{node.bindingCount} 个参数</span>
-            {node.attentionCount > 0 ? (
-              <span className="dts-topology-navigator__attention">
-                <CircleAlert size={12} strokeWidth={2} aria-hidden="true" />
-                {node.attentionCount} 个待处理
-              </span>
-            ) : null}
+            <span className="dts-topology-navigator__meta">
+              <span className="dts-topology-navigator__count">{node.bindingCount} 个参数</span>
+              {node.attentionCount > 0 ? (
+                <span className="dts-topology-navigator__attention">
+                  <CircleAlert size={12} strokeWidth={2} aria-hidden="true" />
+                  {node.attentionCount} 个待处理
+                </span>
+              ) : null}
+            </span>
           </button>
           {expanded ? (
             <ul role="group" className="dts-topology-navigator__group">

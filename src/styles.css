@@ -19766,17 +19766,29 @@ body.xiaoze-popup-resize-active {
   line-height: 1.35;
 }
 
+.dts-topology-navigator__meta {
+  display: grid;
+  justify-items: end;
+  min-width: 0;
+  max-width: 120px;
+  gap: 2px;
+}
+
 .dts-topology-navigator__count,
 .dts-topology-navigator__attention {
-  max-width: 84px;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   color: #5a6b82;
   font-size: 10px;
   line-height: 1.3;
   text-align: right;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .dts-topology-navigator__attention {
+  width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
