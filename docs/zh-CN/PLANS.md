@@ -17,6 +17,7 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 当前活跃计划清单以英文版 `docs/PLANS.md` 为准。`2026-07-16-parameter-topology-round4-review-blockers.md` 为第四轮 Review 阻断修复：真实 dt-validate schema、可运维 stage→finalize、精确锁定 merge 回写、matcher/review 作用域、manifest 门禁、全局规格 hotspot、未匹配创建+不匹配审计、acceptance/浏览器证据（分支 `fix/parameter-topology-round4-review-blockers`）。`2026-07-16-parameter-topology-round5-review-blockers.md` 为第五轮：不可变 base binding、真 fail-closed writeback、stage/finalize phase 审计、租户 resolve、createSpec 草稿→激活、acceptance fixture 诚实化（分支 `fix/parameter-topology-round5-review-blockers`）。TD-042 仍为 BLOCKER。
 - `exec-plans/active/2026-07-16-parameter-topology-round6-review-blockers.md`：第六轮 Review 阻断——历史 scope 校正、无损规格 ID、全局规格激活权限、完整 valueShape、真实 merge 验收、cleanup 租户隔离、稳定 test:all（分支 `fix/parameter-topology-round6-review-blockers`）。TD-042 仍为 BLOCKER。
+- `exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md`：以成熟参数工作台重新承载 API 模式参数页面，深度融合嵌套 DTS 拓扑、语义 binding 行、来源链、类型化草稿、响应式 UX 和可见验收，不恢复扁平身份。
 - **分支与 PR：** 实现型子智能体只在从 `main` 切出的 feature branch 上开发并本地 commit；不得 push `main`、不得开/合 GitHub PR。由父智能体 review 后提 PR、合并，再 `git pull` 同步本地 `main`。细则见英文版 `docs/PLANS.md` § Git Branch & PR Workflow。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
