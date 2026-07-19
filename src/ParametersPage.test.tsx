@@ -7,11 +7,12 @@ import { TopBarActionsContext } from "./components/layout";
 import { initialState } from "./mockData";
 import type { ParameterPageActions } from "./app/routes";
 import type { ParameterTopologyRepository } from "./application/ports/ParameterTopologyRepository";
-import {
-  TOPOLOGY_TEACHING_BINDINGS,
-  TOPOLOGY_TEACHING_EFFECTIVE_NODES,
-  TOPOLOGY_TEACHING_SOURCE_NODES
-} from "./components/parameter-topology/topologyTeachingFixtures";
+import type {
+  EffectiveTopologyNode,
+  ParameterSpecDetail,
+  ProjectParameterBinding,
+  SourceTopologyNode
+} from "./domain/parameter-topology/types";
 import { selectModuleTreeFilter } from "./test/moduleTreeTestHelpers";
 
 beforeEach(() => {
@@ -213,6 +214,175 @@ function createParameterActions(overrides: Partial<ParameterPageActions> = {}): 
     applyImportBatch: vi.fn().mockResolvedValue(undefined),
     parseDtsImport: vi.fn().mockResolvedValue({ format: "dts-full", rows: [] }),
     refresh: vi.fn().mockResolvedValue(undefined),
+    ...overrides
+  };
+}
+
+const API_SENTINEL_CONFIG_SET_ID = "config-api-boundary-sentinel-7ad0";
+const API_SENTINEL_REVISION_ID = "revision-api-boundary-sentinel-7ad0";
+const API_SENTINEL_PROPERTY = "sentinel_gpio_interrupt";
+const API_SENTINEL_RAW_VALUE = "<&sentinel_gpio 31 7>";
+
+const API_SENTINEL_SOURCE_NODES: SourceTopologyNode[] = [
+  {
+    id: "source-node-api-boundary-sentinel-7ad0",
+    fileVersionId: "file-version-api-boundary-sentinel-7ad0",
+    fileName: "api-boundary-sentinel.dtso",
+    parentOccurrenceId: null,
+    name: "sentinel-device",
+    unitAddress: "7A",
+    labels: ["sentinel_device"],
+    isOverlayRoot: false,
+    nodePath: "/sentinel-bus/sentinel-device@7A",
+    startLine: 10,
+    startColumn: 1,
+    endLine: 14,
+    endColumn: 1,
+    contentHash: "source-hash-api-boundary-sentinel-7ad0",
+    sourceOrder: 1,
+    properties: [
+      {
+        id: "source-property-api-boundary-sentinel-7ad0",
+        propertyName: API_SENTINEL_PROPERTY,
+        startLine: 12,
+        startColumn: 3,
+        endLine: 12,
+        endColumn: 43,
+        contentHash: "property-hash-api-boundary-sentinel-7ad0",
+        sourceOrder: 1
+      }
+    ]
+  }
+];
+
+const API_SENTINEL_EFFECTIVE_NODES: EffectiveTopologyNode[] = [
+  {
+    id: "effective-node-api-boundary-sentinel-7ad0",
+    logicalNodeId: "logical-node-api-boundary-sentinel-7ad0",
+    locator: "/sentinel-bus/sentinel-device@7A",
+    name: "sentinel-device",
+    unitAddress: "7A",
+    compatible: "wiseeff,sentinel-device",
+    parentLogicalNodeId: null,
+    effects: [
+      {
+        id: "effect-api-boundary-sentinel-7ad0",
+        propertyName: API_SENTINEL_PROPERTY,
+        effectKind: "set",
+        nodeOccurrenceId: "source-node-api-boundary-sentinel-7ad0",
+        propertyOccurrenceId: "source-property-api-boundary-sentinel-7ad0",
+        sourceOrder: 1
+      }
+    ]
+  }
+];
+
+const API_SENTINEL_BINDING: ProjectParameterBinding = {
+  id: "binding-api-boundary-sentinel-7ad0",
+  parameterSpecId: "spec-api-boundary-sentinel-7ad0",
+  parameterSpecVersionId: "spec-version-api-boundary-sentinel-7ad0",
+  propertyKey: API_SENTINEL_PROPERTY,
+  driverModule: "sentinel-device",
+  logicalNodeId: "logical-node-api-boundary-sentinel-7ad0",
+  instanceName: "sentinel-device@7A",
+  locator: "/sentinel-bus/sentinel-device@7A",
+  effectiveValue: {
+    kind: "cells",
+    bits: 32,
+    groups: [
+      [
+        { kind: "phandle", label: "sentinel_gpio" },
+        { kind: "integer", raw: "31", value: "31" },
+        { kind: "integer", raw: "7", value: "7" }
+      ]
+    ]
+  },
+  rawValue: API_SENTINEL_RAW_VALUE,
+  schemaState: "valid",
+  policyState: "pass"
+};
+
+const API_SENTINEL_SPEC: ParameterSpecDetail = {
+  id: API_SENTINEL_BINDING.parameterSpecId,
+  organizationId: "org-api-boundary-sentinel-7ad0",
+  sourceKind: "dts",
+  specificationKey: "sentinel-device/sentinel_gpio_interrupt",
+  propertyKey: API_SENTINEL_PROPERTY,
+  driverModule: "sentinel-device",
+  lifecycle: "active",
+  currentVersionId: API_SENTINEL_BINDING.parameterSpecVersionId,
+  currentVersion: 1,
+  displayName: "Sentinel GPIO interrupt",
+  description: "API boundary sentinel only",
+  valueShape: { kind: "phandle-list", bits: 32, groups: 1, cellsPerGroup: 3 },
+  schemaDefault: null,
+  exampleValue: null,
+  schemaNamespace: "wiseeff,sentinel-device",
+  units: null,
+  constraints: { cells: 3 },
+  documentation: "API boundary sentinel fixture",
+  compatiblePatterns: ["wiseeff,sentinel-device"],
+  policyTarget: null
+};
+
+function createApiBoundaryRepository(
+  overrides: Partial<ParameterTopologyRepository> = {}
+): ParameterTopologyRepository {
+  return {
+    listSpecs: vi.fn().mockResolvedValue([API_SENTINEL_SPEC]),
+    getSpec: vi.fn().mockResolvedValue(API_SENTINEL_SPEC),
+    activateParameterSpec: vi.fn().mockResolvedValue(API_SENTINEL_SPEC),
+    listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    resolveSpecReviewTask: vi.fn().mockResolvedValue(undefined),
+    listBindings: vi.fn().mockResolvedValue([API_SENTINEL_BINDING]),
+    getTopology: vi.fn(async (projectId, configSetId, revisionId, view) => {
+      const resolvedRevisionId = revisionId === "current" ? API_SENTINEL_REVISION_ID : revisionId;
+      if (view === "source") {
+        return {
+          view,
+          projectId,
+          configSetId,
+          revisionId: resolvedRevisionId,
+          status: "resolved",
+          incompleteBase: false,
+          diagnostics: [],
+          nodes: API_SENTINEL_SOURCE_NODES
+        };
+      }
+      return {
+        view,
+        projectId,
+        configSetId,
+        revisionId: resolvedRevisionId,
+        status: "resolved",
+        incompleteBase: false,
+        diagnostics: [],
+        nodes: API_SENTINEL_EFFECTIVE_NODES
+      };
+    }),
+    listMappingTasks: vi.fn().mockResolvedValue([]),
+    resolveMapping: vi.fn().mockResolvedValue(undefined),
+    validateRevision: vi.fn().mockResolvedValue({
+      id: "validation-api-boundary-sentinel-7ad0",
+      status: "passed",
+      stage: "toolchain"
+    }),
+    createBindingDraft: vi.fn().mockResolvedValue({
+      draftId: "draft-api-boundary-sentinel-7ad0",
+      parameterId: API_SENTINEL_BINDING.id,
+      candidateRevisionId: "candidate-api-boundary-sentinel-7ad0",
+      rawText: API_SENTINEL_RAW_VALUE,
+      action: "set",
+      parameterSpecId: API_SENTINEL_BINDING.parameterSpecId,
+      projectParameterBindingId: API_SENTINEL_BINDING.id,
+      writeTarget: {
+        role: "overlay",
+        propertyKey: API_SENTINEL_PROPERTY,
+        targetRef: "sentinel_device"
+      },
+      overlayFileId: "overlay-file-api-boundary-sentinel-7ad0",
+      overlayFileName: "api-boundary-sentinel.dtso"
+    }),
     ...overrides
   };
 }
@@ -1382,23 +1552,7 @@ describe("ParametersPage API topology workspace", () => {
       softwareCommitters: [{ id: "u-sw", name: "Software API" }],
       softwareUsers: [{ id: "u-user", name: "Developer API" }],
     });
-    const topologyRepository = {
-      getTopology: vi.fn(async (_projectId, _configSetId, revisionId, view) => ({
-        view,
-        revisionId: revisionId === "current" ? "rev-real-1" : revisionId,
-        configSetId: "dcs-default-aurora",
-        projectId: "aurora",
-        status: "resolved",
-        incompleteBase: false,
-        diagnostics: [],
-        nodes:
-          view === "source"
-            ? TOPOLOGY_TEACHING_SOURCE_NODES
-            : TOPOLOGY_TEACHING_EFFECTIVE_NODES
-      })),
-      listBindings: vi.fn().mockResolvedValue(TOPOLOGY_TEACHING_BINDINGS),
-      listMappingTasks: vi.fn().mockResolvedValue([])
-    } as unknown as ParameterTopologyRepository;
+    const topologyRepository = createApiBoundaryRepository();
     render(
       <TopBarActionsHarness>
         <ParametersPage
@@ -1413,7 +1567,7 @@ describe("ParametersPage API topology workspace", () => {
             listWorkflowAssignees,
           }}
           topologyRepository={topologyRepository}
-          listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+          listConfigSets={async () => [{ id: API_SENTINEL_CONFIG_SET_ID, name: "default" }]}
         />
       </TopBarActionsHarness>
     );
@@ -1421,10 +1575,52 @@ describe("ParametersPage API topology workspace", () => {
     const workspace = await screen.findByRole("region", { name: "DTS 参数工作台" });
     expect(within(workspace).getByRole("searchbox", { name: "搜索 DTS 参数" })).toBeInTheDocument();
     expect(within(workspace).getByRole("tree", { name: "生效 DTS 拓扑" })).toBeInTheDocument();
-    expect((await within(workspace).findAllByText("gpio_int")).length).toBeGreaterThan(0);
+    const semanticRow = await within(workspace).findByRole("row", { name: new RegExp(API_SENTINEL_PROPERTY) });
+    expect(within(semanticRow).getByRole("cell", { name: API_SENTINEL_PROPERTY })).toBeInTheDocument();
+    expect(within(semanticRow).getByRole("cell", { name: API_SENTINEL_RAW_VALUE })).toBeInTheDocument();
+    expect(topologyRepository.getTopology).toHaveBeenCalledWith(
+      "aurora",
+      API_SENTINEL_CONFIG_SET_ID,
+      "current",
+      "effective"
+    );
+    expect(topologyRepository.listBindings).toHaveBeenCalledWith("aurora", API_SENTINEL_REVISION_ID);
     expect(screen.queryByRole("button", { name: "导出 Excel" })).not.toBeInTheDocument();
     expect(screen.queryByText("当前 → 推荐", { exact: false })).not.toBeInTheDocument();
     expect(screen.queryByText("推荐值", { exact: false })).not.toBeInTheDocument();
     expect(listWorkflowAssignees).not.toHaveBeenCalled();
+  });
+
+  it("fails closed without fabricated topology when API config sets are empty", async () => {
+    const topologyRepository = createApiBoundaryRepository();
+    render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={createParametersPageState()}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          runtimeMode="api"
+          canEdit
+          parameterActions={createParameterActions()}
+          topologyRepository={topologyRepository}
+          listConfigSets={async () => []}
+        />
+      </TopBarActionsHarness>
+    );
+
+    expect(await screen.findByText(/尚未创建 Config Set/i)).toBeInTheDocument();
+    const workspace = screen.getByRole("region", { name: /^(?:DTS 参数工作台|项目拓扑工作区)$/ });
+    expect(workspace.getAttribute("data-config-set-id") ?? "").toBe("");
+    expect(workspace.getAttribute("data-revision-id") ?? "").toBe("");
+    expect(topologyRepository.getTopology).not.toHaveBeenCalled();
+    expect(topologyRepository.listBindings).not.toHaveBeenCalled();
+    expect(workspace.textContent).not.toMatch(/aurora-default-config|aurora-head|sc8562@6E|<&gpio13 29 0>/);
+    expect(workspace).not.toHaveTextContent(API_SENTINEL_PROPERTY);
+    expect(workspace).not.toHaveTextContent(API_SENTINEL_RAW_VALUE);
+    expect(screen.queryByRole("region", { name: "检索参数表" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "本轮已修改参数区" })).not.toBeInTheDocument();
+    expect(screen.queryByText("当前 → 推荐", { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByText("推荐值", { exact: false })).not.toBeInTheDocument();
   });
 });
