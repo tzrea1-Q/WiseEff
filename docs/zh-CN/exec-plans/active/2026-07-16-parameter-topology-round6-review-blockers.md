@@ -230,7 +230,7 @@
 | 中英文 API contract | 记录工作流响应的 candidate identity 与 merge 冲突 |
 | 中英文 testing/verification | 记录双连接 PG 竞态和 merge 复核门禁 |
 | 中英文 identity cutover runbook | 增加 0063 前后检查及历史行拒绝后重建处置 |
-| Local readiness operator contract | Update | `docs/runbooks/manual-acceptance.md` + `docs/zh-CN/runbooks/manual-acceptance.md` |
+| 本地 readiness 操作契约 | 更新两份 runbook：docs/runbooks/manual-acceptance.md + docs/zh-CN/runbooks/manual-acceptance.md |
 | Generated DB schema | 同步新增 FK 和索引到 0063 |
 | 中英文 active plan | 同步成功标准、回滚和真实命令证据 |
 
