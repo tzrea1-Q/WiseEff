@@ -67,6 +67,11 @@ type LoadState =
     };
 
 type ProjectMutationKind = "draft" | "submit";
+type ProjectMutationLock = {
+  kind: ProjectMutationKind;
+  generation: number;
+  token: symbol;
+};
 
 function pickConfigSet(items: Array<{ id: string; name: string }>) {
   return items.find((item) => item.name === "default") ?? items[0] ?? null;
@@ -168,7 +173,7 @@ export function ApiProjectTopologyWorkspace({
     projectGenerationRef.current += 1;
   }
   activeProjectIdRef.current = projectId;
-  const projectMutationsRef = useRef(new Map<string, ProjectMutationKind>());
+  const projectMutationsRef = useRef(new Map<string, ProjectMutationLock>());
 
   const isCurrentProjectRequest = (requestProjectId: string, requestGeneration: number) =>
     activeProjectIdRef.current === requestProjectId && projectGenerationRef.current === requestGeneration;
@@ -186,22 +191,34 @@ export function ApiProjectTopologyWorkspace({
   const [pendingDrafts, setPendingDrafts] = useState<PendingBindingDraft[]>([]);
   const [workflowCandidates, setWorkflowCandidates] = useState<WorkflowAssigneeCandidates | null>(null);
   const [workflowCandidatesError, setWorkflowCandidatesError] = useState<string | null>(null);
-  const [projectMutationKinds, setProjectMutationKinds] = useState<ReadonlyMap<string, ProjectMutationKind>>(
+  const [projectMutationKinds, setProjectMutationKinds] = useState<ReadonlyMap<string, ProjectMutationLock>>(
     () => new Map()
   );
   const projectDrafts = pendingDrafts.filter((draft) => draft.projectId === projectId);
   const hasProjectDrafts = projectDrafts.length > 0;
-  const projectMutationKind = projectMutationKinds.get(projectId) ?? null;
+  const projectMutationLock = projectMutationKinds.get(projectId);
+  const projectMutationKind = projectMutationLock?.kind ?? null;
 
-  const acquireProjectMutation = (mutationProjectId: string, kind: ProjectMutationKind): boolean => {
-    if (projectMutationsRef.current.has(mutationProjectId)) return false;
-    projectMutationsRef.current.set(mutationProjectId, kind);
+  const acquireProjectMutation = (
+    mutationProjectId: string,
+    kind: ProjectMutationKind,
+    generation = projectGenerationRef.current
+  ): symbol | null => {
+    const existing = projectMutationsRef.current.get(mutationProjectId);
+    if (existing) return null;
+    const token = Symbol(`${mutationProjectId}:${kind}`);
+    projectMutationsRef.current.set(mutationProjectId, { kind, generation, token });
     setProjectMutationKinds(new Map(projectMutationsRef.current));
-    return true;
+    return token;
   };
 
-  const releaseProjectMutation = (mutationProjectId: string, kind: ProjectMutationKind) => {
-    if (projectMutationsRef.current.get(mutationProjectId) !== kind) return;
+  const releaseProjectMutation = (
+    mutationProjectId: string,
+    kind: ProjectMutationKind,
+    token: symbol
+  ) => {
+    const lock = projectMutationsRef.current.get(mutationProjectId);
+    if (!lock || lock.kind !== kind || lock.token !== token) return;
     projectMutationsRef.current.delete(mutationProjectId);
     setProjectMutationKinds(new Map(projectMutationsRef.current));
   };
@@ -287,7 +304,8 @@ export function ApiProjectTopologyWorkspace({
     rawValue: string;
     reason: string;
   }): Promise<BindingEditValidation> => {
-    const activeMutation = projectMutationsRef.current.get(projectId);
+    const activeMutationLock = projectMutationsRef.current.get(projectId);
+    const activeMutation = activeMutationLock?.kind ?? null;
     if (activeMutation) {
       return {
         valid: false,
@@ -330,7 +348,15 @@ export function ApiProjectTopologyWorkspace({
     }
 
     const requestProjectId = projectId;
-    if (!acquireProjectMutation(requestProjectId, "draft")) {
+    const requestGeneration = projectGenerationRef.current;
+    if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
+      return {
+        valid: false,
+        diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿请求。", code: "PROJECT_CHANGED" }]
+      };
+    }
+    const mutationToken = acquireProjectMutation(requestProjectId, "draft", requestGeneration);
+    if (!mutationToken) {
       return {
         valid: false,
         diagnostics: [
@@ -348,13 +374,14 @@ export function ApiProjectTopologyWorkspace({
         targetValue,
         reason: input.reason
       });
-      if (activeProjectIdRef.current !== requestProjectId) {
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
         return {
           valid: false,
           diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿响应。", code: "PROJECT_CHANGED" }]
         };
       }
       setPendingDrafts((current) => {
+        if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return current;
         const previousDraft = current.find(
           (item) =>
             item.projectId === requestProjectId &&
@@ -375,10 +402,28 @@ export function ApiProjectTopologyWorkspace({
           nextDraft
         ];
       });
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
+        return {
+          valid: false,
+          diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿响应。", code: "PROJECT_CHANGED" }]
+        };
+      }
       setPreferredRevision({ projectId: requestProjectId, revisionId: draft.candidateRevisionId });
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
+        return {
+          valid: false,
+          diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿响应。", code: "PROJECT_CHANGED" }]
+        };
+      }
       setReloadToken((token) => token + 1);
       return { valid: true, diagnostics: [] };
     } catch (error) {
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
+        return {
+          valid: false,
+          diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿错误。", code: "PROJECT_CHANGED" }]
+        };
+      }
       const mapped: ParameterTopologyMappedError = mapParameterTopologyError(error);
       if (mapped.kind === "diagnostics") {
         const diagnostics =
@@ -404,21 +449,22 @@ export function ApiProjectTopologyWorkspace({
         diagnostics: [{ message: mapped.message, code: mapped.kind === "api" ? mapped.code : mapped.kind }]
       };
     } finally {
-      releaseProjectMutation(requestProjectId, "draft");
+      releaseProjectMutation(requestProjectId, "draft", mutationToken);
     }
   };
 
   const handleSubmitBindingChanges = submitBindingChanges
     ? async (input: SubmitParameterChangesInput) => {
       const submittingProjectId = input.projectId;
-        if (!acquireProjectMutation(submittingProjectId, "submit")) {
-          const activeKind = projectMutationsRef.current.get(submittingProjectId) ?? "unknown";
+        const mutationToken = acquireProjectMutation(submittingProjectId, "submit");
+        if (!mutationToken) {
+          const activeKind = projectMutationsRef.current.get(submittingProjectId)?.kind ?? "unknown";
           return { notification: `该项目已有 ${activeKind} mutation 正在处理中，已阻止正式提交。` };
         }
         try {
           return await submitBindingChanges(input);
         } finally {
-          releaseProjectMutation(submittingProjectId, "submit");
+          releaseProjectMutation(submittingProjectId, "submit", mutationToken);
         }
       }
     : undefined;

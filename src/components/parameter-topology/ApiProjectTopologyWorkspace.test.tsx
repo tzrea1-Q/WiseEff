@@ -395,6 +395,211 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
   });
 
+  it("ignores a stale Aurora draft after switching Aurora to Nebula and back to Aurora", async () => {
+    const { act, fireEvent } = await import("@testing-library/react");
+    const draftRequest = createDeferred<Awaited<ReturnType<ParameterTopologyRepository["createBindingDraft"]>>>();
+    const createBindingDraft = vi.fn()
+      .mockImplementationOnce(() => draftRequest.promise)
+      .mockResolvedValueOnce({
+        draftId: "draft-aurora-current",
+        parameterId: "binding-sc8562-gpio-int",
+        candidateRevisionId: "rev-aurora-current",
+        rawText: "<&gpio13 31 0>",
+        action: "set" as const,
+        parameterSpecId: "spec-sc8562-gpio-int",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
+        overlayFileId: "file-overlay",
+        overlayFileName: "overlay.dts"
+      });
+    const repository = createRepository({ createBindingDraft });
+    const listConfigSets = vi.fn(async (projectId: string) => [
+      { id: `dcs-default-${projectId}`, name: "default" }
+    ]);
+    const { rerender } = render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await screen.findByRole("treeitem", { name: /sc8562@6E/ });
+    let workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    let detail = screen.getByRole("dialog", { name: /参数详情/ });
+    fireEvent.change(within(detail).getByLabelText("修改原因"), {
+      target: { value: "Stale Aurora draft must not return after switching back" }
+    });
+    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/i }));
+    await waitFor(() => expect(createBindingDraft).toHaveBeenCalledWith(
+      "aurora",
+      "binding-sc8562-gpio-int",
+      expect.any(Object)
+    ));
+
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="nebula"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-config-set-id",
+        "dcs-default-nebula"
+      );
+    });
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-config-set-id",
+        "dcs-default-aurora"
+      );
+    });
+    const auroraTopologyCalls = vi.mocked(repository.getTopology).mock.calls.filter(([requestProjectId]) => requestProjectId === "aurora").length;
+
+    await act(async () => {
+      draftRequest.resolve({
+        draftId: "draft-aurora-stale",
+        parameterId: "binding-sc8562-gpio-int",
+        candidateRevisionId: "rev-aurora-stale",
+        rawText: "<&gpio13 30 0>",
+        action: "set",
+        parameterSpecId: "spec-sc8562-gpio-int",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
+        overlayFileId: "file-overlay",
+        overlayFileName: "overlay.dts"
+      });
+      await draftRequest.promise;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(screen.queryByRole("region", { name: "绑定变更提交" })).not.toBeInTheDocument();
+    expect(vi.mocked(repository.getTopology).mock.calls.filter(([requestProjectId]) => requestProjectId === "aurora").length).toBe(auroraTopologyCalls);
+    expect(repository.getTopology).not.toHaveBeenCalledWith(
+      "aurora",
+      "dcs-default-aurora",
+      "rev-aurora-stale",
+      "effective"
+    );
+
+    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    detail = screen.getByRole("dialog", { name: /参数详情/ });
+    await waitFor(() => expect(within(detail).getByLabelText("目标值 raw")).toBeEnabled());
+    fireEvent.change(within(detail).getByLabelText("修改原因"), {
+      target: { value: "Current Aurora draft after stale response settled" }
+    });
+    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/i }));
+    await waitFor(() => expect(screen.getByRole("region", { name: "绑定变更提交" })).toBeVisible());
+    expect(screen.getByText("rev-aurora-current")).toBeVisible();
+  });
+
+  it("drops a stale Aurora draft error after switching back and releases only its draft lock", async () => {
+    const { act, fireEvent } = await import("@testing-library/react");
+    const draftRequest = createDeferred<Awaited<ReturnType<ParameterTopologyRepository["createBindingDraft"]>>>();
+    const createBindingDraft = vi.fn()
+      .mockImplementationOnce(() => draftRequest.promise)
+      .mockResolvedValueOnce({
+        draftId: "draft-aurora-current",
+        parameterId: "binding-sc8562-gpio-int",
+        candidateRevisionId: "rev-aurora-current",
+        rawText: "<&gpio13 31 0>",
+        action: "set" as const,
+        parameterSpecId: "spec-sc8562-gpio-int",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
+        overlayFileId: "file-overlay",
+        overlayFileName: "overlay.dts"
+      });
+    const repository = createRepository({ createBindingDraft });
+    const listConfigSets = vi.fn(async (projectId: string) => [
+      { id: `dcs-default-${projectId}`, name: "default" }
+    ]);
+    const { rerender } = render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await screen.findByRole("treeitem", { name: /sc8562@6E/ });
+    let workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    let detail = screen.getByRole("dialog", { name: /参数详情/ });
+    fireEvent.change(within(detail).getByLabelText("修改原因"), {
+      target: { value: "Stale Aurora error must not block current Aurora" }
+    });
+    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/i }));
+    await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="nebula"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-config-set-id",
+        "dcs-default-nebula"
+      );
+    });
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-config-set-id",
+        "dcs-default-aurora"
+      );
+    });
+
+    await act(async () => {
+      draftRequest.reject(new Error("Stale Aurora draft failed"));
+      await draftRequest.promise.catch(() => undefined);
+    });
+
+    expect(screen.queryByRole("region", { name: "绑定变更提交" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Stale Aurora draft failed")).not.toBeInTheDocument();
+
+    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    detail = screen.getByRole("dialog", { name: /参数详情/ });
+    await waitFor(() => expect(within(detail).getByLabelText("目标值 raw")).toBeEnabled());
+    fireEvent.change(within(detail).getByLabelText("修改原因"), {
+      target: { value: "Current Aurora draft after stale error settled" }
+    });
+    fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/i }));
+    await waitFor(() => expect(screen.getByRole("region", { name: "绑定变更提交" })).toBeVisible());
+    expect(screen.getByText("rev-aurora-current")).toBeVisible();
+  });
+
   it("clears project-scoped mapping feedback when switching projects", async () => {
     const { fireEvent } = await import("@testing-library/react");
     const repository = createRepository({
@@ -900,15 +1105,12 @@ describe("ApiProjectTopologyWorkspace", () => {
     await waitFor(() => {
       expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-revision-id",
-        "candidate-replacement"
+        "rev-real-1"
       );
     });
-    tray = await screen.findByRole("region", { name: "绑定变更提交" });
-    expect(within(tray).getByText("candidate-replacement")).toBeVisible();
-    const replacementSubmit = within(tray).getByRole("button", { name: "提交审核" });
-    await waitFor(() => expect(replacementSubmit).toBeEnabled());
-    fireEvent.click(replacementSubmit);
-    await waitFor(() => expect(submitBindingChanges).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("region", { name: "绑定变更提交" })).not.toBeInTheDocument();
+    expect(screen.queryByText("candidate-replacement")).not.toBeInTheDocument();
+    expect(submitBindingChanges).not.toHaveBeenCalled();
   });
 
   it("releases the project mutation lock when replacement draft creation rejects", async () => {
