@@ -43,6 +43,14 @@ function Governance({ row }: { row: DtsParameterWorkbenchRow }) {
   );
 }
 
+function bindingActionContext(row: DtsParameterWorkbenchRow): string {
+  const context = [row.instanceName, row.driverModule, row.topologyPath]
+    .filter((value): value is string => Boolean(value));
+  return context.length > 0
+    ? `${row.propertyKey}（${context.join(" · ")}）`
+    : row.propertyKey;
+}
+
 /**
  * One semantic row structure serves both the desktop grid and the responsive card layout.
  * CSS may change its visual flow without duplicating accessible rows or binding actions.
@@ -76,8 +84,9 @@ export function DtsParameterWorkbenchTable({
         {rows.map((row) => {
           const isDraft = draftBindingIds.has(row.bindingId);
           const isSelected = selectedBindingId === row.bindingId;
+          const actionContext = bindingActionContext(row);
           return (
-            <article
+            <div
               role="row"
               key={row.bindingId}
               data-binding-id={row.bindingId}
@@ -114,26 +123,26 @@ export function DtsParameterWorkbenchTable({
                 <button
                   type="button"
                   className="button subtle"
-                  aria-label={`查看 ${row.propertyKey}`}
+                  aria-label={`查看 ${actionContext}`}
                   onClick={() => onSelectBinding(row.bindingId)}
                 >
                   查看
                 </button>
-                {canEdit ? (
+                {canEdit && onEditBinding ? (
                   <button
                     type="button"
                     className="button"
-                    aria-label={`编辑 ${row.propertyKey}`}
+                    aria-label={`${isDraft ? "继续编辑" : "编辑"} ${actionContext}`}
                     onClick={() => {
                       onSelectBinding(row.bindingId);
-                      onEditBinding?.(row.bindingId);
+                      onEditBinding(row.bindingId);
                     }}
                   >
                     {isDraft ? "继续编辑" : "编辑"}
                   </button>
                 ) : null}
               </span>
-            </article>
+            </div>
           );
         })}
       </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   buildDtsTopologyTree,
@@ -27,7 +27,7 @@ export type DtsParameterWorkbenchProps = {
   draftBindingIds: ReadonlySet<string>;
   canEdit: boolean;
   initialView?: TopologyView;
-  onSelectBinding?: (bindingId: string) => void;
+  onSelectBinding: (bindingId: string) => void;
   onEditBinding?: (bindingId: string) => void;
 };
 
@@ -46,7 +46,7 @@ function selectedSubtreeBindingIds(
     }
     pending.push(...node.children);
   }
-  if (!selected) return new Set();
+  if (!selected) return null;
 
   const bindingIds = new Set<string>();
   const subtree = [selected];
@@ -80,9 +80,25 @@ export function DtsParameterWorkbench({
     () => buildDtsTopologyTree({ view, sourceNodes, effectiveNodes, rows: currentRows }),
     [currentRows, effectiveNodes, sourceNodes, view]
   );
+  const selectedNodeExists = useMemo(() => {
+    if (!selectedNodeId) return true;
+    const pending = [...tree];
+    while (pending.length > 0) {
+      const node = pending.pop()!;
+      if (node.id === selectedNodeId) return true;
+      pending.push(...node.children);
+    }
+    return false;
+  }, [selectedNodeId, tree]);
+  const effectiveSelectedNodeId = selectedNodeExists ? selectedNodeId : null;
+
+  useEffect(() => {
+    if (selectedNodeId && !selectedNodeExists) setSelectedNodeId(null);
+  }, [selectedNodeExists, selectedNodeId]);
+
   const subtreeBindingIds = useMemo(
-    () => selectedSubtreeBindingIds(tree, selectedNodeId),
-    [selectedNodeId, tree]
+    () => selectedSubtreeBindingIds(tree, effectiveSelectedNodeId),
+    [effectiveSelectedNodeId, tree]
   );
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleRows = useMemo(
@@ -96,7 +112,7 @@ export function DtsParameterWorkbench({
 
   const selectBinding = (bindingId: string) => {
     setSelectedBindingId(bindingId);
-    onSelectBinding?.(bindingId);
+    onSelectBinding(bindingId);
   };
 
   const switchView = (nextView: TopologyView) => {
@@ -180,14 +196,15 @@ export function DtsParameterWorkbench({
       </div>
 
       <div className="dts-parameter-workbench__body">
-        <aside className="dts-parameter-workbench__navigator">
+        <div className="dts-parameter-workbench__navigator">
+          <h3 className="dts-parameter-workbench__navigator-title">DTS 拓扑导航</h3>
           <DtsTopologyNavigator
             view={view}
             nodes={tree}
-            selectedNodeId={selectedNodeId}
+            selectedNodeId={effectiveSelectedNodeId}
             onSelectNode={(nodeId) => setSelectedNodeId((current) => current === nodeId ? null : nodeId)}
           />
-        </aside>
+        </div>
         <div className="dts-parameter-workbench__results">
           <DtsParameterWorkbenchTable
             rows={visibleRows}

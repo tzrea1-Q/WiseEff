@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import axe from "axe-core";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -271,6 +272,24 @@ describe("DtsParameterWorkbench", () => {
     expect(screen.queryByText("rx_fod_cond")).not.toBeInTheDocument();
   });
 
+  it("treats a stale selected node as unselected when same-view topology data refreshes", () => {
+    const { props, rerender } = renderWorkbench();
+    fireEvent.click(expandToSc8562(/sc8562@6E/));
+    expect(visibleBindingRows()).toHaveLength(3);
+
+    const refreshedEffectiveNodes = effectiveNodes.filter(
+      (node) => node.id !== "effective-sc8562" && node.id !== "effective-sensor"
+    );
+    rerender(
+      <DtsParameterWorkbench {...props} effectiveNodes={refreshedEffectiveNodes} />
+    );
+    expect(visibleBindingRows()).toHaveLength(4);
+    expect(screen.getByRole("status")).toHaveTextContent("显示 4 / 4 个参数");
+
+    rerender(<DtsParameterWorkbench {...props} />);
+    expect(visibleBindingRows()).toHaveLength(4);
+  });
+
   it("filters all governance states, renders their badges and preserves external draft identity on clear", () => {
     renderWorkbench();
 
@@ -313,10 +332,71 @@ describe("DtsParameterWorkbench", () => {
     const onEditBinding = vi.fn();
     renderWorkbench({ canEdit: false, onSelectBinding, onEditBinding });
 
-    fireEvent.click(screen.getByRole("button", { name: "查看 gpio_int" }));
+    fireEvent.click(screen.getByRole("button", {
+      name: "查看 gpio_int（sc8562@6E · sc8562 · /amba/i2c@FDF5E000/sc8562@6E）"
+    }));
     expect(onSelectBinding).toHaveBeenCalledWith("binding-gpio-int");
-    expect(screen.queryByRole("button", { name: "编辑 gpio_int" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
     expect(screen.getByRole("row", { name: /gpio_int/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("does not render an inert edit action when its handler is absent", () => {
+    renderWorkbench({ canEdit: true, onEditBinding: undefined });
+
+    expect(screen.getByRole("button", { name: /查看 gpio_int/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /继续编辑 gpio_int/ })).not.toBeInTheDocument();
+  });
+
+  it("disambiguates repeated property actions and names draft actions as continue editing", () => {
+    const secondNode = effectiveNode(
+      "effective-sc8562-secondary",
+      "logical-sc8562-secondary",
+      "logical-i2c",
+      "sc8562",
+      "6F",
+      "sc8562"
+    );
+    const secondGpioRow: DtsParameterWorkbenchRow = {
+      ...effectiveRows[0],
+      bindingId: "binding-gpio-int-secondary",
+      parameterSpecId: "spec-gpio-int-secondary",
+      parameterSpecVersionId: "spec-version-gpio-int-secondary",
+      logicalNodeId: "logical-sc8562-secondary",
+      instanceName: "sc8562@6F",
+      topologyNodeId: secondNode.id,
+      topologyPath: "/amba/i2c@FDF5E000/sc8562@6F",
+      rawValue: "<&gpio14 30 0>"
+    };
+    renderWorkbench({
+      effectiveRows: [...effectiveRows, secondGpioRow],
+      effectiveNodes: [...effectiveNodes, secondNode]
+    });
+
+    expect(screen.getByRole("button", {
+      name: "查看 gpio_int（sc8562@6E · sc8562 · /amba/i2c@FDF5E000/sc8562@6E）"
+    })).toBeInTheDocument();
+    expect(screen.getByRole("button", {
+      name: "查看 gpio_int（sc8562@6F · sc8562 · /amba/i2c@FDF5E000/sc8562@6F）"
+    })).toBeInTheDocument();
+    expect(screen.getByRole("button", {
+      name: "继续编辑 gpio_int（sc8562@6E · sc8562 · /amba/i2c@FDF5E000/sc8562@6E）"
+    })).toBeInTheDocument();
+    expect(screen.getByRole("button", {
+      name: "编辑 gpio_int（sc8562@6F · sc8562 · /amba/i2c@FDF5E000/sc8562@6F）"
+    })).toBeInTheDocument();
+  });
+
+  it("uses neutral row/card and navigator containers without accessibility violations", async () => {
+    const { container } = renderWorkbench();
+    const workbench = screen.getByRole("region", { name: "DTS 参数工作台" });
+
+    expect(within(workbench).queryByRole("complementary")).not.toBeInTheDocument();
+    expect(visibleBindingRows().every((rowElement) => rowElement.tagName === "DIV")).toBe(true);
+    const results = await axe.run(container, {
+      rules: { "color-contrast": { enabled: false } }
+    });
+    expect(results.violations).toEqual([]);
   });
 
   it("uses the binding id as row identity and never renders legacy recommendation vocabulary", () => {
