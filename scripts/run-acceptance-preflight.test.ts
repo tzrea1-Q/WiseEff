@@ -295,6 +295,25 @@ describe("acceptance preflight helpers", () => {
     });
   });
 
+  it.each([
+    ["two-blocker", ["deviceGateway", "xiaozeLlm"]],
+    ["three-blocker", ["deviceGateway", "xiaozeLlm", "backups"]]
+  ])("rejects %s readiness when the runtime is not local", (_name, blockedBy) => {
+    expect(
+      evaluatePilotReadiness(
+        localNonHdcBodyWithDeterministicXiaozeEvidence(blockedBy),
+        {
+          requirePilotReady: false,
+          startRuntime: true,
+          localRuntime: false
+        } as Parameters<typeof evaluatePilotReadiness>[1]
+      )
+    ).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
+    });
+  });
+
   it("rejects Xiaoze readiness blockers without gate evidence", () => {
     expect(
       evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway", "xiaozeLlm"] })

@@ -16,6 +16,7 @@ export type PreflightOptions = {
   checkFrontend: boolean;
   frontendUrl: string;
   startRuntime: boolean;
+  localRuntime?: boolean;
   requirePilotReady: boolean;
   evidenceOut?: string;
 };
@@ -181,9 +182,11 @@ export function loadEnvContent(content: string, baseEnv: RuntimeEnv = process.en
 
 export function evaluatePilotReadiness(
   body: Record<string, unknown>,
-  options: Pick<PreflightOptions, "requirePilotReady"> & Partial<Pick<PreflightOptions, "startRuntime">> = {
+  options: Pick<PreflightOptions, "requirePilotReady"> &
+    Partial<Pick<PreflightOptions, "startRuntime" | "localRuntime">> = {
     requirePilotReady: false,
-    startRuntime: true
+    startRuntime: true,
+    localRuntime: true
   }
 ): { accepted: boolean; outcome: PilotOutcome; detail: string } {
   if (!isStringArray(body.blockedBy)) {
@@ -221,6 +224,7 @@ export function evaluatePilotReadiness(
     isBlockedReadiness &&
     !options.requirePilotReady &&
     options.startRuntime !== false &&
+    options.localRuntime !== false &&
     hasDeterministicXiaozeGateEvidence &&
     blockedBy.length === 2 &&
     blockerSet.size === 2 &&
@@ -238,6 +242,7 @@ export function evaluatePilotReadiness(
     isBlockedReadiness &&
     !options.requirePilotReady &&
     options.startRuntime !== false &&
+    options.localRuntime !== false &&
     hasDeterministicXiaozeGateEvidence &&
     blockedBy.length === 3 &&
     blockerSet.size === 3 &&
@@ -447,7 +452,8 @@ async function runApiChecks(env: RuntimeEnv, options: PreflightOptions) {
   } else {
     const result = evaluatePilotReadiness(pilot.body, {
       requirePilotReady: options.requirePilotReady,
-      startRuntime: options.startRuntime
+      startRuntime: options.startRuntime,
+      localRuntime: isLocalHttpUrl(baseUrl)
     });
     pilotOutcome = result.outcome;
     checks.push({
