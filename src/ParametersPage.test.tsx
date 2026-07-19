@@ -329,13 +329,26 @@ function createApiBoundaryRepository(
   overrides: Partial<ParameterTopologyRepository> = {}
 ): ParameterTopologyRepository {
   return {
-    listSpecs: vi.fn().mockResolvedValue([API_SENTINEL_SPEC]),
-    getSpec: vi.fn().mockResolvedValue(API_SENTINEL_SPEC),
-    activateParameterSpec: vi.fn().mockResolvedValue(API_SENTINEL_SPEC),
-    listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
-    resolveSpecReviewTask: vi.fn().mockResolvedValue(undefined),
-    listBindings: vi.fn().mockResolvedValue([API_SENTINEL_BINDING]),
-    getTopology: vi.fn(async (projectId, configSetId, revisionId, view) => {
+    listSpecs: vi.fn<ParameterTopologyRepository["listSpecs"]>().mockResolvedValue([API_SENTINEL_SPEC]),
+    getSpec: vi.fn<ParameterTopologyRepository["getSpec"]>().mockResolvedValue(API_SENTINEL_SPEC),
+    activateParameterSpec: vi
+      .fn<ParameterTopologyRepository["activateParameterSpec"]>()
+      .mockResolvedValue(API_SENTINEL_SPEC),
+    listSpecReviewTasks: vi
+      .fn<ParameterTopologyRepository["listSpecReviewTasks"]>()
+      .mockResolvedValue({ items: [], nextCursor: null }),
+    resolveSpecReviewTask: vi
+      .fn<ParameterTopologyRepository["resolveSpecReviewTask"]>()
+      .mockResolvedValue(undefined),
+    listBindings: vi
+      .fn<ParameterTopologyRepository["listBindings"]>()
+      .mockResolvedValue([API_SENTINEL_BINDING]),
+    getTopology: vi.fn<ParameterTopologyRepository["getTopology"]>(async (
+      projectId,
+      configSetId,
+      revisionId,
+      view
+    ) => {
       const resolvedRevisionId = revisionId === "current" ? API_SENTINEL_REVISION_ID : revisionId;
       if (view === "source") {
         return {
@@ -360,29 +373,37 @@ function createApiBoundaryRepository(
         nodes: API_SENTINEL_EFFECTIVE_NODES
       };
     }),
-    listMappingTasks: vi.fn().mockResolvedValue([]),
-    resolveMapping: vi.fn().mockResolvedValue(undefined),
-    validateRevision: vi.fn().mockResolvedValue({
-      id: "validation-api-boundary-sentinel-7ad0",
-      status: "passed",
-      stage: "toolchain"
-    }),
-    createBindingDraft: vi.fn().mockResolvedValue({
-      draftId: "draft-api-boundary-sentinel-7ad0",
-      parameterId: API_SENTINEL_BINDING.id,
-      candidateRevisionId: "candidate-api-boundary-sentinel-7ad0",
-      rawText: API_SENTINEL_RAW_VALUE,
-      action: "set",
-      parameterSpecId: API_SENTINEL_BINDING.parameterSpecId,
-      projectParameterBindingId: API_SENTINEL_BINDING.id,
-      writeTarget: {
-        role: "overlay",
-        propertyKey: API_SENTINEL_PROPERTY,
-        targetRef: "sentinel_device"
-      },
-      overlayFileId: "overlay-file-api-boundary-sentinel-7ad0",
-      overlayFileName: "api-boundary-sentinel.dtso"
-    }),
+    listMappingTasks: vi
+      .fn<ParameterTopologyRepository["listMappingTasks"]>()
+      .mockResolvedValue([]),
+    resolveMapping: vi
+      .fn<ParameterTopologyRepository["resolveMapping"]>()
+      .mockResolvedValue(undefined),
+    validateRevision: vi
+      .fn<ParameterTopologyRepository["validateRevision"]>()
+      .mockResolvedValue({
+        id: "validation-api-boundary-sentinel-7ad0",
+        status: "passed",
+        stage: "toolchain"
+      }),
+    createBindingDraft: vi
+      .fn<ParameterTopologyRepository["createBindingDraft"]>()
+      .mockResolvedValue({
+        draftId: "draft-api-boundary-sentinel-7ad0",
+        parameterId: API_SENTINEL_BINDING.id,
+        candidateRevisionId: "candidate-api-boundary-sentinel-7ad0",
+        rawText: API_SENTINEL_RAW_VALUE,
+        action: "set",
+        parameterSpecId: API_SENTINEL_BINDING.parameterSpecId,
+        projectParameterBindingId: API_SENTINEL_BINDING.id,
+        writeTarget: {
+          role: "overlay",
+          propertyKey: API_SENTINEL_PROPERTY,
+          targetRef: "sentinel_device"
+        },
+        overlayFileId: "overlay-file-api-boundary-sentinel-7ad0",
+        overlayFileName: "api-boundary-sentinel.dtso"
+      }),
     ...overrides
   };
 }
