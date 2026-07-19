@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, CircleAlert } from "lucide-react";
 
 import type { DtsWorkbenchTreeNode } from "@/application/parameters/buildDtsTopologyTree";
 import type { TopologyView } from "@/domain/parameter-topology/types";
@@ -234,12 +235,17 @@ export function DtsTopologyNavigator({
             }}
           >
             <span className="dts-topology-navigator__disclosure" aria-hidden="true">
-              {hasChildren ? (expanded ? "▾" : "▸") : ""}
+              {hasChildren ? (
+                expanded
+                  ? <ChevronDown size={15} strokeWidth={2} />
+                  : <ChevronRight size={15} strokeWidth={2} />
+              ) : null}
             </span>
             <code className="dts-topology-navigator__label">{node.label}</code>
             <span className="dts-topology-navigator__count">{node.bindingCount} 个参数</span>
             {node.attentionCount > 0 ? (
               <span className="dts-topology-navigator__attention">
+                <CircleAlert size={12} strokeWidth={2} aria-hidden="true" />
                 {node.attentionCount} 个待处理
               </span>
             ) : null}

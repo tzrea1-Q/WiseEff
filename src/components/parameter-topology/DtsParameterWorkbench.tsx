@@ -1,4 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  FileCode2,
+  Layers3,
+  RotateCcw,
+  Search,
+  SlidersHorizontal
+} from "lucide-react";
 
 import {
   buildDtsTopologyTree,
@@ -212,6 +219,7 @@ export function DtsParameterWorkbench({
             aria-pressed={view === "effective"}
             onClick={() => switchView("effective")}
           >
+            <Layers3 size={15} strokeWidth={1.9} aria-hidden="true" />
             生效 DTS
           </button>
           <button
@@ -220,6 +228,7 @@ export function DtsParameterWorkbench({
             aria-pressed={view === "source"}
             onClick={() => switchView("source")}
           >
+            <FileCode2 size={15} strokeWidth={1.9} aria-hidden="true" />
             源 DTS
           </button>
         </div>
@@ -227,7 +236,7 @@ export function DtsParameterWorkbench({
 
       <div className="dts-parameter-workbench__toolbar">
         <label className="dts-parameter-workbench__search">
-          <span>搜索 DTS 参数</span>
+          <span><Search size={14} strokeWidth={2} aria-hidden="true" />搜索 DTS 参数</span>
           <input
             type="search"
             aria-label="搜索 DTS 参数"
@@ -237,7 +246,7 @@ export function DtsParameterWorkbench({
           />
         </label>
         <label className="dts-parameter-workbench__governance-filter">
-          <span>治理状态</span>
+          <span><SlidersHorizontal size={14} strokeWidth={2} aria-hidden="true" />治理状态</span>
           <select
             aria-label="治理状态"
             value={governanceFilter}
@@ -250,6 +259,7 @@ export function DtsParameterWorkbench({
           </select>
         </label>
         <button type="button" className="button subtle" onClick={clearFilters}>
+          <RotateCcw size={15} strokeWidth={1.9} aria-hidden="true" />
           清除全部筛选
         </button>
         <p role="status" aria-live="polite" className="dts-parameter-workbench__result-count">

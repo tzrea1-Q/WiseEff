@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CircleCheck, Send, X } from "lucide-react";
 
 import type {
   SubmitParameterChangesInput,
@@ -204,6 +205,7 @@ export function DtsBindingDraftTray({
                 disabled={submitting}
                 onClick={() => onRemove(draft.draftId)}
               >
+                <X size={15} strokeWidth={1.9} aria-hidden="true" />
                 移除
               </button>
             </div>
@@ -253,7 +255,7 @@ export function DtsBindingDraftTray({
 
       {blocker ? <p className="form-error" role="alert">{blocker}</p> : null}
       {submitError ? <p className="form-error" role="alert">{submitError}</p> : null}
-      {submitted ? <p role="status">已提交正式审核，后续阶段将在审核队列中按角色推进。</p> : null}
+      {submitted ? <p role="status"><CircleCheck size={15} strokeWidth={2} aria-hidden="true" />已提交正式审核，后续阶段将在审核队列中按角色推进。</p> : null}
 
       <div className="binding-draft-submission__actions">
         <button
@@ -316,6 +318,7 @@ export function DtsBindingDraftTray({
               });
           }}
         >
+          <Send size={15} strokeWidth={1.9} aria-hidden="true" />
           {submitting ? "提交中…" : "提交审核"}
         </button>
         {submitted ? (

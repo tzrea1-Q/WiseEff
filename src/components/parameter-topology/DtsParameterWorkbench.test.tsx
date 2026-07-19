@@ -256,6 +256,7 @@ describe("DtsParameterWorkbench", () => {
       "aria-label",
       "本轮已修改"
     );
+    expect(workbench.querySelectorAll("svg").length).toBeGreaterThan(5);
   });
 
   it("keeps the responsive visual contract scoped to the DTS workbench", () => {
@@ -272,6 +273,11 @@ describe("DtsParameterWorkbench", () => {
     expect(styles).toMatch(/@media\s*\(max-width:\s*820px\)/);
     expect(styles).toMatch(/@media\s*\(max-width:\s*480px\)/);
     expect(styles).toMatch(/\.dts-parameter-workbench[\s\S]*:focus-visible/);
+    expect(styles).toMatch(/@media\s*\(max-width:\s*1200px\)[\s\S]*\.dts-workbench-list[\s\S]*overflow-x:\s*auto/);
+    expect(styles).toMatch(/clip-path:\s*inset\(50%\)/);
+    expect(styles).toMatch(/min-height:\s*44px/);
+    expect(styles).toContain("--dts-workbench-muted: #52657d");
+    expect(styles).not.toContain("--dts-workbench-muted: #5e6b7e");
   });
 
   it("renders the semantic workbench contract and exact mature table headers", () => {

@@ -1,4 +1,5 @@
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
+import { CircleCheck, CircleX, Eye, Pencil, TriangleAlert } from "lucide-react";
 
 export type DtsParameterWorkbenchTableProps = {
   rows: DtsParameterWorkbenchRow[];
@@ -28,12 +29,18 @@ function DeviceIdentity({ row }: { row: DtsParameterWorkbenchRow }) {
 }
 
 function Governance({ row }: { row: DtsParameterWorkbenchRow }) {
+  const GovernanceIcon = row.governanceState === "valid"
+    ? CircleCheck
+    : row.governanceState === "attention"
+      ? TriangleAlert
+      : CircleX;
   return (
     <span className="dts-parameter-workbench-table__governance">
       <span
         className={`dts-parameter-workbench-table__governance-badge is-${row.governanceState}`}
         aria-label={`治理状态：${row.governanceState}`}
       >
+        <GovernanceIcon size={13} strokeWidth={2} aria-hidden="true" />
         {governanceLabels[row.governanceState]}
       </span>
       <small>schema: {row.schemaState}</small>
@@ -126,6 +133,7 @@ export function DtsParameterWorkbenchTable({
                   aria-label={`查看 ${actionContext}`}
                   onClick={() => onSelectBinding(row.bindingId)}
                 >
+                  <Eye size={15} strokeWidth={1.9} aria-hidden="true" />
                   查看
                 </button>
                 {canEdit && onEditBinding ? (
@@ -138,6 +146,7 @@ export function DtsParameterWorkbenchTable({
                       onEditBinding(row.bindingId);
                     }}
                   >
+                    <Pencil size={15} strokeWidth={1.9} aria-hidden="true" />
                     {isDraft ? "继续编辑" : "编辑"}
                   </button>
                 ) : null}
