@@ -170,12 +170,24 @@ function row(
     sourceNodePath: definition.sourcePath,
     sourceLine: 20,
     rawValue: definition.rawValue,
-    effectiveValue: {
-      kind: "cells",
-      bits: 32,
-      groups: [[{ kind: "integer", raw: "1", value: "1" }]]
-    },
-    valueShapeSummary: "cell-array · 32 bit · 1 cell",
+    effectiveValue: definition.propertyKey === "gpio_int"
+      ? {
+          kind: "cells",
+          bits: 32,
+          groups: [[
+            { kind: "phandle", label: "gpio13" },
+            { kind: "integer", raw: "29", value: "29" },
+            { kind: "integer", raw: "0", value: "0" }
+          ]]
+        }
+      : {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "1", value: "1" }]]
+        },
+    valueShapeSummary: definition.propertyKey === "gpio_int"
+      ? "phandle-list · 32 bit · 3 cells"
+      : "cell-array · 32 bit · 1 cell",
     schemaState: definition.governanceState === "blocked" ? "invalid" : "valid",
     policyState: "pass",
     mappingOpen: definition.governanceState === "attention",

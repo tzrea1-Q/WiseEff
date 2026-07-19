@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CircleX } from "lucide-react";
 
 import type { DtsValue } from "@/domain/parameter-topology/types";
@@ -30,6 +30,10 @@ export type DtsBindingDetailDialogProps = {
 };
 
 type SubmissionState = "idle" | "pending" | "success" | "failure";
+type SuccessfulSubmission = {
+  rawValue: string;
+  reason: string;
+};
 
 function IdentityField({ label, value }: { label: string; value: string | null }) {
   return (
@@ -76,13 +80,40 @@ export function DtsBindingDetailDialog({
   focusEditorOnOpen = false
 }: DtsBindingDetailDialogProps) {
   const rawValueRef = useRef<HTMLTextAreaElement | null>(null);
+  const mountedRef = useRef(true);
+  const requestGenerationRef = useRef(0);
+  const activeBindingIdRef = useRef(row.bindingId);
   const [rawValue, setRawValue] = useState(row.rawValue);
   const [reason, setReason] = useState("");
   const [submissionState, setSubmissionState] = useState<SubmissionState>("idle");
   const [diagnostics, setDiagnostics] = useState<BindingEditValidation["diagnostics"]>([]);
   const [failureMessage, setFailureMessage] = useState("");
+  const [successfulSubmission, setSuccessfulSubmission] = useState<SuccessfulSubmission | null>(null);
   const isPending = submissionState === "pending";
-  const canSubmit = canEdit && !isPending && Boolean(reason.trim());
+  const trimmedReason = reason.trim();
+  const isAlreadySubmitted = successfulSubmission !== null
+    && successfulSubmission.rawValue === rawValue
+    && successfulSubmission.reason === trimmedReason;
+  const canSubmit = canEdit && !isPending && Boolean(trimmedReason) && !isAlreadySubmitted;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestGenerationRef.current += 1;
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    activeBindingIdRef.current = row.bindingId;
+    requestGenerationRef.current += 1;
+    setRawValue(row.rawValue);
+    setReason("");
+    setSubmissionState("idle");
+    setDiagnostics([]);
+    setFailureMessage("");
+    setSuccessfulSubmission(null);
+  }, [row.bindingId]);
 
   const clearValidation = () => {
     setSubmissionState("idle");
@@ -92,19 +123,37 @@ export function DtsBindingDetailDialog({
 
   const createDraft = async () => {
     if (!canSubmit) return;
+    const requestGeneration = requestGenerationRef.current + 1;
+    requestGenerationRef.current = requestGeneration;
+    const requestBindingId = row.bindingId;
+    const requestInput = {
+      bindingId: requestBindingId,
+      rawValue,
+      reason: trimmedReason
+    };
     setSubmissionState("pending");
     setDiagnostics([]);
     setFailureMessage("");
     try {
-      const result = await onCreateDraft({
-        bindingId: row.bindingId,
-        rawValue,
-        reason: reason.trim()
-      });
+      const result = await onCreateDraft(requestInput);
+      if (
+        !mountedRef.current
+        || requestGenerationRef.current !== requestGeneration
+        || activeBindingIdRef.current !== requestBindingId
+      ) return;
       setDiagnostics(result.diagnostics);
       setSubmissionState(result.valid ? "success" : "failure");
-      if (!result.valid) setFailureMessage("服务端校验未通过");
+      if (result.valid) {
+        setSuccessfulSubmission({ rawValue: requestInput.rawValue, reason: requestInput.reason });
+      } else {
+        setFailureMessage("服务端校验未通过");
+      }
     } catch (error) {
+      if (
+        !mountedRef.current
+        || requestGenerationRef.current !== requestGeneration
+        || activeBindingIdRef.current !== requestBindingId
+      ) return;
       setSubmissionState("failure");
       setFailureMessage(readableError(error));
     }
@@ -153,6 +202,8 @@ export function DtsBindingDetailDialog({
             <dl className="grid gap-2 sm:grid-cols-2">
               <IdentityField label="器件 / 驱动" value={[row.instanceName, row.driverModule].filter(Boolean).join(" · ") || null} />
               <IdentityField label="Compatible" value={row.compatible} />
+              <IdentityField label="Unit address" value={row.unitAddress} />
+              <IdentityField label="Topology node ID" value={row.topologyNodeId} />
               <IdentityField label="完整路径" value={row.topologyPath} />
               <IdentityField label="Source node path" value={row.sourceNodePath} />
               <IdentityField label="Source occurrence" value={row.sourceOccurrenceId} />
