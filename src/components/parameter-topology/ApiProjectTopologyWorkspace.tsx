@@ -26,9 +26,9 @@ import {
 } from "./ProjectTopologyWorkspace";
 import type { BindingEditValidation } from "./BindingDetailPanel";
 import {
-  BindingDraftSubmissionPanel,
+  DtsBindingDraftTray,
   type PendingBindingDraft
-} from "./BindingDraftSubmissionPanel";
+} from "./DtsBindingDraftTray";
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
@@ -168,13 +168,15 @@ export function ApiProjectTopologyWorkspace({
     preferredRevision?.projectId === projectId ? preferredRevision.revisionId : undefined;
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
   const [mappingMessage, setMappingMessage] = useState<string | null>(null);
-  const [pendingDraft, setPendingDraft] = useState<PendingBindingDraft | null>(null);
+  const [pendingDrafts, setPendingDrafts] = useState<PendingBindingDraft[]>([]);
   const [workflowCandidates, setWorkflowCandidates] = useState<WorkflowAssigneeCandidates | null>(null);
   const [workflowCandidatesError, setWorkflowCandidatesError] = useState<string | null>(null);
+  const projectDrafts = pendingDrafts.filter((draft) => draft.projectId === projectId);
+  const hasProjectDrafts = projectDrafts.length > 0;
 
   useEffect(() => {
     setPreferredRevision(null);
-    setPendingDraft(null);
+    setPendingDrafts([]);
     setWorkflowCandidates(null);
     setWorkflowCandidatesError(null);
     setPublishMessage(null);
@@ -182,7 +184,11 @@ export function ApiProjectTopologyWorkspace({
   }, [projectId]);
 
   useEffect(() => {
-    if (!pendingDraft || pendingDraft.projectId !== projectId) return undefined;
+    if (!hasProjectDrafts) {
+      setWorkflowCandidates(null);
+      setWorkflowCandidatesError(null);
+      return undefined;
+    }
     if (!listWorkflowAssignees) {
       setWorkflowCandidates(null);
       setWorkflowCandidatesError("正式提交入口未配置项目角色候选人，已阻止提交。");
@@ -191,9 +197,12 @@ export function ApiProjectTopologyWorkspace({
     let cancelled = false;
     setWorkflowCandidates(null);
     setWorkflowCandidatesError(null);
-    listWorkflowAssignees(pendingDraft.projectId)
+    const requestProjectId = projectId;
+    listWorkflowAssignees(requestProjectId)
       .then((candidates) => {
-        if (!cancelled) setWorkflowCandidates(candidates);
+        if (!cancelled && activeProjectIdRef.current === requestProjectId) {
+          setWorkflowCandidates(candidates);
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -203,7 +212,7 @@ export function ApiProjectTopologyWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [listWorkflowAssignees, pendingDraft, projectId]);
+  }, [hasProjectDrafts, listWorkflowAssignees, projectId]);
 
   useEffect(() => {
     if (!repository) {
@@ -289,7 +298,27 @@ export function ApiProjectTopologyWorkspace({
           diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿响应。", code: "PROJECT_CHANGED" }]
         };
       }
-      setPendingDraft({ ...draft, projectId: requestProjectId, reason: input.reason });
+      setPendingDrafts((current) => {
+        const previousDraft = current.find(
+          (item) =>
+            item.projectId === requestProjectId &&
+            item.projectParameterBindingId === draft.projectParameterBindingId
+        );
+        const nextDraft: PendingBindingDraft = {
+          ...draft,
+          projectId: requestProjectId,
+          currentRawValue: previousDraft?.currentRawValue ?? binding.rawValue,
+          reason: input.reason
+        };
+        return [
+          ...current.filter(
+            (item) =>
+              item.projectId === requestProjectId &&
+              item.projectParameterBindingId !== draft.projectParameterBindingId
+          ),
+          nextDraft
+        ];
+      });
       setPreferredRevision({ projectId: requestProjectId, revisionId: draft.candidateRevisionId });
       setReloadToken((token) => token + 1);
       return { valid: true, diagnostics: [] };
@@ -446,19 +475,16 @@ export function ApiProjectTopologyWorkspace({
           void handleResolveMapping(taskId, input);
         }}
       />
-      {pendingDraft?.projectId === projectId ? (
-        <BindingDraftSubmissionPanel
-          key={pendingDraft.draftId}
+      {projectDrafts.length > 0 ? (
+        <DtsBindingDraftTray
           projectId={projectId}
-          draft={pendingDraft}
+          drafts={projectDrafts}
           candidates={workflowCandidates}
           candidatesError={workflowCandidatesError}
-          onSubmit={async (input) => {
-            if (!submitBindingChanges) {
-              return { notification: "正式 binding 提交入口未配置，已阻止提交。" };
-            }
-            return submitBindingChanges(input);
+          onRemove={(draftId) => {
+            setPendingDrafts((current) => current.filter((draft) => draft.draftId !== draftId));
           }}
+          onSubmit={submitBindingChanges}
           onNavigate={onNavigate}
         />
       ) : null}

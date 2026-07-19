@@ -1,0 +1,222 @@
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import type { WorkflowAssigneeCandidates } from "@/application/ports/ParameterRepository";
+
+import {
+  DtsBindingDraftTray,
+  type PendingBindingDraft
+} from "./DtsBindingDraftTray";
+
+const candidates: WorkflowAssigneeCandidates = {
+  hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+  softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+  softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+};
+
+function draft(overrides: Partial<PendingBindingDraft> = {}): PendingBindingDraft {
+  return {
+    projectId: "aurora",
+    currentRawValue: "<&gpio13 29 0>",
+    reason: "Move interrupt line",
+    draftId: "draft-typed-1",
+    parameterId: "legacy-parameter-id-must-not-submit",
+    candidateRevisionId: "candidate-1",
+    rawText: "<&gpio13 30 0>",
+    action: "set",
+    parameterSpecId: "spec-sc8562-gpio-int",
+    projectParameterBindingId: "binding-sc8562-gpio-int",
+    writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
+    overlayFileId: "file-overlay",
+    overlayFileName: "overlay.dts",
+    ...overrides
+  };
+}
+
+describe("DtsBindingDraftTray", () => {
+  it("shows semantic identities and submits the exact typed binding payload", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    const tray = screen.getByRole("region", { name: "绑定变更提交" });
+    expect(within(tray).getByRole("heading", { name: "本轮已修改" })).toBeVisible();
+    expect(within(tray).getByText("gpio_int")).toBeVisible();
+    expect(within(tray).getByText("<&gpio13 29 0>")).toBeVisible();
+    expect(within(tray).getByText("<&gpio13 30 0>")).toBeVisible();
+    expect(within(tray).getByText("Move interrupt line")).toBeVisible();
+    expect(within(tray).getByText("candidate-1")).toBeVisible();
+    expect(within(tray).getByText("draft-typed-1")).toBeVisible();
+    expect(within(tray).getByText("binding-sc8562-gpio-int")).toBeVisible();
+    expect(within(tray).getByText("spec-sc8562-gpio-int")).toBeVisible();
+
+    fireEvent.click(within(tray).getByRole("button", { name: "提交审核" }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith({
+        projectId: "aurora",
+        items: [
+          {
+            draftId: "draft-typed-1",
+            projectParameterBindingId: "binding-sc8562-gpio-int",
+            parameterSpecId: "spec-sc8562-gpio-int",
+            action: "set",
+            targetValue: "<&gpio13 30 0>",
+            reason: "Move interrupt line"
+          }
+        ],
+        assignees: {
+          hardwareCommitterId: "u-hw",
+          softwareCommitterId: "u-sw",
+          softwareUserId: "u-user"
+        }
+      });
+    });
+    const submittedItem = onSubmit.mock.calls[0][0].items[0];
+    expect(submittedItem).not.toHaveProperty("parameterId");
+    expect(submittedItem).not.toHaveProperty("recommendedValue");
+    expect(await within(tray).findByText(/已提交正式审核/)).toBeVisible();
+  });
+
+  it("removes only the local presentation item and renders delete as a tombstone intent", async () => {
+    const onRemove = vi.fn();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[
+          draft({
+            draftId: "draft-delete",
+            action: "delete",
+            rawText: "",
+            reason: "Remove obsolete override"
+          })
+        ]}
+        candidates={candidates}
+        onRemove={onRemove}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByText("删除属性（tombstone）")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "移出本轮修改" }));
+    expect(onRemove).toHaveBeenCalledWith("draft-delete");
+
+    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        items: [expect.objectContaining({
+          draftId: "draft-delete",
+          action: "delete",
+          targetValue: ""
+        })]
+      }));
+    });
+  });
+
+  it("reports loading and load errors and keeps submission fail-closed", () => {
+    const { rerender } = render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        candidates={null}
+        onRemove={vi.fn()}
+        onSubmit={vi.fn()}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("正在加载项目角色候选人");
+    expect(screen.getByRole("button", { name: "提交审核" })).toBeDisabled();
+
+    rerender(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        candidates={null}
+        candidatesError="无法加载角色"
+        onRemove={vi.fn()}
+        onSubmit={vi.fn()}
+        onNavigate={vi.fn()}
+      />
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("无法加载角色");
+    expect(screen.getByRole("button", { name: "提交审核" })).toBeDisabled();
+  });
+
+  it.each([
+    {
+      name: "missing binding identity",
+      drafts: [draft({ projectParameterBindingId: "" })],
+      candidates,
+      onSubmit: vi.fn()
+    },
+    {
+      name: "missing role",
+      drafts: [draft()],
+      candidates: { ...candidates, softwareUsers: [] },
+      onSubmit: vi.fn()
+    },
+    {
+      name: "missing submit handler",
+      drafts: [draft()],
+      candidates,
+      onSubmit: undefined
+    },
+    {
+      name: "conflicting candidates",
+      drafts: [draft(), draft({
+        draftId: "draft-2",
+        projectParameterBindingId: "binding-watchdog",
+        parameterSpecId: "spec-watchdog",
+        candidateRevisionId: "candidate-2",
+        writeTarget: { role: "overlay", propertyKey: "watchdog_time" }
+      })],
+      candidates,
+      onSubmit: vi.fn()
+    }
+  ])("blocks $name", ({ drafts, candidates: roleCandidates, onSubmit }) => {
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={drafts}
+        candidates={roleCandidates}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "提交审核" })).toBeDisabled();
+  });
+
+  it("explains that different candidate revisions cannot be silently batched", () => {
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft(), draft({
+          draftId: "draft-2",
+          projectParameterBindingId: "binding-watchdog",
+          parameterSpecId: "spec-watchdog",
+          candidateRevisionId: "candidate-2",
+          writeTarget: { role: "overlay", propertyKey: "watchdog_time" }
+        })]}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={vi.fn()}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/不同 candidate revision.*不能批量提交/);
+  });
+});
