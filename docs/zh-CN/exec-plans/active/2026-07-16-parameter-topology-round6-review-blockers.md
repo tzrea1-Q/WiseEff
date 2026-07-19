@@ -229,10 +229,11 @@
 | 中英文 API contract | 记录工作流响应的 candidate identity 与 merge 冲突 |
 | 中英文 testing/verification | 记录双连接 PG 竞态和 merge 复核门禁 |
 | 中英文 identity cutover runbook | 增加 0063 前后检查及历史行拒绝后重建处置 |
+| Local readiness operator contract | Update | `docs/runbooks/manual-acceptance.md` + `docs/zh-CN/runbooks/manual-acceptance.md` |
 | Generated DB schema | 同步新增 FK 和索引到 0063 |
 | 中英文 active plan | 同步成功标准、回滚和真实命令证据 |
 
-文档门禁：分别更新每份受影响的中英文文档及 `docs/generated/db-schema.md`，然后执行 `npm run docs:check`。锁顺序固定为提交时 draft 后 candidate、合入时 request 后 candidate；竞态测试必须证明等待、释放且无死锁。不得为历史 request 猜测 candidate。应用回滚时新增 nullable 字段无害；事务回滚由 disposable DB 测试证明。验证矩阵包括聚焦 repository/service/HTTP/PG/schema、topology acceptance、`test:all`、contract/docs/build/toolchain/seed/selfhost、干净 source evidence 和 `git diff --check main...HEAD`。
+文档门禁：分别更新每份受影响的中英文文档及 `docs/generated/db-schema.md`，然后执行 `npm run docs:check`。Local readiness operator contract 这一行只有在两份 runbook 路径同时更新，并在当前检查点记录精确的 `npm run docs:check` 与 `git diff --check` 结果时才算满足。锁顺序固定为提交时 draft 后 candidate、合入时 request 后 candidate；竞态测试必须证明等待、释放且无死锁。不得为历史 request 猜测 candidate。应用回滚时新增 nullable 字段无害；事务回滚由 disposable DB 测试证明。验证矩阵包括聚焦 repository/service/HTTP/PG/schema、topology acceptance、`test:all`、contract/docs/build/toolchain/seed/selfhost、干净 source evidence 和 `git diff --check main...HEAD`。
 
 ### 后续执行结果 5
 
@@ -252,9 +253,16 @@ Review 发现本地 readiness gate 漂移：`/api/v1/operations/pilot-readiness`
 
 - Task 0 通过 `89a8dace`、`dad470e6`、`1d945fce`、`2f901271` 修复 device-bridge standby 测试基线竞态：测试现在等待真实 readiness 日志、验证 shutdown、失败时完成清理并保留主要断言错误。在实现检查点 HEAD `c10b8379` 上，新运行的 `npm run bridge:test -- packages/device-bridge/src/cli.test.ts` 为 1 个文件 / 12 个测试通过。
 - Task 1 在 `a4155bc7` 将退役 allowlist literal 替换为 `xiaozeLlm`；`c10b8379` 随后收紧 exact-set 匹配以拒绝重复项，并补充顺序无关与未知 blocker 输入的覆盖。在该检查点上，新运行的 `npm test -- scripts/run-acceptance-preflight.test.ts` 为 1 个文件 / 27 个测试通过。
-- 修复后，这条兼容路径只能返回 `non_hdc_local`，不能产生 `pilot_ready`；它仅在 preflight 启动本地 deterministic Xiaoze runtime 时适用。target 和 full-pilot 模式仍保持严格。
+- 修复后，这条兼容路径只能返回 `non_hdc_local`，不能产生 `pilot_ready`；它仅在 preflight 启用 `startRuntime`、`isLocalHttpUrl` 证明 API base URL 是本地，且 readiness 的 `gates.xiaozeLlm` 以 `ok=false`、`status=blocked` 和精确 deterministic-mode message 证明 deterministic Xiaoze 时适用。API 可能已经监听并被复用，不代表 preflight 必须亲自启动它。target 和 full-pilot 模式仍保持严格。
 - `deviceGateway`、`xiaozeLlm`、`backups` 仍如实列为 blockers；`backups` 仅允许作为既有的本地非客户证据 blocker。本检查点不记录标准 acceptance 成功。
 - TD-042 保持不变，继续为 BLOCKER：尚未执行干净非客户快照 apply→cutover→整库 restore 演练；不宣称 production ready、cutover ready、pilot ready 或可合并。
+
+## 父智能体 Review 后续检查点 7（2026-07-19）
+
+- `1d4d729e` 要求 `gates.xiaozeLlm` 提供精确 canonical deterministic 证据；`0febd4d6` 将 malformed blocker/gate shape 收紧为 fail-closed；最新代码提交 `efc3bf3a` 将 `localRuntime: isLocalHttpUrl(baseUrl)` 传入 evaluator，并增加 API 非本地时的聚焦拒绝覆盖。在 `efc3bf3a` 上新运行的 `npm test -- scripts/run-acceptance-preflight.test.ts` 为 1 个文件 / 49 个测试通过。
+- 本地例外必须同时满足三项证据：`startRuntime` 已启用、`isLocalHttpUrl` 证明 API base URL 为本地、readiness 的 `gates.xiaozeLlm` 以 `ok=false`、`status=blocked` 和精确 deterministic-mode message 证明 deterministic Xiaoze。已经监听的本地 API 可以被复用，不代表 preflight 必须亲自启动它；唯一可接受 outcome 仍是 `non_hdc_local`，target 和 full-pilot 模式仍保持严格。
+- 本次文档任务随后运行 `npm run docs:check`（exit 0；输出 `Documentation governance check passed.`）和 `git diff --check`（exit 0）。不记录标准 acceptance 成功；`deviceGateway`、`xiaozeLlm`、`backups` 仍为诚实 blockers，且 `backups` 仅可作为既有本地非客户证据 blocker。
+- TD-042 保持不变，继续为 BLOCKER；不宣称 production ready、cutover ready、pilot ready 或可合并。
 
 ## 风险与回滚
 

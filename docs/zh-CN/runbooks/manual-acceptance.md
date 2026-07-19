@@ -19,7 +19,7 @@
 
 ### 本地 readiness 操作契约
 
-本地 preflight 在 `deviceGateway` 是唯一 blocker 时可以返回 `non_hdc_local`。只有在 preflight 自动启动本地 deterministic Xiaoze runtime 时，它还可以把 `deviceGateway` 加 `xiaozeLlm` 接受为 `non_hdc_local`；`backups` 仅可作为既有的本地非客户证据 blocker 与这两个 blocker 同时存在。该例外不会清除任何 blocker，target 和 full-pilot 模式仍保持严格。
+本地 preflight 在 `deviceGateway` 是唯一 blocker 时可以返回 `non_hdc_local`。只有在 preflight 启用本地 runtime（`startRuntime` 未禁用）、连接到由 `isLocalHttpUrl` 证明为本地的 API base URL，且 readiness 响应通过 `gates.xiaozeLlm` 精确证明 deterministic Xiaoze（`ok=false`、`status=blocked`、message 必须是 `Deterministic Xiaoze mode is not acceptable for pilot readiness.`）时，才可以把 `deviceGateway` 加 `xiaozeLlm` 接受为 `non_hdc_local`；`backups` 仅可作为既有的本地非客户证据 blocker 与这两个 blocker 同时存在。API 可能已经监听并被复用；不要求 preflight 必须亲自启动它。该例外不会清除任何 blocker，target 和 full-pilot 模式仍保持严格。
 
 ## 补充验收流程
 

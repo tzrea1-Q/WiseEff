@@ -77,7 +77,7 @@ Steps through runtime health checks can be automated for local non-HDC acceptanc
 npm run acceptance:preflight
 ```
 
-This command loads `.env`, records branch/commit/worktree state, starts missing local API/frontend runtime services for localhost URLs and leaves them running for browser acceptance, runs the repository gates, checks the API health endpoints, verifies `/api/v1/me`, and accepts local non-HDC readiness when `deviceGateway` is the only blocker. When preflight starts the local deterministic Xiaoze runtime, it may also accept `deviceGateway` plus `xiaozeLlm`, with `backups` allowed only as the existing local non-customer evidence blocker; target and full-pilot modes remain strict. Use `npm run acceptance:preflight -- --skip-gates` for a faster API-only rerun after the gates already passed.
+This command loads `.env`, records branch/commit/worktree state, starts missing local API/frontend runtime services for localhost URLs and leaves them running for browser acceptance, runs the repository gates, checks the API health endpoints, verifies `/api/v1/me`, and accepts local non-HDC readiness when `deviceGateway` is the only blocker. When preflight has local runtime startup enabled (`startRuntime` is not disabled), connects to an API base URL that `isLocalHttpUrl` proves is local, and the readiness response explicitly proves deterministic Xiaoze through `gates.xiaozeLlm` (`ok=false`, `status=blocked`, and the exact message `Deterministic Xiaoze mode is not acceptable for pilot readiness.`), it may also accept `deviceGateway` plus `xiaozeLlm`, with `backups` allowed only as the existing local non-customer evidence blocker. The API may already be listening and be reused; preflight does not need to have spawned it. Target and full-pilot modes remain strict. Use `npm run acceptance:preflight -- --skip-gates` for a faster API-only rerun after the gates already passed.
 
 Optional flags after `--`:
 
@@ -272,7 +272,7 @@ Expected:
 - `/api/v1/me` returns the expected admin identity in production-auth mode.
 - `/api/v1/operations/pilot-readiness` returns either `pilot_ready` or an honest `blocked` response with actionable reasons.
 
-For local non-HDC review, `deviceGateway` may remain the only blocked gate. When preflight auto-starts the local deterministic Xiaoze runtime, `deviceGateway` plus `xiaozeLlm` may remain blocked, and `backups` may join them only as the existing local non-customer evidence blocker. Record the accepted outcome as `non_hdc_local`; this does not clear any blocker or relax target and full-pilot evidence requirements.
+For local non-HDC review, `deviceGateway` may remain the only blocked gate. The `deviceGateway` plus `xiaozeLlm` (and optional `backups`) exception applies only when preflight has `startRuntime` enabled, `isLocalHttpUrl` proves the API base URL is local, and `gates.xiaozeLlm` exactly reports deterministic evidence (`ok=false`, `status=blocked`, message `Deterministic Xiaoze mode is not acceptable for pilot readiness.`). The API may already be listening and be reused; preflight need not have spawned it. Record the accepted outcome as `non_hdc_local`; this does not clear any blocker or relax target and full-pilot evidence requirements.
 
 For strict target-environment pilot evidence, run:
 

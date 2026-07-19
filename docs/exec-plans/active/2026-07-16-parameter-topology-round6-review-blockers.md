@@ -229,10 +229,11 @@ The parent review remains `Request changes` because exact candidate proof is not
 | API contract (English/Chinese) | Document candidate identity in workflow responses and merge conflicts |
 | Testing/verification (English/Chinese) | Document two-connection PG race and merge revalidation gates |
 | Identity cutover runbook (English/Chinese) | Add 0063 pre/post checks and reject/recreate remediation for historical rows |
+| Local readiness operator contract | Update — `docs/runbooks/manual-acceptance.md` + `docs/zh-CN/runbooks/manual-acceptance.md` |
 | Generated DB schema | Record new FKs and indexes through 0063 |
 | Active plan (English/Chinese) | Keep success, rollback, and real command evidence synchronized |
 
-Documentation gate: update each impacted English and Chinese document separately plus `docs/generated/db-schema.md`, then run `npm run docs:check`. Lock order is draft then candidate at submission, and request then candidate at merge; the race test must prove blocking/release without deadlock. Never infer a candidate for historical requests. Application rollback leaves additive nullable columns harmless; transaction rollback is proven in a disposable database. Verification includes focused repository/service/HTTP/PG/schema tests, topology acceptance, `test:all`, contract/docs/build/toolchain/seed/selfhost, clean-source evidence, and `git diff --check main...HEAD`.
+Documentation gate: update each impacted English and Chinese document separately plus `docs/generated/db-schema.md`, then run `npm run docs:check`. The local readiness operator contract row is satisfied only when both runbook paths are updated together and the exact `npm run docs:check` and `git diff --check` results are recorded in the current checkpoint. Lock order is draft then candidate at submission, and request then candidate at merge; the race test must prove blocking/release without deadlock. Never infer a candidate for historical requests. Application rollback leaves additive nullable columns harmless; transaction rollback is proven in a disposable database. Verification includes focused repository/service/HTTP/PG/schema tests, topology acceptance, `test:all`, contract/docs/build/toolchain/seed/selfhost, clean-source evidence, and `git diff --check main...HEAD`.
 
 ### Follow-up execution outcome 5
 
@@ -252,9 +253,16 @@ Review found a local readiness gate drift: `/api/v1/operations/pilot-readiness` 
 
 - Task 0 repaired the device-bridge standby test baseline race across `89a8dace`, `dad470e6`, `1d945fce`, and `2f901271`: the test now waits for the actual readiness log, verifies shutdown, cleans up on failure, and preserves the primary assertion error. At the implementation checkpoint HEAD `c10b8379`, a fresh `npm run bridge:test -- packages/device-bridge/src/cli.test.ts` passed 1 file / 12 tests.
 - Task 1 replaced the retired allowlist literal with `xiaozeLlm` in `a4155bc7`; `c10b8379` then tightened exact-set matching to reject duplicates and added coverage for order-independent and unknown blocker inputs. A fresh `npm test -- scripts/run-acceptance-preflight.test.ts` at that checkpoint passed 1 file / 27 tests.
-- After the fix, this compatibility path can return only `non_hdc_local`; it cannot produce `pilot_ready`. It applies only when preflight starts the local deterministic Xiaoze runtime. Target and full-pilot modes remain strict.
+- After the fix, this compatibility path can return only `non_hdc_local`; it cannot produce `pilot_ready`. It applies only when preflight has `startRuntime` enabled, `isLocalHttpUrl` proves the API base URL is local, and readiness `gates.xiaozeLlm` exactly proves deterministic Xiaoze with `ok=false`, `status=blocked`, and message `Deterministic Xiaoze mode is not acceptable for pilot readiness.` The API may already be listening and be reused; preflight need not have spawned it. Target and full-pilot modes remain strict.
 - `deviceGateway`, `xiaozeLlm`, and `backups` remain honestly listed as blockers; `backups` is allowed only as the existing local non-customer evidence blocker. No standard acceptance success is recorded by this checkpoint.
 - TD-042 remains unchanged as BLOCKER because the clean non-customer snapshot apply→cutover→full-database restore rehearsal has not run. No production-ready, cutover-ready, pilot-ready, or merge-ready claim is made.
+
+## Parent Review follow-up checkpoint 7 (2026-07-19)
+
+- `1d4d729e` requires exact canonical deterministic evidence in `gates.xiaozeLlm`; `0febd4d6` hardens malformed blocker and gate shapes fail-closed; latest code commit `efc3bf3a` threads `localRuntime: isLocalHttpUrl(baseUrl)` into the evaluator and adds focused rejection coverage when the API is not local. A fresh `npm test -- scripts/run-acceptance-preflight.test.ts` at `efc3bf3a` passed 1 file / 49 tests.
+- The local exception requires all three proofs: `startRuntime` is enabled, `isLocalHttpUrl` proves the API base URL is local, and readiness `gates.xiaozeLlm` exactly reports deterministic Xiaoze (`ok=false`, `status=blocked`, exact deterministic-mode message). An already-listening local API may be reused; this does not mean preflight spawned it. The only accepted outcome remains `non_hdc_local`; target and full-pilot modes remain strict.
+- This documentation task then ran `npm run docs:check` (exit 0; `Documentation governance check passed.`) and `git diff --check` (exit 0). No standard acceptance success is recorded; `deviceGateway`, `xiaozeLlm`, and `backups` remain honest blockers, with `backups` allowed only as the existing local non-customer evidence blocker.
+- TD-042 remains unchanged as BLOCKER. No production-ready, cutover-ready, pilot-ready, or merge-ready claim is made.
 
 ## Risks & rollback
 
