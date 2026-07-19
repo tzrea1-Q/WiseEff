@@ -249,18 +249,27 @@ export function DtsTopologyNavigator({
     })
   );
 
+  const resolvedAriaLabel = ariaLabel ?? (view === "source" ? "源 DTS 拓扑" : "生效 DTS 拓扑");
+  if (nodes.length === 0) {
+    return (
+      <div
+        role="status"
+        aria-label={resolvedAriaLabel}
+        className="dts-topology-navigator__empty"
+      >
+        暂无 DTS 拓扑节点
+      </div>
+    );
+  }
+
   return (
     <ul
       ref={treeRef}
       role="tree"
-      aria-label={ariaLabel ?? (view === "source" ? "源 DTS 拓扑" : "生效 DTS 拓扑")}
+      aria-label={resolvedAriaLabel}
       className="dts-topology-navigator"
     >
-      {nodes.length > 0 ? renderNodes(nodes, 1, new Set()) : (
-        <li role="none" className="dts-topology-navigator__empty">
-          <p role="status">暂无 DTS 拓扑节点</p>
-        </li>
-      )}
+      {renderNodes(nodes, 1, new Set())}
     </ul>
   );
 }

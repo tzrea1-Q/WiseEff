@@ -268,7 +268,7 @@ describe("DtsTopologyNavigator", () => {
     expect(mt5788).toHaveAttribute("tabindex", "0");
   });
 
-  it("keeps an identifiable tree and announces an empty state", () => {
+  it("announces an empty state without rendering an invalid empty tree", () => {
     render(
       <DtsTopologyNavigator
         view="effective"
@@ -278,9 +278,10 @@ describe("DtsTopologyNavigator", () => {
       />
     );
 
-    const navigator = screen.getByRole("tree", { name: "生效 DTS 拓扑" });
-    expect(navigator).toBeVisible();
-    expect(within(navigator).getByRole("status")).toHaveTextContent("暂无 DTS 拓扑节点");
-    expect(within(navigator).queryByRole("treeitem")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tree")).not.toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "生效 DTS 拓扑" })).toHaveTextContent(
+      "暂无 DTS 拓扑节点"
+    );
+    expect(screen.queryByRole("treeitem")).not.toBeInTheDocument();
   });
 });
