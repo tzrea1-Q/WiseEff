@@ -396,7 +396,7 @@ git commit -m "feat(parameters): polish integrated DTS workbench UX"
 
 **Files:** Modify topology acceptance, FRONTEND bilingual docs, coverage matrices, plan companions; regenerate clean successful full-run evidence.
 
-- [ ] **Step 1: Drive visible workbench acceptance**
+- [ ] **Step 1: Drive visible workbench acceptance** *(automation updated; actual execution blocked by missing disposable-DB/auth runtime prerequisites)*
 
 Keep operation IDs PARAM-TOPOLOGY-BROWSE-001, PARAM-TOPOLOGY-EDIT-001, and PARAM-HAPPY-001.
 
@@ -420,11 +420,23 @@ base evidence. Selectors use `DTS 参数工作台`, `搜索 DTS 参数`, `源 DT
 
 The required browser matrix is 1440×900, 768×1024, and 390×844 with
 snapshot/screenshot, console, network, focus, and document-overflow checks.
-Any standard `acceptance:browser` run remains an honest external-readiness
-result: `deviceGateway`, `xiaozeLlm`, and `backups` can block the outer runner.
-Isolated topology/full evidence may pass, but must not overwrite the
-`latest-full` namespace or be described as production/cutover readiness.
-TD-042 remains a BLOCKER until a clean non-customer snapshot
+This worktree did not complete that semantic matrix: the available 5175 runtime
+showed the unauthenticated login page and `/api/v1/me` returned 401; the 5174
+process belonged to the other workspace and was not stopped. No generated
+browser/operation evidence or full-run claim was created. The focused
+acceptance failed at line 306 with `DATABASE_URL is required to create the
+disposable topology database`. A full `acceptance:e2e` attempt then timed out
+because the webServer raised `Production auth verifier is required when
+AUTH_MODE=production`; `acceptance:evidence` exits 1 with
+`coveredOperationIds=[]` and 54 missing operations, including
+`PARAM-HAPPY-001`, `PARAM-TOPOLOGY-BROWSE-001`, and
+`PARAM-TOPOLOGY-EDIT-001`. Therefore this round created no generated browser or
+operation evidence and makes no clean full-run claim.
+Any future standard `acceptance:browser` run remains an honest
+external-readiness result: `deviceGateway`, `xiaozeLlm`, and `backups` can block
+the outer runner. Isolated topology/full evidence may pass, but must not
+overwrite the `latest-full` namespace or be described as production/cutover
+readiness. TD-042 remains a BLOCKER until a clean non-customer snapshot
 apply → cutover → whole-database restore → old-API smoke rehearsal succeeds.
 
 Continue through reason, typed draft, current edits, role submit, review, merge, reload, and base immutability. Do not add repository/DB business bypasses.
@@ -433,7 +445,7 @@ Continue through reason, typed draft, current edits, role submit, review, merge,
 
 Document API /parameters as an integrated semantic workbench, neither a topology-only replacement nor the legacy recommendation table. Record affected requirement/operation IDs or why existing IDs remain sufficient.
 
-- [x] **Step 3: Run static/full gates**
+- [ ] **Step 3: Run static/full gates** *(blocked: this worktree ran contract/docs/build and focused tests, but the full `test:all` gate was not completed)*
 
 ~~~bash
 npm run contract:check
@@ -443,11 +455,11 @@ npm run test:all
 git diff --check
 ~~~
 
-- [x] **Step 4: Run required browser verification**
+- [ ] **Step 4: Run required browser verification** *(blocked: the available 5175 runtime was unauthenticated; semantic workbench interaction could not be exercised)*
 
 Use playwright-cli at 1440×900, 768×1024, and 390×844. Exercise search, nested selection, detail, edit, drafts, clear filters, and project switch. Capture snapshot/screenshot; check console, network, focus, overlap, clipping, and document overflow.
 
-- [x] **Step 5: Run acceptance/evidence**
+- [ ] **Step 5: Run acceptance/evidence** *(blocked: `DATABASE_URL is required to create the disposable topology database`; standard webServer also timed out because `AUTH_MODE=production` had no production auth verifier)*
 
 ~~~bash
 npm run acceptance:e2e -- e2e/acceptance/parameter-topology.acceptance.spec.ts
@@ -457,7 +469,7 @@ npm run acceptance:evidence
 
 Do not use --skip-preflight or --skip-gates for the claimed standard run. Publish evidence only from a completed clean full run. Keep TD-042/external blockers accurate.
 
-- [x] **Step 6: Complete documentation gate and commit**
+- [ ] **Step 6: Complete documentation gate and commit** *(blocked: generated acceptance artifacts require the missing clean full run; the honest blocker fix is committed separately)*
 
 ~~~bash
 git add e2e/acceptance/parameter-topology.acceptance.spec.ts docs src
@@ -484,13 +496,13 @@ git commit -m "test(parameters): verify integrated DTS workbench acceptance"
 | Quality/testing | Update | browser acceptance coverage map and user operation matrix; review testing-strategy pair |
 | Reliability/runbooks | Review | manual-acceptance pair; runtime/readiness unchanged |
 | Security/governance | Review | SECURITY pair; authz/human approval unchanged |
-| Generated artifacts | Update | clean successful full-run browser/operation evidence only |
+| Generated artifacts | Update (blocked) | No `docs/generated` acceptance evidence is updated in this round: disposable DB and authentication blockers prevented a clean full run; do not reuse or cite an older evidence index. |
 | References | Review | productization API contract draft; expected unchanged |
 | Technical debt | Review | tech-debt tracker; TD-042 stays BLOCKER |
 
 ## Documentation Update Gate
 
-Before completion: implement every Update; record a change or explicit unchanged reason for every Review; pass npm run docs:check; preserve requirement/operation evidence; do not close or weaken TD-042.
+Before completion: implement every Update; record a change or explicit unchanged reason for every Review; pass npm run docs:check; preserve requirement/operation evidence; do not close or weaken TD-042. This gate is currently **BLOCKED** because the Generated-artifacts Update requires a clean full run that the disposable-DB/auth runtime blockers prevented.
 
 ## Git & PR Workflow
 

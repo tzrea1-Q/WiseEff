@@ -167,15 +167,15 @@ setPendingDrafts((current) => [
 
 ## 任务 9：可见验收、双语文档和最终门禁
 
-- [x] 更新 PARAM-TOPOLOGY-BROWSE-001、PARAM-TOPOLOGY-EDIT-001、PARAM-HAPPY-001，通过可见工作台执行搜索→树→行→详情→typed draft→本轮修改→角色提交→审核→merge。
+- [ ] 更新 PARAM-TOPOLOGY-BROWSE-001、PARAM-TOPOLOGY-EDIT-001、PARAM-HAPPY-001，通过可见工作台执行搜索→树→行→详情→typed draft→本轮修改→角色提交→审核→merge。（自动化已更新；实际执行被 disposable DB/认证 runtime 前置阻断。）
 - [x] 不增加 repository/DB 业务绕过。
 - [x] 更新中英文 FRONTEND，记录 API 模式是融合语义工作台，不是纯拓扑替代或旧推荐值表。
 - [x] 审阅并记录 browser requirement 和 operation ID。
-- [x] 运行 contract:check、docs:check、build、test:all、git diff --check。
-- [x] 使用 playwright-cli 在 1440×900、768×1024、390×844 完成 snapshot、screenshot、console、network、交互和无溢出检查。
-- [x] 运行聚焦 topology acceptance、无 --skip-preflight/--skip-gates 的标准 local-non-hdc browser acceptance，以及 acceptance:evidence。
-- [x] 只从完整干净成功 full run 发布 generated evidence。
-- [x] 完成文档门禁后提交 test(parameters): verify integrated DTS workbench acceptance。
+- [ ] 运行 contract:check、docs:check、build、test:all、git diff --check。（阻断：本 worktree 已运行 contract/docs/build 与聚焦测试，但尚未完成完整 `test:all`。）
+- [ ] 使用 playwright-cli 在 1440×900、768×1024、390×844 完成 snapshot、screenshot、console、network、交互和无溢出检查。（阻断：可用的 5175 runtime 未认证，无法执行语义工作台交互。）
+- [ ] 运行聚焦 topology acceptance、无 --skip-preflight/--skip-gates 的标准 local-non-hdc browser acceptance，以及 acceptance:evidence。（阻断：`DATABASE_URL is required to create the disposable topology database`；标准 webServer 另因 `AUTH_MODE=production` 缺少 production auth verifier 超时。）
+- [ ] 只从完整干净成功 full run 发布 generated evidence。（本轮未生成 browser/operation evidence，也没有 full-run 通过声明。）
+- [ ] 完成文档门禁后提交 test(parameters): verify integrated DTS workbench acceptance。（阻断：generated acceptance artifact 依赖缺失的干净 full run；本轮只单独提交诚实阻断修复。）
 
 ~~~ts
 await page.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
@@ -189,7 +189,7 @@ await page.getByRole("button", { name: "查看 gpio_int" }).click();
 拓扑验收继续使用 `PARAM-TOPOLOGY-BROWSE-001`、
 `PARAM-TOPOLOGY-EDIT-001` 和 `PARAM-HAPPY-001`，并通过融合工作台验证语义搜索、真实源/生效嵌套上下文、`gpio_int` 详情（raw 值与 value shape）、类型化草稿/本轮修改区、可见角色审核、语义合入回写、reload 和 base 不可变性。选择器已更新为 `DTS 参数工作台`、`搜索 DTS 参数`、`源 DTS` 和 `生效 DTS`；没有增加 repository 或直接业务数据库绕过。
 
-浏览器矩阵要求 1440×900、768×1024、390×844，并包含 snapshot/screenshot、console、network、焦点和页面溢出检查。标准 `acceptance:browser` 必须诚实记录外部 readiness 结果：`deviceGateway`、`xiaozeLlm`、`backups` 可能阻断外层 runner；隔离 topology/full evidence 即使通过，也不得覆盖 `latest-full` 或被描述为生产/cutover 就绪。TD-042 在合法干净非客户快照 apply → cutover → 整库 restore → old API smoke 演练完成前继续为 BLOCKER。
+浏览器矩阵要求 1440×900、768×1024、390×844，并包含 snapshot/screenshot、console、network、焦点和页面溢出检查。本 worktree 未完成语义矩阵：可用的 5175 runtime 显示未认证登录页，`/api/v1/me` 返回 401；5174 进程属于另一工作区，本轮未停止。没有生成 browser/operation evidence，也没有 full-run 通过声明。聚焦 acceptance 在第 306 行准确失败：`DATABASE_URL is required to create the disposable topology database`。完整 `acceptance:e2e` 随后因 webServer 报错 `Production auth verifier is required when AUTH_MODE=production` 而超时；`acceptance:evidence` 在没有运行记录时 exit 1（`coveredOperationIds=[]`，缺少 54 个 operation，包括 `PARAM-HAPPY-001`、`PARAM-TOPOLOGY-BROWSE-001`、`PARAM-TOPOLOGY-EDIT-001`）。后续标准 `acceptance:browser` 仍须诚实记录外部 readiness：`deviceGateway`、`xiaozeLlm`、`backups` 可能阻断外层 runner；隔离 evidence 即使通过，也不得覆盖 `latest-full` 或被描述为 production/cutover ready。TD-042 在合法干净非客户快照 apply → cutover → 整库 restore → old API smoke 演练完成前继续为 BLOCKER。
 
 ## 实现约束
 
@@ -211,13 +211,13 @@ await page.getByRole("button", { name: "查看 gpio_int" }).click();
 | 质量/测试 | 更新 | browser acceptance coverage map、user operation matrix；审阅 testing strategy |
 | 可靠性/runbook | 审阅 | manual acceptance 双语文件；runtime/readiness 不变 |
 | 安全/治理 | 审阅 | SECURITY 双语文件；authz/人工批准不变 |
-| Generated artifact | 更新 | 仅完整干净成功 full run 的 browser/operation evidence |
+| Generated artifact | 更新（阻断） | 本轮因 disposable DB/认证 blocker 未更新 `docs/generated` acceptance evidence；不得复用或引用旧 evidence index，clean full-run gate 仍为 BLOCKED。 |
 | References | 审阅 | productization API contract draft；预计不改 |
 | 技术债 | 审阅 | tech-debt tracker；TD-042 保持 BLOCKER |
 
 ## 文档更新门禁
 
-完成前必须：所有 Update 行完成；所有 Review 行记录修改或明确不改原因；docs:check 通过；requirement/operation/evidence 完整；不得关闭或弱化 TD-042。
+完成前必须：所有 Update 行完成；所有 Review 行记录修改或明确不改原因；docs:check 通过；requirement/operation/evidence 完整；不得关闭或弱化 TD-042。当前门禁为 **BLOCKED**：Generated artifact Update 依赖干净 full run，而 disposable DB/认证 runtime blocker 尚未解除。
 
 ## Git 与 PR 工作流
 

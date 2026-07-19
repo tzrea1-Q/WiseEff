@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { expect, test, type APIRequestContext, type Page } from "playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page } from "playwright/test";
 
 import {
   pickReviewCandidate,
@@ -33,6 +33,14 @@ const projectId = "aurora";
 const descriptionPrefix = "PARAM-TOPOLOGY acceptance";
 const SC8562_LOCATOR = "/amba/i2c@FDF5E000/sc8562@6E";
 const MT5788_LOCATOR = "/amba/i2c@FF24E000/mt5788@2B";
+
+function semanticBindingRow(scope: Locator, nodeLabel: string): Locator {
+  return scope
+    .getByRole("row")
+    .filter({ hasText: "gpio_int" })
+    .filter({ hasText: nodeLabel })
+    .first();
+}
 
 const brokenBase = `/dts-v1/;
 / {
@@ -661,7 +669,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect
       .poll(async () => gpioCells.count(), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(2);
-    await workspace.getByRole("cell", { name: "sc8562@6E", exact: true }).click();
+    const sc8562Row = semanticBindingRow(workspace, "sc8562@6E");
+    await expect(sc8562Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await sc8562Row.click();
     const detail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
     await expect(detail).toBeVisible();
     await expect(detail.getByText(scBinding!.id, { exact: true })).toBeVisible();
@@ -815,7 +825,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await expect(editWorkspace).toHaveAttribute("data-config-set-id", configSetId, { timeout: 30_000 });
       await editWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
       await expect.poll(async () => editWorkspace.getByRole("cell", { name: "gpio_int" }).count()).toBeGreaterThanOrEqual(2);
-      await editWorkspace.getByRole("cell", { name: "sc8562@6E", exact: true }).click();
+      const sc8562EditRow = semanticBindingRow(editWorkspace, "sc8562@6E");
+      await expect(sc8562EditRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+      await sc8562EditRow.click();
       const editDetail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
       await expect(editDetail.getByText(scBinding!.id, { exact: true })).toBeVisible();
       await editDetail.getByLabel("目标值 raw").fill(editedRaw);
@@ -1458,8 +1470,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       { timeout: 30_000 }
     );
     await deleteReloadWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
-    await expect(deleteReloadWorkspace.getByRole("cell", { name: "mt5788@55", exact: true })).toHaveCount(0);
-    await expect(deleteReloadWorkspace.getByRole("cell", { name: "sc8562@6E", exact: true })).toBeVisible();
+    await expect(semanticBindingRow(deleteReloadWorkspace, "mt5788@55")).toHaveCount(0);
+    const sc8562DeleteRow = semanticBindingRow(deleteReloadWorkspace, "sc8562@6E");
+    await expect(sc8562DeleteRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
 
     const writebackDb = {
       table: "project_parameter_file_versions",
@@ -1866,10 +1879,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const workspaceAfter = page.getByRole("region", { name: "DTS 参数工作台" });
     await expect(workspaceAfter).toBeVisible({ timeout: 30_000 });
     await workspaceAfter.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
-    await expect(workspaceAfter.getByRole("cell", { name: "sc8562@6E", exact: true })).toBeVisible({
+    const sc8562ReloadRow = semanticBindingRow(workspaceAfter, "sc8562@6E");
+    await expect(sc8562ReloadRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible({
       timeout: 20_000
     });
-    await workspaceAfter.getByRole("cell", { name: "sc8562@6E", exact: true }).click();
+    await sc8562ReloadRow.click();
     const detailAfter = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
     await expect(detailAfter).toBeVisible();
     await expect(detailAfter.getByRole("region", { name: "来源链" })).toBeVisible();
