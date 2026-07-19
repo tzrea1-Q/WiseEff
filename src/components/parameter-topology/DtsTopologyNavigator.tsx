@@ -19,8 +19,9 @@ type TreeIndex = {
 function indexTree(nodes: DtsWorkbenchTreeNode[]): TreeIndex {
   const byId = new Map<string, DtsWorkbenchTreeNode>();
   const pending = [...nodes];
-  while (pending.length > 0) {
-    const node = pending.shift()!;
+  let cursor = 0;
+  while (cursor < pending.length) {
+    const node = pending[cursor++]!;
     if (byId.has(node.id)) continue;
     byId.set(node.id, node);
     pending.push(...node.children);
@@ -29,6 +30,21 @@ function indexTree(nodes: DtsWorkbenchTreeNode[]): TreeIndex {
     byId,
     rootsWithChildren: nodes.filter((node) => node.children.length > 0).map((node) => node.id)
   };
+}
+
+function nearestVisibleNodeId(
+  index: TreeIndex,
+  visibleIds: Set<string>,
+  nodeId: string | null
+): string | null {
+  const visited = new Set<string>();
+  let current = nodeId ? index.byId.get(nodeId) : undefined;
+  while (current && !visited.has(current.id)) {
+    if (visibleIds.has(current.id)) return current.id;
+    visited.add(current.id);
+    current = current.parentId ? index.byId.get(current.parentId) : undefined;
+  }
+  return null;
 }
 
 function expansionPath(index: TreeIndex, selectedNodeId: string | null): string[] {
@@ -75,7 +91,18 @@ export function DtsTopologyNavigator({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
     () => new Set(expansionPath(index, selectedNodeId))
   );
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(() => {
+    const initialVisibleIds = visibleNodeIds(
+      nodes,
+      new Set(expansionPath(index, selectedNodeId))
+    );
+    return selectedNodeId && initialVisibleIds.includes(selectedNodeId)
+      ? selectedNodeId
+      : initialVisibleIds[0] ?? null;
+  });
+  const treeRef = useRef<HTMLUListElement>(null);
   const itemRefs = useRef(new Map<string, HTMLElement>());
+  const previousSelectedNodeId = useRef(selectedNodeId);
 
   useEffect(() => {
     setExpandedIds((current) => {
@@ -85,10 +112,33 @@ export function DtsTopologyNavigator({
     });
   }, [index, selectedNodeId]);
 
-  const visibleIds = visibleNodeIds(nodes, expandedIds);
-  const tabbableId = selectedNodeId && visibleIds.includes(selectedNodeId)
-    ? selectedNodeId
-    : visibleIds[0] ?? null;
+  const visibleIds = useMemo(() => visibleNodeIds(nodes, expandedIds), [expandedIds, nodes]);
+  const visibleIdSet = useMemo(() => new Set(visibleIds), [visibleIds]);
+
+  const tabbableId = nearestVisibleNodeId(index, visibleIdSet, activeNodeId)
+    ?? (selectedNodeId && visibleIdSet.has(selectedNodeId) ? selectedNodeId : null)
+    ?? visibleIds[0]
+    ?? null;
+
+  useEffect(() => {
+    const selectionChanged = previousSelectedNodeId.current !== selectedNodeId;
+    previousSelectedNodeId.current = selectedNodeId;
+    const treeHasFocus = Boolean(treeRef.current?.contains(document.activeElement));
+    setActiveNodeId((current) => {
+      if (
+        selectionChanged
+        && !treeHasFocus
+        && selectedNodeId
+        && index.byId.has(selectedNodeId)
+      ) {
+        return selectedNodeId;
+      }
+      return nearestVisibleNodeId(index, visibleIdSet, current)
+        ?? (selectedNodeId && visibleIdSet.has(selectedNodeId) ? selectedNodeId : null)
+        ?? visibleIds[0]
+        ?? null;
+    });
+  }, [index, selectedNodeId, visibleIdSet, visibleIds]);
 
   const setExpanded = (nodeId: string, expanded: boolean) => {
     setExpandedIds((current) => {
@@ -100,7 +150,8 @@ export function DtsTopologyNavigator({
   };
 
   const focusNode = (nodeId: string | null | undefined) => {
-    if (!nodeId) return;
+    if (!nodeId || !visibleIdSet.has(nodeId)) return;
+    setActiveNodeId(nodeId);
     itemRefs.current.get(nodeId)?.focus();
   };
 
@@ -128,7 +179,11 @@ export function DtsTopologyNavigator({
             aria-selected={selectedNodeId === node.id}
             tabIndex={tabbableId === node.id ? 0 : -1}
             className={`dts-topology-navigator__item${selectedNodeId === node.id ? " is-selected" : ""}`}
-            onClick={() => onSelectNode(node.id)}
+            onFocus={() => setActiveNodeId(node.id)}
+            onClick={() => {
+              focusNode(node.id);
+              onSelectNode(node.id);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
@@ -149,6 +204,27 @@ export function DtsTopologyNavigator({
                   event.preventDefault();
                   focusNode(node.parentId);
                 }
+                return;
+              }
+              const currentIndex = visibleIds.indexOf(node.id);
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                focusNode(visibleIds[Math.min(currentIndex + 1, visibleIds.length - 1)]);
+                return;
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                focusNode(visibleIds[Math.max(currentIndex - 1, 0)]);
+                return;
+              }
+              if (event.key === "Home") {
+                event.preventDefault();
+                focusNode(visibleIds[0]);
+                return;
+              }
+              if (event.key === "End") {
+                event.preventDefault();
+                focusNode(visibleIds.at(-1));
               }
             }}
           >
@@ -175,11 +251,16 @@ export function DtsTopologyNavigator({
 
   return (
     <ul
+      ref={treeRef}
       role="tree"
       aria-label={ariaLabel ?? (view === "source" ? "源 DTS 拓扑" : "生效 DTS 拓扑")}
       className="dts-topology-navigator"
     >
-      {renderNodes(nodes, 1, new Set())}
+      {nodes.length > 0 ? renderNodes(nodes, 1, new Set()) : (
+        <li role="none" className="dts-topology-navigator__empty">
+          <p role="status">暂无 DTS 拓扑节点</p>
+        </li>
+      )}
     </ul>
   );
 }

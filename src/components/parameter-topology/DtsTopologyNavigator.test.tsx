@@ -154,9 +154,133 @@ describe("DtsTopologyNavigator", () => {
     const mt5788 = within(navigator).getByRole("treeitem", { name: /mt5788@2B/ });
     fireEvent.click(mt5788);
     expect(mt5788).toHaveAttribute("aria-selected", "true");
+    expect(mt5788).toHaveFocus();
+    expect(mt5788).toHaveAttribute("tabindex", "0");
     expect(selections.at(-1)).toBe("effective-mt5788");
 
     fireEvent.keyDown(mt5788, { key: " " });
     expect(selections.at(-1)).toBe("effective-mt5788");
+  });
+
+  it("traverses every visible item with ArrowUp, ArrowDown, Home and End independently of selection", () => {
+    render(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={tree}
+        selectedNodeId="effective-sc8562"
+        onSelectNode={vi.fn()}
+      />
+    );
+
+    const navigator = screen.getByRole("tree", { name: "生效 DTS 拓扑" });
+    const root = within(navigator).getByRole("treeitem", { name: /^\// });
+    const i2c = within(navigator).getByRole("treeitem", { name: /i2c@FDF5E000/ });
+    const sc8562 = within(navigator).getByRole("treeitem", { name: /sc8562@6E/ });
+    const mt5788 = within(navigator).getByRole("treeitem", { name: /mt5788@2B/ });
+
+    sc8562.focus();
+    fireEvent.keyDown(sc8562, { key: "ArrowDown" });
+    expect(mt5788).toHaveFocus();
+    expect(mt5788).toHaveAttribute("tabindex", "0");
+    expect(sc8562).toHaveAttribute("tabindex", "-1");
+    expect(sc8562).toHaveAttribute("aria-selected", "true");
+    expect(mt5788).toHaveAttribute("aria-selected", "false");
+
+    fireEvent.keyDown(mt5788, { key: "ArrowUp" });
+    expect(sc8562).toHaveFocus();
+    expect(sc8562).toHaveAttribute("tabindex", "0");
+
+    fireEvent.keyDown(sc8562, { key: "Home" });
+    expect(root).toHaveFocus();
+    expect(root).toHaveAttribute("tabindex", "0");
+
+    fireEvent.keyDown(root, { key: "End" });
+    expect(mt5788).toHaveFocus();
+    expect(mt5788).toHaveAttribute("tabindex", "0");
+
+    fireEvent.keyDown(mt5788, { key: "ArrowLeft" });
+    expect(i2c).toHaveFocus();
+    expect(i2c).toHaveAttribute("tabindex", "0");
+    fireEvent.keyDown(i2c, { key: "ArrowLeft" });
+    expect(i2c).toHaveFocus();
+    expect(i2c).toHaveAttribute("aria-expanded", "false");
+    expect(i2c).toHaveAttribute("tabindex", "0");
+    expect(within(navigator).queryByRole("treeitem", { name: /mt5788@2B/ })).not.toBeInTheDocument();
+    expect(
+      within(navigator)
+        .getAllByRole("treeitem", { hidden: true })
+        .filter((item) => item.tabIndex === 0)
+    ).toHaveLength(1);
+  });
+
+  it("preserves the focused active item when controlled selection changes", () => {
+    const { rerender } = render(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={tree}
+        selectedNodeId="effective-sc8562"
+        onSelectNode={vi.fn()}
+      />
+    );
+
+    const sc8562 = screen.getByRole("treeitem", { name: /sc8562@6E/ });
+    sc8562.focus();
+    rerender(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={tree}
+        selectedNodeId="effective-mt5788"
+        onSelectNode={vi.fn()}
+      />
+    );
+
+    const mt5788 = screen.getByRole("treeitem", { name: /mt5788@2B/ });
+    expect(sc8562).toHaveFocus();
+    expect(sc8562).toHaveAttribute("tabindex", "0");
+    expect(sc8562).toHaveAttribute("aria-selected", "false");
+    expect(mt5788).toHaveAttribute("tabindex", "-1");
+    expect(mt5788).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("syncs the active item to an externally selected hidden descendant when the tree is not focused", () => {
+    const { rerender } = render(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={tree}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("treeitem", { name: /^\// })).toHaveAttribute("tabindex", "0");
+    expect(screen.queryByRole("treeitem", { name: /mt5788@2B/ })).not.toBeInTheDocument();
+    rerender(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={tree}
+        selectedNodeId="effective-mt5788"
+        onSelectNode={vi.fn()}
+      />
+    );
+
+    const mt5788 = screen.getByRole("treeitem", { name: /mt5788@2B/ });
+    expect(mt5788).toHaveAttribute("aria-selected", "true");
+    expect(mt5788).toHaveAttribute("tabindex", "0");
+  });
+
+  it("keeps an identifiable tree and announces an empty state", () => {
+    render(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={[]}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+      />
+    );
+
+    const navigator = screen.getByRole("tree", { name: "生效 DTS 拓扑" });
+    expect(navigator).toBeVisible();
+    expect(within(navigator).getByRole("status")).toHaveTextContent("暂无 DTS 拓扑节点");
+    expect(within(navigator).queryByRole("treeitem")).not.toBeInTheDocument();
   });
 });
