@@ -91,7 +91,7 @@ export function DtsParameterWorkbenchTable({
               key={row.bindingId}
               data-binding-id={row.bindingId}
               aria-selected={isSelected}
-              className={`dts-parameter-workbench-table__row dts-parameter-workbench-table__card${isSelected ? " is-selected" : ""}`}
+              className={`dts-parameter-workbench-table__row dts-parameter-workbench-table__card is-${row.governanceState}${isDraft ? " is-draft" : ""}${isSelected ? " is-selected" : ""}`}
             >
               <span role="cell" data-label="属性" className="dts-parameter-workbench-table__property">
                 <code>{row.propertyKey}</code>

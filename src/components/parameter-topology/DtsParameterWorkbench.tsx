@@ -258,7 +258,11 @@ export function DtsParameterWorkbench({
       </div>
 
       <div className="dts-parameter-workbench__body">
-        <div className="dts-parameter-workbench__navigator">
+        <div
+          className="dts-parameter-workbench__navigator dts-workbench-topology"
+          role="region"
+          aria-label="DTS 拓扑导航"
+        >
           <h3 className="dts-parameter-workbench__navigator-title">DTS 拓扑导航</h3>
           <DtsTopologyNavigator
             view={view}
@@ -268,7 +272,11 @@ export function DtsParameterWorkbench({
             onSelectNode={(nodeId) => setSelectedNodeId((current) => current === nodeId ? null : nodeId)}
           />
         </div>
-        <div className="dts-parameter-workbench__results">
+        <div
+          className="dts-parameter-workbench__results dts-workbench-list"
+          role="region"
+          aria-label="DTS 参数列表"
+        >
           <DtsParameterWorkbenchTable
             rows={visibleRows}
             selectedBindingId={selectedBindingId}
@@ -283,7 +291,11 @@ export function DtsParameterWorkbench({
         </div>
       </div>
       {currentEdits ? (
-        <div className="dts-parameter-workbench__current-edits">
+        <div
+          className="dts-parameter-workbench__current-edits dts-draft-tray"
+          role="region"
+          aria-label="本轮已修改"
+        >
           {currentEdits}
         </div>
       ) : null}

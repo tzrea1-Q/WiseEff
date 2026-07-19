@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -235,6 +237,43 @@ function expandToSc8562(label: RegExp) {
 }
 
 describe("DtsParameterWorkbench", () => {
+  it("exposes scoped mature-workbench regions for topology, list and current edits", () => {
+    renderWorkbench({
+      currentEdits: <div data-testid="current-edits-slot">当前已修改</div>
+    });
+
+    const workbench = screen.getByRole("region", { name: "DTS 参数工作台" });
+    expect(workbench).toHaveClass("dts-parameter-workbench");
+    expect(workbench.querySelector(".dts-workbench-topology")).toHaveAttribute(
+      "aria-label",
+      "DTS 拓扑导航"
+    );
+    expect(workbench.querySelector(".dts-workbench-list")).toHaveAttribute(
+      "aria-label",
+      "DTS 参数列表"
+    );
+    expect(workbench.querySelector(".dts-draft-tray")).toHaveAttribute(
+      "aria-label",
+      "本轮已修改"
+    );
+  });
+
+  it("keeps the responsive visual contract scoped to the DTS workbench", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "src/styles.css"),
+      "utf8"
+    );
+
+    expect(styles).toMatch(/\.dts-parameter-workbench[^{]*\{/);
+    expect(styles).toMatch(/\.dts-workbench-topology[^{]*\{/);
+    expect(styles).toMatch(/\.dts-workbench-list[^{]*\{/);
+    expect(styles).toMatch(/\.dts-draft-tray[^{]*\{/);
+    expect(styles).toMatch(/@media\s*\(max-width:\s*1200px\)/);
+    expect(styles).toMatch(/@media\s*\(max-width:\s*820px\)/);
+    expect(styles).toMatch(/@media\s*\(max-width:\s*480px\)/);
+    expect(styles).toMatch(/\.dts-parameter-workbench[\s\S]*:focus-visible/);
+  });
+
   it("renders the semantic workbench contract and exact mature table headers", () => {
     renderWorkbench();
 

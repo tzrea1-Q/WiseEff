@@ -179,7 +179,7 @@ export function DtsBindingDraftTray({
   if (drafts.length === 0) return null;
 
   return (
-    <section className="dts-binding-draft-tray binding-draft-submission" role="region" aria-label="绑定变更提交">
+    <section className="dts-binding-draft-tray dts-draft-tray binding-draft-submission" role="region" aria-label="绑定变更提交">
       <header>
         <div>
           <p className="eyebrow">Current edits</p>
