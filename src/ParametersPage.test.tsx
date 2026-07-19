@@ -6,6 +6,12 @@ import { ParametersPage } from "./ParametersPage";
 import { TopBarActionsContext } from "./components/layout";
 import { initialState } from "./mockData";
 import type { ParameterPageActions } from "./app/routes";
+import type { ParameterTopologyRepository } from "./application/ports/ParameterTopologyRepository";
+import {
+  TOPOLOGY_TEACHING_BINDINGS,
+  TOPOLOGY_TEACHING_EFFECTIVE_NODES,
+  TOPOLOGY_TEACHING_SOURCE_NODES
+} from "./components/parameter-topology/topologyTeachingFixtures";
 import { selectModuleTreeFilter } from "./test/moduleTreeTestHelpers";
 
 beforeEach(() => {
@@ -1370,12 +1376,29 @@ describe("ParametersPage · 布局与 Sheet", () => {
 });
 
 describe("ParametersPage API topology workspace", () => {
-  it("isolates the legacy recommended-value workbench from API mode", async () => {
+  it("combines the mature workbench boundary with semantic DTS rows in API mode", async () => {
     const listWorkflowAssignees = vi.fn().mockResolvedValue({
       hardwareCommitters: [{ id: "u-hw", name: "Hardware API" }],
       softwareCommitters: [{ id: "u-sw", name: "Software API" }],
       softwareUsers: [{ id: "u-user", name: "Developer API" }],
     });
+    const topologyRepository = {
+      getTopology: vi.fn(async (_projectId, _configSetId, revisionId, view) => ({
+        view,
+        revisionId: revisionId === "current" ? "rev-real-1" : revisionId,
+        configSetId: "dcs-default-aurora",
+        projectId: "aurora",
+        status: "resolved",
+        incompleteBase: false,
+        diagnostics: [],
+        nodes:
+          view === "source"
+            ? TOPOLOGY_TEACHING_SOURCE_NODES
+            : TOPOLOGY_TEACHING_EFFECTIVE_NODES
+      })),
+      listBindings: vi.fn().mockResolvedValue(TOPOLOGY_TEACHING_BINDINGS),
+      listMappingTasks: vi.fn().mockResolvedValue([])
+    } as unknown as ParameterTopologyRepository;
     render(
       <TopBarActionsHarness>
         <ParametersPage
@@ -1389,21 +1412,19 @@ describe("ParametersPage API topology workspace", () => {
             ...createParameterActions(),
             listWorkflowAssignees,
           }}
-          listConfigSets={async () => []}
+          topologyRepository={topologyRepository}
+          listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
         />
       </TopBarActionsHarness>
     );
 
-    const workspace = await screen.findByRole("region", { name: "项目拓扑工作区" });
-    // Loading / empty / error are all valid — never teaching fallback with fabricated ids.
-    expect(workspace.getAttribute("data-config-set-id") ?? "").not.toMatch(/-default-config$/);
-    expect(workspace.getAttribute("data-revision-id") ?? "").not.toMatch(/-head$/);
-    expect(screen.queryByRole("region", { name: "检索参数表" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "本轮已修改参数区" })).not.toBeInTheDocument();
+    const workspace = await screen.findByRole("region", { name: "DTS 参数工作台" });
+    expect(within(workspace).getByRole("searchbox", { name: "搜索 DTS 参数" })).toBeInTheDocument();
+    expect(within(workspace).getByRole("tree", { name: "生效 DTS 拓扑" })).toBeInTheDocument();
+    expect((await within(workspace).findAllByText("gpio_int")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "导出 Excel" })).not.toBeInTheDocument();
+    expect(screen.queryByText("当前 → 推荐", { exact: false })).not.toBeInTheDocument();
     expect(screen.queryByText("推荐值", { exact: false })).not.toBeInTheDocument();
     expect(listWorkflowAssignees).not.toHaveBeenCalled();
-    expect(workspace.textContent).not.toMatch(/sourceNodePath/);
-    expect(workspace.textContent).not.toMatch(/aurora-default-config|aurora-head/);
   });
 });
