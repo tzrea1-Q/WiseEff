@@ -299,6 +299,42 @@ describe("DtsBindingDetailDialog", () => {
     expect(submit).toBeEnabled();
   });
 
+  it("keeps the successful feedback when reason whitespace changes but its normalized signature does not", async () => {
+    const onCreateDraft = vi.fn().mockResolvedValue({ valid: true, diagnostics: [] });
+    renderDialog({ onCreateDraft });
+    const reason = screen.getByRole("textbox", { name: "修改原因" });
+
+    fireEvent.change(reason, { target: { value: "Move interrupt line" } });
+    fireEvent.click(screen.getByRole("button", { name: "校验并创建草稿" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("草稿已创建");
+
+    fireEvent.change(reason, { target: { value: "  Move interrupt line  " } });
+
+    expect(screen.getByRole("status")).toHaveTextContent("草稿已创建");
+    expect(screen.getByRole("button", { name: "校验并创建草稿" })).toBeDisabled();
+    expect(onCreateDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores successful feedback when edited input returns to the already-created signature", async () => {
+    const onCreateDraft = vi.fn().mockResolvedValue({ valid: true, diagnostics: [] });
+    renderDialog({ onCreateDraft });
+    const rawValue = screen.getByRole("textbox", { name: "目标值 raw" });
+    const reason = screen.getByRole("textbox", { name: "修改原因" });
+
+    fireEvent.change(reason, { target: { value: "Move interrupt line" } });
+    fireEvent.click(screen.getByRole("button", { name: "校验并创建草稿" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("草稿已创建");
+
+    fireEvent.change(rawValue, { target: { value: "<&gpio13 30 0>" } });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "校验并创建草稿" })).toBeEnabled();
+
+    fireEvent.change(rawValue, { target: { value: "<&gpio13 29 0>" } });
+    expect(screen.getByRole("status")).toHaveTextContent("草稿已创建");
+    expect(screen.getByRole("button", { name: "校验并创建草稿" })).toBeDisabled();
+    expect(onCreateDraft).toHaveBeenCalledTimes(1);
+  });
+
   it.each(["resolve", "reject"] as const)(
     "ignores a pending request that %ss after Escape closes and a clean dialog reopens",
     async (outcome) => {

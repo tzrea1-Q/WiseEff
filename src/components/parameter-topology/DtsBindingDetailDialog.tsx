@@ -33,6 +33,7 @@ type SubmissionState = "idle" | "pending" | "success" | "failure";
 type SuccessfulSubmission = {
   rawValue: string;
   reason: string;
+  diagnostics: BindingEditValidation["diagnostics"];
 };
 
 function IdentityField({ label, value }: { label: string; value: string | null }) {
@@ -115,7 +116,16 @@ export function DtsBindingDetailDialog({
     setSuccessfulSubmission(null);
   }, [row.bindingId]);
 
-  const clearValidation = () => {
+  const reconcileValidationForInput = (nextRawValue: string, nextReason: string) => {
+    const matchesSuccessfulSubmission = successfulSubmission !== null
+      && successfulSubmission.rawValue === nextRawValue
+      && successfulSubmission.reason === nextReason.trim();
+    if (matchesSuccessfulSubmission) {
+      setSubmissionState("success");
+      setDiagnostics(successfulSubmission.diagnostics);
+      setFailureMessage("");
+      return;
+    }
     setSubmissionState("idle");
     setDiagnostics([]);
     setFailureMessage("");
@@ -144,7 +154,11 @@ export function DtsBindingDetailDialog({
       setDiagnostics(result.diagnostics);
       setSubmissionState(result.valid ? "success" : "failure");
       if (result.valid) {
-        setSuccessfulSubmission({ rawValue: requestInput.rawValue, reason: requestInput.reason });
+        setSuccessfulSubmission({
+          rawValue: requestInput.rawValue,
+          reason: requestInput.reason,
+          diagnostics: result.diagnostics
+        });
       } else {
         setFailureMessage("服务端校验未通过");
       }
@@ -253,8 +267,9 @@ export function DtsBindingDetailDialog({
                   value={rawValue}
                   disabled={isPending}
                   onChange={(event) => {
-                    setRawValue(event.target.value);
-                    clearValidation();
+                    const nextRawValue = event.target.value;
+                    setRawValue(nextRawValue);
+                    reconcileValidationForInput(nextRawValue, reason);
                   }}
                 />
                 <Label htmlFor="dts-binding-edit-reason">修改原因</Label>
@@ -263,8 +278,9 @@ export function DtsBindingDetailDialog({
                   value={reason}
                   disabled={isPending}
                   onChange={(event) => {
-                    setReason(event.target.value);
-                    clearValidation();
+                    const nextReason = event.target.value;
+                    setReason(nextReason);
+                    reconcileValidationForInput(rawValue, nextReason);
                   }}
                 />
                 <Button type="button" disabled={!canSubmit} onClick={() => void createDraft()}>
