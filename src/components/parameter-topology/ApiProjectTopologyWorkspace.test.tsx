@@ -1,6 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { IdentityMappingTask } from "@/domain/parameter-topology/types";
 import {
   TOPOLOGY_TEACHING_BINDINGS,
   TOPOLOGY_TEACHING_EFFECTIVE_NODES,
@@ -61,6 +62,45 @@ function createRepository(
       overlayFileName: "overlay.dts"
     }),
     ...overrides
+  };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function createOpenMappingTask(projectId: string): IdentityMappingTask {
+  return {
+    id: `map-${projectId}`,
+    projectId,
+    configRevisionId: "rev-real-1",
+    previousLogicalNodeId: "logical-old",
+    candidateLogicalNodeIds: ["logical-sc8562", "logical-mt5788"],
+    status: "open",
+    reason: "ambiguous",
+    createdAt: "2026-07-16T00:00:00.000Z",
+    evidence: {
+      previousNodeLocator: "/amba/i2c@FDF5E000/sc8562@6E",
+      evidence: ["unit-address"],
+      candidates: [
+        {
+          logicalNodeId: "logical-sc8562",
+          nodeLocator: "/amba/i2c@FDF5E000/sc8562@6E",
+          name: "sc8562"
+        },
+        {
+          logicalNodeId: "logical-mt5788",
+          nodeLocator: "/amba/i2c@FDF5E000/mt5788@55",
+          name: "mt5788"
+        }
+      ]
+    }
   };
 }
 
@@ -976,6 +1016,286 @@ describe("ApiProjectTopologyWorkspace", () => {
       expect(repository.validateRevision).toHaveBeenCalledWith("aurora", "rev-real-1");
     });
     expect(await screen.findByText(/校验通过|发布条件/)).toBeVisible();
+  });
+
+  it("ignores a late successful validate response after switching projects", async () => {
+    const { act, fireEvent } = await import("@testing-library/react");
+    const validateRequest = createDeferred<{
+      id: string;
+      status: "passed";
+      stage: "toolchain";
+    }>();
+    const validateRevision = vi.fn(() => validateRequest.promise);
+    const repository = createRepository({ validateRevision });
+    const listConfigSets = vi.fn(async (projectId: string) => [
+      { id: `dcs-default-${projectId}`, name: "default" }
+    ]);
+    const { rerender } = render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        canPublish
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await waitFor(() => {
+      expect(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" })).toBeEnabled();
+    });
+    fireEvent.click(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" }));
+    expect(validateRevision).toHaveBeenCalledWith("aurora", "rev-real-1");
+
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="nebula"
+        canEdit
+        canPublish
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-config-set-id",
+        "dcs-default-nebula"
+      );
+    });
+
+    await act(async () => {
+      validateRequest.resolve({ id: "validate-aurora-late", status: "passed", stage: "toolchain" });
+      await validateRequest.promise;
+    });
+
+    expect(screen.queryByText("校验通过，修订已具备发布条件。")).not.toBeInTheDocument();
+  });
+
+  it("ignores a late failed validate response after switching projects", async () => {
+    const { act, fireEvent } = await import("@testing-library/react");
+    const validateRequest = createDeferred<never>();
+    const validateRevision = vi.fn(() => validateRequest.promise);
+    const repository = createRepository({ validateRevision });
+    const listConfigSets = vi.fn(async (projectId: string) => [
+      { id: `dcs-default-${projectId}`, name: "default" }
+    ]);
+    const { rerender } = render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        canPublish
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await waitFor(() => {
+      expect(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" })).toBeEnabled();
+    });
+    fireEvent.click(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" }));
+
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="nebula"
+        canEdit
+        canPublish
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-config-set-id",
+        "dcs-default-nebula"
+      );
+    });
+
+    await act(async () => {
+      validateRequest.reject(new Error("Aurora validate failed late"));
+      await validateRequest.promise.catch(() => undefined);
+    });
+
+    expect(screen.queryByText("Aurora validate failed late")).not.toBeInTheDocument();
+  });
+
+  it("uses project generation, not only project id, for an Aurora-B-Nebula-Aurora switch", async () => {
+    const { act, fireEvent } = await import("@testing-library/react");
+    const validateRequest = createDeferred<{
+      id: string;
+      status: "passed";
+      stage: "toolchain";
+    }>();
+    const validateRevision = vi.fn(() => validateRequest.promise);
+    const repository = createRepository({ validateRevision });
+    const listConfigSets = vi.fn(async (projectId: string) => [
+      { id: `dcs-default-${projectId}`, name: "default" }
+    ]);
+    const { rerender } = render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        canPublish
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await waitFor(() => {
+      expect(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" })).toBeEnabled();
+    });
+    fireEvent.click(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" }));
+
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="nebula"
+        canEdit
+        canPublish
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-config-set-id",
+        "dcs-default-nebula"
+      );
+    });
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        canPublish
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-config-set-id",
+        "dcs-default-aurora"
+      );
+    });
+
+    await act(async () => {
+      validateRequest.resolve({ id: "validate-aurora-stale", status: "passed", stage: "toolchain" });
+      await validateRequest.promise;
+    });
+
+    expect(screen.queryByText("校验通过，修订已具备发布条件。")).not.toBeInTheDocument();
+  });
+
+  it("ignores a late successful mapping response after switching projects", async () => {
+    const { act, fireEvent } = await import("@testing-library/react");
+    const mappingRequest = createDeferred<void>();
+    const resolveMapping = vi.fn(() => mappingRequest.promise);
+    const repository = createRepository({
+      listMappingTasks: vi.fn(async (projectId: string) =>
+        projectId === "aurora" ? [createOpenMappingTask(projectId)] : []
+      ),
+      resolveMapping
+    });
+    const listConfigSets = vi.fn(async (projectId: string) => [
+      { id: `dcs-default-${projectId}`, name: "default" }
+    ]);
+    const { rerender } = render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    const review = await screen.findByRole("region", { name: "映射审核" });
+    fireEvent.change(within(review).getByRole("combobox", { name: "选择映射候选" }), {
+      target: { value: "logical-sc8562" }
+    });
+    fireEvent.change(within(review).getByLabelText("映射确认原因"), {
+      target: { value: "Confirm Aurora identity" }
+    });
+    fireEvent.click(within(review).getByRole("button", { name: "确认映射" }));
+    await waitFor(() => {
+      expect(resolveMapping).toHaveBeenCalledWith("map-aurora", {
+        decision: "resolved",
+        selectedLogicalNodeId: "logical-sc8562",
+        reason: "Confirm Aurora identity"
+      });
+    });
+
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="nebula"
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-config-set-id",
+        "dcs-default-nebula"
+      );
+    });
+    const nebulaTopologyCalls = vi.mocked(repository.getTopology).mock.calls.filter(([requestProjectId]) => requestProjectId === "nebula").length;
+
+    await act(async () => {
+      mappingRequest.resolve();
+      await mappingRequest.promise;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(screen.queryByText(/映射已确认，正在刷新拓扑/)).not.toBeInTheDocument();
+    expect(vi.mocked(repository.getTopology).mock.calls.filter(([requestProjectId]) => requestProjectId === "nebula").length).toBe(nebulaTopologyCalls);
+  });
+
+  it("ignores a late failed mapping response after switching projects", async () => {
+    const { act, fireEvent } = await import("@testing-library/react");
+    const mappingRequest = createDeferred<never>();
+    const resolveMapping = vi.fn(() => mappingRequest.promise);
+    const repository = createRepository({
+      listMappingTasks: vi.fn(async (projectId: string) =>
+        projectId === "aurora" ? [createOpenMappingTask(projectId)] : []
+      ),
+      resolveMapping
+    });
+    const listConfigSets = vi.fn(async (projectId: string) => [
+      { id: `dcs-default-${projectId}`, name: "default" }
+    ]);
+    const { rerender } = render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    const review = await screen.findByRole("region", { name: "映射审核" });
+    fireEvent.change(within(review).getByRole("combobox", { name: "选择映射候选" }), {
+      target: { value: "logical-sc8562" }
+    });
+    fireEvent.change(within(review).getByLabelText("映射确认原因"), {
+      target: { value: "Reject Aurora identity" }
+    });
+    fireEvent.click(within(review).getByRole("button", { name: "确认映射" }));
+    await waitFor(() => expect(resolveMapping).toHaveBeenCalledWith("map-aurora", expect.any(Object)));
+
+    rerender(
+      <ApiProjectTopologyWorkspace
+        projectId="nebula"
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-config-set-id",
+        "dcs-default-nebula"
+      );
+    });
+
+    await act(async () => {
+      mappingRequest.reject(new Error("Aurora mapping failed late"));
+      await mappingRequest.promise.catch(() => undefined);
+    });
+
+    expect(screen.queryByText("Aurora mapping failed late")).not.toBeInTheDocument();
   });
 
   it("resolves identity mapping then reloads topology", async () => {

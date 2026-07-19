@@ -1637,7 +1637,8 @@ describe("ParametersPage API topology workspace", () => {
     );
 
     expect(await screen.findByText(/尚未创建 Config Set/i)).toBeInTheDocument();
-    const workspace = screen.getByRole("region", { name: /^(?:DTS 参数工作台|项目拓扑工作区)$/ });
+    const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    expect(screen.queryByRole("region", { name: "项目拓扑工作区" })).not.toBeInTheDocument();
     expect(workspace.getAttribute("data-config-set-id") ?? "").toBe("");
     expect(workspace.getAttribute("data-revision-id") ?? "").toBe("");
     expect(topologyRepository.getTopology).not.toHaveBeenCalled();

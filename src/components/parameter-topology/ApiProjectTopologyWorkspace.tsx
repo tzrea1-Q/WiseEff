@@ -160,8 +160,17 @@ export function ApiProjectTopologyWorkspace({
   const listConfigSetsRef = useRef(listConfigSets);
   listConfigSetsRef.current = listConfigSets;
   const activeProjectIdRef = useRef(projectId);
+  const projectGenerationRef = useRef(0);
+  const lastProjectIdRef = useRef(projectId);
+  if (lastProjectIdRef.current !== projectId) {
+    lastProjectIdRef.current = projectId;
+    projectGenerationRef.current += 1;
+  }
   activeProjectIdRef.current = projectId;
   const projectMutationsRef = useRef(new Map<string, ProjectMutationKind>());
+
+  const isCurrentProjectRequest = (requestProjectId: string, requestGeneration: number) =>
+    activeProjectIdRef.current === requestProjectId && projectGenerationRef.current === requestGeneration;
 
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
   const [reloadToken, setReloadToken] = useState(0);
@@ -447,46 +456,75 @@ export function ApiProjectTopologyWorkspace({
   /** Validate only — no publish/release transition exists on this surface. */
   const handleValidate = async () => {
     if (!repository || loadState.kind !== "ready") return;
+    const requestProjectId = projectId;
+    const requestGeneration = projectGenerationRef.current;
+    const requestRevisionId = loadState.revisionId;
+    if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
     setPublishMessage(null);
     try {
-      const run = await repository.validateRevision(projectId, loadState.revisionId);
+      const run = await repository.validateRevision(requestProjectId, requestRevisionId);
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       if (run.status === "passed") {
         setPublishMessage("校验通过，修订已具备发布条件。");
         return;
       }
       setPublishMessage(`校验未通过（${run.stage}）。`);
       if (run.diagnostics?.length) {
-        setLoadState({
-          ...loadState,
-          diagnostics: run.diagnostics
+        if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
+        setLoadState((current) => {
+          if (!isCurrentProjectRequest(requestProjectId, requestGeneration) || current.kind !== "ready") {
+            return current;
+          }
+          return {
+            ...current,
+            diagnostics: run.diagnostics ?? []
+          };
         });
       } else {
+        if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
         setReloadToken((token) => token + 1);
       }
     } catch (error) {
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       const mapped = mapParameterTopologyError(error);
       if (mapped.kind === "diagnostics") {
-        setLoadState({
-          ...loadState,
-          diagnostics: mapped.diagnostics
+        if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
+        setLoadState((current) => {
+          if (!isCurrentProjectRequest(requestProjectId, requestGeneration) || current.kind !== "ready") {
+            return current;
+          }
+          return {
+            ...current,
+            diagnostics: mapped.diagnostics
+          };
         });
+        if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
         setPublishMessage(mapped.message);
         return;
       }
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       setPublishMessage(mapped.message);
     }
   };
 
   const handleResolveMapping = async (taskId: string, input: ResolveMappingInput) => {
     if (!repository || loadState.kind !== "ready") return;
+    const requestProjectId = projectId;
+    const requestGeneration = projectGenerationRef.current;
+    if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
     setMappingMessage(null);
     try {
       await repository.resolveMapping(taskId, input);
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       setMappingMessage(input.decision === "resolved" ? "映射已确认，正在刷新拓扑…" : "映射已驳回，正在刷新拓扑…");
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       setPreferredRevision(null);
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       setReloadToken((token) => token + 1);
     } catch (error) {
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       const mapped = mapParameterTopologyError(error);
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
       setMappingMessage(mapped.message);
     }
   };
