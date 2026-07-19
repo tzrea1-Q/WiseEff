@@ -42,6 +42,10 @@ function semanticBindingRow(scope: Locator, nodeLabel: string): Locator {
     .first();
 }
 
+function bindingRowById(scope: Locator, bindingId: string): Locator {
+  return scope.locator(`[role="row"][data-binding-id="${bindingId}"]`);
+}
+
 const brokenBase = `/dts-v1/;
 / {
 	board {
@@ -648,8 +652,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     ).toBeTruthy();
     expect(mtBinding).toBeTruthy();
     expect(scBinding!.id).not.toBe(mtBinding!.id);
+    expect(scBinding!.parameterSpecId).toBeTruthy();
     // Same-compatible sibling nodes keep independent specs/bindings (sc8562 vs mt5788 gpio_int).
     expect(scBinding!.driverModule).not.toBe(mtBinding!.driverModule);
+
+    await workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first().click();
+    const scopedSc8562Row = bindingRowById(workspace, scBinding!.id);
+    await expect(scopedSc8562Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(scopedSc8562Row).toContainText("sc8562@6E");
+    await expect(scopedSc8562Row).toContainText("<&gpio13 29 0>");
+    await expect(bindingRowById(workspace, mtBinding!.id)).toHaveCount(0);
+    await workspace.getByRole("button", { name: "清除全部筛选" }).click();
+    const unscopedMt5788Row = bindingRowById(workspace, mtBinding!.id);
+    await expect(unscopedMt5788Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(unscopedMt5788Row).toContainText("mt5788@2B");
 
     const baseBindingSnapshot = await withPgClient(async (client) => {
       const result = await client.query<{ raw_value: string | null }>(
@@ -669,13 +685,22 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect
       .poll(async () => gpioCells.count(), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(2);
-    const sc8562Row = semanticBindingRow(workspace, "sc8562@6E");
+    const sc8562Row = bindingRowById(workspace, scBinding!.id);
     await expect(sc8562Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
-    await sc8562Row.click();
+    await sc8562Row.getByRole("button", { name: /^查看 gpio_int/ }).click();
     const detail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
     await expect(detail).toBeVisible();
     await expect(detail.getByText(scBinding!.id, { exact: true })).toBeVisible();
-    await expect(detail.getByRole("region", { name: "来源链" })).toBeVisible();
+    const locationDetail = detail.getByRole("region", { name: "DTS 位置" });
+    await expect(locationDetail).toContainText(SC8562_LOCATOR);
+    await expect(locationDetail).toContainText(/\.dts/i);
+    await expect(locationDetail).toContainText(/L\d+/);
+    const valueContract = detail.getByRole("region", { name: "值与约束" });
+    await expect(valueContract).toContainText("<&gpio13 29 0>");
+    await expect(valueContract).toContainText("phandle-list · 32 bit · 3 cells");
+    const provenance = detail.getByRole("region", { name: "来源链" });
+    await expect(provenance.getByRole("listitem").first()).toContainText(/set|override/);
+    await expect(provenance.getByRole("listitem").first()).not.toContainText("source occurrence 不可用");
 
     await recordOperationEvidence({
       operationId: "PARAM-TOPOLOGY-BROWSE-001",
@@ -825,9 +850,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await expect(editWorkspace).toHaveAttribute("data-config-set-id", configSetId, { timeout: 30_000 });
       await editWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
       await expect.poll(async () => editWorkspace.getByRole("cell", { name: "gpio_int" }).count()).toBeGreaterThanOrEqual(2);
-      const sc8562EditRow = semanticBindingRow(editWorkspace, "sc8562@6E");
+      const sc8562EditRow = bindingRowById(editWorkspace, scBinding!.id);
       await expect(sc8562EditRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
-      await sc8562EditRow.click();
+      await sc8562EditRow.getByRole("button", { name: /^编辑 gpio_int/ }).click();
       const editDetail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
       await expect(editDetail.getByText(scBinding!.id, { exact: true })).toBeVisible();
       await editDetail.getByLabel("目标值 raw").fill(editedRaw);
@@ -845,14 +870,13 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     let draftBody = (await successfulDraft.json()) as {
       item: {
         draftId: string;
-        parameterId: string;
         candidateRevisionId: string;
         rawText?: string;
         projectParameterBindingId?: string;
       };
     };
     expect(draftBody.item.candidateRevisionId).toBeTruthy();
-    expect(draftBody.item.parameterId).toBe(scBinding!.id);
+    expect(draftBody.item.projectParameterBindingId).toBe(scBinding!.id);
     expect(draftBody.item.rawText ?? editedRaw).toMatch(/30/);
 
     // A candidate from Aurora must never be requested under Nebula after the visible project switch.
@@ -967,6 +991,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await submissionPanel.getByRole("button", { name: "提交审核" }).click();
     const submitRound = await submitRoundPromise;
     expect(submitRound.status(), await submitRound.text()).toBe(201);
+    const submitWire = submitRound.request().postDataJSON() as {
+      items?: Array<Record<string, unknown>>;
+    };
+    expect(submitWire.items?.[0]).toMatchObject({
+      draftId: draftBody.item.draftId,
+      projectParameterBindingId: scBinding!.id,
+      parameterSpecId: scBinding!.parameterSpecId,
+      action: "set"
+    });
+    expect(submitWire.items?.[0]).not.toHaveProperty("parameterId");
     const submitBody = (await submitRound.json()) as {
       item: {
         status: string;
@@ -1179,6 +1213,21 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     // A real typed delete uses the public API for the currently UI-less delete control,
     // then the same visible role-review UI and semantic merge/writeback boundary.
+    await signInBrowserAsRole(
+      page,
+      "software-user",
+      `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
+    );
+    const preDeleteWorkspace = page.getByRole("region", { name: "DTS 参数工作台" });
+    await expect(preDeleteWorkspace).toHaveAttribute(
+      "data-revision-id",
+      mergeEvidence.latestRevisionId!,
+      { timeout: 30_000 }
+    );
+    await preDeleteWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
+    const preDeleteMt5788Row = bindingRowById(preDeleteWorkspace, mtBinding!.id);
+    await expect(preDeleteMt5788Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(preDeleteMt5788Row).toContainText("mt5788@2B");
     const deleteReason = `${descriptionPrefix} delete gpio_int through formal review`;
     const deleteBaseBindingSnapshot = await withPgClient(async (client) => {
       const result = await client.query<{ raw_value: string | null }>(
@@ -1470,7 +1519,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       { timeout: 30_000 }
     );
     await deleteReloadWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
-    await expect(semanticBindingRow(deleteReloadWorkspace, "mt5788@55")).toHaveCount(0);
+    await expect(bindingRowById(deleteReloadWorkspace, mtBinding!.id)).toHaveCount(0);
+    await expect(semanticBindingRow(deleteReloadWorkspace, "mt5788@2B")).toHaveCount(0);
     const sc8562DeleteRow = semanticBindingRow(deleteReloadWorkspace, "sc8562@6E");
     await expect(sc8562DeleteRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
 
@@ -1879,16 +1929,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const workspaceAfter = page.getByRole("region", { name: "DTS 参数工作台" });
     await expect(workspaceAfter).toBeVisible({ timeout: 30_000 });
     await workspaceAfter.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
-    const sc8562ReloadRow = semanticBindingRow(workspaceAfter, "sc8562@6E");
+    const sc8562ReloadRow = bindingRowById(workspaceAfter, scBinding!.id);
     await expect(sc8562ReloadRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible({
       timeout: 20_000
     });
-    await sc8562ReloadRow.click();
+    await sc8562ReloadRow.getByRole("button", { name: /^查看 gpio_int/ }).click();
     const detailAfter = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
     await expect(detailAfter).toBeVisible();
     await expect(detailAfter.getByRole("region", { name: "来源链" })).toBeVisible();
-    const bindingIdAfter = (await detailAfter.locator("dd code").allTextContents())[0]?.trim() ?? "";
-    expect(bindingIdAfter).toBe(scBinding!.id);
+    await expect(detailAfter.getByText(scBinding!.id, { exact: true })).toBeVisible();
+    const bindingIdAfter = scBinding!.id;
     const valueAfter = await detailAfter.getByLabel("目标值 raw").inputValue();
 
     const persistedDb = await withPgClient(async (client) => {
