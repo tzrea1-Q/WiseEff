@@ -404,6 +404,13 @@ describe("buildDtsWorkbenchRows", () => {
           ]
         },
         rawValue: "/bits/ 16 <1 2>, <3 4>"
+      },
+      {
+        ...binding,
+        id: "binding-empty-cell-groups",
+        propertyKey: "empty_cell_groups_property",
+        effectiveValue: { kind: "cells", bits: 32, groups: [] },
+        rawValue: "<>"
       }
     ];
 
@@ -420,7 +427,8 @@ describe("buildDtsWorkbenchRows", () => {
     expect(rows.map((row) => row.valueShapeSummary)).toEqual([
       "empty property",
       "mixed · 2 segments",
-      "cell-array · 16 bit · 2 groups · 2 cells per group"
+      "cell-array · 16 bit · 2 groups · 2 cells per group",
+      "cell-array · 32 bit · 0 groups · 0 cells per group"
     ]);
     expect(rows.every((row) => row.valueShapeSummary.length > 0)).toBe(true);
   });
