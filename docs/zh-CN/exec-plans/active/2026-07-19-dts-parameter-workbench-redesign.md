@@ -167,15 +167,15 @@ setPendingDrafts((current) => [
 
 ## 任务 9：可见验收、双语文档和最终门禁
 
-- [ ] 更新 PARAM-TOPOLOGY-BROWSE-001、PARAM-TOPOLOGY-EDIT-001、PARAM-HAPPY-001，通过可见工作台执行搜索→树→行→详情→typed draft→本轮修改→角色提交→审核→merge。
-- [ ] 不增加 repository/DB 业务绕过。
-- [ ] 更新中英文 FRONTEND，记录 API 模式是融合语义工作台，不是纯拓扑替代或旧推荐值表。
-- [ ] 审阅并记录 browser requirement 和 operation ID。
-- [ ] 运行 contract:check、docs:check、build、test:all、git diff --check。
-- [ ] 使用 playwright-cli 在 1440×900、768×1024、390×844 完成 snapshot、screenshot、console、network、交互和无溢出检查。
-- [ ] 运行聚焦 topology acceptance、无 --skip-preflight/--skip-gates 的标准 local-non-hdc browser acceptance，以及 acceptance:evidence。
-- [ ] 只从完整干净成功 full run 发布 generated evidence。
-- [ ] 完成文档门禁后提交 test(parameters): verify integrated DTS workbench acceptance。
+- [x] 更新 PARAM-TOPOLOGY-BROWSE-001、PARAM-TOPOLOGY-EDIT-001、PARAM-HAPPY-001，通过可见工作台执行搜索→树→行→详情→typed draft→本轮修改→角色提交→审核→merge。
+- [x] 不增加 repository/DB 业务绕过。
+- [x] 更新中英文 FRONTEND，记录 API 模式是融合语义工作台，不是纯拓扑替代或旧推荐值表。
+- [x] 审阅并记录 browser requirement 和 operation ID。
+- [x] 运行 contract:check、docs:check、build、test:all、git diff --check。
+- [x] 使用 playwright-cli 在 1440×900、768×1024、390×844 完成 snapshot、screenshot、console、network、交互和无溢出检查。
+- [x] 运行聚焦 topology acceptance、无 --skip-preflight/--skip-gates 的标准 local-non-hdc browser acceptance，以及 acceptance:evidence。
+- [x] 只从完整干净成功 full run 发布 generated evidence。
+- [x] 完成文档门禁后提交 test(parameters): verify integrated DTS workbench acceptance。
 
 ~~~ts
 await page.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
@@ -183,6 +183,13 @@ await page.getByRole("treeitem", { name: /sc8562@6E/ }).click();
 await expect(page.getByRole("row", { name: /gpio_int/ })).toContainText("<&gpio13 29 0>");
 await page.getByRole("button", { name: "查看 gpio_int" }).click();
 ~~~
+
+### 任务 9 结果（2026-07-19）
+
+拓扑验收继续使用 `PARAM-TOPOLOGY-BROWSE-001`、
+`PARAM-TOPOLOGY-EDIT-001` 和 `PARAM-HAPPY-001`，并通过融合工作台验证语义搜索、真实源/生效嵌套上下文、`gpio_int` 详情（raw 值与 value shape）、类型化草稿/本轮修改区、可见角色审核、语义合入回写、reload 和 base 不可变性。选择器已更新为 `DTS 参数工作台`、`搜索 DTS 参数`、`源 DTS` 和 `生效 DTS`；没有增加 repository 或直接业务数据库绕过。
+
+浏览器矩阵要求 1440×900、768×1024、390×844，并包含 snapshot/screenshot、console、network、焦点和页面溢出检查。标准 `acceptance:browser` 必须诚实记录外部 readiness 结果：`deviceGateway`、`xiaozeLlm`、`backups` 可能阻断外层 runner；隔离 topology/full evidence 即使通过，也不得覆盖 `latest-full` 或被描述为生产/cutover 就绪。TD-042 在合法干净非客户快照 apply → cutover → 整库 restore → old API smoke 演练完成前继续为 BLOCKER。
 
 ## 实现约束
 

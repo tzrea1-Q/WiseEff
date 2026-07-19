@@ -300,8 +300,9 @@ npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.int
 | 无损规格身份 | `specIdentity.test.ts`、`draftSpecWorkflow.integration.test.ts` | `vendor,limit` ≠ `vendor-limit`；sanitize 不入哈希；碰撞审计 fail-closed |
 | 全局激活权限 | `globalSpecActivate.authz.test.ts` | 组织 Admin 激活全局 draft → 403；本组织 draft 可激活；读/绑定全局仍允许 |
 | 完整 valueShape 激活 | `DraftSpecActivatePanel.test.tsx`、`specCompleteness.ts` | gpio_int cellsPerGroup=3 保留；不完整形状阻断 |
+| 融合 DTS 工作台 | `ParametersPage.test.tsx`、`DtsParameterWorkbench.test.tsx`、`DtsTopologyNavigator.test.tsx`、`DtsBindingDetailDialog.test.tsx`、`DtsBindingDraftTray.test.tsx` | 成熟 `WorkbenchLayout` + 真实语义嵌套导航、搜索/筛选、raw 值/shape/provenance 详情、本轮修改区、项目安全 typed 提交与响应式可访问性；无旧推荐值/教学回退 |
 | 租户作用域清理 | `semanticFixtureCleanup.isolation.test.ts` | 其他组织/项目同名 Config Set 不受影响 |
-| submit→review→merge 验收 | `parameter-topology.acceptance.spec.ts`、`disposablePostCutoverRuntime.ts` | 自动创建可丢弃数据库，执行 migrations+identity cutover，校验 marker/run 一致性，再证明真实 set/delete 角色链、writeback、candidate AST/tombstone、reload 与 base 不可变，最后销毁数据库。因无 delete UI 控件，delete 创建/提交走公开 API；角色决议与 merge 仍走 UI。 |
+| submit→review→merge 验收 | `parameter-topology.acceptance.spec.ts`、`disposablePostCutoverRuntime.ts` | 先通过融合 DTS 工作台执行语义搜索/树/详情/本轮修改，再自动创建可丢弃数据库，执行 migrations+identity cutover，校验 marker/run 一致性，并证明真实 set/delete 角色链、writeback、candidate AST/tombstone、reload 与 base 不可变，最后销毁数据库。因无 delete UI 控件，delete 创建/提交走公开 API；角色决议与 merge 仍走 UI。 |
 | assignee/审阅 UI 验收 | `parameters-negative.acceptance.spec.ts`、`parameters.acceptance.spec.ts` | 三个可见下拉框使用 API 作用域 eligible user；production HMAC 浏览器身份分别执行硬件、软件与合入 UI 操作。不得用 DB 角色查询或同一 Admin token 替代 |
 | 项目切换隔离 | `ApiProjectTopologyWorkspace.test.tsx` rerender + deferred-response 回归、浏览器交互 | 项目 A 的 candidate/draft/message 不得影响项目 B；B 从 `current` 开始；迟到的 A 草稿响应被忽略且不能加载 B 候选人。 |
 | Evidence 运行隔离 | `check-operation-evidence.test.ts`、`run-browser-acceptance.test.ts` | 完整 record/artifact 共享 run+commit 目录；focused 保留 `latest-full`；混合运行 fail-closed。 |

@@ -408,13 +408,32 @@ await page.getByRole("button", { name: "查看 gpio_int" }).click();
 await expect(page.getByRole("dialog", { name: "gpio_int 参数详情" })).toContainText("phandle-list · 32 bit · 3 cells");
 ~~~
 
+### Task 9 outcome (2026-07-19)
+
+The topology acceptance keeps `PARAM-TOPOLOGY-BROWSE-001`,
+`PARAM-TOPOLOGY-EDIT-001`, and `PARAM-HAPPY-001` and now drives the integrated
+workbench contract: semantic search, nested source/effective context,
+`gpio_int` detail (including raw value and value shape), typed draft/current
+edits, visible role review, semantic merge/writeback, reload, and immutable
+base evidence. Selectors use `DTS 参数工作台`, `搜索 DTS 参数`, `源 DTS`, and
+`生效 DTS`; no repository or direct business-database bypass was added.
+
+The required browser matrix is 1440×900, 768×1024, and 390×844 with
+snapshot/screenshot, console, network, focus, and document-overflow checks.
+Any standard `acceptance:browser` run remains an honest external-readiness
+result: `deviceGateway`, `xiaozeLlm`, and `backups` can block the outer runner.
+Isolated topology/full evidence may pass, but must not overwrite the
+`latest-full` namespace or be described as production/cutover readiness.
+TD-042 remains a BLOCKER until a clean non-customer snapshot
+apply → cutover → whole-database restore → old-API smoke rehearsal succeeds.
+
 Continue through reason, typed draft, current edits, role submit, review, merge, reload, and base immutability. Do not add repository/DB business bypasses.
 
-- [ ] **Step 2: Update docs and coverage**
+- [x] **Step 2: Update docs and coverage**
 
 Document API /parameters as an integrated semantic workbench, neither a topology-only replacement nor the legacy recommendation table. Record affected requirement/operation IDs or why existing IDs remain sufficient.
 
-- [ ] **Step 3: Run static/full gates**
+- [x] **Step 3: Run static/full gates**
 
 ~~~bash
 npm run contract:check
@@ -424,11 +443,11 @@ npm run test:all
 git diff --check
 ~~~
 
-- [ ] **Step 4: Run required browser verification**
+- [x] **Step 4: Run required browser verification**
 
 Use playwright-cli at 1440×900, 768×1024, and 390×844. Exercise search, nested selection, detail, edit, drafts, clear filters, and project switch. Capture snapshot/screenshot; check console, network, focus, overlap, clipping, and document overflow.
 
-- [ ] **Step 5: Run acceptance/evidence**
+- [x] **Step 5: Run acceptance/evidence**
 
 ~~~bash
 npm run acceptance:e2e -- e2e/acceptance/parameter-topology.acceptance.spec.ts
@@ -438,7 +457,7 @@ npm run acceptance:evidence
 
 Do not use --skip-preflight or --skip-gates for the claimed standard run. Publish evidence only from a completed clean full run. Keep TD-042/external blockers accurate.
 
-- [ ] **Step 6: Complete documentation gate and commit**
+- [x] **Step 6: Complete documentation gate and commit**
 
 ~~~bash
 git add e2e/acceptance/parameter-topology.acceptance.spec.ts docs src

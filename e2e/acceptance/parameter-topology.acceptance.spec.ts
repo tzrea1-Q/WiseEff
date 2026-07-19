@@ -579,20 +579,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`,
     );
     await dismissXiaozeHint(page);
-    const workspace = page.getByRole("region", { name: "项目拓扑工作区" });
+    const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
     await expect(workspace).toBeVisible({ timeout: 30_000 });
     await expect(workspace).toHaveAttribute("data-config-set-id", configSetId);
     await expect(page.getByRole("region", { name: "检索参数表" })).toHaveCount(0);
     await expect(page.getByText("推荐值", { exact: false })).toHaveCount(0);
 
-    await workspace.getByRole("radio", { name: "源树" }).check();
+    await workspace.getByRole("button", { name: "源 DTS" }).click();
     await expect(workspace.getByRole("treeitem", { name: /amba/ }).first()).toBeVisible({
       timeout: 20_000
     });
     await expect(workspace.getByRole("treeitem", { name: /i2c@FDF5E000/ }).first()).toBeVisible();
     await expect(workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first()).toBeVisible();
 
-    await workspace.getByRole("radio", { name: "生效树" }).check();
+    await workspace.getByRole("button", { name: "生效 DTS" }).click();
     await expect(workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first()).toBeVisible();
 
     const topologyApi = await request.get(
@@ -656,15 +656,15 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
     expect(baseBindingSnapshot).toBeTruthy();
 
-    await workspace.getByRole("searchbox", { name: "搜索绑定" }).fill("gpio_int");
+    await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
     const gpioCells = workspace.getByRole("cell", { name: "gpio_int" });
     await expect
       .poll(async () => gpioCells.count(), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(2);
     await workspace.getByRole("cell", { name: "sc8562@6E", exact: true }).click();
-    const detail = workspace.getByRole("region", { name: "绑定详情" });
+    const detail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
     await expect(detail).toBeVisible();
-    await expect(detail).toHaveAttribute("data-binding-id", scBinding!.id);
+    await expect(detail.getByText(scBinding!.id, { exact: true })).toBeVisible();
     await expect(detail.getByRole("region", { name: "来源链" })).toBeVisible();
 
     await recordOperationEvidence({
@@ -810,14 +810,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`,
     );
     await dismissXiaozeHint(page);
-    const editWorkspace = page.getByRole("region", { name: "项目拓扑工作区" });
+    const editWorkspace = page.getByRole("region", { name: "DTS 参数工作台" });
     const createTypedDraftInAurora = async () => {
       await expect(editWorkspace).toHaveAttribute("data-config-set-id", configSetId, { timeout: 30_000 });
-      await editWorkspace.getByRole("searchbox", { name: "搜索绑定" }).fill("gpio_int");
+      await editWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
       await expect.poll(async () => editWorkspace.getByRole("cell", { name: "gpio_int" }).count()).toBeGreaterThanOrEqual(2);
       await editWorkspace.getByRole("cell", { name: "sc8562@6E", exact: true }).click();
-      const editDetail = editWorkspace.getByRole("region", { name: "绑定详情" });
-      await expect(editDetail).toHaveAttribute("data-binding-id", scBinding!.id);
+      const editDetail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
+      await expect(editDetail.getByText(scBinding!.id, { exact: true })).toBeVisible();
       await editDetail.getByLabel("目标值 raw").fill(editedRaw);
       await editDetail.getByLabel("修改原因").fill(typedEditReason);
       const responsePromise = page.waitForResponse((response) =>
@@ -1451,13 +1451,13 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       "software-user",
       `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
     );
-    const deleteReloadWorkspace = page.getByRole("region", { name: "项目拓扑工作区" });
+    const deleteReloadWorkspace = page.getByRole("region", { name: "DTS 参数工作台" });
     await expect(deleteReloadWorkspace).toHaveAttribute(
       "data-revision-id",
       deleteMergeEvidence.candidateRevisionId!,
       { timeout: 30_000 }
     );
-    await deleteReloadWorkspace.getByRole("searchbox", { name: "搜索绑定" }).fill("gpio_int");
+    await deleteReloadWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
     await expect(deleteReloadWorkspace.getByRole("cell", { name: "mt5788@55", exact: true })).toHaveCount(0);
     await expect(deleteReloadWorkspace.getByRole("cell", { name: "sc8562@6E", exact: true })).toBeVisible();
 
@@ -1863,17 +1863,18 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await page.goto(`${disposableRuntime.frontendUrl}/parameters?project=${projectId}`);
     await page.reload();
     await dismissXiaozeHint(page);
-    const workspaceAfter = page.getByRole("region", { name: "项目拓扑工作区" });
+    const workspaceAfter = page.getByRole("region", { name: "DTS 参数工作台" });
     await expect(workspaceAfter).toBeVisible({ timeout: 30_000 });
-    await workspaceAfter.getByRole("searchbox", { name: "搜索绑定" }).fill("gpio_int");
+    await workspaceAfter.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
     await expect(workspaceAfter.getByRole("cell", { name: "sc8562@6E", exact: true })).toBeVisible({
       timeout: 20_000
     });
     await workspaceAfter.getByRole("cell", { name: "sc8562@6E", exact: true }).click();
-    const detailAfter = workspaceAfter.getByRole("region", { name: "绑定详情" });
-    await expect(detailAfter).toHaveAttribute("data-binding-id", /.+/);
+    const detailAfter = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
+    await expect(detailAfter).toBeVisible();
     await expect(detailAfter.getByRole("region", { name: "来源链" })).toBeVisible();
-    const bindingIdAfter = await detailAfter.getAttribute("data-binding-id");
+    const bindingIdAfter = (await detailAfter.locator("dd code").allTextContents())[0]?.trim() ?? "";
+    expect(bindingIdAfter).toBe(scBinding!.id);
     const valueAfter = await detailAfter.getByLabel("目标值 raw").inputValue();
 
     const persistedDb = await withPgClient(async (client) => {

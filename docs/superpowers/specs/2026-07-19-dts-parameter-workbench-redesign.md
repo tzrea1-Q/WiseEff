@@ -3,7 +3,7 @@
 > Chinese: [中文](../../zh-CN/superpowers/specs/2026-07-19-dts-parameter-workbench-redesign.md)
 
 Date: 2026-07-19
-Status: Design confirmed; implementation planning pending written spec review
+Status: Design confirmed; integrated implementation and acceptance updates complete, pending parent review
 
 ## Context
 
@@ -355,3 +355,16 @@ relevant topology acceptance/evidence checks before completion.
 - The current product does not expose a delete-authoring control. Delete
   rendering remains read/acceptance-compatible without inventing a new authoring
   affordance.
+
+## Acceptance outcome
+
+The visible acceptance contract remains `PARAM-TOPOLOGY-BROWSE-001`,
+`PARAM-TOPOLOGY-EDIT-001`, and `PARAM-HAPPY-001`. It exercises the integrated
+`WorkbenchLayout` surface rather than a topology-only replacement: search,
+nested source/effective selection, the `gpio_int` semantic row and detail
+dialog, typed draft/current edits, role review, semantic merge/writeback, and
+reload/base immutability. API mode continues to forbid recommendation and
+teaching fallback semantics. Browser verification covers 1440×900, 768×1024,
+and 390×844. Standard outer acceptance may remain blocked by
+`deviceGateway`/`xiaozeLlm`/`backups`; isolated evidence does not close TD-042 or
+prove production/cutover readiness.

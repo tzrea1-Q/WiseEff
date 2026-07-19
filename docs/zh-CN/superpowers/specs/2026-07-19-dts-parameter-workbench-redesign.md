@@ -3,7 +3,7 @@
 > English: [English](../../../superpowers/specs/2026-07-19-dts-parameter-workbench-redesign.md)
 
 日期：2026-07-19
-状态：设计方向已确认，等待书面规格审阅后进入实现计划
+状态：设计已确认；融合实现与验收文档已完成，等待父智能体 Review
 
 ## 背景
 
@@ -248,3 +248,14 @@ DtsParameterWorkbenchRow
 
 - 当前 binding DTO 不一定携带 `compatible` 或完整规格详情。首版只展示 API 已证明的字段，缺失处明确显示“不可用”；增加新 endpoint 需要另行设计 API。
 - 当前产品没有 delete authoring 控件。删除展示保持读取/验收兼容，不虚构新的删除入口。
+
+## 验收结果
+
+可见验收继续使用 `PARAM-TOPOLOGY-BROWSE-001`、
+`PARAM-TOPOLOGY-EDIT-001` 和 `PARAM-HAPPY-001`。流程驱动的是融合后的
+`WorkbenchLayout`，不是纯拓扑替代：覆盖搜索、真实源/生效嵌套选择、
+`gpio_int` 语义行与详情弹窗、typed draft/本轮修改区、角色审核、语义合入
+回写、reload 和 base 不可变性。API 模式继续禁止推荐值和教学回退语义。
+浏览器矩阵覆盖 1440×900、768×1024、390×844。标准外层验收可能被
+`deviceGateway`、`xiaozeLlm`、`backups` readiness 阻断；隔离 evidence 不会关闭
+TD-042，也不证明 production/cutover ready。
