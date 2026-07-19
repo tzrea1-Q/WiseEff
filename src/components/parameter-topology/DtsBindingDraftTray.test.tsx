@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { WorkflowAssigneeCandidates } from "@/application/ports/ParameterRepository";
@@ -218,5 +218,152 @@ describe("DtsBindingDraftTray", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent(/不同 candidate revision.*不能批量提交/);
+  });
+
+  it.each([
+    {
+      name: "set with empty raw text",
+      invalidDraft: draft({ action: "set", rawText: "  " }),
+      message: /set.*非空 rawText/
+    },
+    {
+      name: "delete with a non-empty raw value",
+      invalidDraft: draft({ action: "delete", rawText: "<&gpio13 30 0>" }),
+      message: /delete.*空 tombstone/
+    }
+  ])("blocks an action/value mismatch: $name", ({ invalidDraft, message }) => {
+    const onSubmit = vi.fn();
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[invalidDraft]}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(message);
+    const submit = screen.getByRole("button", { name: "提交审核" });
+    expect(submit).toBeDisabled();
+    fireEvent.click(submit);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("ignores an old resolve after the same draft id is replaced and submits only the new batch", async () => {
+    let resolveOld!: () => void;
+    let resolveNew!: () => void;
+    const oldRequest = new Promise<void>((resolve) => {
+      resolveOld = resolve;
+    });
+    const newRequest = new Promise<void>((resolve) => {
+      resolveNew = resolve;
+    });
+    const onSubmit = vi.fn()
+      .mockImplementationOnce(() => oldRequest)
+      .mockImplementationOnce(() => newRequest);
+    const { rerender } = render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    expect(screen.getByRole("button", { name: "提交中…" })).toBeDisabled();
+
+    rerender(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft({
+          candidateRevisionId: "candidate-2",
+          rawText: "<&gpio13 31 0>",
+          reason: "Replacement reason"
+        })]}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    const newSubmit = await screen.findByRole("button", { name: "提交审核" });
+    await waitFor(() => expect(newSubmit).toBeEnabled());
+    fireEvent.click(newSubmit);
+    expect(onSubmit).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveOld();
+      await oldRequest;
+    });
+    expect(screen.queryByText(/已提交正式审核/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交中…" })).toBeDisabled();
+
+    await act(async () => {
+      resolveNew();
+      await newRequest;
+    });
+    expect(await screen.findByText(/已提交正式审核/)).toBeVisible();
+    const replacementItem = onSubmit.mock.calls[1][0].items[0];
+    expect(replacementItem).toEqual(expect.objectContaining({
+      draftId: "draft-typed-1",
+      targetValue: "<&gpio13 31 0>",
+      reason: "Replacement reason"
+    }));
+    expect(replacementItem).not.toHaveProperty("candidateRevisionId");
+  });
+
+  it("ignores an old rejection after the same draft id is replaced and allows the new batch to submit", async () => {
+    let rejectOld!: (error: Error) => void;
+    const oldRequest = new Promise<void>((_resolve, reject) => {
+      rejectOld = reject;
+    });
+    const onSubmit = vi.fn()
+      .mockImplementationOnce(() => oldRequest)
+      .mockResolvedValueOnce(undefined);
+    const { rerender } = render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    rerender(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft({
+          candidateRevisionId: "candidate-2",
+          rawText: "<&gpio13 31 0>",
+          reason: "Replacement reason"
+        })]}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    const newSubmit = await screen.findByRole("button", { name: "提交审核" });
+    await waitFor(() => expect(newSubmit).toBeEnabled());
+    await act(async () => {
+      rejectOld(new Error("old request failed"));
+      await oldRequest.catch(() => undefined);
+    });
+    expect(screen.queryByText("old request failed")).not.toBeInTheDocument();
+    expect(newSubmit).toBeEnabled();
+
+    fireEvent.click(newSubmit);
+    expect(await screen.findByText(/已提交正式审核/)).toBeVisible();
+    expect(onSubmit).toHaveBeenCalledTimes(2);
   });
 });

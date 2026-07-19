@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   SubmitParameterChangesInput,
@@ -48,6 +48,40 @@ function candidateBlocker(drafts: PendingBindingDraft[]): string | null {
     : null;
 }
 
+function actionValueBlocker(drafts: PendingBindingDraft[]): string | null {
+  const emptySet = drafts.some((draft) => draft.action === "set" && !nonBlank(draft.rawText));
+  if (emptySet) {
+    return "set action 必须携带非空 rawText，已阻止提交。";
+  }
+  const valuedDelete = drafts.some((draft) => draft.action === "delete" && draft.rawText !== "");
+  return valuedDelete
+    ? "delete action 必须携带精确空 tombstone rawText，已阻止提交。"
+    : null;
+}
+
+function draftBatchSignature(projectId: string, drafts: PendingBindingDraft[]): string {
+  const items = drafts
+    .map((draft) => ({
+      draftId: draft.draftId,
+      candidateRevisionId: draft.candidateRevisionId,
+      projectParameterBindingId: draft.projectParameterBindingId,
+      parameterSpecId: draft.parameterSpecId,
+      action: draft.action,
+      rawText: draft.rawText,
+      reason: draft.reason,
+      currentRawValue: draft.currentRawValue,
+      writeTarget: {
+        role: draft.writeTarget.role,
+        propertyKey: draft.writeTarget.propertyKey,
+        targetRef: draft.writeTarget.targetRef ?? null
+      },
+      overlayFileId: draft.overlayFileId,
+      overlayFileName: draft.overlayFileName
+    }))
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  return JSON.stringify({ projectId, items });
+}
+
 export function DtsBindingDraftTray({
   projectId,
   drafts,
@@ -63,12 +97,30 @@ export function DtsBindingDraftTray({
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const requestGenerationRef = useRef(0);
+  const mountedRef = useRef(true);
 
-  const draftIdentityKey = drafts.map((draft) => draft.draftId).join(":");
+  const batchSignature = useMemo(
+    () => draftBatchSignature(projectId, drafts),
+    [drafts, projectId]
+  );
+  const currentSignatureRef = useRef(batchSignature);
+  currentSignatureRef.current = batchSignature;
+
   useEffect(() => {
+    requestGenerationRef.current += 1;
+    setSubmitting(false);
     setSubmitted(false);
     setSubmitError(null);
-  }, [draftIdentityKey]);
+  }, [batchSignature]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestGenerationRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     setHardwareCommitterId(candidates?.hardwareCommitters[0]?.id ?? "");
@@ -81,13 +133,14 @@ export function DtsBindingDraftTray({
     [drafts, projectId]
   );
   const candidateError = useMemo(() => candidateBlocker(drafts), [drafts]);
+  const actionValueError = useMemo(() => actionValueBlocker(drafts), [drafts]);
   const roleError = candidates && !(hardwareCommitterId && softwareCommitterId && softwareUserId)
     ? "项目缺少完整的硬件 MDE、软件 MDE 或软件开发候选人，已阻止提交。"
     : null;
   const submissionEntryError = onSubmit
     ? null
     : "正式 binding 提交入口未配置，已阻止提交。";
-  const blocker = candidatesError ?? draftIdentityError ?? candidateError ?? roleError ?? submissionEntryError;
+  const blocker = candidatesError ?? draftIdentityError ?? actionValueError ?? candidateError ?? roleError ?? submissionEntryError;
   const canSubmit = Boolean(
     drafts.length > 0 &&
     candidates &&
@@ -181,6 +234,13 @@ export function DtsBindingDraftTray({
           disabled={!canSubmit}
           onClick={() => {
             if (!onSubmit || !canSubmit) return;
+            const requestSignature = batchSignature;
+            const requestGeneration = requestGenerationRef.current + 1;
+            requestGenerationRef.current = requestGeneration;
+            const requestIsCurrent = () =>
+              mountedRef.current &&
+              requestGenerationRef.current === requestGeneration &&
+              currentSignatureRef.current === requestSignature;
             setSubmitting(true);
             setSubmitError(null);
             void onSubmit({
@@ -196,6 +256,7 @@ export function DtsBindingDraftTray({
               assignees: { hardwareCommitterId, softwareCommitterId, softwareUserId }
             })
               .then((result) => {
+                if (!requestIsCurrent()) return;
                 if (result && "notification" in result) {
                   setSubmitError(result.notification);
                   return;
@@ -203,9 +264,12 @@ export function DtsBindingDraftTray({
                 setSubmitted(true);
               })
               .catch((error: unknown) => {
+                if (!requestIsCurrent()) return;
                 setSubmitError(error instanceof Error ? error.message : "提交审核失败。");
               })
-              .finally(() => setSubmitting(false));
+              .finally(() => {
+                if (requestIsCurrent()) setSubmitting(false);
+              });
           }}
         >
           {submitting ? "提交中…" : "提交审核"}
