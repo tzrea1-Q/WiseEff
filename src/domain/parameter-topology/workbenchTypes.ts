@@ -12,16 +12,17 @@ export type DtsWorkbenchGovernanceState = "valid" | "attention" | "blocked";
  * Presentation model for the mature parameter workbench.
  * Stable identity stays in the binding/spec fields; topology paths are display context only.
  */
-export type DtsWorkbenchRow = {
+export type DtsParameterWorkbenchRow = {
   bindingId: string;
   parameterSpecId: string;
   parameterSpecVersionId: string;
   logicalNodeId: string | null;
   propertyKey: string;
   driverModule: string | null;
+  compatible: string | null;
   instanceName: string | null;
   unitAddress: string | null;
-  topologyPath: string;
+  topologyPath: string | null;
   topologyNodeId: string | null;
   sourceOccurrenceId: string | null;
   sourceFileName: string | null;
@@ -38,3 +39,6 @@ export type DtsWorkbenchRow = {
   searchText: string;
   view: TopologyView;
 };
+
+/** @deprecated Prefer the explicit DtsParameterWorkbenchRow contract name. */
+export type DtsWorkbenchRow = DtsParameterWorkbenchRow;

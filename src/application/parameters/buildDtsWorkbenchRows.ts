@@ -4,15 +4,18 @@ import type {
   EffectiveTopologyNode,
   IdentityMappingTask,
   ProjectParameterBinding,
+  SourceTopologyProperty,
   SourceTopologyNode,
   TopologyView
 } from "@/domain/parameter-topology/types";
 import type {
   DtsWorkbenchGovernanceState,
-  DtsWorkbenchRow
+  DtsParameterWorkbenchRow
 } from "@/domain/parameter-topology/workbenchTypes";
 
 export type BuildDtsWorkbenchRowsInput = {
+  projectId: string;
+  configRevisionId: string;
   view: TopologyView;
   bindings: ProjectParameterBinding[];
   sourceNodes: SourceTopologyNode[];
@@ -24,21 +27,27 @@ function nodeSegment(node: { name: string; unitAddress?: string }): string {
   return `${node.name}${node.unitAddress ? `@${node.unitAddress}` : ""}`;
 }
 
-function buildParentPath<T extends { name: string; unitAddress?: string }>(
+function buildParentPath<T extends { id: string; name: string; unitAddress?: string }>(
   node: T | undefined,
-  getParent: (node: T) => T | undefined
+  getParentId: (node: T) => string | null,
+  nodesById: Map<string, T>
 ): string | null {
   if (!node) return null;
 
   const segments: string[] = [];
-  const visited = new Set<T>();
+  const visited = new Set<string>();
   let current: T | undefined = node;
-  while (current && !visited.has(current)) {
-    visited.add(current);
-    segments.unshift(nodeSegment(current));
-    current = getParent(current);
+  while (current) {
+    if (visited.has(current.id)) return null;
+    visited.add(current.id);
+    if (current.name !== "/") segments.unshift(nodeSegment(current));
+
+    const parentId = getParentId(current);
+    if (parentId === null) return segments.length > 0 ? `/${segments.join("/")}` : "/";
+    current = nodesById.get(parentId);
+    if (!current) return null;
   }
-  return `/${segments.join("/")}`;
+  return null;
 }
 
 function summarizeDtsValue(value: DtsValue): string {
@@ -46,20 +55,26 @@ function summarizeDtsValue(value: DtsValue): string {
     case "boolean":
       return "boolean";
     case "empty":
-      return "empty";
+      return "empty property";
     case "strings":
-      return `${value.values.length === 1 ? "string" : "string-list"} · items=${value.values.length}`;
+      return `${value.values.length === 1 ? "string" : "string-list"} · ${value.values.length} ${
+        value.values.length === 1 ? "item" : "items"
+      }`;
     case "bytes":
-      return `byte-array · length=${value.values.length}`;
+      return `byte-array · ${value.values.length} bytes`;
     case "mixed":
-      return `mixed · segments=${value.segments.length}`;
+      return `mixed · ${value.segments.length} ${value.segments.length === 1 ? "segment" : "segments"}`;
     case "cells": {
       const kind = value.groups.some((group) => group.some((cell) => cell.kind === "phandle"))
         ? "phandle-list"
         : "cell-array";
       const groupSizes = [...new Set(value.groups.map((group) => group.length))];
-      const cellsPerGroup = groupSizes.length === 1 ? String(groupSizes[0]) : groupSizes.join("/");
-      return `${kind} · bits=${value.bits} · groups=${value.groups.length} · cellsPerGroup=${cellsPerGroup}`;
+      if (value.groups.length === 1) {
+        const cellCount = value.groups[0]?.length ?? 0;
+        return `${kind} · ${value.bits} bit · ${cellCount} ${cellCount === 1 ? "cell" : "cells"}`;
+      }
+      const cellsPerGroup = groupSizes.length === 0 ? "0" : groupSizes.join("/");
+      return `${kind} · ${value.bits} bit · ${value.groups.length} groups · ${cellsPerGroup} cells per group`;
     }
   }
 }
@@ -73,44 +88,84 @@ function resolveGovernanceState(
   return "valid";
 }
 
-function propertyEffects(
-  binding: ProjectParameterBinding,
-  effectiveNode: EffectiveTopologyNode | undefined
-): EffectiveTopologyEffect[] {
-  return (effectiveNode?.effects ?? [])
-    .filter((effect) => effect.propertyName === binding.propertyKey)
-    .sort((left, right) => left.sourceOrder - right.sourceOrder);
+type SourcePropertyIndex = {
+  byId: Map<string, SourceTopologyProperty>;
+  latestByName: Map<string, SourceTopologyProperty>;
+};
+
+function indexSourceProperties(nodes: SourceTopologyNode[]): Map<string, SourcePropertyIndex> {
+  return new Map(
+    nodes.map((node) => {
+      const byId = new Map<string, SourceTopologyProperty>();
+      const latestByName = new Map<string, SourceTopologyProperty>();
+      for (const property of node.properties) {
+        byId.set(property.id, property);
+        const latest = latestByName.get(property.propertyName);
+        if (!latest || property.sourceOrder > latest.sourceOrder) {
+          latestByName.set(property.propertyName, property);
+        }
+      }
+      return [node.id, { byId, latestByName }];
+    })
+  );
+}
+
+function indexPropertyEffects(
+  nodes: EffectiveTopologyNode[]
+): Map<string, Map<string, EffectiveTopologyEffect[]>> {
+  const result = new Map<string, Map<string, EffectiveTopologyEffect[]>>();
+  for (const node of nodes) {
+    const byProperty = new Map<string, EffectiveTopologyEffect[]>();
+    for (const effect of node.effects) {
+      if (!effect.propertyName) continue;
+      const propertyEffects = byProperty.get(effect.propertyName) ?? [];
+      propertyEffects.push(effect);
+      byProperty.set(effect.propertyName, propertyEffects);
+    }
+    for (const propertyEffects of byProperty.values()) {
+      propertyEffects.sort((left, right) => left.sourceOrder - right.sourceOrder);
+    }
+    result.set(node.logicalNodeId, byProperty);
+  }
+  return result;
 }
 
 function latestSource(
   binding: ProjectParameterBinding,
   effects: EffectiveTopologyEffect[],
-  sourceById: Map<string, SourceTopologyNode>
+  sourceById: Map<string, SourceTopologyNode>,
+  sourcePropertiesByNodeId: Map<string, SourcePropertyIndex>
 ): { node: SourceTopologyNode | undefined; line: number | null } {
-  const effect = effects.reduce<EffectiveTopologyEffect | undefined>(
-    (latest, candidate) => (!latest || candidate.sourceOrder > latest.sourceOrder ? candidate : latest),
-    undefined
-  );
+  const effect = effects.at(-1);
   const node = effect?.nodeOccurrenceId ? sourceById.get(effect.nodeOccurrenceId) : undefined;
   if (!node) return { node: undefined, line: null };
 
-  const property = effect?.propertyOccurrenceId
-    ? node.properties.find((candidate) => candidate.id === effect.propertyOccurrenceId)
-    : undefined;
-  const fallbackProperty = [...node.properties]
-    .filter((candidate) => candidate.propertyName === binding.propertyKey)
-    .sort((left, right) => right.sourceOrder - left.sourceOrder)[0];
+  const propertyIndex = sourcePropertiesByNodeId.get(node.id);
+  const property = effect?.propertyOccurrenceId ? propertyIndex?.byId.get(effect.propertyOccurrenceId) : undefined;
+  const fallbackProperty = propertyIndex?.latestByName.get(binding.propertyKey);
   return { node, line: property?.startLine ?? fallbackProperty?.startLine ?? null };
 }
 
-function hasOpenMapping(binding: ProjectParameterBinding, tasks: IdentityMappingTask[]): boolean {
-  const logicalNodeId = binding.logicalNodeId;
-  if (!logicalNodeId) return false;
-  return tasks.some(
-    (task) =>
-      task.status === "open" &&
-      (task.previousLogicalNodeId === logicalNodeId || task.candidateLogicalNodeIds.includes(logicalNodeId))
-  );
+function indexOpenMappingLogicalIds(
+  projectId: string,
+  configRevisionId: string,
+  tasks: IdentityMappingTask[]
+): Set<string> {
+  const result = new Set<string>();
+  for (const task of tasks) {
+    if (
+      task.status !== "open" ||
+      task.projectId !== projectId ||
+      task.configRevisionId !== configRevisionId
+    ) {
+      continue;
+    }
+    if (task.previousLogicalNodeId) result.add(task.previousLogicalNodeId);
+    for (const candidateLogicalNodeId of task.candidateLogicalNodeIds) {
+      result.add(candidateLogicalNodeId);
+    }
+  }
+  return result;
 }
 
 function buildSearchText(parts: Array<string | number | null | undefined>): string {
@@ -124,29 +179,35 @@ function buildSearchText(parts: Array<string | number | null | undefined>): stri
  * Converts authoritative semantic bindings into display rows without deriving identity from paths.
  */
 export function buildDtsWorkbenchRows({
+  projectId,
+  configRevisionId,
   view,
   bindings,
   sourceNodes,
   effectiveNodes,
   mappingTasks
-}: BuildDtsWorkbenchRowsInput): DtsWorkbenchRow[] {
+}: BuildDtsWorkbenchRowsInput): DtsParameterWorkbenchRow[] {
   const sourceById = new Map(sourceNodes.map((node) => [node.id, node]));
   const effectiveByLogicalId = new Map(effectiveNodes.map((node) => [node.logicalNodeId, node]));
+  const sourcePropertiesByNodeId = indexSourceProperties(sourceNodes);
+  const propertyEffectsByLogicalId = indexPropertyEffects(effectiveNodes);
+  const openMappingLogicalIds = indexOpenMappingLogicalIds(projectId, configRevisionId, mappingTasks);
 
   return bindings.map((binding) => {
     const effectiveNode = binding.logicalNodeId
       ? effectiveByLogicalId.get(binding.logicalNodeId)
       : undefined;
-    const effects = propertyEffects(binding, effectiveNode);
-    const source = latestSource(binding, effects, sourceById);
-    const sourcePath = buildParentPath(source.node, (node) =>
-      node.parentOccurrenceId ? sourceById.get(node.parentOccurrenceId) : undefined
+    const effects = binding.logicalNodeId
+      ? propertyEffectsByLogicalId.get(binding.logicalNodeId)?.get(binding.propertyKey) ?? []
+      : [];
+    const source = latestSource(binding, effects, sourceById, sourcePropertiesByNodeId);
+    const sourcePath = buildParentPath(source.node, (node) => node.parentOccurrenceId, sourceById);
+    const effectivePath = buildParentPath(
+      effectiveNode,
+      (node) => node.parentLogicalNodeId,
+      effectiveByLogicalId
     );
-    const effectivePath = buildParentPath(effectiveNode, (node) =>
-      node.parentLogicalNodeId ? effectiveByLogicalId.get(node.parentLogicalNodeId) : undefined
-    );
-    const topologyPath =
-      (view === "source" ? sourcePath : effectivePath) ?? effectivePath ?? sourcePath ?? binding.locator ?? "/";
+    const topologyPath = view === "source" ? sourcePath : effectivePath;
     const topologyNodeId = view === "source" ? source.node?.id ?? null : effectiveNode?.id ?? null;
     const unitAddress =
       (view === "source" ? source.node?.unitAddress : effectiveNode?.unitAddress) ??
@@ -154,7 +215,7 @@ export function buildDtsWorkbenchRows({
       source.node?.unitAddress ??
       null;
     const valueShapeSummary = summarizeDtsValue(binding.effectiveValue);
-    const mappingOpen = hasOpenMapping(binding, mappingTasks);
+    const mappingOpen = binding.logicalNodeId ? openMappingLogicalIds.has(binding.logicalNodeId) : false;
     const governanceState = resolveGovernanceState(binding, mappingOpen);
 
     return {
@@ -164,6 +225,7 @@ export function buildDtsWorkbenchRows({
       logicalNodeId: binding.logicalNodeId,
       propertyKey: binding.propertyKey,
       driverModule: binding.driverModule,
+      compatible: effectiveNode?.compatible ?? null,
       instanceName: binding.instanceName,
       unitAddress,
       topologyPath,
@@ -183,6 +245,7 @@ export function buildDtsWorkbenchRows({
       searchText: buildSearchText([
         binding.propertyKey,
         binding.driverModule,
+        effectiveNode?.compatible,
         binding.instanceName,
         unitAddress,
         topologyPath,

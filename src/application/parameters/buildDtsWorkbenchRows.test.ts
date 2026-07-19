@@ -6,15 +6,33 @@ import type {
   ProjectParameterBinding,
   SourceTopologyNode
 } from "@/domain/parameter-topology/types";
+import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 
 import { buildDtsWorkbenchRows } from "./buildDtsWorkbenchRows";
 
 const sourceNodes: SourceTopologyNode[] = [
   {
-    id: "occ-amba",
+    id: "occ-root",
     fileVersionId: "file-base",
     fileName: "board.dts",
     parentOccurrenceId: null,
+    name: "/",
+    labels: [],
+    isOverlayRoot: false,
+    nodePath: "/not-used/root",
+    startLine: 1,
+    startColumn: 1,
+    endLine: 100,
+    endColumn: 1,
+    contentHash: "hash-root",
+    sourceOrder: 0,
+    properties: []
+  },
+  {
+    id: "occ-amba",
+    fileVersionId: "file-base",
+    fileName: "board.dts",
+    parentOccurrenceId: "occ-root",
     name: "amba",
     labels: [],
     isOverlayRoot: false,
@@ -126,11 +144,19 @@ const effects: EffectiveTopologyNode["effects"] = [
 
 const effectiveNodes: EffectiveTopologyNode[] = [
   {
+    id: "effective-root",
+    logicalNodeId: "logical-root",
+    locator: "/not-used/root",
+    name: "/",
+    parentLogicalNodeId: null,
+    effects: []
+  },
+  {
     id: "effective-amba",
     logicalNodeId: "logical-amba",
     locator: "/not-used/amba",
     name: "amba",
-    parentLogicalNodeId: null,
+    parentLogicalNodeId: "logical-root",
     effects: []
   },
   {
@@ -148,9 +174,9 @@ const effectiveNodes: EffectiveTopologyNode[] = [
     locator: "/not-used/sc8562",
     name: "sc8562",
     unitAddress: "6E",
-    compatible: "sc8562",
+    compatible: "vendor,sc8562-v2",
     parentLogicalNodeId: "logical-i2c",
-    effects
+    effects: [effects[1], effects[0]]
   }
 ];
 
@@ -194,6 +220,8 @@ const mappingTasks: IdentityMappingTask[] = [
 describe("buildDtsWorkbenchRows", () => {
   it("maps gpio_int into a semantic row using topology parent links and the latest source effect", () => {
     const [row] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
       view: "effective",
       bindings: [binding],
       sourceNodes,
@@ -201,13 +229,15 @@ describe("buildDtsWorkbenchRows", () => {
       mappingTasks
     });
 
-    expect(row).toMatchObject({
+    const semanticRow: DtsParameterWorkbenchRow = row;
+    expect(semanticRow).toMatchObject({
       bindingId: "binding-sc8562-gpio-int",
       parameterSpecId: "spec-sc8562-gpio-int",
       parameterSpecVersionId: "spec-version-sc8562-gpio-int",
       logicalNodeId: "logical-sc8562",
       propertyKey: "gpio_int",
       driverModule: "sc8562",
+      compatible: "vendor,sc8562-v2",
       instanceName: "sc8562@6E",
       unitAddress: "6E",
       topologyPath: "/amba/i2c@FDF5E000/sc8562@6E",
@@ -218,7 +248,7 @@ describe("buildDtsWorkbenchRows", () => {
       sourceLine: 48,
       rawValue: "<&gpio13 29 0>",
       effectiveValue: binding.effectiveValue,
-      valueShapeSummary: "phandle-list · bits=32 · groups=1 · cellsPerGroup=3",
+      valueShapeSummary: "phandle-list · 32 bit · 3 cells",
       schemaState: "valid",
       policyState: "pass",
       mappingOpen: true,
@@ -231,8 +261,15 @@ describe("buildDtsWorkbenchRows", () => {
     expect(row.searchText).toContain("i2c@fdf5e000");
     expect(row.searchText).toContain("gpio13");
     expect(row.searchText).toContain("power.dtso");
+    expect(row.searchText).toContain("vendor,sc8562-v2");
+    expect(effectiveNodes[3].effects.map((effect) => effect.id)).toEqual([
+      "effect-gpio-latest",
+      "effect-gpio-old"
+    ]);
 
     const [sourceRow] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
       view: "source",
       bindings: [binding],
       sourceNodes,
@@ -241,5 +278,150 @@ describe("buildDtsWorkbenchRows", () => {
     });
     expect(sourceRow.topologyNodeId).toBe("occ-sc8562");
     expect(sourceRow.topologyPath).toBe("/amba/i2c@FDF5E000/sc8562@6E");
+  });
+
+  it("returns unavailable paths when a topology parent is missing or cyclic", () => {
+    const missingSourceNodes = sourceNodes.map((node) =>
+      node.id === "occ-i2c" ? { ...node, parentOccurrenceId: "occ-missing" } : node
+    );
+    const missingEffectiveNodes = effectiveNodes.map((node) =>
+      node.id === "effective-i2c" ? { ...node, parentLogicalNodeId: "logical-missing" } : node
+    );
+    const [missingEffectiveRow] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [binding],
+      sourceNodes: missingSourceNodes,
+      effectiveNodes: missingEffectiveNodes,
+      mappingTasks: []
+    });
+    const [missingSourceRow] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "source",
+      bindings: [binding],
+      sourceNodes: missingSourceNodes,
+      effectiveNodes: missingEffectiveNodes,
+      mappingTasks: []
+    });
+
+    expect(missingEffectiveRow.topologyPath).toBeNull();
+    expect(missingSourceRow.topologyPath).toBeNull();
+    expect(missingSourceRow.sourceNodePath).toBeNull();
+
+    const cyclicSourceNodes = sourceNodes.map((node) =>
+      node.id === "occ-root" ? { ...node, parentOccurrenceId: "occ-i2c" } : node
+    );
+    const cyclicEffectiveNodes = effectiveNodes.map((node) =>
+      node.id === "effective-root" ? { ...node, parentLogicalNodeId: "logical-i2c" } : node
+    );
+    const [cyclicRow] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [binding],
+      sourceNodes: cyclicSourceNodes,
+      effectiveNodes: cyclicEffectiveNodes,
+      mappingTasks: []
+    });
+    const [cyclicSourceRow] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "source",
+      bindings: [binding],
+      sourceNodes: cyclicSourceNodes,
+      effectiveNodes,
+      mappingTasks: []
+    });
+
+    expect(cyclicRow.topologyPath).toBeNull();
+    expect(cyclicSourceRow.topologyPath).toBeNull();
+  });
+
+  it("ignores open mapping tasks from another project or config revision", () => {
+    const scopedElsewhere: IdentityMappingTask[] = [
+      { ...mappingTasks[0], id: "foreign-project", projectId: "project-nebula" },
+      { ...mappingTasks[0], id: "old-revision", configRevisionId: "revision-old" }
+    ];
+
+    const [row] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [binding],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: scopedElsewhere
+    });
+
+    expect(row.mappingOpen).toBe(false);
+    expect(row.governanceState).toBe("valid");
+  });
+
+  it("provides stable readable summaries for empty, mixed, and multi-group values", () => {
+    const variants: ProjectParameterBinding[] = [
+      {
+        ...binding,
+        id: "binding-empty",
+        propertyKey: "empty_property",
+        effectiveValue: { kind: "empty" },
+        rawValue: ""
+      },
+      {
+        ...binding,
+        id: "binding-mixed",
+        propertyKey: "mixed_property",
+        effectiveValue: {
+          kind: "mixed",
+          segments: [
+            { kind: "string", raw: "mode", value: "mode" },
+            {
+              kind: "cells",
+              bits: 32,
+              cells: [{ kind: "integer", raw: "1", value: "1" }]
+            }
+          ]
+        },
+        rawValue: '"mode", <1>'
+      },
+      {
+        ...binding,
+        id: "binding-multi-group",
+        propertyKey: "multi_group_property",
+        effectiveValue: {
+          kind: "cells",
+          bits: 16,
+          groups: [
+            [
+              { kind: "integer", raw: "1", value: "1" },
+              { kind: "integer", raw: "2", value: "2" }
+            ],
+            [
+              { kind: "integer", raw: "3", value: "3" },
+              { kind: "integer", raw: "4", value: "4" }
+            ]
+          ]
+        },
+        rawValue: "/bits/ 16 <1 2>, <3 4>"
+      }
+    ];
+
+    const rows = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: variants,
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: []
+    });
+
+    expect(rows.map((row) => row.valueShapeSummary)).toEqual([
+      "empty property",
+      "mixed · 2 segments",
+      "cell-array · 16 bit · 2 groups · 2 cells per group"
+    ]);
+    expect(rows.every((row) => row.valueShapeSummary.length > 0)).toBe(true);
   });
 });
