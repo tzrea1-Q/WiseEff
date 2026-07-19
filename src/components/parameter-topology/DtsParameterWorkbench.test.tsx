@@ -1,0 +1,330 @@
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import type {
+  EffectiveTopologyNode,
+  SourceTopologyNode,
+  TopologyView
+} from "@/domain/parameter-topology/types";
+import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
+
+import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
+
+const sourceNodes: SourceTopologyNode[] = [
+  sourceNode("source-root", null, "/"),
+  sourceNode("source-amba", "source-root", "amba"),
+  sourceNode("source-i2c", "source-amba", "i2c", "FDF5E000"),
+  sourceNode("source-sc8562", "source-i2c", "sc8562-source", "6E"),
+  sourceNode("source-sensor", "source-sc8562", "sensor", "1A"),
+  sourceNode("source-mt5788", "source-i2c", "mt5788-source", "2B")
+];
+
+const effectiveNodes: EffectiveTopologyNode[] = [
+  effectiveNode("effective-root", "logical-root", null, "/"),
+  effectiveNode("effective-amba", "logical-amba", "logical-root", "amba"),
+  effectiveNode("effective-i2c", "logical-i2c", "logical-amba", "i2c", "FDF5E000"),
+  effectiveNode(
+    "effective-sc8562",
+    "logical-sc8562",
+    "logical-i2c",
+    "sc8562",
+    "6E",
+    "sc8562"
+  ),
+  effectiveNode(
+    "effective-sensor",
+    "logical-sensor",
+    "logical-sc8562",
+    "sensor",
+    "1A",
+    "vendor,sensor"
+  ),
+  effectiveNode(
+    "effective-mt5788",
+    "logical-mt5788",
+    "logical-i2c",
+    "mt5788",
+    "2B",
+    "mt,mt5788"
+  )
+];
+
+const rowDefinitions = [
+  {
+    bindingId: "binding-gpio-int",
+    propertyKey: "gpio_int",
+    driverModule: "sc8562",
+    rawValue: "<&gpio13 29 0>",
+    governanceState: "attention" as const,
+    effectiveNodeId: "effective-sc8562",
+    sourceNodeId: "source-sc8562",
+    effectivePath: "/amba/i2c@FDF5E000/sc8562@6E",
+    sourcePath: "/amba/i2c@FDF5E000/sc8562-source@6E"
+  },
+  {
+    bindingId: "binding-watchdog",
+    propertyKey: "watchdog_time",
+    driverModule: "sc8562",
+    rawValue: "<5000>",
+    governanceState: "valid" as const,
+    effectiveNodeId: "effective-sc8562",
+    sourceNodeId: "source-sc8562",
+    effectivePath: "/amba/i2c@FDF5E000/sc8562@6E",
+    sourcePath: "/amba/i2c@FDF5E000/sc8562-source@6E"
+  },
+  {
+    bindingId: "binding-sensor-limit",
+    propertyKey: "vendor,limit",
+    driverModule: "sensor",
+    rawValue: "<42>",
+    governanceState: "blocked" as const,
+    effectiveNodeId: "effective-sensor",
+    sourceNodeId: "source-sensor",
+    effectivePath: "/amba/i2c@FDF5E000/sc8562@6E/sensor@1A",
+    sourcePath: "/amba/i2c@FDF5E000/sc8562-source@6E/sensor@1A"
+  },
+  {
+    bindingId: "binding-rx-fod",
+    propertyKey: "rx_fod_cond",
+    driverModule: "mt5788",
+    rawValue: "\"0\", \"-1\"",
+    governanceState: "valid" as const,
+    effectiveNodeId: "effective-mt5788",
+    sourceNodeId: "source-mt5788",
+    effectivePath: "/amba/i2c@FDF5E000/mt5788@2B",
+    sourcePath: "/amba/i2c@FDF5E000/mt5788-source@2B"
+  }
+];
+
+const effectiveRows = rowDefinitions.map((definition) => row(definition, "effective"));
+const sourceRows = rowDefinitions.map((definition) => row(definition, "source"));
+
+function sourceNode(
+  id: string,
+  parentOccurrenceId: string | null,
+  name: string,
+  unitAddress?: string
+): SourceTopologyNode {
+  return {
+    id,
+    fileVersionId: "file-version",
+    fileName: "board.dts",
+    parentOccurrenceId,
+    name,
+    unitAddress,
+    labels: [],
+    isOverlayRoot: false,
+    nodePath: `/${id}`,
+    startLine: 1,
+    startColumn: 1,
+    endLine: 2,
+    endColumn: 1,
+    contentHash: `hash-${id}`,
+    sourceOrder: 1,
+    properties: []
+  };
+}
+
+function effectiveNode(
+  id: string,
+  logicalNodeId: string,
+  parentLogicalNodeId: string | null,
+  name: string,
+  unitAddress?: string,
+  compatible?: string
+): EffectiveTopologyNode {
+  return {
+    id,
+    logicalNodeId,
+    locator: `/${id}`,
+    name,
+    unitAddress,
+    compatible,
+    parentLogicalNodeId,
+    effects: []
+  };
+}
+
+function row(
+  definition: (typeof rowDefinitions)[number],
+  view: TopologyView
+): DtsParameterWorkbenchRow {
+  const topologyNodeId = view === "source" ? definition.sourceNodeId : definition.effectiveNodeId;
+  const topologyPath = view === "source" ? definition.sourcePath : definition.effectivePath;
+  return {
+    bindingId: definition.bindingId,
+    parameterSpecId: `spec-${definition.bindingId}`,
+    parameterSpecVersionId: `spec-version-${definition.bindingId}`,
+    logicalNodeId: definition.effectiveNodeId.replace("effective-", "logical-"),
+    propertyKey: definition.propertyKey,
+    driverModule: definition.driverModule,
+    compatible: `vendor,${definition.driverModule}`,
+    instanceName: topologyPath.split("/").at(-1) ?? null,
+    unitAddress: topologyPath.split("@").at(-1) ?? null,
+    topologyPath,
+    topologyNodeId,
+    sourceOccurrenceId: definition.sourceNodeId,
+    sourceFileName: "board.dts",
+    sourceNodePath: definition.sourcePath,
+    sourceLine: 20,
+    rawValue: definition.rawValue,
+    effectiveValue: {
+      kind: "cells",
+      bits: 32,
+      groups: [[{ kind: "integer", raw: "1", value: "1" }]]
+    },
+    valueShapeSummary: "cell-array · 32 bit · 1 cell",
+    schemaState: definition.governanceState === "blocked" ? "invalid" : "valid",
+    policyState: "pass",
+    mappingOpen: definition.governanceState === "attention",
+    governanceState: definition.governanceState,
+    effects: [],
+    searchText: [
+      definition.propertyKey,
+      definition.driverModule,
+      topologyPath,
+      definition.rawValue,
+      definition.governanceState
+    ].join(" ").toLocaleLowerCase(),
+    view
+  };
+}
+
+function renderWorkbench(overrides?: Partial<React.ComponentProps<typeof DtsParameterWorkbench>>) {
+  const props: React.ComponentProps<typeof DtsParameterWorkbench> = {
+    sourceRows,
+    effectiveRows,
+    sourceNodes,
+    effectiveNodes,
+    draftBindingIds: new Set(["binding-gpio-int"]),
+    canEdit: true,
+    onSelectBinding: vi.fn(),
+    onEditBinding: vi.fn(),
+    ...overrides
+  };
+  return { ...render(<DtsParameterWorkbench {...props} />), props };
+}
+
+function visibleBindingRows(): HTMLElement[] {
+  return screen.getAllByRole("row").filter((element) => element.dataset.bindingId);
+}
+
+function expandToSc8562(label: RegExp) {
+  const root = screen.getByRole("treeitem", { name: /^\// });
+  fireEvent.keyDown(root, { key: "ArrowRight" });
+  const amba = screen.getByRole("treeitem", { name: /amba/ });
+  fireEvent.keyDown(amba, { key: "ArrowRight" });
+  const i2c = screen.getByRole("treeitem", { name: /i2c@FDF5E000/ });
+  fireEvent.keyDown(i2c, { key: "ArrowRight" });
+  return screen.getByRole("treeitem", { name: label });
+}
+
+describe("DtsParameterWorkbench", () => {
+  it("renders the semantic workbench contract and exact mature table headers", () => {
+    renderWorkbench();
+
+    const workbench = screen.getByRole("region", { name: "DTS 参数工作台" });
+    expect(within(workbench).getByRole("searchbox", { name: "搜索 DTS 参数" })).toBeVisible();
+    expect(within(workbench).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "属性",
+      "器件 / 驱动",
+      "DTS 位置",
+      "生效值",
+      "类型",
+      "治理",
+      "操作"
+    ]);
+    expect(screen.getByRole("status")).toHaveTextContent("显示 4 / 4 个参数");
+    expect(visibleBindingRows()).toHaveLength(4);
+    expect(visibleBindingRows()[0]).toHaveAttribute("data-binding-id", "binding-gpio-int");
+  });
+
+  it("searches precomputed semantic search text and clears all filters back to the full result", () => {
+    renderWorkbench();
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索 DTS 参数" }), {
+      target: { value: "gpio13" }
+    });
+
+    expect(visibleBindingRows()).toHaveLength(1);
+    expect(visibleBindingRows()[0]).toHaveAttribute("data-binding-id", "binding-gpio-int");
+    expect(screen.getByRole("status")).toHaveTextContent("显示 1 / 4 个参数");
+
+    fireEvent.click(screen.getByRole("button", { name: "清除全部筛选" }));
+    expect(screen.getByRole("searchbox", { name: "搜索 DTS 参数" })).toHaveValue("");
+    expect(visibleBindingRows()).toHaveLength(4);
+    expect(screen.getByRole("status")).toHaveTextContent("显示 4 / 4 个参数");
+  });
+
+  it("filters by the selected topology subtree using binding identity rather than path prefixes", () => {
+    renderWorkbench();
+
+    const sc8562 = expandToSc8562(/sc8562@6E/);
+    fireEvent.click(sc8562);
+
+    expect(visibleBindingRows().map((element) => element.dataset.bindingId)).toEqual([
+      "binding-gpio-int",
+      "binding-watchdog",
+      "binding-sensor-limit"
+    ]);
+    expect(screen.getByRole("status")).toHaveTextContent("显示 3 / 4 个参数");
+    expect(screen.queryByText("rx_fod_cond")).not.toBeInTheDocument();
+  });
+
+  it("filters all governance states, renders their badges and preserves external draft identity on clear", () => {
+    renderWorkbench();
+
+    expect(screen.getAllByLabelText("治理状态：valid")).toHaveLength(2);
+    expect(screen.getByLabelText("治理状态：attention")).toBeInTheDocument();
+    expect(screen.getByLabelText("治理状态：blocked")).toBeInTheDocument();
+    expect(screen.getByTestId("draft-binding-gpio-int")).toHaveTextContent("草稿");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "治理状态" }), {
+      target: { value: "blocked" }
+    });
+    expect(visibleBindingRows()).toHaveLength(1);
+    expect(visibleBindingRows()[0]).toHaveAttribute("data-binding-id", "binding-sensor-limit");
+
+    fireEvent.click(screen.getByRole("button", { name: "清除全部筛选" }));
+    expect(screen.getByRole("combobox", { name: "治理状态" })).toHaveValue("all");
+    expect(screen.getByTestId("draft-binding-gpio-int")).toHaveTextContent("草稿");
+  });
+
+  it("switches source and effective topology using each view's node identity and labels", () => {
+    renderWorkbench();
+
+    const effectiveSc8562 = expandToSc8562(/sc8562@6E/);
+    fireEvent.click(effectiveSc8562);
+    expect(visibleBindingRows()).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "源 DTS" }));
+    expect(screen.getByRole("tree", { name: "源 DTS 拓扑" })).toBeInTheDocument();
+    expect(visibleBindingRows()).toHaveLength(4);
+    const sourceSc8562 = expandToSc8562(/sc8562-source@6E/);
+    fireEvent.click(sourceSc8562);
+
+    expect(visibleBindingRows()).toHaveLength(3);
+    expect(visibleBindingRows()[0]).toHaveTextContent("/amba/i2c@FDF5E000/sc8562-source@6E");
+    expect(sourceSc8562).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("always exposes details while canEdit only controls the edit entry", () => {
+    const onSelectBinding = vi.fn();
+    const onEditBinding = vi.fn();
+    renderWorkbench({ canEdit: false, onSelectBinding, onEditBinding });
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 gpio_int" }));
+    expect(onSelectBinding).toHaveBeenCalledWith("binding-gpio-int");
+    expect(screen.queryByRole("button", { name: "编辑 gpio_int" })).not.toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /gpio_int/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("uses the binding id as row identity and never renders legacy recommendation vocabulary", () => {
+    renderWorkbench();
+
+    for (const element of visibleBindingRows()) {
+      expect(element.dataset.bindingId).toMatch(/^binding-/);
+    }
+    expect(screen.queryByText(/推荐值|recommendedValue/i)).not.toBeInTheDocument();
+  });
+});
