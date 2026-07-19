@@ -12,6 +12,23 @@ import {
   shouldRetryHttpStatus
 } from "./run-acceptance-preflight";
 
+const deterministicXiaozeGateMessage = "Deterministic Xiaoze mode is not acceptable for pilot readiness.";
+
+function localNonHdcBodyWithDeterministicXiaozeEvidence(blockedBy: string[]) {
+  return {
+    ok: false,
+    status: "blocked",
+    blockedBy,
+    gates: {
+      xiaozeLlm: {
+        ok: false,
+        status: "blocked",
+        message: deterministicXiaozeGateMessage
+      }
+    }
+  };
+}
+
 describe("acceptance preflight helpers", () => {
   it("uses local acceptance defaults", () => {
     expect(parsePreflightArgs([])).toMatchObject({
@@ -234,7 +251,7 @@ describe("acceptance preflight helpers", () => {
 
   it("accepts local non-HDC readiness when deterministic agent and device gateway are the only blockers", () => {
     expect(
-      evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway", "xiaozeLlm"] })
+      evaluatePilotReadiness(localNonHdcBodyWithDeterministicXiaozeEvidence(["deviceGateway", "xiaozeLlm"]))
     ).toEqual({
       accepted: true,
       outcome: "non_hdc_local",
@@ -244,7 +261,9 @@ describe("acceptance preflight helpers", () => {
 
   it("accepts local non-HDC readiness when backup evidence is also blocked", () => {
     expect(
-      evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway", "xiaozeLlm", "backups"] })
+      evaluatePilotReadiness(
+        localNonHdcBodyWithDeterministicXiaozeEvidence(["deviceGateway", "xiaozeLlm", "backups"])
+      )
     ).toEqual({
       accepted: true,
       outcome: "non_hdc_local",
@@ -254,26 +273,96 @@ describe("acceptance preflight helpers", () => {
 
   it.each([
     {
-      blockedBy: ["xiaozeLlm", "deviceGateway"],
+      body: localNonHdcBodyWithDeterministicXiaozeEvidence(["xiaozeLlm", "deviceGateway"]),
       detail: "Accepted for local non-HDC preflight; deviceGateway and xiaozeLlm remain blocked."
     },
     {
-      blockedBy: ["backups", "xiaozeLlm", "deviceGateway"],
+      body: localNonHdcBodyWithDeterministicXiaozeEvidence(["backups", "xiaozeLlm", "deviceGateway"]),
       detail: "Accepted for local non-HDC preflight; deviceGateway, xiaozeLlm, and backups remain blocked."
     }
-  ])("accepts local non-HDC readiness regardless of blocker order: $blockedBy", ({ blockedBy, detail }) => {
-    expect(evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy })).toEqual({
+  ])("accepts local non-HDC readiness regardless of blocker order: $body.blockedBy", ({ body, detail }) => {
+    expect(evaluatePilotReadiness(body)).toEqual({
       accepted: true,
       outcome: "non_hdc_local",
       detail
     });
   });
 
+  it("rejects Xiaoze readiness blockers without gate evidence", () => {
+    expect(
+      evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway", "xiaozeLlm"] })
+    ).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
+    });
+  });
+
   it.each([
-    ["two-blocker allowlist", ["deviceGateway", "xiaozeLlm", "xiaozeLlm"]],
-    ["three-blocker allowlist", ["deviceGateway", "xiaozeLlm", "backups", "backups"]]
-  ])("rejects duplicated blockers in the %s", (_name, blockedBy) => {
-    expect(evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy })).toMatchObject({
+    [
+      "missing status",
+      { ok: false, status: "missing", message: "Xiaoze LLM environment is not configured for this API process." }
+    ],
+    ["non-deterministic message", { ok: false, status: "blocked", message: "Xiaoze LLM is unavailable." }],
+    ["successful result", { ok: true, status: "blocked", message: deterministicXiaozeGateMessage }]
+  ])("rejects Xiaoze readiness blockers with %s evidence", (_name, xiaozeLlm) => {
+    expect(
+      evaluatePilotReadiness({
+        ok: false,
+        status: "blocked",
+        blockedBy: ["deviceGateway", "xiaozeLlm"],
+        gates: { xiaozeLlm }
+      })
+    ).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
+    });
+  });
+
+  it("requires deterministic Xiaoze gate evidence when backups are also blocked", () => {
+    expect(
+      evaluatePilotReadiness({
+        ok: false,
+        status: "blocked",
+        blockedBy: ["deviceGateway", "xiaozeLlm", "backups"]
+      })
+    ).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
+    });
+  });
+
+  it.each([
+    ["null gates", null],
+    ["array gates", []],
+    ["non-object gates", "invalid"],
+    ["null Xiaoze gate", { xiaozeLlm: null }],
+    ["array Xiaoze gate", { xiaozeLlm: [] }],
+    ["non-object Xiaoze gate", { xiaozeLlm: "invalid" }]
+  ])("fails closed for %s", (_name, gates) => {
+    expect(
+      evaluatePilotReadiness({
+        ok: false,
+        status: "blocked",
+        blockedBy: ["deviceGateway", "xiaozeLlm"],
+        gates
+      })
+    ).toMatchObject({
+      accepted: false,
+      outcome: "blocked"
+    });
+  });
+
+  it.each([
+    [
+      "two-blocker allowlist",
+      localNonHdcBodyWithDeterministicXiaozeEvidence(["deviceGateway", "xiaozeLlm", "xiaozeLlm"])
+    ],
+    [
+      "three-blocker allowlist",
+      localNonHdcBodyWithDeterministicXiaozeEvidence(["deviceGateway", "xiaozeLlm", "backups", "backups"])
+    ]
+  ])("rejects duplicated blockers in the %s", (_name, body) => {
+    expect(evaluatePilotReadiness(body)).toMatchObject({
       accepted: false,
       outcome: "blocked"
     });
@@ -300,7 +389,7 @@ describe("acceptance preflight helpers", () => {
   it("rejects deterministic agent readiness blockers when runtime startup is disabled", () => {
     expect(
       evaluatePilotReadiness(
-        { ok: false, status: "blocked", blockedBy: ["deviceGateway", "xiaozeLlm"] },
+        localNonHdcBodyWithDeterministicXiaozeEvidence(["deviceGateway", "xiaozeLlm"]),
         { requirePilotReady: false, startRuntime: false }
       )
     ).toMatchObject({
@@ -320,11 +409,9 @@ describe("acceptance preflight helpers", () => {
 
   it("rejects an unknown pilot-readiness blocker", () => {
     expect(
-      evaluatePilotReadiness({
-        ok: false,
-        status: "blocked",
-        blockedBy: ["deviceGateway", "xiaozeLlm", "unknownGate"]
-      })
+      evaluatePilotReadiness(
+        localNonHdcBodyWithDeterministicXiaozeEvidence(["deviceGateway", "xiaozeLlm", "unknownGate"])
+      )
     ).toMatchObject({
       accepted: false,
       outcome: "blocked"

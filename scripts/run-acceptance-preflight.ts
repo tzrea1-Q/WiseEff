@@ -205,9 +205,12 @@ export function evaluatePilotReadiness(
     };
   }
 
+  const hasDeterministicXiaozeGateEvidence = hasCanonicalDeterministicXiaozeGateEvidence(body);
+
   if (
     !options.requirePilotReady &&
     options.startRuntime !== false &&
+    hasDeterministicXiaozeGateEvidence &&
     blockedBy.length === 2 &&
     blockerSet.size === 2 &&
     blockerSet.has("deviceGateway") &&
@@ -223,6 +226,7 @@ export function evaluatePilotReadiness(
   if (
     !options.requirePilotReady &&
     options.startRuntime !== false &&
+    hasDeterministicXiaozeGateEvidence &&
     blockedBy.length === 3 &&
     blockerSet.size === 3 &&
     blockerSet.has("deviceGateway") &&
@@ -241,6 +245,23 @@ export function evaluatePilotReadiness(
     outcome: "blocked",
     detail: `Pilot-readiness is blocked by: ${blockedBy.length > 0 ? blockedBy.join(", ") : "unknown"}.`
   };
+}
+
+function hasCanonicalDeterministicXiaozeGateEvidence(body: Record<string, unknown>) {
+  if (!isRecord(body.gates) || !isRecord(body.gates.xiaozeLlm)) {
+    return false;
+  }
+
+  const gate = body.gates.xiaozeLlm;
+  return (
+    gate.ok === false &&
+    gate.status === "blocked" &&
+    gate.message === "Deterministic Xiaoze mode is not acceptable for pilot readiness."
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const testGateEnvDenylist = [
