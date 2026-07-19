@@ -429,4 +429,25 @@ describe("DtsBindingDraftTray", () => {
     expect(screen.getByLabelText("软件 MDE")).toHaveValue("u-sw");
     expect(screen.getByLabelText("软件开发")).toHaveValue("u-user");
   });
+
+  it("fails closed when an external project mutation blocks formal submission", () => {
+    const onSubmit = vi.fn();
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        candidates={candidates}
+        externalBlocker="该项目正在创建 typed draft，正式提交已暂时锁定。"
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/正在创建 typed draft/);
+    const submit = screen.getByRole("button", { name: "提交审核" });
+    expect(submit).toBeDisabled();
+    fireEvent.click(submit);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });

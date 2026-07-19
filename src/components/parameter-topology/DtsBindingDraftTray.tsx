@@ -17,6 +17,7 @@ export type DtsBindingDraftTrayProps = {
   drafts: PendingBindingDraft[];
   candidates: WorkflowAssigneeCandidates | null;
   candidatesError?: string | null;
+  externalBlocker?: string | null;
   onRemove: (draftId: string) => void;
   onSubmit?: (
     input: SubmitParameterChangesInput
@@ -87,6 +88,7 @@ export function DtsBindingDraftTray({
   drafts,
   candidates,
   candidatesError = null,
+  externalBlocker = null,
   onRemove,
   onSubmit,
   onNavigate
@@ -165,7 +167,7 @@ export function DtsBindingDraftTray({
   const submissionEntryError = onSubmit
     ? null
     : "正式 binding 提交入口未配置，已阻止提交。";
-  const blocker = displayedCandidatesError ?? draftIdentityError ?? actionValueError ?? candidateError ?? roleError ?? submissionEntryError;
+  const blocker = externalBlocker ?? displayedCandidatesError ?? draftIdentityError ?? actionValueError ?? candidateError ?? roleError ?? submissionEntryError;
   const canSubmit = Boolean(
     drafts.length > 0 &&
     displayedCandidates &&

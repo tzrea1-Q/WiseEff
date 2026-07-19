@@ -63,6 +63,8 @@ type LoadState =
       diagnostics: TopologyDiagnostic[];
     };
 
+type ProjectMutationKind = "draft" | "submit";
+
 function pickConfigSet(items: Array<{ id: string; name: string }>) {
   return items.find((item) => item.name === "default") ?? items[0] ?? null;
 }
@@ -157,7 +159,7 @@ export function ApiProjectTopologyWorkspace({
   listConfigSetsRef.current = listConfigSets;
   const activeProjectIdRef = useRef(projectId);
   activeProjectIdRef.current = projectId;
-  const submittingProjectIdsRef = useRef(new Set<string>());
+  const projectMutationsRef = useRef(new Map<string, ProjectMutationKind>());
 
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
   const [reloadToken, setReloadToken] = useState(0);
@@ -172,12 +174,25 @@ export function ApiProjectTopologyWorkspace({
   const [pendingDrafts, setPendingDrafts] = useState<PendingBindingDraft[]>([]);
   const [workflowCandidates, setWorkflowCandidates] = useState<WorkflowAssigneeCandidates | null>(null);
   const [workflowCandidatesError, setWorkflowCandidatesError] = useState<string | null>(null);
-  const [submittingProjectIds, setSubmittingProjectIds] = useState<ReadonlySet<string>>(
-    () => new Set()
+  const [projectMutationKinds, setProjectMutationKinds] = useState<ReadonlyMap<string, ProjectMutationKind>>(
+    () => new Map()
   );
   const projectDrafts = pendingDrafts.filter((draft) => draft.projectId === projectId);
   const hasProjectDrafts = projectDrafts.length > 0;
-  const projectSubmissionInFlight = submittingProjectIds.has(projectId);
+  const projectMutationKind = projectMutationKinds.get(projectId) ?? null;
+
+  const acquireProjectMutation = (mutationProjectId: string, kind: ProjectMutationKind): boolean => {
+    if (projectMutationsRef.current.has(mutationProjectId)) return false;
+    projectMutationsRef.current.set(mutationProjectId, kind);
+    setProjectMutationKinds(new Map(projectMutationsRef.current));
+    return true;
+  };
+
+  const releaseProjectMutation = (mutationProjectId: string, kind: ProjectMutationKind) => {
+    if (projectMutationsRef.current.get(mutationProjectId) !== kind) return;
+    projectMutationsRef.current.delete(mutationProjectId);
+    setProjectMutationKinds(new Map(projectMutationsRef.current));
+  };
 
   useEffect(() => {
     setPreferredRevision(null);
@@ -260,13 +275,14 @@ export function ApiProjectTopologyWorkspace({
     rawValue: string;
     reason: string;
   }): Promise<BindingEditValidation> => {
-    if (submittingProjectIdsRef.current.has(projectId)) {
+    const activeMutation = projectMutationsRef.current.get(projectId);
+    if (activeMutation) {
       return {
         valid: false,
         diagnostics: [
           {
-            message: "该项目的正式提交仍在处理中，服务端 mutation 落定前不能创建或替换草稿。",
-            code: "SUBMISSION_IN_PROGRESS"
+            message: `该项目的 ${activeMutation} mutation 仍在处理中，落定前不能创建或替换草稿。`,
+            code: "PROJECT_MUTATION_IN_PROGRESS"
           }
         ]
       };
@@ -301,8 +317,20 @@ export function ApiProjectTopologyWorkspace({
       };
     }
 
+    const requestProjectId = projectId;
+    if (!acquireProjectMutation(requestProjectId, "draft")) {
+      return {
+        valid: false,
+        diagnostics: [
+          {
+            message: "该项目已有 mutation 正在处理中，已阻止并发草稿创建。",
+            code: "PROJECT_MUTATION_IN_PROGRESS"
+          }
+        ]
+      };
+    }
+
     try {
-      const requestProjectId = projectId;
       const draft = await repository.createBindingDraft(requestProjectId, input.bindingId, {
         baseRevisionId: loadState.revisionId,
         targetValue,
@@ -363,30 +391,22 @@ export function ApiProjectTopologyWorkspace({
         valid: false,
         diagnostics: [{ message: mapped.message, code: mapped.kind === "api" ? mapped.code : mapped.kind }]
       };
+    } finally {
+      releaseProjectMutation(requestProjectId, "draft");
     }
   };
 
   const handleSubmitBindingChanges = submitBindingChanges
     ? async (input: SubmitParameterChangesInput) => {
-        const submittingProjectId = input.projectId;
-        if (submittingProjectIdsRef.current.has(submittingProjectId)) {
-          return { notification: "该项目已有正式提交正在处理中，已阻止重复提交。" };
+      const submittingProjectId = input.projectId;
+        if (!acquireProjectMutation(submittingProjectId, "submit")) {
+          const activeKind = projectMutationsRef.current.get(submittingProjectId) ?? "unknown";
+          return { notification: `该项目已有 ${activeKind} mutation 正在处理中，已阻止正式提交。` };
         }
-        submittingProjectIdsRef.current.add(submittingProjectId);
-        setSubmittingProjectIds((current) => {
-          const next = new Set(current);
-          next.add(submittingProjectId);
-          return next;
-        });
         try {
           return await submitBindingChanges(input);
         } finally {
-          submittingProjectIdsRef.current.delete(submittingProjectId);
-          setSubmittingProjectIds((current) => {
-            const next = new Set(current);
-            next.delete(submittingProjectId);
-            return next;
-          });
+          releaseProjectMutation(submittingProjectId, "submit");
         }
       }
     : undefined;
@@ -504,7 +524,7 @@ export function ApiProjectTopologyWorkspace({
         mappingTasks={loadState.mappingTasks}
         diagnostics={loadState.diagnostics}
         incompleteBase={loadState.incompleteBase}
-        canEdit={canEdit && loadState.status !== "invalid" && !projectSubmissionInFlight}
+        canEdit={canEdit && loadState.status !== "invalid" && !projectMutationKind}
         canPublish={canPublish}
         publishActionLabel="校验"
         layoutMode={layoutMode}
@@ -522,6 +542,11 @@ export function ApiProjectTopologyWorkspace({
           drafts={projectDrafts}
           candidates={workflowCandidates}
           candidatesError={workflowCandidatesError}
+          externalBlocker={
+            projectMutationKind === "draft"
+              ? "该项目正在创建 typed draft，正式提交已暂时锁定。"
+              : null
+          }
           onRemove={(draftId) => {
             setPendingDrafts((current) => current.filter((draft) => draft.draftId !== draftId));
           }}
