@@ -756,7 +756,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     );
 
     expect(await screen.findAllByText("gpio_int")).not.toHaveLength(0);
-    expect(screen.getByLabelText("项目拓扑工作区")).toBeInTheDocument();
+    expect(screen.getByLabelText("DTS 参数工作台")).toBeInTheDocument();
+    expect(screen.queryByLabelText("项目拓扑工作区")).not.toBeInTheDocument();
     expect(parameterTopologyRepository.getTopology).toHaveBeenCalledWith(
       initialState.activeProjectId,
       "config-set-app-test",
@@ -834,7 +835,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     );
 
     expect(await screen.findAllByText("gpio_int")).not.toHaveLength(0);
-    expect(screen.getByLabelText("项目拓扑工作区")).toBeInTheDocument();
+    expect(screen.getByLabelText("DTS 参数工作台")).toBeInTheDocument();
+    expect(screen.queryByLabelText("项目拓扑工作区")).not.toBeInTheDocument();
     expect(parameterRepository.listProjects).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listParameters).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listChangeRequests).toHaveBeenCalledTimes(1);
