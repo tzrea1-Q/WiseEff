@@ -154,6 +154,32 @@ describe("DtsBindingDetailDialog", () => {
     expect(screen.queryByText("暂无历史记录。")).not.toBeInTheDocument();
   });
 
+  it("shows a clean empty compare message without any phase-1 placeholder wording", () => {
+    renderDialog({ compareEntries: [] });
+
+    const compare = screen.getByRole("region", { name: "跨项目对比" });
+    expect(within(compare).getByText("暂无其他项目的对比数据。")).toBeInTheDocument();
+    expect(within(compare).queryByText(/阶段一占位/)).not.toBeInTheDocument();
+  });
+
+  it("renders cross-project compare peers with project, value, module and driver context", () => {
+    renderDialog({
+      compareEntries: [
+        { projectId: "project-2", projectName: "Aurora", rawValue: "<1>", moduleName: "充电策略", driverModule: "sc8562" },
+        { projectId: "project-3", projectName: "Borealis", rawValue: "<2>", moduleName: "充电策略", driverModule: "sc8562" }
+      ]
+    });
+
+    const compare = screen.getByRole("list", { name: "跨项目对比" });
+    const entries = within(compare).getAllByRole("listitem");
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toHaveTextContent("Aurora");
+    expect(entries[0]).toHaveTextContent("<1>");
+    expect(entries[0]).toHaveTextContent("充电策略");
+    expect(entries[0]).toHaveTextContent("sc8562");
+    expect(screen.queryByText("暂无其他项目的对比数据。")).not.toBeInTheDocument();
+  });
+
   it("marks missing unit address and topology node identity as unavailable without substituting the path", () => {
     renderDialog({ row: gpioRow({ unitAddress: null, topologyNodeId: null }) });
 

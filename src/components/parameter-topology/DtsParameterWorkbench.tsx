@@ -10,6 +10,7 @@ import {
   type DtsWorkbenchTreeNode
 } from "@/application/parameters/buildDtsTopologyTree";
 import type {
+  BindingCompareEntry,
   BindingHistoryEntry,
   EffectiveTopologyNode,
   SourceTopologyNode
@@ -48,6 +49,8 @@ export type DtsParameterWorkbenchProps = {
   }) => Promise<BindingEditValidation>;
   /** Loads per-binding revision history when a detail dialog opens. */
   loadBindingHistory?: (bindingId: string) => Promise<BindingHistoryEntry[]>;
+  /** Loads cross-project compare peers when a detail dialog opens. */
+  loadBindingCompare?: (bindingId: string) => Promise<BindingCompareEntry[]>;
   /** Optional mature-workbench current-edits tray rendered inside the DTS region. */
   currentEdits?: ReactNode;
   /** Validation and mapping governance controls remain in the same semantic region. */
@@ -97,6 +100,7 @@ export function DtsParameterWorkbench({
   onEditBinding,
   onCreateDraft,
   loadBindingHistory,
+  loadBindingCompare,
   currentEdits,
   governanceContent,
   expandAllNodesByDefault = false
@@ -224,6 +228,28 @@ export function DtsParameterWorkbench({
       cancelled = true;
     };
   }, [selectedBindingId, loadBindingHistory]);
+
+  const [compareEntries, setCompareEntries] = useState<BindingCompareEntry[]>([]);
+
+  useEffect(() => {
+    if (!selectedBindingId || !loadBindingCompare) {
+      setCompareEntries([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const requestBindingId = selectedBindingId;
+    setCompareEntries([]);
+    loadBindingCompare(requestBindingId)
+      .then((entries) => {
+        if (!cancelled) setCompareEntries(entries);
+      })
+      .catch(() => {
+        if (!cancelled) setCompareEntries([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBindingId, loadBindingCompare]);
 
   useEffect(() => {
     if (selectedBindingId || !pendingFocusRestoreRef.current) return;
@@ -357,6 +383,7 @@ export function DtsParameterWorkbench({
           canEdit={canEdit && Boolean(onCreateDraft)}
           focusEditorOnOpen={detailIntent === "edit"}
           historyEntries={historyEntries}
+          compareEntries={compareEntries}
           onClose={closeDetail}
           onCreateDraft={onCreateDraft ?? (() => Promise.reject(new Error("当前未配置语义草稿创建能力")))}
         />

@@ -508,6 +508,14 @@ export function ApiProjectTopologyWorkspace({
     [projectId, repository]
   );
 
+  const loadBindingCompare = useCallback(
+    (bindingId: string) => {
+      if (!repository?.listBindingCompare) return Promise.resolve([]);
+      return repository.listBindingCompare(projectId, bindingId);
+    },
+    [projectId, repository]
+  );
+
   /** Validate only — no publish/release transition exists on this surface. */
   const handleValidate = async () => {
     if (!repository || loadState.kind !== "ready") return;
@@ -668,6 +676,7 @@ export function ApiProjectTopologyWorkspace({
         onEditBinding={handleEditBinding}
         onCreateDraft={handleValidateEdit}
         loadBindingHistory={loadBindingHistory}
+        loadBindingCompare={loadBindingCompare}
         currentEdits={currentEdits}
         expandAllNodesByDefault
         governanceContent={(

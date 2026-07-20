@@ -1,7 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CircleX } from "lucide-react";
 
-import type { BindingHistoryEntry, DtsValue } from "@/domain/parameter-topology/types";
+import type {
+  BindingCompareEntry,
+  BindingHistoryEntry,
+  DtsValue
+} from "@/domain/parameter-topology/types";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +32,7 @@ export type DtsBindingDetailDialogProps = {
   }) => Promise<BindingEditValidation>;
   focusEditorOnOpen?: boolean;
   historyEntries?: BindingHistoryEntry[];
+  compareEntries?: BindingCompareEntry[];
 };
 
 type SubmissionState = "idle" | "pending" | "success" | "failure";
@@ -80,7 +85,8 @@ export function DtsBindingDetailDialog({
   onClose,
   onCreateDraft,
   focusEditorOnOpen = false,
-  historyEntries = []
+  historyEntries = [],
+  compareEntries = []
 }: DtsBindingDetailDialogProps) {
   const rawValueRef = useRef<HTMLTextAreaElement | null>(null);
   const mountedRef = useRef(true);
@@ -265,6 +271,28 @@ export function DtsBindingDetailDialog({
               </ol>
             ) : (
               <p>暂无历史记录。</p>
+            )}
+          </section>
+
+          <section aria-labelledby="dts-binding-compare-title">
+            <h3 id="dts-binding-compare-title">跨项目对比</h3>
+            {compareEntries.length > 0 ? (
+              <ul aria-label="跨项目对比">
+                {compareEntries.map((entry) => (
+                  <li key={entry.projectId}>
+                    <strong>{entry.projectName}</strong>
+                    <code> {entry.rawValue}</code>
+                    {entry.moduleName || entry.driverModule ? (
+                      <small>
+                        {" "}
+                        · {[entry.moduleName, entry.driverModule].filter(Boolean).join(" · ")}
+                      </small>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>暂无其他项目的对比数据。</p>
             )}
           </section>
 
