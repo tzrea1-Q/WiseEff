@@ -129,6 +129,31 @@ describe("DtsBindingDetailDialog", () => {
     expect(within(dialog).getByText("当前接口未提供规格详情")).toBeInTheDocument();
   });
 
+  it("shows a clean empty history message without any phase-1 placeholder wording", () => {
+    renderDialog({ historyEntries: [] });
+
+    const history = screen.getByRole("region", { name: "历史与 diff" });
+    expect(within(history).getByText("暂无历史记录。")).toBeInTheDocument();
+    expect(within(history).queryByText(/阶段一占位/)).not.toBeInTheDocument();
+    expect(within(history).queryByText(/阶段二接入/)).not.toBeInTheDocument();
+  });
+
+  it("renders binding-revision history entries newest-first with from→to raw values", () => {
+    renderDialog({
+      historyEntries: [
+        { id: "rev-3", changedAt: "2026-01-03T00:00:00.000Z", fromRawValue: "<1>", toRawValue: "<2>" },
+        { id: "rev-1", changedAt: "2026-01-01T00:00:00.000Z", fromRawValue: null, toRawValue: "<0>" }
+      ]
+    });
+
+    const history = screen.getByRole("list", { name: "参数历史" });
+    const entries = within(history).getAllByRole("listitem");
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toHaveTextContent("<1> → <2>");
+    expect(entries[1]).toHaveTextContent("∅ → <0>");
+    expect(screen.queryByText("暂无历史记录。")).not.toBeInTheDocument();
+  });
+
   it("marks missing unit address and topology node identity as unavailable without substituting the path", () => {
     renderDialog({ row: gpioRow({ unitAddress: null, topologyNodeId: null }) });
 

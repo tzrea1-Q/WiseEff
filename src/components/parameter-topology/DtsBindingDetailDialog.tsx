@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CircleX } from "lucide-react";
 
-import type { DtsValue } from "@/domain/parameter-topology/types";
+import type { BindingHistoryEntry, DtsValue } from "@/domain/parameter-topology/types";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,7 @@ export type DtsBindingDetailDialogProps = {
     reason: string;
   }) => Promise<BindingEditValidation>;
   focusEditorOnOpen?: boolean;
+  historyEntries?: BindingHistoryEntry[];
 };
 
 type SubmissionState = "idle" | "pending" | "success" | "failure";
@@ -78,7 +79,8 @@ export function DtsBindingDetailDialog({
   canEdit,
   onClose,
   onCreateDraft,
-  focusEditorOnOpen = false
+  focusEditorOnOpen = false,
+  historyEntries = []
 }: DtsBindingDetailDialogProps) {
   const rawValueRef = useRef<HTMLTextAreaElement | null>(null);
   const mountedRef = useRef(true);
@@ -241,6 +243,28 @@ export function DtsBindingDetailDialog({
               </ol>
             ) : (
               <p>当前接口未提供来源 effect。</p>
+            )}
+          </section>
+
+          <section aria-labelledby="dts-binding-history-title">
+            <h3 id="dts-binding-history-title">历史与 diff</h3>
+            {historyEntries.length > 0 ? (
+              <ol aria-label="参数历史">
+                {historyEntries.map((entry) => (
+                  <li key={entry.id}>
+                    <code>
+                      {entry.changedAt}
+                      {entry.actor ? ` · ${entry.actor}` : ""}
+                      {entry.fromRawValue != null || entry.toRawValue != null
+                        ? ` · ${entry.fromRawValue ?? "∅"} → ${entry.toRawValue ?? "∅"}`
+                        : ""}
+                      {entry.reason ? ` · ${entry.reason}` : ""}
+                    </code>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>暂无历史记录。</p>
             )}
           </section>
 
