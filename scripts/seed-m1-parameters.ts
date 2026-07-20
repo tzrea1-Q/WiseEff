@@ -6,13 +6,24 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { loadServerEnv } from "../server/config/env";
 import { createObjectStoreFromEnv } from "../server/objectStoreFactory";
+import type { AuthContext } from "../server/modules/auth/types";
 import { buildDtsParsedIndex } from "../server/modules/parameter-files/parseIndex";
 import { ingestDtsFileVersion } from "../server/modules/parameter-files/structuralIngest";
 import type { ObjectStore } from "../server/modules/logs/objectStore";
+import { ingestConfigRevisionInTransaction } from "../server/modules/parameter-topology/ingestService";
+import type { ConfigRevisionManifest } from "../server/modules/parameter-topology/types";
 import { createPostgresDatabase, type Database } from "../server/shared/database/client";
 import { buildDtsPowerSeed, type DtsPowerSeedParameter, type DtsPowerSeedProjectFile } from "./dts-power-seed";
 import { compileDtsSeedFiles, loadCommittedDtsSeedFiles } from "./compile-dts-seed";
 import { LEGACY_SQL } from "../server/modules/parameter-topology/migration";
+
+/**
+ * Shared board-level anchor DTS: provides the `&label { ... }` targets that
+ * every generated project overlay (`wiseeff-power-overlay.dts`) references.
+ * Without it, semantic ingest cannot resolve the overlay and no
+ * `project_parameter_bindings` rows (module-aware identity) get produced.
+ */
+export const BASE_POWER_SEED_FILE_NAME = "wiseeff-power-base.dts";
 
 export type PowerManagementProject = {
   id: string;
@@ -140,6 +151,23 @@ function stableSeedId(prefix: string, value: string) {
   return `${prefix}-${digest}`;
 }
 
+/** Auth context for seed-driven writes (semantic ingest, module resolution). */
+function seedAuthContext(): AuthContext {
+  return {
+    user: {
+      id: seedUserId,
+      organizationId,
+      name: "Xu Yun",
+      email: "xu@chargelab.cn",
+      title: "Platform Owner",
+      isActive: true
+    },
+    organization: { id: organizationId, name: "ChargeLab" },
+    roles: [{ projectId: null, roleId: "admin" }],
+    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
+  };
+}
+
 function resolveSeedModules(config: PowerManagementConfig): PowerManagementParameterModule[] {
   const byName = new Map((config.parameterModules ?? []).map((module) => [module.name, module]));
   for (const parameter of config.parameterLibrary) {
@@ -191,7 +219,17 @@ export function parsePowerManagementConfig(configPath: string, source: string): 
   }
 }
 
-export async function seedM1Parameters(db: Database, config: PowerManagementConfig): Promise<void> {
+export async function seedM1Parameters(
+  db: Database,
+  config: PowerManagementConfig,
+  /**
+   * Lowercased DTS instance name (e.g. "sc8562@6e") -> business-category module
+   * name. Seeds `parameter_module_mappings` so semantic ingest resolves real
+   * bindings across distinct modules instead of falling back to "未分类" for
+   * every write. Defaults to no mappings (existing legacy-only seed callers).
+   */
+  instanceModuleAssignments: ReadonlyMap<string, string> = new Map()
+): Promise<void> {
   await db.transaction(async (tx) => {
     for (const project of config.projects) {
       await tx.query(
@@ -268,6 +306,22 @@ export async function seedM1Parameters(db: Database, config: PowerManagementConf
       const persistedId = result.rows[0]?.id ?? id;
       moduleIdByName.set(module.name, persistedId);
       modulePathByName.set(module.name, parentPath ? `${parentPath}/${persistedId}` : persistedId);
+    }
+
+    for (const [instanceName, moduleName] of instanceModuleAssignments) {
+      const parameterModuleId = moduleIdByName.get(moduleName);
+      if (!parameterModuleId) continue;
+      await tx.query(
+        `
+        insert into parameter_module_mappings (
+          id, organization_id, parameter_module_id, match_kind, match_value, priority
+        )
+        values ($1, $2, $3, 'instance', $4, 500)
+        on conflict (organization_id, match_kind, match_value) do update set
+          parameter_module_id = excluded.parameter_module_id
+        `,
+        [stableSeedId("pmap-seed", `instance:${instanceName}`), organizationId, parameterModuleId, instanceName]
+      );
     }
 
     const modules = [...new Set(config.parameterLibrary.map((parameter) => parameter.module))];
@@ -633,6 +687,148 @@ export async function seedM1DtsFiles(
   });
 }
 
+type SeedFileRow = { id: string; current_version_id: string | null };
+
+/**
+ * Materialize module-aware `project_parameter_bindings` for each project's DTS
+ * seed by registering the shared board-level base file and running the real
+ * semantic ingest pipeline (same code path as a production DTS upload).
+ * Must run after `seedM1DtsFiles` has persisted each project's overlay file
+ * version. Idempotent: skips a project when the exact base+overlay content
+ * pair has already been ingested into a config revision.
+ */
+export async function seedM1SemanticTopology(
+  db: Database,
+  projectFiles: readonly DtsPowerSeedProjectFile[],
+  baseSource: string
+): Promise<void> {
+  const baseBytes = Buffer.from(baseSource, "utf8");
+  const baseChecksum = createHash("sha256").update(baseBytes).digest("hex");
+  const baseStorageKey = `${organizationId}/${baseChecksum}-${BASE_POWER_SEED_FILE_NAME}`;
+  const auth = seedAuthContext();
+
+  await db.transaction(async (tx) => {
+    for (const projectFile of projectFiles) {
+      const configSetId = `dcs-default-${projectFile.projectId}`;
+
+      const baseFileSeedId = `seed-dts-base-file-${projectFile.projectId}`;
+      const baseFileResult = await tx.query<{ id: string }>(
+        `
+        insert into project_parameter_files (
+          id, organization_id, project_id, file_name, format,
+          config_set_id, config_set_role, config_set_sort_order, enabled
+        )
+        values ($1, $2, $3, $4, 'dts', $5, 'base', 0, true)
+        on conflict (project_id, file_name) do update set
+          organization_id = excluded.organization_id,
+          config_set_id = excluded.config_set_id,
+          config_set_role = excluded.config_set_role,
+          config_set_sort_order = excluded.config_set_sort_order,
+          enabled = true,
+          updated_at = now()
+        returning id
+        `,
+        [baseFileSeedId, organizationId, projectFile.projectId, BASE_POWER_SEED_FILE_NAME, configSetId]
+      );
+      const baseFileId = baseFileResult.rows[0]?.id ?? baseFileSeedId;
+
+      const existingBaseVersion = await tx.query<{ id: string }>(
+        `
+        select id from project_parameter_file_versions
+        where file_id = $1 and checksum = $2
+        limit 1
+        `,
+        [baseFileId, baseChecksum]
+      );
+      let baseVersionId: string;
+      let isNewBaseVersion = false;
+      if (existingBaseVersion.rows[0]) {
+        baseVersionId = existingBaseVersion.rows[0].id;
+      } else {
+        isNewBaseVersion = true;
+        baseVersionId = `seed-dts-base-version-${projectFile.projectId}-${baseChecksum.slice(0, 16)}`;
+        const nextVersion = await tx.query<{ next_version_number: number | string }>(
+          `select coalesce(max(version_number), 0) + 1 as next_version_number from project_parameter_file_versions where file_id = $1`,
+          [baseFileId]
+        );
+        await tx.query(
+          `
+          insert into project_parameter_file_versions (
+            id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+          ) values ($1, $2, $3, $4, $5, $6, '{}'::jsonb, 'upload', $7)
+          on conflict (id) do nothing
+          `,
+          [
+            baseVersionId,
+            baseFileId,
+            Number(nextVersion.rows[0]?.next_version_number ?? 1),
+            baseStorageKey,
+            baseChecksum,
+            baseBytes.byteLength,
+            seedUserId
+          ]
+        );
+      }
+      await tx.query(`update project_parameter_files set current_version_id = $2 where id = $1`, [
+        baseFileId,
+        baseVersionId
+      ]);
+
+      const overlayFile = await tx.query<SeedFileRow>(
+        `select id, current_version_id from project_parameter_files where project_id = $1 and file_name = $2`,
+        [projectFile.projectId, projectFile.fileName]
+      );
+      const overlayFileRow = overlayFile.rows[0];
+      if (!overlayFileRow?.current_version_id) {
+        throw new Error(
+          `seedM1SemanticTopology requires ${projectFile.fileName} to already be seeded for ${projectFile.projectId}; run seedM1DtsFiles first.`
+        );
+      }
+
+      const alreadyIngested = await tx.query<{ c: string }>(
+        `
+        select count(*)::text as c
+        from dts_config_revision_members m
+        inner join dts_config_revisions cr on cr.id = m.config_revision_id
+        where cr.config_set_id = $1 and m.file_version_id = $2
+        `,
+        [configSetId, overlayFileRow.current_version_id]
+      );
+      if (!isNewBaseVersion && Number(alreadyIngested.rows[0]?.c ?? 0) > 0) {
+        continue;
+      }
+
+      const manifest: ConfigRevisionManifest = {
+        organizationId,
+        projectId: projectFile.projectId,
+        configSetId,
+        entryFile: BASE_POWER_SEED_FILE_NAME,
+        includeSearchPaths: ["."],
+        overlayOrder: [projectFile.fileName],
+        members: [
+          {
+            fileId: baseFileId,
+            fileVersionId: baseVersionId,
+            fileName: BASE_POWER_SEED_FILE_NAME,
+            role: "base",
+            sortOrder: 0,
+            content: baseSource
+          },
+          {
+            fileId: overlayFileRow.id,
+            fileVersionId: overlayFileRow.current_version_id,
+            fileName: projectFile.fileName,
+            role: "overlay",
+            sortOrder: 1,
+            content: projectFile.source
+          }
+        ]
+      };
+      await ingestConfigRevisionInTransaction(tx, manifest, auth);
+    }
+  });
+}
+
 async function main() {
   const env = loadServerEnv(process.env);
 
@@ -668,11 +864,21 @@ async function main() {
       ...dtsSeed.parameterLibrary.map(toPowerManagementParameter)
     ]
   };
-  await compileDtsSeedFiles(projectFiles);
-  await seedM1Parameters(db, config);
-  await seedM1DtsFiles(db, createObjectStoreFromEnv(env), projectFiles);
+  const instanceModuleAssignments = new Map<string, string>();
+  for (const parameter of dtsSeed.parameterLibrary) {
+    instanceModuleAssignments.set(parameter.instanceName.toLowerCase(), parameter.businessCategory);
+  }
+  const baseSource = await readFile(
+    path.join(root, "src", "config", "dts-seed", BASE_POWER_SEED_FILE_NAME),
+    "utf8"
+  );
 
-  console.log("Seeded M1 parameter data and full project DTS baselines.");
+  await compileDtsSeedFiles(projectFiles);
+  await seedM1Parameters(db, config, instanceModuleAssignments);
+  await seedM1DtsFiles(db, createObjectStoreFromEnv(env), projectFiles);
+  await seedM1SemanticTopology(db, projectFiles, baseSource);
+
+  console.log("Seeded M1 parameter data, full project DTS baselines, and module-aware topology bindings.");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
