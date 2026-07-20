@@ -6,11 +6,17 @@ import { ApiError } from "../../shared/http/errors";
 import { getProjectById } from "../parameters/repository";
 import {
   getBindingForProject,
+  listBindingCompareRows,
   listBindingRevisionRows,
   listIdentityMappingTaskRows,
   listProjectBindingRows
 } from "./bindingService";
-import { getBindingHistory, listIdentityMappingTasks, listProjectBindings } from "./service";
+import {
+  getBindingCompare,
+  getBindingHistory,
+  listIdentityMappingTasks,
+  listProjectBindings
+} from "./service";
 
 vi.mock("../parameters/repository", () => ({
   getProjectById: vi.fn()
@@ -22,7 +28,8 @@ vi.mock("./bindingService", () => ({
   getIdentityMappingTaskById: vi.fn(),
   resolveIdentityMappingTaskRow: vi.fn(),
   getBindingForProject: vi.fn(),
-  listBindingRevisionRows: vi.fn()
+  listBindingRevisionRows: vi.fn(),
+  listBindingCompareRows: vi.fn()
 }));
 
 vi.mock("./repository", () => ({
@@ -187,5 +194,77 @@ describe("parameter topology service org scope", () => {
     } satisfies Partial<ApiError>);
 
     expect(listBindingRevisionRows).not.toHaveBeenCalled();
+  });
+
+  it("getBindingCompare returns other projects sharing the binding spec+module, org-scoped", async () => {
+    vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
+    vi.mocked(getBindingForProject).mockResolvedValue({ id: "binding-1" });
+    vi.mocked(listBindingCompareRows).mockResolvedValue([
+      {
+        projectId: "project-2",
+        projectName: "Aurora",
+        rawValue: "<1>",
+        moduleName: "充电策略",
+        driverModule: "sc8562"
+      },
+      {
+        projectId: "project-3",
+        projectName: "Borealis",
+        rawValue: "<2>",
+        moduleName: "充电策略",
+        driverModule: "sc8562"
+      }
+    ]);
+
+    const result = await getBindingCompare(makeDb(), makeAuth(), {
+      projectId: "project-1",
+      bindingId: "binding-1"
+    });
+
+    expect(result.items).toEqual([
+      { projectId: "project-2", projectName: "Aurora", rawValue: "<1>", moduleName: "充电策略", driverModule: "sc8562" },
+      { projectId: "project-3", projectName: "Borealis", rawValue: "<2>", moduleName: "充电策略", driverModule: "sc8562" }
+    ]);
+    expect(result.items.some((item) => item.projectId === "project-1")).toBe(false);
+    expect(getBindingForProject).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: "org-1",
+      projectId: "project-1",
+      bindingId: "binding-1"
+    });
+    expect(listBindingCompareRows).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: "org-1",
+      projectId: "project-1",
+      bindingId: "binding-1"
+    });
+  });
+
+  it("getBindingCompare returns 404 when the project is outside the caller organization", async () => {
+    vi.mocked(getProjectById).mockResolvedValue(null);
+
+    await expect(
+      getBindingCompare(makeDb(), makeAuth(), { projectId: "cross-org-project", bindingId: "binding-1" })
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404,
+      details: { projectId: "cross-org-project" }
+    } satisfies Partial<ApiError>);
+
+    expect(getBindingForProject).not.toHaveBeenCalled();
+    expect(listBindingCompareRows).not.toHaveBeenCalled();
+  });
+
+  it("getBindingCompare returns 404 when the binding does not belong to the project", async () => {
+    vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
+    vi.mocked(getBindingForProject).mockResolvedValue(null);
+
+    await expect(
+      getBindingCompare(makeDb(), makeAuth(), { projectId: "project-1", bindingId: "ghost-binding" })
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404,
+      details: { bindingId: "ghost-binding" }
+    } satisfies Partial<ApiError>);
+
+    expect(listBindingCompareRows).not.toHaveBeenCalled();
   });
 });

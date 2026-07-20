@@ -4,6 +4,7 @@ import type {
   ParameterTopologyRepository
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
+  BindingCompareEntry,
   BindingHistoryEntry,
   IdentityMappingTask,
   ParameterSpecDetail,
@@ -110,6 +111,10 @@ function buildBindingsPath(projectId: string, revisionId: string) {
 
 function buildBindingHistoryPath(projectId: string, bindingId: string) {
   return `/api/v2/projects/${encodeURIComponent(projectId)}/bindings/${encodeURIComponent(bindingId)}/history`;
+}
+
+function buildBindingComparePath(projectId: string, bindingId: string) {
+  return `/api/v2/projects/${encodeURIComponent(projectId)}/bindings/${encodeURIComponent(bindingId)}/compare`;
 }
 
 function buildTopologyPath(
@@ -370,6 +375,12 @@ export function createHttpParameterTopologyRepository(
     async listBindingHistory(projectId, bindingId) {
       const response = await apiClient.get<ItemsEnvelope<BindingHistoryEntry>>(
         buildBindingHistoryPath(projectId, bindingId)
+      );
+      return response.items.map((entry) => ({ ...entry }));
+    },
+    async listBindingCompare(projectId, bindingId) {
+      const response = await apiClient.get<ItemsEnvelope<BindingCompareEntry>>(
+        buildBindingComparePath(projectId, bindingId)
       );
       return response.items.map((entry) => ({ ...entry }));
     },

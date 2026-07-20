@@ -7,6 +7,7 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
+  bindingCompareParamsSchema,
   bindingHistoryParamsSchema,
   createBindingDraftBodySchema,
   createBindingDraftParamsSchema,
@@ -22,6 +23,7 @@ import {
 } from "./schemas";
 import {
   createBindingDraft,
+  getBindingCompare,
   getBindingHistory,
   getTopology,
   listIdentityMappingTasks,
@@ -110,6 +112,18 @@ export function registerParameterTopologyRoutes(
     requireCanView(auth);
     const params = parseWithSchema(bindingHistoryParamsSchema, request.params);
     const result = await getBindingHistory(db, auth, {
+      projectId: params.projectId,
+      bindingId: params.bindingId
+    });
+    return { status: 200, body: result };
+  });
+
+  router.get("/api/v2/projects/:projectId/bindings/:bindingId/compare", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(bindingCompareParamsSchema, request.params);
+    const result = await getBindingCompare(db, auth, {
       projectId: params.projectId,
       bindingId: params.bindingId
     });

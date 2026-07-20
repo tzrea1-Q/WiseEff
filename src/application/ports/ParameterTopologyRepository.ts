@@ -1,4 +1,5 @@
 import type {
+  BindingCompareEntry,
   BindingHistoryEntry,
   IdentityMappingTask,
   ParameterSpecDetail,
@@ -16,6 +17,7 @@ import type {
 } from "@/domain/parameter-topology/types";
 
 export type {
+  BindingCompareEntry,
   BindingHistoryEntry,
   IdentityMappingTask,
   ParameterSpecDetail,
@@ -73,6 +75,8 @@ export interface ParameterTopologyRepository {
   listBindings(projectId: string, revisionId: string): Promise<ProjectParameterBinding[]>;
   /** Optional: per-binding revision history (Task 6). Absent implementations degrade to no history. */
   listBindingHistory?(projectId: string, bindingId: string): Promise<BindingHistoryEntry[]>;
+  /** Optional: cross-project compare peers (Task 7). Absent implementations degrade to no compare. */
+  listBindingCompare?(projectId: string, bindingId: string): Promise<BindingCompareEntry[]>;
   getTopology(
     projectId: string,
     configSetId: string,

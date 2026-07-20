@@ -133,6 +133,25 @@ describe("createHttpParameterTopologyRepository", () => {
     expect(items).toEqual(historyDto);
   });
 
+  it("lists cross-project compare entries via the v2 compare endpoint", async () => {
+    const compareDto = [
+      { projectId: "project-2", projectName: "Aurora", rawValue: "<1>", moduleName: "充电策略", driverModule: "sc8562" },
+      { projectId: "project-3", projectName: "Borealis", rawValue: "<2>", moduleName: "充电策略", driverModule: "sc8562" }
+    ];
+    const fetchMock = fetchQueue({ items: compareDto });
+    const repository = createHttpParameterTopologyRepository(
+      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
+    );
+
+    const items = await repository.listBindingCompare("project-1", "binding-1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/api/v2/projects/project-1/bindings/binding-1/compare",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(items).toEqual(compareDto);
+  });
+
   it("loads topology source/effective views", async () => {
     const topology = {
       view: "effective" as const,

@@ -930,6 +930,81 @@ export async function listBindingRevisionRows(
   }));
 }
 
+/** One peer binding for cross-project compare (phase 2, Task 7). */
+export type BindingCompareRow = {
+  projectId: string;
+  projectName: string;
+  rawValue: string;
+  moduleName: string | null;
+  driverModule: string | null;
+};
+
+/**
+ * Cross-project compare within the source binding's organization: peers are other
+ * projects whose binding shares the same `parameter_spec_id` AND `module_id`
+ * (design lock — never name-only). The source project is excluded; the latest
+ * revision raw value and module/driver display context are returned per peer.
+ */
+export async function listBindingCompareRows(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; bindingId: string },
+): Promise<BindingCompareRow[]> {
+  const result = await db.query<{
+    project_id: string;
+    project_name: string;
+    raw_value: string | null;
+    module_name: string | null;
+    driver_module: string | null;
+  }>(
+    `
+    with source as (
+      select parameter_spec_id, module_id
+      from project_parameter_bindings
+      where id = $1 and organization_id = $2 and project_id = $3
+      limit 1
+    )
+    select
+      b.project_id,
+      p.name as project_name,
+      latest.raw_value,
+      pm.name as module_name,
+      nullif(
+        case
+          when cardinality(string_to_array(ps.specification_key, '/')) >= 3
+            then (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/')) - 1]
+          else split_part(ps.specification_key, '/', 1)
+        end,
+        ''
+      ) as driver_module
+    from project_parameter_bindings b
+    inner join source s
+      on s.parameter_spec_id = b.parameter_spec_id
+     and s.module_id = b.module_id
+    inner join projects p on p.id = b.project_id
+    inner join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join parameter_modules pm on pm.id = b.module_id
+    left join lateral (
+      select raw_value
+      from project_parameter_binding_revisions
+      where binding_id = b.id
+      order by created_at desc
+      limit 1
+    ) latest on true
+    where b.organization_id = $2
+      and b.project_id <> $3
+    order by p.name asc, b.project_id asc
+    `,
+    [input.bindingId, input.organizationId, input.projectId],
+  );
+  return result.rows.map((row) => ({
+    projectId: row.project_id,
+    projectName: row.project_name,
+    rawValue: row.raw_value ?? "",
+    moduleName: row.module_name,
+    driverModule: row.driver_module,
+  }));
+}
+
 type BindingListRow = {
   id: string;
   parameter_spec_id: string;

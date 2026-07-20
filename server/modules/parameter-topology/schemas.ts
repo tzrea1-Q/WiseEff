@@ -125,6 +125,19 @@ export const bindingHistoryEntryDtoSchema = z.object({
   reason: z.string().nullable().optional()
 });
 
+export const bindingCompareParamsSchema = z.object({
+  projectId: nonEmptyString,
+  bindingId: nonEmptyString
+});
+
+export const bindingCompareEntryDtoSchema = z.object({
+  projectId: z.string(),
+  projectName: z.string(),
+  rawValue: z.string(),
+  moduleName: z.string().nullable().optional(),
+  driverModule: z.string().nullable().optional()
+});
+
 export const createBindingDraftBodySchema = z
   .object({
     baseRevisionId: nonEmptyString,

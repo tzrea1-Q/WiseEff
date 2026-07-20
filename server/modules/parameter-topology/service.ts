@@ -22,6 +22,7 @@ import {
   countOpenIdentityMappingTasksForRevision,
   getBindingForProject,
   getIdentityMappingTaskById,
+  listBindingCompareRows,
   listBindingRevisionRows,
   listIdentityMappingTaskRows,
   listProjectBindingRows,
@@ -314,6 +315,63 @@ export async function getBindingHistory(
   }));
 
   items.reverse();
+  return { items };
+}
+
+export type BindingCompareItem = {
+  projectId: string;
+  projectName: string;
+  rawValue: string;
+  moduleName?: string | null;
+  driverModule?: string | null;
+};
+
+/**
+ * Cross-project compare for one binding, scoped to the caller's organization.
+ * Peers are other projects whose binding shares the same `parameter_spec_id` and
+ * `module_id` (design lock); the source project is excluded.
+ */
+export async function getBindingCompare(
+  db: Database,
+  auth: AuthContext,
+  input: { projectId: string; bindingId: string }
+): Promise<{ items: BindingCompareItem[] }> {
+  requireCanView(auth);
+  const project = await getProjectById(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId
+  });
+  if (!project) {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+      projectId: input.projectId
+    });
+  }
+
+  const binding = await getBindingForProject(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    bindingId: input.bindingId
+  });
+  if (!binding) {
+    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", 404, {
+      bindingId: input.bindingId
+    });
+  }
+
+  const rows = await listBindingCompareRows(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    bindingId: input.bindingId
+  });
+
+  const items: BindingCompareItem[] = rows.map((row) => ({
+    projectId: row.projectId,
+    projectName: row.projectName,
+    rawValue: row.rawValue,
+    moduleName: row.moduleName,
+    driverModule: row.driverModule
+  }));
+
   return { items };
 }
 

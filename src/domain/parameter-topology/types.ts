@@ -107,6 +107,18 @@ export type BindingHistoryEntry = {
   reason?: string | null;
 };
 
+/**
+ * One cross-project compare peer for a binding. Peers share the source binding's
+ * `parameter_spec_id` + `module_id` within the same organization (design lock).
+ */
+export type BindingCompareEntry = {
+  projectId: string;
+  projectName: string;
+  rawValue: string;
+  moduleName?: string | null;
+  driverModule?: string | null;
+};
+
 export type TopologyView = "source" | "effective";
 
 export type SourceTopologyProperty = {
