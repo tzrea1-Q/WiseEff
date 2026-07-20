@@ -273,7 +273,10 @@ describe("DtsParameterWorkbench", () => {
     expect(styles).toMatch(/@media\s*\(max-width:\s*820px\)/);
     expect(styles).toMatch(/@media\s*\(max-width:\s*480px\)/);
     expect(styles).toMatch(/\.dts-parameter-workbench[\s\S]*:focus-visible/);
-    expect(styles).toMatch(/@media\s*\(max-width:\s*1200px\)[\s\S]*\.dts-workbench-list[\s\S]*overflow-x:\s*auto/);
+    expect(styles).toMatch(/\.dts-workbench-list[^{]*\{[^}]*overflow:\s*auto/);
+    expect(styles).toMatch(/\.dts-parameter-workbench-table[^{]*\{[^}]*min-width:\s*1100px/);
+    expect(styles).toMatch(/@media\s*\(max-width:\s*1200px\)[\s\S]*\.dts-parameter-workbench-table[\s\S]*min-width:\s*920px/);
+    expect(styles).toMatch(/@media\s*\(max-width:\s*820px\)[\s\S]*\.dts-parameter-workbench-table[\s\S]*min-width:\s*0/);
     expect(styles).toMatch(/clip-path:\s*inset\(50%\)/);
     expect(styles).toMatch(/min-height:\s*44px/);
     expect(styles).toContain("--dts-workbench-muted: #52657d");
