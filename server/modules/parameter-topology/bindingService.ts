@@ -23,6 +23,8 @@ export type ProjectPropertyBindingKey = {
   projectId: string;
   logicalNodeId: string | null;
   parameterSpecId: string;
+  /** Durable v1 business module. Identity/reuse is keyed on this 4-tuple (phase 2, §5.1). */
+  moduleId: string;
 };
 
 export type BindingRevisionValues = {
@@ -43,6 +45,7 @@ export type ProjectParameterBinding = {
   projectId: string;
   logicalNodeId: string | null;
   parameterSpecId: string;
+  moduleId: string;
   createdAt: string;
 };
 
@@ -102,7 +105,7 @@ export type ContinuityUnmatched = {
 export type ContinuityResult = ContinuityMatched | ContinuityAmbiguous | ContinuityUnmatched;
 
 export function bindingKey(key: ProjectPropertyBindingKey): string {
-  return `${key.projectId}\0${key.logicalNodeId ?? ""}\0${key.parameterSpecId}`;
+  return `${key.projectId}\0${key.logicalNodeId ?? ""}\0${key.parameterSpecId}\0${key.moduleId}`;
 }
 
 /**
@@ -149,6 +152,7 @@ type BindingRow = {
   project_id: string;
   logical_node_id: string | null;
   parameter_spec_id: string;
+  module_id: string;
   created_at: string | Date;
 };
 
@@ -191,6 +195,7 @@ function toBinding(row: BindingRow): ProjectParameterBinding {
     projectId: row.project_id,
     logicalNodeId: row.logical_node_id,
     parameterSpecId: row.parameter_spec_id,
+    moduleId: row.module_id,
     createdAt: dateTimeToIso(row.created_at),
   };
 }
@@ -251,15 +256,22 @@ export async function findBindingByKey(
 ): Promise<ProjectParameterBinding | null> {
   const result = await db.query<BindingRow>(
     `
-    select id, organization_id, project_id, logical_node_id, parameter_spec_id, created_at
+    select id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id, created_at
     from project_parameter_bindings
     where organization_id = $1
       and project_id = $2
       and logical_node_id is not distinct from $3
       and parameter_spec_id = $4
+      and module_id = $5
     limit 1
     `,
-    [input.organizationId, input.projectId, input.logicalNodeId, input.parameterSpecId],
+    [
+      input.organizationId,
+      input.projectId,
+      input.logicalNodeId,
+      input.parameterSpecId,
+      input.moduleId,
+    ],
   );
   const row = result.rows[0];
   return row ? toBinding(row) : null;
@@ -283,9 +295,9 @@ export async function createOrReuseBinding(
   const result = await db.query<BindingRow>(
     `
     insert into project_parameter_bindings (
-      id, organization_id, project_id, logical_node_id, parameter_spec_id
-    ) values ($1, $2, $3, $4, $5)
-    returning id, organization_id, project_id, logical_node_id, parameter_spec_id, created_at
+      id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id
+    ) values ($1, $2, $3, $4, $5, $6)
+    returning id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id, created_at
     `,
     [
       id,
@@ -293,6 +305,7 @@ export async function createOrReuseBinding(
       input.key.projectId,
       input.key.logicalNodeId,
       input.key.parameterSpecId,
+      input.key.moduleId,
     ],
   );
   return toBinding(result.rows[0]);
@@ -580,6 +593,7 @@ export async function applyReviewedIdentityMapping(
     id: string;
     binding_id: string;
     parameter_spec_id: string;
+    module_id: string;
     parameter_spec_version_id: string;
     typed_value: unknown;
     canonical_value: unknown;
@@ -592,6 +606,7 @@ export async function applyReviewedIdentityMapping(
       br.id,
       br.binding_id,
       b.parameter_spec_id,
+      b.module_id,
       br.parameter_spec_version_id,
       br.typed_value,
       br.canonical_value,
@@ -630,12 +645,14 @@ export async function applyReviewedIdentityMapping(
   }
 
   for (const row of provisionalRevisions.rows) {
+    // Identity remap only — reuse the provisional binding's own module, never reclassify it here.
     const binding = await createOrReuseBinding(db, {
       organizationId: input.organizationId,
       key: {
         projectId: input.projectId,
         logicalNodeId: stableLogicalNodeId,
         parameterSpecId: row.parameter_spec_id,
+        moduleId: row.module_id,
       },
     });
 

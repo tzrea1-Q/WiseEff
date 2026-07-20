@@ -1,5 +1,6 @@
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import {
   createOrReuseBinding,
   upsertBindingRevisionValues,
@@ -36,6 +37,13 @@ function asString(value: unknown): string | null {
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+/** DTS node locators end in "name@unitAddress" (or bare "name"), matching instance-mapping format. */
+function instanceNameFromNodeLocator(nodeLocator: string | null): string | null {
+  if (!nodeLocator) return null;
+  const segments = nodeLocator.split("/").filter((segment) => segment.length > 0);
+  return segments.length > 0 ? segments[segments.length - 1]! : null;
 }
 
 export type SpecReviewEvidence = {
@@ -181,12 +189,24 @@ export async function applyResolvedSpecReview(
 
   const values = await loadPropertyValueForBinding(db, locate);
 
+  const spec = await getParameterSpecRow(db, {
+    organizationId: input.organizationId,
+    specId: input.parameterSpecId,
+  });
+  const moduleId = await resolveModuleIdForBinding(db, {
+    organizationId: input.organizationId,
+    driverModule: spec?.driverModule ?? null,
+    compatible: evidence.compatible[0] ?? null,
+    instanceName: instanceNameFromNodeLocator(evidence.nodeLocator),
+  });
+
   const binding = await createOrReuseBinding(db, {
     organizationId: input.organizationId,
     key: {
       projectId: locate.projectId,
       logicalNodeId: locate.logicalNodeId,
       parameterSpecId: input.parameterSpecId,
+      moduleId,
     },
   });
 

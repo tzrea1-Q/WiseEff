@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "./bindingService";
 import { resolveIdentityMappingTask } from "./service";
 
@@ -124,7 +125,23 @@ async function insertLogicalNodeRevision(
   );
 }
 
+/**
+ * No module mapping rows are seeded in this fixture, so every direct
+ * createOrReuseBinding call resolves to the same deterministic org-scoped
+ * unclassified module, matching what applyReviewedIdentityMapping resolves
+ * internally when it reuses a provisional candidate binding's module_id.
+ */
+async function unclassifiedModuleId(db: InMemoryTestDatabase): Promise<string> {
+  return resolveModuleIdForBinding(db, {
+    organizationId: ORG_ID,
+    driverModule: null,
+    compatible: null,
+    instanceName: null,
+  });
+}
+
 async function seedMultiTaskAmbiguousRevision(db: InMemoryTestDatabase) {
+  const moduleId = await unclassifiedModuleId(db);
   const revisionId = randomUUID();
   await db.query(
     `
@@ -142,11 +159,11 @@ async function seedMultiTaskAmbiguousRevision(db: InMemoryTestDatabase) {
   // Prior continuity baseline: previous nodes already have stable bindings.
   const prevBindingA = await createOrReuseBinding(db, {
     organizationId: ORG_ID,
-    key: { projectId: PROJECT_ID, logicalNodeId: PREV_A, parameterSpecId: SPEC_ID },
+    key: { projectId: PROJECT_ID, logicalNodeId: PREV_A, parameterSpecId: SPEC_ID, moduleId },
   });
   const prevBindingB = await createOrReuseBinding(db, {
     organizationId: ORG_ID,
-    key: { projectId: PROJECT_ID, logicalNodeId: PREV_B, parameterSpecId: SPEC_ID },
+    key: { projectId: PROJECT_ID, logicalNodeId: PREV_B, parameterSpecId: SPEC_ID, moduleId },
   });
 
   await insertLogicalNodeRevision(db, {
@@ -182,7 +199,7 @@ async function seedMultiTaskAmbiguousRevision(db: InMemoryTestDatabase) {
   for (const candidateId of [CAND_A1, CAND_A2, CAND_B1, CAND_B2]) {
     const binding = await createOrReuseBinding(db, {
       organizationId: ORG_ID,
-      key: { projectId: PROJECT_ID, logicalNodeId: candidateId, parameterSpecId: SPEC_ID },
+      key: { projectId: PROJECT_ID, logicalNodeId: candidateId, parameterSpecId: SPEC_ID, moduleId },
     });
     await upsertBindingRevisionValues(db, {
       bindingId: binding.id,

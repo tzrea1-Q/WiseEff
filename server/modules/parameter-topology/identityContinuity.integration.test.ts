@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import {
   applyReviewedContinuityToSnapshots,
   createOrReuseBinding,
@@ -123,6 +124,21 @@ async function seedGraph(db: InMemoryTestDatabase) {
     `,
     ["dps-cont-gpio", SPEC_ID],
   );
+}
+
+/**
+ * No module mapping rows are seeded in this fixture, so every direct
+ * createOrReuseBinding call resolves to the same deterministic org-scoped
+ * unclassified module that ingestConfigRevision resolves internally for the
+ * same property, keeping the 4-tuple reuse assertions below valid.
+ */
+async function unclassifiedModuleId(db: InMemoryTestDatabase): Promise<string> {
+  return resolveModuleIdForBinding(db, {
+    organizationId: ORG_ID,
+    driverModule: null,
+    compatible: null,
+    instanceName: null,
+  });
 }
 
 async function insertPinnedMember(
@@ -335,6 +351,7 @@ describe.skipIf(!databaseAvailable)("identity continuity across revisons", () =>
           projectId: PROJECT_ID,
           logicalNodeId: stableLogicalNodeId!,
           parameterSpecId: SPEC_ID,
+          moduleId: await unclassifiedModuleId(db!),
         },
       });
       await upsertBindingRevisionValues(db!, {
@@ -444,6 +461,7 @@ describe.skipIf(!databaseAvailable)("identity continuity across revisons", () =>
           projectId: PROJECT_ID,
           logicalNodeId: stableLogicalNodeId!,
           parameterSpecId: SPEC_ID,
+          moduleId: await unclassifiedModuleId(db!),
         },
       });
       expect(r2Binding.id).toBe(stableBindingId);
@@ -488,6 +506,7 @@ describe.skipIf(!databaseAvailable)("identity continuity across revisons", () =>
           projectId: PROJECT_ID,
           logicalNodeId: stableLogicalNodeId!,
           parameterSpecId: SPEC_ID,
+          moduleId: await unclassifiedModuleId(db!),
         },
       });
       expect(r3Binding.id).toBe(stableBindingId);

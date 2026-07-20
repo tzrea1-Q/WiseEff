@@ -31,6 +31,7 @@ import {
 } from "../parameter-specs/repository";
 import { loadSchemaRegistry } from "../parameter-specs/schemaLoader";
 import type { MatchableNode, SchemaRegistry, SpecReviewTaskDraft } from "../parameter-specs/types";
+import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
@@ -138,6 +139,18 @@ function uniqueKeysFromReg(reg?: string): Record<string, string> | undefined {
   const match = reg.match(/<\s*(0x[0-9a-fA-F]+|\d+)/);
   if (!match) return undefined;
   return { "i2c-reg": match[1].toLowerCase() };
+}
+
+/** "diascope/sc8562" (namespace) → "sc8562"; single-segment namespaces pass through unchanged. */
+function driverModuleFromSchemaNamespace(schemaNamespace: string | null | undefined): string | null {
+  if (!schemaNamespace) return null;
+  const segments = schemaNamespace.split("/").filter((segment) => segment.length > 0);
+  return segments.length > 0 ? segments[segments.length - 1]! : null;
+}
+
+function instanceNameFor(matchable: Pick<MatchableNode, "name" | "unitAddress">): string | null {
+  if (!matchable.name) return null;
+  return matchable.unitAddress ? `${matchable.name}@${matchable.unitAddress}` : matchable.name;
 }
 
 function toMatchableNode(node: DtsEffectiveNode): MatchableNode {
@@ -578,12 +591,19 @@ async function matchBindAndQueueReviews(
           specId: override.parameterSpecId,
         });
         if (!spec?.currentVersionId) continue;
+        const overrideModuleId = await resolveModuleIdForBinding(tx, {
+          organizationId: input.organizationId,
+          driverModule: spec.driverModule,
+          compatible: matchable.compatible[0] ?? null,
+          instanceName: instanceNameFor(matchable),
+        });
         const binding = await createOrReuseBinding(tx, {
           organizationId: input.organizationId,
           key: {
             projectId: input.projectId,
             logicalNodeId,
             parameterSpecId: override.parameterSpecId,
+            moduleId: overrideModuleId,
           },
         });
         await upsertBindingRevisionValues(tx, {
@@ -620,12 +640,19 @@ async function matchBindAndQueueReviews(
           tx,
           decision.value,
         );
+        const matchedModuleId = await resolveModuleIdForBinding(tx, {
+          organizationId: input.organizationId,
+          driverModule: driverModuleFromSchemaNamespace(decision.value.schemaNamespace),
+          compatible: matchable.compatible[0] ?? null,
+          instanceName: instanceNameFor(matchable),
+        });
         const binding = await createOrReuseBinding(tx, {
           organizationId: input.organizationId,
           key: {
             projectId: input.projectId,
             logicalNodeId,
             parameterSpecId,
+            moduleId: matchedModuleId,
           },
         });
         await upsertBindingRevisionValues(tx, {

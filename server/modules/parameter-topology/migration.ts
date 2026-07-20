@@ -16,6 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { Database, Queryable } from "../../shared/database/client";
+import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 
 export type ParameterIdentityMigrationCoverage = {
   history: number;
@@ -638,6 +639,9 @@ async function ensureBinding(
     projectId: string;
     logicalNodeId: string | null;
     parameterSpecId: string;
+    driverModule?: string | null;
+    compatible?: string | null;
+    instanceName?: string | null;
     apply: boolean;
   }
 ): Promise<string> {
@@ -648,23 +652,31 @@ async function ensureBinding(
   ]);
   if (!input.apply) return bindingId;
 
+  const moduleId = await resolveModuleIdForBinding(db, {
+    organizationId: input.organizationId,
+    driverModule: input.driverModule ?? null,
+    compatible: input.compatible ?? null,
+    instanceName: input.instanceName ?? null
+  });
+
   const existing = await db.query<{ id: string }>(
     `
     select id from project_parameter_bindings
     where project_id = $1
       and logical_node_id is not distinct from $2
       and parameter_spec_id = $3
+      and module_id = $4
     limit 1
     `,
-    [input.projectId, input.logicalNodeId, input.parameterSpecId]
+    [input.projectId, input.logicalNodeId, input.parameterSpecId, moduleId]
   );
   if (existing.rows[0]?.id) return existing.rows[0].id;
 
   await db.query(
     `
     insert into project_parameter_bindings (
-      id, organization_id, project_id, logical_node_id, parameter_spec_id
-    ) values ($1, $2, $3, $4, $5)
+      id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id
+    ) values ($1, $2, $3, $4, $5, $6)
     on conflict (id) do nothing
     `,
     [
@@ -672,7 +684,8 @@ async function ensureBinding(
       input.organizationId,
       input.projectId,
       input.logicalNodeId,
-      input.parameterSpecId
+      input.parameterSpecId,
+      moduleId
     ]
   );
 
@@ -682,9 +695,10 @@ async function ensureBinding(
     where project_id = $1
       and logical_node_id is not distinct from $2
       and parameter_spec_id = $3
+      and module_id = $4
     limit 1
     `,
-    [input.projectId, input.logicalNodeId, input.parameterSpecId]
+    [input.projectId, input.logicalNodeId, input.parameterSpecId, moduleId]
   );
   return again.rows[0]?.id ?? bindingId;
 }
@@ -1418,6 +1432,12 @@ async function runParameterIdentityMigration(
       projectId: value.project_id,
       logicalNodeId,
       parameterSpecId: valueSpec.parameterSpecId,
+      driverModule: driverName ?? schemaNamespace,
+      compatible:
+        resolvedNode.kind === "one" && resolvedNode.compatible
+          ? resolvedNode.compatible.replace(/^"+|"+$/g, "")
+          : null,
+      instanceName: resolvedNode.kind === "one" ? resolvedNode.nodeName : null,
       apply: writesActivity
     });
 

@@ -6,6 +6,7 @@ import type { DtsToolchainRunner } from "../parameter-files/dtsToolchain";
 import { ApiError } from "../../shared/http/errors";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
+import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "./bindingService";
 import { createBindingDraft, unchangedSourceBytes } from "./editService";
 import { ingestConfigRevision } from "./ingestService";
@@ -143,6 +144,21 @@ async function seedGraph(db: InMemoryTestDatabase) {
     `,
     ["dps-iin-max", SPEC_ID],
   );
+}
+
+/**
+ * No module mapping rows are seeded in this fixture, so every direct
+ * createOrReuseBinding call must resolve to the same deterministic org-scoped
+ * unclassified module that ingestConfigRevision resolves internally — otherwise
+ * the 4-tuple key would create a second, disconnected binding for the same property.
+ */
+async function unclassifiedModuleId(db: InMemoryTestDatabase): Promise<string> {
+  return resolveModuleIdForBinding(db, {
+    organizationId: ORG_ID,
+    driverModule: null,
+    compatible: null,
+    instanceName: null,
+  });
 }
 
 async function insertPinnedMember(
@@ -288,6 +304,7 @@ async function seedConfigAndBinding(
       projectId: PROJECT_ID,
       logicalNodeId: logicalNodeId!,
       parameterSpecId: SPEC_ID,
+      moduleId: await unclassifiedModuleId(db),
     },
   });
 
@@ -1028,6 +1045,7 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
         projectId: PROJECT_ID,
         logicalNodeId: logical.rows[0]!.logical_node_id,
         parameterSpecId: SPEC_ID,
+        moduleId: await unclassifiedModuleId(db!),
       },
     });
     await upsertBindingRevisionValues(db!, {
@@ -1259,6 +1277,7 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
         projectId: PROJECT_ID,
         logicalNodeId: logical.rows[0]!.logical_node_id,
         parameterSpecId: SPEC_ID,
+        moduleId: await unclassifiedModuleId(db!),
       },
     });
     await upsertBindingRevisionValues(db!, {
@@ -1676,6 +1695,7 @@ describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
         projectId: PROJECT_ID,
         logicalNodeId: logical.rows[0]!.logical_node_id,
         parameterSpecId: SPEC_ID,
+        moduleId: await unclassifiedModuleId(db!),
       },
     });
     await upsertBindingRevisionValues(db!, {
