@@ -114,6 +114,25 @@ describe("createHttpParameterTopologyRepository", () => {
     expect(items[0]).not.toHaveProperty("recommendedValue");
   });
 
+  it("lists binding-revision history via the v2 history endpoint and preserves from→to entries", async () => {
+    const historyDto = [
+      { id: "rev-2", changedAt: "2026-01-02T00:00:00.000Z", fromRawValue: "<0>", toRawValue: "<1>" },
+      { id: "rev-1", changedAt: "2026-01-01T00:00:00.000Z", fromRawValue: null, toRawValue: "<0>" }
+    ];
+    const fetchMock = fetchQueue({ items: historyDto });
+    const repository = createHttpParameterTopologyRepository(
+      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
+    );
+
+    const items = await repository.listBindingHistory("project-1", "binding-1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.test/api/v2/projects/project-1/bindings/binding-1/history",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(items).toEqual(historyDto);
+  });
+
   it("loads topology source/effective views", async () => {
     const topology = {
       view: "effective" as const,

@@ -212,6 +212,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterTopology.getBindingHistory",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/bindings/:bindingId/history",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterTopology.listIdentityMappingTasks",
     method: "GET",
     path: "/api/v2/identity-mapping-tasks",

@@ -859,6 +859,77 @@ export async function resolveIdentityMappingTaskRow(
   return row ? toMappingTask(row) : null;
 }
 
+/** One binding revision row for per-binding history (phase 2, Task 6). */
+export type BindingRevisionHistoryRow = {
+  id: string;
+  configRevisionId: string;
+  revisionNumber: number;
+  rawValue: string | null;
+  createdAt: string;
+};
+
+/**
+ * Org/project-scoped existence check for a single binding. Returns null when the
+ * binding does not belong to the caller's organization and project.
+ */
+export async function getBindingForProject(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; bindingId: string },
+): Promise<{ id: string } | null> {
+  const result = await db.query<{ id: string }>(
+    `
+    select id
+    from project_parameter_bindings
+    where id = $1 and organization_id = $2 and project_id = $3
+    limit 1
+    `,
+    [input.bindingId, input.organizationId, input.projectId],
+  );
+  const row = result.rows[0];
+  return row ? { id: row.id } : null;
+}
+
+/**
+ * Load every binding revision for one binding, oldest-first, so callers can map
+ * adjacent raw values into from→to change entries. History = binding revisions only.
+ */
+export async function listBindingRevisionRows(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; bindingId: string },
+): Promise<BindingRevisionHistoryRow[]> {
+  const result = await db.query<{
+    id: string;
+    config_revision_id: string;
+    revision_number: number;
+    raw_value: string | null;
+    created_at: string | Date;
+  }>(
+    `
+    select
+      br.id,
+      br.config_revision_id,
+      cr.revision_number,
+      br.raw_value,
+      br.created_at
+    from project_parameter_binding_revisions br
+    inner join project_parameter_bindings b on b.id = br.binding_id
+    inner join dts_config_revisions cr on cr.id = br.config_revision_id
+    where br.binding_id = $1
+      and b.organization_id = $2
+      and b.project_id = $3
+    order by cr.revision_number asc, br.created_at asc
+    `,
+    [input.bindingId, input.organizationId, input.projectId],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    configRevisionId: row.config_revision_id,
+    revisionNumber: row.revision_number,
+    rawValue: row.raw_value,
+    createdAt: dateTimeToIso(row.created_at),
+  }));
+}
+
 type BindingListRow = {
   id: string;
   parameter_spec_id: string;

@@ -7,6 +7,7 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
+  bindingHistoryParamsSchema,
   createBindingDraftBodySchema,
   createBindingDraftParamsSchema,
   identityMappingTaskParamsSchema,
@@ -21,6 +22,7 @@ import {
 } from "./schemas";
 import {
   createBindingDraft,
+  getBindingHistory,
   getTopology,
   listIdentityMappingTasks,
   listProjectBindings,
@@ -98,6 +100,18 @@ export function registerParameterTopologyRoutes(
     const result = await listProjectBindings(db, auth, {
       projectId: params.projectId,
       revisionId: query.revisionId
+    });
+    return { status: 200, body: result };
+  });
+
+  router.get("/api/v2/projects/:projectId/bindings/:bindingId/history", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(bindingHistoryParamsSchema, request.params);
+    const result = await getBindingHistory(db, auth, {
+      projectId: params.projectId,
+      bindingId: params.bindingId
     });
     return { status: 200, body: result };
   });

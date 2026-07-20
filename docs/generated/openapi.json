@@ -1951,6 +1951,57 @@
         }
       }
     },
+    "/api/v2/projects/{projectId}/bindings/{bindingId}/history": {
+      "get": {
+        "operationId": "parameterTopology.getBindingHistory",
+        "summary": "List binding-revision change history for a project parameter binding",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bindingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingHistoryListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/identity-mapping-tasks": {
       "get": {
         "operationId": "parameterTopology.listIdentityMappingTasks",
@@ -4815,6 +4866,10 @@
       "ProjectParameterBindingListResponse": {
         "type": "object",
         "x-wiseeff-schema": "ProjectParameterBindingListResponse"
+      },
+      "BindingHistoryListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "BindingHistoryListResponse"
       },
       "IdentityMappingTaskListResponse": {
         "type": "object",

@@ -111,6 +111,20 @@ export const createBindingDraftParamsSchema = z.object({
   bindingId: nonEmptyString
 });
 
+export const bindingHistoryParamsSchema = z.object({
+  projectId: nonEmptyString,
+  bindingId: nonEmptyString
+});
+
+export const bindingHistoryEntryDtoSchema = z.object({
+  id: z.string(),
+  changedAt: z.string(),
+  actor: z.string().nullable().optional(),
+  fromRawValue: z.string().nullable().optional(),
+  toRawValue: z.string().nullable().optional(),
+  reason: z.string().nullable().optional()
+});
+
 export const createBindingDraftBodySchema = z
   .object({
     baseRevisionId: nonEmptyString,

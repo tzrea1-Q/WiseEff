@@ -4,6 +4,7 @@ import type {
   ParameterTopologyRepository
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
+  BindingHistoryEntry,
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
@@ -105,6 +106,10 @@ function buildSpecReviewTasksPath(query: SpecReviewTaskQuery = {}) {
 function buildBindingsPath(projectId: string, revisionId: string) {
   const params = new URLSearchParams({ revisionId });
   return appendQuery(`/api/v2/projects/${encodeURIComponent(projectId)}/parameter-bindings`, params);
+}
+
+function buildBindingHistoryPath(projectId: string, bindingId: string) {
+  return `/api/v2/projects/${encodeURIComponent(projectId)}/bindings/${encodeURIComponent(bindingId)}/history`;
 }
 
 function buildTopologyPath(
@@ -361,6 +366,12 @@ export function createHttpParameterTopologyRepository(
         buildBindingsPath(projectId, revisionId)
       );
       return response.items.map(bindingFromDto);
+    },
+    async listBindingHistory(projectId, bindingId) {
+      const response = await apiClient.get<ItemsEnvelope<BindingHistoryEntry>>(
+        buildBindingHistoryPath(projectId, bindingId)
+      );
+      return response.items.map((entry) => ({ ...entry }));
     },
     async getTopology(projectId, configSetId, revisionId, view) {
       const response = await apiClient.get<ItemEnvelope<TopologyTree>>(

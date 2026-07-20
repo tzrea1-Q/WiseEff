@@ -94,6 +94,19 @@ export type ProjectParameterBinding = {
   moduleId: string;
 };
 
+/**
+ * One per-binding change entry, sourced from binding revisions only.
+ * Adjacent revision raw values are mapped into from→to; newest-first.
+ */
+export type BindingHistoryEntry = {
+  id: string;
+  changedAt: string;
+  actor?: string | null;
+  fromRawValue?: string | null;
+  toRawValue?: string | null;
+  reason?: string | null;
+};
+
 export type TopologyView = "source" | "effective";
 
 export type SourceTopologyProperty = {

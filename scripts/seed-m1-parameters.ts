@@ -829,6 +829,138 @@ export async function seedM1SemanticTopology(
   });
 }
 
+/** Default demo mutation: nudge one sc8562 property so its binding gains a 2nd revision. */
+export const BINDING_REVISION_HISTORY_DEMO = {
+  projectId: "aurora",
+  find: "watchdog_time = <5000>;",
+  replace: "watchdog_time = <6000>;"
+} as const;
+
+/**
+ * Demo-only: drive a SECOND config revision through the same production ingest
+ * path with one changed overlay property so at least one binding accumulates two
+ * `project_parameter_binding_revisions` rows. History is binding-revision based
+ * only; this gives the detail dialog real from→to data. Idempotent: skips when
+ * the revised overlay version has already been ingested. Must run after
+ * `seedM1SemanticTopology`.
+ */
+export async function seedM1BindingRevisionHistory(
+  db: Database,
+  projectFiles: readonly DtsPowerSeedProjectFile[],
+  baseSource: string,
+  options: { projectId?: string; find?: string; replace?: string } = {}
+): Promise<void> {
+  const targetProjectId = options.projectId ?? BINDING_REVISION_HISTORY_DEMO.projectId;
+  const find = options.find ?? BINDING_REVISION_HISTORY_DEMO.find;
+  const replace = options.replace ?? BINDING_REVISION_HISTORY_DEMO.replace;
+  const projectFile = projectFiles.find((file) => file.projectId === targetProjectId);
+  if (!projectFile || !projectFile.source.includes(find)) return;
+  const revisedSource = projectFile.source.replace(find, replace);
+  if (revisedSource === projectFile.source) return;
+
+  const baseBytes = Buffer.from(baseSource, "utf8");
+  const baseChecksum = createHash("sha256").update(baseBytes).digest("hex");
+  const auth = seedAuthContext();
+  const configSetId = `dcs-default-${targetProjectId}`;
+
+  await db.transaction(async (tx) => {
+    const baseFileRow = await tx.query<SeedFileRow>(
+      `select id, current_version_id from project_parameter_files where project_id = $1 and file_name = $2`,
+      [targetProjectId, BASE_POWER_SEED_FILE_NAME]
+    );
+    const baseFile = baseFileRow.rows[0];
+    if (!baseFile?.current_version_id) return;
+
+    const overlayFileRow = await tx.query<SeedFileRow>(
+      `select id, current_version_id from project_parameter_files where project_id = $1 and file_name = $2`,
+      [targetProjectId, projectFile.fileName]
+    );
+    const overlayFile = overlayFileRow.rows[0];
+    if (!overlayFile?.id) return;
+
+    const revisedBytes = Buffer.from(revisedSource, "utf8");
+    const revisedChecksum = createHash("sha256").update(revisedBytes).digest("hex");
+    const revisedStorageKey = `${organizationId}/${revisedChecksum}-${projectFile.fileName}`;
+
+    const alreadyIngested = await tx.query<{ c: string }>(
+      `
+      select count(*)::text as c
+      from dts_config_revision_members m
+      inner join dts_config_revisions cr on cr.id = m.config_revision_id
+      inner join project_parameter_file_versions v on v.id = m.file_version_id
+      where cr.config_set_id = $1 and v.file_id = $2 and v.checksum = $3
+      `,
+      [configSetId, overlayFile.id, revisedChecksum]
+    );
+    if (Number(alreadyIngested.rows[0]?.c ?? 0) > 0) return;
+
+    const existingRevised = await tx.query<{ id: string }>(
+      `select id from project_parameter_file_versions where file_id = $1 and checksum = $2 limit 1`,
+      [overlayFile.id, revisedChecksum]
+    );
+    let revisedVersionId = existingRevised.rows[0]?.id;
+    if (!revisedVersionId) {
+      const nextVersion = await tx.query<{ n: number | string }>(
+        `select coalesce(max(version_number), 0) + 1 as n from project_parameter_file_versions where file_id = $1`,
+        [overlayFile.id]
+      );
+      revisedVersionId = `seed-dts-version-${targetProjectId}-${revisedChecksum.slice(0, 16)}`;
+      await tx.query(
+        `
+        insert into project_parameter_file_versions (
+          id, file_id, version_number, storage_key, checksum,
+          size_bytes, parsed_index, origin, created_by_user_id
+        )
+        values ($1, $2, $3, $4, $5, $6, '{}'::jsonb, 'upload', $7)
+        on conflict (id) do nothing
+        `,
+        [
+          revisedVersionId,
+          overlayFile.id,
+          Number(nextVersion.rows[0]?.n ?? 2),
+          revisedStorageKey,
+          revisedChecksum,
+          revisedBytes.byteLength,
+          seedUserId
+        ]
+      );
+      await ingestDtsFileVersion(tx, revisedVersionId, revisedSource);
+    }
+    await tx.query(
+      `update project_parameter_files set current_version_id = $2, updated_at = now() where id = $1`,
+      [overlayFile.id, revisedVersionId]
+    );
+
+    const manifest: ConfigRevisionManifest = {
+      organizationId,
+      projectId: targetProjectId,
+      configSetId,
+      entryFile: BASE_POWER_SEED_FILE_NAME,
+      includeSearchPaths: ["."],
+      overlayOrder: [projectFile.fileName],
+      members: [
+        {
+          fileId: baseFile.id,
+          fileVersionId: baseFile.current_version_id,
+          fileName: BASE_POWER_SEED_FILE_NAME,
+          role: "base",
+          sortOrder: 0,
+          content: baseSource
+        },
+        {
+          fileId: overlayFile.id,
+          fileVersionId: revisedVersionId,
+          fileName: projectFile.fileName,
+          role: "overlay",
+          sortOrder: 1,
+          content: revisedSource
+        }
+      ]
+    };
+    await ingestConfigRevisionInTransaction(tx, manifest, auth);
+  });
+}
+
 async function main() {
   const env = loadServerEnv(process.env);
 
@@ -877,8 +1009,11 @@ async function main() {
   await seedM1Parameters(db, config, instanceModuleAssignments);
   await seedM1DtsFiles(db, createObjectStoreFromEnv(env), projectFiles);
   await seedM1SemanticTopology(db, projectFiles, baseSource);
+  await seedM1BindingRevisionHistory(db, projectFiles, baseSource);
 
-  console.log("Seeded M1 parameter data, full project DTS baselines, and module-aware topology bindings.");
+  console.log(
+    "Seeded M1 parameter data, full project DTS baselines, module-aware topology bindings, and a demo binding-revision history."
+  );
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -302,6 +302,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ProjectParameterBindingListResponse",
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "parameterTopology.getBindingHistory": {
+    summary: "List binding-revision change history for a project parameter binding",
+    tags: ["parameters"],
+    responseBody: "BindingHistoryListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameterTopology.listIdentityMappingTasks": {
     summary: "List identity mapping tasks",
     tags: ["parameters"],

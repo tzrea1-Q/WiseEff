@@ -20,7 +20,9 @@ import {
   applyReviewedIdentityMapping,
   continuityReuseFromTaskEvidence,
   countOpenIdentityMappingTasksForRevision,
+  getBindingForProject,
   getIdentityMappingTaskById,
+  listBindingRevisionRows,
   listIdentityMappingTaskRows,
   listProjectBindingRows,
   lockOpenIdentityMappingTask,
@@ -251,6 +253,68 @@ export async function listIdentityMappingTasks(
       resolvedAt: item.resolvedAt
     }))
   };
+}
+
+export type BindingHistoryItem = {
+  id: string;
+  changedAt: string;
+  actor?: string | null;
+  fromRawValue?: string | null;
+  toRawValue?: string | null;
+  reason?: string | null;
+};
+
+/**
+ * Per-binding change history sourced from `project_parameter_binding_revisions` only.
+ * Adjacent revision raw values become from→to change entries; results are newest-first.
+ */
+export async function getBindingHistory(
+  db: Database,
+  auth: AuthContext,
+  input: { projectId: string; bindingId: string }
+): Promise<{ items: BindingHistoryItem[] }> {
+  requireCanView(auth);
+  const project = await getProjectById(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId
+  });
+  if (!project) {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+      projectId: input.projectId
+    });
+  }
+
+  const binding = await getBindingForProject(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    bindingId: input.bindingId
+  });
+  if (!binding) {
+    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", 404, {
+      bindingId: input.bindingId
+    });
+  }
+
+  const rows = await listBindingRevisionRows(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    bindingId: input.bindingId
+  });
+
+  const ordered = [...rows].sort((a, b) => {
+    if (a.revisionNumber !== b.revisionNumber) return a.revisionNumber - b.revisionNumber;
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+
+  const items: BindingHistoryItem[] = ordered.map((row, index) => ({
+    id: row.id,
+    changedAt: row.createdAt,
+    fromRawValue: index === 0 ? null : ordered[index - 1].rawValue ?? null,
+    toRawValue: row.rawValue ?? null
+  }));
+
+  items.reverse();
+  return { items };
 }
 
 export async function resolveIdentityMappingTask(
