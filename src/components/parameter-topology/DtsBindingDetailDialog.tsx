@@ -260,11 +260,9 @@ export function DtsBindingDetailDialog({
                   <li key={entry.id}>
                     <code>
                       {entry.changedAt}
-                      {entry.actor ? ` · ${entry.actor}` : ""}
                       {entry.fromRawValue != null || entry.toRawValue != null
                         ? ` · ${entry.fromRawValue ?? "∅"} → ${entry.toRawValue ?? "∅"}`
                         : ""}
-                      {entry.reason ? ` · ${entry.reason}` : ""}
                     </code>
                   </li>
                 ))}
