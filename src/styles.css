@@ -19720,7 +19720,7 @@ body.xiaoze-popup-resize-active {
 
 .dts-topology-navigator__item {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(28px, auto) minmax(0, 1fr) auto;
   align-items: center;
   width: 100%;
   min-height: 42px;
@@ -19753,10 +19753,25 @@ body.xiaoze-popup-resize-active {
 .dts-topology-navigator__disclosure {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
   color: #7f8ea4;
   font-size: 13px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+button.dts-topology-navigator__disclosure:hover,
+button.dts-topology-navigator__disclosure:focus-visible {
+  color: var(--dts-workbench-blue);
+  background: #e8f1fc;
+  border-color: #c8dcf7;
+  outline: none;
 }
 
 .dts-topology-navigator__label {
@@ -20437,6 +20452,11 @@ body.xiaoze-popup-resize-active {
 
   .dts-topology-navigator__item {
     min-height: 44px;
+  }
+
+  button.dts-topology-navigator__disclosure {
+    width: 44px;
+    height: 44px;
   }
 
   .dts-parameter-workbench-table__row > [role="cell"] {

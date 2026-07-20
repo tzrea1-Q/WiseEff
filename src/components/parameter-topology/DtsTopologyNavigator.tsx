@@ -173,12 +173,11 @@ export function DtsTopologyNavigator({
       const nextAncestry = new Set(ancestry).add(node.id);
       return (
         <li key={node.id} role="none" className="dts-topology-navigator__branch">
-          <button
+          <div
             ref={(element) => {
               if (element) itemRefs.current.set(node.id, element);
               else itemRefs.current.delete(node.id);
             }}
-            type="button"
             role="treeitem"
             aria-level={level}
             aria-expanded={hasChildren ? expanded : undefined}
@@ -234,13 +233,26 @@ export function DtsTopologyNavigator({
               }
             }}
           >
-            <span className="dts-topology-navigator__disclosure" aria-hidden="true">
-              {hasChildren ? (
-                expanded
-                  ? <ChevronDown size={15} strokeWidth={2} />
-                  : <ChevronRight size={15} strokeWidth={2} />
-              ) : null}
-            </span>
+            {hasChildren ? (
+              <button
+                type="button"
+                tabIndex={-1}
+                className="dts-topology-navigator__disclosure"
+                aria-label={expanded ? `折叠 ${node.label}` : `展开 ${node.label}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setExpanded(node.id, !expanded);
+                  focusNode(node.id);
+                }}
+              >
+                {expanded
+                  ? <ChevronDown size={15} strokeWidth={2} aria-hidden="true" />
+                  : <ChevronRight size={15} strokeWidth={2} aria-hidden="true" />}
+              </button>
+            ) : (
+              <span className="dts-topology-navigator__disclosure" aria-hidden="true" />
+            )}
             <code className="dts-topology-navigator__label">{node.label}</code>
             <span className="dts-topology-navigator__meta">
               <span className="dts-topology-navigator__count">{node.bindingCount} 个参数</span>
@@ -251,7 +263,7 @@ export function DtsTopologyNavigator({
                 </span>
               ) : null}
             </span>
-          </button>
+          </div>
           {expanded ? (
             <ul role="group" className="dts-topology-navigator__group">
               {renderNodes(node.children, level + 1, nextAncestry)}
