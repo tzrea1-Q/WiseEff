@@ -19996,6 +19996,26 @@ button.dts-topology-navigator__disclosure:focus-visible {
   white-space: pre-wrap;
 }
 
+.dts-parameter-workbench-table__location {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dts-parameter-workbench-table__provenance {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  color: #5a6b82;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.dts-parameter-workbench-table__provenance small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .dts-parameter-workbench-table__property {
   display: flex;
   flex-wrap: wrap;

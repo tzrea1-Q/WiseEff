@@ -220,10 +220,10 @@ export function DtsBindingDetailDialog({
               <IdentityField label="Unit address" value={row.unitAddress} />
               <IdentityField label="Topology node ID" value={row.topologyNodeId} />
               <IdentityField label="完整路径" value={row.topologyPath} />
-              <IdentityField label="Source node path" value={row.sourceNodePath} />
-              <IdentityField label="Source occurrence" value={row.sourceOccurrenceId} />
+              <IdentityField label="源节点路径" value={row.sourceNodePath} />
+              <IdentityField label="源出现 ID" value={row.sourceOccurrenceId} />
               <IdentityField
-                label="Source file / line"
+                label="源文件 / 行号"
                 value={row.sourceFileName ? `${row.sourceFileName} · ${row.sourceLine ? `L${row.sourceLine}` : "行号不可用"}` : null}
               />
             </dl>

@@ -596,16 +596,18 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(workspace).toHaveAttribute("data-config-set-id", configSetId);
     await expect(page.getByRole("region", { name: "检索参数表" })).toHaveCount(0);
     await expect(page.getByText("推荐值", { exact: false })).toHaveCount(0);
+    await expect(workspace.getByRole("group", { name: "DTS 视图" })).toHaveCount(0);
+    await expect(workspace.getByRole("button", { name: "源 DTS" })).toHaveCount(0);
 
-    await workspace.getByRole("button", { name: "源 DTS" }).click();
+    await expect(workspace.getByRole("tree", { name: "生效 DTS 拓扑" })).toBeVisible({
+      timeout: 20_000
+    });
     await expect(workspace.getByRole("treeitem", { name: /amba/ }).first()).toBeVisible({
       timeout: 20_000
     });
     await expect(workspace.getByRole("treeitem", { name: /i2c@FDF5E000/ }).first()).toBeVisible();
     await expect(workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first()).toBeVisible();
-
-    await workspace.getByRole("button", { name: "生效 DTS" }).click();
-    await expect(workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first()).toBeVisible();
+    await expect(workspace.getByText(/来源链|\.dts|源出处/i).first()).toBeVisible();
 
     const topologyApi = await request.get(
       apiRoute(

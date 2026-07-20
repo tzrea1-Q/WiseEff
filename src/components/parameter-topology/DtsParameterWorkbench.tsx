@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  FileCode2,
-  Layers3,
   RotateCcw,
   Search,
   SlidersHorizontal
@@ -13,8 +11,7 @@ import {
 } from "@/application/parameters/buildDtsTopologyTree";
 import type {
   EffectiveTopologyNode,
-  SourceTopologyNode,
-  TopologyView
+  SourceTopologyNode
 } from "@/domain/parameter-topology/types";
 import type {
   DtsParameterWorkbenchRow,
@@ -33,13 +30,14 @@ export type DtsParameterWorkbenchProps = {
   configSetId?: string;
   revisionId?: string;
   layoutMode?: "desktop" | "tablet" | "mobile";
+  /** Kept for API compatibility; browse UI is effective-only and surfaces source via provenance. */
   sourceRows: DtsParameterWorkbenchRow[];
   effectiveRows: DtsParameterWorkbenchRow[];
+  /** Kept for API compatibility; navigator always uses effective topology. */
   sourceNodes: SourceTopologyNode[];
   effectiveNodes: EffectiveTopologyNode[];
   draftBindingIds: ReadonlySet<string>;
   canEdit: boolean;
-  initialView?: TopologyView;
   onSelectBinding: (bindingId: string) => void;
   onEditBinding?: (bindingId: string) => void;
   onCreateDraft?: (input: {
@@ -86,13 +84,12 @@ export function DtsParameterWorkbench({
   configSetId,
   revisionId,
   layoutMode = "desktop",
-  sourceRows,
+  sourceRows: _sourceRows,
   effectiveRows,
-  sourceNodes,
+  sourceNodes: _sourceNodes,
   effectiveNodes,
   draftBindingIds,
   canEdit,
-  initialView = "effective",
   onSelectBinding,
   onEditBinding,
   onCreateDraft,
@@ -100,7 +97,6 @@ export function DtsParameterWorkbench({
   governanceContent,
   expandAllNodesByDefault = false
 }: DtsParameterWorkbenchProps) {
-  const [view, setView] = useState<TopologyView>(initialView);
   const [query, setQuery] = useState("");
   const [governanceFilter, setGovernanceFilter] = useState<GovernanceFilter>("all");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -112,10 +108,16 @@ export function DtsParameterWorkbench({
   const listScrollRailRef = useRef<HTMLDivElement | null>(null);
   const listScrollSyncing = useRef(false);
 
-  const currentRows = view === "source" ? sourceRows : effectiveRows;
+  // Single browse mode: effective topology + provenance on each row/detail.
+  const currentRows = effectiveRows;
   const tree = useMemo(
-    () => buildDtsTopologyTree({ view, sourceNodes, effectiveNodes, rows: currentRows }),
-    [currentRows, effectiveNodes, sourceNodes, view]
+    () => buildDtsTopologyTree({
+      view: "effective",
+      sourceNodes: [],
+      effectiveNodes,
+      rows: currentRows
+    }),
+    [currentRows, effectiveNodes]
   );
   const selectedNodeExists = useMemo(() => {
     if (!selectedNodeId) return true;
@@ -187,12 +189,6 @@ export function DtsParameterWorkbench({
     onEditBinding?.(bindingId);
   };
 
-  const switchView = (nextView: TopologyView) => {
-    if (nextView === view) return;
-    setView(nextView);
-    setSelectedNodeId(null);
-  };
-
   const clearFilters = () => {
     setQuery("");
     setGovernanceFilter("all");
@@ -231,31 +227,7 @@ export function DtsParameterWorkbench({
         <div>
           <p className="eyebrow">Parameter workbench</p>
           <h2>DTS 参数工作台</h2>
-          <p>按拓扑定位器件上下文，在稳定语义绑定上检索、治理和编辑项目参数。</p>
-        </div>
-        <div
-          role="group"
-          className="dts-parameter-workbench__view-switch"
-          aria-label="DTS 视图"
-        >
-          <button
-            type="button"
-            className={view === "effective" ? "is-active" : ""}
-            aria-pressed={view === "effective"}
-            onClick={() => switchView("effective")}
-          >
-            <Layers3 size={15} strokeWidth={1.9} aria-hidden="true" />
-            生效 DTS
-          </button>
-          <button
-            type="button"
-            className={view === "source" ? "is-active" : ""}
-            aria-pressed={view === "source"}
-            onClick={() => switchView("source")}
-          >
-            <FileCode2 size={15} strokeWidth={1.9} aria-hidden="true" />
-            源 DTS
-          </button>
+          <p>按生效拓扑定位器件上下文；源文件与覆盖链保留在行内出处和详情中。</p>
         </div>
       </header>
 
@@ -300,7 +272,7 @@ export function DtsParameterWorkbench({
         >
           <h3 className="dts-parameter-workbench__navigator-title">DTS 拓扑导航</h3>
           <DtsTopologyNavigator
-            view={view}
+            view="effective"
             nodes={tree}
             selectedNodeId={effectiveSelectedNodeId}
             expandAllByDefault={expandAllNodesByDefault}

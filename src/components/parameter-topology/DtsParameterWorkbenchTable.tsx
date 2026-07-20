@@ -28,6 +28,27 @@ function DeviceIdentity({ row }: { row: DtsParameterWorkbenchRow }) {
   );
 }
 
+function SourceProvenance({ row }: { row: DtsParameterWorkbenchRow }) {
+  const parts = [
+    row.sourceFileName,
+    row.sourceNodePath,
+    row.sourceLine != null ? `L${row.sourceLine}` : null
+  ].filter((value): value is string => Boolean(value));
+  const summary = parts.join(" · ");
+  return (
+    <span className="dts-parameter-workbench-table__provenance">
+      {summary ? (
+        <small title={summary}>{summary}</small>
+      ) : (
+        <small>源出处不可用</small>
+      )}
+      {row.effects.length > 0 ? (
+        <small>来源链 {row.effects.length} 步</small>
+      ) : null}
+    </span>
+  );
+}
+
 function Governance({ row }: { row: DtsParameterWorkbenchRow }) {
   const GovernanceIcon = row.governanceState === "valid"
     ? CircleCheck
@@ -114,8 +135,9 @@ export function DtsParameterWorkbenchTable({
               <span role="cell" data-label="器件 / 驱动">
                 <DeviceIdentity row={row} />
               </span>
-              <span role="cell" data-label="DTS 位置">
+              <span role="cell" data-label="DTS 位置" className="dts-parameter-workbench-table__location">
                 <code title={row.topologyPath ?? undefined}>{row.topologyPath ?? "位置不可用"}</code>
+                <SourceProvenance row={row} />
               </span>
               <span role="cell" data-label="生效值">
                 <code title={row.rawValue}>{row.rawValue}</code>

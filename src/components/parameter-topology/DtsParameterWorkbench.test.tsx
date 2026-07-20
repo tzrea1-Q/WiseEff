@@ -378,22 +378,21 @@ describe("DtsParameterWorkbench", () => {
     expect(screen.getByTestId("draft-binding-gpio-int")).toHaveTextContent("草稿");
   });
 
-  it("switches source and effective topology using each view's node identity and labels", () => {
+  it("keeps a single effective browse mode and surfaces source provenance on each row", () => {
     renderWorkbench();
+
+    expect(screen.queryByRole("group", { name: "DTS 视图" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "源 DTS" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tree", { name: "生效 DTS 拓扑" })).toBeInTheDocument();
+
+    const gpioRow = document.querySelector('[data-binding-id="binding-gpio-int"]');
+    expect(gpioRow).toHaveTextContent("board.dts");
+    expect(gpioRow).toHaveTextContent("/amba/i2c@FDF5E000/sc8562@6E");
 
     const effectiveSc8562 = expandToSc8562(/sc8562@6E/);
     fireEvent.click(effectiveSc8562);
     expect(visibleBindingRows()).toHaveLength(3);
-
-    fireEvent.click(screen.getByRole("button", { name: "源 DTS" }));
-    expect(screen.getByRole("tree", { name: "源 DTS 拓扑" })).toBeInTheDocument();
-    expect(visibleBindingRows()).toHaveLength(4);
-    const sourceSc8562 = expandToSc8562(/sc8562-source@6E/);
-    fireEvent.click(sourceSc8562);
-
-    expect(visibleBindingRows()).toHaveLength(3);
-    expect(visibleBindingRows()[0]).toHaveTextContent("/amba/i2c@FDF5E000/sc8562-source@6E");
-    expect(sourceSc8562).toHaveAttribute("aria-selected", "true");
+    expect(visibleBindingRows()[0]).toHaveTextContent("/amba/i2c@FDF5E000/sc8562@6E");
   });
 
   it("always exposes details while canEdit only controls the edit entry", () => {
