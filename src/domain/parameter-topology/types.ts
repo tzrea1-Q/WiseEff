@@ -101,10 +101,8 @@ export type ProjectParameterBinding = {
 export type BindingHistoryEntry = {
   id: string;
   changedAt: string;
-  actor?: string | null;
   fromRawValue?: string | null;
   toRawValue?: string | null;
-  reason?: string | null;
 };
 
 /**

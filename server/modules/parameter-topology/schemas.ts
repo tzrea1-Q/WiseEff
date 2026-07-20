@@ -119,10 +119,8 @@ export const bindingHistoryParamsSchema = z.object({
 export const bindingHistoryEntryDtoSchema = z.object({
   id: z.string(),
   changedAt: z.string(),
-  actor: z.string().nullable().optional(),
   fromRawValue: z.string().nullable().optional(),
-  toRawValue: z.string().nullable().optional(),
-  reason: z.string().nullable().optional()
+  toRawValue: z.string().nullable().optional()
 });
 
 export const bindingCompareParamsSchema = z.object({

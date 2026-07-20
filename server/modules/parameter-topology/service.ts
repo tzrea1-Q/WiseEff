@@ -259,10 +259,8 @@ export async function listIdentityMappingTasks(
 export type BindingHistoryItem = {
   id: string;
   changedAt: string;
-  actor?: string | null;
   fromRawValue?: string | null;
   toRawValue?: string | null;
-  reason?: string | null;
 };
 
 /**
