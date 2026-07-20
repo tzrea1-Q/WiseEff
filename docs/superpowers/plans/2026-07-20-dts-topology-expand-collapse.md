@@ -1,6 +1,6 @@
 # DTS Topology Pointer Expand/Collapse Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 > Chinese: [中文](../../zh-CN/superpowers/plans/2026-07-20-dts-topology-expand-collapse.md)
 
@@ -45,7 +45,7 @@
 - Consumes: existing `DtsTopologyNavigator` props and fixture tree (`effective-i2c`, `effective-sc8562`, `effective-mt5788`)
 - Produces: four new `it(...)` cases that fail until Task 2 lands
 
-- [ ] **Step 1: Add the four disclosure tests after the existing keyboard suite**
+- [x] **Step 1: Add the four disclosure tests after the existing keyboard suite**
 
 Append these tests (keep all existing tests):
 
@@ -139,13 +139,13 @@ Append these tests (keep all existing tests):
   });
 ```
 
-- [ ] **Step 2: Run tests and confirm RED**
+- [x] **Step 2: Run tests and confirm RED**
 
 Run: `npm test -- src/components/parameter-topology/DtsTopologyNavigator.test.tsx`
 
 Expected: new disclosure tests FAIL (no `button` named `折叠 …` / nesting or missing control). Existing keyboard tests still pass or fail only if name queries break after a partial edit — do not change production code yet.
 
-- [ ] **Step 3: Commit the failing tests**
+- [x] **Step 3: Commit the failing tests**
 
 ```bash
 git add src/components/parameter-topology/DtsTopologyNavigator.test.tsx
@@ -167,7 +167,7 @@ EOF
 - Consumes: `setExpanded(nodeId, expanded)`, `focusNode(nodeId)`, `onSelectNode`, existing keyboard handlers
 - Produces: parent nodes expose `getByRole("button", { name: "展开|折叠 <label>" })` with `tabIndex={-1}`
 
-- [ ] **Step 1: Replace the row button with a treeitem container + disclosure button**
+- [x] **Step 1: Replace the row button with a treeitem container + disclosure button**
 
 Replace the current `<button role="treeitem" …>` block inside `renderNodes` with:
 
@@ -227,13 +227,13 @@ Replace the current `<button role="treeitem" …>` block inside `renderNodes` wi
 
 Keep the existing `onKeyDown` body byte-for-byte (only move it onto the `div`). Do not change `indexTree`, expansion sync effects, or `visibleNodeIds`.
 
-- [ ] **Step 2: Run component tests**
+- [x] **Step 2: Run component tests**
 
 Run: `npm test -- src/components/parameter-topology/DtsTopologyNavigator.test.tsx`
 
 Expected: all tests PASS, including the four new disclosure cases and the prior keyboard/roving suite.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/components/parameter-topology/DtsTopologyNavigator.tsx
@@ -255,7 +255,7 @@ EOF
 - Consumes: new `button.dts-topology-navigator__disclosure` from Task 2
 - Produces: desktop hover/focus ring; touch layout min 44×44
 
-- [ ] **Step 1: Update disclosure CSS**
+- [x] **Step 1: Update disclosure CSS**
 
 Replace `.dts-topology-navigator__disclosure` and add button-specific rules:
 
@@ -296,13 +296,13 @@ Inside `@media (max-width: 820px)` next to `.dts-topology-navigator__item { min-
 
 If the 20px first grid column clips the larger control, widen `.dts-topology-navigator__item` first column from `20px` to `minmax(28px, auto)` (and rely on the 44px media rule for touch).
 
-- [ ] **Step 2: Smoke the component tests again**
+- [x] **Step 2: Smoke the component tests again**
 
 Run: `npm test -- src/components/parameter-topology/DtsTopologyNavigator.test.tsx`
 
 Expected: PASS (styles do not affect RTL assertions).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/styles.css
@@ -319,7 +319,7 @@ EOF
 
 **Files:** none required unless a regression surfaces
 
-- [ ] **Step 1: Targeted tests + build**
+- [x] **Step 1: Targeted tests + build**
 
 ```bash
 npm test -- src/components/parameter-topology/DtsTopologyNavigator.test.tsx
@@ -328,7 +328,7 @@ npm run build
 
 Expected: tests PASS; `tsc -b` + Vite build succeed.
 
-- [ ] **Step 2: Browser verification with playwright-cli**
+- [x] **Step 2: Browser verification with playwright-cli**
 
 With `npm run dev:all` already serving `http://127.0.0.1:5173/` and API on `8787`:
 
@@ -339,7 +339,7 @@ With `npm run dev:all` already serving `http://127.0.0.1:5173/` and API on `8787
 5. Click a treeitem body → selection/filter updates; expansion unchanged.
 6. `console error` must be clean; no page-level horizontal overflow.
 
-- [ ] **Step 3: Mark plan checkboxes complete in this file once verified**
+- [x] **Step 3: Mark plan checkboxes complete in this file once verified**
 
 ---
 
