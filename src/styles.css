@@ -19689,14 +19689,85 @@ body.xiaoze-popup-resize-active {
 }
 
 .dts-workbench-list {
-  /* Keep every semantic column/action reachable if the app shell leaves a
-   * narrower content rail than the viewport suggests. The table sets an
-   * intrinsic min-width so this overflow actually becomes a scrollbar. */
-  overflow: auto;
+  /* Outer shell frames the dual-axis scrollports so the horizontal bar stays
+   * on the visible panel edge instead of under thousands of rows. */
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 14px;
+  height: min(670px, calc(100vh - 230px));
+  max-height: min(670px, calc(100vh - 230px));
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dts-workbench-list__scroll-x {
+  /* Content pane; horizontal position syncs with the always-visible rail. */
+  box-sizing: border-box;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.dts-workbench-list__scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+.dts-workbench-list__scroll-y {
+  box-sizing: border-box;
+  height: 100%;
+  max-height: 100%;
+  min-width: 1100px;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable;
-  scrollbar-color: #9eb0c8 transparent;
+}
+
+.dts-workbench-list__scroll-y::-webkit-scrollbar {
+  width: 12px;
+}
+
+.dts-workbench-list__scroll-y::-webkit-scrollbar-track {
+  background: #e7eef8;
+}
+
+.dts-workbench-list__scroll-y::-webkit-scrollbar-thumb {
+  background: #7f95b3;
+  border: 2px solid #e7eef8;
+  border-radius: 999px;
+}
+
+.dts-workbench-list__h-rail {
+  /* Dedicated 14px track so horizontal scrolling stays discoverable even when
+   * the OS uses overlay scrollbars on the content pane. */
+  box-sizing: border-box;
+  height: 14px;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  background: #d5e0ef;
+  border-top: 1px solid #c3d0e3;
+}
+
+.dts-workbench-list__h-rail-spacer {
+  height: 1px;
+  min-width: 1100px;
+}
+
+.dts-workbench-list__h-rail::-webkit-scrollbar {
+  height: 14px;
+  background: #d5e0ef;
+}
+
+.dts-workbench-list__h-rail::-webkit-scrollbar-thumb {
+  background: #5f7696;
+  border: 2px solid #d5e0ef;
+  border-radius: 8px;
+}
+
+.dts-workbench-list__h-rail::-webkit-scrollbar-thumb:hover {
+  background: #3f5573;
 }
 
 .dts-parameter-workbench__navigator-title {
@@ -19839,7 +19910,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .dts-parameter-workbench-table {
   /* Sum of column mins + gaps + row padding so narrow rails scroll instead of crushing cells. */
   min-width: 1100px;
-  width: 100%;
+  width: max(100%, 1100px);
 }
 
 .dts-parameter-workbench-table__head,
@@ -19854,6 +19925,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .dts-parameter-workbench-table__head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   padding: 10px 14px;
   color: #58677a;
   background: var(--dts-workbench-surface-soft);
@@ -20299,11 +20373,28 @@ button.dts-topology-navigator__disclosure:focus-visible {
     max-height: 240px;
   }
 
-  .dts-workbench-list {
-    overflow: auto;
+  .dts-workbench-topology {
+    max-height: min(520px, calc(100vh - 210px));
   }
 
-  .dts-parameter-workbench-table,
+  .dts-workbench-list {
+    height: min(520px, calc(100vh - 210px));
+    max-height: min(520px, calc(100vh - 210px));
+  }
+
+  .dts-workbench-list__scroll-y {
+    min-width: 920px;
+  }
+
+  .dts-workbench-list__h-rail-spacer {
+    min-width: 920px;
+  }
+
+  .dts-parameter-workbench-table {
+    min-width: 920px;
+    width: max(100%, 920px);
+  }
+
   .dts-parameter-workbench-table__head,
   .dts-parameter-workbench-table__row {
     min-width: 920px;
@@ -20352,11 +20443,28 @@ button.dts-topology-navigator__disclosure:focus-visible {
   }
 
   .dts-workbench-list {
+    height: auto;
+    max-height: none;
     overflow: visible;
+    grid-template-rows: auto;
+  }
+
+  .dts-workbench-list__scroll-x,
+  .dts-workbench-list__scroll-y {
+    height: auto;
+    max-height: none;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .dts-workbench-list__h-rail {
+    display: none;
   }
 
   .dts-parameter-workbench-table__head {
     position: absolute;
+    top: auto;
+    z-index: auto;
     width: 1px;
     height: 1px;
     margin: -1px;

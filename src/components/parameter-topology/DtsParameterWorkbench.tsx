@@ -108,6 +108,9 @@ export function DtsParameterWorkbench({
   const [detailIntent, setDetailIntent] = useState<"view" | "edit">("view");
   const detailOpenerRef = useRef<HTMLElement | null>(null);
   const pendingFocusRestoreRef = useRef<HTMLElement | null>(null);
+  const listScrollXRef = useRef<HTMLDivElement | null>(null);
+  const listScrollRailRef = useRef<HTMLDivElement | null>(null);
+  const listScrollSyncing = useRef(false);
 
   const currentRows = view === "source" ? sourceRows : effectiveRows;
   const tree = useMemo(
@@ -143,6 +146,28 @@ export function DtsParameterWorkbench({
     }),
     [currentRows, governanceFilter, normalizedQuery, subtreeBindingIds]
   );
+
+  useEffect(() => {
+    const scroller = listScrollXRef.current;
+    const rail = listScrollRailRef.current;
+    if (!scroller || !rail) return;
+
+    const syncFrom = (source: HTMLDivElement, target: HTMLDivElement) => {
+      if (listScrollSyncing.current) return;
+      listScrollSyncing.current = true;
+      target.scrollLeft = source.scrollLeft;
+      listScrollSyncing.current = false;
+    };
+
+    const onScrollerScroll = () => syncFrom(scroller, rail);
+    const onRailScroll = () => syncFrom(rail, scroller);
+    scroller.addEventListener("scroll", onScrollerScroll, { passive: true });
+    rail.addEventListener("scroll", onRailScroll, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", onScrollerScroll);
+      rail.removeEventListener("scroll", onRailScroll);
+    };
+  }, [layoutMode, visibleRows.length]);
 
   const selectBinding = (bindingId: string) => {
     detailOpenerRef.current = document.activeElement instanceof HTMLElement
@@ -287,17 +312,31 @@ export function DtsParameterWorkbench({
           role="region"
           aria-label="DTS 参数列表"
         >
-          <DtsParameterWorkbenchTable
-            rows={visibleRows}
-            selectedBindingId={selectedBindingId}
-            draftBindingIds={draftBindingIds}
-            canEdit={canEdit}
-            onSelectBinding={selectBinding}
-            onEditBinding={onEditBinding && onCreateDraft ? editBinding : undefined}
-          />
-          {visibleRows.length === 0 ? (
-            <p className="dts-parameter-workbench__empty">当前筛选范围内没有参数。</p>
-          ) : null}
+          <div
+            ref={listScrollXRef}
+            className="dts-workbench-list__scroll-x"
+          >
+            <div className="dts-workbench-list__scroll-y">
+              <DtsParameterWorkbenchTable
+                rows={visibleRows}
+                selectedBindingId={selectedBindingId}
+                draftBindingIds={draftBindingIds}
+                canEdit={canEdit}
+                onSelectBinding={selectBinding}
+                onEditBinding={onEditBinding && onCreateDraft ? editBinding : undefined}
+              />
+              {visibleRows.length === 0 ? (
+                <p className="dts-parameter-workbench__empty">当前筛选范围内没有参数。</p>
+              ) : null}
+            </div>
+          </div>
+          <div
+            ref={listScrollRailRef}
+            className="dts-workbench-list__h-rail"
+            aria-hidden="true"
+          >
+            <div className="dts-workbench-list__h-rail-spacer" />
+          </div>
         </div>
       </div>
       {currentEdits ? (
