@@ -52,3 +52,31 @@ describe("M5 agent provider trace migration invariants", () => {
     expect(migration).toContain("add column if not exists fallback_reason text");
   });
 });
+
+describe("parameter module mappings migration invariants", () => {
+  it("adds importance to v1 parameter_modules and creates DTS mappings table", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0066_parameter_module_mappings.sql"),
+      "utf8"
+    );
+
+    expect(migration).toContain("add column if not exists importance");
+    expect(migration).toContain("create table if not exists parameter_module_mappings");
+    expect(migration).toContain("unique (organization_id, match_kind, match_value)");
+    expect(migration).toContain("check (priority >= 0 and priority <= 999)");
+    expect(migration).not.toContain("create table if not exists parameter_modules");
+  });
+});
+
+describe("binding module_id migration invariants", () => {
+  it("adds module_id and replaces binding unique key", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0067_binding_module_id.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("add column if not exists module_id");
+    expect(migration).toContain("references parameter_modules(id)");
+    expect(migration).toContain("project_parameter_bindings_project_node_spec_module_unique");
+    expect(migration).toContain("unique nulls not distinct (project_id, logical_node_id, parameter_spec_id, module_id)");
+  });
+});
