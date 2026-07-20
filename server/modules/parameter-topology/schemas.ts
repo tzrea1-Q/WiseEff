@@ -47,7 +47,9 @@ export const projectBindingDtoSchema = z.object({
   effectiveValue: dtsValueSchema,
   rawValue: z.string(),
   schemaState: z.enum(["valid", "invalid", "unreviewed"]),
-  policyState: z.enum(["pass", "fail", "not_applicable"])
+  policyState: z.enum(["pass", "fail", "not_applicable"]),
+  /** Durable v1 business module (phase 2, §5.1 read path) — browse source of truth. */
+  moduleId: z.string()
 });
 
 export const topologyViewSchema = z.enum(["source", "effective"]);

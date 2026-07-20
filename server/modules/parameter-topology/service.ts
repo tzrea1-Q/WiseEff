@@ -207,7 +207,8 @@ export async function listProjectBindings(
       effectiveValue: toEffectiveValue(row.typedValue),
       rawValue: row.rawValue,
       schemaState: toSchemaState(row.schemaState),
-      policyState: toPolicyState(row.policyState)
+      policyState: toPolicyState(row.policyState),
+      moduleId: row.moduleId
     })
   );
 

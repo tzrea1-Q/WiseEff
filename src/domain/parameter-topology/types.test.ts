@@ -20,7 +20,8 @@ describe("parameter-topology domain contracts", () => {
       effectiveValue: { kind: "empty" },
       rawValue: "",
       schemaState: "unreviewed",
-      policyState: "not_applicable"
+      policyState: "not_applicable",
+      moduleId: "mod-charging"
     } satisfies ProjectParameterBinding;
 
     expect(binding.propertyKey).toBe("gpio_int");

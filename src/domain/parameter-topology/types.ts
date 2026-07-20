@@ -90,6 +90,8 @@ export type ProjectParameterBinding = {
   rawValue: string;
   schemaState: BindingSchemaState;
   policyState: BindingPolicyState;
+  /** Durable v1 business module (phase 2, §5.1 read path) — browse source of truth. */
+  moduleId: string;
 };
 
 export type TopologyView = "source" | "effective";

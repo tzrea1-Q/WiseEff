@@ -12,6 +12,11 @@ import type {
   DtsWorkbenchGovernanceState,
   DtsParameterWorkbenchRow
 } from "@/domain/parameter-topology/workbenchTypes";
+import {
+  describeModuleAssignment,
+  EMPTY_PARAMETER_MODULE_REGISTRY,
+  type ParameterModuleRegistry
+} from "@/domain/parameter-topology/moduleRegistry";
 
 export type BuildDtsWorkbenchRowsInput = {
   projectId: string;
@@ -21,6 +26,8 @@ export type BuildDtsWorkbenchRowsInput = {
   sourceNodes: SourceTopologyNode[];
   effectiveNodes: EffectiveTopologyNode[];
   mappingTasks: IdentityMappingTask[];
+  /** Admin-maintained module registry; falls back to driver grouping when absent. */
+  moduleRegistry?: ParameterModuleRegistry;
 };
 
 function nodeSegment(node: { name: string; unitAddress?: string }): string {
@@ -185,7 +192,8 @@ export function buildDtsWorkbenchRows({
   bindings,
   sourceNodes,
   effectiveNodes,
-  mappingTasks
+  mappingTasks,
+  moduleRegistry = EMPTY_PARAMETER_MODULE_REGISTRY
 }: BuildDtsWorkbenchRowsInput): DtsParameterWorkbenchRow[] {
   const sourceById = new Map(sourceNodes.map((node) => [node.id, node]));
   const effectiveByLogicalId = new Map(effectiveNodes.map((node) => [node.logicalNodeId, node]));
@@ -217,6 +225,17 @@ export function buildDtsWorkbenchRows({
     const valueShapeSummary = summarizeDtsValue(binding.effectiveValue);
     const mappingOpen = binding.logicalNodeId ? openMappingLogicalIds.has(binding.logicalNodeId) : false;
     const governanceState = resolveGovernanceState(binding, mappingOpen);
+    // Phase 2 §5.1: the persisted binding.moduleId is the browse source of truth — never
+    // substitute a different module derived from mapping rules at read time.
+    const moduleAssignment = describeModuleAssignment(
+      binding.moduleId,
+      {
+        driverModule: binding.driverModule,
+        compatible: effectiveNode?.compatible ?? null,
+        instanceName: binding.instanceName
+      },
+      moduleRegistry
+    );
 
     return {
       bindingId: binding.id,
@@ -227,6 +246,11 @@ export function buildDtsWorkbenchRows({
       driverModule: binding.driverModule,
       compatible: effectiveNode?.compatible ?? null,
       instanceName: binding.instanceName,
+      moduleId: moduleAssignment.moduleId,
+      moduleName: moduleAssignment.moduleName,
+      importance: moduleAssignment.importance,
+      moduleSortOrder: moduleAssignment.sortOrder,
+      moduleMapped: moduleAssignment.mapped,
       unitAddress,
       topologyPath,
       topologyNodeId,
@@ -244,6 +268,7 @@ export function buildDtsWorkbenchRows({
       effects,
       searchText: buildSearchText([
         binding.propertyKey,
+        moduleAssignment.moduleName,
         binding.driverModule,
         effectiveNode?.compatible,
         binding.instanceName,

@@ -36,7 +36,8 @@ const bindingDto: ProjectBindingDto = {
   },
   rawValue: "<0>",
   schemaState: "valid",
-  policyState: "pass"
+  policyState: "pass",
+  moduleId: "mod-charging"
 };
 
 const specDetailDto: ParameterSpecDetailDto = {
@@ -68,7 +69,8 @@ describe("parameterTopologyClient DTO mapping", () => {
       propertyKey: "gpio_int",
       driverModule: "sc8562",
       instanceName: "sc8562@6E",
-      locator: "/amba/i2c@FDF5E000/sc8562@6E"
+      locator: "/amba/i2c@FDF5E000/sc8562@6E",
+      moduleId: "mod-charging"
     });
     expect(bindingFromDto(bindingDto)).not.toHaveProperty("recommendedValue");
     expect(bindingFromDto(bindingDto).effectiveValue).toEqual(bindingDto.effectiveValue);

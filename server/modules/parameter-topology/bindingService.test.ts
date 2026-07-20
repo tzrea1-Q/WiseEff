@@ -5,6 +5,7 @@ import type { Queryable } from "../../shared/database/client";
 import {
   bindingKey,
   createOrReuseBinding,
+  listProjectBindingRows,
   persistAmbiguousIdentityMapping,
   resolveLogicalContinuity,
   upsertBindingRevisionValues,
@@ -383,5 +384,46 @@ describe("createOrReuseBinding reuse-by-module (phase 2)", () => {
     const chargingAgain = await createOrReuseBinding(db, { organizationId: "org-1", key: baseKey });
 
     expect(chargingAgain.id).toBe(chargingFirst.id);
+  });
+});
+
+describe("listProjectBindingRows (phase 2 browse source of truth)", () => {
+  it("selects module_id and maps it onto each binding list item", async () => {
+    const calls: Array<{ text: string; values: unknown[] }> = [];
+    const db: Queryable = {
+      query: vi.fn(async (text, values = []) => {
+        calls.push({ text, values: values as unknown[] });
+        return {
+          rows: [
+            {
+              id: "binding-1",
+              parameter_spec_id: "spec-1",
+              parameter_spec_version_id: "spec-version-1",
+              property_key: "gpio_int",
+              driver_module: "sc8562",
+              logical_node_id: "logical-1",
+              instance_name: "sc8562@6E",
+              locator: "/amba/i2c@FDF5E000/sc8562@6E",
+              typed_value: { kind: "empty" },
+              raw_value: "<0>",
+              schema_state: "valid",
+              policy_state: "pass",
+              module_id: "mod-charging",
+            },
+          ],
+          rowCount: 1,
+        };
+      }),
+    };
+
+    const items = await listProjectBindingRows(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+    });
+
+    expect(calls[0]?.text).toMatch(/\bmodule_id\b/);
+    expect(items).toEqual([
+      expect.objectContaining({ id: "binding-1", moduleId: "mod-charging" }),
+    ]);
   });
 });

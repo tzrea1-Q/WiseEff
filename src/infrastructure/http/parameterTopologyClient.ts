@@ -37,6 +37,7 @@ export type ProjectBindingDto = {
   rawValue: string;
   schemaState: ProjectParameterBinding["schemaState"];
   policyState: ProjectParameterBinding["policyState"];
+  moduleId: string;
 };
 
 export type ParameterSpecSummaryDto = ParameterSpecSummary;
@@ -139,7 +140,8 @@ export function bindingFromDto(dto: ProjectBindingDto): ProjectParameterBinding 
     effectiveValue: dto.effectiveValue,
     rawValue: dto.rawValue,
     schemaState: dto.schemaState,
-    policyState: dto.policyState
+    policyState: dto.policyState,
+    moduleId: dto.moduleId
   };
 }
 

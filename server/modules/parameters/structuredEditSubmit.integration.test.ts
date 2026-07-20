@@ -19,6 +19,7 @@ const USER = "user-p31-edit";
 const PROJECT = "project-p31-edit";
 const PD = "pd-p31-hex";
 const PPV = "ppv-p31-hex";
+const MODULE = "pmod-p31-unclassified";
 
 /** Hex rawText that normalizes to lowercase — writeback must keep this exact form. */
 const RAW_HEX = "/bits/ 8 <0xAB 0xCD 0xEF 0x12>";
@@ -137,6 +138,15 @@ async function seedBaseline(db: InMemoryTestDatabase) {
     `,
     [PPV, ORG, PROJECT, PD, USER]
   );
+  // Phase-2 module_id is NOT NULL on project_parameter_bindings; give test bindings a module.
+  await db.query(
+    `
+    insert into parameter_modules (id, organization_id, parent_id, name, path, depth, sort_order)
+    values ($1, $2, null, '未分类', $1, 1, 999)
+    on conflict (id) do nothing
+    `,
+    [MODULE, ORG]
+  );
 }
 
 const databaseAvailable = await isTestDatabaseAvailable();
@@ -193,10 +203,10 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
     );
     await db!.query(
       `
-      insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id)
-      values ($1, $2, $3, null, $4)
+      insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id)
+      values ($1, $2, $3, null, $4, $5)
       `,
-      [bindingId, ORG, PROJECT, specId]
+      [bindingId, ORG, PROJECT, specId, MODULE]
     );
 
     const round = await submitStructuredEdits(db!, auth, {
@@ -347,10 +357,10 @@ describe.skipIf(!databaseAvailable)("P3.1 structured edit submit mapping", () =>
     );
     await db!.query(
       `
-      insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id)
-      values ($1, $2, $3, null, $4)
+      insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id)
+      values ($1, $2, $3, null, $4, $5)
       `,
-      [bindingId, ORG, PROJECT, specId]
+      [bindingId, ORG, PROJECT, specId, MODULE]
     );
 
     // Persist binding on a pre-submit draft so HTTP structured-edit submit propagates semantic FKs.

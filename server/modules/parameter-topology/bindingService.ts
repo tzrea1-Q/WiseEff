@@ -872,6 +872,7 @@ type BindingListRow = {
   raw_value: string | null;
   schema_state: string | null;
   policy_state: string | null;
+  module_id: string;
 };
 
 export type ProjectBindingListItem = {
@@ -887,6 +888,8 @@ export type ProjectBindingListItem = {
   rawValue: string;
   schemaState: string | null;
   policyState: string | null;
+  /** Durable v1 business module (phase 2, §5.1 read path) — browse source of truth. */
+  moduleId: string;
 };
 
 export async function listProjectBindingRows(
@@ -942,7 +945,8 @@ export async function listProjectBindingRows(
       br.typed_value,
       br.raw_value,
       br.schema_state,
-      br.policy_state
+      br.policy_state,
+      b.module_id
     from project_parameter_bindings b
     join parameter_specs ps on ps.id = b.parameter_spec_id
     left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
@@ -975,5 +979,6 @@ export async function listProjectBindingRows(
     rawValue: row.raw_value ?? "",
     schemaState: row.schema_state,
     policyState: row.policy_state,
+    moduleId: row.module_id,
   }));
 }

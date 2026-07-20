@@ -7,6 +7,7 @@ import type {
   SourceTopologyNode
 } from "@/domain/parameter-topology/types";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
+import { driverFallbackModuleId, type ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 
 import { buildDtsWorkbenchRows } from "./buildDtsWorkbenchRows";
 
@@ -202,7 +203,8 @@ const binding: ProjectParameterBinding = {
     ]
   },
   schemaState: "valid",
-  policyState: "pass"
+  policyState: "pass",
+  moduleId: driverFallbackModuleId("sc8562")
 };
 
 const mappingTasks: IdentityMappingTask[] = [
@@ -278,6 +280,38 @@ describe("buildDtsWorkbenchRows", () => {
     });
     expect(sourceRow.topologyNodeId).toBe("occ-sc8562");
     expect(sourceRow.topologyPath).toBe("/amba/i2c@FDF5E000/sc8562@6E");
+  });
+
+  it("uses the persisted binding.moduleId with registry lookup for name/importance/sortOrder (phase 2 browse source of truth)", () => {
+    const registry: ParameterModuleRegistry = {
+      modules: [
+        { id: "mod-charging", name: "充电策略", parentId: null, sortOrder: 3, importance: "high" },
+        { id: "mod-safety", name: "电池安全", parentId: null, sortOrder: 1, importance: "medium" }
+      ],
+      mappings: [
+        // Would resolve to mod-safety via priority-derived lookup — the persisted
+        // binding.moduleId (mod-charging) must win; no read-time override.
+        { id: "map-instance", moduleId: "mod-safety", matchKind: "instance", matchValue: "sc8562@6E", priority: 0 }
+      ]
+    };
+
+    const [row] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [{ ...binding, moduleId: "mod-charging" }],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: [],
+      moduleRegistry: registry
+    });
+
+    expect(row.moduleId).toBe("mod-charging");
+    expect(row.moduleName).toBe("充电策略");
+    expect(row.importance).toBe("high");
+    expect(row.moduleSortOrder).toBe(3);
+    // No mapping targets mod-charging for this driver/compatible/instance combination.
+    expect(row.moduleMapped).toBe(false);
   });
 
   it("returns unavailable paths when a topology parent is missing or cyclic", () => {

@@ -79,6 +79,33 @@ describe("parameter topology service org scope", () => {
     expect(listProjectBindingRows).not.toHaveBeenCalled();
   });
 
+  it("listProjectBindings surfaces the persisted moduleId on each DTO (phase 2 browse source of truth)", async () => {
+    vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
+    vi.mocked(listProjectBindingRows).mockResolvedValue([
+      {
+        id: "binding-1",
+        parameterSpecId: "spec-1",
+        parameterSpecVersionId: "spec-version-1",
+        propertyKey: "gpio_int",
+        driverModule: "sc8562",
+        logicalNodeId: "logical-1",
+        instanceName: "sc8562@6E",
+        locator: "/amba/i2c@FDF5E000/sc8562@6E",
+        typedValue: { kind: "empty" },
+        rawValue: "<0>",
+        schemaState: "valid",
+        policyState: "pass",
+        moduleId: "mod-charging"
+      }
+    ]);
+
+    const result = await listProjectBindings(makeDb(), makeAuth(), { projectId: "project-1" });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({ id: "binding-1", moduleId: "mod-charging" })
+    ]);
+  });
+
   it("listIdentityMappingTasks returns 404 when projectId filter is outside caller organization", async () => {
     vi.mocked(getProjectById).mockResolvedValue(null);
 

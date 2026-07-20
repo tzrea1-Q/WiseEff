@@ -428,11 +428,20 @@ async function seedSemanticHotspotTenantGraph(db: Database) {
             ($5, $6, $7, $8)`,
     [logicalNodeA, ORG_A, PROJECT_A, CONFIG_SET_A, logicalNodeB, ORG_B, PROJECT_B, CONFIG_SET_B]
   );
+  // Phase-2 module_id is NOT NULL on project_parameter_bindings; give each org an unclassified module.
+  const moduleA = "pmod-pcd-hotspot-a-unclassified";
+  const moduleB = "pmod-pcd-hotspot-b-unclassified";
   await db.query(
-    `insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id)
-     values ($1, $2, $3, $4, $5),
-            ($6, $7, $8, $9, $5),
-            ($10, $2, $3, $4, $11)`,
+    `insert into parameter_modules (id, organization_id, parent_id, name, path, depth, sort_order)
+     values ($1, $2, null, '未分类', $1, 1, 999),
+            ($3, $4, null, '未分类', $3, 1, 999)`,
+    [moduleA, ORG_A, moduleB, ORG_B]
+  );
+  await db.query(
+    `insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id)
+     values ($1, $2, $3, $4, $5, $12),
+            ($6, $7, $8, $9, $5, $13),
+            ($10, $2, $3, $4, $11, $12)`,
     [
       bindingGlobalA,
       ORG_A,
@@ -444,7 +453,9 @@ async function seedSemanticHotspotTenantGraph(db: Database) {
       PROJECT_B,
       logicalNodeB,
       bindingOrgOwnedA,
-      orgOwnedSpecId
+      orgOwnedSpecId,
+      moduleA,
+      moduleB
     ]
   );
 

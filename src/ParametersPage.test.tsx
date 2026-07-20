@@ -299,7 +299,8 @@ const API_SENTINEL_BINDING: ProjectParameterBinding = {
   },
   rawValue: API_SENTINEL_RAW_VALUE,
   schemaState: "valid",
-  policyState: "pass"
+  policyState: "pass",
+  moduleId: "mod-sentinel-device"
 };
 
 const API_SENTINEL_SPEC: ParameterSpecDetail = {

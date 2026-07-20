@@ -7,6 +7,7 @@ import type {
   ProjectParameterBinding,
   SourceTopologyNode
 } from "@/domain/parameter-topology/types";
+import { driverFallbackModuleId } from "@/domain/parameter-topology/moduleRegistry";
 
 export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
   {
@@ -192,7 +193,8 @@ export const TOPOLOGY_TEACHING_BINDINGS: ProjectParameterBinding[] = [
     },
     rawValue: "<&gpio13 29 0>",
     schemaState: "valid",
-    policyState: "pass"
+    policyState: "pass",
+    moduleId: driverFallbackModuleId("sc8562")
   },
   {
     id: "binding-mt5788-gpio-int",
@@ -216,7 +218,8 @@ export const TOPOLOGY_TEACHING_BINDINGS: ProjectParameterBinding[] = [
     },
     rawValue: "<&gpio6 15 0>",
     schemaState: "valid",
-    policyState: "pass"
+    policyState: "pass",
+    moduleId: driverFallbackModuleId("mt5788")
   },
   {
     id: "binding-sc8562-status",
@@ -230,6 +233,7 @@ export const TOPOLOGY_TEACHING_BINDINGS: ProjectParameterBinding[] = [
     effectiveValue: { kind: "strings", values: ["okay"] },
     rawValue: '"okay"',
     schemaState: "valid",
-    policyState: "not_applicable"
+    policyState: "not_applicable",
+    moduleId: driverFallbackModuleId("sc8562")
   }
 ];
