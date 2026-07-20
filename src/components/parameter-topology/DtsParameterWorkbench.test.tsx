@@ -164,6 +164,11 @@ function row(
     driverModule: definition.driverModule,
     compatible: `vendor,${definition.driverModule}`,
     instanceName: topologyPath.split("/").at(-1) ?? null,
+    moduleId: `driver:${definition.driverModule}`,
+    moduleName: `未分类 · ${definition.driverModule}`,
+    importance: "medium",
+    moduleSortOrder: Number.MAX_SAFE_INTEGER,
+    moduleMapped: false,
     unitAddress: topologyPath.split("@").at(-1) ?? null,
     topologyPath,
     topologyNodeId,
@@ -227,6 +232,7 @@ function visibleBindingRows(): HTMLElement[] {
 }
 
 function expandToSc8562(label: RegExp) {
+  fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
   const root = screen.getByRole("treeitem", { name: /^\// });
   fireEvent.keyDown(root, { key: "ArrowRight" });
   const amba = screen.getByRole("treeitem", { name: /amba/ });
@@ -234,6 +240,12 @@ function expandToSc8562(label: RegExp) {
   const i2c = screen.getByRole("treeitem", { name: /i2c@FDF5E000/ });
   fireEvent.keyDown(i2c, { key: "ArrowRight" });
   return screen.getByRole("treeitem", { name: label });
+}
+
+function selectModuleDevice(moduleLabel: RegExp, deviceLabel: RegExp) {
+  const moduleNode = screen.getByRole("treeitem", { name: moduleLabel });
+  fireEvent.keyDown(moduleNode, { key: "ArrowRight" });
+  return screen.getByRole("treeitem", { name: deviceLabel });
 }
 
 describe("DtsParameterWorkbench", () => {
@@ -246,7 +258,7 @@ describe("DtsParameterWorkbench", () => {
     expect(workbench).toHaveClass("dts-parameter-workbench");
     expect(workbench.querySelector(".dts-workbench-topology")).toHaveAttribute(
       "aria-label",
-      "DTS 拓扑导航"
+      "模块导航"
     );
     expect(workbench.querySelector(".dts-workbench-list")).toHaveAttribute(
       "aria-label",
@@ -290,23 +302,25 @@ describe("DtsParameterWorkbench", () => {
     expect(styles).toMatch(/prefers-reduced-motion[\s\S]*\.dts-binding-detail-dialog__overlay[\s\S]*animation:\s*none/);
   });
 
-  it("renders the semantic workbench contract and exact mature table headers", () => {
+  it("renders module-first headers and module navigator by default", () => {
     renderWorkbench();
 
     const workbench = screen.getByRole("region", { name: "DTS 参数工作台" });
     expect(within(workbench).getByRole("searchbox", { name: "搜索 DTS 参数" })).toBeVisible();
-    expect(within(workbench).getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
-      "属性",
+    expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
+    const headers = within(workbench).getAllByRole("columnheader").map((header) => header.textContent);
+    expect(headers).toEqual([
+      expect.stringContaining(""),
+      expect.stringContaining("参数名"),
+      expect.stringContaining("所属模块"),
       "器件 / 驱动",
-      "DTS 位置",
-      "生效值",
-      "类型",
-      "治理",
+      expect.stringContaining("当前值"),
+      expect.stringContaining("治理"),
       "操作"
     ]);
+    expect(headers[0]).toContain(""); // checkbox column
     expect(screen.getByRole("status")).toHaveTextContent("显示 4 / 4 个参数");
     expect(visibleBindingRows()).toHaveLength(4);
-    expect(visibleBindingRows()[0]).toHaveAttribute("data-binding-id", "binding-gpio-int");
   });
 
   it("searches precomputed semantic search text and clears all filters back to the full result", () => {
@@ -326,7 +340,21 @@ describe("DtsParameterWorkbench", () => {
     expect(screen.getByRole("status")).toHaveTextContent("显示 4 / 4 个参数");
   });
 
-  it("filters by the selected topology subtree using binding identity rather than path prefixes", () => {
+  it("filters by the selected module/device subtree using binding identity", () => {
+    renderWorkbench();
+
+    const device = selectModuleDevice(/未分类 · sc8562/, /sc8562@6E/);
+    fireEvent.click(device);
+
+    expect(visibleBindingRows().map((element) => element.dataset.bindingId)).toEqual([
+      "binding-gpio-int",
+      "binding-watchdog"
+    ]);
+    expect(screen.getByRole("status")).toHaveTextContent("显示 2 / 4 个参数");
+    expect(screen.queryByText("rx_fod_cond")).not.toBeInTheDocument();
+  });
+
+  it("filters by the selected topology subtree when tech view is enabled", () => {
     renderWorkbench();
 
     const sc8562 = expandToSc8562(/sc8562@6E/);
@@ -378,21 +406,20 @@ describe("DtsParameterWorkbench", () => {
     expect(screen.getByTestId("draft-binding-gpio-int")).toHaveTextContent("草稿");
   });
 
-  it("keeps a single effective browse mode and surfaces source provenance on each row", () => {
-    renderWorkbench();
+  it("keeps module-first browse by default and exposes tech topology as an optional view", () => {
+    renderWorkbench({ expandAllNodesByDefault: true });
 
     expect(screen.queryByRole("group", { name: "DTS 视图" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "源 DTS" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "技术视图" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
     expect(screen.getByRole("tree", { name: "生效 DTS 拓扑" })).toBeInTheDocument();
-
-    const gpioRow = document.querySelector('[data-binding-id="binding-gpio-int"]');
-    expect(gpioRow).toHaveTextContent("board.dts");
-    expect(gpioRow).toHaveTextContent("/amba/i2c@FDF5E000/sc8562@6E");
-
-    const effectiveSc8562 = expandToSc8562(/sc8562@6E/);
-    fireEvent.click(effectiveSc8562);
-    expect(visibleBindingRows()).toHaveLength(3);
-    expect(visibleBindingRows()[0]).toHaveTextContent("/amba/i2c@FDF5E000/sc8562@6E");
+    // Remount on mode switch re-applies expandAll for the topology tree.
+    expect(screen.getByRole("treeitem", { name: /amba/ })).toBeInTheDocument();
+    expect(screen.getByRole("treeitem", { name: /i2c@FDF5E000/ })).toBeInTheDocument();
+    expect(screen.getByRole("treeitem", { name: /sc8562@6E/ })).toBeInTheDocument();
   });
 
   it("always exposes details while canEdit only controls the edit entry", () => {
@@ -401,7 +428,7 @@ describe("DtsParameterWorkbench", () => {
     renderWorkbench({ canEdit: false, onSelectBinding, onEditBinding });
 
     fireEvent.click(screen.getByRole("button", {
-      name: "查看 gpio_int（sc8562@6E · sc8562 · /amba/i2c@FDF5E000/sc8562@6E）"
+      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
     expect(onSelectBinding).toHaveBeenCalledWith("binding-gpio-int");
     expect(screen.queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
@@ -412,7 +439,7 @@ describe("DtsParameterWorkbench", () => {
     renderWorkbench({ canEdit: false });
 
     fireEvent.click(screen.getByRole("button", {
-      name: "查看 gpio_int（sc8562@6E · sc8562 · /amba/i2c@FDF5E000/sc8562@6E）"
+      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
 
     const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
@@ -427,7 +454,7 @@ describe("DtsParameterWorkbench", () => {
     const { props } = renderWorkbench();
 
     await user.click(screen.getByRole("button", {
-      name: "继续编辑 gpio_int（sc8562@6E · sc8562 · /amba/i2c@FDF5E000/sc8562@6E）"
+      name: "继续编辑 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
 
     const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
@@ -443,7 +470,7 @@ describe("DtsParameterWorkbench", () => {
       target: { value: "gpio13" }
     });
     const opener = screen.getByRole("button", {
-      name: "查看 gpio_int（sc8562@6E · sc8562 · /amba/i2c@FDF5E000/sc8562@6E）"
+      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     });
 
     await user.click(opener);
@@ -491,16 +518,16 @@ describe("DtsParameterWorkbench", () => {
     });
 
     expect(screen.getByRole("button", {
-      name: "查看 gpio_int（sc8562@6E · sc8562 · /amba/i2c@FDF5E000/sc8562@6E）"
+      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     })).toBeInTheDocument();
     expect(screen.getByRole("button", {
-      name: "查看 gpio_int（sc8562@6F · sc8562 · /amba/i2c@FDF5E000/sc8562@6F）"
+      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6F · sc8562）"
     })).toBeInTheDocument();
     expect(screen.getByRole("button", {
-      name: "继续编辑 gpio_int（sc8562@6E · sc8562 · /amba/i2c@FDF5E000/sc8562@6E）"
+      name: "继续编辑 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     })).toBeInTheDocument();
     expect(screen.getByRole("button", {
-      name: "编辑 gpio_int（sc8562@6F · sc8562 · /amba/i2c@FDF5E000/sc8562@6F）"
+      name: "编辑 gpio_int（未分类 · sc8562 · sc8562@6F · sc8562）"
     })).toBeInTheDocument();
   });
 

@@ -599,6 +599,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(workspace.getByRole("group", { name: "DTS 视图" })).toHaveCount(0);
     await expect(workspace.getByRole("button", { name: "源 DTS" })).toHaveCount(0);
 
+    await expect(workspace.getByRole("tree", { name: "业务模块树" })).toBeVisible({
+      timeout: 20_000
+    });
+    await expect(workspace.getByRole("columnheader", { name: /所属模块/ })).toBeVisible();
+    await workspace.getByRole("button", { name: "技术视图" }).click();
     await expect(workspace.getByRole("tree", { name: "生效 DTS 拓扑" })).toBeVisible({
       timeout: 20_000
     });
@@ -607,7 +612,15 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
     await expect(workspace.getByRole("treeitem", { name: /i2c@FDF5E000/ }).first()).toBeVisible();
     await expect(workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first()).toBeVisible();
-    await expect(workspace.getByText(/来源链|\.dts|源出处/i).first()).toBeVisible();
+    await workspace.getByRole("button", { name: /查看 gpio_int/ }).first().click();
+    const provenanceDetail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
+    await expect(provenanceDetail.getByText(/来源链|\.dts|源出处|源文件/i).first()).toBeVisible();
+    // Phase-2: the detail history region is a real revision surface, not phase-1 placeholder copy.
+    const historyRegion = provenanceDetail.getByRole("region", { name: "历史与 diff" });
+    await expect(historyRegion).toBeVisible();
+    await expect(historyRegion.getByText(/阶段一占位/)).toHaveCount(0);
+    await expect(provenanceDetail.getByRole("region", { name: "跨项目对比" })).toBeVisible();
+    await provenanceDetail.getByRole("button", { name: "关闭参数详情" }).click();
 
     const topologyApi = await request.get(
       apiRoute(

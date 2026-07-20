@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  Download,
+  Network,
   RotateCcw,
   Search,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Boxes
 } from "lucide-react";
 
 import {
   buildDtsTopologyTree,
   type DtsWorkbenchTreeNode
 } from "@/application/parameters/buildDtsTopologyTree";
+import { buildModuleTree } from "@/application/parameters/buildModuleTree";
+import type { ModuleImportance } from "@/domain/parameter-topology/moduleRegistry";
 import type {
-  BindingCompareEntry,
   BindingHistoryEntry,
   EffectiveTopologyNode,
   SourceTopologyNode
@@ -26,6 +30,8 @@ import { DtsParameterWorkbenchTable } from "./DtsParameterWorkbenchTable";
 import { DtsTopologyNavigator } from "./DtsTopologyNavigator";
 
 type GovernanceFilter = "all" | DtsWorkbenchGovernanceState;
+type ImportanceFilter = "all" | ModuleImportance;
+type NavigatorMode = "module" | "topology";
 
 export type DtsParameterWorkbenchProps = {
   projectId?: string;
@@ -35,10 +41,13 @@ export type DtsParameterWorkbenchProps = {
   /** Kept for API compatibility; browse UI is effective-only and surfaces source via provenance. */
   sourceRows: DtsParameterWorkbenchRow[];
   effectiveRows: DtsParameterWorkbenchRow[];
-  /** Kept for API compatibility; navigator always uses effective topology. */
+  /** Kept for API compatibility; topology tech view still uses effective nodes. */
   sourceNodes: SourceTopologyNode[];
   effectiveNodes: EffectiveTopologyNode[];
   draftBindingIds: ReadonlySet<string>;
+  /** Optional controlled draft multi-select (for selective submit in the draft tray). */
+  selectedBindingIds?: ReadonlySet<string>;
+  onSelectedBindingIdsChange?: (next: Set<string>) => void;
   canEdit: boolean;
   onSelectBinding: (bindingId: string) => void;
   onEditBinding?: (bindingId: string) => void;
@@ -49,13 +58,13 @@ export type DtsParameterWorkbenchProps = {
   }) => Promise<BindingEditValidation>;
   /** Loads per-binding revision history when a detail dialog opens. */
   loadBindingHistory?: (bindingId: string) => Promise<BindingHistoryEntry[]>;
-  /** Loads cross-project compare peers when a detail dialog opens. */
-  loadBindingCompare?: (bindingId: string) => Promise<BindingCompareEntry[]>;
   /** Optional mature-workbench current-edits tray rendered inside the DTS region. */
   currentEdits?: ReactNode;
   /** Validation and mapping governance controls remain in the same semantic region. */
   governanceContent?: ReactNode;
   expandAllNodesByDefault?: boolean;
+  /** Called when the user asks to export the currently visible rows (semantic export). */
+  onExportRows?: (rows: DtsParameterWorkbenchRow[]) => void;
 };
 
 function selectedSubtreeBindingIds(
@@ -85,6 +94,16 @@ function selectedSubtreeBindingIds(
   return bindingIds;
 }
 
+function treeContainsNode(roots: DtsWorkbenchTreeNode[], nodeId: string): boolean {
+  const pending = [...roots];
+  while (pending.length > 0) {
+    const node = pending.pop()!;
+    if (node.id === nodeId) return true;
+    pending.push(...node.children);
+  }
+  return false;
+}
+
 export function DtsParameterWorkbench({
   projectId,
   configSetId,
@@ -95,20 +114,27 @@ export function DtsParameterWorkbench({
   sourceNodes: _sourceNodes,
   effectiveNodes,
   draftBindingIds,
+  selectedBindingIds: controlledSelectedBindingIds,
+  onSelectedBindingIdsChange,
   canEdit,
   onSelectBinding,
   onEditBinding,
   onCreateDraft,
   loadBindingHistory,
-  loadBindingCompare,
   currentEdits,
   governanceContent,
-  expandAllNodesByDefault = false
+  expandAllNodesByDefault = false,
+  onExportRows
 }: DtsParameterWorkbenchProps) {
   const [query, setQuery] = useState("");
   const [governanceFilter, setGovernanceFilter] = useState<GovernanceFilter>("all");
+  const [importanceFilter, setImportanceFilter] = useState<ImportanceFilter>("all");
+  const [navigatorMode, setNavigatorMode] = useState<NavigatorMode>("module");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedBindingId, setSelectedBindingId] = useState<string | null>(null);
+  const [uncontrolledSelectedBindingIds, setUncontrolledSelectedBindingIds] = useState<Set<string>>(new Set());
+  const selectedBindingIds = controlledSelectedBindingIds ?? uncontrolledSelectedBindingIds;
+  const setSelectedBindingIds = onSelectedBindingIdsChange ?? setUncontrolledSelectedBindingIds;
   const [detailIntent, setDetailIntent] = useState<"view" | "edit">("view");
   const detailOpenerRef = useRef<HTMLElement | null>(null);
   const pendingFocusRestoreRef = useRef<HTMLElement | null>(null);
@@ -116,9 +142,9 @@ export function DtsParameterWorkbench({
   const listScrollRailRef = useRef<HTMLDivElement | null>(null);
   const listScrollSyncing = useRef(false);
 
-  // Single browse mode: effective topology + provenance on each row/detail.
   const currentRows = effectiveRows;
-  const tree = useMemo(
+  const moduleTree = useMemo(() => buildModuleTree({ rows: currentRows }), [currentRows]);
+  const topologyTree = useMemo(
     () => buildDtsTopologyTree({
       view: "effective",
       sourceNodes: [],
@@ -127,21 +153,37 @@ export function DtsParameterWorkbench({
     }),
     [currentRows, effectiveNodes]
   );
-  const selectedNodeExists = useMemo(() => {
-    if (!selectedNodeId) return true;
-    const pending = [...tree];
-    while (pending.length > 0) {
-      const node = pending.pop()!;
-      if (node.id === selectedNodeId) return true;
-      pending.push(...node.children);
-    }
-    return false;
-  }, [selectedNodeId, tree]);
+  const tree = navigatorMode === "module" ? moduleTree : topologyTree;
+  const selectedNodeExists = selectedNodeId ? treeContainsNode(tree, selectedNodeId) : true;
   const effectiveSelectedNodeId = selectedNodeExists ? selectedNodeId : null;
 
   useEffect(() => {
     if (selectedNodeId && !selectedNodeExists) setSelectedNodeId(null);
   }, [selectedNodeExists, selectedNodeId]);
+
+  useEffect(() => {
+    setSelectedNodeId(null);
+    setSelectedBindingId(null);
+    setSelectedBindingIds(new Set());
+  }, [navigatorMode, setSelectedBindingIds]);
+
+  useEffect(() => {
+    if (controlledSelectedBindingIds) return;
+    setUncontrolledSelectedBindingIds((current) => {
+      if (current.size === 0) return current;
+      const next = new Set([...current].filter((id) => draftBindingIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [controlledSelectedBindingIds, draftBindingIds]);
+
+  useEffect(() => {
+    if (!controlledSelectedBindingIds || !onSelectedBindingIdsChange) return;
+    if (controlledSelectedBindingIds.size === 0) return;
+    const next = new Set([...controlledSelectedBindingIds].filter((id) => draftBindingIds.has(id)));
+    if (next.size !== controlledSelectedBindingIds.size) {
+      onSelectedBindingIdsChange(next);
+    }
+  }, [controlledSelectedBindingIds, draftBindingIds, onSelectedBindingIdsChange]);
 
   const subtreeBindingIds = useMemo(
     () => selectedSubtreeBindingIds(tree, effectiveSelectedNodeId),
@@ -152,9 +194,10 @@ export function DtsParameterWorkbench({
     () => currentRows.filter((row) => {
       if (normalizedQuery && !row.searchText.includes(normalizedQuery)) return false;
       if (governanceFilter !== "all" && row.governanceState !== governanceFilter) return false;
+      if (importanceFilter !== "all" && row.importance !== importanceFilter) return false;
       return subtreeBindingIds === null || subtreeBindingIds.has(row.bindingId);
     }),
-    [currentRows, governanceFilter, normalizedQuery, subtreeBindingIds]
+    [currentRows, governanceFilter, importanceFilter, normalizedQuery, subtreeBindingIds]
   );
 
   useEffect(() => {
@@ -200,6 +243,7 @@ export function DtsParameterWorkbench({
   const clearFilters = () => {
     setQuery("");
     setGovernanceFilter("all");
+    setImportanceFilter("all");
     setSelectedNodeId(null);
   };
 
@@ -229,28 +273,6 @@ export function DtsParameterWorkbench({
     };
   }, [selectedBindingId, loadBindingHistory]);
 
-  const [compareEntries, setCompareEntries] = useState<BindingCompareEntry[]>([]);
-
-  useEffect(() => {
-    if (!selectedBindingId || !loadBindingCompare) {
-      setCompareEntries([]);
-      return undefined;
-    }
-    let cancelled = false;
-    const requestBindingId = selectedBindingId;
-    setCompareEntries([]);
-    loadBindingCompare(requestBindingId)
-      .then((entries) => {
-        if (!cancelled) setCompareEntries(entries);
-      })
-      .catch(() => {
-        if (!cancelled) setCompareEntries([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedBindingId, loadBindingCompare]);
-
   useEffect(() => {
     if (selectedBindingId || !pendingFocusRestoreRef.current) return;
     const opener = pendingFocusRestoreRef.current;
@@ -278,19 +300,50 @@ export function DtsParameterWorkbench({
       <header className="dts-parameter-workbench__header">
         <div>
           <p className="eyebrow">Parameter workbench</p>
-          <h2>DTS 参数工作台</h2>
-          <p>按生效拓扑定位器件上下文；源文件与覆盖链保留在行内出处和详情中。</p>
+          <h2>项目参数工作台</h2>
+          <p>按业务模块定位参数；器件/驱动与源出处保留在行内与详情中。</p>
+        </div>
+        <div className="dts-parameter-workbench__header-actions" role="group" aria-label="导航模式">
+          <button
+            type="button"
+            className={`button subtle${navigatorMode === "module" ? " is-active" : ""}`}
+            aria-pressed={navigatorMode === "module"}
+            onClick={() => setNavigatorMode("module")}
+          >
+            <Boxes size={15} strokeWidth={1.9} aria-hidden="true" />
+            模块导航
+          </button>
+          <button
+            type="button"
+            className={`button subtle${navigatorMode === "topology" ? " is-active" : ""}`}
+            aria-pressed={navigatorMode === "topology"}
+            onClick={() => setNavigatorMode("topology")}
+          >
+            <Network size={15} strokeWidth={1.9} aria-hidden="true" />
+            技术视图
+          </button>
+          {onExportRows ? (
+            <button
+              type="button"
+              className="button subtle"
+              disabled={visibleRows.length === 0}
+              onClick={() => onExportRows(visibleRows)}
+            >
+              <Download size={15} strokeWidth={1.9} aria-hidden="true" />
+              导出当前结果
+            </button>
+          ) : null}
         </div>
       </header>
 
       <div className="dts-parameter-workbench__toolbar">
         <label className="dts-parameter-workbench__search">
-          <span><Search size={14} strokeWidth={2} aria-hidden="true" />搜索 DTS 参数</span>
+          <span><Search size={14} strokeWidth={2} aria-hidden="true" />搜索参数</span>
           <input
             type="search"
             aria-label="搜索 DTS 参数"
             value={query}
-            placeholder="属性、器件、地址、路径或值"
+            placeholder="参数名、模块、器件、路径或值"
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
@@ -307,12 +360,26 @@ export function DtsParameterWorkbench({
             <option value="blocked">阻断（blocked）</option>
           </select>
         </label>
+        <label className="dts-parameter-workbench__importance-filter">
+          <span>重要性</span>
+          <select
+            aria-label="重要性"
+            value={importanceFilter}
+            onChange={(event) => setImportanceFilter(event.target.value as ImportanceFilter)}
+          >
+            <option value="all">全部重要性</option>
+            <option value="high">高</option>
+            <option value="medium">中</option>
+            <option value="low">低</option>
+          </select>
+        </label>
         <button type="button" className="button subtle" onClick={clearFilters}>
           <RotateCcw size={15} strokeWidth={1.9} aria-hidden="true" />
           清除全部筛选
         </button>
         <p role="status" aria-live="polite" className="dts-parameter-workbench__result-count">
           显示 {visibleRows.length} / {currentRows.length} 个参数
+          {selectedBindingIds.size > 0 ? ` · 已选 ${selectedBindingIds.size} 项草稿` : ""}
         </p>
       </div>
 
@@ -320,14 +387,20 @@ export function DtsParameterWorkbench({
         <div
           className="dts-parameter-workbench__navigator dts-workbench-topology"
           role="region"
-          aria-label="DTS 拓扑导航"
+          aria-label={navigatorMode === "module" ? "模块导航" : "DTS 拓扑导航"}
         >
-          <h3 className="dts-parameter-workbench__navigator-title">DTS 拓扑导航</h3>
+          <h3 className="dts-parameter-workbench__navigator-title">
+            {navigatorMode === "module" ? "模块导航" : "DTS 拓扑导航"}
+          </h3>
           <DtsTopologyNavigator
+            key={navigatorMode}
             view="effective"
             nodes={tree}
             selectedNodeId={effectiveSelectedNodeId}
             expandAllByDefault={expandAllNodesByDefault}
+            labelKind={navigatorMode === "module" ? "text" : "code"}
+            emptyMessage={navigatorMode === "module" ? "暂无模块分组" : "暂无 DTS 拓扑节点"}
+            ariaLabel={navigatorMode === "module" ? "业务模块树" : "生效 DTS 拓扑"}
             onSelectNode={(nodeId) => setSelectedNodeId((current) => current === nodeId ? null : nodeId)}
           />
         </div>
@@ -345,9 +418,11 @@ export function DtsParameterWorkbench({
                 rows={visibleRows}
                 selectedBindingId={selectedBindingId}
                 draftBindingIds={draftBindingIds}
+                selectedBindingIds={selectedBindingIds}
                 canEdit={canEdit}
                 onSelectBinding={selectBinding}
                 onEditBinding={onEditBinding && onCreateDraft ? editBinding : undefined}
+                onSelectedBindingIdsChange={setSelectedBindingIds}
               />
               {visibleRows.length === 0 ? (
                 <p className="dts-parameter-workbench__empty">当前筛选范围内没有参数。</p>
@@ -383,7 +458,6 @@ export function DtsParameterWorkbench({
           canEdit={canEdit && Boolean(onCreateDraft)}
           focusEditorOnOpen={detailIntent === "edit"}
           historyEntries={historyEntries}
-          compareEntries={compareEntries}
           onClose={closeDetail}
           onCreateDraft={onCreateDraft ?? (() => Promise.reject(new Error("当前未配置语义草稿创建能力")))}
         />

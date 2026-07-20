@@ -6,6 +6,12 @@ import type {
 } from "@/application/ports/ParameterRepository";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
+import {
+  EMPTY_PARAMETER_MODULE_REGISTRY,
+  type ParameterModuleRegistry
+} from "@/domain/parameter-topology/moduleRegistry";
+import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/http/parameterModuleRegistryClient";
 import type {
   EffectiveTopologyNode,
   IdentityMappingTask,
@@ -32,6 +38,7 @@ import {
 import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 import { IdentityMappingReview } from "./IdentityMappingReview";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
+import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
@@ -41,6 +48,8 @@ export type ApiProjectTopologyWorkspaceProps = {
   runtimeMode?: WiseEffRuntimeMode;
   /** Test seam — inject repositories instead of constructing HTTP clients. */
   topologyRepository?: ParameterTopologyRepository;
+  /** Test seam — inject the admin-maintained module registry repository. */
+  moduleRegistryRepository?: ParameterModuleRegistryRepository;
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   listWorkflowAssignees?: (projectId: string) => Promise<WorkflowAssigneeCandidates>;
   submitBindingChanges?: (
@@ -154,6 +163,7 @@ export function ApiProjectTopologyWorkspace({
   layoutMode = "desktop",
   runtimeMode = "api",
   topologyRepository,
+  moduleRegistryRepository,
   listConfigSets,
   listWorkflowAssignees,
   submitBindingChanges,
@@ -162,6 +172,15 @@ export function ApiProjectTopologyWorkspace({
   const repository = useMemo(
     () => topologyRepository ?? (runtimeMode === "api" ? createHttpParameterTopologyRepository() : null),
     [runtimeMode, topologyRepository]
+  );
+  const moduleRegistryRepo = useMemo(
+    () =>
+      moduleRegistryRepository ??
+      (runtimeMode === "api" ? createHttpParameterModuleRegistryRepository() : null),
+    [moduleRegistryRepository, runtimeMode]
+  );
+  const [moduleRegistry, setModuleRegistry] = useState<ParameterModuleRegistry>(
+    EMPTY_PARAMETER_MODULE_REGISTRY
   );
   const listConfigSetsRef = useRef(listConfigSets);
   listConfigSetsRef.current = listConfigSets;
@@ -189,6 +208,7 @@ export function ApiProjectTopologyWorkspace({
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
   const [mappingMessage, setMappingMessage] = useState<string | null>(null);
   const [pendingDrafts, setPendingDrafts] = useState<PendingBindingDraft[]>([]);
+  const [selectedDraftBindingIds, setSelectedDraftBindingIds] = useState<Set<string>>(new Set());
   const [workflowCandidates, setWorkflowCandidates] = useState<WorkflowAssigneeCandidates | null>(null);
   const [workflowCandidatesError, setWorkflowCandidatesError] = useState<string | null>(null);
   const [projectMutationKinds, setProjectMutationKinds] = useState<ReadonlyMap<string, ProjectMutationLock>>(
@@ -298,6 +318,26 @@ export function ApiProjectTopologyWorkspace({
       cancelled = true;
     };
   }, [projectId, preferredRevisionId, repository, runtimeMode, reloadToken]);
+
+  useEffect(() => {
+    if (!moduleRegistryRepo) {
+      setModuleRegistry(EMPTY_PARAMETER_MODULE_REGISTRY);
+      return undefined;
+    }
+    let cancelled = false;
+    moduleRegistryRepo
+      .getRegistry()
+      .then((registry) => {
+        if (!cancelled) setModuleRegistry(registry);
+      })
+      .catch(() => {
+        // Graceful degradation: fall back to driver-based grouping.
+        if (!cancelled) setModuleRegistry(EMPTY_PARAMETER_MODULE_REGISTRY);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [moduleRegistryRepo, reloadToken]);
 
   const handleValidateEdit = async (input: {
     bindingId: string;
@@ -478,9 +518,10 @@ export function ApiProjectTopologyWorkspace({
       bindings: loadState.bindings,
       sourceNodes: loadState.sourceNodes,
       effectiveNodes: loadState.effectiveNodes,
-      mappingTasks: loadState.mappingTasks
+      mappingTasks: loadState.mappingTasks,
+      moduleRegistry
     });
-  }, [loadState, projectId]);
+  }, [loadState, projectId, moduleRegistry]);
 
   const effectiveRows = useMemo(() => {
     if (loadState.kind !== "ready") return [];
@@ -491,9 +532,10 @@ export function ApiProjectTopologyWorkspace({
       bindings: loadState.bindings,
       sourceNodes: loadState.sourceNodes,
       effectiveNodes: loadState.effectiveNodes,
-      mappingTasks: loadState.mappingTasks
+      mappingTasks: loadState.mappingTasks,
+      moduleRegistry
     });
-  }, [loadState, projectId]);
+  }, [loadState, projectId, moduleRegistry]);
 
   // Selection is owned by the semantic workbench. These stable seams allow the
   // API coordinator to add side effects later without changing row identity.
@@ -504,14 +546,6 @@ export function ApiProjectTopologyWorkspace({
     (bindingId: string) => {
       if (!repository?.listBindingHistory) return Promise.resolve([]);
       return repository.listBindingHistory(projectId, bindingId);
-    },
-    [projectId, repository]
-  );
-
-  const loadBindingCompare = useCallback(
-    (bindingId: string) => {
-      if (!repository?.listBindingCompare) return Promise.resolve([]);
-      return repository.listBindingCompare(projectId, bindingId);
     },
     [projectId, repository]
   );
@@ -645,6 +679,7 @@ export function ApiProjectTopologyWorkspace({
     <DtsBindingDraftTray
       projectId={projectId}
       drafts={projectDrafts}
+      selectedBindingIds={selectedDraftBindingIds}
       candidates={workflowCandidates}
       candidatesError={workflowCandidatesError}
       externalBlocker={
@@ -671,14 +706,21 @@ export function ApiProjectTopologyWorkspace({
         sourceRows={sourceRows}
         effectiveRows={effectiveRows}
         draftBindingIds={draftBindingIds}
+        selectedBindingIds={selectedDraftBindingIds}
+        onSelectedBindingIdsChange={setSelectedDraftBindingIds}
         canEdit={canEditSemantic}
         onSelectBinding={handleSelectBinding}
         onEditBinding={handleEditBinding}
         onCreateDraft={handleValidateEdit}
         loadBindingHistory={loadBindingHistory}
-        loadBindingCompare={loadBindingCompare}
         currentEdits={currentEdits}
         expandAllNodesByDefault
+        onExportRows={(rows) => {
+          downloadSemanticWorkbenchCsv(
+            rows,
+            `parameter-workbench-${projectId}-${loadState.revisionId}.csv`
+          );
+        }}
         governanceContent={(
           <>
             {statusBanner ? (

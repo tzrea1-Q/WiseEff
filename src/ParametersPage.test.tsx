@@ -1602,7 +1602,9 @@ describe("ParametersPage API topology workspace", () => {
     });
     const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     expect(within(workspace).getByRole("searchbox", { name: "搜索 DTS 参数" })).toBeInTheDocument();
-    expect(within(workspace).getByRole("tree", { name: "生效 DTS 拓扑" })).toBeInTheDocument();
+    // Phase-1 default navigator is module-first; topology remains available as 技术视图.
+    expect(within(workspace).getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
+    expect(within(workspace).getByRole("button", { name: "技术视图" })).toBeInTheDocument();
     const semanticRow = await within(workspace).findByRole("row", { name: new RegExp(API_SENTINEL_PROPERTY) });
     expect(within(semanticRow).getByRole("cell", { name: API_SENTINEL_PROPERTY })).toBeInTheDocument();
     expect(within(semanticRow).getByRole("cell", { name: API_SENTINEL_RAW_VALUE })).toBeInTheDocument();

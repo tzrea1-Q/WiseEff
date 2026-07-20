@@ -16,6 +16,8 @@ export type PendingBindingDraft = BindingDraftResult & {
 export type DtsBindingDraftTrayProps = {
   projectId: string;
   drafts: PendingBindingDraft[];
+  /** When non-empty, only these binding ids are included in submit. Empty = submit all drafts. */
+  selectedBindingIds?: ReadonlySet<string>;
   candidates: WorkflowAssigneeCandidates | null;
   candidatesError?: string | null;
   externalBlocker?: string | null;
@@ -87,6 +89,7 @@ function draftBatchSignature(projectId: string, drafts: PendingBindingDraft[]): 
 export function DtsBindingDraftTray({
   projectId,
   drafts,
+  selectedBindingIds,
   candidates,
   candidatesError = null,
   externalBlocker = null,
@@ -111,20 +114,24 @@ export function DtsBindingDraftTray({
     signature: string;
   } | null>(null);
 
-  const batchSignature = useMemo(
-    () => draftBatchSignature(projectId, drafts),
-    [drafts, projectId]
+  const submitDrafts = useMemo(() => {
+    if (!selectedBindingIds || selectedBindingIds.size === 0) return drafts;
+    return drafts.filter((draft) => selectedBindingIds.has(draft.projectParameterBindingId));
+  }, [drafts, selectedBindingIds]);
+  const submitBatchSignature = useMemo(
+    () => draftBatchSignature(projectId, submitDrafts),
+    [projectId, submitDrafts]
   );
   const requestSignature = useMemo(
     () => JSON.stringify({
-      batchSignature,
+      batchSignature: submitBatchSignature,
       assignees: {
         hardwareCommitterId,
         softwareCommitterId,
         softwareUserId
       }
     }),
-    [batchSignature, hardwareCommitterId, softwareCommitterId, softwareUserId]
+    [submitBatchSignature, hardwareCommitterId, softwareCommitterId, softwareUserId]
   );
   const currentRequestSignatureRef = useRef(requestSignature);
   currentRequestSignatureRef.current = requestSignature;
@@ -135,7 +142,7 @@ export function DtsBindingDraftTray({
     setSubmitting(false);
     setSubmitted(false);
     setSubmitError(null);
-  }, [batchSignature]);
+  }, [submitBatchSignature]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -157,20 +164,31 @@ export function DtsBindingDraftTray({
   const displayedCandidatesError = candidateSnapshot.error;
 
   const draftIdentityError = useMemo(
-    () => identityBlocker(projectId, drafts),
-    [drafts, projectId]
+    () => identityBlocker(projectId, submitDrafts),
+    [projectId, submitDrafts]
   );
-  const candidateError = useMemo(() => candidateBlocker(drafts), [drafts]);
-  const actionValueError = useMemo(() => actionValueBlocker(drafts), [drafts]);
+  const candidateError = useMemo(() => candidateBlocker(submitDrafts), [submitDrafts]);
+  const actionValueError = useMemo(() => actionValueBlocker(submitDrafts), [submitDrafts]);
+  const selectionError =
+    selectedBindingIds && selectedBindingIds.size > 0 && submitDrafts.length === 0
+      ? "当前勾选的草稿不在本轮修改中，请重新选择后再提交。"
+      : null;
   const roleError = displayedCandidates && !(hardwareCommitterId && softwareCommitterId && softwareUserId)
     ? "项目缺少完整的硬件 MDE、软件 MDE 或软件开发候选人，已阻止提交。"
     : null;
   const submissionEntryError = onSubmit
     ? null
     : "正式 binding 提交入口未配置，已阻止提交。";
-  const blocker = externalBlocker ?? displayedCandidatesError ?? draftIdentityError ?? actionValueError ?? candidateError ?? roleError ?? submissionEntryError;
+  const blocker = externalBlocker
+    ?? displayedCandidatesError
+    ?? selectionError
+    ?? draftIdentityError
+    ?? actionValueError
+    ?? candidateError
+    ?? roleError
+    ?? submissionEntryError;
   const canSubmit = Boolean(
-    drafts.length > 0 &&
+    submitDrafts.length > 0 &&
     displayedCandidates &&
     !blocker &&
     !submitting &&
@@ -185,9 +203,17 @@ export function DtsBindingDraftTray({
         <div>
           <p className="eyebrow">Current edits</p>
           <h3>本轮已修改</h3>
-          <p>仅提交具有完整 binding / spec / candidate 身份的 typed draft。</p>
+          <p>
+            {selectedBindingIds && selectedBindingIds.size > 0
+              ? `将提交已选 ${submitDrafts.length} / ${drafts.length} 项草稿。`
+              : "未勾选时提交全部草稿；勾选后仅提交选中项。"}
+          </p>
         </div>
-        <span>{drafts.length} 项</span>
+        <span>
+          {selectedBindingIds && selectedBindingIds.size > 0
+            ? `提交 ${submitDrafts.length} / ${drafts.length} 项`
+            : `${drafts.length} 项`}
+        </span>
       </header>
 
       <div className="dts-binding-draft-tray__items">
@@ -284,7 +310,7 @@ export function DtsBindingDraftTray({
             setSubmitError(null);
             void onSubmit({
               projectId,
-              items: drafts.map((draft) => ({
+              items: submitDrafts.map((draft) => ({
                 draftId: draft.draftId,
                 projectParameterBindingId: draft.projectParameterBindingId,
                 parameterSpecId: draft.parameterSpecId,

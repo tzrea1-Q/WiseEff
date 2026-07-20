@@ -12,6 +12,9 @@ export type DtsTopologyNavigatorProps = {
   ariaLabel?: string;
   /** API workbench keeps the mature browse experience open on first load. */
   expandAllByDefault?: boolean;
+  /** Module labels read as natural text; DTS node labels stay monospaced. */
+  labelKind?: "code" | "text";
+  emptyMessage?: string;
 };
 
 type TreeIndex = {
@@ -89,7 +92,9 @@ export function DtsTopologyNavigator({
   selectedNodeId,
   onSelectNode,
   ariaLabel,
-  expandAllByDefault = false
+  expandAllByDefault = false,
+  labelKind = "code",
+  emptyMessage
 }: DtsTopologyNavigatorProps) {
   const index = useMemo(() => indexTree(nodes), [nodes]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
@@ -253,7 +258,13 @@ export function DtsTopologyNavigator({
             ) : (
               <span className="dts-topology-navigator__disclosure" aria-hidden="true" />
             )}
-            <code className="dts-topology-navigator__label">{node.label}</code>
+            {labelKind === "text" ? (
+              <span className="dts-topology-navigator__label dts-topology-navigator__label--text">
+                {node.label}
+              </span>
+            ) : (
+              <code className="dts-topology-navigator__label">{node.label}</code>
+            )}
             <span className="dts-topology-navigator__meta">
               <span className="dts-topology-navigator__count">{node.bindingCount} 个参数</span>
               {node.attentionCount > 0 ? (
@@ -282,7 +293,7 @@ export function DtsTopologyNavigator({
         aria-label={resolvedAriaLabel}
         className="dts-topology-navigator__empty"
       >
-        暂无 DTS 拓扑节点
+        {emptyMessage ?? "暂无 DTS 拓扑节点"}
       </div>
     );
   }

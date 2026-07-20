@@ -2078,7 +2078,8 @@ export async function createParameterModuleForAuth(
       parentId,
       description: body.description?.trim(),
       scope: body.scope?.trim(),
-      sortOrder: body.sortOrder
+      sortOrder: body.sortOrder,
+      importance: body.importance
     });
 
     await createParameterModuleAudit(
@@ -2136,7 +2137,8 @@ export async function updateParameterModuleForAuth(
       name: body.name?.trim(),
       description: body.description?.trim(),
       scope: body.scope?.trim(),
-      sortOrder: body.sortOrder
+      sortOrder: body.sortOrder,
+      importance: body.importance
     });
     if (!module) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });

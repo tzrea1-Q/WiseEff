@@ -273,7 +273,7 @@ export function ParameterSpecLibrary({
         <div className="parameters-table-heading">
           <div>
             <h2>参数规格库</h2>
-            <p>按属性键与驱动规格治理共享定义；驱动与实例分离，路径仅作定位参考。</p>
+            <p>按属性键与驱动规格治理共享定义；同名属性按驱动/模块区分。路径仅作定位参考。</p>
           </div>
         </div>
 

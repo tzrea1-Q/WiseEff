@@ -39,6 +39,8 @@ export type ProjectModuleDto = {
   parameterModuleId?: string | null;
 };
 
+export type ModuleImportance = "high" | "medium" | "low";
+
 export type ParameterModuleDto = {
   id: string;
   parentId: string | null;
@@ -48,6 +50,7 @@ export type ParameterModuleDto = {
   sortOrder: number;
   description: string;
   scope: string;
+  importance: ModuleImportance;
 };
 
 export type ParameterHistoryEntryDto = {

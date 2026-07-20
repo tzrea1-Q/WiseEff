@@ -50,12 +50,15 @@ export const parameterModuleParamsSchema = z.object({
   moduleId: nonEmptyString
 });
 
+export const moduleImportanceSchema = z.enum(["high", "medium", "low"]);
+
 export const createParameterModuleBodySchema = z.object({
   name: nonEmptyString,
   parentId: nonEmptyString.nullable().optional(),
   description: z.string().optional(),
   scope: z.string().optional(),
-  sortOrder: z.number().int().optional()
+  sortOrder: z.number().int().optional(),
+  importance: moduleImportanceSchema.optional()
 });
 
 export const updateParameterModuleBodySchema = z
@@ -63,7 +66,8 @@ export const updateParameterModuleBodySchema = z
     name: nonEmptyString.optional(),
     description: z.string().optional(),
     scope: z.string().optional(),
-    sortOrder: z.number().int().optional()
+    sortOrder: z.number().int().optional(),
+    importance: moduleImportanceSchema.optional()
   })
   .refine((body) => Object.values(body).some((value) => value !== undefined), {
     message: "At least one field is required."

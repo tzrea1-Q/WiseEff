@@ -20,6 +20,8 @@ import {
   ParameterSpecLibrary,
   type ParameterSpecLibraryRow
 } from "./components/parameter-topology/ParameterSpecLibrary";
+import { canPerform } from "@/app/permissions";
+import { ParameterModuleMappingPanel } from "./components/parameter-topology/ParameterModuleMappingPanel";
 import type { ParameterSpecDetailView } from "./components/parameter-topology/ParameterSpecDetail";
 import { SpecReviewQueue, type SpecReviewTaskView } from "./components/parameter-topology/SpecReviewQueue";
 import { ParameterImportWizard } from "./components/ParameterImportWizard/ParameterImportWizard";
@@ -634,7 +636,19 @@ export function ParameterAdminPage({
       />
       <main className="param-admin-main">
         {isApiMode ? (
-          <ParameterSpecLibrary
+          <>
+            <ParameterModuleMappingPanel
+              canAdmin={canPerform(state.activeRoleId, "admin.access")}
+              observedDrivers={Array.from(
+                specRows.reduce((counts, spec) => {
+                  const driver = spec.driverModule?.trim();
+                  if (!driver) return counts;
+                  counts.set(driver, (counts.get(driver) ?? 0) + 1);
+                  return counts;
+                }, new Map<string, number>())
+              ).map(([driverModule, bindingCount]) => ({ driverModule, bindingCount }))}
+            />
+            <ParameterSpecLibrary
             specs={specRows}
             loading={specLoading}
             selectedSpecId={selectedSpecId}
@@ -674,6 +688,7 @@ export function ParameterAdminPage({
               </>
             }
           />
+          </>
         ) : library.length === 0 ? (
           <div className="param-admin-empty">
             <Info size={22} aria-hidden="true" />

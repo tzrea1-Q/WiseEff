@@ -450,4 +450,35 @@ describe("DtsBindingDraftTray", () => {
     fireEvent.click(submit);
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  it("submits only selected drafts when selectedBindingIds is non-empty", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[
+          draft({ draftId: "draft-a", projectParameterBindingId: "binding-a" }),
+          draft({ draftId: "draft-b", projectParameterBindingId: "binding-b", writeTarget: { role: "overlay", propertyKey: "watchdog", targetRef: "sc8562" } })
+        ]}
+        selectedBindingIds={new Set(["binding-b"])}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        items: [
+          expect.objectContaining({
+            draftId: "draft-b",
+            projectParameterBindingId: "binding-b"
+          })
+        ]
+      }));
+    });
+    expect(onSubmit.mock.calls[0][0].items).toHaveLength(1);
+  });
 });

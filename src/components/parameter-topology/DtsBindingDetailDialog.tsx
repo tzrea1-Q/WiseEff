@@ -1,11 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CircleX } from "lucide-react";
 
-import type {
-  BindingCompareEntry,
-  BindingHistoryEntry,
-  DtsValue
-} from "@/domain/parameter-topology/types";
+import type { DtsValue } from "@/domain/parameter-topology/types";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +16,23 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 import type { BindingEditValidation } from "./BindingDetailPanel";
+
+export type BindingHistoryEntry = {
+  id: string;
+  changedAt: string;
+  actor?: string | null;
+  fromRawValue?: string | null;
+  toRawValue?: string | null;
+  reason?: string | null;
+};
+
+export type BindingCompareEntry = {
+  projectId: string;
+  projectName: string;
+  rawValue: string;
+  moduleName?: string | null;
+  driverModule?: string | null;
+};
 
 export type DtsBindingDetailDialogProps = {
   row: DtsParameterWorkbenchRow;
@@ -200,7 +213,7 @@ export function DtsBindingDetailDialog({
           <div>
             <DialogTitle>{row.propertyKey} 参数详情</DialogTitle>
             <DialogDescription>
-              {row.instanceName ?? "器件实例不可用"} · {row.driverModule ?? row.compatible ?? "驱动不可用"}
+              {row.moduleName} · {row.instanceName ?? "器件实例不可用"} · {row.driverModule ?? row.compatible ?? "驱动不可用"}
             </DialogDescription>
           </div>
           <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭参数详情" onClick={onClose}>
@@ -216,6 +229,11 @@ export function DtsBindingDetailDialog({
               <IdentityField label="Parameter Spec ID" value={row.parameterSpecId} />
               <IdentityField label="Spec Version ID" value={row.parameterSpecVersionId} />
               <IdentityField label="Logical Node ID" value={row.logicalNodeId} />
+              <IdentityField label="所属模块" value={row.moduleName} />
+              <IdentityField
+                label="重要性"
+                value={row.importance === "high" ? "高" : row.importance === "low" ? "低" : "中"}
+              />
             </dl>
             <p>当前接口未提供规格详情</p>
           </section>

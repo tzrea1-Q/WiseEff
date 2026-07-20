@@ -14,6 +14,7 @@ type ParameterModuleRow = {
   sort_order: number | string;
   description: string;
   scope: string;
+  importance: "high" | "medium" | "low" | null;
 };
 
 function toParameterModuleDto(row: ParameterModuleRow): ParameterModuleDto {
@@ -25,7 +26,8 @@ function toParameterModuleDto(row: ParameterModuleRow): ParameterModuleDto {
     depth: Number(row.depth),
     sortOrder: Number(row.sort_order),
     description: row.description,
-    scope: row.scope
+    scope: row.scope,
+    importance: row.importance ?? "medium"
   };
 }
 
@@ -38,7 +40,8 @@ const parameterModuleColumns = `
   depth,
   sort_order,
   description,
-  scope
+  scope,
+  importance
 `;
 
 export async function listParameterModules(db: Queryable, query: { organizationId: string }) {
@@ -136,6 +139,7 @@ export async function createParameterModule(
     description?: string;
     scope?: string;
     sortOrder?: number;
+    importance?: "high" | "medium" | "low";
   }
 ) {
   const id = randomUUID();
@@ -157,9 +161,9 @@ export async function createParameterModule(
   const result = await db.query<ParameterModuleRow>(
     `
     insert into parameter_modules (
-      id, organization_id, parent_id, name, path, depth, sort_order, description, scope
+      id, organization_id, parent_id, name, path, depth, sort_order, description, scope, importance
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     returning ${parameterModuleColumns}
     `,
     [
@@ -171,7 +175,8 @@ export async function createParameterModule(
       depth,
       input.sortOrder ?? 0,
       input.description ?? "",
-      input.scope ?? ""
+      input.scope ?? "",
+      input.importance ?? "medium"
     ]
   );
 
@@ -187,6 +192,7 @@ export async function updateParameterModule(
     description?: string;
     scope?: string;
     sortOrder?: number;
+    importance?: "high" | "medium" | "low";
   }
 ) {
   const existing = await getParameterModuleById(db, {
@@ -206,6 +212,7 @@ export async function updateParameterModule(
       description = coalesce($4, description),
       scope = coalesce($5, scope),
       sort_order = coalesce($6, sort_order),
+      importance = coalesce($7, importance),
       updated_at = now()
     where organization_id = $1
       and id = $2
@@ -217,7 +224,8 @@ export async function updateParameterModule(
       nextName,
       input.description ?? null,
       input.scope ?? null,
-      input.sortOrder ?? null
+      input.sortOrder ?? null,
+      input.importance ?? null
     ]
   );
 

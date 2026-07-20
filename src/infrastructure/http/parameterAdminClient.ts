@@ -43,6 +43,7 @@ export type CreateParameterModuleAdminInput = {
   description?: string;
   scope?: string;
   sortOrder?: number;
+  importance?: "high" | "medium" | "low";
 };
 
 export type UpdateParameterModuleAdminInput = {
@@ -50,6 +51,7 @@ export type UpdateParameterModuleAdminInput = {
   description?: string;
   scope?: string;
   sortOrder?: number;
+  importance?: "high" | "medium" | "low";
 };
 
 export type MoveParameterModuleAdminInput = {

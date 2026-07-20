@@ -19534,9 +19534,24 @@ body.xiaoze-popup-resize-active {
   box-shadow: 0 2px 8px rgba(15, 38, 75, 0.08);
 }
 
+.dts-parameter-workbench__header-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.dts-parameter-workbench__header-actions .button.subtle.is-active,
+.dts-parameter-workbench__header-actions .button.subtle[aria-pressed="true"] {
+  color: var(--dts-workbench-blue);
+  background: var(--dts-workbench-blue-soft);
+  border-color: #c8dcf7;
+}
+
 .dts-parameter-workbench__toolbar {
   display: grid;
-  grid-template-columns: minmax(240px, 1.45fr) minmax(170px, .78fr) auto minmax(130px, auto);
+  grid-template-columns: minmax(220px, 1.35fr) minmax(150px, .7fr) minmax(120px, .55fr) auto minmax(150px, auto);
   align-items: end;
   gap: 10px;
   min-width: 0;
@@ -19547,7 +19562,8 @@ body.xiaoze-popup-resize-active {
 }
 
 .dts-parameter-workbench__search,
-.dts-parameter-workbench__governance-filter {
+.dts-parameter-workbench__governance-filter,
+.dts-parameter-workbench__importance-filter {
   display: grid;
   min-width: 0;
   gap: 6px;
@@ -19856,6 +19872,12 @@ button.dts-topology-navigator__disclosure:focus-visible {
   line-height: 1.35;
 }
 
+.dts-topology-navigator__label--text {
+  font-family: inherit;
+  font-weight: 700;
+  color: var(--dts-workbench-ink);
+}
+
 .dts-topology-navigator__meta {
   display: grid;
   justify-items: end;
@@ -19916,7 +19938,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .dts-parameter-workbench-table__head,
 .dts-parameter-workbench-table__row {
   display: grid;
-  grid-template-columns: minmax(112px, .82fr) minmax(145px, 1fr) minmax(180px, 1.35fr) minmax(145px, 1.05fr) minmax(130px, .9fr) minmax(135px, 1fr) minmax(118px, .8fr);
+  /* select + 参数名 + 模块 + 器件/驱动 + 当前值 + 治理 + 操作 */
+  grid-template-columns: 36px minmax(120px, .9fr) minmax(120px, .95fr) minmax(145px, 1.05fr) minmax(145px, 1.1fr) minmax(130px, .95fr) minmax(118px, .8fr);
   gap: 10px;
   align-items: center;
   min-width: 1100px;
@@ -20027,6 +20050,46 @@ button.dts-topology-navigator__disclosure:focus-visible {
   color: var(--dts-workbench-ink);
   font-size: 12px;
   font-weight: 800;
+}
+
+.dts-parameter-workbench-table__select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dts-parameter-workbench-table__module {
+  display: grid;
+  gap: 2px;
+}
+
+.dts-parameter-workbench-table__module strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.dts-parameter-workbench-table__module small {
+  color: var(--dts-workbench-muted);
+  font-size: 10px;
+}
+
+.dts-parameter-workbench-table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.dts-parameter-workbench-table__sort.is-active {
+  color: var(--dts-workbench-blue);
 }
 
 .dts-parameter-workbench-table__identity {
@@ -20695,5 +20758,85 @@ button.dts-topology-navigator__disclosure:focus-visible {
   .dts-binding-detail-dialog__overlay {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+.parameter-module-mapping-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #d9e2ef;
+  border-radius: 12px;
+}
+
+.parameter-module-mapping-panel header h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.parameter-module-mapping-panel header p,
+.parameter-module-mapping-panel small {
+  color: #5a6b82;
+  font-size: 12px;
+}
+
+.parameter-module-mapping-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.parameter-module-mapping-panel__grid section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  background: #f7f9fc;
+  border: 1px solid #e4ebf4;
+  border-radius: 10px;
+}
+
+.parameter-module-mapping-panel__grid ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parameter-module-mapping-panel__grid li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.parameter-module-mapping-panel__form {
+  display: grid;
+  gap: 8px;
+}
+
+.parameter-module-mapping-panel__form label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #52657d;
+}
+
+.parameter-module-mapping-panel__form input,
+.parameter-module-mapping-panel__form select {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid #cfd9e6;
+  border-radius: 8px;
+  font: inherit;
+}
+
+@media (max-width: 1100px) {
+  .parameter-module-mapping-panel__grid {
+    grid-template-columns: 1fr;
   }
 }

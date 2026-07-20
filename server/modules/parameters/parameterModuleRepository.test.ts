@@ -84,7 +84,8 @@ describe("parameterModuleRepository", () => {
         depth: 1,
         sortOrder: 0,
         description: "",
-        scope: ""
+        scope: "",
+        importance: "medium"
       },
       {
         id: "pm-b",
@@ -94,7 +95,8 @@ describe("parameterModuleRepository", () => {
         depth: 2,
         sortOrder: 0,
         description: "",
-        scope: ""
+        scope: "",
+        importance: "medium"
       }
     ]);
   });

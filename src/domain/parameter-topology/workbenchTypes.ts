@@ -5,6 +5,7 @@ import type {
   EffectiveTopologyEffect,
   TopologyView
 } from "./types";
+import type { ModuleImportance } from "./moduleRegistry";
 
 export type DtsWorkbenchGovernanceState = "valid" | "attention" | "blocked";
 
@@ -21,6 +22,15 @@ export type DtsParameterWorkbenchRow = {
   driverModule: string | null;
   compatible: string | null;
   instanceName: string | null;
+  /** Business module the binding is grouped under (admin mapping or driver fallback). */
+  moduleId: string;
+  moduleName: string;
+  /** Importance inherited from the assigned module. */
+  importance: ModuleImportance;
+  /** Admin sort order for the assigned module (fallback modules sort last). */
+  moduleSortOrder: number;
+  /** True when the module came from an admin mapping rather than driver fallback. */
+  moduleMapped: boolean;
   unitAddress: string | null;
   topologyPath: string | null;
   topologyNodeId: string | null;
