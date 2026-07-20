@@ -286,4 +286,92 @@ describe("DtsTopologyNavigator", () => {
     );
     expect(screen.queryByRole("treeitem")).not.toBeInTheDocument();
   });
+
+  it("toggles descendants from the disclosure control without selecting the parent", () => {
+    const onSelectNode = vi.fn();
+    render(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={tree}
+        selectedNodeId="effective-sc8562"
+        onSelectNode={onSelectNode}
+      />
+    );
+
+    const navigator = screen.getByRole("tree", { name: "生效 DTS 拓扑" });
+    const i2c = within(navigator).getByRole("treeitem", { name: /i2c@FDF5E000/ });
+    const disclosure = within(i2c).getByRole("button", { name: "折叠 i2c@FDF5E000" });
+
+    fireEvent.click(disclosure);
+    expect(i2c).toHaveAttribute("aria-expanded", "false");
+    expect(within(navigator).queryByRole("treeitem", { name: /sc8562@6E/ })).not.toBeInTheDocument();
+    expect(onSelectNode).not.toHaveBeenCalled();
+    expect(i2c).toHaveFocus();
+
+    fireEvent.click(within(i2c).getByRole("button", { name: "展开 i2c@FDF5E000" }));
+    expect(i2c).toHaveAttribute("aria-expanded", "true");
+    expect(within(navigator).getByRole("treeitem", { name: /sc8562@6E/ })).toBeInTheDocument();
+    expect(onSelectNode).not.toHaveBeenCalled();
+    expect(i2c).toHaveFocus();
+  });
+
+  it("selects from the tree item without toggling expansion", () => {
+    const onSelectNode = vi.fn();
+    render(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={tree}
+        selectedNodeId="effective-sc8562"
+        onSelectNode={onSelectNode}
+      />
+    );
+
+    const navigator = screen.getByRole("tree", { name: "生效 DTS 拓扑" });
+    const i2c = within(navigator).getByRole("treeitem", { name: /i2c@FDF5E000/ });
+    expect(i2c).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(i2c);
+    expect(onSelectNode).toHaveBeenCalledWith("effective-i2c");
+    expect(i2c).toHaveAttribute("aria-expanded", "true");
+    expect(within(navigator).getByRole("treeitem", { name: /sc8562@6E/ })).toBeInTheDocument();
+  });
+
+  it("does not render a disclosure control on leaf nodes", () => {
+    render(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={tree}
+        selectedNodeId="effective-sc8562"
+        onSelectNode={vi.fn()}
+      />
+    );
+
+    const sc8562 = screen.getByRole("treeitem", { name: /sc8562@6E/ });
+    expect(within(sc8562).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("keeps the selected descendant identity while its ancestor is collapsed", () => {
+    function Harness() {
+      const [selectedNodeId, setSelectedNodeId] = useState<string | null>("effective-sc8562");
+      return (
+        <DtsTopologyNavigator
+          view="effective"
+          nodes={tree}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={setSelectedNodeId}
+        />
+      );
+    }
+
+    render(<Harness />);
+    const navigator = screen.getByRole("tree", { name: "生效 DTS 拓扑" });
+    const i2c = within(navigator).getByRole("treeitem", { name: /i2c@FDF5E000/ });
+
+    fireEvent.click(within(i2c).getByRole("button", { name: "折叠 i2c@FDF5E000" }));
+    expect(within(navigator).queryByRole("treeitem", { name: /sc8562@6E/ })).not.toBeInTheDocument();
+
+    fireEvent.click(within(i2c).getByRole("button", { name: "展开 i2c@FDF5E000" }));
+    const sc8562 = within(navigator).getByRole("treeitem", { name: /sc8562@6E/ });
+    expect(sc8562).toHaveAttribute("aria-selected", "true");
+  });
 });
