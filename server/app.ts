@@ -33,6 +33,7 @@ import { registerParameterFileRoutes } from "./modules/parameter-files/routes";
 import { registerParameterRoutes } from "./modules/parameters/routes";
 import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard/routes";
 import { registerParameterSpecRoutes } from "./modules/parameter-specs/routes";
+import { registerParameterModuleRoutes } from "./modules/parameter-modules/routes";
 import { registerParameterTopologyRoutes } from "./modules/parameter-topology/routes";
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
 import { registerUserRoutes } from "./modules/users/routes";
@@ -139,6 +140,10 @@ export function createWiseEffServer(
     getCurrentAuthContext: authResolver
   });
   registerParameterSpecRoutes(router, {
+    db: options.db,
+    getCurrentAuthContext: authResolver
+  });
+  registerParameterModuleRoutes(router, {
     db: options.db,
     getCurrentAuthContext: authResolver
   });
