@@ -134,7 +134,7 @@ function resolveSharedWorkingTip(drafts: ParameterDraftDto[]): string | undefine
         .filter((tip): tip is string => Boolean(tip))
     )
   ];
-  return tips.length === 1 ? tips[0] : tips[0];
+  return tips.length === 1 ? tips[0] : undefined;
 }
 
 async function loadWorkspace(

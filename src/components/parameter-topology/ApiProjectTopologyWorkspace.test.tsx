@@ -234,6 +234,62 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(tray).getByText("Hydrated mt5788 draft")).toBeVisible();
   });
 
+  it("does not hydrate preferredRevision when reload drafts have mixed working tips", async () => {
+    const listDrafts = vi.fn().mockResolvedValue([
+      {
+        id: "draft-gpio",
+        projectId: "aurora",
+        parameterId: "binding-sc8562-gpio-int",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        candidateConfigRevisionId: "rev-tip-a",
+        targetValue: "<&gpio13 30 0>",
+        action: "set" as const,
+        reason: "Hydrated gpio draft",
+        updatedAt: "2026-07-23T02:00:00.000Z"
+      },
+      {
+        id: "draft-mt5788",
+        projectId: "aurora",
+        parameterId: "binding-mt5788-gpio-int",
+        projectParameterBindingId: "binding-mt5788-gpio-int",
+        candidateConfigRevisionId: "rev-tip-b",
+        targetValue: "<&gpio6 16 0>",
+        action: "set" as const,
+        reason: "Hydrated mt5788 draft",
+        updatedAt: "2026-07-23T02:01:00.000Z"
+      }
+    ]);
+    const repository = createRepository();
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listDrafts={listDrafts}
+        listWorkflowAssignees={vi.fn().mockResolvedValue({
+          hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+          softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+          softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+        })}
+      />
+    );
+
+    await waitFor(() => expect(listDrafts).toHaveBeenCalledWith("aurora"));
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-revision-id",
+        "rev-real-1"
+      )
+    );
+
+    const tray = await screen.findByRole("region", { name: "绑定变更提交" });
+    expect(within(tray).getByRole("alert")).toHaveTextContent(/不在同一工作版本上.*无法一起提交/);
+    expect(within(tray).getByText("2 项")).toBeVisible();
+    expect(within(tray).queryByText(/本轮 2 项 · 同一工作版本/)).not.toBeInTheDocument();
+  });
+
   it("shows empty state when no config set exists", async () => {
     const repository = createRepository();
     render(
