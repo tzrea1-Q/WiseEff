@@ -493,6 +493,7 @@ type DraftRow = {
   origin_file_version_id?: string | null;
   updated_at: string | Date;
   project_parameter_binding_id?: string | null;
+  candidate_config_revision_id?: string | null;
 };
 
 export type ParameterDraftWithOrigin = {
@@ -825,7 +826,10 @@ function toDraftDto(row: DraftRow): ParameterDraftDto {
     action: row.action ?? "set",
     reason: row.reason,
     updatedAt: dateTimeToIso(row.updated_at),
-    ...(bindingId ? { projectParameterBindingId: bindingId } : {})
+    ...(bindingId ? { projectParameterBindingId: bindingId } : {}),
+    ...(row.candidate_config_revision_id
+      ? { candidateConfigRevisionId: row.candidate_config_revision_id }
+      : {})
   };
 }
 
@@ -1700,13 +1704,14 @@ export async function listDraftsForUser(
       action,
       reason,
       updated_at,
-      project_parameter_binding_id
+      project_parameter_binding_id,
+      candidate_config_revision_id
     from parameter_drafts
     where ${where.join("\n      and ")}
     order by updated_at desc
     `
       : `
-    select id, project_id, project_parameter_value_id, target_value, action, reason, updated_at, project_parameter_binding_id
+    select id, project_id, project_parameter_value_id, target_value, action, reason, updated_at, project_parameter_binding_id, candidate_config_revision_id
     from parameter_drafts
     where ${where.join("\n      and ")}
     order by updated_at desc

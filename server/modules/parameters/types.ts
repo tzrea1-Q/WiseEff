@@ -99,6 +99,8 @@ export type ParameterDraftDto = {
   updatedAt: string;
   /** Semantic binding identity for topology-aware drafts. */
   projectParameterBindingId?: string;
+  /** Working candidate revision tip for binding draft rounds. */
+  candidateConfigRevisionId?: string;
 };
 
 /**

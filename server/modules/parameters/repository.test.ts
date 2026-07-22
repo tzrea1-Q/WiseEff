@@ -374,6 +374,45 @@ describe("parameter repository", () => {
     expect(calls[1].values).toEqual(["org-chargelab", "user-1", "draft-1"]);
   });
 
+  it("listDraftsForUser returns candidateConfigRevisionId when the column is set", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "draft-1",
+          project_id: "project-1",
+          project_parameter_value_id: "binding-1",
+          target_value: "3200",
+          action: "set",
+          reason: "Align thermal limit.",
+          updated_at: "2026-07-23T02:00:00.000Z",
+          project_parameter_binding_id: "binding-1",
+          candidate_config_revision_id: "rev-shared-tip"
+        }
+      ]
+    ]);
+
+    const drafts = await listDraftsForUser(db, {
+      organizationId: "org-1",
+      userId: "user-1",
+      projectId: "project-1"
+    });
+
+    expect(calls[0]?.text).toContain("candidate_config_revision_id");
+    expect(drafts).toEqual([
+      {
+        id: "draft-1",
+        projectId: "project-1",
+        parameterId: "binding-1",
+        targetValue: "3200",
+        action: "set",
+        reason: "Align thermal limit.",
+        updatedAt: "2026-07-23T02:00:00.000Z",
+        projectParameterBindingId: "binding-1",
+        candidateConfigRevisionId: "rev-shared-tip"
+      }
+    ]);
+  });
+
   it("creates submission rounds, change requests, and submission items with parameterized SQL", async () => {
     const { db, calls } = createFakeDb([
       [
