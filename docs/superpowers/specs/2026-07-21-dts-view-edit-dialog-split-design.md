@@ -31,7 +31,7 @@ API mode still forbids `recommendedValue` / drift. Existing typed draft + `DtsBi
 ### Non-goals
 
 - Restore mock-only `recommendedValue`, recommended draft seeding, or flat Excel export.
-- Full legacy cross-project diff selector + “use other project value as draft” in this slice (keep list-level compare; enhance later).
+- Full legacy cross-project diff selector + “use other project value as draft” — **deferred in this slice**; delivered by follow-up [`2026-07-21-dts-binding-cross-project-compare-design.md`](./2026-07-21-dts-binding-cross-project-compare-design.md).
 - Change draft / submission HTTP contracts or review workflow.
 - Rebuild mock `ParametersPage` draft→modified-table dual stage as a parallel product path.
 
@@ -51,15 +51,13 @@ API mode still forbids `recommendedValue` / drift. Existing typed draft + `DtsBi
 ### Header
 
 - Title: `{propertyKey}` (or `{propertyKey} 参数详情`)
-- Eyebrow: `模块 · 实例 · 重要性` (instance/driver as available; no recommended value)
+- No visible eyebrow of `模块 · 实例 · 驱动`; keep a screen-reader-only dialog description
 
 ### Sections (order)
 
 1. **参数定义** (core)
-   - 当前值 (raw)
-   - 生效值
-   - 值形态
-   - 治理状态 (`schema` / `policy` / `governance` / `mapping`)
+   - 当前值 (raw) — single project value; do **not** also show 生效值 (typed mirror) in the view dialog, which reads as a confusing duplicate
+   - 所属模块 and 重要性 as adjacent definition fields (importance is not in the header)
    - Spec description / constraints **only if** the API later provides them; otherwise omit (no “接口未提供规格详情” noise)
 
 2. **DTS 位置** (required DTS addition)
@@ -112,7 +110,7 @@ Each card:
 - Name; `模块 · 实例 · 重要性`
 - Current → target preview (simple arrow or compact diff for long values)
 - One-line DTS context: path · Compatible (not a full detail dump)
-- 目标值 raw (textarea)
+- 目标值 (textarea)
 - 修改原因 (textarea)
 - Server diagnostics / client hints when present
 - **移除本项**

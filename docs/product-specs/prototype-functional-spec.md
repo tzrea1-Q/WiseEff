@@ -20,7 +20,7 @@ The prototype supports parameter browsing, filtering, detail/history inspection,
 
 - **Hierarchical modules:** Parameter and debugging admin surfaces manage nested module trees (create child, move, guarded delete). Filters and grouping treat a selected parent module as a subtree root (`moduleId` + include descendants).
 - **Parameter admin import wizard:** Five-step flow on `/parameter-admin` — Step 1 requires a target project (including create-project); Step 2 accepts `.xlsx`, `.csv`, JSON, or DTS fragments with a parse report; Step 3 provides per-row review (diff, edit, skip); Steps 4–5 batch preview and confirm apply.
-- **Semantic topology (in progress → cutover):** `/parameters` browses source vs effective trees and typed bindings; `/parameter-admin` governs parameter specs, spec review, and identity mapping tasks. Identity is spec/binding based, not a full DTS path. Values expose example / schema default / policy target / effective separately (no business `recommendedValue`). Production publish stays fail-closed on the DTS toolchain. Maintenance cutover procedure: `docs/runbooks/parameter-identity-cutover.md`.
+- **Semantic topology (in progress → cutover):** `/parameters` browses source vs effective trees and typed bindings; `/parameter-admin` governs parameter specs, spec review, and identity mapping tasks. Identity is spec/binding based, not a full DTS path. Values expose example / schema default / policy target / effective separately (no business `recommendedValue`). Production publish may run DTS toolchain validate on Admin export/publish assist (L2); typed-edit drafts must not fail closed on toolchain (L0 writeback only). Maintenance cutover procedure: `docs/runbooks/parameter-identity-cutover.md`.
 
 ## Log Prototype
 

@@ -30,12 +30,17 @@ export type RecomputeBindingModulesResult = {
   conflicts: string[];
 };
 
+export type ModuleDiscoveryHints = {
+  compatibles: Array<{ compatible: string; bindingCount: number }>;
+};
+
 /**
  * Admin-maintained business-module registry (phase 1, additive).
  * Read path feeds the workbench grouping; write path is admin-only governance.
  */
 export interface ParameterModuleRegistryRepository {
   getRegistry(): Promise<ParameterModuleRegistry>;
+  getDiscoveryHints(): Promise<ModuleDiscoveryHints>;
   createModule(input: CreateParameterModuleInput): Promise<ParameterModuleRegistry>;
   updateModule(moduleId: string, input: UpdateParameterModuleInput): Promise<ParameterModuleRegistry>;
   deleteModule(moduleId: string): Promise<ParameterModuleRegistry>;

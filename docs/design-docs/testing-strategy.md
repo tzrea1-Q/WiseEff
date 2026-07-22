@@ -70,7 +70,7 @@ Round 4 closes parent-agent review blockers on branch `fix/parameter-topology-ro
 | Area | Tests / command | Proves |
 | --- | --- | --- |
 | Vendor dt-schema | `server/modules/dts/goldenPowerFixture.test.ts`, `scripts/vendorDtSchemaGenerator.test.ts` | Deterministic linux-bindings from property specs; golden DTBs pass real `dt-validate`; negative fixtures fail with expected diagnostics |
-| Golden counts | `goldenPowerFixture.test.ts` (173 properties), `seedM1DtsFiles.test.ts` (519 `dts_properties`), `matcher.test.ts`, `ingestService.test.ts` | Locked **173/519** topology/seed counts |
+| Golden counts | `goldenPowerFixture.test.ts` (176 properties), `seedM1DtsFiles.test.ts` (528 `dts_properties`), `matcher.test.ts`, `ingestService.test.ts` | Locked **176/528** topology/seed counts |
 | Stage → finalize | `server/modules/parameter-topology/migration.test.ts` (temp PostgreSQL, reconnect, inject-fail) | Durable `stage-review` transaction; atomic `finalize`; cutover rejects non-`finalized` runs |
 | Exact writeback | `server/modules/parameter-topology/editService.test.ts`, merge workflow tests | Occurrence-locked merge/writeback; immutable base; stale identity → `409` |
 | Matcher / review scope | `server/modules/parameter-specs/matcher.test.ts`, `matcherScope.integration.test.ts` | Override isolation by node locator fingerprint; `blocker_scope` honored on validate/release |

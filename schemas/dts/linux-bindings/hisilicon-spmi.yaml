@@ -1,0 +1,16 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/hisilicon-spmi.yaml#
+title: hisilicon,spmi
+description: WiseEff vendor binding for hisilicon,spmi (generated from vendor property schema).
+maintainers:
+  - WiseEff
+properties:
+  compatible:
+    contains:
+      const: hisilicon,spmi
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false

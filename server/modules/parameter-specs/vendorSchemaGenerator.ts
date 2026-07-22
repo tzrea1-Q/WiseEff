@@ -44,20 +44,16 @@ function unitsFor(propertyKey: string): string | undefined {
 }
 
 /**
- * Build deterministic vendor schema documents from the golden power base+overlay.
+ * Build deterministic vendor schema documents from the aurora project-primary DTS.
  * Curated overrides keep SC8562 and MT5788 `gpio_int` as distinct specs.
  */
 export function buildVendorSchemaDocuments(): SchemaDocument[] {
-  const base = readFileSync(join(seedDir, "wiseeff-power-base.dts"), "utf8");
-  const overlay = readFileSync(join(seedDir, "base-power-overlay.dts"), "utf8");
+  const primary = readFileSync(join(seedDir, "aurora-board.dts"), "utf8");
   const resolved = resolveDtsConfigSet({
-    entryFile: "base.dts",
+    entryFile: "aurora-board.dts",
     includeSearchPaths: [],
-    overlayOrder: ["power.dtso"],
-    files: new Map([
-      ["base.dts", { fileVersionId: "vendor-gen-base", content: base }],
-      ["power.dtso", { fileVersionId: "vendor-gen-overlay", content: overlay }],
-    ]),
+    overlayOrder: [],
+    files: new Map([["aurora-board.dts", { fileVersionId: "vendor-gen-primary", content: primary }]])
   });
 
   const buckets = new Map<string, DriverBucket>();
@@ -66,16 +62,24 @@ export function buildVendorSchemaDocuments(): SchemaDocument[] {
     const overlayProps = [...node.properties.entries()].filter(([, property]) => {
       if (property.deleted) return false;
       return property.sourceChain.some(
-        (entry) => entry.fileName === "power.dtso" && entry.effect !== "delete",
+        (entry) => entry.fileName === "aurora-board.dts" && entry.effect !== "delete",
       );
     });
-    if (overlayProps.length === 0) continue;
 
     const compatibleProp = node.properties.get("compatible");
     const compatible =
       compatibleProp && !compatibleProp.deleted
         ? [...compatibleProp.rawText.matchAll(/"([^"]+)"/g)].map((match) => match[1])
         : [];
+
+    // Prefer overlay-authored properties. Base-only infrastructure nodes
+    // (gic / gpio / spmi, …) still need a vendor schema so dt-validate and
+    // matcher coverage stay complete for the golden tree after vendor rename.
+    let propsToIndex = overlayProps;
+    if (propsToIndex.length === 0) {
+      if (compatible.length === 0) continue;
+      propsToIndex = [...node.properties.entries()].filter(([, property]) => !property.deleted);
+    }
 
     let bucketKey: string;
     let schemaNamespace: string;
@@ -108,7 +112,7 @@ export function buildVendorSchemaDocuments(): SchemaDocument[] {
       }
     }
 
-    for (const [key, property] of overlayProps) {
+    for (const [key, property] of propsToIndex) {
       if (bucket.properties.has(key)) continue;
       const doc: SchemaPropertyDocument = {
         valueShape: inferValueShape(key, property.rawText),

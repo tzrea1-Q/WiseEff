@@ -1,6 +1,7 @@
 import type {
   CreateModuleMappingInput,
   CreateParameterModuleInput,
+  ModuleDiscoveryHints,
   ParameterModuleRegistryRepository,
   RecomputeBindingModulesResult,
   UpdateParameterModuleInput
@@ -48,6 +49,12 @@ export function createHttpParameterModuleRegistryRepository(
 
   return {
     getRegistry,
+    async getDiscoveryHints() {
+      const response = await apiClient.get<{ item: ModuleDiscoveryHints }>(
+        `${REGISTRY_BASE}/discovery-hints`,
+      );
+      return response.item;
+    },
     async createModule(input: CreateParameterModuleInput) {
       await apiClient.post(V1_MODULES, {
         name: input.name,

@@ -1,0 +1,16 @@
+$id: wiseeff/huawei-fm1230-swi.yaml
+title: huawei,fm1230_swi
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,fm1230_swi
+compatible:
+  - huawei,fm1230_swi
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

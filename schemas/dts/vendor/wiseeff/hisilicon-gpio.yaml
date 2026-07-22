@@ -1,0 +1,24 @@
+$id: wiseeff/hisilicon-gpio.yaml
+title: hisilicon,gpio
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/hisilicon,gpio
+compatible:
+  - hisilicon,gpio
+properties:
+  "#gpio-cells":
+    valueShape: u32-array
+    exampleValue: <2>
+    constraints: {}
+    documentation: GPIO 说明符所需的 cell 数量。
+  compatible:
+    valueShape: string-list
+    exampleValue: "\"hisilicon,gpio\""
+    constraints: {}
+    documentation: 设备树 compatible 字符串，用于匹配驱动与规格命名空间。
+  gpio-controller:
+    valueShape: bool
+    exampleValue: ""
+    constraints: {}
+    documentation: 标记本节点为 GPIO 控制器。

@@ -1,0 +1,14 @@
+$id: wiseeff/hisilicon-spmi.yaml
+title: hisilicon,spmi
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/hisilicon,spmi
+compatible:
+  - hisilicon,spmi
+properties:
+  compatible:
+    valueShape: string-list
+    exampleValue: "\"hisilicon,spmi\""
+    constraints: {}
+    documentation: 设备树 compatible 字符串，用于匹配驱动与规格命名空间。

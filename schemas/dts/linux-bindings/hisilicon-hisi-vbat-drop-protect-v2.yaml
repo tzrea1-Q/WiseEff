@@ -1,0 +1,20 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/hisilicon-hisi-vbat-drop-protect-v2.yaml#
+title: hisilicon,hisi_vbat_drop_protect_v2
+description: WiseEff vendor binding for hisilicon,hisi_vbat_drop_protect_v2 (generated from vendor property schema).
+maintainers:
+  - WiseEff
+properties:
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  vbat_drop_vol_mv:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+  compatible:
+    contains:
+      const: hisilicon,hisi_vbat_drop_protect_v2
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false

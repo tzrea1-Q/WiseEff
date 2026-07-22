@@ -11,9 +11,11 @@ commonRefs:
 properties:
   status:
     valueShape: string-list
-    exampleValue: '"okay"'
+    exampleValue: "\"ok\""
     constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   vendor,led-type:
     valueShape: u32-array
     exampleValue: <0>
     constraints: {}
+    documentation: scharger_v800_flash 的 DTS 属性「vendor,led type」（vendor,led-type），用于驱动读取的设备树配置。

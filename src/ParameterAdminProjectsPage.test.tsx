@@ -331,7 +331,7 @@ describe("ParameterAdminProjectsPage", () => {
       {
         id: "file-atlas-dts",
         projectId: "atlas",
-        fileName: "wiseeff-power-overlay.dts",
+        fileName: "aurora-board.dts",
         format: "dts",
         enabled: true,
         currentVersionId: "version-atlas-dts-1",

@@ -1,0 +1,18 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/huawei-fm1230-swi.yaml#
+title: huawei,fm1230_swi
+description: WiseEff vendor binding for huawei,fm1230_swi (generated from vendor property schema).
+maintainers:
+  - WiseEff
+properties:
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: huawei,fm1230_swi
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false

@@ -11,16 +11,20 @@ properties:
     valueShape: u32-array
     exampleValue: <2>
     constraints: {}
+    documentation: scharger_v800_buck 的 DTS 属性「cur balance mos」（cur_balance_mos），用于驱动读取的设备树配置。
   pswovp_sw_flag:
     valueShape: string-list
-    exampleValue: '"rxsw", "1", "0", "1"'
+    exampleValue: "\"rxsw\", \"1\", \"0\", \"1\""
     constraints: {}
+    documentation: scharger_v800_buck 的 DTS 属性「pswovp sw flag」（pswovp_sw_flag），用于驱动读取的设备树配置。
   r_charger_uohm:
     valueShape: u32-array
     exampleValue: <1000>
     constraints: {}
     units: uOhm
+    documentation: 电阻相关参数「r_charger_uohm」，常用于 PCB 或采样电阻。
   usbovp_sw_flag:
     valueShape: string-list
-    exampleValue: '"buck", "0", "1", "1"'
+    exampleValue: "\"buck\", \"0\", \"1\", \"1\""
     constraints: {}
+    documentation: scharger_v800_buck 的 DTS 属性「usbovp sw flag」（usbovp_sw_flag），用于驱动读取的设备树配置。

@@ -1,0 +1,21 @@
+$id: wiseeff/huawei-battery-ocv.yaml
+title: huawei,battery_ocv
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,battery_ocv
+compatible:
+  - huawei,battery_ocv
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  ocv_table:
+    valueShape: string-list
+    exampleValue: "\"-1\", \"3100\",\n\t\t\"0\", \"3200\",\n\t\t\"1\", \"3250\""
+    constraints: {}
+    documentation: 开路电压（OCV）相关参数「ocv_table」。
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

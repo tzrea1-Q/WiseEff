@@ -8,6 +8,7 @@ export {
   type ResolvedPhandleRef,
 } from "./resolver";
 export { serializeDts } from "./serialize";
+export { indentDtsRawValueForWriteback } from "./rawValueWriteback";
 export { classifyDtsValue, type ClassifiedDtsValue } from "./valueTyping";
 export { resolveDtsConfigSet } from "./configSetResolver";
 export type {

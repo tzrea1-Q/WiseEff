@@ -30,7 +30,7 @@ const config = {
       range: "1000 - 5000",
       unit: "mA",
       risk: "High",
-      sourceFileName: "wiseeff-power-overlay.dts",
+      sourceFileName: "aurora-board.dts",
       sourceNodePath: "charging_core/ichg_max",
       values: {
         aurora: { currentValue: "3200", recommendedValue: "3000" }
@@ -176,7 +176,7 @@ describe("seedM1Parameters", () => {
     expect(valueInsert?.text).toContain("source_file_name");
     expect(valueInsert?.text).toContain("source_node_path");
     expect(valueInsert?.values).toEqual(
-      expect.arrayContaining(["wiseeff-power-overlay.dts", "charging_core/ichg_max"])
+      expect.arrayContaining(["aurora-board.dts", "charging_core/ichg_max"])
     );
   });
 

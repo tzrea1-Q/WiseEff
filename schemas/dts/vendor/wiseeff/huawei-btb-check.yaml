@@ -1,0 +1,21 @@
+$id: wiseeff/huawei-btb-check.yaml
+title: huawei,btb_check
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,btb_check
+compatible:
+  - huawei,btb_check
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: "\"disabled\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
+  vol_check_para:
+    valueShape: string-list
+    exampleValue: "\"1\", \"1\", \"2500\", \"4700\", \"120\", \"3\", \"0\""
+    constraints: {}
+    documentation: huawei,btb_check 的 DTS 属性「vol check para」（vol_check_para），用于驱动读取的设备树配置。

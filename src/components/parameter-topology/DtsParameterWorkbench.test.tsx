@@ -166,6 +166,7 @@ function row(
     instanceName: topologyPath.split("/").at(-1) ?? null,
     moduleId: `driver:${definition.driverModule}`,
     moduleName: `未分类 · ${definition.driverModule}`,
+    modulePath: [`未分类 · ${definition.driverModule}`],
     importance: "medium",
     moduleSortOrder: Number.MAX_SAFE_INTEGER,
     moduleMapped: false,
@@ -315,7 +316,7 @@ describe("DtsParameterWorkbench", () => {
       expect.stringContaining("所属模块"),
       "器件 / 驱动",
       expect.stringContaining("当前值"),
-      expect.stringContaining("治理"),
+      expect.stringContaining("重要性"),
       "操作"
     ]);
     expect(headers[0]).toContain(""); // checkbox column
@@ -323,7 +324,7 @@ describe("DtsParameterWorkbench", () => {
     expect(visibleBindingRows()).toHaveLength(4);
   });
 
-  it("searches precomputed semantic search text and clears all filters back to the full result", () => {
+  it("searches precomputed semantic search text and clears the query back to the full result", () => {
     renderWorkbench();
 
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索 DTS 参数" }), {
@@ -334,17 +335,19 @@ describe("DtsParameterWorkbench", () => {
     expect(visibleBindingRows()[0]).toHaveAttribute("data-binding-id", "binding-gpio-int");
     expect(screen.getByRole("status")).toHaveTextContent("显示 1 / 4 个参数");
 
-    fireEvent.click(screen.getByRole("button", { name: "清除全部筛选" }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索 DTS 参数" }), {
+      target: { value: "" }
+    });
     expect(screen.getByRole("searchbox", { name: "搜索 DTS 参数" })).toHaveValue("");
     expect(visibleBindingRows()).toHaveLength(4);
     expect(screen.getByRole("status")).toHaveTextContent("显示 4 / 4 个参数");
   });
 
-  it("filters by the selected module/device subtree using binding identity", () => {
+  it("filters by the selected module subtree using binding identity", () => {
     renderWorkbench();
 
-    const device = selectModuleDevice(/未分类 · sc8562/, /sc8562@6E/);
-    fireEvent.click(device);
+    const moduleNode = screen.getByRole("treeitem", { name: /未分类 · sc8562/ });
+    fireEvent.click(moduleNode);
 
     expect(visibleBindingRows().map((element) => element.dataset.bindingId)).toEqual([
       "binding-gpio-int",
@@ -387,23 +390,18 @@ describe("DtsParameterWorkbench", () => {
     expect(visibleBindingRows()).toHaveLength(4);
   });
 
-  it("filters all governance states, renders their badges and preserves external draft identity on clear", () => {
+  it("renders importance as the primary column and only surfaces anomaly governance badges", () => {
     renderWorkbench();
 
-    expect(screen.getAllByLabelText("治理状态：valid")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "按重要性排序" })).toBeInTheDocument();
+    expect(screen.getAllByLabelText("重要性：中")).toHaveLength(4);
+    expect(screen.queryByLabelText("治理状态：valid")).not.toBeInTheDocument();
     expect(screen.getByLabelText("治理状态：attention")).toBeInTheDocument();
     expect(screen.getByLabelText("治理状态：blocked")).toBeInTheDocument();
     expect(screen.getByTestId("draft-binding-gpio-int")).toHaveTextContent("草稿");
-
-    fireEvent.change(screen.getByRole("combobox", { name: "治理状态" }), {
-      target: { value: "blocked" }
-    });
-    expect(visibleBindingRows()).toHaveLength(1);
-    expect(visibleBindingRows()[0]).toHaveAttribute("data-binding-id", "binding-sensor-limit");
-
-    fireEvent.click(screen.getByRole("button", { name: "清除全部筛选" }));
-    expect(screen.getByRole("combobox", { name: "治理状态" })).toHaveValue("all");
-    expect(screen.getByTestId("draft-binding-gpio-int")).toHaveTextContent("草稿");
+    expect(screen.queryByRole("combobox", { name: "治理状态" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "重要性" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "清除全部筛选" })).not.toBeInTheDocument();
   });
 
   it("keeps module-first browse by default and exposes tech topology as an optional view", () => {
@@ -435,7 +433,7 @@ describe("DtsParameterWorkbench", () => {
     expect(document.querySelector('[data-binding-id="binding-gpio-int"]')).toHaveAttribute("aria-selected", "true");
   });
 
-  it("opens the selected semantic binding in the mature detail dialog", () => {
+  it("opens the selected semantic binding in the read-only detail dialog", () => {
     renderWorkbench({ canEdit: false });
 
     fireEvent.click(screen.getByRole("button", {
@@ -443,13 +441,63 @@ describe("DtsParameterWorkbench", () => {
     }));
 
     const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
-    expect(within(dialog).getByRole("heading", { name: "身份" })).toBeInTheDocument();
-    expect(within(dialog).getByText("binding-gpio-int")).toBeInTheDocument();
-    expect(within(dialog).getByText("logical-sc8562")).toBeInTheDocument();
-    expect(within(dialog).getByText("当前接口未提供规格详情")).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "参数定义" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("heading", { name: "类型化编辑" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("来源链")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("技术身份")).not.toBeInTheDocument();
   });
 
-  it("opens view and edit actions in the same detail flow and focuses typed editing on edit", async () => {
+  it("loads and renders cross-project compare peers when the detail dialog opens", async () => {
+    const loadBindingCompare = vi.fn().mockResolvedValue([
+      {
+        projectId: "project-aurora",
+        projectName: "Aurora",
+        rawValue: "<1>",
+        moduleName: "充电策略",
+        driverModule: "sc8562"
+      }
+    ]);
+    renderWorkbench({ canEdit: false, loadBindingCompare, projectId: "project-source" });
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+    }));
+
+    await waitFor(() => expect(loadBindingCompare).toHaveBeenCalledWith("binding-gpio-int"));
+    const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
+    const entry = within(dialog).getByRole("heading", { name: "跨项目对比" }).closest("section") as HTMLElement;
+    expect(within(entry).getByRole("button", { name: "打开跨项目对比" })).toBeInTheDocument();
+    expect(within(entry).getByText(/个项目已配置/)).toBeInTheDocument();
+  });
+
+  it("seeds the local draft bag from a compare peer target value", async () => {
+    const user = userEvent.setup();
+    const loadBindingCompare = vi.fn().mockResolvedValue([
+      {
+        projectId: "project-aurora",
+        projectName: "Aurora",
+        rawValue: "<99>",
+        moduleName: "充电策略"
+      }
+    ]);
+    renderWorkbench({ loadBindingCompare, projectId: "project-source" });
+
+    await user.click(screen.getByRole("button", {
+      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+    }));
+    await waitFor(() => expect(loadBindingCompare).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("button", { name: "打开跨项目对比" }));
+    await user.click(screen.getByRole("button", { name: "使用该项目配置加入草稿" }));
+
+    const draftDialog = screen.getByRole("dialog", { name: "修改草稿" });
+    expect(within(draftDialog).getByRole("textbox", { name: "目标值" })).toHaveValue("<99>");
+    expect(within(draftDialog).getByRole("textbox", { name: "修改原因" })).toHaveValue(
+      "参考 Aurora 当前配置生成草稿"
+    );
+  });
+
+  it("opens edit in the draft dialog and focuses the target editor", async () => {
     const user = userEvent.setup();
     const { props } = renderWorkbench();
 
@@ -457,9 +505,9 @@ describe("DtsParameterWorkbench", () => {
       name: "继续编辑 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
 
-    const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
-    expect(within(dialog).getByRole("textbox", { name: "目标值 raw" })).toHaveFocus();
-    expect(props.onSelectBinding).toHaveBeenCalledWith("binding-gpio-int");
+    expect(screen.queryByRole("dialog", { name: "gpio_int 参数详情" })).not.toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+    expect(within(dialog).getByRole("textbox", { name: "目标值" })).toHaveFocus();
     expect(props.onEditBinding).toHaveBeenCalledWith("binding-gpio-int");
   });
 

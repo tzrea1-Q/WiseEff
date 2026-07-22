@@ -1,0 +1,36 @@
+$id: wiseeff/hisilicon-hisi-bci-battery.yaml
+title: hisilicon,hisi_bci_battery
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/hisilicon,hisi_bci_battery
+compatible:
+  - hisilicon,hisi_bci_battery
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  battery_board_type:
+    valueShape: u32-array
+    exampleValue: <2>
+    constraints: {}
+    documentation: 电池相关参数「battery_board_type」，用于容量、标识或采样策略。
+  battery_design_fcc:
+    valueShape: u32-array
+    exampleValue: <5525>
+    constraints: {}
+    documentation: 电池相关参数「battery_design_fcc」，用于容量、标识或采样策略。
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
+  vth_correct_para:
+    valueShape: u32-array
+    exampleValue: <1 2800>
+    constraints: {}
+    documentation: 阈值/校正参数「vth_correct_para」。
+  vth_correct_para_low_temp:
+    valueShape: mixed
+    exampleValue: <1 2600>, <2 2800>
+    constraints: {}
+    documentation: 阈值/校正参数「vth_correct_para_low_temp」。

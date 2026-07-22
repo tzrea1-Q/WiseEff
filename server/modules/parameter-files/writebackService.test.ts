@@ -101,14 +101,23 @@ describe("writebackService patches", () => {
     expect(withoutMatrix(output)).toBe(withoutMatrix(teachingSample));
   });
 
-  it("writes multi-cell-group property values", () => {
-    const source = `
-demo {
-  combined_para = <1 2600>,<2 2800>;
-};
-`;
-    const patched = patchDtsProperty(source, "demo/combined_para", "<1 2600>,<2 2900>");
-    expect(patched.toString("utf8")).toContain("combined_para = <1 2600>,<2 2900>;");
+  it("writes multiline string-list values with board continuation indent restored", () => {
+    const source = [
+      "&battery_ocv {",
+      "\tocv_table =",
+      '\t\t"-1", "3100",',
+      '\t\t"0", "3200",',
+      '\t\t"1", "3250";',
+      "\tstatus = \"ok\";",
+      "};",
+      ""
+    ].join("\n");
+    const uiEdited = '"16", "3100",\n"0", "3200",\n"1", "3250"';
+    const patched = patchDtsProperty(source, "battery_ocv/ocv_table", uiEdited).toString("utf8");
+    expect(patched).toContain(
+      ['\tocv_table =', '\t\t"16", "3100",', '\t\t"0", "3200",', '\t\t"1", "3250";'].join("\n")
+    );
+    expect(patched).toContain('\tstatus = "ok";');
   });
 
   it("writes properties under @address nodes", () => {

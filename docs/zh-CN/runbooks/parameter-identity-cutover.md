@@ -94,7 +94,7 @@ npm run dtc:seed:compile
 npm run dts:config:validate
 ```
 
-生产在用配置集须以失败关闭模式通过工具链校验（Admin 或 `POST /api/v2/projects/:projectId/config-revisions/:revisionId/validate`）。黄金 seed overlay（`aurora`/`nebula`/`atlas` + `wiseeff-power-base.dts`）须在 `failOnSchema: true` 下编译，并通过真实 `dt-validate`；测试锁定 **173** 属性 occurrence / **519** 行 M1 seed `dts_properties`。
+生产在用配置集须以失败关闭模式通过工具链校验（Admin 或 `POST /api/v2/projects/:projectId/config-revisions/:revisionId/validate`）。黄金项目主 DTS（`aurora-board.dts` 等）须在 `failOnSchema: true` 下编译并通过真实 `dt-validate`；测试锁定每 revision **176** 个语义 property occurrence、M1 seed **684** 行结构 `dts_properties`（228 解析属性 × 3 项目）。
 
 ## 7. Stage review（推断规格与证据）
 

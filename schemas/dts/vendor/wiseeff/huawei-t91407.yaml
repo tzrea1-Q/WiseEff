@@ -1,0 +1,31 @@
+$id: wiseeff/huawei-t91407.yaml
+title: huawei,t91407
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,t91407
+compatible:
+  - huawei,t91407
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  battct_id_gpio-supply:
+    valueShape: phandle-list
+    exampleValue: <&huawei_batt_identify>
+    constraints: {}
+    documentation: huawei,t91407 的 DTS 属性「battct id gpio supply」（battct_id_gpio-supply），用于驱动读取的设备树配置。
+  compatible:
+    valueShape: string-list
+    exampleValue: "\"huawei,t91407\""
+    constraints: {}
+    documentation: 设备树 compatible 字符串，用于匹配驱动与规格命名空间。
+  onewire-gpio:
+    valueShape: mixed
+    exampleValue: <&gpio2 14 0>
+    constraints: {}
+    documentation: huawei,t91407 的 DTS 属性「onewire gpio」（onewire-gpio），用于驱动读取的设备树配置。
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

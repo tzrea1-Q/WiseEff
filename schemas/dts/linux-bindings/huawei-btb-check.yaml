@@ -1,0 +1,20 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/huawei-btb-check.yaml#
+title: huawei,btb_check
+description: WiseEff vendor binding for huawei,btb_check (generated from vendor property schema).
+maintainers:
+  - WiseEff
+properties:
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  vol_check_para:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: huawei,btb_check
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false

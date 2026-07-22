@@ -102,7 +102,7 @@ function crossTierNode(properties: MatchableNode["properties"] = {}): MatchableN
 }
 
 function nodeFromResolved(pathSuffix: string): MatchableNode {
-  const overlay = readFileSync(join(seedDir, "base-power-overlay.dts"), "utf8");
+  const overlay = readFileSync(join(seedDir, "aurora-power-overlay.dts"), "utf8");
   const resolved = resolveDts(overlay);
   const found = resolved.nodes.find((node) => node.nodePath === pathSuffix);
   if (!found) throw new Error(`missing node ${pathSuffix}`);
@@ -118,8 +118,8 @@ function nodeFromResolved(pathSuffix: string): MatchableNode {
 }
 
 function effectiveOverlayNodes(): MatchableNode[] {
-  const base = readFileSync(join(seedDir, "wiseeff-power-base.dts"), "utf8");
-  const overlay = readFileSync(join(seedDir, "base-power-overlay.dts"), "utf8");
+  const base = readFileSync(join(root, "server/modules/dts/fixtures/synthetic-power-base.dts"), "utf8");
+  const overlay = readFileSync(join(seedDir, "aurora-power-overlay.dts"), "utf8");
   const result = resolveDtsConfigSet({
     entryFile: "base.dts",
     includeSearchPaths: [],
@@ -245,13 +245,13 @@ describe("schema registry matcher", () => {
     expect(tasks[0]?.candidateSchemas.length).toBeGreaterThan(1);
   });
 
-  it("binds all 173 golden overlay properties to distinct reviewed gpio_int specs", () => {
+  it("binds all 176 golden overlay properties to distinct reviewed gpio_int specs", () => {
     const reg = registry();
     const nodes = effectiveOverlayNodes();
     const coverage = bindGoldenOverlayProperties(nodes, reg);
 
-    expect(coverage.totalProperties).toBe(173);
-    expect(coverage.matchedProperties).toBe(173);
+    expect(coverage.totalProperties).toBe(176);
+    expect(coverage.matchedProperties).toBe(176);
     expect(coverage.unmatched).toEqual([]);
     expect(coverage.ambiguous).toEqual([]);
 

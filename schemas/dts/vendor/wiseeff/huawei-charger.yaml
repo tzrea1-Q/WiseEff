@@ -1,0 +1,36 @@
+$id: wiseeff/huawei-charger.yaml
+title: huawei,charger
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,charger
+compatible:
+  - huawei,charger
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  charge_done_sleep_enabled:
+    valueShape: bool
+    exampleValue: ""
+    constraints: {}
+    documentation: 充电策略参数「charge_done_sleep_enabled」，影响充电电流/电压或模式切换。
+  recharge_para:
+    valueShape: u32-array
+    exampleValue: <96 60 3 5 1 0 1 100>
+    constraints: {}
+    documentation: huawei,charger 的 DTS 属性「recharge para」（recharge_para），用于驱动读取的设备树配置。
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
+  support_new_pd_process:
+    valueShape: u32-array
+    exampleValue: <1>
+    constraints: {}
+    documentation: huawei,charger 的 DTS 属性「support new pd process」（support_new_pd_process），用于驱动读取的设备树配置。
+  weak_source_sleep_enabled:
+    valueShape: bool
+    exampleValue: ""
+    constraints: {}
+    documentation: huawei,charger 的 DTS 属性「weak source sleep enabled」（weak_source_sleep_enabled），用于驱动读取的设备树配置。

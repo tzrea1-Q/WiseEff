@@ -6,6 +6,8 @@ import type {
   WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
 import type { BindingDraftResult } from "@/application/ports/ParameterTopologyRepository";
+import { ParameterValueDiff } from "@/components/ParameterValueDiff";
+import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 
 export type PendingBindingDraft = BindingDraftResult & {
   projectId: string;
@@ -236,18 +238,26 @@ export function DtsBindingDraftTray({
               </button>
             </div>
             <div className="dts-binding-draft-tray__diff" aria-label={`${draft.writeTarget.propertyKey} 值变更`}>
-              <code>{draft.currentRawValue || "（属性不存在）"}</code>
-              <span aria-hidden="true">→</span>
-              <code>{draft.action === "delete" ? "删除属性（tombstone）" : draft.rawText}</code>
+              <ParameterValueDiff
+                baseValue={formatDtsRawValueForUi(draft.currentRawValue) || "（属性不存在）"}
+                targetValue={
+                  draft.action === "delete"
+                    ? "删除属性（tombstone）"
+                    : formatDtsRawValueForUi(draft.rawText) || draft.rawText || "—"
+                }
+              />
             </div>
             <p><strong>原因：</strong>{draft.reason}</p>
-            <dl className="dts-binding-draft-tray__identity">
-              <div><dt>action</dt><dd><code>{draft.action}</code></dd></div>
-              <div><dt>candidate</dt><dd><code>{draft.candidateRevisionId}</code></dd></div>
-              <div><dt>draft</dt><dd><code>{draft.draftId}</code></dd></div>
-              <div><dt>binding</dt><dd><code>{draft.projectParameterBindingId}</code></dd></div>
-              <div><dt>spec</dt><dd><code>{draft.parameterSpecId}</code></dd></div>
-            </dl>
+            <details className="dts-binding-draft-tray__identity">
+              <summary>技术身份</summary>
+              <dl>
+                <div><dt>action</dt><dd><code>{draft.action}</code></dd></div>
+                <div><dt>candidate</dt><dd><code>{draft.candidateRevisionId}</code></dd></div>
+                <div><dt>draft</dt><dd><code>{draft.draftId}</code></dd></div>
+                <div><dt>binding</dt><dd><code>{draft.projectParameterBindingId}</code></dd></div>
+                <div><dt>spec</dt><dd><code>{draft.parameterSpecId}</code></dd></div>
+              </dl>
+            </details>
           </article>
         ))}
       </div>

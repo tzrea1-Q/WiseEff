@@ -6,6 +6,8 @@
 - 范围：参数管理（M1）+ 项目参数文件（`server/modules/parameter-files/`）子域对 DTS/JSON 树状配置的管理能力
 - 触发：对「WiseEff 能否胜任真实 DTS 文件管理」的深度审查，输入为一份覆盖 31 类 DTS 格式的教学范例
 
+> **2026-07-21 产品边界修订：** §2「定位决策」中关于「合入强制 dtc/schema fail-closed」「顶层粒度=板级配置集」「完整结构化建模为产品中心」等锁定项，已被 [`2026-07-21-dts-parameter-surface-boundary-rfc.md`](2026-07-21-dts-parameter-surface-boundary-rfc.md) §6 修订。本文保留为历史问题清单；**现行产品边界以该 RFC 与裁剪矩阵为准**。实现见 [`../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md`](../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md)。
+
 ---
 
 ## 1. 背景与结论

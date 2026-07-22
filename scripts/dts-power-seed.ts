@@ -4,8 +4,18 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { resolveDts, type DtsValueType, type ResolvedDts } from "../server/modules/dts";
+import {
+  BOARD_INSTANCE_MODULE_NAME,
+  businessCategoryForNodePath,
+  driverGroupDisplayNameFromCompatible,
+  planInstanceModulePlacements,
+  type ResolvedPlacementNode,
+} from "../server/modules/parameter-modules/modulePlacement";
+import { isParameterSurfaceRow } from "../server/modules/parameter-topology/parameterSurface";
+import { mergePrimaryDtsBoard, primaryBoardFileName } from "./merge-primary-dts";
 
-export const DTS_POWER_SEED_FILE_NAME = "wiseeff-power-overlay.dts";
+/** Catalog template: aurora project-primary DTS (parameter library source). */
+export const DTS_POWER_SEED_FILE_NAME = "aurora-board.dts";
 export const DTS_POWER_SEED_ID_PREFIX = "dts-source-";
 
 export type DtsPowerSeedProjectId = "aurora" | "nebula" | "atlas";
@@ -42,7 +52,7 @@ export type DtsPowerSeedParameter = {
 
 export type DtsPowerSeedProjectFile = {
   projectId: DtsPowerSeedProjectId;
-  fileName: typeof DTS_POWER_SEED_FILE_NAME;
+  fileName: string;
   artifactFileName: string;
   source: string;
 };
@@ -111,16 +121,33 @@ const projectOverrides: Record<Exclude<DtsPowerSeedProjectId, "aurora">, SourceO
 
 const moduleMetadata: DtsPowerSeed["parameterModules"] = [
   {
+    name: "Power",
+    description: "电源域业务模块根。",
+    scope: "板级电源与充电相关参数总览"
+  },
+  {
+    name: "Power IC",
+    parent: "Power",
+    description: "电源管理与充电硬件 IC。",
+    scope: "电荷泵、充电 IC、旁路升压等器件"
+  },
+  {
+    name: "Battery",
+    parent: "Power",
+    description: "电池相关业务模块。",
+    scope: "电量、认证、热与均衡"
+  },
+  {
+    name: "Charging",
+    parent: "Power",
+    description: "充电策略与协议相关模块。",
+    scope: "充电策略、直充与无线充"
+  },
+  {
     name: "Board Identity",
     parent: "Power",
     description: "板级型号、总线骨架与构建身份。",
     scope: "板级唯一标识与基础设备树契约"
-  },
-  {
-    name: "Power Bus",
-    parent: "Power",
-    description: "AMBA、SPMI 与 I²C 总线级配置。",
-    scope: "电源设备枚举、地址与中断拓扑"
   },
   {
     name: "Charge Pump IC",
@@ -141,10 +168,10 @@ const moduleMetadata: DtsPowerSeed["parameterModules"] = [
     scope: "容量标定、电阻补偿与电量估算"
   },
   {
-    name: "Direct Charging",
-    parent: "Charging",
-    description: "直充 IC、补偿、Turbo 与分段控制表。",
-    scope: "LVC/SC/SC4 直充模式与安全曲线"
+    name: "Battery Protection",
+    parent: "Battery",
+    description: "电池压降保护与 BTB 检测。",
+    scope: "压降阈值、性能限制与通路检测"
   },
   {
     name: "Battery Authentication",
@@ -163,6 +190,24 @@ const moduleMetadata: DtsPowerSeed["parameterModules"] = [
     parent: "Battery",
     description: "双电池均衡及 CCCV 分段曲线。",
     scope: "电池权重、不均衡阈值和温区充电曲线"
+  },
+  {
+    name: "Charging Policy",
+    parent: "Charging",
+    description: "有线充电策略、补电与 JEITA 表。",
+    scope: "输入/充电电流上限与温区策略"
+  },
+  {
+    name: "Direct Charging",
+    parent: "Charging",
+    description: "直充 IC、补偿、Turbo 与分段控制表。",
+    scope: "LVC/SC/SC4 直充模式与安全曲线"
+  },
+  {
+    name: "Wireless Charging",
+    parent: "Charging",
+    description: "无线充接收端与 SC 参数。",
+    scope: "无线功率、FOD 与模式参数"
   }
 ];
 
@@ -303,8 +348,14 @@ const hardwareIdentityProperties = new Set([
 export function buildDtsPowerSeed(baseSource: string): DtsPowerSeed {
   const projectFiles: DtsPowerSeedProjectFile[] = [
     toProjectFile("aurora", baseSource),
-    toProjectFile("nebula", applySourceOverrides(baseSource, projectOverrides.nebula)),
-    toProjectFile("atlas", applySourceOverrides(baseSource, projectOverrides.atlas))
+    toProjectFile(
+      "nebula",
+      applySourceOverrides(baseSource, buildDiversifiedOverrides(baseSource, "nebula", projectOverrides.nebula))
+    ),
+    toProjectFile(
+      "atlas",
+      applySourceOverrides(baseSource, buildDiversifiedOverrides(baseSource, "atlas", projectOverrides.atlas))
+    )
   ];
   const resolvedByProject = new Map(
     projectFiles.map((file) => [file.projectId, propertyMap(resolveDts(file.source))] as const)
@@ -314,7 +365,7 @@ export function buildDtsPowerSeed(baseSource: string): DtsPowerSeed {
   const parameterLibrary = baseResolved.nodes.flatMap((node) =>
     node.properties.map((property): DtsPowerSeedParameter => {
       const sourceNodePath = propertySourcePath(node.nodePath, property.name);
-      const businessCategory = businessCategoryForPath(node.nodePath, property.name);
+      const businessCategory = businessCategoryForNodePath(node.nodePath, property.name);
       const values = {} as Record<DtsPowerSeedProjectId, DtsPowerSeedParameterValue>;
 
       for (const projectId of ["aurora", "nebula", "atlas"] as const) {
@@ -358,19 +409,294 @@ export function buildDtsPowerSeed(baseSource: string): DtsPowerSeed {
   );
 
   return {
-    parameterModules: moduleMetadata.map((module) => ({ ...module })),
+    parameterModules: buildParameterModulesFromResolved(baseResolved),
     parameterLibrary,
     projectFiles
   };
 }
 
+export type DtsPowerSeedModuleMapping = {
+  matchKind: "instance" | "compatible" | "driver";
+  matchValue: string;
+  moduleName: string;
+  priority?: number;
+};
+
+function toPlacementNodes(resolved: ResolvedDts): ResolvedPlacementNode[] {
+  return resolved.nodes.map((node) => ({
+    name: node.name,
+    unitAddress: node.unitAddress,
+    compatible: node.compatible,
+    nodePath: node.nodePath,
+  }));
+}
+
+export function buildParameterModulesFromResolved(resolved: ResolvedDts): DtsPowerSeed["parameterModules"] {
+  const placement = planInstanceModulePlacements(toPlacementNodes(resolved), (nodePath) =>
+    businessCategoryForNodePath(nodePath),
+  );
+  const modules = moduleMetadata.map((module) => ({ ...module }));
+  const seen = new Set(modules.map((module) => module.name));
+
+  const ensureModule = (entry: (typeof modules)[number]) => {
+    if (seen.has(entry.name)) return;
+    modules.push(entry);
+    seen.add(entry.name);
+  };
+
+  for (const group of placement.driverGroups.values()) {
+    ensureModule({
+      name: group.moduleName,
+      parent: group.businessCategory,
+      description: `${group.moduleName} 驱动组（compatible: ${group.compatibleKey}）。`,
+      scope: `共享 compatible ${group.compatibleKey} 的实例分组`,
+    });
+  }
+
+  for (const instance of placement.instances.values()) {
+    const group = instance.compatibleKey
+      ? placement.driverGroups.get(instance.compatibleKey)
+      : null;
+    if (group && instance.moduleName === group.moduleName) continue;
+    ensureModule({
+      name: instance.moduleName,
+      parent: instance.parentModuleName,
+      description: `${instance.moduleName} DTS 实例模块。`,
+      scope: `实例 ${instance.moduleName} 的可管理参数`,
+    });
+  }
+
+  ensureModule({
+    name: BOARD_INSTANCE_MODULE_NAME,
+    parent: "Board Identity",
+    description: "板级身份参数（board_id 等根级属性）。",
+    scope: "板级唯一标识与构建身份",
+  });
+
+  return modules;
+}
+
+export function buildSeedModuleMappings(resolved: ResolvedDts): DtsPowerSeedModuleMapping[] {
+  const placement = planInstanceModulePlacements(toPlacementNodes(resolved), (nodePath) =>
+    businessCategoryForNodePath(nodePath),
+  );
+  const mappings = new Map<string, DtsPowerSeedModuleMapping>();
+
+  const putMapping = (mapping: DtsPowerSeedModuleMapping) => {
+    mappings.set(`${mapping.matchKind}:${mapping.matchValue}`, mapping);
+  };
+
+  for (const [compatibleKey, group] of placement.driverGroups) {
+    putMapping({
+      matchKind: "compatible",
+      matchValue: compatibleKey,
+      moduleName: group.moduleName,
+      priority: 300,
+    });
+    const shortDriver = driverGroupDisplayNameFromCompatible(compatibleKey);
+    if (shortDriver) {
+      putMapping({
+        matchKind: "driver",
+        matchValue: shortDriver,
+        moduleName: group.moduleName,
+        priority: 100,
+      });
+    }
+  }
+
+  for (const [instanceKey, instance] of placement.instances) {
+    putMapping({
+      matchKind: "instance",
+      matchValue: instanceKey.toLowerCase(),
+      moduleName: instance.moduleName,
+      priority: 500,
+    });
+  }
+
+  putMapping({
+    matchKind: "instance",
+    matchValue: BOARD_INSTANCE_MODULE_NAME,
+    moduleName: BOARD_INSTANCE_MODULE_NAME,
+    priority: 500,
+  });
+
+  return [...mappings.values()];
+}
+
 function toProjectFile(projectId: DtsPowerSeedProjectId, source: string): DtsPowerSeedProjectFile {
+  const fileName = primaryBoardFileName(projectId);
   return {
     projectId,
-    fileName: DTS_POWER_SEED_FILE_NAME,
-    artifactFileName: `${projectId}-power-overlay.dts`,
+    fileName,
+    artifactFileName: fileName,
     source
   };
+}
+
+function buildDiversifiedOverrides(
+  baseSource: string,
+  projectId: Exclude<DtsPowerSeedProjectId, "aurora">,
+  manual: SourceOverrideMap
+): SourceOverrideMap {
+  const resolved = resolveDts(baseSource);
+  const auto: SourceOverrideMap = {};
+  const delta = projectId === "nebula" ? -11 : 17;
+
+  for (const node of resolved.nodes) {
+    for (const property of node.properties) {
+      if (
+        !isParameterSurfaceRow({
+          propertyKey: property.name,
+          locator: node.nodePath,
+          compatible: node.compatible
+        })
+      ) {
+        continue;
+      }
+      if (!isDiversifiableSeedProperty(property.name, property.valueType)) {
+        continue;
+      }
+      const sourceNodePath = propertySourcePath(node.nodePath, property.name);
+      if (manual[sourceNodePath] !== undefined) {
+        continue;
+      }
+      const diversified = diversifyPropertyRawText(
+        property.rawText,
+        property.valueType,
+        property.name,
+        projectId,
+        delta
+      );
+      if (diversified !== property.rawText) {
+        auto[sourceNodePath] = diversified;
+      }
+    }
+  }
+
+  return { ...auto, ...manual };
+}
+
+/** Wiring / structural keys stay shared; other surface values may differ across demo projects. */
+const nonDiversifiableSeedProperties = new Set([
+  "compatible",
+  "reg",
+  "status",
+  "gpios",
+  "gpio_int",
+  "gpio_en",
+  "gpio_enable",
+  "gpio_5v_boost",
+  "onewire-gpio",
+  "battct_id_gpio-supply",
+  "matchable",
+  "interrupt-parent",
+  "sensor-names",
+  "replace_sensor"
+]);
+
+/** Tunable surface values may differ across demo projects; wiring/identity stay shared. */
+function isDiversifiableSeedProperty(propertyName: string, valueType: DtsValueType): boolean {
+  if (nonDiversifiableSeedProperties.has(propertyName)) {
+    return false;
+  }
+  if (valueType === "phandle-list" || valueType === "bool" || valueType === "empty") {
+    return false;
+  }
+  return true;
+}
+
+function diversifyPropertyRawText(
+  rawText: string,
+  valueType: DtsValueType,
+  propertyName: string,
+  projectId: Exclude<DtsPowerSeedProjectId, "aurora">,
+  delta: number
+): string {
+  if (valueType === "u32-array" || valueType === "bytes" || valueType === "mixed") {
+    let changed = false;
+    const next = rawText.replace(/<([^>]*)>/g, (_full, inner: string) => {
+      const tokens = inner.trim().length === 0 ? [] : inner.trim().split(/\s+/);
+      if (tokens.length === 1 && (tokens[0] === "0" || tokens[0] === "1")) {
+        // Binary flags only have two legal values; flip for both peer projects so each differs from Aurora.
+        changed = true;
+        return `<${rewriteWhitespaceSeparatedTokens(inner, () => (tokens[0] === "0" ? "1" : "0"))}>`;
+      }
+      const rewritten = rewriteWhitespaceSeparatedTokens(inner, (token, index) => {
+        // Prefer bumping the first mutable cell so multi-cell tables stay recognizable.
+        if (index > 0) {
+          return token;
+        }
+        const bumped = bumpNumericToken(token, delta);
+        if (bumped !== token) {
+          changed = true;
+        }
+        return bumped;
+      });
+      return `<${rewritten}>`;
+    });
+    return changed ? next : rawText;
+  }
+
+  if (valueType === "string-list") {
+    let changed = false;
+    let bumpedOnce = false;
+    const next = rawText.replace(/"([^"]*)"/g, (full, inner: string) => {
+      if (bumpedOnce) {
+        return full;
+      }
+      if (!/^(-?\d+|0x[0-9a-fA-F]+)$/.test(inner)) {
+        return full;
+      }
+      if (inner === "0" || inner === "1") {
+        bumpedOnce = true;
+        changed = true;
+        return `"${inner === "0" ? "1" : "0"}"`;
+      }
+      const bumped = bumpNumericToken(inner, delta);
+      if (bumped === inner) {
+        return full;
+      }
+      bumpedOnce = true;
+      changed = true;
+      return `"${bumped}"`;
+    });
+    if (changed) {
+      return next;
+    }
+    // Free-form name strings (e.g. batt_name) can take a project suffix; skip table/mode cross-refs.
+    if (propertyName.endsWith("_name") || propertyName === "batt_name") {
+      const suffix = projectId === "nebula" ? "_nebula" : "_atlas";
+      return rawText.replace(/"([^"]*)"/, (_full, inner: string) => `"${inner}${suffix}"`);
+    }
+    return rawText;
+  }
+
+  return rawText;
+}
+
+/** Replace non-whitespace tokens while keeping original separators (spaces, tabs, newlines). */
+function rewriteWhitespaceSeparatedTokens(
+  text: string,
+  mutate: (token: string, index: number) => string
+): string {
+  let index = 0;
+  return text.replace(/[^\s]+/g, (token) => {
+    const next = mutate(token, index);
+    index += 1;
+    return next;
+  });
+}
+
+function bumpNumericToken(token: string, delta: number): string {
+  if (/^0x[0-9a-fA-F]+$/.test(token)) {
+    const width = token.length - 2;
+    const next = (parseInt(token, 16) + delta) >>> 0;
+    return `0x${next.toString(16).padStart(width, "0")}`;
+  }
+  if (/^-?\d+$/.test(token)) {
+    return String(Number(token) + delta);
+  }
+  return token;
 }
 
 function applySourceOverrides(source: string, overrides: SourceOverrideMap): string {
@@ -444,39 +770,6 @@ function parameterId(sourceNodePath: string) {
     .replace(/^-|-$/g, "")
     .slice(0, 48);
   return `${DTS_POWER_SEED_ID_PREFIX}${tail}-${digest}`;
-}
-
-function businessCategoryForPath(nodePath: string, propertyName: string) {
-  const path = `${nodePath}/${propertyName}`.toLowerCase();
-  if (!nodePath || propertyName === "board_id") return "Board Identity";
-  if (path.includes("wireless") || path.includes("mt5788")) return "Wireless Charging";
-  if (path.includes("direct_charge") || path.includes("direct_charger")) return "Direct Charging";
-  if (
-    path.includes("huawei_batt_info") ||
-    path.includes("fm1230") ||
-    path.includes("t91407") ||
-    path.includes("batt_identify")
-  ) {
-    return "Battery Authentication";
-  }
-  if (path.includes("temp_fitting") || path.includes("multi_btb_temp")) return "Battery Thermal";
-  if (path.includes("battery_charge_balance") || path.includes("battery_cccv")) return "Battery Balance";
-  if (
-    path.includes("hisi_bci_battery") ||
-    path.includes("battery_ocv") ||
-    path.includes("scharger_v800_coul") ||
-    path.includes("hi6xxx_coul") ||
-    path.includes("soh_core")
-  ) {
-    return "Battery Gauge";
-  }
-  if (path.includes("vbat_drop") || path.includes("btb_check")) return "Battery Protection";
-  if (path.includes("charging_core") || path.includes("huawei_charger") || path.includes("charge_mode_test")) {
-    return "Charging Policy";
-  }
-  if (path.includes("sc8562")) return "Charge Pump IC";
-  if (path.includes("scharger") || path.includes("hl7603") || path.includes("boost_5v")) return "Charger IC";
-  return "Power Bus";
 }
 
 function inferMetadata(input: {
@@ -600,8 +893,11 @@ function valueTypeNote(valueType: DtsValueType) {
 
 export async function generateDtsPowerSeedArtifacts(rootDir: string) {
   const seedDir = path.join(rootDir, "src/config/dts-seed");
-  const baseSource = await readFile(path.join(seedDir, "base-power-overlay.dts"), "utf8");
-  const seed = buildDtsPowerSeed(baseSource);
+  const fixtureDir = path.join(rootDir, "server/modules/dts/fixtures");
+  const syntheticBase = await readFile(path.join(fixtureDir, "synthetic-power-base.dts"), "utf8");
+  const auroraOverlay = await readFile(path.join(seedDir, "aurora-power-overlay.dts"), "utf8");
+  const auroraPrimary = mergePrimaryDtsBoard(syntheticBase, auroraOverlay);
+  const seed = buildDtsPowerSeed(auroraPrimary);
   for (const file of seed.projectFiles) {
     await writeFile(path.join(seedDir, file.artifactFileName), file.source, "utf8");
   }

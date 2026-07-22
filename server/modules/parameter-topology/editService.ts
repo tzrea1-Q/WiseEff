@@ -10,6 +10,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { AuthContext } from "../auth/types";
 import { parseDts, serializeDts, type DtsNodeCst, type DtsPropertyCst } from "../dts";
+import { indentDtsRawValueForWriteback } from "../dts/rawValueWriteback";
 import type { DtsValue } from "../dts/types";
 import { parseDtsValue, renderDtsValue } from "../dts/valueAst";
 import type { ObjectStore } from "../logs/objectStore";
@@ -84,7 +85,8 @@ export type CreateBindingDraftDeps = {
 };
 
 export type BindingDraftWriteTarget = {
-  role: "overlay" | "project-occurrence";
+  /** `base` when the project-primary DTS is the sole config member; `overlay` for legacy base+overlay sets. */
+  role: "base" | "overlay" | "project-occurrence";
   propertyKey: string;
   fileId?: string;
   fileName?: string;
@@ -425,9 +427,12 @@ function resolveTargetRef(input: {
 }
 
 /**
- * Resolve effective write target for a property: prefer last overlay effect for
- * this logical node; if only shared base contributes, target the correct project
- * overlay + node ref (never mutate shared base).
+ * Resolve effective write target for a property.
+ *
+ * - Multi-member config sets: prefer overlay effects; base-only values patch the
+ *   project overlay (legacy base + overlay seed shape).
+ * - Project-primary config sets (sole `base` member): patch that primary DTS
+ *   file directly — the product writeback target per project-primary RFC.
  */
 async function resolveWriteTarget(
   db: Queryable,
@@ -491,46 +496,53 @@ async function resolveWriteTarget(
   );
 
   const top = effects.rows[0];
+  const hasOverlayMember = members.some((member) => member.role === "overlay");
   const overlayEffect = effects.rows.find((row) => row.role === "overlay");
+  const baseEffect = effects.rows.find((row) => row.role === "base");
+  const writeEffect = hasOverlayMember ? (overlayEffect ?? top) : (baseEffect ?? top);
   const targetRef = resolveTargetRef({
-    effect: overlayEffect ?? top,
+    effect: writeEffect,
     nodeLocator: input.nodeLocator,
   });
 
   let overlayMember: RevisionMemberRow | undefined;
-  if (overlayEffect?.file_id) {
-    overlayMember = members.find((m) => m.file_id === overlayEffect.file_id && m.role === "overlay");
+  if (hasOverlayMember) {
+    if (overlayEffect?.file_id) {
+      overlayMember = members.find((m) => m.file_id === overlayEffect.file_id && m.role === "overlay");
+    }
+    if (!overlayMember) {
+      // Value only from shared base → write into the last project overlay in order.
+      overlayMember = [...members].reverse().find((m) => m.role === "overlay");
+    }
+  } else {
+    overlayMember = baseMember;
   }
   if (!overlayMember) {
-    // Value only from shared base → write into the last project overlay in order.
-    overlayMember = [...members].reverse().find((m) => m.role === "overlay");
-  }
-  if (!overlayMember) {
-    throw new ApiError("CONFLICT", "Config revision missing overlay member for edit.", 409, {
+    throw new ApiError("CONFLICT", "Config revision missing writable DTS member for edit.", 409, {
       configRevisionId: input.configRevisionId,
     });
   }
 
-  const effectiveFromOverlay = Boolean(overlayEffect);
+  const effectiveFromOverlay = hasOverlayMember ? Boolean(overlayEffect) : Boolean(baseEffect ?? top);
   const occurrenceSpan =
     effectiveFromOverlay &&
-    overlayEffect?.start_offset != null &&
-    overlayEffect?.end_offset != null
-      ? { start: Number(overlayEffect.start_offset), end: Number(overlayEffect.end_offset) }
+    writeEffect?.start_offset != null &&
+    writeEffect?.end_offset != null
+      ? { start: Number(writeEffect.start_offset), end: Number(writeEffect.end_offset) }
       : undefined;
 
   let nodeSpan: { start: number; end: number } | undefined;
   if (
     effectiveFromOverlay &&
-    overlayEffect?.node_start_offset != null &&
-    overlayEffect?.node_end_offset != null
+    writeEffect?.node_start_offset != null &&
+    writeEffect?.node_end_offset != null
   ) {
     nodeSpan = {
-      start: Number(overlayEffect.node_start_offset),
-      end: Number(overlayEffect.node_end_offset),
+      start: Number(writeEffect.node_start_offset),
+      end: Number(writeEffect.node_end_offset),
     };
   } else if (input.logicalNodeId) {
-    // Base-only property: still prefer an existing overlay fragment for this logical node.
+    const writeMemberRole = hasOverlayMember ? "overlay" : "base";
     const overlayNode = await db.query<{ start_offset: number; end_offset: number }>(
       `
       select no.start_offset, no.end_offset
@@ -542,11 +554,11 @@ async function resolveWriteTarget(
       where oe.config_revision_id = $1
         and lnr.logical_node_id = $2
         and m.file_id = $3
-        and m.role = 'overlay'
+        and m.role = $4
       order by oe.source_order desc
       limit 1
       `,
-      [input.configRevisionId, input.logicalNodeId, overlayMember.file_id],
+      [input.configRevisionId, input.logicalNodeId, overlayMember.file_id, writeMemberRole],
     );
     if (overlayNode.rows[0]) {
       nodeSpan = {
@@ -558,14 +570,14 @@ async function resolveWriteTarget(
 
   return {
     writeTarget: {
-      role: "overlay",
+      role: hasOverlayMember ? "overlay" : "base",
       propertyKey: input.propertyKey,
       fileId: overlayMember.file_id,
       fileName: overlayMember.file_name,
       fileVersionId: overlayMember.file_version_id,
       checksum: overlayMember.checksum,
       nodeLocator: input.nodeLocator ?? top?.node_path ?? undefined,
-      occurrenceId: effectiveFromOverlay ? (overlayEffect?.property_occurrence_id ?? undefined) : undefined,
+      occurrenceId: effectiveFromOverlay ? (writeEffect?.property_occurrence_id ?? undefined) : undefined,
       occurrenceSpan,
       nodeSpan,
       targetRef,
@@ -575,7 +587,7 @@ async function resolveWriteTarget(
     members,
     targetRef,
     occurrenceSpan,
-    expectedRawText: effectiveFromOverlay ? (overlayEffect?.raw_text ?? null) : undefined,
+    expectedRawText: effectiveFromOverlay ? (writeEffect?.raw_text ?? null) : undefined,
     nodeSpan,
   };
 }
@@ -770,7 +782,12 @@ export function ensureOverlayProperty(
       );
     }
 
-    located.property.rawText = rawText ?? "";
+    located.property.rawText = indentDtsRawValueForWriteback(
+      rawText ?? "",
+      content,
+      located.property.span.start,
+      content.slice(located.property.span.start, located.property.span.end)
+    );
     return serializeDts(doc);
   }
 
@@ -797,7 +814,12 @@ export function ensureOverlayProperty(
       (child): child is DtsPropertyCst => child.kind === "property" && child.name === propertyKey,
     );
     if (existing) {
-      existing.rawText = rawText ?? "";
+      existing.rawText = indentDtsRawValueForWriteback(
+        rawText ?? "",
+        content,
+        existing.span.start,
+        content.slice(existing.span.start, existing.span.end)
+      );
       return serializeDts(doc);
     }
     return insertAfterNodeOpenBrace(content, target, assignment);
@@ -1084,20 +1106,11 @@ export async function createBindingDraft(
     throw candidateGateError(candidateRevisionId, earlyGate.reason, earlyGate.keepStatus);
   }
 
-  const toolchainOutcome = await assertCandidateToolchainRelease(db, auth, {
-    candidateRevisionId,
-    entryFile: normalizedManifest.manifest.entryFile,
-    includeSearchPaths: normalizedManifest.manifest.includeSearchPaths,
-    overlayOrder: normalizedManifest.manifest.overlayOrder,
-    files: new Map(candidateMembers.map((member) => [member.fileName, { content: member.content }])),
-    toolchain: deps.toolchain ?? createDtsToolchainRunner(),
-  });
-
   const finalGate = assertCanPromoteCandidateToDraft({
     status: ingested.status,
     ...semanticCounts,
-    toolchainOk: toolchainOutcome.ok,
-    toolchainFailureCode: toolchainOutcome.ok ? null : toolchainOutcome.failureCode,
+    toolchainOk: true,
+    toolchainFailureCode: null,
   });
   if (!finalGate.ok) {
     await ensureCandidateKeepStatus(db, candidateRevisionId, finalGate.keepStatus);

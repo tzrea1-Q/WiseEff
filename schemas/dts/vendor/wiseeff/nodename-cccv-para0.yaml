@@ -9,17 +9,21 @@ nodename:
 properties:
   buck_cccv_0_5:
     valueShape: u32-array
-    exampleValue: <4540 1078 0>
+    exampleValue: "<\n\t\t\t4540 1078 0>"
     constraints: {}
+    documentation: cccv_para0 的 DTS 属性「buck cccv 0 5」（buck_cccv_0_5），用于驱动读取的设备树配置。
   buck_temp_tab:
     valueShape: string-list
-    exampleValue: '"5", "buck_cccv_0_5"'
+    exampleValue: "\"5\", \"buck_cccv_0_5\""
     constraints: {}
+    documentation: cccv_para0 的 DTS 属性「buck temp tab」（buck_temp_tab），用于驱动读取的设备树配置。
   cccv_10_20:
     valueShape: u32-array
     exampleValue: "<4200 10790 0\n\t\t\t4250 8092 0\n\t\t\t4565 2697 0>"
     constraints: {}
+    documentation: 恒流恒压（CCCV）相关参数「cccv_10_20」。
   temp_tab:
     valueShape: string-list
-    exampleValue: '"20", "cccv_10_20"'
+    exampleValue: "\"20\", \"cccv_10_20\""
     constraints: {}
+    documentation: 温度相关参数「temp_tab」，用于保护或拟合。

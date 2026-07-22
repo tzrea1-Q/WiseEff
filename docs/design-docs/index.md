@@ -22,6 +22,9 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 | Current | [Security Governance](security-governance.md) | Identity, authorization, audit, Agent safety, device safety, data protection. |
 | Current | [Audit Center Design](2026-06-17-audit-center-design.md) | Audit evidence model, module/org audit IA, API, and phased delivery. |
 | Current | [DTS Parameter Management Assessment](2026-07-14-dts-parameter-management-assessment.md) | Current-state problem inventory and locked positioning decisions for DTS/JSON tree parameter management (planning input). |
+| Current | [DTS Parameter Surface Boundary RFC](2026-07-21-dts-parameter-surface-boundary-rfc.md) | Product boundary: manageable parameter surface, module-centric UX, DTS text maintenance, optional L2 toolchain (revises 2026-07-14 locks). |
+| Current | [DTS Capability Cut Matrix](2026-07-21-dts-capability-cut-matrix.md) | Keep / demote / remove-from-hot-path matrix for topology, schema, toolchain, and UI capabilities. |
+| Current | [Project-Primary DTS Contract RFC](2026-07-21-project-primary-dts-contract-rfc.md) | Upload one project DTS; writeback always that final text; retire platform synthetic base; admin owns module↔driver only. |
 | Current | [DTS Follow-up Scheme (Hardening + Import)](2026-07-15-dts-followup-scheme.md) | Post–P0–P3.1 follow-up scheme: hardening closeout (B) and import-wizard TD-035 alignment (C); Git publish deferred. |
 
 ## Historical Feature Designs

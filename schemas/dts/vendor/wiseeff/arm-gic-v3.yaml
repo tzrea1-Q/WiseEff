@@ -1,0 +1,24 @@
+$id: wiseeff/arm-gic-v3.yaml
+title: arm,gic-v3
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/arm,gic-v3
+compatible:
+  - arm,gic-v3
+properties:
+  "#interrupt-cells":
+    valueShape: u32-array
+    exampleValue: <3>
+    constraints: {}
+    documentation: 中断说明符所需的 cell 数量。
+  compatible:
+    valueShape: string-list
+    exampleValue: "\"arm,gic-v3\""
+    constraints: {}
+    documentation: 设备树 compatible 字符串，用于匹配驱动与规格命名空间。
+  interrupt-controller:
+    valueShape: bool
+    exampleValue: ""
+    constraints: {}
+    documentation: 标记本节点为中断控制器。

@@ -103,7 +103,7 @@ npm run dts:config:validate
 # or POST /api/v2/projects/:projectId/config-revisions/:revisionId/validate
 ```
 
-Every effective DTB / config revision used in production must pass fail-closed toolchain validation. Golden seed overlays (`aurora`/`nebula`/`atlas` + `wiseeff-power-base.dts`) must compile with `failOnSchema: true` and pass real `dt-validate` on the locked **173** property occurrences (**519** `dts_properties` rows in M1 seed tests).
+Every effective DTB / config revision used in production must pass fail-closed toolchain validation. Golden project-primary DTS files (`aurora-board.dts`, `nebula-board.dts`, `atlas-board.dts`) must compile with `failOnSchema: true` and pass real `dt-validate`. Tests lock **176** semantic property occurrences per ingest revision and **684** structural `dts_properties` rows in M1 seed (228 parsed properties × 3 projects).
 
 ## 7. Stage review (inferred specs and evidence)
 

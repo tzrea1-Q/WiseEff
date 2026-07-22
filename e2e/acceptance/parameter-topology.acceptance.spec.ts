@@ -614,9 +614,10 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first()).toBeVisible();
     await workspace.getByRole("button", { name: /查看 gpio_int/ }).first().click();
     const provenanceDetail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
-    await expect(provenanceDetail.getByText(/来源链|\.dts|源出处|源文件/i).first()).toBeVisible();
+    await expect(provenanceDetail.getByRole("heading", { name: "参数定义" })).toBeVisible();
+    await expect(provenanceDetail.getByText("来源链")).toHaveCount(0);
     // Phase-2: the detail history region is a real revision surface, not phase-1 placeholder copy.
-    const historyRegion = provenanceDetail.getByRole("region", { name: "历史与 diff" });
+    const historyRegion = provenanceDetail.getByRole("region", { name: "近期历史" });
     await expect(historyRegion).toBeVisible();
     await expect(historyRegion.getByText(/阶段一占位/)).toHaveCount(0);
     await expect(provenanceDetail.getByRole("region", { name: "跨项目对比" })).toBeVisible();
@@ -677,7 +678,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(scopedSc8562Row).toContainText("sc8562@6E");
     await expect(scopedSc8562Row).toContainText("<&gpio13 29 0>");
     await expect(bindingRowById(workspace, mtBinding!.id)).toHaveCount(0);
-    await workspace.getByRole("button", { name: "清除全部筛选" }).click();
+    // Toggle the same tree node to clear subtree scoping (toolbar no longer has clear-all).
+    await workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first().click();
     const unscopedMt5788Row = bindingRowById(workspace, mtBinding!.id);
     await expect(unscopedMt5788Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
     await expect(unscopedMt5788Row).toContainText("mt5788@2B");
@@ -705,18 +707,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await sc8562Row.getByRole("button", { name: /^查看 gpio_int/ }).click();
     const detail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
     await expect(detail).toBeVisible();
-    await expect(detail.getByText(scBinding!.id, { exact: true })).toBeVisible();
-    const locationDetail = detail.getByRole("region", { name: "DTS 位置" });
-    await expect(locationDetail).toContainText(SC8562_LOCATOR);
-    await expect(locationDetail).toContainText(/\.dts/i);
-    await expect(locationDetail).toContainText(/L\d+/);
-    const valueContract = detail.getByRole("region", { name: "值与约束" });
-    await expect(valueContract).toContainText("<&gpio13 29 0>");
-    await expect(valueContract).toContainText("phandle-list · 32 bit · 3 cells");
-    const provenance = detail.getByRole("region", { name: "来源链" });
-    await expect(provenance.getByRole("listitem").first()).toContainText(/set|override/);
-    await expect(provenance.getByRole("listitem").first()).not.toContainText("source occurrence 不可用");
-
+    await expect(detail.getByRole("heading", { name: "参数定义" })).toBeVisible();
+    await expect(detail.getByText("<&gpio13 29 0>").first()).toBeVisible();
+    await expect(detail.getByRole("heading", { name: "DTS 位置" })).toHaveCount(0);
+    await expect(detail.getByText("值形态")).toHaveCount(0);
+    await expect(detail.getByText("治理状态")).toHaveCount(0);
+    await expect(detail.getByText("来源链")).toHaveCount(0);
+    await expect(detail.getByText("技术身份")).toHaveCount(0);
+    await expect(detail.getByText(scBinding!.id, { exact: true })).toHaveCount(0);
     await recordOperationEvidence({
       operationId: "PARAM-TOPOLOGY-BROWSE-001",
       title: "real source/effective tree and two gpio_int bindings",
@@ -1951,10 +1949,13 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await sc8562ReloadRow.getByRole("button", { name: /^查看 gpio_int/ }).click();
     const detailAfter = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
     await expect(detailAfter).toBeVisible();
-    await expect(detailAfter.getByRole("region", { name: "来源链" })).toBeVisible();
-    await expect(detailAfter.getByText(scBinding!.id, { exact: true })).toBeVisible();
+    await expect(detailAfter.getByRole("heading", { name: "参数定义" })).toBeVisible();
+    await expect(detailAfter.getByText("来源链")).toHaveCount(0);
+    await expect(detailAfter.getByText("技术身份")).toHaveCount(0);
+    await expect(detailAfter.getByText(scBinding!.id, { exact: true })).toHaveCount(0);
     const bindingIdAfter = scBinding!.id;
-    const valueAfter = await detailAfter.getByLabel("目标值 raw").inputValue();
+    const currentValueField = detailAfter.locator("dt", { hasText: "当前值" }).locator("xpath=..");
+    const valueAfter = (await currentValueField.locator("code").innerText()).trim();
 
     const persistedDb = await withPgClient(async (client) => {
       const result = await client.query<{ id: string; raw_value: string | null }>(
