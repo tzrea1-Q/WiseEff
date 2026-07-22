@@ -25,6 +25,8 @@ export type DtsParameterWorkbenchRow = {
   /** Business module the binding is grouped under (admin mapping or driver fallback). */
   moduleId: string;
   moduleName: string;
+  /** Root→leaf business module names from registry `parentId` (fallback: `[moduleName]`). */
+  modulePath: string[];
   /** Importance inherited from the assigned module. */
   importance: ModuleImportance;
   /** Admin sort order for the assigned module (fallback modules sort last). */

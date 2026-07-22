@@ -251,7 +251,7 @@ npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <ar
 | 领域 | 测试 / 命令 | 证明内容 |
 | --- | --- | --- |
 | 厂商 dt-schema | `goldenPowerFixture.test.ts`、`scripts/vendorDtSchemaGenerator.test.ts` | 由属性规格确定性生成 linux-bindings；黄金 DTB 通过真实 `dt-validate`；负例按预期失败 |
-| 黄金计数 | `goldenPowerFixture.test.ts`（173 属性）、`seedM1DtsFiles.test.ts`（519 行 `dts_properties`）、`matcher.test.ts`、`ingestService.test.ts` | 锁定 **173/519** 拓扑/seed 计数 |
+| 黄金计数 | `goldenPowerFixture.test.ts`（176 属性）、`seedM1DtsFiles.test.ts`（528 行 `dts_properties`）、`matcher.test.ts`、`ingestService.test.ts` | 锁定 **176/528** 拓扑/seed 计数 |
 | stage → finalize | `migration.test.ts`（临时 PostgreSQL、重连、注入失败） | 可运维 `stage-review` 事务；原子 `finalize`；cutover 拒绝非 `finalized` 运行 |
 | 精确回写 | `editService.test.ts`、合入工作流测试 | occurrence 锁定合入/回写；base 不可变；身份过期 → `409` |
 | Matcher / 审核作用域 | `matcher.test.ts`、`matcherScope.integration.test.ts` | override 按节点 locator 指纹隔离；`blocker_scope` 门禁 |

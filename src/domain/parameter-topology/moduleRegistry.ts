@@ -195,3 +195,27 @@ export function describeModuleAssignment(
     mapped: false
   };
 }
+
+/**
+ * Root→leaf display names for the assigned module, walking registry `parentId`.
+ * When the module is missing (driver fallback / registry still loading), returns `[moduleName]`.
+ */
+export function resolveModulePathNames(
+  moduleId: string,
+  moduleName: string,
+  registry: ParameterModuleRegistry
+): string[] {
+  const byId = new Map(registry.modules.map((module) => [module.id, module]));
+  const leaf = byId.get(moduleId);
+  if (!leaf) return [moduleName];
+
+  const names: string[] = [];
+  const seen = new Set<string>();
+  let current: ParameterModule | undefined = leaf;
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    names.unshift(current.name);
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  return names.length > 0 ? names : [moduleName];
+}

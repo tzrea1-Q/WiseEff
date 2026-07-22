@@ -11,7 +11,7 @@ import {
 } from "../../../scripts/dts-power-seed";
 
 const root = path.dirname(path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url)))));
-const baseSource = await readFile(path.join(root, "src/config/dts-seed/base-power-overlay.dts"), "utf8");
+const baseSource = await readFile(path.join(root, "src/config/dts-seed/aurora-board.dts"), "utf8");
 
 function bySource(parameters: DtsPowerSeedParameter[], sourceNodePath: string) {
   const hit = parameters.find((parameter) => parameter.sourceNodePath === sourceNodePath);
@@ -34,7 +34,7 @@ describe("DTS power seed catalog", () => {
     const resolved = resolveDts(baseSource);
     const resolvedPropertyCount = resolved.nodes.reduce((count, node) => count + node.properties.length, 0);
 
-    expect(resolvedPropertyCount).toBe(173);
+    expect(resolvedPropertyCount).toBe(228);
     expect(seed.parameterLibrary).toHaveLength(resolvedPropertyCount);
     expect(new Set(seed.parameterLibrary.map((parameter) => parameter.id)).size).toBe(resolvedPropertyCount);
     expect(new Set(seed.parameterLibrary.map((parameter) => parameter.sourceNodePath)).size).toBe(
@@ -83,8 +83,12 @@ describe("DTS power seed catalog", () => {
     });
 
     expect(seed.projectFiles.map((file) => file.projectId)).toEqual(["aurora", "nebula", "atlas"]);
-    expect(seed.projectFiles.every((file) => file.fileName === DTS_POWER_SEED_FILE_NAME)).toBe(true);
-    expect(await readFile(path.join(root, "src/config/dts-seed/wiseeff-power-base.dts"), "utf8")).toContain(
+    expect(seed.projectFiles.map((file) => file.fileName)).toEqual([
+      "aurora-board.dts",
+      "nebula-board.dts",
+      "atlas-board.dts"
+    ]);
+    expect(await readFile(path.join(root, "server/modules/dts/fixtures/synthetic-power-base.dts"), "utf8")).toContain(
       "gpio-controller"
     );
     expect(identitiesByProject[1]).toEqual(identitiesByProject[0]);
@@ -111,6 +115,19 @@ describe("DTS power seed catalog", () => {
       return new Set(values).size > 1;
     });
     expect(differentiated.length).toBeGreaterThanOrEqual(15);
+  });
+
+  it("preserves multiline angle-bracket layout when diversifying peer project files", () => {
+    const seed = buildDtsPowerSeed(baseSource);
+    const aurora = seed.projectFiles.find((file) => file.projectId === "aurora")!;
+    const nebula = seed.projectFiles.find((file) => file.projectId === "nebula")!;
+    const atlas = seed.projectFiles.find((file) => file.projectId === "atlas")!;
+
+    expect(aurora.source).toContain("cccv_10_20 = <4200 10790 0\n\t\t\t4250 8092 0\n\t\t\t4565 2697 0>;");
+    expect(nebula.source).toContain("cccv_10_20 = <4189 10790 0\n\t\t\t4250 8092 0\n\t\t\t4565 2697 0>;");
+    expect(atlas.source).toContain("cccv_10_20 = <4217 10790 0\n\t\t\t4250 8092 0\n\t\t\t4565 2697 0>;");
+    expect(nebula.source).not.toContain("cccv_10_20 = <4189 10790 0 4250 8092 0 4565 2697 0>;");
+    expect(atlas.source).not.toContain("cccv_10_20 = <4217 10790 0 4250 8092 0 4565 2697 0>;");
   });
 
   it("infers useful units, ranges, risks, and business categories", () => {
@@ -146,5 +163,22 @@ describe("DTS power seed catalog", () => {
         await readFile(path.join(root, "src/config/dts-seed", projectFile.artifactFileName), "utf8")
       ).toBe(projectFile.source);
     }
+  });
+
+  it("builds business → driver-group → instance modules without Power Bus scaffolding", () => {
+    const seed = buildDtsPowerSeed(baseSource);
+    const names = new Set(seed.parameterModules.map((module) => module.name));
+    const parentOf = (name: string) => seed.parameterModules.find((module) => module.name === name)?.parent;
+
+    expect(names.has("Power Bus")).toBe(false);
+    expect(parentOf("hl7603")).toBe("Charger IC");
+    expect(parentOf("hl7603@75")).toBe("hl7603");
+    expect(parentOf("hl7603@77")).toBe("hl7603");
+    expect(parentOf("fm1230")).toBe("Battery Authentication");
+    expect(parentOf("fm1230_1")).toBe("fm1230");
+    expect(parentOf("battery0")).toBe("battery_charge_balance");
+    expect(parentOf("scharger_v800")).toBe("Charger IC");
+    expect(parentOf("scharger_v800_coul")).toBe("scharger_v800");
+    expect(parentOf("board")).toBe("Board Identity");
   });
 });

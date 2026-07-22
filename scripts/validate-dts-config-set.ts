@@ -71,16 +71,12 @@ async function main() {
     const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
     const seedDir = path.join(rootDir, "src/config/dts-seed");
     const result = await validateDtsConfigSetFromPaths({
-      entryFile: "wiseeff-power-base.dts",
-      overlayOrder: ["aurora-power-overlay.dts"],
+      entryFile: "aurora-board.dts",
+      overlayOrder: [],
       files: [
         {
-          name: "wiseeff-power-base.dts",
-          path: path.join(seedDir, "wiseeff-power-base.dts")
-        },
-        {
-          name: "aurora-power-overlay.dts",
-          path: path.join(seedDir, "aurora-power-overlay.dts")
+          name: "aurora-board.dts",
+          path: path.join(seedDir, "aurora-board.dts")
         }
       ],
       mode: args.mode

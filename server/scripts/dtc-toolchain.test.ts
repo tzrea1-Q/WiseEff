@@ -8,8 +8,8 @@ import { createStubDtcValidator } from "../modules/parameter-files/dtcValidator"
 const oneSeedFile = [
   {
     projectId: "aurora" as const,
-    fileName: "wiseeff-power-overlay.dts" as const,
-    artifactFileName: "aurora-power-overlay.dts",
+    fileName: "aurora-board.dts",
+    artifactFileName: "aurora-board.dts",
     source: "/dts-v1/; /plugin/; / { board_id = <1>; };"
   }
 ];

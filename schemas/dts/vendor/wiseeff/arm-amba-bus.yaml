@@ -7,23 +7,28 @@ schemaNamespace: vendor/arm,amba-bus
 compatible:
   - arm,amba-bus
 properties:
-  '#address-cells':
+  "#address-cells":
     valueShape: u32-array
     exampleValue: <2>
     constraints: {}
-  '#size-cells':
+    documentation: 子节点地址字段占用的 cell 数量。
+  "#size-cells":
     valueShape: u32-array
     exampleValue: <2>
     constraints: {}
+    documentation: 子节点尺寸字段占用的 cell 数量。
   compatible:
     valueShape: string-list
-    exampleValue: '"arm,amba-bus"'
+    exampleValue: "\"arm,amba-bus\""
     constraints: {}
+    documentation: 设备树 compatible 字符串，用于匹配驱动与规格命名空间。
   interrupt-parent:
     valueShape: phandle-list
     exampleValue: <&gic>
     constraints: {}
+    documentation: 指向中断控制器的 phandle。
   ranges:
     valueShape: empty
-    exampleValue: ''
+    exampleValue: ""
     constraints: {}
+    documentation: 父子地址空间映射；空属性表示 1:1 透传。

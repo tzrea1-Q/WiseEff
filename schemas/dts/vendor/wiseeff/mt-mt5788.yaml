@@ -11,12 +11,14 @@ commonRefs:
 properties:
   compatible:
     valueShape: string-list
-    exampleValue: '"mt,mt5788"'
+    exampleValue: "\"mt,mt5788\""
     constraints: {}
+    documentation: 设备树 compatible 字符串，用于匹配驱动与规格命名空间。
   gpio_en:
     valueShape: mixed
     exampleValue: <&gpio2 26 0>
     constraints: {}
+    documentation: GPIO 相关配置项「gpio_en」，描述引脚、极性或中断线。
   gpio_int:
     valueShape: mixed
     exampleValue: <&gpio6 15 0>
@@ -28,35 +30,44 @@ properties:
     valueShape: bytes
     exampleValue: /bits/ 8 <17>
     constraints: {}
+    documentation: mt,mt5788 的 DTS 属性「prevfod1 product list」（prevfod1_product_list），用于驱动读取的设备树配置。
   reg:
     valueShape: u32-array
     exampleValue: <0x2B>
     constraints: {}
+    documentation: 设备在父总线上的地址/寄存器范围。
   rx_fod_cond:
     valueShape: string-list
     exampleValue: "\"0\", \"-1\", \"2\", \"5000\",\n\t\t\t\t\"31\", \"-1\", \"-1\", \"15000\""
     constraints: {}
+    documentation: mt,mt5788 的 DTS 属性「rx fod cond」（rx_fod_cond），用于驱动读取的设备树配置。
   rx_mod_cm_cfg:
     valueShape: bytes
     exampleValue: /bits/ 8 <0x5 0x5 0x5>
     constraints: {}
+    documentation: mt,mt5788 的 DTS 属性「rx mod cm cfg」（rx_mod_cm_cfg），用于驱动读取的设备树配置。
   rx_ploss_th0:
     valueShape: bytes
     exampleValue: /bits/ 8 <0x19 0x32 0x4B 0x64 0x7D 0x96 0xAF 0xE1 0xEB 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0xFF>
     constraints: {}
+    documentation: mt,mt5788 的 DTS 属性「rx ploss th0」（rx_ploss_th0），用于驱动读取的设备树配置。
   status:
     valueShape: string-list
-    exampleValue: '"okay"'
+    exampleValue: "\"ok\""
     constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   time_para:
     valueShape: u32-array
     exampleValue: "<\n\t\t\t\t1800 1250\n\t\t\t\t0 2500\n\t\t\t>"
     constraints: {}
+    documentation: mt,mt5788 的 DTS 属性「time para」（time_para），用于驱动读取的设备树配置。
   time_para_group:
     valueShape: string-list
     exampleValue: "\"SC_2\", \"1\", \"time_para01\",\n\t\t\t\t\"SC_4\", \"0\", \"time_para\""
     constraints: {}
+    documentation: mt,mt5788 的 DTS 属性「time para group」（time_para_group），用于驱动读取的设备树配置。
   tx_current_fod_para:
     valueShape: string-list
     exampleValue: "\"3\", \"550\", \"9900\", \"300\", \"9900\", \"250\",\n\t\t\t\t\"12\", \"195\", \"9900\", \"200\", \"9900\", \"1\""
     constraints: {}
+    documentation: mt,mt5788 的 DTS 属性「tx current fod para」（tx_current_fod_para），用于驱动读取的设备树配置。

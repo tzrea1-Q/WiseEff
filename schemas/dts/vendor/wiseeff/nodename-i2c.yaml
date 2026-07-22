@@ -9,19 +9,23 @@ nodename:
 commonRefs:
   - wiseeff/common-status.yaml
 properties:
-  '#address-cells':
+  "#address-cells":
     valueShape: u32-array
     exampleValue: <1>
     constraints: {}
-  '#size-cells':
+    documentation: 子节点地址字段占用的 cell 数量。
+  "#size-cells":
     valueShape: u32-array
     exampleValue: <0>
     constraints: {}
+    documentation: 子节点尺寸字段占用的 cell 数量。
   hold-time:
     valueShape: u32-array
     exampleValue: <0x220022>
     constraints: {}
+    documentation: i2c 的 DTS 属性「hold time」（hold-time），用于驱动读取的设备树配置。
   status:
     valueShape: string-list
-    exampleValue: '"okay"'
+    exampleValue: "\"ok\""
     constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

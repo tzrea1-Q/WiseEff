@@ -1,0 +1,32 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/huawei-direct-charger.yaml#
+title: huawei,direct_charger
+description: WiseEff vendor binding for huawei,direct_charger (generated from vendor property schema).
+maintainers:
+  - WiseEff
+properties:
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  bat_para:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  resist_para:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  stage_need_to_jump:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  temp_para:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  use_5A:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+  volt_para:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  volt_para1:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  compatible:
+    contains:
+      const: huawei,direct_charger
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false

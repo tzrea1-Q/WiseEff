@@ -11,29 +11,36 @@ commonRefs:
 properties:
   compatible:
     valueShape: string-list
-    exampleValue: '"huawei,bypass_bst_hl7603"'
+    exampleValue: "\"huawei,bypass_bst_hl7603\""
     constraints: {}
+    documentation: 设备树 compatible 字符串，用于匹配驱动与规格命名空间。
   const_vout:
     valueShape: u32-array
     exampleValue: <3600>
     constraints: {}
+    documentation: 恒定输出/限值参数「const_vout」。
   gpio_enable:
     valueShape: mixed
     exampleValue: <&gpio10 5 0>
     constraints: {}
+    documentation: GPIO 相关配置项「gpio_enable」，描述引脚、极性或中断线。
   ic_role:
     valueShape: string-list
-    exampleValue: '"0"'
+    exampleValue: "\"0\""
     constraints: {}
+    documentation: 芯片角色或标识参数「ic_role」。
   reg:
     valueShape: u32-array
     exampleValue: <0x77>
     constraints: {}
+    documentation: 设备在父总线上的地址/寄存器范围。
   shutdown_cfg:
     valueShape: string-list
     exampleValue: "\"0xb\", \"2\", \"2850\",\n\t\t\t\t\"0xc\", \"2\", \"2850\""
     constraints: {}
+    documentation: 关机/关断相关配置「shutdown_cfg」。
   status:
     valueShape: string-list
-    exampleValue: '"okay"'
+    exampleValue: "\"ok\""
     constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

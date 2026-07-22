@@ -1,0 +1,570 @@
+/dts-v1/;
+
+/*
+ * Synthetic base tree for `base-power-overlay.dts`.
+ *
+ * Exists so the seed overlay's `&label { ... }` fragments and phandle
+ * references resolve during real `dtc`/`fdtoverlay` compilation. Compatible
+ * strings use realistic vendor prefixes (hisilicon / huawei / arm) so the
+ * workbench demo does not surface a synthetic `wiseeff,` vendor. GPIO
+ * controllers declare `gpio-controller` and `#gpio-cells = <2>` so
+ * `<&gpioN pin flags>` cells are well-formed.
+ */
+
+/ {
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	gic: gic {
+		compatible = "arm,gic-v3";
+		interrupt-controller;
+		#interrupt-cells = <3>;
+	};
+
+	gpio2: gpio2 {
+		compatible = "hisilicon,gpio";
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
+	gpio5: gpio5 {
+		compatible = "hisilicon,gpio";
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
+	gpio6: gpio6 {
+		compatible = "hisilicon,gpio";
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
+	gpio7: gpio7 {
+		compatible = "hisilicon,gpio";
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
+	gpio10: gpio10 {
+		compatible = "hisilicon,gpio";
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
+	gpio13: gpio13 {
+		compatible = "hisilicon,gpio";
+		gpio-controller;
+		#gpio-cells = <2>;
+	};
+
+	amba: amba {
+		compatible = "arm,amba-bus";
+	};
+
+	spmi: spmi {
+		compatible = "hisilicon,spmi";
+	};
+
+	spmi1: spmi1 {
+		compatible = "hisilicon,spmi";
+	};
+
+	hisi_vbat_drop_protect: hisi_vbat_drop_protect {
+		compatible = "hisilicon,hisi_vbat_drop_protect";
+	};
+
+	hisi_vbat_drop_protect_v2: hisi_vbat_drop_protect_v2 {
+		compatible = "hisilicon,hisi_vbat_drop_protect_v2";
+	};
+
+	hisi_bci_battery: hisi_bci_battery {
+		compatible = "hisilicon,hisi_bci_battery";
+	};
+
+	battery_ocv: battery_ocv {
+		compatible = "huawei,battery_ocv";
+	};
+
+	soh_core: soh_core {
+		compatible = "huawei,soh_core";
+	};
+
+	huawei_charger: huawei_charger {
+		compatible = "huawei,charger";
+	};
+
+	charging_core: charging_core {
+		compatible = "huawei,charging_core";
+	};
+
+	charge_mode_test: charge_mode_test {
+		compatible = "huawei,charge_mode_test";
+	};
+
+	wireless_charger: wireless_charger {
+		compatible = "huawei,wireless_charger";
+	};
+
+	wireless_sc: wireless_sc {
+		compatible = "huawei,wireless_sc";
+	};
+
+	direct_charge_ic: direct_charge_ic {
+		compatible = "huawei,direct_charge_ic";
+	};
+
+	direct_charge_comp: direct_charge_comp {
+		compatible = "huawei,direct_charge_comp";
+	};
+
+	direct_charge_turbo: direct_charge_turbo {
+		compatible = "huawei,direct_charge_turbo";
+	};
+
+	direct_charger: direct_charger {
+		compatible = "huawei,direct_charger";
+	};
+
+	huawei_batt_info: huawei_batt_info {
+		compatible = "huawei,batt_info";
+	};
+
+	fm1230: fm1230 {
+		compatible = "huawei,fm1230";
+	};
+
+	fm1230_1: fm1230_1 {
+		compatible = "huawei,fm1230";
+	};
+
+	fm1230_swi: fm1230_swi {
+		compatible = "huawei,fm1230_swi";
+	};
+
+	t91407: t91407 {
+		compatible = "huawei,t91407";
+	};
+
+	t91407_1: t91407_1 {
+		compatible = "huawei,t91407";
+	};
+
+	huawei_batt_identify: huawei_batt_identify {
+		compatible = "huawei,batt_identify";
+	};
+
+	battery_temp_fitting: battery_temp_fitting {
+		compatible = "huawei,battery_temp_fitting";
+	};
+
+	multi_btb_temp: multi_btb_temp {
+		compatible = "huawei,multi_btb_temp";
+	};
+
+	battery_charge_balance: battery_charge_balance {
+		compatible = "huawei,battery_charge_balance";
+	};
+
+	battery_cccv: battery_cccv {
+		compatible = "huawei,battery_cccv";
+	};
+
+	btb_check: btb_check {
+		compatible = "huawei,btb_check";
+	};
+
+	boost_5v: boost_5v {
+		compatible = "huawei,boost_5v";
+	};
+};
+
+/* Board-level configuration — demo seed overlay for aurora/nebula/atlas. */
+/ {
+	board_id = <12346>;
+};
+
+&amba {
+	i2c@FDF5E000 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "ok";
+		hold-time = <0x230023>;
+		sc8562@6E {
+			compatible = "sc8562";
+			slave_mode = <1>;
+			ic_role = <0>;
+			reg = <0x6e>;
+			fcp_support = <1>;
+			scp_support = <1>;
+			gpio_int = <&gpio13 29 0>;
+			sense_r_config = <-1>;
+			sense_r_actual = <-1>;
+			watchdog_time = <3000>;
+			vout_ovp_mv = <5200>;
+			status = "ok";
+		};
+	};
+};
+
+&spmi1 {
+	scharger_v800 {
+		gpios = <&gpio5 31 0>;
+		status = "ok";
+		scharger_v800_buck {
+			r_charger_uohm = <900>;
+			usbovp_sw_flag = "buck", "1", "1", "1";
+			pswovp_sw_flag = "rxsw", "0", "0", "1";
+			cur_balance_mos = <-9>;
+		};
+
+		scharger_v800_coul {
+			status = "ok";
+			batt_l_v800 {
+				batt_index = <1>;
+				batt_name = "battery_gauge_nebula";
+				r_pcb = <22500>;
+				batt_indentify_fcc = <1794>;
+				soe_dynamic_enable = <0>;
+			};
+		};
+
+		scharger_v800_flash {
+			vendor,led-type = <1>;
+			status = "ok";
+		};
+	};
+};
+
+&spmi {
+	pmic@0 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		hi6xxx_coul {
+			status = "ok";
+			batt: batt {
+				batt_index = <0>;
+				batt_name = "battery_gauge_aux_nebula";
+				r_pcb = <11909>;
+				batt_indentify_fcc = <3579>;
+				soe_dynamic_enable = <0>;
+			};
+		};
+	};
+};
+
+&hisi_vbat_drop_protect {
+	vbat_drop_vol_mv = <2489>;
+	status = "disabled";
+};
+
+&hisi_vbat_drop_protect_v2 {
+	vbat_drop_vol_mv = <2450>;
+	status = "ok";
+
+	middle_cpu {
+		active_perf_limit = <
+			5 100 100
+			6 15 100
+			0 5 100>;
+		passive_perf_limit = <
+			-11 5 10 40 10 0
+			6 15 10 70 10 0
+			16 100 0 100 10 0>;
+	};
+};
+
+&hisi_bci_battery {
+	battery_design_fcc = <5650>;
+	battery_board_type = <-9>;
+	vth_correct_para = <-10 2800>;
+	vth_correct_para_low_temp = <-10 2600>, <-9 2800>;
+	status = "ok";
+};
+
+&battery_ocv {
+	ocv_table =
+		"-12", "3100",
+		"0", "3200",
+		"1", "3250";
+	status = "ok";
+};
+
+&soh_core {
+	status = "disabled";
+};
+
+&huawei_charger {
+	/* Boolean properties — presence means enabled */
+	weak_source_sleep_enabled;
+	charge_done_sleep_enabled;
+	support_new_pd_process = <0>;
+	recharge_para = <97 50 2 4 1 0 1 100>;
+	status = "ok";
+};
+
+&charging_core {
+	iin_max = <2700>;
+	ichg_max = <3000>;
+	iterm_table =
+		"-32778", "10", "200",
+		"10", "20", "400",
+		"45", "32767", "200";
+	jeita_table =
+		"-32778", "1", "2300", "0", "4200", "0",
+		"10", "35", "2300", "3000", "4530", "3",
+		"55", "32767", "2300", "0", "4195", "0";
+	status = "ok";
+};
+
+&charge_mode_test {
+	test_para =
+		"scp", "lvc", "1989", "105", "0", "2",
+		"scp", "sc4", "3000", "105", "0", "0";
+	status = "ok";
+};
+
+&wireless_charger {
+	pmax = <40>;
+	trx_plim =
+		"4989", "5500", "1200", "-1", "2", "-1", "-1", "-1",
+		"12000", "12000", "2300", "-1", "6|9|10", "-1", "3", "-1",
+		"12000", "12000", "2300", "-1", "255", "-1", "3|4", "-1";
+	sc_err_tx = /bits/ 8 <-9>;
+	rx_mode_type_para = /bits/ 8 <-11 1 1 5 6>;
+	rx_mode_para =
+		"5W", "4989", "475", "5000", "5500", "825", "4650", "-1", "-1", "-1", "0", "-1", "4",
+		"SC_4", "15000", "1800", "15000", "15000", "-1", "-1", "46", "-1", "1", "2", "-1", "-1";
+	status = "ok";
+};
+
+&wireless_sc {
+	init_para_col = <3>;
+	init_para =
+		"0xfffffff7", "SC_2", "0", "1", "3300", "4500", "9000", "450", "300", "100", "300", "10000", "9000", "2",
+		"0x4", "SC_4", "2", "1", "3200", "4500", "15000", "500", "300", "100", "300", "20000", "15000", "4";
+	volt_para00 =
+		"4580", "2000", "420";
+	volt_para01 =
+		"4039", "4046", "3237",
+		"4555", "809", "600";
+	bat_para =
+		"default", "-1", "45", "0x01", "volt_para00",
+		"default", "10", "15", "0x02", "volt_para01";
+	status = "ok";
+};
+
+&direct_charge_ic {
+	ic_para1 =
+		"1", "0", "5000", "0", "0",
+		"1", "1", "5000", "1", "1";
+	mode_para =
+		"lvc_mode", "ic_para1",
+		"sc_mode", "ic_para2",
+		"sc4_mode", "ic_para3";
+	status = "ok";
+};
+
+&direct_charge_comp {
+	/* Direct-charge compensation table — float values as strings */
+	vbat_comp_ic_para =
+		"schargerV800", "2", "7", "3",
+		"sc8565", "2", "0.5", "3";
+	status = "okay";
+};
+
+&direct_charge_turbo {
+	status = "ok";
+	time_para01 =
+		"720", "7600", "0", "14000";
+	time_para_group =
+		"-9", "0", "time_para01", "0X1",
+		"4", "0", "time_para02", "0X0";
+};
+
+&direct_charger {
+	use_5A = <0>;
+	volt_para =
+		"4069", "5000", "3777",
+		"4555", "1618", "1200";
+	volt_para1 =
+		"4489", "5000", "3776",
+		"4555", "2697", "1200";
+	bat_para =
+		"default", "-1", "15", "volt_para",
+		"CAE", "15", "20", "volt_para1";
+	stage_need_to_jump = "0";
+	temp_para =
+		"-32778", "10", "0",
+		"45", "32767", "0";
+	resist_para =
+		"0", "240", "3600", "240", "32767", "2300";
+	status = "ok";
+};
+
+&huawei_batt_info {
+	status = "ok";
+	sn-check-type = <-9>;
+	battery_checker@0 {
+		matchable = <&fm1230 &t91407>;
+		spare-cycles = <139>;
+		status = "ok";
+	};
+	battery_checker@1 {
+		matchable = <&fm1230_1 &t91407_1>;
+		spare-cycles = <139>;
+		status = "ok";
+	};
+};
+
+&fm1230 {
+	onewire-gpio = <&gpio2 14 0>;
+	battct_id_gpio-supply = <&huawei_batt_identify>;
+	ow_reset_start_delay = <289>;
+	ow_read_end_delay = <89>;
+	status = "ok";
+};
+
+&fm1230_1 {
+	onewire-gpio = <&gpio2 15 0>;
+	battct_id_gpio-supply = <&huawei_batt_identify>;
+	ic_index = <0>;
+	status = "ok";
+};
+
+&fm1230_swi {
+	status = "ok";
+};
+
+&t91407 {
+	onewire-gpio = <&gpio2 14 0>;
+	battct_id_gpio-supply = <&huawei_batt_identify>;
+	status = "ok";
+};
+
+&huawei_batt_identify {
+	gpios = <&gpio10 16 0>;
+	id_voltage_gpiov = <-11 1>;
+	status = "ok";
+};
+
+&battery_temp_fitting {
+	status = "ok";
+	btf_temp_lth = "-61";
+	fitting_mode = <-9>;
+	replace_sensor = "bat0_raw_temp";
+	temp_para =
+		"-32778", "1", "2300", "0", "4200", "0",
+		"55", "32767", "2300", "0", "4195", "0";
+};
+
+&multi_btb_temp {
+	status = "ok";
+	sensor-names =
+		"bat0_raw_temp", "comp_para", "0",
+		"bat1_raw_temp", "comp_para1", "0";
+};
+
+&battery_charge_balance {
+	status = "ok";
+	unbalance_th = <120 10000>;
+
+	battery0 {
+		weight = <1794>;
+		cccv_0 = <4489 0>;
+		cccv_10_20 = <4189 3610
+			4250 2707
+			4555 1260>;
+		temp_tab = "1", "cccv_0",
+			"20", "cccv_10_20";
+	};
+
+	battery1 {
+		weight = <3579>;
+		cccv_10_20 = <4189 7180
+			4500 3590
+			4555 2513>;
+		temp_tab = "1", "cccv_0",
+			"20", "cccv_10_20";
+	};
+};
+
+&battery_cccv {
+	status = "ok";
+	battery_tbl =
+		"default", "cccv_para0";
+	cccv_para0 {
+		buck_cccv_0_5 = <
+			4529 1078 0>;
+		buck_temp_tab =
+			"-6", "buck_cccv_0_5";
+		cccv_10_20 = <4189 10790 0
+			4250 8092 0
+			4565 2697 0>;
+		temp_tab = "9", "cccv_10_20";
+	};
+};
+
+&btb_check {
+	vol_check_para = "0", "1", "2500", "4700", "120", "3", "0";
+	status = "okay";
+};
+
+&boost_5v {
+	status = "ok";
+	gpio_5v_boost = <&gpio7 27 0>;
+};
+
+&amba {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	compatible = "arm,amba-bus";
+	interrupt-parent = <&gic>;
+	ranges;
+
+	i2c@FF24E000 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "ok";
+		hold-time = <0x190019>;
+		mt5788@2B {
+			compatible = "mt,mt5788";
+			reg = <0x2B>;
+			gpio_int = <&gpio6 15 0>;
+			gpio_en = <&gpio2 26 0>;
+			rx_mod_cm_cfg = /bits/ 8 <0xfffffffa 0x5 0x5>;
+			rx_ploss_th0 = /bits/ 8 <0x0e 0x32 0x4B 0x64 0x7D 0x96 0xAF 0xE1 0xEB 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0x46 0xFF>;
+			rx_fod_cond =
+				"1", "-1", "2", "5000",
+				"31", "-1", "-1", "15000";
+			time_para = <1900 1350 0 2700>;
+			time_para_group =
+				"SC_2", "0", "time_para01",
+				"SC_4", "0", "time_para";
+			tx_current_fod_para =
+				"-8", "550", "9900", "300", "9900", "250",
+				"12", "195", "9900", "200", "9900", "1";
+			prevfod1_product_list = /bits/ 8 <6>;
+			status = "ok";
+		};
+
+		hl7603@77 {
+			compatible = "huawei,bypass_bst_hl7603";
+			ic_role = "1";
+			reg = <0x77>;
+			const_vout = <3700>;
+			gpio_enable = <&gpio10 5 0>;
+			status = "ok";
+		};
+
+		hl7603@75 {
+			compatible = "huawei,bypass_bst_hl7603";
+			ic_role = "0";
+			reg = <0x75>;
+			const_vout = <3400>;
+			shutdown_cfg =
+				"0x0", "2", "2850",
+				"0xc", "2", "2850";
+			status = "ok";
+		};
+	};
+};

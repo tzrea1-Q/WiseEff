@@ -7,6 +7,7 @@ import type { ObjectStore } from "../logs/objectStore";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { parseDts, resolveDts, serializeDts, classifyDtsValue } from "../dts";
+import { indentDtsRawValueForWriteback } from "../dts/rawValueWriteback";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
@@ -366,8 +367,15 @@ export function patchDtsProperty(content: string, nodePath: string, newValue: st
     });
   }
 
-  const classified = classifyDtsValue(newValue, propertyName);
-  property.cst.rawText = newValue;
+  const originalSpanText = content.slice(property.cst.span.start, property.cst.span.end);
+  const writebackRawText = indentDtsRawValueForWriteback(
+    newValue,
+    content,
+    property.cst.span.start,
+    originalSpanText
+  );
+  const classified = classifyDtsValue(writebackRawText, propertyName);
+  property.cst.rawText = writebackRawText;
   property.cst.valueType = classified.valueType;
   property.cst.normalizedValue = classified.normalizedValue;
 

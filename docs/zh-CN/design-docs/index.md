@@ -28,3 +28,6 @@
 - [docs/zh-CN/design-docs/deployment-operations.md](deployment-operations.md)
 - [docs/zh-CN/design-docs/security-governance.md](security-governance.md)
 - [docs/zh-CN/design-docs/2026-06-17-audit-center-design.md](2026-06-17-audit-center-design.md)
+- [DTS 可管参数面边界 RFC](2026-07-21-dts-parameter-surface-boundary-rfc.md)
+- [DTS 能力裁剪矩阵](2026-07-21-dts-capability-cut-matrix.md)
+- [项目主 DTS 契约 RFC](2026-07-21-project-primary-dts-contract-rfc.md)

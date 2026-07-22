@@ -95,7 +95,7 @@ async function loadWorkspace(
   const configSets = await listConfigSets(projectId);
   const configSet = pickConfigSet(configSets);
   if (!configSet) {
-    return { kind: "empty", message: "该项目尚未创建 Config Set。请先在项目管理中配置 DTS Config Set。" };
+    return { kind: "empty", message: "该项目尚未上传项目 DTS。请先在项目管理中上传 base 与 overlay DTS 文件。" };
   }
 
   const revisionKey = preferredRevisionId ?? "current";
@@ -107,7 +107,7 @@ async function loadWorkspace(
     if (mapped.kind === "api" && mapped.code === "NOT_FOUND") {
       return {
         kind: "empty",
-        message: "尚未生成语义配置修订。请先上传完整 Config Set（含 base）以触发 ingest。"
+        message: "尚未生成语义配置修订。请先上传项目 DTS（含 base 与 overlay）以触发 ingest。"
       };
     }
     return {
@@ -550,6 +550,24 @@ export function ApiProjectTopologyWorkspace({
     [projectId, repository]
   );
 
+  const loadBindingCompare = useCallback(
+    (bindingId: string) => {
+      if (!repository?.listBindingCompare) return Promise.resolve([]);
+      return repository.listBindingCompare(projectId, bindingId);
+    },
+    [projectId, repository]
+  );
+
+  const loadParameterSpec = useCallback(
+    (parameterSpecId: string) => {
+      if (!repository?.getSpec) {
+        return Promise.reject(new Error("parameter topology repository unavailable"));
+      }
+      return repository.getSpec(parameterSpecId);
+    },
+    [repository]
+  );
+
   /** Validate only — no publish/release transition exists on this surface. */
   const handleValidate = async () => {
     if (!repository || loadState.kind !== "ready") return;
@@ -675,6 +693,15 @@ export function ApiProjectTopologyWorkspace({
     !projectMutationKind;
 
   const draftBindingIds = new Set(projectDrafts.map((draft) => draft.projectParameterBindingId));
+  const openMappingTasks = loadState.mappingTasks.filter((task) => task.status === "open");
+  const showGovernancePanel = Boolean(
+    statusBanner ||
+    publishMessage ||
+    mappingMessage ||
+    loadState.incompleteBase ||
+    loadState.diagnostics.length > 0 ||
+    openMappingTasks.length > 0
+  );
   const currentEdits = projectDrafts.length > 0 ? (
     <DtsBindingDraftTray
       projectId={projectId}
@@ -705,6 +732,7 @@ export function ApiProjectTopologyWorkspace({
         effectiveNodes={loadState.effectiveNodes}
         sourceRows={sourceRows}
         effectiveRows={effectiveRows}
+        moduleRegistry={moduleRegistry}
         draftBindingIds={draftBindingIds}
         selectedBindingIds={selectedDraftBindingIds}
         onSelectedBindingIdsChange={setSelectedDraftBindingIds}
@@ -713,6 +741,8 @@ export function ApiProjectTopologyWorkspace({
         onEditBinding={handleEditBinding}
         onCreateDraft={handleValidateEdit}
         loadBindingHistory={loadBindingHistory}
+        loadBindingCompare={loadBindingCompare}
+        loadParameterSpec={loadParameterSpec}
         currentEdits={currentEdits}
         expandAllNodesByDefault
         onExportRows={(rows) => {
@@ -721,7 +751,36 @@ export function ApiProjectTopologyWorkspace({
             `parameter-workbench-${projectId}-${loadState.revisionId}.csv`
           );
         }}
-        governanceContent={(
+        toolbarActions={
+          openMappingTasks.length > 0 || canPublish ? (
+            <>
+              {openMappingTasks.length > 0 ? (
+                <button
+                  type="button"
+                  className="button subtle"
+                  onClick={() => {
+                    document
+                      .querySelector<HTMLElement>(".dts-parameter-workbench__governance-content")
+                      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                  }}
+                >
+                  映射待决 {openMappingTasks.length}
+                </button>
+              ) : null}
+              {canPublish ? (
+                <button
+                  type="button"
+                  className="button subtle"
+                  disabled={!canEditSemantic}
+                  onClick={() => void handleValidate()}
+                >
+                  校验
+                </button>
+              ) : null}
+            </>
+          ) : undefined
+        }
+        governanceContent={showGovernancePanel ? (
           <>
             {statusBanner ? (
               <p className="project-topology-workspace__status" role="status">
@@ -759,13 +818,8 @@ export function ApiProjectTopologyWorkspace({
                 void handleResolveMapping(taskId, input);
               }}
             />
-            {canPublish ? (
-              <button type="button" className="button primary" disabled={!canEditSemantic} onClick={() => void handleValidate()}>
-                校验
-              </button>
-            ) : null}
           </>
-        )}
+        ) : undefined}
       />
   );
 }

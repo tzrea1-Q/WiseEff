@@ -1639,7 +1639,7 @@ describe("ParametersPage API topology workspace", () => {
       </TopBarActionsHarness>
     );
 
-    expect(await screen.findByText(/尚未创建 Config Set/i)).toBeInTheDocument();
+    expect(await screen.findByText(/尚未上传项目 DTS/i)).toBeInTheDocument();
     const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     expect(screen.queryByRole("region", { name: "项目拓扑工作区" })).not.toBeInTheDocument();
     expect(workspace.getAttribute("data-config-set-id") ?? "").toBe("");

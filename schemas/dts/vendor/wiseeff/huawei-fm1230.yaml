@@ -1,0 +1,43 @@
+$id: wiseeff/huawei-fm1230.yaml
+title: huawei,fm1230
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,fm1230
+compatible:
+  - huawei,fm1230
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  battct_id_gpio-supply:
+    valueShape: phandle-list
+    exampleValue: <&huawei_batt_identify>
+    constraints: {}
+    documentation: huawei,fm1230 的 DTS 属性「battct id gpio supply」（battct_id_gpio-supply），用于驱动读取的设备树配置。
+  ic_index:
+    valueShape: u32-array
+    exampleValue: <1>
+    constraints: {}
+    documentation: 芯片角色或标识参数「ic_index」。
+  onewire-gpio:
+    valueShape: mixed
+    exampleValue: <&gpio2 14 0>
+    constraints: {}
+    documentation: huawei,fm1230 的 DTS 属性「onewire gpio」（onewire-gpio），用于驱动读取的设备树配置。
+  ow_read_end_delay:
+    valueShape: u32-array
+    exampleValue: <100>
+    constraints: {}
+    units: ms
+    documentation: huawei,fm1230 的 DTS 属性「ow read end delay」（ow_read_end_delay），用于驱动读取的设备树配置。
+  ow_reset_start_delay:
+    valueShape: u32-array
+    exampleValue: <300>
+    constraints: {}
+    units: ms
+    documentation: huawei,fm1230 的 DTS 属性「ow reset start delay」（ow_reset_start_delay），用于驱动读取的设备树配置。
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

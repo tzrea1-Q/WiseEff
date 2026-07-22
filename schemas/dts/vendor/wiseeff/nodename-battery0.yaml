@@ -11,15 +11,19 @@ properties:
     valueShape: u32-array
     exampleValue: <4500 0>
     constraints: {}
+    documentation: 恒流恒压（CCCV）相关参数「cccv_0」。
   cccv_10_20:
     valueShape: u32-array
     exampleValue: "<4200 3610\n\t\t\t4250 2707\n\t\t\t4555 1260>"
     constraints: {}
+    documentation: 恒流恒压（CCCV）相关参数「cccv_10_20」。
   temp_tab:
     valueShape: string-list
     exampleValue: "\"0\", \"cccv_0\",\n\t\t\t\"20\", \"cccv_10_20\""
     constraints: {}
+    documentation: 温度相关参数「temp_tab」，用于保护或拟合。
   weight:
     valueShape: u32-array
     exampleValue: <1805>
     constraints: {}
+    documentation: battery0 的 DTS 属性「weight」（weight），用于驱动读取的设备树配置。

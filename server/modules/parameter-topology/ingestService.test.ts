@@ -12,8 +12,9 @@ import type { ConfigRevisionManifest } from "./types";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const seedDir = join(root, "src/config/dts-seed");
-const overlaySource = readFileSync(join(seedDir, "base-power-overlay.dts"), "utf8");
-const baseSource = readFileSync(join(seedDir, "wiseeff-power-base.dts"), "utf8");
+const primarySource = readFileSync(join(seedDir, "aurora-board.dts"), "utf8");
+const overlayFragment = readFileSync(join(seedDir, "aurora-power-overlay.dts"), "utf8");
+const baseSource = readFileSync(join(root, "server/modules/dts/fixtures/synthetic-power-base.dts"), "utf8");
 
 const ORG_ID = "org-topo-ingest";
 const PROJECT_ID = "project-topo-ingest";
@@ -122,37 +123,38 @@ async function insertPinnedMember(
 }
 
 function goldenManifest(options?: { useRealBase?: boolean }): ConfigRevisionManifest {
-  const baseFileId = "file-base-topo";
-  const overlayFileId = "file-overlay-topo";
-  const baseVersionId = "fv-base-topo";
-  const overlayVersionId = "fv-overlay-topo";
-  const baseContent = options?.useRealBase ? baseSource : buildLabelStubBase(overlaySource);
+  const primaryFileId = "file-primary-topo";
+  const primaryVersionId = "fv-primary-topo";
+  const primaryContent = options?.useRealBase
+    ? primarySource
+    : mergePrimaryForTest(buildLabelStubBase(overlayFragment), overlayFragment);
   return {
     organizationId: ORG_ID,
     projectId: PROJECT_ID,
     configSetId: CONFIG_SET_ID,
-    entryFile: "wiseeff-power-base.dts",
+    entryFile: "aurora-board.dts",
     includeSearchPaths: ["."],
-    overlayOrder: ["base-power-overlay.dts"],
+    overlayOrder: [],
     members: [
       {
-        fileId: baseFileId,
-        fileVersionId: baseVersionId,
-        fileName: "wiseeff-power-base.dts",
+        fileId: primaryFileId,
+        fileVersionId: primaryVersionId,
+        fileName: "aurora-board.dts",
         role: "base",
         sortOrder: 0,
-        content: baseContent,
-      },
-      {
-        fileId: overlayFileId,
-        fileVersionId: overlayVersionId,
-        fileName: "base-power-overlay.dts",
-        role: "overlay",
-        sortOrder: 1,
-        content: overlaySource,
+        content: primaryContent,
       },
     ],
   };
+}
+
+function mergePrimaryForTest(baseContent: string, overlayContent: string): string {
+  const strip = (source: string) =>
+    source
+      .replace(/^\/dts-v1\/;\s*\n?/gm, "")
+      .replace(/^\/plugin\/;\s*\n?/gm, "")
+      .trim();
+  return `/dts-v1/;\n\n${strip(baseContent)}\n\n${strip(overlayContent)}\n`;
 }
 
 async function bindingForNodeProperty(
@@ -243,7 +245,7 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
   });
 
   it(
-    "persists 173 golden property occurrences and effective gpio_int in one revision",
+    "persists 176 golden property occurrences and effective gpio_int in one revision",
     async () => {
       const manifest = goldenManifest();
       for (const member of manifest.members) {
@@ -260,7 +262,7 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
       const revision = await ingestConfigRevision(db!, manifest, auth);
 
       expect(revision.status).toBe("resolved");
-      expect(await countTable(db!, "dts_property_occurrences", revision.id)).toBe(173);
+      expect(await countTable(db!, "dts_property_occurrences", revision.id)).toBe(176);
       expect(
         await effectiveProperty(db!, revision.id, "/amba/i2c@FDF5E000/sc8562@6E", "gpio_int"),
       ).toMatchObject({ propertyName: "gpio_int", rawText: "<&gpio13 29 0>" });
@@ -359,8 +361,8 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
         [first.id],
       );
       expect(firstStatus.rows[0]?.status).toBe("resolved");
-      expect(await countTable(db!, "dts_property_occurrences", first.id)).toBe(173);
-      expect(await countTable(db!, "dts_property_occurrences", second.id)).toBe(173);
+      expect(await countTable(db!, "dts_property_occurrences", first.id)).toBe(176);
+      expect(await countTable(db!, "dts_property_occurrences", second.id)).toBe(176);
     },
     60_000
   );

@@ -1,0 +1,21 @@
+$id: wiseeff/huawei-charge-mode-test.yaml
+title: huawei,charge_mode_test
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,charge_mode_test
+compatible:
+  - huawei,charge_mode_test
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
+  test_para:
+    valueShape: string-list
+    exampleValue: "\"scp\", \"lvc\", \"2000\", \"105\", \"0\", \"2\",\n\t\t\"scp\", \"sc4\", \"3000\", \"105\", \"0\", \"0\""
+    constraints: {}
+    documentation: huawei,charge_mode_test 的 DTS 属性「test para」（test_para），用于驱动读取的设备树配置。

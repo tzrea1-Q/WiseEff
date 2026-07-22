@@ -1,0 +1,16 @@
+$id: wiseeff/huawei-soh-core.yaml
+title: huawei,soh_core
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,soh_core
+compatible:
+  - huawei,soh_core
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: "\"disabled\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

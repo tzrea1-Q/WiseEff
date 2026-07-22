@@ -19,7 +19,7 @@
 | Manifest backfill + `needs_review` fail-closed | `manifestBackfillMigration.test.ts`, `configRevisionManifest.test.ts`; edit/validate/release/writeback gates |
 | Global vendor specs in hotspots | `postCutoverDashboard.integration.test.ts`; `organization_id IS NULL` specs for tenant projects |
 | Unmatched `createSpec` + `confirmPropertyMismatch` | `service.test.ts`, `SpecReviewQueue.tsx`, `parameterTopologyClient`; governance audit |
-| Golden counts **173/519** | `goldenPowerFixture.test.ts`, `ingestService.test.ts`, `matcher.test.ts`, `seedM1DtsFiles.test.ts` |
+| Golden counts **176/528** | `goldenPowerFixture.test.ts`, `ingestService.test.ts`, `matcher.test.ts`, `seedM1DtsFiles.test.ts` |
 
 ## Success criteria
 

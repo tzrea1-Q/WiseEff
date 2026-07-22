@@ -1,0 +1,21 @@
+$id: wiseeff/huawei-battery-cccv.yaml
+title: huawei,battery_cccv
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,battery_cccv
+compatible:
+  - huawei,battery_cccv
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  battery_tbl:
+    valueShape: string-list
+    exampleValue: "\"default\", \"cccv_para0\""
+    constraints: {}
+    documentation: 电池相关参数「battery_tbl」，用于容量、标识或采样策略。
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

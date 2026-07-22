@@ -1,0 +1,20 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/huawei-battery-charge-balance.yaml#
+title: huawei,battery_charge_balance
+description: WiseEff vendor binding for huawei,battery_charge_balance (generated from vendor property schema).
+maintainers:
+  - WiseEff
+properties:
+  status:
+    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  unbalance_th:
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+  compatible:
+    contains:
+      const: huawei,battery_charge_balance
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false

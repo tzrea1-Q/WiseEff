@@ -158,7 +158,7 @@ Path-derived `(name, module)` / full DTS path identity is being replaced by:
 | Tenant-owned review resolve | Spec-review `resolve` validates organization/project/revision/occurrence/logical-node ownership via a tenant-scoped join; raw evidence IDs alone are not trusted (migration 0055 hardening). |
 | Exact writeback identity | Merge/writeback locks binding revision, occurrence, file version, checksum, and CST span. Shared base revisions are immutable; stale identity → `409`. |
 
-**Round 4 golden fixture counts (locked in tests):** `wiseeff-power-base.dts` overlay topology = **50 nodes / 173 property occurrences** (`goldenPowerFixture.test.ts`, `ingestService.test.ts`, `matcher.test.ts`); M1 DTS seed catalog = **519 `dts_properties` rows** (`seedM1DtsFiles.test.ts`).
+**Round 4 golden fixture counts (locked in tests):** aurora project-primary DTS (`aurora-board.dts`) resolves to **58 nodes / 228 parsed properties** (`goldenPowerFixture.test.ts`); semantic ingest persists **176 property occurrences** per revision (`ingestService.test.ts`, `matcher.test.ts` overlay golden); M1 DTS seed structural ingest = **684 `dts_properties` rows** (`seedM1DtsFiles.test.ts`, 228 × 3 projects).
 
 HTTP for the semantic surface lives under `/api/v2` (see api-contract). Production cutover is maintenance-only, fail-closed, and whole-snapshot rollback only — see `docs/runbooks/parameter-identity-cutover.md`. Do not dual-write or expose a compatibility projection in production. Post-cutover activity paths use binding/spec/occurrence IDs only and must not create shadow PPV/definition rows. **TD-042 remains a BLOCKER** until a clean non-customer snapshot rehearsal completes — round 4–6 fixes do not clear production cutover readiness.
 

@@ -1140,7 +1140,13 @@ export async function upsertMatchedPropertySpec(
       id, parameter_spec_id, version, display_name, description, value_shape,
       schema_default, example_value, lifecycle
     ) values ($1, $2, 1, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8)
-    on conflict (id) do nothing
+    on conflict (id) do update set
+      display_name = excluded.display_name,
+      description = excluded.description,
+      value_shape = excluded.value_shape,
+      schema_default = excluded.schema_default,
+      example_value = excluded.example_value,
+      lifecycle = excluded.lifecycle
     `,
     [
       property.id,
@@ -1160,7 +1166,12 @@ export async function upsertMatchedPropertySpec(
       id, parameter_spec_id, driver_schema_id, property_key, schema_namespace,
       units, constraints, documentation
     ) values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
-    on conflict (id) do nothing
+    on conflict (id) do update set
+      property_key = excluded.property_key,
+      schema_namespace = excluded.schema_namespace,
+      units = excluded.units,
+      constraints = excluded.constraints,
+      documentation = excluded.documentation
     `,
     [
       `dps:${property.parameterSpecId}`,

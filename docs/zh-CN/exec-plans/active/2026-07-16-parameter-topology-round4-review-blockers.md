@@ -20,7 +20,7 @@
 | Manifest 回填 + `needs_review` 失败关闭 | `manifestBackfillMigration.test.ts`、`configRevisionManifest.test.ts`；编辑/校验/发布/回写门禁 |
 | Hotspot 含全局厂商规格 | `postCutoverDashboard.integration.test.ts`；`organization_id IS NULL` |
 | 未匹配 `createSpec` + `confirmPropertyMismatch` | `service.test.ts`、`SpecReviewQueue.tsx`；治理审计 |
-| 黄金计数 **173/519** | `goldenPowerFixture.test.ts`、`ingestService.test.ts`、`matcher.test.ts`、`seedM1DtsFiles.test.ts` |
+| 黄金计数 **176/528** | `goldenPowerFixture.test.ts`、`ingestService.test.ts`、`matcher.test.ts`、`seedM1DtsFiles.test.ts` |
 
 ## 成功标准与验证
 

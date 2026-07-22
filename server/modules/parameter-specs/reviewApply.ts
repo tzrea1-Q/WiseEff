@@ -224,7 +224,7 @@ export async function applyResolvedSpecReview(
       typedValue: values.typedValue,
       canonicalValue: values.canonicalValue,
       rawValue: values.rawValue ?? undefined,
-      schemaState: "reviewed",
+      schemaState: "valid",
     },
     tenant: {
       organizationId: input.organizationId,

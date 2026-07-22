@@ -15,8 +15,10 @@ import type {
 import {
   describeModuleAssignment,
   EMPTY_PARAMETER_MODULE_REGISTRY,
+  resolveModulePathNames,
   type ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
+import { isParameterSurfaceRow } from "@/domain/parameter-topology/parameterSurface";
 
 export type BuildDtsWorkbenchRowsInput = {
   projectId: string;
@@ -28,6 +30,8 @@ export type BuildDtsWorkbenchRowsInput = {
   mappingTasks: IdentityMappingTask[];
   /** Admin-maintained module registry; falls back to driver grouping when absent. */
   moduleRegistry?: ParameterModuleRegistry;
+  /** When false (default), drop structural/scaffolding DTS properties from the workbench list. */
+  includeNonSurface?: boolean;
 };
 
 function nodeSegment(node: { name: string; unitAddress?: string }): string {
@@ -193,7 +197,8 @@ export function buildDtsWorkbenchRows({
   sourceNodes,
   effectiveNodes,
   mappingTasks,
-  moduleRegistry = EMPTY_PARAMETER_MODULE_REGISTRY
+  moduleRegistry = EMPTY_PARAMETER_MODULE_REGISTRY,
+  includeNonSurface = false
 }: BuildDtsWorkbenchRowsInput): DtsParameterWorkbenchRow[] {
   const sourceById = new Map(sourceNodes.map((node) => [node.id, node]));
   const effectiveByLogicalId = new Map(effectiveNodes.map((node) => [node.logicalNodeId, node]));
@@ -201,7 +206,7 @@ export function buildDtsWorkbenchRows({
   const propertyEffectsByLogicalId = indexPropertyEffects(effectiveNodes);
   const openMappingLogicalIds = indexOpenMappingLogicalIds(projectId, configRevisionId, mappingTasks);
 
-  return bindings.map((binding) => {
+  const rows = bindings.map((binding) => {
     const effectiveNode = binding.logicalNodeId
       ? effectiveByLogicalId.get(binding.logicalNodeId)
       : undefined;
@@ -236,6 +241,11 @@ export function buildDtsWorkbenchRows({
       },
       moduleRegistry
     );
+    const modulePath = resolveModulePathNames(
+      moduleAssignment.moduleId,
+      moduleAssignment.moduleName,
+      moduleRegistry
+    );
 
     return {
       bindingId: binding.id,
@@ -248,6 +258,7 @@ export function buildDtsWorkbenchRows({
       instanceName: binding.instanceName,
       moduleId: moduleAssignment.moduleId,
       moduleName: moduleAssignment.moduleName,
+      modulePath,
       importance: moduleAssignment.importance,
       moduleSortOrder: moduleAssignment.sortOrder,
       moduleMapped: moduleAssignment.mapped,
@@ -269,6 +280,7 @@ export function buildDtsWorkbenchRows({
       searchText: buildSearchText([
         binding.propertyKey,
         moduleAssignment.moduleName,
+        ...modulePath,
         binding.driverModule,
         effectiveNode?.compatible,
         binding.instanceName,
@@ -285,5 +297,19 @@ export function buildDtsWorkbenchRows({
       ]),
       view
     };
+  });
+
+  if (includeNonSurface) {
+    return rows;
+  }
+
+  return rows.filter((row) => {
+    const locator = row.topologyPath ?? row.sourceNodePath;
+    if (!locator) return true;
+    return isParameterSurfaceRow({
+      propertyKey: row.propertyKey,
+      locator,
+      compatible: row.compatible
+    });
   });
 }

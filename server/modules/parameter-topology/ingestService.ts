@@ -31,7 +31,9 @@ import {
 } from "../parameter-specs/repository";
 import { loadSchemaRegistry } from "../parameter-specs/schemaLoader";
 import type { MatchableNode, SchemaRegistry, SpecReviewTaskDraft } from "../parameter-specs/types";
-import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
+import { resolveBindingInstanceModuleId } from "../parameter-modules/ensureInstanceModuleForBinding";
+import { isParameterSurfaceRow } from "./parameterSurface";
+import { upsertProvisionalSurfacePropertySpec } from "./provisionalSurfaceBinding";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
@@ -591,11 +593,12 @@ async function matchBindAndQueueReviews(
           specId: override.parameterSpecId,
         });
         if (!spec?.currentVersionId) continue;
-        const overrideModuleId = await resolveModuleIdForBinding(tx, {
+        const overrideModuleId = await resolveBindingInstanceModuleId(tx, {
           organizationId: input.organizationId,
           driverModule: spec.driverModule,
           compatible: matchable.compatible[0] ?? null,
           instanceName: instanceNameFor(matchable),
+          nodeLocator: matchable.nodeLocator,
         });
         const binding = await createOrReuseBinding(tx, {
           organizationId: input.organizationId,
@@ -614,7 +617,7 @@ async function matchBindAndQueueReviews(
             typedValue: property.value ?? { kind: "raw", rawText: property.rawText },
             canonicalValue: property.value ?? property.normalizedValue,
             rawValue: property.rawText,
-            schemaState: "reviewed",
+            schemaState: "valid",
           },
         });
         if (propertyOccurrenceId) {
@@ -640,11 +643,12 @@ async function matchBindAndQueueReviews(
           tx,
           decision.value,
         );
-        const matchedModuleId = await resolveModuleIdForBinding(tx, {
+        const matchedModuleId = await resolveBindingInstanceModuleId(tx, {
           organizationId: input.organizationId,
           driverModule: driverModuleFromSchemaNamespace(decision.value.schemaNamespace),
           compatible: matchable.compatible[0] ?? null,
           instanceName: instanceNameFor(matchable),
+          nodeLocator: matchable.nodeLocator,
         });
         const binding = await createOrReuseBinding(tx, {
           organizationId: input.organizationId,
@@ -663,9 +667,74 @@ async function matchBindAndQueueReviews(
             typedValue: property.value ?? { kind: "raw", rawText: property.rawText },
             canonicalValue: property.value ?? property.normalizedValue,
             rawValue: property.rawText,
-            schemaState: "matched",
+            schemaState: "valid",
           },
         });
+        continue;
+      }
+
+      if (
+        decision.kind === "unmatched" &&
+        isParameterSurfaceRow({
+          propertyKey,
+          locator: matchable.nodeLocator,
+          compatible: matchable.compatible[0] ?? null,
+        })
+      ) {
+        const driverModule =
+          driverModuleFromSchemaNamespace(matchable.compatible[0]?.split(",").pop() ?? null) ??
+          matchable.name;
+        const { parameterSpecId, parameterSpecVersionId } = await upsertProvisionalSurfacePropertySpec(
+          tx,
+          {
+            organizationId: input.organizationId,
+            propertyKey,
+            driverModule,
+            occurrenceAstJson: property.value ?? { kind: "raw", rawText: property.rawText },
+            occurrenceRawText: property.rawText,
+          },
+        );
+        const surfaceModuleId = await resolveBindingInstanceModuleId(tx, {
+          organizationId: input.organizationId,
+          driverModule,
+          compatible: matchable.compatible[0] ?? null,
+          instanceName: instanceNameFor(matchable),
+          nodeLocator: matchable.nodeLocator,
+        });
+        const binding = await createOrReuseBinding(tx, {
+          organizationId: input.organizationId,
+          key: {
+            projectId: input.projectId,
+            logicalNodeId,
+            parameterSpecId,
+            moduleId: surfaceModuleId,
+          },
+        });
+        await upsertBindingRevisionValues(tx, {
+          bindingId: binding.id,
+          configRevisionId: input.configRevisionId,
+          parameterSpecVersionId,
+          values: {
+            typedValue: property.value ?? { kind: "raw", rawText: property.rawText },
+            canonicalValue: property.value ?? property.normalizedValue,
+            rawValue: property.rawText,
+            schemaState: "unreviewed",
+          },
+        });
+        if (propertyOccurrenceId) {
+          await upsertOccurrenceSpecDecision(tx, {
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            configRevisionId: input.configRevisionId,
+            propertyOccurrenceId,
+            logicalNodeId,
+            propertyKey,
+            decision: "resolved",
+            parameterSpecId,
+            bindingId: binding.id,
+            reviewTaskId: null,
+          });
+        }
         continue;
       }
 

@@ -107,6 +107,12 @@ export type RecomputeBindingRow = {
   driverModule: string | null;
   compatible: string | null;
   instanceName: string | null;
+  nodeLocator?: string | null;
+};
+
+export type ObservedCompatibleHintRow = {
+  compatible: string;
+  bindingCount: number;
 };
 
 type RecomputeBindingDbRow = {
@@ -118,6 +124,7 @@ type RecomputeBindingDbRow = {
   driver_module: string | null;
   compatible: string | null;
   instance_name: string | null;
+  node_locator: string | null;
 };
 
 /**
@@ -150,11 +157,12 @@ export async function listBindingsForModuleRecompute(
       case
         when lnr.unit_address is not null then lnr.name || '@' || lnr.unit_address
         else lnr.name
-      end as instance_name
+      end as instance_name,
+      lnr.node_locator
     from project_parameter_bindings b
     join parameter_specs ps on ps.id = b.parameter_spec_id
     left join lateral (
-      select compatible, name, unit_address
+      select compatible, name, unit_address, node_locator
       from dts_logical_node_revisions
       where logical_node_id = b.logical_node_id
       order by config_revision_id desc
@@ -174,7 +182,37 @@ export async function listBindingsForModuleRecompute(
     moduleId: row.module_id,
     driverModule: row.driver_module,
     compatible: row.compatible,
-    instanceName: row.instance_name
+    instanceName: row.instance_name,
+    nodeLocator: row.node_locator,
+  }));
+}
+
+export async function listObservedCompatiblesForDiscovery(
+  db: Queryable,
+  input: { organizationId: string },
+): Promise<ObservedCompatibleHintRow[]> {
+  const result = await db.query<{ compatible: string; binding_count: string }>(
+    `
+    select lower(lnr.compatible) as compatible, count(*)::text as binding_count
+    from project_parameter_bindings b
+    left join lateral (
+      select compatible
+      from dts_logical_node_revisions
+      where logical_node_id = b.logical_node_id
+      order by config_revision_id desc
+      limit 1
+    ) lnr on true
+    where b.organization_id = $1
+      and lnr.compatible is not null
+      and trim(lnr.compatible) <> ''
+    group by lower(lnr.compatible)
+    order by count(*) desc, lower(lnr.compatible) asc
+    `,
+    [input.organizationId],
+  );
+  return result.rows.map((row) => ({
+    compatible: row.compatible,
+    bindingCount: Number(row.binding_count),
   }));
 }
 

@@ -1,0 +1,26 @@
+$id: wiseeff/huawei-batt-identify.yaml
+title: huawei,batt_identify
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,batt_identify
+compatible:
+  - huawei,batt_identify
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  gpios:
+    valueShape: mixed
+    exampleValue: <&gpio10 16 0>
+    constraints: {}
+    documentation: huawei,batt_identify 的 DTS 属性「gpios」（gpios），用于驱动读取的设备树配置。
+  id_voltage_gpiov:
+    valueShape: u32-array
+    exampleValue: <0 1>
+    constraints: {}
+    documentation: huawei,batt_identify 的 DTS 属性「id voltage gpiov」（id_voltage_gpiov），用于驱动读取的设备树配置。
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

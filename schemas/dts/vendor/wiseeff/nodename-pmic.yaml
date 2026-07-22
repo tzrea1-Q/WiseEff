@@ -1,0 +1,19 @@
+$id: wiseeff/nodename-pmic.yaml
+title: pmic
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/pmic
+nodename:
+  - pmic
+properties:
+  "#address-cells":
+    valueShape: u32-array
+    exampleValue: <1>
+    constraints: {}
+    documentation: 子节点地址字段占用的 cell 数量。
+  "#size-cells":
+    valueShape: u32-array
+    exampleValue: <0>
+    constraints: {}
+    documentation: 子节点尺寸字段占用的 cell 数量。

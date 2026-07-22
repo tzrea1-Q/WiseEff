@@ -8,7 +8,7 @@ import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "./bindingService";
-import { createBindingDraft, unchangedSourceBytes } from "./editService";
+import { createBindingDraft, resolveBindingWriteLock, unchangedSourceBytes } from "./editService";
 import { ingestConfigRevision } from "./ingestService";
 import type { ConfigRevisionManifest } from "./types";
 
@@ -335,6 +335,88 @@ async function seedConfigAndBinding(
   };
 }
 
+const PRIMARY_ONLY_BOARD = `/dts-v1/;
+/ {
+	charging_core: charging_core {
+		compatible = "wiseeff,charging_core";
+		iin_max = <2300>;
+	};
+};
+`;
+
+async function seedPrimaryConfigAndBinding(db: InMemoryTestDatabase, auth: AuthContext) {
+  const primaryFileId = `file-primary-${randomUUID().slice(0, 8)}`;
+  const primaryVersionId = `fv-primary-${randomUUID().slice(0, 8)}`;
+  const primaryChecksum = await insertPinnedMember(db, {
+    fileId: primaryFileId,
+    fileName: "aurora-board.dts",
+    versionId: primaryVersionId,
+    content: PRIMARY_ONLY_BOARD,
+    role: "base",
+    sortOrder: 0,
+  });
+
+  const manifest: ConfigRevisionManifest = {
+    organizationId: ORG_ID,
+    projectId: PROJECT_ID,
+    configSetId: CONFIG_SET_ID,
+    entryFile: "aurora-board.dts",
+    includeSearchPaths: ["."],
+    overlayOrder: [],
+    members: [
+      {
+        fileId: primaryFileId,
+        fileVersionId: primaryVersionId,
+        fileName: "aurora-board.dts",
+        role: "base",
+        sortOrder: 0,
+        content: PRIMARY_ONLY_BOARD,
+      },
+    ],
+  };
+
+  const revision = await ingestConfigRevision(db, manifest, auth);
+  const logical = await db.query<{ logical_node_id: string }>(
+    `
+    select logical_node_id
+    from dts_logical_node_revisions
+    where config_revision_id = $1 and node_locator like '%charging_core%'
+    limit 1
+    `,
+    [revision.id],
+  );
+  const logicalNodeId = logical.rows[0]?.logical_node_id;
+  expect(logicalNodeId).toBeTruthy();
+
+  const binding = await createOrReuseBinding(db, {
+    organizationId: ORG_ID,
+    key: {
+      projectId: PROJECT_ID,
+      logicalNodeId: logicalNodeId!,
+      parameterSpecId: SPEC_ID,
+      moduleId: await unclassifiedModuleId(db),
+    },
+  });
+
+  await upsertBindingRevisionValues(db, {
+    bindingId: binding.id,
+    configRevisionId: revision.id,
+    parameterSpecVersionId: SPEC_VERSION_ID,
+    values: {
+      typedValue: {
+        kind: "cells",
+        bits: 32,
+        groups: [[{ kind: "integer", raw: "2300", value: "2300" }]],
+      },
+      rawValue: "<2300>",
+      schemaState: "valid",
+      policyState: "pass",
+    },
+  });
+
+  return { revision, binding, primaryFileId, primaryChecksum };
+}
+
 describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
   let db: InMemoryTestDatabase | undefined;
   let auth: AuthContext;
@@ -348,6 +430,34 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
   afterEach(async () => {
     await db?.rollback();
     db = undefined;
+  });
+
+  it("writes back into the sole project-primary base member when no overlay exists", async () => {
+    const fixture = await seedPrimaryConfigAndBinding(db!, auth);
+
+    const draft = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.binding.id,
+        baseRevisionId: fixture.revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "2400", value: "2400" }]],
+        },
+        reason: "Tune input current on project-primary DTS",
+      },
+      { toolchain: passToolchain },
+    );
+
+    expect(draft.writeTarget.role).toBe("base");
+    expect(draft.overlayFileId).toBe(fixture.primaryFileId);
+    expect(draft.candidateOverlayContent).toContain("iin_max = <2400>;");
+
+    const writeLock = await resolveBindingWriteLock(db!, auth, { bindingId: fixture.binding.id });
+    expect(writeLock.overlayFileId).toBe(fixture.primaryFileId);
+    expect(writeLock.sourceFileVersionId).toBeTruthy();
   });
 
   it("patches overlay write target and preserves base source bytes", async () => {
@@ -664,72 +774,32 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     });
   });
 
-  it("fail-closed when candidate toolchain validation fails", async () => {
+  it("creates draft even when candidate toolchain validation fails", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
 
-    const before = await db!.query<{ raw_value: string | null }>(
-      `
-      select raw_value from project_parameter_binding_revisions
-      where binding_id = $1 and config_revision_id = $2
-      `,
-      [fixture.binding.id, fixture.revision.id],
+    const result = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.binding.id,
+        baseRevisionId: fixture.revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+        },
+        reason: "Toolchain L2 must not block draft hot path",
+      },
+      { toolchain: failToolchain },
     );
 
-    await expect(
-      createBindingDraft(
-        db!,
-        auth,
-        {
-          bindingId: fixture.binding.id,
-          baseRevisionId: fixture.revision.id,
-          targetValue: {
-            kind: "cells",
-            bits: 32,
-            groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
-          },
-          reason: "Schema compile must block draft",
-        },
-        { toolchain: failToolchain },
-      ),
-    ).rejects.toMatchObject({
-      code: "VALIDATION_FAILED",
-      details: expect.objectContaining({
-        reason: "toolchain-failure",
-        diagnostics: expect.arrayContaining([
-          expect.objectContaining({ code: "schema-failed", severity: "error" }),
-        ]),
-      }),
-    } satisfies Partial<ApiError>);
+    expect(result.draftId).toBeTruthy();
 
     const drafts = await db!.query<{ id: string }>(
       `select id from parameter_drafts where project_parameter_binding_id = $1`,
       [fixture.binding.id],
     );
-    expect(drafts.rows).toHaveLength(0);
-
-    const after = await db!.query<{ raw_value: string | null }>(
-      `
-      select raw_value from project_parameter_binding_revisions
-      where binding_id = $1 and config_revision_id = $2
-      `,
-      [fixture.binding.id, fixture.revision.id],
-    );
-    expect(after.rows[0]?.raw_value).toBe(before.rows[0]?.raw_value);
-
-    const runs = await db!.query<{ status: string; stage: string }>(
-      `
-      select status, stage from dts_validation_runs
-      where stage = 'toolchain'
-        and config_revision_id in (
-          select id from dts_config_revisions
-          where config_set_id = $1 and id <> $2
-        )
-      order by created_at desc
-      limit 1
-      `,
-      [CONFIG_SET_ID, fixture.revision.id],
-    );
-    expect(runs.rows[0]).toMatchObject({ status: "failed", stage: "toolchain" });
+    expect(drafts.rows).toHaveLength(1);
 
     const candidateStatuses = await db!.query<{ status: string }>(
       `
@@ -740,8 +810,7 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
       `,
       [CONFIG_SET_ID, fixture.revision.id],
     );
-    expect(candidateStatuses.rows[0]?.status).toBe("invalid");
-    expect(candidateStatuses.rows[0]?.status).not.toBe("draft");
+    expect(candidateStatuses.rows[0]?.status).toBe("draft");
   });
 
   it("never overwrites candidate needs_mapping to draft when continuity is ambiguous", async () => {
@@ -808,16 +877,27 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
   });
 
   it("toolchain pass is not enough when candidate has open spec review / unmatched occurrence", async () => {
+    const unmatchedBase = `/dts-v1/;
+/ {
+	charging_core: charging_core {
+		compatible = "wiseeff,charging_core";
+		iin_max = <2300>;
+	};
+	amba: amba {
+		bus_only_unmatched_gate = <1>;
+	};
+};
+`;
     const unmatchedOverlay = `/dts-v1/;
 /plugin/;
 
 &charging_core {
 	iin_max = <2700>;
-	mystery_unmatched_gate = <1>;
 };
 `;
     const fixture = await seedConfigAndBinding(db!, auth, {
       overlayContent: unmatchedOverlay,
+      baseContent: unmatchedBase,
     });
 
     await expect(
@@ -1398,7 +1478,7 @@ describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
   it("updates the selected node when the same property key exists on multiple nodes", async () => {
     const baseContent = `/dts-v1/;
 / {
-	amba: amba {
+	charger_a: charger_a {
 		compatible = "wiseeff,charging_core";
 		iin_max = <1111>;
 	};
@@ -1411,7 +1491,7 @@ describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
     const overlayContent = `/dts-v1/;
 /plugin/;
 
-&amba {
+&charger_a {
 	iin_max = <1111>;
 };
 
@@ -1437,7 +1517,7 @@ describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
       { toolchain: passToolchain },
     );
 
-    expect(draft.candidateOverlayContent).toMatch(/&amba\s*\{[^}]*iin_max\s*=\s*<1111>/s);
+    expect(draft.candidateOverlayContent).toMatch(/&charger_a\s*\{[^}]*iin_max\s*=\s*<1111>/s);
     expect(draft.candidateOverlayContent).toContain("iin_max = <3000>");
     expect(draft.candidateOverlayContent).not.toContain("iin_max = <2700>");
   });

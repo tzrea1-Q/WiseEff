@@ -1,0 +1,21 @@
+$id: wiseeff/huawei-direct-charge-comp.yaml
+title: huawei,direct_charge_comp
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,direct_charge_comp
+compatible:
+  - huawei,direct_charge_comp
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: "\"disabled\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
+  vbat_comp_ic_para:
+    valueShape: string-list
+    exampleValue: "\"schargerV800\", \"13\", \"7\", \"3\",\n\t\t\"sc8565\", \"2\", \"0.5\", \"3\""
+    constraints: {}
+    documentation: 电池电压相关参数「vbat_comp_ic_para」，单位通常为毫伏。

@@ -8,16 +8,17 @@ import { buildDtsPowerSeed } from "../../../scripts/dts-power-seed";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const seedDir = join(root, "src/config/dts-seed");
+const fixtureDir = join(root, "server/modules/dts/fixtures");
 
 describe("golden power fixture", () => {
-  it("locks the 50-node, 173-property base overlay topology", async () => {
-    const baseSource = await readFile(join(seedDir, "base-power-overlay.dts"), "utf8");
-    const resolved = resolveDts(baseSource);
+  it("locks the 58-node, 228-property aurora project-primary topology", async () => {
+    const primarySource = await readFile(join(seedDir, "aurora-board.dts"), "utf8");
+    const resolved = resolveDts(primarySource);
 
-    expect(resolved.nodes).toHaveLength(50);
+    expect(resolved.nodes).toHaveLength(58);
 
     const propertyCount = resolved.nodes.reduce((count, node) => count + node.properties.length, 0);
-    expect(propertyCount).toBe(173);
+    expect(propertyCount).toBe(228);
 
     const phandleCount = resolved.nodes.reduce((count, node) => count + node.phandleRefs.length, 0);
     expect(phandleCount).toBe(18);
@@ -29,7 +30,7 @@ describe("golden power fixture", () => {
       }
     }
     const repeatedKeys = [...keyCounts.entries()].filter(([, count]) => count > 1);
-    expect(repeatedKeys).toHaveLength(26);
+    expect(repeatedKeys).toHaveLength(28);
 
     const gpioIntNodePaths = resolved.nodes
       .filter((node) => node.properties.some((property) => property.name === "gpio_int"))
@@ -38,14 +39,14 @@ describe("golden power fixture", () => {
     expect(gpioIntNodePaths).toEqual(["amba/i2c@FDF5E000/sc8562@6E", "amba/i2c@FF24E000/mt5788@2B"]);
   });
 
-  it("keeps a synthetic base tree that resolves every overlay label target", async () => {
-    const baseFixture = await readFile(join(seedDir, "wiseeff-power-base.dts"), "utf8");
+  it("keeps synthetic scaffolding in fixtures and overlay fragments that resolve every label target", async () => {
+    const baseFixture = await readFile(join(fixtureDir, "synthetic-power-base.dts"), "utf8");
 
     expect(baseFixture).toContain("gpio-controller");
     expect(baseFixture).toContain("#gpio-cells = <2>");
     expect(baseFixture).toContain("gic");
 
-    const overlaySource = await readFile(join(seedDir, "base-power-overlay.dts"), "utf8");
+    const overlaySource = await readFile(join(seedDir, "aurora-power-overlay.dts"), "utf8");
     const overlayLabelTargets = [...overlaySource.matchAll(/^&([A-Za-z_][A-Za-z0-9_]*)\s*\{/gm)].map(
       (match) => match[1]
     );
@@ -58,8 +59,8 @@ describe("golden power fixture", () => {
   });
 
   it("keeps the three seed projects differentiated by at least 15 properties", async () => {
-    const baseSource = await readFile(join(seedDir, "base-power-overlay.dts"), "utf8");
-    const seed = buildDtsPowerSeed(baseSource);
+    const primarySource = await readFile(join(seedDir, "aurora-board.dts"), "utf8");
+    const seed = buildDtsPowerSeed(primarySource);
 
     const differentiated = seed.parameterLibrary.filter((parameter) => {
       const values = Object.values(parameter.values).map((value) => value.currentValue);

@@ -17,8 +17,7 @@ import {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const seedDir = join(root, "src/config/dts-seed");
-const baseSource = readFileSync(join(seedDir, "wiseeff-power-base.dts"), "utf8");
-const overlaySource = readFileSync(join(seedDir, "aurora-power-overlay.dts"), "utf8");
+const primarySource = readFileSync(join(seedDir, "aurora-board.dts"), "utf8");
 
 const ORG_ID = "org-chargelab";
 const USER_ID = "u-xu-yun";
@@ -107,14 +106,14 @@ describe.skipIf(!databaseAvailable)("seedM1BindingRevisionHistory", () => {
     const objectStore = createInMemoryObjectStore();
     const projectFile: DtsPowerSeedProjectFile = {
       projectId: PROJECT_ID,
-      fileName: "wiseeff-power-overlay.dts",
-      artifactFileName: "aurora-power-overlay.dts",
-      source: overlaySource
+      fileName: "aurora-board.dts",
+      artifactFileName: "aurora-board.dts",
+      source: primarySource
     };
 
     await seedM1DtsFiles(db!, objectStore, [projectFile]);
-    await seedM1SemanticTopology(db!, [projectFile], baseSource);
-    await seedM1BindingRevisionHistory(db!, [projectFile], baseSource);
+    await seedM1SemanticTopology(db!, [projectFile]);
+    await seedM1BindingRevisionHistory(db!, [projectFile]);
 
     const revisions = await db!.query<{ count: string }>(
       `select count(*)::text as count from dts_config_revisions where project_id = $1`,
@@ -160,14 +159,14 @@ describe.skipIf(!databaseAvailable)("seedM1BindingRevisionHistory", () => {
     const objectStore = createInMemoryObjectStore();
     const projectFile: DtsPowerSeedProjectFile = {
       projectId: PROJECT_ID,
-      fileName: "wiseeff-power-overlay.dts",
-      artifactFileName: "aurora-power-overlay.dts",
-      source: overlaySource
+      fileName: "aurora-board.dts",
+      artifactFileName: "aurora-board.dts",
+      source: primarySource
     };
 
     await seedM1DtsFiles(db!, objectStore, [projectFile]);
-    await seedM1SemanticTopology(db!, [projectFile], baseSource);
-    await seedM1BindingRevisionHistory(db!, [projectFile], baseSource);
+    await seedM1SemanticTopology(db!, [projectFile]);
+    await seedM1BindingRevisionHistory(db!, [projectFile]);
     await seedM1BindingRevisionHistory(db!, [projectFile], baseSource);
 
     const revisions = await db!.query<{ count: string }>(

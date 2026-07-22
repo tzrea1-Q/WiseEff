@@ -3,6 +3,13 @@ import { AlertCircle, LoaderCircle, Plus, RefreshCw, Trash2 } from "lucide-react
 
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import {
+  filterUnmappedCompatibles,
+  filterUnmappedDrivers,
+  toUnmappedCompatibleHint,
+  type UnmappedCompatibleHint,
+  type UnmappedDriverHint,
+} from "@/domain/parameter-topology/moduleDiscovery";
+import {
   EMPTY_PARAMETER_MODULE_REGISTRY,
   type ModuleImportance,
   type ModuleMatchKind,
@@ -10,10 +17,7 @@ import {
 } from "@/domain/parameter-topology/moduleRegistry";
 import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/http/parameterModuleRegistryClient";
 
-export type UnmappedDriverHint = {
-  driverModule: string;
-  bindingCount: number;
-};
+export type { UnmappedCompatibleHint, UnmappedDriverHint };
 
 export type ParameterModuleMappingPanelProps = {
   canAdmin?: boolean;
@@ -52,6 +56,7 @@ export function ParameterModuleMappingPanel({
     [repository]
   );
   const [registry, setRegistry] = useState<ParameterModuleRegistry>(EMPTY_PARAMETER_MODULE_REGISTRY);
+  const [observedCompatibles, setObservedCompatibles] = useState<UnmappedCompatibleHint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,6 +83,18 @@ export function ParameterModuleMappingPanel({
         if (cancelled) return;
         setError(loadError instanceof Error ? loadError.message : "无法加载模块注册表。");
         setRegistry(EMPTY_PARAMETER_MODULE_REGISTRY);
+      });
+    client
+      .getDiscoveryHints()
+      .then((hints) => {
+        if (cancelled) return;
+        setObservedCompatibles(
+          hints.compatibles.map((hint) => toUnmappedCompatibleHint(hint)),
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setObservedCompatibles([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -87,16 +104,15 @@ export function ParameterModuleMappingPanel({
     };
   }, [client]);
 
-  const unmappedDrivers = useMemo(() => {
-    const mapped = new Set(
-      registry.mappings
-        .filter((mapping) => mapping.matchKind === "driver")
-        .map((mapping) => mapping.matchValue.trim().toLocaleLowerCase())
-    );
-    return observedDrivers.filter(
-      (hint) => !mapped.has(hint.driverModule.trim().toLocaleLowerCase())
-    );
-  }, [observedDrivers, registry.mappings]);
+  const unmappedDrivers = useMemo(
+    () => filterUnmappedDrivers(observedDrivers, registry.mappings),
+    [observedDrivers, registry.mappings],
+  );
+
+  const unmappedCompatibles = useMemo(
+    () => filterUnmappedCompatibles(observedCompatibles, registry.mappings),
+    [observedCompatibles, registry.mappings],
+  );
 
   const selectedModuleName =
     registry.modules.find((module) => module.id === mappingModuleId)?.name ?? null;
@@ -170,6 +186,40 @@ export function ParameterModuleMappingPanel({
     }
   };
 
+  const mapUnmappedCompatible = async (hint: UnmappedCompatibleHint) => {
+    if (!canAdmin || !mappingModuleId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      let next = await client.createModule({
+        name: hint.suggestedGroupName,
+        parentId: mappingModuleId,
+      });
+      const groupModule =
+        next.modules.find(
+          (module) => module.name === hint.suggestedGroupName && module.parentId === mappingModuleId,
+        ) ?? next.modules.find((module) => module.name === hint.suggestedGroupName);
+      if (!groupModule) {
+        throw new Error("创建驱动组模块后未能定位到新模块。");
+      }
+      next = await client.createMapping({
+        moduleId: groupModule.id,
+        matchKind: "compatible",
+        matchValue: hint.compatible,
+        priority: 300,
+      });
+      setRegistry(next);
+      const recompute = await client.recomputeBindings();
+      setRecomputeNotice(
+        `已为 ${hint.compatible} 创建驱动组并映射，重算了 ${recompute.updated} 个参数绑定。`,
+      );
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "创建驱动组映射失败。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const mapUnmappedDriver = async (driverModule: string) => {
     if (!canAdmin || !mappingModuleId) return;
     setMatchKind("driver");
@@ -222,8 +272,11 @@ export function ParameterModuleMappingPanel({
   return (
     <section className="parameter-module-mapping-panel" aria-label="模块映射管理">
       <header>
-        <h3>模块映射管理</h3>
-        <p>维护业务模块，并把 DTS 驱动 / compatible / 器件实例映射到模块。未映射驱动进入待处理队列。</p>
+        <h3>模块与驱动关系</h3>
+        <p>
+          维护业务模块，并把 DTS 驱动 / compatible / 器件实例映射到模块。
+          下方「模块发现队列」来自已 ingest 的绑定，与规格审核队列无关。
+        </p>
         {canAdmin ? (
           <div
             className="parameter-module-mapping-panel__actions"
@@ -391,8 +444,37 @@ export function ParameterModuleMappingPanel({
           ) : null}
         </section>
 
+        <section aria-labelledby="unmapped-compatible-queue-title">
+          <h4 id="unmapped-compatible-queue-title">模块发现队列（compatible）</h4>
+          {unmappedCompatibles.length === 0 ? (
+            <p>当前没有未映射的 compatible 提示。</p>
+          ) : (
+            <ul>
+              {unmappedCompatibles.map((hint) => (
+                <li key={hint.compatible}>
+                  <code>{hint.compatible}</code>
+                  <small>建议驱动组：{hint.suggestedGroupName}</small>
+                  <small>{hint.bindingCount} 个参数</small>
+                  {canAdmin ? (
+                    <button
+                      type="button"
+                      className="button subtle"
+                      disabled={busy || !mappingModuleId}
+                      onClick={() => void mapUnmappedCompatible(hint)}
+                    >
+                      {selectedModuleName
+                        ? `在「${selectedModuleName}」下创建驱动组`
+                        : "创建驱动组并映射"}
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
         <section aria-labelledby="unmapped-queue-title">
-          <h4 id="unmapped-queue-title">未映射待处理</h4>
+          <h4 id="unmapped-queue-title">模块发现队列（driver）</h4>
           {unmappedDrivers.length === 0 ? (
             <p>当前没有未映射驱动提示。</p>
           ) : (

@@ -15,6 +15,7 @@ function row(overrides: Partial<DtsParameterWorkbenchRow> = {}): DtsParameterWor
     instanceName: "sc8562@6E",
     moduleId: "charge",
     moduleName: "充电策略",
+    modulePath: ["充电策略"],
     importance: "high",
     moduleSortOrder: 0,
     moduleMapped: true,

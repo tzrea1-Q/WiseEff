@@ -11,12 +11,14 @@ commonRefs:
 properties:
   compatible:
     valueShape: string-list
-    exampleValue: '"sc8562"'
+    exampleValue: "\"sc8562\""
     constraints: {}
+    documentation: 设备树 compatible 字符串，用于匹配驱动与规格命名空间。
   fcp_support:
     valueShape: u32-array
     exampleValue: <0>
     constraints: {}
+    documentation: sc8562 的 DTS 属性「fcp support」（fcp_support），用于驱动读取的设备树配置。
   gpio_int:
     valueShape: mixed
     exampleValue: <&gpio13 29 0>
@@ -28,37 +30,46 @@ properties:
     valueShape: u32-array
     exampleValue: <1>
     constraints: {}
+    documentation: 芯片角色或标识参数「ic_role」。
   reg:
     valueShape: u32-array
     exampleValue: <0x6e>
     constraints: {}
+    documentation: 设备在父总线上的地址/寄存器范围。
   scp_support:
     valueShape: u32-array
     exampleValue: <0>
     constraints: {}
+    documentation: sc8562 的 DTS 属性「scp support」（scp_support），用于驱动读取的设备树配置。
   sense_r_actual:
     valueShape: u32-array
     exampleValue: <10>
     constraints: {}
+    documentation: sc8562 的 DTS 属性「sense r actual」（sense_r_actual），用于驱动读取的设备树配置。
   sense_r_config:
     valueShape: u32-array
     exampleValue: <10>
     constraints: {}
+    documentation: sc8562 的 DTS 属性「sense r config」（sense_r_config），用于驱动读取的设备树配置。
   slave_mode:
     valueShape: u32-array
     exampleValue: <0>
     constraints: {}
+    documentation: sc8562 的 DTS 属性「slave mode」（slave_mode），用于驱动读取的设备树配置。
   status:
     valueShape: string-list
-    exampleValue: '"okay"'
+    exampleValue: "\"ok\""
     constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   vout_ovp_mv:
     valueShape: u32-array
     exampleValue: <5000>
     constraints: {}
     units: mV
+    documentation: sc8562 的 DTS 属性「vout ovp mv」（vout_ovp_mv），用于驱动读取的设备树配置。
   watchdog_time:
     valueShape: u32-array
     exampleValue: <5000>
     constraints: {}
     units: ms
+    documentation: sc8562 的 DTS 属性「watchdog time」（watchdog_time），用于驱动读取的设备树配置。

@@ -1,0 +1,26 @@
+$id: wiseeff/huawei-direct-charge-turbo.yaml
+title: huawei,direct_charge_turbo
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,direct_charge_turbo
+compatible:
+  - huawei,direct_charge_turbo
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
+  time_para_group:
+    valueShape: string-list
+    exampleValue: "\"2\", \"0\", \"time_para01\", \"0X1\",\n\t\t\"4\", \"0\", \"time_para02\", \"0X0\""
+    constraints: {}
+    documentation: huawei,direct_charge_turbo 的 DTS 属性「time para group」（time_para_group），用于驱动读取的设备树配置。
+  time_para01:
+    valueShape: string-list
+    exampleValue: "\"640\", \"7200\",\n\t\t\"0\", \"12500\""
+    constraints: {}
+    documentation: huawei,direct_charge_turbo 的 DTS 属性「time para01」（time_para01），用于驱动读取的设备树配置。

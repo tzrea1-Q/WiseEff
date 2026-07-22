@@ -1,0 +1,21 @@
+$id: wiseeff/huawei-multi-btb-temp.yaml
+title: huawei,multi_btb_temp
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,multi_btb_temp
+compatible:
+  - huawei,multi_btb_temp
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  sensor-names:
+    valueShape: string-list
+    exampleValue: "\"bat0_raw_temp\", \"comp_para\", \"0\",\n\t\t\"bat1_raw_temp\", \"comp_para1\", \"0\""
+    constraints: {}
+    documentation: huawei,multi_btb_temp 的 DTS 属性「sensor names」（sensor-names），用于驱动读取的设备树配置。
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

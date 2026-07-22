@@ -1,0 +1,21 @@
+$id: wiseeff/huawei-batt-info.yaml
+title: huawei,batt_info
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,batt_info
+compatible:
+  - huawei,batt_info
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  sn-check-type:
+    valueShape: u32-array
+    exampleValue: <2>
+    constraints: {}
+    documentation: huawei,batt_info 的 DTS 属性「sn check type」（sn-check-type），用于驱动读取的设备树配置。
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

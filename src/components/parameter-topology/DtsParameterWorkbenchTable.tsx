@@ -3,7 +3,6 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
-  CircleCheck,
   CircleX,
   Eye,
   Pencil,
@@ -11,14 +10,13 @@ import {
 } from "lucide-react";
 
 import type { ModuleImportance } from "@/domain/parameter-topology/moduleRegistry";
+import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 
 export type DtsWorkbenchSortKey =
   | "propertyKey"
   | "moduleName"
-  | "importance"
-  | "governanceState"
-  | "rawValue";
+  | "importance";
 
 export type DtsWorkbenchSort = {
   key: DtsWorkbenchSortKey;
@@ -37,9 +35,8 @@ export type DtsParameterWorkbenchTableProps = {
 };
 
 const governanceLabels = {
-  valid: "有效 · valid",
-  attention: "待处理 · attention",
-  blocked: "阻断 · blocked"
+  attention: "待处理",
+  blocked: "阻断"
 } as const;
 
 const importanceLabels: Record<ModuleImportance, string> = {
@@ -54,12 +51,6 @@ const importanceRank: Record<ModuleImportance, number> = {
   low: 1
 };
 
-const governanceRank = {
-  blocked: 3,
-  attention: 2,
-  valid: 1
-} as const;
-
 function DeviceIdentity({ row }: { row: DtsParameterWorkbenchRow }) {
   return (
     <span className="dts-parameter-workbench-table__identity">
@@ -72,22 +63,31 @@ function DeviceIdentity({ row }: { row: DtsParameterWorkbenchRow }) {
   );
 }
 
-function Governance({ row }: { row: DtsParameterWorkbenchRow }) {
-  const GovernanceIcon = row.governanceState === "valid"
-    ? CircleCheck
-    : row.governanceState === "attention"
-      ? TriangleAlert
-      : CircleX;
+/** Importance is the primary signal; governance only surfaces actionable anomalies. */
+function ImportanceCell({ row }: { row: DtsParameterWorkbenchRow }) {
+  const anomaly =
+    row.governanceState === "attention" || row.governanceState === "blocked"
+      ? row.governanceState
+      : null;
+
   return (
-    <span className="dts-parameter-workbench-table__governance">
-      <span
-        className={`dts-parameter-workbench-table__governance-badge is-${row.governanceState}`}
-        aria-label={`治理状态：${row.governanceState}`}
-      >
-        <GovernanceIcon size={13} strokeWidth={2} aria-hidden="true" />
-        {governanceLabels[row.governanceState]}
-      </span>
-      <small>重要性：{importanceLabels[row.importance]}</small>
+    <span className="dts-parameter-workbench-table__importance">
+      <strong aria-label={`重要性：${importanceLabels[row.importance]}`}>
+        {importanceLabels[row.importance]}
+      </strong>
+      {anomaly ? (
+        <span
+          className={`dts-parameter-workbench-table__governance-badge is-${anomaly}`}
+          aria-label={`治理状态：${anomaly}`}
+        >
+          {anomaly === "attention" ? (
+            <TriangleAlert size={13} strokeWidth={2} aria-hidden="true" />
+          ) : (
+            <CircleX size={13} strokeWidth={2} aria-hidden="true" />
+          )}
+          {governanceLabels[anomaly]}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -116,12 +116,8 @@ function compareRows(
     case "importance":
       result = importanceRank[left.importance] - importanceRank[right.importance];
       break;
-    case "governanceState":
-      result = governanceRank[left.governanceState] - governanceRank[right.governanceState];
-      break;
-    case "rawValue":
-      result = left.rawValue.localeCompare(right.rawValue, "zh-Hans-CN");
-      break;
+    default:
+      result = 0;
   }
   return sort.dir === "asc" ? result : -result;
 }
@@ -167,8 +163,8 @@ export function DtsParameterWorkbenchTable({
   onSelectedBindingIdsChange
 }: DtsParameterWorkbenchTableProps) {
   const [sort, setSort] = useState<DtsWorkbenchSort | null>({
-    key: "moduleName",
-    dir: "asc"
+    key: "importance",
+    dir: "desc"
   });
   const selectionEnabled = Boolean(onSelectedBindingIdsChange && selectedBindingIds);
   const draftRows = useMemo(
@@ -183,7 +179,7 @@ export function DtsParameterWorkbenchTable({
   const updateSort = (key: DtsWorkbenchSortKey) => {
     setSort((current) => {
       if (!current || current.key !== key) {
-        return { key, dir: key === "importance" || key === "governanceState" ? "desc" : "asc" };
+        return { key, dir: key === "importance" ? "desc" : "asc" };
       }
       if (current.dir === "asc") return { key, dir: "desc" };
       return null;
@@ -215,7 +211,7 @@ export function DtsParameterWorkbenchTable({
   };
 
   return (
-    <div role="table" aria-label="DTS 参数列表" className="dts-parameter-workbench-table">
+    <div role="table" aria-label="DTS 参数列表" className="dts-parameter-workbench-table dts-parameter-workbench-table--surface-mvp">
       <div role="rowgroup" className="dts-parameter-workbench-table__head">
         <div role="row" className="dts-parameter-workbench-table__header-row">
           {selectionEnabled ? (
@@ -235,14 +231,16 @@ export function DtsParameterWorkbenchTable({
           <span role="columnheader">
             <SortableHeader label="所属模块" sortKey="moduleName" sort={sort} onSort={updateSort} />
           </span>
-          <span role="columnheader">器件 / 驱动</span>
-          <span role="columnheader">
-            <SortableHeader label="当前值" sortKey="rawValue" sort={sort} onSort={updateSort} />
+          <span role="columnheader" className="dts-parameter-workbench-table__driver-col">
+            <span className="dts-parameter-workbench-table__driver-col-label">器件 / 驱动</span>
           </span>
+          <span role="columnheader">当前值</span>
           <span role="columnheader">
-            <SortableHeader label="治理" sortKey="governanceState" sort={sort} onSort={updateSort} />
+            <SortableHeader label="重要性" sortKey="importance" sort={sort} onSort={updateSort} />
           </span>
-          <span role="columnheader">操作</span>
+          <span role="columnheader" className="dts-parameter-workbench-table__actions-col">
+            操作
+          </span>
         </div>
       </div>
       <div role="rowgroup" className="dts-parameter-workbench-table__body">
@@ -251,6 +249,7 @@ export function DtsParameterWorkbenchTable({
           const isSelected = selectedBindingId === row.bindingId;
           const isChecked = selectedBindingIds?.has(row.bindingId) ?? false;
           const actionContext = bindingActionContext(row);
+          const displayRaw = formatDtsRawValueForUi(row.rawValue) || row.rawValue;
           return (
             <div
               role="row"
@@ -290,37 +289,41 @@ export function DtsParameterWorkbenchTable({
                   {!row.moduleMapped ? <small>未映射</small> : null}
                 </span>
               </span>
-              <span role="cell" data-label="器件 / 驱动">
+              <span role="cell" data-label="器件 / 驱动" className="dts-parameter-workbench-table__driver-col">
                 <DeviceIdentity row={row} />
               </span>
               <span role="cell" data-label="当前值">
-                <code title={row.rawValue}>{row.rawValue}</code>
+                <code title={displayRaw}>{displayRaw}</code>
               </span>
-              <span role="cell" data-label="治理">
-                <Governance row={row} />
+              <span role="cell" data-label="重要性">
+                <ImportanceCell row={row} />
               </span>
-              <span role="cell" data-label="操作" className="dts-parameter-workbench-table__actions">
+              <span
+                role="cell"
+                data-label="操作"
+                className="dts-parameter-workbench-table__actions dts-parameter-workbench-table__actions-col"
+              >
                 <button
                   type="button"
-                  className="button subtle"
+                  className="button subtle dts-parameter-workbench-table__icon-action"
                   aria-label={`查看 ${actionContext}`}
+                  title="查看"
                   onClick={() => onSelectBinding(row.bindingId)}
                 >
-                  <Eye size={15} strokeWidth={1.9} aria-hidden="true" />
-                  查看
+                  <Eye size={16} strokeWidth={1.9} aria-hidden="true" />
                 </button>
                 {canEdit && onEditBinding ? (
                   <button
                     type="button"
-                    className="button"
+                    className="button subtle dts-parameter-workbench-table__icon-action"
                     aria-label={`${isDraft ? "继续编辑" : "编辑"} ${actionContext}`}
+                    title={isDraft ? "继续编辑" : "编辑"}
                     onClick={() => {
                       onSelectBinding(row.bindingId);
                       onEditBinding(row.bindingId);
                     }}
                   >
-                    <Pencil size={15} strokeWidth={1.9} aria-hidden="true" />
-                    {isDraft ? "继续编辑" : "编辑"}
+                    <Pencil size={16} strokeWidth={1.9} aria-hidden="true" />
                   </button>
                 ) : null}
               </span>

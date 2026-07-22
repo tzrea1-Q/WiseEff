@@ -194,7 +194,7 @@ stateDiagram-v2
 | 租户拥有校验 resolve | 规格审核 `resolve` 经租户级 join 校验 org/project/revision/occurrence/logical node；不得单独信任 raw evidence ID（0055 加固）。 |
 | 精确回写身份 | 合入/回写锁定 binding revision、occurrence、文件版本、checksum 与 CST span。共享 base revision 不可变；身份过期 → `409`。 |
 
-**第四轮黄金 fixture 计数（测试锁定）：** `wiseeff-power-base.dts` overlay 拓扑 = **50 节点 / 173 个属性 occurrence**；M1 DTS seed 目录 = **519 行 `dts_properties`**。
+**第四轮黄金 fixture 计数（测试锁定）：** aurora 项目主 DTS（`aurora-board.dts`）解析为 **58 节点 / 228 个属性**；语义 ingest 每 revision **176 个 property occurrence**；M1 DTS seed 结构入库 = **684 行 `dts_properties`**（228 × 3 个项目）。
 
 语义 HTTP 表面位于 `/api/v2`。生产切换仅限维护窗口、失败关闭，且只能整快照回滚——见 `docs/runbooks/parameter-identity-cutover.md`。生产禁止双写或兼容投影。Cutover 后活动路径只使用 binding/spec/occurrence ID，不得再创建 shadow PPV/definition 行。**TD-042 仍为 BLOCKER**——第四至第六轮修复均不构成生产 cutover 就绪声明。
 

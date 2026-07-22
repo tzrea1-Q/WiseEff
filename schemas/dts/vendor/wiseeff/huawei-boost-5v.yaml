@@ -1,0 +1,21 @@
+$id: wiseeff/huawei-boost-5v.yaml
+title: huawei,boost_5v
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,boost_5v
+compatible:
+  - huawei,boost_5v
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  gpio_5v_boost:
+    valueShape: mixed
+    exampleValue: <&gpio7 27 0>
+    constraints: {}
+    documentation: GPIO 相关配置项「gpio_5v_boost」，描述引脚、极性或中断线。
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

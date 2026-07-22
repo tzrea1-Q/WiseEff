@@ -1,0 +1,22 @@
+$id: wiseeff/hisilicon-hisi-vbat-drop-protect.yaml
+title: hisilicon,hisi_vbat_drop_protect
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/hisilicon,hisi_vbat_drop_protect
+compatible:
+  - hisilicon,hisi_vbat_drop_protect
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: "\"disabled\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
+  vbat_drop_vol_mv:
+    valueShape: u32-array
+    exampleValue: <2500>
+    constraints: {}
+    units: mV
+    documentation: 电池电压相关参数「vbat_drop_vol_mv」，单位通常为毫伏。

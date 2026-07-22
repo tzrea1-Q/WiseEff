@@ -11,19 +11,24 @@ properties:
     valueShape: u32-array
     exampleValue: <1805>
     constraints: {}
+    documentation: 电池相关参数「batt_indentify_fcc」，用于容量、标识或采样策略。
   batt_index:
     valueShape: u32-array
     exampleValue: <0>
     constraints: {}
+    documentation: 电池相关参数「batt_index」，用于容量、标识或采样策略。
   batt_name:
     valueShape: string-list
-    exampleValue: '"battery_gauge"'
+    exampleValue: "\"battery_gauge\""
     constraints: {}
+    documentation: 电池相关参数「batt_name」，用于容量、标识或采样策略。
   r_pcb:
     valueShape: u32-array
     exampleValue: <23330>
     constraints: {}
+    documentation: 电阻相关参数「r_pcb」，常用于 PCB 或采样电阻。
   soe_dynamic_enable:
     valueShape: u32-array
     exampleValue: <1>
     constraints: {}
+    documentation: batt_l_v800 的 DTS 属性「soe dynamic enable」（soe_dynamic_enable），用于驱动读取的设备树配置。

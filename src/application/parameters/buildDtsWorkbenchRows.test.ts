@@ -308,10 +308,53 @@ describe("buildDtsWorkbenchRows", () => {
 
     expect(row.moduleId).toBe("mod-charging");
     expect(row.moduleName).toBe("充电策略");
+    expect(row.modulePath).toEqual(["充电策略"]);
     expect(row.importance).toBe("high");
     expect(row.moduleSortOrder).toBe(3);
     // No mapping targets mod-charging for this driver/compatible/instance combination.
     expect(row.moduleMapped).toBe(false);
+  });
+
+  it("resolves root→leaf modulePath from registry parentId for nested business modules", () => {
+    const registry: ParameterModuleRegistry = {
+      modules: [
+        { id: "mod-power", name: "电源", parentId: null, sortOrder: 0, importance: "medium" },
+        { id: "mod-battery", name: "电池", parentId: "mod-power", sortOrder: 1, importance: "medium" },
+        { id: "mod-batt", name: "batt", parentId: "mod-battery", sortOrder: 2, importance: "medium" }
+      ],
+      mappings: []
+    };
+
+    const [row] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [{ ...binding, moduleId: "mod-batt" }],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: [],
+      moduleRegistry: registry
+    });
+
+    expect(row.moduleId).toBe("mod-batt");
+    expect(row.moduleName).toBe("batt");
+    expect(row.modulePath).toEqual(["电源", "电池", "batt"]);
+    expect(row.searchText).toContain("电源");
+    expect(row.searchText).toContain("电池");
+  });
+
+  it("falls back modulePath to [moduleName] when the registry has no parent chain", () => {
+    const [row] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [binding],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: []
+    });
+
+    expect(row.modulePath).toEqual([row.moduleName]);
   });
 
   it("returns unavailable paths when a topology parent is missing or cyclic", () => {
@@ -465,5 +508,50 @@ describe("buildDtsWorkbenchRows", () => {
       "cell-array · 32 bit · 0 groups · 0 cells per group"
     ]);
     expect(rows.every((row) => row.valueShapeSummary.length > 0)).toBe(true);
+  });
+
+  it("filters structural scaffolding properties from the default workbench surface", () => {
+    const rows = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [
+        binding,
+        {
+          ...binding,
+          id: "binding-address-cells",
+          propertyKey: "#address-cells",
+          logicalNodeId: "logical-i2c"
+        }
+      ],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: []
+    });
+
+    expect(rows.map((row) => row.propertyKey)).toEqual(["gpio_int"]);
+  });
+
+  it("can include non-surface rows when includeNonSurface is true", () => {
+    const rows = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [
+        binding,
+        {
+          ...binding,
+          id: "binding-address-cells",
+          propertyKey: "#address-cells",
+          logicalNodeId: "logical-i2c"
+        }
+      ],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: [],
+      includeNonSurface: true
+    });
+
+    expect(rows.map((row) => row.propertyKey)).toEqual(["gpio_int", "#address-cells"]);
   });
 });

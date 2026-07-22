@@ -124,9 +124,9 @@ export function BindingDetailPanel({
       <section aria-label="类型化编辑">
         <h4>类型化编辑</h4>
         <label>
-          目标值 / raw
+          目标值
           <textarea
-            aria-label="目标值 raw"
+            aria-label="目标值"
             value={draftRaw}
             disabled={!canEdit || validating}
             onChange={(event) => {

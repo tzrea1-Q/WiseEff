@@ -299,7 +299,7 @@ Dashboard hotspots (`GET /api/v1/parameters/dashboard/hotspots`) include **globa
 
 **Migration CLI (maintenance only):** `npm run parameter-identities:migrate` supports `dry-run` (default), `--stage-review` (durable inferred staging transaction), and `--finalize --migration-run-id <id>` (atomic activity FK write). Cutover accepts only `finalized` runs. See `docs/runbooks/parameter-identity-cutover.md`.
 
-**Round 4 evidence:** vendor dt-schema passes real `dt-validate` on golden DTBs; golden topology counts **173** property occurrences / **519** seed `dts_properties` rows (locked in server tests). Review blockers honor `blocker_scope`; matcher overrides include locator fingerprint.
+**Round 4 evidence:** vendor dt-schema passes real `dt-validate` on golden DTBs; golden topology counts **176** property occurrences / **528** seed `dts_properties` rows (locked in server tests). Review blockers honor `blocker_scope`; matcher overrides include locator fingerprint.
 
 **Round 5 evidence (branch `fix/parameter-topology-round5-review-blockers`):** immutable base vs candidate binding revisions on merge/writeback; semantic merge fail-closed without `objectStore`/project/write-lock/toolchain; immutable `parameter_identity_migration_phases` rows with `migration_run_id` task linkage; tenant-scoped review resolve; manual spec draft→`activate`→resolve; acceptance helpers `acceptanceTaskLookup` / `semanticFixtureCleanup` (no `items[0]` fallbacks).
 

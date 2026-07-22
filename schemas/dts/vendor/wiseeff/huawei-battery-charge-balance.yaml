@@ -1,0 +1,21 @@
+$id: wiseeff/huawei-battery-charge-balance.yaml
+title: huawei,battery_charge_balance
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/huawei,battery_charge_balance
+compatible:
+  - huawei,battery_charge_balance
+commonRefs:
+  - wiseeff/common-status.yaml
+properties:
+  status:
+    valueShape: string-list
+    exampleValue: "\"ok\""
+    constraints: {}
+    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
+  unbalance_th:
+    valueShape: u32-array
+    exampleValue: <100 10000>
+    constraints: {}
+    documentation: huawei,battery_charge_balance 的 DTS 属性「unbalance th」（unbalance_th），用于驱动读取的设备树配置。

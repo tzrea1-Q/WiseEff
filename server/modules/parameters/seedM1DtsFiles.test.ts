@@ -10,7 +10,7 @@ import type { ObjectStore } from "../../modules/logs/objectStore";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 
 const root = path.dirname(path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url)))));
-const baseSource = await readFile(path.join(root, "src/config/dts-seed/base-power-overlay.dts"), "utf8");
+const baseSource = await readFile(path.join(root, "src/config/dts-seed/aurora-board.dts"), "utf8");
 
 function createHarness() {
   const queries: Array<{ text: string; values: unknown[] }> = [];
@@ -68,15 +68,15 @@ describe("seedM1DtsFiles", () => {
 
     expect(puts).toHaveLength(3);
     expect(puts.map((put) => put.fileName)).toEqual([
-      "wiseeff-power-overlay.dts",
-      "wiseeff-power-overlay.dts",
-      "wiseeff-power-overlay.dts"
+      "aurora-board.dts",
+      "nebula-board.dts",
+      "atlas-board.dts"
     ]);
     expect(queries.filter((call) => call.text.includes("insert into dts_config_set"))).toHaveLength(3);
     expect(queries.filter((call) => call.text.includes("insert into project_parameter_files"))).toHaveLength(3);
     expect(queries.filter((call) => call.text.includes("insert into project_parameter_file_versions"))).toHaveLength(3);
-    expect(queries.filter((call) => call.text.includes("insert into dts_nodes"))).toHaveLength(150);
-    expect(queries.filter((call) => call.text.includes("insert into dts_properties"))).toHaveLength(519);
+    expect(queries.filter((call) => call.text.includes("insert into dts_nodes"))).toHaveLength(174);
+    expect(queries.filter((call) => call.text.includes("insert into dts_properties"))).toHaveLength(684);
     expect(queries.filter((call) => call.text.includes("insert into dts_phandle_refs"))).toHaveLength(54);
     expect(queries.filter((call) => call.text.includes("insert into dts_release_baseline ("))).toHaveLength(3);
     expect(queries.filter((call) => call.text.includes("insert into dts_release_baseline_members"))).toHaveLength(3);
@@ -84,6 +84,6 @@ describe("seedM1DtsFiles", () => {
     const versionInsert = queries.find((call) => call.text.includes("insert into project_parameter_file_versions"));
     expect(versionInsert?.values[6]).toContain('"charging_core/ichg_max"');
     const fileInsert = queries.find((call) => call.text.includes("insert into project_parameter_files"));
-    expect(fileInsert?.values).toEqual(expect.arrayContaining(["overlay", "wiseeff-power-overlay.dts"]));
+    expect(fileInsert?.values).toEqual(expect.arrayContaining(["base", "aurora-board.dts"]));
   });
 });

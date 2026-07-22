@@ -9,11 +9,12 @@ import {
   deleteMappingRow,
   insertMapping,
   listBindingsForModuleRecompute,
+  listObservedCompatiblesForDiscovery,
   moduleExists,
   readRegistry,
   updateBindingModuleId
 } from "./repository";
-import { resolveModuleIdForBinding } from "./resolveModuleForBinding";
+import { resolveBindingInstanceModuleId } from "./ensureInstanceModuleForBinding";
 import type { CreateModuleMappingBody } from "./schemas";
 import type { ParameterModuleRegistryDto } from "./types";
 
@@ -36,6 +37,21 @@ export async function getParameterModuleRegistry(
   requireCanView(auth);
   const item = await readRegistry(db, auth.organization.id);
   return { item };
+}
+
+export type ModuleDiscoveryHintsDto = {
+  compatibles: Array<{ compatible: string; bindingCount: number }>;
+};
+
+export async function getModuleDiscoveryHints(
+  db: Database,
+  auth: AuthContext,
+): Promise<{ item: ModuleDiscoveryHintsDto }> {
+  requireCanView(auth);
+  const compatibles = await listObservedCompatiblesForDiscovery(db, {
+    organizationId: auth.organization.id,
+  });
+  return { item: { compatibles } };
 }
 
 export async function createModuleMapping(
@@ -93,11 +109,12 @@ export async function recomputeBindingModules(
     const conflicts: string[] = [];
 
     for (const binding of bindings) {
-      const nextModuleId = await resolveModuleIdForBinding(tx, {
+      const nextModuleId = await resolveBindingInstanceModuleId(tx, {
         organizationId: auth.organization.id,
         driverModule: binding.driverModule,
         compatible: binding.compatible,
-        instanceName: binding.instanceName
+        instanceName: binding.instanceName,
+        nodeLocator: binding.nodeLocator,
       });
       if (nextModuleId === binding.moduleId) continue;
 

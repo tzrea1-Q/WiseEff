@@ -12,6 +12,7 @@ import {
 import {
   createModuleMapping,
   deleteModuleMapping,
+  getModuleDiscoveryHints,
   getParameterModuleRegistry,
   recomputeBindingModules
 } from "./service";
@@ -48,6 +49,13 @@ export function registerParameterModuleRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const result = await getParameterModuleRegistry(db, auth);
+    return { status: 200, body: result };
+  });
+
+  router.get("/api/v2/parameter-modules/discovery-hints", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const result = await getModuleDiscoveryHints(db, auth);
     return { status: 200, body: result };
   });
 

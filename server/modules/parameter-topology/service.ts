@@ -30,6 +30,7 @@ import {
   resolveIdentityMappingTaskRow,
   selectedCandidateBelongsToRevision
 } from "./bindingService";
+import { normalizeBindingSchemaState } from "./schemaState";
 import {
   createBindingDraft as createBindingDraftEdit,
   type BindingDraftResult,
@@ -100,8 +101,7 @@ function toEffectiveValue(typedValue: unknown): DtsValueDto {
 }
 
 function toSchemaState(value: string | null | undefined): ProjectBindingDto["schemaState"] {
-  if (value === "valid" || value === "invalid" || value === "unreviewed") return value;
-  return "unreviewed";
+  return normalizeBindingSchemaState(value);
 }
 
 function toPolicyState(value: string | null | undefined): ProjectBindingDto["policyState"] {

@@ -1,0 +1,22 @@
+%YAML 1.2
+---
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+$id: http://devicetree.org/schemas/vendor/wiseeff/arm-gic-v3.yaml#
+title: arm,gic-v3
+description: WiseEff vendor binding for arm,gic-v3 (generated from vendor property schema).
+maintainers:
+  - WiseEff
+properties:
+  '#interrupt-cells':
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - const: 3
+  interrupt-controller:
+    $ref: /schemas/types.yaml#/definitions/flag
+  compatible:
+    contains:
+      const: arm,gic-v3
+required:
+  - compatible
+additionalProperties: false
+unevaluatedProperties: false
