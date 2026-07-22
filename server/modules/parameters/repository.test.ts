@@ -20,6 +20,7 @@ import {
   listChangeRequests,
   listDraftsForParameterValue,
   listDraftsForUser,
+  listOpenBindingDraftsForUser,
   listOpenConflicts,
   listParameterHistory,
   listParameters,
@@ -29,6 +30,7 @@ import {
   listProjects,
   listSubmissionRounds,
   mergeChangeRequest,
+  rebaseOpenBindingDraftCandidates,
   applyAddedImportItem,
   applyUpdatedImportItem,
   markImportBatchApplied,
@@ -1294,6 +1296,77 @@ describe("parameter repository", () => {
         updatedAt: "2026-07-11T10:01:00.000Z"
       }
     ]);
+  });
+
+  it("listOpenBindingDraftsForUser returns binding drafts ordered by updated_at desc then id asc", async () => {
+    const newer = new Date("2026-07-23T02:00:00.000Z");
+    const older = new Date("2026-07-23T01:00:00.000Z");
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "draft-b",
+          candidate_config_revision_id: "rev-new",
+          project_parameter_binding_id: "binding-b",
+          updated_at: newer,
+        },
+        {
+          id: "draft-a",
+          candidate_config_revision_id: "rev-old",
+          project_parameter_binding_id: "binding-a",
+          updated_at: older,
+        },
+      ],
+    ]);
+
+    const drafts = await listOpenBindingDraftsForUser(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      userId: "user-1",
+    });
+
+    expect(calls[0]?.text).toContain("from parameter_drafts");
+    expect(calls[0]?.text).toContain("project_parameter_binding_id is not null");
+    expect(calls[0]?.text).toContain("order by updated_at desc, id asc");
+    expect(calls[0]?.values).toEqual(["org-1", "project-1", "user-1"]);
+    expect(drafts).toEqual([
+      {
+        id: "draft-b",
+        candidateConfigRevisionId: "rev-new",
+        projectParameterBindingId: "binding-b",
+        updatedAt: "2026-07-23T02:00:00.000Z",
+      },
+      {
+        id: "draft-a",
+        candidateConfigRevisionId: "rev-old",
+        projectParameterBindingId: "binding-a",
+        updatedAt: "2026-07-23T01:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("rebaseOpenBindingDraftCandidates updates sibling drafts and returns rebased ids", async () => {
+    const { db, calls } = createFakeDb([[{ id: "draft-a" }, { id: "draft-b" }]]);
+
+    const rebasedIds = await rebaseOpenBindingDraftCandidates(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      userId: "user-1",
+      candidateConfigRevisionId: "rev-shared",
+      excludeDraftId: "draft-current",
+    });
+
+    expect(calls[0]?.text).toContain("update parameter_drafts");
+    expect(calls[0]?.text).toContain("candidate_config_revision_id is distinct from $4");
+    expect(calls[0]?.text).toContain("project_parameter_binding_id is not null");
+    expect(calls[0]?.text).toContain("($5::text is null or id <> $5)");
+    expect(calls[0]?.values).toEqual([
+      "org-1",
+      "project-1",
+      "user-1",
+      "rev-shared",
+      "draft-current",
+    ]);
+    expect(rebasedIds).toEqual(["draft-a", "draft-b"]);
   });
 
   it("handles file sync conflict repository CRUD", async () => {

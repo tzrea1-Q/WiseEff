@@ -1752,6 +1752,76 @@ export async function listDraftsForParameterValue(
   return result.rows.map(toDraftWithOrigin);
 }
 
+export async function listOpenBindingDraftsForUser(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; userId: string },
+): Promise<
+  Array<{
+    id: string;
+    candidateConfigRevisionId: string | null;
+    projectParameterBindingId: string | null;
+    updatedAt: string;
+  }>
+> {
+  const result = await db.query<{
+    id: string;
+    candidate_config_revision_id: string | null;
+    project_parameter_binding_id: string | null;
+    updated_at: Date | string;
+  }>(
+    `
+    select id, candidate_config_revision_id, project_parameter_binding_id, updated_at
+    from parameter_drafts
+    where organization_id = $1
+      and project_id = $2
+      and user_id = $3
+      and project_parameter_binding_id is not null
+    order by updated_at desc, id asc
+    `,
+    [input.organizationId, input.projectId, input.userId],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    candidateConfigRevisionId: row.candidate_config_revision_id,
+    projectParameterBindingId: row.project_parameter_binding_id,
+    updatedAt: typeof row.updated_at === "string" ? row.updated_at : row.updated_at.toISOString(),
+  }));
+}
+
+export async function rebaseOpenBindingDraftCandidates(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    userId: string;
+    candidateConfigRevisionId: string;
+    excludeDraftId?: string;
+  },
+): Promise<string[]> {
+  const result = await db.query<{ id: string }>(
+    `
+    update parameter_drafts
+    set candidate_config_revision_id = $4,
+        updated_at = now()
+    where organization_id = $1
+      and project_id = $2
+      and user_id = $3
+      and project_parameter_binding_id is not null
+      and candidate_config_revision_id is distinct from $4
+      and ($5::text is null or id <> $5)
+    returning id
+    `,
+    [
+      input.organizationId,
+      input.projectId,
+      input.userId,
+      input.candidateConfigRevisionId,
+      input.excludeDraftId ?? null,
+    ],
+  );
+  return result.rows.map((row) => row.id);
+}
+
 export async function upsertDraft(
   db: Queryable,
   input: {
