@@ -102,6 +102,18 @@ On `/parameters`, API mode keeps the mature `ParametersPage`/`WorkbenchLayout` h
 
 The API semantic list is separate from the mock-only legacy `ParametersTable`. Recommendation-drift labels, recommended-value draft initialization, flat detail/export, legacy identities, and teaching topology fallbacks are forbidden in API mode. A typed edit requires an explicit reason and preserves the returned draft/binding/spec/candidate identities plus the `set|delete` action. The submission wire item sends `draftId`, `projectParameterBindingId`, `parameterSpecId`, and `action` (never a semantic binding disguised as legacy `parameterId`) before assigned roles act in `/parameter-review`. A returned delete draft is rendered as “Delete property” with an empty tombstone target; the current workspace does not expose a delete-authoring control, so delete acceptance creates/submits through the public typed-draft/submission APIs while all role reviews and merge remain real UI operations. When the TopBar switches projects, the workspace discards the prior project's preferred candidate revision, pending draft, assignee state, publish message, and mapping message; the new project starts from `current`. Draft requests capture their owning project and are ignored if they resolve after the active project changes, so stale responses cannot repopulate the submission panel or load assignees for the wrong project.
 
+**Shared working tip (typed draft rounds):**
+
+- One user×project open draft round shares a single working tip.
+- Each subsequent typed edit must use that tip as `baseRevisionId`; the server rebases sibling drafts onto the new tip.
+- The current-edits tray healthy copy (N = draft count):
+
+  ```text
+  本轮 N 项 · 同一工作版本
+  ```
+
+  Mixed revision tips within a round are exceptional; the tray surfaces actionable remediation in Chinese when they occur.
+
 Provenance, binding detail, and mapping/review queues must come from the API response (`sourceChain`, occurrence spans, task payloads). In API mode do **not** fall back to teaching/mock topology data when the backend is empty or errors. Validate/publish copy must match gate outcomes (`validated` vs fail-closed revoke); never treat `schema-failed` as a success path.
 
 ### Binding module identity, history, and compare (Phase 2)
