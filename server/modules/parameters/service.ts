@@ -1216,6 +1216,22 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       parameters.push({ item, parameter, parameterId, exactDraft });
     }
 
+    const tipIds = [
+      ...new Set(
+        parameters
+          .map(({ exactDraft }) => exactDraft?.candidateConfigRevisionId?.trim())
+          .filter((id): id is string => Boolean(id))
+      )
+    ];
+    if (parameters.some(({ item }) => "draftId" in item) && tipIds.length > 1) {
+      throw new ApiError(
+        "CONFLICT",
+        "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
+        409,
+        { reason: "mixed-working-tips", candidateConfigRevisionIds: tipIds }
+      );
+    }
+
     await assertWorkflowAssigneesAreEligible(tx, auth, input.projectId, workflowAssignees);
 
     for (const { item, exactDraft } of parameters) {
