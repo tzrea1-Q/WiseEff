@@ -1174,6 +1174,8 @@ export type CreateBindingDraftServiceResult = {
   draftId: string;
   parameterId: string;
   candidateRevisionId: string;
+  workingCandidateRevisionId: string;
+  rebasedDraftIds: string[];
   rawText: string;
   action: "set" | "delete";
   parameterSpecId: string;
@@ -1240,6 +1242,8 @@ export async function createBindingDraft(
     draftId: draft.draftId,
     parameterId: draft.parameterId,
     candidateRevisionId: draft.candidateRevisionId,
+    workingCandidateRevisionId: draft.workingCandidateRevisionId,
+    rebasedDraftIds: draft.rebasedDraftIds,
     rawText: draft.rawText,
     action: draft.action,
     parameterSpecId: draft.parameterSpecId,
