@@ -422,6 +422,7 @@ export function ApiProjectTopologyWorkspace({
       }
       setPendingDrafts((current) => {
         if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return current;
+        const tip = draft.workingCandidateRevisionId ?? draft.candidateRevisionId;
         const previousDraft = current.find(
           (item) =>
             item.projectId === requestProjectId &&
@@ -429,18 +430,22 @@ export function ApiProjectTopologyWorkspace({
         );
         const nextDraft: PendingBindingDraft = {
           ...draft,
+          candidateRevisionId: tip,
           projectId: requestProjectId,
           currentRawValue: previousDraft?.currentRawValue ?? binding.rawValue,
           reason: input.reason
         };
-        return [
-          ...current.filter(
-            (item) =>
+        const withoutBinding = current.filter(
+          (item) =>
+            !(
               item.projectId === requestProjectId &&
-              item.projectParameterBindingId !== draft.projectParameterBindingId
-          ),
-          nextDraft
-        ];
+              item.projectParameterBindingId === draft.projectParameterBindingId
+            )
+        );
+        const aligned = withoutBinding.map((item) =>
+          item.projectId === requestProjectId ? { ...item, candidateRevisionId: tip } : item
+        );
+        return [...aligned, nextDraft];
       });
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
         return {
@@ -448,7 +453,7 @@ export function ApiProjectTopologyWorkspace({
           diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿响应。", code: "PROJECT_CHANGED" }]
         };
       }
-      setPreferredRevision({ projectId: requestProjectId, revisionId: draft.candidateRevisionId });
+      setPreferredRevision({ projectId: requestProjectId, revisionId: draft.workingCandidateRevisionId ?? draft.candidateRevisionId });
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
         return {
           valid: false,

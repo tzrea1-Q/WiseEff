@@ -251,6 +251,8 @@ describe("createHttpParameterTopologyRepository", () => {
         draftId: "draft-1",
         parameterId: "binding-1",
         candidateRevisionId: "rev-2",
+        workingCandidateRevisionId: "rev-working-2",
+        rebasedDraftIds: ["draft-old-1", "draft-old-2"],
         rawText: "<3000>",
         action: "set",
         parameterSpecId: "spec-1",
@@ -278,6 +280,8 @@ describe("createHttpParameterTopologyRepository", () => {
       draftId: "draft-1",
       parameterId: "binding-1",
       candidateRevisionId: "rev-2",
+      workingCandidateRevisionId: "rev-working-2",
+      rebasedDraftIds: ["draft-old-1", "draft-old-2"],
       action: "set",
       projectParameterBindingId: "binding-1"
     });

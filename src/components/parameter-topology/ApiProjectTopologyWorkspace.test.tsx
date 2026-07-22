@@ -685,6 +685,103 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(screen.queryByText(/映射已确认/)).not.toBeInTheDocument();
   });
 
+  it("aligns same-project pending drafts to the shared working tip after create", async () => {
+    const createBindingDraft = vi.fn()
+      .mockResolvedValueOnce({
+        draftId: "draft-gpio",
+        parameterId: "binding-sc8562-gpio-int",
+        candidateRevisionId: "candidate-gpio",
+        workingCandidateRevisionId: "working-tip-1",
+        rebasedDraftIds: [],
+        rawText: "<&gpio13 30 0>",
+        action: "set" as const,
+        parameterSpecId: "spec-sc8562-gpio-int",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
+        overlayFileId: "file-overlay",
+        overlayFileName: "overlay.dts"
+      })
+      .mockResolvedValueOnce({
+        draftId: "draft-status",
+        parameterId: "binding-mt5788-gpio-int",
+        candidateRevisionId: "candidate-mt5788",
+        workingCandidateRevisionId: "working-tip-2",
+        rebasedDraftIds: ["draft-gpio"],
+        rawText: "<&gpio6 16 0>",
+        action: "set" as const,
+        parameterSpecId: "spec-mt5788-gpio-int",
+        projectParameterBindingId: "binding-mt5788-gpio-int",
+        writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "mt5788" },
+        overlayFileId: "file-overlay",
+        overlayFileName: "overlay.dts"
+      });
+    const repository = createRepository({
+      createBindingDraft,
+      getSpec: vi.fn().mockImplementation(async (specId: string) => ({
+        id: specId,
+        organizationId: "org-chargelab",
+        sourceKind: "vendor",
+        specificationKey: specId,
+        propertyKey: specId.includes("status") ? "status" : "gpio_int",
+        driverModule: "sc8562",
+        lifecycle: "active",
+        currentVersionId: "spec-version-1",
+        currentVersion: 1,
+        displayName: specId.includes("status") ? "status" : "gpio_int",
+        description: "",
+        valueShape: null,
+        schemaDefault: null,
+        exampleValue: null,
+        schemaNamespace: null,
+        units: null,
+        constraints: null,
+        documentation: null,
+        compatiblePatterns: null,
+        policyTarget: null
+      }))
+    });
+    const { fireEvent } = await import("@testing-library/react");
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listWorkflowAssignees={vi.fn().mockResolvedValue({
+          hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+          softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+          softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+        })}
+        submitBindingChanges={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    await screen.findByRole("treeitem", { name: /未分类 · sc8562/ });
+    let workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
+    await createGpioDraftFromWorkbench(workspace, fireEvent, {
+      reason: "First binding draft",
+      rawValue: "<&gpio13 30 0>"
+    });
+    await screen.findByRole("region", { name: "绑定变更提交" });
+
+    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · mt5788/ }));
+    await createGpioDraftFromWorkbench(workspace, fireEvent, {
+      reason: "Second binding draft",
+      rawValue: "<&gpio6 16 0>",
+      editButtonName: /编辑 gpio_int/
+    });
+    await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
+
+    const tray = await screen.findByRole("region", { name: "绑定变更提交" });
+    expect(within(tray).getByText(/本轮 2 项 · 同一工作版本/)).toBeVisible();
+    expect(within(tray).getAllByText("working-tip-2")).toHaveLength(2);
+    const submitButton = within(tray).getByRole("button", { name: "提交审核" });
+    await waitFor(() => expect(submitButton).toBeEnabled());
+  });
+
   it("submits a typed binding draft with server-filtered role assignees", async () => {
     const repository = createRepository({
       createBindingDraft: vi.fn().mockResolvedValue({
@@ -829,7 +926,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(tray).queryByText("candidate-first")).not.toBeInTheDocument();
     fireEvent.click(within(tray).getByText("技术身份"));
     expect(within(tray).getByText("candidate-replacement")).toBeVisible();
-    expect(within(tray).getByText("1 项")).toBeVisible();
+    expect(within(tray).getByText(/本轮 1 项 · 同一工作版本/)).toBeVisible();
   });
 
   it("locks only the submitting project until the real submit mutation settles", async () => {

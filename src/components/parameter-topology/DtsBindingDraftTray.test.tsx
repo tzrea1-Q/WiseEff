@@ -221,7 +221,27 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    expect(screen.getByRole("alert")).toHaveTextContent(/不同 candidate revision.*不能批量提交/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/不在同一工作版本上.*无法一起提交/);
+  });
+
+  it("shows a healthy working-version hint when all drafts share the same tip", () => {
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft(), draft({
+          draftId: "draft-2",
+          projectParameterBindingId: "binding-watchdog",
+          parameterSpecId: "spec-watchdog",
+          writeTarget: { role: "overlay", propertyKey: "watchdog_time" }
+        })]}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={vi.fn()}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/本轮 2 项 · 同一工作版本/)).toBeVisible();
   });
 
   it.each([

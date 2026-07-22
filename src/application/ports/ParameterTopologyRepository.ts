@@ -44,6 +44,8 @@ export type BindingDraftResult = {
   draftId: string;
   parameterId: string;
   candidateRevisionId: string;
+  workingCandidateRevisionId?: string;
+  rebasedDraftIds?: string[];
   rawText: string;
   action: "set" | "delete";
   parameterSpecId: string;

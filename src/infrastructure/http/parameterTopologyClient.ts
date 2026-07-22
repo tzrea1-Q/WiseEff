@@ -234,6 +234,8 @@ function bindingDraftFromDto(dto: BindingDraftResult): BindingDraftResult {
     draftId: dto.draftId,
     parameterId: dto.parameterId,
     candidateRevisionId: dto.candidateRevisionId,
+    workingCandidateRevisionId: dto.workingCandidateRevisionId,
+    rebasedDraftIds: dto.rebasedDraftIds,
     rawText: dto.rawText,
     action: dto.action,
     parameterSpecId: dto.parameterSpecId,
