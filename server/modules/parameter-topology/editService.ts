@@ -956,8 +956,22 @@ export async function createBindingDraft(
     projectId: binding.project_id,
     userId: auth.user.id,
   });
-  const resolvedWorkingTip =
-    openDrafts.map((d) => d.candidateConfigRevisionId?.trim()).find((id) => id) ?? null;
+  const openWorkingTips = [
+    ...new Set(
+      openDrafts
+        .map((draft) => draft.candidateConfigRevisionId?.trim())
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  if (openWorkingTips.length > 1) {
+    throw new ApiError(
+      "CONFLICT",
+      "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
+      409,
+      { reason: "mixed-working-tips" },
+    );
+  }
+  const resolvedWorkingTip = openWorkingTips[0] ?? null;
   const sameBindingOpenDraft = openDrafts.find(
     (draft) => draft.projectParameterBindingId === binding.binding_id,
   );

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Info, LoaderCircle } from "lucide-react";
 import type {
+  ParameterDraftDto,
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
@@ -22,6 +23,7 @@ import type {
 } from "@/domain/parameter-topology/types";
 import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
 import { createHttpParameterTopologyRepository } from "@/infrastructure/http/parameterTopologyClient";
+import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import {
   mapParameterTopologyError,
   type ParameterTopologyMappedError
@@ -51,6 +53,7 @@ export type ApiProjectTopologyWorkspaceProps = {
   /** Test seam — inject the admin-maintained module registry repository. */
   moduleRegistryRepository?: ParameterModuleRegistryRepository;
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
+  listDrafts?: (projectId: string) => Promise<ParameterDraftDto[]>;
   listWorkflowAssignees?: (projectId: string) => Promise<WorkflowAssigneeCandidates>;
   submitBindingChanges?: (
     input: SubmitParameterChangesInput
@@ -84,6 +87,54 @@ type ProjectMutationLock = {
 
 function pickConfigSet(items: Array<{ id: string; name: string }>) {
   return items.find((item) => item.name === "default") ?? items[0] ?? null;
+}
+
+function mapServerDraftsToPending(
+  projectId: string,
+  drafts: ParameterDraftDto[],
+  bindings: ProjectParameterBinding[],
+  sharedTip?: string
+): PendingBindingDraft[] {
+  const bindingById = new Map(bindings.map((binding) => [binding.id, binding]));
+  return drafts.flatMap((draft) => {
+    const bindingId = draft.projectParameterBindingId;
+    if (!bindingId || draft.projectId !== projectId) return [];
+    const binding = bindingById.get(bindingId);
+    if (!binding) return [];
+    const candidateRevisionId = draft.candidateConfigRevisionId ?? sharedTip ?? "";
+    return [
+      {
+        draftId: draft.id,
+        parameterId: draft.parameterId,
+        candidateRevisionId,
+        rawText: draft.targetValue,
+        action: draft.action ?? "set",
+        parameterSpecId: binding.parameterSpecId,
+        projectParameterBindingId: bindingId,
+        writeTarget: {
+          role: "overlay",
+          propertyKey: binding.propertyKey,
+          targetRef: binding.instanceName ?? binding.driverModule ?? undefined
+        },
+        overlayFileId: "",
+        overlayFileName: "",
+        projectId,
+        currentRawValue: binding.rawValue,
+        reason: draft.reason
+      }
+    ];
+  });
+}
+
+function resolveSharedWorkingTip(drafts: ParameterDraftDto[]): string | undefined {
+  const tips = [
+    ...new Set(
+      drafts
+        .map((draft) => draft.candidateConfigRevisionId?.trim())
+        .filter((tip): tip is string => Boolean(tip))
+    )
+  ];
+  return tips.length === 1 ? tips[0] : tips[0];
 }
 
 async function loadWorkspace(
@@ -165,6 +216,7 @@ export function ApiProjectTopologyWorkspace({
   topologyRepository,
   moduleRegistryRepository,
   listConfigSets,
+  listDrafts,
   listWorkflowAssignees,
   submitBindingChanges,
   onNavigate = () => undefined
@@ -184,6 +236,8 @@ export function ApiProjectTopologyWorkspace({
   );
   const listConfigSetsRef = useRef(listConfigSets);
   listConfigSetsRef.current = listConfigSets;
+  const listDraftsRef = useRef(listDrafts);
+  listDraftsRef.current = listDrafts;
   const activeProjectIdRef = useRef(projectId);
   const projectGenerationRef = useRef(0);
   const lastProjectIdRef = useRef(projectId);
@@ -208,6 +262,7 @@ export function ApiProjectTopologyWorkspace({
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
   const [mappingMessage, setMappingMessage] = useState<string | null>(null);
   const [pendingDrafts, setPendingDrafts] = useState<PendingBindingDraft[]>([]);
+  const [serverDrafts, setServerDrafts] = useState<ParameterDraftDto[] | null>(null);
   const [selectedDraftBindingIds, setSelectedDraftBindingIds] = useState<Set<string>>(new Set());
   const [workflowCandidates, setWorkflowCandidates] = useState<WorkflowAssigneeCandidates | null>(null);
   const [workflowCandidatesError, setWorkflowCandidatesError] = useState<string | null>(null);
@@ -246,11 +301,55 @@ export function ApiProjectTopologyWorkspace({
   useEffect(() => {
     setPreferredRevision(null);
     setPendingDrafts([]);
+    setServerDrafts(null);
     setWorkflowCandidates(null);
     setWorkflowCandidatesError(null);
     setPublishMessage(null);
     setMappingMessage(null);
   }, [projectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const resolveListDrafts =
+      listDraftsRef.current ??
+      (runtimeMode === "api"
+        ? (id: string) => createHttpParameterRepository().listDrafts(id)
+        : undefined);
+    if (!resolveListDrafts) {
+      setServerDrafts([]);
+      return undefined;
+    }
+    setServerDrafts(null);
+    resolveListDrafts(projectId)
+      .then((drafts) => {
+        if (!cancelled) setServerDrafts(drafts);
+      })
+      .catch(() => {
+        if (!cancelled) setServerDrafts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, runtimeMode]);
+
+  useEffect(() => {
+    if (!serverDrafts || loadState.kind !== "ready") return;
+    const bindingDrafts = serverDrafts.filter(
+      (draft) => draft.projectId === projectId && draft.projectParameterBindingId
+    );
+    if (bindingDrafts.length === 0) return;
+
+    const sharedTip = resolveSharedWorkingTip(bindingDrafts);
+    if (sharedTip && loadState.revisionId !== sharedTip) {
+      setPreferredRevision({ projectId, revisionId: sharedTip });
+      return;
+    }
+
+    setPendingDrafts((current) => {
+      if (current.some((draft) => draft.projectId === projectId)) return current;
+      return mapServerDraftsToPending(projectId, bindingDrafts, loadState.bindings, sharedTip);
+    });
+  }, [loadState, projectId, serverDrafts]);
 
   useEffect(() => {
     if (!hasProjectDrafts) {

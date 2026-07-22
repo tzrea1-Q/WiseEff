@@ -177,6 +177,63 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ })).toBeVisible();
   });
 
+  it("hydrates binding drafts from listDrafts after reload and shows shared working tip tray", async () => {
+    const sharedTip = "rev-shared-tip";
+    const listDrafts = vi.fn().mockResolvedValue([
+      {
+        id: "draft-gpio",
+        projectId: "aurora",
+        parameterId: "binding-sc8562-gpio-int",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        candidateConfigRevisionId: sharedTip,
+        targetValue: "<&gpio13 30 0>",
+        action: "set" as const,
+        reason: "Hydrated gpio draft",
+        updatedAt: "2026-07-23T02:00:00.000Z"
+      },
+      {
+        id: "draft-mt5788",
+        projectId: "aurora",
+        parameterId: "binding-mt5788-gpio-int",
+        projectParameterBindingId: "binding-mt5788-gpio-int",
+        candidateConfigRevisionId: sharedTip,
+        targetValue: "<&gpio6 16 0>",
+        action: "set" as const,
+        reason: "Hydrated mt5788 draft",
+        updatedAt: "2026-07-23T02:01:00.000Z"
+      }
+    ]);
+    const repository = createRepository();
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listDrafts={listDrafts}
+        listWorkflowAssignees={vi.fn().mockResolvedValue({
+          hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+          softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+          softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+        })}
+      />
+    );
+
+    await waitFor(() => expect(listDrafts).toHaveBeenCalledWith("aurora"));
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-revision-id",
+        sharedTip
+      )
+    );
+
+    const tray = await screen.findByRole("region", { name: "绑定变更提交" });
+    expect(within(tray).getByText(/本轮 2 项 · 同一工作版本/)).toBeVisible();
+    expect(within(tray).getByText("Hydrated gpio draft")).toBeVisible();
+    expect(within(tray).getByText("Hydrated mt5788 draft")).toBeVisible();
+  });
+
   it("shows empty state when no config set exists", async () => {
     const repository = createRepository();
     render(

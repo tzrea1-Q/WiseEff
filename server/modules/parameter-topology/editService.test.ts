@@ -694,6 +694,70 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     expect(stored.rows[0]!.candidate_config_revision_id).toBe(second.candidateRevisionId);
   });
 
+  it("rejects create when open drafts have mixed working tips", async () => {
+    const fixture = await seedConfigAndTwoBindings(db!, auth);
+    const first = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.bindingA.id,
+        baseRevisionId: fixture.revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+        },
+        reason: "Edit A",
+      },
+      { toolchain: passToolchain },
+    );
+
+    const second = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.bindingB.id,
+        baseRevisionId: first.candidateRevisionId,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "1", value: "1" }]],
+        },
+        reason: "Edit B",
+      },
+      { toolchain: passToolchain },
+    );
+
+    await db!.query(
+      `update parameter_drafts
+       set candidate_config_revision_id = $1
+       where id = $2`,
+      [fixture.revision.id, first.draftId],
+    );
+
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.bindingB.id,
+          baseRevisionId: second.candidateRevisionId,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "2", value: "2" }]],
+          },
+          reason: "Edit B again",
+        },
+        { toolchain: passToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
+      details: expect.objectContaining({ reason: "mixed-working-tips" }),
+    });
+  });
+
   it("rejects create when baseRevisionId is not the current working tip", async () => {
     const fixture = await seedConfigAndTwoBindings(db!, auth);
     const first = await createBindingDraft(
