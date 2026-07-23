@@ -20522,6 +20522,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .dts-binding-detail-dialog {
