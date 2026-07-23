@@ -71,6 +71,14 @@ npm run dev:all
 
 This command starts Docker PostgreSQL through `compose.yaml`, waits for it to accept connections, runs migrations and M0-M3 seeds, then starts the API and an API-mode Vite frontend. The API process starts the log-analysis worker when `DATABASE_URL` and local object storage are configured.
 
+`db:seed:m1` defaults to **semantic-only** demo data plus an idempotent **local post-cutover finalize** so typed binding drafts can be submitted for review. It does **not** seed flat `parameter_definitions` / `project_parameter_values`, and it will **refuse** to cut over a dirty dual-track developer database in place — wipe the Docker volume (`docker compose down -v`) and re-run `npm run dev:all`. Production identity cutover remains the fail-closed maintenance path in [parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md).
+
+To seed the old dual-track flat identity without local cutover (typed submit stays blocked until a real cutover):
+
+```bash
+WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1 npm run db:seed:m1
+```
+
 Before starting, the launcher checks the required local ports. If port `5432` is already used by a WiseEff PostgreSQL Docker container, it restarts that container and waits for readiness. If ports `8787` or `5173` are already used by WiseEff API/web services, it stops those existing processes so the current checkout can restart them. Unknown services on those ports are left untouched and reported as blockers.
 
 The default local URLs are:
@@ -103,7 +111,7 @@ npm run db:seed:m3
 Seeds are ordered by milestone:
 
 - `db:seed:m0`: organization, users, roles, and project foundation.
-- `db:seed:m1`: 12 compatibility parameters plus 170 source-bound DTS definitions, 510 project values, three project DTS file versions, structural node/property/phandle rows, and one compiled seed baseline per project. It runs the required dtc gate first.
+- `db:seed:m1`: semantic project-primary DTS baselines, topology bindings/specs, vendor property docs, a demo binding-revision history, and local post-cutover finalize (so typed binding submit works). Flat `parameter_definitions` / PPV are not seeded by default. It runs the required dtc gate first.
 - `db:seed:m2`: log-analysis sample data.
 - `db:seed:m3`: simulator debugging device and catalog.
 

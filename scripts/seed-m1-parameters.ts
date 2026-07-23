@@ -17,6 +17,7 @@ import type { ConfigRevisionManifest } from "../server/modules/parameter-topolog
 import { createPostgresDatabase, type Database } from "../server/shared/database/client";
 import { buildDtsPowerSeed, type DtsPowerSeedParameter, type DtsPowerSeedProjectFile, buildSeedModuleMappings } from "./dts-power-seed";
 import { compileDtsSeedFiles, loadCommittedDtsSeedFiles } from "./compile-dts-seed";
+import { ensureLocalPostCutoverIdentity } from "../server/modules/parameter-topology/localPostCutover";
 import { LEGACY_SQL } from "../server/modules/parameter-topology/migration";
 import { syncVendorPropertyDocs } from "./sync-vendor-property-docs";
 
@@ -226,9 +227,12 @@ export type SeedModuleMapping = {
   priority?: number;
 };
 
-export async function seedM1Parameters(
-  db: Database,
-  config: PowerManagementConfig,
+export type SeedM1ParametersOptions = {
+  /**
+   * When true, also seed flat `parameter_definitions` / PPV / PPV history.
+   * Default false: local/dev is semantic-only and finishes with local post-cutover.
+   */
+  includeLegacyFlatIdentity?: boolean;
   /**
    * Lowercased DTS instance name (e.g. "sc8562@6e") -> business-category module
    * name. Seeds `parameter_module_mappings` so semantic ingest resolves real
@@ -237,13 +241,22 @@ export async function seedM1Parameters(
    *
    * @deprecated Prefer `moduleMappings`. Kept for call-site compatibility.
    */
-  instanceModuleAssignments: ReadonlyMap<string, string> = new Map(),
+  instanceModuleAssignments?: ReadonlyMap<string, string>;
   /**
    * Explicit instance/compatible/driver → module mappings for the demo registry.
    * When provided, replaces the instance-only map above.
    */
-  moduleMappings: readonly SeedModuleMapping[] = []
+  moduleMappings?: readonly SeedModuleMapping[];
+};
+
+export async function seedM1Parameters(
+  db: Database,
+  config: PowerManagementConfig,
+  options: SeedM1ParametersOptions = {}
 ): Promise<void> {
+  const includeLegacyFlatIdentity = options.includeLegacyFlatIdentity === true;
+  const instanceModuleAssignments = options.instanceModuleAssignments ?? new Map<string, string>();
+  const moduleMappings = options.moduleMappings ?? [];
   await db.transaction(async (tx) => {
     for (const project of config.projects) {
       await tx.query(
@@ -407,6 +420,10 @@ export async function seedM1Parameters(
           ]
         );
       }
+    }
+
+    if (!includeLegacyFlatIdentity) {
+      return;
     }
 
     for (const parameter of config.parameterLibrary) {
@@ -992,16 +1009,33 @@ async function main() {
   for (const mapping of buildSeedModuleMappings(resolveDts(auroraPrimary))) {
     moduleMappingsByKey.set(`${mapping.matchKind}:${mapping.matchValue}`, mapping);
   }
+  const includeLegacyFlatIdentity =
+    process.env.WISEEFF_SEED_LEGACY_FLAT_IDENTITY?.trim() === "1";
+
   await compileDtsSeedFiles(projectFiles);
-  await seedM1Parameters(db, config, new Map(), [...moduleMappingsByKey.values()]);
+  await seedM1Parameters(db, config, {
+    includeLegacyFlatIdentity,
+    moduleMappings: [...moduleMappingsByKey.values()]
+  });
   await seedM1DtsFiles(db, createObjectStoreFromEnv(env), projectFiles);
   await seedM1SemanticTopology(db, projectFiles);
   await syncVendorPropertyDocs(db);
   await recomputeBindingModules(db, seedAuthContext(), {});
   await seedM1BindingRevisionHistory(db, createObjectStoreFromEnv(env), projectFiles);
 
+  if (includeLegacyFlatIdentity) {
+    console.log(
+      "Seeded M1 parameter data (legacy flat identity enabled), full project DTS baselines, module-aware topology bindings, vendor property docs, and a demo binding-revision history. Local post-cutover skipped; typed binding submit requires cutover."
+    );
+    return;
+  }
+
+  const cutover = await ensureLocalPostCutoverIdentity(db);
   console.log(
-    "Seeded M1 parameter data, full project DTS baselines, module-aware topology bindings, vendor property docs, and a demo binding-revision history."
+    "Seeded M1 semantic parameter data, full project DTS baselines, module-aware topology bindings, vendor property docs, and a demo binding-revision history.",
+    cutover.status === "already-complete"
+      ? "Local post-cutover already complete."
+      : `Local post-cutover applied (run ${cutover.migrationRunId}).`
   );
 }
 

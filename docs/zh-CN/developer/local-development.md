@@ -48,7 +48,13 @@ npm run parameter-identities:check
 
 操作流程见 [parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md)。
 
-M1 seed 包含 12 个兼容参数、170 个 DTS 来源参数、510 个项目参数值、三份 DTS 文件版本、完整节点/属性/phandle 结构，以及每项目一个已编译 seed baseline。
+`db:seed:m1` **默认**为语义种子（项目主 DTS baseline、bindings/specs、vendor docs、demo binding 历史）并做幂等的**本地 post-cutover finalize**，以便类型化 binding 草稿可提交审核。默认不种 flat `parameter_definitions` / `project_parameter_values`。若本地库仍是旧双轨脏数据，finalize 会失败关闭并要求清空 Docker volume（如 `docker compose down -v`）后重跑 `npm run dev:all`——禁止对脏共享开发库就地 cutover。生产 cutover 仍走维护窗口 runbook。
+
+需要旧双轨 flat 身份且不自动 cutover 时（typed 提交仍会 409）：
+
+```bash
+WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1 npm run db:seed:m1
+```
 
 ## 同类中文文档
 

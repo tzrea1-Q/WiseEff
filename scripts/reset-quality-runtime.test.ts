@@ -1,8 +1,30 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { resetQualityRuntime } from "./reset-quality-runtime";
+import { resetQualityRuntime, resolveFlatOrLegacyPpvTable } from "./reset-quality-runtime";
 import type { Database, Queryable } from "../server/shared/database/client";
+
+function createRecordingDb(handler?: (text: string, values: unknown[]) => { rows: unknown[]; rowCount: number }): {
+  db: Database;
+  queries: Array<{ text: string; values: unknown[] }>;
+} {
+  const queries: Array<{ text: string; values: unknown[] }> = [];
+  const tx: Queryable = {
+    async query(text, values = []) {
+      const normalized = text.replace(/\s+/g, " ").trim();
+      queries.push({ text: normalized, values });
+      if (handler) return handler(normalized, values);
+      return { rows: [], rowCount: 0 };
+    }
+  };
+  const db: Database = {
+    query: tx.query,
+    async transaction(callback) {
+      return callback(tx);
+    }
+  };
+  return { db, queries };
+}
 
 describe("quality runtime reset wiring", () => {
   it("resets transient user-governance state before quality gate seeding", () => {
@@ -13,19 +35,7 @@ describe("quality runtime reset wiring", () => {
   });
 
   it("clears transient local-auth and acceptance user-governance rows before seeds rebuild stable users", async () => {
-    const queries: Array<{ text: string; values: unknown[] }> = [];
-    const tx: Queryable = {
-      async query(text, values = []) {
-        queries.push({ text: text.replace(/\s+/g, " ").trim(), values });
-        return { rows: [], rowCount: 0 };
-      }
-    };
-    const db: Database = {
-      query: tx.query,
-      async transaction(callback) {
-        return callback(tx);
-      }
-    };
+    const { db, queries } = createRecordingDb();
 
     await resetQualityRuntime(db);
 
@@ -51,5 +61,82 @@ describe("quality runtime reset wiring", () => {
       "u-sun-mei"
     ]);
     expect(JSON.stringify(queries)).not.toContain("u-tao-lin");
+  });
+
+  it("nullifies flat PPV attribution when the pre-cutover table still exists", async () => {
+    const { db, queries } = createRecordingDb((text, values) => {
+      if (text.includes("information_schema.tables") && values[0] === "project_parameter_values") {
+        return { rows: [{ c: "1" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await resetQualityRuntime(db);
+
+    expect(
+      queries.some((query) =>
+        query.text.includes("update project_parameter_values set updated_by_user_id = null")
+      )
+    ).toBe(true);
+    expect(
+      queries.some((query) => query.text.includes("update legacy_project_parameter_values"))
+    ).toBe(false);
+  });
+
+  it("nullifies renamed legacy PPV attribution after identity cutover", async () => {
+    const { db, queries } = createRecordingDb((text, values) => {
+      if (text.includes("information_schema.tables") && values[0] === "legacy_project_parameter_values") {
+        return { rows: [{ c: "1" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await resetQualityRuntime(db);
+
+    expect(
+      queries.some((query) =>
+        query.text.includes("update legacy_project_parameter_values set updated_by_user_id = null")
+      )
+    ).toBe(true);
+    expect(
+      queries.some((query) => query.text.includes("update project_parameter_values set updated_by_user_id"))
+    ).toBe(false);
+  });
+
+  it("skips PPV attribution nullify when neither flat nor legacy table exists", async () => {
+    const { db, queries } = createRecordingDb();
+
+    await resetQualityRuntime(db);
+
+    expect(
+      queries.some(
+        (query) =>
+          query.text.includes("update project_parameter_values set updated_by_user_id") ||
+          query.text.includes("update legacy_project_parameter_values set updated_by_user_id")
+      )
+    ).toBe(false);
+  });
+
+  it("resolveFlatOrLegacyPpvTable prefers flat name then legacy rename", async () => {
+    const flatFirst = createRecordingDb((text, values) => {
+      if (text.includes("information_schema.tables") && values[0] === "project_parameter_values") {
+        return { rows: [{ c: "1" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    await expect(resolveFlatOrLegacyPpvTable(flatFirst.db)).resolves.toBe("project_parameter_values");
+
+    const legacyOnly = createRecordingDb((text, values) => {
+      if (text.includes("information_schema.tables") && values[0] === "legacy_project_parameter_values") {
+        return { rows: [{ c: "1" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    await expect(resolveFlatOrLegacyPpvTable(legacyOnly.db)).resolves.toBe(
+      "legacy_project_parameter_values"
+    );
+
+    const neither = createRecordingDb();
+    await expect(resolveFlatOrLegacyPpvTable(neither.db)).resolves.toBeNull();
   });
 });
