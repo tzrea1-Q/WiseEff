@@ -26,7 +26,8 @@ Local `npm run dev:all` seeded **dual-track** identity: flat `parameter_definiti
 1. **Semantic-only M1 by default** (`includeLegacyFlatIdentity: false`): seed projects, modules, mappings, DTS files, semantic ingest, vendor docs, binding-revision demo history. Skip flat defs / PPV / PPV history.
 2. **`ensureLocalPostCutoverIdentity`**: if cutover marker exists → idempotent return; if flat rows or unbound workflow rows exist → throw wipe guidance; else `migrateParameterIdentities({ mode: "apply", … })` with fixed local token `local-dev-post-cutover`, then `applyParameterIdentityCutover`.
 3. **Opt-out**: `WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1` restores dual-track seed and skips local finalize (typed submit remains blocked).
-4. **Production path unchanged**: `PARAMETER_IDENTITY_MAINTENANCE_TOKEN` + runbook still govern real cutovers.
+4. **API boot**: `npm run dev:api` / `dev:all` runs the same `ensureLocalPostCutoverIdentity` before listen when `NODE_ENV=development`, so an old Docker volume cannot silently serve cutovers=0. Dirty dual-track DBs fail startup. Opt out with `WISEEFF_LOCAL_POST_CUTOVER=0`. Never enabled for `NODE_ENV=production`.
+5. **Production path unchanged**: `PARAMETER_IDENTITY_MAINTENANCE_TOKEN` + runbook still govern real cutovers.
 
 ## Acceptance
 

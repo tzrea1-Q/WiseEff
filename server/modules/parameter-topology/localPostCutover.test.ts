@@ -21,7 +21,8 @@ vi.mock("./migration", () => ({
 
 import {
   LOCAL_POST_CUTOVER_MAINTENANCE_TOKEN,
-  ensureLocalPostCutoverIdentity
+  ensureLocalPostCutoverIdentity,
+  shouldEnsureLocalPostCutoverOnApiBoot
 } from "./localPostCutover";
 
 function createDb(handlers: Array<(text: string) => QueryResult<Record<string, string>> | null>): Database {
@@ -135,5 +136,40 @@ describe("ensureLocalPostCutoverIdentity", () => {
 
     await expect(ensureLocalPostCutoverIdentity(db)).rejects.toThrow(/unexpected blocker/);
     expect(applyParameterIdentityCutover).not.toHaveBeenCalled();
+  });
+});
+
+describe("shouldEnsureLocalPostCutoverOnApiBoot", () => {
+  it("runs by default in development", () => {
+    expect(shouldEnsureLocalPostCutoverOnApiBoot({ NODE_ENV: "development" })).toBe(true);
+  });
+
+  it("never runs in production or test by default", () => {
+    expect(shouldEnsureLocalPostCutoverOnApiBoot({ NODE_ENV: "production" })).toBe(false);
+    expect(shouldEnsureLocalPostCutoverOnApiBoot({ NODE_ENV: "test" })).toBe(false);
+  });
+
+  it("honors explicit opt-out and legacy dual-track seed flag", () => {
+    expect(
+      shouldEnsureLocalPostCutoverOnApiBoot({
+        NODE_ENV: "development",
+        WISEEFF_LOCAL_POST_CUTOVER: "0"
+      })
+    ).toBe(false);
+    expect(
+      shouldEnsureLocalPostCutoverOnApiBoot({
+        NODE_ENV: "development",
+        WISEEFF_SEED_LEGACY_FLAT_IDENTITY: "1"
+      })
+    ).toBe(false);
+  });
+
+  it("allows explicit opt-in under test when WISEEFF_LOCAL_POST_CUTOVER=1", () => {
+    expect(
+      shouldEnsureLocalPostCutoverOnApiBoot({
+        NODE_ENV: "test",
+        WISEEFF_LOCAL_POST_CUTOVER: "1"
+      })
+    ).toBe(true);
   });
 });

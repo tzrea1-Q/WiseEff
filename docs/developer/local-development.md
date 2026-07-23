@@ -73,6 +73,8 @@ This command starts Docker PostgreSQL through `compose.yaml`, waits for it to ac
 
 `db:seed:m1` defaults to **semantic-only** demo data plus an idempotent **local post-cutover finalize** so typed binding drafts can be submitted for review. It does **not** seed flat `parameter_definitions` / `project_parameter_values`, and it will **refuse** to cut over a dirty dual-track developer database in place — wipe the Docker volume (`docker compose down -v`) and re-run `npm run dev:all`. Production identity cutover remains the fail-closed maintenance path in [parameter-identity-cutover.md](../runbooks/parameter-identity-cutover.md).
 
+`npm run dev:api` (and the API process started by `dev:all`) also runs the same **idempotent local post-cutover** before listen when `NODE_ENV=development` (default). That closes the gap where code was updated but an old Docker volume still had `cutovers=0`. Dirty dual-track DBs **fail API startup** with the wipe guidance instead of serving a stack that 409s on submit. Opt out with `WISEEFF_LOCAL_POST_CUTOVER=0`, or use `WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1` for dual-track rehearsal (startup finalize stays off; typed submit remains blocked). Never enabled when `NODE_ENV=production`.
+
 To seed the old dual-track flat identity without local cutover (typed submit stays blocked until a real cutover):
 
 ```bash

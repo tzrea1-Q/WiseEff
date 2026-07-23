@@ -26,7 +26,8 @@
 1. M1 默认语义-only（跳过 flat defs/PPV/历史）。
 2. `ensureLocalPostCutoverIdentity`：已 cutover 则幂等；脏库抛 wipe 文案；否则本地 token 走 apply + cutover。
 3. `WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1` 恢复双轨且跳过本地 finalize。
-4. 生产 `parameter-identities:*` 不变。
+4. **API 启动**：`dev:api` / `dev:all` 在 `NODE_ENV=development` 下 listen 前跑同一套 ensure，避免旧 volume 静默服务 cutovers=0；脏库启动失败。可用 `WISEEFF_LOCAL_POST_CUTOVER=0` 关闭。production 永不启用。
+5. 生产 `parameter-identities:*` 不变。
 
 ## 验收
 

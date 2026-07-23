@@ -21,6 +21,10 @@ import { createMetricsRegistry } from "./observability/metrics";
 import { defaultTracingBoundary } from "./observability/tracing";
 import { createObjectStoreFromEnv } from "./objectStoreFactory";
 import { createPostgresDatabase } from "./shared/database/client";
+import {
+  ensureLocalPostCutoverIdentity,
+  shouldEnsureLocalPostCutoverOnApiBoot
+} from "./modules/parameter-topology/localPostCutover";
 
 const env = loadServerEnv(process.env);
 const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing: defaultTracingBoundary }) : undefined;
@@ -149,6 +153,24 @@ function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-server.listen(env.PORT, env.HOST, () => {
-  console.log(`WiseEff API listening on http://${env.HOST}:${env.PORT}`);
-});
+async function start() {
+  if (db && shouldEnsureLocalPostCutoverOnApiBoot(process.env)) {
+    try {
+      const cutover = await ensureLocalPostCutoverIdentity(db);
+      if (cutover.status === "already-complete") {
+        console.log("[local-post-cutover] already complete");
+      } else {
+        console.log(`[local-post-cutover] applied (run ${cutover.migrationRunId})`);
+      }
+    } catch (error) {
+      console.error("[local-post-cutover] refused to start API:", error);
+      process.exit(1);
+    }
+  }
+
+  server.listen(env.PORT, env.HOST, () => {
+    console.log(`WiseEff API listening on http://${env.HOST}:${env.PORT}`);
+  });
+}
+
+void start();
