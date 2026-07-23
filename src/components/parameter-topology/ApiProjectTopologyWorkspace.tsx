@@ -10,6 +10,7 @@ import type { ParameterTopologyRepository } from "@/application/ports/ParameterT
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import {
   EMPTY_PARAMETER_MODULE_REGISTRY,
+  describeModuleAssignment,
   type ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
 import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/http/parameterModuleRegistryClient";
@@ -93,6 +94,7 @@ function mapServerDraftsToPending(
   projectId: string,
   drafts: ParameterDraftDto[],
   bindings: ProjectParameterBinding[],
+  moduleRegistry: ParameterModuleRegistry,
   sharedTip?: string
 ): PendingBindingDraft[] {
   const bindingById = new Map(bindings.map((binding) => [binding.id, binding]));
@@ -101,7 +103,18 @@ function mapServerDraftsToPending(
     if (!bindingId || draft.projectId !== projectId) return [];
     const binding = bindingById.get(bindingId);
     if (!binding) return [];
-    const candidateRevisionId = draft.candidateConfigRevisionId ?? sharedTip ?? "";
+    const candidateRevisionId = draft.candidateConfigRevisionId?.trim() || sharedTip || "";
+    const parameterSpecId = (draft.parameterSpecId ?? binding.parameterSpecId).trim();
+    if (!candidateRevisionId || !parameterSpecId) return [];
+    const moduleAssignment = describeModuleAssignment(
+      binding.moduleId,
+      {
+        driverModule: binding.driverModule,
+        compatible: null,
+        instanceName: binding.instanceName
+      },
+      moduleRegistry
+    );
     return [
       {
         draftId: draft.id,
@@ -109,7 +122,7 @@ function mapServerDraftsToPending(
         candidateRevisionId,
         rawText: draft.targetValue,
         action: draft.action ?? "set",
-        parameterSpecId: binding.parameterSpecId,
+        parameterSpecId,
         projectParameterBindingId: bindingId,
         writeTarget: {
           role: "overlay",
@@ -119,8 +132,9 @@ function mapServerDraftsToPending(
         overlayFileId: "",
         overlayFileName: "",
         projectId,
-        currentRawValue: binding.rawValue,
-        reason: draft.reason
+        currentRawValue: draft.currentValue ?? binding.rawValue,
+        reason: draft.reason,
+        moduleName: moduleAssignment.moduleName
       }
     ];
   });
@@ -347,9 +361,15 @@ export function ApiProjectTopologyWorkspace({
 
     setPendingDrafts((current) => {
       if (current.some((draft) => draft.projectId === projectId)) return current;
-      return mapServerDraftsToPending(projectId, bindingDrafts, loadState.bindings, sharedTip);
+      return mapServerDraftsToPending(
+        projectId,
+        bindingDrafts,
+        loadState.bindings,
+        moduleRegistry,
+        sharedTip
+      );
     });
-  }, [loadState, projectId, serverDrafts]);
+  }, [loadState, moduleRegistry, projectId, serverDrafts]);
 
   useEffect(() => {
     if (!hasProjectDrafts) {
@@ -527,12 +547,22 @@ export function ApiProjectTopologyWorkspace({
             item.projectId === requestProjectId &&
             item.projectParameterBindingId === draft.projectParameterBindingId
         );
+        const moduleAssignment = describeModuleAssignment(
+          binding.moduleId,
+          {
+            driverModule: binding.driverModule,
+            compatible: null,
+            instanceName: binding.instanceName
+          },
+          moduleRegistry
+        );
         const nextDraft: PendingBindingDraft = {
           ...draft,
           candidateRevisionId: tip,
           projectId: requestProjectId,
           currentRawValue: previousDraft?.currentRawValue ?? binding.rawValue,
-          reason: input.reason
+          reason: input.reason,
+          moduleName: previousDraft?.moduleName ?? moduleAssignment.moduleName
         };
         const withoutBinding = current.filter(
           (item) =>

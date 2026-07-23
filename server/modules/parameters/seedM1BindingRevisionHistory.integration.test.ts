@@ -26,25 +26,40 @@ const PROJECT_ID = "aurora";
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function createInMemoryObjectStore(): ObjectStore {
+  const objects = new Map<string, Buffer>();
   return {
     async put(input) {
       const checksumSha256 = createHash("sha256").update(input.bytes).digest("hex");
+      const storageKey = `${input.organizationId}/${checksumSha256}-${input.fileName}`;
+      objects.set(storageKey, Buffer.from(input.bytes));
       return {
-        storageKey: `${input.organizationId}/${checksumSha256}-${input.fileName}`,
+        storageKey,
         fileName: input.fileName,
         contentType: input.contentType,
         fileSizeBytes: input.bytes.length,
         checksumSha256
       };
     },
-    async get() {
-      throw new Error("not used");
+    async get(storageKey) {
+      const bytes = objects.get(storageKey);
+      if (!bytes) throw new Error(`missing object: ${storageKey}`);
+      return bytes;
     }
   };
 }
 
 async function resetProjectTopology(db: InMemoryTestDatabase) {
   await db.query(`delete from parameter_spec_matcher_overrides where project_id = $1`, [PROJECT_ID]);
+  await db.query(
+    `delete from parameter_drafts
+     where project_parameter_binding_id in (
+       select id from project_parameter_bindings where project_id = $1
+     )
+     or candidate_config_revision_id in (
+       select id from dts_config_revisions where project_id = $1
+     )`,
+    [PROJECT_ID]
+  );
   await db.query(`delete from dts_config_revisions where project_id = $1`, [PROJECT_ID]);
 
   const bindingRefTables = [
@@ -113,7 +128,7 @@ describe.skipIf(!databaseAvailable)("seedM1BindingRevisionHistory", () => {
 
     await seedM1DtsFiles(db!, objectStore, [projectFile]);
     await seedM1SemanticTopology(db!, [projectFile]);
-    await seedM1BindingRevisionHistory(db!, [projectFile]);
+    await seedM1BindingRevisionHistory(db!, objectStore, [projectFile]);
 
     const revisions = await db!.query<{ count: string }>(
       `select count(*)::text as count from dts_config_revisions where project_id = $1`,
@@ -153,6 +168,21 @@ describe.skipIf(!databaseAvailable)("seedM1BindingRevisionHistory", () => {
     expect(rawValues.length).toBeGreaterThanOrEqual(2);
     expect(new Set(rawValues).size).toBeGreaterThan(1);
     expect(BINDING_REVISION_HISTORY_DEMO.replace).toContain("6000");
+
+    const revisedVersion = await db!.query<{ storage_key: string; idxlen: string }>(
+      `
+      select v.storage_key, length(v.parsed_index::text)::text as idxlen
+      from project_parameter_file_versions v
+      inner join project_parameter_files f on f.id = v.file_id
+      where f.project_id = $1
+      order by v.version_number desc
+      limit 1
+      `,
+      [PROJECT_ID]
+    );
+    expect(Number(revisedVersion.rows[0]?.idxlen ?? "0")).toBeGreaterThan(2);
+    const storedBytes = await objectStore.get(revisedVersion.rows[0]!.storage_key);
+    expect(storedBytes.toString("utf8")).toContain("watchdog_time = <6000>;");
   });
 
   it("is idempotent: rerunning the history seed does not add a third config revision", async () => {
@@ -166,8 +196,8 @@ describe.skipIf(!databaseAvailable)("seedM1BindingRevisionHistory", () => {
 
     await seedM1DtsFiles(db!, objectStore, [projectFile]);
     await seedM1SemanticTopology(db!, [projectFile]);
-    await seedM1BindingRevisionHistory(db!, [projectFile]);
-    await seedM1BindingRevisionHistory(db!, [projectFile], baseSource);
+    await seedM1BindingRevisionHistory(db!, objectStore, [projectFile]);
+    await seedM1BindingRevisionHistory(db!, objectStore, [projectFile]);
 
     const revisions = await db!.query<{ count: string }>(
       `select count(*)::text as count from dts_config_revisions where project_id = $1`,

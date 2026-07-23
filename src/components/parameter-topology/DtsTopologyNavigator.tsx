@@ -10,8 +10,13 @@ export type DtsTopologyNavigatorProps = {
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string) => void;
   ariaLabel?: string;
-  /** API workbench keeps the mature browse experience open on first load. */
+  /** Expand every branch that has children on first load. */
   expandAllByDefault?: boolean;
+  /**
+   * Expand nodes so levels `1..defaultExpandDepth` are visible on first load
+   * (root aria-level is 1). Ignored when `expandAllByDefault` is true.
+   */
+  defaultExpandDepth?: number;
   /** Module labels read as natural text; DTS node labels stay monospaced. */
   labelKind?: "code" | "text";
   emptyMessage?: string;
@@ -65,6 +70,48 @@ function expansionPath(index: TreeIndex, selectedNodeId: string | null): string[
   return expanded;
 }
 
+/** Expand ancestors so nodes through `maxVisibleDepth` (1-based) are visible. */
+function idsToExpandUpToDepth(
+  nodes: DtsWorkbenchTreeNode[],
+  maxVisibleDepth: number
+): Set<string> {
+  const expanded = new Set<string>();
+  if (maxVisibleDepth <= 1) return expanded;
+  const walk = (branch: DtsWorkbenchTreeNode[], level: number) => {
+    for (const node of branch) {
+      if (node.children.length === 0) continue;
+      if (level < maxVisibleDepth) {
+        expanded.add(node.id);
+        walk(node.children, level + 1);
+      }
+    }
+  };
+  walk(nodes, 1);
+  return expanded;
+}
+
+function initialExpandedIds(
+  nodes: DtsWorkbenchTreeNode[],
+  index: TreeIndex,
+  selectedNodeId: string | null,
+  expandAllByDefault: boolean,
+  defaultExpandDepth: number | undefined
+): Set<string> {
+  if (expandAllByDefault) {
+    return new Set(
+      [...index.byId.values()]
+        .filter((node) => node.children.length > 0)
+        .map((node) => node.id)
+    );
+  }
+  const expanded =
+    defaultExpandDepth != null && defaultExpandDepth > 0
+      ? idsToExpandUpToDepth(nodes, defaultExpandDepth)
+      : new Set<string>();
+  for (const id of expansionPath(index, selectedNodeId)) expanded.add(id);
+  return expanded;
+}
+
 function visibleNodeIds(
   nodes: DtsWorkbenchTreeNode[],
   expandedIds: Set<string>
@@ -93,19 +140,18 @@ export function DtsTopologyNavigator({
   onSelectNode,
   ariaLabel,
   expandAllByDefault = false,
+  defaultExpandDepth,
   labelKind = "code",
   emptyMessage
 }: DtsTopologyNavigatorProps) {
   const index = useMemo(() => indexTree(nodes), [nodes]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
-    () => expandAllByDefault
-      ? new Set([...index.byId.values()].filter((node) => node.children.length > 0).map((node) => node.id))
-      : new Set(expansionPath(index, selectedNodeId))
+    () => initialExpandedIds(nodes, index, selectedNodeId, expandAllByDefault, defaultExpandDepth)
   );
   const [activeNodeId, setActiveNodeId] = useState<string | null>(() => {
     const initialVisibleIds = visibleNodeIds(
       nodes,
-      new Set(expansionPath(index, selectedNodeId))
+      initialExpandedIds(nodes, index, selectedNodeId, expandAllByDefault, defaultExpandDepth)
     );
     return selectedNodeId && initialVisibleIds.includes(selectedNodeId)
       ? selectedNodeId

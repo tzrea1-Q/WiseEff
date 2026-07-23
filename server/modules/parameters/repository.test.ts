@@ -366,9 +366,14 @@ describe("parameter repository", () => {
     await listDraftsForUser(db, { organizationId: "org-chargelab", userId: "user-1", projectId: "project-1" });
     await deleteDraft(db, { organizationId: "org-chargelab", userId: "user-1", draftId: "draft-1" });
 
-    expect(calls[0].text).toContain("from parameter_drafts");
-    expect(calls[0].text).toContain("organization_id = $1");
-    expect(calls[0].text).toContain("user_id = $2");
+    expect(calls[0].text).toContain("from parameter_drafts d");
+    expect(calls[0].text).toContain("d.organization_id = $1");
+    expect(calls[0].text).toContain("d.user_id = $2");
+    expect(calls[0].text).toContain("as base_raw_value");
+    expect(calls[0].text).toContain("d.candidate_config_revision_id");
+    expect(calls[0].text).toContain("b.parameter_spec_id");
+    expect(calls[0].text).toContain("parameter_modules pm");
+    expect(calls[0].text).toContain("project_parameter_binding_revisions locked_bpr");
     expect(calls[0].values).toEqual(["org-chargelab", "user-1", "project-1"]);
     expect(calls[1].text).toContain("delete from parameter_drafts");
     expect(calls[1].values).toEqual(["org-chargelab", "user-1", "draft-1"]);
@@ -386,7 +391,11 @@ describe("parameter repository", () => {
           reason: "Align thermal limit.",
           updated_at: "2026-07-23T02:00:00.000Z",
           project_parameter_binding_id: "binding-1",
-          candidate_config_revision_id: "rev-shared-tip"
+          candidate_config_revision_id: "rev-shared-tip",
+          parameter_spec_id: "spec-thermal",
+          base_raw_value: "3000",
+          property_name: "thermal-limit",
+          driver_module: "Power"
         }
       ]
     ]);
@@ -408,7 +417,11 @@ describe("parameter repository", () => {
         reason: "Align thermal limit.",
         updatedAt: "2026-07-23T02:00:00.000Z",
         projectParameterBindingId: "binding-1",
-        candidateConfigRevisionId: "rev-shared-tip"
+        candidateConfigRevisionId: "rev-shared-tip",
+        parameterSpecId: "spec-thermal",
+        name: "thermal-limit",
+        module: "Power",
+        currentValue: "3000"
       }
     ]);
   });

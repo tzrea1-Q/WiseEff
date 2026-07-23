@@ -229,7 +229,9 @@ describe("DtsBindingDraftDialog", () => {
     });
 
     resolveValidation({ valid: true, diagnostics: [] });
-    await waitFor(() => expect(screen.queryByLabelText("gpio_int 草稿")).not.toBeInTheDocument());
+    expect(await screen.findByRole("status")).toHaveTextContent("服务端校验通过，草稿已创建");
+    expect(screen.getByLabelText("gpio_int 草稿")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "校验并加入本轮" })).toBeDisabled();
   });
 
   it("keeps server diagnostics authoritative and preserves the user's input after rejection", async () => {
@@ -268,7 +270,31 @@ describe("DtsBindingDraftDialog", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "校验并加入本轮" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "校验并加入本轮" }));
     await waitFor(() => expect(onCreateDraft).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.queryByLabelText("gpio_int 草稿")).not.toBeInTheDocument());
+    expect(await screen.findByRole("status")).toHaveTextContent("服务端校验通过，草稿已创建");
+    expect(screen.getByLabelText("gpio_int 草稿")).toBeInTheDocument();
+  });
+
+  it("preserves success feedback when the committed values are unchanged", async () => {
+    renderDraftDialog({
+      onCreateDraft: vi.fn().mockResolvedValue({ valid: true, diagnostics: [] })
+    });
+
+    fireEvent.change(screen.getByRole("textbox", { name: "修改原因" }), {
+      target: { value: "Move interrupt line" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "校验并加入本轮" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("服务端校验通过，草稿已创建");
+
+    fireEvent.change(screen.getByRole("textbox", { name: "目标值" }), {
+      target: { value: "<&gpio13 31 0>" }
+    });
+    expect(screen.queryByText("服务端校验通过，草稿已创建")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "目标值" }), {
+      target: { value: "<&gpio13 29 0>" }
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("服务端校验通过，草稿已创建");
+    expect(screen.getByRole("button", { name: "校验并加入本轮" })).toBeDisabled();
   });
 
   it.each(["resolve", "reject"] as const)(

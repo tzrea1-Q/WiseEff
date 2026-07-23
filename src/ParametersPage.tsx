@@ -34,6 +34,7 @@ import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { ApiProjectTopologyWorkspace } from "@/components/parameter-topology/ApiProjectTopologyWorkspace";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { useTopologyLayoutMode } from "@/components/parameter-topology/useTopologyLayoutMode";
+import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 
@@ -92,6 +93,17 @@ export function ParametersPage({
   const effectiveCanEdit = canEdit && !initializationLocked;
   const isApiMode = runtimeMode === "api";
   const topologyLayoutMode = useTopologyLayoutMode();
+  const parameterRepository = useMemo(
+    () => (isApiMode ? createHttpParameterRepository() : null),
+    [isApiMode]
+  );
+  const listDrafts = useMemo(
+    () =>
+      parameterRepository
+        ? (projectId: string) => parameterRepository.listDrafts(projectId)
+        : undefined,
+    [parameterRepository]
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [riskFilters, setRiskFilters] = useState<Set<ParameterRiskFilter>>(new Set());
   const [moduleFilters, setModuleFilters] = useState<Set<string>>(new Set());
@@ -813,6 +825,7 @@ export function ParametersPage({
             runtimeMode="api"
             topologyRepository={topologyRepository}
             listConfigSets={listConfigSets}
+            listDrafts={listDrafts}
             listWorkflowAssignees={parameterActions?.listWorkflowAssignees}
             submitBindingChanges={parameterActions?.submitChanges}
             onNavigate={onNavigate}

@@ -494,6 +494,10 @@ type DraftRow = {
   updated_at: string | Date;
   project_parameter_binding_id?: string | null;
   candidate_config_revision_id?: string | null;
+  parameter_spec_id?: string | null;
+  base_raw_value?: string | null;
+  property_name?: string | null;
+  driver_module?: string | null;
 };
 
 export type ParameterDraftWithOrigin = {
@@ -560,6 +564,8 @@ type ChangeRequestRow = {
   parameter_definition_id?: string;
   base_version?: number | string;
   module: string;
+  module_description?: string | null;
+  parameter_description?: string | null;
   title: string;
   current_value: string;
   target_value: string;
@@ -584,6 +590,68 @@ type ChangeRequestRow = {
   source_file_name?: string | null;
   source_node_path?: string | null;
 };
+
+/** Prefer binding leaf module name; fall back to spec-key prefix. */
+const CR_MODULE_NAME_SEMANTIC_SQL = `
+      coalesce(
+        nullif(trim(binding_pm.name), ''),
+        nullif(split_part(ps.specification_key, '/', 1), ''),
+        ''
+      ) as module`;
+
+/**
+ * Prefer category/ancestor module intro over instance boilerplate
+ * (e.g. "sc8562@6E DTS 实例模块。").
+ */
+const CR_MODULE_DESCRIPTION_FROM_BINDING_SQL = `
+      coalesce(
+        (
+          select nullif(trim(ancestor.description), '')
+          from parameter_modules ancestor
+          where binding_pm.path is not null
+            and ancestor.id = any(string_to_array(binding_pm.path, '/'))
+            and ancestor.id is distinct from binding_pm.id
+            and coalesce(ancestor.description, '') !~ 'DTS 实例模块'
+          order by ancestor.depth desc
+          limit 1
+        ),
+        nullif(trim(binding_pm.description), '')
+      ) as module_description`;
+
+const CR_MODULE_JOINS_SEMANTIC_SQL = `
+    left join project_parameter_bindings b on b.id = pcr.project_parameter_binding_id
+    left join parameter_modules binding_pm on binding_pm.id = b.module_id`;
+
+/** Legacy: prefer binding leaf name, else definition module label. */
+const CR_MODULE_NAME_LEGACY_SQL = `
+      coalesce(nullif(trim(binding_pm.name), ''), pd.module) as module`;
+
+const CR_MODULE_DESCRIPTION_LEGACY_SQL = `
+      coalesce(
+        nullif(trim(def_pm.description), ''),
+        (
+          select nullif(trim(ancestor.description), '')
+          from parameter_modules ancestor
+          where binding_pm.path is not null
+            and ancestor.id = any(string_to_array(binding_pm.path, '/'))
+            and ancestor.id is distinct from binding_pm.id
+            and coalesce(ancestor.description, '') !~ 'DTS 实例模块'
+          order by ancestor.depth desc
+          limit 1
+        ),
+        nullif(trim(binding_pm.description), '')
+      ) as module_description`;
+
+const CR_MODULE_JOINS_LEGACY_SQL = `
+    left join project_parameter_bindings b on b.id = pcr.project_parameter_binding_id
+    left join parameter_modules binding_pm on binding_pm.id = b.module_id
+    left join parameter_modules def_pm on def_pm.id = pd.parameter_module_id`;
+
+const CR_PARAMETER_DESCRIPTION_SEMANTIC_SQL = `
+      nullif(trim(psv.description), '') as parameter_description`;
+
+const CR_PARAMETER_DESCRIPTION_LEGACY_SQL = `
+      nullif(trim(pd.description), '') as parameter_description`;
 
 type WorkflowAssigneesRow = {
   submission_round_id: string;
@@ -818,6 +886,11 @@ function toDraftDto(row: DraftRow): ParameterDraftDto {
   const bindingId = row.project_parameter_binding_id ?? undefined;
   // Post-cutover: parameterId DTO field carries the semantic binding id.
   const parameterId = bindingId ?? row.project_parameter_value_id;
+  const currentValue = row.base_raw_value ?? undefined;
+  const name = row.property_name?.trim() || undefined;
+  const module = row.driver_module?.trim() || undefined;
+  const candidateConfigRevisionId = row.candidate_config_revision_id?.trim() || undefined;
+  const parameterSpecId = row.parameter_spec_id?.trim() || undefined;
   return {
     id: row.id,
     projectId: row.project_id,
@@ -827,9 +900,11 @@ function toDraftDto(row: DraftRow): ParameterDraftDto {
     reason: row.reason,
     updatedAt: dateTimeToIso(row.updated_at),
     ...(bindingId ? { projectParameterBindingId: bindingId } : {}),
-    ...(row.candidate_config_revision_id
-      ? { candidateConfigRevisionId: row.candidate_config_revision_id }
-      : {})
+    ...(candidateConfigRevisionId ? { candidateConfigRevisionId } : {}),
+    ...(parameterSpecId ? { parameterSpecId } : {}),
+    ...(name ? { name } : {}),
+    ...(module ? { module } : {}),
+    ...(currentValue !== undefined && currentValue !== null ? { currentValue } : {})
   };
 }
 
@@ -998,6 +1073,12 @@ async function toChangeRequestDto(db: Queryable, row: ChangeRequestRow): Promise
     parameterId: row.project_parameter_value_id,
     baseVersion: row.base_version === undefined ? undefined : Number(row.base_version),
     module: row.module,
+    ...(row.module_description?.trim()
+      ? { moduleDescription: row.module_description.trim() }
+      : {}),
+    ...(row.parameter_description?.trim()
+      ? { parameterDescription: row.parameter_description.trim() }
+      : {}),
     title: row.title,
     currentValue: row.current_value,
     targetValue: row.target_value,
@@ -1686,10 +1767,10 @@ export async function listDraftsForUser(
   query: { organizationId: string; userId: string; projectId?: string }
 ) {
   const values: unknown[] = [query.organizationId, query.userId];
-  const where = ["organization_id = $1", "user_id = $2"];
+  const where = ["d.organization_id = $1", "d.user_id = $2"];
 
   if (query.projectId) {
-    addCondition(where, values, (placeholder) => `project_id = ${placeholder}`, query.projectId);
+    addCondition(where, values, (placeholder) => `d.project_id = ${placeholder}`, query.projectId);
   }
 
   const semantic = await mustUseSemanticParameterIdentity(db);
@@ -1697,24 +1778,78 @@ export async function listDraftsForUser(
     semantic
       ? `
     select
-      id,
-      project_id,
-      coalesce(project_parameter_binding_id, '') as project_parameter_value_id,
-      target_value,
-      action,
-      reason,
-      updated_at,
-      project_parameter_binding_id,
-      candidate_config_revision_id
-    from parameter_drafts
+      d.id,
+      d.project_id,
+      coalesce(d.project_parameter_binding_id, '') as project_parameter_value_id,
+      d.target_value,
+      d.action,
+      d.reason,
+      d.updated_at,
+      d.project_parameter_binding_id,
+      d.candidate_config_revision_id,
+      b.parameter_spec_id,
+      locked_bpr.raw_value as base_raw_value,
+      coalesce(
+        dps.property_key,
+        nullif(split_part(ps.specification_key, '/', 2), ''),
+        ps.specification_key
+      ) as property_name,
+      coalesce(pm.name, nullif(split_part(ps.specification_key, '/', 1), '')) as driver_module
+    from parameter_drafts d
+    left join project_parameter_bindings b
+      on b.id = d.project_parameter_binding_id
+    left join parameter_modules pm
+      on pm.id = b.module_id
+    left join parameter_specs ps
+      on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps
+      on dps.parameter_spec_id = ps.id
+    left join project_parameter_binding_revisions locked_bpr
+      on locked_bpr.id = d.binding_revision_id
     where ${where.join("\n      and ")}
-    order by updated_at desc
+    order by d.updated_at desc
     `
       : `
-    select id, project_id, project_parameter_value_id, target_value, action, reason, updated_at, project_parameter_binding_id, candidate_config_revision_id
-    from parameter_drafts
+    select
+      d.id,
+      d.project_id,
+      d.project_parameter_value_id,
+      d.target_value,
+      d.action,
+      d.reason,
+      d.updated_at,
+      d.project_parameter_binding_id,
+      d.candidate_config_revision_id,
+      coalesce(b.parameter_spec_id, null) as parameter_spec_id,
+      coalesce(locked_bpr.raw_value, ppv.current_value) as base_raw_value,
+      coalesce(
+        dps.property_key,
+        nullif(split_part(ps.specification_key, '/', 2), ''),
+        ps.specification_key,
+        pd.name
+      ) as property_name,
+      coalesce(
+        pm.name,
+        nullif(split_part(ps.specification_key, '/', 1), ''),
+        pd.module
+      ) as driver_module
+    from parameter_drafts d
+    left join project_parameter_values ppv
+      on ppv.id = d.project_parameter_value_id
+    left join parameter_definitions pd
+      on pd.id = ppv.parameter_definition_id
+    left join project_parameter_bindings b
+      on b.id = d.project_parameter_binding_id
+    left join parameter_modules pm
+      on pm.id = b.module_id
+    left join parameter_specs ps
+      on ps.id = b.parameter_spec_id
+    left join dts_property_specs dps
+      on dps.parameter_spec_id = ps.id
+    left join project_parameter_binding_revisions locked_bpr
+      on locked_bpr.id = d.binding_revision_id
     where ${where.join("\n      and ")}
-    order by updated_at desc
+    order by d.updated_at desc
     `,
     values
   );
@@ -2702,7 +2837,9 @@ export async function listChangeRequests(
       pcr.project_id,
       coalesce(pcr.project_parameter_binding_id, '') as project_parameter_value_id,
       pcr.base_version,
-      split_part(ps.specification_key, '/', 1) as module,
+      ${CR_MODULE_NAME_SEMANTIC_SQL},
+      ${CR_MODULE_DESCRIPTION_FROM_BINDING_SQL},
+      ${CR_PARAMETER_DESCRIPTION_SEMANTIC_SQL},
       coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as title,
       pcr.current_value,
       pcr.target_value,
@@ -2737,6 +2874,7 @@ export async function listChangeRequests(
       limit 1
     ) psv on true
     left join project_parameter_bindings b on b.id = pcr.project_parameter_binding_id
+    left join parameter_modules binding_pm on binding_pm.id = b.module_id
     left join lateral (
       select lnr.node_locator
       from dts_logical_node_revisions lnr
@@ -2756,7 +2894,9 @@ export async function listChangeRequests(
       pcr.project_id,
       pcr.project_parameter_value_id,
       pcr.base_version,
-      pd.module,
+      ${CR_MODULE_NAME_LEGACY_SQL},
+      ${CR_MODULE_DESCRIPTION_LEGACY_SQL},
+      ${CR_PARAMETER_DESCRIPTION_LEGACY_SQL},
       pd.name as title,
       pcr.current_value,
       pcr.target_value,
@@ -2785,6 +2925,7 @@ export async function listChangeRequests(
     inner join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
     left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = pcr.project_parameter_value_id
+    ${CR_MODULE_JOINS_LEGACY_SQL}
     where ${where.join("\n      and ")}
     order by pcr.updated_at desc
     `,
@@ -2811,7 +2952,9 @@ export async function findOpenChangeRequest(
         pcr.project_id,
         coalesce(pcr.project_parameter_binding_id, '') as project_parameter_value_id,
         pcr.base_version,
-        split_part(ps.specification_key, '/', 1) as module,
+        ${CR_MODULE_NAME_SEMANTIC_SQL},
+        ${CR_MODULE_DESCRIPTION_FROM_BINDING_SQL},
+        ${CR_PARAMETER_DESCRIPTION_SEMANTIC_SQL},
         coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as title,
         pcr.current_value,
         pcr.target_value,
@@ -2845,6 +2988,7 @@ export async function findOpenChangeRequest(
         order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
         limit 1
       ) psv on true
+      ${CR_MODULE_JOINS_SEMANTIC_SQL}
       inner join users on users.id = pcr.submitter_user_id
       left join users assignee on assignee.id = pcr.assigned_to_user_id
       where pcr.organization_id = $1
@@ -2866,7 +3010,9 @@ export async function findOpenChangeRequest(
       pcr.project_id,
       pcr.project_parameter_value_id,
       pcr.base_version,
-      pd.module,
+      ${CR_MODULE_NAME_LEGACY_SQL},
+      ${CR_MODULE_DESCRIPTION_LEGACY_SQL},
+      ${CR_PARAMETER_DESCRIPTION_LEGACY_SQL},
       pd.name as title,
       pcr.current_value,
       pcr.target_value,
@@ -2895,6 +3041,7 @@ export async function findOpenChangeRequest(
     inner join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
     left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = pcr.project_parameter_value_id
+    ${CR_MODULE_JOINS_LEGACY_SQL}
     where pcr.organization_id = $1
       and pcr.project_id = $2
       and pcr.project_parameter_value_id = $3
@@ -2921,7 +3068,9 @@ export async function getChangeRequestById(
         coalesce(pcr.project_parameter_binding_id, '') as project_parameter_value_id,
         null::text as parameter_definition_id,
         pcr.base_version,
-        split_part(ps.specification_key, '/', 1) as module,
+        ${CR_MODULE_NAME_SEMANTIC_SQL},
+        ${CR_MODULE_DESCRIPTION_FROM_BINDING_SQL},
+        ${CR_PARAMETER_DESCRIPTION_SEMANTIC_SQL},
         coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as title,
         pcr.current_value,
         pcr.target_value,
@@ -2955,6 +3104,7 @@ export async function getChangeRequestById(
         order by case when psv.lifecycle = 'active' then 0 else 1 end, psv.version desc
         limit 1
       ) psv on true
+      ${CR_MODULE_JOINS_SEMANTIC_SQL}
       inner join users on users.id = pcr.submitter_user_id
       left join users assignee on assignee.id = pcr.assigned_to_user_id
       where pcr.organization_id = $1
@@ -2975,7 +3125,9 @@ export async function getChangeRequestById(
       pcr.project_parameter_value_id,
       pcr.parameter_definition_id,
       pcr.base_version,
-      pd.module,
+      ${CR_MODULE_NAME_LEGACY_SQL},
+      ${CR_MODULE_DESCRIPTION_LEGACY_SQL},
+      ${CR_PARAMETER_DESCRIPTION_LEGACY_SQL},
       pd.name as title,
       pcr.current_value,
       pcr.target_value,
@@ -3004,6 +3156,7 @@ export async function getChangeRequestById(
     inner join users on users.id = pcr.submitter_user_id
     left join users assignee on assignee.id = pcr.assigned_to_user_id
     left join ${LEGACY_IDENTITY_SQL.valuesTable} ppv on ppv.id = pcr.project_parameter_value_id
+    ${CR_MODULE_JOINS_LEGACY_SQL}
     where pcr.organization_id = $1
       and pcr.id = $2
     for update of pcr

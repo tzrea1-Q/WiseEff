@@ -80,15 +80,26 @@ function rollupAncestorCounts(node: DtsWorkbenchTreeNode): void {
   }
 }
 
-/** Hide a lone wrapper root (e.g. Power) so its children become the navigator roots. */
+const UNCLASSIFIED_ROOT_LABEL = "未分类";
+
+function isUnclassifiedRoot(node: DtsWorkbenchTreeNode): boolean {
+  return node.label === UNCLASSIFIED_ROOT_LABEL;
+}
+
+/**
+ * Hide a lone business wrapper root (e.g. Power) so its children become navigator roots.
+ * Exact「未分类」roots are ignored for the singleton check and kept as peer roots after promote.
+ */
 function promoteSingletonRoot(roots: DtsWorkbenchTreeNode[]): DtsWorkbenchTreeNode[] {
-  if (roots.length !== 1) return roots;
-  const only = roots[0]!;
+  const primary = roots.filter((node) => !isUnclassifiedRoot(node));
+  const unclassified = roots.filter(isUnclassifiedRoot);
+  if (primary.length !== 1) return roots;
+  const only = primary[0]!;
   if (only.children.length === 0) return roots;
   for (const child of only.children) {
     child.parentId = null;
   }
-  return only.children;
+  return [...only.children, ...unclassified];
 }
 
 /**

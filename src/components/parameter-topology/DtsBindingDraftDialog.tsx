@@ -52,6 +52,8 @@ type CardDiagnostics = {
   state: CardSubmissionState;
   message: string;
   diagnostics: BindingEditValidation["diagnostics"];
+  /** Snapshot of the values that produced a successful server draft (API-mode feedback). */
+  committed?: { rawValue: string; reason: string };
 };
 
 function importanceLabel(importance: DtsParameterWorkbenchRow["importance"]): string {
@@ -78,6 +80,17 @@ function bindingDraftKindHint(row: DtsParameterWorkbenchRow) {
 
 function displayRaw(value: string) {
   return formatDtsRawValueForUi(value) || value;
+}
+
+function matchesCommitted(
+  draft: LocalBindingDraft,
+  committed: { rawValue: string; reason: string } | undefined
+): boolean {
+  return Boolean(
+    committed &&
+    committed.rawValue === draft.rawValue &&
+    committed.reason === draft.reason.trim()
+  );
 }
 
 export function DtsBindingDraftDialog({
@@ -116,8 +129,57 @@ export function DtsBindingDraftDialog({
 
   const submittableBindingIds = bindingIds.filter((bindingId) => {
     const draft = draftBag[bindingId];
-    return Boolean(draft?.rawValue.trim() && draft.reason.trim());
+    if (!draft?.rawValue.trim() || !draft.reason.trim()) return false;
+    const diagnostics = cardDiagnostics[bindingId];
+    if (diagnostics?.state === "success" && matchesCommitted(draft, diagnostics.committed)) {
+      return false;
+    }
+    return true;
   });
+  const committedCount = bindingIds.filter((bindingId) => {
+    const draft = draftBag[bindingId];
+    const diagnostics = cardDiagnostics[bindingId];
+    return Boolean(draft && diagnostics?.state === "success" && matchesCommitted(draft, diagnostics.committed));
+  }).length;
+
+  const reconcileCardInput = (
+    bindingId: string,
+    nextRawValue: string,
+    nextReason: string
+  ) => {
+    setCardDiagnostics((current) => {
+      const existing = current[bindingId];
+      if (!existing?.committed) {
+        if (!existing) return current;
+        if (existing.state === "idle" && !existing.message && existing.diagnostics.length === 0) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[bindingId];
+        return next;
+      }
+      if (matchesCommitted({ rawValue: nextRawValue, reason: nextReason }, existing.committed)) {
+        return {
+          ...current,
+          [bindingId]: {
+            ...existing,
+            state: "success",
+            message: "服务端校验通过，草稿已创建"
+          }
+        };
+      }
+      if (existing.state === "idle" && !existing.message) return current;
+      return {
+        ...current,
+        [bindingId]: {
+          state: "idle",
+          message: "",
+          diagnostics: [],
+          committed: existing.committed
+        }
+      };
+    });
+  };
 
   const submitDrafts = async () => {
     if (!canEdit || batchPending || submittableBindingIds.length === 0) return;
@@ -144,12 +206,20 @@ export function DtsBindingDraftDialog({
         if (!mountedRef.current || requestGenerationRef.current !== requestGeneration) break;
 
         if (result.valid) {
-          setCardDiagnostics((current) => {
-            const next = { ...current };
-            delete next[bindingId];
-            return next;
-          });
-          onRemoveDraft(bindingId);
+          // Keep the card with durable success feedback (historical API detail-dialog behavior).
+          // The tray + main-table draft badge are updated by onCreateDraft's parent state.
+          setCardDiagnostics((current) => ({
+            ...current,
+            [bindingId]: {
+              state: "success",
+              message: "服务端校验通过，草稿已创建",
+              diagnostics: result.diagnostics,
+              committed: {
+                rawValue: draft.rawValue,
+                reason: draft.reason.trim()
+              }
+            }
+          }));
         } else {
           setCardDiagnostics((current) => ({
             ...current,
@@ -178,15 +248,6 @@ export function DtsBindingDraftDialog({
     }
   };
 
-  const clearCardDiagnostics = (bindingId: string) => {
-    setCardDiagnostics((current) => {
-      if (!current[bindingId]) return current;
-      const next = { ...current };
-      delete next[bindingId];
-      return next;
-    });
-  };
-
   return (
     <Dialog open onOpenChange={(open) => {
       if (!open) onClose();
@@ -205,7 +266,7 @@ export function DtsBindingDraftDialog({
           <div>
             <DialogTitle>修改草稿</DialogTitle>
             <DialogDescription>
-              编辑会加入本轮草稿；校验通过后进入下方「本轮已修改」托盘。
+              编辑会加入本轮草稿；校验通过后保留成功提示，并进入工作台「本轮已修改」托盘。
             </DialogDescription>
           </div>
           <Button type="button" variant="ghost" size="icon-sm" aria-label="关闭草稿" onClick={onClose}>
@@ -217,7 +278,11 @@ export function DtsBindingDraftDialog({
           <div className="dts-binding-draft-dialog__summary" aria-label="本轮草稿汇总">
             <div>
               <strong>本轮草稿 {bindingIds.length} 项</strong>
-              <span>可先收集多个参数，再统一校验并加入本轮。</span>
+              <span>
+                {committedCount > 0
+                  ? `其中 ${committedCount} 项已加入本轮；可继续编辑其余参数或关闭查看托盘。`
+                  : "可先收集多个参数，再统一校验并加入本轮。"}
+              </span>
             </div>
             <Button type="button" variant="outline" disabled={bindingIds.length === 0} onClick={onClearAll}>
               全部清空
@@ -232,6 +297,8 @@ export function DtsBindingDraftDialog({
               const isFocused = bindingId === focusedBindingId;
               const diagnostics = cardDiagnostics[bindingId];
               const isPending = diagnostics?.state === "pending";
+              const isCommitted = diagnostics?.state === "success"
+                && matchesCommitted(draft, diagnostics.committed);
               const targetInputId = `dts-draft-raw-${bindingId}`;
               const reasonInputId = `dts-draft-reason-${bindingId}`;
               const currentDisplay = displayRaw(row.rawValue);
@@ -252,6 +319,7 @@ export function DtsBindingDraftDialog({
                   className={[
                     "dts-binding-draft-card",
                     isFocused ? "is-focused" : "",
+                    isCommitted ? "is-committed" : "",
                     isComplexCard ? "dts-binding-draft-card--complex" : "dts-binding-draft-card--simple"
                   ].filter(Boolean).join(" ")}
                   aria-label={`${row.propertyKey} 草稿`}
@@ -303,8 +371,9 @@ export function DtsBindingDraftDialog({
                     disabled={!canEdit || batchPending || isPending}
                     aria-label={isFocused ? "目标值" : `目标值 ${row.propertyKey}`}
                     onChange={(event) => {
-                      onUpdateDraft(bindingId, { rawValue: event.target.value });
-                      clearCardDiagnostics(bindingId);
+                      const nextRawValue = event.target.value;
+                      onUpdateDraft(bindingId, { rawValue: nextRawValue });
+                      reconcileCardInput(bindingId, nextRawValue, draft.reason);
                     }}
                   />
                   <Label htmlFor={reasonInputId}>修改原因</Label>
@@ -315,10 +384,14 @@ export function DtsBindingDraftDialog({
                     aria-label={isFocused ? "修改原因" : `修改原因 ${row.propertyKey}`}
                     placeholder={`说明为什么要将 ${row.propertyKey} 改为\n${draft.rawValue || "新值"}`}
                     onChange={(event) => {
-                      onUpdateDraft(bindingId, { reason: event.target.value });
-                      clearCardDiagnostics(bindingId);
+                      const nextReason = event.target.value;
+                      onUpdateDraft(bindingId, { reason: nextReason });
+                      reconcileCardInput(bindingId, draft.rawValue, nextReason);
                     }}
                   />
+                  {diagnostics?.state === "success" && isCommitted ? (
+                    <p role="status">{diagnostics.message}</p>
+                  ) : null}
                   {diagnostics?.state === "failure" ? (
                     <p role="alert">{diagnostics.message}</p>
                   ) : null}

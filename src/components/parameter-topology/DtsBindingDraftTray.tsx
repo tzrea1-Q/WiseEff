@@ -13,6 +13,8 @@ export type PendingBindingDraft = BindingDraftResult & {
   projectId: string;
   currentRawValue: string;
   reason: string;
+  /** Business module display name (same source as workbench「所属模块」). */
+  moduleName: string;
 };
 
 export type DtsBindingDraftTrayProps = {
@@ -226,7 +228,7 @@ export function DtsBindingDraftTray({
             <div className="dts-binding-draft-tray__item-heading">
               <div>
                 <strong><code>{draft.writeTarget.propertyKey}</code></strong>
-                <span>{draft.action === "delete" ? "删除属性（tombstone）" : "设置属性"}</span>
+                <span>{draft.moduleName}</span>
               </div>
               <button
                 type="button"
@@ -250,16 +252,6 @@ export function DtsBindingDraftTray({
               />
             </div>
             <p><strong>原因：</strong>{draft.reason}</p>
-            <details className="dts-binding-draft-tray__identity">
-              <summary>技术身份</summary>
-              <dl>
-                <div><dt>action</dt><dd><code>{draft.action}</code></dd></div>
-                <div><dt>candidate</dt><dd><code>{draft.candidateRevisionId}</code></dd></div>
-                <div><dt>draft</dt><dd><code>{draft.draftId}</code></dd></div>
-                <div><dt>binding</dt><dd><code>{draft.projectParameterBindingId}</code></dd></div>
-                <div><dt>spec</dt><dd><code>{draft.parameterSpecId}</code></dd></div>
-              </dl>
-            </details>
           </article>
         ))}
       </div>

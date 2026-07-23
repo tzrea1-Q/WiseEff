@@ -890,7 +890,11 @@ describe("ApiProjectTopologyWorkspace", () => {
 
     const tray = await screen.findByRole("region", { name: "绑定变更提交" });
     expect(within(tray).getByText(/本轮 2 项 · 同一工作版本/)).toBeVisible();
-    expect(within(tray).getAllByText("working-tip-2")).toHaveLength(2);
+    expect(within(tray).queryByText("技术身份")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+      "data-revision-id",
+      "working-tip-2"
+    );
     const submitButton = within(tray).getByRole("button", { name: "提交审核" });
     await waitFor(() => expect(submitButton).toBeEnabled());
   });
@@ -1037,8 +1041,11 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(diff).getByText("<&gpio13 29 0>")).toBeVisible();
     expect(within(diff).getByText("<&gpio13 31 0>")).toBeVisible();
     expect(within(tray).queryByText("candidate-first")).not.toBeInTheDocument();
-    fireEvent.click(within(tray).getByText("技术身份"));
-    expect(within(tray).getByText("candidate-replacement")).toBeVisible();
+    expect(within(tray).queryByText("技术身份")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+      "data-revision-id",
+      "candidate-replacement"
+    );
     expect(within(tray).getByText(/本轮 1 项 · 同一工作版本/)).toBeVisible();
   });
 

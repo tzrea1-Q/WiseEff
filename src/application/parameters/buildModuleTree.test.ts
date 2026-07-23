@@ -167,6 +167,43 @@ describe("buildModuleTree", () => {
     expect(tree.every((node) => node.parentId === null)).toBe(true);
   });
 
+  it("promotes the single business wrapper even when 未分类 is also a root", () => {
+    const tree = buildModuleTree({
+      modules: [
+        { id: "power", name: "Power", parentId: null, sortOrder: 0, importance: "medium" },
+        { id: "battery", name: "Battery", parentId: "power", sortOrder: 1, importance: "medium" },
+        { id: "charging", name: "Charging", parentId: "power", sortOrder: 2, importance: "medium" },
+        { id: "bcb", name: "battery_charge_balance", parentId: "battery", sortOrder: 3, importance: "medium" },
+        { id: "core", name: "charging_core", parentId: "charging", sortOrder: 4, importance: "medium" },
+        { id: "unclassified", name: "未分类", parentId: null, sortOrder: 99, importance: "low" }
+      ],
+      rows: [
+        row({ bindingId: "b1", moduleId: "bcb", moduleName: "battery_charge_balance", moduleSortOrder: 3 }),
+        row({
+          bindingId: "b2",
+          moduleId: "core",
+          moduleName: "charging_core",
+          moduleSortOrder: 4,
+          driverModule: "charging_core",
+          instanceName: "charging_core"
+        }),
+        row({
+          bindingId: "board",
+          moduleId: "unclassified",
+          moduleName: "未分类",
+          moduleSortOrder: 99,
+          propertyKey: "board_id",
+          driverModule: "board",
+          instanceName: "/"
+        })
+      ]
+    });
+
+    expect(tree.map((node) => node.label)).toEqual(["Battery", "Charging", "未分类"]);
+    expect(tree.some((node) => node.label === "Power")).toBe(false);
+    expect(tree.every((node) => node.parentId === null)).toBe(true);
+  });
+
   it("keeps flat roots when modules registry is omitted", () => {
     const tree = buildModuleTree({
       rows: [

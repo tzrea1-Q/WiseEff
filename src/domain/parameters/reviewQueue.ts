@@ -33,6 +33,11 @@ export function getWorkflowStageRank(status: RequestStatus): number {
 }
 
 export function getRoleWorkflowStageRank(roleId: PlatformRoleId): number | null {
+  // Admin can act across every workflow slot; do not collapse that to a single stage
+  // or actionable requests will also be classified as history (and bounce the pending tab).
+  if (getPlatformRole(roleId).level === "admin") {
+    return null;
+  }
   if (roleSupportsWorkflowSlot(roleId, "hardwareCommitter")) {
     return 1;
   }
@@ -64,6 +69,12 @@ export function canActOnReviewRequest(roleId: PlatformRoleId, request: ChangeReq
 export function isReviewHistoryForRole(roleId: PlatformRoleId, request: ChangeRequest): boolean {
   if (terminalReviewStatuses.has(request.status)) {
     return getRoleWorkflowStageRank(roleId) !== null || getPlatformRole(roleId).level === "admin";
+  }
+
+  // Multi-slot roles (admin, software-committer+user) can still act on later stages.
+  // Those requests must stay out of history so pending/history queues stay disjoint.
+  if (canActOnReviewRequest(roleId, request)) {
+    return false;
   }
 
   const roleStage = getRoleWorkflowStageRank(roleId);

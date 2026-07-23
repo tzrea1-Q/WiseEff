@@ -4063,6 +4063,104 @@ td small {
   line-height: 1.62;
 }
 
+.detail-card .review-module-description {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--app-surface, #fff) 70%, #eef3ff);
+  color: var(--app-ink, #1f2937);
+  font-size: 13px;
+}
+
+.review-detail-hero {
+  display: grid;
+  gap: 12px;
+}
+
+.review-detail-hero__header h2 {
+  margin: 4px 0 0;
+  color: var(--app-ink, #1f2937);
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.review-detail-hero__meta {
+  margin: 6px 0 0;
+  color: var(--app-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.review-detail-hero__meta strong {
+  color: var(--app-ink, #1f2937);
+  font-weight: 700;
+}
+
+.review-detail-hero > .section-label {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(178, 197, 255, 0.75);
+}
+
+.review-detail-hero__detail-action {
+  margin-top: 2px;
+}
+
+.review-identity-intros {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.review-identity-intros--compact {
+  margin-top: 0;
+  gap: 6px;
+}
+
+.review-identity-intros__item {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--app-surface, #fff) 70%, #eef3ff);
+}
+
+.review-identity-intros--compact .review-identity-intros__item {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 8px 10px;
+  padding: 7px 9px;
+}
+
+.review-identity-intros__item > strong,
+.review-identity-intros__item > dt {
+  font-size: 12px;
+  color: var(--app-ink, #1f2937);
+}
+
+.review-identity-intros--compact .review-identity-intros__item > dt {
+  margin: 0;
+  padding-top: 1px;
+  color: var(--app-muted);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.review-identity-intros__item > p,
+.review-identity-intros__item > dd {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.review-identity-intros__name {
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--app-ink, #1f2937);
+  font-weight: 700;
+}
+
 .ai-summary-card {
   background: rgba(235, 241, 255, 0.76);
   border: 1px solid #b2c5ff;

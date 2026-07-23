@@ -48,6 +48,16 @@ export type ParameterDraftDto = {
   projectParameterBindingId?: string;
   /** Shared working candidate revision tip for typed draft rounds. */
   candidateConfigRevisionId?: string;
+  /** Spec id for topology-aware submit / tray hydration. */
+  parameterSpecId?: string;
+  /** Display name for history (property key); avoids falling back to binding UUID. */
+  name?: string;
+  module?: string;
+  /**
+   * Baseline / “before” value for history diffs.
+   * Prefer write-lock base raw text over catalog tip (which may already include the candidate).
+   */
+  currentValue?: string;
 };
 
 export type SubmitParameterChangesInput = {

@@ -29,6 +29,7 @@ function draft(overrides: Partial<PendingBindingDraft> = {}): PendingBindingDraf
     writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
     overlayFileId: "file-overlay",
     overlayFileName: "overlay.dts",
+    moduleName: "充电策略",
     ...overrides
   };
 }
@@ -55,11 +56,13 @@ describe("DtsBindingDraftTray", () => {
     expect(within(diff).getByText("<&gpio13 29 0>")).toBeVisible();
     expect(within(diff).getByText("<&gpio13 30 0>")).toBeVisible();
     expect(within(tray).getByText("Move interrupt line")).toBeVisible();
-    fireEvent.click(within(tray).getByText("技术身份"));
-    expect(within(tray).getByText("candidate-1")).toBeVisible();
-    expect(within(tray).getByText("draft-typed-1")).toBeVisible();
-    expect(within(tray).getByText("binding-sc8562-gpio-int")).toBeVisible();
-    expect(within(tray).getByText("spec-sc8562-gpio-int")).toBeVisible();
+    expect(within(tray).getByText("充电策略")).toBeVisible();
+    expect(within(tray).queryByText("设置属性")).not.toBeInTheDocument();
+    expect(within(tray).queryByText("技术身份")).not.toBeInTheDocument();
+    expect(within(tray).queryByText("candidate-1")).not.toBeInTheDocument();
+    expect(within(tray).queryByText("draft-typed-1")).not.toBeInTheDocument();
+    expect(within(tray).queryByText("binding-sc8562-gpio-int")).not.toBeInTheDocument();
+    expect(within(tray).queryByText("spec-sc8562-gpio-int")).not.toBeInTheDocument();
 
     fireEvent.click(within(tray).getByRole("button", { name: "提交审核" }));
 
