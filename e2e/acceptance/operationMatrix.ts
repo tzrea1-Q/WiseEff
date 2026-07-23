@@ -690,11 +690,11 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameter-admin",
     roles: ["Admin"],
-    action: "Search ingested parameter specs, open detail, and resolve a spec review task with audit evidence.",
+    action: "Search ingested parameter specs, open detail, and confirm unmatched surface props stay provisional without review tasks.",
     coverage: "automated",
     acceptanceIds: ["PARAM-SPEC-GOVERN-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit"]
+    assertions: ["ui", "api", "db"]
   },
   {
     id: "PARAM-TOPOLOGY-BROWSE-001",

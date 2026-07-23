@@ -689,11 +689,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     // 5) Typed edit diagnostics + stale 409 + successful draft (writeback + re-ingest inside API).
     const originalRaw = scBinding!.rawValue;
-    await detail.getByLabel("目标值 raw").fill("<&gpio13 29>");
-    await detail.getByLabel("修改原因").fill(`${descriptionPrefix} invalid cell-count probe`);
-    await detail.getByRole("button", { name: /创建草稿/ }).click();
-    await expect(workspace.getByRole("list", { name: "编辑诊断" })).toBeVisible({ timeout: 20_000 });
-    await expect(workspace.getByRole("list", { name: "编辑诊断" })).toContainText(/cell count must be 3/);
+    await detail.getByRole("button", { name: "关闭参数详情" }).click();
+    await expect(detail).toHaveCount(0);
+    await sc8562Row.getByRole("button", { name: /^编辑 gpio_int/ }).click();
+    const draftDialog = page.getByRole("dialog", { name: "修改草稿" });
+    await expect(draftDialog).toBeVisible();
+    await draftDialog.getByLabel("目标值", { exact: true }).fill("<&gpio13 29>");
+    await draftDialog.getByLabel("修改原因", { exact: true }).fill(`${descriptionPrefix} invalid cell-count probe`);
+    await draftDialog.getByRole("button", { name: "校验并加入本轮" }).click();
+    await expect(draftDialog.getByRole("list", { name: "编辑诊断" })).toBeVisible({ timeout: 20_000 });
+    await expect(draftDialog.getByRole("list", { name: "编辑诊断" })).toContainText(/cell count must be 3/);
 
     const staleEdit = await request.post(
       apiRoute(
@@ -720,7 +725,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     );
     expect(staleEdit.status()).toBe(409);
 
-    await detail.getByLabel("目标值 raw").fill(originalRaw);
+    await draftDialog.getByLabel("目标值", { exact: true }).fill(originalRaw);
+    await draftDialog.getByRole("button", { name: "关闭草稿" }).click();
+    await expect(draftDialog).toHaveCount(0);
 
     // Fail-closed blocker from REAL bad DTS (accurate failure code).
     const suffix = runSuffix;
@@ -813,15 +820,15 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       const sc8562EditRow = bindingRowById(editWorkspace, scBinding!.id);
       await expect(sc8562EditRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
       await sc8562EditRow.getByRole("button", { name: /^编辑 gpio_int/ }).click();
-      const editDetail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
-      await expect(editDetail.getByText(scBinding!.id, { exact: true })).toBeVisible();
-      await editDetail.getByLabel("目标值 raw").fill(editedRaw);
-      await editDetail.getByLabel("修改原因").fill(typedEditReason);
+      const editDetail = page.getByRole("dialog", { name: "修改草稿" });
+      await expect(editDetail).toBeVisible();
+      await editDetail.getByLabel("目标值", { exact: true }).fill(editedRaw);
+      await editDetail.getByLabel("修改原因", { exact: true }).fill(typedEditReason);
       const responsePromise = page.waitForResponse((response) =>
         response.request().method() === "POST" &&
         response.url().includes(`/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(scBinding!.id)}/drafts`)
       );
-      await editDetail.getByRole("button", { name: /创建草稿/ }).click();
+      await editDetail.getByRole("button", { name: "校验并加入本轮" }).click();
       return responsePromise;
     };
 
