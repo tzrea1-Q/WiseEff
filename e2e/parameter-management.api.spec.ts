@@ -159,7 +159,7 @@ async function advanceChangeRequestViaApi(page: Page, requestId: string, reviewe
     headers: authHeadersForUser(reviewerUserId),
     data: {
       decision: "advance",
-      note: `M1 E2E acceptance ${Date.now()}`
+      note: `https://example.com/e2e/m1-acceptance/${Date.now()}`
     }
   });
   expect(response.ok()).toBe(true);

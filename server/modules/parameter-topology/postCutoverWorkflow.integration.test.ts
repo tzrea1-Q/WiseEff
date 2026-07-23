@@ -1145,7 +1145,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           reviewChange(
             db,
             auth,
-            { requestId: request.id, decision: "advance", note: "Reject stale delete proof" },
+            { requestId: request.id, decision: "advance", note: "https://example.com/reject-stale-delete-proof" },
             {
               objectStore: objectStore as never,
               toolchain: {
@@ -1187,7 +1187,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         const merged = await reviewChange(
           db,
           auth,
-          { requestId: request.id, decision: "advance", note: "Apply reviewed delete" },
+          { requestId: request.id, decision: "advance", note: "https://example.com/apply-reviewed-delete" },
           {
             objectStore: objectStore as never,
             toolchain: {
@@ -1996,6 +1996,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
           reviewChange(db, auth, {
             requestId: request.id,
             decision: "advance",
+            note: "https://example.com/semantic-merge-no-object-store",
             expectedVersion: 1
           })
         ).rejects.toMatchObject({
@@ -2011,6 +2012,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             reviewChange(db, auth, {
               requestId: request.id,
               decision: "advance",
+              note: "https://example.com/semantic-merge-no-object-store",
               expectedVersion: 1
             })
           ).rejects.toMatchObject({
@@ -2112,7 +2114,12 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             reviewChange(
               db,
               auth,
-              { requestId: request.id, decision: "advance", expectedVersion: 1 },
+              {
+                requestId: request.id,
+                decision: "advance",
+                note: `https://example.com/toolchain-fail-${caseDef.name}`,
+                expectedVersion: 1
+              },
               {
                 objectStore: objectStore as never,
                 toolchain: failingToolchain(caseDef.failureCode, caseDef.stage) as never

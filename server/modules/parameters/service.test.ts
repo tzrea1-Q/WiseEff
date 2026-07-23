@@ -2067,12 +2067,43 @@ describe("parameter service", () => {
       requestId: "request-1",
       decision: "advance",
       expectedVersion: 7,
-      note: "Merge approved."
+      note: "https://example.com/mr/merge-approved"
     });
 
     expect(request.status).toBe("merged");
     expect(txCalls.some((call) => call.text.includes("insert into parameter_history_entries"))).toBe(true);
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("parameter-merge");
+  });
+
+  it("rejects merge without an http(s) merge link note", async () => {
+    const missing = createFakeDb([[changeRequestRow({ status: "software_merge", risk: "Medium" })], []]);
+    await expect(
+      reviewChange(missing.db, makeAuth(), {
+        requestId: "request-1",
+        decision: "advance",
+        expectedVersion: 7
+      })
+    ).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Merge requires an http(s) merge link in note.", 400, {
+        requestId: "request-1"
+      })
+    );
+    expect(missing.txCalls.some((call) => call.text.includes("update project_parameter_values"))).toBe(false);
+
+    const invalid = createFakeDb([[changeRequestRow({ status: "software_merge", risk: "Medium" })], []]);
+    await expect(
+      reviewChange(invalid.db, makeAuth(), {
+        requestId: "request-1",
+        decision: "advance",
+        expectedVersion: 7,
+        note: "not a url"
+      })
+    ).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Merge requires an http(s) merge link in note.", 400, {
+        requestId: "request-1"
+      })
+    );
+    expect(invalid.txCalls.some((call) => call.text.includes("update project_parameter_values"))).toBe(false);
   });
 
   it("cross-project software user cannot merge software merge request", async () => {
@@ -2122,7 +2153,8 @@ describe("parameter service", () => {
       reviewChange(db, makeAuth(), {
         requestId: "request-1",
         decision: "advance",
-        expectedVersion: 6
+        expectedVersion: 6,
+        note: "https://example.com/mr/stale"
       })
     ).rejects.toMatchObject(new ApiError("CONFLICT", "Parameter value changed before merge.", 409));
 
@@ -2158,7 +2190,7 @@ describe("parameter service", () => {
       requestId: "request-1",
       decision: "advance",
       expectedVersion: 7,
-      note: "Merge approved."
+      note: "https://example.com/mr/merge-updates"
     });
 
     expect(request.status).toBe("merged");
@@ -2250,7 +2282,7 @@ describe("parameter service", () => {
       requestId: "request-1",
       decision: "advance",
       expectedVersion: 7,
-      note: "Merge approved."
+      note: "https://example.com/mr/high-risk-merge"
     });
 
     expect(hardwareReview.status).toBe("hardware_review");
@@ -2282,7 +2314,8 @@ describe("parameter service", () => {
         reviewChange(db, mergeAuth(), {
           requestId: "request-1",
           decision: "advance",
-          expectedVersion: 7
+          expectedVersion: 7,
+          note: "https://example.com/mr/semantic"
         })
       ).rejects.toMatchObject(
         new ApiError("CONFLICT", "Semantic merge requires object storage for DTS writeback.", 409, {
@@ -2307,7 +2340,7 @@ describe("parameter service", () => {
         reviewChange(
           db,
           mergeAuth(),
-          { requestId: "request-1", decision: "advance", expectedVersion: 7 },
+          { requestId: "request-1", decision: "advance", expectedVersion: 7, note: "https://example.com/mr/semantic" },
           { objectStore: { get: async () => Buffer.alloc(0), put: async () => ({ storageKey: "x", checksumSha256: "y", fileSizeBytes: 0 }) } as never }
         )
       ).rejects.toMatchObject(
@@ -2338,7 +2371,7 @@ describe("parameter service", () => {
         reviewChange(
           db,
           mergeAuth(),
-          { requestId: "request-1", decision: "advance", expectedVersion: 7 },
+          { requestId: "request-1", decision: "advance", expectedVersion: 7, note: "https://example.com/mr/semantic" },
           { objectStore: { get: async () => Buffer.alloc(0), put: async () => ({ storageKey: "x", checksumSha256: "y", fileSizeBytes: 0 }) } as never }
         )
       ).rejects.toMatchObject(
@@ -2363,7 +2396,8 @@ describe("parameter service", () => {
           reviewChange(db, mergeAuth(), {
             requestId: "request-1",
             decision: "advance",
-            expectedVersion: 7
+            expectedVersion: 7,
+            note: "https://example.com/mr/semantic"
           })
         ).rejects.toMatchObject(
           new ApiError("CONFLICT", "Semantic merge requires object storage for DTS writeback.", 409, {

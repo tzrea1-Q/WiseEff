@@ -1006,6 +1006,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         response.request().method() === "POST" &&
         response.url().includes(`/api/v1/parameter-change-requests/${encodeURIComponent(targetRequestId)}/review`)
       );
+      if (role === "software-user") {
+        await reviewDetail.locator("#review-merge-link").fill(`https://example.com/e2e/merge/${targetRequestId}`);
+      }
       await reviewDetail.getByRole("button", {
         name: role === "software-user" ? "确认合入" : "推进流程"
       }).click();

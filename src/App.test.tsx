@@ -1064,6 +1064,164 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(nodeDebuggingCase).not.toContain("debuggingGateway={debuggingGateway}");
   });
 
+  it("requires an http(s) merge link before confirming software merge", async () => {
+    window.history.replaceState(null, "", "/parameter-review");
+    const mergeRequest = {
+      ...initialState.changeRequests.find((request) => request.status === "软件User合入")!,
+      id: "merge-link-required"
+    };
+    const reviewChange = vi.fn().mockResolvedValue({ ...mergeRequest, status: "已合入" as const });
+    const parameterRepository = createAppParameterRepository({
+      listChangeRequests: vi.fn().mockResolvedValue([mergeRequest]),
+      reviewChange
+    });
+
+    render(
+      <App
+        authClient={{
+          getCurrentAuthContext: async () => ({
+            user: {
+              id: "u-chen-na",
+              organizationId: "org-chargelab",
+              name: "Chen Na",
+              email: "chen@chargelab.cn",
+              title: "Software Integrator",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "software-user" }],
+            permissions: ["parameter:view", "parameter:edit"]
+          })
+        }}
+        initialAppState={{ ...initialState, activeRoleId: "software-user", changeRequests: [mergeRequest] }}
+        parameterRepository={parameterRepository}
+        runtimeMode="api"
+      />
+    );
+
+    const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
+    const confirm = within(reviewDetail).getByRole("button", { name: "确认合入" });
+    expect(confirm).toBeDisabled();
+    const mergeLinkInput = reviewDetail.querySelector("#review-merge-link") as HTMLInputElement;
+    expect(mergeLinkInput).toBeTruthy();
+
+    fireEvent.change(mergeLinkInput, {
+      target: { value: "not-a-url" }
+    });
+    expect(confirm).toBeDisabled();
+
+    fireEvent.change(mergeLinkInput, {
+      target: { value: "https://example.com/mr/42" }
+    });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() =>
+      expect(reviewChange).toHaveBeenCalledWith({
+        requestId: "merge-link-required",
+        decision: "advance",
+        note: "https://example.com/mr/42",
+        ...(mergeRequest.baseVersion !== undefined ? { expectedVersion: mergeRequest.baseVersion } : {})
+      })
+    );
+  });
+
+  it("shows the merge link card and timeline link after software merge", async () => {
+    window.history.replaceState(null, "", "/parameter-review");
+    const merged = {
+      ...initialState.changeRequests.find((request) => request.status === "已合入")!,
+      id: "merged-with-link",
+      status: "已合入" as const,
+      reviewerNote: "https://example.com/mr/99"
+    };
+    const parameterRepository = createAppParameterRepository({
+      listChangeRequests: vi.fn().mockResolvedValue([merged])
+    });
+
+    render(
+      <App
+        authClient={{
+          getCurrentAuthContext: async () => ({
+            user: {
+              id: "u-chen-na",
+              organizationId: "org-chargelab",
+              name: "Chen Na",
+              email: "chen@chargelab.cn",
+              title: "Software Integrator",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "software-user" }],
+            permissions: ["parameter:view", "parameter:edit"]
+          })
+        }}
+        initialAppState={{ ...initialState, activeRoleId: "software-user", changeRequests: [merged] }}
+        parameterRepository={parameterRepository}
+        runtimeMode="api"
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("tab", { name: "历史审阅" }));
+    const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
+    // Prefer selecting the merged row if the queue does not auto-select it
+    const row = within(screen.getByRole("table")).getByText(merged.title);
+    fireEvent.click(row.closest("tr") ?? row);
+
+    const links = within(reviewDetail).getAllByRole("link", { name: "https://example.com/mr/99" });
+    expect(links.length).toBeGreaterThanOrEqual(2);
+    for (const link of links) {
+      expect(link).toHaveAttribute("href", "https://example.com/mr/99");
+      expect(link).toHaveAttribute("target", "_blank");
+      const rel = link.getAttribute("rel") ?? "";
+      expect(rel).toContain("noopener");
+      expect(rel).toContain("noreferrer");
+    }
+    expect(within(reviewDetail).getByText("合入链接", { selector: ".merge-link-card * , .section-label span" })).toBeTruthy();
+  });
+
+  it("does not show merge link surfaces without a valid reviewerNote URL", async () => {
+    window.history.replaceState(null, "", "/parameter-review");
+    const merged = {
+      ...initialState.changeRequests.find((request) => request.status === "已合入")!,
+      id: "merged-without-link",
+      status: "已合入" as const,
+      reviewerNote: "legacy free-text note"
+    };
+    const parameterRepository = createAppParameterRepository({
+      listChangeRequests: vi.fn().mockResolvedValue([merged])
+    });
+
+    render(
+      <App
+        authClient={{
+          getCurrentAuthContext: async () => ({
+            user: {
+              id: "u-chen-na",
+              organizationId: "org-chargelab",
+              name: "Chen Na",
+              email: "chen@chargelab.cn",
+              title: "Software Integrator",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "software-user" }],
+            permissions: ["parameter:view", "parameter:edit"]
+          })
+        }}
+        initialAppState={{ ...initialState, activeRoleId: "software-user", changeRequests: [merged] }}
+        parameterRepository={parameterRepository}
+        runtimeMode="api"
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("tab", { name: "历史审阅" }));
+    const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
+    const row = within(screen.getByRole("table")).getByText(merged.title);
+    fireEvent.click(row.closest("tr") ?? row);
+    expect(within(reviewDetail).queryByRole("link", { name: /https?:\/\// })).toBeNull();
+    expect(reviewDetail.querySelector(".merge-link-card")).toBeNull();
+  });
+
   it("advances an API-hydrated review with the request baseVersion as expectedVersion", async () => {
     window.history.replaceState(null, "", "/parameter-review");
     const apiReview = {

@@ -4353,6 +4353,8 @@ td small {
 }
 
 .vertical-timeline-item--current .timeline-dot {
+  /* Current card uses margin-left:-10px + 1px border; keep the dot on the rail. */
+  left: -11px;
   top: 14px;
   background: var(--app-primary);
   box-shadow: 0 0 0 4px rgba(0, 93, 224, 0.16);
@@ -4403,6 +4405,48 @@ td small {
   grid-column: span 2;
 }
 
+.review-merge-link {
+  grid-column: span 2;
+  display: grid;
+  gap: 6px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.review-merge-link > label {
+  display: block;
+}
+
+.review-merge-link input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  color: #0f172a;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.review-merge-link input:focus-visible {
+  border-color: var(--app-primary);
+  outline: 2px solid rgba(0, 93, 224, 0.16);
+  outline-offset: 1px;
+}
+
+.review-merge-link input[aria-invalid="true"] {
+  border-color: #e11d48;
+}
+
+.review-merge-link__hint {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .rejection-reason-card {
   padding: 13px;
   color: #4f150f;
@@ -4416,6 +4460,28 @@ td small {
   color: #5f271f;
   font-size: 13px;
   line-height: 1.58;
+}
+
+.merge-link-card {
+  padding: 13px;
+  color: #003d9b;
+  background: #eef6ff;
+  border: 1px solid #b9d8ff;
+  border-radius: 10px;
+}
+
+.merge-link-card p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.58;
+  word-break: break-all;
+}
+
+.merge-link-card a,
+.vertical-timeline-item a {
+  color: #005de0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .admin-metrics {
