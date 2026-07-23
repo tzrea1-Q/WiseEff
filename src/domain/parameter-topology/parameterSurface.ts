@@ -1,4 +1,5 @@
 import {
+  isModuleScaffoldingNode,
   isProvisionalScaffoldingUnclassifiedModuleName,
   isScaffoldingDriverLabel,
   MODULE_SCAFFOLDING_SEGMENT_RE
@@ -45,16 +46,28 @@ export function isScaffoldingLocator(locator: string | null | undefined): boolea
  * v1 surface rule: non-structural property on a non-scaffolding-only locator,
  * and not owned by an unmapped scaffolding driver / provisional bucket.
  * Locators under a managed leaf (e.g. .../hi6xxx_coul/batt) are included even if ancestors are buses.
+ * Root-node business properties (board_id) are included when parked on a non-scaffolding module.
+ * Missing locators fail closed (excluded) so incomplete topology never leaks into the ledger.
  */
 export function isParameterSurfaceRow(input: ParameterSurfaceInput): boolean {
   if (isStructuralPropertyKey(input.propertyKey)) return false;
   if (isProvisionalScaffoldingUnclassifiedModuleName(input.moduleName)) return false;
+  if (
+    input.moduleName != null &&
+    input.moduleName !== "" &&
+    isModuleScaffoldingNode({ name: input.moduleName })
+  ) {
+    return false;
+  }
   if (isScaffoldingDriverLabel(input.compatible) || isScaffoldingDriverLabel(input.driverModule)) {
     return false;
   }
-  const locator = input.locator ?? "";
-  const parts = locator.split("/").filter(Boolean);
-  if (parts.length === 0) return false;
+  if (input.locator == null || input.locator === "") return false;
+  const parts = input.locator.split("/").filter(Boolean);
+  if (parts.length === 0) {
+    // DTS root (`/`): allow non-structural business props such as board_id.
+    return true;
+  }
   const leaf = parts[parts.length - 1]!;
   if (MODULE_SCAFFOLDING_SEGMENT_RE.test(leaf)) return false;
   return true;

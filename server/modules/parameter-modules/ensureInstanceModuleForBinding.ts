@@ -91,6 +91,44 @@ async function findModuleIdByName(
   return result.rows[0]?.id ?? null;
 }
 
+/** Business leaves may nest under a wrapper (e.g. Power → Board Identity). */
+async function findModuleIdByNameAnyParent(
+  db: Queryable,
+  input: { organizationId: string; name: string },
+): Promise<string | null> {
+  const result = await db.query<{ id: string }>(
+    `
+    select id
+    from parameter_modules
+    where organization_id = $1
+      and name = $2
+    order by depth asc, sort_order asc, id asc
+    limit 1
+    `,
+    [input.organizationId, input.name],
+  );
+  return result.rows[0]?.id ?? null;
+}
+
+function isDtsRootInstanceName(instanceName: string | null | undefined): boolean {
+  return instanceName === "/";
+}
+
+async function ensureBoardInstanceModuleId(
+  db: Queryable,
+  organizationId: string,
+): Promise<string> {
+  const boardParentId = await ensureBusinessLeafModuleId(db, {
+    organizationId,
+    businessCategory: "Board Identity",
+  });
+  return ensureNamedModule(db, {
+    organizationId,
+    name: BOARD_INSTANCE_MODULE_NAME,
+    parentId: boardParentId,
+  });
+}
+
 async function ensureNamedModule(
   db: Queryable,
   input: {
@@ -122,7 +160,7 @@ async function ensureBusinessLeafModuleId(
   db: Queryable,
   input: { organizationId: string; businessCategory: string },
 ): Promise<string> {
-  const existing = await findModuleIdByName(db, {
+  const existing = await findModuleIdByNameAnyParent(db, {
     organizationId: input.organizationId,
     name: input.businessCategory,
   });
@@ -200,8 +238,10 @@ export async function resolveBindingInstanceModuleId(
     nodeLocator?: string | null;
   },
 ): Promise<string> {
-  const normalizedInstance = normalizeMatchValue(input.instanceName);
-  const displayInstance = displayInstanceName(input.instanceName);
+  const rootInstance = isDtsRootInstanceName(input.instanceName);
+  const canonicalInstanceName = rootInstance ? BOARD_INSTANCE_MODULE_NAME : input.instanceName;
+  const normalizedInstance = normalizeMatchValue(canonicalInstanceName);
+  const displayInstance = displayInstanceName(canonicalInstanceName);
   const normalizedCompatible = normalizeMatchValue(input.compatible);
 
   if (normalizedInstance) {
@@ -227,6 +267,10 @@ export async function resolveBindingInstanceModuleId(
       const instanceModuleName = displayInstance ?? input.driverModule ?? "unknown";
       if (groupModule?.name === instanceModuleName) {
         return groupModuleId;
+      }
+      // Never materialize the DTS root as a product module named "/".
+      if (isDtsRootInstanceName(instanceModuleName)) {
+        return ensureBoardInstanceModuleId(db, input.organizationId);
       }
       return ensureNamedModule(db, {
         organizationId: input.organizationId,
@@ -268,22 +312,14 @@ export async function resolveBindingInstanceModuleId(
   }
 
   if (displayInstance) {
-    if (displayInstance === BOARD_INSTANCE_MODULE_NAME) {
-      const boardParentId = await ensureBusinessLeafModuleId(db, {
-        organizationId: input.organizationId,
-        businessCategory: "Board Identity",
-      });
-      return ensureNamedModule(db, {
-        organizationId: input.organizationId,
-        name: BOARD_INSTANCE_MODULE_NAME,
-        parentId: boardParentId,
-      });
+    if (displayInstance === BOARD_INSTANCE_MODULE_NAME || rootInstance) {
+      return ensureBoardInstanceModuleId(db, input.organizationId);
     }
 
     const parentModuleId = await resolveTypeCParentModuleId(db, {
       organizationId: input.organizationId,
       nodeLocator: input.nodeLocator,
-      instanceName: input.instanceName,
+      instanceName: canonicalInstanceName,
     });
     const parentModule = await getParameterModuleById(db, {
       organizationId: input.organizationId,
@@ -306,6 +342,6 @@ export async function resolveBindingInstanceModuleId(
     organizationId: input.organizationId,
     driverModule: input.driverModule,
     compatible: input.compatible,
-    instanceName: input.instanceName,
+    instanceName: canonicalInstanceName,
   });
 }

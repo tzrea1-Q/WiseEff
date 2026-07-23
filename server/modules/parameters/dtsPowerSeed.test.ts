@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { resolveDts } from "../dts";
 import {
   buildDtsPowerSeed,
+  buildSeedModuleMappings,
   DTS_POWER_SEED_FILE_NAME,
   type DtsPowerSeedParameter
 } from "../../../scripts/dts-power-seed";
@@ -99,6 +100,8 @@ describe("DTS power seed catalog", () => {
       nebula: { currentValue: "<12346>" },
       atlas: { currentValue: "<12347>" }
     });
+    expect(bySource(seed.parameterLibrary, "board_id").instanceName).toBe("board");
+    expect(seed.parameterLibrary.some((parameter) => parameter.instanceName === "/")).toBe(false);
     expect(bySource(seed.parameterLibrary, "charging_core/ichg_max").values).toMatchObject({
       aurora: { currentValue: "<2500>" },
       nebula: { currentValue: "<3000>" },
@@ -180,5 +183,14 @@ describe("DTS power seed catalog", () => {
     expect(parentOf("scharger_v800")).toBe("Charger IC");
     expect(parentOf("scharger_v800_coul")).toBe("scharger_v800");
     expect(parentOf("board")).toBe("Board Identity");
+    expect(names.has("/")).toBe(false);
+
+    const mappings = buildSeedModuleMappings(resolveDts(baseSource));
+    expect(mappings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ matchKind: "instance", matchValue: "board", moduleName: "board" }),
+        expect.objectContaining({ matchKind: "instance", matchValue: "/", moduleName: "board" })
+      ])
+    );
   });
 });

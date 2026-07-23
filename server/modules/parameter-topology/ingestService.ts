@@ -32,6 +32,7 @@ import {
 import { loadSchemaRegistry } from "../parameter-specs/schemaLoader";
 import type { MatchableNode, SchemaRegistry, SpecReviewTaskDraft } from "../parameter-specs/types";
 import { resolveBindingInstanceModuleId } from "../parameter-modules/ensureInstanceModuleForBinding";
+import { BOARD_INSTANCE_MODULE_NAME } from "../parameter-modules/modulePlacement";
 import { isParameterSurfaceRow } from "./parameterSurface";
 import { upsertProvisionalSurfacePropertySpec } from "./provisionalSurfaceBinding";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -152,6 +153,7 @@ function driverModuleFromSchemaNamespace(schemaNamespace: string | null | undefi
 
 function instanceNameFor(matchable: Pick<MatchableNode, "name" | "unitAddress">): string | null {
   if (!matchable.name) return null;
+  if (matchable.name === "/") return BOARD_INSTANCE_MODULE_NAME;
   return matchable.unitAddress ? `${matchable.name}@${matchable.unitAddress}` : matchable.name;
 }
 

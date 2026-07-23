@@ -73,6 +73,12 @@ function createFakeDb(input: {
       }
       if (text.includes("from parameter_modules") && text.includes("where organization_id = $1") && text.includes("and name = $2")) {
         const [organizationId, name, parentId] = values as [string, string, string | null];
+        if (text.includes("order by depth asc")) {
+          const hit = [...modules.values()]
+            .filter((module) => module.organizationId === organizationId && module.name === name)
+            .sort((left, right) => left.depth - right.depth || left.sortOrder - right.sortOrder || left.id.localeCompare(right.id))[0];
+          return { rows: hit ? [{ id: hit.id }] : [], rowCount: hit ? 1 : 0 };
+        }
         const hit = [...modules.values()].find(
           (module) =>
             module.organizationId === organizationId &&
@@ -270,5 +276,140 @@ describe("resolveBindingInstanceModuleId", () => {
 
     expect(moduleId).toBe(unclassifiedId);
     expect([...modules.values()].some((module) => module.name.startsWith("未分类 · "))).toBe(false);
+  });
+
+  it("maps DTS root instance `/` to board under nested Board Identity (never creates `/`)", async () => {
+    const unclassifiedId = unclassifiedModuleId("org-1");
+    const { db, modules } = createFakeDb({
+      modules: [
+        {
+          id: unclassifiedId,
+          organizationId: "org-1",
+          name: "未分类",
+          parentId: null,
+          path: unclassifiedId,
+          depth: 1,
+          sortOrder: 999,
+          description: "",
+          scope: "",
+          importance: "medium",
+        },
+        {
+          id: "mod-power",
+          organizationId: "org-1",
+          name: "Power",
+          parentId: null,
+          path: "mod-power",
+          depth: 1,
+          sortOrder: 1,
+          description: "",
+          scope: "",
+          importance: "medium",
+        },
+        {
+          id: "mod-board-identity",
+          organizationId: "org-1",
+          name: "Board Identity",
+          parentId: "mod-power",
+          path: "mod-power/mod-board-identity",
+          depth: 2,
+          sortOrder: 10,
+          description: "",
+          scope: "",
+          importance: "medium",
+        },
+        {
+          id: "mod-board",
+          organizationId: "org-1",
+          name: "board",
+          parentId: "mod-board-identity",
+          path: "mod-power/mod-board-identity/mod-board",
+          depth: 3,
+          sortOrder: 1,
+          description: "",
+          scope: "",
+          importance: "medium",
+        },
+      ],
+      mappings: [
+        {
+          organizationId: "org-1",
+          matchKind: "instance",
+          matchValue: "board",
+          moduleId: "mod-board",
+          priority: 500,
+        },
+      ],
+    });
+
+    const moduleId = await resolveBindingInstanceModuleId(db, {
+      organizationId: "org-1",
+      driverModule: null,
+      compatible: null,
+      instanceName: "/",
+      nodeLocator: "/",
+    });
+
+    expect(moduleId).toBe("mod-board");
+    expect([...modules.values()].some((module) => module.name === "/")).toBe(false);
+  });
+
+  it("ensures board under nested Board Identity when root `/` has no instance mapping", async () => {
+    const unclassifiedId = unclassifiedModuleId("org-1");
+    const { db, modules } = createFakeDb({
+      modules: [
+        {
+          id: unclassifiedId,
+          organizationId: "org-1",
+          name: "未分类",
+          parentId: null,
+          path: unclassifiedId,
+          depth: 1,
+          sortOrder: 999,
+          description: "",
+          scope: "",
+          importance: "medium",
+        },
+        {
+          id: "mod-power",
+          organizationId: "org-1",
+          name: "Power",
+          parentId: null,
+          path: "mod-power",
+          depth: 1,
+          sortOrder: 1,
+          description: "",
+          scope: "",
+          importance: "medium",
+        },
+        {
+          id: "mod-board-identity",
+          organizationId: "org-1",
+          name: "Board Identity",
+          parentId: "mod-power",
+          path: "mod-power/mod-board-identity",
+          depth: 2,
+          sortOrder: 10,
+          description: "",
+          scope: "",
+          importance: "medium",
+        },
+      ],
+      mappings: [],
+    });
+
+    const moduleId = await resolveBindingInstanceModuleId(db, {
+      organizationId: "org-1",
+      driverModule: null,
+      compatible: null,
+      instanceName: "/",
+      nodeLocator: "/",
+    });
+
+    const created = [...modules.values()].find((module) => module.id === moduleId);
+    expect(created?.name).toBe("board");
+    expect(created?.parentId).toBe("mod-board-identity");
+    expect([...modules.values()].some((module) => module.name === "/")).toBe(false);
+    expect(moduleId).not.toBe(unclassifiedId);
   });
 });
