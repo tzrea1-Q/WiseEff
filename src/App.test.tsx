@@ -1172,7 +1172,9 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     for (const link of links) {
       expect(link).toHaveAttribute("href", "https://example.com/mr/99");
       expect(link).toHaveAttribute("target", "_blank");
-      expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+      const rel = link.getAttribute("rel") ?? "";
+      expect(rel).toContain("noopener");
+      expect(rel).toContain("noreferrer");
     }
     expect(within(reviewDetail).getByText("合入链接", { selector: ".merge-link-card * , .section-label span" })).toBeTruthy();
   });
@@ -1214,6 +1216,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     fireEvent.click(await screen.findByRole("tab", { name: "历史审阅" }));
     const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
+    const row = within(screen.getByRole("table")).getByText(merged.title);
+    fireEvent.click(row.closest("tr") ?? row);
     expect(within(reviewDetail).queryByRole("link", { name: /https?:\/\// })).toBeNull();
     expect(reviewDetail.querySelector(".merge-link-card")).toBeNull();
   });
