@@ -161,6 +161,8 @@ jobs:
             echo "VITE_WISEEFF_RUNTIME_MODE=api"
             echo "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true"
             echo "M5_CONTRACT_CHECK_PASSED=true"
+            echo "XIAOZE_PROACTIVE_ENABLED=true"
+            echo "VITE_XIAOZE_PROACTIVE_ENABLED=true"
           } >> .env
 
       - name: Acceptance CI metadata

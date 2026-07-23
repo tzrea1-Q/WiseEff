@@ -398,7 +398,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(specMt).toBeTruthy();
     expect(specSc!.id).not.toBe(specMt!.id);
 
-    // 2/3) Generate unmatched review via real ingest on a throwaway Config Set, then draft→activate→resolve.
+    // 2/3) Surface MVP: unmatched properties mint provisional ledger rows without review tasks.
     const reviewSuffix = runSuffix;
     const reviewCsName = `acceptance-review-${reviewSuffix}`;
     createdConfigSetNames.push(reviewCsName);
@@ -406,7 +406,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       headers: adminHeaders(),
       data: {
         name: reviewCsName,
-        description: `${descriptionPrefix} unmatched review`
+        description: `${descriptionPrefix} unmatched provisional surface`
       }
     });
     expect(reviewCs.status()).toBe(201);
@@ -436,94 +436,54 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const reviewRevision = await waitForRevision(reviewCsBody.item.id, () => true);
 
     const mysteryProp = `acceptance_mystery_${reviewSuffix}`;
-    const mysteryTask = await waitForReviewTask(request, {
-      projectId,
-      configRevisionId: reviewRevision.id,
-      propertyKey: mysteryProp
-    });
-
-    const createDraft = await request.post(
-      apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(mysteryTask.id)}/resolve`),
-      {
-        headers: adminHeaders(),
-        data: {
-          decision: "resolved",
-          createSpec: true,
-          reason: `${descriptionPrefix} create draft spec for unmatched review`
-        }
-      }
+    const openReviews = await request.get(
+      apiRoute(
+        `/api/v2/parameter-spec-review-tasks?status=open&projectId=${encodeURIComponent(projectId)}&configRevisionId=${encodeURIComponent(reviewRevision.id)}&limit=50`
+      ),
+      { headers: adminHeaders() }
     );
-    expect(createDraft.ok(), await createDraft.text()).toBe(true);
-    const createDraftBody = (await createDraft.json()) as {
-      item: {
-        status: string;
-        draftCreated?: boolean;
-        parameterSpecId?: string | null;
-        message?: string;
-      };
+    expect(openReviews.ok()).toBe(true);
+    const openReviewBody = (await openReviews.json()) as {
+      items: Array<{ id: string; propertyKey?: string | null; sourceEvidence?: { propertyKey?: string } }>;
     };
-    expect(createDraftBody.item.status).toBe("open");
-    expect(createDraftBody.item.draftCreated).toBe(true);
-    expect(createDraftBody.item.parameterSpecId).toBeTruthy();
-    const draftSpecId = createDraftBody.item.parameterSpecId!;
-    createdParameterSpecIds.push(draftSpecId);
-
-    const activateDraft = await request.post(
-      apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(draftSpecId)}/activate`),
-      {
-        headers: adminHeaders(),
-        data: {
-          valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
-          constraints: { cells: 1 },
-          documentation: `${descriptionPrefix} acceptance mystery cells`,
-          reason: `${descriptionPrefix} activate draft spec for ${mysteryProp}`
-        }
-      }
+    const mysteryReview = openReviewBody.items.find(
+      (item) => item.propertyKey === mysteryProp || item.sourceEvidence?.propertyKey === mysteryProp
     );
-    expect(activateDraft.ok(), await activateDraft.text()).toBe(true);
+    expect(mysteryReview, "surface MVP must not open a review task for unmatched mystery properties").toBeUndefined();
 
-    const resolveReview = await request.post(
-      apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(mysteryTask.id)}/resolve`),
-      {
-        headers: adminHeaders(),
-        data: {
-          decision: "resolved",
-          parameterSpecId: draftSpecId,
-          reason: `${descriptionPrefix} resolve after draft activation`
-        }
-      }
+    const mysteryBindings = await request.get(
+      apiRoute(
+        `/api/v2/projects/${projectId}/parameter-bindings?revisionId=${encodeURIComponent(reviewRevision.id)}`
+      ),
+      { headers: adminHeaders() }
     );
-    expect(resolveReview.ok(), await resolveReview.text()).toBe(true);
+    expect(mysteryBindings.ok(), await mysteryBindings.text()).toBe(true);
+    const mysteryBindingsBody = (await mysteryBindings.json()) as {
+      items: Array<{ id: string; propertyKey?: string | null; schemaState?: string | null }>;
+    };
+    const mysteryBinding = mysteryBindingsBody.items.find((item) => item.propertyKey === mysteryProp);
+    expect(mysteryBinding, `expected provisional binding for ${mysteryProp}`).toBeTruthy();
 
-    const reviewDb = await withPgClient(async (client) => {
-      const result = await client.query<{ status: string; parameter_spec_id: string | null }>(
-        `select status, parameter_spec_id from parameter_spec_review_tasks where id = $1`,
-        [mysteryTask.id]
+    const provisionalDb = await withPgClient(async (client) => {
+      const result = await client.query<{ schema_state: string | null; property_key: string }>(
+        `select br.schema_state, dps.property_key
+         from project_parameter_bindings b
+         join project_parameter_binding_revisions br
+           on br.binding_id = b.id and br.config_revision_id = $2
+         join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+         where b.project_id = $1 and dps.property_key = $3
+         limit 1`,
+        [projectId, reviewRevision.id, mysteryProp]
       );
       return {
-        table: "parameter_spec_review_tasks",
-        predicate: `id=${mysteryTask.id}`,
+        table: "project_parameter_binding_revisions",
+        predicate: `project=${projectId}; revision=${reviewRevision.id}; property=${mysteryProp}`,
         observed: result.rows[0]
-          ? `status=${result.rows[0].status}; spec=${result.rows[0].parameter_spec_id}`
+          ? `schema_state=${result.rows[0].schema_state ?? "null"}; property=${result.rows[0].property_key}`
           : "missing",
         rowCount: result.rowCount ?? result.rows.length
       };
     });
-
-    const reviewAudit = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
-      headers: adminHeaders()
-    });
-    expect(reviewAudit.ok()).toBe(true);
-    const reviewAuditBody = (await reviewAudit.json()) as {
-      items: Array<{ id?: string; kind: string; action: string; targetId: string | null }>;
-    };
-    const reviewAuditItem = reviewAuditBody.items.find(
-      (item) =>
-        item.kind === "parameter-topology-governance" &&
-        item.action === "spec-review-resolved" &&
-        item.targetId === mysteryTask.id
-    );
-    expect(reviewAuditItem).toBeTruthy();
 
     await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
     await dismissXiaozeHint(page);
@@ -543,45 +503,32 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await recordOperationEvidence({
       operationId: "PARAM-SPEC-GOVERN-001",
-      title: "spec search review resolve audit",
+      title: "spec search with provisional unmatched surface",
       status: "passed",
       role: "Admin",
       route: "/parameter-admin",
       page,
       testInfo,
-      assertions: ["ui", "api", "db", "audit"],
+      assertions: ["ui", "api", "db"],
       api: [
         summarizeApiResponse(specsResponse, {
           method: "GET",
           path: "/api/v2/parameter-specs",
           responseSummary: `gpio_int specs=${gpioSpecs.length}; distinct sc8562/mt5788`
         }),
-        summarizeApiResponse(createDraft, {
-          method: "POST",
-          path: `/api/v2/parameter-spec-review-tasks/${mysteryTask.id}/resolve`,
-          responseSummary: `draftCreated spec=${draftSpecId}`
+        summarizeApiResponse(openReviews, {
+          method: "GET",
+          path: "/api/v2/parameter-spec-review-tasks",
+          responseSummary: `open tasks=${openReviewBody.items.length}; mystery review absent`
         }),
-        summarizeApiResponse(activateDraft, {
-          method: "POST",
-          path: `/api/v2/parameter-specs/${draftSpecId}/activate`,
-          responseSummary: "activated draft spec"
-        }),
-        summarizeApiResponse(resolveReview, {
-          method: "POST",
-          path: `/api/v2/parameter-spec-review-tasks/${mysteryTask.id}/resolve`,
-          responseSummary: `resolved task=${mysteryTask.id}`
+        summarizeApiResponse(mysteryBindings, {
+          method: "GET",
+          path: `/api/v2/projects/${projectId}/parameter-bindings`,
+          responseSummary: `provisional mystery binding=${mysteryBinding!.id}`
         })
       ],
-      db: [reviewDb],
-      audit: [
-        {
-          id: reviewAuditItem?.id,
-          kind: "parameter-topology-governance",
-          action: "spec-review-resolved",
-          targetId: mysteryTask.id
-        }
-      ],
-      notes: `${descriptionPrefix}: unmatched review from real ingest; createSpec draft→activate→resolve via API; UI lists distinct gpio_int specs.`
+      db: [provisionalDb],
+      notes: `${descriptionPrefix}: unmatched mystery property is provisional on surface (no review task); UI lists distinct gpio_int specs.`
     });
 
     // Browse real topology (API must be 200 — never [200,404]).
