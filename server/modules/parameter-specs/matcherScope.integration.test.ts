@@ -34,11 +34,11 @@ const SPEC_B_VERSION = "psv:manual:twin_b_mystery:v1";
 const TWIN_DTS = `/dts-v1/;
 
 / {
-	twin_a: twin@1 {
+	gpio1 {
 		compatible = "wiseeff,twin-device";
 		${PROPERTY_KEY} = <1>;
 	};
-	twin_b: twin@2 {
+	gpio2 {
 		compatible = "wiseeff,twin-device";
 		${PROPERTY_KEY} = <2>;
 	};

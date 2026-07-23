@@ -37,10 +37,12 @@ function makeAuth(): AuthContext {
 }
 
 function dtsForProperty(propertyKey: string, rawValue: string) {
+  // Scaffolding leaf keeps this off the parameter surface so unmatched props
+  // still open review tasks (surface rows auto-provision provisional specs).
   return `/dts-v1/;
 
 / {
-	ghost: ghost@0 {
+	amba {
 		compatible = "wiseeff,ghost-device";
 		${propertyKey} = ${rawValue};
 	};

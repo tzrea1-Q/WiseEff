@@ -1477,6 +1477,17 @@ export async function deleteProject(
     );
     await db.query(
       `
+      delete from dts_property_occurrence_spec_decisions
+      where organization_id = $1
+        and binding_id in (
+          select id from project_parameter_bindings
+          where organization_id = $1 and project_id = $2
+        )
+      `,
+      [organizationId, projectId]
+    );
+    await db.query(
+      `
       delete from project_parameter_bindings
       where organization_id = $1
         and project_id = $2
