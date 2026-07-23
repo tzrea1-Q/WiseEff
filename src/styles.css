@@ -21037,12 +21037,15 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
   .dts-parameter-workbench-table,
   .dts-parameter-workbench-table--surface-mvp,
-  .dts-parameter-workbench-table__head,
   .dts-parameter-workbench-table__row,
-  .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__head,
   .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__row {
     min-width: 0 !important;
     width: auto !important;
+  }
+
+  .dts-parameter-workbench-table__head,
+  .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__head {
+    min-width: 0 !important;
   }
 
   .parameters-page-layout,
@@ -21081,18 +21084,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
   .dts-parameter-workbench-table__head,
   .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__head {
-    position: absolute;
-    top: auto;
-    z-index: auto;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    clip-path: inset(50%);
-    white-space: nowrap;
-    pointer-events: none;
+    display: none !important;
   }
 
   .dts-parameter-workbench-table__body {
