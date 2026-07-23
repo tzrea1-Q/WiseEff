@@ -479,7 +479,7 @@ describe("parameter routes", () => {
       "/api/v1/parameter-change-requests/request-1/review",
       {
         method: "POST",
-        body: JSON.stringify({ decision: "advance", expectedVersion: 7, note: "Merge approved." })
+        body: JSON.stringify({ decision: "advance", expectedVersion: 7, note: "https://example.com/mr/1" })
       }
     );
 
@@ -492,7 +492,7 @@ describe("parameter routes", () => {
         requestId: "request-1",
         decision: "advance",
         expectedVersion: 7,
-        note: "Merge approved."
+        note: "https://example.com/mr/1"
       },
       { requestId: "test-request" }
     );

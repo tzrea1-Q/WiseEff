@@ -21,6 +21,7 @@ import {
   verifyBindingWriteLock
 } from "../parameter-topology/editService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
+import { isValidMergeLink } from "./mergeLink";
 import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
 import { mustUseSemanticParameterIdentity } from "./semanticParameterReads";
 import type { InitializationSuggestionDto } from "./types";
@@ -1811,12 +1812,22 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       });
     }
 
+    const mergeLink = (input.note ?? "").trim();
+    if (!isValidMergeLink(mergeLink)) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Merge requires an http(s) merge link in note.",
+        400,
+        { requestId: input.requestId }
+      );
+    }
+
     const participants = await buildReviewParticipants(tx, auth.organization.id, request, reviewDecisions);
     participants.push({
       role: "合入执行",
       name: auth.user.name,
       action: "合入参数",
-      note: input.note
+      note: mergeLink
     });
 
     const semanticIdentity = await mustUseSemanticParameterIdentity(tx);
@@ -1890,7 +1901,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       organizationId: auth.organization.id,
       requestId: input.requestId,
       status: "merged",
-      note: input.note
+      note: mergeLink
     });
 
     if (!updated) {
@@ -1905,7 +1916,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       decision: "advance",
       fromStatus,
       toStatus: "merged",
-      note: input.note
+      note: mergeLink
     });
     await updateRoundStatusIfNeeded(tx, auth, request.submissionRoundId);
     await createParameterReviewAudit(tx, auth, {
@@ -1915,7 +1926,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       action: "merge",
       fromStatus,
       toStatus: "merged",
-      note: input.note,
+      note: mergeLink,
       expectedVersion: input.expectedVersion,
       changeRequest: request,
       participants

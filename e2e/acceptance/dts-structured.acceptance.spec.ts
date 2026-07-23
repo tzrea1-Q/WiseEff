@@ -236,7 +236,7 @@ async function advanceChangeRequestReview(request: APIRequestContext, requestId:
     apiRoute(`/api/v1/parameter-change-requests/${encodeURIComponent(requestId)}/review`),
     {
       headers: adminHeaders(),
-      data: { decision: "advance", note: `${descriptionPrefix} structured edit advance` }
+      data: { decision: "advance", note: `https://example.com/e2e/structured-edit/${encodeURIComponent(requestId)}` }
     }
   );
   expect(response.ok()).toBe(true);
