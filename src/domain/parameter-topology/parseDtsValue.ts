@@ -100,7 +100,7 @@ function parseTopLevelItem(itemRawWithWhitespace: string): ParsedItem {
   throw new Error(`Unrecognized DTS value token: "${trimmed}"`);
 }
 
-const CELL_TOKEN_RE = /&[A-Za-z_][A-Za-z0-9_]*|-?0[xX][0-9A-Fa-f]+|-?\d+/g;
+const CELL_TOKEN_RE = /&[A-Za-z_][A-Za-z0-9_]*|\(-(?:0[xX][0-9A-Fa-f]+|\d+)\)|-?0[xX][0-9A-Fa-f]+|-?\d+/g;
 
 function parseCellsGroup(inner: string, width: CellWidth): DtsCell[] {
   const tokens = inner.match(CELL_TOKEN_RE) ?? [];
@@ -112,8 +112,9 @@ function parseCellToken(token: string, width: CellWidth): DtsCell {
     return { kind: "phandle", label: token.slice(1) };
   }
 
-  const negative = token.startsWith("-");
-  const magnitudeText = negative ? token.slice(1) : token;
+  const bare = token.startsWith("(") && token.endsWith(")") ? token.slice(1, -1) : token;
+  const negative = bare.startsWith("-");
+  const magnitudeText = negative ? bare.slice(1) : bare;
   const magnitude = BigInt(magnitudeText);
   const signedValue = negative ? -magnitude : magnitude;
 
@@ -123,7 +124,8 @@ function parseCellToken(token: string, width: CellWidth): DtsCell {
     throw new RangeError(`Integer literal "${token}" overflows a ${width}-bit cell`);
   }
 
-  return { kind: "integer", raw: token, value: signedValue.toString() };
+  // Canonical raw keeps the signed literal without required parentheses; renderCell adds them.
+  return { kind: "integer", raw: bare, value: signedValue.toString() };
 }
 
 function combineItems(items: ParsedItem[]): DtsValue {

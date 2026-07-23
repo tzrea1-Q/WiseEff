@@ -25,6 +25,21 @@ describe("parseDtsValue / renderDtsValue", () => {
     ]);
   });
 
+  it("parses and renders dtc-safe parenthesized negatives", () => {
+    const raw = "<(-1) (-10) 2800>";
+    const { value } = parseDtsValue("sense_r_config", raw);
+    expect(value).toMatchObject({ kind: "cells", bits: 32 });
+    if (value.kind !== "cells") throw new Error("expected cells");
+    expect(value.groups[0]).toEqual([
+      { kind: "integer", raw: "-1", value: "-1" },
+      { kind: "integer", raw: "-10", value: "-10" },
+      { kind: "integer", raw: "2800", value: "2800" },
+    ]);
+    expect(renderDtsValue(value)).toBe("<(-1) (-10) 2800>");
+    // Legacy bare negatives upgrade to parenthesized form when re-rendered.
+    expect(renderDtsValue(value, "<-1 -10 2800>")).toBe("<(-1) (-10) 2800>");
+  });
+
   it("parses multiple comma-separated cell groups", () => {
     const raw = "<1 2600>,<2 2800>";
     const { value } = parseDtsValue("combined_para", raw);

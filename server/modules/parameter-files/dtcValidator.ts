@@ -265,7 +265,17 @@ export function createSubprocessDtcValidator(deps: CreateSubprocessDtcValidatorD
             continue;
           }
 
-          diagnostics.push(...parseDtcStderr(result.stderr));
+          const parsed = parseDtcStderr(result.stderr);
+          diagnostics.push(...parsed);
+          // Real dtc syntax failures often look like "Error: file:line.col-col syntax error"
+          // without the "severity: message" shape parseDtcStderr expects. Honor exit codes.
+          if (result.code !== 0 && !parsed.some((diagnostic) => diagnostic.severity === "error")) {
+            diagnostics.push({
+              file: file.name,
+              severity: "error",
+              message: result.stderr.trim() || `dtc exited with code ${result.code}.`
+            });
+          }
         }
 
         if (enableDtSchema) {

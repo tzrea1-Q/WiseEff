@@ -162,6 +162,18 @@ describe("createSubprocessDtcValidator - diagnostic mapping", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("mode=block fails on non-zero dtc exit even when stderr is unparsed syntax noise", async () => {
+    const stderr = "Error: /tmp/x.dts:200.22-23 syntax error\nFATAL ERROR: Unable to parse input tree\n";
+    const spawnFn = fakeSpawnThatSucceeds(stderr, 1);
+    const validator = createSubprocessDtcValidator({ spawnFn, whichDtc: async () => "/usr/bin/dtc" });
+    const result = await validator.validate([{ name: "nebula-board.dts", content: "/dts-v1/;\n/ {};\n" }], {
+      mode: "block"
+    });
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics.some((d) => d.severity === "error")).toBe(true);
+    expect(result.diagnostics[0]?.message).toContain("syntax error");
+  });
+
   it("mode=block fails when any diagnostic is an error", async () => {
     const stderr = "a.dts:1: error: bad token\nb.dts:2: warning: minor issue\n";
     const spawnFn = fakeSpawnThatSucceeds(stderr, 1);
