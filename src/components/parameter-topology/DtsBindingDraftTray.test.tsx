@@ -227,7 +227,7 @@ describe("DtsBindingDraftTray", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/不在同一工作版本上.*无法一起提交/);
   });
 
-  it("shows a healthy working-version hint when all drafts share the same tip", () => {
+  it("shows draft count when all drafts share the same tip", () => {
     render(
       <DtsBindingDraftTray
         projectId="aurora"
@@ -244,7 +244,7 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    expect(screen.getByText(/本轮 2 项 · 同一工作版本/)).toBeVisible();
+    expect(screen.getByText(/^本轮 2 项$/)).toBeVisible();
   });
 
   it.each([

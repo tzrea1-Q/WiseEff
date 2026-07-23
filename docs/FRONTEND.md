@@ -109,7 +109,7 @@ The API semantic list is separate from the mock-only legacy `ParametersTable`. R
 - The current-edits tray healthy copy (N = draft count):
 
   ```text
-  本轮 N 项 · 同一工作版本
+  本轮 N 项
   ```
 
   Mixed revision tips within a round are exceptional; the tray surfaces actionable remediation in Chinese when they occur.

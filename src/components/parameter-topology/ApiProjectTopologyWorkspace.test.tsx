@@ -229,7 +229,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     const tray = await screen.findByRole("region", { name: "绑定变更提交" });
-    expect(within(tray).getByText(/本轮 2 项 · 同一工作版本/)).toBeVisible();
+    expect(within(tray).getByText(/^本轮 2 项$/)).toBeVisible();
     expect(within(tray).getByText("Hydrated gpio draft")).toBeVisible();
     expect(within(tray).getByText("Hydrated mt5788 draft")).toBeVisible();
   });
@@ -287,7 +287,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     const tray = await screen.findByRole("region", { name: "绑定变更提交" });
     expect(within(tray).getByRole("alert")).toHaveTextContent(/不在同一工作版本上.*无法一起提交/);
     expect(within(tray).getByText("2 项")).toBeVisible();
-    expect(within(tray).queryByText(/本轮 2 项 · 同一工作版本/)).not.toBeInTheDocument();
+    expect(within(tray).queryByText(/^本轮 2 项$/)).not.toBeInTheDocument();
   });
 
   it("shows empty state when no config set exists", async () => {
@@ -889,7 +889,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
 
     const tray = await screen.findByRole("region", { name: "绑定变更提交" });
-    expect(within(tray).getByText(/本轮 2 项 · 同一工作版本/)).toBeVisible();
+    expect(within(tray).getByText(/^本轮 2 项$/)).toBeVisible();
     expect(within(tray).queryByText("技术身份")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
       "data-revision-id",
@@ -1046,7 +1046,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       "data-revision-id",
       "candidate-replacement"
     );
-    expect(within(tray).getByText(/本轮 1 项 · 同一工作版本/)).toBeVisible();
+    expect(within(tray).getByText(/^本轮 1 项$/)).toBeVisible();
   });
 
   it("locks only the submitting project until the real submit mutation settles", async () => {
