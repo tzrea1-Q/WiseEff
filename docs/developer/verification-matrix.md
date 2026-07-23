@@ -18,7 +18,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | `git diff --check` | Whitespace safety | Before committing or handing off. |
 | `npm run dtc:check -- --required` | A real Device Tree Compiler is present on PATH | Before M1 seeding, DTS validation work, or self-hosted image acceptance. |
 | `npm run dtc:seed:compile` | All three committed project seed overlays compile with real `dtc -@` | After changing DTS fixtures, seed generation, validation, or dtc deployment wiring. |
-| `npm run dts:toolchain:bootstrap` | dtc/fdtoverlay are installed/checked and pinned dtschema is installed into ignored `.wiseeff-tools/dts-toolchain` | First local setup or after changing `tools/dts-toolchain/requirements.txt` / version pins. |
+| `npm run dts:toolchain:bootstrap` | Project venv gets pinned dtschema; dtc/fdtoverlay match `tools/dts-toolchain/versions.json` (reuse host or build pinned commit into `.wiseeff-tools/dts-toolchain`) | First local setup or after changing `tools/dts-toolchain/requirements.txt` / version pins. |
 | `npm run dts:toolchain:check -- --required` | API/CLI shared resolver finds dtc + fdtoverlay + project-local dt-validate and all match `tools/dts-toolchain/versions.json` | Before release-mode publish work or identity cutover rehearsal. No personal Python PATH export is allowed as required setup. |
 | `npm run parameter-identities:check` | Read-only preflight/postflight for semantic identity migration | Before/after maintenance-window cutover; see runbook. |
 | `npm run parameter-identities:migrate` | Dry-run (default) or gated `--apply` historical identity migration | Cutover rehearsal only; never dual-write in production. |

@@ -8,6 +8,7 @@ import {
   loadPinnedToolchainVersions,
   probeDtsToolchain
 } from "../server/modules/parameter-files/dtsToolchain";
+import { ensurePinnedDtcBinaries } from "./ensure-pinned-dtc";
 
 export type DtsToolchainVenvPaths = {
   venvDir: string;
@@ -41,11 +42,15 @@ async function main() {
   const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
   const paths = resolveDtsToolchainVenvPaths(rootDir);
   const hostPython = process.env.PYTHON?.trim() || "python3";
+  const pinned = loadPinnedToolchainVersions(rootDir);
 
   if (!existsSync(paths.python)) {
     console.log(`Creating project DTS toolchain venv: ${paths.venvDir}`);
     runRequired(hostPython, ["-m", "venv", paths.venvDir], rootDir);
   }
+
+  const dtcEnsure = await ensurePinnedDtcBinaries(rootDir, pinned);
+  console.log(`Pinned dtc/fdtoverlay: ${dtcEnsure}`);
 
   runRequired(
     paths.python,
@@ -61,7 +66,6 @@ async function main() {
   );
 
   const probe = await probeDtsToolchain();
-  const pinned = loadPinnedToolchainVersions(rootDir);
   const versionCheck = checkPinnedToolchainVersions(
     {
       dtc: probe.dtc.version,
@@ -78,6 +82,8 @@ async function main() {
     );
   }
 
+  console.log(`Project dtc ready: ${probe.dtc.path} (${probe.dtc.version})`);
+  console.log(`Project fdtoverlay ready: ${probe.fdtoverlay.path} (${probe.fdtoverlay.version})`);
   console.log(`Project dtschema ready: ${probe.dtschema.path} (${probe.dtschema.version})`);
   console.log("Verify without modifying PATH: npm run dts:toolchain:check");
 }

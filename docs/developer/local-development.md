@@ -22,7 +22,7 @@ npm run dts:toolchain:bootstrap
 npm run dts:toolchain:check -- --required
 ```
 
-`dts:toolchain:bootstrap` first installs/checks dtc through the existing platform package bootstrap, then creates the ignored project venv at `.wiseeff-tools/dts-toolchain` and installs the pinned dtschema requirement. API runtime, seed scripts, and the check command share that resolver; a personal Python bin directory is not required on `PATH`. To verify the checked-in Aurora/Nebula/Atlas seed overlays independently, run:
+`dts:toolchain:bootstrap` creates the ignored project venv at `.wiseeff-tools/dts-toolchain`, installs the pinned dtschema requirement, and ensures dtc/fdtoverlay match `tools/dts-toolchain/versions.json` (reusing a matching host install when present, otherwise building the pinned commit into the project toolchain bin). API runtime, seed scripts, and the check command share that resolver; a personal Python bin directory is not required on `PATH`. To verify the checked-in Aurora/Nebula/Atlas seed overlays independently, run:
 
 ```bash
 npm run dtc:seed:compile
