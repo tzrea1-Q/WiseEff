@@ -73,7 +73,9 @@ const ADDRESSED_CHILD_CONTAINERS = new Set([
   "wiseeff,amba",
   "arm,amba-bus",
   "wiseeff,spmi",
-  "wiseeff,spmi1"
+  "wiseeff,spmi1",
+  "hisilicon,spmi",
+  "huawei,batt_info"
 ]);
 
 export function slug(value: string): string {

@@ -6,6 +6,8 @@ version: 1
 schemaNamespace: vendor/hisilicon,spmi
 compatible:
   - hisilicon,spmi
+childNodes:
+  - scharger_v800
 properties:
   compatible:
     valueShape: string-list

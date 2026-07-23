@@ -6,6 +6,9 @@ version: 1
 schemaNamespace: vendor/huawei,battery_charge_balance
 compatible:
   - huawei,battery_charge_balance
+childNodes:
+  - battery0
+  - battery1
 commonRefs:
   - wiseeff/common-status.yaml
 properties:
