@@ -218,7 +218,7 @@ export function DtsBindingDraftTray({
             ? selectedBindingIds && selectedBindingIds.size > 0
               ? `提交 ${submitDrafts.length} / ${drafts.length} 项`
               : `${drafts.length} 项`
-            : `本轮 ${drafts.length} 项 · 同一工作版本`}
+            : `本轮 ${drafts.length} 项`}
         </span>
       </header>
 

@@ -20521,6 +20521,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .dts-binding-draft-tray .binding-draft-submission__actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
   justify-content: flex-end;
 }
