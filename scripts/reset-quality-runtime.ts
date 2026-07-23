@@ -2,7 +2,11 @@ import "dotenv/config";
 import { pathToFileURL } from "node:url";
 
 import { loadServerEnv } from "../server/config/env";
-import { createPostgresDatabase, type Database } from "../server/shared/database/client";
+import {
+  createPostgresDatabase,
+  type Database,
+  type Queryable
+} from "../server/shared/database/client";
 
 const seededUserIds = [
   "u-xu-yun",
@@ -23,6 +27,15 @@ const deleteOwnedByTransientUser: ReadonlyArray<{ table: string; column: string 
   { table: "user_notifications", column: "recipient_user_id" }
 ];
 
+/**
+ * Flat PPV is renamed to legacy_* at parameter-identity cutover. Quality reset
+ * must tolerate either name (and skip when neither remains).
+ */
+const FLAT_OR_LEGACY_PPV_TABLES = [
+  "project_parameter_values",
+  "legacy_project_parameter_values"
+] as const;
+
 /** Optional attribution FKs can be cleared instead of deleting the parent row. */
 const nullifyTransientUserRefs: ReadonlyArray<{ table: string; column: string }> = [
   { table: "agent_approvals", column: "decided_by_user_id" },
@@ -38,8 +51,7 @@ const nullifyTransientUserRefs: ReadonlyArray<{ table: string; column: string }>
   { table: "parameter_file_sync_conflicts", column: "resolved_by_user_id" },
   { table: "parameter_history_entries", column: "changed_by_user_id" },
   { table: "parameter_review_decisions", column: "reviewer_user_id" },
-  { table: "parameter_spec_review_tasks", column: "reviewer_user_id" },
-  { table: "project_parameter_values", column: "updated_by_user_id" }
+  { table: "parameter_spec_review_tasks", column: "reviewer_user_id" }
 ];
 
 /**
@@ -66,6 +78,26 @@ const reassignTransientUserRefs: ReadonlyArray<{ table: string; column: string }
   { table: "project_parameter_file_versions", column: "created_by_user_id" }
 ];
 
+async function publicTableExists(tx: Queryable, tableName: string): Promise<boolean> {
+  const result = await tx.query<{ c: string }>(
+    `
+    select count(*)::text as c
+    from information_schema.tables
+    where table_schema = 'public' and table_name = $1
+    `,
+    [tableName]
+  );
+  return Number(result.rows[0]?.c ?? 0) > 0;
+}
+
+/** Resolve which PPV attribution table exists before/after identity cutover. */
+export async function resolveFlatOrLegacyPpvTable(tx: Queryable): Promise<string | null> {
+  for (const table of FLAT_OR_LEGACY_PPV_TABLES) {
+    if (await publicTableExists(tx, table)) return table;
+  }
+  return null;
+}
+
 export async function resetQualityRuntime(db: Database) {
   await db.transaction(async (tx) => {
     await tx.query("update users set organization_id = 'org-chargelab' where id = any($1::text[])", [seededUserIds]);
@@ -78,6 +110,14 @@ export async function resetQualityRuntime(db: Database) {
     for (const { table, column } of nullifyTransientUserRefs) {
       await tx.query(
         `update ${table} set ${column} = null where ${column} is not null and ${column} <> all($1::text[])`,
+        [seededUserIds]
+      );
+    }
+
+    const ppvTable = await resolveFlatOrLegacyPpvTable(tx);
+    if (ppvTable) {
+      await tx.query(
+        `update ${ppvTable} set updated_by_user_id = null where updated_by_user_id is not null and updated_by_user_id <> all($1::text[])`,
         [seededUserIds]
       );
     }

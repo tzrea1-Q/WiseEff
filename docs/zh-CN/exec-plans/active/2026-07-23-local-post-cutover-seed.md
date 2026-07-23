@@ -14,6 +14,7 @@
 - [x] M1 默认语义-only + finalize；legacy 环境变量
 - [x] 中英文档与 design/exec-plan
 - [x] 重建本地库验证提交；`docs:check`
+- [x] CI 跟进：legacy 守卫放行 `localPostCutover.ts`；`reset:quality-runtime` 兼容 flat→legacy PPV 改名
 
 ## 文档影响矩阵
 

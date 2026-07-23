@@ -22,6 +22,7 @@ Make `db:seed:m1` / `npm run dev:all` default to semantic-only data plus local p
 - [x] Default M1 seed skips flat identity; call local finalize; `WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1` opt-out
 - [x] Update EN/ZH local-development + FRONTEND; `.env.example`; design specs
 - [x] Wipe local Docker volume and verify typed submit; `npm run docs:check`
+- [x] CI follow-up: allowlist `localPostCutover.ts` in legacy dependency guard; make `reset:quality-runtime` tolerate flat→legacy PPV rename
 
 ## Documentation Impact Matrix
 
@@ -43,7 +44,8 @@ Blocking until Update/Review rows are done or recorded unchanged. Run `npm run d
 ## Verification
 
 ```bash
-npm run test:server -- --run server/modules/parameter-topology/localPostCutover.test.ts server/modules/parameters/seedM1Parameters.test.ts
+npm run test:server -- --run server/modules/parameter-topology/localPostCutover.test.ts server/modules/parameter-topology/legacyDependencyGuard.test.ts server/modules/parameters/seedM1Parameters.test.ts
+npm test -- --run scripts/reset-quality-runtime.test.ts
 npm run docs:check
 # wipe volume then:
 npm run db:migrate && npm run db:seed:m0 && npm run db:seed:m1
