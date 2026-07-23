@@ -102,7 +102,7 @@ async function createGpioDraftFromWorkbench(
   fireEvent: typeof import("@testing-library/react").fireEvent,
   input: { reason: string; rawValue?: string; editButtonName?: RegExp }
 ) {
-  const editName = input.editButtonName ?? /编辑 gpio_int/;
+  const editName = input.editButtonName ?? /编辑 gpio_int（未分类 · sc8562/;
   fireEvent.click(within(workspace).getByRole("button", { name: editName }));
   const draftDialog = await screen.findByRole("dialog", { name: "修改草稿" });
   if (input.rawValue !== undefined) {
@@ -884,7 +884,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     await createGpioDraftFromWorkbench(workspace, fireEvent, {
       reason: "Second binding draft",
       rawValue: "<&gpio6 16 0>",
-      editButtonName: /编辑 gpio_int/
+      editButtonName: /编辑 gpio_int（未分类 · mt5788/
     });
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
 
@@ -1103,11 +1103,11 @@ describe("ApiProjectTopologyWorkspace", () => {
 
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
-    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int（未分类 · sc8562/ }));
     const detail = screen.getByRole("dialog", { name: /参数详情/ });
     expect(within(detail).queryByLabelText("目标值")).not.toBeInTheDocument();
     expect(within(detail).queryByRole("button", { name: /加入草稿/ })).not.toBeInTheDocument();
-    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).not.toBeInTheDocument();
     expect(createBindingDraft).toHaveBeenCalledTimes(1);
 
     rerender(
@@ -1128,7 +1128,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
-    expect(within(workspace).getByRole("button", { name: /编辑 gpio_int/ })).toBeEnabled();
+    expect(within(workspace).getByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).toBeEnabled();
 
     rerender(
       <ApiProjectTopologyWorkspace
@@ -1148,14 +1148,14 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
-    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).not.toBeInTheDocument();
 
     await act(async () => {
       resolveSubmit();
       await pendingSubmit;
     });
     await waitFor(() => {
-      expect(within(workspace).getByRole("button", { name: /编辑 gpio_int/ })).toBeEnabled();
+      expect(within(workspace).getByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).toBeEnabled();
     });
   });
 
@@ -1226,7 +1226,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(tray).getByRole("alert", { hidden: true })).toHaveTextContent(/正在创建 typed draft/);
     fireEvent.click(blockedSubmit);
     expect(submitBindingChanges).not.toHaveBeenCalled();
-    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).not.toBeInTheDocument();
     expect(createBindingDraft).toHaveBeenCalledTimes(2);
 
     rerender(
@@ -1247,7 +1247,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
-    expect(within(workspace).getByRole("button", { name: /编辑 gpio_int/ })).toBeEnabled();
+    expect(within(workspace).getByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).toBeEnabled();
 
     rerender(
       <ApiProjectTopologyWorkspace
@@ -1267,7 +1267,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
-    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).not.toBeInTheDocument();
 
     await act(async () => {
       resolveReplacement({

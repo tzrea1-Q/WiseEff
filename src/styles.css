@@ -351,9 +351,11 @@ body {
   display: flex;
   flex-direction: column;
   width: calc(100vw - var(--active-sidebar-width));
+  max-width: calc(100vw - var(--active-sidebar-width));
   margin-left: var(--active-sidebar-width);
   height: 100vh;
   min-height: 0;
+  overflow-x: clip;
   transition: width 180ms ease, margin-left 180ms ease;
 }
 
@@ -11854,6 +11856,11 @@ td small {
   }
 
   table {
+    min-width: 0;
+  }
+
+  .table-wrap > table,
+  .parameters-table-scroll > table {
     min-width: 720px;
   }
 
