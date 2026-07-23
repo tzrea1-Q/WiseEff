@@ -21070,7 +21070,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
     width: 0 !important;
   }
 
-  .dts-parameter-workbench-table__head {
+  .dts-parameter-workbench-table__head,
+  .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__head {
     position: absolute;
     top: auto;
     z-index: auto;
@@ -21091,8 +21092,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
     background: var(--dts-workbench-surface-soft);
   }
 
-  .dts-parameter-workbench-table__row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  .dts-parameter-workbench-table__row,
+  .dts-parameter-workbench-table--surface-mvp .dts-parameter-workbench-table__row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) !important;
     gap: 0 12px;
     padding: 12px;
     border: 1px solid var(--dts-workbench-border);
