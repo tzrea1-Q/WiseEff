@@ -83,7 +83,7 @@ async function advanceReview(server: ReturnType<typeof createHttpServer>, reques
     `/api/v1/parameter-change-requests/${requestId}/review`,
     {
       method: "POST",
-      body: JSON.stringify({ decision: "advance", note: "p31 advance" })
+      body: JSON.stringify({ decision: "advance", note: "https://example.com/p31-advance" })
     }
   );
   expect(response.status).toBe(200);
