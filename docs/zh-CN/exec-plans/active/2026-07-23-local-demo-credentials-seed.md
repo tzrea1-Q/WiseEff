@@ -20,7 +20,7 @@
 - [x] Task 1: `seedLocalDemoCredentials` helper + 单测（TDD）
 - [x] Task 2: 接入 `seed-m0.ts` + `seed-m0.test.ts`
 - [x] Task 3: 中英 local-development / authentication + PLANS 索引
-- [ ] Task 4: 本地 re-seed + login smoke
+- [x] Task 4: 本地 re-seed + login smoke
 
 共用密码：`WiseEff-Dev!`  
 Username：`xu.yun` / `zhao.heng` / `liu.min` / `wang.jie` / `chen.na` / `li.peng` / `sun.mei`
