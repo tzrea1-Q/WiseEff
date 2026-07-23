@@ -621,14 +621,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first().click();
     const scopedSc8562Row = bindingRowById(workspace, scBinding!.id);
-    await expect(scopedSc8562Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(scopedSc8562Row.getByRole("cell", { name: /^(参数名 )?gpio_int$/ })).toBeVisible();
     await expect(scopedSc8562Row).toContainText("sc8562@6E");
     await expect(scopedSc8562Row).toContainText("<&gpio13 29 0>");
     await expect(bindingRowById(workspace, mtBinding!.id)).toHaveCount(0);
     // Toggle the same tree node to clear subtree scoping (toolbar no longer has clear-all).
     await workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first().click();
     const unscopedMt5788Row = bindingRowById(workspace, mtBinding!.id);
-    await expect(unscopedMt5788Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(unscopedMt5788Row.getByRole("cell", { name: /^(参数名 )?gpio_int$/ })).toBeVisible();
     await expect(unscopedMt5788Row).toContainText("mt5788@2B");
 
     const baseBindingSnapshot = await withPgClient(async (client) => {
@@ -650,7 +650,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       .poll(async () => gpioCells.count(), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(2);
     const sc8562Row = bindingRowById(workspace, scBinding!.id);
-    await expect(sc8562Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(sc8562Row.getByRole("cell", { name: /^(参数名 )?gpio_int$/ })).toBeVisible();
     await sc8562Row.getByRole("button", { name: /^查看 gpio_int/ }).click();
     const detail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
     await expect(detail).toBeVisible();
@@ -818,7 +818,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await editWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
       await expect.poll(async () => editWorkspace.getByRole("cell", { name: "gpio_int" }).count()).toBeGreaterThanOrEqual(2);
       const sc8562EditRow = bindingRowById(editWorkspace, scBinding!.id);
-      await expect(sc8562EditRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+      await expect(sc8562EditRow.getByRole("cell", { name: /^(参数名 )?gpio_int$/ })).toBeVisible();
       await sc8562EditRow.getByRole("button", { name: /^编辑 gpio_int/ }).click();
       const editDetail = page.getByRole("dialog", { name: "修改草稿" });
       await expect(editDetail).toBeVisible();
@@ -1193,7 +1193,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     );
     await preDeleteWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
     const preDeleteMt5788Row = bindingRowById(preDeleteWorkspace, mtBinding!.id);
-    await expect(preDeleteMt5788Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(preDeleteMt5788Row.getByRole("cell", { name: /^(参数名 )?gpio_int$/ })).toBeVisible();
     await expect(preDeleteMt5788Row).toContainText("mt5788@2B");
     const deleteReason = `${descriptionPrefix} delete gpio_int through formal review`;
     const deleteBaseBindingSnapshot = await withPgClient(async (client) => {
@@ -1489,7 +1489,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(bindingRowById(deleteReloadWorkspace, mtBinding!.id)).toHaveCount(0);
     await expect(semanticBindingRow(deleteReloadWorkspace, "mt5788@2B")).toHaveCount(0);
     const sc8562DeleteRow = semanticBindingRow(deleteReloadWorkspace, "sc8562@6E");
-    await expect(sc8562DeleteRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(sc8562DeleteRow.getByRole("cell", { name: /^(参数名 )?gpio_int$/ })).toBeVisible();
 
     const writebackDb = {
       table: "project_parameter_file_versions",
@@ -1897,7 +1897,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(workspaceAfter).toBeVisible({ timeout: 30_000 });
     await workspaceAfter.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
     const sc8562ReloadRow = bindingRowById(workspaceAfter, scBinding!.id);
-    await expect(sc8562ReloadRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible({
+    await expect(sc8562ReloadRow.getByRole("cell", { name: /^(参数名 )?gpio_int$/ })).toBeVisible({
       timeout: 20_000
     });
     await sc8562ReloadRow.getByRole("button", { name: /^查看 gpio_int/ }).click();
