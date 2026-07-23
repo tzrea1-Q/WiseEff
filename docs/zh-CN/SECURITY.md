@@ -23,7 +23,7 @@ WiseEff 安全边界围绕身份、授权、审计、Agent tool governance、设
 
 OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_verified=true` 时，WiseEff 才允许用 email 作为迁移期 fallback 绑定；否则只按稳定 `sub` 匹配。错误 issuer、错误 audience、过期 token、not-yet-valid token、无签名 token、签名错误或不支持的角色 id 都应被拒绝。
 
-本地账号注册会按所选组织和允许自助选择的平台角色创建基于用户名的账号。服务端会拒绝 Admin 自助注册；Hardware/Software Committer 注册申请会创建 inactive 账号、对应基础 User 角色和待审批申请，但不会发放 session token，也不能在 Admin 审批前登录。Admin 在用户治理后台批准后，服务端才会激活账号并授予申请的 Committer 角色。当前暂不支持邮箱验证，因此注册不能被当作邮箱域名归属证明或邀请接受流程。浏览器本地账号 token 当前保存在 `localStorage` 的 `wiseeff.localAuthToken`；需要 SSO、MFA、refresh-token rotation 或更强浏览器会话隔离的部署应使用 OIDC 或经过加固的反向代理/session 集成。
+本地账号注册会按所选组织和允许自助选择的平台角色创建基于用户名的账号。服务端会拒绝 Admin 自助注册；Hardware/Software Committer 注册申请会创建 inactive 账号、对应基础 User 角色和待审批申请，但不会发放 session token，也不能在 Admin 审批前登录。Admin 在用户治理后台批准后，服务端才会激活账号并授予申请的 Committer 角色。当前暂不支持邮箱验证，因此注册不能被当作邮箱域名归属证明或邀请接受流程。在 `NODE_ENV=development` 下，`db:seed:m0` 可为 ChargeLab 演示 persona upsert 固定 username 与仅限开发者的共用演示密码，便于本地按角色测 UI；非 development 的 seed 不得写入这些演示凭据，演示密码也绝不能用于生产或客户库。浏览器本地账号 token 当前保存在 `localStorage` 的 `wiseeff.localAuthToken`；需要 SSO、MFA、refresh-token rotation 或更强浏览器会话隔离的部署应使用 OIDC 或经过加固的反向代理/session 集成。
 
 ## 权限模型
 

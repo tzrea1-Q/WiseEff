@@ -58,6 +58,24 @@ npm run parameter-identities:check
 WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1 npm run db:seed:m1
 ```
 
+### Development 演示登录（API 模式）
+
+当 `NODE_ENV=development` 时，`db:seed:m0` 会为 ChargeLab 演示 persona upsert 固定 username 与共用演示密码，仅用于本地开发库。
+
+| Username | Persona |
+| --- | --- |
+| `xu.yun` | Admin（Xu Yun） |
+| `zhao.heng` | Hardware User |
+| `liu.min` | Software User |
+| `wang.jie` | Hardware Committer |
+| `chen.na` | Software User |
+| `li.peng` | Hardware Committer |
+| `sun.mei` | Software Committer |
+
+共用密码：`WiseEff-Dev!`
+
+非 development 的 seed 不会写入这些凭据。空的非 demo 安装仍使用 `npm run admin:bootstrap`。
+
 ## 同类中文文档
 
 - [docs/zh-CN/developer/README.md](README.md)
