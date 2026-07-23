@@ -624,13 +624,13 @@ function diversifyPropertyRawText(
       const rewritten = rewriteWhitespaceSeparatedTokens(inner, (token, index) => {
         // Prefer bumping the first mutable cell so multi-cell tables stay recognizable.
         if (index > 0) {
-          return token;
+          return formatDtsCellToken(token);
         }
         const bumped = bumpNumericToken(token, delta);
-        if (bumped !== token) {
+        if (bumped !== unwrapDtsCellToken(token)) {
           changed = true;
         }
-        return bumped;
+        return formatDtsCellToken(bumped);
       });
       return `<${rewritten}>`;
     });
@@ -687,16 +687,27 @@ function rewriteWhitespaceSeparatedTokens(
   });
 }
 
+function unwrapDtsCellToken(token: string): string {
+  return token.startsWith("(") && token.endsWith(")") ? token.slice(1, -1) : token;
+}
+
+/** dtc 1.8+ rejects bare `<-1>` cell forms; keep signed demo values parenthesized. */
+function formatDtsCellToken(token: string): string {
+  const bare = unwrapDtsCellToken(token);
+  return /^-\d+$/.test(bare) ? `(${bare})` : bare;
+}
+
 function bumpNumericToken(token: string, delta: number): string {
-  if (/^0x[0-9a-fA-F]+$/.test(token)) {
-    const width = token.length - 2;
-    const next = (parseInt(token, 16) + delta) >>> 0;
+  const bare = unwrapDtsCellToken(token);
+  if (/^0x[0-9a-fA-F]+$/.test(bare)) {
+    const width = bare.length - 2;
+    const next = (parseInt(bare, 16) + delta) >>> 0;
     return `0x${next.toString(16).padStart(width, "0")}`;
   }
-  if (/^-?\d+$/.test(token)) {
-    return String(Number(token) + delta);
+  if (/^-?\d+$/.test(bare)) {
+    return String(Number(bare) + delta);
   }
-  return token;
+  return bare;
 }
 
 function applySourceOverrides(source: string, overrides: SourceOverrideMap): string {

@@ -18,6 +18,8 @@ const ALLOWED_PATH_SUBSTRINGS = [
   "/parameter-topology/migration.test.ts",
   "/parameters/legacyParameterIdentityAdapter.ts",
   "/parameters/legacyParameterIdentityNames.ts",
+  // Pre-cutover project delete still clears archived flat-identity rows.
+  "/parameters/repository.ts",
   "/parameters/dashboard/legacyDashboardAdapter.ts",
   "/parameters/semanticParameterIdentityNames.ts",
   "/docs/exec-plans/completed/",

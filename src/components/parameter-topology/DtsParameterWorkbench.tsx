@@ -489,6 +489,21 @@ export function DtsParameterWorkbench({
         ) : null}
       </div>
 
+      {currentEdits ? (
+        <div
+          className="dts-parameter-workbench__current-edits dts-draft-tray"
+          role="region"
+          aria-label="本轮已修改"
+        >
+          {currentEdits}
+        </div>
+      ) : null}
+      {governanceContent ? (
+        <div className="dts-parameter-workbench__governance-content">
+          {governanceContent}
+        </div>
+      ) : null}
+
       <div className="dts-parameter-workbench__body">
         <div
           className="dts-parameter-workbench__navigator dts-workbench-topology"
@@ -503,7 +518,8 @@ export function DtsParameterWorkbench({
             view="effective"
             nodes={tree}
             selectedNodeId={effectiveSelectedNodeId}
-            expandAllByDefault={expandAllNodesByDefault}
+            expandAllByDefault={navigatorMode === "topology" && expandAllNodesByDefault}
+            defaultExpandDepth={navigatorMode === "module" ? 2 : undefined}
             labelKind={navigatorMode === "module" ? "text" : "code"}
             emptyMessage={navigatorMode === "module" ? "暂无模块分组" : "暂无 DTS 拓扑节点"}
             ariaLabel={navigatorMode === "module" ? "业务模块树" : "生效 DTS 拓扑"}
@@ -544,20 +560,6 @@ export function DtsParameterWorkbench({
           </div>
         </div>
       </div>
-      {currentEdits ? (
-        <div
-          className="dts-parameter-workbench__current-edits dts-draft-tray"
-          role="region"
-          aria-label="本轮已修改"
-        >
-          {currentEdits}
-        </div>
-      ) : null}
-      {governanceContent ? (
-        <div className="dts-parameter-workbench__governance-content">
-          {governanceContent}
-        </div>
-      ) : null}
       {selectedRow && detailIntent === "view" ? (
         <DtsBindingDetailDialog
           row={selectedRow}

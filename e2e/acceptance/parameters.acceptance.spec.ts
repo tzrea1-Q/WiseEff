@@ -280,11 +280,11 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await page.goto(`/parameters?project=${projectId}`);
 
     // API mode mounts semantic topology workspace from ingested Config Set (not teaching fixtures).
-    const workspace = page.getByRole("region", { name: "项目拓扑工作区" });
+    const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
     await expect(workspace).toBeVisible({ timeout: 30_000 });
     // Empty/loading until base+overlay ingest exists is acceptable; gpio_int coverage lives in
     // parameter-topology.acceptance.spec.ts (PARAM-TOPOLOGY-*).
-    const gpioSearch = workspace.getByRole("searchbox", { name: "搜索绑定" });
+    const gpioSearch = workspace.getByRole("searchbox", { name: "搜索 DTS 参数" });
     if (await gpioSearch.isVisible().catch(() => false)) {
       await gpioSearch.fill("gpio_int");
     }

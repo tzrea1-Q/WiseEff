@@ -35,4 +35,33 @@ describe("parameterSurface", () => {
       })
     ).toBe(false);
   });
+
+  it("excludes provisional scaffolding unclassified modules and scaffolding drivers", () => {
+    expect(
+      isParameterSurfaceRow({
+        propertyKey: "ranges",
+        locator: "/amba",
+        compatible: "arm,amba-bus",
+        moduleName: "未分类 · amba-bus"
+      })
+    ).toBe(false);
+    expect(
+      isParameterSurfaceRow({
+        propertyKey: "hold-time",
+        locator: "/gpio2",
+        compatible: "hisilicon,gpio",
+        driverModule: "gpio",
+        moduleName: "未分类 · gpio"
+      })
+    ).toBe(false);
+    expect(
+      isParameterSurfaceRow({
+        propertyKey: "gpio_int",
+        locator: "/amba/i2c@FF24E000/sc8562@6E",
+        compatible: "sc8562",
+        driverModule: "sc8562",
+        moduleName: "sc8562@6E"
+      })
+    ).toBe(true);
+  });
 });

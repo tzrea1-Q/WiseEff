@@ -3,7 +3,7 @@
 > 日期：2026-07-21  
 > 状态：已实现
 > English: [`docs/superpowers/specs/2026-07-21-dts-binding-cross-project-compare-design.md`](../../superpowers/specs/2026-07-21-dts-binding-cross-project-compare-design.md)  
-> 相关：旧版 [`ParameterDetailDialog`](../../../src/components/ParameterDetailDialog.tsx) + [`singleParameterComparison`](../../../src/domain/parameters/singleParameterComparison.ts)；当前 [`DtsBindingDetailDialog`](../../../src/components/parameter-topology/DtsBindingDetailDialog.tsx)；此前拆分设计将完整对比标为延后
+> 相关：旧版 [`ParameterDetailDialog`](../../../../src/components/ParameterDetailDialog.tsx) + [`singleParameterComparison`](../../../../src/domain/parameters/singleParameterComparison.ts)；当前 [`DtsBindingDetailDialog`](../../../../src/components/parameter-topology/DtsBindingDetailDialog.tsx)；此前拆分设计将完整对比标为延后
 
 ## 1. 背景
 

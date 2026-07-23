@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveDtsToolchainCommands } from "./dtsToolchain";
+
 export type ValidationMode = "block" | "warn" | "off";
 
 export interface DtcDiagnostic {
@@ -172,8 +174,9 @@ function runProcess(
 
 function createDefaultWhichDtc(spawnFn: SpawnFn): () => Promise<string | null> {
   return async () => {
-    const result = await runProcess(spawnFn, "dtc", ["-v"], { cwd: tmpdir(), env: minimalEnv() }, 3_000);
-    return result.spawnError ? null : "dtc";
+    const dtcPath = resolveDtsToolchainCommands().dtc;
+    const result = await runProcess(spawnFn, dtcPath, ["--version"], { cwd: tmpdir(), env: minimalEnv() }, 3_000);
+    return result.spawnError || result.code !== 0 ? null : dtcPath;
   };
 }
 
@@ -262,7 +265,17 @@ export function createSubprocessDtcValidator(deps: CreateSubprocessDtcValidatorD
             continue;
           }
 
-          diagnostics.push(...parseDtcStderr(result.stderr));
+          const parsed = parseDtcStderr(result.stderr);
+          diagnostics.push(...parsed);
+          // Real dtc syntax failures often look like "Error: file:line.col-col syntax error"
+          // without the "severity: message" shape parseDtcStderr expects. Honor exit codes.
+          if (result.code !== 0 && !parsed.some((diagnostic) => diagnostic.severity === "error")) {
+            diagnostics.push({
+              file: file.name,
+              severity: "error",
+              message: result.stderr.trim() || `dtc exited with code ${result.code}.`
+            });
+          }
         }
 
         if (enableDtSchema) {

@@ -24,7 +24,7 @@ import { countOpenSpecReviewTasksForRevision } from "../parameter-specs/reposito
 import { canEditParameters } from "../parameters/policy";
 import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
 import { ensurePreCutoverLinkedParameterValue } from "../parameters/legacyParameterIdentityAdapter";
-import { upsertDraft } from "../parameters/repository";
+import { upsertDraft, listOpenBindingDraftsForUser, rebaseOpenBindingDraftCandidates } from "../parameters/repository";
 import { countOpenIdentityMappingTasksForRevision, upsertBindingRevisionValues } from "./bindingService";
 import {
   assertCanPromoteCandidateToDraft,
@@ -105,6 +105,8 @@ export type BindingDraftResult = {
   parameterId: string;
   writeTarget: BindingDraftWriteTarget;
   candidateRevisionId: string;
+  workingCandidateRevisionId: string;
+  rebasedDraftIds: string[];
   rawText: string;
   action: BindingEditAction;
   parameterSpecId: string;
@@ -869,6 +871,66 @@ export async function unchangedSourceBytes(draft: BindingDraftResult): Promise<b
   return draft.baseChecksumBefore === draft.baseChecksumAfter && draft.baseChecksumAfter === checksumOf(draft.baseContent);
 }
 
+async function carryForwardBindingRevisions(
+  db: Queryable,
+  input: { baseRevisionId: string; candidateRevisionId: string; excludeBindingId?: string },
+): Promise<void> {
+  const rows = await db.query<{
+    binding_id: string;
+    parameter_spec_version_id: string;
+    typed_value: unknown;
+    canonical_value: unknown;
+    raw_value: string | null;
+    schema_state: string | null;
+    policy_state: string | null;
+  }>(
+    `
+    select
+      br.binding_id,
+      br.parameter_spec_version_id,
+      br.typed_value,
+      br.canonical_value,
+      br.raw_value,
+      br.schema_state,
+      br.policy_state
+    from project_parameter_binding_revisions br
+    where br.config_revision_id = $1
+      and ($3::text is null or br.binding_id <> $3)
+      and not exists (
+        select 1
+        from project_parameter_binding_revisions existing
+        where existing.binding_id = br.binding_id
+          and existing.config_revision_id = $2
+      )
+    `,
+    [input.baseRevisionId, input.candidateRevisionId, input.excludeBindingId ?? null],
+  );
+
+  for (const row of rows.rows) {
+    await db.query(
+      `
+      insert into project_parameter_binding_revisions (
+        id, binding_id, config_revision_id, parameter_spec_version_id,
+        typed_value, canonical_value, raw_value, schema_state, policy_state
+      ) values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9)
+      `,
+      [
+        randomUUID(),
+        row.binding_id,
+        input.candidateRevisionId,
+        row.parameter_spec_version_id,
+        JSON.stringify(row.typed_value),
+        row.canonical_value === null || row.canonical_value === undefined
+          ? null
+          : JSON.stringify(row.canonical_value),
+        row.raw_value,
+        row.schema_state,
+        row.policy_state,
+      ],
+    );
+  }
+}
+
 /**
  * Create a typed binding draft that patches (or creates) a project overlay target,
  * stores a full candidate config revision (all members preserved), re-resolves +
@@ -888,10 +950,55 @@ export async function createBindingDraft(
   }
 
   const binding = await loadBindingContext(db, auth, input.bindingId);
+
+  const openDrafts = await listOpenBindingDraftsForUser(db, {
+    organizationId: auth.organization.id,
+    projectId: binding.project_id,
+    userId: auth.user.id,
+  });
+  const openWorkingTips = [
+    ...new Set(
+      openDrafts
+        .map((draft) => draft.candidateConfigRevisionId?.trim())
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  if (openWorkingTips.length > 1) {
+    throw new ApiError(
+      "CONFLICT",
+      "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
+      409,
+      { reason: "mixed-working-tips" },
+    );
+  }
+  const resolvedWorkingTip = openWorkingTips[0] ?? null;
+  const sameBindingOpenDraft = openDrafts.find(
+    (draft) => draft.projectParameterBindingId === binding.binding_id,
+  );
+
+  let effectiveBaseRevisionId = input.baseRevisionId;
+  if (resolvedWorkingTip && input.baseRevisionId !== resolvedWorkingTip) {
+    if (sameBindingOpenDraft) {
+      effectiveBaseRevisionId = resolvedWorkingTip;
+    } else {
+      throw new ApiError(
+        "CONFLICT",
+        "请刷新后基于本轮最新工作版本继续编辑。",
+        409,
+        {
+          reason: "stale-working-tip",
+          bindingId: input.bindingId,
+          baseRevisionId: input.baseRevisionId,
+          workingCandidateRevisionId: resolvedWorkingTip,
+        },
+      );
+    }
+  }
+
   const revision = await getConfigRevisionById(db, {
     organizationId: auth.organization.id,
     projectId: binding.project_id,
-    revisionId: input.baseRevisionId,
+    revisionId: effectiveBaseRevisionId,
   });
   if (!revision) {
     throw new ApiError("CONFLICT", "Base config revision is stale or missing.", 409, {
@@ -909,7 +1016,7 @@ export async function createBindingDraft(
     where binding_id = $1 and config_revision_id = $2
     limit 1
     `,
-    [input.bindingId, input.baseRevisionId],
+    [input.bindingId, effectiveBaseRevisionId],
   );
   if (!bindingRevision.rows[0]) {
     throw new ApiError("CONFLICT", "Base config revision is stale for this binding.", 409, {
@@ -1068,6 +1175,12 @@ export async function createBindingDraft(
   const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
   const candidateRevisionId = ingested.id;
 
+  await carryForwardBindingRevisions(db, {
+    baseRevisionId: revision.id,
+    candidateRevisionId,
+    excludeBindingId: action === "delete" ? binding.binding_id : undefined,
+  });
+
   // Fail-closed before toolchain when ingest already left a blocked diagnosable status.
   // Never overwrite needs_mapping / invalid to draft.
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
@@ -1161,6 +1274,15 @@ export async function createBindingDraft(
     },
   });
   const draftId = persistedDraft.id;
+
+  const rebasedDraftIds = await rebaseOpenBindingDraftCandidates(db, {
+    organizationId: auth.organization.id,
+    projectId: binding.project_id,
+    userId: auth.user.id,
+    candidateConfigRevisionId: candidateRevisionId,
+    excludeDraftId: draftId,
+  });
+
   await writeGovernanceAudit(db, auth, {
     action: "binding-edited",
     projectId: binding.project_id,
@@ -1183,6 +1305,8 @@ export async function createBindingDraft(
     parameterId: draftParameterId,
     writeTarget,
     candidateRevisionId,
+    workingCandidateRevisionId: candidateRevisionId,
+    rebasedDraftIds,
     rawText,
     action,
     parameterSpecId: binding.parameter_spec_id,

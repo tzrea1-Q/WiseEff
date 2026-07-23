@@ -108,6 +108,10 @@ export type ChangeRequest = {
   parameterId: string;
   baseVersion?: number;
   module: string;
+  /** Business-module introduction shown on admin review detail. */
+  moduleDescription?: string;
+  /** Parameter meaning shown on admin review detail. */
+  parameterDescription?: string;
   title: string;
   currentValue: string;
   targetValue: string;

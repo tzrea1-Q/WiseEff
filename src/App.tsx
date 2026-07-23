@@ -70,7 +70,7 @@ import {
   initialDashboardState
 } from "@/application/parameters/dashboardState";
 import { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
-import type { ParameterDraftDto, ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
+import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { canAccessPage, canPerform } from "@/app/permissions";
 import {
@@ -132,6 +132,7 @@ import {
   isReviewHistoryForRole,
   splitChangeRequestsForReviewQueue
 } from "@/domain/parameters/reviewQueue";
+import { buildDraftSubmissionRounds } from "@/domain/parameters/buildDraftSubmissionRounds";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
 import {
@@ -651,48 +652,6 @@ export function isEditableProjectLifecycleStatus(status: ProjectInitializationSt
 
 function canSubmitParameterChangesForProject(state: PrototypeState, projectId: string) {
   return isEditableProjectLifecycleStatus(state.projectInitializationStatuses[projectId] ?? "initialized");
-}
-
-function buildDraftSubmissionRounds(
-  drafts: ParameterDraftDto[] | undefined,
-  parameters: ParameterRecord[],
-  apiProjects: ProjectSummary[],
-  submitter: string
-): ParameterSubmissionRound[] {
-  if (!drafts?.length) {
-    return [];
-  }
-
-  const parameterById = new Map(parameters.map((parameter) => [parameter.id, parameter]));
-  const projectById = new Map(apiProjects.map((project) => [project.id, project]));
-
-  return drafts.map((draft) => {
-    const parameter = parameterById.get(draft.parameterId);
-    const project = projectById.get(draft.projectId);
-    const item: ParameterSubmissionItem = {
-      requestId: "",
-      parameterId: draft.parameterId,
-      name: parameter?.name ?? draft.parameterId,
-      module: parameter?.module ?? "",
-      currentValue: parameter?.currentValue ?? "",
-      targetValue: draft.targetValue,
-      unit: parameter?.unit ?? "",
-      risk: parameter?.risk ?? "Medium",
-      valueKind: parameter?.valueKind ?? "scalar",
-      reason: draft.reason
-    };
-
-    return {
-      id: `draft-${draft.id}`,
-      projectId: draft.projectId,
-      projectName: project?.name ?? draft.projectId,
-      submitter,
-      createdAt: draft.updatedAt,
-      status: "\u5df2\u6682\u5b58",
-      summary: `API draft contains 1 parameter change`,
-      items: [item]
-    };
-  });
 }
 
 export function reducer(state: PrototypeState, action: AppAction): PrototypeState {
@@ -3769,10 +3728,16 @@ function ReviewChangeValueSummary({
 function ReviewDetailSummary({
   request,
   parameter,
+  moduleName,
+  moduleDescription,
+  parameterDescription,
   onOpenSubmissionDetail
 }: {
   request: ChangeRequest;
   parameter?: ParameterRecord;
+  moduleName?: string;
+  moduleDescription?: string;
+  parameterDescription?: string;
   onOpenSubmissionDetail?: () => void;
 }) {
   const summary = buildReviewDetailSummary({
@@ -3786,6 +3751,9 @@ function ReviewDetailSummary({
   const showSupplementalSummary =
     supplementalSummary.length > 0 && !isRedundantReviewSummary(supplementalSummary);
   const reasons = request.aiSuggestion?.reasons?.filter(shouldShowReviewDetailReason) ?? [];
+  const resolvedModuleName = moduleName?.trim() || request.module;
+  const resolvedModuleDescription = moduleDescription?.trim() || "";
+  const resolvedParameterDescription = parameterDescription?.trim() || "";
 
   return (
     <div className="review-detail-summary">
@@ -3819,6 +3787,28 @@ function ReviewDetailSummary({
       )}
       {summary.isComplex && showSupplementalSummary ? (
         <p className="review-detail-summary__supplement">{supplementalSummary}</p>
+      ) : null}
+      {resolvedModuleDescription || resolvedParameterDescription ? (
+        <dl className="review-identity-intros review-identity-intros--compact" aria-label="模块与参数介绍">
+          {resolvedModuleDescription ? (
+            <div className="review-identity-intros__item">
+              <dt>模块介绍</dt>
+              <dd aria-label={`${resolvedModuleName} 模块介绍`}>
+                <span className="review-identity-intros__name">{resolvedModuleName}</span>
+                {resolvedModuleDescription}
+              </dd>
+            </div>
+          ) : null}
+          {resolvedParameterDescription ? (
+            <div className="review-identity-intros__item">
+              <dt>参数含义</dt>
+              <dd aria-label={`${request.title} 参数含义`}>
+                <span className="review-identity-intros__name">{request.title}</span>
+                {resolvedParameterDescription}
+              </dd>
+            </div>
+          ) : null}
+        </dl>
       ) : null}
       {reasons.length > 0 ? (
         <ul className="review-detail-summary__reasons">
@@ -4149,6 +4139,16 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
       ]
     };
   }, [selected, selectedRound, state.parameters, state.configDraft.projects]);
+  const selectedReviewParameter = useMemo(
+    () => (selected ? state.parameters.find((item) => item.id === selected.parameterId) : undefined),
+    [selected, state.parameters]
+  );
+  const selectedModuleDescription = selected?.moduleDescription?.trim() || "";
+  const selectedParameterDescription =
+    selected?.parameterDescription?.trim() ||
+    selectedReviewParameter?.description?.trim() ||
+    selectedReviewParameter?.explanation?.trim() ||
+    "";
   const selectedInitializationSubmitter = selectedInitialization
     ? state.users.find((user) => user.id === selectedInitialization.review.submittedBy)?.name ?? selectedInitialization.review.submittedBy
     : "";
@@ -4552,28 +4552,36 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
           </>
         ) : selected ? (
           <>
-            <div className="detail-card">
-              <span className="eyebrow">{selectedProjectName}</span>
-              <h2>{selected.title}</h2>
-              <p>
-                目标模块为 <strong>{selected.module}</strong>，由 {selected.submitter} 提交。
-              </p>
-            </div>
-            {selectedDetailRound ? (
-              <div className="detail-card">
-                <Button variant="outline" type="button" className="full" onClick={() => openSubmissionDetail(selected)}>
-                  <FileText size={16} />
-                  查看提交详情（{selectedDetailRound.items.length} 项变更）
-                </Button>
+            <div className="ai-summary-card review-detail-hero">
+              <div className="review-detail-hero__header">
+                <span className="eyebrow">{selectedProjectName}</span>
+                <h2>{selected.title}</h2>
+                <p className="review-detail-hero__meta">
+                  目标模块 <strong>{selected.module}</strong>
+                  <span aria-hidden="true"> · </span>
+                  {selected.submitter} 提交
+                </p>
               </div>
-            ) : null}
-            <div className="ai-summary-card">
               <SectionLabel icon={<Sparkles size={16} />} label="审阅摘要" />
               <ReviewDetailSummary
                 onOpenSubmissionDetail={() => openSubmissionDetail(selected)}
-                parameter={state.parameters.find((item) => item.id === selected.parameterId)}
+                parameter={selectedReviewParameter}
                 request={selected}
+                moduleName={selected.module}
+                moduleDescription={selectedModuleDescription}
+                parameterDescription={selectedParameterDescription}
               />
+              {selectedDetailRound ? (
+                <Button
+                  variant="outline"
+                  type="button"
+                  className="full review-detail-hero__detail-action"
+                  onClick={() => openSubmissionDetail(selected)}
+                >
+                  <FileText size={16} />
+                  查看提交详情（{selectedDetailRound.items.length} 项变更）
+                </Button>
+              ) : null}
             </div>
             {selected.rejectReason ? (
               <div className="rejection-reason-card">

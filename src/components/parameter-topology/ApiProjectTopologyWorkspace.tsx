@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Info, LoaderCircle } from "lucide-react";
 import type {
+  ParameterDraftDto,
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
@@ -9,6 +10,7 @@ import type { ParameterTopologyRepository } from "@/application/ports/ParameterT
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import {
   EMPTY_PARAMETER_MODULE_REGISTRY,
+  describeModuleAssignment,
   type ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
 import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/http/parameterModuleRegistryClient";
@@ -22,6 +24,7 @@ import type {
 } from "@/domain/parameter-topology/types";
 import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
 import { createHttpParameterTopologyRepository } from "@/infrastructure/http/parameterTopologyClient";
+import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import {
   mapParameterTopologyError,
   type ParameterTopologyMappedError
@@ -51,6 +54,7 @@ export type ApiProjectTopologyWorkspaceProps = {
   /** Test seam — inject the admin-maintained module registry repository. */
   moduleRegistryRepository?: ParameterModuleRegistryRepository;
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
+  listDrafts?: (projectId: string) => Promise<ParameterDraftDto[]>;
   listWorkflowAssignees?: (projectId: string) => Promise<WorkflowAssigneeCandidates>;
   submitBindingChanges?: (
     input: SubmitParameterChangesInput
@@ -84,6 +88,67 @@ type ProjectMutationLock = {
 
 function pickConfigSet(items: Array<{ id: string; name: string }>) {
   return items.find((item) => item.name === "default") ?? items[0] ?? null;
+}
+
+function mapServerDraftsToPending(
+  projectId: string,
+  drafts: ParameterDraftDto[],
+  bindings: ProjectParameterBinding[],
+  moduleRegistry: ParameterModuleRegistry,
+  sharedTip?: string
+): PendingBindingDraft[] {
+  const bindingById = new Map(bindings.map((binding) => [binding.id, binding]));
+  return drafts.flatMap((draft) => {
+    const bindingId = draft.projectParameterBindingId;
+    if (!bindingId || draft.projectId !== projectId) return [];
+    const binding = bindingById.get(bindingId);
+    if (!binding) return [];
+    const candidateRevisionId = draft.candidateConfigRevisionId?.trim() || sharedTip || "";
+    const parameterSpecId = (draft.parameterSpecId ?? binding.parameterSpecId).trim();
+    if (!candidateRevisionId || !parameterSpecId) return [];
+    const moduleAssignment = describeModuleAssignment(
+      binding.moduleId,
+      {
+        driverModule: binding.driverModule,
+        compatible: null,
+        instanceName: binding.instanceName
+      },
+      moduleRegistry
+    );
+    return [
+      {
+        draftId: draft.id,
+        parameterId: draft.parameterId,
+        candidateRevisionId,
+        rawText: draft.targetValue,
+        action: draft.action ?? "set",
+        parameterSpecId,
+        projectParameterBindingId: bindingId,
+        writeTarget: {
+          role: "overlay",
+          propertyKey: binding.propertyKey,
+          targetRef: binding.instanceName ?? binding.driverModule ?? undefined
+        },
+        overlayFileId: "",
+        overlayFileName: "",
+        projectId,
+        currentRawValue: draft.currentValue ?? binding.rawValue,
+        reason: draft.reason,
+        moduleName: moduleAssignment.moduleName
+      }
+    ];
+  });
+}
+
+function resolveSharedWorkingTip(drafts: ParameterDraftDto[]): string | undefined {
+  const tips = [
+    ...new Set(
+      drafts
+        .map((draft) => draft.candidateConfigRevisionId?.trim())
+        .filter((tip): tip is string => Boolean(tip))
+    )
+  ];
+  return tips.length === 1 ? tips[0] : undefined;
 }
 
 async function loadWorkspace(
@@ -165,6 +230,7 @@ export function ApiProjectTopologyWorkspace({
   topologyRepository,
   moduleRegistryRepository,
   listConfigSets,
+  listDrafts,
   listWorkflowAssignees,
   submitBindingChanges,
   onNavigate = () => undefined
@@ -184,6 +250,8 @@ export function ApiProjectTopologyWorkspace({
   );
   const listConfigSetsRef = useRef(listConfigSets);
   listConfigSetsRef.current = listConfigSets;
+  const listDraftsRef = useRef(listDrafts);
+  listDraftsRef.current = listDrafts;
   const activeProjectIdRef = useRef(projectId);
   const projectGenerationRef = useRef(0);
   const lastProjectIdRef = useRef(projectId);
@@ -208,6 +276,7 @@ export function ApiProjectTopologyWorkspace({
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
   const [mappingMessage, setMappingMessage] = useState<string | null>(null);
   const [pendingDrafts, setPendingDrafts] = useState<PendingBindingDraft[]>([]);
+  const [serverDrafts, setServerDrafts] = useState<ParameterDraftDto[] | null>(null);
   const [selectedDraftBindingIds, setSelectedDraftBindingIds] = useState<Set<string>>(new Set());
   const [workflowCandidates, setWorkflowCandidates] = useState<WorkflowAssigneeCandidates | null>(null);
   const [workflowCandidatesError, setWorkflowCandidatesError] = useState<string | null>(null);
@@ -246,11 +315,61 @@ export function ApiProjectTopologyWorkspace({
   useEffect(() => {
     setPreferredRevision(null);
     setPendingDrafts([]);
+    setServerDrafts(null);
     setWorkflowCandidates(null);
     setWorkflowCandidatesError(null);
     setPublishMessage(null);
     setMappingMessage(null);
   }, [projectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const resolveListDrafts =
+      listDraftsRef.current ??
+      (runtimeMode === "api"
+        ? (id: string) => createHttpParameterRepository().listDrafts(id)
+        : undefined);
+    if (!resolveListDrafts) {
+      setServerDrafts([]);
+      return undefined;
+    }
+    setServerDrafts(null);
+    resolveListDrafts(projectId)
+      .then((drafts) => {
+        if (!cancelled) setServerDrafts(drafts);
+      })
+      .catch(() => {
+        if (!cancelled) setServerDrafts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, runtimeMode]);
+
+  useEffect(() => {
+    if (!serverDrafts || loadState.kind !== "ready") return;
+    const bindingDrafts = serverDrafts.filter(
+      (draft) => draft.projectId === projectId && draft.projectParameterBindingId
+    );
+    if (bindingDrafts.length === 0) return;
+
+    const sharedTip = resolveSharedWorkingTip(bindingDrafts);
+    if (sharedTip && loadState.revisionId !== sharedTip) {
+      setPreferredRevision({ projectId, revisionId: sharedTip });
+      return;
+    }
+
+    setPendingDrafts((current) => {
+      if (current.some((draft) => draft.projectId === projectId)) return current;
+      return mapServerDraftsToPending(
+        projectId,
+        bindingDrafts,
+        loadState.bindings,
+        moduleRegistry,
+        sharedTip
+      );
+    });
+  }, [loadState, moduleRegistry, projectId, serverDrafts]);
 
   useEffect(() => {
     if (!hasProjectDrafts) {
@@ -422,25 +541,40 @@ export function ApiProjectTopologyWorkspace({
       }
       setPendingDrafts((current) => {
         if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return current;
+        const tip = draft.workingCandidateRevisionId ?? draft.candidateRevisionId;
         const previousDraft = current.find(
           (item) =>
             item.projectId === requestProjectId &&
             item.projectParameterBindingId === draft.projectParameterBindingId
         );
+        const moduleAssignment = describeModuleAssignment(
+          binding.moduleId,
+          {
+            driverModule: binding.driverModule,
+            compatible: null,
+            instanceName: binding.instanceName
+          },
+          moduleRegistry
+        );
         const nextDraft: PendingBindingDraft = {
           ...draft,
+          candidateRevisionId: tip,
           projectId: requestProjectId,
           currentRawValue: previousDraft?.currentRawValue ?? binding.rawValue,
-          reason: input.reason
+          reason: input.reason,
+          moduleName: previousDraft?.moduleName ?? moduleAssignment.moduleName
         };
-        return [
-          ...current.filter(
-            (item) =>
+        const withoutBinding = current.filter(
+          (item) =>
+            !(
               item.projectId === requestProjectId &&
-              item.projectParameterBindingId !== draft.projectParameterBindingId
-          ),
-          nextDraft
-        ];
+              item.projectParameterBindingId === draft.projectParameterBindingId
+            )
+        );
+        const aligned = withoutBinding.map((item) =>
+          item.projectId === requestProjectId ? { ...item, candidateRevisionId: tip } : item
+        );
+        return [...aligned, nextDraft];
       });
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
         return {
@@ -448,7 +582,7 @@ export function ApiProjectTopologyWorkspace({
           diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿响应。", code: "PROJECT_CHANGED" }]
         };
       }
-      setPreferredRevision({ projectId: requestProjectId, revisionId: draft.candidateRevisionId });
+      setPreferredRevision({ projectId: requestProjectId, revisionId: draft.workingCandidateRevisionId ?? draft.candidateRevisionId });
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
         return {
           valid: false,

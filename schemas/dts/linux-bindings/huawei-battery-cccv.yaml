@@ -11,6 +11,8 @@ properties:
     $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   battery_tbl:
     $ref: /schemas/types.yaml#/definitions/non-unique-string-array
+  cccv_para0:
+    type: object
   compatible:
     contains:
       const: huawei,battery_cccv

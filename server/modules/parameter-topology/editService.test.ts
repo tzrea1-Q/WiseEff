@@ -229,6 +229,25 @@ const OVERLAY_EMPTY = `/dts-v1/;
 };
 `;
 
+const BASE_WITH_IIN_AND_ICHG = `/dts-v1/;
+/ {
+	charging_core: charging_core {
+		compatible = "huawei,charging_core";
+		iin_max = <2300>;
+		ichg_max = <2500>;
+	};
+};
+`;
+
+const OVERLAY_OVERRIDE_WITH_ICHG = `/dts-v1/;
+/plugin/;
+
+&charging_core {
+	iin_max = <2700>;
+	ichg_max = <2500>;
+};
+`;
+
 async function seedConfigAndBinding(
   db: InMemoryTestDatabase,
   auth: AuthContext,
@@ -332,6 +351,88 @@ async function seedConfigAndBinding(
     baseChecksum,
     baseContent,
     overlayContent: options.overlayContent,
+  };
+}
+
+async function seedConfigAndTwoBindings(db: InMemoryTestDatabase, auth: AuthContext) {
+  const baseContent = BASE_WITH_IIN_AND_ICHG;
+  const overlayContent = OVERLAY_OVERRIDE_WITH_ICHG;
+  const baseFileId = `file-base-${randomUUID().slice(0, 8)}`;
+  const overlayFileId = `file-overlay-${randomUUID().slice(0, 8)}`;
+  const baseVersionId = `fv-base-${randomUUID().slice(0, 8)}`;
+  const overlayVersionId = `fv-overlay-${randomUUID().slice(0, 8)}`;
+
+  const baseChecksum = await insertPinnedMember(db, {
+    fileId: baseFileId,
+    fileName: "edit-base.dts",
+    versionId: baseVersionId,
+    content: baseContent,
+    role: "base",
+    sortOrder: 0,
+  });
+  await insertPinnedMember(db, {
+    fileId: overlayFileId,
+    fileName: "edit-overlay.dts",
+    versionId: overlayVersionId,
+    content: overlayContent,
+    role: "overlay",
+    sortOrder: 1,
+  });
+
+  const manifest: ConfigRevisionManifest = {
+    organizationId: ORG_ID,
+    projectId: PROJECT_ID,
+    configSetId: CONFIG_SET_ID,
+    entryFile: "edit-base.dts",
+    includeSearchPaths: ["."],
+    overlayOrder: ["edit-overlay.dts"],
+    members: [
+      {
+        fileId: baseFileId,
+        fileVersionId: baseVersionId,
+        fileName: "edit-base.dts",
+        role: "base",
+        sortOrder: 0,
+        content: baseContent,
+      },
+      {
+        fileId: overlayFileId,
+        fileVersionId: overlayVersionId,
+        fileName: "edit-overlay.dts",
+        role: "overlay",
+        sortOrder: 1,
+        content: overlayContent,
+      },
+    ],
+  };
+
+  const revision = await ingestConfigRevision(db, manifest, auth);
+
+  const bindings = await db.query<{ binding_id: string; property_key: string }>(
+    `
+    select b.id as binding_id, dps.property_key
+    from project_parameter_binding_revisions br
+    inner join project_parameter_bindings b on b.id = br.binding_id
+    inner join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+    where br.config_revision_id = $1
+    order by dps.property_key asc
+    `,
+    [revision.id],
+  );
+  const bindingA = bindings.rows.find((row) => row.property_key === "iin_max");
+  const bindingB = bindings.rows.find((row) => row.property_key === "ichg_max");
+  expect(bindingA).toBeTruthy();
+  expect(bindingB).toBeTruthy();
+
+  return {
+    revision,
+    bindingA: { id: bindingA!.binding_id },
+    bindingB: { id: bindingB!.binding_id },
+    baseFileId,
+    overlayFileId,
+    baseChecksum,
+    baseContent,
+    overlayContent,
   };
 }
 
@@ -542,6 +643,161 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     expect(second.draftId).toBe(stored.rows[0]!.id);
     expect(stored.rows[0]!.candidate_config_revision_id).toBe(second.candidateRevisionId);
     expect(stored.rows[0]!.target_value).toBe("<3100>");
+  });
+
+  it("shares one working tip across two different binding drafts", async () => {
+    const fixture = await seedConfigAndTwoBindings(db!, auth);
+    const first = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.bindingA.id,
+        baseRevisionId: fixture.revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+        },
+        reason: "Edit A",
+      },
+      { toolchain: passToolchain },
+    );
+
+    const second = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.bindingB.id,
+        baseRevisionId: first.candidateRevisionId,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "1", value: "1" }]],
+        },
+        reason: "Edit B",
+      },
+      { toolchain: passToolchain },
+    );
+
+    expect(second.candidateRevisionId).toBe(second.workingCandidateRevisionId);
+    expect(second.rebasedDraftIds).toEqual(expect.arrayContaining([first.draftId]));
+    expect(second.candidateRevisionId).not.toBe(first.candidateRevisionId);
+
+    const stored = await db!.query<{ id: string; candidate_config_revision_id: string | null }>(
+      `select id, candidate_config_revision_id from parameter_drafts
+       where organization_id = $1 and project_id = $2 and user_id = $3
+       order by id`,
+      [ORG_ID, PROJECT_ID, USER_ID],
+    );
+    expect(stored.rows).toHaveLength(2);
+    expect(new Set(stored.rows.map((r) => r.candidate_config_revision_id)).size).toBe(1);
+    expect(stored.rows[0]!.candidate_config_revision_id).toBe(second.candidateRevisionId);
+  });
+
+  it("rejects create when open drafts have mixed working tips", async () => {
+    const fixture = await seedConfigAndTwoBindings(db!, auth);
+    const first = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.bindingA.id,
+        baseRevisionId: fixture.revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+        },
+        reason: "Edit A",
+      },
+      { toolchain: passToolchain },
+    );
+
+    const second = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.bindingB.id,
+        baseRevisionId: first.candidateRevisionId,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "1", value: "1" }]],
+        },
+        reason: "Edit B",
+      },
+      { toolchain: passToolchain },
+    );
+
+    await db!.query(
+      `update parameter_drafts
+       set candidate_config_revision_id = $1
+       where id = $2`,
+      [fixture.revision.id, first.draftId],
+    );
+
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.bindingB.id,
+          baseRevisionId: second.candidateRevisionId,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "2", value: "2" }]],
+          },
+          reason: "Edit B again",
+        },
+        { toolchain: passToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
+      details: expect.objectContaining({ reason: "mixed-working-tips" }),
+    });
+  });
+
+  it("rejects create when baseRevisionId is not the current working tip", async () => {
+    const fixture = await seedConfigAndTwoBindings(db!, auth);
+    const first = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.bindingA.id,
+        baseRevisionId: fixture.revision.id,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+        },
+        reason: "Edit A",
+      },
+      { toolchain: passToolchain },
+    );
+
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.bindingB.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "1", value: "1" }]],
+          },
+          reason: "Edit B off tip",
+        },
+        { toolchain: passToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: expect.objectContaining({ reason: "stale-working-tip" }),
+    });
+
+    void first;
   });
 
   it("rejects stale base revision with structured conflict", async () => {

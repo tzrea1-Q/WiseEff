@@ -811,11 +811,13 @@ export const BINDING_REVISION_HISTORY_DEMO = {
  * path with one changed overlay property so at least one binding accumulates two
  * `project_parameter_binding_revisions` rows. History is binding-revision based
  * only; this gives the detail dialog real from→to data. Idempotent: skips when
- * the revised overlay version has already been ingested. Must run after
- * `seedM1SemanticTopology`.
+ * the revised overlay version has already been ingested, but still repairs the
+ * object-store bytes / parsed_index so typed edits can load source text.
+ * Must run after `seedM1SemanticTopology`.
  */
 export async function seedM1BindingRevisionHistory(
   db: Database,
+  objectStore: ObjectStore,
   projectFiles: readonly DtsPowerSeedProjectFile[],
   options: { projectId?: string; find?: string; replace?: string } = {}
 ): Promise<void> {
@@ -829,6 +831,14 @@ export async function seedM1BindingRevisionHistory(
 
   const auth = seedAuthContext();
   const configSetId = `dcs-default-${targetProjectId}`;
+  const revisedBytes = Buffer.from(revisedSource, "utf8");
+  const stored = await objectStore.put({
+    organizationId,
+    fileName: projectFile.fileName,
+    contentType: "text/plain",
+    bytes: revisedBytes
+  });
+  const parsedIndex = buildDtsParsedIndex(revisedSource);
 
   await db.transaction(async (tx) => {
     const primaryFileRow = await tx.query<SeedFileRow>(
@@ -838,25 +848,37 @@ export async function seedM1BindingRevisionHistory(
     const primaryFile = primaryFileRow.rows[0];
     if (!primaryFile?.id) return;
 
-    const revisedBytes = Buffer.from(revisedSource, "utf8");
-    const revisedChecksum = createHash("sha256").update(revisedBytes).digest("hex");
-    const revisedStorageKey = `${organizationId}/${revisedChecksum}-${projectFile.fileName}`;
-
-    const alreadyIngested = await tx.query<{ c: string }>(
+    const alreadyIngested = await tx.query<{ c: string; version_id: string | null }>(
       `
-      select count(*)::text as c
+      select count(*)::text as c, max(v.id) as version_id
       from dts_config_revision_members m
       inner join dts_config_revisions cr on cr.id = m.config_revision_id
       inner join project_parameter_file_versions v on v.id = m.file_version_id
       where cr.config_set_id = $1 and v.file_id = $2 and v.checksum = $3
       `,
-      [configSetId, primaryFile.id, revisedChecksum]
+      [configSetId, primaryFile.id, stored.checksumSha256]
     );
-    if (Number(alreadyIngested.rows[0]?.c ?? 0) > 0) return;
+    if (Number(alreadyIngested.rows[0]?.c ?? 0) > 0) {
+      const versionId = alreadyIngested.rows[0]?.version_id;
+      if (versionId) {
+        await tx.query(
+          `
+          update project_parameter_file_versions
+          set storage_key = $2,
+            size_bytes = $3,
+            parsed_index = $4::jsonb,
+            created_by_user_id = $5
+          where id = $1
+          `,
+          [versionId, stored.storageKey, stored.fileSizeBytes, JSON.stringify(parsedIndex), seedUserId]
+        );
+      }
+      return;
+    }
 
     const existingRevised = await tx.query<{ id: string }>(
       `select id from project_parameter_file_versions where file_id = $1 and checksum = $2 limit 1`,
-      [primaryFile.id, revisedChecksum]
+      [primaryFile.id, stored.checksumSha256]
     );
     let revisedVersionId = existingRevised.rows[0]?.id;
     if (!revisedVersionId) {
@@ -864,27 +886,45 @@ export async function seedM1BindingRevisionHistory(
         `select coalesce(max(version_number), 0) + 1 as n from project_parameter_file_versions where file_id = $1`,
         [primaryFile.id]
       );
-      revisedVersionId = `seed-dts-version-${targetProjectId}-${revisedChecksum.slice(0, 16)}`;
+      revisedVersionId = `seed-dts-version-${targetProjectId}-${stored.checksumSha256.slice(0, 16)}`;
       await tx.query(
         `
         insert into project_parameter_file_versions (
           id, file_id, version_number, storage_key, checksum,
           size_bytes, parsed_index, origin, created_by_user_id
         )
-        values ($1, $2, $3, $4, $5, $6, '{}'::jsonb, 'upload', $7)
-        on conflict (id) do nothing
+        values ($1, $2, $3, $4, $5, $6, $7::jsonb, 'upload', $8)
+        on conflict (id) do update set
+          storage_key = excluded.storage_key,
+          checksum = excluded.checksum,
+          size_bytes = excluded.size_bytes,
+          parsed_index = excluded.parsed_index,
+          created_by_user_id = excluded.created_by_user_id
         `,
         [
           revisedVersionId,
           primaryFile.id,
           Number(nextVersion.rows[0]?.n ?? 2),
-          revisedStorageKey,
-          revisedChecksum,
-          revisedBytes.byteLength,
+          stored.storageKey,
+          stored.checksumSha256,
+          stored.fileSizeBytes,
+          JSON.stringify(parsedIndex),
           seedUserId
         ]
       );
       await ingestDtsFileVersion(tx, revisedVersionId, revisedSource);
+    } else {
+      await tx.query(
+        `
+        update project_parameter_file_versions
+        set storage_key = $2,
+          size_bytes = $3,
+          parsed_index = $4::jsonb,
+          created_by_user_id = $5
+        where id = $1
+        `,
+        [revisedVersionId, stored.storageKey, stored.fileSizeBytes, JSON.stringify(parsedIndex), seedUserId]
+      );
     }
     await tx.query(
       `update project_parameter_files set current_version_id = $2, updated_at = now() where id = $1`,
@@ -958,7 +998,7 @@ async function main() {
   await seedM1SemanticTopology(db, projectFiles);
   await syncVendorPropertyDocs(db);
   await recomputeBindingModules(db, seedAuthContext(), {});
-  await seedM1BindingRevisionHistory(db, projectFiles);
+  await seedM1BindingRevisionHistory(db, createObjectStoreFromEnv(env), projectFiles);
 
   console.log(
     "Seeded M1 parameter data, full project DTS baselines, module-aware topology bindings, vendor property docs, and a demo binding-revision history."

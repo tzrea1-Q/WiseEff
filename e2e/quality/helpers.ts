@@ -80,7 +80,7 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
   ];
 
   if (routePath === "/parameters") {
-    masks.push(page.locator(".parameters-table-grid tbody"));
+    masks.push(page.locator(".dts-parameter-workbench-table, .dts-workbench-list"));
   }
 
   return masks;

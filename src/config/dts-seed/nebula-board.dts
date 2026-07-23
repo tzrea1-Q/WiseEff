@@ -197,8 +197,8 @@
 			fcp_support = <1>;
 			scp_support = <1>;
 			gpio_int = <&gpio13 29 0>;
-			sense_r_config = <-1>;
-			sense_r_actual = <-1>;
+			sense_r_config = <(-1)>;
+			sense_r_actual = <(-1)>;
 			watchdog_time = <3000>;
 			vout_ovp_mv = <5200>;
 			status = "ok";
@@ -214,7 +214,7 @@
 			r_charger_uohm = <900>;
 			usbovp_sw_flag = "buck", "1", "1", "1";
 			pswovp_sw_flag = "rxsw", "0", "0", "1";
-			cur_balance_mos = <-9>;
+			cur_balance_mos = <(-9)>;
 		};
 
 		scharger_v800_coul {
@@ -267,7 +267,7 @@
 			6 15 100
 			0 5 100>;
 		passive_perf_limit = <
-			-11 5 10 40 10 0
+			(-11) 5 10 40 10 0
 			6 15 10 70 10 0
 			16 100 0 100 10 0>;
 	};
@@ -275,9 +275,9 @@
 
 &hisi_bci_battery {
 	battery_design_fcc = <5650>;
-	battery_board_type = <-9>;
-	vth_correct_para = <-10 2800>;
-	vth_correct_para_low_temp = <-10 2600>, <-9 2800>;
+	battery_board_type = <(-9)>;
+	vth_correct_para = <(-10) 2800>;
+	vth_correct_para_low_temp = <(-10) 2600>, <(-9) 2800>;
 	status = "ok";
 };
 
@@ -329,8 +329,8 @@
 		"4989", "5500", "1200", "-1", "2", "-1", "-1", "-1",
 		"12000", "12000", "2300", "-1", "6|9|10", "-1", "3", "-1",
 		"12000", "12000", "2300", "-1", "255", "-1", "3|4", "-1";
-	sc_err_tx = /bits/ 8 <-9>;
-	rx_mode_type_para = /bits/ 8 <-11 1 1 5 6>;
+	sc_err_tx = /bits/ 8 <(-9)>;
+	rx_mode_type_para = /bits/ 8 <(-11) 1 1 5 6>;
 	rx_mode_para =
 		"5W", "4989", "475", "5000", "5500", "825", "4650", "-1", "-1", "-1", "0", "-1", "4",
 		"SC_4", "15000", "1800", "15000", "15000", "-1", "-1", "46", "-1", "1", "2", "-1", "-1";
@@ -403,7 +403,7 @@
 
 &huawei_batt_info {
 	status = "ok";
-	sn-check-type = <-9>;
+	sn-check-type = <(-9)>;
 	battery_checker@0 {
 		matchable = <&fm1230 &t91407>;
 		spare-cycles = <139>;
@@ -443,14 +443,14 @@
 
 &huawei_batt_identify {
 	gpios = <&gpio10 16 0>;
-	id_voltage_gpiov = <-11 1>;
+	id_voltage_gpiov = <(-11) 1>;
 	status = "ok";
 };
 
 &battery_temp_fitting {
 	status = "ok";
 	btf_temp_lth = "-61";
-	fitting_mode = <-9>;
+	fitting_mode = <(-9)>;
 	replace_sensor = "bat0_raw_temp";
 	temp_para =
 		"-32778", "1", "2300", "0", "4200", "0",

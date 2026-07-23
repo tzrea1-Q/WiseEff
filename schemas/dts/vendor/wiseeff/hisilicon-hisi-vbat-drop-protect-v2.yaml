@@ -6,6 +6,8 @@ version: 1
 schemaNamespace: vendor/hisilicon,hisi_vbat_drop_protect_v2
 compatible:
   - hisilicon,hisi_vbat_drop_protect_v2
+childNodes:
+  - middle_cpu
 commonRefs:
   - wiseeff/common-status.yaml
 properties:

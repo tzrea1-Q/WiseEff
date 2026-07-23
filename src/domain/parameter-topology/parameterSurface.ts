@@ -1,3 +1,9 @@
+import {
+  isProvisionalScaffoldingUnclassifiedModuleName,
+  isScaffoldingDriverLabel,
+  MODULE_SCAFFOLDING_SEGMENT_RE
+} from "./modulePlacement";
+
 const STRUCTURAL_PROPERTY_KEYS = new Set([
   "compatible",
   "reg",
@@ -11,14 +17,14 @@ const STRUCTURAL_PROPERTY_KEYS = new Set([
   "gpio-controller"
 ]);
 
-/** Bus / interconnect path segments that are scaffolding unless a deeper managed leaf is selected. */
-const SCAFFOLDING_NAME_RE =
-  /^(spmi\d*|amba|i2c@[0-9a-fA-F]+|pmic@[0-9a-fA-F]+|gic|gpio\d*)$/i;
-
 export type ParameterSurfaceInput = {
   propertyKey: string;
   locator: string | null | undefined;
   compatible?: string | null;
+  /** Binding driverModule when known — used to hide scaffolding drivers. */
+  driverModule?: string | null;
+  /** Persisted / derived module display name (e.g.「未分类 · amba-bus」). */
+  moduleName?: string | null;
 };
 
 export function isStructuralPropertyKey(propertyKey: string): boolean {
@@ -32,19 +38,24 @@ export function isScaffoldingLocator(locator: string | null | undefined): boolea
   if (!locator || locator === "/") return true;
   const parts = locator.split("/").filter(Boolean);
   if (parts.length === 0) return true;
-  return parts.every((part) => SCAFFOLDING_NAME_RE.test(part));
+  return parts.every((part) => MODULE_SCAFFOLDING_SEGMENT_RE.test(part));
 }
 
 /**
- * v1 surface rule: non-structural property on a non-scaffolding-only locator.
+ * v1 surface rule: non-structural property on a non-scaffolding-only locator,
+ * and not owned by an unmapped scaffolding driver / provisional bucket.
  * Locators under a managed leaf (e.g. .../hi6xxx_coul/batt) are included even if ancestors are buses.
  */
 export function isParameterSurfaceRow(input: ParameterSurfaceInput): boolean {
   if (isStructuralPropertyKey(input.propertyKey)) return false;
+  if (isProvisionalScaffoldingUnclassifiedModuleName(input.moduleName)) return false;
+  if (isScaffoldingDriverLabel(input.compatible) || isScaffoldingDriverLabel(input.driverModule)) {
+    return false;
+  }
   const locator = input.locator ?? "";
   const parts = locator.split("/").filter(Boolean);
   if (parts.length === 0) return false;
   const leaf = parts[parts.length - 1]!;
-  if (SCAFFOLDING_NAME_RE.test(leaf)) return false;
+  if (MODULE_SCAFFOLDING_SEGMENT_RE.test(leaf)) return false;
   return true;
 }

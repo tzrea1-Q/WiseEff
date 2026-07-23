@@ -28,7 +28,7 @@ const PROPERTY_KEY = "mystery_unmatched";
 const UNMATCHED_DTS = `/dts-v1/;
 
 / {
-	ghost: ghost@0 {
+	amba {
 		compatible = "wiseeff,ghost-device";
 		${PROPERTY_KEY} = <1>;
 	};
@@ -374,7 +374,7 @@ describe.skipIf(!databaseAvailable)("spec review apply integration", () => {
     );
     expect(reusedBinding.rows).toHaveLength(1);
     expect(reusedBinding.rows[0]?.parameter_spec_id).toBe(SPEC_ID);
-    expect(reusedBinding.rows[0]?.schema_state).toBe("reviewed");
+    expect(reusedBinding.rows[0]?.schema_state).toBe("valid");
 
     // Dismiss fail-closed on a fresh unmatched property
     const dismissDts = `/dts-v1/;

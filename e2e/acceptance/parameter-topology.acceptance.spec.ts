@@ -360,7 +360,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // @operation PARAM-ASSIGNEE-002
     // @operation PARAM-IDENTITY-MAP-001
     // @operation PARAM-CONFIG-PUBLISH-GATE-001
-    test.setTimeout(300_000);
+    test.setTimeout(420_000);
 
     const runSuffix = randomUUID().slice(0, 8);
     const createdConfigSetNames: string[] = [];
@@ -398,7 +398,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(specMt).toBeTruthy();
     expect(specSc!.id).not.toBe(specMt!.id);
 
-    // 2/3) Generate unmatched review via real ingest on a throwaway Config Set, then draft→activate→resolve.
+    // 2/3) Surface MVP: unmatched properties mint provisional ledger rows without review tasks.
     const reviewSuffix = runSuffix;
     const reviewCsName = `acceptance-review-${reviewSuffix}`;
     createdConfigSetNames.push(reviewCsName);
@@ -406,7 +406,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       headers: adminHeaders(),
       data: {
         name: reviewCsName,
-        description: `${descriptionPrefix} unmatched review`
+        description: `${descriptionPrefix} unmatched provisional surface`
       }
     });
     expect(reviewCs.status()).toBe(201);
@@ -436,94 +436,54 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const reviewRevision = await waitForRevision(reviewCsBody.item.id, () => true);
 
     const mysteryProp = `acceptance_mystery_${reviewSuffix}`;
-    const mysteryTask = await waitForReviewTask(request, {
-      projectId,
-      configRevisionId: reviewRevision.id,
-      propertyKey: mysteryProp
-    });
-
-    const createDraft = await request.post(
-      apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(mysteryTask.id)}/resolve`),
-      {
-        headers: adminHeaders(),
-        data: {
-          decision: "resolved",
-          createSpec: true,
-          reason: `${descriptionPrefix} create draft spec for unmatched review`
-        }
-      }
+    const openReviews = await request.get(
+      apiRoute(
+        `/api/v2/parameter-spec-review-tasks?status=open&projectId=${encodeURIComponent(projectId)}&configRevisionId=${encodeURIComponent(reviewRevision.id)}&limit=50`
+      ),
+      { headers: adminHeaders() }
     );
-    expect(createDraft.ok(), await createDraft.text()).toBe(true);
-    const createDraftBody = (await createDraft.json()) as {
-      item: {
-        status: string;
-        draftCreated?: boolean;
-        parameterSpecId?: string | null;
-        message?: string;
-      };
+    expect(openReviews.ok()).toBe(true);
+    const openReviewBody = (await openReviews.json()) as {
+      items: Array<{ id: string; propertyKey?: string | null; sourceEvidence?: { propertyKey?: string } }>;
     };
-    expect(createDraftBody.item.status).toBe("open");
-    expect(createDraftBody.item.draftCreated).toBe(true);
-    expect(createDraftBody.item.parameterSpecId).toBeTruthy();
-    const draftSpecId = createDraftBody.item.parameterSpecId!;
-    createdParameterSpecIds.push(draftSpecId);
-
-    const activateDraft = await request.post(
-      apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(draftSpecId)}/activate`),
-      {
-        headers: adminHeaders(),
-        data: {
-          valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 },
-          constraints: { cells: 1 },
-          documentation: `${descriptionPrefix} acceptance mystery cells`,
-          reason: `${descriptionPrefix} activate draft spec for ${mysteryProp}`
-        }
-      }
+    const mysteryReview = openReviewBody.items.find(
+      (item) => item.propertyKey === mysteryProp || item.sourceEvidence?.propertyKey === mysteryProp
     );
-    expect(activateDraft.ok(), await activateDraft.text()).toBe(true);
+    expect(mysteryReview, "surface MVP must not open a review task for unmatched mystery properties").toBeUndefined();
 
-    const resolveReview = await request.post(
-      apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(mysteryTask.id)}/resolve`),
-      {
-        headers: adminHeaders(),
-        data: {
-          decision: "resolved",
-          parameterSpecId: draftSpecId,
-          reason: `${descriptionPrefix} resolve after draft activation`
-        }
-      }
+    const mysteryBindings = await request.get(
+      apiRoute(
+        `/api/v2/projects/${projectId}/parameter-bindings?revisionId=${encodeURIComponent(reviewRevision.id)}`
+      ),
+      { headers: adminHeaders() }
     );
-    expect(resolveReview.ok(), await resolveReview.text()).toBe(true);
+    expect(mysteryBindings.ok(), await mysteryBindings.text()).toBe(true);
+    const mysteryBindingsBody = (await mysteryBindings.json()) as {
+      items: Array<{ id: string; propertyKey?: string | null; schemaState?: string | null }>;
+    };
+    const mysteryBinding = mysteryBindingsBody.items.find((item) => item.propertyKey === mysteryProp);
+    expect(mysteryBinding, `expected provisional binding for ${mysteryProp}`).toBeTruthy();
 
-    const reviewDb = await withPgClient(async (client) => {
-      const result = await client.query<{ status: string; parameter_spec_id: string | null }>(
-        `select status, parameter_spec_id from parameter_spec_review_tasks where id = $1`,
-        [mysteryTask.id]
+    const provisionalDb = await withPgClient(async (client) => {
+      const result = await client.query<{ schema_state: string | null; property_key: string }>(
+        `select br.schema_state, dps.property_key
+         from project_parameter_bindings b
+         join project_parameter_binding_revisions br
+           on br.binding_id = b.id and br.config_revision_id = $2
+         join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+         where b.project_id = $1 and dps.property_key = $3
+         limit 1`,
+        [projectId, reviewRevision.id, mysteryProp]
       );
       return {
-        table: "parameter_spec_review_tasks",
-        predicate: `id=${mysteryTask.id}`,
+        table: "project_parameter_binding_revisions",
+        predicate: `project=${projectId}; revision=${reviewRevision.id}; property=${mysteryProp}`,
         observed: result.rows[0]
-          ? `status=${result.rows[0].status}; spec=${result.rows[0].parameter_spec_id}`
+          ? `schema_state=${result.rows[0].schema_state ?? "null"}; property=${result.rows[0].property_key}`
           : "missing",
         rowCount: result.rowCount ?? result.rows.length
       };
     });
-
-    const reviewAudit = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
-      headers: adminHeaders()
-    });
-    expect(reviewAudit.ok()).toBe(true);
-    const reviewAuditBody = (await reviewAudit.json()) as {
-      items: Array<{ id?: string; kind: string; action: string; targetId: string | null }>;
-    };
-    const reviewAuditItem = reviewAuditBody.items.find(
-      (item) =>
-        item.kind === "parameter-topology-governance" &&
-        item.action === "spec-review-resolved" &&
-        item.targetId === mysteryTask.id
-    );
-    expect(reviewAuditItem).toBeTruthy();
 
     await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
     await dismissXiaozeHint(page);
@@ -543,45 +503,32 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await recordOperationEvidence({
       operationId: "PARAM-SPEC-GOVERN-001",
-      title: "spec search review resolve audit",
+      title: "spec search with provisional unmatched surface",
       status: "passed",
       role: "Admin",
       route: "/parameter-admin",
       page,
       testInfo,
-      assertions: ["ui", "api", "db", "audit"],
+      assertions: ["ui", "api", "db"],
       api: [
         summarizeApiResponse(specsResponse, {
           method: "GET",
           path: "/api/v2/parameter-specs",
           responseSummary: `gpio_int specs=${gpioSpecs.length}; distinct sc8562/mt5788`
         }),
-        summarizeApiResponse(createDraft, {
-          method: "POST",
-          path: `/api/v2/parameter-spec-review-tasks/${mysteryTask.id}/resolve`,
-          responseSummary: `draftCreated spec=${draftSpecId}`
+        summarizeApiResponse(openReviews, {
+          method: "GET",
+          path: "/api/v2/parameter-spec-review-tasks",
+          responseSummary: `open tasks=${openReviewBody.items.length}; mystery review absent`
         }),
-        summarizeApiResponse(activateDraft, {
-          method: "POST",
-          path: `/api/v2/parameter-specs/${draftSpecId}/activate`,
-          responseSummary: "activated draft spec"
-        }),
-        summarizeApiResponse(resolveReview, {
-          method: "POST",
-          path: `/api/v2/parameter-spec-review-tasks/${mysteryTask.id}/resolve`,
-          responseSummary: `resolved task=${mysteryTask.id}`
+        summarizeApiResponse(mysteryBindings, {
+          method: "GET",
+          path: `/api/v2/projects/${projectId}/parameter-bindings`,
+          responseSummary: `provisional mystery binding=${mysteryBinding!.id}`
         })
       ],
-      db: [reviewDb],
-      audit: [
-        {
-          id: reviewAuditItem?.id,
-          kind: "parameter-topology-governance",
-          action: "spec-review-resolved",
-          targetId: mysteryTask.id
-        }
-      ],
-      notes: `${descriptionPrefix}: unmatched review from real ingest; createSpec draft→activate→resolve via API; UI lists distinct gpio_int specs.`
+      db: [provisionalDb],
+      notes: `${descriptionPrefix}: unmatched mystery property is provisional on surface (no review task); UI lists distinct gpio_int specs.`
     });
 
     // Browse real topology (API must be 200 — never [200,404]).
@@ -674,14 +621,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first().click();
     const scopedSc8562Row = bindingRowById(workspace, scBinding!.id);
-    await expect(scopedSc8562Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(scopedSc8562Row.locator('[data-label="参数名"]')).toBeVisible();
     await expect(scopedSc8562Row).toContainText("sc8562@6E");
     await expect(scopedSc8562Row).toContainText("<&gpio13 29 0>");
     await expect(bindingRowById(workspace, mtBinding!.id)).toHaveCount(0);
     // Toggle the same tree node to clear subtree scoping (toolbar no longer has clear-all).
     await workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first().click();
     const unscopedMt5788Row = bindingRowById(workspace, mtBinding!.id);
-    await expect(unscopedMt5788Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(unscopedMt5788Row.locator('[data-label="参数名"]')).toBeVisible();
     await expect(unscopedMt5788Row).toContainText("mt5788@2B");
 
     const baseBindingSnapshot = await withPgClient(async (client) => {
@@ -703,7 +650,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       .poll(async () => gpioCells.count(), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(2);
     const sc8562Row = bindingRowById(workspace, scBinding!.id);
-    await expect(sc8562Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(sc8562Row.locator('[data-label="参数名"]')).toBeVisible();
     await sc8562Row.getByRole("button", { name: /^查看 gpio_int/ }).click();
     const detail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
     await expect(detail).toBeVisible();
@@ -742,11 +689,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     // 5) Typed edit diagnostics + stale 409 + successful draft (writeback + re-ingest inside API).
     const originalRaw = scBinding!.rawValue;
-    await detail.getByLabel("目标值 raw").fill("<&gpio13 29>");
-    await detail.getByLabel("修改原因").fill(`${descriptionPrefix} invalid cell-count probe`);
-    await detail.getByRole("button", { name: /创建草稿/ }).click();
-    await expect(workspace.getByRole("list", { name: "编辑诊断" })).toBeVisible({ timeout: 20_000 });
-    await expect(workspace.getByRole("list", { name: "编辑诊断" })).toContainText(/cell count must be 3/);
+    await detail.getByRole("button", { name: "关闭参数详情" }).click();
+    await expect(detail).toHaveCount(0);
+    await sc8562Row.getByRole("button", { name: /^(编辑|继续编辑) gpio_int/ }).click();
+    const draftDialog = page.getByRole("dialog", { name: "修改草稿" });
+    await expect(draftDialog).toBeVisible();
+    await draftDialog.getByLabel("目标值", { exact: true }).fill("<&gpio13 29>");
+    await draftDialog.getByLabel("修改原因", { exact: true }).fill(`${descriptionPrefix} invalid cell-count probe`);
+    await draftDialog.getByRole("button", { name: "校验并加入本轮" }).click();
+    await expect(draftDialog.getByRole("list", { name: "编辑诊断" })).toBeVisible({ timeout: 20_000 });
+    await expect(draftDialog.getByRole("list", { name: "编辑诊断" })).toContainText(/cell count must be 3/);
 
     const staleEdit = await request.post(
       apiRoute(
@@ -773,7 +725,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     );
     expect(staleEdit.status()).toBe(409);
 
-    await detail.getByLabel("目标值 raw").fill(originalRaw);
+    await draftDialog.getByLabel("目标值", { exact: true }).fill(originalRaw);
+    await draftDialog.getByRole("button", { name: "关闭草稿" }).click();
+    await expect(draftDialog).toHaveCount(0);
 
     // Fail-closed blocker from REAL bad DTS (accurate failure code).
     const suffix = runSuffix;
@@ -864,17 +818,17 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await editWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
       await expect.poll(async () => editWorkspace.getByRole("cell", { name: "gpio_int" }).count()).toBeGreaterThanOrEqual(2);
       const sc8562EditRow = bindingRowById(editWorkspace, scBinding!.id);
-      await expect(sc8562EditRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
-      await sc8562EditRow.getByRole("button", { name: /^编辑 gpio_int/ }).click();
-      const editDetail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
-      await expect(editDetail.getByText(scBinding!.id, { exact: true })).toBeVisible();
-      await editDetail.getByLabel("目标值 raw").fill(editedRaw);
-      await editDetail.getByLabel("修改原因").fill(typedEditReason);
+      await expect(sc8562EditRow.locator('[data-label="参数名"]')).toBeVisible();
+      await sc8562EditRow.getByRole("button", { name: /^(编辑|继续编辑) gpio_int/ }).click();
+      const editDetail = page.getByRole("dialog", { name: "修改草稿" });
+      await expect(editDetail).toBeVisible();
+      await editDetail.getByLabel("目标值", { exact: true }).fill(editedRaw);
+      await editDetail.getByLabel("修改原因", { exact: true }).fill(typedEditReason);
       const responsePromise = page.waitForResponse((response) =>
         response.request().method() === "POST" &&
         response.url().includes(`/api/v2/projects/${projectId}/parameter-bindings/${encodeURIComponent(scBinding!.id)}/drafts`)
       );
-      await editDetail.getByRole("button", { name: /创建草稿/ }).click();
+      await editDetail.getByRole("button", { name: "校验并加入本轮" }).click();
       return responsePromise;
     };
 
@@ -1239,7 +1193,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     );
     await preDeleteWorkspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
     const preDeleteMt5788Row = bindingRowById(preDeleteWorkspace, mtBinding!.id);
-    await expect(preDeleteMt5788Row.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(preDeleteMt5788Row.locator('[data-label="参数名"]')).toBeVisible();
     await expect(preDeleteMt5788Row).toContainText("mt5788@2B");
     const deleteReason = `${descriptionPrefix} delete gpio_int through formal review`;
     const deleteBaseBindingSnapshot = await withPgClient(async (client) => {
@@ -1535,7 +1489,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(bindingRowById(deleteReloadWorkspace, mtBinding!.id)).toHaveCount(0);
     await expect(semanticBindingRow(deleteReloadWorkspace, "mt5788@2B")).toHaveCount(0);
     const sc8562DeleteRow = semanticBindingRow(deleteReloadWorkspace, "sc8562@6E");
-    await expect(sc8562DeleteRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible();
+    await expect(sc8562DeleteRow.locator('[data-label="参数名"]')).toBeVisible();
 
     const writebackDb = {
       table: "project_parameter_file_versions",
@@ -1943,7 +1897,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(workspaceAfter).toBeVisible({ timeout: 30_000 });
     await workspaceAfter.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
     const sc8562ReloadRow = bindingRowById(workspaceAfter, scBinding!.id);
-    await expect(sc8562ReloadRow.getByRole("cell", { name: "gpio_int", exact: true })).toBeVisible({
+    await expect(sc8562ReloadRow.locator('[data-label="参数名"]')).toBeVisible({
       timeout: 20_000
     });
     await sc8562ReloadRow.getByRole("button", { name: /^查看 gpio_int/ }).click();

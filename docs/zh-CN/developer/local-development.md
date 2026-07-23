@@ -27,7 +27,7 @@ npm run dts:toolchain:check -- --required
 npm run dtc:seed:compile
 ```
 
-`dts:toolchain:bootstrap` 先通过现有平台包 bootstrap 安装/检查 dtc，再在忽略提交的 `.wiseeff-tools/dts-toolchain` 创建项目 venv 并安装钉扎 dtschema。API runtime、seed 脚本与检查命令共用该解析器，不要求把个人 Python bin 加入 `PATH`。`db:seed:m1` 会先用真实 dtc 编译 Aurora、Nebula、Atlas 三份 overlay；编译器缺失或出现 error 时停止写库。
+`dts:toolchain:bootstrap` 在忽略提交的 `.wiseeff-tools/dts-toolchain` 创建项目 venv 并安装钉扎 dtschema；同时确保 dtc/fdtoverlay 匹配 `tools/dts-toolchain/versions.json`（宿主已是钉扎版本则复用，否则从钉扎 commit 构建到项目 toolchain bin）。API runtime、seed 脚本与检查命令共用该解析器，不要求把个人 Python bin 加入 `PATH`。`db:seed:m1` 会先用真实 dtc 编译 Aurora、Nebula、Atlas 三份 overlay；编译器缺失或出现 error 时停止写库。
 
 完整失败关闭工具链与配置校验（版本钉扎见 `tools/dts-toolchain/versions.json`）：
 

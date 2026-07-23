@@ -9,6 +9,8 @@ export type DtsTokenKind =
   | "colon"
   | "lt"
   | "gt"
+  | "lparen"
+  | "rparen"
   | "lbrace"
   | "rbrace"
   | "semi"
@@ -113,7 +115,7 @@ export function lexDts(source: string): DtsToken[] {
       continue;
     }
 
-    // Negative integers (e.g. <-1>) and digits / bare hex unit addresses (6E, 77).
+    // Negative integers (e.g. <(-1)> / legacy <-1>) and digits / bare hex unit addresses (6E, 77).
     if (ch === "-" && i + 1 < text.length && isDigit(text[i + 1])) {
       let j = i + 1;
       while (j < text.length && isDigit(text[j])) {
@@ -150,6 +152,8 @@ export function lexDts(source: string): DtsToken[] {
       ":": "colon",
       "<": "lt",
       ">": "gt",
+      "(": "lparen",
+      ")": "rparen",
       "{": "lbrace",
       "}": "rbrace",
       ";": "semi",

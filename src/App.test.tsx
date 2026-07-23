@@ -2393,6 +2393,14 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(reviewDetail).not.toHaveTextContent(/PRQ-\d+/);
     expect(within(reviewDetail).queryByRole("button", { name: "推进流程" })).not.toBeInTheDocument();
     expect(within(reviewDetail).queryByRole("button", { name: "打回修改" })).not.toBeInTheDocument();
+
+    fireEvent.click(pendingTab);
+
+    expect(pendingTab).toHaveAttribute("aria-selected", "true");
+    expect(historyTab).toHaveAttribute("aria-selected", "false");
+    const restoredPendingTable = screen.getByRole("table");
+    expect(within(restoredPendingTable).getByText("快充输入电流调整")).toBeInTheDocument();
+    expect(within(restoredPendingTable).queryByText("SOC 平滑窗口调整")).not.toBeInTheDocument();
   });
 
   it("labels and aligns the review change column", () => {

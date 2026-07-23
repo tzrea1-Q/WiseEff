@@ -8,6 +8,7 @@ import {
   businessCategoryForNodePath,
   driverGroupDisplayNameFromCompatible,
   isModuleScaffoldingNode,
+  isScaffoldingDriverLabel,
 } from "./modulePlacement";
 import { createParameterModule, getParameterModuleById } from "../parameters/parameterModuleRepository";
 import type { Queryable } from "../../shared/database/client";
@@ -241,6 +242,25 @@ export async function resolveBindingInstanceModuleId(
       displayInstance ||
       input.driverModule ||
       "unknown";
+    // Scaffolding drivers (amba/gic/gpio/spmi/…) are not a WiseEff parameter surface —
+    // park on the org「未分类」root without creating「未分类 · {driver}」buckets.
+    if (
+      isScaffoldingDriverLabel(label) ||
+      isScaffoldingDriverLabel(normalizedCompatible) ||
+      isScaffoldingDriverLabel(input.driverModule) ||
+      isModuleScaffoldingNode({
+        name: displayInstance ?? input.driverModule ?? label,
+        compatible: input.compatible,
+        nodePath: nodePathFromLocator(input.nodeLocator),
+      })
+    ) {
+      return resolveModuleIdForBinding(db, {
+        organizationId: input.organizationId,
+        driverModule: null,
+        compatible: null,
+        instanceName: null,
+      });
+    }
     return ensureProvisionalUnclassifiedModule(db, {
       organizationId: input.organizationId,
       label,

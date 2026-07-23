@@ -33,7 +33,7 @@ const PROPERTY_KEY = "tenant_mystery";
 const UNMATCHED_DTS = `/dts-v1/;
 
 / {
-	ghost: ghost@0 {
+	amba {
 		compatible = "wiseeff,ghost-device";
 		${PROPERTY_KEY} = <1>;
 	};

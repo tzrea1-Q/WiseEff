@@ -250,7 +250,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     // @acceptance PARAM-DRAFT-EDIT-001
     // @operation PARAM-DRAFT-EDIT-001
     await page.goto(`/parameters?project=${projectId}`);
-    await expect(page.getByRole("region", { name: "项目拓扑工作区" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toBeVisible({ timeout: 30_000 });
 
     const kept = await createDraftViaApi(page, {
       parameterId: parameterValueId,

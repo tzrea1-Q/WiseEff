@@ -20,6 +20,7 @@ import {
   listChangeRequests,
   listDraftsForParameterValue,
   listDraftsForUser,
+  listOpenBindingDraftsForUser,
   listOpenConflicts,
   listParameterHistory,
   listParameters,
@@ -29,6 +30,7 @@ import {
   listProjects,
   listSubmissionRounds,
   mergeChangeRequest,
+  rebaseOpenBindingDraftCandidates,
   applyAddedImportItem,
   applyUpdatedImportItem,
   markImportBatchApplied,
@@ -364,12 +366,64 @@ describe("parameter repository", () => {
     await listDraftsForUser(db, { organizationId: "org-chargelab", userId: "user-1", projectId: "project-1" });
     await deleteDraft(db, { organizationId: "org-chargelab", userId: "user-1", draftId: "draft-1" });
 
-    expect(calls[0].text).toContain("from parameter_drafts");
-    expect(calls[0].text).toContain("organization_id = $1");
-    expect(calls[0].text).toContain("user_id = $2");
+    expect(calls[0].text).toContain("from parameter_drafts d");
+    expect(calls[0].text).toContain("d.organization_id = $1");
+    expect(calls[0].text).toContain("d.user_id = $2");
+    expect(calls[0].text).toContain("as base_raw_value");
+    expect(calls[0].text).toContain("d.candidate_config_revision_id");
+    expect(calls[0].text).toContain("b.parameter_spec_id");
+    expect(calls[0].text).toContain("parameter_modules pm");
+    expect(calls[0].text).toContain("project_parameter_binding_revisions locked_bpr");
     expect(calls[0].values).toEqual(["org-chargelab", "user-1", "project-1"]);
     expect(calls[1].text).toContain("delete from parameter_drafts");
     expect(calls[1].values).toEqual(["org-chargelab", "user-1", "draft-1"]);
+  });
+
+  it("listDraftsForUser returns candidateConfigRevisionId when the column is set", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "draft-1",
+          project_id: "project-1",
+          project_parameter_value_id: "binding-1",
+          target_value: "3200",
+          action: "set",
+          reason: "Align thermal limit.",
+          updated_at: "2026-07-23T02:00:00.000Z",
+          project_parameter_binding_id: "binding-1",
+          candidate_config_revision_id: "rev-shared-tip",
+          parameter_spec_id: "spec-thermal",
+          base_raw_value: "3000",
+          property_name: "thermal-limit",
+          driver_module: "Power"
+        }
+      ]
+    ]);
+
+    const drafts = await listDraftsForUser(db, {
+      organizationId: "org-1",
+      userId: "user-1",
+      projectId: "project-1"
+    });
+
+    expect(calls[0]?.text).toContain("candidate_config_revision_id");
+    expect(drafts).toEqual([
+      {
+        id: "draft-1",
+        projectId: "project-1",
+        parameterId: "binding-1",
+        targetValue: "3200",
+        action: "set",
+        reason: "Align thermal limit.",
+        updatedAt: "2026-07-23T02:00:00.000Z",
+        projectParameterBindingId: "binding-1",
+        candidateConfigRevisionId: "rev-shared-tip",
+        parameterSpecId: "spec-thermal",
+        name: "thermal-limit",
+        module: "Power",
+        currentValue: "3000"
+      }
+    ]);
   });
 
   it("creates submission rounds, change requests, and submission items with parameterized SQL", async () => {
@@ -1294,6 +1348,77 @@ describe("parameter repository", () => {
         updatedAt: "2026-07-11T10:01:00.000Z"
       }
     ]);
+  });
+
+  it("listOpenBindingDraftsForUser returns binding drafts ordered by updated_at desc then id asc", async () => {
+    const newer = new Date("2026-07-23T02:00:00.000Z");
+    const older = new Date("2026-07-23T01:00:00.000Z");
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "draft-b",
+          candidate_config_revision_id: "rev-new",
+          project_parameter_binding_id: "binding-b",
+          updated_at: newer,
+        },
+        {
+          id: "draft-a",
+          candidate_config_revision_id: "rev-old",
+          project_parameter_binding_id: "binding-a",
+          updated_at: older,
+        },
+      ],
+    ]);
+
+    const drafts = await listOpenBindingDraftsForUser(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      userId: "user-1",
+    });
+
+    expect(calls[0]?.text).toContain("from parameter_drafts");
+    expect(calls[0]?.text).toContain("project_parameter_binding_id is not null");
+    expect(calls[0]?.text).toContain("order by updated_at desc, id asc");
+    expect(calls[0]?.values).toEqual(["org-1", "project-1", "user-1"]);
+    expect(drafts).toEqual([
+      {
+        id: "draft-b",
+        candidateConfigRevisionId: "rev-new",
+        projectParameterBindingId: "binding-b",
+        updatedAt: "2026-07-23T02:00:00.000Z",
+      },
+      {
+        id: "draft-a",
+        candidateConfigRevisionId: "rev-old",
+        projectParameterBindingId: "binding-a",
+        updatedAt: "2026-07-23T01:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("rebaseOpenBindingDraftCandidates updates sibling drafts and returns rebased ids", async () => {
+    const { db, calls } = createFakeDb([[{ id: "draft-a" }, { id: "draft-b" }]]);
+
+    const rebasedIds = await rebaseOpenBindingDraftCandidates(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      userId: "user-1",
+      candidateConfigRevisionId: "rev-shared",
+      excludeDraftId: "draft-current",
+    });
+
+    expect(calls[0]?.text).toContain("update parameter_drafts");
+    expect(calls[0]?.text).toContain("candidate_config_revision_id is distinct from $4");
+    expect(calls[0]?.text).toContain("project_parameter_binding_id is not null");
+    expect(calls[0]?.text).toContain("($5::text is null or id <> $5)");
+    expect(calls[0]?.values).toEqual([
+      "org-1",
+      "project-1",
+      "user-1",
+      "rev-shared",
+      "draft-current",
+    ]);
+    expect(rebasedIds).toEqual(["draft-a", "draft-b"]);
   });
 
   it("handles file sync conflict repository CRUD", async () => {

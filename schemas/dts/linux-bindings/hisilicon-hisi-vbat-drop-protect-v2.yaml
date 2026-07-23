@@ -11,6 +11,8 @@ properties:
     $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   vbat_drop_vol_mv:
     $ref: /schemas/types.yaml#/definitions/uint32-array
+  middle_cpu:
+    type: object
   compatible:
     contains:
       const: hisilicon,hisi_vbat_drop_protect_v2

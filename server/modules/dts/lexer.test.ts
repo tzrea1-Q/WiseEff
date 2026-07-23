@@ -58,6 +58,11 @@ describe("lexDts", () => {
     expect(values(tokens)).toEqual(["<", "-1", ">"]);
   });
 
+  it("tokenizes parenthesized negative integers (dtc 1.8+ cell form)", () => {
+    const tokens = lexDts("<(-1) 42>");
+    expect(values(tokens)).toEqual(["<", "(", "-1", ")", "42", ">"]);
+  });
+
   it("tokenizes strings with escapes and internal comment-like text", () => {
     const tokens = lexDts(`path = "a/*not*/b\\n";`);
     const str = tokens.find((t) => t.kind === "string");

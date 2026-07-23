@@ -66,10 +66,9 @@ jobs:
       - name: Install and verify DTS toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y device-tree-compiler python3-pip
-          python3 -m pip install --user -r tools/dts-toolchain/requirements.txt
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          npm run dts:toolchain:check
+          sudo apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
+          npm run dts:toolchain:bootstrap
+          npm run dts:toolchain:check -- --required
           npm run dtc:seed:compile
 
       - name: Build
@@ -135,10 +134,9 @@ jobs:
       - name: Install and verify DTS toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y device-tree-compiler python3-pip
-          python3 -m pip install --user -r tools/dts-toolchain/requirements.txt
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          npm run dts:toolchain:check
+          sudo apt-get install -y build-essential bison flex pkg-config git python3-pip python3-venv
+          npm run dts:toolchain:bootstrap
+          npm run dts:toolchain:check -- --required
           npm run dtc:seed:compile
 
       - name: Install Playwright Chromium
@@ -164,6 +162,8 @@ jobs:
             echo "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true"
             echo "M5_CONTRACT_CHECK_PASSED=true"
           } >> .env
+          # loadEnvContent keeps the first assignment; rewrite example defaults in-place.
+          sed -i 's/^XIAOZE_PROACTIVE_ENABLED=.*/XIAOZE_PROACTIVE_ENABLED=true/' .env
 
       - name: Acceptance CI metadata
         run: npm run acceptance:ci

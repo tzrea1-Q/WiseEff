@@ -25,6 +25,21 @@ describe("parseDtsValue / renderDtsValue", () => {
     ]);
   });
 
+  it("parses and renders dtc-safe parenthesized negatives", () => {
+    const raw = "<(-1) (-10) 2800>";
+    const { value } = parseDtsValue("sense_r_config", raw);
+    expect(value).toMatchObject({ kind: "cells", bits: 32 });
+    if (value.kind !== "cells") throw new Error("expected cells");
+    expect(value.groups[0]).toEqual([
+      { kind: "integer", raw: "-1", value: "-1" },
+      { kind: "integer", raw: "-10", value: "-10" },
+      { kind: "integer", raw: "2800", value: "2800" },
+    ]);
+    expect(renderDtsValue(value)).toBe("<(-1) (-10) 2800>");
+    // Legacy bare negatives upgrade to parenthesized form when re-rendered.
+    expect(renderDtsValue(value, "<-1 -10 2800>")).toBe("<(-1) (-10) 2800>");
+  });
+
   it("parses multiple comma-separated cell groups", () => {
     const raw = "<1 2600>,<2 2800>";
     const { value } = parseDtsValue("combined_para", raw);
@@ -69,5 +84,43 @@ describe("parseDtsValue / renderDtsValue", () => {
     const { value } = parseDtsValue("reg_config", raw);
     expect(value).toEqual({ kind: "bytes", values: [1, 2, 171, 255] });
     expect(renderDtsValue(value, raw)).toBe(raw);
+  });
+
+  it("preserves multi-line cell-matrix layout when only one token changes", () => {
+    const previous = "<4200 10790 0\n\t\t\t4250 8092 0\n\t\t\t4565 2697 0>";
+    const { value } = parseDtsValue("cccv_10_20", previous);
+    expect(value).toMatchObject({ kind: "cells", bits: 32 });
+    if (value.kind !== "cells") throw new Error("expected cells");
+
+    const nextGroups = value.groups.map((group) =>
+      group.map((cell) =>
+        cell.kind === "integer" && cell.raw === "10790"
+          ? { kind: "integer" as const, raw: "10690", value: "10690" }
+          : cell
+      )
+    );
+    const nextValue = { kind: "cells" as const, bits: 32 as const, groups: nextGroups };
+
+    expect(renderDtsValue(nextValue, previous)).toBe(
+      "<4200 10690 0\n\t\t\t4250 8092 0\n\t\t\t4565 2697 0>"
+    );
+    expect(renderDtsValue(nextValue, previous)).not.toBe(
+      "<4200 10690 0 4250 8092 0 4565 2697 0>"
+    );
+  });
+
+  it("falls back to compact cells render when group shape changes", () => {
+    const previous = "<4200 10790 0\n\t\t\t4250 8092 0>";
+    const nextValue = {
+      kind: "cells" as const,
+      bits: 32 as const,
+      groups: [
+        [
+          { kind: "integer" as const, raw: "4200", value: "4200" },
+          { kind: "integer" as const, raw: "10690", value: "10690" }
+        ]
+      ]
+    };
+    expect(renderDtsValue(nextValue, previous)).toBe("<4200 10690>");
   });
 });

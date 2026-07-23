@@ -13,6 +13,8 @@ export type PendingBindingDraft = BindingDraftResult & {
   projectId: string;
   currentRawValue: string;
   reason: string;
+  /** Business module display name (same source as workbench「所属模块」). */
+  moduleName: string;
 };
 
 export type DtsBindingDraftTrayProps = {
@@ -44,13 +46,13 @@ function identityBlocker(projectId: string, drafts: PendingBindingDraft[]): stri
     !nonBlank(draft.writeTarget.propertyKey) ||
     !nonBlank(draft.reason)
   );
-  return incomplete ? "草稿缺少完整的项目、candidate、binding 或规格身份，已阻止提交。" : null;
+  return incomplete ? "草稿缺少完整的项目、工作版本、binding 或规格身份，已阻止提交。" : null;
 }
 
 function candidateBlocker(drafts: PendingBindingDraft[]): string | null {
   const candidateIds = new Set(drafts.map((draft) => draft.candidateRevisionId));
   return candidateIds.size > 1
-    ? "本轮修改属于不同 candidate revision，当前不能批量提交；请仅保留同一 candidate 的草稿。"
+    ? "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。"
     : null;
 }
 
@@ -212,9 +214,11 @@ export function DtsBindingDraftTray({
           </p>
         </div>
         <span>
-          {selectedBindingIds && selectedBindingIds.size > 0
-            ? `提交 ${submitDrafts.length} / ${drafts.length} 项`
-            : `${drafts.length} 项`}
+          {candidateError
+            ? selectedBindingIds && selectedBindingIds.size > 0
+              ? `提交 ${submitDrafts.length} / ${drafts.length} 项`
+              : `${drafts.length} 项`
+            : `本轮 ${drafts.length} 项 · 同一工作版本`}
         </span>
       </header>
 
@@ -224,7 +228,7 @@ export function DtsBindingDraftTray({
             <div className="dts-binding-draft-tray__item-heading">
               <div>
                 <strong><code>{draft.writeTarget.propertyKey}</code></strong>
-                <span>{draft.action === "delete" ? "删除属性（tombstone）" : "设置属性"}</span>
+                <span>{draft.moduleName}</span>
               </div>
               <button
                 type="button"
@@ -248,16 +252,6 @@ export function DtsBindingDraftTray({
               />
             </div>
             <p><strong>原因：</strong>{draft.reason}</p>
-            <details className="dts-binding-draft-tray__identity">
-              <summary>技术身份</summary>
-              <dl>
-                <div><dt>action</dt><dd><code>{draft.action}</code></dd></div>
-                <div><dt>candidate</dt><dd><code>{draft.candidateRevisionId}</code></dd></div>
-                <div><dt>draft</dt><dd><code>{draft.draftId}</code></dd></div>
-                <div><dt>binding</dt><dd><code>{draft.projectParameterBindingId}</code></dd></div>
-                <div><dt>spec</dt><dd><code>{draft.parameterSpecId}</code></dd></div>
-              </dl>
-            </details>
           </article>
         ))}
       </div>

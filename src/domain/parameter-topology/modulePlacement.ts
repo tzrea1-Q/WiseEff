@@ -7,9 +7,35 @@
 
 export const BOARD_INSTANCE_MODULE_NAME = "board";
 
-/** Bus / interconnect segments excluded from the module navigation tree. */
+/**
+ * Bus / interconnect segments and driver-group labels excluded from the product
+ * module tree and provisional「未分类 · …」buckets (RFC managed-node scaffolding).
+ */
 export const MODULE_SCAFFOLDING_SEGMENT_RE =
-  /^(spmi\d*|amba|i2c@[0-9a-fA-F]+|pmic@[0-9a-fA-F]+|gic|gpio\d*)$/i;
+  /^(spmi\d*|amba(-bus)?|i2c@[0-9a-fA-F]+|pmic@[0-9a-fA-F]+|gic(-v?\d+)?|gpio\d*)$/i;
+
+const PROVISIONAL_UNCLASSIFIED_PREFIX = "未分类 · ";
+
+/** Compatible tail / driver / module-leaf label that is scaffolding-only. */
+export function isScaffoldingDriverLabel(label: string | null | undefined): boolean {
+  if (!label) return false;
+  let bare = label.trim().toLowerCase();
+  if (bare.startsWith(PROVISIONAL_UNCLASSIFIED_PREFIX.toLowerCase())) {
+    bare = bare.slice(PROVISIONAL_UNCLASSIFIED_PREFIX.length).trim();
+  }
+  const tail = bare.includes(",") ? bare.slice(bare.lastIndexOf(",") + 1).trim() : bare;
+  return MODULE_SCAFFOLDING_SEGMENT_RE.test(tail);
+}
+
+/** True when a module display name is a provisional unclassified scaffolding bucket. */
+export function isProvisionalScaffoldingUnclassifiedModuleName(
+  moduleName: string | null | undefined
+): boolean {
+  if (!moduleName) return false;
+  const trimmed = moduleName.trim();
+  if (!trimmed.startsWith(PROVISIONAL_UNCLASSIFIED_PREFIX)) return false;
+  return isScaffoldingDriverLabel(trimmed.slice(PROVISIONAL_UNCLASSIFIED_PREFIX.length));
+}
 
 export type ModuleInstanceTaxonomy = "U" | "N" | "C" | "scaffolding";
 
@@ -53,6 +79,7 @@ export function isModuleScaffoldingNode(input: {
   unitAddress?: string | null;
 }): boolean {
   if (input.nodePath === "" || input.name === "/") return true;
+  if (isScaffoldingDriverLabel(input.compatible)) return true;
   const leaf =
     input.nodePath && input.nodePath.length > 0
       ? input.nodePath.split("/").filter(Boolean).at(-1) ?? input.name

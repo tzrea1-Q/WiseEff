@@ -247,6 +247,63 @@ function reviewDecisionRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const PROJECT_ID = "project-1";
+
+const completeAssignees = {
+  hardwareCommitterId: "u-hardware",
+  softwareCommitterId: "u-software-committer",
+  softwareUserId: "u-software-user"
+};
+
+function bindingDraftSubmissionRow(overrides: Record<string, unknown> = {}) {
+  const draftId = (overrides.id as string) ?? "draft-a";
+  const bindingId = (overrides.project_parameter_binding_id as string) ?? "binding-a";
+  const specId = (overrides.parameter_spec_id as string) ?? "spec-1";
+  const tipId = (overrides.candidate_config_revision_id as string) ?? "candidate-tip-a";
+  const targetValue = (overrides.target_value as string) ?? "<3000>";
+  const reason = (overrides.reason as string) ?? "Edit A";
+  const suffix = draftId.endsWith("b") ? "b" : "a";
+
+  return {
+    id: draftId,
+    project_id: PROJECT_ID,
+    project_parameter_binding_id: bindingId,
+    parameter_spec_id: specId,
+    candidate_config_revision_id: tipId,
+    candidate_status: "draft",
+    candidate_has_binding_revision: true,
+    candidate_value_matches_draft: true,
+    candidate_delete_tombstone: false,
+    candidate_action_proven: true,
+    write_lock_matches_binding: true,
+    target_value: targetValue,
+    action: "set",
+    reason,
+    base_config_revision_id: "base-rev-1",
+    binding_revision_id: `bpr-${suffix}`,
+    property_occurrence_id: null,
+    source_file_version_id: `fv-${suffix}`,
+    expected_checksum: `checksum-${suffix}`,
+    occurrence_span: null,
+    ...overrides
+  };
+}
+
+function bindingParameterRow(bindingId: string, overrides: Record<string, unknown> = {}) {
+  return parameterRow({
+    id: bindingId,
+    name: `binding_${bindingId}`,
+    ...overrides
+  });
+}
+
+function writeLockFixtureRows(suffix: "a" | "b") {
+  return [
+    [{ id: `bpr-${suffix}`, config_revision_id: "base-rev-1" }],
+    [{ id: `fv-${suffix}`, checksum: `checksum-${suffix}` }]
+  ] as const;
+}
+
 describe("parameter service", () => {
   it("non-admin cannot create or apply import batches", async () => {
     const { db, calls, txCalls } = createFakeDb();
@@ -1799,6 +1856,89 @@ describe("parameter service", () => {
 
     const insertRequest = txCalls.find((call) => call.text.includes("insert into parameter_change_requests"));
     expect(insertRequest?.values).toContain(42);
+  });
+
+  it("submitParameterChanges rejects mixed working tips in one batch", async () => {
+    const draftA = "draft-a";
+    const draftB = "draft-b";
+    const bindingA = "binding-a";
+    const bindingB = "binding-b";
+    const specId = "spec-1";
+    const tipA = "candidate-tip-a";
+    const tipB = "candidate-tip-b";
+
+    const { db, txCalls } = createFakeDb(
+      [
+        [
+          bindingDraftSubmissionRow({
+            id: draftA,
+            project_parameter_binding_id: bindingA,
+            parameter_spec_id: specId,
+            candidate_config_revision_id: tipA,
+            target_value: "<3000>",
+            reason: "a"
+          })
+        ],
+        ...writeLockFixtureRows("a"),
+        [bindingParameterRow(bindingA)],
+        [],
+        [
+          bindingDraftSubmissionRow({
+            id: draftB,
+            project_parameter_binding_id: bindingB,
+            parameter_spec_id: "spec-2",
+            candidate_config_revision_id: tipB,
+            target_value: "<4000>",
+            reason: "b"
+          })
+        ],
+        ...writeLockFixtureRows("b"),
+        [bindingParameterRow(bindingB)],
+        [],
+        [{ id: "u-hardware" }],
+        [{ id: "u-software-committer" }],
+        [{ id: "u-software-user" }]
+      ],
+      { semanticCutoverComplete: true }
+    );
+
+    await expect(
+      submitParameterChanges(db, makeAuth(), {
+        projectId: PROJECT_ID,
+        items: [
+          {
+            draftId: draftA,
+            projectParameterBindingId: bindingA,
+            parameterSpecId: specId,
+            action: "set",
+            targetValue: "<3000>",
+            reason: "a"
+          },
+          {
+            draftId: draftB,
+            projectParameterBindingId: bindingB,
+            parameterSpecId: "spec-2",
+            action: "set",
+            targetValue: "<4000>",
+            reason: "b"
+          }
+        ],
+        assignees: completeAssignees
+      })
+    ).rejects.toMatchObject(
+      new ApiError(
+        "CONFLICT",
+        "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
+        409,
+        {
+          reason: "mixed-working-tips",
+          candidateConfigRevisionIds: expect.arrayContaining([tipA, tipB])
+        }
+      )
+    );
+
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_submission_rounds"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("update dts_config_revisions"))).toBe(false);
   });
 
   it("ordinary user cannot advance review", async () => {

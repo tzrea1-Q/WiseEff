@@ -239,4 +239,36 @@ describe("resolveBindingInstanceModuleId", () => {
     expect(created?.name).toBe("未分类 · new-driver");
     expect(created?.parentId).toBe(unclassifiedId);
   });
+
+  it("does not create 未分类 · scaffolding buckets for bus/gpio/gic drivers", async () => {
+    const unclassifiedId = unclassifiedModuleId("org-1");
+    const { db, modules } = createFakeDb({
+      modules: [
+        {
+          id: unclassifiedId,
+          organizationId: "org-1",
+          name: "未分类",
+          parentId: null,
+          path: unclassifiedId,
+          depth: 1,
+          sortOrder: 999,
+          description: "",
+          scope: "",
+          importance: "medium",
+        },
+      ],
+      mappings: [],
+    });
+
+    const moduleId = await resolveBindingInstanceModuleId(db, {
+      organizationId: "org-1",
+      driverModule: "amba-bus",
+      compatible: "arm,amba-bus",
+      instanceName: "amba",
+      nodeLocator: "/amba",
+    });
+
+    expect(moduleId).toBe(unclassifiedId);
+    expect([...modules.values()].some((module) => module.name.startsWith("未分类 · "))).toBe(false);
+  });
 });

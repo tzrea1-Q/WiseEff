@@ -41,4 +41,28 @@ describe("reviewQueue", () => {
     expect(pending).toHaveLength(1);
     expect(canActOnReviewRequest("software-committer", advancedRequest)).toBe(true);
   });
+
+  it("keeps admin pending and history queues disjoint for multi-stage requests", () => {
+    const softwareStage = { ...hardwareReviewRequest, status: "软件Committer检视" as const };
+    const mergeStage = { ...hardwareReviewRequest, id: "PRQ-merge", status: "软件User合入" as const };
+    const merged = { ...hardwareReviewRequest, id: "PRQ-done", status: "已合入" as const };
+    const { pending, history } = splitChangeRequestsForReviewQueue("admin", [softwareStage, mergeStage, merged]);
+
+    expect(pending.map((request) => request.id)).toEqual([softwareStage.id, mergeStage.id]);
+    expect(history.map((request) => request.id)).toEqual([merged.id]);
+    expect(pending.some((request) => history.some((item) => item.id === request.id))).toBe(false);
+    expect(isReviewHistoryForRole("admin", softwareStage)).toBe(false);
+    expect(isReviewHistoryForRole("admin", mergeStage)).toBe(false);
+  });
+
+  it("does not mark later-stage actionable requests as history for software committer", () => {
+    const mergeStage = { ...hardwareReviewRequest, status: "软件User合入" as const };
+
+    expect(canActOnReviewRequest("software-committer", mergeStage)).toBe(true);
+    expect(isReviewHistoryForRole("software-committer", mergeStage)).toBe(false);
+    expect(splitChangeRequestsForReviewQueue("software-committer", [mergeStage])).toEqual({
+      pending: [mergeStage],
+      history: []
+    });
+  });
 });

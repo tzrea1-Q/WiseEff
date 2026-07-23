@@ -11,6 +11,10 @@ properties:
     $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   unbalance_th:
     $ref: /schemas/types.yaml#/definitions/uint32-array
+  battery0:
+    type: object
+  battery1:
+    type: object
   compatible:
     contains:
       const: huawei,battery_charge_balance

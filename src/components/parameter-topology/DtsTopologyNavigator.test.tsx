@@ -114,6 +114,24 @@ describe("DtsTopologyNavigator", () => {
     expect(within(navigator).queryByRole("treeitem", { name: /i2c@FDF5E000/ })).not.toBeInTheDocument();
   });
 
+  it("honors defaultExpandDepth so only levels through that depth are visible", () => {
+    render(
+      <DtsTopologyNavigator
+        view="effective"
+        nodes={tree}
+        selectedNodeId={null}
+        defaultExpandDepth={2}
+        onSelectNode={vi.fn()}
+      />
+    );
+
+    const navigator = screen.getByRole("tree", { name: "生效 DTS 拓扑" });
+    expect(within(navigator).getByRole("treeitem", { name: /^\// })).toHaveAttribute("aria-expanded", "true");
+    expect(within(navigator).getByRole("treeitem", { name: /amba/ })).toBeVisible();
+    expect(within(navigator).getByRole("treeitem", { name: /amba/ })).toHaveAttribute("aria-expanded", "false");
+    expect(within(navigator).queryByRole("treeitem", { name: /i2c@FDF5E000/ })).not.toBeInTheDocument();
+  });
+
   it("supports click, Enter, Space, ArrowRight and ArrowLeft with roving focus", () => {
     const selections: string[] = [];
     function Harness() {

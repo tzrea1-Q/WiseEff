@@ -19,6 +19,10 @@ import {
   type ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
 import { isParameterSurfaceRow } from "@/domain/parameter-topology/parameterSurface";
+import {
+  isProvisionalScaffoldingUnclassifiedModuleName,
+  isScaffoldingDriverLabel
+} from "@/domain/parameter-topology/modulePlacement";
 
 export type BuildDtsWorkbenchRowsInput = {
   projectId: string;
@@ -304,12 +308,21 @@ export function buildDtsWorkbenchRows({
   }
 
   return rows.filter((row) => {
+    if (
+      isProvisionalScaffoldingUnclassifiedModuleName(row.moduleName) ||
+      isScaffoldingDriverLabel(row.compatible) ||
+      isScaffoldingDriverLabel(row.driverModule)
+    ) {
+      return false;
+    }
     const locator = row.topologyPath ?? row.sourceNodePath;
     if (!locator) return true;
     return isParameterSurfaceRow({
       propertyKey: row.propertyKey,
       locator,
-      compatible: row.compatible
+      compatible: row.compatible,
+      driverModule: row.driverModule,
+      moduleName: row.moduleName
     });
   });
 }

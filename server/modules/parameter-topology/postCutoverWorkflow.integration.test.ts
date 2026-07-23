@@ -2119,8 +2119,8 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
               }
             )
           ).rejects.toMatchObject({
-            code: "CONFLICT",
-            status: 409
+            code: "VALIDATION_FAILED",
+            status: 400
           });
 
           await assertMergeRolledBack(db, request.id, seeded.bindingId, writeLock.baseConfigRevisionId);

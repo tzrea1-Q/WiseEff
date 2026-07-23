@@ -102,7 +102,7 @@ async function createGpioDraftFromWorkbench(
   fireEvent: typeof import("@testing-library/react").fireEvent,
   input: { reason: string; rawValue?: string; editButtonName?: RegExp }
 ) {
-  const editName = input.editButtonName ?? /编辑 gpio_int/;
+  const editName = input.editButtonName ?? /编辑 gpio_int（未分类 · sc8562/;
   fireEvent.click(within(workspace).getByRole("button", { name: editName }));
   const draftDialog = await screen.findByRole("dialog", { name: "修改草稿" });
   if (input.rawValue !== undefined) {
@@ -175,6 +175,119 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(listConfigSets).toHaveBeenCalledWith("aurora");
     expect(repository.getTopology).toHaveBeenCalledWith("aurora", "dcs-default-aurora", "current", "effective");
     expect(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ })).toBeVisible();
+  });
+
+  it("hydrates binding drafts from listDrafts after reload and shows shared working tip tray", async () => {
+    const sharedTip = "rev-shared-tip";
+    const listDrafts = vi.fn().mockResolvedValue([
+      {
+        id: "draft-gpio",
+        projectId: "aurora",
+        parameterId: "binding-sc8562-gpio-int",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        candidateConfigRevisionId: sharedTip,
+        targetValue: "<&gpio13 30 0>",
+        action: "set" as const,
+        reason: "Hydrated gpio draft",
+        updatedAt: "2026-07-23T02:00:00.000Z"
+      },
+      {
+        id: "draft-mt5788",
+        projectId: "aurora",
+        parameterId: "binding-mt5788-gpio-int",
+        projectParameterBindingId: "binding-mt5788-gpio-int",
+        candidateConfigRevisionId: sharedTip,
+        targetValue: "<&gpio6 16 0>",
+        action: "set" as const,
+        reason: "Hydrated mt5788 draft",
+        updatedAt: "2026-07-23T02:01:00.000Z"
+      }
+    ]);
+    const repository = createRepository();
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listDrafts={listDrafts}
+        listWorkflowAssignees={vi.fn().mockResolvedValue({
+          hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+          softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+          softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+        })}
+      />
+    );
+
+    await waitFor(() => expect(listDrafts).toHaveBeenCalledWith("aurora"));
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-revision-id",
+        sharedTip
+      )
+    );
+
+    const tray = await screen.findByRole("region", { name: "绑定变更提交" });
+    expect(within(tray).getByText(/本轮 2 项 · 同一工作版本/)).toBeVisible();
+    expect(within(tray).getByText("Hydrated gpio draft")).toBeVisible();
+    expect(within(tray).getByText("Hydrated mt5788 draft")).toBeVisible();
+  });
+
+  it("does not hydrate preferredRevision when reload drafts have mixed working tips", async () => {
+    const listDrafts = vi.fn().mockResolvedValue([
+      {
+        id: "draft-gpio",
+        projectId: "aurora",
+        parameterId: "binding-sc8562-gpio-int",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        candidateConfigRevisionId: "rev-tip-a",
+        targetValue: "<&gpio13 30 0>",
+        action: "set" as const,
+        reason: "Hydrated gpio draft",
+        updatedAt: "2026-07-23T02:00:00.000Z"
+      },
+      {
+        id: "draft-mt5788",
+        projectId: "aurora",
+        parameterId: "binding-mt5788-gpio-int",
+        projectParameterBindingId: "binding-mt5788-gpio-int",
+        candidateConfigRevisionId: "rev-tip-b",
+        targetValue: "<&gpio6 16 0>",
+        action: "set" as const,
+        reason: "Hydrated mt5788 draft",
+        updatedAt: "2026-07-23T02:01:00.000Z"
+      }
+    ]);
+    const repository = createRepository();
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listDrafts={listDrafts}
+        listWorkflowAssignees={vi.fn().mockResolvedValue({
+          hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+          softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+          softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+        })}
+      />
+    );
+
+    await waitFor(() => expect(listDrafts).toHaveBeenCalledWith("aurora"));
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-revision-id",
+        "rev-real-1"
+      )
+    );
+
+    const tray = await screen.findByRole("region", { name: "绑定变更提交" });
+    expect(within(tray).getByRole("alert")).toHaveTextContent(/不在同一工作版本上.*无法一起提交/);
+    expect(within(tray).getByText("2 项")).toBeVisible();
+    expect(within(tray).queryByText(/本轮 2 项 · 同一工作版本/)).not.toBeInTheDocument();
   });
 
   it("shows empty state when no config set exists", async () => {
@@ -685,6 +798,107 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(screen.queryByText(/映射已确认/)).not.toBeInTheDocument();
   });
 
+  it("aligns same-project pending drafts to the shared working tip after create", async () => {
+    const createBindingDraft = vi.fn()
+      .mockResolvedValueOnce({
+        draftId: "draft-gpio",
+        parameterId: "binding-sc8562-gpio-int",
+        candidateRevisionId: "candidate-gpio",
+        workingCandidateRevisionId: "working-tip-1",
+        rebasedDraftIds: [],
+        rawText: "<&gpio13 30 0>",
+        action: "set" as const,
+        parameterSpecId: "spec-sc8562-gpio-int",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "sc8562" },
+        overlayFileId: "file-overlay",
+        overlayFileName: "overlay.dts"
+      })
+      .mockResolvedValueOnce({
+        draftId: "draft-status",
+        parameterId: "binding-mt5788-gpio-int",
+        candidateRevisionId: "candidate-mt5788",
+        workingCandidateRevisionId: "working-tip-2",
+        rebasedDraftIds: ["draft-gpio"],
+        rawText: "<&gpio6 16 0>",
+        action: "set" as const,
+        parameterSpecId: "spec-mt5788-gpio-int",
+        projectParameterBindingId: "binding-mt5788-gpio-int",
+        writeTarget: { role: "overlay", propertyKey: "gpio_int", targetRef: "mt5788" },
+        overlayFileId: "file-overlay",
+        overlayFileName: "overlay.dts"
+      });
+    const repository = createRepository({
+      createBindingDraft,
+      getSpec: vi.fn().mockImplementation(async (specId: string) => ({
+        id: specId,
+        organizationId: "org-chargelab",
+        sourceKind: "vendor",
+        specificationKey: specId,
+        propertyKey: specId.includes("status") ? "status" : "gpio_int",
+        driverModule: "sc8562",
+        lifecycle: "active",
+        currentVersionId: "spec-version-1",
+        currentVersion: 1,
+        displayName: specId.includes("status") ? "status" : "gpio_int",
+        description: "",
+        valueShape: null,
+        schemaDefault: null,
+        exampleValue: null,
+        schemaNamespace: null,
+        units: null,
+        constraints: null,
+        documentation: null,
+        compatiblePatterns: null,
+        policyTarget: null
+      }))
+    });
+    const { fireEvent } = await import("@testing-library/react");
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listWorkflowAssignees={vi.fn().mockResolvedValue({
+          hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+          softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+          softwareUsers: [{ id: "u-user", name: "Software Merger" }]
+        })}
+        submitBindingChanges={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    await screen.findByRole("treeitem", { name: /未分类 · sc8562/ });
+    let workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
+    await createGpioDraftFromWorkbench(workspace, fireEvent, {
+      reason: "First binding draft",
+      rawValue: "<&gpio13 30 0>"
+    });
+    await screen.findByRole("region", { name: "绑定变更提交" });
+
+    workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · mt5788/ }));
+    await createGpioDraftFromWorkbench(workspace, fireEvent, {
+      reason: "Second binding draft",
+      rawValue: "<&gpio6 16 0>",
+      editButtonName: /编辑 gpio_int（未分类 · mt5788/
+    });
+    await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
+
+    const tray = await screen.findByRole("region", { name: "绑定变更提交" });
+    expect(within(tray).getByText(/本轮 2 项 · 同一工作版本/)).toBeVisible();
+    expect(within(tray).queryByText("技术身份")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+      "data-revision-id",
+      "working-tip-2"
+    );
+    const submitButton = within(tray).getByRole("button", { name: "提交审核" });
+    await waitFor(() => expect(submitButton).toBeEnabled());
+  });
+
   it("submits a typed binding draft with server-filtered role assignees", async () => {
     const repository = createRepository({
       createBindingDraft: vi.fn().mockResolvedValue({
@@ -827,9 +1041,12 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(diff).getByText("<&gpio13 29 0>")).toBeVisible();
     expect(within(diff).getByText("<&gpio13 31 0>")).toBeVisible();
     expect(within(tray).queryByText("candidate-first")).not.toBeInTheDocument();
-    fireEvent.click(within(tray).getByText("技术身份"));
-    expect(within(tray).getByText("candidate-replacement")).toBeVisible();
-    expect(within(tray).getByText("1 项")).toBeVisible();
+    expect(within(tray).queryByText("技术身份")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+      "data-revision-id",
+      "candidate-replacement"
+    );
+    expect(within(tray).getByText(/本轮 1 项 · 同一工作版本/)).toBeVisible();
   });
 
   it("locks only the submitting project until the real submit mutation settles", async () => {
@@ -886,11 +1103,11 @@ describe("ApiProjectTopologyWorkspace", () => {
 
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
-    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int/ }));
+    fireEvent.click(within(workspace).getByRole("button", { name: /查看 gpio_int（未分类 · sc8562/ }));
     const detail = screen.getByRole("dialog", { name: /参数详情/ });
     expect(within(detail).queryByLabelText("目标值")).not.toBeInTheDocument();
     expect(within(detail).queryByRole("button", { name: /加入草稿/ })).not.toBeInTheDocument();
-    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).not.toBeInTheDocument();
     expect(createBindingDraft).toHaveBeenCalledTimes(1);
 
     rerender(
@@ -911,7 +1128,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
-    expect(within(workspace).getByRole("button", { name: /编辑 gpio_int/ })).toBeEnabled();
+    expect(within(workspace).getByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).toBeEnabled();
 
     rerender(
       <ApiProjectTopologyWorkspace
@@ -931,14 +1148,14 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
-    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).not.toBeInTheDocument();
 
     await act(async () => {
       resolveSubmit();
       await pendingSubmit;
     });
     await waitFor(() => {
-      expect(within(workspace).getByRole("button", { name: /编辑 gpio_int/ })).toBeEnabled();
+      expect(within(workspace).getByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).toBeEnabled();
     });
   });
 
@@ -1009,7 +1226,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(tray).getByRole("alert", { hidden: true })).toHaveTextContent(/正在创建 typed draft/);
     fireEvent.click(blockedSubmit);
     expect(submitBindingChanges).not.toHaveBeenCalled();
-    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).not.toBeInTheDocument();
     expect(createBindingDraft).toHaveBeenCalledTimes(2);
 
     rerender(
@@ -1030,7 +1247,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
-    expect(within(workspace).getByRole("button", { name: /编辑 gpio_int/ })).toBeEnabled();
+    expect(within(workspace).getByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).toBeEnabled();
 
     rerender(
       <ApiProjectTopologyWorkspace
@@ -1050,7 +1267,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
-    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int/ })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("button", { name: /编辑 gpio_int（未分类 · sc8562/ })).not.toBeInTheDocument();
 
     await act(async () => {
       resolveReplacement({
