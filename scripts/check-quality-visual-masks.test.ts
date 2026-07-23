@@ -7,7 +7,7 @@ describe("quality visual masks", () => {
     const helpers = readFileSync("e2e/quality/helpers.ts", "utf8");
     const visualSpec = readFileSync("e2e/quality/visual.quality.spec.ts", "utf8");
 
-    expect(helpers).toContain(".parameters-table-grid tbody");
+    expect(helpers).toContain(".dts-parameter-workbench-table, .dts-workbench-list");
     expect(helpers).toMatch(/routePath\s*===\s*"\/parameters"/);
     expect(visualSpec).toContain("stableMasks(page, route.path)");
   });
