@@ -371,7 +371,8 @@ describe("buildDtsWorkbenchRows", () => {
       bindings: [binding],
       sourceNodes: missingSourceNodes,
       effectiveNodes: missingEffectiveNodes,
-      mappingTasks: []
+      mappingTasks: [],
+      includeNonSurface: true
     });
     const [missingSourceRow] = buildDtsWorkbenchRows({
       projectId: "project-aurora",
@@ -380,7 +381,8 @@ describe("buildDtsWorkbenchRows", () => {
       bindings: [binding],
       sourceNodes: missingSourceNodes,
       effectiveNodes: missingEffectiveNodes,
-      mappingTasks: []
+      mappingTasks: [],
+      includeNonSurface: true
     });
 
     expect(missingEffectiveRow.topologyPath).toBeNull();
@@ -400,7 +402,8 @@ describe("buildDtsWorkbenchRows", () => {
       bindings: [binding],
       sourceNodes: cyclicSourceNodes,
       effectiveNodes: cyclicEffectiveNodes,
-      mappingTasks: []
+      mappingTasks: [],
+      includeNonSurface: true
     });
     const [cyclicSourceRow] = buildDtsWorkbenchRows({
       projectId: "project-aurora",
@@ -409,7 +412,8 @@ describe("buildDtsWorkbenchRows", () => {
       bindings: [binding],
       sourceNodes: cyclicSourceNodes,
       effectiveNodes,
-      mappingTasks: []
+      mappingTasks: [],
+      includeNonSurface: true
     });
 
     expect(cyclicRow.topologyPath).toBeNull();
@@ -553,5 +557,80 @@ describe("buildDtsWorkbenchRows", () => {
     });
 
     expect(rows.map((row) => row.propertyKey)).toEqual(["gpio_int", "#address-cells"]);
+  });
+
+  it("excludes scaffolding module `/` and bindings with missing topology locator from the default surface", () => {
+    const boardBinding: ProjectParameterBinding = {
+      ...binding,
+      id: "binding-board-id",
+      propertyKey: "board_id",
+      logicalNodeId: "logical-root",
+      moduleId: "pmod-slash",
+      instanceName: "/",
+      driverModule: null
+    };
+    const orphanBinding: ProjectParameterBinding = {
+      ...binding,
+      id: "binding-orphan",
+      propertyKey: "orphan_prop",
+      logicalNodeId: "logical-missing",
+      moduleId: "pmod-unclassified"
+    };
+    const registry: ParameterModuleRegistry = {
+      modules: [
+        {
+          id: "pmod-slash",
+          parentId: "pmod-unclassified",
+          name: "/",
+          sortOrder: 1,
+          importance: "low"
+        },
+        {
+          id: "pmod-unclassified",
+          parentId: null,
+          name: "未分类",
+          sortOrder: 999,
+          importance: "low"
+        },
+        {
+          id: "pmod-board",
+          parentId: "pmod-board-identity",
+          name: "board",
+          sortOrder: 1,
+          importance: "low"
+        },
+        {
+          id: "pmod-board-identity",
+          parentId: null,
+          name: "Board Identity",
+          sortOrder: 10,
+          importance: "low"
+        }
+      ],
+      mappings: []
+    };
+    const managedBoardBinding: ProjectParameterBinding = {
+      ...binding,
+      id: "binding-board-id-managed",
+      propertyKey: "board_id",
+      logicalNodeId: "logical-root",
+      moduleId: "pmod-board",
+      instanceName: "board",
+      driverModule: null
+    };
+
+    const rows = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [binding, boardBinding, orphanBinding, managedBoardBinding],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: [],
+      moduleRegistry: registry
+    });
+
+    expect(rows.map((row) => row.propertyKey)).toEqual(["gpio_int", "board_id"]);
+    expect(rows.find((row) => row.propertyKey === "board_id")?.moduleName).toBe("board");
   });
 });

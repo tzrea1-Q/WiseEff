@@ -19,6 +19,30 @@ describe("parameterSurface", () => {
     expect(isScaffoldingLocator("/spmi/pmic@0/hi6xxx_coul/batt")).toBe(false);
   });
 
+  it("includes root board_id but excludes scaffolding module name `/` and unknown locators", () => {
+    expect(
+      isParameterSurfaceRow({
+        propertyKey: "board_id",
+        locator: "/",
+        moduleName: "board"
+      })
+    ).toBe(true);
+    expect(
+      isParameterSurfaceRow({
+        propertyKey: "board_id",
+        locator: "/",
+        moduleName: "/"
+      })
+    ).toBe(false);
+    expect(
+      isParameterSurfaceRow({
+        propertyKey: "orphan_prop",
+        locator: null,
+        moduleName: "未分类"
+      })
+    ).toBe(false);
+  });
+
   it("includes batt business props and excludes scaffolding cells", () => {
     expect(
       isParameterSurfaceRow({

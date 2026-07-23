@@ -391,7 +391,12 @@ export function buildDtsPowerSeed(baseSource: string): DtsPowerSeed {
         id: parameterId(sourceNodePath),
         name: property.name,
         driverModule: node.compatible ?? node.name,
-        instanceName: node.unitAddress ? `${node.name}@${node.unitAddress}` : node.name,
+        instanceName:
+          node.name === "/" || !node.nodePath
+            ? BOARD_INSTANCE_MODULE_NAME
+            : node.unitAddress
+              ? `${node.name}@${node.unitAddress}`
+              : node.name,
         nodeLocator: node.nodePath,
         description: metadata.description,
         explanation: metadata.explanation,
@@ -516,6 +521,13 @@ export function buildSeedModuleMappings(resolved: ResolvedDts): DtsPowerSeedModu
   putMapping({
     matchKind: "instance",
     matchValue: BOARD_INSTANCE_MODULE_NAME,
+    moduleName: BOARD_INSTANCE_MODULE_NAME,
+    priority: 500,
+  });
+  // Legacy / re-ingest safety: DTS root nodename must never become a product module named "/".
+  putMapping({
+    matchKind: "instance",
+    matchValue: "/",
     moduleName: BOARD_INSTANCE_MODULE_NAME,
     priority: 500,
   });

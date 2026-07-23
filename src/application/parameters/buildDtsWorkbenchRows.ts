@@ -316,7 +316,6 @@ export function buildDtsWorkbenchRows({
       return false;
     }
     const locator = row.topologyPath ?? row.sourceNodePath;
-    if (!locator) return true;
     return isParameterSurfaceRow({
       propertyKey: row.propertyKey,
       locator,
