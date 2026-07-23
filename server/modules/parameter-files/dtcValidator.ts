@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { resolveDtsToolchainCommands } from "./dtsToolchain";
+
 export type ValidationMode = "block" | "warn" | "off";
 
 export interface DtcDiagnostic {
@@ -172,8 +174,9 @@ function runProcess(
 
 function createDefaultWhichDtc(spawnFn: SpawnFn): () => Promise<string | null> {
   return async () => {
-    const result = await runProcess(spawnFn, "dtc", ["-v"], { cwd: tmpdir(), env: minimalEnv() }, 3_000);
-    return result.spawnError ? null : "dtc";
+    const dtcPath = resolveDtsToolchainCommands().dtc;
+    const result = await runProcess(spawnFn, dtcPath, ["--version"], { cwd: tmpdir(), env: minimalEnv() }, 3_000);
+    return result.spawnError || result.code !== 0 ? null : dtcPath;
   };
 }
 
