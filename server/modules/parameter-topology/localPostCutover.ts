@@ -25,6 +25,44 @@ export type LocalPostCutoverResult =
   | { status: "already-complete" }
   | { status: "applied"; migrationRunId: string };
 
+export type LocalPostCutoverBootEnv = {
+  NODE_ENV?: string;
+  WISEEFF_LOCAL_POST_CUTOVER?: string;
+  WISEEFF_SEED_LEGACY_FLAT_IDENTITY?: string;
+};
+
+/**
+ * Whether `dev:api` should run local post-cutover before listen.
+ * Default on for NODE_ENV=development; never for production; off for test unless
+ * WISEEFF_LOCAL_POST_CUTOVER=1. Opt out with WISEEFF_LOCAL_POST_CUTOVER=0 or
+ * WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1 (dual-track rehearsal).
+ */
+export function shouldEnsureLocalPostCutoverOnApiBoot(
+  env: LocalPostCutoverBootEnv = process.env
+): boolean {
+  const nodeEnv = env.NODE_ENV ?? "development";
+  const flag = env.WISEEFF_LOCAL_POST_CUTOVER?.trim();
+  if (flag === "0" || flag === "false" || flag === "off") return false;
+  if (env.WISEEFF_SEED_LEGACY_FLAT_IDENTITY?.trim() === "1") return false;
+  if (nodeEnv === "production") return false;
+  if (nodeEnv === "test") return flag === "1" || flag === "true" || flag === "on";
+  return true;
+}
+
+/**
+ * Run local post-cutover when the boot gate is enabled. Callers should exit the
+ * process on failure so a dirty dual-track DB cannot serve typed submit.
+ */
+export async function maybeEnsureLocalPostCutoverOnApiBoot(
+  db: Queryable,
+  env: LocalPostCutoverBootEnv = process.env
+): Promise<LocalPostCutoverResult | { status: "skipped" }> {
+  if (!shouldEnsureLocalPostCutoverOnApiBoot(env)) {
+    return { status: "skipped" };
+  }
+  return ensureLocalPostCutoverIdentity(db);
+}
+
 async function countRows(db: Queryable, sql: string): Promise<number> {
   try {
     const result = await db.query<{ c: string }>(sql);
