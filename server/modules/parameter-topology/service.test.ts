@@ -166,6 +166,27 @@ describe("parameter topology service org scope", () => {
     });
   });
 
+  it("getBindingHistory omits no-op config-revision snapshots that did not change raw value", async () => {
+    vi.mocked(getProjectById).mockResolvedValue({ id: "project-1", name: "Project", code: "P1" });
+    vi.mocked(getBindingForProject).mockResolvedValue({ id: "binding-1" });
+    vi.mocked(listBindingRevisionRows).mockResolvedValue([
+      { id: "rev-1", configRevisionId: "cr-1", revisionNumber: 1, rawValue: "<0>", createdAt: "2026-01-01T00:00:00.000Z" },
+      { id: "rev-2", configRevisionId: "cr-2", revisionNumber: 2, rawValue: "<0>", createdAt: "2026-01-02T00:00:00.000Z" },
+      { id: "rev-3", configRevisionId: "cr-3", revisionNumber: 3, rawValue: "<1>", createdAt: "2026-01-03T00:00:00.000Z" },
+      { id: "rev-4", configRevisionId: "cr-4", revisionNumber: 4, rawValue: "<1>", createdAt: "2026-01-04T00:00:00.000Z" }
+    ]);
+
+    const result = await getBindingHistory(makeDb(), makeAuth(), {
+      projectId: "project-1",
+      bindingId: "binding-1"
+    });
+
+    expect(result.items).toEqual([
+      { id: "rev-3", changedAt: "2026-01-03T00:00:00.000Z", fromRawValue: "<0>", toRawValue: "<1>" },
+      { id: "rev-1", changedAt: "2026-01-01T00:00:00.000Z", fromRawValue: null, toRawValue: "<0>" }
+    ]);
+  });
+
   it("getBindingHistory returns 404 when the project is outside the caller organization", async () => {
     vi.mocked(getProjectById).mockResolvedValue(null);
 

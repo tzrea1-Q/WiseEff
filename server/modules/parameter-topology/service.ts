@@ -265,7 +265,9 @@ export type BindingHistoryItem = {
 
 /**
  * Per-binding change history sourced from `project_parameter_binding_revisions` only.
- * Adjacent revision raw values become from→to change entries; results are newest-first.
+ * Config-revision tip rows remain in storage; this read path collapses adjacent
+ * snapshots whose raw value did not change so callers see value changes only.
+ * Results are newest-first; the initial tip is kept with `fromRawValue: null`.
  */
 export async function getBindingHistory(
   db: Database,
@@ -305,12 +307,21 @@ export async function getBindingHistory(
     return a.createdAt.localeCompare(b.createdAt);
   });
 
-  const items: BindingHistoryItem[] = ordered.map((row, index) => ({
-    id: row.id,
-    changedAt: row.createdAt,
-    fromRawValue: index === 0 ? null : ordered[index - 1].rawValue ?? null,
-    toRawValue: row.rawValue ?? null
-  }));
+  const items: BindingHistoryItem[] = [];
+  let lastEmittedRaw: string | null | undefined;
+  for (const row of ordered) {
+    const toRawValue = row.rawValue ?? null;
+    if (lastEmittedRaw !== undefined && lastEmittedRaw === toRawValue) {
+      continue;
+    }
+    items.push({
+      id: row.id,
+      changedAt: row.createdAt,
+      fromRawValue: lastEmittedRaw === undefined ? null : lastEmittedRaw,
+      toRawValue
+    });
+    lastEmittedRaw = toRawValue;
+  }
 
   items.reverse();
   return { items };
