@@ -4,6 +4,7 @@ import { loadServerEnv } from "../server/config/env";
 import { createPostgresDatabase } from "../server/shared/database/client";
 import type { Database } from "../server/shared/database/client";
 import { seedBaselinePlatformRoles } from "../server/modules/auth/baselineCatalog";
+import { seedLocalDemoCredentials } from "../server/modules/auth/seedLocalDemoCredentials";
 
 const organizationId = "org-chargelab";
 
@@ -53,6 +54,8 @@ export async function seedM0Foundation(db: Database) {
     `,
     ["urb-xu-admin", "u-xu-yun", organizationId, "admin"]
   );
+
+  return seedLocalDemoCredentials(db);
 }
 
 async function main() {
@@ -62,8 +65,13 @@ async function main() {
     throw new Error("DATABASE_URL is required to seed M0 data.");
   }
 
-  await seedM0Foundation(createPostgresDatabase(env.DATABASE_URL));
+  const demo = await seedM0Foundation(createPostgresDatabase(env.DATABASE_URL));
   console.log("Seeded M0 WiseEff data.");
+  if (demo.seeded) {
+    console.log(`Seeded ${demo.count} local demo login credentials (development only).`);
+  } else {
+    console.log("Skipped local demo login credentials (NODE_ENV is not development).");
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
