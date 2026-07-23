@@ -11,6 +11,7 @@ import {
   FileText,
   History,
   Info,
+  Link2,
   ListChecks,
   MessageSquareText,
   PanelLeftClose,
@@ -132,6 +133,7 @@ import {
   isReviewHistoryForRole,
   splitChangeRequestsForReviewQueue
 } from "@/domain/parameters/reviewQueue";
+import { isValidMergeLink } from "@/domain/parameters/mergeLink";
 import { buildDraftSubmissionRounds } from "@/domain/parameters/buildDraftSubmissionRounds";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
@@ -3520,7 +3522,7 @@ function getParameterInitializationReviewStatusLabel(status: ProjectParameterIni
 }
 
 type VerticalTimelineItem = {
-  body: string;
+  body: ReactNode;
   isCurrent?: boolean;
   marker?: string;
   time: string;
@@ -3980,6 +3982,7 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
   );
   const [rejectOpen, setRejectOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [mergeLink, setMergeLink] = useState("");
   const [reviewMode, setReviewMode] = useState<ParameterReviewMode>("pending");
   const [filterModules, setFilterModules] = useState<string[]>([]);
   const [filterSubmitters, setFilterSubmitters] = useState<string[]>([]);
@@ -4164,6 +4167,10 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
     selectedInitialization?.draft.parameterSnapshots.filter((snapshot) => snapshot.needsRecommendedValueConfirmation).length ?? 0;
 
   useEffect(() => {
+    setMergeLink("");
+  }, [selectedId]);
+
+  useEffect(() => {
     if (!contextQuery.module && !contextQuery.projectId) {
       return;
     }
@@ -4235,14 +4242,26 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
     if (!selected) {
       return;
     }
+    const requiresMergeLink = selected.status === "软件User合入";
+    const trimmedMergeLink = mergeLink.trim();
+    if (requiresMergeLink && !isValidMergeLink(trimmedMergeLink)) {
+      return;
+    }
     const input = {
       requestId: selected.id,
       decision: "advance" as const,
-      ...(selected.baseVersion !== undefined ? { expectedVersion: selected.baseVersion } : {})
+      ...(selected.baseVersion !== undefined ? { expectedVersion: selected.baseVersion } : {}),
+      ...(requiresMergeLink ? { note: trimmedMergeLink } : {})
     };
     const result = parameterActions
       ? await parameterActions.reviewChange(input)
-      : await Promise.resolve(dispatch({ type: "ADVANCE_REVIEW", requestId: selected.id }));
+      : await Promise.resolve(
+          dispatch({
+            type: "ADVANCE_REVIEW",
+            requestId: selected.id,
+            ...(requiresMergeLink ? { note: trimmedMergeLink } : {})
+          })
+        );
     dispatchParameterActionFailure(result);
   };
   const openSubmissionDetail = (request: ChangeRequest) => {
@@ -4262,8 +4281,24 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
   const canActOnSelectedReview = selected ? canActOnReviewRequest(reviewerRoleId, selected) : false;
   const canRejectSelectedReview = canPerform(reviewerRoleId, "parameter.review");
   const reviewPageTitle = canPerform(reviewerRoleId, "parameter.review") ? "参数管理员工作台" : "参数合入工作台";
+  const mergeUrl =
+    selected?.status === "已合入" && selected.reviewerNote && isValidMergeLink(selected.reviewerNote)
+      ? selected.reviewerNote.trim()
+      : null;
   const selectedWorkflowItems: VerticalTimelineItem[] = selected
     ? (() => {
+        const softwareUserBody: ReactNode = mergeUrl ? (
+          <>
+            {formatWorkflowDisplayText(
+              `软件开发人员：${getUserName(state.users, selected.workflowAssignees?.softwareUserId)}。合入链接：`
+            )}
+            <a href={mergeUrl} target="_blank" rel="noopener noreferrer">
+              {mergeUrl}
+            </a>
+          </>
+        ) : (
+          `软件开发人员：${getUserName(state.users, selected.workflowAssignees?.softwareUserId)}。`
+        );
         const workflowItems: VerticalTimelineItem[] = [
           {
             time: "流程 1",
@@ -4278,7 +4313,7 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
           {
             time: "流程 3",
             title: "软件User合入",
-            body: `软件开发人员：${getUserName(state.users, selected.workflowAssignees?.softwareUserId)}。`
+            body: softwareUserBody
           }
         ];
         const currentWorkflowIndex = workflowItems.findIndex((item) => item.title === selected.status);
@@ -4589,13 +4624,50 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
                 <p>{selected.rejectReason}</p>
               </div>
             ) : null}
+            {mergeUrl ? (
+              <div className="merge-link-card">
+                <SectionLabel icon={<Link2 size={16} />} label="合入链接" />
+                <p>
+                  <a href={mergeUrl} target="_blank" rel="noopener noreferrer">
+                    {mergeUrl}
+                  </a>
+                </p>
+              </div>
+            ) : null}
             <div className="detail-card grow">
               <SectionLabel icon={<History size={16} />} label="变更历史" />
               <VerticalTimeline items={selectedWorkflowItems} />
             </div>
             {reviewMode === "pending" && canActOnSelectedReview ? (
               <div className="action-panel">
-                <Button className="full" type="button" onClick={advanceSelected}>
+                {selected.status === "软件User合入" ? (
+                  <div className="review-merge-link">
+                    <label htmlFor="review-merge-link">合入链接</label>
+                    <input
+                      id="review-merge-link"
+                      type="url"
+                      inputMode="url"
+                      autoComplete="off"
+                      placeholder="https://"
+                      value={mergeLink}
+                      onChange={(event) => setMergeLink(event.target.value)}
+                      aria-invalid={mergeLink.trim().length > 0 && !isValidMergeLink(mergeLink)}
+                    />
+                    {mergeLink.trim().length > 0 && !isValidMergeLink(mergeLink) ? (
+                      <span className="review-merge-link__hint" role="status">
+                        请输入有效的 http(s) 合入链接
+                      </span>
+                    ) : (
+                      <span className="review-merge-link__hint">确认合入前必须填写可访问的合入链接</span>
+                    )}
+                  </div>
+                ) : null}
+                <Button
+                  className="full"
+                  type="button"
+                  disabled={selected.status === "软件User合入" && !isValidMergeLink(mergeLink)}
+                  onClick={() => void advanceSelected()}
+                >
                   <CheckCircle2 size={17} />
                   {canPerform(reviewerRoleId, "parameter.merge") && !canPerform(reviewerRoleId, "parameter.review")
                     ? "确认合入"
@@ -5861,7 +5933,7 @@ function VerticalTimeline({ items }: { items: VerticalTimelineItem[] }) {
             {marker ? <span className="vertical-timeline-current-badge">{marker}</span> : null}
           </div>
           <strong>{formatWorkflowDisplayText(title)}</strong>
-          <p>{formatWorkflowDisplayText(body)}</p>
+          <p>{typeof body === "string" ? formatWorkflowDisplayText(body) : body}</p>
         </div>
       ))}
     </div>
