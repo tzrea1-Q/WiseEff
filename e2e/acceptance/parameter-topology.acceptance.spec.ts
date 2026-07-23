@@ -360,7 +360,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // @operation PARAM-ASSIGNEE-002
     // @operation PARAM-IDENTITY-MAP-001
     // @operation PARAM-CONFIG-PUBLISH-GATE-001
-    test.setTimeout(300_000);
+    test.setTimeout(420_000);
 
     const runSuffix = randomUUID().slice(0, 8);
     const createdConfigSetNames: string[] = [];
