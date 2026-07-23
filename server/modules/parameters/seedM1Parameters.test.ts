@@ -100,13 +100,19 @@ function createSeedDatabase(existing?: ExistingProjectParameterValue) {
 
         if (!historyEntries.some((entry) => entry.projectParameterValueId === projectParameterValueId && entry.version === version)) {
           historyEntries.push({ id, projectParameterValueId, version, value });
-          return { rows: [], rowCount: 1 };
         }
-
-        return { rows: [], rowCount: 0 };
+        return { rows: [] as Row[], rowCount: 1 };
       }
 
-      return { rows: [], rowCount: 1 };
+      if (text.includes("from parameter_modules") && text.includes("where organization_id")) {
+        return { rows: [] as Row[], rowCount: 0 };
+      }
+
+      if (text.includes("insert into parameter_modules") && text.includes("returning id")) {
+        return { rows: [{ id: values[0] } as Row], rowCount: 1 };
+      }
+
+      return { rows: [] as Row[], rowCount: 1 };
     }
   };
 
@@ -115,7 +121,7 @@ function createSeedDatabase(existing?: ExistingProjectParameterValue) {
     transaction: async (fn) => fn(tx)
   };
 
-  return { db, historyEntries, queries };
+  return { db, queries, historyEntries };
 }
 
 describe("parsePowerManagementConfig", () => {
@@ -142,6 +148,15 @@ describe("seedM1Parameters", () => {
     );
   });
 
+  it("does not seed flat definitions by default", async () => {
+    const { db, queries } = createSeedDatabase();
+
+    await seedM1Parameters(db, config);
+
+    expect(queries.some((call) => call.text.includes("insert into parameter_definitions"))).toBe(false);
+    expect(queries.some((call) => call.text.includes("insert into project_parameter_values"))).toBe(false);
+  });
+
   it("uses the returned project parameter value id when inserting history", async () => {
     const { db, historyEntries } = createSeedDatabase({
       id: "legacy-value-id",
@@ -150,7 +165,7 @@ describe("seedM1Parameters", () => {
       valueVersion: 1
     });
 
-    await seedM1Parameters(db, config);
+    await seedM1Parameters(db, config, { includeLegacyFlatIdentity: true });
 
     expect(historyEntries).toContainEqual({
       id: "legacy-value-id-history-v2",
@@ -163,7 +178,7 @@ describe("seedM1Parameters", () => {
   it("seeds the hierarchical module catalog and exact DTS source binding", async () => {
     const { db, queries } = createSeedDatabase();
 
-    await seedM1Parameters(db, config);
+    await seedM1Parameters(db, config, { includeLegacyFlatIdentity: true });
 
     const moduleInserts = queries.filter((call) => call.text.includes("insert into parameter_modules"));
     expect(moduleInserts).toHaveLength(2);
@@ -187,7 +202,7 @@ describe("seedM1Parameters", () => {
       valueVersion: 1
     });
 
-    await seedM1Parameters(db, config);
+    await seedM1Parameters(db, config, { includeLegacyFlatIdentity: true });
 
     expect(historyEntries).toHaveLength(1);
     expect(historyEntries[0]).toMatchObject({ version: 1, value: "3200" });

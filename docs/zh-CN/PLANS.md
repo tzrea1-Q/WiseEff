@@ -19,6 +19,7 @@
 - `exec-plans/active/2026-07-16-parameter-topology-round6-review-blockers.md`：第六轮 Review 阻断——历史 scope 校正、无损规格 ID、全局规格激活权限、完整 valueShape、真实 merge 验收、cleanup 租户隔离、稳定 test:all（分支 `fix/parameter-topology-round6-review-blockers`）。TD-042 仍为 BLOCKER。
 - `exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md`：以成熟参数工作台重新承载 API 模式参数页面，深度融合嵌套 DTS 拓扑、语义 binding 行、来源链、类型化草稿、响应式 UX 和可见验收，不恢复扁平身份。
 - `exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md`：产品边界纠偏——可管参数面、模块→参数 UX、维护项目 DTS、工具链 L2 离开编辑热路径（见 RFC 与裁剪矩阵；中文摘要 `docs/zh-CN/exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md`）。
+- `exec-plans/active/2026-07-23-local-post-cutover-seed.md`：本地 `db:seed:m1` / `dev:all` 默认语义-only + 本地 post-cutover，typed binding 可提交审核（分支 `feat/local-post-cutover-seed`）。
 - `exec-plans/active/2026-07-21-retire-synthetic-base-dts.md`：退役平台合成基 `wiseeff-power-base.dts`；seed/写回 = 每项目一份项目主 DTS；管理员只维护模块↔驱动（见 RFC；中文摘要 `docs/zh-CN/exec-plans/active/2026-07-21-retire-synthetic-base-dts.md`）。
 - `exec-plans/active/2026-07-21-instance-submodule-seed.md`：Type U/N/C 实例子模块 + 驱动组；ingest ensure；未映射驱动 Admin 发现队列（中文摘要 `docs/zh-CN/exec-plans/active/2026-07-21-instance-submodule-seed.md`）。
 - **分支与 PR：** 实现型子智能体只在从 `main` 切出的 feature branch 上开发并本地 commit；不得 push `main`、不得开/合 GitHub PR。由父智能体 review 后提 PR、合并，再 `git pull` 同步本地 `main`。细则见英文版 `docs/PLANS.md` § Git Branch & PR Workflow。
