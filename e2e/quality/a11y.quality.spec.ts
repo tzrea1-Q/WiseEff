@@ -65,11 +65,11 @@ test.describe("M5.11 accessibility quality gate", () => {
     await page.setViewportSize({ width: 900, height: 1024 });
     await page.goto("/parameters");
     await prepareInteractionSurface(page);
-    const workspace = page.getByRole("region", { name: "项目拓扑工作区" });
+    const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
     await expect(workspace).toBeVisible({ timeout: 15_000 });
-    await workspace.getByRole("searchbox", { name: "搜索绑定" }).fill("gpio_int");
-    await workspace.getByRole("cell", { name: "gpio_int" }).first().click();
-    await expect(page.getByRole("dialog", { name: "绑定详情" })).toBeVisible();
+    await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
+    await workspace.getByRole("button", { name: /查看 gpio_int/ }).first().click();
+    await expect(page.getByRole("dialog", { name: /gpio_int 参数详情/ })).toBeVisible();
     await scan(page, testInfo, "parameter-binding-detail-dialog");
 
     await page.setViewportSize({ width: 1440, height: 900 });
