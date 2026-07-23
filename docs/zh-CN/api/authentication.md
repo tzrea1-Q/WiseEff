@@ -80,7 +80,7 @@ AUTH_PROVIDER=local
 
 管理员创建用户不走自助注册，而是使用 `POST /api/v1/users`。请求包含 `name`、`username`、`password`、可选 `title` 和 `roles`；后端会在一个事务中创建用户、密码凭据、角色绑定和审计事件。这类账号会立即启用，包括 Committer/MDE 角色，因为该操作本身已经要求 `users:manage` 权限。响应和审计 metadata 都不能返回或记录明文密码、密码哈希。
 
-在本地开发 profile（`NODE_ENV=development`、`AUTH_MODE=production`、`AUTH_PROVIDER=local`）下，自助注册账号会刻意加入已 seed 的 `org-chargelab` / `ChargeLab` 演示组织，从而能看到本地种子参数、日志和调试数据。非开发的本地账号部署仍使用所选部门组织 id（`org-hardware-department` 或 `org-software-department`），以保留租户隔离语义。
+在本地开发 profile（`NODE_ENV=development`、`AUTH_MODE=production`、`AUTH_PROVIDER=local`）下，自助注册账号会刻意加入已 seed 的 `org-chargelab` / `ChargeLab` 演示组织，从而能看到本地种子参数、日志和调试数据。同一 development profile 下，`db:seed:m0` 还会为 ChargeLab 演示 persona upsert 固定 username 与共用演示密码（见 [本地开发](../developer/local-development.md) 中的演示登录说明）；非 development 的 seed 不写这些凭据。非开发的本地账号部署仍使用所选部门组织 id（`org-hardware-department` 或 `org-software-department`），以保留租户隔离语义。
 
 密码只以 salted `scrypt` 哈希保存在 `user_password_credentials`。只有登录成功或非 Committer 注册成功才会在响应中返回一次不透明的 `we_local_*` bearer token；待审批 Committer 注册和管理员创建本地账号都不会在创建响应中返回 session token。数据库 `auth_sessions` 只保存 SHA-256 token 哈希。会话会按服务 TTL 过期，退出登录会写入 `revoked_at`。注册、登录、退出、资料更新、管理员创建用户、角色替换和启停账号都会写审计事件。
 

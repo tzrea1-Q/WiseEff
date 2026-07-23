@@ -52,4 +52,30 @@ describe("M0 foundation seed contract", () => {
     expect(permissionsByRole.get("hardware-committer")).toEqual(expect.arrayContaining(hardwareUserPermissions));
     expect(permissionsByRole.get("software-committer")).toEqual(expect.arrayContaining(hardwareUserPermissions));
   });
+
+  it("writes demo password credentials when NODE_ENV is development", async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      const { db, calls } = createFakeDb();
+      await seedM0Foundation(db);
+      const credentialInserts = calls.filter((call) => call.text.includes("user_password_credentials"));
+      expect(credentialInserts).toHaveLength(7);
+      expect(credentialInserts.map((call) => call.values[1])).toContain("xu.yun");
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
+  it("does not write demo password credentials outside development", async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const { db, calls } = createFakeDb();
+      await seedM0Foundation(db);
+      expect(calls.some((call) => call.text.includes("user_password_credentials"))).toBe(false);
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
 });

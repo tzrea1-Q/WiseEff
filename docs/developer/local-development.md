@@ -117,6 +117,24 @@ Seeds are ordered by milestone:
 - `db:seed:m2`: log-analysis sample data.
 - `db:seed:m3`: simulator debugging device and catalog.
 
+### Development demo logins (API mode)
+
+When `NODE_ENV=development`, `db:seed:m0` upserts local usernames and a shared demo password for ChargeLab personas. Use these only on local developer databases.
+
+| Username | Persona |
+| --- | --- |
+| `xu.yun` | Admin (Xu Yun) |
+| `zhao.heng` | Hardware User |
+| `liu.min` | Software User |
+| `wang.jie` | Hardware Committer |
+| `chen.na` | Software User |
+| `li.peng` | Hardware Committer |
+| `sun.mei` | Software Committer |
+
+Shared password: `WiseEff-Dev!`
+
+Non-development seeds skip these credentials. Empty non-demo installs still use `npm run admin:bootstrap`.
+
 ## Manual Service Startup
 
 Use the manual commands when you want separate terminals or an existing PostgreSQL instance instead of Docker Compose.
