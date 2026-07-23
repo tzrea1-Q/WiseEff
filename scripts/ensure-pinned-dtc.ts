@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { cpus } from "node:os";
 import { dirname, join } from "node:path";
@@ -76,21 +76,27 @@ function buildAndInstallPinnedDtc(paths: PinnedDtcBinPaths, pinned: PinnedDtsToo
     );
   }
 
+  const toolchainRoot = dirname(paths.binDir);
+  const libDir = join(toolchainRoot, "lib");
+  const jobs = String(Math.max(2, cpus().length || 2));
+  const makeArgs = [
+    `PREFIX=${toolchainRoot}`,
+    // fdtoverlay is dynamically linked against libfdt; embed an absolute rpath so
+    // project-local binaries run without LD_LIBRARY_PATH.
+    `LDFLAGS=-Wl,-rpath,${libDir}`
+  ];
+
   console.log(`Building pinned dtc ${pinned.dtc.version} @ ${pinned.dtc.commit} into ${paths.binDir}`);
   checkoutPinnedSource(paths.sourceDir, pinned.dtc.commit);
   runRequired("make", ["clean"], paths.sourceDir);
-  runRequired("make", [`-j${Math.max(2, cpus().length || 2)}`], paths.sourceDir);
-
-  const builtDtc = join(paths.sourceDir, "dtc");
-  const builtOverlay = join(paths.sourceDir, "fdtoverlay");
-  if (!existsSync(builtDtc) || !existsSync(builtOverlay)) {
-    throw new Error(`Pinned dtc build finished but binaries are missing under ${paths.sourceDir}.`);
-  }
-
+  runRequired("make", [`-j${jobs}`, ...makeArgs], paths.sourceDir);
   mkdirSync(paths.binDir, { recursive: true });
-  copyFileSync(builtDtc, paths.dtc);
-  copyFileSync(builtOverlay, paths.fdtoverlay);
-  runRequired("chmod", ["+x", paths.dtc, paths.fdtoverlay], paths.binDir);
+  mkdirSync(libDir, { recursive: true });
+  runRequired("make", [...makeArgs, "install"], paths.sourceDir);
+
+  if (!existsSync(paths.dtc) || !existsSync(paths.fdtoverlay)) {
+    throw new Error(`Pinned dtc install finished but binaries are missing under ${paths.binDir}.`);
+  }
 
   if (!localBinariesMatchPin(paths, pinned.dtc.version)) {
     throw new Error(
