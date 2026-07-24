@@ -114,6 +114,10 @@ describe("DtsBindingDetailDialog", () => {
     expect(document.querySelector('[data-slot="dialog-overlay"]')).toHaveClass(
       "dts-binding-detail-dialog__overlay"
     );
+    expect(dialog.className).toMatch(/overflow-hidden/);
+    expect(dialog.className).not.toMatch(/overflow-y-auto/);
+    expect(dialog.querySelector(".dts-binding-detail-dialog__content")).toHaveClass("overflow-y-auto");
+    expect(within(dialog).getByRole("button", { name: "关闭参数详情" })).toBeInTheDocument();
     for (const heading of ["参数定义", "近期历史", "跨项目对比"]) {
       expect(within(dialog).getByRole("heading", { name: heading })).toBeInTheDocument();
     }
