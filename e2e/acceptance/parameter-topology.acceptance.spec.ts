@@ -551,14 +551,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
     await expect(workspace.getByRole("columnheader", { name: /所属模块/ })).toBeVisible();
     await workspace.getByRole("button", { name: "技术视图" }).click();
-    await expect(workspace.getByRole("tree", { name: "生效 DTS 拓扑" })).toBeVisible({
+    await expect(workspace.getByRole("tree", { name: "业务模块树" })).toBeVisible({
       timeout: 20_000
     });
-    await expect(workspace.getByRole("treeitem", { name: /amba/ }).first()).toBeVisible({
+    await expect(workspace.getByLabelText("DTS 源码")).toBeVisible({
       timeout: 20_000
     });
-    await expect(workspace.getByRole("treeitem", { name: /i2c@FDF5E000/ }).first()).toBeVisible();
-    await expect(workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first()).toBeVisible();
+    await expect(workspace.getByRole("tree", { name: "生效 DTS 拓扑" })).toHaveCount(0);
+    await workspace.getByRole("button", { name: "模块导航" }).click();
     await workspace.getByRole("button", { name: /查看 gpio_int/ }).first().click();
     const provenanceDetail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
     await expect(provenanceDetail.getByRole("heading", { name: "参数定义" })).toBeVisible();

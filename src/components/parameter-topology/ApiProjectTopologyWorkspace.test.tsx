@@ -1,6 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { IdentityMappingTask } from "@/domain/parameter-topology/types";
 import {
   TOPOLOGY_TEACHING_BINDINGS,
@@ -1613,5 +1614,55 @@ describe("ApiProjectTopologyWorkspace", () => {
     await waitFor(() => {
       expect(vi.mocked(repository.getTopology).mock.calls.length).toBeGreaterThan(topologyCallsBefore);
     });
+  });
+
+  it("loads project-primary DTS in tech view via parameter file repository", async () => {
+    const repository = createRepository();
+    const listConfigSets = vi.fn().mockResolvedValue([{ id: "dcs-default-aurora", name: "default" }]);
+    const parameterFileRepository = {
+      listFiles: vi.fn().mockResolvedValue([
+        {
+          id: "file-board",
+          projectId: "aurora",
+          fileName: "aurora-board.dts",
+          format: "dts",
+          enabled: true,
+          currentVersionId: "ver-1",
+          currentVersionNumber: 2,
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }
+      ]),
+      downloadVersion: vi.fn().mockResolvedValue({
+        contentType: "text/plain",
+        fileName: "aurora-board.dts",
+        bytes: new TextEncoder().encode('/ {\n  board_id = "aurora";\n};')
+      })
+    } as unknown as ParameterFileRepository;
+    const { fireEvent } = await import("@testing-library/react");
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+        parameterFileRepository={parameterFileRepository}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
+
+    await waitFor(() => expect(parameterFileRepository.listFiles).toHaveBeenCalledWith("aurora"));
+    await waitFor(() =>
+      expect(parameterFileRepository.downloadVersion).toHaveBeenCalledWith("aurora", "file-board", "ver-1")
+    );
+    expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
+    expect(screen.queryByRole("tree", { name: "生效 DTS 拓扑" })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/aurora-board\.dts · v2/).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
   });
 });
