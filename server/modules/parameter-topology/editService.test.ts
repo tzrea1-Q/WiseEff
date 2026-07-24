@@ -8,7 +8,12 @@ import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "./bindingService";
-import { createBindingDraft, resolveBindingWriteLock, unchangedSourceBytes } from "./editService";
+import {
+  applyLockedOverlayWriteback,
+  createBindingDraft,
+  resolveBindingWriteLock,
+  unchangedSourceBytes,
+} from "./editService";
 import { ingestConfigRevision } from "./ingestService";
 import type { ConfigRevisionManifest } from "./types";
 
@@ -2094,5 +2099,52 @@ describe.skipIf(!databaseAvailable)("precise occurrence CST writeback", () => {
     expect(candidateMembers.rows[1]?.file_version_id).toBe(includeVersionId);
     expect(candidateMembers.rows[2]?.file_version_id).toBe(overlayAVersionId);
     expect(candidateMembers.rows[3]?.file_version_id).not.toBe(overlayBVersionId);
+  });
+});
+
+describe.skipIf(!databaseAvailable)("applyLockedOverlayWriteback", () => {
+  let db: InMemoryTestDatabase | undefined;
+  let auth: AuthContext;
+
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await seedGraph(db);
+    auth = makeAuth();
+  });
+
+  afterEach(async () => {
+    await db?.rollback();
+    db = undefined;
+  });
+
+  it("persists product schema_state and policy_state enums on merge writeback", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth);
+    const writeLock = await resolveBindingWriteLock(db!, auth, { bindingId: fixture.binding.id });
+
+    const applied = await applyLockedOverlayWriteback(
+      db!,
+      auth,
+      {
+        lock: writeLock,
+        bindingId: fixture.binding.id,
+        parameterSpecId: SPEC_ID,
+        parameterSpecVersionId: SPEC_VERSION_ID,
+        mergedValue: "<3100>",
+      },
+      { toolchain: passToolchain, skipSemanticGates: true },
+    );
+
+    expect(applied.bindingRevisionId).toBeTruthy();
+
+    const stored = await db!.query<{ schema_state: string; policy_state: string }>(
+      `select schema_state, policy_state
+       from project_parameter_binding_revisions
+       where id = $1`,
+      [applied.bindingRevisionId],
+    );
+    expect(stored.rows[0]).toEqual({
+      schema_state: "valid",
+      policy_state: "not_applicable",
+    });
   });
 });

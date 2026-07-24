@@ -7,6 +7,7 @@ describe("normalizeBindingSchemaState", () => {
     expect(normalizeBindingSchemaState("valid")).toBe("valid");
     expect(normalizeBindingSchemaState("matched")).toBe("valid");
     expect(normalizeBindingSchemaState("reviewed")).toBe("valid");
+    expect(normalizeBindingSchemaState("merged")).toBe("valid");
   });
 
   it("keeps invalid and unreviewed, and fails closed for unknown or empty", () => {
