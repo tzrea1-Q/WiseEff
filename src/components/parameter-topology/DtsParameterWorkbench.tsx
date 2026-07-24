@@ -591,7 +591,7 @@ export function DtsParameterWorkbench({
             moduleJumpStatus
               ?? (dtsFindQuery.trim()
                 ? `匹配 ${findStatus.activeIndex} / ${findStatus.matchCount}`
-                : "DTS 源码查看")
+                : null)
           ) : (
             <>
               显示 {visibleRows.length} / {currentRows.length} 个参数
