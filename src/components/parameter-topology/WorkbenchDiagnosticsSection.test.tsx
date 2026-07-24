@@ -31,6 +31,7 @@ describe("WorkbenchDiagnosticsSection", () => {
     expect(
       within(section).getByText(/2 个悬空 overlay 引用已自锚定，参数仍可管理/)
     ).toBeVisible();
+    expect(within(section).queryByText(/\[warning\]/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Overlay target "&amba"/)).not.toBeInTheDocument();
     expect(screen.getByText("拓扑尚未就绪，无法提交编辑。")).toBeVisible();
 
@@ -39,6 +40,25 @@ describe("WorkbenchDiagnosticsSection", () => {
     );
     expect(within(section).getByText("&amba")).toBeVisible();
     expect(within(section).getByText("&charging_core")).toBeVisible();
+  });
+
+  it("can render dangling-only soft notice without product diagnostics", () => {
+    render(
+      <WorkbenchDiagnosticsSection
+        variant="dangling"
+        diagnostics={[
+          {
+            code: "dangling-reference",
+            severity: "warning",
+            message:
+              'Overlay target "&amba" is not defined in the uploaded file set; its properties are attached to a synthetic anchor node so parameters stay manageable (full-tree resolution unavailable until the definition is provided)'
+          }
+        ]}
+      />
+    );
+
+    expect(screen.getByRole("region", { name: "解析提示" })).toBeVisible();
+    expect(screen.getByText(/1 个悬空 overlay 引用已自锚定，参数仍可管理/)).toBeVisible();
   });
 
   it("renders nothing when diagnostics are empty", () => {

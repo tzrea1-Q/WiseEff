@@ -302,7 +302,7 @@ export function ProjectTopologyWorkspace({
         </section>
       ) : null}
 
-      <WorkbenchDiagnosticsSection diagnostics={diagnostics} />
+      <WorkbenchDiagnosticsSection diagnostics={diagnostics} variant="other" />
 
       <IdentityMappingReview tasks={mappingTasks} onResolve={onResolveMapping} />
 
@@ -342,6 +342,10 @@ export function ProjectTopologyWorkspace({
             onValidateEdit={handleValidateEdit}
           />
         ) : null}
+      </div>
+
+      <div className="project-topology-workspace__footer">
+        <WorkbenchDiagnosticsSection diagnostics={diagnostics} variant="dangling" />
       </div>
 
       {showDetailDrawer && selectedBinding ? (

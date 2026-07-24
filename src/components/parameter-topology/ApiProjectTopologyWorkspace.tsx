@@ -45,7 +45,10 @@ import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 import { IdentityMappingReview } from "./IdentityMappingReview";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
-import { filterProductWorkbenchDiagnostics } from "@/domain/parameter-topology/toolchainDiagnostics";
+import {
+  filterProductWorkbenchDiagnostics,
+  partitionDanglingReferenceDiagnostics
+} from "@/domain/parameter-topology/toolchainDiagnostics";
 import { WorkbenchDiagnosticsSection } from "./WorkbenchDiagnosticsSection";
 
 export type ApiProjectTopologyWorkspaceProps = {
@@ -802,11 +805,13 @@ export function ApiProjectTopologyWorkspace({
 
   const draftBindingIds = new Set(projectDrafts.map((draft) => draft.projectParameterBindingId));
   const openMappingTasks = loadState.mappingTasks.filter((task) => task.status === "open");
+  const { other: productDiagnostics, summary: danglingSummary } =
+    partitionDanglingReferenceDiagnostics(loadState.diagnostics);
   const showGovernancePanel = Boolean(
     statusBanner ||
     mappingMessage ||
     loadState.incompleteBase ||
-    loadState.diagnostics.length > 0 ||
+    productDiagnostics.length > 0 ||
     openMappingTasks.length > 0
   );
   const currentEdits = projectDrafts.length > 0 ? (
@@ -889,7 +894,7 @@ export function ApiProjectTopologyWorkspace({
             {loadState.incompleteBase ? (
               <p role="alert">缺少 base 配置，当前拓扑不完整；已阻止类型化编辑与校验。</p>
             ) : null}
-            <WorkbenchDiagnosticsSection diagnostics={loadState.diagnostics} />
+            <WorkbenchDiagnosticsSection diagnostics={productDiagnostics} variant="other" />
             <IdentityMappingReview
               tasks={loadState.mappingTasks}
               onResolve={(taskId, input) => {
@@ -898,6 +903,11 @@ export function ApiProjectTopologyWorkspace({
             />
           </>
         ) : undefined}
+        footerContent={
+          danglingSummary ? (
+            <WorkbenchDiagnosticsSection diagnostics={loadState.diagnostics} variant="dangling" />
+          ) : undefined
+        }
       />
   );
 }

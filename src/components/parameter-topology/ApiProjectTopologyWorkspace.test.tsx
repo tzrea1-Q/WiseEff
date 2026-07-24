@@ -292,17 +292,18 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
 
     await screen.findByRole("region", { name: "DTS 参数工作台" });
-    const section = screen.getByRole("region", { name: "编译诊断" });
+    const footer = screen.getByRole("region", { name: "解析提示" });
     expect(
-      within(section).getByText(/2 个悬空 overlay 引用已自锚定，参数仍可管理/)
+      within(footer).getByText(/2 个悬空 overlay 引用已自锚定，参数仍可管理/)
     ).toBeVisible();
     expect(screen.queryByText(/Overlay target "&amba"/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\[warning\]/)).not.toBeInTheDocument();
 
     fireEvent.click(
-      within(section).getByText(/2 个悬空 overlay 引用已自锚定，参数仍可管理/)
+      within(footer).getByText(/2 个悬空 overlay 引用已自锚定，参数仍可管理/)
     );
-    expect(within(section).getByText("&amba")).toBeVisible();
-    expect(within(section).getByText("&charging_core")).toBeVisible();
+    expect(within(footer).getByText("&amba")).toBeVisible();
+    expect(within(footer).getByText("&charging_core")).toBeVisible();
   });
 
   it("hydrates binding drafts from listDrafts after reload and shows shared working tip tray", async () => {

@@ -77,6 +77,11 @@ export type DtsParameterWorkbenchProps = {
    * does not reserve a blank governance shell.
    */
   governanceContent?: ReactNode;
+  /**
+   * Soft notices rendered below the main workbench body (e.g. collapsed dangling
+   * overlay self-anchor summary). Kept out of the top governance strip.
+   */
+  footerContent?: ReactNode;
   /** Secondary toolbar actions (e.g. revision validate) kept out of the governance panel. */
   toolbarActions?: ReactNode;
   expandAllNodesByDefault?: boolean;
@@ -160,6 +165,7 @@ export function DtsParameterWorkbench({
   loadParameterSpec,
   currentEdits,
   governanceContent,
+  footerContent,
   toolbarActions,
   expandAllNodesByDefault: _expandAllNodesByDefault = false,
   onExportRows,
@@ -703,6 +709,11 @@ export function DtsParameterWorkbench({
           )}
         </div>
       </div>
+      {footerContent ? (
+        <div className="dts-parameter-workbench__footer">
+          {footerContent}
+        </div>
+      ) : null}
       {selectedRow && detailIntent === "view" ? (
         <DtsBindingDetailDialog
           row={selectedRow}
