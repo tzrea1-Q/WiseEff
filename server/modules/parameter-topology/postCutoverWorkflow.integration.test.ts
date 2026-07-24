@@ -1876,6 +1876,50 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
     120_000
   );
 
+  async function assertMergeSucceeded(
+    db: Database,
+    requestId: string,
+    bindingId: string,
+    baseRevisionId: string,
+    mergedValue: string
+  ) {
+    const status = await db.query<{ status: string }>(
+      `select status from parameter_change_requests where id = $1`,
+      [requestId]
+    );
+    expect(status.rows[0]?.status).toBe("merged");
+
+    const history = await listParameterHistory(db, {
+      organizationId: ORG,
+      parameterId: bindingId
+    });
+    expect(history.filter((entry) => entry.value === mergedValue)).toHaveLength(1);
+
+    const generatedCandidate = await db.query<{ c: string }>(
+      `select count(*)::text as c
+       from project_parameter_binding_revisions bpr
+       inner join dts_config_revisions cr on cr.id = bpr.config_revision_id
+       where bpr.binding_id = $1 and bpr.raw_value = $2
+         and cr.status <> 'pending_approval'`,
+      [bindingId, mergedValue]
+    );
+    expect(Number(generatedCandidate.rows[0]?.c ?? 0)).toBeGreaterThan(0);
+
+    const base = await db.query<{ raw_value: string | null }>(
+      `select raw_value from project_parameter_binding_revisions
+       where binding_id = $1 and config_revision_id = $2`,
+      [bindingId, baseRevisionId]
+    );
+    expect(base.rows[0]?.raw_value).toBe("<1>");
+
+    const audits = await db.query<{ c: string }>(
+      `select count(*)::text as c from audit_events
+       where organization_id = $1 and kind = 'parameter-merge' and target_id = $2`,
+      [ORG, requestId]
+    );
+    expect(Number(audits.rows[0]?.c ?? 0)).toBeGreaterThan(0);
+  }
+
   async function assertMergeRolledBack(db: Database, requestId: string, bindingId: string, baseRevisionId: string) {
     const status = await db.query<{ status: string }>(
       `select status from parameter_change_requests where id = $1`,
@@ -2047,7 +2091,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
     { name: "toolchain-unavailable", failureCode: "toolchain-unavailable" as const, stage: "toolchain" as const }
   ]) {
     it(
-      `fail-closes semantic merge when toolchain ${caseDef.name} fails`,
+      `completes semantic merge when toolchain ${caseDef.name} fails`,
       async () => {
         await withTempDatabase(async (db) => {
           const seeded = await seedPreCutoverGraph(db);
@@ -2110,27 +2154,23 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             }
           };
 
-          await expect(
-            reviewChange(
-              db,
-              auth,
-              {
-                requestId: request.id,
-                decision: "advance",
-                note: `https://example.com/toolchain-fail-${caseDef.name}`,
-                expectedVersion: 1
-              },
-              {
-                objectStore: objectStore as never,
-                toolchain: failingToolchain(caseDef.failureCode, caseDef.stage) as never
-              }
-            )
-          ).rejects.toMatchObject({
-            code: "VALIDATION_FAILED",
-            status: 400
-          });
+          const merged = await reviewChange(
+            db,
+            auth,
+            {
+              requestId: request.id,
+              decision: "advance",
+              note: `https://example.com/toolchain-fail-${caseDef.name}`,
+              expectedVersion: 1
+            },
+            {
+              objectStore: objectStore as never,
+              toolchain: failingToolchain(caseDef.failureCode, caseDef.stage) as never
+            }
+          );
 
-          await assertMergeRolledBack(db, request.id, seeded.bindingId, writeLock.baseConfigRevisionId);
+          expect(merged.status).toBe("merged");
+          await assertMergeSucceeded(db, request.id, seeded.bindingId, writeLock.baseConfigRevisionId, "<9>");
         });
       },
       120_000
