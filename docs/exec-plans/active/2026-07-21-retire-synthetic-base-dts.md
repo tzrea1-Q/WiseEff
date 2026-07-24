@@ -6,8 +6,8 @@
 > Bite-sized agent plan: [`../../superpowers/plans/2026-07-21-retire-synthetic-base-dts.md`](../../superpowers/plans/2026-07-21-retire-synthetic-base-dts.md)
 
 - Date: 2026-07-21
-- Status: **Active** (planning complete; implementation not started)
-- Feature branch: `feat/retire-synthetic-base-dts` (from latest `main`, or stack after surface MVP lands)
+- Status: **Active** (implementation in progress; may stack on parameter-maintenance program)
+- Feature branch: `feat/retire-synthetic-base-dts` or `feat/parameter-maintenance-retire-dtc` (from latest `main`, or stack after surface MVP lands)
 
 ## Goal
 
@@ -39,7 +39,7 @@ flowchart LR
 - Full Config Set table deletion
 - Multi-include advanced import UX for production customers
 - Replacing module mapping with DTS-encoded metadata
-- Reopening surface / L0/L2 decisions from the surface RFC
+- Reopening surface / L0/L2 decisions from the surface RFC — aligned with the parameter-maintenance program: **L2 off merge hot path**; toolchain remains Admin/baseline assist only
 
 ## Git & PR Workflow
 

@@ -5,8 +5,8 @@
 > 分步实现：[superpowers plan](../../../superpowers/plans/2026-07-21-dts-parameter-surface-mvp.md)
 
 - 日期：2026-07-21
-- 状态：**Active**（规划完成，实现未开始）
-- 分支：`feat/dts-parameter-surface-mvp`
+- 状态：**Active**（在 `feat/parameter-maintenance-retire-dtc` 上实施中）
+- 分支：`feat/parameter-maintenance-retire-dtc`（D4 合入/写回工作取代原 `feat/dts-parameter-surface-mvp`）
 
 ## 目标
 
@@ -15,7 +15,7 @@
 1. **可管参数面**过滤（默认隐藏总线骨架参数）
 2. 默认 UX：**模块 → 参数**（驱动不作必选导航层）
 3. 改参后写回 **项目维护的 DTS 文本**
-4. **`dtc` / `fdtoverlay` / `dt-validate` 离开编辑热路径**（仅 L2 导出/Admin 发布检查）
+4. **`dtc` / `fdtoverlay` / `dt-validate` 离开编辑与合入/写回热路径**（仅 L2 导出/Admin 发布检查）。本计划在 **`applyLockedOverlayWriteback` 上落实 D4：移除 L2 fail-closed**。
 
 ## 任务一览
 

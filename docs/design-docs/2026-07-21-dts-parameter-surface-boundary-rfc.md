@@ -27,7 +27,7 @@ Result: the system manages the whole effective tree (including bus scaffolding s
 | D1 | Primary user object | **Manageable parameter surface** (filtered parameter ledger), not the full Device Tree |
 | D2 | Primary UX dimension | **Module / submodule → parameters**; driver is classification input only |
 | D3 | DTS role | Project **authoritative DTS text(s)** maintained on parameter change; exportable for Git by humans |
-| D4 | Toolchain | **Optional / deferred gate** (export or publish assist); **not** a hard blocker on everyday edit → draft → submit |
+| D4 | Toolchain | **Optional / deferred gate** (export or publish assist); **not** a hard blocker on everyday edit → draft → submit **or semantic merge/writeback** |
 | D5 | Config Set / base+overlay | **Internal implementation detail** when needed; not the default user mental model for “upload my project DTS” |
 | D6 | Schema / vendor YAML | Assist typing & docs; **missing schema must not hide** surface parameters from the ledger |
 | D7 | Logical-node continuity / identity mapping | Keep as **backend continuity** where useful; never a browse/edit prerequisite for surface parameters |
@@ -121,7 +121,7 @@ When a user changes a surface parameter and the change is accepted into the gove
 | L1 Resolve | On demand / export | Multi-file resolve diagnostics (includes, overlays) |
 | L2 Toolchain | Export / publish / Admin “validate release” | `dtc` / `fdtoverlay` / `dt-validate` as **assistive** gate |
 
-Everyday edit → draft → submit uses **L0** (and soft L1 warnings). **L2 is not fail-closed on the edit hot path.**
+Everyday edit → draft → submit and **governed merge/writeback** use **L0** (and soft L1 warnings). **L2 is not fail-closed on the edit or merge hot path.** The product does **not** treat `dtc` / `fdtoverlay` / `dt-validate` rules as parameter-maintenance gates; toolchain output is Admin / baseline-release assist only. The `/parameters` workbench must **not** surface toolchain compile noise (for example `ranges_format`, `unit_address_vs_reg`, empty `ranges` / `#address-cells` mismatch warnings) as primary governance errors — only product blockers (topology not ready, binding/schema/mapping gates, incomplete base when still relevant) belong in default UI.
 
 ## 5. Modules vs drivers
 
@@ -151,7 +151,7 @@ Drivers (`compatible` / driverModule / instance) are **not** a required navigati
 | 2026-07-14 lock | Revision (2026-07-21) |
 | --- | --- |
 | Fact source: WiseEff authoritative; Git manual | **Kept** |
-| Merge requires fail-closed dtc/schema | **Revised** → L2 optional on export/publish; not edit hot path |
+| Merge requires fail-closed dtc/schema | **Revised** → L2 optional on export/publish and Admin validate; **not** edit or merge/writeback hot path |
 | Top granularity = board config set + baseline | **Revised** → user granularity = project + maintained DTS text(s); config set internal |
 | Full structured modeling as product center | **Revised** → structured parse/writeback remains engine; **product center = parameter surface + modules** |
 | include unsupported (explicit reject) | **Unchanged** until a later plan |

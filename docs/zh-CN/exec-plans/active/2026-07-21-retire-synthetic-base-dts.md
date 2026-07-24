@@ -5,8 +5,12 @@
 > 分步实现：[superpowers plan](../../../superpowers/plans/2026-07-21-retire-synthetic-base-dts.md)
 
 - 日期：2026-07-21
-- 状态：**Active**（规划完成，实现未开始）
-- 分支：`feat/retire-synthetic-base-dts`
+- 状态：**Active**（实施中；可与 parameter-maintenance 程序叠栈）
+- 分支：`feat/retire-synthetic-base-dts` 或 `feat/parameter-maintenance-retire-dtc`
+
+## 范围外
+
+- 不重开 surface RFC 的 L0/L2 决策——与 parameter-maintenance 程序对齐：**L2 离开合入热路径**；工具链仅 Admin/基线辅助
 
 ## 目标
 
