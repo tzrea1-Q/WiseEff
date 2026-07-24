@@ -650,6 +650,20 @@ describe("DtsParameterWorkbench", () => {
     expect(within(headerActions).getByText("aurora-board.dts · v2")).toBeInTheDocument();
   });
 
+  it("surfaces the loadPrimaryDtsSource rejection message in tech view", async () => {
+    const loadPrimaryDtsSource = vi.fn().mockRejectedValue(
+      new Error("未找到可用的项目主 DTS 文件")
+    );
+    renderWorkbench({ loadPrimaryDtsSource });
+
+    fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
+    await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
+
+    expect(screen.getByRole("alert")).toHaveTextContent("无法加载 DTS 源码。");
+    expect(screen.getByText("未找到可用的项目主 DTS 文件")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+  });
+
   it("uses DTS find semantics for the search control in tech view", async () => {
     const loadPrimaryDtsSource = vi.fn().mockResolvedValue({
       fileName: "aurora-board.dts",

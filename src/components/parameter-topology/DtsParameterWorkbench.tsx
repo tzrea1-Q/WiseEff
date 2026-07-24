@@ -197,6 +197,7 @@ export function DtsParameterWorkbench({
 
   const [dtsSourceStatus, setDtsSourceStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [dtsSource, setDtsSource] = useState<PrimaryDtsSource | null>(null);
+  const [dtsSourceErrorMessage, setDtsSourceErrorMessage] = useState<string | null>(null);
   const [dtsSourceLoadToken, setDtsSourceLoadToken] = useState(0);
   const [findNextToken, setFindNextToken] = useState(0);
   const [findStatus, setFindStatus] = useState({ matchCount: 0, activeIndex: 0 });
@@ -210,9 +211,11 @@ export function DtsParameterWorkbench({
     if (!loadPrimaryDtsSource) {
       setDtsSourceStatus("error");
       setDtsSource(null);
+      setDtsSourceErrorMessage(null);
       return;
     }
     setDtsSourceStatus("loading");
+    setDtsSourceErrorMessage(null);
     setDtsSourceLoadToken((current) => current + 1);
   }, [loadPrimaryDtsSource]);
 
@@ -226,12 +229,16 @@ export function DtsParameterWorkbench({
         if (!cancelled) {
           setDtsSource(source);
           setDtsSourceStatus("ready");
+          setDtsSourceErrorMessage(null);
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled) {
           setDtsSource(null);
           setDtsSourceStatus("error");
+          setDtsSourceErrorMessage(
+            error instanceof Error ? error.message : "无法加载 DTS 源码。"
+          );
         }
       });
     return () => {
@@ -681,6 +688,9 @@ export function DtsParameterWorkbench({
           ) : dtsSourceStatus === "error" ? (
             <div className="dts-parameter-workbench__dts-source-error">
               <p role="alert">无法加载 DTS 源码。</p>
+              {dtsSourceErrorMessage ? (
+                <p className="dts-parameter-workbench__dts-source-error-detail">{dtsSourceErrorMessage}</p>
+              ) : null}
               <button type="button" className="button subtle" onClick={loadDtsSource}>
                 重试
               </button>
