@@ -47,7 +47,7 @@ export type DtsParameterWorkbenchProps = {
   /** Kept for API compatibility; browse UI is effective-only and surfaces source via provenance. */
   sourceRows: DtsParameterWorkbenchRow[];
   effectiveRows: DtsParameterWorkbenchRow[];
-  /** Kept for API compatibility; topology tech view still uses effective nodes. */
+  /** Kept for API compatibility; parent workspace may still pass topology nodes. */
   sourceNodes: SourceTopologyNode[];
   effectiveNodes: EffectiveTopologyNode[];
   /** Admin module registry — used to nest the module navigator by parentId. */
@@ -111,6 +111,21 @@ function selectedSubtreeBindingIds(
     subtree.push(...node.children);
   }
   return bindingIds;
+}
+
+function smallestPositiveSourceLine(
+  rows: DtsParameterWorkbenchRow[],
+  bindingIds: Set<string> | null
+): number | null {
+  if (!bindingIds) return null;
+  let smallest: number | null = null;
+  for (const row of rows) {
+    if (!bindingIds.has(row.bindingId)) continue;
+    const line = row.sourceLine;
+    if (typeof line !== "number" || line < 1) continue;
+    if (smallest === null || line < smallest) smallest = line;
+  }
+  return smallest;
 }
 
 function treeContainsNode(roots: DtsWorkbenchTreeNode[], nodeId: string): boolean {
@@ -183,6 +198,13 @@ export function DtsParameterWorkbench({
   const [dtsSourceStatus, setDtsSourceStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [dtsSource, setDtsSource] = useState<PrimaryDtsSource | null>(null);
   const [dtsSourceLoadToken, setDtsSourceLoadToken] = useState(0);
+  const [findNextToken, setFindNextToken] = useState(0);
+  const [findStatus, setFindStatus] = useState({ matchCount: 0, activeIndex: 0 });
+  const onFindStatusChangeRef = useRef<(status: { matchCount: number; activeIndex: number }) => void>(() => {});
+  onFindStatusChangeRef.current = (status) => setFindStatus(status);
+  const onFindStatusChange = useCallback((status: { matchCount: number; activeIndex: number }) => {
+    onFindStatusChangeRef.current(status);
+  }, []);
 
   const loadDtsSource = useCallback(() => {
     if (!loadPrimaryDtsSource) {
@@ -246,6 +268,17 @@ export function DtsParameterWorkbench({
     () => selectedSubtreeBindingIds(tree, effectiveSelectedNodeId),
     [effectiveSelectedNodeId, tree]
   );
+  const moduleFocusLine = useMemo(
+    () => resultsMode === "dtsSource"
+      ? smallestPositiveSourceLine(currentRows, subtreeBindingIds)
+      : null,
+    [currentRows, resultsMode, subtreeBindingIds]
+  );
+  const moduleJumpStatus = useMemo(() => {
+    if (resultsMode !== "dtsSource" || subtreeBindingIds === null) return null;
+    if (moduleFocusLine !== null) return null;
+    return "当前模块暂无源码行定位";
+  }, [moduleFocusLine, resultsMode, subtreeBindingIds]);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleRows = useMemo(
     () => currentRows.filter((row) => {
@@ -448,6 +481,19 @@ export function DtsParameterWorkbench({
     setFocusedDraftBindingId(null);
   };
 
+  const downloadDtsSource = () => {
+    if (!dtsSource) return;
+    const blob = new Blob([dtsSource.text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = dtsSource.fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const dtsFindQuery = resultsMode === "dtsSource" ? query : "";
+
   useEffect(() => {
     if (draftDialogOpen && Object.keys(localDraftBag).length === 0) {
       setDraftDialogOpen(false);
@@ -489,7 +535,24 @@ export function DtsParameterWorkbench({
             <Network size={15} strokeWidth={1.9} aria-hidden="true" />
             技术视图
           </button>
-          {onExportRows && resultsMode === "parameters" ? (
+          {resultsMode === "dtsSource" ? (
+            <>
+              <button
+                type="button"
+                className="button subtle"
+                disabled={dtsSourceStatus !== "ready" || !dtsSource}
+                onClick={downloadDtsSource}
+              >
+                <Download size={15} strokeWidth={1.9} aria-hidden="true" />
+                下载 DTS
+              </button>
+              {dtsSource ? (
+                <span className="dts-parameter-workbench__dts-file-meta">
+                  {dtsSource.fileName} · v{dtsSource.versionNumber}
+                </span>
+              ) : null}
+            </>
+          ) : onExportRows ? (
             <button
               type="button"
               className="button subtle"
@@ -505,18 +568,36 @@ export function DtsParameterWorkbench({
 
       <div className="dts-parameter-workbench__toolbar">
         <label className="dts-parameter-workbench__search">
-          <span><Search size={14} strokeWidth={2} aria-hidden="true" />搜索参数</span>
+          <span>
+            <Search size={14} strokeWidth={2} aria-hidden="true" />
+            {resultsMode === "dtsSource" ? "查找源码" : "搜索参数"}
+          </span>
           <input
             type="search"
-            aria-label="搜索 DTS 参数"
+            aria-label={resultsMode === "dtsSource" ? "在 DTS 源码中查找" : "搜索 DTS 参数"}
             value={query}
-            placeholder="参数名、模块、器件、路径或值"
+            placeholder={resultsMode === "dtsSource" ? "在 DTS 文本中查找" : "参数名、模块、器件、路径或值"}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (resultsMode === "dtsSource" && event.key === "Enter") {
+                event.preventDefault();
+                setFindNextToken((current) => current + 1);
+              }
+            }}
           />
         </label>
         <p role="status" aria-live="polite" className="dts-parameter-workbench__result-count">
-          显示 {visibleRows.length} / {currentRows.length} 个参数
-          {selectedBindingIds.size > 0 ? ` · 已选 ${selectedBindingIds.size} 项草稿` : ""}
+          {resultsMode === "dtsSource" ? (
+            moduleJumpStatus
+              ?? (dtsFindQuery.trim()
+                ? `匹配 ${findStatus.activeIndex} / ${findStatus.matchCount}`
+                : "DTS 源码查看")
+          ) : (
+            <>
+              显示 {visibleRows.length} / {currentRows.length} 个参数
+              {selectedBindingIds.size > 0 ? ` · 已选 ${selectedBindingIds.size} 项草稿` : ""}
+            </>
+          )}
         </p>
         {toolbarActions ? (
           <div className="dts-parameter-workbench__toolbar-actions">
@@ -609,6 +690,10 @@ export function DtsParameterWorkbench({
               fileName={dtsSource.fileName}
               versionNumber={dtsSource.versionNumber}
               text={dtsSource.text}
+              focusLine={moduleFocusLine}
+              findQuery={dtsFindQuery}
+              findNextToken={findNextToken}
+              onFindStatusChange={onFindStatusChange}
             />
           ) : (
             <p className="dts-parameter-workbench__empty" role="status">暂无 DTS 源码。</p>
