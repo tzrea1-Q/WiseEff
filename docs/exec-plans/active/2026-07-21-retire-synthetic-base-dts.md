@@ -6,7 +6,7 @@
 > Bite-sized agent plan: [`../../superpowers/plans/2026-07-21-retire-synthetic-base-dts.md`](../../superpowers/plans/2026-07-21-retire-synthetic-base-dts.md)
 
 - Date: 2026-07-21
-- Status: **Active** (implementation in progress; may stack on parameter-maintenance program)
+- Status: **Active** (Phase 3 seed gate on `feat/parameter-maintenance-retire-dtc`: committed `*-board.dts` are SoT; `db:seed:m1` uses parse-only integrity; `dtc:seed:compile` is advisory in CI)
 - Feature branch: `feat/retire-synthetic-base-dts` or `feat/parameter-maintenance-retire-dtc` (from latest `main`, or stack after surface MVP lands)
 
 ## Goal
@@ -81,7 +81,7 @@ Before moving this plan to `completed/`:
 | A | Freeze product contract in docs (RFC already); cut-matrix §6 Retire | cut matrix EN+ZH |
 | B | Define project-primary writeback member rule + tests | `editService` / writeback tests; FRONTEND note |
 | C | Author self-contained demo primary DTS per project (or one template expanded per project at seed) | `src/config/dts-seed/*`, seed scripts |
-| D | Rewire `db:seed:m1` / compile / validate scripts off shared base | `scripts/seed-m1-parameters.ts`, `compile-dts-seed.ts`, `validate-dts-config-set.ts` |
+| D | Rewire `db:seed:m1` / compile / validate scripts off shared base | `scripts/seed-m1-parameters.ts`, `compile-dts-seed.ts`, `validate-dts-config-set.ts` | **In progress** — seed gate landed on `feat/parameter-maintenance-retire-dtc` (parse-only integrity; transitional fixture retired from seed path) |
 | E | Rebase vendor schema generator + golden / matcher / ingest / e2e fixtures | `vendorSchemaGenerator.ts`, fixture tests, `e2e/.../topologyFixture.ts` |
 | F | Remove or quarantine `wiseeff-power-base.dts` from product seed path; update locked counts | seed file tree + domain-model / cutover docs |
 | G | Verification: seed, targeted tests, build, docs:check, browser `/parameters` after reseed | — |

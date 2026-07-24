@@ -78,7 +78,7 @@
 
 | 能力 | 现状 | 动作 | 说明 |
 | --- | --- | --- | --- |
-| 合成 `wiseeff-power-base.dts` | overlay seed 依赖 | **Retire** | 产品契约：每项目一份**项目主 DTS**；管理员永不维护平台基。见 [`2026-07-21-project-primary-dts-contract-rfc.md`](2026-07-21-project-primary-dts-contract-rfc.md)。过渡夹具将在 [`2026-07-21-retire-synthetic-base-dts.md`](../../exec-plans/active/2026-07-21-retire-synthetic-base-dts.md) 中移除。 |
+| 合成 `wiseeff-power-base.dts` | overlay seed 依赖 | **Retire** | 产品契约：每项目一份**项目主 DTS**；管理员永不维护平台基。见 [`2026-07-21-project-primary-dts-contract-rfc.md`](2026-07-21-project-primary-dts-contract-rfc.md)。过渡夹具已从 seed 门禁退役（`feat/parameter-maintenance-retire-dtc`）；仅保留给需要最小 stub 的单测。 |
 | 项目 overlay | 差异演示 | **Keep** | 参数面过滤须去掉骨架噪声 |
 | 从 seed 再生 vendor schema | 耦合 | **Demote** | 服务 L2，不决定是否进面 |
 

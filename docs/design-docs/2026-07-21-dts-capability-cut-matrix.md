@@ -78,7 +78,7 @@ Legend:
 
 | Capability | Today | Action | Notes |
 | --- | --- | --- | --- |
-| `wiseeff-power-base.dts` synthetic base | Required for overlay seed | **Retire** | Product contract: one **project-primary DTS** per project; admins never maintain platform base. See [`2026-07-21-project-primary-dts-contract-rfc.md`](2026-07-21-project-primary-dts-contract-rfc.md). Transitional fixture only until seed migrate lands under [`2026-07-21-retire-synthetic-base-dts.md`](../exec-plans/active/2026-07-21-retire-synthetic-base-dts.md). |
+| `wiseeff-power-base.dts` synthetic base | Required for overlay seed | **Retire** | Product contract: one **project-primary DTS** per project; admins never maintain platform base. See [`2026-07-21-project-primary-dts-contract-rfc.md`](2026-07-21-project-primary-dts-contract-rfc.md). Transitional fixture retired from seed gate on `feat/parameter-maintenance-retire-dtc`; kept only for unit tests needing a minimal stub. |
 | Project overlays aurora/nebula/atlas | Diff demo | **Keep** | Surface filter must hide scaffolding noise |
 | Vendor schema regen from seed | Coupled | **Demote** | Still useful for L2; not for surface membership |
 | Locked golden counts (176 ingest / 684 structural) | Tests | **Keep** | Update only when seed intentionally changes |
