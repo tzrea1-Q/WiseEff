@@ -59,6 +59,7 @@ Legend:
 | Overlay-only writeback; base immutable | Hard rule | **Demote** | Prefer write to **project primary DTS**; base immutability becomes internal when multi-file |
 | Re-ingest full config revision on every draft | Always | **Keep-internal** short-term; **Defer** thinning | MVP may keep re-ingest but without L2 gate |
 | `dtc` + `fdtoverlay` + `dt-validate` on draft create | Fail-closed | **Remove-from-hot-path** | Move to L2 export/publish / Admin validate |
+| Merge/writeback `dtc` toolchain fail-closed | Fail-closed on `applyLockedOverlayWriteback` | **Remove-from-hot-path** | Semantic merge completes on L0; toolchain is L2 Admin/baseline only |
 | Admin `validateConfigRevision` | Sets `validated` | **Demote** | Rename copy to “release check”; not “publish to Git” |
 | Legacy `writebackService` pre-cutover paths | Dual | **Retire** (follow-up) | After primary-DTS path stable |
 | Export DTS / config set | Exists | **Keep** | Default export = maintained project DTS text |
@@ -77,7 +78,7 @@ Legend:
 
 | Capability | Today | Action | Notes |
 | --- | --- | --- | --- |
-| `wiseeff-power-base.dts` synthetic base | Required for overlay seed | **Retire** | Product contract: one **project-primary DTS** per project; admins never maintain platform base. See [`2026-07-21-project-primary-dts-contract-rfc.md`](2026-07-21-project-primary-dts-contract-rfc.md). Transitional fixture only until seed migrate lands. |
+| `wiseeff-power-base.dts` synthetic base | Required for overlay seed | **Retire** | Product contract: one **project-primary DTS** per project; admins never maintain platform base. See [`2026-07-21-project-primary-dts-contract-rfc.md`](2026-07-21-project-primary-dts-contract-rfc.md). Transitional fixture retired from seed gate on `feat/parameter-maintenance-retire-dtc`; kept only for unit tests needing a minimal stub. |
 | Project overlays aurora/nebula/atlas | Diff demo | **Keep** | Surface filter must hide scaffolding noise |
 | Vendor schema regen from seed | Coupled | **Demote** | Still useful for L2; not for surface membership |
 | Locked golden counts (176 ingest / 684 structural) | Tests | **Keep** | Update only when seed intentionally changes |

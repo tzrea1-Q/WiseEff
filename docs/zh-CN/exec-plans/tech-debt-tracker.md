@@ -19,6 +19,7 @@
 
 ## 进行中
 
+- **TD-043（DTS 工具链 UX）：** 参数维护优先程序已将 `dtc` 移出编辑/合入热路径与工作台治理噪声。可选 Admin「完整工具链校验」专用面板尚未建设；`dts:seed:generate` 仍可选用 `synthetic-power-base.dts`。详见英文版 Open 表。
 - **TD-038（模块树后续）：** 多层级模块已落地后，仍需删除过渡 `module` 文本列、收敛 `project_modules` 与组织级 `parameter_modules` 单一真相源，并评估 dashboard 热榜的层级聚合。
 - **TD-039（项目参数文件，程序主体已关闭）：** DTS 程序与硬化收口已归档。路径派生身份退役由活跃计划 `2026-07-16-parameter-topology-schema-management.md` 承接（语义规格/绑定 + 原子切换）。残余 fallback 仅在 cutover 前存在。
 - **TD-040（DTS 配置集/门禁后续）：** (1)(2)(3)(4) 状态见英文版；生产失败关闭 Schema/工具链校验由拓扑计划 Task 8/10/17 承接。

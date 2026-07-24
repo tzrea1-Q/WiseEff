@@ -820,7 +820,6 @@ export function ParametersPage({
           <ApiProjectTopologyWorkspace
             projectId={resolvedProjectId}
             canEdit={effectiveCanEdit}
-            canPublish={effectiveCanEdit}
             layoutMode={topologyLayoutMode}
             runtimeMode="api"
             topologyRepository={topologyRepository}

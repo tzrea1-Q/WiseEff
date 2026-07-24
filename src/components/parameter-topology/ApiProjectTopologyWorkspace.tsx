@@ -42,11 +42,11 @@ import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 import { IdentityMappingReview } from "./IdentityMappingReview";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
+import { filterProductWorkbenchDiagnostics } from "@/domain/parameter-topology/toolchainDiagnostics";
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
   canEdit?: boolean;
-  canPublish?: boolean;
   layoutMode?: TopologyLayoutMode;
   runtimeMode?: WiseEffRuntimeMode;
   /** Test seam — inject repositories instead of constructing HTTP clients. */
@@ -196,12 +196,14 @@ async function loadWorkspace(
   ];
   // Deduplicate by code+message
   const seen = new Set<string>();
-  const uniqueDiagnostics = diagnostics.filter((item) => {
-    const key = `${item.code ?? ""}:${item.message}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const uniqueDiagnostics = filterProductWorkbenchDiagnostics(
+    diagnostics.filter((item) => {
+      const key = `${item.code ?? ""}:${item.message}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+  );
 
   return {
     kind: "ready",
@@ -224,7 +226,6 @@ async function loadWorkspace(
 export function ApiProjectTopologyWorkspace({
   projectId,
   canEdit = true,
-  canPublish = false,
   layoutMode = "desktop",
   runtimeMode = "api",
   topologyRepository,
@@ -273,7 +274,6 @@ export function ApiProjectTopologyWorkspace({
   } | null>(null);
   const preferredRevisionId =
     preferredRevision?.projectId === projectId ? preferredRevision.revisionId : undefined;
-  const [publishMessage, setPublishMessage] = useState<string | null>(null);
   const [mappingMessage, setMappingMessage] = useState<string | null>(null);
   const [pendingDrafts, setPendingDrafts] = useState<PendingBindingDraft[]>([]);
   const [serverDrafts, setServerDrafts] = useState<ParameterDraftDto[] | null>(null);
@@ -318,7 +318,6 @@ export function ApiProjectTopologyWorkspace({
     setServerDrafts(null);
     setWorkflowCandidates(null);
     setWorkflowCandidatesError(null);
-    setPublishMessage(null);
     setMappingMessage(null);
   }, [projectId]);
 
@@ -413,7 +412,6 @@ export function ApiProjectTopologyWorkspace({
 
     let cancelled = false;
     setLoadState({ kind: "loading" });
-    setPublishMessage(null);
 
     const resolveConfigSets =
       listConfigSetsRef.current ??
@@ -702,60 +700,6 @@ export function ApiProjectTopologyWorkspace({
     [repository]
   );
 
-  /** Validate only — no publish/release transition exists on this surface. */
-  const handleValidate = async () => {
-    if (!repository || loadState.kind !== "ready") return;
-    const requestProjectId = projectId;
-    const requestGeneration = projectGenerationRef.current;
-    const requestRevisionId = loadState.revisionId;
-    if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-    setPublishMessage(null);
-    try {
-      const run = await repository.validateRevision(requestProjectId, requestRevisionId);
-      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-      if (run.status === "passed") {
-        setPublishMessage("校验通过，修订已具备发布条件。");
-        return;
-      }
-      setPublishMessage(`校验未通过（${run.stage}）。`);
-      if (run.diagnostics?.length) {
-        if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-        setLoadState((current) => {
-          if (!isCurrentProjectRequest(requestProjectId, requestGeneration) || current.kind !== "ready") {
-            return current;
-          }
-          return {
-            ...current,
-            diagnostics: run.diagnostics ?? []
-          };
-        });
-      } else {
-        if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-        setReloadToken((token) => token + 1);
-      }
-    } catch (error) {
-      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-      const mapped = mapParameterTopologyError(error);
-      if (mapped.kind === "diagnostics") {
-        if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-        setLoadState((current) => {
-          if (!isCurrentProjectRequest(requestProjectId, requestGeneration) || current.kind !== "ready") {
-            return current;
-          }
-          return {
-            ...current,
-            diagnostics: mapped.diagnostics
-          };
-        });
-        if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-        setPublishMessage(mapped.message);
-        return;
-      }
-      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-      setPublishMessage(mapped.message);
-    }
-  };
-
   const handleResolveMapping = async (taskId: string, input: ResolveMappingInput) => {
     if (!repository || loadState.kind !== "ready") return;
     const requestProjectId = projectId;
@@ -830,7 +774,6 @@ export function ApiProjectTopologyWorkspace({
   const openMappingTasks = loadState.mappingTasks.filter((task) => task.status === "open");
   const showGovernancePanel = Boolean(
     statusBanner ||
-    publishMessage ||
     mappingMessage ||
     loadState.incompleteBase ||
     loadState.diagnostics.length > 0 ||
@@ -886,32 +829,18 @@ export function ApiProjectTopologyWorkspace({
           );
         }}
         toolbarActions={
-          openMappingTasks.length > 0 || canPublish ? (
-            <>
-              {openMappingTasks.length > 0 ? (
-                <button
-                  type="button"
-                  className="button subtle"
-                  onClick={() => {
-                    document
-                      .querySelector<HTMLElement>(".dts-parameter-workbench__governance-content")
-                      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                  }}
-                >
-                  映射待决 {openMappingTasks.length}
-                </button>
-              ) : null}
-              {canPublish ? (
-                <button
-                  type="button"
-                  className="button subtle"
-                  disabled={!canEditSemantic}
-                  onClick={() => void handleValidate()}
-                >
-                  校验
-                </button>
-              ) : null}
-            </>
+          openMappingTasks.length > 0 ? (
+            <button
+              type="button"
+              className="button subtle"
+              onClick={() => {
+                document
+                  .querySelector<HTMLElement>(".dts-parameter-workbench__governance-content")
+                  ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              }}
+            >
+              映射待决 {openMappingTasks.length}
+            </button>
           ) : undefined
         }
         governanceContent={showGovernancePanel ? (
@@ -919,11 +848,6 @@ export function ApiProjectTopologyWorkspace({
             {statusBanner ? (
               <p className="project-topology-workspace__status" role="status">
                 {statusBanner}
-              </p>
-            ) : null}
-            {publishMessage ? (
-              <p className="project-topology-workspace__publish-message" role="status">
-                {publishMessage}
               </p>
             ) : null}
             {mappingMessage ? (

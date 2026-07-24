@@ -15,7 +15,6 @@ import type { DtsValue } from "../dts/types";
 import { parseDtsValue, renderDtsValue } from "../dts/valueAst";
 import type { ObjectStore } from "../logs/objectStore";
 import {
-  createDtsToolchainRunner,
   type DtsToolchainRunner,
 } from "../parameter-files/dtsToolchain";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -1463,7 +1462,8 @@ function candidateGateError(
   );
 }
 
-async function assertCandidateToolchainRelease(
+/** L2 Admin validate reuse; not invoked on merge/writeback hot path. */
+export async function assertCandidateToolchainRelease(
   db: Queryable,
   auth: AuthContext,
   input: {
@@ -1723,7 +1723,8 @@ export type ApplyLockedOverlayWritebackResult = {
 
 /**
  * Patch the locked overlay file via CST span, ingest a candidate revision,
- * toolchain-validate fail-closed, and upsert binding revision at the candidate.
+ * run semantic gates (L0), and upsert binding revision at the candidate.
+ * L2 toolchain validate is not fail-closed on merge/writeback hot path.
  */
 export async function applyLockedOverlayWriteback(
   db: Database | Queryable,
@@ -1915,21 +1916,12 @@ export async function applyLockedOverlayWriteback(
     }
   }
 
-  const toolchainOutcome = await assertCandidateToolchainRelease(db, auth, {
-    candidateRevisionId: ingested.id,
-    entryFile: normalizedManifest.manifest.entryFile,
-    includeSearchPaths: normalizedManifest.manifest.includeSearchPaths,
-    overlayOrder: normalizedManifest.manifest.overlayOrder,
-    files: new Map(candidateMembers.map((member) => [member.fileName, { content: member.content }])),
-    toolchain: deps.toolchain ?? createDtsToolchainRunner(),
-  });
-
   if (!deps.skipSemanticGates) {
     const finalGate = assertCanPromoteCandidateToDraft({
       status: ingested.status,
       ...semanticCounts,
-      toolchainOk: toolchainOutcome.ok,
-      toolchainFailureCode: toolchainOutcome.ok ? null : toolchainOutcome.failureCode,
+      toolchainOk: true,
+      toolchainFailureCode: null,
     });
     if (!finalGate.ok) {
       await ensureCandidateKeepStatus(db, ingested.id, finalGate.keepStatus);

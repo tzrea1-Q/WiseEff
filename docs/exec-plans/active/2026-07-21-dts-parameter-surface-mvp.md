@@ -6,8 +6,8 @@
 > Bite-sized agent plan: [`../../superpowers/plans/2026-07-21-dts-parameter-surface-mvp.md`](../../superpowers/plans/2026-07-21-dts-parameter-surface-mvp.md)
 
 - Date: 2026-07-21
-- Status: **Active** (planning complete; implementation not started)
-- Feature branch: `feat/dts-parameter-surface-mvp` (from latest `main`)
+- Status: **Active** (implementation in progress on `feat/parameter-maintenance-retire-dtc`)
+- Feature branch: `feat/parameter-maintenance-retire-dtc` (from latest `main`; supersedes `feat/dts-parameter-surface-mvp` for D4 merge/writeback work)
 
 ## Goal
 
@@ -16,7 +16,7 @@ Deliver a **minimum closed loop** aligned with the RFC:
 1. Extract / filter a **manageable parameter surface** (hide bus scaffolding such as `&spmi` / `#address-cells` from the default ledger).
 2. Default UX is **module → parameters** (driver not required in navigation).
 3. Parameter edits **write back the project’s maintained DTS text** under workflow governance.
-4. **`dtc` / `fdtoverlay` / `dt-validate` leave the edit hot path** (L2 only on export/Admin release check).
+4. **`dtc` / `fdtoverlay` / `dt-validate` leave the edit and merge/writeback hot paths** (L2 only on export/Admin release check). This program **implements D4: remove L2 fail-closed from merge writeback**.
 
 ## Architecture (MVP)
 
@@ -42,6 +42,7 @@ flowchart LR
 - Automatic Git publish
 - Full retire of mock ParametersTable
 - Perfect vendor schema coverage
+- Seed/CI toolchain gate removal (Phase 3 of parameter-maintenance program; separate agent)
 
 ## Git & PR Workflow
 

@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { loadServerEnv } from "../server/config/env";
 import { resolveDts } from "../server/modules/dts";
+import { parseDts } from "../server/modules/dts/parser";
 import { createObjectStoreFromEnv } from "../server/objectStoreFactory";
 import type { AuthContext } from "../server/modules/auth/types";
 import { buildDtsParsedIndex } from "../server/modules/parameter-files/parseIndex";
@@ -16,7 +17,7 @@ import { recomputeBindingModules } from "../server/modules/parameter-modules/ser
 import type { ConfigRevisionManifest } from "../server/modules/parameter-topology/types";
 import { createPostgresDatabase, type Database } from "../server/shared/database/client";
 import { buildDtsPowerSeed, type DtsPowerSeedParameter, type DtsPowerSeedProjectFile, buildSeedModuleMappings } from "./dts-power-seed";
-import { compileDtsSeedFiles, loadCommittedDtsSeedFiles } from "./compile-dts-seed";
+import { loadCommittedDtsSeedFiles } from "./compile-dts-seed";
 import { ensureLocalPostCutoverIdentity } from "../server/modules/parameter-topology/localPostCutover";
 import { LEGACY_SQL } from "../server/modules/parameter-topology/migration";
 import { syncVendorPropertyDocs } from "./sync-vendor-property-docs";
@@ -970,6 +971,18 @@ export async function seedM1BindingRevisionHistory(
   });
 }
 
+/** Parse-only integrity gate for committed `*-board.dts` artifacts (no dtc required). */
+export function assertCommittedDtsSeedParses(projectFiles: readonly DtsPowerSeedProjectFile[]) {
+  for (const file of projectFiles) {
+    try {
+      parseDts(file.source);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`Committed DTS seed artifact failed to parse for ${file.projectId}: ${detail}`);
+    }
+  }
+}
+
 async function main() {
   const env = loadServerEnv(process.env);
 
@@ -986,14 +999,10 @@ async function main() {
     throw new Error("Committed aurora-board.dts seed artifact is missing.");
   }
   const dtsSeed = buildDtsPowerSeed(auroraPrimary);
-  for (const generatedFile of dtsSeed.projectFiles) {
-    const committedFile = projectFiles.find((file) => file.projectId === generatedFile.projectId);
-    if (committedFile?.source !== generatedFile.source) {
-      throw new Error(
-        `Committed DTS seed artifact is stale for ${generatedFile.projectId}. Run npm run dts:seed:generate.`
-      );
-    }
-  }
+  assertCommittedDtsSeedParses(projectFiles);
+  console.log(
+    "Committed project-primary DTS seed boards passed parse-only integrity checks. Optional dtc compile: npm run dtc:seed:compile."
+  );
   const modulesByName = new Map(
     [...(compatibilityConfig.parameterModules ?? []), ...dtsSeed.parameterModules].map((module) => [module.name, module])
   );
@@ -1012,7 +1021,6 @@ async function main() {
   const includeLegacyFlatIdentity =
     process.env.WISEEFF_SEED_LEGACY_FLAT_IDENTITY?.trim() === "1";
 
-  await compileDtsSeedFiles(projectFiles);
   await seedM1Parameters(db, config, {
     includeLegacyFlatIdentity,
     moduleMappings: [...moduleMappingsByKey.values()]

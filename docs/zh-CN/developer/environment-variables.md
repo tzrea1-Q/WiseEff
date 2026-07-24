@@ -51,7 +51,7 @@
 
 | 变量 | 本地默认值 | 用途 | 说明 |
 | --- | --- | --- | --- |
-| `DTS_VALIDATION_MODE` | `block`（代码默认；`.env.example` 未设置） | P2 配置集基线发布门禁 | `block`：`dtc` 报错或 `dtc` 二进制不可用时，`releaseBaseline` 返回 `409` 阻断发布。`warn`：始终放行，但标记 `requiresConfirmation: true`。`off`：完全跳过校验（不会调用 `dtc`）。自托管目标未安装 `dtc` 时可设为 `warn`。 |
+| `DTS_VALIDATION_MODE` | `block`（代码默认；`.env.example` 未设置） | 仅 P2 配置集**基线发布**门禁 | **语义合入与类型化写回不读取此开关**（`applyLockedOverlayWriteback` / `createBindingDraft`）。`block`：`dtc` 报错或 `dtc` 二进制不可用时，`releaseBaseline` 返回 `409` 阻断发布。`warn`：始终放行，但标记 `requiresConfirmation: true`。`off`：完全跳过校验（不会调用 `dtc`）。本地开发除非演练基线发布，建议在 `.env` 使用 `warn` 或 `off`。自托管目标未安装 `dtc` 时可设为 `warn`。 |
 | `WISEEFF_DTS_TOOLCHAIN_DIR` | `<repo>/.wiseeff-tools/dts-toolchain` | DTS release 校验 | 可选受控工具链目录；API 与 CLI check 优先解析其 `bin`（Windows 为 `Scripts`），再查 PATH。 |
 | `WISEEFF_DTC_PATH` / `WISEEFF_FDTOVERLAY_PATH` / `WISEEFF_DT_VALIDATE_PATH` | 未设置 | DTS release 校验 | 受管部署可指定精确二进制；无效 override 失败关闭，不静默回退。 |
 | `DTS_IDENTITY_FALLBACK_MODE` | `allow`（代码默认） | 文件同步 / 结构化编辑身份解析 | 无 `source_*` 绑定时可回退 `(name, module)`。`allow` 保留回退并累计 `identityFallbackUses`；`warn` 允许回退并写 `parameter-file-identity-fallback` 审计；`deny` 时 sync 回退路径 `409 VALIDATION_FAILED`，结构化编辑仍可 insert 新 PPV+source（新绑定≠ fallback）。 |

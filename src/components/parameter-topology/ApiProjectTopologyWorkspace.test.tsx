@@ -155,7 +155,6 @@ describe("ApiProjectTopologyWorkspace", () => {
       <ApiProjectTopologyWorkspace
         projectId="aurora"
         canEdit
-        canPublish
         topologyRepository={repository}
         listConfigSets={listConfigSets}
       />
@@ -175,6 +174,65 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(listConfigSets).toHaveBeenCalledWith("aurora");
     expect(repository.getTopology).toHaveBeenCalledWith("aurora", "dcs-default-aurora", "current", "effective");
     expect(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ })).toBeVisible();
+  });
+
+  it("hides toolchain compile diagnostics but keeps product governance errors", async () => {
+    const repository = createRepository({
+      getTopology: vi.fn(async (_projectId, _configSetId, revisionId, view) => {
+        const diagnostics =
+          view === "effective"
+            ? [
+                {
+                  code: "ranges_format",
+                  message: "aurora-board.dts:525.9-30: Warning (ranges_format): empty ranges",
+                  severity: "warning" as const
+                },
+                {
+                  code: "TOPOLOGY_NOT_READY",
+                  message: "拓扑尚未就绪，无法提交编辑。"
+                }
+              ]
+            : [];
+        if (view === "source") {
+          return {
+            view: "source" as const,
+            revisionId: revisionId === "current" ? "rev-real-1" : revisionId,
+            configSetId: _configSetId,
+            projectId: _projectId,
+            status: "resolved",
+            incompleteBase: false,
+            diagnostics: [],
+            nodes: TOPOLOGY_TEACHING_SOURCE_NODES
+          };
+        }
+        return {
+          view: "effective" as const,
+          revisionId: revisionId === "current" ? "rev-real-1" : revisionId,
+          configSetId: _configSetId,
+          projectId: _projectId,
+          status: "resolved",
+          incompleteBase: false,
+          diagnostics,
+          nodes: TOPOLOGY_TEACHING_EFFECTIVE_NODES
+        };
+      })
+    });
+    const listConfigSets = vi.fn().mockResolvedValue([{ id: "dcs-default-aurora", name: "default" }]);
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await screen.findByRole("region", { name: "DTS 参数工作台" });
+    expect(screen.queryByText(/ranges_format/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/empty ranges/i)).not.toBeInTheDocument();
+    expect(screen.getByText("拓扑尚未就绪，无法提交编辑。")).toBeVisible();
+    expect(screen.getByRole("region", { name: "编译诊断" })).toBeVisible();
   });
 
   it("hydrates binding drafts from listDrafts after reload and shows shared working tip tray", async () => {
@@ -1365,196 +1423,24 @@ describe("ApiProjectTopologyWorkspace", () => {
     await waitFor(() => expect(submitBindingChanges).toHaveBeenCalledTimes(1));
   });
 
-  it("publish calls fail-closed validateRevision", async () => {
+  it("does not render a toolbar revision-validate action", async () => {
     const repository = createRepository();
-    const { fireEvent } = await import("@testing-library/react");
-
     render(
       <ApiProjectTopologyWorkspace
         projectId="aurora"
         canEdit
-        canPublish
         topologyRepository={repository}
         listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
       />
     );
 
     await waitFor(() => {
-      expect(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" })).toBeEnabled();
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toBeInTheDocument();
     });
     const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    expect(within(workspace).queryByRole("button", { name: "校验" })).not.toBeInTheDocument();
     expect(within(workspace).queryByRole("button", { name: "发布" })).not.toBeInTheDocument();
-    fireEvent.click(within(workspace).getByRole("button", { name: "校验" }));
-
-    await waitFor(() => {
-      expect(repository.validateRevision).toHaveBeenCalledWith("aurora", "rev-real-1");
-    });
-    expect(await screen.findByText(/校验通过|发布条件/)).toBeVisible();
-  });
-
-  it("ignores a late successful validate response after switching projects", async () => {
-    const { act, fireEvent } = await import("@testing-library/react");
-    const validateRequest = createDeferred<{
-      id: string;
-      status: "passed";
-      stage: "toolchain";
-    }>();
-    const validateRevision = vi.fn(() => validateRequest.promise);
-    const repository = createRepository({ validateRevision });
-    const listConfigSets = vi.fn(async (projectId: string) => [
-      { id: `dcs-default-${projectId}`, name: "default" }
-    ]);
-    const { rerender } = render(
-      <ApiProjectTopologyWorkspace
-        projectId="aurora"
-        canEdit
-        canPublish
-        topologyRepository={repository}
-        listConfigSets={listConfigSets}
-      />
-    );
-
-    await waitFor(() => {
-      expect(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" })).toBeEnabled();
-    });
-    fireEvent.click(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" }));
-    expect(validateRevision).toHaveBeenCalledWith("aurora", "rev-real-1");
-
-    rerender(
-      <ApiProjectTopologyWorkspace
-        projectId="nebula"
-        canEdit
-        canPublish
-        topologyRepository={repository}
-        listConfigSets={listConfigSets}
-      />
-    );
-    await waitFor(() => {
-      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
-        "data-config-set-id",
-        "dcs-default-nebula"
-      );
-    });
-
-    await act(async () => {
-      validateRequest.resolve({ id: "validate-aurora-late", status: "passed", stage: "toolchain" });
-      await validateRequest.promise;
-    });
-
-    expect(screen.queryByText("校验通过，修订已具备发布条件。")).not.toBeInTheDocument();
-  });
-
-  it("ignores a late failed validate response after switching projects", async () => {
-    const { act, fireEvent } = await import("@testing-library/react");
-    const validateRequest = createDeferred<never>();
-    const validateRevision = vi.fn(() => validateRequest.promise);
-    const repository = createRepository({ validateRevision });
-    const listConfigSets = vi.fn(async (projectId: string) => [
-      { id: `dcs-default-${projectId}`, name: "default" }
-    ]);
-    const { rerender } = render(
-      <ApiProjectTopologyWorkspace
-        projectId="aurora"
-        canEdit
-        canPublish
-        topologyRepository={repository}
-        listConfigSets={listConfigSets}
-      />
-    );
-
-    await waitFor(() => {
-      expect(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" })).toBeEnabled();
-    });
-    fireEvent.click(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" }));
-
-    rerender(
-      <ApiProjectTopologyWorkspace
-        projectId="nebula"
-        canEdit
-        canPublish
-        topologyRepository={repository}
-        listConfigSets={listConfigSets}
-      />
-    );
-    await waitFor(() => {
-      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
-        "data-config-set-id",
-        "dcs-default-nebula"
-      );
-    });
-
-    await act(async () => {
-      validateRequest.reject(new Error("Aurora validate failed late"));
-      await validateRequest.promise.catch(() => undefined);
-    });
-
-    expect(screen.queryByText("Aurora validate failed late")).not.toBeInTheDocument();
-  });
-
-  it("uses project generation, not only project id, for an Aurora-B-Nebula-Aurora switch", async () => {
-    const { act, fireEvent } = await import("@testing-library/react");
-    const validateRequest = createDeferred<{
-      id: string;
-      status: "passed";
-      stage: "toolchain";
-    }>();
-    const validateRevision = vi.fn(() => validateRequest.promise);
-    const repository = createRepository({ validateRevision });
-    const listConfigSets = vi.fn(async (projectId: string) => [
-      { id: `dcs-default-${projectId}`, name: "default" }
-    ]);
-    const { rerender } = render(
-      <ApiProjectTopologyWorkspace
-        projectId="aurora"
-        canEdit
-        canPublish
-        topologyRepository={repository}
-        listConfigSets={listConfigSets}
-      />
-    );
-
-    await waitFor(() => {
-      expect(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" })).toBeEnabled();
-    });
-    fireEvent.click(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("button", { name: "校验" }));
-
-    rerender(
-      <ApiProjectTopologyWorkspace
-        projectId="nebula"
-        canEdit
-        canPublish
-        topologyRepository={repository}
-        listConfigSets={listConfigSets}
-      />
-    );
-    await waitFor(() => {
-      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
-        "data-config-set-id",
-        "dcs-default-nebula"
-      );
-    });
-    rerender(
-      <ApiProjectTopologyWorkspace
-        projectId="aurora"
-        canEdit
-        canPublish
-        topologyRepository={repository}
-        listConfigSets={listConfigSets}
-      />
-    );
-    await waitFor(() => {
-      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
-        "data-config-set-id",
-        "dcs-default-aurora"
-      );
-    });
-
-    await act(async () => {
-      validateRequest.resolve({ id: "validate-aurora-stale", status: "passed", stage: "toolchain" });
-      await validateRequest.promise;
-    });
-
-    expect(screen.queryByText("校验通过，修订已具备发布条件。")).not.toBeInTheDocument();
+    expect(repository.validateRevision).not.toHaveBeenCalled();
   });
 
   it("ignores a late successful mapping response after switching projects", async () => {
@@ -1702,7 +1588,6 @@ describe("ApiProjectTopologyWorkspace", () => {
       <ApiProjectTopologyWorkspace
         projectId="aurora"
         canEdit
-        canPublish
         topologyRepository={repository}
         listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
       />

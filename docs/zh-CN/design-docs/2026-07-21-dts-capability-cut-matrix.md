@@ -59,6 +59,7 @@
 | 只写 overlay、base 不可变 | 硬规则 | **Demote** | 优先写 **项目主 DTS** |
 | 每次草稿全量重 ingest | 总是 | 短期 **Keep-internal** | MVP 可保留但去掉 L2 门 |
 | 草稿创建时 dtc/fdtoverlay/dt-validate | fail-closed | **Remove-from-hot-path** | 迁到 L2 导出/发布 |
+| 合入/写回 dtc 工具链 fail-closed | `applyLockedOverlayWriteback` 上 fail-closed | **Remove-from-hot-path** | 语义合并在 L0 完成；工具链仅 L2 Admin/基线 |
 | Admin validate → `validated` | 存在 | **Demote** | 文案改为「发布检查」 |
 | legacy writeback | 双轨 | **Retire**（跟进） | 主 DTS 路径稳定后 |
 | 导出 DTS | 存在 | **Keep** | 默认=维护中的项目 DTS |
@@ -77,7 +78,7 @@
 
 | 能力 | 现状 | 动作 | 说明 |
 | --- | --- | --- | --- |
-| 合成 `wiseeff-power-base.dts` | overlay seed 依赖 | **Retire** | 产品契约：每项目一份**项目主 DTS**；管理员永不维护平台基。见 [`2026-07-21-project-primary-dts-contract-rfc.md`](2026-07-21-project-primary-dts-contract-rfc.md)。seed 迁移完成前仅可作过渡夹具。 |
+| 合成 `wiseeff-power-base.dts` | overlay seed 依赖 | **Retire** | 产品契约：每项目一份**项目主 DTS**；管理员永不维护平台基。见 [`2026-07-21-project-primary-dts-contract-rfc.md`](2026-07-21-project-primary-dts-contract-rfc.md)。过渡夹具已从 seed 门禁退役（`feat/parameter-maintenance-retire-dtc`）；仅保留给需要最小 stub 的单测。 |
 | 项目 overlay | 差异演示 | **Keep** | 参数面过滤须去掉骨架噪声 |
 | 从 seed 再生 vendor schema | 耦合 | **Demote** | 服务 L2，不决定是否进面 |
 

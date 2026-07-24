@@ -3,6 +3,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+/**
+ * Optional legacy regenerator for committed `src/config/dts-seed/*-board.dts` artifacts.
+ * Product source of truth is the committed board files; hand-edits there are preferred.
+ * `buildDtsPowerSeed(primarySource)` remains the catalog derivation API for `db:seed:m1`.
+ */
 import { resolveDts, type DtsValueType, type ResolvedDts } from "../server/modules/dts";
 import {
   BOARD_INSTANCE_MODULE_NAME,
@@ -915,6 +920,9 @@ function valueTypeNote(valueType: DtsValueType) {
 }
 
 export async function generateDtsPowerSeedArtifacts(rootDir: string) {
+  console.warn(
+    "dts:seed:generate is an optional legacy regenerator. Committed *-board.dts files are the product source of truth; prefer hand-edits there."
+  );
   const seedDir = path.join(rootDir, "src/config/dts-seed");
   const fixtureDir = path.join(rootDir, "server/modules/dts/fixtures");
   const syntheticBase = await readFile(path.join(fixtureDir, "synthetic-power-base.dts"), "utf8");

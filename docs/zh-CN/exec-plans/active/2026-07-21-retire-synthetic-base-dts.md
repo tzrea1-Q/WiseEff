@@ -5,8 +5,12 @@
 > 分步实现：[superpowers plan](../../../superpowers/plans/2026-07-21-retire-synthetic-base-dts.md)
 
 - 日期：2026-07-21
-- 状态：**Active**（规划完成，实现未开始）
-- 分支：`feat/retire-synthetic-base-dts`
+- 状态：**Active**（Phase 3 seed 门禁在 `feat/parameter-maintenance-retire-dtc`：已提交 `*-board.dts` 为 SoT；`db:seed:m1` 仅 parse 完整性；CI 中 `dtc:seed:compile` 为 advisory）
+- 分支：`feat/retire-synthetic-base-dts` 或 `feat/parameter-maintenance-retire-dtc`
+
+## 范围外
+
+- 不重开 surface RFC 的 L0/L2 决策——与 parameter-maintenance 程序对齐：**L2 离开合入热路径**；工具链仅 Admin/基线辅助
 
 ## 目标
 
@@ -22,7 +26,7 @@
 | A | 裁剪矩阵 §6 改为 Retire + 链到 RFC |
 | B | 锁定写回目标 = 项目主 DTS 成员规则 + 测试 |
 | C | 编写/生成各 demo 自洽主 DTS |
-| D | 重接 `db:seed:m1` / compile / validate，去掉共享基 |
+| D | 重接 `db:seed:m1` / compile / validate，去掉共享基 | **进行中** — seed 门禁已在 `feat/parameter-maintenance-retire-dtc` 落地（parse-only；过渡夹具从 seed 路径退役） |
 | E | 重接 vendor 生成与 golden / e2e 夹具 |
 | F | 产品 seed 路径移除或隔离合成基；更新锁定计数 |
 | G | seed + 窄测 + build + docs:check + 浏览器核验 |
