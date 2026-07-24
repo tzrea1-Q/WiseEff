@@ -35,7 +35,7 @@ describe("DTS power seed catalog", () => {
     const resolved = resolveDts(baseSource);
     const resolvedPropertyCount = resolved.nodes.reduce((count, node) => count + node.properties.length, 0);
 
-    expect(resolvedPropertyCount).toBe(228);
+    expect(resolvedPropertyCount).toBe(176);
     expect(seed.parameterLibrary).toHaveLength(resolvedPropertyCount);
     expect(new Set(seed.parameterLibrary.map((parameter) => parameter.id)).size).toBe(resolvedPropertyCount);
     expect(new Set(seed.parameterLibrary.map((parameter) => parameter.sourceNodePath)).size).toBe(
@@ -177,8 +177,12 @@ describe("DTS power seed catalog", () => {
     expect(parentOf("hl7603")).toBe("Charger IC");
     expect(parentOf("hl7603@75")).toBe("hl7603");
     expect(parentOf("hl7603@77")).toBe("hl7603");
+    // Overlay-only board files no longer carry the synthetic base `compatible`, so
+    // top-level fragments (fm1230 / fm1230_1) become compatible-less (Type C) and sit
+    // directly under their path-derived business category instead of a driver group.
+    // Inline-compatible i2c children (hl7603) still form driver groups.
     expect(parentOf("fm1230")).toBe("Battery Authentication");
-    expect(parentOf("fm1230_1")).toBe("fm1230");
+    expect(parentOf("fm1230_1")).toBe("Battery Authentication");
     expect(parentOf("battery0")).toBe("battery_charge_balance");
     expect(parentOf("scharger_v800")).toBe("Charger IC");
     expect(parentOf("scharger_v800_coul")).toBe("scharger_v800");

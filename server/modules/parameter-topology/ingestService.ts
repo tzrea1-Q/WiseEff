@@ -838,6 +838,11 @@ async function ingestConfigRevisionTx(
     });
   }
 
+  // Fail-closed only on genuine structural errors (include-missing / include-cycle /
+  // path-escape / label-duplicate / parse failures). Dangling `&label` overlay targets are
+  // emitted as `severity: "warning"` (self-anchored to a synthetic node upstream), so they
+  // are persisted and surfaced but never block ingest — the uploaded overlay stays fully
+  // manageable without forcing the user to supply the missing definitions.
   const hasErrors = resolved.diagnostics.some((diagnostic) => diagnostic.severity === "error");
   const runId = randomUUID();
   await insertValidationRun(tx, {

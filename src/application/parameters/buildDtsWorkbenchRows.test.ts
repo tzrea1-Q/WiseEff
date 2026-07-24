@@ -440,6 +440,51 @@ describe("buildDtsWorkbenchRows", () => {
     expect(row.governanceState).toBe("valid");
   });
 
+  it("keeps provisional-surface unreviewed bindings valid unless mapping is open or schema is blocked", () => {
+    const unreviewedBinding: ProjectParameterBinding = {
+      ...binding,
+      schemaState: "unreviewed"
+    };
+
+    const [row] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [unreviewedBinding],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: []
+    });
+
+    expect(row).toBeDefined();
+    expect(row.schemaState).toBe("unreviewed");
+    expect(row.mappingOpen).toBe(false);
+    expect(row.governanceState).toBe("valid");
+
+    const [blockedRow] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [{ ...binding, schemaState: "invalid" }],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: []
+    });
+    expect(blockedRow.governanceState).toBe("blocked");
+
+    const [attentionRow] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [unreviewedBinding],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks
+    });
+    expect(attentionRow.mappingOpen).toBe(true);
+    expect(attentionRow.governanceState).toBe("attention");
+  });
+
   it("provides stable readable summaries for empty, mixed, and multi-group values", () => {
     const variants: ProjectParameterBinding[] = [
       {

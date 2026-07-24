@@ -232,17 +232,6 @@ function visibleBindingRows(): HTMLElement[] {
   return screen.getAllByRole("row").filter((element) => element.dataset.bindingId);
 }
 
-function expandToSc8562(label: RegExp) {
-  fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
-  const root = screen.getByRole("treeitem", { name: /^\// });
-  fireEvent.keyDown(root, { key: "ArrowRight" });
-  const amba = screen.getByRole("treeitem", { name: /amba/ });
-  fireEvent.keyDown(amba, { key: "ArrowRight" });
-  const i2c = screen.getByRole("treeitem", { name: /i2c@FDF5E000/ });
-  fireEvent.keyDown(i2c, { key: "ArrowRight" });
-  return screen.getByRole("treeitem", { name: label });
-}
-
 function selectModuleDevice(moduleLabel: RegExp, deviceLabel: RegExp) {
   const moduleNode = screen.getByRole("treeitem", { name: moduleLabel });
   fireEvent.keyDown(moduleNode, { key: "ArrowRight" });
@@ -360,34 +349,34 @@ describe("DtsParameterWorkbench", () => {
     expect(screen.queryByText("rx_fod_cond")).not.toBeInTheDocument();
   });
 
-  it("filters by the selected topology subtree when tech view is enabled", () => {
-    renderWorkbench();
+  it("keeps module filter scoped to parameters mode and does not filter the DTS source pane", async () => {
+    const loadPrimaryDtsSource = vi.fn().mockResolvedValue({
+      fileName: "aurora-board.dts",
+      versionNumber: 2,
+      text: "/ {\n  board_id = \"aurora\";\n};"
+    });
+    renderWorkbench({ loadPrimaryDtsSource });
 
-    const sc8562 = expandToSc8562(/sc8562@6E/);
-    fireEvent.click(sc8562);
+    const moduleNode = screen.getByRole("treeitem", { name: /未分类 · sc8562/ });
+    fireEvent.click(moduleNode);
+    expect(visibleBindingRows()).toHaveLength(2);
 
-    expect(visibleBindingRows().map((element) => element.dataset.bindingId)).toEqual([
-      "binding-gpio-int",
-      "binding-watchdog",
-      "binding-sensor-limit"
-    ]);
-    expect(screen.getByRole("status")).toHaveTextContent("显示 3 / 4 个参数");
-    expect(screen.queryByText("rx_fod_cond")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
+    await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
+    expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
+    expect(screen.queryByRole("row", { name: /gpio_int/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
   });
 
-  it("treats a stale selected node as unselected when same-view topology data refreshes", () => {
+  it("treats a stale selected module node as unselected when module tree data refreshes", () => {
     const { props, rerender } = renderWorkbench();
-    fireEvent.click(expandToSc8562(/sc8562@6E/));
-    expect(visibleBindingRows()).toHaveLength(3);
+    fireEvent.click(screen.getByRole("treeitem", { name: /未分类 · sc8562/ }));
+    expect(visibleBindingRows()).toHaveLength(2);
 
-    const refreshedEffectiveNodes = effectiveNodes.filter(
-      (node) => node.id !== "effective-sc8562" && node.id !== "effective-sensor"
-    );
-    rerender(
-      <DtsParameterWorkbench {...props} effectiveNodes={refreshedEffectiveNodes} />
-    );
-    expect(visibleBindingRows()).toHaveLength(4);
-    expect(screen.getByRole("status")).toHaveTextContent("显示 4 / 4 个参数");
+    const refreshedRows = effectiveRows.filter((row) => row.driverModule !== "sc8562");
+    rerender(<DtsParameterWorkbench {...props} effectiveRows={refreshedRows} />);
+    expect(visibleBindingRows()).toHaveLength(2);
+    expect(screen.getByRole("status")).toHaveTextContent("显示 2 / 2 个参数");
 
     rerender(<DtsParameterWorkbench {...props} />);
     expect(visibleBindingRows()).toHaveLength(4);
@@ -407,20 +396,21 @@ describe("DtsParameterWorkbench", () => {
     expect(screen.queryByRole("button", { name: "清除全部筛选" })).not.toBeInTheDocument();
   });
 
-  it("keeps module-first browse by default and exposes tech topology as an optional view", () => {
-    renderWorkbench({ expandAllNodesByDefault: true });
+  it("keeps module navigator and shows DTS source in tech view", async () => {
+    const loadPrimaryDtsSource = vi.fn().mockResolvedValue({
+      fileName: "aurora-board.dts",
+      versionNumber: 2,
+      text: "/ {\n  board_id = \"aurora\";\n};"
+    });
+    renderWorkbench({ loadPrimaryDtsSource });
 
-    expect(screen.queryByRole("group", { name: "DTS 视图" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "源 DTS" })).not.toBeInTheDocument();
     expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "技术视图" })).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
-    expect(screen.getByRole("tree", { name: "生效 DTS 拓扑" })).toBeInTheDocument();
-    // Remount on mode switch re-applies expandAll for the topology tree.
-    expect(screen.getByRole("treeitem", { name: /amba/ })).toBeInTheDocument();
-    expect(screen.getByRole("treeitem", { name: /i2c@FDF5E000/ })).toBeInTheDocument();
-    expect(screen.getByRole("treeitem", { name: /sc8562@6E/ })).toBeInTheDocument();
+
+    await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
+    expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
+    expect(screen.queryByRole("tree", { name: "生效 DTS 拓扑" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
   });
 
   it("always exposes details while canEdit only controls the edit entry", () => {
@@ -601,5 +591,93 @@ describe("DtsParameterWorkbench", () => {
       expect(element.dataset.bindingId).toMatch(/^binding-/);
     }
     expect(screen.queryByText(/推荐值|recommendedValue/i)).not.toBeInTheDocument();
+  });
+
+  it("focuses the smallest positive sourceLine when a module is selected in tech view", async () => {
+    const rowsWithLines = effectiveRows.map((entry) => {
+      if (entry.bindingId === "binding-gpio-int") return { ...entry, sourceLine: 12 };
+      if (entry.bindingId === "binding-watchdog") return { ...entry, sourceLine: 8 };
+      return entry;
+    });
+    const loadPrimaryDtsSource = vi.fn().mockResolvedValue({
+      fileName: "aurora-board.dts",
+      versionNumber: 2,
+      text: Array.from({ length: 20 }, (_, index) => `line-${index + 1}`).join("\n")
+    });
+    const { container } = renderWorkbench({ effectiveRows: rowsWithLines, loadPrimaryDtsSource });
+
+    fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
+    await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("treeitem", { name: /未分类 · sc8562/ }));
+    expect(container.querySelector('[data-line="8"]')).toHaveClass("is-focused");
+  });
+
+  it("shows module jump status when the selected module has no sourceLine", async () => {
+    const rowsWithoutLines = effectiveRows.map((entry) => ({ ...entry, sourceLine: null }));
+    const loadPrimaryDtsSource = vi.fn().mockResolvedValue({
+      fileName: "aurora-board.dts",
+      versionNumber: 1,
+      text: "/ { };"
+    });
+    renderWorkbench({ effectiveRows: rowsWithoutLines, loadPrimaryDtsSource });
+
+    fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
+    await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("treeitem", { name: /未分类 · sc8562/ }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("当前模块暂无源码行定位");
+  });
+
+  it("does not show DTS file meta in the header actions", async () => {
+    const loadPrimaryDtsSource = vi.fn().mockResolvedValue({
+      fileName: "aurora-board.dts",
+      versionNumber: 2,
+      text: "/ { };"
+    });
+    renderWorkbench({ loadPrimaryDtsSource });
+
+    fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
+    await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
+
+    const downloadButton = await screen.findByRole("button", { name: "下载 DTS" });
+    expect(downloadButton).not.toBeDisabled();
+    const headerActions = downloadButton.closest(".dts-parameter-workbench__header-actions") as HTMLElement;
+    expect(within(headerActions).queryByText("aurora-board.dts · v2")).not.toBeInTheDocument();
+    expect(screen.queryByText("aurora-board.dts · v2")).not.toBeInTheDocument();
+  });
+
+  it("surfaces the loadPrimaryDtsSource rejection message in tech view", async () => {
+    const loadPrimaryDtsSource = vi.fn().mockRejectedValue(
+      new Error("未找到可用的项目主 DTS 文件")
+    );
+    renderWorkbench({ loadPrimaryDtsSource });
+
+    fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
+    await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
+
+    expect(screen.getByRole("alert")).toHaveTextContent("无法加载 DTS 源码。");
+    expect(screen.getByText("未找到可用的项目主 DTS 文件")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+  });
+
+  it("uses DTS find semantics for the search control in tech view", async () => {
+    const loadPrimaryDtsSource = vi.fn().mockResolvedValue({
+      fileName: "aurora-board.dts",
+      versionNumber: 1,
+      text: "alpha\nbeta-gamma\nomega"
+    });
+    renderWorkbench({ loadPrimaryDtsSource });
+
+    fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
+    await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
+
+    const searchbox = await screen.findByRole("searchbox", { name: "在 DTS 源码中查找" });
+    expect(searchbox).toHaveAttribute("placeholder", "在 DTS 文本中查找");
+    fireEvent.change(searchbox, { target: { value: "gamma" } });
+    expect(screen.getByRole("status")).toHaveTextContent(/匹配/);
   });
 });

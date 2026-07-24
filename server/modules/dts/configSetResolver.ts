@@ -30,11 +30,12 @@ export type DtsResolutionDiagnosticCode =
   | "include-cycle"
   | "path-escape"
   | "target-unresolved"
+  | "dangling-reference"
   | "label-duplicate";
 
 export type DtsResolutionDiagnostic = {
   code: DtsResolutionDiagnosticCode;
-  severity: "error";
+  severity: "error" | "warning";
   fileName: string;
   message: string;
 };
@@ -369,15 +370,24 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
   if (cst.refTarget) {
     const target = ctx.byLabel.get(cst.refTarget);
     if (!target) {
+      // Self-anchoring overlay: the referenced label is not defined anywhere in the
+      // uploaded file set. Dropping the fragment would silently lose its business
+      // parameters, and failing the whole ingest would leave the project unusable.
+      // Instead, synthesize a virtual anchor node keyed by the label so the fragment's
+      // properties still surface and round-trip on writeback (which locates them from the
+      // uploaded text alone). Full-tree linkage / phandle / L2 toolchain correctness stays
+      // a separate, optional concern that a later context upload or export can satisfy.
       ctx.diagnostics.push({
-        code: "target-unresolved",
-        severity: "error",
+        code: "dangling-reference",
+        severity: "warning",
         fileName,
-        message: `Overlay target "&${cst.refTarget}" does not resolve to any node`,
+        message: `Overlay target "&${cst.refTarget}" is not defined in the uploaded file set; its properties are attached to a synthetic anchor node so parameters stay manageable (full-tree resolution unavailable until the definition is provided)`,
       });
-      return;
+      node = ensureNode(ctx, cst.refTarget, cst.refTarget, undefined, fileName);
+      registerLabel(ctx, cst.refTarget, node, fileName);
+    } else {
+      node = target;
     }
-    node = target;
   } else {
     const locator = joinLocator(parentLocator, segmentFor(cst));
     node = ensureNode(ctx, locator, cst.isOverlayRoot ? "/" : cst.name, cst.unitAddress, fileName);
