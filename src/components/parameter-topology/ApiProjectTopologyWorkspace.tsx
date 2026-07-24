@@ -42,6 +42,7 @@ import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 import { IdentityMappingReview } from "./IdentityMappingReview";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
+import { filterProductWorkbenchDiagnostics } from "@/domain/parameter-topology/toolchainDiagnostics";
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
@@ -196,12 +197,14 @@ async function loadWorkspace(
   ];
   // Deduplicate by code+message
   const seen = new Set<string>();
-  const uniqueDiagnostics = diagnostics.filter((item) => {
-    const key = `${item.code ?? ""}:${item.message}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const uniqueDiagnostics = filterProductWorkbenchDiagnostics(
+    diagnostics.filter((item) => {
+      const key = `${item.code ?? ""}:${item.message}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+  );
 
   return {
     kind: "ready",
@@ -726,7 +729,7 @@ export function ApiProjectTopologyWorkspace({
           }
           return {
             ...current,
-            diagnostics: run.diagnostics ?? []
+            diagnostics: filterProductWorkbenchDiagnostics(run.diagnostics ?? [])
           };
         });
       } else {
@@ -744,7 +747,7 @@ export function ApiProjectTopologyWorkspace({
           }
           return {
             ...current,
-            diagnostics: mapped.diagnostics
+            diagnostics: filterProductWorkbenchDiagnostics(mapped.diagnostics)
           };
         });
         if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;

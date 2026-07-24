@@ -177,6 +177,65 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ })).toBeVisible();
   });
 
+  it("hides toolchain compile diagnostics but keeps product governance errors", async () => {
+    const repository = createRepository({
+      getTopology: vi.fn(async (_projectId, _configSetId, revisionId, view) => {
+        const diagnostics =
+          view === "effective"
+            ? [
+                {
+                  code: "ranges_format",
+                  message: "aurora-board.dts:525.9-30: Warning (ranges_format): empty ranges",
+                  severity: "warning" as const
+                },
+                {
+                  code: "TOPOLOGY_NOT_READY",
+                  message: "拓扑尚未就绪，无法提交编辑。"
+                }
+              ]
+            : [];
+        if (view === "source") {
+          return {
+            view: "source" as const,
+            revisionId: revisionId === "current" ? "rev-real-1" : revisionId,
+            configSetId: _configSetId,
+            projectId: _projectId,
+            status: "resolved",
+            incompleteBase: false,
+            diagnostics: [],
+            nodes: TOPOLOGY_TEACHING_SOURCE_NODES
+          };
+        }
+        return {
+          view: "effective" as const,
+          revisionId: revisionId === "current" ? "rev-real-1" : revisionId,
+          configSetId: _configSetId,
+          projectId: _projectId,
+          status: "resolved",
+          incompleteBase: false,
+          diagnostics,
+          nodes: TOPOLOGY_TEACHING_EFFECTIVE_NODES
+        };
+      })
+    });
+    const listConfigSets = vi.fn().mockResolvedValue([{ id: "dcs-default-aurora", name: "default" }]);
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await screen.findByRole("region", { name: "DTS 参数工作台" });
+    expect(screen.queryByText(/ranges_format/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/empty ranges/i)).not.toBeInTheDocument();
+    expect(screen.getByText("拓扑尚未就绪，无法提交编辑。")).toBeVisible();
+    expect(screen.getByRole("region", { name: "编译诊断" })).toBeVisible();
+  });
+
   it("hydrates binding drafts from listDrafts after reload and shows shared working tip tray", async () => {
     const sharedTip = "rev-shared-tip";
     const listDrafts = vi.fn().mockResolvedValue([
