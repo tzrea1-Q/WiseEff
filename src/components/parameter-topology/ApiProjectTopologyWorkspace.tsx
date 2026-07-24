@@ -46,6 +46,7 @@ import { IdentityMappingReview } from "./IdentityMappingReview";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
 import { filterProductWorkbenchDiagnostics } from "@/domain/parameter-topology/toolchainDiagnostics";
+import { WorkbenchDiagnosticsSection } from "./WorkbenchDiagnosticsSection";
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
@@ -888,18 +889,7 @@ export function ApiProjectTopologyWorkspace({
             {loadState.incompleteBase ? (
               <p role="alert">缺少 base 配置，当前拓扑不完整；已阻止类型化编辑与校验。</p>
             ) : null}
-            {loadState.diagnostics.length > 0 ? (
-              <section aria-label="编译诊断">
-                <ul>
-                  {loadState.diagnostics.map((diagnostic) => (
-                    <li key={`${diagnostic.code ?? ""}:${diagnostic.message}`}>
-                      {diagnostic.severity ? `[${diagnostic.severity}] ` : null}
-                      {diagnostic.message}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
+            <WorkbenchDiagnosticsSection diagnostics={loadState.diagnostics} />
             <IdentityMappingReview
               tasks={loadState.mappingTasks}
               onResolve={(taskId, input) => {

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
@@ -234,6 +234,75 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(screen.queryByText(/empty ranges/i)).not.toBeInTheDocument();
     expect(screen.getByText("拓扑尚未就绪，无法提交编辑。")).toBeVisible();
     expect(screen.getByRole("region", { name: "编译诊断" })).toBeVisible();
+  });
+
+  it("collapses dangling-reference diagnostics into one expandable summary", async () => {
+    const repository = createRepository({
+      getTopology: vi.fn(async (_projectId, _configSetId, revisionId, view) => {
+        const diagnostics =
+          view === "effective"
+            ? [
+                {
+                  code: "dangling-reference",
+                  severity: "warning" as const,
+                  message:
+                    'Overlay target "&amba" is not defined in the uploaded file set; its properties are attached to a synthetic anchor node so parameters stay manageable (full-tree resolution unavailable until the definition is provided)'
+                },
+                {
+                  code: "dangling-reference",
+                  severity: "warning" as const,
+                  message:
+                    'Overlay target "&charging_core" is not defined in the uploaded file set; its properties are attached to a synthetic anchor node so parameters stay manageable (full-tree resolution unavailable until the definition is provided)'
+                }
+              ]
+            : [];
+        if (view === "source") {
+          return {
+            view: "source" as const,
+            revisionId: revisionId === "current" ? "rev-real-1" : revisionId,
+            configSetId: _configSetId,
+            projectId: _projectId,
+            status: "resolved",
+            incompleteBase: false,
+            diagnostics: [],
+            nodes: TOPOLOGY_TEACHING_SOURCE_NODES
+          };
+        }
+        return {
+          view: "effective" as const,
+          revisionId: revisionId === "current" ? "rev-real-1" : revisionId,
+          configSetId: _configSetId,
+          projectId: _projectId,
+          status: "resolved",
+          incompleteBase: false,
+          diagnostics,
+          nodes: TOPOLOGY_TEACHING_EFFECTIVE_NODES
+        };
+      })
+    });
+    const listConfigSets = vi.fn().mockResolvedValue([{ id: "dcs-default-aurora", name: "default" }]);
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await screen.findByRole("region", { name: "DTS 参数工作台" });
+    const section = screen.getByRole("region", { name: "编译诊断" });
+    expect(
+      within(section).getByText(/2 个悬空 overlay 引用已自锚定，参数仍可管理/)
+    ).toBeVisible();
+    expect(screen.queryByText(/Overlay target "&amba"/)).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(section).getByText(/2 个悬空 overlay 引用已自锚定，参数仍可管理/)
+    );
+    expect(within(section).getByText("&amba")).toBeVisible();
+    expect(within(section).getByText("&charging_core")).toBeVisible();
   });
 
   it("hydrates binding drafts from listDrafts after reload and shows shared working tip tray", async () => {

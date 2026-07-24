@@ -16,6 +16,7 @@ import {
 import { BindingPropertyTable } from "./BindingPropertyTable";
 import { IdentityMappingReview } from "./IdentityMappingReview";
 import { TopologyTree } from "./TopologyTree";
+import { WorkbenchDiagnosticsSection } from "./WorkbenchDiagnosticsSection";
 
 export type TopologyLayoutMode = "desktop" | "tablet" | "mobile";
 
@@ -301,18 +302,7 @@ export function ProjectTopologyWorkspace({
         </section>
       ) : null}
 
-      {diagnostics.length > 0 ? (
-        <section aria-label="编译诊断">
-          <ul>
-            {diagnostics.map((item) => (
-              <li key={`${item.code ?? ""}:${item.message}`}>
-                {item.severity ? `[${item.severity}] ` : null}
-                {item.message}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      <WorkbenchDiagnosticsSection diagnostics={diagnostics} />
 
       <IdentityMappingReview tasks={mappingTasks} onResolve={onResolveMapping} />
 

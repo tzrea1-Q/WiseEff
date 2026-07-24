@@ -19385,6 +19385,62 @@ body.xiaoze-popup-resize-active {
   padding-left: 1.25rem;
 }
 
+.workbench-diagnostics {
+  display: grid;
+  gap: 8px;
+}
+
+.workbench-diagnostics__dangling {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, #b45309 28%, var(--outline, #d6dde8));
+  border-radius: 8px;
+  background: color-mix(in srgb, #b45309 8%, #fff);
+  color: var(--foreground, #152238);
+}
+
+.workbench-diagnostics__dangling-summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.925rem;
+  line-height: 1.4;
+  font-weight: 550;
+}
+
+.workbench-diagnostics__dangling-summary::-webkit-details-marker {
+  display: none;
+}
+
+.workbench-diagnostics__dangling-summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 1em;
+  margin-right: 0.35em;
+  color: #9a6700;
+}
+
+.workbench-diagnostics__dangling[open] > .workbench-diagnostics__dangling-summary::before {
+  content: "▾";
+}
+
+.workbench-diagnostics__dangling-list,
+.workbench-diagnostics__other {
+  margin: 8px 0 0;
+  padding-left: 1.25rem;
+}
+
+.workbench-diagnostics__dangling-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  list-style: none;
+  padding-left: 1.35rem;
+}
+
+.workbench-diagnostics__dangling-list code {
+  font-size: 0.875rem;
+}
+
 .identity-mapping-review {
   display: grid;
   gap: 8px;
