@@ -308,6 +308,40 @@ const testGateEnvDenylist = [
   "XIAOZE_DETERMINISTIC"
 ] as const;
 
+/** Isolated Postgres DB name for preflight `test:all` (must not be the seeded/cutover acceptance DB). */
+export const UNIT_TEST_DATABASE_NAME = "wiseeff_unit";
+
+/**
+ * Resolve a database URL that is safe for unit/integration gates during acceptance
+ * preflight. Acceptance seed applies local post-cutover, which renames legacy tables
+ * (`parameter_definitions` → `legacy_parameter_definitions`); running `test:all` against
+ * that same DATABASE_URL fails. Prefer an explicit unit URL, otherwise rewrite the
+ * runtime DATABASE_URL database name to `wiseeff_unit`.
+ */
+export function resolveUnitTestDatabaseUrl(env: RuntimeEnv = process.env): string | undefined {
+  const explicit = env.WISEEFF_UNIT_TEST_DATABASE_URL?.trim();
+  if (explicit) return explicit;
+
+  const source = env.DATABASE_URL?.trim() || env.TEST_DATABASE_URL?.trim();
+  if (!source) return undefined;
+
+  return rewriteDatabaseName(source, UNIT_TEST_DATABASE_NAME) ?? source;
+}
+
+export function rewriteDatabaseName(connectionString: string, databaseName: string): string | undefined {
+  try {
+    const url = new URL(connectionString);
+    if (!url.pathname || url.pathname === "/") {
+      url.pathname = `/${databaseName}`;
+      return url.toString();
+    }
+    url.pathname = `/${databaseName}`;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export function buildTestGateEnv(env: RuntimeEnv = process.env): RuntimeEnv {
   const gateEnv: RuntimeEnv = { ...env, VITE_WISEEFF_RUNTIME_MODE: "mock" };
 
@@ -315,6 +349,12 @@ export function buildTestGateEnv(env: RuntimeEnv = process.env): RuntimeEnv {
     if (key !== "VITE_WISEEFF_RUNTIME_MODE") {
       delete gateEnv[key];
     }
+  }
+
+  const unitUrl = resolveUnitTestDatabaseUrl(env);
+  if (unitUrl) {
+    gateEnv.DATABASE_URL = unitUrl;
+    gateEnv.TEST_DATABASE_URL = unitUrl;
   }
 
   return gateEnv;
@@ -375,7 +415,7 @@ async function main() {
   if (options.runGates) {
     checks.push(runCommandCheck("docs:check", "npm", ["run", "docs:check"]));
     checks.push(runCommandCheck("contract:check", "npm", ["run", "contract:check"]));
-    checks.push(runCommandCheck("test:all", "npm", ["run", "test:all"]));
+    checks.push(runCommandCheck("test:all", "npm", ["run", "test:all"], env));
     checks.push(runCommandCheck("build", "npm", ["run", "build"]));
     checks.push(runCommandCheck("git diff --check", "git", ["diff", "--check"]));
   } else {
@@ -466,14 +506,96 @@ async function runApiChecks(env: RuntimeEnv, options: PreflightOptions) {
   return { checks, pilotOutcome };
 }
 
-function runCommandCheck(name: string, command: string, args: string[]): CheckResult {
+function runCommandCheck(
+  name: string,
+  command: string,
+  args: string[],
+  runtimeEnv: RuntimeEnv = process.env
+): CheckResult {
+  const env = name === "test:all" ? buildTestGateEnv(runtimeEnv) : process.env;
+  if (name === "test:all") {
+    const ensured = ensureUnitTestDatabase(runtimeEnv);
+    if (ensured.status === "failed") {
+      return ensured;
+    }
+  }
+
   const result = spawnSync(command, args, {
     encoding: "utf8",
     shell: process.platform === "win32",
-    env: name === "test:all" ? buildTestGateEnv() : process.env
+    env
   });
 
   return commandResultToCheck(name, result);
+}
+
+/**
+ * Create the isolated unit-test database when missing, using the acceptance/runtime
+ * DATABASE_URL as the admin connection (same Postgres instance).
+ */
+export function ensureUnitTestDatabase(env: RuntimeEnv = process.env): CheckResult {
+  const unitUrl = resolveUnitTestDatabaseUrl(env);
+  const adminUrl = env.DATABASE_URL?.trim();
+  if (!unitUrl) {
+    return { name: "unit-test database", status: "passed", detail: "No DATABASE_URL; test suite uses defaults." };
+  }
+  if (!adminUrl || adminUrl === unitUrl) {
+    return {
+      name: "unit-test database",
+      status: "passed",
+      detail: "Unit-test database already matches runtime DATABASE_URL."
+    };
+  }
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `
+import pg from "pg";
+const adminUrl = process.env.WISEEFF_ADMIN_DATABASE_URL;
+const unitUrl = process.env.WISEEFF_UNIT_DATABASE_URL;
+const unitName = new URL(unitUrl).pathname.replace(/^\\//, "");
+if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(unitName)) {
+  throw new Error("Refusing to create unit-test database with unsafe name: " + unitName);
+}
+const client = new pg.Client({ connectionString: adminUrl });
+await client.connect();
+try {
+  const existing = await client.query("select 1 from pg_database where datname = $1", [unitName]);
+  if (existing.rowCount === 0) {
+    await client.query("create database " + unitName);
+  }
+} finally {
+  await client.end();
+}
+`
+    ],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        WISEEFF_ADMIN_DATABASE_URL: adminUrl,
+        WISEEFF_UNIT_DATABASE_URL: unitUrl
+      }
+    }
+  );
+
+  if (result.status !== 0) {
+    const detail = [result.stderr, result.stdout, result.error?.message].filter(Boolean).join("\n").trim();
+    return {
+      name: "unit-test database",
+      status: "failed",
+      detail: detail || `Failed to ensure unit-test database (exit ${result.status}).`
+    };
+  }
+
+  return {
+    name: "unit-test database",
+    status: "passed",
+    detail: `Ready at ${unitUrl}`
+  };
 }
 
 async function ensureRuntimeServices(services: RuntimeServicePlan[], env: RuntimeEnv): Promise<CheckResult[]> {

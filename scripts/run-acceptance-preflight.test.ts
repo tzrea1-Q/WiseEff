@@ -202,6 +202,8 @@ describe("acceptance preflight helpers", () => {
   it("isolates test gates from acceptance runtime and pilot evidence env", () => {
     const env = buildTestGateEnv({
       KEEP_ME: "kept",
+      DATABASE_URL: "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff",
+      TEST_DATABASE_URL: "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff",
       npm_config_env_file: "E:/Prototypes/0525/WiseEff/.env",
       npm_config_mode: "local-non-hdc",
       VITE_WISEEFF_RUNTIME_MODE: "api",
@@ -231,6 +233,18 @@ describe("acceptance preflight helpers", () => {
     expect(env).not.toHaveProperty("DEBUG_DEVICE_GATEWAY_MODE");
     expect(env).not.toHaveProperty("HDC_DEVICE_LAB_AVAILABLE");
     expect(env).not.toHaveProperty("XIAOZE_DETERMINISTIC");
+    expect(env.DATABASE_URL).toBe("postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff_unit");
+    expect(env.TEST_DATABASE_URL).toBe("postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff_unit");
+  });
+
+  it("honors an explicit unit-test database URL for gate isolation", () => {
+    const env = buildTestGateEnv({
+      DATABASE_URL: "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff",
+      WISEEFF_UNIT_TEST_DATABASE_URL: "postgres://wiseeff:wiseeff@127.0.0.1:5432/custom_unit"
+    });
+
+    expect(env.DATABASE_URL).toBe("postgres://wiseeff:wiseeff@127.0.0.1:5432/custom_unit");
+    expect(env.TEST_DATABASE_URL).toBe("postgres://wiseeff:wiseeff@127.0.0.1:5432/custom_unit");
   });
 
   it("accepts full pilot readiness", () => {
