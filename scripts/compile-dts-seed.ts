@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { synthesizeDanglingAnchorStub } from "../server/modules/dts/danglingAnchorStub";
 import {
   createSubprocessDtcValidator,
   type DtcValidationResult,
@@ -12,15 +13,49 @@ import {
   type DtsToolchainResult,
   type DtsToolchainRunner
 } from "../server/modules/parameter-files/dtsToolchain";
-import { primaryBoardFileName } from "./merge-primary-dts";
+import { mergePrimaryDtsBoard, primaryBoardFileName } from "./merge-primary-dts";
 import type { DtsPowerSeedProjectFile, DtsPowerSeedProjectId } from "./dts-power-seed";
+
+/**
+ * Labels referenced via `&name` that are not defined in the same source.
+ * Used only to build an ephemeral L2 compile companion — never persisted.
+ */
+export function missingReferencedLabels(source: string): string[] {
+  const defined = new Set<string>();
+  for (const match of source.matchAll(/(?:^|[\s;{])([A-Za-z_][A-Za-z0-9_]*):/gm)) {
+    defined.add(match[1]!);
+  }
+  const missing: string[] = [];
+  const seen = new Set<string>();
+  for (const match of source.matchAll(/&([A-Za-z_][A-Za-z0-9_]*)/g)) {
+    const label = match[1]!;
+    if (defined.has(label) || seen.has(label)) continue;
+    seen.add(label);
+    missing.push(label);
+  }
+  return missing;
+}
+
+/**
+ * Prepend an ephemeral empty-node stub for dangling `&label` / phandle targets so
+ * advisory `dtc` can compile overlay-only project-primary boards. The stub is a
+ * throwaway compile companion (see danglingAnchorStub module doc).
+ */
+export function withEphemeralDanglingAnchorStub(source: string): string {
+  const stub = synthesizeDanglingAnchorStub(missingReferencedLabels(source));
+  if (!stub) return source;
+  return mergePrimaryDtsBoard(stub, source);
+}
 
 export async function compileDtsSeedFiles(
   files: readonly DtsPowerSeedProjectFile[],
   validator: DtcValidator = createSubprocessDtcValidator()
 ): Promise<DtcValidationResult> {
   const result = await validator.validate(
-    files.map((file) => ({ name: file.artifactFileName, content: file.source })),
+    files.map((file) => ({
+      name: file.artifactFileName,
+      content: withEphemeralDanglingAnchorStub(file.source)
+    })),
     { mode: "block" }
   );
   if (!result.ok || result.compiler === "unavailable") {
@@ -52,17 +87,18 @@ export async function compileDtsSeedEffectiveTrees(
   const results: Array<{ projectId: DtsPowerSeedProjectId; result: DtsToolchainResult }> = [];
 
   for (const primary of primaries) {
+    const compileSource = withEphemeralDanglingAnchorStub(primary.source);
     const result = await runner.validate(
       {
         entryFile: primary.artifactFileName,
         includeSearchPaths: [],
         overlayOrder: [],
-        files: new Map([[primary.artifactFileName, { content: primary.source }]])
+        files: new Map([[primary.artifactFileName, { content: compileSource }]])
       },
       {
-        // Seed boards are self-contained and may emit expected ranges_format warnings
-        // without an external SoC base. Vendor bindings currently describe properties,
-        // not every child node in the golden tree — keep schema advisory here.
+        // Seed boards may be overlay-only (dangling `&label`); L2 advisory uses an
+        // ephemeral stub companion. Vendor bindings currently describe properties,
+        // not every child node — keep schema advisory here.
         mode: "warn",
         failOnSchema: false
       }

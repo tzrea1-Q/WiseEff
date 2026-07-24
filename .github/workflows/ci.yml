@@ -171,6 +171,11 @@ jobs:
           # loadEnvContent keeps the first assignment; rewrite example defaults in-place.
           sed -i 's/^XIAOZE_PROACTIVE_ENABLED=.*/XIAOZE_PROACTIVE_ENABLED=true/' .env
 
+      - name: Migrate and seed database
+        run: |
+          npm run db:migrate
+          npm run db:seed:all
+
       - name: Acceptance CI metadata
         run: npm run acceptance:ci
 
