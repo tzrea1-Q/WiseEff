@@ -363,7 +363,7 @@ describe("DtsParameterWorkbench", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
     await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
-    expect(screen.getAllByText(/aurora-board\.dts · v2/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/aurora-board\.dts · v2/)).toBeInTheDocument();
     expect(screen.queryByRole("row", { name: /gpio_int/ })).not.toBeInTheDocument();
     expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
   });
@@ -410,7 +410,7 @@ describe("DtsParameterWorkbench", () => {
     await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
     expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
     expect(screen.queryByRole("tree", { name: "生效 DTS 拓扑" })).not.toBeInTheDocument();
-    expect(screen.getAllByText(/aurora-board\.dts · v2/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/aurora-board\.dts · v2/)).toBeInTheDocument();
     expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
   });
 
@@ -610,7 +610,7 @@ describe("DtsParameterWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
     await waitFor(() => expect(loadPrimaryDtsSource).toHaveBeenCalled());
     await waitFor(() => {
-      expect(screen.getAllByText(/aurora-board\.dts · v2/).length).toBeGreaterThan(0);
+      expect(screen.getByText(/aurora-board\.dts · v2/)).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("treeitem", { name: /未分类 · sc8562/ }));
@@ -633,7 +633,7 @@ describe("DtsParameterWorkbench", () => {
     expect(screen.getByRole("status")).toHaveTextContent("当前模块暂无源码行定位");
   });
 
-  it("shows DTS file meta near the download control in tech view", async () => {
+  it("keeps DTS file meta in the viewer, not the header actions", async () => {
     const loadPrimaryDtsSource = vi.fn().mockResolvedValue({
       fileName: "aurora-board.dts",
       versionNumber: 2,
@@ -647,7 +647,8 @@ describe("DtsParameterWorkbench", () => {
     const downloadButton = await screen.findByRole("button", { name: "下载 DTS" });
     expect(downloadButton).not.toBeDisabled();
     const headerActions = downloadButton.closest(".dts-parameter-workbench__header-actions") as HTMLElement;
-    expect(within(headerActions).getByText("aurora-board.dts · v2")).toBeInTheDocument();
+    expect(within(headerActions).queryByText("aurora-board.dts · v2")).not.toBeInTheDocument();
+    expect(screen.getByText("aurora-board.dts · v2")).toBeInTheDocument();
   });
 
   it("surfaces the loadPrimaryDtsSource rejection message in tech view", async () => {

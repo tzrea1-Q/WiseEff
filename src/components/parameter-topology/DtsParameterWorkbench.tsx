@@ -543,22 +543,15 @@ export function DtsParameterWorkbench({
             技术视图
           </button>
           {resultsMode === "dtsSource" ? (
-            <>
-              <button
-                type="button"
-                className="button subtle"
-                disabled={dtsSourceStatus !== "ready" || !dtsSource}
-                onClick={downloadDtsSource}
-              >
-                <Download size={15} strokeWidth={1.9} aria-hidden="true" />
-                下载 DTS
-              </button>
-              {dtsSource ? (
-                <span className="dts-parameter-workbench__dts-file-meta">
-                  {dtsSource.fileName} · v{dtsSource.versionNumber}
-                </span>
-              ) : null}
-            </>
+            <button
+              type="button"
+              className="button subtle"
+              disabled={dtsSourceStatus !== "ready" || !dtsSource}
+              onClick={downloadDtsSource}
+            >
+              <Download size={15} strokeWidth={1.9} aria-hidden="true" />
+              下载 DTS
+            </button>
           ) : onExportRows ? (
             <button
               type="button"
