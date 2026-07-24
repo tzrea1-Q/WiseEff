@@ -1662,7 +1662,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
     expect(screen.getByRole("tree", { name: "业务模块树" })).toBeInTheDocument();
     expect(screen.queryByRole("tree", { name: "生效 DTS 拓扑" })).not.toBeInTheDocument();
-    expect(screen.getAllByText(/aurora-board\.dts · v2/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/aurora-board\.dts · v2/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
   });
 });

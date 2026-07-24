@@ -21488,12 +21488,6 @@ button.dts-topology-navigator__disclosure:focus-visible {
   min-height: 0;
 }
 
-.project-primary-dts-viewer__meta {
-  color: #475569;
-  font-size: 12px;
-  font-weight: 700;
-}
-
 .project-primary-dts-viewer__body {
   max-height: min(72vh, 720px);
   overflow: auto;

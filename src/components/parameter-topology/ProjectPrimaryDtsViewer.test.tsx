@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ProjectPrimaryDtsViewer } from "./ProjectPrimaryDtsViewer";
 
 describe("ProjectPrimaryDtsViewer", () => {
-  it("renders meta, line numbers, and source text", () => {
+  it("renders line numbers and source text without a visible meta header", () => {
     render(
       <ProjectPrimaryDtsViewer
         fileName="aurora-board.dts"
@@ -11,7 +11,8 @@ describe("ProjectPrimaryDtsViewer", () => {
         text={"line-one\nline-two\nline-three"}
       />
     );
-    expect(screen.getByText(/aurora-board\.dts · v3/)).toBeInTheDocument();
+    expect(screen.queryByText(/aurora-board\.dts · v3/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("aurora-board.dts · v3")).toBeInTheDocument();
     expect(screen.getByText("line-two")).toBeInTheDocument();
     expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
   });

@@ -142,10 +142,7 @@ export function ProjectPrimaryDtsViewer({
   let globalMatchOffset = 0;
 
   return (
-    <section className={rootClassName}>
-      <header className="project-primary-dts-viewer__meta">
-        {fileName} · v{versionNumber}
-      </header>
+    <section className={rootClassName} aria-label={`${fileName} · v${versionNumber}`}>
       <div className="project-primary-dts-viewer__body" aria-label="DTS 源码">
         {lines.map((line, index) => {
           const lineNumber = index + 1;
