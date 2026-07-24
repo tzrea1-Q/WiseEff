@@ -21480,3 +21480,74 @@ button.dts-topology-navigator__disclosure:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+.project-primary-dts-viewer {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.project-primary-dts-viewer__meta {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.project-primary-dts-viewer__body {
+  max-height: min(72vh, 720px);
+  overflow: auto;
+  padding: 10px;
+  color: #1e293b;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.project-primary-dts-viewer__line {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  min-width: max-content;
+  border-left: 3px solid transparent;
+}
+
+.project-primary-dts-viewer__line.is-focused {
+  background: rgba(14, 165, 233, 0.1);
+  border-left-color: #0ea5e9;
+}
+
+.project-primary-dts-viewer__line-number {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  min-height: 22px;
+  padding: 2px 8px 2px 0;
+  color: #94a3b8;
+  background: rgba(248, 250, 252, 0.85);
+  border-right: 1px solid rgba(148, 163, 184, 0.18);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  user-select: none;
+}
+
+.project-primary-dts-viewer__line-text {
+  display: block;
+  min-height: 22px;
+  padding: 2px 10px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.project-primary-dts-viewer__find-match {
+  color: inherit;
+  background: rgba(250, 204, 21, 0.45);
+  border-radius: 2px;
+}
+
+.project-primary-dts-viewer__find-match.is-active {
+  background: rgba(245, 158, 11, 0.65);
+  outline: 1px solid rgba(217, 119, 6, 0.55);
+}
