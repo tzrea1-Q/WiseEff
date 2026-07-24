@@ -197,7 +197,7 @@ export function DtsBindingDetailDialog({
       }}>
         <DialogContent
           aria-label={`${row.propertyKey} 参数详情`}
-          className="dts-binding-detail-dialog max-h-[calc(100vh-2rem)] w-full gap-3 sm:max-w-5xl overflow-y-auto"
+          className="dts-binding-detail-dialog flex max-h-[calc(100vh-2rem)] w-full flex-col gap-3 overflow-hidden sm:max-w-5xl"
           overlayClassName="dts-binding-detail-dialog__overlay"
           showCloseButton={false}
         >
@@ -211,7 +211,7 @@ export function DtsBindingDetailDialog({
             查看该参数的定义、近期历史与跨项目对比。
           </DialogDescription>
 
-          <div className="dts-binding-detail-dialog__content grid gap-4">
+          <div className="dts-binding-detail-dialog__content grid gap-4 overflow-y-auto">
             <section aria-labelledby="dts-binding-definition-title">
               <h3 id="dts-binding-definition-title">参数定义</h3>
               {specDetailStatus === "loading" ? (
