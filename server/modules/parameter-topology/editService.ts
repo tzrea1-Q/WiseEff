@@ -1945,8 +1945,8 @@ export async function applyLockedOverlayWriteback(
         typedValue: mergedTypedValue,
         canonicalValue: mergedTypedValue,
         rawValue: input.mergedValue,
-        schemaState: "merged",
-        policyState: "merged",
+        schemaState: "valid",
+        policyState: "not_applicable",
       },
     });
     bindingRevisionId = bindingRevision.id;
