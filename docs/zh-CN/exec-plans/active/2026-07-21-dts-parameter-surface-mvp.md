@@ -5,7 +5,7 @@
 > 分步实现：[superpowers plan](../../../superpowers/plans/2026-07-21-dts-parameter-surface-mvp.md)
 
 - 日期：2026-07-21
-- 状态：**Active**（在 `feat/parameter-maintenance-retire-dtc` 上实施中）
+- 状态：**Active**（D4 合入/写回与工作台去噪已在 `feat/parameter-maintenance-retire-dtc` 落地；可管表面过滤等其余 MVP 项仍开放）
 - 分支：`feat/parameter-maintenance-retire-dtc`（D4 合入/写回工作取代原 `feat/dts-parameter-surface-mvp`）
 
 ## 目标

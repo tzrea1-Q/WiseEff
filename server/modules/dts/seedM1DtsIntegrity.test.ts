@@ -2,10 +2,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { loadCommittedDtsSeedFiles } from "./compile-dts-seed";
-import { assertCommittedDtsSeedParses } from "./seed-m1-parameters";
+import { loadCommittedDtsSeedFiles } from "../../../scripts/compile-dts-seed";
+import { assertCommittedDtsSeedParses } from "../../../scripts/seed-m1-parameters";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 describe("seed M1 DTS integrity", () => {
   it("parses all committed project-primary board artifacts without dtc", async () => {
