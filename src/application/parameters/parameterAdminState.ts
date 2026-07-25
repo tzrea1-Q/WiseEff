@@ -14,7 +14,9 @@ export type ParameterAdminAuditHint = {
     | "module-bindings-recomputed"
     | "import-batch-applied"
     | "identity-mapping-resolved"
-    | "identity-mapping-dismissed";
+    | "identity-mapping-dismissed"
+    | "project-updated"
+    | "project-deleted";
   summary: string;
   reason: string;
   recordedAt: string;
@@ -130,6 +132,10 @@ export function auditKindLabel(kind: ParameterAdminAuditHint["kind"]): string {
       return "身份映射确认";
     case "identity-mapping-dismissed":
       return "身份映射驳回";
+    case "project-updated":
+      return "更新项目";
+    case "project-deleted":
+      return "删除项目";
     case "spec-review-resolved":
     default:
       return "规格审核批准";

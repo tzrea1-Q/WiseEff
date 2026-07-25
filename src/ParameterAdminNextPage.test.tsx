@@ -254,6 +254,9 @@ function renderPage(options: {
   parameterActions?: ParameterPageActions;
   dispatch?: ReturnType<typeof vi.fn>;
   runtimeMode?: "mock" | "api";
+  parameterFileRepository?: import("@/application/ports/ParameterFileRepository").ParameterFileRepository;
+  dtsStructuredRepository?: import("@/application/ports/DtsStructuredRepository").DtsStructuredRepository;
+  state?: typeof initialState;
 } = {}) {
   const path = options.path ?? "/parameter-admin-next";
   window.history.replaceState(null, "", path);
@@ -266,20 +269,25 @@ function renderPage(options: {
     options.area ??
     (path.startsWith("/parameter-admin-next/projects") ? "projects" : "organization");
   const search = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
+  const pathname = path.includes("?") ? path.slice(0, path.indexOf("?")) : path;
 
   render(
     <ParameterAdminNextPage
       area={area}
       onNavigate={onNavigate}
       search={search}
+      pathname={pathname}
       runtimeMode={options.runtimeMode ?? "mock"}
       parameterTopologyRepository={repository}
       parameterModuleRegistryRepository={moduleRegistry}
-      projects={initialState.configDraft.projects}
-      parameters={initialState.parameters}
-      activeProjectId={initialState.activeProjectId}
+      parameterFileRepository={options.parameterFileRepository}
+      dtsStructuredRepository={options.dtsStructuredRepository}
+      projects={(options.state ?? initialState).configDraft.projects}
+      parameters={(options.state ?? initialState).parameters}
+      activeProjectId={(options.state ?? initialState).activeProjectId}
       dispatch={dispatch}
       parameterActions={parameterActions}
+      state={options.state ?? initialState}
     />
   );
 
@@ -299,12 +307,16 @@ describe("ParameterAdminNextPage · shell", () => {
   });
 
   it("opens the project area as its own destination", async () => {
-    renderPage({ path: "/parameter-admin-next/projects", area: "projects" });
+    renderPage({
+      path: "/parameter-admin-next/projects",
+      area: "projects",
+      state: initialState
+    });
 
     const nav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
     expect(within(nav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("region", { name: "项目运营" })).toBeInTheDocument();
-    expect(screen.getByText(/项目参数文件与配置集将在后续任务交付/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "参数规格库" })).not.toBeInTheDocument();
   });
 });
@@ -836,5 +848,191 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
     await waitFor(() =>
       expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/identity-mapping-resolved/)
     );
+  });
+});
+
+describe("ParameterAdminNextPage · project-scoped routes and parameter files", () => {
+  it("lists projects and opens the files view by route", async () => {
+    const { onNavigate } = renderPage({
+      path: "/parameter-admin-next/projects",
+      area: "projects"
+    });
+
+    expect(await screen.findByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    const firstManage = screen.getAllByRole("button", { name: /管理文件/ })[0]!;
+    fireEvent.click(firstManage);
+
+    expect(onNavigate).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/parameter-admin-next\/projects\/[^/]+\/files$/)
+    );
+  });
+
+  it("preserves the selected project file view from the URL without re-selection", async () => {
+    const projectId = initialState.configDraft.projects[0]!.id;
+    const listFiles = vi.fn().mockResolvedValue([
+      {
+        id: "file-1",
+        projectId,
+        fileName: "board.dts",
+        format: "dts",
+        enabled: true,
+        currentVersionId: "v1",
+        currentVersionNumber: 2,
+        updatedAt: "2026-07-14T10:00:00.000Z"
+      }
+    ]);
+
+    renderPage({
+      path: `/parameter-admin-next/projects/${projectId}/files`,
+      area: "projects",
+      parameterFileRepository: {
+        listFiles,
+        uploadFile: vi.fn(),
+        uploadVersion: vi.fn(),
+        listVersions: vi.fn().mockResolvedValue([]),
+        downloadVersion: vi.fn(),
+        syncFile: vi.fn(),
+        listConflicts: vi.fn().mockResolvedValue([]),
+        resolveConflict: vi.fn()
+      },
+      dtsStructuredRepository: {
+        listConfigSets: vi.fn().mockResolvedValue([]),
+        createConfigSet: vi.fn(),
+        addConfigSetFile: vi.fn(),
+        removeConfigSetFile: vi.fn(),
+        listBaselines: vi.fn().mockResolvedValue([]),
+        createBaseline: vi.fn(),
+        compareBaseline: vi.fn(),
+        rollbackBaseline: vi.fn(),
+        releaseBaseline: vi.fn(),
+        exportConfigSet: vi.fn(),
+        getStructure: vi.fn(),
+        search: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+        submitStructuredEdits: vi.fn()
+      }
+    });
+
+    const filesRegion = await screen.findByRole("region", { name: "项目参数文件" });
+    expect(within(filesRegion).getByText(new RegExp(initialState.configDraft.projects[0]!.name))).toBeInTheDocument();
+    expect(await screen.findByText("board.dts")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "DTS 结构化检索" })).toBeInTheDocument();
+    expect(listFiles).toHaveBeenCalledWith(projectId);
+  });
+
+  it("uploads a file, lists versions, and triggers manual sync producing a file-sync draft", async () => {
+    const projectId = initialState.configDraft.projects[0]!.id;
+    const uploadFile = vi.fn().mockResolvedValue({
+      item: {
+        id: "file-new",
+        projectId,
+        fileName: "new-board.dts",
+        format: "dts",
+        enabled: true,
+        currentVersionId: "v-new",
+        currentVersionNumber: 1,
+        updatedAt: "2026-07-14T10:00:00.000Z"
+      },
+      version: {
+        id: "v-new",
+        fileId: "file-new",
+        versionNumber: 1,
+        checksum: "xyz",
+        sizeBytes: 8,
+        parsedIndex: {},
+        origin: "upload",
+        createdAt: "2026-07-14T10:00:00.000Z"
+      }
+    });
+    const listFiles = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([
+        {
+          id: "file-new",
+          projectId,
+          fileName: "new-board.dts",
+          format: "dts",
+          enabled: true,
+          currentVersionId: "v-new",
+          currentVersionNumber: 1,
+          updatedAt: "2026-07-14T10:00:00.000Z"
+        }
+      ]);
+    const listVersions = vi.fn().mockResolvedValue([
+      {
+        id: "v-new",
+        fileId: "file-new",
+        versionNumber: 1,
+        checksum: "xyz",
+        sizeBytes: 8,
+        parsedIndex: {},
+        origin: "upload",
+        createdAt: "2026-07-14T10:00:00.000Z"
+      }
+    ]);
+    const syncFile = vi.fn().mockResolvedValue({ draftsCreated: 1, unchanged: 0, unmatched: 0, skipped: false });
+
+    renderPage({
+      path: `/parameter-admin-next/projects/${projectId}/files`,
+      area: "projects",
+      parameterFileRepository: {
+        listFiles,
+        uploadFile,
+        uploadVersion: vi.fn(),
+        listVersions,
+        downloadVersion: vi.fn(),
+        syncFile,
+        listConflicts: vi.fn().mockResolvedValue([]),
+        resolveConflict: vi.fn()
+      },
+      dtsStructuredRepository: {
+        listConfigSets: vi.fn().mockResolvedValue([]),
+        createConfigSet: vi.fn(),
+        addConfigSetFile: vi.fn(),
+        removeConfigSetFile: vi.fn(),
+        listBaselines: vi.fn().mockResolvedValue([]),
+        createBaseline: vi.fn(),
+        compareBaseline: vi.fn(),
+        rollbackBaseline: vi.fn(),
+        releaseBaseline: vi.fn(),
+        exportConfigSet: vi.fn(),
+        getStructure: vi.fn(),
+        search: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+        submitStructuredEdits: vi.fn()
+      }
+    });
+
+    await screen.findByRole("region", { name: "项目参数文件" });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["/dts-v1/;"], "new-board.dts", { type: "text/plain" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => expect(uploadFile).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText("new-board.dts")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "查看版本" }));
+    await waitFor(() => expect(listVersions).toHaveBeenCalled());
+    expect(await screen.findByText(/版本 1/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "手动同步" }));
+    await waitFor(() => expect(syncFile).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText(/已创建 1 条草稿/)).toBeInTheDocument());
+  });
+
+  it("edits a project with governance audit", async () => {
+    const dispatch = vi.fn();
+    renderPage({ path: "/parameter-admin-next/projects", area: "projects", dispatch });
+
+    const projectName = initialState.configDraft.projects[0]!.name;
+    fireEvent.click(screen.getByRole("button", { name: `编辑 ${projectName}` }));
+    const editDialog = await screen.findByRole("dialog", { name: "编辑项目详情" });
+    fireEvent.change(within(editDialog).getByLabelText("项目名称"), {
+      target: { value: `${projectName} Updated` }
+    });
+    fireEvent.click(within(editDialog).getByRole("button", { name: "保存修改" }));
+
+    await waitFor(() => expect(dispatch).toHaveBeenCalled());
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/project-updated/);
   });
 });

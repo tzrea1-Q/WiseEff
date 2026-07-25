@@ -223,6 +223,7 @@ export function PageRouter({
           area="organization"
           onNavigate={onNavigate}
           search={search}
+          pathname="/parameter-admin-next"
           runtimeMode={runtimeMode}
           parameterTopologyRepository={parameterTopologyRepository}
           projects={state.configDraft.projects}
@@ -230,6 +231,7 @@ export function PageRouter({
           activeProjectId={state.activeProjectId}
           dispatch={dispatch}
           parameterActions={parameterActions}
+          state={state}
         />
       );
     case "parameter-admin-next-projects":
@@ -238,6 +240,7 @@ export function PageRouter({
           area="projects"
           onNavigate={onNavigate}
           search={search}
+          pathname={page.path}
           runtimeMode={runtimeMode}
           parameterTopologyRepository={parameterTopologyRepository}
           projects={state.configDraft.projects}
@@ -245,6 +248,8 @@ export function PageRouter({
           activeProjectId={state.activeProjectId}
           dispatch={dispatch}
           parameterActions={parameterActions}
+          state={state}
+          onNewProject={onNewProject}
         />
       );
     case "log-dashboard":

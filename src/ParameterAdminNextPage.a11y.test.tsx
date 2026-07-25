@@ -118,7 +118,17 @@ describe("ParameterAdminNextPage · a11y", () => {
         area="projects"
         onNavigate={() => {}}
         search=""
+        pathname="/parameter-admin-next/projects"
         parameterTopologyRepository={createRepository()}
+        state={
+          {
+            configDraft: { projects: [{ id: "aurora", name: "Aurora", code: "AUR" }] },
+            parameters: [],
+            activeProjectId: "aurora",
+            activeRoleId: "admin",
+            projectInitializationStatuses: { aurora: "initialized" }
+          } as never
+        }
       />
     );
 

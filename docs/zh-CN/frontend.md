@@ -67,7 +67,7 @@ P3 / P3.1 新表面（均走 `DtsStructuredRepository`，勿在新面板里直�
 
 旧的 `ProjectParameterFilesPanel` / 冲突面板通过 `resolveParameterFileRepository(runtimeMode)` 注入 `ParameterFileRepository`（mock：`createMockParameterFileRepository`；API：`createParameterFileClient`），组件内禁止 `createParameterFileClient()`。mock 模式下可演示文件列表与冲突面板，不直连 `:8787`。
 
-建设中的新参数管理后台挂在临时路由 `/parameter-admin-next`（组织治理）与 `/parameter-admin-next/projects`（项目运营对等目的地）；正式入口仍为 `/parameter-admin`。面板只依赖 `createParameterAdminApplication` 门面（底层 `ParameterTopologyRepository`、`ParameterModuleRegistryRepository` 与导入 actions，mock/api 同源），跨面板状态在 `ParameterAdminProvider`，不读全局 `PrototypeState`。筛选/排序/选中以 URL 查询参数为唯一真相源。组织域含批量导入、身份映射治理、规格治理与模块树/驱动映射面板。操作 ID `PARAM-IDENTITY-MAP-ADMIN-001` 跟踪后台侧身份映射覆盖（浏览器验收改挂见 #198）。`pageUsesProjectScope` 不含这两条建设路由（ADR-0001：组织域不挂项目选择器）。
+建设中的新参数管理后台挂在临时路由 `/parameter-admin-next`（组织治理）与 `/parameter-admin-next/projects`（项目运营对等目的地；文件深链 `/parameter-admin-next/projects/:projectId/files`）；正式入口仍为 `/parameter-admin`。面板只依赖 `createParameterAdminApplication` 门面（底层 `ParameterTopologyRepository`、`ParameterModuleRegistryRepository` 与导入 actions，mock/api 同源），跨面板状态在 `ParameterAdminProvider`，不读全局 `PrototypeState`。筛选/排序/选中以 URL 查询参数为唯一真相源。组织域含批量导入、身份映射治理、规格治理与模块树/驱动映射；项目域含清单与参数文件（配置集/基线后续）。操作 ID `PARAM-IDENTITY-MAP-ADMIN-001` 跟踪后台侧身份映射覆盖（浏览器验收改挂见 #198）。`pageUsesProjectScope` 不含这两条建设路由（ADR-0001：组织域不挂项目选择器）。
 
 语义身份 UI 在 `src/components/parameter-topology/`：规格库与审核队列、源树/生效树浏览、类型化绑定编辑与正式提交、身份映射决议、失败关闭的配置 revision 校验。API 模式走 `/api/v2`；DTO 分字段暴露 `exampleValue` / `schemaDefault` / `policyTarget` / `effectiveValue`，无业务 `recommendedValue`。Cutover 后遗留扁平参数 ID 不做兼容投影。本地 `npm run dev` / `dev:all` 默认处于 **post-cutover** 语义种子，类型化 binding 草稿可直接提交审核。
 

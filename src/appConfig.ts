@@ -205,15 +205,15 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
 
-  if (path === "/parameter-admin-next/projects") {
+  if (path === "/parameter-admin-next/projects" || path.startsWith("/parameter-admin-next/projects/")) {
     return {
       key: "parameter-admin-next-projects",
-      path: "/parameter-admin-next/projects",
+      path,
       label: "项目运营",
       group: "参数管理",
       icon: Database,
       title: "参数管理后台（建设中）· 项目运营",
-      subtitle: "项目参数文件、配置集与发布基线（临时建设路由）"
+      subtitle: "项目清单与参数文件（临时建设路由；配置集/基线后续交付）"
     };
   }
 
