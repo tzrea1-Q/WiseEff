@@ -3163,6 +3163,8 @@ function TopBar({
     canCreateProject &&
     page.key !== "parameter-admin-projects" &&
     page.key !== "parameter-admin" &&
+    page.key !== "parameter-admin-next" &&
+    page.key !== "parameter-admin-next-projects" &&
     page.key !== "parameter-home";
   const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home";
   const currentUser = state.users.find((user) => user.id === state.currentUserId);

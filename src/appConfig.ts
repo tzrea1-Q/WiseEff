@@ -23,6 +23,8 @@ export type PageKey =
   | "parameter-review"
   | "parameter-admin"
   | "parameter-admin-projects"
+  | "parameter-admin-next"
+  | "parameter-admin-next-projects"
   | "log-dashboard"
   | "logs"
   | "log-admin"
@@ -203,6 +205,30 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
 
+  if (path === "/parameter-admin-next/projects") {
+    return {
+      key: "parameter-admin-next-projects",
+      path: "/parameter-admin-next/projects",
+      label: "项目运营",
+      group: "参数管理",
+      icon: Database,
+      title: "参数管理后台（建设中）· 项目运营",
+      subtitle: "项目参数文件、配置集与发布基线（临时建设路由）"
+    };
+  }
+
+  if (path === "/parameter-admin-next") {
+    return {
+      key: "parameter-admin-next",
+      path: "/parameter-admin-next",
+      label: "组织治理",
+      group: "参数管理",
+      icon: Database,
+      title: "参数管理后台（建设中）· 组织治理",
+      subtitle: "参数规格库与规格审核（临时建设路由，正式入口仍为管理后台）"
+    };
+  }
+
   if (path === "/parameter-comparison") {
     return {
       key: "parameter-comparison",
@@ -264,6 +290,10 @@ export function getXiaozeContextSummary(path: string): string {
       return "正在关注参数库健康、闲置参数、权限异常和导入风险。";
     case "parameter-admin-projects":
       return "正在关注项目清单、初始化进度、模块覆盖和参数规模。";
+    case "parameter-admin-next":
+      return "正在关注组织级规格库、规格审核队列与治理审计。";
+    case "parameter-admin-next-projects":
+      return "正在关注项目参数文件、配置集与发布基线（建设中）。";
     case "log-admin":
       return "正在关注分析吞吐、失败记录、权限覆盖和使用趋势。";
     case "debugging-admin":

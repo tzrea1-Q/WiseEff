@@ -34,6 +34,7 @@ import { LogAdminPage } from "@/LogAdminPage";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
 import { ParameterAdminPage } from "@/ParameterAdminPage";
 import { ParameterAdminProjectsPage } from "@/ParameterAdminProjectsPage";
+import { ParameterAdminNextPage } from "@/ParameterAdminNextPage";
 import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
 import { FeedbackAdminPage } from "@/features/product-feedback/FeedbackAdminPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
@@ -214,6 +215,26 @@ export function PageRouter({
           parameterActions={parameterActions}
           runtimeMode={runtimeMode}
           onNewProject={onNewProject}
+        />
+      );
+    case "parameter-admin-next":
+      return (
+        <ParameterAdminNextPage
+          area="organization"
+          onNavigate={onNavigate}
+          search={search}
+          runtimeMode={runtimeMode}
+          parameterTopologyRepository={parameterTopologyRepository}
+        />
+      );
+    case "parameter-admin-next-projects":
+      return (
+        <ParameterAdminNextPage
+          area="projects"
+          onNavigate={onNavigate}
+          search={search}
+          runtimeMode={runtimeMode}
+          parameterTopologyRepository={parameterTopologyRepository}
         />
       );
     case "log-dashboard":

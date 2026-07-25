@@ -210,6 +210,9 @@ export type ParameterSpecLibraryProps = {
   detail?: ParameterSpecDetailView | null;
   reviewQueueSlot?: ReactNode;
   loading?: boolean;
+  /** When both are provided, filters are controlled by the parent (URL SoT). */
+  filters?: ParameterSpecLibraryFilters;
+  onFiltersChange?: (filters: ParameterSpecLibraryFilters) => void;
   onSelectSpec: (specId: string) => void;
   onActivateDraftSpec?: (input: ActivateDraftSpecInput) => void;
   activatePending?: boolean;
@@ -221,11 +224,23 @@ export function ParameterSpecLibrary({
   detail = null,
   reviewQueueSlot = null,
   loading = false,
+  filters: controlledFilters,
+  onFiltersChange,
   onSelectSpec,
   onActivateDraftSpec,
   activatePending = false
 }: ParameterSpecLibraryProps) {
-  const [filters, setFilters] = useState<ParameterSpecLibraryFilters>(EMPTY_FILTERS);
+  const [uncontrolledFilters, setUncontrolledFilters] = useState<ParameterSpecLibraryFilters>(EMPTY_FILTERS);
+  const isControlled = controlledFilters != null && onFiltersChange != null;
+  const filters = isControlled ? controlledFilters : uncontrolledFilters;
+  const setFilters = (next: ParameterSpecLibraryFilters | ((current: ParameterSpecLibraryFilters) => ParameterSpecLibraryFilters)) => {
+    const resolved = typeof next === "function" ? next(filters) : next;
+    if (isControlled) {
+      onFiltersChange(resolved);
+      return;
+    }
+    setUncontrolledFilters(resolved);
+  };
   const filtered = useMemo(() => filterParameterSpecLibrary(specs, filters), [specs, filters]);
 
   const driverOptions = useMemo(
