@@ -115,14 +115,14 @@ Identity mapping tasks move into the admin. Everyday binding work stays on the w
 
 Tickets live on GitHub under parent issue [#188](https://github.com/tzrea1-Q/WiseEff/issues/188), with native blocking dependencies. Each ticket is a tracer bullet that must land a working state; the build stays green between tickets because the new admin is constructed on a temporary route and takes the canonical route only in ticket 09.
 
-- [ ] [#189](https://github.com/tzrea1-Q/WiseEff/issues/189) — 01 Prefactor: semantic parameter model available in mock runtime mode. No blockers
-- [ ] [#190](https://github.com/tzrea1-Q/WiseEff/issues/190) — 02 New admin shell and organization-scoped spec governance. Blocked by 01
-- [ ] [#191](https://github.com/tzrea1-Q/WiseEff/issues/191) — 03 Organization-scoped module tree and driver mapping. Blocked by 02
-- [ ] [#192](https://github.com/tzrea1-Q/WiseEff/issues/192) — 04 Organization-scoped bulk parameter import. Blocked by 02
-- [ ] [#193](https://github.com/tzrea1-Q/WiseEff/issues/193) — 05 Project-scoped routes: project list and parameter files. Blocked by 02
-- [ ] [#194](https://github.com/tzrea1-Q/WiseEff/issues/194) — 06 Project-scoped config sets, release baselines, and revision validation. Blocked by 05
-- [ ] [#195](https://github.com/tzrea1-Q/WiseEff/issues/195) — 07 Project-scoped source structure browsing and conflict adjudication. Blocked by 05
-- [ ] [#196](https://github.com/tzrea1-Q/WiseEff/issues/196) — 08 Identity mapping task governance in the admin. Blocked by 02
+- [x] [#189](https://github.com/tzrea1-Q/WiseEff/issues/189) — 01 Prefactor: semantic parameter model available in mock runtime mode. No blockers
+- [x] [#190](https://github.com/tzrea1-Q/WiseEff/issues/190) — 02 New admin shell and organization-scoped spec governance. Blocked by 01
+- [x] [#191](https://github.com/tzrea1-Q/WiseEff/issues/191) — 03 Organization-scoped module tree and driver mapping. Blocked by 02
+- [x] [#192](https://github.com/tzrea1-Q/WiseEff/issues/192) — 04 Organization-scoped bulk parameter import. Blocked by 02
+- [x] [#193](https://github.com/tzrea1-Q/WiseEff/issues/193) — 05 Project-scoped routes: project list and parameter files. Blocked by 02
+- [x] [#194](https://github.com/tzrea1-Q/WiseEff/issues/194) — 06 Project-scoped config sets, release baselines, and revision validation. Blocked by 05
+- [x] [#195](https://github.com/tzrea1-Q/WiseEff/issues/195) — 07 Project-scoped source structure browsing and conflict adjudication. Blocked by 05
+- [x] [#196](https://github.com/tzrea1-Q/WiseEff/issues/196) — 08 Identity mapping task governance in the admin. Blocked by 02
 - [x] [#197](https://github.com/tzrea1-Q/WiseEff/issues/197) — 09 Contract: new admin takes over the canonical admin route and navigation. Blocked by 02–08
 - [x] [#198](https://github.com/tzrea1-Q/WiseEff/issues/198) — 10 Contract: retarget browser acceptance coverage and verify across viewports. Blocked by 09
 - [x] [#199](https://github.com/tzrea1-Q/WiseEff/issues/199) — 11 Contract: delete the old admin surface and its exclusive state. Blocked by 10

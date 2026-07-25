@@ -87,14 +87,14 @@ identity mapping 任务迁入后台。日常绑定工作留在工作台。
 
 工单位于 GitHub 父议题 [#188](https://github.com/tzrea1-Q/WiseEff/issues/188) 之下，并已挂上原生阻塞依赖。每张工单都是一颗曳光弹，须落到可运行状态；工单之间构建保持绿色，因为新后台在临时路由上建设，直到工单 09 才接管正式路由。
 
-- [ ] [#189](https://github.com/tzrea1-Q/WiseEff/issues/189) — 01 预重构：mock 运行时模式获得语义参数模型。无阻塞
-- [ ] [#190](https://github.com/tzrea1-Q/WiseEff/issues/190) — 02 新后台骨架与组织级规格治理。阻塞于 01
-- [ ] [#191](https://github.com/tzrea1-Q/WiseEff/issues/191) — 03 组织级模块树与驱动映射。阻塞于 02
-- [ ] [#192](https://github.com/tzrea1-Q/WiseEff/issues/192) — 04 组织级批量参数导入。阻塞于 02
-- [ ] [#193](https://github.com/tzrea1-Q/WiseEff/issues/193) — 05 项目级路由：项目清单与参数文件。阻塞于 02
-- [ ] [#194](https://github.com/tzrea1-Q/WiseEff/issues/194) — 06 项目级配置集、发布基线与修订校验。阻塞于 05
-- [ ] [#195](https://github.com/tzrea1-Q/WiseEff/issues/195) — 07 项目级源结构浏览与冲突裁决。阻塞于 05
-- [ ] [#196](https://github.com/tzrea1-Q/WiseEff/issues/196) — 08 identity mapping 任务治理迁入后台。阻塞于 02
+- [x] [#189](https://github.com/tzrea1-Q/WiseEff/issues/189) — 01 预重构：mock 运行时模式获得语义参数模型。无阻塞
+- [x] [#190](https://github.com/tzrea1-Q/WiseEff/issues/190) — 02 新后台骨架与组织级规格治理。阻塞于 01
+- [x] [#191](https://github.com/tzrea1-Q/WiseEff/issues/191) — 03 组织级模块树与驱动映射。阻塞于 02
+- [x] [#192](https://github.com/tzrea1-Q/WiseEff/issues/192) — 04 组织级批量参数导入。阻塞于 02
+- [x] [#193](https://github.com/tzrea1-Q/WiseEff/issues/193) — 05 项目级路由：项目清单与参数文件。阻塞于 02
+- [x] [#194](https://github.com/tzrea1-Q/WiseEff/issues/194) — 06 项目级配置集、发布基线与修订校验。阻塞于 05
+- [x] [#195](https://github.com/tzrea1-Q/WiseEff/issues/195) — 07 项目级源结构浏览与冲突裁决。阻塞于 05
+- [x] [#196](https://github.com/tzrea1-Q/WiseEff/issues/196) — 08 identity mapping 任务治理迁入后台。阻塞于 02
 - [x] [#197](https://github.com/tzrea1-Q/WiseEff/issues/197) — 09 收缩：新后台接管正式路由与导航。阻塞于 02–08
 - [x] [#198](https://github.com/tzrea1-Q/WiseEff/issues/198) — 10 收缩：验收覆盖重定向与三视口验证。阻塞于 09
 - [x] [#199](https://github.com/tzrea1-Q/WiseEff/issues/199) — 11 收缩：删除旧后台与其专属状态。阻塞于 10
