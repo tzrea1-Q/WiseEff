@@ -228,6 +228,7 @@ import { createMockParameterDashboardRepository } from "@/infrastructure/mock/mo
 import { createMockProductFeedbackRepository } from "@/infrastructure/mock/mockProductFeedbackRepository";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
 type WiseEffAuthClient = {
@@ -2160,6 +2161,10 @@ function AppShell({
     () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
     [parameterRepository, runtimeMode]
   );
+  const parameterTopologyRepositoryClient = useMemo(
+    () => parameterTopologyRepository ?? resolveParameterTopologyRepository(runtimeMode),
+    [parameterTopologyRepository, runtimeMode]
+  );
   const dashboardRepository = useMemo(
     () =>
       runtimeMode === "api"
@@ -2594,7 +2599,7 @@ function AppShell({
                 debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
-                parameterTopologyRepository={parameterTopologyRepository}
+                parameterTopologyRepository={parameterTopologyRepositoryClient}
                 listParameterConfigSets={listParameterConfigSets}
                 productFeedbackRepository={productFeedbackRepositoryClient}
                 userGovernanceActions={userGovernanceActionsClient}
@@ -2634,7 +2639,7 @@ function AppShell({
                 debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
-                parameterTopologyRepository={parameterTopologyRepository}
+                parameterTopologyRepository={parameterTopologyRepositoryClient}
                 listParameterConfigSets={listParameterConfigSets}
                 productFeedbackRepository={productFeedbackRepositoryClient}
                 userGovernanceActions={userGovernanceActionsClient}

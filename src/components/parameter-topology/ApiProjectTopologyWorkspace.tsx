@@ -26,7 +26,7 @@ import type {
   TopologyDiagnostic
 } from "@/domain/parameter-topology/types";
 import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
-import { createHttpParameterTopologyRepository } from "@/infrastructure/http/parameterTopologyClient";
+import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import {
   mapParameterTopologyError,
@@ -247,7 +247,7 @@ export function ApiProjectTopologyWorkspace({
   onNavigate = () => undefined
 }: ApiProjectTopologyWorkspaceProps) {
   const repository = useMemo(
-    () => topologyRepository ?? (runtimeMode === "api" ? createHttpParameterTopologyRepository() : null),
+    () => topologyRepository ?? resolveParameterTopologyRepository(runtimeMode),
     [runtimeMode, topologyRepository]
   );
   const moduleRegistryRepo = useMemo(

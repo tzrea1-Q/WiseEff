@@ -29,8 +29,8 @@ import { UndoableToast } from "./components/UndoableToast";
 import { useTopBarActions } from "./components/layout";
 import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
 import { resolveParameterFileRepository } from "./application/parameters/parameterFileRuntime";
+import { resolveParameterTopologyRepository } from "./application/parameters/parameterTopologyResolve";
 import { createParameterAdminClient } from "./infrastructure/http/parameterAdminClient";
-import { createHttpParameterTopologyRepository } from "./infrastructure/http/parameterTopologyClient";
 import { WiseEffApiError } from "./infrastructure/http/apiClient";
 import { getCoverage } from "./parameterAdminAnalytics";
 import type { ParameterModuleDraft } from "./powerManagementConfig";
@@ -116,9 +116,11 @@ export function ParameterAdminPage({
   const updateSearch = urlSearch.updateSearch;
   const isApiMode = runtimeMode === "api";
   const parameterAdminClient = useMemo(() => (isApiMode ? createParameterAdminClient() : null), [isApiMode]);
+  // Semantic topology port is available in both modes (ADR-0002). Admin UI still
+  // branches on isApiMode until ticket #190 retires the flat library surface.
   const topologyRepository = useMemo(
-    () => (isApiMode ? createHttpParameterTopologyRepository() : null),
-    [isApiMode]
+    () => (isApiMode ? resolveParameterTopologyRepository(runtimeMode) : null),
+    [isApiMode, runtimeMode]
   );
   const parameterFileRepository = useMemo(() => resolveParameterFileRepository(runtimeMode), [runtimeMode]);
   const projects = state.configDraft.projects;
