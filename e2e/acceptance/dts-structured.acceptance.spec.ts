@@ -443,7 +443,9 @@ test.describe("DTS structured product browser acceptance", () => {
       await dismissXiaozeHint(page);
       await expect(page.getByRole("region", { name: "项目配置集与基线" })).toBeVisible({ timeout: 20_000 });
       await expect(page.getByRole("region", { name: "配置集 / 基线" })).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByRole("heading", { name: "配置集" })).toBeVisible();
+      await expect(
+        page.getByRole("region", { name: "配置集 / 基线" }).getByRole("heading", { name: "配置集", exact: true })
+      ).toBeVisible();
 
       await recordOperationEvidence({
         operationId: "PARAM-DTS-CONFIGSET-001",
