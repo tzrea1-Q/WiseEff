@@ -1,6 +1,6 @@
 # WiseEff Local Device Bridge — Phase 2 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use Matt `implement` (recommended) or Matt `implement` to implement this plan task-by-task.
 
 **Goal:** Extend the Windows Device Bridge with HDC RPC, Windows service lifecycle commands, bridge management UI, and multi-bridge detect polish.
 
@@ -12,7 +12,7 @@
 
 ## Source Spec
 
-- `docs/superpowers/specs/2026-06-23-local-device-bridge-design.md` (Phase 2 section)
+- `docs/design-docs/2026-06-23-local-device-bridge-design.md` (Phase 2 section)
 
 ## Scope
 

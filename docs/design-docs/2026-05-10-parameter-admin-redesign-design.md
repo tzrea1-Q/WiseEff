@@ -1,6 +1,6 @@
 # 项目参数管理后台 · 重构设计方案
 
-> **面向规划人**：用此 spec 作为写计划（`superpowers:writing-plans`）的输入，不直接实现代码。
+> **面向规划人**：用此 spec 作为写计划（Matt `to-spec` 或 `docs/exec-plans/active/`）的输入，不直接实现代码。
 > **面向实施人**：不要基于本 spec 直接动工，先看对应的 plan 文件。
 
 ---
@@ -1750,4 +1750,4 @@ case "UNDO_LAST_DESTRUCTIVE": {
 
 ## 下一步
 
-写实施计划：调用 `superpowers:writing-plans`，将本 spec 展开为 `docs/exec-plans/completed/2026-05-10-parameter-admin-redesign-m1.md`，按 §27 的 14 个里程碑拆成 bite-sized 步骤，每步包含 Files / Step / Command / Expected 四要素。
+写实施计划：将本 spec 展开为 `docs/exec-plans/completed/2026-05-10-parameter-admin-redesign-m1.md`，按 §27 的 14 个里程碑拆成 bite-sized 步骤，每步包含 Files / Step / Command / Expected 四要素。

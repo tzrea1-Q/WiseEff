@@ -1,6 +1,8 @@
 # WiseEff Notification Center Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Code changes must follow `superpowers:test-driven-development` where behavior is user-visible or security-sensitive.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
+
 
 **Goal:** Replace the static TopBar「通知」placeholder with a durable, backend-backed notification center that surfaces actionable workflow events (parameter review, handoffs, imports, debugging outcomes, user governance) to the right users, with unread counts, read state, and deep links.
 

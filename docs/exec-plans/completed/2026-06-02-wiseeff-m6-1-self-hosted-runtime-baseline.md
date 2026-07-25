@@ -1,6 +1,8 @@
 # WiseEff M6.1 Self-Hosted Runtime Baseline Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Code changes must follow `superpowers:test-driven-development`: write the failing test or metadata gate first, verify it fails, implement the smallest change, then verify green.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
+Code changes must follow Matt `tdd`: write the failing test or metadata gate first, verify it fails, implement the smallest change, then verify green.
 
 **Goal:** Build a reproducible single-Linux-server WiseEff runtime baseline with API, web, worker, PostgreSQL, reverse proxy, TLS, and self-hosted smoke evidence.
 

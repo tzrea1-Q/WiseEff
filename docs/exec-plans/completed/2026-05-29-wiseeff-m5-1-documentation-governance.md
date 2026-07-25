@@ -1,6 +1,8 @@
 # WiseEff M5.1 Documentation Governance And Pilot Evidence Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each behavior-changing implementation task must follow `superpowers:test-driven-development`; documentation-only steps must still define an expected diff and verification command before editing.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
+Each behavior-changing implementation task must follow Matt `tdd`; documentation-only steps must still define an expected diff and verification command before editing.
 
 **Goal:** Close the M5 documentation/evidence gap, update every key WiseEff document to match the merged M0-M5 implementation, and make documentation governance a mandatory rule for all future execution plans.
 

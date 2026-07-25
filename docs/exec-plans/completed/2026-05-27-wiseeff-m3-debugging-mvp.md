@@ -1,6 +1,6 @@
 # WiseEff M3 Debugging MVP Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 **Goal:** Build the first persistent, auditable debugging loop: detect a simulator target, read nodes, write nodes with validation and readback, create snapshots, rollback from valid snapshots, and drive the existing debugging UI through API mode.
 
@@ -2051,7 +2051,7 @@ Review gates:
 
 ## Subagent Dispatch Guidance
 
-Use `superpowers:subagent-driven-development` for implementation.
+Use Matt `implement` for implementation.
 
 For each task:
 

@@ -24,6 +24,7 @@
 - `exec-plans/active/2026-07-21-retire-synthetic-base-dts.md`：退役平台合成基 `wiseeff-power-base.dts`；seed/写回 = 每项目一份项目主 DTS；管理员只维护模块↔驱动（见 RFC；中文摘要 `docs/zh-CN/exec-plans/active/2026-07-21-retire-synthetic-base-dts.md`）。
 - `exec-plans/active/2026-07-21-instance-submodule-seed.md`：Type U/N/C 实例子模块 + 驱动组；ingest ensure；未映射驱动 Admin 发现队列（中文摘要 `docs/zh-CN/exec-plans/active/2026-07-21-instance-submodule-seed.md`）。
 - **分支与 PR：** 实现型子智能体只在从 `main` 切出的 feature branch 上开发并本地 commit；不得 push `main`、不得开/合 GitHub PR。由父智能体 review 后提 PR、合并，再 `git pull` 同步本地 `main`。细则见英文版 `docs/PLANS.md` § Git Branch & PR Workflow。
+- **Agent 技能：** 使用 Matt Pocock skills（如 `implement`、`tdd`、`to-spec`、`triage`）与 `docs/agents/*`；不要新建/更新 `docs/superpowers/**`，也不要指示调用 `superpowers:*`。进行中实现跟踪仍以 `docs/exec-plans/active/` 为准。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
 ## 同类中文文档

@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md)  
 > RFC：[产品边界](../../design-docs/2026-07-21-dts-parameter-surface-boundary-rfc.md) · [裁剪矩阵](../../design-docs/2026-07-21-dts-capability-cut-matrix.md)  
-> 分步实现：[superpowers plan](../../../superpowers/plans/2026-07-21-dts-parameter-surface-mvp.md)
+> 分步实现：[英文 exec plan](../../../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md)
 
 - 日期：2026-07-21
 - 状态：**Active**（D4 合入/写回与工作台去噪已在 `feat/parameter-maintenance-retire-dtc` 落地；可管表面过滤等其余 MVP 项仍开放）
@@ -29,4 +29,4 @@
 | F | 无 schema 匹配时面内参数仍可出现（临时 binding） |
 | G | 窄测 + build + docs:check + 浏览器核验 |
 
-细节与代码步骤见英文 exec plan 与 superpowers plan。Documentation Impact Matrix / Update Gate 以英文 exec plan 为准。
+细节与代码步骤见英文 exec plan。Documentation Impact Matrix / Update Gate 以英文 exec plan 为准。

@@ -1,6 +1,6 @@
 ﻿# M5.10 Evidence-Grade Upgrade Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use Matt `implement` (recommended) or Matt `implement` to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Upgrade automated browser operation evidence from screenshot-level proof into auditable, reproducible records that include request, API, DB, audit, runtime, trace/report, and failure reproduction context.
 

@@ -3,7 +3,7 @@
 > Chinese summary: [Chinese](../../zh-CN/exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md)  
 > RFC: [`../../design-docs/2026-07-21-dts-parameter-surface-boundary-rfc.md`](../../design-docs/2026-07-21-dts-parameter-surface-boundary-rfc.md)  
 > Cut matrix: [`../../design-docs/2026-07-21-dts-capability-cut-matrix.md`](../../design-docs/2026-07-21-dts-capability-cut-matrix.md)  
-> Bite-sized agent plan: [`../../superpowers/plans/2026-07-21-dts-parameter-surface-mvp.md`](../../superpowers/plans/2026-07-21-dts-parameter-surface-mvp.md)
+> Bite-sized agent plan: [`../../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md`](../../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md)
 
 - Date: 2026-07-21
 - Status: **Active** (implementation in progress on `feat/parameter-maintenance-retire-dtc`)
@@ -79,7 +79,7 @@ Before moving this plan to `completed/`:
 
 ## Task overview
 
-Detailed checkboxes and code-level steps live in [`docs/superpowers/plans/2026-07-21-dts-parameter-surface-mvp.md`](../../superpowers/plans/2026-07-21-dts-parameter-surface-mvp.md).
+Detailed checkboxes and code-level steps live in [`docs/exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md`](../../exec-plans/active/2026-07-21-dts-parameter-surface-mvp.md).
 
 | ID | Deliverable | Primary files |
 | --- | --- | --- |

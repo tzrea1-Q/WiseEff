@@ -1,6 +1,6 @@
 # WiseEff Device Bridge Zero-Friction — Phase A Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 **Goal:** Let Windows and macOS users install Bridge once via a no-options graphical installer, then connect from `/node-debugging` with a single browser button (URL scheme + health polling) instead of terminal pair/start commands.
 
@@ -12,7 +12,7 @@
 
 ## Source Spec
 
-- `docs/zh-CN/superpowers/specs/2026-06-24-device-bridge-zero-friction-design.md`
+- `docs/zh-CN/design-docs/2026-06-24-device-bridge-zero-friction-design.md`
 - Prerequisite baseline: Phase 1–3 local device bridge (CLI, pairing API, `/node-debugging` panel)
 
 ## Scope
@@ -540,7 +540,7 @@ git commit -m "docs: document zero-friction Device Bridge install and connect fl
 | Architecture | `ARCHITECTURE.md` | Review — no change unless installer hosting called out |
 | Runbooks | `docs/runbooks/local-device-bridge.md`, `docs/zh-CN/runbooks/local-device-bridge.md` | Update |
 | Frontend docs | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` | Update |
-| Design spec | `docs/zh-CN/superpowers/specs/2026-06-24-device-bridge-zero-friction-design.md` | Review — mark Phase A implemented when done |
+| Design spec | `docs/zh-CN/design-docs/2026-06-24-device-bridge-zero-friction-design.md` | Review — mark Phase A implemented when done |
 | Env examples | `.env.example`, `ops/self-hosted/.env.example` | No change |
 | Generated artifacts | `ops/self-hosted/bridge-artifacts/0.1.0/manifest.json` | Update — installer entries |
 | References | `docs/developer/browser-acceptance-coverage-map.md` | Review — BRIDGE-WIN-001 wording |

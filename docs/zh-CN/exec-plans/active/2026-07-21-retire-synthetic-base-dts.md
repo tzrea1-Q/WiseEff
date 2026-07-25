@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/2026-07-21-retire-synthetic-base-dts.md)  
 > RFC：[项目主 DTS 契约](../../design-docs/2026-07-21-project-primary-dts-contract-rfc.md)  
-> 分步实现：[superpowers plan](../../../superpowers/plans/2026-07-21-retire-synthetic-base-dts.md)
+> 分步实现：[英文 exec plan](../../../exec-plans/active/2026-07-21-retire-synthetic-base-dts.md)
 
 - 日期：2026-07-21
 - 状态：**Active**（Phase 3 seed 门禁在 `feat/parameter-maintenance-retire-dtc`：已提交 `*-board.dts` 为 SoT；`db:seed:m1` 仅 parse 完整性；CI 中 `dtc:seed:compile` 为 advisory）

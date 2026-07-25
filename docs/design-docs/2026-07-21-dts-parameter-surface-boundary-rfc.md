@@ -174,5 +174,5 @@ Drivers (`compatible` / driverModule / instance) are **not** a required navigati
 
 - Overweight assessment (planning input): Cursor plan `dts架构过重评估`
 - Prior assessment: [`2026-07-14-dts-parameter-management-assessment.md`](2026-07-14-dts-parameter-management-assessment.md)
-- Module-first UX: [`../superpowers/specs/2026-07-20-dts-workbench-module-refocus-design.md`](../superpowers/specs/2026-07-20-dts-workbench-module-refocus-design.md)
+- Module-first UX: [`../design-docs/2026-07-20-dts-workbench-module-refocus-design.md`](../design-docs/2026-07-20-dts-workbench-module-refocus-design.md)
 - Cut matrix: [`2026-07-21-dts-capability-cut-matrix.md`](2026-07-21-dts-capability-cut-matrix.md)

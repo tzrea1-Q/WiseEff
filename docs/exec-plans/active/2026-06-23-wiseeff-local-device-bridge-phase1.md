@@ -1,6 +1,6 @@
 # WiseEff Local Device Bridge — Phase 1 (Windows + ADB) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` where applicable. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 **Goal:** Let Windows users debug a USB-connected phone on their own PC through a remotely hosted WiseEff `/node-debugging` page, with full server-side governance and same-origin bridge downloads.
 
@@ -12,8 +12,8 @@
 
 ## Source Spec
 
-- `docs/superpowers/specs/2026-06-23-local-device-bridge-design.md`
-- `docs/zh-CN/superpowers/specs/2026-06-23-local-device-bridge-design.md`
+- `docs/design-docs/2026-06-23-local-device-bridge-design.md`
+- `docs/zh-CN/design-docs/2026-06-23-local-device-bridge-design.md`
 
 ## Scope Notes
 
@@ -115,7 +115,7 @@ Modify:
 
 | Area | Action | Files |
 | --- | --- | --- |
-| Spec / plan | Update | `docs/superpowers/specs/2026-06-23-local-device-bridge-design.md`, this plan |
+| Spec / plan | Update | `docs/design-docs/2026-06-23-local-device-bridge-design.md`, this plan |
 | Architecture / domain | Update | `docs/design-docs/domain-model.md`, `docs/zh-CN/design-docs/domain-model.md` |
 | Frontend | Update | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` |
 | Security | Update | `docs/SECURITY.md`, `docs/zh-CN/SECURITY.md` |

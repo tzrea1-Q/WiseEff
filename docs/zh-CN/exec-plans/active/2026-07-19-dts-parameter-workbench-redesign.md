@@ -1,6 +1,6 @@
 # DTS 参数工作台重设计实施计划
 
-> **面向执行智能体：** 必须使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans，按任务逐项执行。本计划使用 - [ ] 跟踪状态。
+> **面向执行智能体：** 必须使用 Matt `implement`（推荐）或 Matt `implement`，按任务逐项执行。本计划使用 - [ ] 跟踪状态。
 
 > English: [English](../../../exec-plans/active/2026-07-19-dts-parameter-workbench-redesign.md)
 
@@ -10,7 +10,7 @@
 
 **技术栈：** React 19、TypeScript、Vitest、Testing Library、Lucide React、WiseEff CSS 令牌、Playwright acceptance、API 模式拓扑仓储。
 
-**设计规格：** [DTS 参数工作台深度重设计](../../../superpowers/specs/2026-07-19-dts-parameter-workbench-redesign.md)
+**设计规格：** [DTS 参数工作台深度重设计](../../../design-docs/2026-07-19-dts-parameter-workbench-redesign.md)
 
 ---
 

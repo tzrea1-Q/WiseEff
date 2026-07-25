@@ -1,6 +1,8 @@
 # Xiaoze P2 Planning Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Code changes must follow `superpowers:test-driven-development`: write the failing test first, verify it fails, implement the smallest change, then verify green.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
+
 
 **Goal:** Turn Xiaoze (小泽) from a single-turn responder into a planning agent: it recognizes intent, proactively perceives, proposes a multi-step plan, executes approved steps one by one (resuming the same plan after each human approval), observes results, and continues — and it can proactively surface grounded suggestions on a page without being asked.
 
@@ -12,7 +14,7 @@
 
 ## Reference Basis
 
-- Design spec: `docs/superpowers/specs/2026-06-24-xiaoze-agent-design.md` (intent/planning capability; plan-act-observe; proactive suggestions; checkpoint resume; open question on opt-in).
+- Design spec: `docs/design-docs/2026-06-24-xiaoze-agent-design.md` (intent/planning capability; plan-act-observe; proactive suggestions; checkpoint resume; open question on opt-in).
 - Completed phases: `docs/exec-plans/completed/2026-06-24-xiaoze-p0-perception.md`, `docs/exec-plans/completed/2026-06-24-xiaoze-p1-action.md`, and `server/modules/agent/xiaoze/SPIKE.md` / `SPIKE-P1.md`.
 - Current agent loop (to migrate): `server/modules/agent/xiaoze/perceptionAgent.ts` (single-turn loop; mutating interrupt currently terminates the run).
 - Resume path (to extend): `server/modules/agent/xiaoze/approvalBridge.ts`, `server/modules/agent/xiaoze/agUiEndpoint.ts` (`readResumeDecision`), `src/features/agent/xiaozeResumeBridge.ts`.

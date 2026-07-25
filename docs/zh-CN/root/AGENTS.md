@@ -17,6 +17,10 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
+## Agent skills
+
+Agent 编排使用 **Matt Pocock skills**（如 `implement`、`tdd`、`to-spec`、`triage`）与 `docs/agents/*`。不要新建/更新 `docs/superpowers/**`，也不要调用 `superpowers:*`。进行中实现跟踪仍以 `docs/exec-plans/active/` 为准。完整说明见英文 [`AGENTS.md`](../../../AGENTS.md) § Agent skills 与 [`docs/agents/`](../../../docs/agents/)。
+
 ## 同类中文文档
 
 - [docs/zh-CN/root/AGENTS.md](AGENTS.md)

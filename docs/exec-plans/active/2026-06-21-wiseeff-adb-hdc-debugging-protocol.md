@@ -1,6 +1,6 @@
 # WiseEff ADB/HDC Debugging Protocol Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` where applicable. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 **Goal:** Add first-class backend ADB support beside HDC, let `/node-debugging` switch protocols per session, and manage ADB/HDC node bindings separately for each debug parameter.
 
@@ -12,8 +12,8 @@
 
 ## Source Spec
 
-- `docs/superpowers/specs/2026-06-21-adb-hdc-debugging-protocol-design.md`
-- `docs/zh-CN/superpowers/specs/2026-06-21-adb-hdc-debugging-protocol-design.md`
+- `docs/design-docs/2026-06-21-adb-hdc-debugging-protocol-design.md`
+- `docs/zh-CN/design-docs/2026-06-21-adb-hdc-debugging-protocol-design.md`
 
 ## Scope Notes
 

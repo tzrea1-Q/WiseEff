@@ -1,10 +1,11 @@
 # Parameter Topology Cutover Workflow Review Fixes
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` where applicable. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
 >
 > Chinese: [中文](../../zh-CN/exec-plans/active/2026-07-16-parameter-topology-cutover-workflow-review.md)
 > Prior: [e2e review blockers](./2026-07-16-parameter-topology-e2e-review-blockers.md)
-> Design: [Topology- and Schema-Aware Parameter Management](../../superpowers/specs/2026-07-16-parameter-topology-schema-management-design.md)
+> Design: [Topology- and Schema-Aware Parameter Management](../../design-docs/2026-07-16-parameter-topology-schema-management-design.md)
 
 **Goal:** Make post-cutover activity workflows run entirely on semantic identity (`project_parameter_binding_id` / `parameter_spec_id` / occurrences / binding revisions), with precise occurrence writeback, real spec-review application, fail-closed candidate/validation state machines, honest migration reports, reusable identity continuity, truthful frontend provenance, and acceptance that never mutates business DB state to fake success.
 

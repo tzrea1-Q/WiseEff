@@ -1,6 +1,6 @@
 # WiseEff Debugging Admin HDC/ADB Catalog CRUD Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` where applicable. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 **Goal:** Upgrade `/debugging-admin` into an API-backed catalog management console that can create, edit, archive, restore, and protocol-bind shared debugging parameters for HDC and ADB.
 
@@ -12,8 +12,8 @@
 
 ## Source Spec
 
-- `docs/superpowers/specs/2026-06-22-debugging-admin-hdc-adb-crud-design.md`
-- `docs/zh-CN/superpowers/specs/2026-06-22-debugging-admin-hdc-adb-crud-design.md`
+- `docs/design-docs/2026-06-22-debugging-admin-hdc-adb-crud-design.md`
+- `docs/zh-CN/design-docs/2026-06-22-debugging-admin-hdc-adb-crud-design.md`
 
 ## Scope Notes
 

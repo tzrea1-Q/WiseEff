@@ -1,6 +1,8 @@
 # Product Feedback (Internal Beta 问题反馈) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Prefer `superpowers:test-driven-development` for behavior and security-sensitive code.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
+Prefer Matt `tdd` for behavior and security-sensitive code.
 
 **Goal:** Persist sidebar **问题反馈** (multi-image) via a new `product-feedback` API module, and ship an admin-only lightweight triage page at `/feedback-admin`.
 
@@ -8,7 +10,7 @@
 
 **Tech Stack:** PostgreSQL migration, TypeScript API (Vitest), React + Radix Dialog/Sheet, Vite frontend ports/clients, Playwright acceptance / `playwright-cli` UI verification.
 
-**Design spec:** [`docs/superpowers/specs/2026-07-08-product-feedback-design.md`](../../superpowers/specs/2026-07-08-product-feedback-design.md)
+**Design spec:** [`docs/design-docs/2026-07-08-product-feedback-design.md`](../../design-docs/2026-07-08-product-feedback-design.md)
 
 ---
 
@@ -59,7 +61,7 @@ One feature branch for the full vertical slice (backend + Dialog + admin page) u
 ### Task 0: Branch + register plan
 
 **Files:**
-- Create: this plan under `docs/exec-plans/active/` and `docs/superpowers/plans/`
+- Create: this plan under `docs/exec-plans/active/` and `docs/exec-plans/active/`
 - Modify: `docs/PLANS.md`, `docs/zh-CN/PLANS.md`, `docs/exec-plans/tech-debt-tracker.md` (+ zh-CN)
 
 - [ ] **Step 1: Create feature branch from main**
@@ -95,10 +97,10 @@ Mirror zh-CN tracker.
 
 ```bash
 git add docs/exec-plans/active/2026-07-08-product-feedback.md \
-  docs/superpowers/plans/2026-07-08-product-feedback.md \
+  docs/exec-plans/active/2026-07-08-product-feedback.md \
   docs/PLANS.md docs/zh-CN/PLANS.md \
   docs/exec-plans/tech-debt-tracker.md docs/zh-CN/exec-plans/tech-debt-tracker.md
-git add -f docs/superpowers/plans/2026-07-08-product-feedback.md
+git add -f docs/exec-plans/active/2026-07-08-product-feedback.md
 git commit -m "$(cat <<'EOF'
 docs: add product feedback implementation plan
 

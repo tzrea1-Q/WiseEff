@@ -1,6 +1,6 @@
 # Admin Local Account Create Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use Matt `implement` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Align `/user-permissions` Admin "添加用户" with the local registration account model so Admin-created users receive username/password credentials and can log in.
 

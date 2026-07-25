@@ -1,7 +1,7 @@
 # 本地演示账号种子 — 执行计划
 
 > English: [`docs/exec-plans/active/2026-07-23-local-demo-credentials-seed.md`](../../../exec-plans/active/2026-07-23-local-demo-credentials-seed.md)  
-> 设计: [`docs/zh-CN/superpowers/specs/2026-07-23-local-demo-credentials-seed-design.md`](../../superpowers/specs/2026-07-23-local-demo-credentials-seed-design.md)  
+> 设计: [`docs/zh-CN/design-docs/2026-07-23-local-demo-credentials-seed-design.md`](../../design-docs/2026-07-23-local-demo-credentials-seed-design.md)  
 > 分支: `feat/local-demo-credentials-seed`
 
 ## 目标

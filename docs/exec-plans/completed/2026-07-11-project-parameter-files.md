@@ -2,7 +2,7 @@
 
 > **Status:** Completed 2026-07-12 via PR #171 (`feat/project-parameter-files`).
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use Matt `implement` (recommended) or Matt `implement` to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 为每个项目维护多个 DTS/JSON 参数文件（内部托管 + 版本历史），实现文件↔DB 双向同步（文件 diff 自动草稿、审阅合入自动回写）、参数来源字段展示，以及 file/UI 草稿冲突的人工裁决。
 
@@ -10,7 +10,7 @@
 
 **Tech Stack:** Node/tsx, PostgreSQL migrations, Zod, Vitest, React 19, 现有 `ObjectStore`（`server/modules/logs/objectStore.ts`）、M1 参数审阅流。
 
-**Design spec:** `docs/superpowers/specs/2026-07-11-project-parameter-files-design.md`
+**Design spec:** `docs/design-docs/2026-07-11-project-parameter-files-design.md`
 
 **Scope:** **P1 only** — 内部托管、多文件、JSON 全量同步、DTS fragment 同步、来源字段、冲突裁决、JSON 写回、DTS 文本 patch 写回。P2（TD-035 完整 DTS / AST 写回）记入 tech-debt。
 
@@ -696,7 +696,7 @@ export type ParameterRecord = {
 **Files:**
 - Modify: `docs/design-docs/domain-model.md`
 - Modify: `docs/design-docs/api-contract.md`
-- Modify: `docs/superpowers/specs/2026-07-11-project-parameter-files-design.md` — 状态改为「实现中」
+- Modify: `docs/design-docs/2026-07-11-project-parameter-files-design.md` — 状态改为「实现中」
 - Modify: `docs/exec-plans/tech-debt-tracker.md` — TD-039 P2 DTS full parse + AST writeback
 - Regenerate: `docs/generated/db-schema.md`（若仓库有生成脚本则运行）
 
@@ -745,7 +745,7 @@ npm run build
 | `docs/design-docs/domain-model.md` | Update | 新增 ProjectParameterFile 实体 |
 | `docs/design-docs/api-contract.md` | Update | parameter-files routes |
 | `docs/generated/db-schema.md` | Update | 迁移后重新生成 |
-| `docs/superpowers/specs/2026-07-11-project-parameter-files-design.md` | Review | 状态同步 |
+| `docs/design-docs/2026-07-11-project-parameter-files-design.md` | Review | 状态同步 |
 | `docs/exec-plans/tech-debt-tracker.md` | Update | TD-039 P2 项 |
 | `docs/product-specs/product-spec.md` | Review | 可选补充文件维护描述 |
 | `docs/PLANS.md` | Update | 登记本 active plan |

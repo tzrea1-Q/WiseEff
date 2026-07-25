@@ -721,7 +721,7 @@ src/ParameterComparison/
 - lucide 图标渲染
 
 ### 13.3 纪律
-严格遵守 `superpowers:test-driven-development`：每个组件先写失败测试，再写最小实现。
+严格遵守 Matt `tdd`：每个组件先写失败测试，再写最小实现。
 
 ---
 

@@ -1,7 +1,7 @@
 # Xiaoze P1 — Behavior Eval & Golden Gate (TD-009 / TD-017)
 
 > **Status:** Completed 2026-06-29 on branch `feature/xiaoze-p1-behavior-eval-harness`.
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (or superpowers:subagent-driven-development) to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use Matt `implement` (or Matt `implement`) to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 > **Branch & PR:** Work on a feature branch from `main` only. Do NOT open or merge a GitHub PR; the parent agent reviews and merges. See `docs/PLANS.md` § Git Branch & PR Workflow.
 
 **Goal:** Turn Xiaoze's safety/grounding promises — which today live only in the system prompt plus streaming heuristics — into **measurable, regression-gated** behavior. Build an offline eval harness (golden tests) over the planning graph using the deterministic/fake model seam, asserting: correct intent→tool routing, FORBIDDEN refusal, no hallucinated writes (no "已提交/已写入" without an approved mutating tool), grounding (citations present when tool data is used), and approval-gating of mutating tools. Add a versioned, traceable system prompt. This addresses **TD-009** (AI behavior not exercised/validated) and **TD-017** follow-up (broader eval coverage).

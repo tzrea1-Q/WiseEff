@@ -3,7 +3,7 @@
 > Chinese summary: [Chinese](../../zh-CN/exec-plans/active/2026-07-21-retire-synthetic-base-dts.md)  
 > RFC: [`../../design-docs/2026-07-21-project-primary-dts-contract-rfc.md`](../../design-docs/2026-07-21-project-primary-dts-contract-rfc.md)  
 > Related: surface MVP [`2026-07-21-dts-parameter-surface-mvp.md`](2026-07-21-dts-parameter-surface-mvp.md)  
-> Bite-sized agent plan: [`../../superpowers/plans/2026-07-21-retire-synthetic-base-dts.md`](../../superpowers/plans/2026-07-21-retire-synthetic-base-dts.md)
+> Bite-sized agent plan: [`../../exec-plans/active/2026-07-21-retire-synthetic-base-dts.md`](../../exec-plans/active/2026-07-21-retire-synthetic-base-dts.md)
 
 - Date: 2026-07-21
 - Status: **Active** (Phase 3 seed gate on `feat/parameter-maintenance-retire-dtc`: committed `*-board.dts` are SoT; `db:seed:m1` uses parse-only integrity; `dtc:seed:compile` is advisory in CI)

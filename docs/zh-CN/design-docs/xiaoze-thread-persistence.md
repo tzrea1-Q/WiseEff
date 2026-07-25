@@ -232,5 +232,5 @@ create index if not exists agent_sessions_xiaoze_actor_idx
 - M4 schema：`server/migrations/0008_m4_agent.sql`
 - AG-UI：`server/modules/agent/xiaoze/agUiEndpoint.ts`
 - 前端 thread UX：`src/features/agent/xiaozeThreadStorage.ts`
-- 小泽整体设计：`docs/superpowers/specs/2026-06-24-xiaoze-agent-design.md`
+- 小泽整体设计：`docs/design-docs/2026-06-24-xiaoze-agent-design.md`
 - TD-029：`docs/exec-plans/tech-debt-tracker.md`

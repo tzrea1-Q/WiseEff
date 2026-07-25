@@ -1,6 +1,6 @@
 # Hierarchical Modules (多层级模块) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. Prefer `superpowers:test-driven-development` for data-model, repository, and filter logic.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use Matt `implement` (recommended) or Matt `implement` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax. Prefer Matt `tdd` for data-model, repository, and filter logic.
 
 **Goal:** Evolve node/parameter **module** from a flat single-level string label into a **multi-level (tree) taxonomy** for both the parameter domain and the debugging domain, while preserving all current flat behavior for un-nested modules.
 

@@ -1,6 +1,6 @@
 # Local demo credentials seed — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 **Goal:** In `NODE_ENV=development` only, M0 seed upserts fixed local usernames and a shared demo password for the seven ChargeLab personas so role-by-role UI testing does not require manual register/bootstrap.
 
@@ -363,7 +363,7 @@ Mirror in ZH. In authentication docs (local accounts section), one short paragra
 - [ ] **Step 3: Commit docs**
 
 ```bash
-git add docs/developer/local-development.md docs/zh-CN/developer/local-development.md docs/api/authentication.md docs/zh-CN/api/authentication.md docs/PLANS.md docs/zh-CN/PLANS.md docs/exec-plans/active/2026-07-23-local-demo-credentials-seed.md docs/zh-CN/exec-plans/active/2026-07-23-local-demo-credentials-seed.md docs/design-docs/2026-07-23-local-demo-credentials-seed-design.md docs/zh-CN/superpowers/specs/2026-07-23-local-demo-credentials-seed-design.md
+git add docs/developer/local-development.md docs/zh-CN/developer/local-development.md docs/api/authentication.md docs/zh-CN/api/authentication.md docs/PLANS.md docs/zh-CN/PLANS.md docs/exec-plans/active/2026-07-23-local-demo-credentials-seed.md docs/zh-CN/exec-plans/active/2026-07-23-local-demo-credentials-seed.md docs/design-docs/2026-07-23-local-demo-credentials-seed-design.md docs/zh-CN/design-docs/2026-07-23-local-demo-credentials-seed-design.md
 git commit -m "$(cat <<'EOF'
 docs: document development-only ChargeLab demo logins
 
