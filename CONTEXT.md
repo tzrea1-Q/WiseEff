@@ -27,7 +27,17 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Project-primary DTS | One uploaded DTS per project; merges update that file |
 | Binding | Stable link between a parameter row and topology/schema identity |
 | Xiaoze | WiseEff Agent assistant surface in the product |
+| Parameter admin | Governance surface for parameter specs, review queues, module/driver mappings, project files, config sets, and baselines. Does not own everyday binding edits |
+| Parameter workbench | Everyday surface where users read topology and propose binding changes. Does not own governance queues or catalog upkeep |
+| Organization-scoped governance | Parameter assets governed independently of any single project: specs, module trees, business categories, policy targets |
+| Project-scoped operations | Parameter assets owned by one project: files, config sets, release baselines, bindings |
+| Identity mapping task | Governance queue item for a migration-time parameter identity that could not be resolved automatically |
+| Spec review task | Governance queue item asking an Admin to accept, dismiss, or create a parameter spec |
+| Runtime mode | Whether the frontend reads live APIs or mock fixtures. Both serve the same semantic model; mock is a data-source substitution, never a different product |
 
 ## ADRs
 
 Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scoped decisions usually live in [`docs/design-docs/`](docs/design-docs/).
+
+- [`0001`](docs/adr/0001-parameter-admin-organized-by-governance-scope.md) — parameter admin is organized by governance scope
+- [`0002`](docs/adr/0002-mock-runtime-serves-the-semantic-parameter-model.md) — mock runtime serves the semantic parameter model through the same ports
