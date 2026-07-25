@@ -748,3 +748,93 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(/2097152 byte limit|exceeds/i);
   });
 });
+
+describe("ParameterAdminNextPage · organization identity mapping governance", () => {
+  const OPEN_MAPPING_TASK = {
+    id: "map-admin-1",
+    projectId: "project-teaching",
+    configRevisionId: "revision-teaching-1",
+    previousLogicalNodeId: "logical-sc8562-old",
+    candidateLogicalNodeIds: ["logical-sc8562", "logical-mt5788"],
+    evidence: {
+      previousNodeLocator: "/amba/i2c@FDF5E000/sc8562@6E",
+      evidence: ["unit address matched", "compatible ambiguous"],
+      candidates: [
+        {
+          logicalNodeId: "logical-sc8562",
+          nodeLocator: "/amba/i2c@FDF5E000/sc8562@6E",
+          name: "sc8562",
+          unitAddress: "6E"
+        },
+        {
+          logicalNodeId: "logical-mt5788",
+          nodeLocator: "/amba/i2c@FDF5E000/mt5788@55",
+          name: "mt5788",
+          unitAddress: "55"
+        }
+      ],
+      risk: "high"
+    },
+    status: "open" as const,
+    createdAt: "2026-07-14T10:00:00.000Z"
+  };
+
+  it("loads the identity mapping queue with evidence through the topology port", async () => {
+    const listMappingTasks = vi.fn().mockResolvedValue([OPEN_MAPPING_TASK]);
+    renderPage({ repository: createRepository({ listMappingTasks }) });
+
+    const region = await screen.findByRole("region", { name: "身份映射治理" });
+    expect(within(region).getByText("/amba/i2c@FDF5E000/sc8562@6E")).toBeInTheDocument();
+    expect(within(region).getByText("unit address matched")).toBeInTheDocument();
+    expect(listMappingTasks).toHaveBeenCalled();
+  });
+
+  it("resolves a mapping task via the lossless candidate identity path with audit", async () => {
+    const listMappingTasks = vi
+      .fn()
+      .mockResolvedValueOnce([OPEN_MAPPING_TASK])
+      .mockResolvedValueOnce([]);
+    const resolveMapping = vi.fn().mockResolvedValue(undefined);
+    renderPage({ repository: createRepository({ listMappingTasks, resolveMapping }) });
+
+    const review = await screen.findByRole("region", { name: "映射审核" });
+    fireEvent.change(within(review).getByRole("combobox", { name: "选择映射候选" }), {
+      target: { value: "logical-sc8562" }
+    });
+    fireEvent.change(within(review).getByLabelText("映射确认原因"), {
+      target: { value: "Same board instance" }
+    });
+    fireEvent.click(within(review).getByRole("button", { name: "确认映射" }));
+
+    await waitFor(() =>
+      expect(resolveMapping).toHaveBeenCalledWith("map-admin-1", {
+        decision: "resolved",
+        selectedLogicalNodeId: "logical-sc8562",
+        reason: "Same board instance"
+      })
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/identity-mapping-resolved/)
+    );
+    await waitFor(() =>
+      expect(screen.getByText("当前没有待处理的身份映射任务。")).toBeInTheDocument()
+    );
+  });
+
+  it("behaves identically when backed by the mock topology adapter", async () => {
+    renderPage({ repository: createMockParameterTopologyRepository() });
+
+    const review = await screen.findByRole("region", { name: "映射审核" });
+    fireEvent.change(within(review).getByRole("combobox", { name: "选择映射候选" }), {
+      target: { value: "logical-sc8562" }
+    });
+    fireEvent.change(within(review).getByLabelText("映射确认原因"), {
+      target: { value: "Mock continuity" }
+    });
+    fireEvent.click(within(review).getByRole("button", { name: "确认映射" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/identity-mapping-resolved/)
+    );
+  });
+});

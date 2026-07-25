@@ -1,6 +1,7 @@
 import type {
   ActivateParameterSpecInput,
   ParameterTopologyRepository,
+  ResolveMappingInput,
   ResolveSpecReviewInput
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
@@ -24,6 +25,7 @@ import type {
 } from "@/application/parameters/parameterRuntime";
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 import type {
+  IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
   SpecQuery,
@@ -67,6 +69,9 @@ export type ParameterAdminApplication = {
   ): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
+
+  listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;
+  resolveMapping(taskId: string, input: ResolveMappingInput): Promise<void>;
 };
 
 export type CreateParameterAdminApplicationOptions = {
@@ -155,6 +160,13 @@ export function createParameterAdminApplication({
         return missingImport("parseDtsImport");
       }
       return importActions.parseDtsImport(input);
+    },
+
+    listMappingTasks(projectId) {
+      return topology.listMappingTasks(projectId);
+    },
+    resolveMapping(taskId, input) {
+      return topology.resolveMapping(taskId, input);
     }
   };
 }

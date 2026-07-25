@@ -733,6 +733,21 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit"]
   },
   {
+    id: "PARAM-IDENTITY-MAP-ADMIN-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin-next",
+    roles: ["Admin"],
+    action:
+      "Resolve identity mapping tasks from the parameter admin with evidence and governance audit (construction route until ticket 09).",
+    coverage: "future",
+    acceptanceIds: ["PARAM-IDENTITY-MAP-ADMIN-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"],
+    deferralReason:
+      "Browser acceptance remains on the workbench route until ticket 09/10 retarget coverage to the new admin (#198)."
+  },
+  {
     id: "PARAM-CONFIG-PUBLISH-GATE-001",
     priority: "P0",
     area: "parameters",

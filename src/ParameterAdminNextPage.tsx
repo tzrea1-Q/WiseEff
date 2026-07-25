@@ -8,6 +8,7 @@ import { resolveParameterTopologyRepository } from "@/application/parameters/par
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterRecord, Project } from "@/mockData";
 import { OrganizationBulkImportPanel } from "@/components/parameter-admin-next/OrganizationBulkImportPanel";
+import { OrganizationIdentityMappingPanel } from "@/components/parameter-admin-next/OrganizationIdentityMappingPanel";
 import { OrganizationModuleGovernancePanel } from "@/components/parameter-admin-next/OrganizationModuleGovernancePanel";
 import { OrganizationSpecGovernancePanel } from "@/components/parameter-admin-next/OrganizationSpecGovernancePanel";
 import { ParameterAdminNextProjectStub } from "@/components/parameter-admin-next/ParameterAdminNextProjectStub";
@@ -89,6 +90,7 @@ export function ParameterAdminNextPage({
               parameterActions={parameterActions}
               runtimeMode={runtimeMode}
             />
+            <OrganizationIdentityMappingPanel />
             <OrganizationModuleGovernancePanel />
             <OrganizationSpecGovernancePanel search={search} pathname={pathname} />
           </>

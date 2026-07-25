@@ -12,7 +12,9 @@ export type ParameterAdminAuditHint = {
     | "module-mapping-created"
     | "module-mapping-deleted"
     | "module-bindings-recomputed"
-    | "import-batch-applied";
+    | "import-batch-applied"
+    | "identity-mapping-resolved"
+    | "identity-mapping-dismissed";
   summary: string;
   reason: string;
   recordedAt: string;
@@ -124,6 +126,10 @@ export function auditKindLabel(kind: ParameterAdminAuditHint["kind"]): string {
       return "重算模块归属";
     case "import-batch-applied":
       return "批量导入应用";
+    case "identity-mapping-resolved":
+      return "身份映射确认";
+    case "identity-mapping-dismissed":
+      return "身份映射驳回";
     case "spec-review-resolved":
     default:
       return "规格审核批准";
