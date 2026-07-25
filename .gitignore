@@ -37,11 +37,10 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Codex/Superpowers local scratch state
+# Codex/agent local scratch state
 .superpowers/
 .worktrees/
 .codegraph/
-docs/superpowers/
 
 # Generated visual QA screenshots
 qa-screenshots/

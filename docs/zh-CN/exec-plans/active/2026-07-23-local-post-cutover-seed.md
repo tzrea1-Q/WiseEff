@@ -1,7 +1,7 @@
 # 本地 Post-Cutover M1 种子 — 执行计划
 
 > English: [`docs/exec-plans/active/2026-07-23-local-post-cutover-seed.md`](../../../exec-plans/active/2026-07-23-local-post-cutover-seed.md)  
-> 设计：[`docs/zh-CN/superpowers/specs/2026-07-23-local-post-cutover-seed-design.md`](../../superpowers/specs/2026-07-23-local-post-cutover-seed-design.md)  
+> 设计：[`docs/zh-CN/design-docs/2026-07-23-local-post-cutover-seed-design.md`](../../design-docs/2026-07-23-local-post-cutover-seed-design.md)  
 > 分支：`feat/local-post-cutover-seed`
 
 ## 目标

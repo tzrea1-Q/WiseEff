@@ -1,8 +1,9 @@
 # Parameter Home Production Redesign — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` where applicable. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
 >
-> **Design spec (Chinese):** [2026-07-07-parameter-home-production-redesign-design.md](../../zh-CN/superpowers/specs/2026-07-07-parameter-home-production-redesign-design.md) (approved)
+> **Design spec (Chinese):** [2026-07-07-parameter-home-production-redesign-design.md](../../zh-CN/design-docs/2026-07-07-parameter-home-production-redesign-design.md) (approved)
 
 **Status:** ✅ Completed — all Tasks 1–16 implemented, tested, and verified on branch `feat/parameter-home-production-redesign` (commits `1dcd7988`→`927cb37e`, plus closure commit). Dashboard server tests 11/11, feature tests 26/26, `tsc -b` / `contract:check` / `docs:check` PASS. PR: [#163](https://github.com/tzrea1-Q/WiseEff/pull/163). The 3 remaining `test:all` failures (`operations/routes.test.ts`, `operations/health.test.ts`, `parameters/service.test.ts`) and the default-heap `npm run build` OOM were independently confirmed pre-existing on `main` (unrelated to this plan).
 
@@ -1560,7 +1561,7 @@ git commit -m "refactor(parameter-home): remove synthetic analytics and migrate 
 **Files:**
 - Modify: `docs/FRONTEND.md` (+ Chinese companion `docs/zh-CN/...` if the pair exists)
 - Modify: `docs/design-docs/api-contract.md`
-- Modify: `docs/zh-CN/superpowers/specs/2026-07-07-parameter-home-production-redesign-design.md` (status → Implemented)
+- Modify: `docs/zh-CN/design-docs/2026-07-07-parameter-home-production-redesign-design.md` (status → Implemented)
 - Modify: `docs/developer/browser-acceptance-coverage-map.md`, `docs/developer/user-operation-coverage-matrix.md`
 - Modify/Create: `e2e/acceptance/*` spec covering parameter-home real-data path
 
@@ -1617,7 +1618,7 @@ git commit -m "docs+test(parameter-home): contract, frontend, and acceptance cov
 | `docs/design-docs/api-contract.md` | Update — add dashboard endpoints | 16 |
 | `docs/FRONTEND.md` | Update — feature tree + dashboard seam | 16 |
 | `docs/generated/openapi.json` | Regenerate | 5 |
-| `docs/zh-CN/superpowers/specs/2026-07-07-parameter-home-production-redesign-design.md` | Update — status → Implemented | 16 |
+| `docs/zh-CN/design-docs/2026-07-07-parameter-home-production-redesign-design.md` | Update — status → Implemented | 16 |
 | `docs/developer/browser-acceptance-coverage-map.md` | Update — new requirement id | 16 |
 | `docs/developer/user-operation-coverage-matrix.md` | Update — new operation id | 16 |
 | `docs/design-docs/2026-05-24-parameter-personal-workbench-design.md` | Review — evolved by this plan; superseded banner added pointing to the 2026-07-07 spec (Task 16 closure) | 16 |

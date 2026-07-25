@@ -1,6 +1,6 @@
 # WiseEff Icon Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 **Goal:** Add the approved elastic-path W icon system to WiseEff and use it for favicon, workbench brand, and homepage brand surfaces.
 

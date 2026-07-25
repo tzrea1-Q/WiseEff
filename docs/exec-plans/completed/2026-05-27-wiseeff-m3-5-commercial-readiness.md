@@ -1,6 +1,8 @@
 # WiseEff M3.5 Commercial Readiness Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each implementation step must follow `superpowers:test-driven-development`.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
+Each implementation step must follow Matt `tdd`.
 
 **Goal:** Turn the completed M1-M3 API-mode MVP into a controlled commercial pilot baseline before starting M4 Agent work.
 

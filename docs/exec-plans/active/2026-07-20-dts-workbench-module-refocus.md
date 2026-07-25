@@ -1,7 +1,7 @@
 # DTS 参数工作台模块化纠偏 — 执行计划
 
 > 日期：2026-07-20  
-> 设计：[`docs/superpowers/specs/2026-07-20-dts-workbench-module-refocus-design.md`](../../superpowers/specs/2026-07-20-dts-workbench-module-refocus-design.md)  
+> 设计：[`docs/design-docs/2026-07-20-dts-workbench-module-refocus-design.md`](../../design-docs/2026-07-20-dts-workbench-module-refocus-design.md)  
 > 状态：阶段一 review 修复完成（方案 B 已落地）；阶段二语义下沉已提交（Task 1–7），Task 8 文档/验证收口
 
 ## Documentation Impact Matrix
@@ -10,10 +10,10 @@
 |------|------|------|
 | `docs/FRONTEND.md` | 模块优先 IA、注册表、导出 | 已更新 |
 | `docs/zh-CN/frontend.md` | 同上（中文） | 已更新 |
-| `docs/superpowers/specs/2026-07-20-dts-workbench-module-refocus-design.md` | 设计文档 | 已写 |
-| `docs/zh-CN/superpowers/specs/2026-07-20-dts-workbench-module-refocus-design.md` | 中文设计摘要 | 已有 |
-| `docs/superpowers/specs/2026-07-20-dts-workbench-module-phase2-design.md` | 阶段二设计 | 已写 |
-| `docs/zh-CN/superpowers/specs/2026-07-20-dts-workbench-module-phase2-design.md` | 阶段二中文摘要 | 已写 |
+| `docs/design-docs/2026-07-20-dts-workbench-module-refocus-design.md` | 设计文档 | 已写 |
+| `docs/zh-CN/design-docs/2026-07-20-dts-workbench-module-refocus-design.md` | 中文设计摘要 | 已有 |
+| `docs/design-docs/2026-07-20-dts-workbench-module-phase2-design.md` | 阶段二设计 | 已写 |
+| `docs/zh-CN/design-docs/2026-07-20-dts-workbench-module-phase2-design.md` | 阶段二中文摘要 | 已写 |
 | OpenAPI / contract | `/api/v2/parameter-modules`（registry + mappings）；模块 CRUD 仍走 v1；阶段二新增 binding history/compare/recompute | 已更新（OpenAPI 已含 history/compare；`api-contract.md` 补 v2 binding 段） |
 
 ## Documentation Update Gate
@@ -94,8 +94,8 @@
 
 ## 阶段二（语义下沉 — 设计已批准）
 
-> 设计：[英文](../../superpowers/specs/2026-07-20-dts-workbench-module-phase2-design.md) · [中文](../../zh-CN/superpowers/specs/2026-07-20-dts-workbench-module-phase2-design.md)  
-> 实施计划：[英文](../../superpowers/plans/2026-07-20-dts-workbench-module-phase2.md) · [中文](../../zh-CN/superpowers/plans/2026-07-20-dts-workbench-module-phase2.md)  
+> 设计：[英文](../../design-docs/2026-07-20-dts-workbench-module-phase2-design.md) · [中文](../../zh-CN/design-docs/2026-07-20-dts-workbench-module-phase2-design.md)  
+> 实施跟踪：本计划 §阶段二（无独立 exec plan）  
 > 原则：**干净切换、无兼容层**；分段切片交付。
 
 - [x] Slice 1：binding 物化 `module_id` + 新唯一键 `(project, logical_node, parameter_spec, module_id)` + 重写种子（Task 1/2/4，迁移 `0067`）

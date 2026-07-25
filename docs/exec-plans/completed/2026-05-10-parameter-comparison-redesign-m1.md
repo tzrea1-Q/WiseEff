@@ -1,6 +1,6 @@
 # Parameter Comparison Redesign · M1 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each implementation step must follow superpowers:test-driven-development.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use Matt `implement` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each implementation step must follow Matt `tdd`.
 
 **Goal:** 为 `/parameter-comparison` 页面提供 M1 切片：独立目录拆分、动态 Header + 项目 Chip、三张 Metric 摘要、5 列新表格（含 Δ 徽章、左色条、参数键 hover tooltip）、带搜索/筛选 chip 的工具条；同步动作保持当前即时逻辑，批量同步与确认对话框延后到 M2。
 
@@ -3439,5 +3439,5 @@ M1 完成后交付物：
 ## 下一步
 
 > 实施者可选择：
-> - **执行此 plan**：使用 `superpowers:subagent-driven-development` 或 `superpowers:executing-plans` 一步步推进
+> - **执行此 plan**：使用 Matt `implement` 或 Matt `implement` 一步步推进
 > - **先 review**：如果有结构性异议，先和 spec 作者对齐后再动工

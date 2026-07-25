@@ -1,6 +1,8 @@
 # Xiaoze P0 Perception Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Code changes must follow `superpowers:test-driven-development`: write the failing test first, verify it fails, implement the smallest change, then verify green.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
+
 
 **Goal:** Give the Xiaoze (小泽) agent grounded perception — it can see the user's current page state and proactively read any other data the user is permitted to access across pages, then summarize and answer questions, all through a CopilotKit/AG-UI chat surface.
 
@@ -12,7 +14,7 @@
 
 ## Reference Basis
 
-- Design spec: `docs/superpowers/specs/2026-06-24-xiaoze-agent-design.md` (EN) / `docs/zh-CN/superpowers/specs/2026-06-24-xiaoze-agent-design.md` (ZH).
+- Design spec: `docs/design-docs/2026-06-24-xiaoze-agent-design.md` (EN) / `docs/zh-CN/design-docs/2026-06-24-xiaoze-agent-design.md` (ZH).
 - AG-UI protocol: https://github.com/ag-ui-protocol/ag-ui (SSE event stream, ~16 event types, interrupts).
 - CopilotKit V2 self-managed agents: https://docs.copilotkit.ai (`selfManagedAgents` + `@ag-ui/client` `HttpAgent`; hooks `useAgentContext`, `useAgent`, `useFrontendTool`, `useInterrupt`; provider `CopilotKitProvider` / `CopilotKit` from `@copilotkit/react-core/v2`).
 - LangGraph.js: https://langchain-ai.github.io/langgraphjs/ (`StateGraph`, prebuilt `createReactAgent`, `interrupt`, checkpointing).

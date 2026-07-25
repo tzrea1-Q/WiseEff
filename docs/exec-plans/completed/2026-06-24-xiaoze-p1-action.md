@@ -1,6 +1,8 @@
 # Xiaoze P1 Action Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Code changes must follow `superpowers:test-driven-development`: write the failing test first, verify it fails, implement the smallest change, then verify green.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
+
 
 **Goal:** Let Xiaoze (小泽) take real frontend-equivalent actions for the user — including mutating writes such as submitting a parameter change — where every mutating action flows through the existing approval chain (human approval + transactional re-authorization + audit `actorType=agent`), surfaced in chat via AG-UI human-in-the-loop. Also remove the now-redundant Pi provider.
 
@@ -12,7 +14,7 @@
 
 ## Reference Basis
 
-- Design spec: `docs/superpowers/specs/2026-06-24-xiaoze-agent-design.md` (security/approval model; execution model assumption).
+- Design spec: `docs/design-docs/2026-06-24-xiaoze-agent-design.md` (security/approval model; execution model assumption).
 - Completed P0 plan: `docs/exec-plans/completed/2026-06-24-xiaoze-p0-perception.md` and its `server/modules/agent/xiaoze/SPIKE.md`.
 - Existing approval chain: `server/modules/agent/orchestrator.ts` (`approveToolCall` at ~552, transactional re-authorize + run + audit; `executeToolCall`; `createApprovalForToolCall`).
 - Approval persistence: `server/modules/agent/repository.ts` (`getAgentApproval`, `getAgentToolCall`, `markAgentApprovalApproved`, `updateAgentToolCall`).

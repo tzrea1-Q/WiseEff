@@ -1,0 +1,33 @@
+# WiseEff domain context (index)
+
+> Chinese developer onboarding: [`docs/zh-CN/README.md`](docs/zh-CN/README.md)
+
+Short index for agents and skills. **Authoritative product and architecture truth lives in the linked docs below** — not in this file.
+
+## Read first
+
+| Topic | Document |
+| --- | --- |
+| System map | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| Domain model | [`docs/design-docs/domain-model.md`](docs/design-docs/domain-model.md) |
+| Full-stack architecture | [`docs/design-docs/full-stack-architecture.md`](docs/design-docs/full-stack-architecture.md) |
+| Product intent | [`docs/product-specs/product-spec.md`](docs/product-specs/product-spec.md) |
+| API contract | [`docs/design-docs/api-contract.md`](docs/design-docs/api-contract.md) |
+| Agent harness | [`AGENTS.md`](AGENTS.md), [`docs/agents/`](docs/agents/) |
+| Active work | [`docs/PLANS.md`](docs/PLANS.md), [`docs/exec-plans/active/`](docs/exec-plans/active/) |
+
+## Glossary (stub)
+
+Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from `docs/design-docs/domain-model.md`.
+
+| Term | Meaning |
+| --- | --- |
+| DTS | Device tree / parameter topology source format in the parameter workbench |
+| Parameter surface | Manageable parameter rows bound to topology, not raw DTS paths alone |
+| Project-primary DTS | One uploaded DTS per project; merges update that file |
+| Binding | Stable link between a parameter row and topology/schema identity |
+| Xiaoze | WiseEff Agent assistant surface in the product |
+
+## ADRs
+
+Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scoped decisions usually live in [`docs/design-docs/`](docs/design-docs/).

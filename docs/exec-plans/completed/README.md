@@ -32,6 +32,7 @@ Completed plans are historical implementation evidence. They can explain why a s
 | Xiaoze thread persistence | `2026-06-24-wiseeff-xiaoze-thread-persistence.md` |
 | Dead code / legacy cleanup | `2026-06-30-wiseeff-dead-code-cleanup.md` |
 | Parameter debugging interim hide | `2026-07-01-wiseeff-parameter-debugging-platform-redesign.md` |
+| Retire Superpowers; adopt Matt skills | `2026-07-25-retire-superpowers-adopt-matt-skills.md` |
 
 ## Historical Feature Plans
 
@@ -46,3 +47,5 @@ If a completed plan conflicts with current docs, prefer this order:
 3. Current runbooks, security, reliability, API, and architecture docs.
 4. Product specs.
 5. Completed execution plans.
+
+**Historical agent banners:** Many completed plans include obsolete `REQUIRED SUB-SKILL: Use superpowers:…` lines from the former Superpowers harness. Ignore them when executing or reviewing history. Current agent orchestration uses Matt Pocock skills + `docs/agents/*` and `docs/PLANS.md` Plan Rules.

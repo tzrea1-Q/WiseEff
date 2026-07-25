@@ -1,6 +1,6 @@
 # 参数管理首页设计方案
 
-> **历史文档 / 已被取代：** 本方案已由 [`docs/zh-CN/superpowers/specs/2026-07-07-parameter-home-production-redesign-design.md`](../zh-CN/superpowers/specs/2026-07-07-parameter-home-production-redesign-design.md)（生产化重构，已实施）取代。保留此文档仅作历史设计记录，请以 2026-07-07 方案为当前实现依据。
+> **历史文档 / 已被取代：** 本方案已由 [`docs/zh-CN/design-docs/2026-07-07-parameter-home-production-redesign-design.md`](../zh-CN/design-docs/2026-07-07-parameter-home-production-redesign-design.md)（生产化重构，已实施）取代。保留此文档仅作历史设计记录，请以 2026-07-07 方案为当前实现依据。
 
 ## 目标
 

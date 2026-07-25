@@ -1,6 +1,8 @@
 # WiseEff M4 Agent Collaboration MVP Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Each implementation step must follow `superpowers:test-driven-development`.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
+Each implementation step must follow Matt `tdd`.
 
 **Goal:** Upgrade WiseAgent from frontend rule simulation into a governed backend-orchestrated Agent MVP with persisted sessions, controlled tool calls, approval records, audit correlation, and API-mode frontend integration.
 
@@ -2413,7 +2415,7 @@ Review gates:
 
 ## Subagent Dispatch Guidance
 
-Use `superpowers:subagent-driven-development` for implementation.
+Use Matt `implement` for implementation.
 
 For each task:
 

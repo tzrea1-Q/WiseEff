@@ -1,10 +1,11 @@
 # Debug & Log Analysis Org-Scope Decoupling — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` where applicable. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
 >
 > **Design spec:** [2026-07-07-debug-logs-org-scope-decoupling-design.md](../../design-docs/2026-07-07-debug-logs-org-scope-decoupling-design.md) (approved)
 >
-> Chinese spec: [2026-07-07-debug-logs-org-scope-decoupling-design.md](../../zh-CN/superpowers/specs/2026-07-07-debug-logs-org-scope-decoupling-design.md)
+> Chinese spec: [2026-07-07-debug-logs-org-scope-decoupling-design.md](../../zh-CN/design-docs/2026-07-07-debug-logs-org-scope-decoupling-design.md)
 
 **Goal:** Decouple log analysis and debugging from parameter-management `projects`; both domains operate at `organization_id` scope only.
 

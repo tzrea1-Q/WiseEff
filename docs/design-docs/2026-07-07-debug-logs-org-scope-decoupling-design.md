@@ -1,6 +1,6 @@
 # Debug & Log Analysis — Organization-Scope Decoupling Design
 
-> Chinese: [Chinese](../zh-CN/superpowers/specs/2026-07-07-debug-logs-org-scope-decoupling-design.md)
+> Chinese: [Chinese](../zh-CN/design-docs/2026-07-07-debug-logs-org-scope-decoupling-design.md)
 
 **Date:** 2026-07-07  
 **Status:** Implemented (Scheme A)  

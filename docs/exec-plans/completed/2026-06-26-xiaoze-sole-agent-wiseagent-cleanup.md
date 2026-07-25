@@ -1,6 +1,6 @@
 # Xiaoze Sole Agent — WiseAgent Cleanup Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use Matt `implement` (recommended) or Matt `implement` to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Retire WiseAgent (M4 `UnifiedAgent` + session REST API) and make Xiaoze the only Agent in API mode; mock mode has no Agent UI.
 
@@ -12,7 +12,7 @@
 
 ## Source Spec
 
-- `docs/zh-CN/superpowers/specs/2026-06-26-xiaoze-sole-agent-cleanup-design.md`
+- `docs/zh-CN/design-docs/2026-06-26-xiaoze-sole-agent-cleanup-design.md`
 
 ## Git & PR Workflow
 
@@ -426,7 +426,7 @@ rg "UnifiedAgent|AgentGateway|/agent/sessions|VITE_XIAOZE_ENABLED|XIAOZE_RUNTIME
 
 | Area | Action | Files | Notes |
 | --- | --- | --- | --- |
-| Superpowers spec | Review | `docs/zh-CN/superpowers/specs/2026-06-26-xiaoze-sole-agent-cleanup-design.md` | Source; no change unless design drift. |
+| Superpowers spec | Review | `docs/zh-CN/design-docs/2026-06-26-xiaoze-sole-agent-cleanup-design.md` | Source; no change unless design drift. |
 | Exec plan | Update | This file → `completed/` | After verification. |
 | PLANS index | Update | `docs/PLANS.md` | Add while active; remove when completed. |
 | Frontend docs | Update | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` | Xiaoze-only; mock no agent. |

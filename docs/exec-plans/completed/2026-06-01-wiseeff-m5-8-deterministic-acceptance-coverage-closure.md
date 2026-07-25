@@ -1,6 +1,8 @@
 # WiseEff M5.8 Deterministic Acceptance Coverage Closure Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Behavior-changing fixes discovered during execution must follow `superpowers:test-driven-development`: write a failing test first, verify the failure, implement the smallest fix, then verify green.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
+
 
 **Goal:** Close the remaining deterministic browser-acceptance gaps without introducing AI browser agents, so WiseEff can explain every important user operation as automated, conditional, or explicitly deferred.
 
@@ -603,7 +605,7 @@ Confirm:
 
 ## Execution Notes
 
-- Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` for implementation.
+- Use Matt `implement` or Matt `implement` for implementation.
 - Use TDD for every behavior-changing fix: failing test first, minimal implementation second, verification third.
 - Keep AI-based browser exploration out of the release gate for this plan.
 - If a gap cannot be closed deterministically, record the reason in the operation matrix and tech-debt tracker instead of weakening the gate.

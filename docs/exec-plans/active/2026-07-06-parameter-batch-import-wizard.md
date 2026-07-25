@@ -1,6 +1,6 @@
 # 批量参数导入向导 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 **Goal:** Replace the placeholder parameter import dialog with a five-step wizard that supports spreadsheet/JSON/DTS sources, Step 1 mandatory target project selection (including create project), per-row review with diff/edit/skip, and new-parameter prefill — then applies via existing import batch APIs.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 19, Vitest, SheetJS (`xlsx`, already in repo), existing `ParameterRepository` HTTP/mock ports, `ProjectAdminFormDialog`, `ParameterDefinitionForm`.
 
-**Design spec:** `docs/zh-CN/superpowers/specs/2026-07-06-parameter-batch-import-design.md`
+**Design spec:** `docs/zh-CN/design-docs/2026-07-06-parameter-batch-import-design.md`
 
 **Scope:** **P1 only** in this plan (wizard + spreadsheet + JSON + DTS fragment + review). P2 (full DTS file + module heuristics) and P3 (audit reviewMetadata, server-side DTS) go to tech-debt after P1 ships.
 
@@ -570,7 +570,7 @@ npm run docs:check
 
 | Area | Path | Action |
 | --- | --- | --- |
-| Design spec | `docs/zh-CN/superpowers/specs/2026-07-06-parameter-batch-import-design.md` | No change (source of truth) |
+| Design spec | `docs/zh-CN/design-docs/2026-07-06-parameter-batch-import-design.md` | No change (source of truth) |
 | Active plan | `docs/exec-plans/active/2026-07-06-parameter-batch-import-wizard.md` | Update checkboxes during implementation |
 | Product specs | `docs/zh-CN/product-specs/prototype-functional-spec.md` | **Update** §5.3 import behavior |
 | Product specs EN | `docs/product-specs/prototype-functional-spec.md` | **Update** import bullet |

@@ -1,6 +1,8 @@
 # WiseEff Pi Agent Evidence And Evaluation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Code changes must follow test-first execution: write or update the focused test, confirm it fails for the intended reason, implement the smallest change, then verify green.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
+Code changes must follow test-first execution: write or update the focused test, confirm it fails for the intended reason, implement the smallest change, then verify green.
 
 **Goal:** Turn the first-round Pi-backed Agent provider adapter into a measurable pilot-ready provider path with safe metadata, offline evaluation, optional live smoke evidence, and operations documentation.
 

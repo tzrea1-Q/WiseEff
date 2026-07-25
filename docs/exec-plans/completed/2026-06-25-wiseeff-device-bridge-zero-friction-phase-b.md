@@ -1,6 +1,6 @@
 # WiseEff Device Bridge Zero-Friction — Phase B Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan step-by-step in order. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use Matt `implement` to implement this plan step-by-step in order. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** After Phase A (install → connect → USB detect), eliminate the remaining “I installed Bridge but detect still fails” confusion by surfacing **missing ADB/HDC** clearly and letting users **one-click install tools into a private WiseEff directory** without terminal or system PATH changes.
 
@@ -14,7 +14,7 @@
 
 ## Source Spec
 
-- `docs/zh-CN/superpowers/specs/2026-06-24-device-bridge-zero-friction-design.md` — § Phase B (B1/B2)
+- `docs/zh-CN/design-docs/2026-06-24-device-bridge-zero-friction-design.md` — § Phase B (B1/B2)
 - Baseline: `packages/device-bridge` RPC (`bridge.getCapabilities`), health server, `/node-debugging` wizard
 
 ## Scope
@@ -425,7 +425,7 @@ npm run docs:check
 | Architecture | `ARCHITECTURE.md` | Review — optional one-line tool artifacts |
 | Runbooks | `docs/runbooks/local-device-bridge.md`, zh-CN | Update |
 | Frontend docs | `docs/FRONTEND.md`, zh-CN | Update |
-| Design spec | `docs/zh-CN/superpowers/specs/2026-06-24-device-bridge-zero-friction-design.md` | Update — B1/B2 implemented when done |
+| Design spec | `docs/zh-CN/design-docs/2026-06-24-device-bridge-zero-friction-design.md` | Update — B1/B2 implemented when done |
 | Self-hosted ops | `ops/self-hosted/compose.yaml`, `.env.example` | Update — tool artifact root |
 | Tool artifacts | `ops/self-hosted/bridge-tool-artifacts/` | Create |
 | Browser acceptance | `docs/developer/browser-acceptance-coverage-map.md`, zh-CN | Update — `BRIDGE-TOOLS-001` |

@@ -1,8 +1,8 @@
 # Instance Submodule Seed + Driver Discovery — Execution Plan
 
 > Chinese: [`../../zh-CN/exec-plans/active/2026-07-21-instance-submodule-seed.md`](../../zh-CN/exec-plans/active/2026-07-21-instance-submodule-seed.md)  
-> Spec: [`../../superpowers/specs/2026-07-21-instance-submodule-seed-design.md`](../../superpowers/specs/2026-07-21-instance-submodule-seed-design.md)  
-> Agent plan: [`../../superpowers/plans/2026-07-21-instance-submodule-seed.md`](../../superpowers/plans/2026-07-21-instance-submodule-seed.md)
+> Spec: [`../../design-docs/2026-07-21-instance-submodule-seed-design.md`](../../design-docs/2026-07-21-instance-submodule-seed-design.md)  
+> Agent plan: [`../../exec-plans/active/2026-07-21-instance-submodule-seed.md`](../../exec-plans/active/2026-07-21-instance-submodule-seed.md)
 
 - Date: 2026-07-21
 - Status: **Active**
@@ -16,8 +16,8 @@ Ship Type U/N/C module placement for demo seed and ingest, plus Admin discovery 
 
 | Document | Impact | Action |
 | --- | --- | --- |
-| `docs/superpowers/specs/2026-07-21-instance-submodule-seed-design.md` | Spec | **Done** |
-| `docs/zh-CN/superpowers/specs/2026-07-21-instance-submodule-seed-design.md` | Spec ZH | **Done** |
+| `docs/design-docs/2026-07-21-instance-submodule-seed-design.md` | Spec | **Done** |
+| `docs/zh-CN/design-docs/2026-07-21-instance-submodule-seed-design.md` | Spec ZH | **Done** |
 | `docs/FRONTEND.md` / `docs/zh-CN/frontend.md` | Principle | **Update** in Task E |
 | `docs/PLANS.md` / `docs/zh-CN/PLANS.md` | Active list | **Update** (this change) |
 | `docs/design-docs/domain-model.md` EN+ZH | Optional module tree note | **Review** during seed |

@@ -1,6 +1,6 @@
 # M5.5 Browser Acceptance Coverage Hardening Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use Matt `implement` (recommended) or Matt `implement` to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Turn the M5.4 browser acceptance foundation from workflow-level happy-path evidence into requirement-level user-operation coverage for auth, permissions, parameter submissions, diagnostics, and evidence reporting.
 

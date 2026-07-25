@@ -31,7 +31,7 @@ Make `db:seed:m1` / `npm run dev:all` default to semantic-only data plus local p
 | Developer local setup | Update | `docs/developer/local-development.md`, `docs/zh-CN/developer/local-development.md` |
 | Env example | Update | `.env.example` |
 | Frontend | Update | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` |
-| Design / plans | Update | `docs/design-docs/2026-07-23-local-post-cutover-seed-design.md`, zh companion under `docs/zh-CN/superpowers/specs/`, this plan + zh |
+| Design / plans | Update | `docs/design-docs/2026-07-23-local-post-cutover-seed-design.md`, zh companion under `docs/zh-CN/design-docs/`, this plan + zh |
 | Runbooks | Review | `docs/runbooks/parameter-identity-cutover.md` — no production rule change; local-dev clarifies wipe vs dirty-cutover ban |
 | Architecture / AGENTS | No change | — |
 | Product specs | No change | — |

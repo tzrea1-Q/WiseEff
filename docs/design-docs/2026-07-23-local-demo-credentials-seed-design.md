@@ -2,7 +2,7 @@
 
 > Date: 2026-07-23  
 > Status: approved for implementation  
-> Chinese: [`docs/zh-CN/superpowers/specs/2026-07-23-local-demo-credentials-seed-design.md`](../zh-CN/superpowers/specs/2026-07-23-local-demo-credentials-seed-design.md)  
+> Chinese: [`docs/zh-CN/design-docs/2026-07-23-local-demo-credentials-seed-design.md`](../zh-CN/design-docs/2026-07-23-local-demo-credentials-seed-design.md)  
 > Branch: `feat/local-demo-credentials-seed`
 
 ## Problem

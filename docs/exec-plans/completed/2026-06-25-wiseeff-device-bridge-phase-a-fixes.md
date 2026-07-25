@@ -138,7 +138,7 @@ Manual (not blocking CI): clean Win/Mac VM — install → **连接本地设备*
 | Architecture | `ARCHITECTURE.md` | No change |
 | Runbooks | `docs/runbooks/local-device-bridge.md`, `docs/zh-CN/runbooks/local-device-bridge.md` | Update — steps 2, 5, 6 |
 | Frontend docs | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` | Review — wizard status if Step 4 changes copy |
-| Design spec | `docs/zh-CN/superpowers/specs/2026-06-24-device-bridge-zero-friction-design.md` | Update — Phase A implemented (Step 6) |
+| Design spec | `docs/zh-CN/design-docs/2026-06-24-device-bridge-zero-friction-design.md` | Update — Phase A implemented (Step 6) |
 | Installer docs | `ops/self-hosted/bridge-installer/README.md`, `README.zh-CN.md`, `PHASE-A-DELIVERY.md` | Update — steps 2, 6 |
 | Generated artifacts | `ops/self-hosted/bridge-artifacts/0.1.0/manifest.json` | Update — real installer SHA256 (Step 6) |
 | Browser acceptance | `e2e/acceptance/local-device-bridge.acceptance.spec.ts` | Review — wizard assertions (Step 6) |

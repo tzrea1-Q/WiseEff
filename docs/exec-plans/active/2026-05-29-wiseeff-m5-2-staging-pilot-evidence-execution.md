@@ -1,6 +1,8 @@
 # WiseEff M5.2 Staging Pilot Evidence Execution Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Behavior-changing fixes discovered during execution must follow `superpowers:test-driven-development`: write a failing test first, verify the failure, implement the smallest fix, then verify green.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` — write the failing test first, implement the smallest change, then verify green. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
+
+
 
 **Goal:** Execute the real staging pilot evidence gate for the merged M0-M5 baseline and record verifiable proof for live API, PostgreSQL-backed E2E, worker/object storage, HDC device-lab, backup/restore, rollback, and live Agent provider readiness.
 

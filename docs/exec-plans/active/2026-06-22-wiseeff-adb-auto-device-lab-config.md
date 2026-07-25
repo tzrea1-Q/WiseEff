@@ -1,6 +1,6 @@
 # WiseEff ADB Auto Device-Lab Configuration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` where applicable. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 **Goal:** Let the ADB device-lab acceptance flow auto-configure from one connected ADB device, one ADB device inventory row, and one shared default ADB smoke binding, while making debugging parameters a shared organization catalog instead of a project-scoped catalog.
 
@@ -12,8 +12,8 @@
 
 ## Source Spec
 
-- `docs/superpowers/specs/2026-06-22-adb-auto-device-lab-config-design.md`
-- `docs/zh-CN/superpowers/specs/2026-06-22-adb-auto-device-lab-config-design.md`
+- `docs/design-docs/2026-06-22-adb-auto-device-lab-config-design.md`
+- `docs/zh-CN/design-docs/2026-06-22-adb-auto-device-lab-config-design.md`
 
 ## Scope Notes
 

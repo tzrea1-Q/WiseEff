@@ -1,6 +1,6 @@
 # 项目参数管理后台 · Milestone 1（地基 + P0 安全 + 列表治理 + 详情校正）实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use Matt `implement` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 `/parameter-admin`（项目参数管理后台）的地基和核心安全/治理能力落地：新增用户-角色-审计扩展数据模型、精简并去重 PageHeader、把 4 张 KPI 大卡压成单行 Strip、参数库列表一次性补齐搜索 + 风险/模块/覆盖筛选 + 模块分组折叠 + URL 同步（含"孤儿参数"独有视角）、共享定义表单改造（RiskPicker + 推荐值全局生效提示 + 范围 min/max 拆分 + 参数名校验）、项目值矩阵改造（只读 `updatedAt` + 单位 suffix + 越界校验 + 偏差色标）、脏态徽章 + 合并式「导出 ▾」菜单 + diff 摘要对话框、UndoableToast 统一组件 + 删除二次确认 + beforeunload 守护、Agent `createAgentPlan` 分支薄更新。M1 结束时 spec §27 演示脚本前 6 步可稳定走通。
 

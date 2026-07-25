@@ -1,6 +1,6 @@
 # Debugging Admin Modal Layout Redesign Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement task-by-task using checkbox (`- [ ]`) tracking. Prefer Matt skills `implement` and `tdd` where applicable. Follow `docs/PLANS.md` Git Branch & PR Workflow (implementation commits on the feature branch; parent opens/merges the PR).
 
 **Goal:** Redesign `/debugging-admin` to match the interaction model of `/parameter-admin`: a single main-surface catalog table with modal-based create/edit/archive flows, instead of the current left-list + right-inline-editor split layout.
 
@@ -94,7 +94,7 @@ Keep collapsible **配置源预览** (`power-management.json`) below the main ta
 | `src/styles.css` | Add `.debug-admin-shell` scoped styles (fork from `.param-admin-shell` + table); deprecate `.debug-admin-grid`, `.debug-admin-list`, `.debug-admin-editor` |
 | `e2e/acceptance/debugging-admin.acceptance.spec.ts` | Update selectors: table row actions + dialogs instead of inline editor |
 | `docs/FRONTEND.md` + `docs/zh-CN/frontend.md` | Document modal layout and dialog entry points |
-| `docs/zh-CN/superpowers/specs/2026-06-22-debugging-admin-hdc-adb-crud-design.md` | Mark §前端设计 split-layout as superseded by this plan |
+| `docs/zh-CN/design-docs/2026-06-22-debugging-admin-hdc-adb-crud-design.md` | Mark §前端设计 split-layout as superseded by this plan |
 
 ### Review (likely no change)
 
@@ -486,7 +486,7 @@ playwright-cli -s=debug-admin-layout close
 
 - [ ] **Step 2: Update superseded design spec**
 
-Add note at top of `docs/zh-CN/superpowers/specs/2026-06-22-debugging-admin-hdc-adb-crud-design.md` §前端设计 pointing to this plan.
+Add note at top of `docs/zh-CN/design-docs/2026-06-22-debugging-admin-hdc-adb-crud-design.md` §前端设计 pointing to this plan.
 
 - [ ] **Step 3: Run doc checks**
 
@@ -547,7 +547,7 @@ mv docs/exec-plans/active/2026-06-23-wiseeff-debugging-admin-modal-layout-redesi
 | Frontend docs | **Update** | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` | Modal layout, component list |
 | Security | No change | — | Same `debugging:admin` gate |
 | Generated artifacts | No change | — | — |
-| Design history | **Update** | `docs/zh-CN/superpowers/specs/2026-06-22-debugging-admin-hdc-adb-crud-design.md` | Supersede §前端设计 layout |
+| Design history | **Update** | `docs/zh-CN/design-docs/2026-06-22-debugging-admin-hdc-adb-crud-design.md` | Supersede §前端设计 layout |
 | Browser coverage map | Review | `docs/developer/browser-acceptance-coverage-map.md` | Wording may note dialog-based UI |
 | Operation matrix | Review | `docs/developer/user-operation-coverage-matrix.md` | Same operation ID |
 
