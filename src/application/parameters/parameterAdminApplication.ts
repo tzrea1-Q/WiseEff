@@ -11,6 +11,17 @@ import type {
   RecomputeBindingModulesResult,
   UpdateParameterModuleInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
+import type {
+  ApplyParameterImportBatchInput,
+  DtsImportParseResult,
+  ParameterImportBatchDto,
+  ParameterImportPreviewInput,
+  ParseDtsImportInput
+} from "@/application/ports/ParameterRepository";
+import type {
+  ParameterRuntimeActionFailure,
+  ParameterRuntimeVoidResult
+} from "@/application/parameters/parameterRuntime";
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 import type {
   ParameterSpecDetail,
@@ -19,6 +30,16 @@ import type {
   SpecReviewTaskListResult,
   SpecReviewTaskQuery
 } from "@/domain/parameter-topology/types";
+
+/** Import actions the admin facade exposes so panels do not hold separate clients. */
+export type ParameterAdminImportActions = {
+  createImportPreview(
+    input: ParameterImportPreviewInput
+  ): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
+  applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
+  parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
+  refresh?(): Promise<unknown>;
+};
 
 /**
  * Single application facade for the parameter admin surface.
@@ -39,19 +60,29 @@ export type ParameterAdminApplication = {
   createModuleMapping(input: CreateModuleMappingInput): Promise<ParameterModuleRegistry>;
   deleteModuleMapping(mappingId: string): Promise<ParameterModuleRegistry>;
   recomputeBindingModules(input?: { projectId?: string }): Promise<RecomputeBindingModulesResult>;
-
-  /** Port-shaped view of the module registry for panels that already accept the repository. */
   asModuleRegistryRepository(): ParameterModuleRegistryRepository;
+
+  createImportPreview(
+    input: ParameterImportPreviewInput
+  ): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
+  applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
+  parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
 };
 
 export type CreateParameterAdminApplicationOptions = {
   topology: ParameterTopologyRepository;
   moduleRegistry: ParameterModuleRegistryRepository;
+  importActions?: ParameterAdminImportActions;
 };
+
+function missingImport(action: string): never {
+  throw new Error(`Parameter admin import action unavailable: ${action}`);
+}
 
 export function createParameterAdminApplication({
   topology,
-  moduleRegistry
+  moduleRegistry,
+  importActions
 }: CreateParameterAdminApplicationOptions): ParameterAdminApplication {
   const asModuleRegistryRepository = (): ParameterModuleRegistryRepository => ({
     getRegistry: () => moduleRegistry.getRegistry(),
@@ -105,6 +136,25 @@ export function createParameterAdminApplication({
     recomputeBindingModules(input) {
       return moduleRegistry.recomputeBindings(input);
     },
-    asModuleRegistryRepository
+    asModuleRegistryRepository,
+
+    createImportPreview(input) {
+      if (!importActions) {
+        return missingImport("createImportPreview");
+      }
+      return importActions.createImportPreview(input);
+    },
+    applyImportBatch(input) {
+      if (!importActions) {
+        return missingImport("applyImportBatch");
+      }
+      return importActions.applyImportBatch(input);
+    },
+    parseDtsImport(input) {
+      if (!importActions) {
+        return missingImport("parseDtsImport");
+      }
+      return importActions.parseDtsImport(input);
+    }
   };
 }

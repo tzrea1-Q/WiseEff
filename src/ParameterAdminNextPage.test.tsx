@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
@@ -8,8 +9,10 @@ import type {
   ParameterSpecSummary,
   SpecReviewTask
 } from "@/domain/parameter-topology/types";
+import { fillPasteImportContent } from "./components/ParameterImportWizard/testHelpers";
 import { createMockParameterModuleRegistryRepository } from "@/infrastructure/mock/mockParameterModuleRegistryRepository";
 import { createMockParameterTopologyRepository } from "@/infrastructure/mock/mockParameterTopologyRepository";
+import { initialState } from "@/mockData";
 import { ParameterAdminNextPage } from "./ParameterAdminNextPage";
 
 afterEach(() => {
@@ -205,18 +208,60 @@ function createModuleRegistry(
   return { ...base, ...overrides };
 }
 
+function createParameterActions(overrides: Partial<ParameterPageActions> = {}): ParameterPageActions {
+  return {
+    getParameter: vi.fn().mockResolvedValue(initialState.parameters[0]),
+    submitChanges: vi.fn().mockResolvedValue(undefined),
+    stashChanges: vi.fn().mockResolvedValue(undefined),
+    discardDrafts: vi.fn().mockResolvedValue(undefined),
+    withdrawSubmissionRound: vi.fn().mockResolvedValue(undefined),
+    reviewChange: vi.fn().mockResolvedValue(undefined),
+    createImportPreview: vi.fn().mockResolvedValue({
+      id: "api-import-batch",
+      projectId: initialState.activeProjectId,
+      sourceName: "pasted-import.txt",
+      status: "previewed",
+      createdAt: "2026-05-25T08:00:00.000Z",
+      summary: { added: 1, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
+      items: [
+        {
+          id: "preview-item-1",
+          name: "next_import_limit",
+          module: "Charging Policy",
+          risk: "High",
+          unit: "mA",
+          range: "0 - 5000",
+          currentValue: "3200",
+          recommendedValue: "3400",
+          classification: "added",
+          riskFlag: true
+        }
+      ]
+    }),
+    applyImportBatch: vi.fn().mockResolvedValue(undefined),
+    parseDtsImport: vi.fn().mockResolvedValue({ format: "dts-full", rows: [] }),
+    refresh: vi.fn().mockResolvedValue(undefined),
+    ...overrides
+  };
+}
+
 function renderPage(options: {
   path?: string;
   repository?: ParameterTopologyRepository;
   moduleRegistry?: ParameterModuleRegistryRepository;
   onNavigate?: ReturnType<typeof vi.fn>;
   area?: "organization" | "projects";
+  parameterActions?: ParameterPageActions;
+  dispatch?: ReturnType<typeof vi.fn>;
+  runtimeMode?: "mock" | "api";
 } = {}) {
   const path = options.path ?? "/parameter-admin-next";
   window.history.replaceState(null, "", path);
   const onNavigate = options.onNavigate ?? vi.fn();
   const repository = options.repository ?? createRepository();
   const moduleRegistry = options.moduleRegistry ?? createModuleRegistry();
+  const dispatch = options.dispatch ?? vi.fn();
+  const parameterActions = options.parameterActions;
   const area =
     options.area ??
     (path.startsWith("/parameter-admin-next/projects") ? "projects" : "organization");
@@ -227,12 +272,18 @@ function renderPage(options: {
       area={area}
       onNavigate={onNavigate}
       search={search}
+      runtimeMode={options.runtimeMode ?? "mock"}
       parameterTopologyRepository={repository}
       parameterModuleRegistryRepository={moduleRegistry}
+      projects={initialState.configDraft.projects}
+      parameters={initialState.parameters}
+      activeProjectId={initialState.activeProjectId}
+      dispatch={dispatch}
+      parameterActions={parameterActions}
     />
   );
 
-  return { onNavigate, repository, moduleRegistry };
+  return { onNavigate, repository, moduleRegistry, dispatch, parameterActions };
 }
 
 describe("ParameterAdminNextPage · shell", () => {
@@ -587,5 +638,113 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
       expect(within(panel).getByRole("button", { name: "重命名模块 Mock 模块" })).toBeInTheDocument()
     );
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-created/);
+  });
+});
+
+describe("ParameterAdminNextPage · organization bulk import", () => {
+  it("opens the import wizard from the organization area", async () => {
+    renderPage({ parameterActions: createParameterActions() });
+
+    const importRegion = await screen.findByRole("region", { name: "批量参数导入" });
+    fireEvent.click(within(importRegion).getByRole("button", { name: "打开批量参数导入" }));
+
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    expect(within(dialog).getByLabelText("目标项目")).toHaveValue(initialState.activeProjectId);
+    expect(dialog.querySelector('input[type="file"]')).toHaveAttribute(
+      "accept",
+      ".xlsx,.csv,.json,.dts,.dtsi,.txt"
+    );
+  });
+
+  it("parses JSON through preview and apply with governance audit", async () => {
+    const parameterActions = createParameterActions();
+    renderPage({ parameterActions, runtimeMode: "api" });
+
+    fireEvent.click(await screen.findByRole("button", { name: "打开批量参数导入" }));
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+
+    fillPasteImportContent(
+      dialog,
+      JSON.stringify([
+        {
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy",
+          currentValue: "3200",
+          recommendedValue: "3400",
+          range: "2500 - 4500",
+          unit: "mA",
+          risk: "High"
+        }
+      ])
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    await within(dialog).findByRole("region", { name: "解析与校验" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    await within(dialog).findByRole("region", { name: "逐行核对" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "通过" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    await waitFor(() => expect(parameterActions.createImportPreview).toHaveBeenCalled());
+    await waitFor(() => expect(within(dialog).getByRole("region", { name: "批次预览" })).toBeInTheDocument());
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认应用" }));
+
+    await waitFor(() =>
+      expect(parameterActions.applyImportBatch).toHaveBeenCalledWith(
+        expect.objectContaining({ batchId: "api-import-batch" })
+      )
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/import-batch-applied/)
+    );
+  });
+
+  it("parses CSV paste into the review step", async () => {
+    renderPage({ parameterActions: createParameterActions() });
+
+    fireEvent.click(await screen.findByRole("button", { name: "打开批量参数导入" }));
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+
+    fillPasteImportContent(
+      dialog,
+      "name,module,currentValue,recommendedValue,range,unit,risk\ncsv_param,Charging Policy,1,2,0 - 10,unit,Low\n"
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    const summary = await within(dialog).findByRole("region", { name: "解析与校验" });
+    expect(within(summary).getByText("总行数").nextElementSibling).toHaveTextContent("1");
+  });
+
+  it("surfaces clear messages for rejected /include/ and oversized DTS sources", async () => {
+    const parseDtsImport = vi
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error("DTS /include/ 暂不支持，请提供展开后的文件。"), {
+          details: { code: "dts-include-unsupported" }
+        })
+      )
+      .mockRejectedValueOnce(
+        Object.assign(new Error("DTS import source exceeds the 2097152 byte limit."), {
+          details: { maxBytes: 2097152, sizeBytes: 3000000 }
+        })
+      );
+    renderPage({ parameterActions: createParameterActions({ parseDtsImport }) });
+
+    fireEvent.click(await screen.findByRole("button", { name: "打开批量参数导入" }));
+    let dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+
+    fillPasteImportContent(dialog, '/dts-v1/;\n/include/ "pin.dtsi"\n/ { board_id = <0>; };\n');
+    expect(within(dialog).getByRole("status")).toHaveTextContent("将使用服务端解析");
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("/include/");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开批量参数导入" }));
+    dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+
+    fillPasteImportContent(dialog, `/dts-v1/;\n/ { oversized = <${"1 ".repeat(20)}>; };\n`);
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/2097152 byte limit|exceeds/i);
   });
 });

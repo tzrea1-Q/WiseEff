@@ -11,7 +11,8 @@ export type ParameterAdminAuditHint = {
     | "module-deleted"
     | "module-mapping-created"
     | "module-mapping-deleted"
-    | "module-bindings-recomputed";
+    | "module-bindings-recomputed"
+    | "import-batch-applied";
   summary: string;
   reason: string;
   recordedAt: string;
@@ -121,6 +122,8 @@ export function auditKindLabel(kind: ParameterAdminAuditHint["kind"]): string {
       return "删除驱动映射";
     case "module-bindings-recomputed":
       return "重算模块归属";
+    case "import-batch-applied":
+      return "批量导入应用";
     case "spec-review-resolved":
     default:
       return "规格审核批准";
