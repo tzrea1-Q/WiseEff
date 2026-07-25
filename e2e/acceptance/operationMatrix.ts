@@ -630,7 +630,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameter-admin/projects",
     roles: ["Admin"],
-    action: "Create a config set and baseline via API and open the ConfigSetBaselinePanel on the projects file dialog.",
+    action: "Create a config set and baseline via API and open the ConfigSetBaselinePanel on `/parameter-admin/projects/:id/config-sets`.",
     coverage: "automated",
     acceptanceIds: ["PARAM-DTS-CONFIGSET-001"],
     specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
@@ -654,7 +654,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/api/v1/projects/:projectId/dts-search",
     roles: ["Admin"],
-    action: "Search structured DTS nodes by path and render DtsSearchPanel in the manage-files dialog.",
+    action: "Search structured DTS nodes by path and render DtsSearchPanel on `/parameter-admin/projects/:id/files`.",
     coverage: "automated",
     acceptanceIds: ["PARAM-DTS-SEARCH-001"],
     specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
@@ -729,6 +729,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     action: "Block validate on open identity mapping, then resolve the mapping task with audit evidence.",
     coverage: "automated",
     acceptanceIds: ["PARAM-IDENTITY-MAP-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "PARAM-IDENTITY-MAP-ADMIN-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Resolve identity mapping tasks from the parameter admin with evidence and governance audit.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-IDENTITY-MAP-ADMIN-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
     assertions: ["ui", "api", "db", "audit"]
   },

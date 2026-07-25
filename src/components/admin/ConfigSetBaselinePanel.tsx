@@ -9,7 +9,21 @@ import type {
   DtsValidationGateResult
 } from "@/application/ports/DtsStructuredRepository";
 import { aggregateStructuredChangeSet, type ParameterSourceLookup } from "@/application/parameters/structuredChangeSet";
+import type { ParameterAdminAuditHint } from "@/application/parameters/parameterAdminState";
 import { StructuredDiffView } from "@/components/parameters/StructuredDiffView";
+import type { ValidationRun } from "@/domain/parameter-topology/types";
+
+export type ConfigSetBaselinePanelAuditEvent = {
+  kind: Extract<
+    ParameterAdminAuditHint["kind"],
+    | "baseline-compared"
+    | "baseline-rolled-back"
+    | "baseline-released"
+    | "config-set-exported"
+    | "revision-validated"
+  >;
+  summary: string;
+};
 
 export type ConfigSetBaselinePanelProps = {
   projectId: string;
@@ -18,6 +32,12 @@ export type ConfigSetBaselinePanelProps = {
   availableFiles?: { id: string; fileName: string }[];
   /** Source bindings used to map baseline structural diffs onto real parameters (no unmapped). */
   parameterSources?: ParameterSourceLookup[];
+  /** Config revision validated through the topology port (toolchain gate). */
+  revisionId?: string;
+  validateRevision?: (projectId: string, revisionId: string) => Promise<ValidationRun>;
+  /** When omitted, the first listed config set is treated as the project default. */
+  defaultConfigSetId?: string;
+  onAudit?: (event: ConfigSetBaselinePanelAuditEvent) => void;
 };
 
 const CONFIG_SET_ROLES: ConfigSetRole[] = ["base", "overlay", "charging", "thermal", "misc"];
@@ -37,12 +57,32 @@ function downloadExportBundle(configSetName: string, files: Array<{ name: string
   URL.revokeObjectURL(url);
 }
 
+function gateFromValidationRun(run: ValidationRun): DtsValidationGateResult {
+  const failed = run.status === "failed";
+  return {
+    ok: !failed,
+    mode: failed ? "block" : "warn",
+    requiresConfirmation: failed,
+    diagnostics: (run.diagnostics ?? []).map((item) => ({
+      file: item.path,
+      line: item.startLine,
+      severity: item.severity === "warning" || item.severity === "info" ? item.severity : "error",
+      message: item.message
+    })),
+    compiler: run.stage === "toolchain" || run.stage === "dtc" ? "dtc" : "unavailable"
+  };
+}
+
 export function ConfigSetBaselinePanel({
   projectId,
   repository,
   canAdmin = true,
   availableFiles = [],
-  parameterSources = []
+  parameterSources = [],
+  revisionId = "revision-teaching-1",
+  validateRevision,
+  defaultConfigSetId,
+  onAudit
 }: ConfigSetBaselinePanelProps) {
   const [configSets, setConfigSets] = useState<DtsConfigSet[]>([]);
   const [selectedConfigSetId, setSelectedConfigSetId] = useState<string | null>(null);
@@ -59,6 +99,7 @@ export function ConfigSetBaselinePanel({
   const [loading, setLoading] = useState(false);
 
   const selectedConfigSet = configSets.find((item) => item.id === selectedConfigSetId) ?? null;
+  const resolvedDefaultId = defaultConfigSetId ?? configSets[0]?.id ?? null;
 
   const loadConfigSets = useCallback(async () => {
     setLoading(true);
@@ -196,8 +237,45 @@ export function ConfigSetBaselinePanel({
       const result = await repository.releaseBaseline(projectId, baselineId);
       setGateResult(result.gate);
       setBaselines((current) => current.map((item) => (item.id === baselineId ? result.item : item)));
+      onAudit?.({
+        kind: "baseline-released",
+        summary: `已发布基线「${result.item.name}」`
+      });
     } catch (releaseError) {
       setError(releaseError instanceof Error ? releaseError.message : "发布基线失败。");
+    }
+  };
+
+  const rollbackBaseline = async (baseline: DtsReleaseBaseline) => {
+    if (!canAdmin) {
+      return;
+    }
+    setError("");
+    try {
+      const result = await repository.rollbackBaseline(projectId, baseline.id);
+      onAudit?.({
+        kind: "baseline-rolled-back",
+        summary: `已回滚基线「${baseline.name}」（恢复 ${result.restored} 项）`
+      });
+    } catch (rollbackError) {
+      setError(rollbackError instanceof Error ? rollbackError.message : "回滚基线失败。");
+    }
+  };
+
+  const runValidateRevision = async () => {
+    if (!canAdmin || !validateRevision) {
+      return;
+    }
+    setError("");
+    try {
+      const run = await validateRevision(projectId, revisionId);
+      setGateResult(gateFromValidationRun(run));
+      onAudit?.({
+        kind: "revision-validated",
+        summary: `已校验修订 ${revisionId}（${run.status}）`
+      });
+    } catch (validateError) {
+      setError(validateError instanceof Error ? validateError.message : "修订校验失败。");
     }
   };
 
@@ -209,20 +287,28 @@ export function ConfigSetBaselinePanel({
     try {
       const result = await repository.exportConfigSet(projectId, selectedConfigSetId);
       downloadExportBundle(selectedConfigSet.name, result.files);
+      onAudit?.({
+        kind: "config-set-exported",
+        summary: `已导出配置集「${selectedConfigSet.name}」`
+      });
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "导出配置集失败。");
     }
   };
 
-  const compareBaseline = async (baselineId: string) => {
+  const compareBaseline = async (baseline: DtsReleaseBaseline) => {
     if (!canAdmin) {
       return;
     }
     setError("");
     setSubmitMessage("");
     try {
-      const result = await repository.compareBaseline(projectId, baselineId);
+      const result = await repository.compareBaseline(projectId, baseline.id);
       setCompareResult(result);
+      onAudit?.({
+        kind: "baseline-compared",
+        summary: `已对比基线「${baseline.name}」`
+      });
     } catch (compareError) {
       setError(compareError instanceof Error ? compareError.message : "基线对比失败。");
     }
@@ -322,6 +408,11 @@ export function ConfigSetBaselinePanel({
             <button type="button" className="button" onClick={() => void createConfigSet()}>
               创建配置集
             </button>
+            {validateRevision ? (
+              <button type="button" className="button subtle" onClick={() => void runValidateRevision()}>
+                校验修订
+              </button>
+            ) : null}
           </div>
         ) : null}
         <ul className="config-set-baseline-panel__list" aria-label="配置集列表">
@@ -334,6 +425,7 @@ export function ConfigSetBaselinePanel({
                 onClick={() => selectConfigSet(item.id)}
               >
                 {item.name}
+                {item.id === resolvedDefaultId ? <span aria-label="默认配置集"> 默认</span> : null}
               </button>
             </li>
           ))}
@@ -430,9 +522,19 @@ export function ConfigSetBaselinePanel({
                       type="button"
                       className="button subtle"
                       aria-label={`对比 ${item.name}`}
-                      onClick={() => void compareBaseline(item.id)}
+                      onClick={() => void compareBaseline(item)}
                     >
                       对比
+                    </button>
+                  ) : null}
+                  {canAdmin && item.status === "released" ? (
+                    <button
+                      type="button"
+                      className="button subtle"
+                      aria-label={`回滚 ${item.name}`}
+                      onClick={() => void rollbackBaseline(item)}
+                    >
+                      回滚
                     </button>
                   ) : null}
                   {canAdmin && item.status === "draft" ? (
@@ -456,11 +558,7 @@ export function ConfigSetBaselinePanel({
         <div className="config-set-baseline-panel__compare">
           <StructuredDiffView result={compareResult} changeSet={changeSet} />
           {canAdmin && changeSet.items.length > 0 ? (
-            <button
-              type="button"
-              className="button"
-              onClick={() => void submitMappedChangeSet()}
-            >
+            <button type="button" className="button" onClick={() => void submitMappedChangeSet()}>
               提交变更请求
             </button>
           ) : null}

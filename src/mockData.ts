@@ -383,10 +383,6 @@ export type PrototypeState = {
   persistedConfigSnapshot: PowerManagementConfig;
   users: User[];
   currentUserId: string;
-  lastExportedSnapshot: string;
-  _undoStack: UndoEntry | null;
-  insightDismissedIds: string[];
-  aiFlaggedImportIds: string[];
 };
 
 function createMockDataFingerprint(state: PrototypeState) {
@@ -1106,11 +1102,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     debuggingActiveSessionId: null,
     persistedConfigSnapshot: clonePowerManagementConfig(syncConfigDraftDebugParameterModuleMetadata(configDraft)),
     users,
-    currentUserId,
-    lastExportedSnapshot: JSON.stringify(configDraft),
-    _undoStack: null,
-    insightDismissedIds: [],
-    aiFlaggedImportIds: []
+    currentUserId
   };
 }
 

@@ -43,14 +43,15 @@ export type ParameterTopologyRuntimeResult<T> =
   | { ok: false; error: ParameterTopologyMappedError };
 
 type Options = {
-  runtimeMode: WiseEffRuntimeMode;
+  /** Retained for call-site symmetry; mode selection happens by injecting the matching repository. */
+  runtimeMode?: WiseEffRuntimeMode;
   dispatch: (action: ParameterTopologyRuntimeAction) => void;
   repository?: ParameterTopologyRepository;
 };
 
 function requireRepository(repository?: ParameterTopologyRepository): ParameterTopologyRepository {
   if (!repository) {
-    throw new Error("Parameter topology repository is required in api runtime mode.");
+    throw new Error("Parameter topology repository is required.");
   }
   return repository;
 }
@@ -61,23 +62,14 @@ function isCancelled(error: ParameterTopologyMappedError): boolean {
 
 /**
  * Runtime seam for semantic topology APIs.
+ * Runtime mode is a data-source substitution: callers inject the matching repository.
  * Structured diagnostics and 409 stale-revision stay as mapped objects — never generic strings.
  */
-export function createParameterTopologyRuntime({ runtimeMode, dispatch, repository }: Options) {
+export function createParameterTopologyRuntime({ dispatch, repository }: Options) {
   async function run<T>(
     work: (api: ParameterTopologyRepository) => Promise<T>,
     onSuccess: (value: T) => ParameterTopologyRuntimeAction
   ): Promise<ParameterTopologyRuntimeResult<T>> {
-    if (runtimeMode !== "api") {
-      const error: ParameterTopologyMappedError = {
-        kind: "unknown",
-        message: "Parameter topology APIs require api runtime mode.",
-        cause: undefined
-      };
-      dispatch({ type: "TOPOLOGY_ERROR", error });
-      return { ok: false, error };
-    }
-
     try {
       const value = await work(requireRepository(repository));
       dispatch(onSuccess(value));

@@ -167,9 +167,9 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     await page.goto("/parameter-admin");
     await dismissXiaozeHint(page);
 
-    await expect(page.getByRole("toolbar", { name: /项目参数管理后台页面操作/ })).toBeVisible();
+    await expect(page.getByRole("region", { name: "批量参数导入" })).toBeVisible();
 
-    await page.getByRole("toolbar", { name: /项目参数管理后台页面操作/ }).getByRole("button", { name: "批量参数导入" }).click();
+    await page.getByRole("button", { name: "打开批量参数导入" }).click();
     const wizard = page.getByRole("dialog", { name: "批量参数导入向导" });
     await expect(wizard).toBeVisible();
 

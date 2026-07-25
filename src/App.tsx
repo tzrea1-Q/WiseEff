@@ -161,7 +161,6 @@ import {
   roles,
   SEVERITY_LABELS,
   STAGE_LABELS,
-  type UndoEntry,
   type User
 } from "./mockData";
 import { buildAISuggestion, buildImpactItems } from "./reviewMockData";
@@ -170,20 +169,14 @@ import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } fr
 import {
   addDebugParameter,
   addDebugParameterFromDraft,
-  addProjectParameter,
-  addProjectParameterFromDraft,
   addParameterModule,
   updateParameterModule,
   deleteParameterModule,
   clonePowerManagementConfig,
   deleteDebugParameter,
   deleteAdminProject,
-  deleteProjectParameter,
   updateDebugParameter,
-  updateProjectParameter,
-  updateProjectParameterMetadata,
-  syncConfigDraftDebugParameterModuleMetadata,
-  type PowerManagementRisk
+  syncConfigDraftDebugParameterModuleMetadata
 } from "./powerManagementConfig";
 import { Button } from "@/components/ui/button";
 import {
@@ -228,6 +221,7 @@ import { createMockParameterDashboardRepository } from "@/infrastructure/mock/mo
 import { createMockProductFeedbackRepository } from "@/infrastructure/mock/mockProductFeedbackRepository";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
 type WiseEffAuthClient = {
@@ -340,28 +334,9 @@ export type AppAction =
   | { type: "IMPORT_PARAMETERS" }
   | { type: "ADD_NOTIFICATION"; message: string }
   | { type: "SET_NOTIFICATION_INBOX"; items: import("@/domain/notifications/types").NotificationItem[] }
-  | { type: "UPDATE_PROJECT_PARAMETER_METADATA"; projectId: string; parameterId: string; patch: Partial<ParameterEditorDraft> }
-  | { type: "UPDATE_PROJECT_PARAMETER_VALUE"; projectId: string; parameterId: string; patch: Partial<ParameterValueDraft> }
   | { type: "UPDATE_DEBUG_PARAMETER"; parameterId: string; patch: Partial<DebugParameterEditorDraft> }
   | { type: "COMMIT_DEBUG_PARAMETER_DRAFT"; parameterId: string; draft: DebugParameterEditorDraft }
   | { type: "DISCARD_ALL_DEBUG_DIRTY" }
-  | { type: "ADD_PROJECT_PARAMETER" }
-  | {
-      type: "ADD_PROJECT_PARAMETER_FROM_DRAFT";
-      draft: {
-        name: string;
-        module: string;
-        unit: string;
-        risk: PowerManagementRisk;
-        description: string;
-        explanation: string;
-        configFormat: string;
-        range: string;
-        recommendedValue: string;
-        valueKind: import("@/powerManagementConfig").ParameterValueKind;
-      };
-    }
-  | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
   | { type: "ADD_PARAMETER_MODULE"; module: import("@/powerManagementConfig").ParameterModuleDraft }
   | { type: "UPDATE_PARAMETER_MODULE"; moduleName: string; patch: import("@/powerManagementConfig").ParameterModuleDraft }
   | { type: "DELETE_PARAMETER_MODULE"; moduleName: string }
@@ -371,12 +346,6 @@ export type AppAction =
   | { type: "TOGGLE_USER_ACTIVE"; userId: string; isActive: boolean }
   | { type: "ADD_USER"; id?: string; name: string; username: string; title: string; roleId: PlatformRoleId }
   | { type: "HYDRATE_USERS"; users: User[] }
-  | { type: "MARK_EXPORTED"; snapshotName: string; timestamp: string }
-  | { type: "DISMISS_INSIGHT"; insightId: string }
-  | { type: "SET_AI_FLAGGED_IMPORT_IDS"; ids: string[] }
-  | { type: "AGENT_ACTION_EXECUTED"; actionId: string; metadata?: Record<string, unknown> }
-  | { type: "UNDO_LAST_DESTRUCTIVE" }
-  | { type: "CLEAR_UNDO" }
   | { type: "MARK_CONFIG_PERSISTED" }
   | { type: "LOG_ADMIN_REANALYZE_LOG"; logId: string }
   | { type: "LOG_ADMIN_ARCHIVE_LOG"; logId: string }
@@ -1478,24 +1447,6 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         pushedDebugIds: state.pushedDebugIds.filter((id) => !removeIds.has(id))
       };
     }
-    case "UPDATE_PROJECT_PARAMETER_METADATA": {
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      const configDraft = updateProjectParameterMetadata(state.configDraft, action.projectId as never, action.parameterId, action.patch);
-      return {
-        ...state,
-        configDraft,
-        ...derivePowerManagementRuntimeState(configDraft)
-      };
-    }
-    case "UPDATE_PROJECT_PARAMETER_VALUE": {
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      const configDraft = updateProjectParameter(state.configDraft, action.projectId as never, action.parameterId, action.patch);
-      return {
-        ...state,
-        configDraft,
-        ...derivePowerManagementRuntimeState(configDraft)
-      };
-    }
     case "UPDATE_DEBUG_PARAMETER": {
       if (!canPerform(activeRoleId, "debugging.use")) return state;
       const configDraft = updateDebugParameter(state.configDraft, action.parameterId, action.patch);
@@ -1536,56 +1487,6 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ...state,
         configDraft,
         ...derivePowerManagementRuntimeState(configDraft)
-      };
-    }
-    case "ADD_PROJECT_PARAMETER": {
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      const configDraft = addProjectParameter(state.configDraft);
-      return {
-        ...state,
-        configDraft,
-        ...derivePowerManagementRuntimeState(configDraft)
-      };
-    }
-    case "ADD_PROJECT_PARAMETER_FROM_DRAFT": {
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      const configDraft = addProjectParameterFromDraft(state.configDraft, action.draft);
-      return {
-        ...state,
-        configDraft,
-        ...derivePowerManagementRuntimeState(configDraft)
-      };
-    }
-    case "DELETE_PROJECT_PARAMETER": {
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      const removed = state.configDraft.parameterLibrary.find((parameter) => parameter.id === action.parameterId);
-      if (!removed) {
-        return state;
-      }
-      const configDraft = deleteProjectParameter(state.configDraft, action.parameterId);
-      const event = buildAuditEvent({
-        kind: "parameter-delete",
-        actor: auditActor,
-        action: `删除 ${removed.name}`,
-        severity: "High",
-        parameterId: removed.id
-      });
-      const now = new Date();
-      const undo: UndoEntry = {
-        id: `undo-${now.getTime()}`,
-        actionKind: "parameter-delete",
-        message: `已删除 ${removed.name}`,
-        snapshot: { configDraft: state.configDraft },
-        createdAt: now.toISOString(),
-        expiresAt: new Date(now.getTime() + 10_000).toISOString(),
-        originalAuditEventId: event.id
-      };
-      return {
-        ...state,
-        configDraft,
-        ...derivePowerManagementRuntimeState(configDraft),
-        _undoStack: undo,
-        auditEvents: [event, ...state.auditEvents]
       };
     }
     case "ADD_PARAMETER_MODULE": {
@@ -1775,79 +1676,6 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         auditEvents: [event, ...state.auditEvents]
       };
     }
-    case "MARK_EXPORTED": {
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      const event = buildAuditEvent({
-        kind: "export",
-        actor: auditActor,
-        action: `导出 ${action.snapshotName}`,
-        severity: "Low",
-        time: action.timestamp,
-        metadata: { snapshotName: action.snapshotName }
-      });
-
-      return {
-        ...state,
-        lastExportedSnapshot: JSON.stringify(state.configDraft),
-        auditEvents: [event, ...state.auditEvents]
-      };
-    }
-    case "DISMISS_INSIGHT":
-      if (state.insightDismissedIds.includes(action.insightId)) {
-        return state;
-      }
-      return {
-        ...state,
-        insightDismissedIds: [...state.insightDismissedIds, action.insightId]
-      };
-    case "SET_AI_FLAGGED_IMPORT_IDS":
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      return {
-        ...state,
-        aiFlaggedImportIds: [...action.ids]
-      };
-    case "AGENT_ACTION_EXECUTED": {
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      const event = buildAuditEvent({
-        kind: "agent-action",
-        actor: auditActor,
-        action: `Agent 执行 ${action.actionId}`,
-        severity: "Low",
-        viaAgent: true,
-        metadata: { aiActionId: action.actionId, ...(action.metadata ?? {}) }
-      });
-
-      return {
-        ...state,
-        auditEvents: [event, ...state.auditEvents]
-      };
-    }
-    case "UNDO_LAST_DESTRUCTIVE": {
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      const entry = state._undoStack;
-      if (!entry || Date.now() > new Date(entry.expiresAt).getTime()) {
-        return state;
-      }
-      const event = buildAuditEvent({
-        kind: "rollback-undo",
-        actor: auditActor,
-        action: `撤销 ${entry.actionKind}：${entry.message}`,
-        severity: "Low",
-        metadata: { aiActionId: entry.originalAuditEventId }
-      });
-      const nextConfigDraft = entry.snapshot.configDraft ?? state.configDraft;
-
-      return {
-        ...state,
-        ...entry.snapshot,
-        ...derivePowerManagementRuntimeState(nextConfigDraft),
-        _undoStack: null,
-        auditEvents: [event, ...state.auditEvents]
-      };
-    }
-    case "CLEAR_UNDO":
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      return { ...state, _undoStack: null };
     case "IMPORT_PARAMETERS":
       if (!canPerform(activeRoleId, "admin.access")) return state;
       return {
@@ -2159,6 +1987,10 @@ function AppShell({
   const parameterRepositoryClient = useMemo(
     () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
     [parameterRepository, runtimeMode]
+  );
+  const parameterTopologyRepositoryClient = useMemo(
+    () => parameterTopologyRepository ?? resolveParameterTopologyRepository(runtimeMode),
+    [parameterTopologyRepository, runtimeMode]
   );
   const dashboardRepository = useMemo(
     () =>
@@ -2594,7 +2426,7 @@ function AppShell({
                 debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
-                parameterTopologyRepository={parameterTopologyRepository}
+                parameterTopologyRepository={parameterTopologyRepositoryClient}
                 listParameterConfigSets={listParameterConfigSets}
                 productFeedbackRepository={productFeedbackRepositoryClient}
                 userGovernanceActions={userGovernanceActionsClient}
@@ -2634,7 +2466,7 @@ function AppShell({
                 debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
-                parameterTopologyRepository={parameterTopologyRepository}
+                parameterTopologyRepository={parameterTopologyRepositoryClient}
                 listParameterConfigSets={listParameterConfigSets}
                 productFeedbackRepository={productFeedbackRepositoryClient}
                 userGovernanceActions={userGovernanceActionsClient}
@@ -3009,6 +2841,7 @@ function Sidebar({
 }) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const pageTitle = getPageByPath(activePath).title;
+  const activePageKey = getPageByPath(activePath).key;
   const visibleNavigationItems = navigationItems.filter((item) => canAccessPage(currentRoleId, item.key));
   const groups = visibleNavigationItems.reduce<Record<string, PageConfig[]>>((acc, item) => {
     acc[item.group] = [...(acc[item.group] ?? []), item];
@@ -3051,12 +2884,14 @@ function Sidebar({
               <div className="nav-group-label">{group}</div>
               {items.map((item) => {
                 const Icon = item.icon;
+                const isActive = item.key === activePageKey;
                 return (
                   <Tooltip key={item.path}>
                     <TooltipTrigger asChild>
                       <Button
                         aria-label={item.label}
-                        className={item.path === activePath ? "nav-item active" : "nav-item"}
+                        aria-current={isActive ? "page" : undefined}
+                        className={isActive ? "nav-item active" : "nav-item"}
                         type="button"
                         variant="ghost"
                         onClick={() => onNavigate(item.path)}
@@ -3156,7 +2991,6 @@ function TopBar({
   const showProjectInitAction =
     page.key.startsWith("parameter") &&
     canCreateProject &&
-    page.key !== "parameter-admin-projects" &&
     page.key !== "parameter-admin" &&
     page.key !== "parameter-home";
   const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home";

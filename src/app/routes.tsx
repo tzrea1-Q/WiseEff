@@ -32,8 +32,7 @@ import { AuditCenterPage } from "@/AuditCenterPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { LogAdminPage } from "@/LogAdminPage";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
-import { ParameterAdminPage } from "@/ParameterAdminPage";
-import { ParameterAdminProjectsPage } from "@/ParameterAdminProjectsPage";
+import { ParameterAdminNextPage } from "@/ParameterAdminNextPage";
 import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
 import { FeedbackAdminPage } from "@/features/product-feedback/FeedbackAdminPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
@@ -202,20 +201,27 @@ export function PageRouter({
       );
     case "parameter-review":
       return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
-    case "parameter-admin":
-      return <ParameterAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} runtimeMode={runtimeMode} />;
-    case "parameter-admin-projects":
+    case "parameter-admin": {
+      const isProjectsArea =
+        page.path === "/parameter-admin/projects" || page.path.startsWith("/parameter-admin/projects/");
       return (
-        <ParameterAdminProjectsPage
-          state={state}
-          dispatch={dispatch}
+        <ParameterAdminNextPage
+          area={isProjectsArea ? "projects" : "organization"}
           onNavigate={onNavigate}
           search={search}
-          parameterActions={parameterActions}
+          pathname={page.path}
           runtimeMode={runtimeMode}
+          parameterTopologyRepository={parameterTopologyRepository}
+          projects={state.configDraft.projects}
+          parameters={state.parameters}
+          activeProjectId={state.activeProjectId}
+          dispatch={dispatch}
+          parameterActions={parameterActions}
+          state={state}
           onNewProject={onNewProject}
         />
       );
+    }
     case "log-dashboard":
       return <LogDashboardPage state={state} onNavigate={onNavigate} />;
     case "logs":

@@ -1,5 +1,5 @@
 import type { ParameterRecord } from "@/domain/parameters/types";
-import { buildModuleTree, type FlatModuleNode, type ModuleTreeNode } from "@/domain/modules/moduleTree";
+import { type FlatModuleNode } from "@/domain/modules/moduleTree";
 import {
   buildPowerManagementModuleTree,
   resolveLibraryParameterId,
@@ -87,27 +87,6 @@ export function modulePathLabelForTemplate(template: { module: string; modulePat
     current = current.parentId ? byId.get(current.parentId) : undefined;
   }
   return segments.join(" / ");
-}
-
-export function groupParametersByModuleTree(
-  parameters: readonly PowerManagementParameterTemplate[],
-  moduleNodes: readonly FlatModuleNode[]
-): Array<{ node: ModuleTreeNode; parameters: PowerManagementParameterTemplate[] }> {
-  const tree = buildModuleTree(moduleNodes);
-  const groups: Array<{ node: ModuleTreeNode; parameters: PowerManagementParameterTemplate[] }> = [];
-
-  const walk = (nodes: readonly ModuleTreeNode[]) => {
-    for (const node of nodes) {
-      const items = parameters.filter((parameter) => templateModuleId(parameter, moduleNodes) === node.id);
-      if (items.length > 0 || node.children.length > 0) {
-        groups.push({ node, parameters: items });
-      }
-      walk(node.children);
-    }
-  };
-
-  walk(tree);
-  return groups;
 }
 
 export function buildParameterModuleTree(

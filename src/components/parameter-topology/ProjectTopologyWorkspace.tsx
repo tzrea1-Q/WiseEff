@@ -3,7 +3,6 @@ import type {
   EffectiveTopologyNode,
   IdentityMappingTask,
   ProjectParameterBinding,
-  ResolveMappingInput,
   SourceTopologyNode,
   TopologyDiagnostic,
   TopologyView
@@ -14,7 +13,6 @@ import {
   type BindingEditValidation
 } from "./BindingDetailPanel";
 import { BindingPropertyTable } from "./BindingPropertyTable";
-import { IdentityMappingReview } from "./IdentityMappingReview";
 import { TopologyTree } from "./TopologyTree";
 import { WorkbenchDiagnosticsSection } from "./WorkbenchDiagnosticsSection";
 
@@ -43,7 +41,6 @@ export type ProjectTopologyWorkspaceProps = {
     input: { bindingId: string; rawValue: string; reason: string }
   ) => BindingEditValidation | Promise<BindingEditValidation>;
   onPublish?: () => void;
-  onResolveMapping?: (taskId: string, input: ResolveMappingInput) => void | Promise<void>;
 };
 
 /** @deprecated Import from `./topologyTeachingFixtures` — not for API-mode defaults. */
@@ -104,8 +101,7 @@ export function ProjectTopologyWorkspace({
   publishActionLabel = "校验",
   layoutMode = "desktop",
   onValidateEdit,
-  onPublish,
-  onResolveMapping
+  onPublish
 }: ProjectTopologyWorkspaceProps) {
   const [view, setView] = useState<TopologyView>("effective");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -303,8 +299,6 @@ export function ProjectTopologyWorkspace({
       ) : null}
 
       <WorkbenchDiagnosticsSection diagnostics={diagnostics} variant="other" />
-
-      <IdentityMappingReview tasks={mappingTasks} onResolve={onResolveMapping} />
 
       <div className="project-topology-workspace__panes">
         {showTree ? (

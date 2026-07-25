@@ -38,6 +38,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 - `exec-plans/active/2026-07-23-local-demo-credentials-seed.md`: development-only M0 seed upserts fixed ChargeLab demo usernames + shared password for local API login (branch `feat/local-demo-credentials-seed`).
 - `exec-plans/active/2026-07-21-retire-synthetic-base-dts.md`: retire platform `wiseeff-power-base.dts`; seed/writeback = one project-primary DTS; admins maintain module↔driver only (RFC).
 - `exec-plans/active/2026-07-21-instance-submodule-seed.md`: Type U/N/C instance submodules + driver groups; ingest ensure; Admin discovery for unmapped drivers (spec + agent plan).
+- `exec-plans/completed/2026-07-25-parameter-admin-redesign.md`: parameter admin product redesign — governance-scope information architecture, project-scoped routes replacing the modal, mock/API parity through the topology port, identity mapping governance moved into the admin, admin-owned state, and single-step retirement of the old surface (branch `feat/refactor-parameter-admin`; ADR-0001, ADR-0002).
 
 ## Completed Plans
 

@@ -22,7 +22,6 @@ export type PageKey =
   | "parameter-comparison"
   | "parameter-review"
   | "parameter-admin"
-  | "parameter-admin-projects"
   | "log-dashboard"
   | "logs"
   | "log-admin"
@@ -87,7 +86,7 @@ export const navigationItems: PageConfig[] = [
     group: "参数管理",
     icon: Database,
     title: "项目参数管理后台",
-    subtitle: "电池与充电参数数据库、批量导入管理"
+    subtitle: "组织治理与项目运营；页内切换规格库、审核队列、模块映射、项目文件与基线"
   },
   {
     key: "node-debugging",
@@ -191,15 +190,12 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
 
-  if (path === "/parameter-admin/projects") {
+  // Project-scoped views share the single sidebar entry; keep deep-link path for in-page area switching.
+  if (path === "/parameter-admin/projects" || path.startsWith("/parameter-admin/projects/")) {
+    const adminNav = navigationItems.find((item) => item.key === "parameter-admin");
     return {
-      key: "parameter-admin-projects",
-      path: "/parameter-admin/projects",
-      label: "项目管理",
-      group: "参数管理",
-      icon: Database,
-      title: "项目参数管理后台",
-      subtitle: "维护项目清单、初始化状态、模块覆盖与参数库入口"
+      ...(adminNav as PageConfig),
+      path
     };
   }
 
@@ -235,10 +231,10 @@ export function pageUsesProjectScope(pageKey: PageKey): boolean {
     case "parameters":
     case "parameter-submissions":
     case "parameter-review":
-    case "parameter-admin":
-    case "parameter-admin-projects":
     case "parameter-home":
       return true;
+    // Organization governance and project operations own their own project pickers
+    // (ADR-0001); do not hang the TopBar project selector on either admin area.
     default:
       return false;
   }
@@ -261,9 +257,10 @@ export function getXiaozeContextSummary(path: string): string {
     case "node-debugging":
       return "正在关注 HDC 连接状态、节点访问模式、待读写目标值和回读校验结果。";
     case "parameter-admin":
-      return "正在关注参数库健康、闲置参数、权限异常和导入风险。";
-    case "parameter-admin-projects":
-      return "正在关注项目清单、初始化进度、模块覆盖和参数规模。";
+      if (path === "/parameter-admin/projects" || path.startsWith("/parameter-admin/projects/")) {
+        return "正在关注项目参数文件、配置集、发布基线、结构浏览与冲突裁决。";
+      }
+      return "正在关注组织级规格库、规格审核、模块映射、批量导入与身份映射治理。";
     case "log-admin":
       return "正在关注分析吞吐、失败记录、权限覆盖和使用趋势。";
     case "debugging-admin":

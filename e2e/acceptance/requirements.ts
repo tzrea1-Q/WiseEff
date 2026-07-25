@@ -357,6 +357,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "PARAM-IDENTITY-MAP-ADMIN-001",
+    workflow: "B",
+    title:
+      "Admin resolves identity mapping tasks from the parameter admin with evidence and governance audit.",
+    required: true
+  },
+  {
     id: "PARAM-CONFIG-PUBLISH-GATE-001",
     workflow: "B",
     title: "Publish is blocked by compiler/edit diagnostics; clean revisions validate/publish with audit and semantic persistence after reload.",

@@ -21,12 +21,11 @@ import type {
   EffectiveTopologyNode,
   IdentityMappingTask,
   ProjectParameterBinding,
-  ResolveMappingInput,
   SourceTopologyNode,
   TopologyDiagnostic
 } from "@/domain/parameter-topology/types";
 import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
-import { createHttpParameterTopologyRepository } from "@/infrastructure/http/parameterTopologyClient";
+import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import {
   mapParameterTopologyError,
@@ -42,7 +41,6 @@ import {
   type PendingBindingDraft
 } from "./DtsBindingDraftTray";
 import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
-import { IdentityMappingReview } from "./IdentityMappingReview";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
 import {
@@ -247,7 +245,7 @@ export function ApiProjectTopologyWorkspace({
   onNavigate = () => undefined
 }: ApiProjectTopologyWorkspaceProps) {
   const repository = useMemo(
-    () => topologyRepository ?? (runtimeMode === "api" ? createHttpParameterTopologyRepository() : null),
+    () => topologyRepository ?? resolveParameterTopologyRepository(runtimeMode),
     [runtimeMode, topologyRepository]
   );
   const moduleRegistryRepo = useMemo(
@@ -288,7 +286,6 @@ export function ApiProjectTopologyWorkspace({
   } | null>(null);
   const preferredRevisionId =
     preferredRevision?.projectId === projectId ? preferredRevision.revisionId : undefined;
-  const [mappingMessage, setMappingMessage] = useState<string | null>(null);
   const [pendingDrafts, setPendingDrafts] = useState<PendingBindingDraft[]>([]);
   const [serverDrafts, setServerDrafts] = useState<ParameterDraftDto[] | null>(null);
   const [selectedDraftBindingIds, setSelectedDraftBindingIds] = useState<Set<string>>(new Set());
@@ -332,7 +329,6 @@ export function ApiProjectTopologyWorkspace({
     setServerDrafts(null);
     setWorkflowCandidates(null);
     setWorkflowCandidatesError(null);
-    setMappingMessage(null);
   }, [projectId]);
 
   useEffect(() => {
@@ -733,28 +729,6 @@ export function ApiProjectTopologyWorkspace({
     };
   }, [parameterFileRepo, projectId]);
 
-  const handleResolveMapping = async (taskId: string, input: ResolveMappingInput) => {
-    if (!repository || loadState.kind !== "ready") return;
-    const requestProjectId = projectId;
-    const requestGeneration = projectGenerationRef.current;
-    if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-    setMappingMessage(null);
-    try {
-      await repository.resolveMapping(taskId, input);
-      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-      setMappingMessage(input.decision === "resolved" ? "映射已确认，正在刷新拓扑…" : "映射已驳回，正在刷新拓扑…");
-      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-      setPreferredRevision(null);
-      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-      setReloadToken((token) => token + 1);
-    } catch (error) {
-      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-      const mapped = mapParameterTopologyError(error);
-      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
-      setMappingMessage(mapped.message);
-    }
-  };
-
   if (loadState.kind === "loading") {
     return (
       <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台" aria-busy="true">
@@ -804,15 +778,12 @@ export function ApiProjectTopologyWorkspace({
     !projectMutationKind;
 
   const draftBindingIds = new Set(projectDrafts.map((draft) => draft.projectParameterBindingId));
-  const openMappingTasks = loadState.mappingTasks.filter((task) => task.status === "open");
   const { other: productDiagnostics, summary: danglingSummary } =
     partitionDanglingReferenceDiagnostics(loadState.diagnostics);
   const showGovernancePanel = Boolean(
     statusBanner ||
-    mappingMessage ||
     loadState.incompleteBase ||
-    productDiagnostics.length > 0 ||
-    openMappingTasks.length > 0
+    productDiagnostics.length > 0
   );
   const currentEdits = projectDrafts.length > 0 ? (
     <DtsBindingDraftTray
@@ -864,21 +835,6 @@ export function ApiProjectTopologyWorkspace({
             `parameter-workbench-${projectId}-${loadState.revisionId}.csv`
           );
         }}
-        toolbarActions={
-          openMappingTasks.length > 0 ? (
-            <button
-              type="button"
-              className="button subtle"
-              onClick={() => {
-                document
-                  .querySelector<HTMLElement>(".dts-parameter-workbench__governance-content")
-                  ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-              }}
-            >
-              映射待决 {openMappingTasks.length}
-            </button>
-          ) : undefined
-        }
         governanceContent={showGovernancePanel ? (
           <>
             {statusBanner ? (
@@ -886,21 +842,10 @@ export function ApiProjectTopologyWorkspace({
                 {statusBanner}
               </p>
             ) : null}
-            {mappingMessage ? (
-              <p className="project-topology-workspace__mapping-message" role="status">
-                {mappingMessage}
-              </p>
-            ) : null}
             {loadState.incompleteBase ? (
               <p role="alert">缺少 base 配置，当前拓扑不完整；已阻止类型化编辑与校验。</p>
             ) : null}
             <WorkbenchDiagnosticsSection diagnostics={productDiagnostics} variant="other" />
-            <IdentityMappingReview
-              tasks={loadState.mappingTasks}
-              onResolve={(taskId, input) => {
-                void handleResolveMapping(taskId, input);
-              }}
-            />
           </>
         ) : undefined}
         footerContent={

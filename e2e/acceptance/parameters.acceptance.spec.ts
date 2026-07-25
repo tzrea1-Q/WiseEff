@@ -298,7 +298,8 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await page.goto("/parameter-admin");
     await expect(page.getByRole("region", { name: "参数规格库" })).toBeVisible({ timeout: 30_000 });
 
-    await page.getByRole("toolbar", { name: /项目参数管理后台页面操作/ }).getByRole("button", { name: "批量参数导入" }).click();
+    await expect(page.getByRole("region", { name: "批量参数导入" })).toBeVisible();
+    await page.getByRole("button", { name: "打开批量参数导入" }).click();
     const importWizard = page.getByRole("dialog", { name: "批量参数导入向导" });
     await expect(importWizard).toBeVisible();
     await importWizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();

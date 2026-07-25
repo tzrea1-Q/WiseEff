@@ -26,36 +26,21 @@ describe("normalized workspace headers", () => {
     expect(screen.getByRole("region", { name: "日志分析核心指标" })).toBeInTheDocument();
   });
 
-  it("moves parameter admin management actions into the topbar and removes the duplicated page title", () => {
+  it("keeps parameter admin bulk import on the organization surface without a duplicate page title", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
-    const topbarActions = within(topbar).getByRole("toolbar", { name: "项目参数管理后台页面操作" });
 
-    expect(within(topbar).getByRole("button", { name: "批量参数导入" })).toBeInTheDocument();
-    expect(within(topbarActions).queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
-    expect(within(topbarActions).queryByRole("button", { name: /导出 JSON/ })).not.toBeInTheDocument();
-    expect(within(topbarActions).queryByRole("button", { name: "权限" })).not.toBeInTheDocument();
-    expect(within(topbarActions).queryByRole("button", { name: "审计" })).not.toBeInTheDocument();
+    expect(topbar.querySelector(".topbar-title")).toHaveTextContent("项目参数管理后台");
+    expect(topbar.querySelector(".topbar-subtitle")).toHaveTextContent("规格库");
+    expect(screen.getByRole("region", { name: "批量参数导入" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
   });
 
-  it("exposes normalized topbar action hooks for legacy buttons and compact status controls", () => {
-    window.history.replaceState(null, "", "/parameter-admin");
-
-    render(<App initialAppState={adminState} runtimeMode="mock" />);
-
-    const parameterAdminTopbar = document.querySelector(".topbar") as HTMLElement;
-    const legacyPrimary = within(parameterAdminTopbar).getByRole("button", { name: "批量参数导入" });
-
-    expect(legacyPrimary).toHaveClass("button", "primary");
-    expect(within(parameterAdminTopbar).queryByRole("button", { name: "审计" })).not.toBeInTheDocument();
-    expect(within(parameterAdminTopbar).queryByRole("button", { name: "权限" })).not.toBeInTheDocument();
-    expect(parameterAdminTopbar.querySelector(".export-menu")).not.toBeInTheDocument();
-
-    cleanup();
+  it("exposes compact status controls on debugging admin", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);

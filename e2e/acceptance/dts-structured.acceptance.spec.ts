@@ -369,25 +369,20 @@ test.describe("DTS structured product browser acceptance", () => {
       const hits = searchBody.hits ?? searchBody.item?.hits ?? [];
       expect(hits.some((hit) => hit.nodePath.includes("chip@6E"))).toBe(true);
 
-      await signInBrowserAsRole(page, "admin", "/parameter-admin/projects");
+      await signInBrowserAsRole(page, "admin", `/parameter-admin/projects/${projectId}/files`);
       await dismissXiaozeHint(page);
-      await expect(page.getByRole("button", { name: /管理文件 Aurora 量产平台/ })).toBeVisible({
+      await expect(page.getByRole("region", { name: "项目参数文件" })).toBeVisible({
         timeout: 30_000
       });
-      await page.getByRole("button", { name: /管理文件 Aurora 量产平台/ }).click();
-      const dialog = page.getByRole("dialog", { name: /管理文件 · Aurora 量产平台/ });
-      await expect(dialog).toBeVisible({ timeout: 30_000 });
-      // Dialog tabs: 参数文件 · 配置集 / 基线 · 结构浏览
-      await expect(dialog.getByRole("tablist", { name: "项目详情标签" })).toBeVisible();
-      await expect(dialog.getByRole("tab", { name: "参数文件" })).toBeVisible();
-      await expect(dialog.getByRole("tab", { name: "配置集 / 基线" })).toBeVisible();
-      await expect(dialog.getByRole("tab", { name: "结构浏览" })).toBeVisible();
-      await dialog.getByRole("tab", { name: "参数文件" }).click();
-      await expect(dialog.getByRole("region", { name: "DTS 结构化检索" })).toBeVisible({ timeout: 20_000 });
-      await dialog.getByLabel("检索关键词").fill("chip@6E");
-      await dialog.getByRole("button", { name: "检索" }).click();
-      await expect(dialog.getByRole("button", { name: "检索" })).toBeEnabled({ timeout: 20_000 });
-      await expect(dialog.getByRole("button", { name: /跳转到节点 .*chip@6E/ }).first()).toBeVisible({
+      await expect(page.getByRole("tablist", { name: "项目运营视图" })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "参数文件" })).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("tab", { name: "配置集 / 基线" })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "结构浏览" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "DTS 结构化检索" })).toBeVisible({ timeout: 20_000 });
+      await page.getByLabel("检索关键词").fill("chip@6E");
+      await page.getByRole("button", { name: "检索" }).click();
+      await expect(page.getByRole("button", { name: "检索" })).toBeEnabled({ timeout: 20_000 });
+      await expect(page.getByRole("button", { name: /跳转到节点 .*chip@6E/ }).first()).toBeVisible({
         timeout: 20_000
       });
 
@@ -405,7 +400,7 @@ test.describe("DTS structured product browser acceptance", () => {
             responseSummary: `hits=${hits.length}`
           })
         ],
-        notes: "dts-search returned chip@6E hits and DtsSearchPanel mounted in manage-files dialog."
+        notes: "dts-search returned chip@6E hits and DtsSearchPanel mounted on the routed project files view."
       });
 
       const createCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
@@ -444,9 +439,13 @@ test.describe("DTS structured product browser acceptance", () => {
       const baselineBody = (await baselineResponse.json()) as { item: { id: string; name: string } };
       expect(baselineBody.item.name).toBe(baselineName);
 
-      await dialog.getByRole("tab", { name: "配置集 / 基线" }).click();
-      await expect(dialog.getByRole("region", { name: "配置集 / 基线" })).toBeVisible({ timeout: 20_000 });
-      await expect(dialog.getByRole("heading", { name: "配置集" })).toBeVisible();
+      await page.goto(`/parameter-admin/projects/${projectId}/config-sets`);
+      await dismissXiaozeHint(page);
+      await expect(page.getByRole("region", { name: "项目配置集与基线" })).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("region", { name: "配置集 / 基线" })).toBeVisible({ timeout: 20_000 });
+      await expect(
+        page.getByRole("region", { name: "配置集 / 基线" }).getByRole("heading", { name: "配置集", exact: true })
+      ).toBeVisible();
 
       await recordOperationEvidence({
         operationId: "PARAM-DTS-CONFIGSET-001",
@@ -468,7 +467,7 @@ test.describe("DTS structured product browser acceptance", () => {
             responseSummary: `baseline=${baselineBody.item.name}`
           })
         ],
-        notes: "Created config set + baseline via API; ConfigSetBaselinePanel visible on admin projects dialog."
+        notes: "Created config set + baseline via API; ConfigSetBaselinePanel visible on routed config-sets view."
       });
 
       const nextVersionContent = sampleDts.replace("reg = <0x6e>;", "reg = <0x6f>;");
@@ -503,10 +502,11 @@ test.describe("DTS structured product browser acceptance", () => {
       expect(changedMember?.status).toBe("version_changed");
       expect((changedMember?.structuralDiff?.length ?? 0) > 0).toBe(true);
 
-      const compareButton = dialog.getByRole("button", { name: new RegExp(`对比 ${baselineName}`) });
+      const configSetPanel = page.getByRole("region", { name: "配置集 / 基线" });
+      const compareButton = configSetPanel.getByRole("button", { name: new RegExp(`对比 ${baselineName}`) });
       if (await compareButton.isVisible().catch(() => false)) {
         await compareButton.click();
-        await expect(dialog.getByRole("region", { name: "结构化差异" })).toBeVisible();
+        await expect(configSetPanel.getByRole("region", { name: "结构化差异" })).toBeVisible();
       }
 
       await recordOperationEvidence({
@@ -679,20 +679,16 @@ test.describe("DTS structured product browser acceptance", () => {
         notes: `${descriptionPrefix}: structured edit CR used rawText ${rawRegValue}; merge writeback version contains uppercase hex (non-normalized). Structure-browser chrome checked below when projects UI is available.`
       });
 
-      // Light UI chrome check — do not fail the fidelity gate if projects table is unavailable.
+      // Light UI chrome check — do not fail the fidelity gate if projects UI is unavailable.
       try {
-        await signInBrowserAsRole(page, "admin", "/parameter-admin/projects");
+        await signInBrowserAsRole(page, "admin", `/parameter-admin/projects/${projectId}/structure`);
         await dismissXiaozeHint(page);
-        const manageFiles = page.getByRole("button", { name: /管理文件 Aurora/ });
-        if (await manageFiles.isVisible({ timeout: 10_000 }).catch(() => false)) {
-          await manageFiles.click();
-          const dialog = page.getByRole("dialog", { name: /管理文件 · Aurora/ });
-          await expect(dialog).toBeVisible({ timeout: 15_000 });
-          await dialog.getByRole("tab", { name: "结构浏览" }).click();
-          const structurePanel = dialog.getByRole("region", { name: "结构浏览" });
-          await expect(structurePanel).toBeVisible({ timeout: 15_000 });
-          await expect(structurePanel).toContainText("变更集");
-          await expect(structurePanel).toContainText("回写载荷使用 rawText");
+        const structurePanel = page.getByRole("region", { name: "项目源结构" });
+        if (await structurePanel.isVisible({ timeout: 10_000 }).catch(() => false)) {
+          const browser = page.getByRole("region", { name: "结构浏览" });
+          await expect(browser).toBeVisible({ timeout: 15_000 });
+          await expect(browser).toContainText("变更集");
+          await expect(browser).toContainText("回写载荷使用 rawText");
         }
       } catch {
         // Projects UI availability is environment-dependent; API/db fidelity above is the required gate.

@@ -254,14 +254,12 @@ test.describe("project parameter files browser acceptance", () => {
         rowCount: draftRow ? 1 : 0
       };
 
-      await page.goto("/parameter-admin/projects");
+      await page.goto(`/parameter-admin/projects/${projectId}/files`);
       await dismissXiaozeHint(page);
-      await page.getByRole("button", { name: /管理文件 Aurora 量产平台/ }).click();
-      const dialog = page.getByRole("dialog", { name: /管理文件 · Aurora 量产平台/ });
-      await expect(dialog).toBeVisible();
-      await expect(dialog.getByRole("tab", { name: "参数文件" })).toBeVisible();
-      await expect(dialog.getByRole("heading", { name: "参数文件" })).toBeVisible();
-      await expect(dialog.locator('input[type="file"].project-parameter-files__input')).toBeAttached();
+      await expect(page.getByRole("region", { name: "项目参数文件" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("tablist", { name: "项目运营视图" })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "参数文件" })).toHaveAttribute("aria-selected", "true");
+      await expect(page.locator('input[type="file"].project-parameter-files__input')).toBeAttached();
 
       await recordOperationEvidence({
         operationId: "PARAM-FILE-UPLOAD-001",
