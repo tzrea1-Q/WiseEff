@@ -46,10 +46,10 @@ function bindingRowById(scope: Locator, bindingId: string): Locator {
   return scope.locator(`[role="row"][data-binding-id="${bindingId}"]`);
 }
 
-// Include-missing remains a hard resolve error. Dangling `&label` overlays are
-// self-anchored as warnings and must not be used as the fail-closed probe.
+// Include-missing remains a hard resolve error. Use DTS `/include/` (not CPP `#include`),
+// which single-file upload accepts; dangling `&label` overlays self-anchor as warnings.
 const brokenBase = `/dts-v1/;
-#include "missing-acceptance-include.dtsi"
+/include/ "missing-acceptance-include.dtsi"
 / {
 	board {
 		compatible = "wiseeff,acceptance-broken";
