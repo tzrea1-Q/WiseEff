@@ -24,12 +24,6 @@ import type { ParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSear
 import { auditKindLabel } from "@/application/parameters/parameterAdminState";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 
-const DEFAULT_SEARCH: ParamAdminProjectsSearch = {
-  q: "",
-  status: "all",
-  sort: "name-asc"
-};
-
 export function parseParameterAdminNextProjectPath(pathname: string): {
   projectId: string | null;
   filesView: boolean;
