@@ -7,7 +7,7 @@ export type ParameterAdminNextScopeNavProps = {
 
 /**
  * Peer top-level destinations for governance scope (ADR-0001).
- * Temporary construction routes under /parameter-admin-next*.
+ * Canonical routes: /parameter-admin and /parameter-admin/projects.
  */
 export function ParameterAdminNextScopeNav({ active, onNavigate }: ParameterAdminNextScopeNavProps) {
   return (
@@ -16,7 +16,7 @@ export function ParameterAdminNextScopeNav({ active, onNavigate }: ParameterAdmi
         type="button"
         className={`parameter-admin-subnav__tab${active === "organization" ? " is-active" : ""}`}
         aria-current={active === "organization" ? "page" : undefined}
-        onClick={() => onNavigate("/parameter-admin-next")}
+        onClick={() => onNavigate("/parameter-admin")}
       >
         <Building2 size={16} aria-hidden="true" />
         组织治理
@@ -25,7 +25,7 @@ export function ParameterAdminNextScopeNav({ active, onNavigate }: ParameterAdmi
         type="button"
         className={`parameter-admin-subnav__tab${active === "projects" ? " is-active" : ""}`}
         aria-current={active === "projects" ? "page" : undefined}
-        onClick={() => onNavigate("/parameter-admin-next/projects")}
+        onClick={() => onNavigate("/parameter-admin/projects")}
       >
         <FolderKanban size={16} aria-hidden="true" />
         项目运营

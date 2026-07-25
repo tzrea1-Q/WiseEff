@@ -1541,7 +1541,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("region", { name: "待办事项" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "主要功能" })).toBeInTheDocument();
     expect(screen.queryByText("管理视角")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 组织治理/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
     expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "概览" })).toBeInTheDocument();
@@ -1718,7 +1718,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /打开 管理后台/ }));
+    fireEvent.click(screen.getByRole("button", { name: /打开 组织治理/ }));
     expect(window.location.pathname).toBe("/parameter-admin");
 
     window.history.replaceState(null, "", "/parameter-home");
@@ -3005,8 +3005,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/parameter-admin",
-        present: ["项目参数管理后台", "项目共享参数库", "批量参数导入", "共享参数"],
-        absent: ["项目参数 Admin", "items", "events"]
+        present: ["参数管理后台 · 组织治理", "组织治理", "项目运营", "批量参数导入", "参数规格库"],
+        absent: ["项目参数 Admin", "items", "events", "建设中"]
       },
       {
         path: "/logs",
@@ -3066,7 +3066,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
   });
 
   it("shows the project selector only on parameter-management routes", () => {
-    ["/parameters", "/parameter-review", "/parameter-admin"].forEach((path) => {
+    ["/parameters", "/parameter-review"].forEach((path) => {
       cleanup();
       window.history.replaceState(null, "", path);
       renderAppForCurrentPath();
@@ -3078,7 +3078,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       );
     });
 
-    ["/parameter-home", "/logs", "/log-admin", "/node-debugging", "/debugging-admin"].forEach((path) => {
+    ["/parameter-home", "/parameter-admin", "/parameter-admin/projects", "/logs", "/log-admin", "/node-debugging", "/debugging-admin"].forEach((path) => {
       cleanup();
       window.history.replaceState(null, "", path);
       renderAppForCurrentPath();
@@ -3225,9 +3225,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     render(<App initialAppState={adminState} />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
+    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
 
-    expect(screen.getByRole("navigation", { name: "参数管理后台分区" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "项目管理" })).toHaveClass("is-active");
+    expect(within(scopeNav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
+    expect(within(screen.getByRole("complementary", { name: "主导航侧边栏" })).getByRole("button", { name: /项目运营/ })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "项目管理列表" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
     expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
@@ -3235,75 +3236,27 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(document.querySelector(".project-admin-detail")).not.toBeInTheDocument();
   });
 
-  it("edits project parameter config and reflects it in comparison data", () => {
+  it("serves organization governance on the canonical admin route", async () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
     render(<App initialAppState={adminState} />);
 
-    const targetRow = findTableRowByText("fast_charge_current_limit_ma");
-    expect(targetRow).toBeDefined();
-    fireEvent.click(within(targetRow as HTMLElement).getByRole("button", { name: "项目参数" }));
-    const projectValues = screen.getByRole("dialog", { name: /项目参数值/ });
-    const auroraCurrentValue = within(projectValues).getByLabelText("AUR-Prod 当前值");
-
-    fireEvent.change(auroraCurrentValue, { target: { value: "3650" } });
-    fireEvent.click(within(projectValues).getByRole("button", { name: "关闭" }));
-
-    fireEvent.click(within(findTableRowByText("fast_charge_current_limit_ma") as HTMLElement).getByRole("button", { name: "修改" }));
-    const sharedDefinition = screen.getByRole("dialog", { name: /参数定义/ });
-
-    expect(screen.queryByText("配置源预览")).not.toBeInTheDocument();
-    expect(within(sharedDefinition).getByLabelText("参数推荐值")).toHaveValue("3200");
-    expect(screen.queryByLabelText("AUR-Prod 推荐值")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "对比分析" })).not.toBeInTheDocument();
+    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
+    expect(within(scopeNav).getByRole("button", { name: "组织治理" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("region", { name: "批量参数导入" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "参数规格库" })).toBeInTheDocument();
+    expect(screen.queryByText("项目共享参数库")).not.toBeInTheDocument();
   });
 
-  it("adds and deletes shared project parameters from the project admin config", () => {
-    window.history.replaceState(null, "", "/parameter-admin");
+  it("exposes both admin areas as first-class sidebar destinations", () => {
+    window.history.replaceState(null, "", "/parameter-home");
 
     render(<App initialAppState={adminState} />);
 
-    expect(screen.getByText("项目共享参数库")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: "修改" })[0]);
-    expect(screen.getByRole("dialog", { name: /参数定义/ })).toHaveTextContent("共享参数定义");
-    fireEvent.click(screen.getByRole("button", { name: "完成" }));
-    fireEvent.click(screen.getAllByRole("button", { name: "项目参数" })[0]);
-    expect(screen.getByRole("dialog", { name: /项目参数值/ })).toHaveTextContent("项目参数值");
-    expect(screen.getByRole("dialog", { name: /项目参数值/ })).toHaveTextContent("所有项目共用同一条参数定义，只在这里维护各项目的实际值。");
-    fireEvent.click(screen.getByRole("button", { name: "完成" }));
-    expect(screen.queryByText("配置源预览")).not.toBeInTheDocument();
-    expect(document.querySelector(".config-preview-panel")).not.toBeInTheDocument();
-    const adminActions = screen.getByRole("toolbar", { name: "项目参数管理后台页面操作" });
-    expect(adminActions).toHaveTextContent("批量参数导入");
-    expect(adminActions).not.toHaveTextContent("保存到 JSON 文件");
-    expect(adminActions).not.toHaveTextContent("导出 JSON");
-    const configFormLabelCss = readCssBlock(readFileSync("src/styles.css", "utf8"), ".config-form-grid label");
-    expect(configFormLabelCss).toContain("align-items: flex-start;");
-    expect(configFormLabelCss).toContain("text-align: left;");
-    expect(readCssBlock(readFileSync("src/styles.css", "utf8"), ".project-value-row label")).toContain("text-align: left;");
-    expect(screen.queryByRole("button", { name: "NEB-RD" })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "新增参数" }));
-
-    expect(screen.getByRole("dialog", { name: "新增参数" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("参数名"), { target: { value: "new_power_parameter_13" } });
-    fireEvent.click(screen.getByRole("button", { name: "创建参数" }));
-
-    expect(screen.getByText("new_power_parameter_13")).toBeInTheDocument();
-    const newParameterRow = findTableRowByText("new_power_parameter_13");
-    expect(newParameterRow).toBeDefined();
-    fireEvent.click(within(newParameterRow as HTMLElement).getByRole("button", { name: "项目参数" }));
-    expect(screen.getByRole("dialog", { name: /项目参数值/ })).toHaveTextContent("NEB-RD");
-    fireEvent.click(screen.getByRole("button", { name: "完成" }));
-
-    fireEvent.click(screen.getByRole("button", { name: /删除 new_power_parameter_13/ }));
-
-    expect(screen.getByRole("dialog", { name: /删除参数/ })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /确认删除/ }));
-
-    expect(screen.queryByDisplayValue("new_power_parameter_13")).not.toBeInTheDocument();
-  }, 15_000);
+    const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
+    expect(within(sidebar).getByRole("button", { name: /组织治理/ })).toBeInTheDocument();
+    expect(within(sidebar).getByRole("button", { name: /项目运营/ })).toBeInTheDocument();
+  });
 
   it("keeps the project shared parameter library list breathable and scannable", () => {
     const css = readFileSync("src/styles.css", "utf8");
@@ -3339,9 +3292,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(<App initialAppState={adminState} />);
 
-    const adminActions = screen.getByRole("toolbar", { name: "项目参数管理后台页面操作" });
-    expect(within(adminActions).queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
-    expect(within(adminActions).queryByRole("button", { name: /导出 JSON/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /导出 JSON/ })).not.toBeInTheDocument();
   });
 
   it("does not show API mode guidance on parameter admin", async () => {

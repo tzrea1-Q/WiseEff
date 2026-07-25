@@ -3014,6 +3014,7 @@ function Sidebar({
 }) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const pageTitle = getPageByPath(activePath).title;
+  const activePageKey = getPageByPath(activePath).key;
   const visibleNavigationItems = navigationItems.filter((item) => canAccessPage(currentRoleId, item.key));
   const groups = visibleNavigationItems.reduce<Record<string, PageConfig[]>>((acc, item) => {
     acc[item.group] = [...(acc[item.group] ?? []), item];
@@ -3056,12 +3057,14 @@ function Sidebar({
               <div className="nav-group-label">{group}</div>
               {items.map((item) => {
                 const Icon = item.icon;
+                const isActive = item.key === activePageKey;
                 return (
                   <Tooltip key={item.path}>
                     <TooltipTrigger asChild>
                       <Button
                         aria-label={item.label}
-                        className={item.path === activePath ? "nav-item active" : "nav-item"}
+                        aria-current={isActive ? "page" : undefined}
+                        className={isActive ? "nav-item active" : "nav-item"}
                         type="button"
                         variant="ghost"
                         onClick={() => onNavigate(item.path)}
@@ -3163,8 +3166,6 @@ function TopBar({
     canCreateProject &&
     page.key !== "parameter-admin-projects" &&
     page.key !== "parameter-admin" &&
-    page.key !== "parameter-admin-next" &&
-    page.key !== "parameter-admin-next-projects" &&
     page.key !== "parameter-home";
   const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home";
   const currentUser = state.users.find((user) => user.id === state.currentUserId);

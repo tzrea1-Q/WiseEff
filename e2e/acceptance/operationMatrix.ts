@@ -736,7 +736,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     id: "PARAM-IDENTITY-MAP-ADMIN-001",
     priority: "P1",
     area: "parameters",
-    route: "/parameter-admin-next",
+    route: "/parameter-admin",
     roles: ["Admin"],
     action:
       "Resolve identity mapping tasks from the parameter admin with evidence and governance audit (construction route until ticket 09).",

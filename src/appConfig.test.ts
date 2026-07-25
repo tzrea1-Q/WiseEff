@@ -9,12 +9,39 @@ describe("WiseEff prototype configuration", () => {
       "/parameters",
       "/parameter-review",
       "/parameter-admin",
+      "/parameter-admin/projects",
       "/node-debugging",
       "/debugging-admin",
       "/log-dashboard",
       "/logs",
       "/log-admin"
     ]);
+  });
+
+  it("names parameter admin areas by governance scope", () => {
+    const organization = getPageByPath("/parameter-admin");
+    const projects = getPageByPath("/parameter-admin/projects");
+    const projectFiles = getPageByPath("/parameter-admin/projects/aurora/files");
+
+    expect(organization.key).toBe("parameter-admin");
+    expect(organization.label).toBe("组织治理");
+    expect(organization.title).toContain("组织治理");
+    expect(organization.subtitle).toContain("规格库");
+    expect(getXiaozeContextSummary("/parameter-admin")).toContain("规格库");
+
+    expect(projects.key).toBe("parameter-admin-projects");
+    expect(projects.label).toBe("项目运营");
+    expect(projects.title).toContain("项目运营");
+    expect(projects.subtitle).toContain("参数文件");
+    expect(getXiaozeContextSummary("/parameter-admin/projects")).toContain("参数文件");
+
+    expect(projectFiles.key).toBe("parameter-admin-projects");
+    expect(projectFiles.path).toBe("/parameter-admin/projects/aurora/files");
+  });
+
+  it("does not resolve the retired construction routes", () => {
+    expect(getPageByPath("/parameter-admin-next").path).toBe("/");
+    expect(getPageByPath("/parameter-admin-next/projects").path).toBe("/");
   });
 
   it("returns page-specific Xiaoze context summaries", () => {

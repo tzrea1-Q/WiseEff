@@ -93,7 +93,7 @@ export type OrganizationSpecGovernancePanelProps = {
 
 export function OrganizationSpecGovernancePanel({
   search,
-  pathname = "/parameter-admin-next"
+  pathname = "/parameter-admin"
 }: OrganizationSpecGovernancePanelProps) {
   const { application, dispatch, state } = useParameterAdmin();
   const { urlState, updateUrl } = useParameterAdminUrl(search, pathname);

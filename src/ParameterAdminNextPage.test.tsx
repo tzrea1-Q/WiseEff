@@ -17,7 +17,7 @@ import { ParameterAdminNextPage } from "./ParameterAdminNextPage";
 
 afterEach(() => {
   cleanup();
-  window.history.replaceState(null, "", "/parameter-admin-next");
+  window.history.replaceState(null, "", "/parameter-admin");
 });
 
 const SPEC_SUMMARY: ParameterSpecSummary = {
@@ -258,7 +258,7 @@ function renderPage(options: {
   dtsStructuredRepository?: import("@/application/ports/DtsStructuredRepository").DtsStructuredRepository;
   state?: typeof initialState;
 } = {}) {
-  const path = options.path ?? "/parameter-admin-next";
+  const path = options.path ?? "/parameter-admin";
   window.history.replaceState(null, "", path);
   const onNavigate = options.onNavigate ?? vi.fn();
   const repository = options.repository ?? createRepository();
@@ -267,7 +267,7 @@ function renderPage(options: {
   const parameterActions = options.parameterActions;
   const area =
     options.area ??
-    (path.startsWith("/parameter-admin-next/projects") ? "projects" : "organization");
+    (path.startsWith("/parameter-admin/projects") ? "projects" : "organization");
   const search = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
   const pathname = path.includes("?") ? path.slice(0, path.indexOf("?")) : path;
 
@@ -303,12 +303,12 @@ describe("ParameterAdminNextPage · shell", () => {
     expect(within(nav).getByRole("button", { name: "项目运营" })).not.toHaveAttribute("aria-current");
 
     fireEvent.click(within(nav).getByRole("button", { name: "项目运营" }));
-    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin-next/projects");
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects");
   });
 
   it("opens the project area as its own destination", async () => {
     renderPage({
-      path: "/parameter-admin-next/projects",
+      path: "/parameter-admin/projects",
       area: "projects",
       state: initialState
     });
@@ -364,7 +364,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const repository = createRepository();
     renderPage({
       repository,
-      path: "/parameter-admin-next?spec=spec-sc8562-gpio-int"
+      path: "/parameter-admin?spec=spec-sc8562-gpio-int"
     });
 
     const detail = await screen.findByRole("region", { name: "规格详情" });
@@ -854,7 +854,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
 describe("ParameterAdminNextPage · project-scoped routes and parameter files", () => {
   it("lists projects and opens the files view by route", async () => {
     const { onNavigate } = renderPage({
-      path: "/parameter-admin-next/projects",
+      path: "/parameter-admin/projects",
       area: "projects"
     });
 
@@ -863,7 +863,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     fireEvent.click(firstManage);
 
     expect(onNavigate).toHaveBeenCalledWith(
-      expect.stringMatching(/^\/parameter-admin-next\/projects\/[^/]+\/files$/)
+      expect.stringMatching(/^\/parameter-admin\/projects\/[^/]+\/files$/)
     );
   });
 
@@ -883,7 +883,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     ]);
 
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId}/files`,
+      path: `/parameter-admin/projects/${projectId}/files`,
       area: "projects",
       parameterFileRepository: {
         listFiles,
@@ -973,7 +973,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     const syncFile = vi.fn().mockResolvedValue({ draftsCreated: 1, unchanged: 0, unmatched: 0, skipped: false });
 
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId}/files`,
+      path: `/parameter-admin/projects/${projectId}/files`,
       area: "projects",
       parameterFileRepository: {
         listFiles,
@@ -1022,7 +1022,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
 
   it("edits a project with governance audit", async () => {
     const dispatch = vi.fn();
-    renderPage({ path: "/parameter-admin-next/projects", area: "projects", dispatch });
+    renderPage({ path: "/parameter-admin/projects", area: "projects", dispatch });
 
     const projectName = initialState.configDraft.projects[0]!.name;
     fireEvent.click(screen.getByRole("button", { name: `编辑 ${projectName}` }));
@@ -1166,7 +1166,7 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
   it("opens config sets by URL and keeps the project after reload-style remount", async () => {
     const dts = createDtsRepo();
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId()}/config-sets`,
+      path: `/parameter-admin/projects/${projectId()}/config-sets`,
       area: "projects",
       dtsStructuredRepository: dts,
       parameterFileRepository: createFileRepo()
@@ -1182,7 +1182,7 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
   it("adjusts config-set membership and shows the default config set", async () => {
     const dts = createDtsRepo();
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId()}/config-sets`,
+      path: `/parameter-admin/projects/${projectId()}/config-sets`,
       area: "projects",
       dtsStructuredRepository: dts,
       parameterFileRepository: createFileRepo()
@@ -1218,7 +1218,7 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
       ]
     });
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId()}/config-sets`,
+      path: `/parameter-admin/projects/${projectId()}/config-sets`,
       area: "projects",
       repository: createRepository({ validateRevision }),
       dtsStructuredRepository: createDtsRepo(),
@@ -1238,7 +1238,7 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
   it("compare, rollback, and release each produce governance audit records", async () => {
     const dts = createDtsRepo();
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId()}/config-sets`,
+      path: `/parameter-admin/projects/${projectId()}/config-sets`,
       area: "projects",
       dtsStructuredRepository: dts,
       parameterFileRepository: createFileRepo()
@@ -1266,7 +1266,7 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
     const dts = createDtsRepo();
 
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId()}/config-sets`,
+      path: `/parameter-admin/projects/${projectId()}/config-sets`,
       area: "projects",
       dtsStructuredRepository: dts,
       parameterFileRepository: createFileRepo()
@@ -1294,7 +1294,7 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
     );
 
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId()}/config-sets`,
+      path: `/parameter-admin/projects/${projectId()}/config-sets`,
       area: "projects",
       repository: createMockParameterTopologyRepository(),
       dtsStructuredRepository: createMockDtsStructuredRepository({ projectId: projectId() }),
@@ -1385,7 +1385,7 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
   it("browses the source DTS structure by project route", async () => {
     const dts = createDtsRepo();
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId()}/structure`,
+      path: `/parameter-admin/projects/${projectId()}/structure`,
       area: "projects",
       dtsStructuredRepository: dts,
       parameterFileRepository: createFileRepo()
@@ -1403,7 +1403,7 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
 
   it("shows a clear empty state when the project has no structured DTS file", async () => {
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId()}/structure`,
+      path: `/parameter-admin/projects/${projectId()}/structure`,
       area: "projects",
       dtsStructuredRepository: createDtsRepo(),
       parameterFileRepository: createFileRepo({ listFiles: vi.fn().mockResolvedValue([]) })
@@ -1452,7 +1452,7 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
       ]);
 
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId()}/conflicts`,
+      path: `/parameter-admin/projects/${projectId()}/conflicts`,
       area: "projects",
       parameterFileRepository: createFileRepo({ listConflicts, resolveConflict }),
       dtsStructuredRepository: createDtsRepo()
@@ -1475,7 +1475,7 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
 
   it("shows a clear empty state when there are no open conflicts", async () => {
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId()}/conflicts`,
+      path: `/parameter-admin/projects/${projectId()}/conflicts`,
       area: "projects",
       parameterFileRepository: createFileRepo({ listConflicts: vi.fn().mockResolvedValue([]) }),
       dtsStructuredRepository: createDtsRepo()
@@ -1493,7 +1493,7 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
     );
 
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId()}/structure`,
+      path: `/parameter-admin/projects/${projectId()}/structure`,
       area: "projects",
       dtsStructuredRepository: createMockDtsStructuredRepository({ projectId: projectId() }),
       parameterFileRepository: createMockParameterFileRepository()
@@ -1503,7 +1503,7 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
 
     cleanup();
     renderPage({
-      path: `/parameter-admin-next/projects/${projectId()}/conflicts`,
+      path: `/parameter-admin/projects/${projectId()}/conflicts`,
       area: "projects",
       dtsStructuredRepository: createMockDtsStructuredRepository({ projectId: projectId() }),
       parameterFileRepository: createMockParameterFileRepository()

@@ -37,7 +37,7 @@ export function parseParameterAdminNextProjectPath(pathname: string): {
   view: ParameterAdminNextProjectView | null;
 } {
   const match = pathname.match(
-    /^\/parameter-admin-next\/projects\/([^/]+)(?:\/(files|config-sets|structure|conflicts))?\/?$/
+    /^\/parameter-admin\/projects\/([^/]+)(?:\/(files|config-sets|structure|conflicts))?\/?$/
   );
   if (!match) {
     return { projectId: null, view: null };
@@ -207,7 +207,7 @@ export function ProjectsOperationsPanel({
   const updateListSearch = useCallback(
     (patch: Partial<ParamAdminProjectsSearch>) => {
       const query = buildListSearch(patch, listSearch);
-      onNavigate(`/parameter-admin-next/projects${query ? `?${query}` : ""}`);
+      onNavigate(`/parameter-admin/projects${query ? `?${query}` : ""}`);
     },
     [listSearch, onNavigate]
   );
@@ -276,7 +276,7 @@ export function ProjectsOperationsPanel({
         pushAudit("project-deleted", `已删除项目「${deleteTarget.name}」`);
         setDeleteTargetId(null);
         if (projectId === deleteTarget.id) {
-          onNavigate("/parameter-admin-next/projects");
+          onNavigate("/parameter-admin/projects");
         }
       } catch (submitError) {
         setDeleteError(submitError instanceof Error ? submitError.message : "删除项目失败。");
@@ -289,13 +289,13 @@ export function ProjectsOperationsPanel({
     pushAudit("project-deleted", `已删除项目「${deleteTarget.name}」`);
     setDeleteTargetId(null);
     if (projectId === deleteTarget.id) {
-      onNavigate("/parameter-admin-next/projects");
+      onNavigate("/parameter-admin/projects");
     }
   };
 
   const projectBase = projectId
-    ? `/parameter-admin-next/projects/${encodeURIComponent(projectId)}`
-    : "/parameter-admin-next/projects";
+    ? `/parameter-admin/projects/${encodeURIComponent(projectId)}`
+    : "/parameter-admin/projects";
 
   if (projectId && view) {
     const title =
@@ -330,7 +330,7 @@ export function ProjectsOperationsPanel({
             <button
               type="button"
               className="button subtle"
-              onClick={() => onNavigate("/parameter-admin-next/projects")}
+              onClick={() => onNavigate("/parameter-admin/projects")}
             >
               ← 返回项目列表
             </button>
@@ -456,7 +456,7 @@ export function ProjectsOperationsPanel({
           setDeleteTargetId(id);
         }}
         onManageFiles={(id) =>
-          onNavigate(`/parameter-admin-next/projects/${encodeURIComponent(id)}/files`)
+          onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/files`)
         }
       />
 

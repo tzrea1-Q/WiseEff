@@ -20,8 +20,6 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   "parameter-review": "hardware-committer",
   "parameter-admin": "admin",
   "parameter-admin-projects": "admin",
-  "parameter-admin-next": "admin",
-  "parameter-admin-next-projects": "admin",
   "log-dashboard": "hardware-user",
   logs: "hardware-user",
   "log-admin": "admin",

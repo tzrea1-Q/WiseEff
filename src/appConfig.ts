@@ -3,6 +3,7 @@ import {
   ChartNoAxesCombined,
   Database,
   FileText,
+  FolderKanban,
   Gauge,
   Home,
   LucideIcon,
@@ -23,8 +24,6 @@ export type PageKey =
   | "parameter-review"
   | "parameter-admin"
   | "parameter-admin-projects"
-  | "parameter-admin-next"
-  | "parameter-admin-next-projects"
   | "log-dashboard"
   | "logs"
   | "log-admin"
@@ -85,11 +84,20 @@ export const navigationItems: PageConfig[] = [
   {
     key: "parameter-admin",
     path: "/parameter-admin",
-    label: "管理后台",
+    label: "组织治理",
     group: "参数管理",
     icon: Database,
-    title: "项目参数管理后台",
-    subtitle: "电池与充电参数数据库、批量导入管理"
+    title: "参数管理后台 · 组织治理",
+    subtitle: "规格库、规格审核、模块树与驱动映射、批量导入、身份映射治理"
+  },
+  {
+    key: "parameter-admin-projects",
+    path: "/parameter-admin/projects",
+    label: "项目运营",
+    group: "参数管理",
+    icon: FolderKanban,
+    title: "参数管理后台 · 项目运营",
+    subtitle: "项目清单、参数文件、配置集与基线、结构浏览与冲突裁决"
   },
   {
     key: "node-debugging",
@@ -193,39 +201,12 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
 
-  if (path === "/parameter-admin/projects") {
+  // Preserve deep-link path for project-scoped admin views (files / config-sets / …).
+  if (path === "/parameter-admin/projects" || path.startsWith("/parameter-admin/projects/")) {
+    const projectsNav = navigationItems.find((item) => item.key === "parameter-admin-projects");
     return {
-      key: "parameter-admin-projects",
-      path: "/parameter-admin/projects",
-      label: "项目管理",
-      group: "参数管理",
-      icon: Database,
-      title: "项目参数管理后台",
-      subtitle: "维护项目清单、初始化状态、模块覆盖与参数库入口"
-    };
-  }
-
-  if (path === "/parameter-admin-next/projects" || path.startsWith("/parameter-admin-next/projects/")) {
-    return {
-      key: "parameter-admin-next-projects",
-      path,
-      label: "项目运营",
-      group: "参数管理",
-      icon: Database,
-      title: "参数管理后台（建设中）· 项目运营",
-      subtitle: "项目清单、参数文件、配置集 / 基线、结构浏览与冲突裁决（临时建设路由）"
-    };
-  }
-
-  if (path === "/parameter-admin-next") {
-    return {
-      key: "parameter-admin-next",
-      path: "/parameter-admin-next",
-      label: "组织治理",
-      group: "参数管理",
-      icon: Database,
-      title: "参数管理后台（建设中）· 组织治理",
-      subtitle: "参数规格库与规格审核（临时建设路由，正式入口仍为管理后台）"
+      ...(projectsNav as PageConfig),
+      path
     };
   }
 
@@ -261,10 +242,10 @@ export function pageUsesProjectScope(pageKey: PageKey): boolean {
     case "parameters":
     case "parameter-submissions":
     case "parameter-review":
-    case "parameter-admin":
-    case "parameter-admin-projects":
     case "parameter-home":
       return true;
+    // Organization governance and project operations own their own project pickers
+    // (ADR-0001); do not hang the TopBar project selector on either admin area.
     default:
       return false;
   }
@@ -287,13 +268,9 @@ export function getXiaozeContextSummary(path: string): string {
     case "node-debugging":
       return "正在关注 HDC 连接状态、节点访问模式、待读写目标值和回读校验结果。";
     case "parameter-admin":
-      return "正在关注参数库健康、闲置参数、权限异常和导入风险。";
+      return "正在关注组织级规格库、规格审核、模块映射、批量导入与身份映射治理。";
     case "parameter-admin-projects":
-      return "正在关注项目清单、初始化进度、模块覆盖和参数规模。";
-    case "parameter-admin-next":
-      return "正在关注组织级规格库、规格审核队列与治理审计。";
-    case "parameter-admin-next-projects":
-      return "正在关注项目参数文件、配置集与发布基线（建设中）。";
+      return "正在关注项目参数文件、配置集、发布基线、结构浏览与冲突裁决。";
     case "log-admin":
       return "正在关注分析吞吐、失败记录、权限覆盖和使用趋势。";
     case "debugging-admin":

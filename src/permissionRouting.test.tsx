@@ -68,21 +68,21 @@ describe("permission-aware routing", () => {
 
     expect(screen.getByRole("region", { name: "主要功能" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /打开 处理审阅/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /打开 管理后台/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /打开 组织治理/ })).not.toBeInTheDocument();
 
     renderRole("hardware-user");
 
     expect(screen.getByRole("button", { name: /打开 修改参数/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /打开 管理后台/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /打开 组织治理/ })).not.toBeInTheDocument();
 
     renderRole("hardware-committer");
 
     expect(screen.getByRole("button", { name: /打开 处理审阅/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /打开 管理后台/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /打开 组织治理/ })).not.toBeInTheDocument();
 
     renderRole("admin");
 
-    expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 组织治理/ })).toBeInTheDocument();
   });
 
   it("prevents Guest from mutating parameter values in the reducer", () => {

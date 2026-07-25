@@ -5,7 +5,7 @@ import { ParameterAdminNextPage } from "./ParameterAdminNextPage";
 
 afterEach(() => {
   cleanup();
-  window.history.replaceState(null, "", "/parameter-admin-next");
+  window.history.replaceState(null, "", "/parameter-admin");
 });
 
 function createRepository(
@@ -118,7 +118,7 @@ describe("ParameterAdminNextPage · a11y", () => {
         area="projects"
         onNavigate={() => {}}
         search=""
-        pathname="/parameter-admin-next/projects"
+        pathname="/parameter-admin/projects"
         parameterTopologyRepository={createRepository()}
         state={
           {

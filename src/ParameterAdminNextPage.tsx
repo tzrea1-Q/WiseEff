@@ -39,8 +39,8 @@ export type ParameterAdminNextPageProps = {
 };
 
 /**
- * Temporary construction surface for the redesigned parameter admin (#190+).
- * Canonical `/parameter-admin` stays on the legacy tree until ticket 09.
+ * Redesigned parameter admin organized by governance scope (ADR-0001).
+ * Canonical routes: `/parameter-admin` (organization) and `/parameter-admin/projects` (project operations).
  */
 export function ParameterAdminNextPage({
   area,
@@ -90,7 +90,7 @@ export function ParameterAdminNextPage({
   }, [parameterActions]);
   const pathname =
     pathnameProp ??
-    (area === "projects" ? "/parameter-admin-next/projects" : "/parameter-admin-next");
+    (area === "projects" ? "/parameter-admin/projects" : "/parameter-admin");
 
   return (
     <ParameterAdminProvider

@@ -123,7 +123,7 @@ Tickets live on GitHub under parent issue [#188](https://github.com/tzrea1-Q/Wis
 - [ ] [#194](https://github.com/tzrea1-Q/WiseEff/issues/194) — 06 Project-scoped config sets, release baselines, and revision validation. Blocked by 05
 - [ ] [#195](https://github.com/tzrea1-Q/WiseEff/issues/195) — 07 Project-scoped source structure browsing and conflict adjudication. Blocked by 05
 - [ ] [#196](https://github.com/tzrea1-Q/WiseEff/issues/196) — 08 Identity mapping task governance in the admin. Blocked by 02
-- [ ] [#197](https://github.com/tzrea1-Q/WiseEff/issues/197) — 09 Contract: new admin takes over the canonical admin route and navigation. Blocked by 02–08
+- [x] [#197](https://github.com/tzrea1-Q/WiseEff/issues/197) — 09 Contract: new admin takes over the canonical admin route and navigation. Blocked by 02–08
 - [ ] [#198](https://github.com/tzrea1-Q/WiseEff/issues/198) — 10 Contract: retarget browser acceptance coverage and verify across viewports. Blocked by 09
 - [ ] [#199](https://github.com/tzrea1-Q/WiseEff/issues/199) — 11 Contract: delete the old admin surface and its exclusive state. Blocked by 10
 

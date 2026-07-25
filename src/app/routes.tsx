@@ -32,8 +32,6 @@ import { AuditCenterPage } from "@/AuditCenterPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { LogAdminPage } from "@/LogAdminPage";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
-import { ParameterAdminPage } from "@/ParameterAdminPage";
-import { ParameterAdminProjectsPage } from "@/ParameterAdminProjectsPage";
 import { ParameterAdminNextPage } from "@/ParameterAdminNextPage";
 import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
 import { FeedbackAdminPage } from "@/features/product-feedback/FeedbackAdminPage";
@@ -204,26 +202,12 @@ export function PageRouter({
     case "parameter-review":
       return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
     case "parameter-admin":
-      return <ParameterAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} runtimeMode={runtimeMode} />;
-    case "parameter-admin-projects":
-      return (
-        <ParameterAdminProjectsPage
-          state={state}
-          dispatch={dispatch}
-          onNavigate={onNavigate}
-          search={search}
-          parameterActions={parameterActions}
-          runtimeMode={runtimeMode}
-          onNewProject={onNewProject}
-        />
-      );
-    case "parameter-admin-next":
       return (
         <ParameterAdminNextPage
           area="organization"
           onNavigate={onNavigate}
           search={search}
-          pathname="/parameter-admin-next"
+          pathname="/parameter-admin"
           runtimeMode={runtimeMode}
           parameterTopologyRepository={parameterTopologyRepository}
           projects={state.configDraft.projects}
@@ -234,7 +218,7 @@ export function PageRouter({
           state={state}
         />
       );
-    case "parameter-admin-next-projects":
+    case "parameter-admin-projects":
       return (
         <ParameterAdminNextPage
           area="projects"
