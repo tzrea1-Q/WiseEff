@@ -6,6 +6,9 @@ import type {
   WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
+import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
+import { selectPrimaryProjectDtsFile } from "@/application/parameters/selectPrimaryProjectDtsFile";
+import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import {
@@ -42,7 +45,11 @@ import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 import { IdentityMappingReview } from "./IdentityMappingReview";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
-import { filterProductWorkbenchDiagnostics } from "@/domain/parameter-topology/toolchainDiagnostics";
+import {
+  filterProductWorkbenchDiagnostics,
+  partitionDanglingReferenceDiagnostics
+} from "@/domain/parameter-topology/toolchainDiagnostics";
+import { WorkbenchDiagnosticsSection } from "./WorkbenchDiagnosticsSection";
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
@@ -53,6 +60,8 @@ export type ApiProjectTopologyWorkspaceProps = {
   topologyRepository?: ParameterTopologyRepository;
   /** Test seam — inject the admin-maintained module registry repository. */
   moduleRegistryRepository?: ParameterModuleRegistryRepository;
+  /** Test seam — inject parameter file repository instead of resolving from runtime mode. */
+  parameterFileRepository?: ParameterFileRepository;
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   listDrafts?: (projectId: string) => Promise<ParameterDraftDto[]>;
   listWorkflowAssignees?: (projectId: string) => Promise<WorkflowAssigneeCandidates>;
@@ -230,6 +239,7 @@ export function ApiProjectTopologyWorkspace({
   runtimeMode = "api",
   topologyRepository,
   moduleRegistryRepository,
+  parameterFileRepository,
   listConfigSets,
   listDrafts,
   listWorkflowAssignees,
@@ -245,6 +255,10 @@ export function ApiProjectTopologyWorkspace({
       moduleRegistryRepository ??
       (runtimeMode === "api" ? createHttpParameterModuleRegistryRepository() : null),
     [moduleRegistryRepository, runtimeMode]
+  );
+  const parameterFileRepo = useMemo(
+    () => parameterFileRepository ?? resolveParameterFileRepository(runtimeMode),
+    [parameterFileRepository, runtimeMode]
   );
   const [moduleRegistry, setModuleRegistry] = useState<ParameterModuleRegistry>(
     EMPTY_PARAMETER_MODULE_REGISTRY
@@ -700,6 +714,25 @@ export function ApiProjectTopologyWorkspace({
     [repository]
   );
 
+  const loadPrimaryDtsSource = useCallback(async () => {
+    const files = await parameterFileRepo.listFiles(projectId);
+    const file = selectPrimaryProjectDtsFile(projectId, files);
+    if (!file?.currentVersionId || file.currentVersionNumber == null) {
+      throw new Error("未找到可用的项目主 DTS 文件");
+    }
+    const downloaded = await parameterFileRepo.downloadVersion(
+      projectId,
+      file.id,
+      file.currentVersionId
+    );
+    const text = new TextDecoder().decode(downloaded.bytes);
+    return {
+      fileName: downloaded.fileName ?? file.fileName,
+      versionNumber: file.currentVersionNumber,
+      text
+    };
+  }, [parameterFileRepo, projectId]);
+
   const handleResolveMapping = async (taskId: string, input: ResolveMappingInput) => {
     if (!repository || loadState.kind !== "ready") return;
     const requestProjectId = projectId;
@@ -772,11 +805,13 @@ export function ApiProjectTopologyWorkspace({
 
   const draftBindingIds = new Set(projectDrafts.map((draft) => draft.projectParameterBindingId));
   const openMappingTasks = loadState.mappingTasks.filter((task) => task.status === "open");
+  const { other: productDiagnostics, summary: danglingSummary } =
+    partitionDanglingReferenceDiagnostics(loadState.diagnostics);
   const showGovernancePanel = Boolean(
     statusBanner ||
     mappingMessage ||
     loadState.incompleteBase ||
-    loadState.diagnostics.length > 0 ||
+    productDiagnostics.length > 0 ||
     openMappingTasks.length > 0
   );
   const currentEdits = projectDrafts.length > 0 ? (
@@ -820,6 +855,7 @@ export function ApiProjectTopologyWorkspace({
         loadBindingHistory={loadBindingHistory}
         loadBindingCompare={loadBindingCompare}
         loadParameterSpec={loadParameterSpec}
+        loadPrimaryDtsSource={loadPrimaryDtsSource}
         currentEdits={currentEdits}
         expandAllNodesByDefault
         onExportRows={(rows) => {
@@ -858,18 +894,7 @@ export function ApiProjectTopologyWorkspace({
             {loadState.incompleteBase ? (
               <p role="alert">缺少 base 配置，当前拓扑不完整；已阻止类型化编辑与校验。</p>
             ) : null}
-            {loadState.diagnostics.length > 0 ? (
-              <section aria-label="编译诊断">
-                <ul>
-                  {loadState.diagnostics.map((diagnostic) => (
-                    <li key={`${diagnostic.code ?? ""}:${diagnostic.message}`}>
-                      {diagnostic.severity ? `[${diagnostic.severity}] ` : null}
-                      {diagnostic.message}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
+            <WorkbenchDiagnosticsSection diagnostics={productDiagnostics} variant="other" />
             <IdentityMappingReview
               tasks={loadState.mappingTasks}
               onResolve={(taskId, input) => {
@@ -878,6 +903,11 @@ export function ApiProjectTopologyWorkspace({
             />
           </>
         ) : undefined}
+        footerContent={
+          danglingSummary ? (
+            <WorkbenchDiagnosticsSection diagnostics={loadState.diagnostics} variant="dangling" />
+          ) : undefined
+        }
       />
   );
 }

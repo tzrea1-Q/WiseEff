@@ -94,12 +94,23 @@ function summarizeDtsValue(value: DtsValue): string {
   }
 }
 
+/**
+ * User-facing governance badge for the parameter workbench.
+ *
+ * - `blocked`: schema invalid or policy fail — actionable blockers.
+ * - `attention`: open identity-mapping tasks only — actionable triage.
+ * - `valid`: everything else, including provisional-surface `unreviewed`
+ *   (no compatible / no releasable schema match). That state is Admin spec-
+ *   governance signal (SpecReviewQueue), not a per-row user "待处理" item.
+ *   Elevating it after retiring synthetic-base DTS flooded the module navigator
+ *   with false attention for every self-anchored overlay fragment.
+ */
 function resolveGovernanceState(
   binding: ProjectParameterBinding,
   mappingOpen: boolean
 ): DtsWorkbenchGovernanceState {
   if (binding.schemaState === "invalid" || binding.policyState === "fail") return "blocked";
-  if (mappingOpen || binding.schemaState === "unreviewed") return "attention";
+  if (mappingOpen) return "attention";
   return "valid";
 }
 

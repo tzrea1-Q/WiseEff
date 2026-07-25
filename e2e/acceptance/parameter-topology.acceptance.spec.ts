@@ -46,7 +46,10 @@ function bindingRowById(scope: Locator, bindingId: string): Locator {
   return scope.locator(`[role="row"][data-binding-id="${bindingId}"]`);
 }
 
+// Include-missing remains a hard resolve error. Use DTS `/include/` (not CPP `#include`),
+// which single-file upload accepts; dangling `&label` overlays self-anchor as warnings.
 const brokenBase = `/dts-v1/;
+/include/ "missing-acceptance-include.dtsi"
 / {
 	board {
 		compatible = "wiseeff,acceptance-broken";
@@ -57,7 +60,7 @@ const brokenBase = `/dts-v1/;
 const brokenOverlay = `/dts-v1/;
 /plugin/;
 
-&missing_label_for_compile_fail {
+&board {
 	broken = <1>;
 };
 `;
@@ -551,15 +554,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
     await expect(workspace.getByRole("columnheader", { name: /所属模块/ })).toBeVisible();
     await workspace.getByRole("button", { name: "技术视图" }).click();
-    await expect(workspace.getByRole("tree", { name: "生效 DTS 拓扑" })).toBeVisible({
+    await expect(workspace.getByRole("tree", { name: "业务模块树" })).toBeVisible({
       timeout: 20_000
     });
-    await expect(workspace.getByRole("treeitem", { name: /amba/ }).first()).toBeVisible({
+    await expect(workspace.locator(".project-primary-dts-viewer__body")).toBeVisible({
       timeout: 20_000
     });
-    await expect(workspace.getByRole("treeitem", { name: /i2c@FDF5E000/ }).first()).toBeVisible();
-    await expect(workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first()).toBeVisible();
-    await workspace.getByRole("button", { name: /查看 gpio_int/ }).first().click();
+    await expect(workspace.getByRole("tree", { name: "生效 DTS 拓扑" })).toHaveCount(0);
+    await workspace.getByRole("button", { name: "模块导航" }).click();
+    await expect(workspace.getByRole("region", { name: "DTS 参数列表" })).toBeVisible({
+      timeout: 20_000
+    });
+    await workspace.getByRole("button", { name: /查看 gpio_int/ }).first().click({
+      timeout: 20_000
+    });
     const provenanceDetail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
     await expect(provenanceDetail.getByRole("heading", { name: "参数定义" })).toBeVisible();
     await expect(provenanceDetail.getByText("来源链")).toHaveCount(0);
@@ -619,16 +627,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // Same-compatible sibling nodes keep independent specs/bindings (sc8562 vs mt5788 gpio_int).
     expect(scBinding!.driverModule).not.toBe(mtBinding!.driverModule);
 
-    await workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first().click();
+    // Module-first navigator has no device leaves (groupByDevice off); provisional buckets are
+    //「未分类 · <driver>」, not instance paths like sc8562@6E.
+    const sc8562TreeItem = workspace.getByRole("treeitem", { name: /未分类 · sc8562/ });
+    await expect(sc8562TreeItem).toBeVisible({ timeout: 20_000 });
+    await sc8562TreeItem.click({ timeout: 20_000 });
     const scopedSc8562Row = bindingRowById(workspace, scBinding!.id);
-    await expect(scopedSc8562Row.locator('[data-label="参数名"]')).toBeVisible();
+    await expect(scopedSc8562Row.locator('[data-label="参数名"]')).toBeVisible({ timeout: 20_000 });
     await expect(scopedSc8562Row).toContainText("sc8562@6E");
     await expect(scopedSc8562Row).toContainText("<&gpio13 29 0>");
     await expect(bindingRowById(workspace, mtBinding!.id)).toHaveCount(0);
     // Toggle the same tree node to clear subtree scoping (toolbar no longer has clear-all).
-    await workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first().click();
+    await sc8562TreeItem.click({ timeout: 20_000 });
     const unscopedMt5788Row = bindingRowById(workspace, mtBinding!.id);
-    await expect(unscopedMt5788Row.locator('[data-label="参数名"]')).toBeVisible();
+    await expect(unscopedMt5788Row.locator('[data-label="参数名"]')).toBeVisible({ timeout: 20_000 });
     await expect(unscopedMt5788Row).toContainText("mt5788@2B");
 
     const baseBindingSnapshot = await withPgClient(async (client) => {
@@ -729,7 +741,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await draftDialog.getByRole("button", { name: "关闭草稿" }).click();
     await expect(draftDialog).toHaveCount(0);
 
-    // Fail-closed blocker from REAL bad DTS (accurate failure code).
+    // Fail-closed blocker from REAL bad DTS (include-missing → resolve-failed).
     const suffix = runSuffix;
     const brokenBaseName = `acceptance-broken-base-${suffix}.dts`;
     const brokenOverlayName = `acceptance-broken-overlay-${suffix}.dts`;
@@ -740,7 +752,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const brokenOverlayUpload = await uploadDts(request, brokenOverlayName, brokenOverlay);
     const brokenCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
       headers: adminHeaders(),
-      data: { name: brokenCsName, description: `${descriptionPrefix} compiler failure` }
+      data: { name: brokenCsName, description: `${descriptionPrefix} resolve failure` }
     });
     expect(brokenCs.status()).toBe(201);
     const brokenCsBody = (await brokenCs.json()) as { item: { id: string } };
@@ -758,7 +770,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         data: { fileId: brokenOverlayUpload.fileId, role: "overlay", sortOrder: 1 }
       }
     );
-    await uploadDts(request, brokenOverlayName, brokenOverlay);
+    await uploadDts(request, brokenBaseName, brokenBase);
     const brokenRevision = await waitForRevision(brokenCsBody.item.id, () => true);
     const compileValidate = await request.post(
       apiRoute(

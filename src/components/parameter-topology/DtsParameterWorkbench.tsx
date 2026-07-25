@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Download,
   Network,
@@ -6,11 +6,8 @@ import {
   Boxes
 } from "lucide-react";
 
-import {
-  buildDtsTopologyTree,
-  type DtsWorkbenchTreeNode
-} from "@/application/parameters/buildDtsTopologyTree";
 import { buildModuleTree } from "@/application/parameters/buildModuleTree";
+import type { DtsWorkbenchTreeNode } from "@/application/parameters/buildDtsTopologyTree";
 import type {
   BindingHistoryEntry,
   EffectiveTopologyNode,
@@ -32,8 +29,15 @@ import {
 } from "./DtsBindingDraftDialog";
 import { DtsParameterWorkbenchTable } from "./DtsParameterWorkbenchTable";
 import { DtsTopologyNavigator } from "./DtsTopologyNavigator";
+import { ProjectPrimaryDtsViewer } from "./ProjectPrimaryDtsViewer";
 
-type NavigatorMode = "module" | "topology";
+type WorkbenchResultsMode = "parameters" | "dtsSource";
+
+type PrimaryDtsSource = {
+  fileName: string;
+  versionNumber: number;
+  text: string;
+};
 
 export type DtsParameterWorkbenchProps = {
   projectId?: string;
@@ -43,7 +47,7 @@ export type DtsParameterWorkbenchProps = {
   /** Kept for API compatibility; browse UI is effective-only and surfaces source via provenance. */
   sourceRows: DtsParameterWorkbenchRow[];
   effectiveRows: DtsParameterWorkbenchRow[];
-  /** Kept for API compatibility; topology tech view still uses effective nodes. */
+  /** Kept for API compatibility; parent workspace may still pass topology nodes. */
   sourceNodes: SourceTopologyNode[];
   effectiveNodes: EffectiveTopologyNode[];
   /** Admin module registry — used to nest the module navigator by parentId. */
@@ -73,11 +77,18 @@ export type DtsParameterWorkbenchProps = {
    * does not reserve a blank governance shell.
    */
   governanceContent?: ReactNode;
+  /**
+   * Soft notices rendered below the main workbench body (e.g. collapsed dangling
+   * overlay self-anchor summary). Kept out of the top governance strip.
+   */
+  footerContent?: ReactNode;
   /** Secondary toolbar actions (e.g. revision validate) kept out of the governance panel. */
   toolbarActions?: ReactNode;
   expandAllNodesByDefault?: boolean;
   /** Called when the user asks to export the currently visible rows (semantic export). */
   onExportRows?: (rows: DtsParameterWorkbenchRow[]) => void;
+  /** Loads the project's primary DTS source when entering tech view. */
+  loadPrimaryDtsSource?: () => Promise<PrimaryDtsSource>;
 };
 
 function selectedSubtreeBindingIds(
@@ -107,6 +118,21 @@ function selectedSubtreeBindingIds(
   return bindingIds;
 }
 
+function smallestPositiveSourceLine(
+  rows: DtsParameterWorkbenchRow[],
+  bindingIds: Set<string> | null
+): number | null {
+  if (!bindingIds) return null;
+  let smallest: number | null = null;
+  for (const row of rows) {
+    if (!bindingIds.has(row.bindingId)) continue;
+    const line = row.sourceLine;
+    if (typeof line !== "number" || line < 1) continue;
+    if (smallest === null || line < smallest) smallest = line;
+  }
+  return smallest;
+}
+
 function treeContainsNode(roots: DtsWorkbenchTreeNode[], nodeId: string): boolean {
   const pending = [...roots];
   while (pending.length > 0) {
@@ -125,7 +151,7 @@ export function DtsParameterWorkbench({
   sourceRows: _sourceRows,
   effectiveRows,
   sourceNodes: _sourceNodes,
-  effectiveNodes,
+  effectiveNodes: _effectiveNodes,
   moduleRegistry,
   draftBindingIds,
   selectedBindingIds: controlledSelectedBindingIds,
@@ -139,12 +165,14 @@ export function DtsParameterWorkbench({
   loadParameterSpec,
   currentEdits,
   governanceContent,
+  footerContent,
   toolbarActions,
-  expandAllNodesByDefault = false,
-  onExportRows
+  expandAllNodesByDefault: _expandAllNodesByDefault = false,
+  onExportRows,
+  loadPrimaryDtsSource
 }: DtsParameterWorkbenchProps) {
   const [query, setQuery] = useState("");
-  const [navigatorMode, setNavigatorMode] = useState<NavigatorMode>("module");
+  const [resultsMode, setResultsMode] = useState<WorkbenchResultsMode>("parameters");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedBindingId, setSelectedBindingId] = useState<string | null>(null);
   const [uncontrolledSelectedBindingIds, setUncontrolledSelectedBindingIds] = useState<Set<string>>(new Set());
@@ -165,16 +193,7 @@ export function DtsParameterWorkbench({
     () => buildModuleTree({ rows: currentRows, modules: moduleRegistry?.modules }),
     [currentRows, moduleRegistry],
   );
-  const topologyTree = useMemo(
-    () => buildDtsTopologyTree({
-      view: "effective",
-      sourceNodes: [],
-      effectiveNodes,
-      rows: currentRows
-    }),
-    [currentRows, effectiveNodes]
-  );
-  const tree = navigatorMode === "module" ? moduleTree : topologyTree;
+  const tree = moduleTree;
   const selectedNodeExists = selectedNodeId ? treeContainsNode(tree, selectedNodeId) : true;
   const effectiveSelectedNodeId = selectedNodeExists ? selectedNodeId : null;
 
@@ -182,11 +201,63 @@ export function DtsParameterWorkbench({
     if (selectedNodeId && !selectedNodeExists) setSelectedNodeId(null);
   }, [selectedNodeExists, selectedNodeId]);
 
+  const [dtsSourceStatus, setDtsSourceStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [dtsSource, setDtsSource] = useState<PrimaryDtsSource | null>(null);
+  const [dtsSourceErrorMessage, setDtsSourceErrorMessage] = useState<string | null>(null);
+  const [dtsSourceLoadToken, setDtsSourceLoadToken] = useState(0);
+  const [findNextToken, setFindNextToken] = useState(0);
+  const [findStatus, setFindStatus] = useState({ matchCount: 0, activeIndex: 0 });
+  const onFindStatusChangeRef = useRef<(status: { matchCount: number; activeIndex: number }) => void>(() => {});
+  onFindStatusChangeRef.current = (status) => setFindStatus(status);
+  const onFindStatusChange = useCallback((status: { matchCount: number; activeIndex: number }) => {
+    onFindStatusChangeRef.current(status);
+  }, []);
+
+  const loadDtsSource = useCallback(() => {
+    if (!loadPrimaryDtsSource) {
+      setDtsSourceStatus("error");
+      setDtsSource(null);
+      setDtsSourceErrorMessage(null);
+      return;
+    }
+    setDtsSourceStatus("loading");
+    setDtsSourceErrorMessage(null);
+    setDtsSourceLoadToken((current) => current + 1);
+  }, [loadPrimaryDtsSource]);
+
   useEffect(() => {
-    setSelectedNodeId(null);
-    setSelectedBindingId(null);
-    setSelectedBindingIds(new Set());
-  }, [navigatorMode, setSelectedBindingIds]);
+    if (resultsMode !== "dtsSource" || dtsSourceLoadToken === 0 || !loadPrimaryDtsSource) {
+      return undefined;
+    }
+    let cancelled = false;
+    void loadPrimaryDtsSource()
+      .then((source) => {
+        if (!cancelled) {
+          setDtsSource(source);
+          setDtsSourceStatus("ready");
+          setDtsSourceErrorMessage(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setDtsSource(null);
+          setDtsSourceStatus("error");
+          setDtsSourceErrorMessage(
+            error instanceof Error ? error.message : "无法加载 DTS 源码。"
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dtsSourceLoadToken, loadPrimaryDtsSource, resultsMode]);
+
+  const enterDtsSourceMode = () => {
+    setResultsMode("dtsSource");
+    if (dtsSourceStatus !== "ready" || !dtsSource) {
+      loadDtsSource();
+    }
+  };
 
   useEffect(() => {
     if (controlledSelectedBindingIds) return;
@@ -210,6 +281,17 @@ export function DtsParameterWorkbench({
     () => selectedSubtreeBindingIds(tree, effectiveSelectedNodeId),
     [effectiveSelectedNodeId, tree]
   );
+  const moduleFocusLine = useMemo(
+    () => resultsMode === "dtsSource"
+      ? smallestPositiveSourceLine(currentRows, subtreeBindingIds)
+      : null,
+    [currentRows, resultsMode, subtreeBindingIds]
+  );
+  const moduleJumpStatus = useMemo(() => {
+    if (resultsMode !== "dtsSource" || subtreeBindingIds === null) return null;
+    if (moduleFocusLine !== null) return null;
+    return "当前模块暂无源码行定位";
+  }, [moduleFocusLine, resultsMode, subtreeBindingIds]);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleRows = useMemo(
     () => currentRows.filter((row) => {
@@ -412,6 +494,19 @@ export function DtsParameterWorkbench({
     setFocusedDraftBindingId(null);
   };
 
+  const downloadDtsSource = () => {
+    if (!dtsSource) return;
+    const blob = new Blob([dtsSource.text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = dtsSource.fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const dtsFindQuery = resultsMode === "dtsSource" ? query : "";
+
   useEffect(() => {
     if (draftDialogOpen && Object.keys(localDraftBag).length === 0) {
       setDraftDialogOpen(false);
@@ -434,26 +529,36 @@ export function DtsParameterWorkbench({
           <h2>项目参数工作台</h2>
           <p>按业务模块定位参数；器件/驱动与源出处保留在行内与详情中。</p>
         </div>
-        <div className="dts-parameter-workbench__header-actions" role="group" aria-label="导航模式">
+        <div className="dts-parameter-workbench__header-actions" role="group" aria-label="结果模式">
           <button
             type="button"
-            className={`button subtle${navigatorMode === "module" ? " is-active" : ""}`}
-            aria-pressed={navigatorMode === "module"}
-            onClick={() => setNavigatorMode("module")}
+            className={`button subtle${resultsMode === "parameters" ? " is-active" : ""}`}
+            aria-pressed={resultsMode === "parameters"}
+            onClick={() => setResultsMode("parameters")}
           >
             <Boxes size={15} strokeWidth={1.9} aria-hidden="true" />
             模块导航
           </button>
           <button
             type="button"
-            className={`button subtle${navigatorMode === "topology" ? " is-active" : ""}`}
-            aria-pressed={navigatorMode === "topology"}
-            onClick={() => setNavigatorMode("topology")}
+            className={`button subtle${resultsMode === "dtsSource" ? " is-active" : ""}`}
+            aria-pressed={resultsMode === "dtsSource"}
+            onClick={enterDtsSourceMode}
           >
             <Network size={15} strokeWidth={1.9} aria-hidden="true" />
             技术视图
           </button>
-          {onExportRows ? (
+          {resultsMode === "dtsSource" ? (
+            <button
+              type="button"
+              className="button subtle"
+              disabled={dtsSourceStatus !== "ready" || !dtsSource}
+              onClick={downloadDtsSource}
+            >
+              <Download size={15} strokeWidth={1.9} aria-hidden="true" />
+              下载 DTS
+            </button>
+          ) : onExportRows ? (
             <button
               type="button"
               className="button subtle"
@@ -469,18 +574,36 @@ export function DtsParameterWorkbench({
 
       <div className="dts-parameter-workbench__toolbar">
         <label className="dts-parameter-workbench__search">
-          <span><Search size={14} strokeWidth={2} aria-hidden="true" />搜索参数</span>
+          <span>
+            <Search size={14} strokeWidth={2} aria-hidden="true" />
+            {resultsMode === "dtsSource" ? "查找源码" : "搜索参数"}
+          </span>
           <input
             type="search"
-            aria-label="搜索 DTS 参数"
+            aria-label={resultsMode === "dtsSource" ? "在 DTS 源码中查找" : "搜索 DTS 参数"}
             value={query}
-            placeholder="参数名、模块、器件、路径或值"
+            placeholder={resultsMode === "dtsSource" ? "在 DTS 文本中查找" : "参数名、模块、器件、路径或值"}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (resultsMode === "dtsSource" && event.key === "Enter") {
+                event.preventDefault();
+                setFindNextToken((current) => current + 1);
+              }
+            }}
           />
         </label>
         <p role="status" aria-live="polite" className="dts-parameter-workbench__result-count">
-          显示 {visibleRows.length} / {currentRows.length} 个参数
-          {selectedBindingIds.size > 0 ? ` · 已选 ${selectedBindingIds.size} 项草稿` : ""}
+          {resultsMode === "dtsSource" ? (
+            moduleJumpStatus
+              ?? (dtsFindQuery.trim()
+                ? `匹配 ${findStatus.activeIndex} / ${findStatus.matchCount}`
+                : null)
+          ) : (
+            <>
+              显示 {visibleRows.length} / {currentRows.length} 个参数
+              {selectedBindingIds.size > 0 ? ` · 已选 ${selectedBindingIds.size} 项草稿` : ""}
+            </>
+          )}
         </p>
         {toolbarActions ? (
           <div className="dts-parameter-workbench__toolbar-actions">
@@ -508,58 +631,89 @@ export function DtsParameterWorkbench({
         <div
           className="dts-parameter-workbench__navigator dts-workbench-topology"
           role="region"
-          aria-label={navigatorMode === "module" ? "模块导航" : "DTS 拓扑导航"}
+          aria-label="模块导航"
         >
           <h3 className="dts-parameter-workbench__navigator-title">
-            {navigatorMode === "module" ? "模块导航" : "DTS 拓扑导航"}
+            模块导航
           </h3>
           <DtsTopologyNavigator
-            key={navigatorMode}
             view="effective"
             nodes={tree}
             selectedNodeId={effectiveSelectedNodeId}
-            expandAllByDefault={navigatorMode === "topology" && expandAllNodesByDefault}
-            defaultExpandDepth={navigatorMode === "module" ? 2 : undefined}
-            labelKind={navigatorMode === "module" ? "text" : "code"}
-            emptyMessage={navigatorMode === "module" ? "暂无模块分组" : "暂无 DTS 拓扑节点"}
-            ariaLabel={navigatorMode === "module" ? "业务模块树" : "生效 DTS 拓扑"}
+            defaultExpandDepth={2}
+            labelKind="text"
+            emptyMessage="暂无模块分组"
+            ariaLabel="业务模块树"
             onSelectNode={(nodeId) => setSelectedNodeId((current) => current === nodeId ? null : nodeId)}
           />
         </div>
         <div
           className="dts-parameter-workbench__results dts-workbench-list"
           role="region"
-          aria-label="DTS 参数列表"
+          aria-label={resultsMode === "parameters" ? "DTS 参数列表" : "技术视图结果"}
         >
-          <div
-            ref={listScrollXRef}
-            className="dts-workbench-list__scroll-x"
-          >
-            <div className="dts-workbench-list__scroll-y">
-              <DtsParameterWorkbenchTable
-                rows={visibleRows}
-                selectedBindingId={selectedBindingId}
-                draftBindingIds={draftBindingIds}
-                selectedBindingIds={selectedBindingIds}
-                canEdit={canEdit}
-                onSelectBinding={selectBinding}
-                onEditBinding={onEditBinding && onCreateDraft ? editBinding : undefined}
-                onSelectedBindingIdsChange={setSelectedBindingIds}
-              />
-              {visibleRows.length === 0 ? (
-                <p className="dts-parameter-workbench__empty">当前筛选范围内没有参数。</p>
+          {resultsMode === "parameters" ? (
+            <>
+              <div
+                ref={listScrollXRef}
+                className="dts-workbench-list__scroll-x"
+              >
+                <div className="dts-workbench-list__scroll-y">
+                  <DtsParameterWorkbenchTable
+                    rows={visibleRows}
+                    selectedBindingId={selectedBindingId}
+                    draftBindingIds={draftBindingIds}
+                    selectedBindingIds={selectedBindingIds}
+                    canEdit={canEdit}
+                    onSelectBinding={selectBinding}
+                    onEditBinding={onEditBinding && onCreateDraft ? editBinding : undefined}
+                    onSelectedBindingIdsChange={setSelectedBindingIds}
+                  />
+                  {visibleRows.length === 0 ? (
+                    <p className="dts-parameter-workbench__empty">当前筛选范围内没有参数。</p>
+                  ) : null}
+                </div>
+              </div>
+              <div
+                ref={listScrollRailRef}
+                className="dts-workbench-list__h-rail"
+                aria-hidden="true"
+              >
+                <div className="dts-workbench-list__h-rail-spacer" />
+              </div>
+            </>
+          ) : dtsSourceStatus === "loading" ? (
+            <p className="dts-parameter-workbench__empty" role="status">正在加载 DTS 源码…</p>
+          ) : dtsSourceStatus === "error" ? (
+            <div className="dts-parameter-workbench__dts-source-error">
+              <p role="alert">无法加载 DTS 源码。</p>
+              {dtsSourceErrorMessage ? (
+                <p className="dts-parameter-workbench__dts-source-error-detail">{dtsSourceErrorMessage}</p>
               ) : null}
+              <button type="button" className="button subtle" onClick={loadDtsSource}>
+                重试
+              </button>
             </div>
-          </div>
-          <div
-            ref={listScrollRailRef}
-            className="dts-workbench-list__h-rail"
-            aria-hidden="true"
-          >
-            <div className="dts-workbench-list__h-rail-spacer" />
-          </div>
+          ) : dtsSource ? (
+            <ProjectPrimaryDtsViewer
+              fileName={dtsSource.fileName}
+              versionNumber={dtsSource.versionNumber}
+              text={dtsSource.text}
+              focusLine={moduleFocusLine}
+              findQuery={dtsFindQuery}
+              findNextToken={findNextToken}
+              onFindStatusChange={onFindStatusChange}
+            />
+          ) : (
+            <p className="dts-parameter-workbench__empty" role="status">暂无 DTS 源码。</p>
+          )}
         </div>
       </div>
+      {footerContent ? (
+        <div className="dts-parameter-workbench__footer">
+          {footerContent}
+        </div>
+      ) : null}
       {selectedRow && detailIntent === "view" ? (
         <DtsBindingDetailDialog
           row={selectedRow}

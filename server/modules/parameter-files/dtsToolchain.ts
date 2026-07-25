@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { withEphemeralDanglingAnchorStub } from "../dts/danglingAnchorStub";
+
 export type DtsToolchainMode = "release" | "warn" | "off";
 
 export type DtsToolchainToolProbe = {
@@ -480,6 +482,20 @@ function writeLogicalTree(rootDir: string, configSet: DtsToolchainConfigSet): Dt
 }
 
 /**
+ * L2 compile companion only: merge an ephemeral empty-node stub into the entry file when
+ * it references undefined `&label` targets (overlay-only project primaries). Never persists.
+ */
+export function withEphemeralEntryCompileStub(configSet: DtsToolchainConfigSet): DtsToolchainConfigSet {
+  const entry = configSet.files.get(configSet.entryFile);
+  if (!entry) return configSet;
+  const stubbed = withEphemeralDanglingAnchorStub(entry.content);
+  if (stubbed === entry.content) return configSet;
+  const files = new Map(configSet.files);
+  files.set(configSet.entryFile, { ...entry, content: stubbed });
+  return { ...configSet, files };
+}
+
+/**
  * Complete DTS config-set toolchain runner:
  * base `dtc -@` → overlay DTBO → `fdtoverlay` in manifest order → `dt-validate`.
  * Restricted subprocess: isolated tmpdir, PATH-only env, hard timeout, no network assumptions.
@@ -627,15 +643,16 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
 
       const tmpDir = tmpDirFactory();
       const diagnostics: DtsToolchainDiagnostic[] = [];
+      const compileConfigSet = withEphemeralEntryCompileStub(configSet);
 
       try {
-        const pathDiagnostics = writeLogicalTree(tmpDir, configSet);
+        const pathDiagnostics = writeLogicalTree(tmpDir, compileConfigSet);
         if (pathDiagnostics.length > 0) {
           const result = failed(mode, "path-escape", versions, pathDiagnostics, artifacts);
           return mode === "warn" ? { ...result, ok: true } : result;
         }
 
-        const baseSrc = join(tmpDir, configSet.entryFile);
+        const baseSrc = join(tmpDir, compileConfigSet.entryFile);
         const baseDtb = join(tmpDir, "base.dtb");
         const baseCompile = await runProcess(
           spawnFn,

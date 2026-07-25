@@ -11,14 +11,15 @@ const seedDir = join(root, "src/config/dts-seed");
 const fixtureDir = join(root, "server/modules/dts/fixtures");
 
 describe("golden power fixture", () => {
-  it("locks the 58-node, 228-property aurora project-primary topology", async () => {
+  it("locks the 50-node, 176-property aurora project-primary topology", async () => {
     const primarySource = await readFile(join(seedDir, "aurora-board.dts"), "utf8");
     const resolved = resolveDts(primarySource);
 
-    expect(resolved.nodes).toHaveLength(58);
+    // Overlay-only board (synthetic base tree retired): `&label` targets self-anchor.
+    expect(resolved.nodes).toHaveLength(50);
 
     const propertyCount = resolved.nodes.reduce((count, node) => count + node.properties.length, 0);
-    expect(propertyCount).toBe(228);
+    expect(propertyCount).toBe(176);
 
     const phandleCount = resolved.nodes.reduce((count, node) => count + node.phandleRefs.length, 0);
     expect(phandleCount).toBe(18);
@@ -30,7 +31,7 @@ describe("golden power fixture", () => {
       }
     }
     const repeatedKeys = [...keyCounts.entries()].filter(([, count]) => count > 1);
-    expect(repeatedKeys).toHaveLength(28);
+    expect(repeatedKeys).toHaveLength(26);
 
     const gpioIntNodePaths = resolved.nodes
       .filter((node) => node.properties.some((property) => property.name === "gpio_int"))

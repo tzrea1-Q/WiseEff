@@ -96,7 +96,7 @@ describe("resolveDtsConfigSet", () => {
     expect(result.diagnostics.find((d) => d.code === "label-duplicate")?.message).toMatch(/shared/);
   });
 
-  it("reports target-unresolved for overlay &label with no definition", () => {
+  it("self-anchors an overlay &label with no definition instead of dropping it", () => {
     const result = resolveDtsConfigSet({
       entryFile: "board.dts",
       includeSearchPaths: [],
@@ -104,7 +104,20 @@ describe("resolveDtsConfigSet", () => {
       files: loadFixtureDir("unresolved-target"),
     });
 
-    expect(result.diagnostics.map((d) => d.code)).toContain("target-unresolved");
+    // Dangling overlay target is a non-fatal warning, not a fail-closed error.
+    const dangling = result.diagnostics.filter((d) => d.code === "dangling-reference");
+    expect(dangling).toHaveLength(1);
+    expect(dangling[0]?.severity).toBe("warning");
+    expect(result.diagnostics.some((d) => d.severity === "error")).toBe(false);
+
+    // The fragment's business property survives on a synthetic anchor node keyed by the
+    // label, so it can still surface as a parameter and round-trip on writeback.
+    const anchor = result.effective.nodesByLocator.get("/nonexistent");
+    expect(anchor?.labels).toContain("nonexistent");
+    expect(anchor?.properties.get("foo")?.normalizedValue).toContain("1");
+    expect(anchor?.properties.get("foo")?.sourceChain).toEqual([
+      expect.objectContaining({ fileName: "overlay.dtso", propertyName: "foo", effect: "set" }),
+    ]);
   });
 
   it("applies /delete-property/ and /delete-node/ with delete provenance", () => {

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { withEphemeralDanglingAnchorStub } from "../server/modules/dts/danglingAnchorStub";
 import {
   createSubprocessDtcValidator,
   type DtcValidationResult,
@@ -15,12 +16,18 @@ import {
 import { primaryBoardFileName } from "./merge-primary-dts";
 import type { DtsPowerSeedProjectFile, DtsPowerSeedProjectId } from "./dts-power-seed";
 
+export { withEphemeralDanglingAnchorStub } from "../server/modules/dts/danglingAnchorStub";
+export { missingReferencedLabels } from "../server/modules/dts/danglingAnchorStub";
+
 export async function compileDtsSeedFiles(
   files: readonly DtsPowerSeedProjectFile[],
   validator: DtcValidator = createSubprocessDtcValidator()
 ): Promise<DtcValidationResult> {
   const result = await validator.validate(
-    files.map((file) => ({ name: file.artifactFileName, content: file.source })),
+    files.map((file) => ({
+      name: file.artifactFileName,
+      content: withEphemeralDanglingAnchorStub(file.source)
+    })),
     { mode: "block" }
   );
   if (!result.ok || result.compiler === "unavailable") {
@@ -57,12 +64,13 @@ export async function compileDtsSeedEffectiveTrees(
         entryFile: primary.artifactFileName,
         includeSearchPaths: [],
         overlayOrder: [],
+        // Runner applies the ephemeral dangling-anchor stub for overlay-only boards.
         files: new Map([[primary.artifactFileName, { content: primary.source }]])
       },
       {
-        // Seed boards are self-contained and may emit expected ranges_format warnings
-        // without an external SoC base. Vendor bindings currently describe properties,
-        // not every child node in the golden tree — keep schema advisory here.
+        // Seed boards may be overlay-only (dangling `&label`); L2 advisory uses an
+        // ephemeral stub companion. Vendor bindings currently describe properties,
+        // not every child node — keep schema advisory here.
         mode: "warn",
         failOnSchema: false
       }

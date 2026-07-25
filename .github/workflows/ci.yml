@@ -120,6 +120,10 @@ jobs:
       AUTH_PROVIDER: hmac
       M5_CONTRACT_CHECK_PASSED: "true"
       M5_SMOKE_ALLOW_NO_API: "false"
+      # Shared acceptance DB must keep flat identity tables for legacy e2e fixtures.
+      # Topology specs that need cutover use disposablePostCutoverRuntime instead.
+      WISEEFF_SEED_LEGACY_FLAT_IDENTITY: "1"
+      WISEEFF_LOCAL_POST_CUTOVER: "0"
 
     steps:
       - name: Check out repository
@@ -167,9 +171,18 @@ jobs:
             echo "VITE_WISEEFF_RUNTIME_MODE=api"
             echo "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true"
             echo "M5_CONTRACT_CHECK_PASSED=true"
+            echo "WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1"
+            echo "WISEEFF_LOCAL_POST_CUTOVER=0"
           } >> .env
           # loadEnvContent keeps the first assignment; rewrite example defaults in-place.
           sed -i 's/^XIAOZE_PROACTIVE_ENABLED=.*/XIAOZE_PROACTIVE_ENABLED=true/' .env
+          sed -i 's/^WISEEFF_SEED_LEGACY_FLAT_IDENTITY=.*/WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1/' .env
+          sed -i 's/^WISEEFF_LOCAL_POST_CUTOVER=.*/WISEEFF_LOCAL_POST_CUTOVER=0/' .env
+
+      - name: Migrate and seed database
+        run: |
+          npm run db:migrate
+          npm run db:seed:all
 
       - name: Acceptance CI metadata
         run: npm run acceptance:ci
