@@ -11,7 +11,13 @@ export { serializeDts } from "./serialize";
 export { indentDtsRawValueForWriteback } from "./rawValueWriteback";
 export { classifyDtsValue, type ClassifiedDtsValue } from "./valueTyping";
 export { resolveDtsConfigSet } from "./configSetResolver";
-export { synthesizeDanglingAnchorStub, danglingAnchorLabels } from "./danglingAnchorStub";
+export {
+  synthesizeDanglingAnchorStub,
+  danglingAnchorLabels,
+  missingReferencedLabels,
+  withEphemeralDanglingAnchorStub,
+  mergeEphemeralStubWithSource
+} from "./danglingAnchorStub";
 export type {
   DtsConfigSetFile,
   DtsConfigSetInput,

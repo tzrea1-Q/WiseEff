@@ -46,6 +46,51 @@ export function danglingAnchorLabels(diagnostics: readonly DtsResolutionDiagnost
 }
 
 /**
+ * Labels referenced via `&name` that are not defined in the same source.
+ * Used only to build an ephemeral L2 compile companion — never persisted.
+ */
+export function missingReferencedLabels(source: string): string[] {
+  const defined = new Set<string>();
+  for (const match of source.matchAll(/(?:^|[\s;{])([A-Za-z_][A-Za-z0-9_]*):/gm)) {
+    defined.add(match[1]!);
+  }
+  const missing: string[] = [];
+  const seen = new Set<string>();
+  for (const match of source.matchAll(/&([A-Za-z_][A-Za-z0-9_]*)/g)) {
+    const label = match[1]!;
+    if (defined.has(label) || seen.has(label)) continue;
+    seen.add(label);
+    missing.push(label);
+  }
+  return missing;
+}
+
+function stripDtsPreamble(source: string): string {
+  return source
+    .replace(/^\/dts-v1\/;\s*\n?/gm, "")
+    .replace(/^\/plugin\/;\s*\n?/gm, "")
+    .trim();
+}
+
+/** Merge a stub base tree with overlay/primary body into one self-contained compile input. */
+export function mergeEphemeralStubWithSource(stubSource: string, overlaySource: string): string {
+  const baseBody = stripDtsPreamble(stubSource);
+  const overlayBody = stripDtsPreamble(overlaySource);
+  return `/dts-v1/;\n\n${baseBody}\n\n${overlayBody}\n`;
+}
+
+/**
+ * Prepend an ephemeral empty-node stub for dangling `&label` / phandle targets so
+ * `dtc` can compile overlay-only project-primary boards. The stub is a throwaway
+ * compile companion (see module doc) and must not be persisted.
+ */
+export function withEphemeralDanglingAnchorStub(source: string): string {
+  const stub = synthesizeDanglingAnchorStub(missingReferencedLabels(source));
+  if (!stub) return source;
+  return mergeEphemeralStubWithSource(stub, source);
+}
+
+/**
  * Synthesize an ephemeral base DTS that defines each given label as an empty node, so a
  * downstream `dtc` compile can resolve `&label { ... }` overlay fragments. Returns an empty
  * string when there is nothing to stub. The output is a non-authoritative compile companion
