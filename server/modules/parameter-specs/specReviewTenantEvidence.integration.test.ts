@@ -568,7 +568,9 @@ describe.skipIf(!databaseAvailable)("spec review tenant evidence integration", (
 });
 
 describe.skipIf(!databaseAvailable)("0055/0057 review task scope backfill", () => {
-  it("only backfills tenant-valid ids, marks invalid evidence with diagnostics, and re-runs idempotently", async () => {
+  it(
+    "only backfills tenant-valid ids, marks invalid evidence with diagnostics, and re-runs idempotently",
+    async () => {
     await withTempDatabase(async (db) => {
       await applyMigrationsThrough(db, "0054_config_revision_manifest_backfill.sql");
       await seedGraph(db);
@@ -751,11 +753,16 @@ describe.skipIf(!databaseAvailable)("0055/0057 review task scope backfill", () =
       const idempotent = await backfillReviewTaskScopeColumns(db);
       expect(idempotent).toBe(0);
     });
-  });
+    },
+    30_000,
+  );
 });
 
 describe.skipIf(!databaseAvailable)("0058 evidence-only scope reconcile from polluted 0055 state", () => {
-  it("clears cross-tenant FKs preserved by 0057 coalesce, keeps valid rows, and rolls back mid-failure", async () => {
+  // Migration replay through 0057+0058 plus rollback probes is heavy under acceptance preflight load.
+  it(
+    "clears cross-tenant FKs preserved by 0057 coalesce, keeps valid rows, and rolls back mid-failure",
+    async () => {
     await withTempDatabase(async (db) => {
       await applyMigrationsThrough(db, migration0057);
       await seedGraph(db);
@@ -1107,5 +1114,7 @@ describe.skipIf(!databaseAvailable)("0058 evidence-only scope reconcile from pol
       );
       expect(again.rows).toEqual(beforeSecondApply.rows);
     });
-  });
+    },
+    30_000,
+  );
 });
