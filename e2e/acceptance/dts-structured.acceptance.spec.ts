@@ -467,7 +467,7 @@ test.describe("DTS structured product browser acceptance", () => {
             responseSummary: `baseline=${baselineBody.item.name}`
           })
         ],
-        notes: "Created config set + baseline via API; ConfigSetBaselinePanel visible on admin projects dialog."
+        notes: "Created config set + baseline via API; ConfigSetBaselinePanel visible on routed config-sets view."
       });
 
       const nextVersionContent = sampleDts.replace("reg = <0x6e>;", "reg = <0x6f>;");
@@ -502,10 +502,11 @@ test.describe("DTS structured product browser acceptance", () => {
       expect(changedMember?.status).toBe("version_changed");
       expect((changedMember?.structuralDiff?.length ?? 0) > 0).toBe(true);
 
-      const compareButton = dialog.getByRole("button", { name: new RegExp(`对比 ${baselineName}`) });
+      const configSetPanel = page.getByRole("region", { name: "配置集 / 基线" });
+      const compareButton = configSetPanel.getByRole("button", { name: new RegExp(`对比 ${baselineName}`) });
       if (await compareButton.isVisible().catch(() => false)) {
         await compareButton.click();
-        await expect(dialog.getByRole("region", { name: "结构化差异" })).toBeVisible();
+        await expect(configSetPanel.getByRole("region", { name: "结构化差异" })).toBeVisible();
       }
 
       await recordOperationEvidence({
