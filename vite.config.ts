@@ -19,12 +19,12 @@ function resolvePreviewAllowedHosts(): string[] | true {
 
   const apiBase = process.env.VITE_WISEEFF_API_BASE_URL?.trim();
   if (!apiBase) {
-    return ["127.0.0.1", "localhost"];
+    return ["127.0.0.1", "localhost", "host.docker.internal"];
   }
 
   try {
     const hostname = new URL(apiBase).hostname;
-    const hosts = new Set(["127.0.0.1", "localhost", hostname]);
+    const hosts = new Set(["127.0.0.1", "localhost", "host.docker.internal", hostname]);
     if (hostname.startsWith("www.")) {
       hosts.add(hostname.slice(4));
     } else {
@@ -86,7 +86,12 @@ export default defineConfig({
     allowedHosts: resolvePreviewAllowedHosts()
   },
   server: {
+    allowedHosts: resolvePreviewAllowedHosts(),
     proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8787",
+        changeOrigin: true
+      },
       "/downloads": {
         target: process.env.VITE_WISEEFF_API_BASE_URL?.trim() || "http://127.0.0.1:8787",
         changeOrigin: true

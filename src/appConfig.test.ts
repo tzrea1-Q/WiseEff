@@ -2,40 +2,37 @@ import { describe, expect, it } from "vitest";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, utilityItems } from "./appConfig";
 
 describe("WiseEff prototype configuration", () => {
-  it("exposes the full PRD route map", () => {
+  it("exposes a single parameter admin sidebar entry with in-page project routes", () => {
     expect(navigationItems.map((item) => item.path)).toEqual([
       "/",
       "/parameter-home",
       "/parameters",
       "/parameter-review",
       "/parameter-admin",
-      "/parameter-admin/projects",
       "/node-debugging",
       "/debugging-admin",
       "/log-dashboard",
       "/logs",
       "/log-admin"
     ]);
+    expect(navigationItems.filter((item) => item.key === "parameter-admin")).toHaveLength(1);
   });
 
-  it("names parameter admin areas by governance scope", () => {
+  it("keeps one admin page key while resolving project deep links", () => {
     const organization = getPageByPath("/parameter-admin");
     const projects = getPageByPath("/parameter-admin/projects");
     const projectFiles = getPageByPath("/parameter-admin/projects/aurora/files");
 
     expect(organization.key).toBe("parameter-admin");
-    expect(organization.label).toBe("组织治理");
-    expect(organization.title).toContain("组织治理");
-    expect(organization.subtitle).toContain("规格库");
+    expect(organization.label).toBe("管理后台");
+    expect(organization.title).toContain("参数管理后台");
     expect(getXiaozeContextSummary("/parameter-admin")).toContain("规格库");
 
-    expect(projects.key).toBe("parameter-admin-projects");
-    expect(projects.label).toBe("项目运营");
-    expect(projects.title).toContain("项目运营");
-    expect(projects.subtitle).toContain("参数文件");
+    expect(projects.key).toBe("parameter-admin");
+    expect(projects.path).toBe("/parameter-admin/projects");
     expect(getXiaozeContextSummary("/parameter-admin/projects")).toContain("参数文件");
 
-    expect(projectFiles.key).toBe("parameter-admin-projects");
+    expect(projectFiles.key).toBe("parameter-admin");
     expect(projectFiles.path).toBe("/parameter-admin/projects/aurora/files");
   });
 

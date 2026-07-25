@@ -201,27 +201,12 @@ export function PageRouter({
       );
     case "parameter-review":
       return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
-    case "parameter-admin":
+    case "parameter-admin": {
+      const isProjectsArea =
+        page.path === "/parameter-admin/projects" || page.path.startsWith("/parameter-admin/projects/");
       return (
         <ParameterAdminNextPage
-          area="organization"
-          onNavigate={onNavigate}
-          search={search}
-          pathname="/parameter-admin"
-          runtimeMode={runtimeMode}
-          parameterTopologyRepository={parameterTopologyRepository}
-          projects={state.configDraft.projects}
-          parameters={state.parameters}
-          activeProjectId={state.activeProjectId}
-          dispatch={dispatch}
-          parameterActions={parameterActions}
-          state={state}
-        />
-      );
-    case "parameter-admin-projects":
-      return (
-        <ParameterAdminNextPage
-          area="projects"
+          area={isProjectsArea ? "projects" : "organization"}
           onNavigate={onNavigate}
           search={search}
           pathname={page.path}
@@ -236,6 +221,7 @@ export function PageRouter({
           onNewProject={onNewProject}
         />
       );
+    }
     case "log-dashboard":
       return <LogDashboardPage state={state} onNavigate={onNavigate} />;
     case "logs":

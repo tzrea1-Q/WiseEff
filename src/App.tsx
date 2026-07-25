@@ -2991,7 +2991,6 @@ function TopBar({
   const showProjectInitAction =
     page.key.startsWith("parameter") &&
     canCreateProject &&
-    page.key !== "parameter-admin-projects" &&
     page.key !== "parameter-admin" &&
     page.key !== "parameter-home";
   const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home";

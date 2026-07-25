@@ -30,6 +30,16 @@ import {
 const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
 const adminState = { ...initialState, activeRoleId: "admin" };
+
+function parameterAdminNavGroup(sidebar: HTMLElement): HTMLElement {
+  const label = Array.from(sidebar.querySelectorAll(".nav-group-label")).find((node) => node.textContent === "参数管理");
+  const group = label?.closest(".nav-group");
+  if (!(group instanceof HTMLElement)) {
+    throw new Error("parameter management nav group not found");
+  }
+  return group;
+}
+
 const apiParameter = {
   ...initialState.parameters[0],
   id: `${initialState.activeProjectId}-api-runtime-param`,
@@ -1541,7 +1551,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.getByRole("region", { name: "待办事项" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "主要功能" })).toBeInTheDocument();
     expect(screen.queryByText("管理视角")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /打开 组织治理/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
     expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "概览" })).toBeInTheDocument();
@@ -1718,7 +1728,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /打开 组织治理/ }));
+    fireEvent.click(screen.getByRole("button", { name: /打开 管理后台/ }));
     expect(window.location.pathname).toBe("/parameter-admin");
 
     window.history.replaceState(null, "", "/parameter-home");
@@ -3005,7 +3015,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/parameter-admin",
-        present: ["参数管理后台 · 组织治理", "组织治理", "项目运营", "批量参数导入", "参数规格库"],
+        present: ["项目参数管理后台", "组织治理", "项目运营", "批量参数导入", "参数规格库"],
         absent: ["项目参数 Admin", "items", "events", "建设中"]
       },
       {
@@ -3228,7 +3238,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const scopeNav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
 
     expect(within(scopeNav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
-    expect(within(screen.getByRole("complementary", { name: "主导航侧边栏" })).getByRole("button", { name: /项目运营/ })).toBeInTheDocument();
+    expect(
+      within(parameterAdminNavGroup(screen.getByRole("complementary", { name: "主导航侧边栏" }))).getByRole("button", {
+        name: /^管理后台$/
+      })
+    ).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("table", { name: "项目管理列表" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
     expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
@@ -3248,14 +3262,30 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByText("项目共享参数库")).not.toBeInTheDocument();
   });
 
-  it("exposes both admin areas as first-class sidebar destinations", () => {
+  it("exposes a single parameter admin sidebar entry with in-page scope switching", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     render(<App initialAppState={adminState} />);
 
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
-    expect(within(sidebar).getByRole("button", { name: /组织治理/ })).toBeInTheDocument();
-    expect(within(sidebar).getByRole("button", { name: /项目运营/ })).toBeInTheDocument();
+    const parameterGroup = parameterAdminNavGroup(sidebar);
+    expect(within(parameterGroup).getByRole("button", { name: /^管理后台$/ })).toBeInTheDocument();
+    expect(within(parameterGroup).queryByRole("button", { name: /组织治理/ })).not.toBeInTheDocument();
+    expect(within(parameterGroup).queryByRole("button", { name: /项目运营/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps the sidebar admin entry active on project-scoped deep links", () => {
+    window.history.replaceState(null, "", "/parameter-admin/projects");
+
+    render(<App initialAppState={adminState} />);
+
+    const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
+    expect(within(parameterAdminNavGroup(sidebar)).getByRole("button", { name: /^管理后台$/ })).toHaveAttribute(
+      "aria-current",
+      "page"
+    );
+    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
+    expect(within(scopeNav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
   });
 
   it("keeps the project shared parameter library list breathable and scannable", () => {

@@ -33,7 +33,7 @@ describe("normalized workspace headers", () => {
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
 
-    expect(topbar.querySelector(".topbar-title")).toHaveTextContent("参数管理后台 · 组织治理");
+    expect(topbar.querySelector(".topbar-title")).toHaveTextContent("项目参数管理后台");
     expect(topbar.querySelector(".topbar-subtitle")).toHaveTextContent("规格库");
     expect(screen.getByRole("region", { name: "批量参数导入" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();

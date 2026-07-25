@@ -3,7 +3,6 @@ import {
   ChartNoAxesCombined,
   Database,
   FileText,
-  FolderKanban,
   Gauge,
   Home,
   LucideIcon,
@@ -23,7 +22,6 @@ export type PageKey =
   | "parameter-comparison"
   | "parameter-review"
   | "parameter-admin"
-  | "parameter-admin-projects"
   | "log-dashboard"
   | "logs"
   | "log-admin"
@@ -84,20 +82,11 @@ export const navigationItems: PageConfig[] = [
   {
     key: "parameter-admin",
     path: "/parameter-admin",
-    label: "组织治理",
+    label: "管理后台",
     group: "参数管理",
     icon: Database,
-    title: "参数管理后台 · 组织治理",
-    subtitle: "规格库、规格审核、模块树与驱动映射、批量导入、身份映射治理"
-  },
-  {
-    key: "parameter-admin-projects",
-    path: "/parameter-admin/projects",
-    label: "项目运营",
-    group: "参数管理",
-    icon: FolderKanban,
-    title: "参数管理后台 · 项目运营",
-    subtitle: "项目清单、参数文件、配置集与基线、结构浏览与冲突裁决"
+    title: "项目参数管理后台",
+    subtitle: "组织治理与项目运营；页内切换规格库、审核队列、模块映射、项目文件与基线"
   },
   {
     key: "node-debugging",
@@ -201,11 +190,11 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
 
-  // Preserve deep-link path for project-scoped admin views (files / config-sets / …).
+  // Project-scoped views share the single sidebar entry; keep deep-link path for in-page area switching.
   if (path === "/parameter-admin/projects" || path.startsWith("/parameter-admin/projects/")) {
-    const projectsNav = navigationItems.find((item) => item.key === "parameter-admin-projects");
+    const adminNav = navigationItems.find((item) => item.key === "parameter-admin");
     return {
-      ...(projectsNav as PageConfig),
+      ...(adminNav as PageConfig),
       path
     };
   }
@@ -268,9 +257,10 @@ export function getXiaozeContextSummary(path: string): string {
     case "node-debugging":
       return "正在关注 HDC 连接状态、节点访问模式、待读写目标值和回读校验结果。";
     case "parameter-admin":
+      if (path === "/parameter-admin/projects" || path.startsWith("/parameter-admin/projects/")) {
+        return "正在关注项目参数文件、配置集、发布基线、结构浏览与冲突裁决。";
+      }
       return "正在关注组织级规格库、规格审核、模块映射、批量导入与身份映射治理。";
-    case "parameter-admin-projects":
-      return "正在关注项目参数文件、配置集、发布基线、结构浏览与冲突裁决。";
     case "log-admin":
       return "正在关注分析吞吐、失败记录、权限覆盖和使用趋势。";
     case "debugging-admin":
