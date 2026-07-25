@@ -10,6 +10,8 @@ import {
   type ParameterAdminAction,
   type ParameterAdminState
 } from "@/application/parameters/parameterAdminState";
+import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
+import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 
@@ -25,6 +27,8 @@ export type ParameterAdminProviderProps = {
   topology: ParameterTopologyRepository;
   moduleRegistry: ParameterModuleRegistryRepository;
   importActions?: ParameterAdminImportActions;
+  dtsStructured?: DtsStructuredRepository;
+  parameterFiles?: ParameterFileRepository;
   children: ReactNode;
   initialState?: ParameterAdminState;
 };
@@ -33,13 +37,22 @@ export function ParameterAdminProvider({
   topology,
   moduleRegistry,
   importActions,
+  dtsStructured,
+  parameterFiles,
   children,
   initialState = initialParameterAdminState
 }: ParameterAdminProviderProps) {
   const [state, dispatch] = useReducer(parameterAdminReducer, initialState);
   const application = useMemo(
-    () => createParameterAdminApplication({ topology, moduleRegistry, importActions }),
-    [topology, moduleRegistry, importActions]
+    () =>
+      createParameterAdminApplication({
+        topology,
+        moduleRegistry,
+        importActions,
+        dtsStructured,
+        parameterFiles
+      }),
+    [topology, moduleRegistry, importActions, dtsStructured, parameterFiles]
   );
   const value = useMemo(() => ({ state, dispatch, application }), [state, application]);
 

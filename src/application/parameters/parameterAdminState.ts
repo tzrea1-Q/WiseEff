@@ -16,7 +16,13 @@ export type ParameterAdminAuditHint = {
     | "identity-mapping-resolved"
     | "identity-mapping-dismissed"
     | "project-updated"
-    | "project-deleted";
+    | "project-deleted"
+    | "baseline-compared"
+    | "baseline-rolled-back"
+    | "baseline-released"
+    | "config-set-exported"
+    | "revision-validated"
+    | "file-conflict-resolved";
   summary: string;
   reason: string;
   recordedAt: string;
@@ -136,6 +142,18 @@ export function auditKindLabel(kind: ParameterAdminAuditHint["kind"]): string {
       return "更新项目";
     case "project-deleted":
       return "删除项目";
+    case "baseline-compared":
+      return "基线对比";
+    case "baseline-rolled-back":
+      return "基线回滚";
+    case "baseline-released":
+      return "基线发布";
+    case "config-set-exported":
+      return "导出配置集";
+    case "revision-validated":
+      return "修订校验";
+    case "file-conflict-resolved":
+      return "文件冲突裁决";
     case "spec-review-resolved":
     default:
       return "规格审核批准";

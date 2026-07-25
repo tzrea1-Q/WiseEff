@@ -69,6 +69,14 @@ export function ParameterAdminNextPage({
       parameterModuleRegistryRepository ?? resolveParameterModuleRegistryRepository(runtimeMode),
     [parameterModuleRegistryRepository, runtimeMode]
   );
+  const fileRepository = useMemo(
+    () => parameterFileRepository,
+    [parameterFileRepository]
+  );
+  const dtsRepository = useMemo(
+    () => dtsStructuredRepository,
+    [dtsStructuredRepository]
+  );
   const importActions = useMemo(() => {
     if (!parameterActions) {
       return undefined;
@@ -89,6 +97,8 @@ export function ParameterAdminNextPage({
       topology={topology}
       moduleRegistry={moduleRegistry}
       importActions={importActions}
+      dtsStructured={dtsRepository}
+      parameterFiles={fileRepository}
     >
       <div className="param-admin-shell">
         <ParameterAdminNextScopeNav active={area} onNavigate={onNavigate} />

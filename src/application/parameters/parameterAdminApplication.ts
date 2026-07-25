@@ -24,13 +24,16 @@ import type {
   ParameterRuntimeVoidResult
 } from "@/application/parameters/parameterRuntime";
 import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
+import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
+import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type {
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
   SpecQuery,
   SpecReviewTaskListResult,
-  SpecReviewTaskQuery
+  SpecReviewTaskQuery,
+  ValidationRun
 } from "@/domain/parameter-topology/types";
 
 /** Import actions the admin facade exposes so panels do not hold separate clients. */
@@ -72,12 +75,18 @@ export type ParameterAdminApplication = {
 
   listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;
   resolveMapping(taskId: string, input: ResolveMappingInput): Promise<void>;
+  validateRevision(projectId: string, revisionId: string): Promise<ValidationRun>;
+
+  asDtsStructuredRepository(): DtsStructuredRepository | null;
+  asParameterFileRepository(): ParameterFileRepository | null;
 };
 
 export type CreateParameterAdminApplicationOptions = {
   topology: ParameterTopologyRepository;
   moduleRegistry: ParameterModuleRegistryRepository;
   importActions?: ParameterAdminImportActions;
+  dtsStructured?: DtsStructuredRepository;
+  parameterFiles?: ParameterFileRepository;
 };
 
 function missingImport(action: string): never {
@@ -87,7 +96,9 @@ function missingImport(action: string): never {
 export function createParameterAdminApplication({
   topology,
   moduleRegistry,
-  importActions
+  importActions,
+  dtsStructured,
+  parameterFiles
 }: CreateParameterAdminApplicationOptions): ParameterAdminApplication {
   const asModuleRegistryRepository = (): ParameterModuleRegistryRepository => ({
     getRegistry: () => moduleRegistry.getRegistry(),
@@ -167,6 +178,16 @@ export function createParameterAdminApplication({
     },
     resolveMapping(taskId, input) {
       return topology.resolveMapping(taskId, input);
+    },
+    validateRevision(projectId, revisionId) {
+      return topology.validateRevision(projectId, revisionId);
+    },
+
+    asDtsStructuredRepository() {
+      return dtsStructured ?? null;
+    },
+    asParameterFileRepository() {
+      return parameterFiles ?? null;
     }
   };
 }

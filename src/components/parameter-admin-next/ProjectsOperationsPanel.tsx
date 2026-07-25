@@ -5,6 +5,7 @@ import type { ParameterFileRepository } from "@/application/ports/ParameterFileR
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
+import { ConfigSetBaselinePanel } from "@/components/admin/ConfigSetBaselinePanel";
 import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
@@ -21,18 +22,26 @@ import {
   type ParameterAdminProjectRow
 } from "@/parameterAdminProjects";
 import type { ParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
-import { auditKindLabel } from "@/application/parameters/parameterAdminState";
+import {
+  auditKindLabel,
+  type ParameterAdminAuditHint
+} from "@/application/parameters/parameterAdminState";
 import { useParameterAdmin } from "./ParameterAdminProvider";
+
+export type ParameterAdminNextProjectView = "files" | "config-sets" | "structure" | "conflicts";
 
 export function parseParameterAdminNextProjectPath(pathname: string): {
   projectId: string | null;
-  filesView: boolean;
+  view: ParameterAdminNextProjectView | null;
 } {
-  const match = pathname.match(/^\/parameter-admin-next\/projects\/([^/]+)(?:\/(files))?\/?$/);
+  const match = pathname.match(
+    /^\/parameter-admin-next\/projects\/([^/]+)(?:\/(files|config-sets|structure|conflicts))?\/?$/
+  );
   if (!match) {
-    return { projectId: null, filesView: false };
+    return { projectId: null, view: null };
   }
-  return { projectId: decodeURIComponent(match[1]!), filesView: match[2] === "files" || !match[2] };
+  const view = (match[2] as ParameterAdminNextProjectView | undefined) ?? "files";
+  return { projectId: decodeURIComponent(match[1]!), view };
 }
 
 function parseListSearch(search: string): ParamAdminProjectsSearch {
@@ -53,6 +62,13 @@ function buildListSearch(patch: Partial<ParamAdminProjectsSearch>, current: Para
   return params.toString();
 }
 
+const PROJECT_VIEW_LABELS: Record<ParameterAdminNextProjectView, string> = {
+  files: "参数文件",
+  "config-sets": "配置集 / 基线",
+  structure: "结构浏览",
+  conflicts: "冲突裁决"
+};
+
 export type ProjectsOperationsPanelProps = {
   pathname: string;
   search: string;
@@ -67,8 +83,8 @@ export type ProjectsOperationsPanelProps = {
 };
 
 /**
- * Project-scoped list + parameter files (route-addressable). Replaces the #190 stub.
- * Config sets / baselines / structure browsing land in later tickets.
+ * Project-scoped list + routed project operations (files, config sets, structure, conflicts).
+ * Replaces the modal manage-files pattern with deep-linkable project views.
  */
 export function ProjectsOperationsPanel({
   pathname,
@@ -82,18 +98,24 @@ export function ProjectsOperationsPanel({
   parameterFileRepository,
   dtsStructuredRepository
 }: ProjectsOperationsPanelProps) {
-  const { dispatch: adminDispatch, state: adminState } = useParameterAdmin();
-  const { projectId, filesView } = parseParameterAdminNextProjectPath(pathname);
+  const { dispatch: adminDispatch, state: adminState, application } = useParameterAdmin();
+  const { projectId, view } = parseParameterAdminNextProjectPath(pathname);
   const isApiMode = runtimeMode === "api";
   const adminClient = useMemo(() => createParameterAdminClient(), []);
   const latestAudit = adminState.auditHints[0] ?? null;
   const fileRepository = useMemo(
-    () => parameterFileRepository ?? resolveParameterFileRepository(runtimeMode),
-    [parameterFileRepository, runtimeMode]
+    () =>
+      parameterFileRepository ??
+      application.asParameterFileRepository() ??
+      resolveParameterFileRepository(runtimeMode),
+    [application, parameterFileRepository, runtimeMode]
   );
   const dtsRepo = useMemo(
-    () => dtsStructuredRepository ?? resolveDtsStructuredRepository(runtimeMode),
-    [dtsStructuredRepository, runtimeMode]
+    () =>
+      dtsStructuredRepository ??
+      application.asDtsStructuredRepository() ??
+      resolveDtsStructuredRepository(runtimeMode),
+    [application, dtsStructuredRepository, runtimeMode]
   );
 
   const [apiRows, setApiRows] = useState<ParameterAdminProjectRow[]>([]);
@@ -105,6 +127,9 @@ export function ProjectsOperationsPanel({
   const [deletePending, setDeletePending] = useState(false);
   const [formError, setFormError] = useState("");
   const [deleteError, setDeleteError] = useState("");
+  const [availableFiles, setAvailableFiles] = useState<
+    Array<{ id: string; fileName: string; format?: string; currentVersionId?: string }>
+  >([]);
   const listSearch = useMemo(() => parseListSearch(search), [search]);
 
   const mockRows = useMemo(() => buildParameterAdminProjectsFromState(state), [state]);
@@ -137,6 +162,36 @@ export function ProjectsOperationsPanel({
     adminDispatch({ type: "SET_SELECTED_PROJECT", projectId: projectId });
   }, [adminDispatch, projectId]);
 
+  useEffect(() => {
+    if (!projectId || (view !== "config-sets" && view !== "structure")) {
+      setAvailableFiles([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const items = await fileRepository.listFiles(projectId);
+        if (!cancelled) {
+          setAvailableFiles(
+            items.map((item) => ({
+              id: item.id,
+              fileName: item.fileName,
+              format: item.format,
+              currentVersionId: item.currentVersionId
+            }))
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setAvailableFiles([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fileRepository, projectId, view]);
+
   const updateListSearch = useCallback(
     (patch: Partial<ParamAdminProjectsSearch>) => {
       const query = buildListSearch(patch, listSearch);
@@ -146,7 +201,7 @@ export function ProjectsOperationsPanel({
   );
 
   const pushAudit = useCallback(
-    (kind: "project-updated" | "project-deleted", summary: string, reason = "") => {
+    (kind: ParameterAdminAuditHint["kind"], summary: string, reason = "") => {
       adminDispatch({
         type: "PUSH_AUDIT_HINT",
         hint: {
@@ -226,9 +281,38 @@ export function ProjectsOperationsPanel({
     }
   };
 
-  if (projectId && filesView) {
+  const projectBase = projectId
+    ? `/parameter-admin-next/projects/${encodeURIComponent(projectId)}`
+    : "/parameter-admin-next/projects";
+
+  if (projectId && view) {
+    const title =
+      view === "config-sets"
+        ? `配置集 / 基线 · ${selectedProject?.name ?? projectId}`
+        : view === "structure"
+          ? `结构浏览 · ${selectedProject?.name ?? projectId}`
+          : view === "conflicts"
+            ? `冲突裁决 · ${selectedProject?.name ?? projectId}`
+            : `参数文件 · ${selectedProject?.name ?? projectId}`;
+    const subtitle =
+      view === "config-sets"
+        ? "调整配置集成员、校验修订门禁，并完成基线对比 / 回滚 / 发布。页面可通过 URL 深链与刷新保持。"
+        : view === "structure"
+          ? "浏览项目源 DTS 结构树。页面可通过 URL 深链与刷新保持。"
+          : view === "conflicts"
+            ? "裁决文件值与界面草稿冲突。页面可通过 URL 深链与刷新保持。"
+            : "上传文件、浏览不可变版本历史，并触发手动同步。页面可通过 URL 深链与刷新保持。";
+    const regionLabel =
+      view === "config-sets"
+        ? "项目配置集与基线"
+        : view === "structure"
+          ? "项目源结构"
+          : view === "conflicts"
+            ? "项目文件冲突"
+            : "项目参数文件";
+
     return (
-      <section className="param-admin-main" aria-label="项目参数文件">
+      <section className="param-admin-main" aria-label={regionLabel}>
         <div className="parameters-table-heading">
           <div>
             <button
@@ -238,12 +322,52 @@ export function ProjectsOperationsPanel({
             >
               ← 返回项目列表
             </button>
-            <h2>参数文件 · {selectedProject?.name ?? projectId}</h2>
-            <p>上传文件、浏览不可变版本历史，并触发手动同步。页面可通过 URL 深链与刷新保持。</p>
+            <h2>{title}</h2>
+            <p>{subtitle}</p>
           </div>
         </div>
-        <DtsSearchPanel projectId={projectId} repository={dtsRepo} />
-        <ProjectParameterFilesPanel projectId={projectId} repository={fileRepository} />
+        {latestAudit ? (
+          <p className="form-hint" role="status" aria-label="治理审计">
+            治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}
+            <span className="sr-only"> {latestAudit.kind}</span>
+          </p>
+        ) : null}
+        <div className="project-parameter-files-tabs" role="tablist" aria-label="项目运营视图">
+          {(Object.keys(PROJECT_VIEW_LABELS) as ParameterAdminNextProjectView[]).map((item) => (
+            <button
+              key={item}
+              type="button"
+              role="tab"
+              aria-selected={view === item}
+              className={`project-parameter-files-tab${view === item ? " is-active" : ""}`}
+              onClick={() => onNavigate(`${projectBase}/${item}`)}
+            >
+              {PROJECT_VIEW_LABELS[item]}
+            </button>
+          ))}
+        </div>
+        {view === "files" ? (
+          <>
+            <DtsSearchPanel projectId={projectId} repository={dtsRepo} />
+            <ProjectParameterFilesPanel projectId={projectId} repository={fileRepository} />
+          </>
+        ) : null}
+        {view === "config-sets" ? (
+          <ConfigSetBaselinePanel
+            projectId={projectId}
+            repository={dtsRepo}
+            canAdmin
+            availableFiles={availableFiles}
+            revisionId={adminState.selectedConfigRevisionId ?? "revision-teaching-1"}
+            validateRevision={(pid, revision) => application.validateRevision(pid, revision)}
+            onAudit={(event) => pushAudit(event.kind, event.summary)}
+          />
+        ) : null}
+        {view === "structure" || view === "conflicts" ? (
+          <p className="form-hint" role="status">
+            {view === "structure" ? "结构浏览将在后续交付。" : "冲突裁决将在后续交付。"}
+          </p>
+        ) : null}
       </section>
     );
   }
@@ -253,7 +377,7 @@ export function ProjectsOperationsPanel({
       <div className="parameters-table-heading">
         <div>
           <h2>项目运营</h2>
-          <p>项目清单与参数文件入口。打开某项目后，文件视图可通过 URL 分享与刷新保持。</p>
+          <p>项目清单与参数文件入口。打开某项目后，文件与配置集视图可通过 URL 分享与刷新保持。</p>
         </div>
       </div>
       {latestAudit ? (
@@ -286,7 +410,9 @@ export function ProjectsOperationsPanel({
           setDeleteError("");
           setDeleteTargetId(id);
         }}
-        onManageFiles={(id) => onNavigate(`/parameter-admin-next/projects/${encodeURIComponent(id)}/files`)}
+        onManageFiles={(id) =>
+          onNavigate(`/parameter-admin-next/projects/${encodeURIComponent(id)}/files`)
+        }
       />
 
       <ProjectAdminFormDialog
