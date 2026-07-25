@@ -16,6 +16,9 @@ export default defineConfig({
     exclude: ["node_modules/**", ...siblingWorktreeExclude],
     setupFiles: ["./server/testing/vitest.setup.ts"],
     passWithNoTests: true,
+    // Migration / temp-DB integration cases routinely exceed Vitest's 5s default under CI load.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     pool: "forks",
     // Shared Postgres transactional fixtures take an advisory lock; keep a modest
     // worker count so temp-DB suites still parallelize without thrashing connections.
