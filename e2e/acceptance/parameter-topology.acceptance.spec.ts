@@ -46,7 +46,10 @@ function bindingRowById(scope: Locator, bindingId: string): Locator {
   return scope.locator(`[role="row"][data-binding-id="${bindingId}"]`);
 }
 
+// Include-missing remains a hard resolve error. Dangling `&label` overlays are
+// self-anchored as warnings and must not be used as the fail-closed probe.
 const brokenBase = `/dts-v1/;
+#include "missing-acceptance-include.dtsi"
 / {
 	board {
 		compatible = "wiseeff,acceptance-broken";
@@ -57,7 +60,7 @@ const brokenBase = `/dts-v1/;
 const brokenOverlay = `/dts-v1/;
 /plugin/;
 
-&missing_label_for_compile_fail {
+&board {
 	broken = <1>;
 };
 `;
@@ -738,7 +741,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await draftDialog.getByRole("button", { name: "关闭草稿" }).click();
     await expect(draftDialog).toHaveCount(0);
 
-    // Fail-closed blocker from REAL bad DTS (accurate failure code).
+    // Fail-closed blocker from REAL bad DTS (include-missing → resolve-failed).
     const suffix = runSuffix;
     const brokenBaseName = `acceptance-broken-base-${suffix}.dts`;
     const brokenOverlayName = `acceptance-broken-overlay-${suffix}.dts`;
@@ -749,7 +752,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     const brokenOverlayUpload = await uploadDts(request, brokenOverlayName, brokenOverlay);
     const brokenCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
       headers: adminHeaders(),
-      data: { name: brokenCsName, description: `${descriptionPrefix} compiler failure` }
+      data: { name: brokenCsName, description: `${descriptionPrefix} resolve failure` }
     });
     expect(brokenCs.status()).toBe(201);
     const brokenCsBody = (await brokenCs.json()) as { item: { id: string } };
@@ -767,7 +770,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         data: { fileId: brokenOverlayUpload.fileId, role: "overlay", sortOrder: 1 }
       }
     );
-    await uploadDts(request, brokenOverlayName, brokenOverlay);
+    await uploadDts(request, brokenBaseName, brokenBase);
     const brokenRevision = await waitForRevision(brokenCsBody.item.id, () => true);
     const compileValidate = await request.post(
       apiRoute(
