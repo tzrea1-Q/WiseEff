@@ -624,19 +624,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // Same-compatible sibling nodes keep independent specs/bindings (sc8562 vs mt5788 gpio_int).
     expect(scBinding!.driverModule).not.toBe(mtBinding!.driverModule);
 
-    // Module-first navigator labels use module/driver names (e.g. sc8562), not full @unit paths.
-    const sc8562TreeItem = workspace.getByRole("treeitem", { name: /sc8562/ }).first();
+    // Module-first navigator has no device leaves (groupByDevice off); provisional buckets are
+    //「未分类 · <driver>」, not instance paths like sc8562@6E.
+    const sc8562TreeItem = workspace.getByRole("treeitem", { name: /未分类 · sc8562/ });
     await expect(sc8562TreeItem).toBeVisible({ timeout: 20_000 });
     await sc8562TreeItem.click({ timeout: 20_000 });
     const scopedSc8562Row = bindingRowById(workspace, scBinding!.id);
-    await expect(scopedSc8562Row.locator('[data-label="参数名"]')).toBeVisible();
+    await expect(scopedSc8562Row.locator('[data-label="参数名"]')).toBeVisible({ timeout: 20_000 });
     await expect(scopedSc8562Row).toContainText("sc8562@6E");
     await expect(scopedSc8562Row).toContainText("<&gpio13 29 0>");
     await expect(bindingRowById(workspace, mtBinding!.id)).toHaveCount(0);
     // Toggle the same tree node to clear subtree scoping (toolbar no longer has clear-all).
     await sc8562TreeItem.click({ timeout: 20_000 });
     const unscopedMt5788Row = bindingRowById(workspace, mtBinding!.id);
-    await expect(unscopedMt5788Row.locator('[data-label="参数名"]')).toBeVisible();
+    await expect(unscopedMt5788Row.locator('[data-label="参数名"]')).toBeVisible({ timeout: 20_000 });
     await expect(unscopedMt5788Row).toContainText("mt5788@2B");
 
     const baseBindingSnapshot = await withPgClient(async (client) => {
