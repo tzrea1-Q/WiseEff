@@ -213,7 +213,7 @@ export function getPageByPath(path: string): PageConfig {
       group: "参数管理",
       icon: Database,
       title: "参数管理后台（建设中）· 项目运营",
-      subtitle: "项目清单、参数文件与配置集 / 基线（临时建设路由）"
+      subtitle: "项目清单、参数文件、配置集 / 基线、结构浏览与冲突裁决（临时建设路由）"
     };
   }
 

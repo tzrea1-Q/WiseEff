@@ -1312,3 +1312,202 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
     );
   });
 });
+
+describe("ParameterAdminNextPage · project structure and conflict adjudication", () => {
+  const projectId = () => initialState.configDraft.projects[0]!.id;
+  const projectName = () => initialState.configDraft.projects[0]!.name;
+
+  function createDtsRepo(
+    overrides: Partial<import("@/application/ports/DtsStructuredRepository").DtsStructuredRepository> = {}
+  ): import("@/application/ports/DtsStructuredRepository").DtsStructuredRepository {
+    return {
+      listConfigSets: vi.fn().mockResolvedValue([]),
+      createConfigSet: vi.fn(),
+      addConfigSetFile: vi.fn(),
+      removeConfigSetFile: vi.fn(),
+      listBaselines: vi.fn().mockResolvedValue([]),
+      createBaseline: vi.fn(),
+      compareBaseline: vi.fn(),
+      rollbackBaseline: vi.fn(),
+      releaseBaseline: vi.fn(),
+      exportConfigSet: vi.fn(),
+      getStructure: vi.fn().mockResolvedValue({
+        nodes: [
+          {
+            nodePath: "soc/gpio",
+            name: "gpio",
+            labels: ["gpio_ctrl"],
+            properties: [
+              {
+                name: "gpio_int",
+                valueType: "u32-array",
+                rawText: "<1 2 3>",
+                normalizedValue: "1 2 3"
+              }
+            ],
+            phandleRefs: []
+          }
+        ]
+      }),
+      search: vi.fn().mockResolvedValue({ hits: [] }),
+      submitStructuredEdits: vi.fn(),
+      ...overrides
+    };
+  }
+
+  function createFileRepo(
+    overrides: Partial<import("@/application/ports/ParameterFileRepository").ParameterFileRepository> = {}
+  ): import("@/application/ports/ParameterFileRepository").ParameterFileRepository {
+    return {
+      listFiles: vi.fn().mockResolvedValue([
+        {
+          id: "file-dts-1",
+          projectId: projectId(),
+          fileName: "board.dts",
+          format: "dts",
+          enabled: true,
+          currentVersionId: "ver-dts-1",
+          currentVersionNumber: 1,
+          updatedAt: "2026-07-14T10:00:00.000Z"
+        }
+      ]),
+      uploadFile: vi.fn(),
+      uploadVersion: vi.fn(),
+      listVersions: vi.fn().mockResolvedValue([]),
+      downloadVersion: vi.fn(),
+      syncFile: vi.fn(),
+      listConflicts: vi.fn().mockResolvedValue([]),
+      resolveConflict: vi.fn(),
+      ...overrides
+    };
+  }
+
+  it("browses the source DTS structure by project route", async () => {
+    const dts = createDtsRepo();
+    renderPage({
+      path: `/parameter-admin-next/projects/${projectId()}/structure`,
+      area: "projects",
+      dtsStructuredRepository: dts,
+      parameterFileRepository: createFileRepo()
+    });
+
+    const region = await screen.findByRole("region", { name: "项目源结构" });
+    expect(within(region).getByText(new RegExp(projectName()))).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "结构浏览" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(dts.getStructure).toHaveBeenCalledWith(projectId(), "file-dts-1", "ver-dts-1")
+    );
+    expect(await screen.findByRole("treeitem", { name: /gpio/ })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("shows a clear empty state when the project has no structured DTS file", async () => {
+    renderPage({
+      path: `/parameter-admin-next/projects/${projectId()}/structure`,
+      area: "projects",
+      dtsStructuredRepository: createDtsRepo(),
+      parameterFileRepository: createFileRepo({ listFiles: vi.fn().mockResolvedValue([]) })
+    });
+
+    expect(await screen.findByText(/当前项目没有可浏览的结构化 DTS 文件/)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "结构浏览" })).not.toBeInTheDocument();
+  });
+
+  it("lists conflicts with both values and provenance, and resolves with audit", async () => {
+    const resolveConflict = vi.fn().mockResolvedValue({
+      id: "conflict-1",
+      organizationId: "org-1",
+      projectId: projectId(),
+      projectParameterValueId: "value-1",
+      parameterDefinitionId: "def-limit",
+      parameterName: "fast_charge_current_limit_ma",
+      parameterModule: "Charging Policy",
+      fileVersionId: "version-1",
+      fileDraftId: "file-draft-1",
+      uiDraftId: "ui-draft-1",
+      fileValue: "3200",
+      uiDraftValue: "3400",
+      status: "resolved_file",
+      createdAt: "2026-07-11T11:00:00.000Z"
+    });
+    const listConflicts = vi
+      .fn()
+      .mockResolvedValue([
+        {
+          id: "conflict-1",
+          organizationId: "org-1",
+          projectId: projectId(),
+          projectParameterValueId: "value-1",
+          parameterDefinitionId: "def-limit",
+          parameterName: "fast_charge_current_limit_ma",
+          parameterModule: "Charging Policy",
+          fileVersionId: "version-1",
+          fileDraftId: "file-draft-1",
+          uiDraftId: "ui-draft-1",
+          fileValue: "3200",
+          uiDraftValue: "3400",
+          status: "open",
+          createdAt: "2026-07-11T11:00:00.000Z"
+        }
+      ]);
+
+    renderPage({
+      path: `/parameter-admin-next/projects/${projectId()}/conflicts`,
+      area: "projects",
+      parameterFileRepository: createFileRepo({ listConflicts, resolveConflict }),
+      dtsStructuredRepository: createDtsRepo()
+    });
+
+    const region = await screen.findByRole("region", { name: "项目文件冲突" });
+    expect(within(region).getByText(new RegExp(projectName()))).toBeInTheDocument();
+    expect(await screen.findByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(screen.getByText("Charging Policy")).toBeInTheDocument();
+    expect(screen.getByText("3200")).toBeInTheDocument();
+    expect(screen.getByText("3400")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "保留文件值" }));
+    await waitFor(() =>
+      expect(resolveConflict).toHaveBeenCalledWith(projectId(), "conflict-1", "file")
+    );
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/file-conflict-resolved/);
+  });
+
+  it("shows a clear empty state when there are no open conflicts", async () => {
+    renderPage({
+      path: `/parameter-admin-next/projects/${projectId()}/conflicts`,
+      area: "projects",
+      parameterFileRepository: createFileRepo({ listConflicts: vi.fn().mockResolvedValue([]) }),
+      dtsStructuredRepository: createDtsRepo()
+    });
+
+    expect(await screen.findByText("当前项目没有待处理冲突。")).toBeInTheDocument();
+  });
+
+  it("behaves identically with mock file and dts adapters for structure and conflicts", async () => {
+    const { createMockDtsStructuredRepository } = await import(
+      "@/infrastructure/mock/mockDtsStructuredRepository"
+    );
+    const { createMockParameterFileRepository } = await import(
+      "@/infrastructure/mock/mockParameterFileRepository"
+    );
+
+    renderPage({
+      path: `/parameter-admin-next/projects/${projectId()}/structure`,
+      area: "projects",
+      dtsStructuredRepository: createMockDtsStructuredRepository({ projectId: projectId() }),
+      parameterFileRepository: createMockParameterFileRepository()
+    });
+
+    expect(await screen.findByRole("region", { name: "结构浏览" })).toBeInTheDocument();
+
+    cleanup();
+    renderPage({
+      path: `/parameter-admin-next/projects/${projectId()}/conflicts`,
+      area: "projects",
+      dtsStructuredRepository: createMockDtsStructuredRepository({ projectId: projectId() }),
+      parameterFileRepository: createMockParameterFileRepository()
+    });
+    expect(await screen.findByRole("region", { name: "参数文件冲突处理" })).toBeInTheDocument();
+  });
+});

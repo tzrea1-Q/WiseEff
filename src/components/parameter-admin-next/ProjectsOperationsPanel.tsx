@@ -7,10 +7,12 @@ import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStru
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { ConfigSetBaselinePanel } from "@/components/admin/ConfigSetBaselinePanel";
 import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
+import { ParameterFileConflictPanel } from "@/components/admin/ParameterFileConflictPanel";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
 import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterFilesPanel";
 import { DtsSearchPanel } from "@/components/parameters/DtsSearchPanel";
+import { DtsStructureBrowserPanel } from "@/components/parameters/DtsStructureBrowserPanel";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import type { PrototypeState } from "@/mockData";
@@ -130,6 +132,7 @@ export function ProjectsOperationsPanel({
   const [availableFiles, setAvailableFiles] = useState<
     Array<{ id: string; fileName: string; format?: string; currentVersionId?: string }>
   >([]);
+  const [projectFilesReady, setProjectFilesReady] = useState(false);
   const listSearch = useMemo(() => parseListSearch(search), [search]);
 
   const mockRows = useMemo(() => buildParameterAdminProjectsFromState(state), [state]);
@@ -165,9 +168,11 @@ export function ProjectsOperationsPanel({
   useEffect(() => {
     if (!projectId || (view !== "config-sets" && view !== "structure")) {
       setAvailableFiles([]);
+      setProjectFilesReady(false);
       return;
     }
     let cancelled = false;
+    setProjectFilesReady(false);
     void (async () => {
       try {
         const items = await fileRepository.listFiles(projectId);
@@ -185,12 +190,19 @@ export function ProjectsOperationsPanel({
         if (!cancelled) {
           setAvailableFiles([]);
         }
+      } finally {
+        if (!cancelled) {
+          setProjectFilesReady(true);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [fileRepository, projectId, view]);
+
+  const structureFile =
+    availableFiles.find((file) => file.format === "dts" && file.currentVersionId) ?? null;
 
   const updateListSearch = useCallback(
     (patch: Partial<ParamAdminProjectsSearch>) => {
@@ -363,10 +375,43 @@ export function ProjectsOperationsPanel({
             onAudit={(event) => pushAudit(event.kind, event.summary)}
           />
         ) : null}
-        {view === "structure" || view === "conflicts" ? (
-          <p className="form-hint" role="status">
-            {view === "structure" ? "结构浏览将在后续交付。" : "冲突裁决将在后续交付。"}
-          </p>
+        {view === "structure" ? (
+          !projectFilesReady ? (
+            <p className="form-hint" role="status">
+              正在加载项目文件…
+            </p>
+          ) : structureFile ? (
+            <DtsStructureBrowserPanel
+              projectId={projectId}
+              repository={dtsRepo}
+              fileId={structureFile.id}
+              versionId={structureFile.currentVersionId}
+              canEdit
+              canEditCritical
+            />
+          ) : (
+            <p className="form-hint" role="status">
+              当前项目没有可浏览的结构化 DTS 文件。请先在「参数文件」中上传带当前版本的 DTS。
+            </p>
+          )
+        ) : null}
+        {view === "conflicts" ? (
+          <ParameterFileConflictPanel
+            open
+            variant="embedded"
+            projectId={projectId}
+            repository={fileRepository}
+            onClose={() => onNavigate(`${projectBase}/files`)}
+            onOpenConflictCountChange={(count) =>
+              adminDispatch({ type: "SET_QUEUE_COUNTS", counts: { fileConflicts: count } })
+            }
+            onResolved={({ parameterName, resolution }) =>
+              pushAudit(
+                "file-conflict-resolved",
+                `已裁决「${parameterName}」为${resolution === "file" ? "文件值" : "界面值"}`
+              )
+            }
+          />
         ) : null}
       </section>
     );

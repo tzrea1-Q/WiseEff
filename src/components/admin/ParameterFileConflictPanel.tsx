@@ -7,6 +7,13 @@ type ParameterFileConflictPanelProps = {
   repository: ParameterFileRepository;
   onClose: () => void;
   onOpenConflictCountChange?: (count: number) => void;
+  /** Route-embedded page mode (no modal). Default keeps legacy dialog behaviour. */
+  variant?: "modal" | "embedded";
+  onResolved?: (input: {
+    conflictId: string;
+    resolution: "file" | "ui";
+    parameterName: string;
+  }) => void;
 };
 
 function getParameterDisplayName(conflict: ParameterFileSyncConflict) {
@@ -21,7 +28,9 @@ export function ParameterFileConflictPanel({
   projectId,
   repository,
   onClose,
-  onOpenConflictCountChange
+  onOpenConflictCountChange,
+  variant = "modal",
+  onResolved
 }: ParameterFileConflictPanelProps) {
   const [loading, setLoading] = useState(false);
   const [resolvingConflictId, setResolvingConflictId] = useState<string | null>(null);
@@ -72,6 +81,11 @@ export function ParameterFileConflictPanel({
         onOpenConflictCountChange?.(next.filter((item) => item.status === "open").length);
         return next;
       });
+      onResolved?.({
+        conflictId,
+        resolution,
+        parameterName: getParameterDisplayName(resolved)
+      });
     } catch (resolveError) {
       setError(resolveError instanceof Error ? resolveError.message : "冲突处理失败。");
     } finally {
@@ -83,75 +97,93 @@ export function ParameterFileConflictPanel({
     return null;
   }
 
-  return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="参数文件冲突处理" onClick={onClose}>
-      <section className="submission-dialog parameter-file-conflict-panel" onClick={(event) => event.stopPropagation()}>
-        <header className="parameter-file-conflict-panel__header">
-          <div>
-            <h2>参数文件冲突</h2>
-            <p>处理文件同步与界面草稿并发修改产生的冲突。</p>
-          </div>
+  const body = (
+    <section
+      className={
+        variant === "embedded"
+          ? "parameter-file-conflict-panel parameter-file-conflict-panel--embedded"
+          : "submission-dialog parameter-file-conflict-panel"
+      }
+      aria-label="参数文件冲突处理"
+      onClick={variant === "modal" ? (event) => event.stopPropagation() : undefined}
+    >
+      <header className="parameter-file-conflict-panel__header">
+        <div>
+          <h2>参数文件冲突</h2>
+          <p>处理文件同步与界面草稿并发修改产生的冲突。</p>
+        </div>
+        {variant === "modal" ? (
           <button type="button" className="button subtle" onClick={onClose}>
             关闭
           </button>
-        </header>
-        {loading ? <p className="parameter-file-conflict-panel__loading">冲突列表加载中…</p> : null}
-        {error ? (
-          <p className="parameter-file-conflict-panel__error" role="alert">
-            {error}
-          </p>
         ) : null}
-        {!loading && openConflicts.length === 0 ? (
-          <p className="parameter-file-conflict-panel__empty">当前项目没有待处理冲突。</p>
-        ) : null}
-        {openConflicts.length > 0 ? (
-          <ul className="parameter-file-conflict-panel__list" aria-label="参数文件冲突列表">
-            {openConflicts.map((conflict) => {
-              const isResolving = resolvingConflictId === conflict.id;
-              return (
-                <li key={conflict.id} className="parameter-file-conflict-panel__item">
-                  <div className="parameter-file-conflict-panel__item-header">
-                    <strong>{getParameterDisplayName(conflict)}</strong>
-                    <span>{conflict.parameterModule ?? "未归属模块"}</span>
-                  </div>
-                  <div className="parameter-file-conflict-panel__values">
-                    <article>
-                      <h3>文件值</h3>
-                      <pre>{conflict.fileValue || "(空值)"}</pre>
-                    </article>
-                    <article>
-                      <h3>界面值</h3>
-                      <pre>{conflict.uiDraftValue || "(空值)"}</pre>
-                    </article>
-                  </div>
-                  <div className="parameter-file-conflict-panel__actions">
-                    <button
-                      type="button"
-                      className="button subtle"
-                      disabled={isResolving}
-                      onClick={() => {
-                        void resolveConflict(conflict.id, "file");
-                      }}
-                    >
-                      保留文件值
-                    </button>
-                    <button
-                      type="button"
-                      className="button primary"
-                      disabled={isResolving}
-                      onClick={() => {
-                        void resolveConflict(conflict.id, "ui");
-                      }}
-                    >
-                      保留界面值
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        ) : null}
-      </section>
+      </header>
+      {loading ? <p className="parameter-file-conflict-panel__loading">冲突列表加载中…</p> : null}
+      {error ? (
+        <p className="parameter-file-conflict-panel__error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {!loading && openConflicts.length === 0 ? (
+        <p className="parameter-file-conflict-panel__empty">当前项目没有待处理冲突。</p>
+      ) : null}
+      {openConflicts.length > 0 ? (
+        <ul className="parameter-file-conflict-panel__list" aria-label="参数文件冲突列表">
+          {openConflicts.map((conflict) => {
+            const isResolving = resolvingConflictId === conflict.id;
+            return (
+              <li key={conflict.id} className="parameter-file-conflict-panel__item">
+                <div className="parameter-file-conflict-panel__item-header">
+                  <strong>{getParameterDisplayName(conflict)}</strong>
+                  <span>{conflict.parameterModule ?? "未归属模块"}</span>
+                </div>
+                <div className="parameter-file-conflict-panel__values">
+                  <article>
+                    <h3>文件值</h3>
+                    <pre>{conflict.fileValue || "(空值)"}</pre>
+                  </article>
+                  <article>
+                    <h3>界面值</h3>
+                    <pre>{conflict.uiDraftValue || "(空值)"}</pre>
+                  </article>
+                </div>
+                <div className="parameter-file-conflict-panel__actions">
+                  <button
+                    type="button"
+                    className="button subtle"
+                    disabled={isResolving}
+                    onClick={() => {
+                      void resolveConflict(conflict.id, "file");
+                    }}
+                  >
+                    保留文件值
+                  </button>
+                  <button
+                    type="button"
+                    className="button primary"
+                    disabled={isResolving}
+                    onClick={() => {
+                      void resolveConflict(conflict.id, "ui");
+                    }}
+                  >
+                    保留界面值
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </section>
+  );
+
+  if (variant === "embedded") {
+    return body;
+  }
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="参数文件冲突处理" onClick={onClose}>
+      {body}
     </div>
   );
 }
