@@ -67,6 +67,8 @@ export function ParameterModuleMappingPanel({
   const [matchValue, setMatchValue] = useState("");
   const [recomputing, setRecomputing] = useState(false);
   const [recomputeNotice, setRecomputeNotice] = useState<string | null>(null);
+  const [renamingModuleId, setRenamingModuleId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -146,8 +148,42 @@ export function ParameterModuleMappingPanel({
       if (mappingModuleId === moduleId) {
         setMappingModuleId(next.modules[0]?.id ?? "");
       }
+      if (renamingModuleId === moduleId) {
+        setRenamingModuleId(null);
+        setRenameValue("");
+      }
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "删除模块失败。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const renameModule = async (moduleId: string) => {
+    if (!canAdmin || !renameValue.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await client.updateModule(moduleId, { name: renameValue.trim() });
+      setRegistry(next);
+      setRenamingModuleId(null);
+      setRenameValue("");
+    } catch (renameError) {
+      setError(renameError instanceof Error ? renameError.message : "重命名模块失败。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const moveModule = async (moduleId: string, parentId: string | null) => {
+    if (!canAdmin) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await client.updateModule(moduleId, { parentId });
+      setRegistry(next);
+    } catch (moveError) {
+      setError(moveError instanceof Error ? moveError.message : "移动模块失败。");
     } finally {
       setBusy(false);
     }
@@ -323,17 +359,81 @@ export function ParameterModuleMappingPanel({
               <li key={module.id}>
                 <strong>{module.name}</strong>
                 <small>重要性：{module.importance}</small>
+                {module.parentId ? (
+                  <small>
+                    父级：
+                    {registry.modules.find((item) => item.id === module.parentId)?.name ?? module.parentId}
+                  </small>
+                ) : (
+                  <small>父级：根</small>
+                )}
                 {canAdmin ? (
-                  <button
-                    type="button"
-                    className="button subtle"
-                    disabled={busy}
-                    aria-label={`删除模块 ${module.name}`}
-                    onClick={() => void removeModule(module.id)}
-                  >
-                    <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
-                    删除
-                  </button>
+                  <div className="param-admin-row-actions">
+                    <button
+                      type="button"
+                      className="button subtle"
+                      disabled={busy}
+                      aria-label={`重命名模块 ${module.name}`}
+                      onClick={() => {
+                        setRenamingModuleId(module.id);
+                        setRenameValue(module.name);
+                      }}
+                    >
+                      重命名
+                    </button>
+                    <label>
+                      移动到
+                      <select
+                        aria-label={`移动模块 ${module.name}`}
+                        disabled={busy}
+                        value={module.parentId ?? ""}
+                        onChange={(event) => {
+                          const nextParent = event.target.value || null;
+                          if (nextParent === (module.parentId ?? null)) return;
+                          void moveModule(module.id, nextParent);
+                        }}
+                      >
+                        <option value="">根（无父级）</option>
+                        {registry.modules
+                          .filter((candidate) => candidate.id !== module.id)
+                          .map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>
+                              {candidate.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="button subtle"
+                      disabled={busy}
+                      aria-label={`删除模块 ${module.name}`}
+                      onClick={() => void removeModule(module.id)}
+                    >
+                      <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
+                      删除
+                    </button>
+                  </div>
+                ) : null}
+                {canAdmin && renamingModuleId === module.id ? (
+                  <div className="parameter-module-mapping-panel__form">
+                    <label>
+                      新模块名称
+                      <input
+                        aria-label="新模块名称"
+                        value={renameValue}
+                        onChange={(event) => setRenameValue(event.target.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={busy || !renameValue.trim()}
+                      onClick={() => void renameModule(module.id)}
+                    >
+                      确认重命名
+                    </button>
+                  </div>
                 ) : null}
               </li>
             ))}

@@ -1,7 +1,10 @@
 import { useMemo } from "react";
+import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import { resolveParameterModuleRegistryRepository } from "@/application/parameters/parameterModuleRegistryResolve";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { OrganizationModuleGovernancePanel } from "@/components/parameter-admin-next/OrganizationModuleGovernancePanel";
 import { OrganizationSpecGovernancePanel } from "@/components/parameter-admin-next/OrganizationSpecGovernancePanel";
 import { ParameterAdminNextProjectStub } from "@/components/parameter-admin-next/ParameterAdminNextProjectStub";
 import { ParameterAdminNextScopeNav } from "@/components/parameter-admin-next/ParameterAdminNextScopeNav";
@@ -14,10 +17,11 @@ export type ParameterAdminNextPageProps = {
   runtimeMode?: WiseEffRuntimeMode;
   /** Injected at the port seam for tests; production resolves from runtime mode. */
   parameterTopologyRepository?: ParameterTopologyRepository;
+  parameterModuleRegistryRepository?: ParameterModuleRegistryRepository;
 };
 
 /**
- * Temporary construction surface for the redesigned parameter admin (#190).
+ * Temporary construction surface for the redesigned parameter admin (#190+).
  * Canonical `/parameter-admin` stays on the legacy tree until ticket 09.
  */
 export function ParameterAdminNextPage({
@@ -25,22 +29,31 @@ export function ParameterAdminNextPage({
   onNavigate,
   search,
   runtimeMode = "mock",
-  parameterTopologyRepository
+  parameterTopologyRepository,
+  parameterModuleRegistryRepository
 }: ParameterAdminNextPageProps) {
   const topology = useMemo(
     () => parameterTopologyRepository ?? resolveParameterTopologyRepository(runtimeMode),
     [parameterTopologyRepository, runtimeMode]
   );
+  const moduleRegistry = useMemo(
+    () =>
+      parameterModuleRegistryRepository ?? resolveParameterModuleRegistryRepository(runtimeMode),
+    [parameterModuleRegistryRepository, runtimeMode]
+  );
   const pathname = area === "projects" ? "/parameter-admin-next/projects" : "/parameter-admin-next";
 
   return (
-    <ParameterAdminProvider topology={topology}>
+    <ParameterAdminProvider topology={topology} moduleRegistry={moduleRegistry}>
       <div className="param-admin-shell">
         <ParameterAdminNextScopeNav active={area} onNavigate={onNavigate} />
         {area === "projects" ? (
           <ParameterAdminNextProjectStub />
         ) : (
-          <OrganizationSpecGovernancePanel search={search} pathname={pathname} />
+          <>
+            <OrganizationModuleGovernancePanel />
+            <OrganizationSpecGovernancePanel search={search} pathname={pathname} />
+          </>
         )}
       </div>
     </ParameterAdminProvider>

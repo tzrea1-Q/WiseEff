@@ -5,7 +5,11 @@ import {
   sortParameterSpecRows,
   toParameterAdminFilters
 } from "@/application/parameters/parameterAdminUrl";
-import { auditKindForResolveDecision } from "@/application/parameters/parameterAdminState";
+import {
+  auditKindForResolveDecision,
+  auditKindLabel
+} from "@/application/parameters/parameterAdminState";
+import type { ParameterAdminAuditHint } from "@/application/parameters/parameterAdminState";
 import {
   mapParameterSpecToLibraryRow,
   ParameterSpecLibrary,
@@ -55,18 +59,6 @@ function formatReviewActionError(error: unknown): string {
     }
   }
   return "审核操作失败，请重试。";
-}
-
-function auditKindLabel(kind: "spec-review-resolved" | "spec-review-dismissed" | "spec-review-create-spec"): string {
-  switch (kind) {
-    case "spec-review-dismissed":
-      return "规格审核驳回";
-    case "spec-review-create-spec":
-      return "创建草稿规格";
-    case "spec-review-resolved":
-    default:
-      return "规格审核批准";
-  }
 }
 
 function toReviewTaskView(task: {
@@ -219,11 +211,7 @@ export function OrganizationSpecGovernancePanel({
   );
 
   const pushAudit = useCallback(
-    (
-      kind: "spec-review-resolved" | "spec-review-dismissed" | "spec-review-create-spec",
-      reason: string,
-      summary: string
-    ) => {
+    (kind: ParameterAdminAuditHint["kind"], reason: string, summary: string) => {
       dispatch({
         type: "PUSH_AUDIT_HINT",
         hint: {

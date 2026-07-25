@@ -9,6 +9,7 @@ import {
   type ParameterAdminAction,
   type ParameterAdminState
 } from "@/application/parameters/parameterAdminState";
+import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 
 type ParameterAdminContextValue = {
@@ -21,17 +22,22 @@ const ParameterAdminContext = createContext<ParameterAdminContextValue | null>(n
 
 export type ParameterAdminProviderProps = {
   topology: ParameterTopologyRepository;
+  moduleRegistry: ParameterModuleRegistryRepository;
   children: ReactNode;
   initialState?: ParameterAdminState;
 };
 
 export function ParameterAdminProvider({
   topology,
+  moduleRegistry,
   children,
   initialState = initialParameterAdminState
 }: ParameterAdminProviderProps) {
   const [state, dispatch] = useReducer(parameterAdminReducer, initialState);
-  const application = useMemo(() => createParameterAdminApplication({ topology }), [topology]);
+  const application = useMemo(
+    () => createParameterAdminApplication({ topology, moduleRegistry }),
+    [topology, moduleRegistry]
+  );
   const value = useMemo(() => ({ state, dispatch, application }), [state, application]);
 
   return <ParameterAdminContext.Provider value={value}>{children}</ParameterAdminContext.Provider>;

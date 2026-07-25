@@ -1,11 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 import type {
   ParameterSpecDetail,
   ParameterSpecSummary,
   SpecReviewTask
 } from "@/domain/parameter-topology/types";
+import { createMockParameterModuleRegistryRepository } from "@/infrastructure/mock/mockParameterModuleRegistryRepository";
 import { createMockParameterTopologyRepository } from "@/infrastructure/mock/mockParameterTopologyRepository";
 import { ParameterAdminNextPage } from "./ParameterAdminNextPage";
 
@@ -61,6 +64,22 @@ const OPEN_REVIEW_TASK: SpecReviewTask = {
   createdAt: "2026-07-14T10:00:00.000Z"
 };
 
+const SEED_REGISTRY: ParameterModuleRegistry = {
+  modules: [
+    { id: "mod-charging", name: "充电策略", parentId: null, sortOrder: 0, importance: "high" },
+    { id: "mod-battery", name: "电池安全", parentId: "mod-charging", sortOrder: 1, importance: "medium" }
+  ],
+  mappings: [
+    {
+      id: "map-sc8562",
+      moduleId: "mod-charging",
+      matchKind: "driver",
+      matchValue: "sc8562",
+      priority: 100
+    }
+  ]
+};
+
 function createRepository(
   overrides: Partial<ParameterTopologyRepository> = {}
 ): ParameterTopologyRepository {
@@ -82,9 +101,114 @@ function createRepository(
   };
 }
 
+function createModuleRegistry(
+  overrides: Partial<ParameterModuleRegistryRepository> = {}
+): ParameterModuleRegistryRepository {
+  let registry: ParameterModuleRegistry = {
+    modules: SEED_REGISTRY.modules.map((module) => ({ ...module })),
+    mappings: SEED_REGISTRY.mappings.map((mapping) => ({ ...mapping }))
+  };
+  let moduleSeq = 0;
+  let mappingSeq = 0;
+
+  const base: ParameterModuleRegistryRepository = {
+    getRegistry: vi.fn(async () => ({
+      modules: registry.modules.map((module) => ({ ...module })),
+      mappings: registry.mappings.map((mapping) => ({ ...mapping }))
+    })),
+    getDiscoveryHints: vi.fn(async () => ({
+      compatibles: [{ compatible: "vendor,unmapped-ic", bindingCount: 2 }]
+    })),
+    createModule: vi.fn(async (input) => {
+      moduleSeq += 1;
+      registry = {
+        ...registry,
+        modules: [
+          ...registry.modules,
+          {
+            id: `mod-new-${moduleSeq}`,
+            name: input.name,
+            parentId: input.parentId ?? null,
+            sortOrder: input.sortOrder ?? registry.modules.length,
+            importance: input.importance ?? "medium"
+          }
+        ]
+      };
+      return {
+        modules: registry.modules.map((module) => ({ ...module })),
+        mappings: registry.mappings.map((mapping) => ({ ...mapping }))
+      };
+    }),
+    updateModule: vi.fn(async (moduleId, input) => {
+      registry = {
+        ...registry,
+        modules: registry.modules.map((module) =>
+          module.id === moduleId
+            ? {
+                ...module,
+                name: input.name ?? module.name,
+                parentId: input.parentId === undefined ? module.parentId : input.parentId,
+                sortOrder: input.sortOrder ?? module.sortOrder,
+                importance: input.importance ?? module.importance
+              }
+            : module
+        )
+      };
+      return {
+        modules: registry.modules.map((module) => ({ ...module })),
+        mappings: registry.mappings.map((mapping) => ({ ...mapping }))
+      };
+    }),
+    deleteModule: vi.fn(async (moduleId) => {
+      registry = {
+        modules: registry.modules.filter((module) => module.id !== moduleId),
+        mappings: registry.mappings.filter((mapping) => mapping.moduleId !== moduleId)
+      };
+      return {
+        modules: registry.modules.map((module) => ({ ...module })),
+        mappings: registry.mappings.map((mapping) => ({ ...mapping }))
+      };
+    }),
+    createMapping: vi.fn(async (input) => {
+      mappingSeq += 1;
+      registry = {
+        ...registry,
+        mappings: [
+          ...registry.mappings,
+          {
+            id: `map-new-${mappingSeq}`,
+            moduleId: input.moduleId,
+            matchKind: input.matchKind,
+            matchValue: input.matchValue,
+            priority: input.priority ?? 0
+          }
+        ]
+      };
+      return {
+        modules: registry.modules.map((module) => ({ ...module })),
+        mappings: registry.mappings.map((mapping) => ({ ...mapping }))
+      };
+    }),
+    deleteMapping: vi.fn(async (mappingId) => {
+      registry = {
+        ...registry,
+        mappings: registry.mappings.filter((mapping) => mapping.id !== mappingId)
+      };
+      return {
+        modules: registry.modules.map((module) => ({ ...module })),
+        mappings: registry.mappings.map((mapping) => ({ ...mapping }))
+      };
+    }),
+    recomputeBindings: vi.fn(async () => ({ updated: 3, conflicts: [] }))
+  };
+
+  return { ...base, ...overrides };
+}
+
 function renderPage(options: {
   path?: string;
   repository?: ParameterTopologyRepository;
+  moduleRegistry?: ParameterModuleRegistryRepository;
   onNavigate?: ReturnType<typeof vi.fn>;
   area?: "organization" | "projects";
 } = {}) {
@@ -92,6 +216,7 @@ function renderPage(options: {
   window.history.replaceState(null, "", path);
   const onNavigate = options.onNavigate ?? vi.fn();
   const repository = options.repository ?? createRepository();
+  const moduleRegistry = options.moduleRegistry ?? createModuleRegistry();
   const area =
     options.area ??
     (path.startsWith("/parameter-admin-next/projects") ? "projects" : "organization");
@@ -103,10 +228,11 @@ function renderPage(options: {
       onNavigate={onNavigate}
       search={search}
       parameterTopologyRepository={repository}
+      parameterModuleRegistryRepository={moduleRegistry}
     />
   );
 
-  return { onNavigate, repository };
+  return { onNavigate, repository, moduleRegistry };
 }
 
 describe("ParameterAdminNextPage · shell", () => {
@@ -303,5 +429,163 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     await waitFor(() => expect(within(queue).getByText("没有待审核的推理规格。")).toBeInTheDocument());
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/spec-review-resolved/);
+  });
+});
+
+describe("ParameterAdminNextPage · organization module tree and driver mapping", () => {
+  it("loads the module registry through the injected module registry port", async () => {
+    const moduleRegistry = createModuleRegistry();
+    renderPage({ moduleRegistry });
+
+    const panel = await screen.findByRole("region", { name: "模块映射管理" });
+    expect(within(panel).getAllByText("充电策略").length).toBeGreaterThan(0);
+    expect(within(panel).getByText("driver:sc8562")).toBeInTheDocument();
+    expect(moduleRegistry.getRegistry).toHaveBeenCalled();
+  });
+
+  it("creates, renames, moves, and deletes modules with governance audit", async () => {
+    const moduleRegistry = createModuleRegistry();
+    renderPage({ moduleRegistry });
+
+    const panel = await screen.findByRole("region", { name: "模块映射管理" });
+
+    fireEvent.change(within(panel).getByRole("textbox", { name: "模块名称" }), {
+      target: { value: "电源路径" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "创建模块" }));
+
+    await waitFor(() => expect(moduleRegistry.createModule).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "电源路径" })
+    ));
+    await waitFor(() =>
+      expect(within(panel).getByRole("button", { name: "重命名模块 电源路径" })).toBeInTheDocument()
+    );
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-created/);
+
+    fireEvent.click(within(panel).getByRole("button", { name: "重命名模块 电源路径" }));
+    fireEvent.change(within(panel).getByRole("textbox", { name: "新模块名称" }), {
+      target: { value: "电源路径组" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "确认重命名" }));
+
+    await waitFor(() =>
+      expect(moduleRegistry.updateModule).toHaveBeenCalledWith(
+        "mod-new-1",
+        expect.objectContaining({ name: "电源路径组" })
+      )
+    );
+    await waitFor(() =>
+      expect(within(panel).getByRole("button", { name: "重命名模块 电源路径组" })).toBeInTheDocument()
+    );
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-renamed/);
+
+    fireEvent.change(within(panel).getByRole("combobox", { name: "移动模块 电源路径组" }), {
+      target: { value: "mod-charging" }
+    });
+    await waitFor(() =>
+      expect(moduleRegistry.updateModule).toHaveBeenCalledWith("mod-new-1", {
+        parentId: "mod-charging"
+      })
+    );
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-moved/);
+
+    fireEvent.click(within(panel).getByRole("button", { name: "删除模块 电源路径组" }));
+    await waitFor(() => expect(moduleRegistry.deleteModule).toHaveBeenCalledWith("mod-new-1"));
+    await waitFor(() =>
+      expect(within(panel).queryByRole("button", { name: "删除模块 电源路径组" })).not.toBeInTheDocument()
+    );
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-deleted/);
+  });
+
+  it("creates and removes driver, compatible, and instance mappings with audit", async () => {
+    const moduleRegistry = createModuleRegistry();
+    renderPage({ moduleRegistry });
+
+    const panel = await screen.findByRole("region", { name: "模块映射管理" });
+
+    fireEvent.change(within(panel).getByRole("combobox", { name: "目标模块" }), {
+      target: { value: "mod-charging" }
+    });
+    fireEvent.change(within(panel).getByRole("combobox", { name: "匹配类型" }), {
+      target: { value: "compatible" }
+    });
+    fireEvent.change(within(panel).getByRole("textbox", { name: "匹配值" }), {
+      target: { value: "vendor,mt5788" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "添加映射" }));
+
+    await waitFor(() =>
+      expect(moduleRegistry.createMapping).toHaveBeenCalledWith({
+        moduleId: "mod-charging",
+        matchKind: "compatible",
+        matchValue: "vendor,mt5788"
+      })
+    );
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-mapping-created/);
+
+    fireEvent.change(within(panel).getByRole("combobox", { name: "匹配类型" }), {
+      target: { value: "instance" }
+    });
+    fireEvent.change(within(panel).getByRole("textbox", { name: "匹配值" }), {
+      target: { value: "sc8562@6E" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "添加映射" }));
+
+    await waitFor(() =>
+      expect(moduleRegistry.createMapping).toHaveBeenCalledWith({
+        moduleId: "mod-charging",
+        matchKind: "instance",
+        matchValue: "sc8562@6E"
+      })
+    );
+
+    fireEvent.click(within(panel).getByRole("button", { name: "删除映射 compatible:vendor,mt5788" }));
+    await waitFor(() => expect(moduleRegistry.deleteMapping).toHaveBeenCalled());
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-mapping-deleted/);
+  });
+
+  it("surfaces unmapped drivers as a queue and shows recompute outcome", async () => {
+    const repository = createRepository({
+      listSpecs: vi.fn().mockResolvedValue([
+        SPEC_SUMMARY,
+        { ...SPEC_SUMMARY, id: "spec-mt5788-gpio-int", driverModule: "mt5788", propertyKey: "gpio_int" }
+      ])
+    });
+    const moduleRegistry = createModuleRegistry();
+    renderPage({ repository, moduleRegistry });
+
+    const panel = await screen.findByRole("region", { name: "模块映射管理" });
+    const driverQueue = within(panel).getByRole("region", { name: "模块发现队列（driver）" });
+    expect(within(driverQueue).getByText("mt5788")).toBeInTheDocument();
+    expect(within(driverQueue).queryByText("sc8562")).not.toBeInTheDocument();
+
+    const compatibleQueue = within(panel).getByRole("region", { name: "模块发现队列（compatible）" });
+    expect(within(compatibleQueue).getByText("vendor,unmapped-ic")).toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "重算模块归属" }));
+    await waitFor(() => expect(moduleRegistry.recomputeBindings).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(within(panel).getByText(/已重算模块归属，更新 3 个参数绑定/)).toBeInTheDocument()
+    );
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(
+      /module-bindings-recomputed/
+    );
+  });
+
+  it("behaves identically when backed by the mock module registry adapter", async () => {
+    const moduleRegistry = createMockParameterModuleRegistryRepository();
+    renderPage({ moduleRegistry });
+
+    const panel = await screen.findByRole("region", { name: "模块映射管理" });
+    expect(within(panel).getAllByText("充电策略").length).toBeGreaterThan(0);
+
+    fireEvent.change(within(panel).getByRole("textbox", { name: "模块名称" }), {
+      target: { value: "Mock 模块" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "创建模块" }));
+    await waitFor(() =>
+      expect(within(panel).getByRole("button", { name: "重命名模块 Mock 模块" })).toBeInTheDocument()
+    );
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-created/);
   });
 });

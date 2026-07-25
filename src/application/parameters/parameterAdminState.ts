@@ -1,7 +1,17 @@
 export type ParameterAdminArea = "organization" | "projects";
 
 export type ParameterAdminAuditHint = {
-  kind: "spec-review-resolved" | "spec-review-dismissed" | "spec-review-create-spec";
+  kind:
+    | "spec-review-resolved"
+    | "spec-review-dismissed"
+    | "spec-review-create-spec"
+    | "module-created"
+    | "module-renamed"
+    | "module-moved"
+    | "module-deleted"
+    | "module-mapping-created"
+    | "module-mapping-deleted"
+    | "module-bindings-recomputed";
   summary: string;
   reason: string;
   recordedAt: string;
@@ -89,4 +99,30 @@ export function auditKindForResolveDecision(
     return "spec-review-create-spec";
   }
   return decision === "dismissed" ? "spec-review-dismissed" : "spec-review-resolved";
+}
+
+export function auditKindLabel(kind: ParameterAdminAuditHint["kind"]): string {
+  switch (kind) {
+    case "spec-review-dismissed":
+      return "规格审核驳回";
+    case "spec-review-create-spec":
+      return "创建草稿规格";
+    case "module-created":
+      return "创建业务模块";
+    case "module-renamed":
+      return "重命名业务模块";
+    case "module-moved":
+      return "移动业务模块";
+    case "module-deleted":
+      return "删除业务模块";
+    case "module-mapping-created":
+      return "创建驱动映射";
+    case "module-mapping-deleted":
+      return "删除驱动映射";
+    case "module-bindings-recomputed":
+      return "重算模块归属";
+    case "spec-review-resolved":
+    default:
+      return "规格审核批准";
+  }
 }
