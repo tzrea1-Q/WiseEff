@@ -554,7 +554,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(workspace.getByRole("tree", { name: "业务模块树" })).toBeVisible({
       timeout: 20_000
     });
-    await expect(workspace.getByLabelText("DTS 源码")).toBeVisible({
+    await expect(workspace.getByLabel("DTS 源码")).toBeVisible({
       timeout: 20_000
     });
     await expect(workspace.getByRole("tree", { name: "生效 DTS 拓扑" })).toHaveCount(0);
