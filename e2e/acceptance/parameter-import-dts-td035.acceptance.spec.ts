@@ -66,7 +66,7 @@ test.describe("PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignmen
 
     await page.goto("/parameter-admin");
     await dismissXiaozeHint(page);
-    await page.getByRole("toolbar", { name: /项目参数管理后台页面操作/ }).getByRole("button", { name: "批量参数导入" }).click();
+    await page.getByRole("button", { name: "打开批量参数导入" }).click();
     const wizard = page.getByRole("dialog", { name: "批量参数导入向导" });
     await expect(wizard).toBeVisible();
     await wizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();

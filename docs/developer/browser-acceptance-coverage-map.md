@@ -51,7 +51,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `PARAM-TOPOLOGY-BROWSE-001` | B | Yes | Inside the integrated DTS workbench, users toggle real source/effective views, select the nested `amba` → `i2c@FDF5E000` → `sc8562@6E` context, search two `gpio_int` semantic rows, and open the mature detail dialog with path, raw value, shape, and provenance; topology API must return 200 with expected nodes. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-TOPOLOGY-EDIT-001` | B | Yes | Typed binding drafts surface schema cell-count diagnostics, reject stale revision with HTTP 409, and exercise fail-closed compiler/toolchain validate on a throwaway Config Set. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-IDENTITY-MAP-001` | B | Yes | Open identity mapping blocks validate (`open-mapping`); resolve clears the blocker with governance audit evidence. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PARAM-IDENTITY-MAP-ADMIN-001` | B | No | Admin resolves identity mapping tasks from `/parameter-admin` (construction) / `/parameter-admin` (after ticket 09) with evidence and governance audit. Browser acceptance retarget lands in #198. | pending — `#198` |
+| `PARAM-IDENTITY-MAP-ADMIN-001` | B | Yes | Admin resolves identity mapping tasks from `/parameter-admin` with candidate evidence and governance audit. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-CONFIG-PUBLISH-GATE-001` | B | Yes | Real toolchain validate succeeds on golden/candidate Config Set after status=okay + vendor linux-bindings (not schema-failed-as-success); bindingId + provenance persist from DB after reload. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 
 ## Interpretation

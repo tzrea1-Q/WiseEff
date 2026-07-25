@@ -88,8 +88,8 @@ export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingRevie
                 <div>
                   <h4>证据</h4>
                   <ul aria-label="映射证据">
-                    {evidenceLines.map((line) => (
-                      <li key={line}>{line}</li>
+                    {evidenceLines.map((line, index) => (
+                      <li key={`${index}:${line}`}>{line}</li>
                     ))}
                   </ul>
                 </div>

@@ -1994,4 +1994,162 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       });
     }
   });
+
+  test("resolves identity mapping tasks from the parameter admin surface", async ({ page, request }, testInfo) => {
+    // @acceptance PARAM-IDENTITY-MAP-ADMIN-001
+    // @operation PARAM-IDENTITY-MAP-ADMIN-001
+    test.setTimeout(120_000);
+    const runSuffix = randomUUID().slice(0, 8);
+    const mapCsName = `acceptance-map-admin-${runSuffix}`;
+    const r1Name = `acceptance-map-admin-r1-${runSuffix}.dts`;
+    const r2Name = `acceptance-map-admin-r2-${runSuffix}.dts`;
+    const createdConfigSetNames = [mapCsName];
+    const createdFileNames = [r1Name, r2Name];
+
+    try {
+      await ensureAuroraSemanticTopology(request);
+
+      const mapCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(),
+        data: { name: mapCsName, description: `${descriptionPrefix} admin identity map` }
+      });
+      expect(mapCs.status()).toBe(201);
+      const mapCsBody = (await mapCs.json()) as { item: { id: string } };
+
+      const r1Upload = await uploadDts(request, r1Name, mappingR1);
+      await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${mapCsBody.item.id}/files`),
+        {
+          headers: adminHeaders(),
+          data: { fileId: r1Upload.fileId, role: "base", sortOrder: 0 }
+        }
+      );
+      await uploadDts(request, r1Name, mappingR1);
+      const r1Revision = await waitForRevision(mapCsBody.item.id, (row) =>
+        ["resolved", "validated", "needs_mapping"].includes(row.status)
+      );
+      expect(r1Revision.status).not.toBe("invalid");
+
+      const r2Upload = await uploadDts(request, r2Name, mappingR2);
+      await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${mapCsBody.item.id}/files`),
+        {
+          headers: adminHeaders(),
+          data: { fileId: r2Upload.fileId, role: "overlay", sortOrder: 1 }
+        }
+      );
+      await uploadDts(request, r2Name, mappingR2);
+      const r2Revision = await waitForRevision(
+        mapCsBody.item.id,
+        (row) => row.id !== r1Revision.id && row.status === "needs_mapping",
+        30_000
+      );
+
+      const mappingList = await request.get(
+        apiRoute(
+          `/api/v2/identity-mapping-tasks?projectId=${encodeURIComponent(projectId)}&status=open`
+        ),
+        { headers: adminHeaders() }
+      );
+      expect(mappingList.ok()).toBe(true);
+      const mappingBody = (await mappingList.json()) as {
+        items: Array<{
+          id: string;
+          configRevisionId?: string;
+          evidence?: {
+            candidates?: Array<{ logicalNodeId: string; nodeLocator: string }>;
+          };
+        }>;
+      };
+      const openMapTask = requireMappingTask(mappingBody.items, {
+        projectId,
+        configRevisionId: r2Revision.id
+      });
+      const leftCandidate = requireMappingCandidate(
+        openMapTask,
+        (candidate) => candidate.nodeLocator.includes("left"),
+        "left sibling node"
+      );
+
+      await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
+      await dismissXiaozeHint(page);
+
+      const governance = page.getByRole("region", { name: "身份映射治理" });
+      await expect(governance).toBeVisible({ timeout: 30_000 });
+      const review = page.getByRole("region", { name: "映射审核" });
+      await expect(review).toBeVisible({ timeout: 30_000 });
+      await expect(review.getByLabel("映射证据")).toBeVisible();
+      await review.getByRole("combobox", { name: "选择映射候选" }).selectOption(leftCandidate.logicalNodeId);
+      await review.getByLabel("映射确认原因").fill(`${descriptionPrefix} admin UI resolve ${runSuffix}`);
+      await review.getByRole("button", { name: "确认映射" }).click();
+
+      await expect(page.getByRole("status", { name: "治理审计" })).toContainText(/identity-mapping-resolved/, {
+        timeout: 30_000
+      });
+
+      const resolvedDb = await withPgClient(async (client) => {
+        const result = await client.query<{ status: string }>(
+          `select status from identity_mapping_tasks where id = $1`,
+          [openMapTask.id]
+        );
+        return {
+          table: "identity_mapping_tasks",
+          predicate: `id=${openMapTask.id}`,
+          observed: result.rows[0] ? `status=${result.rows[0].status}` : "missing",
+          rowCount: result.rowCount ?? result.rows.length
+        };
+      });
+      expect(resolvedDb.observed).toContain("resolved");
+
+      const auditResponse = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
+        headers: adminHeaders()
+      });
+      const auditBody = (await auditResponse.json()) as {
+        items: Array<{ id?: string; kind: string; action: string; targetId: string | null }>;
+      };
+      const mappingAuditItem = auditBody.items.find(
+        (item) =>
+          item.kind === "parameter-topology-governance" &&
+          item.action === "identity-mapping-resolved" &&
+          item.targetId === openMapTask.id
+      );
+      expect(mappingAuditItem).toBeTruthy();
+
+      await recordOperationEvidence({
+        operationId: "PARAM-IDENTITY-MAP-ADMIN-001",
+        title: "admin identity mapping resolve with evidence",
+        status: "passed",
+        role: "Admin",
+        route: "/parameter-admin",
+        page,
+        testInfo,
+        assertions: ["ui", "api", "db", "audit"],
+        api: [
+          summarizeApiResponse(mappingList, {
+            method: "GET",
+            path: "/api/v2/identity-mapping-tasks",
+            responseSummary: `openTask=${openMapTask.id}`
+          })
+        ],
+        db: [resolvedDb],
+        audit: [
+          {
+            id: mappingAuditItem?.id,
+            kind: "parameter-topology-governance",
+            action: "identity-mapping-resolved",
+            targetId: openMapTask.id
+          }
+        ],
+        notes:
+          "Admin resolved an open identity mapping task from /parameter-admin with candidate evidence and governance audit."
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        configSetNames: createdConfigSetNames,
+        fileNames: createdFileNames
+      });
+    }
+  });
 });

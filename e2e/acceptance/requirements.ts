@@ -361,7 +361,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     workflow: "B",
     title:
       "Admin resolves identity mapping tasks from the parameter admin with evidence and governance audit.",
-    required: false
+    required: true
   },
   {
     id: "PARAM-CONFIG-PUBLISH-GATE-001",

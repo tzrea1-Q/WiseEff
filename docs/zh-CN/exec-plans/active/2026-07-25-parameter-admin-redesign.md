@@ -95,8 +95,8 @@ identity mapping 任务迁入后台。日常绑定工作留在工作台。
 - [ ] [#194](https://github.com/tzrea1-Q/WiseEff/issues/194) — 06 项目级配置集、发布基线与修订校验。阻塞于 05
 - [ ] [#195](https://github.com/tzrea1-Q/WiseEff/issues/195) — 07 项目级源结构浏览与冲突裁决。阻塞于 05
 - [ ] [#196](https://github.com/tzrea1-Q/WiseEff/issues/196) — 08 identity mapping 任务治理迁入后台。阻塞于 02
-- [ ] [#197](https://github.com/tzrea1-Q/WiseEff/issues/197) — 09 收缩：新后台接管正式路由与导航。阻塞于 02–08
-- [ ] [#198](https://github.com/tzrea1-Q/WiseEff/issues/198) — 10 收缩：验收覆盖重定向与三视口验证。阻塞于 09
+- [x] [#197](https://github.com/tzrea1-Q/WiseEff/issues/197) — 09 收缩：新后台接管正式路由与导航。阻塞于 02–08
+- [x] [#198](https://github.com/tzrea1-Q/WiseEff/issues/198) — 10 收缩：验收覆盖重定向与三视口验证。阻塞于 09
 - [ ] [#199](https://github.com/tzrea1-Q/WiseEff/issues/199) — 11 收缩：删除旧后台与其专属状态。阻塞于 10
 
 ## 文档影响矩阵

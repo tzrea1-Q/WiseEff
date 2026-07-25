@@ -1,4 +1,4 @@
-import { useMemo, type Dispatch } from "react";
+import { useEffect, useMemo, type Dispatch } from "react";
 import type { AppAction } from "@/App";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
@@ -16,6 +16,14 @@ import { OrganizationSpecGovernancePanel } from "@/components/parameter-admin-ne
 import { ParameterAdminNextScopeNav } from "@/components/parameter-admin-next/ParameterAdminNextScopeNav";
 import { ParameterAdminProvider } from "@/components/parameter-admin-next/ParameterAdminProvider";
 import { ProjectsOperationsPanel } from "@/components/parameter-admin-next/ProjectsOperationsPanel";
+
+function buildParameterAuditCenterPath(projectId: string) {
+  const params = new URLSearchParams({ app: "parameter" });
+  if (projectId) {
+    params.set("projectId", projectId);
+  }
+  return `/audit?${params.toString()}`;
+}
 
 export type ParameterAdminNextPageProps = {
   area: "organization" | "projects";
@@ -91,6 +99,16 @@ export function ParameterAdminNextPage({
   const pathname =
     pathnameProp ??
     (area === "projects" ? "/parameter-admin/projects" : "/parameter-admin");
+
+  useEffect(() => {
+    if (area !== "organization") {
+      return;
+    }
+    const raw = search.startsWith("?") ? search.slice(1) : search;
+    if (raw.includes("audit=open")) {
+      onNavigate(buildParameterAuditCenterPath(activeProjectId));
+    }
+  }, [area, search, activeProjectId, onNavigate]);
 
   return (
     <ParameterAdminProvider
