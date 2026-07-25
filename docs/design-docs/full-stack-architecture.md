@@ -8,6 +8,8 @@ WiseEff is a React/Vite frontend plus a TypeScript modular-monolith backend. The
 
 The frontend contains route/application shell code, domain types and pure rules, application ports, mock implementations, HTTP implementations, components, pages, and tests. Pages should render state and call ports; durable business rules belong in domain/backend layers.
 
+**Parameter admin vs workbench:** `/parameter-admin` owns governance queues (spec review, identity mapping, module/driver mappings, project files/config sets). `/parameters` keeps everyday binding edits and submission; it does not host identity-mapping resolution UI after #199 — open tasks surface as publish blockers while Admins resolve in the admin.
+
 ## Backend
 
 The backend composes modules for auth, users, audit, parameters, logs, jobs, debugging, Agent, operations, observability, database, and HTTP foundations. Production writes follow authentication, authorization, validation, transaction, audit, and structured response/error rules.

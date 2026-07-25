@@ -183,40 +183,12 @@ describe("ProjectTopologyWorkspace", () => {
     });
 
     const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
-    expect(within(workspace).getByRole("region", { name: "映射审核" })).toBeVisible();
+    expect(within(workspace).queryByRole("region", { name: "映射审核" })).not.toBeInTheDocument();
     expect(within(workspace).getAllByText(/Undefined node reference: gpio99/).length).toBeGreaterThan(0);
     expect(within(workspace).getByRole("button", { name: "校验" })).toBeDisabled();
     const blockers = within(workspace).getByRole("status", { name: "发布阻断项" });
     expect(blockers).toHaveTextContent(/未解决身份映射/);
     expect(blockers).toHaveTextContent(/Undefined node reference: gpio99/);
-    expect(within(workspace).getByText(/高风险（歧义）/)).toBeVisible();
-    expect(within(workspace).getByRole("list", { name: "映射候选" })).toBeVisible();
-    expect(within(workspace).getByRole("list", { name: "映射证据" })).toBeVisible();
-  });
-
-  it("resolves identity mapping with selected candidate and reason", () => {
-    const onResolveMapping = vi.fn();
-    renderWorkspace({
-      canPublish: true,
-      mappingTasks: [OPEN_MAPPING],
-      onResolveMapping
-    });
-
-    const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
-    const review = within(workspace).getByRole("region", { name: "映射审核" });
-    fireEvent.change(within(review).getByRole("combobox", { name: "选择映射候选" }), {
-      target: { value: "logical-sc8562" }
-    });
-    fireEvent.change(within(review).getByLabelText("映射确认原因"), {
-      target: { value: "Same SC8562 instance" }
-    });
-    fireEvent.click(within(review).getByRole("button", { name: "确认映射" }));
-
-    expect(onResolveMapping).toHaveBeenCalledWith("map-task-1", {
-      decision: "resolved",
-      selectedLogicalNodeId: "logical-sc8562",
-      reason: "Same SC8562 instance"
-    });
   });
 
   it("labels toolbar action as 校验 by default (validate-only)", () => {

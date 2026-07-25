@@ -5,7 +5,7 @@ import { useParameterAdmin } from "./ParameterAdminProvider";
 
 /**
  * Organization-scoped identity mapping task governance.
- * Composes IdentityMappingReview; workbench copy remains until #199.
+ * Composes IdentityMappingReview for organization-scoped governance in `/parameter-admin`.
  */
 export function OrganizationIdentityMappingPanel() {
   const { application, dispatch, state } = useParameterAdmin();

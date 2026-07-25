@@ -1,6 +1,6 @@
 # Parameter admin redesign — execution plan
 
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-07-25-parameter-admin-redesign.md`](../../zh-CN/exec-plans/active/2026-07-25-parameter-admin-redesign.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-07-25-parameter-admin-redesign.md`](../../zh-CN/exec-plans/completed/2026-07-25-parameter-admin-redesign.md)
 > ADRs: [`0001`](../../adr/0001-parameter-admin-organized-by-governance-scope.md), [`0002`](../../adr/0002-mock-runtime-serves-the-semantic-parameter-model.md)
 > Branch: `feat/refactor-parameter-admin`
 
@@ -125,26 +125,26 @@ Tickets live on GitHub under parent issue [#188](https://github.com/tzrea1-Q/Wis
 - [ ] [#196](https://github.com/tzrea1-Q/WiseEff/issues/196) — 08 Identity mapping task governance in the admin. Blocked by 02
 - [x] [#197](https://github.com/tzrea1-Q/WiseEff/issues/197) — 09 Contract: new admin takes over the canonical admin route and navigation. Blocked by 02–08
 - [x] [#198](https://github.com/tzrea1-Q/WiseEff/issues/198) — 10 Contract: retarget browser acceptance coverage and verify across viewports. Blocked by 09
-- [ ] [#199](https://github.com/tzrea1-Q/WiseEff/issues/199) — 11 Contract: delete the old admin surface and its exclusive state. Blocked by 10
+- [x] [#199](https://github.com/tzrea1-Q/WiseEff/issues/199) — 11 Contract: delete the old admin surface and its exclusive state. Blocked by 10
 
 ## Documentation Impact Matrix
 
-| Area | Action | Paths |
-| --- | --- | --- |
-| Repository map | Review | `AGENTS.md`, `ARCHITECTURE.md` — confirm the parameter admin description still holds after the axis change |
-| Planning | Update | `docs/PLANS.md`, `docs/zh-CN/PLANS.md`, this plan + Chinese companion |
-| Domain context | Update | `CONTEXT.md`, `docs/adr/0001-parameter-admin-organized-by-governance-scope.md`, `docs/adr/0002-mock-runtime-serves-the-semantic-parameter-model.md` |
-| Product specs | Update | `docs/product-specs/prototype-functional-spec.md` — admin boundary and identity mapping location |
-| Architecture / design | Update | `docs/design-docs/full-stack-architecture.md`, `docs/design-docs/domain-model.md` — admin/workbench boundary and runtime-mode parity |
-| Frontend | Update | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` — routes, ports, mock parity, state ownership |
-| Quality / testing | Update | `docs/developer/user-operation-coverage-matrix.md`, `docs/developer/browser-acceptance-coverage-map.md`, `docs/design-docs/testing-strategy.md` |
-| Verification | Review | `docs/developer/verification-matrix.md` — confirm gate list still correct |
-| Technical debt | Update | `docs/exec-plans/tech-debt-tracker.md`, `docs/zh-CN/exec-plans/tech-debt-tracker.md` — record anything deferred; note TD-042 unchanged |
-| API contract | Review | `docs/design-docs/api-contract.md`, `docs/api/README.md` — expected no change; record as unchanged unless an aggregate endpoint is added |
-| Security / governance | Review | `docs/SECURITY.md` — roles and audit unchanged; confirm audit coverage for relocated identity mapping |
-| Reliability / runbooks | Review | `docs/runbooks/parameter-identity-cutover.md` — no production rule change |
-| Generated schema | No change | — |
-| References | Review | `docs/references/productization-api-contract-draft.md` |
+| Area | Action | Paths | Status (#199) |
+| --- | --- | --- | --- |
+| Repository map | Review | `AGENTS.md`, `ARCHITECTURE.md` | unchanged: evidence — axis-aligned admin map already in `ARCHITECTURE.md` § parameter-topology; no edit required |
+| Planning | Update | `docs/PLANS.md`, `docs/zh-CN/PLANS.md`, this plan + Chinese companion | updated — plan moved to `completed/`; PLANS index pointers updated |
+| Domain context | Update | `CONTEXT.md`, ADR-0001, ADR-0002 | updated `CONTEXT.md` identity-mapping glossary; ADRs unchanged (already state admin/workbench boundary) |
+| Product specs | Update | `docs/product-specs/prototype-functional-spec.md` | updated — workbench shows blockers only; admin resolves identity mapping |
+| Architecture / design | Update | `docs/design-docs/full-stack-architecture.md`, `docs/design-docs/domain-model.md` | updated — admin/workbench boundary in both files |
+| Frontend | Update | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` | updated — removed workbench mapping-review UI copy; admin ownership retained |
+| Quality / testing | Update | coverage matrix, acceptance map, testing strategy | unchanged: evidence — `PARAM-IDENTITY-MAP-ADMIN-001` landed in #198; no new ops in #199 |
+| Verification | Review | `docs/developer/verification-matrix.md` | unchanged: evidence — gate list still matches `npm test` / `npm run build` / `docs:check` |
+| Technical debt | Update | tech-debt trackers | unchanged: evidence — TD-042 still open; no new deferred items from retirement |
+| API contract | Review | `docs/design-docs/api-contract.md`, `docs/api/README.md` | unchanged: evidence — no backend contract changes in #199 |
+| Security / governance | Review | `docs/SECURITY.md` | unchanged: evidence — identity mapping audit still via admin governance events |
+| Reliability / runbooks | Review | `docs/runbooks/parameter-identity-cutover.md` | unchanged: evidence — cutover procedure unchanged |
+| Generated schema | No change | — | n/a |
+| References | Review | `docs/references/productization-api-contract-draft.md` | unchanged: evidence — no API draft delta |
 
 ## Documentation Update Gate
 

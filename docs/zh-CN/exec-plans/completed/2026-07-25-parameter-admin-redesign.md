@@ -1,6 +1,6 @@
 # 参数管理后台重设计 — 执行计划
 
-> English: [`docs/exec-plans/active/2026-07-25-parameter-admin-redesign.md`](../../../exec-plans/active/2026-07-25-parameter-admin-redesign.md)
+> English: [`docs/exec-plans/completed/2026-07-25-parameter-admin-redesign.md`](../../../exec-plans/completed/2026-07-25-parameter-admin-redesign.md)
 > ADR：[`0001`](../../../adr/0001-parameter-admin-organized-by-governance-scope.md)、[`0002`](../../../adr/0002-mock-runtime-serves-the-semantic-parameter-model.md)
 > 分支：`feat/refactor-parameter-admin`
 
@@ -97,26 +97,26 @@ identity mapping 任务迁入后台。日常绑定工作留在工作台。
 - [ ] [#196](https://github.com/tzrea1-Q/WiseEff/issues/196) — 08 identity mapping 任务治理迁入后台。阻塞于 02
 - [x] [#197](https://github.com/tzrea1-Q/WiseEff/issues/197) — 09 收缩：新后台接管正式路由与导航。阻塞于 02–08
 - [x] [#198](https://github.com/tzrea1-Q/WiseEff/issues/198) — 10 收缩：验收覆盖重定向与三视口验证。阻塞于 09
-- [ ] [#199](https://github.com/tzrea1-Q/WiseEff/issues/199) — 11 收缩：删除旧后台与其专属状态。阻塞于 10
+- [x] [#199](https://github.com/tzrea1-Q/WiseEff/issues/199) — 11 收缩：删除旧后台与其专属状态。阻塞于 10
 
 ## 文档影响矩阵
 
-| 领域 | 动作 | 路径 |
-| --- | --- | --- |
-| 仓库地图 | 复核 | `AGENTS.md`、`ARCHITECTURE.md` —— 确认主轴变更后后台描述仍成立 |
-| 规划 | 更新 | `docs/PLANS.md`、`docs/zh-CN/PLANS.md`、本计划及英文对照页 |
-| 领域上下文 | 更新 | `CONTEXT.md`、`docs/adr/0001-...md`、`docs/adr/0002-...md` |
-| 产品规格 | 更新 | `docs/product-specs/prototype-functional-spec.md` —— 后台边界与 identity mapping 位置 |
-| 架构 / 设计 | 更新 | `docs/design-docs/full-stack-architecture.md`、`docs/design-docs/domain-model.md` —— 后台与工作台边界、运行时模式对等 |
-| 前端 | 更新 | `docs/FRONTEND.md`、`docs/zh-CN/frontend.md` —— 路由、port、mock 对等、状态归属 |
-| 质量 / 测试 | 更新 | `docs/developer/user-operation-coverage-matrix.md`、`docs/developer/browser-acceptance-coverage-map.md`、`docs/design-docs/testing-strategy.md` |
-| 验证 | 复核 | `docs/developer/verification-matrix.md` —— 确认门禁清单仍正确 |
-| 技术债 | 更新 | `docs/exec-plans/tech-debt-tracker.md`、`docs/zh-CN/exec-plans/tech-debt-tracker.md` —— 记录任何延后项；注明 TD-042 不变 |
-| API 契约 | 复核 | `docs/design-docs/api-contract.md`、`docs/api/README.md` —— 预期无变化，除新增聚合端点外记为不变 |
-| 安全 / 治理 | 复核 | `docs/SECURITY.md` —— 角色与审计不变；确认迁移后的 identity mapping 审计覆盖 |
-| 可靠性 / 运维手册 | 复核 | `docs/runbooks/parameter-identity-cutover.md` —— 生产规则不变 |
-| 生成的 schema | 无变化 | — |
-| 参考资料 | 复核 | `docs/references/productization-api-contract-draft.md` |
+| 领域 | 动作 | 路径 | 状态（#199） |
+| --- | --- | --- | --- |
+| 仓库地图 | 复核 | `AGENTS.md`、`ARCHITECTURE.md` | 不变：证据 — `ARCHITECTURE.md` 已描述治理主轴后台，无需改动 |
+| 规划 | 更新 | `docs/PLANS.md`、`docs/zh-CN/PLANS.md`、本计划及英文对照页 | 已更新 — 计划移入 `completed/`；PLANS 索引已改 |
+| 领域上下文 | 更新 | `CONTEXT.md`、ADR-0001、ADR-0002 | 已更新 `CONTEXT.md` 术语；ADR 不变 |
+| 产品规格 | 更新 | `docs/product-specs/prototype-functional-spec.md` | 已更新 — 工作台仅阻断项，后台决议 identity mapping |
+| 架构 / 设计 | 更新 | `full-stack-architecture.md`、`domain-model.md` | 已更新 — 后台/工作台边界 |
+| 前端 | 更新 | `docs/FRONTEND.md`、`docs/zh-CN/frontend.md` | 已更新 — 移除工作台映射审核 UI 文案 |
+| 质量 / 测试 | 更新 | 覆盖矩阵、验收映射、测试策略 | 不变：证据 — `PARAM-IDENTITY-MAP-ADMIN-001` 已在 #198 落地 |
+| 验证 | 复核 | `docs/developer/verification-matrix.md` | 不变：证据 — 门禁清单仍适用 |
+| 技术债 | 更新 | tech-debt trackers | 不变：证据 — TD-042 仍开放；#199 无新延后项 |
+| API 契约 | 复核 | api-contract、api README | 不变：证据 — #199 无后端契约变更 |
+| 安全 / 治理 | 复核 | `docs/SECURITY.md` | 不变：证据 — identity mapping 审计仍在后台治理事件 |
+| 可靠性 / 运维手册 | 复核 | `parameter-identity-cutover.md` | 不变：证据 — 切换流程未变 |
+| 生成的 schema | 无变化 | — | n/a |
+| 参考资料 | 复核 | productization-api-contract-draft | 不变：证据 — 无 API 草案差异 |
 
 ## 文档更新门禁
 

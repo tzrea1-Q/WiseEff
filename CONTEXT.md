@@ -31,7 +31,7 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Parameter workbench | Everyday surface where users read topology and propose binding changes. Does not own governance queues or catalog upkeep |
 | Organization-scoped governance | Parameter assets governed independently of any single project: specs, module trees, business categories, policy targets |
 | Project-scoped operations | Parameter assets owned by one project: files, config sets, release baselines, bindings |
-| Identity mapping task | Governance queue item for a migration-time parameter identity that could not be resolved automatically |
+| Identity mapping task | Governance queue item for a migration-time parameter identity that could not be resolved automatically; Admins resolve it in `/parameter-admin`, while the workbench only surfaces publish blockers |
 | Spec review task | Governance queue item asking an Admin to accept, dismiss, or create a parameter spec |
 | Runtime mode | Whether the frontend reads live APIs or mock fixtures. Both serve the same semantic model; mock is a data-source substitution, never a different product |
 
