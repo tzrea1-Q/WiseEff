@@ -554,12 +554,17 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(workspace.getByRole("tree", { name: "业务模块树" })).toBeVisible({
       timeout: 20_000
     });
-    await expect(workspace.getByLabel("DTS 源码", { exact: true })).toBeVisible({
+    await expect(workspace.locator(".project-primary-dts-viewer__body")).toBeVisible({
       timeout: 20_000
     });
     await expect(workspace.getByRole("tree", { name: "生效 DTS 拓扑" })).toHaveCount(0);
     await workspace.getByRole("button", { name: "模块导航" }).click();
-    await workspace.getByRole("button", { name: /查看 gpio_int/ }).first().click();
+    await expect(workspace.getByRole("region", { name: "DTS 参数列表" })).toBeVisible({
+      timeout: 20_000
+    });
+    await workspace.getByRole("button", { name: /查看 gpio_int/ }).first().click({
+      timeout: 20_000
+    });
     const provenanceDetail = page.getByRole("dialog", { name: /gpio_int 参数详情/ });
     await expect(provenanceDetail.getByRole("heading", { name: "参数定义" })).toBeVisible();
     await expect(provenanceDetail.getByText("来源链")).toHaveCount(0);
@@ -619,14 +624,17 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // Same-compatible sibling nodes keep independent specs/bindings (sc8562 vs mt5788 gpio_int).
     expect(scBinding!.driverModule).not.toBe(mtBinding!.driverModule);
 
-    await workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first().click();
+    // Module-first navigator labels use module/driver names (e.g. sc8562), not full @unit paths.
+    const sc8562TreeItem = workspace.getByRole("treeitem", { name: /sc8562/ }).first();
+    await expect(sc8562TreeItem).toBeVisible({ timeout: 20_000 });
+    await sc8562TreeItem.click({ timeout: 20_000 });
     const scopedSc8562Row = bindingRowById(workspace, scBinding!.id);
     await expect(scopedSc8562Row.locator('[data-label="参数名"]')).toBeVisible();
     await expect(scopedSc8562Row).toContainText("sc8562@6E");
     await expect(scopedSc8562Row).toContainText("<&gpio13 29 0>");
     await expect(bindingRowById(workspace, mtBinding!.id)).toHaveCount(0);
     // Toggle the same tree node to clear subtree scoping (toolbar no longer has clear-all).
-    await workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first().click();
+    await sc8562TreeItem.click({ timeout: 20_000 });
     const unscopedMt5788Row = bindingRowById(workspace, mtBinding!.id);
     await expect(unscopedMt5788Row.locator('[data-label="参数名"]')).toBeVisible();
     await expect(unscopedMt5788Row).toContainText("mt5788@2B");
