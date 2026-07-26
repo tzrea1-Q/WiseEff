@@ -24,7 +24,7 @@ describe("WiseEff prototype configuration", () => {
     const projectFiles = getPageByPath("/parameter-admin/projects/aurora/files");
 
     expect(organization.key).toBe("parameter-admin");
-    expect(organization.label).toBe("管理后台");
+    expect(organization.label).toBe("参数后台");
     expect(organization.title).toContain("参数管理后台");
     expect(getXiaozeContextSummary("/parameter-admin")).toContain("规格库");
 

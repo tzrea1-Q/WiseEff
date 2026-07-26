@@ -12286,12 +12286,25 @@ td small {
  * ========================================================================= */
 
 .param-admin-shell {
-  display: grid;
-  grid-template-rows: auto auto auto 1fr;
+  display: flex;
+  flex-direction: column;
+  align-content: start;
   gap: 18px;
   min-height: 100%;
   padding: 24px 28px 32px;
   color: var(--text);
+}
+
+.param-admin-org-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.param-admin-governance-card {
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 12px;
 }
 
 .param-admin-shell > .modal-backdrop {
@@ -21500,8 +21513,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .parameter-module-mapping-panel__grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  align-items: start;
 }
 
 .parameter-module-mapping-panel__grid section {
@@ -21512,6 +21526,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
   background: #f7f9fc;
   border: 1px solid #e4ebf4;
   border-radius: 10px;
+  align-self: start;
 }
 
 .parameter-module-mapping-panel__grid ul {
@@ -21528,6 +21543,90 @@ button.dts-topology-navigator__disclosure:focus-visible {
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+.parameter-module-mapping-panel__section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.parameter-module-mapping-panel__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #52657d;
+}
+
+.parameter-module-mapping-panel__hidden-count {
+  color: #7a8ba3;
+}
+
+.parameter-module-mapping-panel__module-tree,
+.parameter-module-mapping-panel__module-tree-group {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parameter-module-mapping-panel__tree-item {
+  display: grid;
+  gap: 8px;
+}
+
+.parameter-module-mapping-panel__tree-item.is-child {
+  border-left: 2px solid rgba(0, 82, 204, 0.12);
+}
+
+.parameter-module-mapping-panel__tree-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.parameter-module-mapping-panel__tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #5a6b82;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.parameter-module-mapping-panel__tree-toggle--spacer {
+  display: inline-block;
+  cursor: default;
+}
+
+.parameter-module-mapping-panel__tree-label {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.parameter-module-mapping-panel__auto-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(16, 28, 45, 0.06);
+  color: #5a6b82;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .parameter-module-mapping-panel__form {
@@ -21555,6 +21654,111 @@ button.dts-topology-navigator__disclosure:focus-visible {
   .parameter-module-mapping-panel__grid {
     grid-template-columns: 1fr;
   }
+}
+
+.param-admin-shell .spec-review-queue {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+}
+
+.param-admin-shell .spec-review-queue .parameters-table-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.param-admin-shell .spec-review-queue__list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.param-admin-shell .spec-review-queue__item {
+  display: grid;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f7f9fc;
+  border: 1px solid #e4ebf4;
+  border-radius: 10px;
+}
+
+.param-admin-shell .spec-review-queue__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.param-admin-shell .spec-review-queue__summary-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.param-admin-shell .spec-review-queue__detail {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+  border-top: 1px solid #e4ebf4;
+}
+
+.param-admin-shell .spec-review-queue__form {
+  display: grid;
+  gap: 10px;
+}
+
+.param-admin-shell .spec-review-queue__form label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.param-admin-shell .spec-review-queue__form input,
+.param-admin-shell .spec-review-queue__form select,
+.param-admin-shell .spec-review-queue__form textarea {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 10px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.param-admin-shell .spec-review-queue__form textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+
+.param-admin-shell .spec-review-queue__mismatch-warning {
+  color: #9a3412;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.param-admin-shell .spec-review-queue__load-more {
+  display: flex;
+  justify-content: center;
+}
+
+.param-admin-shell .parameters-table-scroll {
+  max-height: min(60vh, 560px);
+  overflow: auto;
 }
 
 .project-primary-dts-viewer {

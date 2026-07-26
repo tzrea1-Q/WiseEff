@@ -6,8 +6,7 @@ import {
   toParameterAdminFilters
 } from "@/application/parameters/parameterAdminUrl";
 import {
-  auditKindForResolveDecision,
-  auditKindLabel
+  auditKindForResolveDecision
 } from "@/application/parameters/parameterAdminState";
 import type { ParameterAdminAuditHint } from "@/application/parameters/parameterAdminState";
 import {
@@ -89,11 +88,14 @@ function toReviewTaskView(task: {
 export type OrganizationSpecGovernancePanelProps = {
   search: string;
   pathname?: string;
+  /** Which organization sub-view to render; defaults to both for backward-compatible tests. */
+  focus?: "library" | "review";
 };
 
 export function OrganizationSpecGovernancePanel({
   search,
-  pathname = "/parameter-admin"
+  pathname = "/parameter-admin",
+  focus
 }: OrganizationSpecGovernancePanelProps) {
   const { application, dispatch, state } = useParameterAdmin();
   const { urlState, updateUrl } = useParameterAdminUrl(search, pathname);
@@ -104,6 +106,8 @@ export function OrganizationSpecGovernancePanel({
   const [specDetail, setSpecDetail] = useState<ParameterSpecDetailView | null>(null);
   const [reviewTasks, setReviewTasks] = useState<SpecReviewTaskView[]>([]);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewNextCursor, setReviewNextCursor] = useState<string | null>(null);
+  const [reviewLoadingMore, setReviewLoadingMore] = useState(false);
   const [reviewActionError, setReviewActionError] = useState<string | null>(null);
   const [reviewActionSuccess, setReviewActionSuccess] = useState<string | null>(null);
   const [reviewPendingTaskId, setReviewPendingTaskId] = useState<string | null>(null);
@@ -139,17 +143,44 @@ export function OrganizationSpecGovernancePanel({
   const reloadReviewTasks = useCallback(async () => {
     setReviewLoading(true);
     try {
-      const result = await application.listSpecReviewTasks({ status: "open" });
+      const result = await application.listSpecReviewTasks({ status: "open", limit: 20 });
       const views = result.items.map(toReviewTaskView);
       setReviewTasks(views);
+      setReviewNextCursor(result.nextCursor);
       dispatch({ type: "SET_QUEUE_COUNTS", counts: { specReview: views.length } });
     } catch {
       setReviewTasks([]);
+      setReviewNextCursor(null);
       dispatch({ type: "SET_QUEUE_COUNTS", counts: { specReview: 0 } });
     } finally {
       setReviewLoading(false);
     }
   }, [application, dispatch]);
+
+  const loadMoreReviewTasks = useCallback(async () => {
+    if (!reviewNextCursor || reviewLoadingMore) {
+      return;
+    }
+    setReviewLoadingMore(true);
+    try {
+      const result = await application.listSpecReviewTasks({
+        status: "open",
+        limit: 20,
+        cursor: reviewNextCursor
+      });
+      const views = result.items.map(toReviewTaskView);
+      setReviewTasks((current) => {
+        const merged = [...current, ...views];
+        dispatch({ type: "SET_QUEUE_COUNTS", counts: { specReview: merged.length } });
+        return merged;
+      });
+      setReviewNextCursor(result.nextCursor);
+    } catch {
+      // Keep existing page; surface via empty nextCursor only on full reload.
+    } finally {
+      setReviewLoadingMore(false);
+    }
+  }, [application, dispatch, reviewLoadingMore, reviewNextCursor]);
 
   useEffect(() => {
     void reloadSpecs();
@@ -345,36 +376,63 @@ export function OrganizationSpecGovernancePanel({
     [application, reloadSpecs]
   );
 
-  const latestAudit = state.auditHints[0] ?? null;
+  const showLibrary = focus !== "review";
+  const showReview = focus !== "library";
+
+  const reviewQueue = (
+    <div>
+      {reviewLoading && reviewTasks.length === 0 ? (
+        <p className="form-hint">正在加载审核队列…</p>
+      ) : null}
+      <SpecReviewQueue
+        tasks={reviewTasks}
+        librarySpecs={specRows.map((row) => ({
+          id: row.id,
+          label: `${row.driverModule ?? "—"} / ${row.propertyKey}`,
+          propertyKey: row.propertyKey,
+          driverModule: row.driverModule
+        }))}
+        onApprove={handleApproveReview}
+        onDismiss={handleDismissReview}
+        onCreateSpec={handleCreateSpecReview}
+        pendingTaskId={reviewPendingTaskId}
+        pendingAction={reviewPendingAction}
+        nextCursor={reviewNextCursor}
+        onLoadMore={() => void loadMoreReviewTasks()}
+        loadingMore={reviewLoadingMore}
+      />
+    </div>
+  );
 
   return (
     <div className="param-admin-main">
-      <div className="parameters-table-toolbar" style={{ marginBottom: "0.75rem" }}>
-        <label>
-          排序
-          <select
-            aria-label="排序"
-            value={urlState.sort}
-            onChange={(event) => updateUrl({ sort: event.target.value })}
-          >
-            <option value="propertyKey-asc">属性键 A→Z</option>
-            <option value="propertyKey-desc">属性键 Z→A</option>
-            <option value="driverModule-asc">驱动模块</option>
-            <option value="lifecycle-asc">生命周期</option>
-          </select>
-        </label>
-        <span className="parameters-table-count" aria-live="polite">
-          待审核 {state.queueCounts.specReview}
-        </span>
-      </div>
+      {showLibrary ? (
+        <div className="parameters-table-toolbar" style={{ marginBottom: "0.75rem" }}>
+          <label>
+            排序
+            <select
+              aria-label="排序"
+              value={urlState.sort}
+              onChange={(event) => updateUrl({ sort: event.target.value })}
+            >
+              <option value="propertyKey-asc">属性键 A→Z</option>
+              <option value="propertyKey-desc">属性键 Z→A</option>
+              <option value="driverModule-asc">驱动模块</option>
+              <option value="lifecycle-asc">生命周期</option>
+            </select>
+          </label>
+          <span className="parameters-table-count" aria-live="polite">
+            待审核 {state.queueCounts.specReview}
+          </span>
+        </div>
+      ) : (
+        <div className="parameters-table-toolbar" style={{ marginBottom: "0.75rem" }}>
+          <span className="parameters-table-count" aria-live="polite">
+            待审核 {state.queueCounts.specReview}
+          </span>
+        </div>
+      )}
 
-      {latestAudit ? (
-        <p className="form-hint" role="status" aria-label="治理审计">
-          治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}
-          {latestAudit.reason ? `（${latestAudit.reason}）` : ""}
-          <span className="sr-only"> {latestAudit.kind}</span>
-        </p>
-      ) : null}
       {reviewActionSuccess ? (
         <p className="form-hint" role="status">
           {reviewActionSuccess}
@@ -386,38 +444,22 @@ export function OrganizationSpecGovernancePanel({
         </p>
       ) : null}
 
-      <ParameterSpecLibrary
-        specs={sortedRows}
-        selectedSpecId={urlState.specId}
-        detail={specDetail}
-        loading={specLoading}
-        filters={filters}
-        onFiltersChange={handleFiltersChange}
-        onSelectSpec={handleSelectSpec}
-        onActivateDraftSpec={handleActivateDraftSpec}
-        activatePending={activatePendingSpecId === urlState.specId}
-        reviewQueueSlot={
-          <div>
-            {reviewLoading && reviewTasks.length === 0 ? (
-              <p className="form-hint">正在加载审核队列…</p>
-            ) : null}
-            <SpecReviewQueue
-              tasks={reviewTasks}
-              librarySpecs={specRows.map((row) => ({
-                id: row.id,
-                label: `${row.driverModule ?? "—"} / ${row.propertyKey}`,
-                propertyKey: row.propertyKey,
-                driverModule: row.driverModule
-              }))}
-              onApprove={handleApproveReview}
-              onDismiss={handleDismissReview}
-              onCreateSpec={handleCreateSpecReview}
-              pendingTaskId={reviewPendingTaskId}
-              pendingAction={reviewPendingAction}
-            />
-          </div>
-        }
-      />
+      {showLibrary ? (
+        <ParameterSpecLibrary
+          specs={sortedRows}
+          selectedSpecId={urlState.specId}
+          detail={specDetail}
+          loading={specLoading}
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+          onSelectSpec={handleSelectSpec}
+          onActivateDraftSpec={handleActivateDraftSpec}
+          activatePending={activatePendingSpecId === urlState.specId}
+          reviewQueueSlot={showReview ? reviewQueue : undefined}
+        />
+      ) : (
+        reviewQueue
+      )}
     </div>
   );
 }

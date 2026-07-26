@@ -1729,7 +1729,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /打开 管理后台/ }));
-    expect(window.location.pathname).toBe("/parameter-admin");
+    expect(window.location.pathname).toBe("/parameter-admin/specs");
 
     window.history.replaceState(null, "", "/parameter-home");
     cleanup();
@@ -3240,7 +3240,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(within(scopeNav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
     expect(
       within(parameterAdminNavGroup(screen.getByRole("complementary", { name: "主导航侧边栏" }))).getByRole("button", {
-        name: /^管理后台$/
+        name: /^参数后台$/
       })
     ).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("table", { name: "项目管理列表" })).toBeInTheDocument();
@@ -3269,7 +3269,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
     const parameterGroup = parameterAdminNavGroup(sidebar);
-    expect(within(parameterGroup).getByRole("button", { name: /^管理后台$/ })).toBeInTheDocument();
+    expect(within(parameterGroup).getByRole("button", { name: /^参数后台$/ })).toBeInTheDocument();
     expect(within(parameterGroup).queryByRole("button", { name: /组织治理/ })).not.toBeInTheDocument();
     expect(within(parameterGroup).queryByRole("button", { name: /项目运营/ })).not.toBeInTheDocument();
   });
@@ -3280,7 +3280,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     render(<App initialAppState={adminState} />);
 
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
-    expect(within(parameterAdminNavGroup(sidebar)).getByRole("button", { name: /^管理后台$/ })).toHaveAttribute(
+    expect(within(parameterAdminNavGroup(sidebar)).getByRole("button", { name: /^参数后台$/ })).toHaveAttribute(
       "aria-current",
       "page"
     );

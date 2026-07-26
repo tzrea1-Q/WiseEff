@@ -18,8 +18,7 @@ export type OrganizationBulkImportPanelProps = {
 };
 
 /**
- * Organization-scoped bulk import entry. Composes the existing five-step wizard;
- * import apply is wrapped so governance audit lands in admin-owned state.
+ * Organization-scoped bulk import entry shown as a header action on every org sub-route.
  */
 export function OrganizationBulkImportPanel({
   projects,
@@ -56,24 +55,16 @@ export function OrganizationBulkImportPanel({
   }, [adminDispatch, parameterActions]);
 
   return (
-    <section className="param-admin-main" aria-label="批量参数导入" style={{ paddingBottom: 0 }}>
-      <div className="parameters-table-toolbar" style={{ marginBottom: "0.75rem" }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: "1.05rem" }}>批量参数导入</h2>
-          <p className="form-hint" style={{ margin: "0.25rem 0 0" }}>
-            从组织目录侧导入表格、CSV、JSON 或完整 DTS，写入目标项目参数库。
-          </p>
-        </div>
-        <button
-          type="button"
-          className="button primary"
-          aria-label="打开批量参数导入"
-          onClick={() => setOpen(true)}
-        >
-          <Upload size={16} aria-hidden="true" />
-          批量参数导入
-        </button>
-      </div>
+    <div className="param-admin-org-actions" role="region" aria-label="批量参数导入">
+      <button
+        type="button"
+        className="button primary"
+        aria-label="打开批量参数导入"
+        onClick={() => setOpen(true)}
+      >
+        <Upload size={16} aria-hidden="true" />
+        批量参数导入
+      </button>
 
       <ParameterImportWizard
         open={open}
@@ -86,6 +77,6 @@ export function OrganizationBulkImportPanel({
         onNavigate={onNavigate}
         runtimeMode={runtimeMode}
       />
-    </section>
+    </div>
   );
 }
