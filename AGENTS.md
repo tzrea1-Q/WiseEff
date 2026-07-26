@@ -48,7 +48,7 @@ This file is the short map for agents working in this repository. Keep it small.
 - Architecture: start with `ARCHITECTURE.md`, then `docs/design-docs/full-stack-architecture.md`.
 - Domain entities and state machines: read `docs/design-docs/domain-model.md`.
 - API work: read `docs/design-docs/api-contract.md` and `docs/references/productization-api-contract-draft.md`.
-- Frontend work: read `docs/FRONTEND.md` and the related component/page tests.
+- Frontend work: read `docs/FRONTEND.md` and the related component/page tests. Table column multi-select filters must follow `docs/design-docs/ux-table-column-filter.md` (`ColumnFilter`).
 - Security, permissions, audit, Agent tool calls, or device writes: read `docs/SECURITY.md`.
 - Reliability, deployment, jobs, health checks, or operations: read `docs/RELIABILITY.md`.
 - Test strategy or quality gates: read `docs/QUALITY_SCORE.md` and `docs/design-docs/testing-strategy.md`.

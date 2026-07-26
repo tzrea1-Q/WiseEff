@@ -390,8 +390,9 @@ export async function requireOrgOrGlobalSpec(
 }
 
 /**
- * Mutating paths (activate/update) must target an org-owned row.
- * Global specs (organization_id IS NULL) are readable/bindable but not activatable by org admins.
+ * Activating drafts must target an org-owned row.
+ * Global specs (organization_id IS NULL) are readable/bindable; Admins may update them via
+ * requireOrgOrGlobalSpec + updateParameterSpec, but cannot activate (drafts are org-owned).
  */
 export async function requireOrgOwnedSpec(
   db: Queryable,
@@ -401,7 +402,7 @@ export async function requireOrgOwnedSpec(
   if (allowedSpec.organizationId == null) {
     throw new ApiError(
       "FORBIDDEN",
-      "Platform global parameter specs cannot be activated or modified by organization admins.",
+      "Platform global parameter specs cannot be activated by organization admins.",
       403,
       { parameterSpecId: input.parameterSpecId },
     );

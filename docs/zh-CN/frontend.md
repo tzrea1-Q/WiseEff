@@ -67,7 +67,7 @@ P3 / P3.1 新表面（均走 `DtsStructuredRepository`，勿在新面板里直�
 
 旧的 `ProjectParameterFilesPanel` / 冲突面板通过 `resolveParameterFileRepository(runtimeMode)` 注入 `ParameterFileRepository`（mock：`createMockParameterFileRepository`；API：`createParameterFileClient`），组件内禁止 `createParameterFileClient()`。mock 模式下可演示文件列表与冲突面板，不直连 `:8787`。
 
-正式参数管理后台在侧栏只有一个入口「参数后台」（`/parameter-admin`）。组织治理与项目运营通过范围切换；`/parameter-admin` 会重定向到 `/parameter-admin/specs`（保留查询串）。组织子路由为 `/parameter-admin/specs`、`/parameter-admin/spec-review`、`/parameter-admin/modules`、`/parameter-admin/identity-mapping`。`/parameter-admin/projects`（及深链 `/parameter-admin/projects/:projectId/files`，另有 `config-sets` / `structure` / `conflicts`）仍可深链访问，并保持同一侧栏项高亮。面板只依赖 `createParameterAdminApplication` 门面（底层 `ParameterTopologyRepository`、`ParameterModuleRegistryRepository` 与导入 actions，mock/api 同源），跨面板状态在 `ParameterAdminProvider`，不读全局 `PrototypeState`。筛选/排序/选中以 URL 查询参数为唯一真相源。批量导入为组织子路由的头部操作；规格审核走 cursor 分页；规格库客户端分页（25/页）并默认隐藏 `#…` 结构属性。项目域含清单、参数文件、配置集/基线、结构浏览与冲突裁决。操作 ID `PARAM-IDENTITY-MAP-ADMIN-001` 跟踪后台侧身份映射覆盖（浏览器验收改挂见 #198）。`pageUsesProjectScope` 不含管理后台路由（ADR-0001：组织域与项目运营各自自有选择器，不挂 TopBar 项目选择器）。
+正式参数管理后台在侧栏只有一个入口「参数后台」（`/parameter-admin`）。组织治理与项目运营通过范围切换；`/parameter-admin` 会重定向到 `/parameter-admin/specs`（保留查询串）。组织子路由为 `/parameter-admin/specs`、`/parameter-admin/spec-review`、`/parameter-admin/modules`、`/parameter-admin/identity-mapping`。`/parameter-admin/projects`（及深链 `/parameter-admin/projects/:projectId/files`，另有 `config-sets` / `structure` / `conflicts`）仍可深链访问，并保持同一侧栏项高亮。面板只依赖 `createParameterAdminApplication` 门面（底层 `ParameterTopologyRepository`、`ParameterModuleRegistryRepository` 与导入 actions，mock/api 同源），跨面板状态在 `ParameterAdminProvider`，不读全局 `PrototypeState`。筛选/排序/选中以 URL 查询参数为唯一真相源。批量导入为组织子路由的 TopBar 操作；规格审核走 cursor 分页；规格库客户端分页（50/页）并默认隐藏 `#…` 结构属性。项目域含清单、参数文件、配置集/基线、结构浏览与冲突裁决。操作 ID `PARAM-IDENTITY-MAP-ADMIN-001` 跟踪后台侧身份映射覆盖（浏览器验收改挂见 #198）。`pageUsesProjectScope` 不含管理后台路由（ADR-0001：组织域与项目运营各自自有选择器，不挂 TopBar 项目选择器）。
 
 语义身份 UI 在 `src/components/parameter-topology/`：规格库与审核队列、源树/生效树浏览、类型化绑定编辑与正式提交、身份映射决议、失败关闭的配置 revision 校验。API 模式走 `/api/v2`；DTO 分字段暴露 `exampleValue` / `schemaDefault` / `policyTarget` / `effectiveValue`，无业务 `recommendedValue`。Cutover 后遗留扁平参数 ID 不做兼容投影。本地 `npm run dev` / `dev:all` 默认处于 **post-cutover** 语义种子，类型化 binding 草稿可直接提交审核。
 
@@ -196,6 +196,10 @@ Xiaoze（小泽，唯一 Agent）：
 - 响应式：桌面、平板、手机下按钮不能退化成裸文字，不能互相重叠，不能溢出容器，也不能因为文字或状态变化导致布局跳动。
 
 弹窗底部、表格行操作、顶部栏操作、卡片操作和 toast 操作是高频回归点。修改这些区域时，单测应加入目标按钮变体或 class 的 DOM 断言；浏览器验收应截取对应状态，并明确检查主/次按钮有可见表面样式、尺寸稳定且页面无水平溢出。低强调的内联跳转或辅助操作可以使用文本式样式，但应使用 link/text-action class，不要伪装成普通按钮。
+
+## 表格列多选筛选 UX
+
+支持选 0 / 1 / 多个分类值的列表头筛选，必须使用共享的 `ColumnFilter`（安静的漏斗触发器 + 勾选菜单），不要用常驻 `<select>` 或用排序箭头冒充筛选。规格：[表格列多选筛选 UX](design-docs/ux-table-column-filter.md)。规范实现：`src/components/ColumnFilter.tsx`。参考接入：`ParametersTable`、工作台 `DtsParameterWorkbenchTable` 的「所属模块」，以及参数后台 `ParameterSpecLibrary` / `ProjectAdminTable`。
 
 ## 测试建议
 

@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParameterSpecLibrary } from "./ParameterSpecLibrary";
 import type { ParameterSpecLibraryRow } from "./ParameterSpecLibrary";
@@ -13,6 +14,8 @@ const gpioIntSc8562: ParameterSpecLibraryRow = {
   id: "spec-sc8562-gpio-int",
   organizationId: "org-chargelab",
   propertyKey: "gpio_int",
+  moduleName: "充电策略",
+  moduleMapped: true,
   driverModule: "sc8562",
   compatible: "vendor,sc8562",
   valueType: "phandle-list",
@@ -29,6 +32,8 @@ const gpioIntMt5788: ParameterSpecLibraryRow = {
   id: "spec-mt5788-gpio-int",
   organizationId: "org-chargelab",
   propertyKey: "gpio_int",
+  moduleName: "未分类 · mt5788",
+  moduleMapped: false,
   driverModule: "mt5788",
   compatible: "mediatek,mt5788",
   valueType: "phandle-list",
@@ -45,6 +50,8 @@ const pathLikeLegacy: ParameterSpecLibraryRow = {
   id: "spec-status",
   organizationId: "org-chargelab",
   propertyKey: "status",
+  moduleName: "充电策略",
+  moduleMapped: true,
   driverModule: "sc8562",
   compatible: "vendor,sc8562",
   valueType: "string-list",
@@ -69,9 +76,15 @@ describe("ParameterSpecLibrary", () => {
     const library = screen.getByRole("region", { name: "参数规格库" });
     const table = within(library).getByRole("table");
 
-    for (const header of ["属性键", "驱动模块", "审核状态", "操作"]) {
-      expect(within(table).getByRole("columnheader", { name: header })).toBeInTheDocument();
+    for (const header of ["参数名", "所属模块", "值类型", "审核状态", "操作"]) {
+      expect(within(table).getByRole("columnheader", { name: new RegExp(header) })).toBeInTheDocument();
     }
+    expect(within(table).queryByRole("columnheader", { name: /^驱动模块$/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: /compatible/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选compatible" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选所属模块" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选驱动模块" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选审核状态" })).toBeInTheDocument();
 
     expect(within(table).queryByRole("columnheader", { name: /推荐值|默认值|使用量|示例值/ })).not.toBeInTheDocument();
     expect(within(table).queryByText(/amba\.i2c@|\/amba\//)).not.toBeInTheDocument();
@@ -81,6 +94,13 @@ describe("ParameterSpecLibrary", () => {
     for (const cell of nameCells) {
       expect(cell.textContent).not.toMatch(/amba|i2c@|FDF5E000/);
     }
+
+    expect(within(table).getByText("sc8562")).toBeInTheDocument();
+    expect(within(table).getByText("mt5788")).toBeInTheDocument();
+    expect(within(table).queryByText("充电策略")).not.toBeInTheDocument();
+    expect(within(table).queryByText("未映射")).not.toBeInTheDocument();
+    expect(within(table).queryByText("vendor,sc8562")).not.toBeInTheDocument();
+    expect(within(table).getAllByText("phandle-list").length).toBeGreaterThan(0);
 
     expect(library.textContent).not.toMatch(/推荐值|默认值/);
   });
@@ -104,7 +124,8 @@ describe("ParameterSpecLibrary", () => {
     expect(within(library).getByText(/2 \/ 3 项/)).toBeInTheDocument();
   });
 
-  it("filters by driver and lifecycle", () => {
+  it("filters by driver and lifecycle via ColumnFilter multi-select", async () => {
+    const user = userEvent.setup();
     render(
       <ParameterSpecLibrary
         specs={[gpioIntSc8562, gpioIntMt5788, pathLikeLegacy]}
@@ -112,12 +133,10 @@ describe("ParameterSpecLibrary", () => {
       />
     );
 
-    fireEvent.change(screen.getByRole("combobox", { name: "驱动模块" }), {
-      target: { value: "sc8562" }
-    });
-    fireEvent.change(screen.getByRole("combobox", { name: "生命周期" }), {
-      target: { value: "active" }
-    });
+    await user.click(screen.getByRole("button", { name: "筛选所属模块" }));
+    await user.click(screen.getByRole("checkbox", { name: "sc8562" }));
+    await user.click(screen.getByRole("button", { name: "筛选审核状态" }));
+    await user.click(screen.getByRole("checkbox", { name: "active" }));
 
     const library = screen.getByRole("region", { name: "参数规格库" });
     const dataRows = within(library)
@@ -130,8 +149,37 @@ describe("ParameterSpecLibrary", () => {
     expect(dataRows[0]?.textContent).not.toContain("status");
   });
 
+  it("paginates dense pages of 50 specs", () => {
+    const specs = Array.from({ length: 55 }, (_, index) => ({
+      ...gpioIntSc8562,
+      id: `spec-${index}`,
+      propertyKey: `prop_${String(index).padStart(3, "0")}`
+    }));
+
+    render(<ParameterSpecLibrary specs={specs} onSelectSpec={vi.fn()} />);
+
+    const library = screen.getByRole("region", { name: "参数规格库" });
+    expect(within(library).getByText(/55 \/ 55 项 · 第 1 \/ 2 页/)).toBeInTheDocument();
+    const pageOneRows = within(library)
+      .getAllByRole("row")
+      .filter((row) => row.querySelector("td"));
+    expect(pageOneRows).toHaveLength(50);
+    expect(within(library).getByText("prop_000")).toBeInTheDocument();
+    expect(within(library).queryByText("prop_050")).not.toBeInTheDocument();
+
+    fireEvent.click(within(library).getByRole("button", { name: "下一页" }));
+    expect(within(library).getByText(/55 \/ 55 项 · 第 2 \/ 2 页/)).toBeInTheDocument();
+    const pageTwoRows = within(library)
+      .getAllByRole("row")
+      .filter((row) => row.querySelector("td"));
+    expect(pageTwoRows).toHaveLength(5);
+    expect(within(library).getByText("prop_050")).toBeInTheDocument();
+  });
+
   it("opens detail with separated schema default, example, policy, usage, and history", () => {
     const onSelectSpec = vi.fn();
+    const onCloseSpec = vi.fn();
+    const onSaveSpec = vi.fn();
     render(
       <ParameterSpecLibrary
         specs={[gpioIntSc8562]}
@@ -144,24 +192,25 @@ describe("ParameterSpecLibrary", () => {
           schemaHistory: [{ version: 3, source: "vendor", note: "narrowed phandle" }]
         }}
         onSelectSpec={onSelectSpec}
+        onCloseSpec={onCloseSpec}
+        onSaveSpec={onSaveSpec}
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /查看 gpio_int/ }));
-    expect(onSelectSpec).toHaveBeenCalledWith("spec-sc8562-gpio-int");
-
-    const detail = screen.getByRole("region", { name: "规格详情" });
-    expect(within(detail).getByText("Schema 默认值")).toBeInTheDocument();
-    expect(within(detail).getByText("<0>")).toBeInTheDocument();
-    expect(within(detail).getByText("示例值")).toBeInTheDocument();
-    expect(within(detail).getByText("<&gpio13 29 0>")).toBeInTheDocument();
-    expect(within(detail).getByText("策略目标")).toBeInTheDocument();
-    expect(within(detail).getByText("<&gpio_policy 1 0>")).toBeInTheDocument();
-    expect(within(detail).getByText("使用情况")).toBeInTheDocument();
-    expect(within(detail).getByText(/sc8562@6E/)).toBeInTheDocument();
-    expect(within(detail).getByText("Schema 历史")).toBeInTheDocument();
-    expect(within(detail).getByText(/narrowed phandle/)).toBeInTheDocument();
+    const detail = screen.getByRole("dialog", { name: /规格详情 gpio_int/ });
+    expect(within(detail).getByLabelText("compatible")).toHaveValue("vendor,sc8562");
+    expect(within(detail).getByLabelText("Schema 默认值")).toHaveValue("<0>");
+    expect(within(detail).getByLabelText("示例值")).toHaveValue("<&gpio13 29 0>");
+    expect(within(detail).getByText(/仅作示例，不参与校验或初始化/)).toBeInTheDocument();
+    expect(within(detail).getByLabelText("策略目标")).toHaveValue("<&gpio_policy 1 0>");
+    expect(within(detail).getByLabelText("使用情况")).toHaveValue("P-AURORA · sc8562@6E");
+    expect((within(detail).getByLabelText("Schema 历史") as HTMLTextAreaElement).value).toMatch(/narrowed phandle/);
     expect(detail.textContent).not.toMatch(/推荐值/);
+    expect(within(detail).getByText("参数规格库 · 可编辑")).toBeInTheDocument();
+    expect(within(detail).getByRole("button", { name: "保存" })).toBeInTheDocument();
+
+    fireEvent.click(within(detail).getByRole("button", { name: "取消" }));
+    expect(onCloseSpec).toHaveBeenCalled();
   });
 });
 

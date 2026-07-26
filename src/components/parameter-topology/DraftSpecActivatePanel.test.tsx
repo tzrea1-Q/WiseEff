@@ -11,6 +11,8 @@ function draftDetail(overrides: Partial<ParameterSpecDetailView> = {}): Paramete
     id: "spec-gpio",
     organizationId: "org-chargelab",
     propertyKey: "gpio_int",
+    moduleName: "充电策略",
+    moduleMapped: true,
     driverModule: "sc8562",
     compatible: "vendor,sc8562",
     valueType: "cells",
@@ -21,7 +23,7 @@ function draftDetail(overrides: Partial<ParameterSpecDetailView> = {}): Paramete
     businessCategory: null,
     reviewState: "draft",
     usageCount: 0,
-    ...overrides,
+    ...overrides
   };
 }
 

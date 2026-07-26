@@ -26,7 +26,7 @@ describe("normalized workspace headers", () => {
     expect(screen.getByRole("region", { name: "日志分析核心指标" })).toBeInTheDocument();
   });
 
-  it("keeps parameter admin bulk import on the organization surface without a duplicate page title", () => {
+  it("keeps parameter admin bulk import in the topbar without a duplicate page title", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
@@ -35,8 +35,8 @@ describe("normalized workspace headers", () => {
 
     expect(topbar.querySelector(".topbar-title")).toHaveTextContent("项目参数管理后台");
     expect(topbar.querySelector(".topbar-subtitle")).toHaveTextContent("规格库");
-    expect(screen.getByRole("region", { name: "批量参数导入" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();
+    expect(within(topbar).getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "批量参数导入" })).not.toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
   });
 

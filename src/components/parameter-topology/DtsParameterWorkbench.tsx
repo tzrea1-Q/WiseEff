@@ -172,6 +172,7 @@ export function DtsParameterWorkbench({
   loadPrimaryDtsSource
 }: DtsParameterWorkbenchProps) {
   const [query, setQuery] = useState("");
+  const [moduleFilter, setModuleFilter] = useState<string[]>([]);
   const [resultsMode, setResultsMode] = useState<WorkbenchResultsMode>("parameters");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedBindingId, setSelectedBindingId] = useState<string | null>(null);
@@ -293,13 +294,35 @@ export function DtsParameterWorkbench({
     return "当前模块暂无源码行定位";
   }, [moduleFocusLine, resultsMode, subtreeBindingIds]);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const visibleRows = useMemo(
+  const scopedRows = useMemo(
     () => currentRows.filter((row) => {
       if (normalizedQuery && !row.searchText.includes(normalizedQuery)) return false;
       return subtreeBindingIds === null || subtreeBindingIds.has(row.bindingId);
     }),
     [currentRows, normalizedQuery, subtreeBindingIds]
   );
+  const moduleFilterOptions = useMemo(
+    () =>
+      Array.from(new Set(scopedRows.map((row) => row.moduleName.trim()).filter(Boolean))).sort((left, right) =>
+        left.localeCompare(right, "zh-Hans-CN")
+      ),
+    [scopedRows]
+  );
+  const activeModuleFilter = useMemo(
+    () => moduleFilter.filter((name) => moduleFilterOptions.includes(name)),
+    [moduleFilter, moduleFilterOptions]
+  );
+  const visibleRows = useMemo(() => {
+    if (activeModuleFilter.length === 0) return scopedRows;
+    const selected = new Set(activeModuleFilter);
+    return scopedRows.filter((row) => selected.has(row.moduleName));
+  }, [activeModuleFilter, scopedRows]);
+
+  const toggleModuleFilter = (value: string) => {
+    setModuleFilter((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
+    );
+  };
 
   useEffect(() => {
     const scroller = listScrollXRef.current;
@@ -661,6 +684,10 @@ export function DtsParameterWorkbench({
                 <div className="dts-workbench-list__scroll-y">
                   <DtsParameterWorkbenchTable
                     rows={visibleRows}
+                    moduleFilterOptions={moduleFilterOptions}
+                    moduleFilterSelected={activeModuleFilter}
+                    onModuleFilterToggle={toggleModuleFilter}
+                    onModuleFilterClear={() => setModuleFilter([])}
                     selectedBindingId={selectedBindingId}
                     draftBindingIds={draftBindingIds}
                     selectedBindingIds={selectedBindingIds}

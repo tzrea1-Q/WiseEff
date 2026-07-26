@@ -17,10 +17,15 @@ import {
 } from "@/components/parameter-topology/ParameterSpecLibrary";
 import type { ParameterSpecDetailView } from "@/components/parameter-topology/ParameterSpecDetail";
 import { SpecReviewQueue, type SpecReviewTaskView } from "@/components/parameter-topology/SpecReviewQueue";
+import { deriveModuleAssignment } from "@/domain/parameter-topology/moduleRegistry";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 import { useParameterAdminUrl } from "./useParameterAdminUrl";
 
-function toSpecDetailView(detail: ParameterSpecDetail, usageCount = 0): ParameterSpecDetailView {
+function toSpecDetailView(
+  detail: ParameterSpecDetail,
+  usageCount = 0,
+  libraryRow?: ParameterSpecLibraryRow | null
+): ParameterSpecDetailView {
   return {
     ...mapParameterSpecToLibraryRow({
       id: detail.id,
@@ -34,8 +39,20 @@ function toSpecDetailView(detail: ParameterSpecDetail, usageCount = 0): Paramete
       valueShape: detail.valueShape,
       exampleValue: detail.exampleValue,
       schemaNamespace: detail.schemaNamespace,
-      usageCount
+      usageCount,
+      moduleName: libraryRow?.moduleName,
+      moduleMapped: libraryRow?.moduleMapped,
+      businessCategory: libraryRow?.businessCategory
     }),
+    displayName: detail.displayName,
+    description: detail.description,
+    documentation: detail.documentation,
+    units: detail.units,
+    constraints: detail.constraints,
+    schemaNamespace: detail.schemaNamespace,
+    sourceKind: detail.sourceKind,
+    specificationKey: detail.specificationKey,
+    compatiblePatterns: detail.compatiblePatterns,
     schemaDefault: detail.schemaDefault,
     policyTarget: detail.policyTarget,
     usage: [],
@@ -119,19 +136,34 @@ export function OrganizationSpecGovernancePanel({
   const reloadSpecs = useCallback(async () => {
     setSpecLoading(true);
     try {
-      const items = await application.listSpecs({});
+      const [items, registry] = await Promise.all([
+        application.listSpecs({}),
+        application.getModuleRegistry()
+      ]);
       setSpecRows(
-        items.map((item) =>
-          mapParameterSpecToLibraryRow({
+        items.map((item) => {
+          const assignment = deriveModuleAssignment(
+            {
+              driverModule: item.driverModule,
+              compatible: item.compatiblePatterns?.[0] ?? null,
+              instanceName: null
+            },
+            registry
+          );
+          return mapParameterSpecToLibraryRow({
             id: item.id,
             organizationId: item.organizationId ?? null,
             propertyKey: item.propertyKey,
             specificationKey: item.specificationKey,
             driverModule: item.driverModule,
             lifecycle: item.lifecycle,
-            currentVersion: item.currentVersion
-          })
-        )
+            currentVersion: item.currentVersion,
+            compatiblePatterns: item.compatiblePatterns,
+            valueShape: item.valueShape,
+            moduleName: assignment.moduleName,
+            moduleMapped: assignment.mapped
+          });
+        })
       );
     } catch {
       setSpecRows([]);
@@ -199,8 +231,8 @@ export function OrganizationSpecGovernancePanel({
       .getSpec(selectedId)
       .then((detail) => {
         if (!cancelled) {
-          const usageCount = specRows.find((row) => row.id === selectedId)?.usageCount ?? 0;
-          setSpecDetail(toSpecDetailView(detail, usageCount));
+          const libraryRow = specRows.find((row) => row.id === selectedId) ?? null;
+          setSpecDetail(toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow));
         }
       })
       .catch(() => {
@@ -224,11 +256,12 @@ export function OrganizationSpecGovernancePanel({
     (next: ParameterSpecLibraryFilters) => {
       updateUrl({
         q: next.q,
-        lifecycle: next.lifecycle,
-        driverModule: next.driverModule,
-        compatible: next.compatible,
-        businessCategory: next.businessCategory,
-        schemaSource: next.schemaSource
+        lifecycles: next.lifecycles,
+        driverModules: next.driverModules,
+        compatibles: next.compatibles,
+        businessCategories: next.businessCategories,
+        schemaSources: next.schemaSources,
+        moduleNames: next.moduleNames
       });
     },
     [updateUrl]
@@ -240,6 +273,10 @@ export function OrganizationSpecGovernancePanel({
     },
     [updateUrl]
   );
+
+  const handleCloseSpec = useCallback(() => {
+    updateUrl({ specId: null });
+  }, [updateUrl]);
 
   const pushAudit = useCallback(
     (kind: ParameterAdminAuditHint["kind"], reason: string, summary: string) => {
@@ -347,33 +384,64 @@ export function OrganizationSpecGovernancePanel({
     [application, pushAudit, reloadReviewTasks, reloadSpecs]
   );
 
-  const handleActivateDraftSpec = useCallback(
-    async (input: {
+  const handleSaveSpec = useCallback(
+    async (payload: {
       specId: string;
+      mode: "activate" | "update";
       valueShape: Record<string, unknown>;
       constraints: Record<string, unknown>;
       documentation: string;
+      displayName: string;
+      description: string;
+      units: string | null;
+      exampleValue: unknown;
+      policyTarget: unknown;
       reason: string;
     }) => {
       setReviewActionError(null);
       setReviewActionSuccess(null);
-      setActivatePendingSpecId(input.specId);
+      setActivatePendingSpecId(payload.specId);
       try {
-        await application.activateParameterSpec(input.specId, {
-          valueShape: input.valueShape,
-          constraints: input.constraints,
-          documentation: input.documentation,
-          reason: input.reason
-        });
-        setReviewActionSuccess(`规格「${input.specId}」已激活，可在审核队列中批准绑定。`);
+        if (payload.mode === "activate") {
+          await application.activateParameterSpec(payload.specId, {
+            valueShape: payload.valueShape,
+            constraints: payload.constraints,
+            documentation: payload.documentation,
+            displayName: payload.displayName,
+            description: payload.description,
+            reason: payload.reason
+          });
+          setReviewActionSuccess(`规格「${payload.displayName || payload.specId}」已激活，可在审核队列中批准绑定。`);
+        } else {
+          await application.updateParameterSpec(payload.specId, {
+            valueShape: payload.valueShape,
+            constraints: payload.constraints,
+            documentation: payload.documentation,
+            displayName: payload.displayName,
+            description: payload.description,
+            units: payload.units,
+            exampleValue: payload.exampleValue,
+            policyTarget: payload.policyTarget,
+            reason: payload.reason
+          });
+          setReviewActionSuccess(`规格「${payload.displayName || payload.specId}」已保存。`);
+        }
+        pushAudit(
+          payload.mode === "activate" ? "spec-activated" : "spec-updated",
+          payload.reason,
+          payload.mode === "activate"
+            ? `激活规格 ${payload.specId}`
+            : `更新规格 ${payload.specId}`
+        );
         await reloadSpecs();
+        updateUrl({ specId: null });
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
       } finally {
         setActivatePendingSpecId(null);
       }
     },
-    [application, reloadSpecs]
+    [application, pushAudit, reloadSpecs, updateUrl]
   );
 
   const showLibrary = focus !== "review";
@@ -406,32 +474,11 @@ export function OrganizationSpecGovernancePanel({
 
   return (
     <div className="param-admin-main">
-      {showLibrary ? (
-        <div className="parameters-table-toolbar" style={{ marginBottom: "0.75rem" }}>
-          <label>
-            排序
-            <select
-              aria-label="排序"
-              value={urlState.sort}
-              onChange={(event) => updateUrl({ sort: event.target.value })}
-            >
-              <option value="propertyKey-asc">属性键 A→Z</option>
-              <option value="propertyKey-desc">属性键 Z→A</option>
-              <option value="driverModule-asc">驱动模块</option>
-              <option value="lifecycle-asc">生命周期</option>
-            </select>
-          </label>
-          <span className="parameters-table-count" aria-live="polite">
-            待审核 {state.queueCounts.specReview}
-          </span>
-        </div>
-      ) : (
-        <div className="parameters-table-toolbar" style={{ marginBottom: "0.75rem" }}>
-          <span className="parameters-table-count" aria-live="polite">
-            待审核 {state.queueCounts.specReview}
-          </span>
-        </div>
-      )}
+      <div className="parameters-table-toolbar" style={{ marginBottom: "0.75rem" }}>
+        <span className="parameters-table-count" aria-live="polite">
+          待审核 {state.queueCounts.specReview}
+        </span>
+      </div>
 
       {reviewActionSuccess ? (
         <p className="form-hint" role="status">
@@ -453,8 +500,10 @@ export function OrganizationSpecGovernancePanel({
           filters={filters}
           onFiltersChange={handleFiltersChange}
           onSelectSpec={handleSelectSpec}
-          onActivateDraftSpec={handleActivateDraftSpec}
-          activatePending={activatePendingSpecId === urlState.specId}
+          onCloseSpec={handleCloseSpec}
+          onSaveSpec={handleSaveSpec}
+          savePending={activatePendingSpecId === urlState.specId}
+          saveError={reviewActionError}
           reviewQueueSlot={showReview ? reviewQueue : undefined}
         />
       ) : (

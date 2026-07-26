@@ -143,78 +143,88 @@ export function DraftSpecActivatePanel({ detail, onActivate, pending = false }: 
     !pending;
 
   return (
-    <section className="draft-spec-activate-panel" aria-label="激活草稿规格">
-      <h4>激活草稿规格</h4>
-      <p>补齐约束与说明后激活；仅 active 且约束完整的规格可用于审核批准。</p>
-      {valueShape ? (
-        <p aria-label="推断值形状摘要">
-          推断值形状：{String(valueShape.kind)}
-          {typeof valueShape.bits === "number" ? ` · bits=${valueShape.bits}` : ""}
-          {typeof valueShape.groups === "number" ? ` · groups=${valueShape.groups}` : ""}
-          {cellCount != null ? ` · cellsPerGroup=${cellCount}` : ""}
-          {typeof valueShape.length === "number" ? ` · length=${valueShape.length}` : ""}
-        </p>
-      ) : null}
-      {unsupported ? (
-        <p className="form-error" role="alert">
-          {inferred.blockReason}
-        </p>
-      ) : null}
-      {needsCells ? (
-        <label>
-          单元格数量约束
-          <input
-            aria-label="单元格数量约束"
-            type="number"
-            min={1}
-            step={1}
-            value={cells}
-            onChange={(event) => setCells(event.target.value)}
-          />
-        </label>
-      ) : null}
-      <label>
-        规格说明
-        <textarea
-          aria-label="规格说明"
-          rows={2}
-          value={documentation}
-          onChange={(event) => setDocumentation(event.target.value)}
-          placeholder="描述属性语义、取值范围与使用注意"
-        />
-      </label>
-      <label>
-        激活原因
-        <textarea
-          aria-label="激活原因"
-          rows={2}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder="说明审核依据"
-        />
-      </label>
-      <button
-        type="button"
-        className="button primary"
-        disabled={!canSubmit}
-        onClick={() => {
-          if (!valueShape) return;
-          const nextShape = { ...valueShape };
-          const nextConstraints = {
-            ...defaultConstraintsForShape(valueShape),
-            ...(needsCells ? { cells: Number(cells) } : {}),
-          };
-          onActivate({
-            specId: detail.id,
-            valueShape: nextShape,
-            constraints: nextConstraints,
-            documentation: documentation.trim(),
-            reason: reason.trim(),
-          });
-        }}
-      >
-        {pending ? "激活中…" : "激活规格"}
-      </button>
+    <section className="shared-definition-panel draft-spec-activate-panel" aria-label="激活草稿规格">
+      <form className="param-def-form" onSubmit={(event) => event.preventDefault()}>
+        <fieldset className="def-group">
+          <legend>激活草稿规格</legend>
+          <div className="def-group-fields def-group-fields--stack">
+            <p className="form-hint">
+              补齐约束与说明后激活；仅 active 且约束完整的规格可用于审核批准。
+            </p>
+            {valueShape ? (
+              <p className="form-hint" aria-label="推断值形状摘要">
+                推断值形状：{String(valueShape.kind)}
+                {typeof valueShape.bits === "number" ? ` · bits=${valueShape.bits}` : ""}
+                {typeof valueShape.groups === "number" ? ` · groups=${valueShape.groups}` : ""}
+                {cellCount != null ? ` · cellsPerGroup=${cellCount}` : ""}
+                {typeof valueShape.length === "number" ? ` · length=${valueShape.length}` : ""}
+              </p>
+            ) : null}
+            {unsupported ? (
+              <p className="form-error" role="alert">
+                {inferred.blockReason}
+              </p>
+            ) : null}
+            {needsCells ? (
+              <label>
+                单元格数量约束
+                <input
+                  aria-label="单元格数量约束"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={cells}
+                  onChange={(event) => setCells(event.target.value)}
+                />
+              </label>
+            ) : null}
+            <label>
+              规格说明
+              <textarea
+                aria-label="规格说明"
+                rows={2}
+                value={documentation}
+                onChange={(event) => setDocumentation(event.target.value)}
+                placeholder="描述属性语义、取值范围与使用注意"
+              />
+            </label>
+            <label>
+              激活原因
+              <textarea
+                aria-label="激活原因"
+                rows={2}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                placeholder="说明审核依据"
+              />
+            </label>
+            <div className="dialog-actions" style={{ padding: 0, border: 0, justifyContent: "flex-start" }}>
+              <button
+                type="button"
+                className="button primary"
+                disabled={!canSubmit}
+                onClick={() => {
+                  if (!valueShape) return;
+                  const nextShape = { ...valueShape };
+                  const nextConstraints = {
+                    ...defaultConstraintsForShape(valueShape),
+                    ...(needsCells ? { cells: Number(cells) } : {})
+                  };
+                  onActivate({
+                    specId: detail.id,
+                    valueShape: nextShape,
+                    constraints: nextConstraints,
+                    documentation: documentation.trim(),
+                    reason: reason.trim()
+                  });
+                }}
+              >
+                {pending ? "激活中…" : "激活规格"}
+              </button>
+            </div>
+          </div>
+        </fieldset>
+      </form>
     </section>
   );
 }

@@ -25,6 +25,10 @@ import {
 } from "@/parameterAdminProjects";
 import type { ParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import {
+  formatCsvQueryParam,
+  parseCsvQueryParam
+} from "@/application/parameters/parameterAdminUrl";
+import {
   auditKindLabel,
   type ParameterAdminAuditHint
 } from "@/application/parameters/parameterAdminState";
@@ -50,7 +54,7 @@ function parseListSearch(search: string): ParamAdminProjectsSearch {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   return {
     q: params.get("q") ?? "",
-    status: params.get("status") ?? "all",
+    statuses: parseCsvQueryParam(params.get("status")),
     sort: params.get("sort") ?? "name-asc"
   };
 }
@@ -59,7 +63,8 @@ function buildListSearch(patch: Partial<ParamAdminProjectsSearch>, current: Para
   const next = { ...current, ...patch };
   const params = new URLSearchParams();
   if (next.q.trim()) params.set("q", next.q.trim());
-  if (next.status !== "all") params.set("status", next.status);
+  const status = formatCsvQueryParam(next.statuses);
+  if (status) params.set("status", status);
   if (next.sort !== "name-asc") params.set("sort", next.sort);
   return params.toString();
 }

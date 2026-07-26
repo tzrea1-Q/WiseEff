@@ -2,6 +2,11 @@ import { Funnel } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
+/**
+ * Standard table-header multi-select filter (quiet funnel + checkbox menu).
+ * UX contract: `docs/design-docs/ux-table-column-filter.md`
+ * (zh: `docs/zh-CN/design-docs/ux-table-column-filter.md`).
+ */
 export type ColumnFilterProps = {
   label: string;
   groupLabel: string;

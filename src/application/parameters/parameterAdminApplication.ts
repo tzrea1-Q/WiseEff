@@ -2,7 +2,8 @@ import type {
   ActivateParameterSpecInput,
   ParameterTopologyRepository,
   ResolveMappingInput,
-  ResolveSpecReviewInput
+  ResolveSpecReviewInput,
+  UpdateParameterSpecInput
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
   CreateModuleMappingInput,
@@ -56,6 +57,7 @@ export type ParameterAdminApplication = {
   listSpecReviewTasks(query?: SpecReviewTaskQuery): Promise<SpecReviewTaskListResult>;
   resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput): Promise<void>;
   activateParameterSpec(specId: string, input: ActivateParameterSpecInput): Promise<ParameterSpecDetail>;
+  updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
 
   getModuleRegistry(): Promise<ParameterModuleRegistry>;
   getModuleDiscoveryHints(): Promise<ModuleDiscoveryHints>;
@@ -126,6 +128,9 @@ export function createParameterAdminApplication({
     },
     activateParameterSpec(specId, input) {
       return topology.activateParameterSpec(specId, input);
+    },
+    updateParameterSpec(specId, input) {
+      return topology.updateParameterSpec(specId, input);
     },
 
     getModuleRegistry() {

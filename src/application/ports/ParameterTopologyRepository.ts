@@ -68,10 +68,23 @@ export type ActivateParameterSpecInput = {
   description?: string;
 };
 
+export type UpdateParameterSpecInput = {
+  valueShape?: Record<string, unknown>;
+  constraints: Record<string, unknown>;
+  documentation: string;
+  reason: string;
+  displayName?: string;
+  description?: string;
+  units?: string | null;
+  exampleValue?: unknown;
+  policyTarget?: unknown;
+};
+
 export interface ParameterTopologyRepository {
   listSpecs(query: SpecQuery): Promise<ParameterSpecSummary[]>;
   getSpec(specId: string): Promise<ParameterSpecDetail>;
   activateParameterSpec(specId: string, input: ActivateParameterSpecInput): Promise<ParameterSpecDetail>;
+  updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
   listSpecReviewTasks(query?: SpecReviewTaskQuery): Promise<SpecReviewTaskListResult>;
   resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput): Promise<void>;
   listBindings(projectId: string, revisionId: string): Promise<ProjectParameterBinding[]>;

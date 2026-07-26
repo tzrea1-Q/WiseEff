@@ -2,11 +2,12 @@ import type { ParameterSpecLibraryFilters } from "@/components/parameter-topolog
 
 export type ParameterAdminUrlState = {
   q: string;
-  lifecycle: string;
-  driverModule: string;
-  compatible: string;
-  businessCategory: string;
-  schemaSource: string;
+  lifecycles: string[];
+  driverModules: string[];
+  compatibles: string[];
+  businessCategories: string[];
+  schemaSources: string[];
+  moduleNames: string[];
   sort: string;
   specId: string | null;
 };
@@ -15,22 +16,42 @@ const DEFAULT_SORT = "propertyKey-asc";
 
 export const EMPTY_PARAMETER_ADMIN_FILTERS: ParameterSpecLibraryFilters = {
   q: "",
-  driverModule: "all",
-  compatible: "all",
-  businessCategory: "all",
-  schemaSource: "all",
-  lifecycle: "all"
+  driverModules: [],
+  compatibles: [],
+  businessCategories: [],
+  schemaSources: [],
+  lifecycles: [],
+  moduleNames: []
 };
+
+/** Parse comma-separated query values; treat missing/"all" as inactive []. */
+export function parseCsvQueryParam(raw: string | null): string[] {
+  if (!raw || raw === "all") return [];
+  return Array.from(
+    new Set(
+      raw
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+export function formatCsvQueryParam(values: readonly string[]): string | null {
+  const cleaned = Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+  return cleaned.length > 0 ? cleaned.join(",") : null;
+}
 
 export function parseParameterAdminUrl(search: string): ParameterAdminUrlState {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   return {
     q: params.get("q") ?? "",
-    lifecycle: params.get("lifecycle") ?? "all",
-    driverModule: params.get("driver") ?? "all",
-    compatible: params.get("compatible") ?? "all",
-    businessCategory: params.get("category") ?? "all",
-    schemaSource: params.get("schema") ?? "all",
+    lifecycles: parseCsvQueryParam(params.get("lifecycle")),
+    driverModules: parseCsvQueryParam(params.get("driver")),
+    compatibles: parseCsvQueryParam(params.get("compatible")),
+    businessCategories: parseCsvQueryParam(params.get("category")),
+    schemaSources: parseCsvQueryParam(params.get("schema")),
+    moduleNames: parseCsvQueryParam(params.get("module")),
     sort: params.get("sort") ?? DEFAULT_SORT,
     specId: params.get("spec")
   };
@@ -39,34 +60,34 @@ export function parseParameterAdminUrl(search: string): ParameterAdminUrlState {
 export function toParameterAdminFilters(url: ParameterAdminUrlState): ParameterSpecLibraryFilters {
   return {
     q: url.q,
-    lifecycle: url.lifecycle,
-    driverModule: url.driverModule,
-    compatible: url.compatible,
-    businessCategory: url.businessCategory,
-    schemaSource: url.schemaSource
+    lifecycles: url.lifecycles,
+    driverModules: url.driverModules,
+    compatibles: url.compatibles,
+    businessCategories: url.businessCategories,
+    schemaSources: url.schemaSources,
+    moduleNames: url.moduleNames
   };
 }
 
 export function buildParameterAdminSearch(patch: Partial<ParameterAdminUrlState>, current: ParameterAdminUrlState): string {
   const next: ParameterAdminUrlState = { ...current, ...patch };
   const params = new URLSearchParams();
-  const setOrDelete = (key: string, value: string | null | undefined, emptyValues: string[] = ["", "all"]) => {
-    if (!value || emptyValues.includes(value)) {
-      return;
-    }
+  const setOrDelete = (key: string, value: string | null | undefined) => {
+    if (!value) return;
     params.set(key, value);
   };
 
-  setOrDelete("q", next.q);
-  setOrDelete("lifecycle", next.lifecycle);
-  setOrDelete("driver", next.driverModule);
-  setOrDelete("compatible", next.compatible);
-  setOrDelete("category", next.businessCategory);
-  setOrDelete("schema", next.schemaSource);
+  setOrDelete("q", next.q.trim() || null);
+  setOrDelete("lifecycle", formatCsvQueryParam(next.lifecycles));
+  setOrDelete("driver", formatCsvQueryParam(next.driverModules));
+  setOrDelete("compatible", formatCsvQueryParam(next.compatibles));
+  setOrDelete("category", formatCsvQueryParam(next.businessCategories));
+  setOrDelete("schema", formatCsvQueryParam(next.schemaSources));
+  setOrDelete("module", formatCsvQueryParam(next.moduleNames));
   if (next.sort && next.sort !== DEFAULT_SORT) {
     params.set("sort", next.sort);
   }
-  setOrDelete("spec", next.specId, [""]);
+  setOrDelete("spec", next.specId);
 
   return params.toString();
 }

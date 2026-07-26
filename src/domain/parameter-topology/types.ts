@@ -51,12 +51,14 @@ export type ParameterSpecSummary = {
   lifecycle: SpecLifecycle;
   currentVersionId: string | null;
   currentVersion: number | null;
+  /** Present on list + detail for library scan columns. */
+  valueShape: unknown | null;
+  compatiblePatterns: string[] | null;
 };
 
 export type ParameterSpecDetail = ParameterSpecSummary & {
   displayName: string | null;
   description: string | null;
-  valueShape: unknown | null;
   /** From pinned schema version — not a recommendation. */
   schemaDefault: unknown | null;
   /** Illustrative only — must not be treated as enforced default. */
@@ -65,7 +67,6 @@ export type ParameterSpecDetail = ParameterSpecSummary & {
   units: string | null;
   constraints: Record<string, unknown> | null;
   documentation: string | null;
-  compatiblePatterns: string[] | null;
   /** Organization/product policy target — may participate in compliance. */
   policyTarget: unknown | null;
 };

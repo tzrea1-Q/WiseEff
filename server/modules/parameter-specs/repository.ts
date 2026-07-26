@@ -875,6 +875,8 @@ type SpecListRow = {
   lifecycle: "draft" | "active" | "deprecated" | null;
   current_version_id: string | null;
   current_version: number | string | null;
+  value_shape: unknown;
+  compatible_patterns: unknown;
 };
 
 export type ParameterSpecListRow = {
@@ -887,19 +889,19 @@ export type ParameterSpecListRow = {
   lifecycle: "draft" | "active" | "deprecated";
   currentVersionId: string | null;
   currentVersion: number | null;
+  valueShape: unknown | null;
+  compatiblePatterns: string[] | null;
 };
 
 export type ParameterSpecDetailRow = ParameterSpecListRow & {
   displayName: string | null;
   description: string | null;
-  valueShape: unknown | null;
   schemaDefault: unknown | null;
   exampleValue: unknown | null;
   schemaNamespace: string | null;
   units: string | null;
   constraints: Record<string, unknown> | null;
   documentation: string | null;
-  compatiblePatterns: string[] | null;
   policyTarget: unknown | null;
 };
 
@@ -914,6 +916,10 @@ function toListRow(row: SpecListRow): ParameterSpecListRow {
     lifecycle: row.lifecycle ?? "draft",
     currentVersionId: row.current_version_id,
     currentVersion: row.current_version == null ? null : Number(row.current_version),
+    valueShape: row.value_shape ?? null,
+    compatiblePatterns: Array.isArray(row.compatible_patterns)
+      ? row.compatible_patterns.map(String)
+      : null
   };
 }
 
@@ -987,7 +993,9 @@ export async function listParameterSpecRows(
       ) as driver_module,
       psv.lifecycle,
       psv.id as current_version_id,
-      psv.version as current_version
+      psv.version as current_version,
+      psv.value_shape,
+      dsv.compatible_patterns
     from parameter_specs ps
     left join lateral (
       select *
@@ -996,6 +1004,7 @@ export async function listParameterSpecRows(
       order by version desc
       limit 1
     ) psv on true
+    left join driver_schema_versions dsv on dsv.parameter_spec_version_id = psv.id
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
     where ${conditions.join(" and ")}
     order by ps.specification_key asc
@@ -1096,7 +1105,6 @@ export async function getParameterSpecRow(
     ...toListRow(row),
     displayName: row.display_name,
     description: row.description,
-    valueShape: row.value_shape ?? null,
     schemaDefault: row.schema_default ?? null,
     exampleValue: row.example_value ?? null,
     schemaNamespace: row.schema_namespace,
@@ -1106,9 +1114,6 @@ export async function getParameterSpecRow(
         ? (row.constraints as Record<string, unknown>)
         : null,
     documentation: row.documentation,
-    compatiblePatterns: Array.isArray(row.compatible_patterns)
-      ? row.compatible_patterns.map(String)
-      : null,
     policyTarget: row.policy_target ?? null,
   };
 }

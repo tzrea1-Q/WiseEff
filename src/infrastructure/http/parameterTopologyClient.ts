@@ -165,7 +165,9 @@ export function specSummaryFromDto(dto: ParameterSpecSummaryDto): ParameterSpecS
     driverModule: dto.driverModule,
     lifecycle: dto.lifecycle,
     currentVersionId: dto.currentVersionId,
-    currentVersion: dto.currentVersion
+    currentVersion: dto.currentVersion,
+    valueShape: dto.valueShape ?? null,
+    compatiblePatterns: dto.compatiblePatterns ?? null
   };
 }
 
@@ -175,14 +177,12 @@ export function specDetailFromDto(dto: ParameterSpecDetailDto): ParameterSpecDet
     ...specSummaryFromDto(dto),
     displayName: dto.displayName,
     description: dto.description,
-    valueShape: dto.valueShape,
     schemaDefault: dto.schemaDefault,
     exampleValue: dto.exampleValue,
     schemaNamespace: dto.schemaNamespace,
     units: dto.units,
     constraints: dto.constraints,
     documentation: dto.documentation,
-    compatiblePatterns: dto.compatiblePatterns,
     policyTarget: dto.policyTarget
   };
 }
@@ -364,6 +364,13 @@ export function createHttpParameterTopologyRepository(
     async activateParameterSpec(specId, input) {
       const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/activate`,
+        input
+      );
+      return specDetailFromDto(response.item);
+    },
+    async updateParameterSpec(specId, input) {
+      const response = await apiClient.patch<ItemEnvelope<ParameterSpecDetailDto>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}`,
         input
       );
       return specDetailFromDto(response.item);

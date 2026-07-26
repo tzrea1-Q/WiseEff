@@ -11,7 +11,8 @@ import {
   listSpecReviewTasksQuerySchema,
   parameterSpecParamsSchema,
   parameterSpecReviewTaskParamsSchema,
-  resolveSpecReviewTaskBodySchema
+  resolveSpecReviewTaskBodySchema,
+  updateParameterSpecBodySchema
 } from "./schemas";
 import {
   activateParameterSpec,
@@ -19,6 +20,7 @@ import {
   listParameterSpecs,
   listSpecReviewTasks,
   resolveSpecReviewTask,
+  updateParameterSpec,
 } from "./service";
 
 function requireDb(db: Database | undefined) {
@@ -108,6 +110,25 @@ export function registerParameterSpecRoutes(
     const params = parseWithSchema(parameterSpecParamsSchema, request.params);
     const body = parseWithSchema(activateParameterSpecBodySchema, request.body ?? {});
     const result = await activateParameterSpec(
+      db,
+      auth,
+      {
+        ...body,
+        constraints: body.constraints ?? {},
+        specId: params.specId,
+      },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.patch("/api/v2/parameter-specs/:specId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(updateParameterSpecBodySchema, request.body ?? {});
+    const result = await updateParameterSpec(
       db,
       auth,
       {

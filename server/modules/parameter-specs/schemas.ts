@@ -14,20 +14,20 @@ export const parameterSpecSummaryDtoSchema = z.object({
   driverModule: z.string().nullable(),
   lifecycle: specLifecycleSchema,
   currentVersionId: z.string().nullable(),
-  currentVersion: z.number().int().nullable()
+  currentVersion: z.number().int().nullable(),
+  valueShape: z.unknown().nullable(),
+  compatiblePatterns: z.array(z.string()).nullable()
 });
 
 export const parameterSpecDetailDtoSchema = parameterSpecSummaryDtoSchema.extend({
   displayName: z.string().nullable(),
   description: z.string().nullable(),
-  valueShape: z.unknown().nullable(),
   schemaDefault: z.unknown().nullable(),
   exampleValue: z.unknown().nullable(),
   schemaNamespace: z.string().nullable(),
   units: z.string().nullable(),
   constraints: z.record(z.string(), z.unknown()).nullable(),
   documentation: z.string().nullable(),
-  compatiblePatterns: z.array(z.string()).nullable(),
   policyTarget: z.unknown().nullable()
 });
 
@@ -115,6 +115,18 @@ export const activateParameterSpecBodySchema = z.object({
   reason: nonEmptyString,
 });
 
+export const updateParameterSpecBodySchema = z.object({
+  valueShape: z.record(z.string(), z.unknown()).optional(),
+  constraints: z.record(z.string(), z.unknown()).default({}),
+  documentation: nonEmptyString,
+  displayName: z.string().optional(),
+  description: z.string().optional(),
+  units: z.string().nullable().optional(),
+  exampleValue: z.unknown().optional(),
+  policyTarget: z.unknown().optional(),
+  reason: nonEmptyString,
+});
+
 export const resolveSpecReviewTaskResultSchema = z.object({
   id: nonEmptyString,
   status: specReviewTaskStatusSchema,
@@ -131,4 +143,5 @@ export type ListSpecReviewTasksQuery = z.infer<typeof listSpecReviewTasksQuerySc
 export type ParameterSpecReviewTaskDto = z.infer<typeof parameterSpecReviewTaskDtoSchema>;
 export type ResolveSpecReviewTaskBody = z.infer<typeof resolveSpecReviewTaskBodySchema>;
 export type ActivateParameterSpecBody = z.infer<typeof activateParameterSpecBodySchema>;
+export type UpdateParameterSpecBody = z.infer<typeof updateParameterSpecBodySchema>;
 export type ResolveSpecReviewTaskResultDto = z.infer<typeof resolveSpecReviewTaskResultSchema>;

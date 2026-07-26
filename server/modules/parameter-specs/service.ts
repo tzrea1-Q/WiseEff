@@ -37,6 +37,7 @@ import type {
   ParameterSpecReviewTaskDto,
   ParameterSpecSummaryDto,
   ResolveSpecReviewTaskBody,
+  UpdateParameterSpecBody,
 } from "./schemas";
 
 function requireCanView(auth: AuthContext) {
@@ -169,6 +170,8 @@ export async function listParameterSpecs(
       lifecycle: row.lifecycle,
       currentVersionId: row.currentVersionId,
       currentVersion: row.currentVersion,
+      valueShape: row.valueShape,
+      compatiblePatterns: row.compatiblePatterns
     })),
   };
 }
@@ -609,6 +612,123 @@ export async function activateParameterSpec(
               : null,
           reasonHash: hashReason(input.reason),
           previousLifecycle: spec.lifecycle,
+        },
+      },
+      context,
+    );
+
+    const refreshed = await getParameterSpecRow(tx, {
+      organizationId: auth.organization.id,
+      specId: input.specId,
+    });
+    if (!refreshed) {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+    }
+    return {
+      item: {
+        id: refreshed.id,
+        organizationId: refreshed.organizationId,
+        sourceKind: refreshed.sourceKind,
+        specificationKey: refreshed.specificationKey,
+        propertyKey: refreshed.propertyKey,
+        driverModule: refreshed.driverModule,
+        lifecycle: refreshed.lifecycle,
+        currentVersionId: refreshed.currentVersionId,
+        currentVersion: refreshed.currentVersion,
+        displayName: refreshed.displayName,
+        description: refreshed.description,
+        valueShape: refreshed.valueShape,
+        schemaDefault: refreshed.schemaDefault,
+        exampleValue: refreshed.exampleValue,
+        schemaNamespace: refreshed.schemaNamespace,
+        units: refreshed.units,
+        constraints: refreshed.constraints,
+        documentation: refreshed.documentation,
+        compatiblePatterns: refreshed.compatiblePatterns,
+        policyTarget: refreshed.policyTarget,
+      },
+    };
+  });
+}
+
+export async function updateParameterSpec(
+  db: Database,
+  auth: AuthContext,
+  input: UpdateParameterSpecBody & { specId: string },
+  context: AuditCorrelationContext = {},
+): Promise<{ item: ParameterSpecDetailDto }> {
+  requireCanAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    // Admins may update org-owned or platform-global catalog specs in place.
+    const spec = await requireOrgOrGlobalSpec(tx, {
+      organizationId: auth.organization.id,
+      parameterSpecId: input.specId,
+    });
+    if (spec.lifecycle === "draft") {
+      throw new ApiError("CONFLICT", "Draft specs must be activated, not updated.", 409, {
+        parameterSpecId: input.specId,
+        lifecycle: spec.lifecycle,
+      });
+    }
+
+    const nextValueShape = input.valueShape ?? spec.valueShape ?? {};
+    const nextConstraints = {
+      ...(spec.constraints ?? {}),
+      ...input.constraints,
+    };
+    if (!input.documentation.trim()) {
+      throw new ApiError("VALIDATION_FAILED", "documentation is required.", 400);
+    }
+
+    await tx.query(
+      `
+      update parameter_spec_versions
+      set
+        display_name = coalesce($3, display_name),
+        description = coalesce($4, description),
+        value_shape = $5::jsonb,
+        example_value = coalesce($6::jsonb, example_value)
+      where id = $1 and parameter_spec_id = $2
+      `,
+      [
+        spec.currentVersionId,
+        input.specId,
+        input.displayName ?? spec.displayName,
+        input.description ?? spec.description,
+        JSON.stringify(nextValueShape),
+        input.exampleValue === undefined ? null : JSON.stringify(input.exampleValue),
+      ],
+    );
+    await tx.query(
+      `
+      update dts_property_specs
+      set
+        constraints = $2::jsonb,
+        documentation = $3,
+        units = coalesce($4, units)
+      where parameter_spec_id = $1
+      `,
+      [
+        input.specId,
+        JSON.stringify(nextConstraints),
+        input.documentation,
+        input.units === undefined ? null : input.units,
+      ],
+    );
+
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: "spec-updated",
+        targetType: "parameter-spec",
+        targetId: input.specId,
+        metadata: {
+          parameterSpecId: input.specId,
+          parameterSpecVersionId: spec.currentVersionId,
+          reasonHash: hashReason(input.reason),
+          lifecycle: spec.lifecycle,
         },
       },
       context,

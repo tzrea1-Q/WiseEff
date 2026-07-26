@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import { ParameterAdminNextPage } from "./ParameterAdminNextPage";
@@ -50,6 +50,7 @@ function createRepository(
     listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
     resolveSpecReviewTask: vi.fn(),
     activateParameterSpec: vi.fn(),
+    updateParameterSpec: vi.fn(),
     listBindings: vi.fn().mockResolvedValue([]),
     getTopology: vi.fn(),
     listMappingTasks: vi.fn().mockResolvedValue([]),
@@ -61,7 +62,7 @@ function createRepository(
 }
 
 describe("ParameterAdminNextPage · a11y", () => {
-  it("Tab 从范围导航到搜索、生命周期与排序控件顺序可达", async () => {
+  it("Tab 从范围导航到搜索与生命周期筛选控件顺序可达", async () => {
     render(
       <ParameterAdminNextPage
         area="organization"
@@ -77,8 +78,7 @@ describe("ParameterAdminNextPage · a11y", () => {
     const orgTab = screen.getByRole("button", { name: "组织治理" });
     const projectTab = screen.getByRole("button", { name: "项目运营" });
     const search = screen.getByRole("searchbox", { name: "搜索规格" });
-    const lifecycle = screen.getByRole("combobox", { name: "生命周期" });
-    const sort = screen.getByRole("combobox", { name: "排序" });
+    const lifecycle = screen.getByRole("button", { name: "筛选审核状态" });
 
     orgTab.focus();
     expect(document.activeElement).toBe(orgTab);
@@ -88,11 +88,9 @@ describe("ParameterAdminNextPage · a11y", () => {
     expect(document.activeElement).toBe(search);
     lifecycle.focus();
     expect(document.activeElement).toBe(lifecycle);
-    sort.focus();
-    expect(document.activeElement).toBe(sort);
   });
 
-  it("生命周期筛选可通过下拉选择并反映到 URL", async () => {
+  it("审核状态筛选可通过列筛选菜单选择并反映到 URL", async () => {
     render(
       <ParameterAdminNextPage
         area="organization"
@@ -104,11 +102,14 @@ describe("ParameterAdminNextPage · a11y", () => {
     );
 
     await screen.findByRole("region", { name: "参数规格库" });
-    expect(screen.getByRole("combobox", { name: "生命周期" })).toHaveValue("draft");
+    const trigger = screen.getByRole("button", { name: "筛选审核状态" });
+    expect(trigger).toHaveClass("active");
+    expect(trigger).toHaveTextContent("1");
 
-    fireEvent.change(screen.getByRole("combobox", { name: "生命周期" }), {
-      target: { value: "active" }
-    });
+    fireEvent.click(trigger);
+    const menu = screen.getByRole("group", { name: "审核状态筛选" });
+    fireEvent.click(within(menu).getByRole("checkbox", { name: "draft" }));
+    fireEvent.click(within(menu).getByRole("checkbox", { name: "active" }));
     await waitFor(() => {
       expect(new URL(window.location.href).searchParams.get("lifecycle")).toBe("active");
     });
