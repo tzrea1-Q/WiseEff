@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Database, Queryable } from "../../shared/database/client";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
+import { listStructuralPropertyKeys } from "./parameterSurface";
 
 export type ParameterIdentityMigrationCoverage = {
   history: number;
@@ -892,6 +893,11 @@ async function assertFinalizePrerequisites(
 ): Promise<void> {
   const orgClause = organizationId?.trim() ? "and organization_id = $2" : "";
   const orgParams = organizationId?.trim() ? [migrationRunId, organizationId.trim()] : [migrationRunId];
+  const structuralKeys = listStructuralPropertyKeys();
+  const reviewParams = organizationId?.trim()
+    ? [migrationRunId, organizationId.trim(), structuralKeys]
+    : [migrationRunId, structuralKeys];
+  const structuralParamIndex = organizationId?.trim() ? 3 : 2;
 
   const openSpecReviews = await db.query<{ c: string }>(
     `
@@ -899,9 +905,11 @@ async function assertFinalizePrerequisites(
     from parameter_spec_review_tasks
     where migration_run_id = $1
       and status = 'open'
+      and coalesce(source_evidence->>'propertyKey', '') <> all($${structuralParamIndex}::text[])
+      and coalesce(source_evidence->>'propertyKey', '') not like '#%'
       ${orgClause}
     `,
-    orgParams
+    reviewParams
   );
   if (Number(openSpecReviews.rows[0]?.c ?? 0) > 0) {
     throw new Error("finalize blocked: open parameter spec review tasks remain");

@@ -5,18 +5,31 @@ import {
   MODULE_SCAFFOLDING_SEGMENT_RE
 } from "./modulePlacement";
 
-const STRUCTURAL_PROPERTY_KEYS = new Set([
+/**
+ * Single source of truth for DTS structural property keys.
+ * Structural keys are never parameter-surface rows, never produce spec review
+ * tasks, and never participate in schema matching (see ADR-0003).
+ * Keys starting with `#` are also structural via {@link isStructuralPropertyKey}.
+ */
+export const STRUCTURAL_PROPERTY_KEYS = [
   "compatible",
+  "device_type",
+  "gpio-controller",
+  "interrupt-controller",
+  "linux,phandle",
+  "phandle",
+  "ranges",
   "reg",
   "status",
   "#address-cells",
-  "#size-cells",
-  "#interrupt-cells",
   "#gpio-cells",
-  "ranges",
-  "interrupt-controller",
-  "gpio-controller"
-]);
+  "#interrupt-cells",
+  "#size-cells"
+] as const;
+
+const STRUCTURAL_PROPERTY_KEY_SET = new Set<string>(
+  STRUCTURAL_PROPERTY_KEYS.map((key) => key.toLowerCase())
+);
 
 export type ParameterSurfaceInput = {
   propertyKey: string;
@@ -29,10 +42,13 @@ export type ParameterSurfaceInput = {
 };
 
 export function isStructuralPropertyKey(propertyKey: string): boolean {
-  return (
-    STRUCTURAL_PROPERTY_KEYS.has(propertyKey.trim().toLowerCase()) ||
-    propertyKey.trim().startsWith("#")
-  );
+  const trimmed = propertyKey.trim();
+  return STRUCTURAL_PROPERTY_KEY_SET.has(trimmed.toLowerCase()) || trimmed.startsWith("#");
+}
+
+/** Stable list for SQL `<> all($1::text[])` gate exclusions. */
+export function listStructuralPropertyKeys(): string[] {
+  return [...STRUCTURAL_PROPERTY_KEYS];
 }
 
 export function isScaffoldingLocator(locator: string | null | undefined): boolean {

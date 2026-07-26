@@ -35,6 +35,7 @@ import {
   normalizePersistedManifest,
 } from "./configRevisionManifest";
 import { ingestConfigRevisionInTransaction } from "./ingestService";
+import { listStructuralPropertyKeys } from "./parameterSurface";
 import {
   getConfigRevisionById,
   insertValidationDiagnostics,
@@ -1369,17 +1370,7 @@ async function loadCandidateSemanticGateCounts(
   const openIdentityMappings = await countOpenIdentityMappingTasksForRevision(db, input);
 
   // Structural DTS keys are not parameter-spec review material; exclude from candidate gates.
-  const structuralKeys = [
-    "compatible",
-    "reg",
-    "#address-cells",
-    "#size-cells",
-    "#interrupt-cells",
-    "phandle",
-    "linux,phandle",
-    "device_type",
-    "ranges",
-  ];
+  const structuralKeys = listStructuralPropertyKeys();
 
   const openSpecReviews = await countOpenSpecReviewTasksForRevision(db, {
     ...input,

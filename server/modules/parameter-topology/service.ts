@@ -38,6 +38,7 @@ import {
 } from "./editService";
 import { writeGovernanceAudit } from "./governanceAudit";
 import { getProjectById } from "../parameters/repository";
+import { listStructuralPropertyKeys } from "./parameterSurface";
 import {
   assertManifestStateReady,
   clearStatusAfterValidationFailure,
@@ -805,6 +806,7 @@ export async function validateConfigRevision(
     organizationId: auth.organization.id,
     projectId: revision.projectId,
     configRevisionId: revision.id,
+    excludePropertyKeys: listStructuralPropertyKeys(),
   });
   if (openReviews > 0) {
     return persistFailedValidation(

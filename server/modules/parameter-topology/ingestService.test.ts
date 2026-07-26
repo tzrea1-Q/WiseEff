@@ -278,6 +278,20 @@ describe.skipIf(!databaseAvailable)("ingestConfigRevision", () => {
       );
       expect(lineCol.rows[0]?.start_line).toBeGreaterThan(0);
       expect(lineCol.rows[0]?.start_column).toBeGreaterThan(0);
+
+      // ADR-0003: status is node enablement — never a review task or binding.
+      const statusReviews = await db!.query<{ count: string }>(
+        `
+        select count(*)::text as count
+        from parameter_spec_review_tasks
+        where organization_id = $1
+          and status = 'open'
+          and coalesce(source_evidence->>'propertyKey', '') = 'status'
+        `,
+        [ORG_ID],
+      );
+      expect(Number(statusReviews.rows[0]?.count ?? 0)).toBe(0);
+      expect(await bindingForNodeProperty(db!, revision.id, "/amba/i2c@FDF5E000/sc8562@6E", "status")).toBeNull();
     },
     60_000
   );

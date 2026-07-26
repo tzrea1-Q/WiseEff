@@ -33,7 +33,7 @@ import { loadSchemaRegistry } from "../parameter-specs/schemaLoader";
 import type { MatchableNode, SchemaRegistry, SpecReviewTaskDraft } from "../parameter-specs/types";
 import { resolveBindingInstanceModuleId } from "../parameter-modules/ensureInstanceModuleForBinding";
 import { BOARD_INSTANCE_MODULE_NAME } from "../parameter-modules/modulePlacement";
-import { isParameterSurfaceRow } from "./parameterSurface";
+import { isParameterSurfaceRow, isStructuralPropertyKey } from "./parameterSurface";
 import { upsertProvisionalSurfacePropertySpec } from "./provisionalSurfaceBinding";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -554,6 +554,9 @@ async function matchBindAndQueueReviews(
 
     for (const [propertyKey, property] of node.properties) {
       if (property.deleted) continue;
+      // Structural keys (status, compatible, …) are node enablement / topology
+      // metadata — never specs, bindings, or review tasks (ADR-0003).
+      if (isStructuralPropertyKey(propertyKey)) continue;
       const propertyOccurrenceId =
         input.propertyOccurrenceByKey.get(`${node.nodeLocator}\0${propertyKey}`) ?? null;
       const locate = {

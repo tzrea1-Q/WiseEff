@@ -3,13 +3,29 @@ import { describe, expect, it } from "vitest";
 import {
   isParameterSurfaceRow,
   isScaffoldingLocator,
-  isStructuralPropertyKey
+  isStructuralPropertyKey,
+  listStructuralPropertyKeys,
+  STRUCTURAL_PROPERTY_KEYS
 } from "./parameterSurface";
 
 describe("parameterSurface", () => {
-  it("treats address-cells as structural", () => {
+  it("treats address-cells and the enablement/status union as structural", () => {
     expect(isStructuralPropertyKey("#address-cells")).toBe(true);
+    expect(isStructuralPropertyKey("status")).toBe(true);
+    expect(isStructuralPropertyKey("STATUS")).toBe(true);
+    expect(isStructuralPropertyKey("phandle")).toBe(true);
+    expect(isStructuralPropertyKey("device_type")).toBe(true);
     expect(isStructuralPropertyKey("r_pcb")).toBe(false);
+  });
+
+  it("exports one structural-key list for gate exclusion and surface predicates", () => {
+    expect(listStructuralPropertyKeys()).toEqual([...STRUCTURAL_PROPERTY_KEYS]);
+    for (const key of listStructuralPropertyKeys()) {
+      expect(isStructuralPropertyKey(key)).toBe(true);
+    }
+    expect(listStructuralPropertyKeys()).toContain("status");
+    expect(listStructuralPropertyKeys()).toContain("phandle");
+    expect(listStructuralPropertyKeys()).toContain("device_type");
   });
 
   it("treats bare bus containers as scaffolding locators", () => {

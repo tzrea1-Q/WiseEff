@@ -80,3 +80,17 @@ describe("binding module_id migration invariants", () => {
     expect(migration).toContain("unique nulls not distinct (project_id, logical_node_id, parameter_spec_id, module_id)");
   });
 });
+
+describe("structural spec-review dismiss migration invariants", () => {
+  it("dismisses structural open review tasks and deprecates status specs", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0068_dismiss_structural_spec_reviews.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("systemic:structural-property-not-a-parameter");
+    expect(migration).toContain("'status'");
+    expect(migration).toContain("lifecycle = 'deprecated'");
+    expect(migration).toContain("0068");
+    expect(migration).not.toContain("delete from parameter_spec_review_tasks");
+  });
+});
