@@ -1,4 +1,4 @@
-import { Pencil, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Search } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import {
@@ -10,7 +10,8 @@ import type { SpecEditorSavePayload } from "./ParameterSpecDetail";
 import { ParameterSpecDetailDialog } from "./ParameterSpecDetailDialog";
 import type { ActivateDraftSpecInput } from "./DraftSpecActivatePanel";
 
-const SPEC_LIBRARY_PAGE_SIZE = 50;
+const SPEC_LIBRARY_PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
+const DEFAULT_SPEC_LIBRARY_PAGE_SIZE: (typeof SPEC_LIBRARY_PAGE_SIZE_OPTIONS)[number] = 50;
 
 export type ParameterSpecLibraryRow = {
   id: string;
@@ -238,6 +239,9 @@ export function ParameterSpecLibrary({
 }: ParameterSpecLibraryProps) {
   const [uncontrolledFilters, setUncontrolledFilters] = useState<ParameterSpecLibraryFilters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<(typeof SPEC_LIBRARY_PAGE_SIZE_OPTIONS)[number]>(
+    DEFAULT_SPEC_LIBRARY_PAGE_SIZE
+  );
   const isControlled = controlledFilters != null && onFiltersChange != null;
   const filters = isControlled ? controlledFilters : uncontrolledFilters;
   const setFilters = (next: ParameterSpecLibraryFilters | ((current: ParameterSpecLibraryFilters) => ParameterSpecLibraryFilters)) => {
@@ -256,9 +260,14 @@ export function ParameterSpecLibrary({
   );
   const filtered = useMemo(() => filterParameterSpecLibrary(scopedSpecs, filters), [scopedSpecs, filters]);
   const pagination = useMemo(
-    () => paginateItems(filtered, page, SPEC_LIBRARY_PAGE_SIZE),
-    [filtered, page]
+    () => paginateItems(filtered, page, pageSize),
+    [filtered, page, pageSize]
   );
+
+  const handlePageSizeChange = (nextSize: (typeof SPEC_LIBRARY_PAGE_SIZE_OPTIONS)[number]) => {
+    setPageSize(nextSize);
+    setPage(1);
+  };
 
   const driverValues = useMemo(
     () => uniqueValues(scopedSpecs.map((spec) => spec.driverModule)),
@@ -296,10 +305,10 @@ export function ParameterSpecLibrary({
 
   return (
     <div className="parameter-spec-library-layout">
-      <section className="parameters-table param-admin-library-table" aria-label="参数规格库">
+      <section className="parameters-table param-admin-library-table" aria-label="参数库">
         <div className="parameters-table-heading">
           <div>
-            <h2>参数规格库</h2>
+            <h2>参数库</h2>
             <p>按属性键与驱动规格治理共享定义；同名属性按驱动/模块区分。路径仅作定位参考。</p>
           </div>
         </div>
@@ -401,24 +410,49 @@ export function ParameterSpecLibrary({
           </table>
         </div>
 
-        {pagination.totalPages > 1 ? (
-          <div className="parameters-table-pagination param-admin-row-actions">
-            <button
-              type="button"
-              className="button subtle"
-              disabled={pagination.page <= 1}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-            >
-              上一页
-            </button>
-            <button
-              type="button"
-              className="button subtle"
-              disabled={pagination.page >= pagination.totalPages}
-              onClick={() => setPage((current) => current + 1)}
-            >
-              下一页
-            </button>
+        {filtered.length > 0 ? (
+          <div className="parameters-table-pagination param-admin-row-actions parameter-spec-library-pagination">
+            <label className="parameter-spec-library-page-size">
+              <span>每页</span>
+              <select
+                aria-label="每页条数"
+                value={pageSize}
+                onChange={(event) =>
+                  handlePageSizeChange(
+                    Number(event.target.value) as (typeof SPEC_LIBRARY_PAGE_SIZE_OPTIONS)[number]
+                  )
+                }
+              >
+                {SPEC_LIBRARY_PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size} 条
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="parameter-spec-library-page-nav" aria-label="翻页">
+              <button
+                type="button"
+                className="parameter-spec-library-page-nav__btn"
+                aria-label="上一页"
+                disabled={pagination.page <= 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                <ChevronLeft size={16} strokeWidth={2} aria-hidden="true" />
+              </button>
+              <span className="parameter-spec-library-page-nav__current" aria-live="polite">
+                {pagination.page} / {pagination.totalPages}
+              </span>
+              <button
+                type="button"
+                className="parameter-spec-library-page-nav__btn"
+                aria-label="下一页"
+                disabled={pagination.page >= pagination.totalPages}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
+              </button>
+            </div>
           </div>
         ) : null}
 

@@ -1,61 +1,107 @@
-import { useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Pencil, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
-export type SpecReviewCandidate = {
-  id: string;
-  label: string;
-  propertyKey?: string | null;
-  driverModule?: string | null;
-};
+import { ColumnFilter } from "@/components/ColumnFilter";
+import { paginateItems } from "@/domain/parameter-topology/moduleProvenance";
 
-export type SpecReviewTaskView = {
-  id: string;
-  propertyKey: string;
-  driverModule: string | null;
-  evidence: string[];
-  candidates: SpecReviewCandidate[];
-  ambiguous: boolean;
-  projectCount: number;
-};
+import { SpecReviewTaskDialog } from "./SpecReviewTaskDialog";
+import {
+  matchStatusLabel,
+  nodeNameFromEvidence,
+  type SpecReviewApproveInput,
+  type SpecReviewCandidate,
+  type SpecReviewMatchStatus,
+  type SpecReviewTaskView
+} from "./specReviewShared";
 
-export type SpecReviewApproveInput = {
-  taskId: string;
-  parameterSpecId: string;
-  reason: string;
-  confirmPropertyMismatch?: boolean;
-};
+export type {
+  SpecReviewApproveInput,
+  SpecReviewCandidate,
+  SpecReviewMatchStatus,
+  SpecReviewTaskView
+} from "./specReviewShared";
+
+export {
+  matchStatusLabel,
+  nodeNameFromEvidence,
+  selectedSpec
+} from "./specReviewShared";
+
+const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
+const DEFAULT_PAGE_SIZE: (typeof PAGE_SIZE_OPTIONS)[number] = 50;
+const MATCH_STATUS_VALUES: readonly SpecReviewMatchStatus[] = ["未匹配", "歧义", "有候选"];
 
 export type SpecReviewQueueProps = {
   tasks: readonly SpecReviewTaskView[];
   librarySpecs?: readonly SpecReviewCandidate[];
   onApprove: (input: SpecReviewApproveInput) => void;
   onDismiss?: (input: { taskId: string; reason: string }) => void;
-  onCreateSpec?: (input: { taskId: string; propertyKey: string; driverModule: string | null; reason: string }) => void;
+  onCreateSpec?: (input: {
+    taskId: string;
+    propertyKey: string;
+    driverModule: string | null;
+    reason: string;
+  }) => void;
   pendingTaskId?: string | null;
   pendingAction?: "approve" | "dismiss" | "create" | null;
   nextCursor?: string | null;
-  onLoadMore?: () => void;
+  /** Fetch the next server cursor page; used by 「下一页」 when local pages are exhausted. */
+  onLoadMore?: () => void | Promise<void>;
   loadingMore?: boolean;
 };
 
-type DraftState = {
-  schemaId: string;
-  reason: string;
-  libraryQuery: string;
-  confirmMismatch: boolean;
-  createMode: boolean;
+type QueueFilters = {
+  q: string;
+  driverModules: string[];
+  matchStatuses: SpecReviewMatchStatus[];
 };
 
-function selectedSpec(
-  task: SpecReviewTaskView,
-  librarySpecs: readonly SpecReviewCandidate[],
-  schemaId: string
-): SpecReviewCandidate | undefined {
-  return (
-    task.candidates.find((item) => item.id === schemaId) ??
-    librarySpecs.find((item) => item.id === schemaId)
-  );
+const EMPTY_FILTERS: QueueFilters = {
+  q: "",
+  driverModules: [],
+  matchStatuses: []
+};
+
+function uniqueValues(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result.sort((a, b) => a.localeCompare(b, "zh-CN"));
 }
 
+function toggleSelected(selected: readonly string[], value: string): string[] {
+  return selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value];
+}
+
+function filterTasks(tasks: readonly SpecReviewTaskView[], filters: QueueFilters): SpecReviewTaskView[] {
+  const query = filters.q.trim().toLowerCase();
+  return tasks.filter((task) => {
+    if (filters.driverModules.length > 0) {
+      const driver = task.driverModule?.trim() || "";
+      if (!filters.driverModules.includes(driver)) return false;
+    }
+    if (filters.matchStatuses.length > 0) {
+      if (!filters.matchStatuses.includes(matchStatusLabel(task))) return false;
+    }
+    if (!query) return true;
+    const nodeName = nodeNameFromEvidence(task.evidence) ?? "";
+    return (
+      task.propertyKey.toLowerCase().includes(query) ||
+      nodeName.toLowerCase().includes(query) ||
+      (task.driverModule ?? "").toLowerCase().includes(query)
+    );
+  });
+}
+
+/**
+ * Spec-review queue — same table shell as ParameterSpecLibrary
+ * (search, ColumnFilter, client pagination, pencil → adjudication dialog).
+ */
 export function SpecReviewQueue({
   tasks,
   librarySpecs = [],
@@ -68,253 +114,261 @@ export function SpecReviewQueue({
   onLoadMore,
   loadingMore = false
 }: SpecReviewQueueProps) {
-  const [drafts, setDrafts] = useState<Record<string, DraftState>>({});
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<QueueFilters>(EMPTY_FILTERS);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(DEFAULT_PAGE_SIZE);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [advanceAfterLoad, setAdvanceAfterLoad] = useState(false);
 
-  const openTasks = useMemo(() => tasks, [tasks]);
+  const filtered = useMemo(() => filterTasks(tasks, filters), [tasks, filters]);
+  const pagination = useMemo(() => paginateItems(filtered, page, pageSize), [filtered, page, pageSize]);
+
+  const driverValues = useMemo(() => uniqueValues(tasks.map((task) => task.driverModule)), [tasks]);
+  const matchStatusValues = useMemo(() => {
+    const present = new Set(tasks.map((task) => matchStatusLabel(task)));
+    for (const selected of filters.matchStatuses) present.add(selected);
+    return MATCH_STATUS_VALUES.filter((value) => present.has(value));
+  }, [filters.matchStatuses, tasks]);
+
+  const activeTask = useMemo(
+    () => (activeTaskId ? tasks.find((task) => task.id === activeTaskId) ?? null : null),
+    [activeTaskId, tasks]
+  );
+
+  const canGoNext =
+    pagination.page < pagination.totalPages || Boolean(nextCursor && onLoadMore && !loadingMore);
+
+  useEffect(() => {
+    if (activeTaskId && !tasks.some((task) => task.id === activeTaskId)) {
+      setActiveTaskId(null);
+    }
+  }, [activeTaskId, tasks]);
+
+  useEffect(() => {
+    if (!advanceAfterLoad || loadingMore) return;
+    setAdvanceAfterLoad(false);
+    setPage((current) => current + 1);
+  }, [advanceAfterLoad, loadingMore, filtered.length]);
+
+  const clearFilters = () => {
+    setFilters(EMPTY_FILTERS);
+    setPage(1);
+  };
+
+  const patchFilters = (next: QueueFilters | ((current: QueueFilters) => QueueFilters)) => {
+    setFilters((current) => (typeof next === "function" ? next(current) : next));
+    setPage(1);
+  };
+
+  const handlePageSizeChange = (nextSize: (typeof PAGE_SIZE_OPTIONS)[number]) => {
+    setPageSize(nextSize);
+    setPage(1);
+  };
+
+  const handleNextPage = () => {
+    if (pagination.page < pagination.totalPages) {
+      setPage((current) => current + 1);
+      return;
+    }
+    if (!nextCursor || !onLoadMore || loadingMore) return;
+    setAdvanceAfterLoad(true);
+    void Promise.resolve(onLoadMore()).catch(() => {
+      setAdvanceAfterLoad(false);
+    });
+  };
+
+  const filtersActive =
+    filters.q.trim().length > 0 || filters.driverModules.length > 0 || filters.matchStatuses.length > 0;
 
   return (
-    <section className="spec-review-queue" aria-label="规格审核队列">
-      <div className="parameters-table-heading">
-        <div>
-          <h2>规格审核队列</h2>
-          <p>
-            可从候选或全库搜索选择 Schema；属性键不一致时需额外确认。未匹配任务可创建草稿规格（需激活后再裁决）。
-          </p>
+    <>
+      <section className="parameters-table param-admin-library-table spec-review-queue" aria-label="规格审核队列">
+        <div className="parameters-table-heading">
+          <div>
+            <h2>规格审核队列</h2>
+            <p>
+              可从候选或全库搜索选择规格；属性键不一致时需额外确认。未匹配任务可创建草稿规格（需激活后再裁决）。
+            </p>
+          </div>
         </div>
-        <span className="parameters-table-count" aria-live="polite">
-          {openTasks.length} 项
-        </span>
-      </div>
 
-      {openTasks.length === 0 ? (
-        <div className="parameters-table-empty">
-          <p>没有待审核的推理规格。</p>
+        <div className="parameters-table-toolbar">
+          <label className="parameters-table-search">
+            <Search size={16} aria-hidden="true" />
+            <input
+              aria-label="搜索审核任务"
+              type="search"
+              value={filters.q}
+              onChange={(event) => patchFilters((current) => ({ ...current, q: event.target.value }))}
+              placeholder="搜索参数名或节点"
+            />
+          </label>
+          <div className="parameters-table-filters param-admin-library-filters">
+            {filtersActive ? (
+              <button aria-label="清除筛选" className="clear-filters" type="button" onClick={clearFilters}>
+                清除筛选
+              </button>
+            ) : null}
+          </div>
+          <span className="parameters-table-count">
+            {filtered.length} / {tasks.length} 项 · 第 {pagination.page} / {pagination.totalPages} 页
+          </span>
         </div>
-      ) : (
-        <ul className="spec-review-queue__list">
-          {openTasks.map((task) => {
-            const draft = drafts[task.id] ?? {
-              schemaId: "",
-              reason: "",
-              libraryQuery: "",
-              confirmMismatch: false,
-              createMode: false
-            };
-            const expanded = expandedTaskId === task.id;
-            const filteredLibrary = librarySpecs.filter((item) => {
-              const query = draft.libraryQuery.trim().toLowerCase();
-              if (!query) return true;
-              return (
-                item.label.toLowerCase().includes(query) ||
-                (item.propertyKey ?? "").toLowerCase().includes(query) ||
-                (item.driverModule ?? "").toLowerCase().includes(query)
-              );
-            });
-            const options = [
-              ...task.candidates,
-              ...filteredLibrary.filter((item) => !task.candidates.some((candidate) => candidate.id === item.id))
-            ];
-            const picked = draft.schemaId ? selectedSpec(task, librarySpecs, draft.schemaId) : undefined;
-            const propertyMismatch =
-              Boolean(picked?.propertyKey) && picked?.propertyKey !== task.propertyKey;
-            const canApprove =
-              Boolean(draft.schemaId.trim() && draft.reason.trim()) &&
-              (!propertyMismatch || draft.confirmMismatch);
-            const isPending = pendingTaskId === task.id;
 
-            return (
-              <li key={task.id} className="spec-review-queue__item">
-                <header className="spec-review-queue__summary">
-                  <div className="spec-review-queue__summary-main">
-                    <strong>{task.propertyKey}</strong>
-                    {task.driverModule ? <span> · {task.driverModule}</span> : null}
-                    {task.ambiguous ? <span className="risk-badge medium">歧义</span> : null}
-                    {task.candidates.length === 0 ? (
-                      <span className="risk-badge high">未匹配</span>
-                    ) : null}
-                    <small>{task.projectCount} 个受影响项目</small>
-                  </div>
-                  <button
-                    type="button"
-                    className="button subtle"
-                    aria-expanded={expanded}
-                    aria-label={expanded ? `收起 ${task.propertyKey}` : `展开 ${task.propertyKey}`}
-                    onClick={() => setExpandedTaskId(expanded ? null : task.id)}
-                  >
-                    {expanded ? "收起" : "展开"}
-                  </button>
-                </header>
-
-                {expanded ? (
-                  <div className="spec-review-queue__detail">
-                    <div>
-                      <h4>推理证据</h4>
-                      <ul>
-                        {task.evidence.map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {task.candidates.length > 0 ? (
-                      <div>
-                        <h4>候选 Schema</h4>
-                        <ul>
-                          {task.candidates.map((candidate) => (
-                            <li key={candidate.id}>{candidate.label}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-
-                    <div className="spec-review-queue__form">
-                      <label>
-                        搜索规格库
-                        <input
-                          aria-label="搜索规格库"
-                          value={draft.libraryQuery}
-                          onChange={(event) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [task.id]: { ...draft, libraryQuery: event.target.value }
-                            }))
-                          }
-                          placeholder="按属性键、驱动或规格键搜索"
-                        />
-                      </label>
-
-                      <label>
-                        选择 Schema
-                        <select
-                          aria-label="选择 Schema"
-                          value={draft.schemaId}
-                          onChange={(event) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [task.id]: {
-                                ...draft,
-                                schemaId: event.target.value,
-                                confirmMismatch: false,
-                                createMode: false
-                              }
-                            }))
-                          }
-                        >
-                          <option value="">请选择 Schema…</option>
-                          {options.map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>
-                              {candidate.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      {picked ? (
-                        <p className="spec-review-queue__picked-detail">
-                          已选：{picked.label}
-                          {picked.propertyKey ? ` · 属性 ${picked.propertyKey}` : ""}
-                          {picked.driverModule ? ` · 驱动 ${picked.driverModule}` : ""}
-                        </p>
-                      ) : null}
-
-                      {propertyMismatch ? (
-                        <label className="spec-review-queue__mismatch-warning">
-                          <input
-                            type="checkbox"
-                            checked={draft.confirmMismatch}
-                            onChange={(event) =>
-                              setDrafts((current) => ({
-                                ...current,
-                                [task.id]: { ...draft, confirmMismatch: event.target.checked }
-                              }))
-                            }
-                          />
-                          高风险：所选规格属性键为「{picked?.propertyKey}」，与任务「{task.propertyKey}」不一致。确认后继续。
-                        </label>
-                      ) : null}
-
-                      <label>
-                        审核原因
-                        <textarea
-                          aria-label="审核原因"
-                          value={draft.reason}
-                          onChange={(event) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [task.id]: { ...draft, reason: event.target.value }
-                            }))
-                          }
-                          rows={2}
-                          placeholder="说明为何选择该 Schema"
-                        />
-                      </label>
-
-                      <div className="param-admin-row-actions">
-                        <button
-                          type="button"
-                          className="button primary"
-                          disabled={!canApprove || isPending}
-                          onClick={() =>
-                            onApprove({
-                              taskId: task.id,
-                              parameterSpecId: draft.schemaId,
-                              reason: draft.reason.trim(),
-                              confirmPropertyMismatch: propertyMismatch ? draft.confirmMismatch : undefined
-                            })
-                          }
-                        >
-                          {isPending && pendingAction === "approve" ? "批准中…" : "批准"}
-                        </button>
-                        {onCreateSpec && task.candidates.length === 0 ? (
-                          <button
-                            type="button"
-                            className="button subtle"
-                            disabled={!draft.reason.trim() || isPending}
-                            onClick={() =>
-                              onCreateSpec({
-                                taskId: task.id,
-                                propertyKey: task.propertyKey,
-                                driverModule: task.driverModule,
-                                reason: draft.reason.trim()
-                              })
-                            }
-                          >
-                            {isPending && pendingAction === "create" ? "创建中…" : "创建草稿规格"}
-                          </button>
-                        ) : null}
-                        {onDismiss ? (
-                          <button
-                            type="button"
-                            className="button subtle"
-                            disabled={!draft.reason.trim() || isPending}
-                            onClick={() => onDismiss({ taskId: task.id, reason: draft.reason.trim() })}
-                          >
-                            {isPending && pendingAction === "dismiss" ? "驳回中…" : "驳回"}
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {nextCursor && onLoadMore ? (
-        <div className="spec-review-queue__load-more">
-          <button
-            type="button"
-            className="button"
-            disabled={loadingMore}
-            onClick={() => onLoadMore()}
-          >
-            {loadingMore ? "加载中…" : "加载更多"}
-          </button>
+        <div className="parameters-table-scroll">
+          {/*
+            No <colgroup>: with table-layout:fixed, display:none cells still reserve
+            width via <col>, which left a large right gap when 所属模块 / 受影响项目 hide.
+          */}
+          <table className="parameters-table-grid param-admin-library-grid parameter-spec-library-grid spec-review-library-grid">
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">参数名</th>
+                <th scope="col">节点</th>
+                <th scope="col">
+                  <span className="param-admin-library-head-cell">
+                    <span>所属模块</span>
+                    <ColumnFilter
+                      label="所属模块"
+                      groupLabel="所属模块筛选"
+                      values={driverValues}
+                      selectedValues={filters.driverModules}
+                      onToggle={(value) =>
+                        patchFilters((current) => ({
+                          ...current,
+                          driverModules: toggleSelected(current.driverModules, value)
+                        }))
+                      }
+                      onClear={() => patchFilters((current) => ({ ...current, driverModules: [] }))}
+                    />
+                  </span>
+                </th>
+                <th scope="col">
+                  <span className="param-admin-library-head-cell">
+                    <span>匹配状态</span>
+                    <ColumnFilter
+                      label="匹配状态"
+                      groupLabel="匹配状态筛选"
+                      values={[...matchStatusValues]}
+                      selectedValues={filters.matchStatuses}
+                      onToggle={(value) =>
+                        patchFilters((current) => ({
+                          ...current,
+                          matchStatuses: toggleSelected(current.matchStatuses, value) as SpecReviewMatchStatus[]
+                        }))
+                      }
+                      onClear={() => patchFilters((current) => ({ ...current, matchStatuses: [] }))}
+                    />
+                  </span>
+                </th>
+                <th scope="col">受影响项目</th>
+                <th scope="col">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagination.pageItems.map((task, index) => {
+                const nodeName = nodeNameFromEvidence(task.evidence);
+                return (
+                  <tr key={task.id} data-selected={activeTaskId === task.id ? "true" : undefined}>
+                    <td data-label="#">
+                      {(pagination.page - 1) * pagination.pageSize + index + 1}
+                    </td>
+                    <td data-label="参数名">
+                      <strong>{task.propertyKey}</strong>
+                    </td>
+                    <td data-label="节点">{nodeName ?? "—"}</td>
+                    <td data-label="所属模块">{task.driverModule ?? "—"}</td>
+                    <td data-label="匹配状态">{matchStatusLabel(task)}</td>
+                    <td data-label="受影响项目">{task.projectCount}</td>
+                    <td data-label="操作">
+                      <button
+                        type="button"
+                        className="button subtle dts-parameter-workbench-table__icon-action"
+                        aria-label={`编辑 ${task.propertyKey}`}
+                        title="编辑"
+                        onClick={() => setActiveTaskId(task.id)}
+                      >
+                        <Pencil size={16} strokeWidth={1.9} aria-hidden="true" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
+
+        {filtered.length > 0 ? (
+          <div className="parameters-table-pagination param-admin-row-actions parameter-spec-library-pagination">
+            <label className="parameter-spec-library-page-size">
+              <span>每页</span>
+              <select
+                aria-label="每页条数"
+                value={pageSize}
+                onChange={(event) =>
+                  handlePageSizeChange(Number(event.target.value) as (typeof PAGE_SIZE_OPTIONS)[number])
+                }
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size} 条
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="parameter-spec-library-page-nav" aria-label="翻页">
+              <button
+                type="button"
+                className="parameter-spec-library-page-nav__btn"
+                aria-label="上一页"
+                disabled={pagination.page <= 1 || loadingMore}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                <ChevronLeft size={16} strokeWidth={2} aria-hidden="true" />
+              </button>
+              <span className="parameter-spec-library-page-nav__current" aria-live="polite">
+                {loadingMore || advanceAfterLoad
+                  ? "…"
+                  : `${pagination.page} / ${pagination.totalPages}`}
+              </span>
+              <button
+                type="button"
+                className="parameter-spec-library-page-nav__btn"
+                aria-label="下一页"
+                disabled={!canGoNext}
+                onClick={handleNextPage}
+              >
+                <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {filtered.length === 0 ? (
+          <div className="parameters-table-empty">
+            <p>{tasks.length === 0 ? "没有待审核的推理规格。" : "没有匹配的审核任务。"}</p>
+            {filtersActive ? (
+              <button type="button" className="button subtle" onClick={clearFilters}>
+                清除筛选条件
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      {activeTask ? (
+        <SpecReviewTaskDialog
+          task={activeTask}
+          librarySpecs={librarySpecs}
+          onClose={() => setActiveTaskId(null)}
+          onApprove={onApprove}
+          onDismiss={onDismiss}
+          onCreateSpec={onCreateSpec}
+          pendingTaskId={pendingTaskId}
+          pendingAction={pendingAction}
+        />
       ) : null}
-    </section>
+    </>
   );
 }

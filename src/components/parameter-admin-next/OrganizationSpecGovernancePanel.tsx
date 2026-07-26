@@ -175,7 +175,7 @@ export function OrganizationSpecGovernancePanel({
   const reloadReviewTasks = useCallback(async () => {
     setReviewLoading(true);
     try {
-      const result = await application.listSpecReviewTasks({ status: "open", limit: 20 });
+      const result = await application.listSpecReviewTasks({ status: "open", limit: 50 });
       const views = result.items.map(toReviewTaskView);
       setReviewTasks(views);
       setReviewNextCursor(result.nextCursor);
@@ -197,7 +197,7 @@ export function OrganizationSpecGovernancePanel({
     try {
       const result = await application.listSpecReviewTasks({
         status: "open",
-        limit: 20,
+        limit: 50,
         cursor: reviewNextCursor
       });
       const views = result.items.map(toReviewTaskView);

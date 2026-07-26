@@ -299,7 +299,7 @@ function buildScenarioEntries(
   const candidates: WorkbenchScenarioEntry[] =
     roleView === "admin"
       ? [
-          entry("admin", "管理后台", "维护规格库、模块映射、批量导入与项目运营。", "/parameter-admin", "parameter-admin", "导入批次", input.signals.unappliedImportBatches),
+          entry("admin", "管理后台", "维护参数库、模块映射、批量导入与项目运营。", "/parameter-admin", "parameter-admin", "导入批次", input.signals.unappliedImportBatches),
           {
             ...entry("new-project", "新建项目", "启动项目参数初始化流程。", "/parameter-home", "parameter-home", "项目", input.projects.length),
             action: "new-project" as const

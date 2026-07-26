@@ -92,7 +92,7 @@ export const navigationItems: PageConfig[] = [
     group: "参数管理",
     icon: Database,
     title: "项目参数管理后台",
-    subtitle: "组织治理与项目运营；子路由涵盖规格库、规格审核、模块映射、身份映射与批量导入"
+    subtitle: "组织治理与项目运营；子路由涵盖参数库、规格审核、模块映射、身份映射与批量导入"
   },
   {
     key: "node-debugging",
@@ -222,7 +222,7 @@ export function getPageByPath(path: string): PageConfig {
     return {
       ...(adminNav as PageConfig),
       path,
-      subtitle: view ? PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS[view] : (adminNav?.subtitle ?? "规格库")
+      subtitle: view ? PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS[view] : (adminNav?.subtitle ?? "参数库")
     };
   }
 
@@ -305,7 +305,7 @@ export function getXiaozeContextSummary(path: string): string {
       if (path.includes("/identity-mapping")) {
         return "正在关注迁移期身份映射任务与无损决议。";
       }
-      return "正在关注组织级规格库、规格审核、模块映射、批量导入与身份映射治理。";
+      return "正在关注组织级参数库、规格审核、模块映射、批量导入与身份映射治理。";
     case "log-admin":
       return "正在关注分析吞吐、失败记录、权限覆盖和使用趋势。";
     case "debugging-admin":

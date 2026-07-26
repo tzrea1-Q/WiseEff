@@ -15,7 +15,7 @@ export const PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS: Record<
   ParameterAdminOrganizationView,
   string
 > = {
-  specs: "规格库",
+  specs: "参数库",
   "spec-review": "规格审核",
   modules: "模块映射",
   "identity-mapping": "身份映射"

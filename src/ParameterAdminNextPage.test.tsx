@@ -319,7 +319,7 @@ describe("ParameterAdminNextPage · shell", () => {
     expect(within(nav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("region", { name: "项目运营" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "参数规格库" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "参数库" })).not.toBeInTheDocument();
   });
 });
 
@@ -337,7 +337,7 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
   it("renders only the spec library on /parameter-admin/specs", async () => {
     renderPage({ path: "/parameter-admin/specs" });
 
-    expect(await screen.findByRole("region", { name: "参数规格库" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "参数库" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "规格审核队列" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "模块映射管理" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "身份映射治理" })).not.toBeInTheDocument();
@@ -347,7 +347,7 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     renderPage({ path: "/parameter-admin/spec-review" });
 
     expect(await screen.findByRole("region", { name: "规格审核队列" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "参数规格库" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "参数库" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "模块映射管理" })).not.toBeInTheDocument();
   });
 
@@ -356,7 +356,7 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
 
     const orgNav = await screen.findByRole("navigation", { name: "组织治理子视图" });
     expect(within(orgNav).getByRole("button", { name: "模块映射" })).toHaveAttribute("aria-current", "page");
-    expect(within(orgNav).getByRole("button", { name: "规格库" })).not.toHaveAttribute("aria-current");
+    expect(within(orgNav).getByRole("button", { name: "参数库" })).not.toHaveAttribute("aria-current");
 
     fireEvent.click(within(orgNav).getByRole("button", { name: "规格审核" }));
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/spec-review");
@@ -368,11 +368,11 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const repository = createRepository();
     renderPage({ repository });
 
-    const library = await screen.findByRole("region", { name: "参数规格库" });
+    const library = await screen.findByRole("region", { name: "参数库" });
     expect(within(library).getByText("gpio_int")).toBeInTheDocument();
     expect(repository.listSpecs).toHaveBeenCalled();
     expect(repository.listSpecReviewTasks).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "open", limit: 20 })
+      expect.objectContaining({ status: "open", limit: 50 })
     );
   });
 
@@ -380,7 +380,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const repository = createRepository();
     renderPage({ repository });
 
-    await screen.findByRole("region", { name: "参数规格库" });
+    await screen.findByRole("region", { name: "参数库" });
 
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索规格" }), {
       target: { value: "gpio" }
@@ -416,7 +416,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     expect((within(detail).getByLabelText("Schema 历史") as HTMLTextAreaElement).value).toMatch(
       /v3 · vendor,sc8562\/bindings/
     );
-    expect(within(detail).getByText("参数规格库 · 可编辑")).toBeInTheDocument();
+    expect(within(detail).getByText("参数库 · 可编辑")).toBeInTheDocument();
     expect(repository.getSpec).toHaveBeenCalledWith("spec-sc8562-gpio-int");
 
     fireEvent.click(within(detail).getByRole("button", { name: "取消" }));
@@ -438,15 +438,16 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const queue = await screen.findByRole("region", { name: "规格审核队列" });
     expect(within(queue).getByText("gpio_int")).toBeInTheDocument();
 
-    fireEvent.click(within(queue).getByRole("button", { name: "展开 gpio_int" }));
-    expect(within(queue).getByText("compatible unmatched")).toBeInTheDocument();
-    fireEvent.change(within(queue).getByRole("combobox", { name: "选择 Schema" }), {
+    fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
+    const dialog = screen.getByRole("dialog", { name: "规格审核 gpio_int" });
+    expect(within(dialog).getByLabelText("推理证据")).toHaveValue("compatible unmatched");
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "选择规格" }), {
       target: { value: "spec-sc8562-gpio-int" }
     });
-    fireEvent.change(within(queue).getByLabelText("审核原因"), {
+    fireEvent.change(within(dialog).getByLabelText("审核原因"), {
       target: { value: "Matched SC8562" }
     });
-    fireEvent.click(within(queue).getByRole("button", { name: "批准" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "批准" }));
 
     await waitFor(() =>
       expect(resolveSpecReviewTask).toHaveBeenCalledWith("review-task-gpio-int", {
@@ -473,11 +474,12 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     renderPage({ repository, path: "/parameter-admin/spec-review" });
 
     const queue = await screen.findByRole("region", { name: "规格审核队列" });
-    fireEvent.click(within(queue).getByRole("button", { name: "展开 gpio_int" }));
-    fireEvent.change(within(queue).getByLabelText("审核原因"), {
+    fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
+    const dialog = screen.getByRole("dialog", { name: "规格审核 gpio_int" });
+    fireEvent.change(within(dialog).getByLabelText("审核原因"), {
       target: { value: "Not actionable" }
     });
-    fireEvent.click(within(queue).getByRole("button", { name: "驳回" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "驳回" }));
 
     await waitFor(() =>
       expect(resolveSpecReviewTask).toHaveBeenCalledWith("review-task-gpio-int", {
@@ -509,11 +511,12 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     renderPage({ repository, path: "/parameter-admin/spec-review" });
 
     const queue = await screen.findByRole("region", { name: "规格审核队列" });
-    fireEvent.click(within(queue).getByRole("button", { name: "展开 mystery_prop" }));
-    fireEvent.change(within(queue).getByLabelText("审核原因"), {
+    fireEvent.click(within(queue).getByRole("button", { name: "编辑 mystery_prop" }));
+    const dialog = screen.getByRole("dialog", { name: "规格审核 mystery_prop" });
+    fireEvent.change(within(dialog).getByLabelText("审核原因"), {
       target: { value: "Need manual draft" }
     });
-    fireEvent.click(within(queue).getByRole("button", { name: "创建草稿规格" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "创建草稿规格" }));
 
     await waitFor(() =>
       expect(resolveSpecReviewTask).toHaveBeenCalledWith("review-task-mystery", {
@@ -528,7 +531,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/草稿规格「mystery_prop」已创建/);
   });
 
-  it("pages the review queue through the topology port cursor and expands one task at a time", async () => {
+  it("pages the review queue through the topology port cursor via 下一页 and opens one adjudication dialog at a time", async () => {
     const pageOne = {
       items: [OPEN_REVIEW_TASK],
       nextCursor: "cursor-page-2"
@@ -554,26 +557,33 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     const queue = await screen.findByRole("region", { name: "规格审核队列" });
     expect(listSpecReviewTasks).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "open", limit: 20 })
+      expect.objectContaining({ status: "open", limit: 50 })
     );
     expect(within(queue).getByText("gpio_int")).toBeInTheDocument();
-    expect(within(queue).queryByRole("combobox", { name: "选择 Schema" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(within(queue).queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
 
-    fireEvent.click(within(queue).getByRole("button", { name: "展开 gpio_int" }));
-    expect(within(queue).getByRole("combobox", { name: "选择 Schema" })).toBeInTheDocument();
+    fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
+    expect(screen.getByRole("dialog", { name: "规格审核 gpio_int" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "选择规格" })).toBeInTheDocument();
 
-    fireEvent.click(within(queue).getByRole("button", { name: "加载更多" }));
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    // Default page size 50 with 1 loaded row → still one local page; 下一页 fetches cursor.
+    fireEvent.change(within(queue).getByLabelText("每页条数"), { target: { value: "20" } });
+    fireEvent.click(within(queue).getByRole("button", { name: "下一页" }));
     await waitFor(() =>
       expect(listSpecReviewTasks).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "open", limit: 20, cursor: "cursor-page-2" })
+        expect.objectContaining({ status: "open", limit: 50, cursor: "cursor-page-2" })
       )
     );
     expect(await within(queue).findByText("status")).toBeInTheDocument();
 
-    fireEvent.click(within(queue).getByRole("button", { name: "展开 status" }));
-    expect(within(queue).queryByRole("button", { name: "展开 gpio_int" })).toBeInTheDocument();
-    expect(within(queue).queryByRole("combobox", { name: "选择 Schema" })).toBeInTheDocument();
-    expect(within(queue).getAllByRole("combobox", { name: "选择 Schema" })).toHaveLength(1);
+    fireEvent.click(within(queue).getByRole("button", { name: "编辑 status" }));
+    expect(screen.getByRole("dialog", { name: "规格审核 status" })).toBeInTheDocument();
+    expect(within(queue).getByRole("button", { name: "编辑 gpio_int" })).toBeInTheDocument();
+    expect(screen.getAllByRole("combobox", { name: "选择规格" })).toHaveLength(1);
   });
 
   it("pages the spec library client-side and hides structural properties by default", async () => {
@@ -590,7 +600,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     renderPage({ repository, path: "/parameter-admin/specs" });
 
-    const library = await screen.findByRole("region", { name: "参数规格库" });
+    const library = await screen.findByRole("region", { name: "参数库" });
     expect(within(library).queryByText("#address-cells")).not.toBeInTheDocument();
     expect(within(library).getByText(/59 \/ 59/)).toBeInTheDocument();
     expect(within(library).getAllByRole("button", { name: /编辑 prop_/ })).toHaveLength(50);
@@ -624,7 +634,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     renderPage({ repository, path: "/parameter-admin/specs" });
 
-    const library = await screen.findByRole("region", { name: "参数规格库" });
+    const library = await screen.findByRole("region", { name: "参数库" });
     const table = within(library).getByRole("table");
     expect(within(library).getByRole("columnheader", { name: "所属模块" })).toBeInTheDocument();
     expect(within(table).getByText("sc8562")).toBeInTheDocument();
@@ -641,7 +651,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const repository = createMockParameterTopologyRepository();
     renderPage({ repository, path: "/parameter-admin/specs" });
 
-    const library = await screen.findByRole("region", { name: "参数规格库" });
+    const library = await screen.findByRole("region", { name: "参数库" });
     expect(within(library).getAllByText("gpio_int").length).toBeGreaterThan(0);
     expect(within(library).getAllByRole("button", { name: "编辑 gpio_int" }).length).toBeGreaterThan(0);
 
@@ -649,14 +659,15 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     renderPage({ repository, path: "/parameter-admin/spec-review" });
 
     const queue = await screen.findByRole("region", { name: "规格审核队列" });
-    fireEvent.click(within(queue).getByRole("button", { name: "展开 gpio_int" }));
-    fireEvent.change(within(queue).getByRole("combobox", { name: "选择 Schema" }), {
+    fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
+    const dialog = screen.getByRole("dialog", { name: "规格审核 gpio_int" });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "选择规格" }), {
       target: { value: "spec-sc8562-gpio-int" }
     });
-    fireEvent.change(within(queue).getByLabelText("审核原因"), {
+    fireEvent.change(within(dialog).getByLabelText("审核原因"), {
       target: { value: "Mock approve" }
     });
-    fireEvent.click(within(queue).getByRole("button", { name: "批准" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "批准" }));
 
     await waitFor(() => expect(within(queue).getByText("没有待审核的推理规格。")).toBeInTheDocument());
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/spec-review-resolved/);
