@@ -382,6 +382,35 @@ describe("DtsParameterWorkbench", () => {
     expect(visibleBindingRows()).toHaveLength(4);
   });
 
+  it("filters the list with the 所属模块 ColumnFilter instead of sorting", async () => {
+    const user = userEvent.setup();
+    renderWorkbench();
+
+    expect(screen.queryByRole("button", { name: "按所属模块排序" })).not.toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "筛选所属模块" });
+    await user.click(trigger);
+
+    const menu = screen.getByRole("group", { name: "所属模块筛选" });
+    await user.click(within(menu).getByRole("checkbox", { name: "未分类 · sc8562" }));
+
+    expect(visibleBindingRows().map((element) => element.dataset.bindingId)).toEqual([
+      "binding-gpio-int",
+      "binding-watchdog"
+    ]);
+    expect(screen.getByRole("status")).toHaveTextContent("显示 2 / 4 个参数");
+    expect(trigger).toHaveClass("active");
+    expect(trigger).toHaveTextContent("1");
+
+    await user.click(within(menu).getByRole("checkbox", { name: "未分类 · mt5788" }));
+    expect(visibleBindingRows()).toHaveLength(3);
+    expect(screen.getByRole("status")).toHaveTextContent("显示 3 / 4 个参数");
+    expect(trigger).toHaveTextContent("2");
+
+    await user.click(within(menu).getByRole("button", { name: "清除" }));
+    expect(visibleBindingRows()).toHaveLength(4);
+    expect(screen.getByRole("status")).toHaveTextContent("显示 4 / 4 个参数");
+  });
+
   it("renders importance as the primary column and only surfaces anomaly governance badges", () => {
     renderWorkbench();
 

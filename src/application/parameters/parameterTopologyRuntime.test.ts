@@ -13,7 +13,9 @@ const MOCK_SPEC: ParameterSpecSummary = {
   driverModule: "sc8562",
   lifecycle: "active",
   currentVersionId: "specver-sc8562-gpio-int-3",
-  currentVersion: 3
+  currentVersion: 3,
+  valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
+  compatiblePatterns: ["vendor,sc8562"]
 };
 
 function createRepository(
@@ -23,6 +25,7 @@ function createRepository(
     listSpecs: vi.fn().mockResolvedValue([MOCK_SPEC]),
     getSpec: vi.fn(),
     activateParameterSpec: vi.fn(),
+    updateParameterSpec: vi.fn(),
     listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
     resolveSpecReviewTask: vi.fn().mockResolvedValue(undefined),
     listBindings: vi.fn().mockResolvedValue([]),

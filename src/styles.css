@@ -11573,6 +11573,31 @@ td small {
     width: auto;
     min-width: 0;
   }
+
+  /* Spec library always shows 所属模块 / 审核状态 / 操作. After dropping the
+     business-module column, 操作 is nth-child(6) and must not inherit the
+     shared parameters-grid hide rule (otherwise the actions column vanishes). */
+  .parameters-table-grid.parameter-spec-library-grid th:nth-child(3),
+  .parameters-table-grid.parameter-spec-library-grid td:nth-child(3),
+  .parameters-table-grid.parameter-spec-library-grid th:nth-child(5),
+  .parameters-table-grid.parameter-spec-library-grid td:nth-child(5),
+  .parameters-table-grid.parameter-spec-library-grid th:nth-child(6),
+  .parameters-table-grid.parameter-spec-library-grid td:nth-child(6) {
+    display: table-cell;
+  }
+
+  .parameters-table-grid.parameter-spec-library-grid th:nth-child(2),
+  .parameters-table-grid.parameter-spec-library-grid td:nth-child(2) {
+    width: 22%;
+    min-width: 96px;
+    max-width: none;
+  }
+
+  .parameters-table-grid.parameter-spec-library-grid th:nth-child(4),
+  .parameters-table-grid.parameter-spec-library-grid td:nth-child(4) {
+    width: 14%;
+    min-width: 72px;
+  }
 }
 
 @media (max-width: 960px) {
@@ -15904,6 +15929,170 @@ body.xiaoze-popup-resize-active {
 
 .param-admin-library-filters {
   flex: 1 1 auto;
+}
+
+.param-admin-library-head-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.param-admin-library-module {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.param-admin-library-module strong {
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.param-admin-library-module small {
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.parameter-spec-library-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.parameter-spec-library-grid tr[data-selected="true"] td {
+  background: color-mix(in srgb, var(--primary, #2563eb) 8%, transparent);
+}
+
+.param-admin-editor-dialog .draft-spec-activate-panel {
+  margin-top: 8px;
+  border-top: 1px solid var(--outline);
+  padding-top: 4px;
+}
+
+.param-admin-editor-dialog .draft-spec-activate-panel .form-hint {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.param-admin-editor-dialog .shared-definition-panel input[readonly],
+.param-admin-editor-dialog .shared-definition-panel textarea[readonly] {
+  color: var(--app-ink, inherit);
+  background: var(--surface-low, #f8fafc);
+  cursor: default;
+}
+
+.parameter-spec-library-grid {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.parameter-spec-library-grid th,
+.parameter-spec-library-grid td {
+  max-width: none;
+}
+
+/* Spec library is dense and fully visible — do not inherit sticky freeze
+   columns from the shared parameters grid (sticky-right creates a blank gap).
+   Match the mid-width media-query specificity so sticky is not re-enabled. */
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid th,
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid td,
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid th:first-child,
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:first-child,
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid th:nth-child(2),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:nth-child(2),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid th:last-child,
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:last-child {
+  position: static;
+  left: auto;
+  right: auto;
+  box-shadow: none;
+  background: transparent;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid thead th {
+  background: var(--surface-low);
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid tbody td {
+  background: #fff;
+}
+
+/* Explicit non-zero widths under table-layout:fixed. Do not mix width:100% /
+   width:auto here — that collapses middle columns to 0 and leaves a right gap. */
+.param-admin-shell .parameter-spec-library-grid .parameter-spec-library-grid__col-index {
+  width: 48px;
+}
+
+.param-admin-shell .parameter-spec-library-grid .parameter-spec-library-grid__col-key {
+  width: 22%;
+}
+
+.param-admin-shell .parameter-spec-library-grid .parameter-spec-library-grid__col-driver {
+  width: 28%;
+}
+
+.param-admin-shell .parameter-spec-library-grid .parameter-spec-library-grid__col-type {
+  width: 14%;
+}
+
+.param-admin-shell .parameter-spec-library-grid .parameter-spec-library-grid__col-state {
+  width: 14%;
+}
+
+.param-admin-shell .parameter-spec-library-grid .parameter-spec-library-grid__col-actions {
+  width: 88px;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid th:first-child,
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:first-child {
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  text-align: center;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid th:nth-child(2),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:nth-child(2) {
+  width: 22%;
+  min-width: 96px;
+  max-width: none;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid th:nth-child(3),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:nth-child(3) {
+  width: 28%;
+  min-width: 120px;
+  max-width: none;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid th:nth-child(4),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:nth-child(4) {
+  width: 14%;
+  min-width: 72px;
+  max-width: none;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid th:nth-child(5),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:nth-child(5) {
+  width: 14%;
+  min-width: 72px;
+  max-width: none;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.param-admin-library-grid th:last-child,
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.param-admin-library-grid td:last-child {
+  position: static;
+  width: 88px;
+  min-width: 88px;
+  max-width: 88px;
+  text-align: left;
 }
 
 .param-admin-library-grid th:last-child,
@@ -20376,6 +20565,14 @@ button.dts-topology-navigator__disclosure:focus-visible {
   color: var(--dts-workbench-blue);
 }
 
+.dts-parameter-workbench-table__head-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .dts-parameter-workbench-table__identity {
   display: grid;
   gap: 3px;
@@ -21757,8 +21954,116 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .param-admin-shell .parameters-table-scroll {
-  max-height: min(60vh, 560px);
+  max-height: min(72vh, 720px);
   overflow: auto;
+}
+
+.param-admin-shell .param-admin-library-table .parameters-table-grid th,
+.param-admin-shell .param-admin-library-table .parameters-table-grid td {
+  padding: 6px 8px;
+}
+
+.param-admin-shell .param-admin-library-table .parameters-table-grid td {
+  font-size: 12px;
+}
+
+.param-admin-shell .param-admin-library-table .param-admin-row-action {
+  min-height: 26px;
+  padding: 2px 8px;
+}
+
+/* Keep the org admin library as a dense scrollable table in mid widths;
+   the global ≤960px card stack is too sparse for 200+ specs. */
+@media (max-width: 960px) and (min-width: 641px) {
+  .param-admin-shell .param-admin-library-table .parameters-table-scroll {
+    overflow: auto;
+    border: 1px solid var(--outline);
+    background: #fff;
+    max-height: min(65vh, 640px);
+  }
+
+  .param-admin-shell .param-admin-library-table .parameters-table-grid {
+    display: table;
+    width: 100%;
+    min-width: 560px;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameters-table-grid thead {
+    display: table-header-group;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameters-table-grid tbody {
+    display: table-row-group;
+    gap: 0;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameters-table-grid tr {
+    display: table-row;
+    gap: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameters-table-grid td {
+    display: table-cell;
+    width: auto;
+    max-width: none;
+    padding: 6px 8px;
+    border-bottom: 1px solid #e7ecf7;
+    border-right: 1px solid #edf1f8;
+    grid-template-columns: none;
+  }
+
+  /* Keep explicit column widths for the spec library (width:auto above would
+     collapse middle columns under table-layout:fixed). */
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:nth-child(2) {
+    width: 22%;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:nth-child(3) {
+    width: 28%;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:nth-child(4),
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:nth-child(5) {
+    width: 14%;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:last-child {
+    width: 88px;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameters-table-grid td::before {
+    content: none;
+  }
+
+  /* Freeze columns only for horizontally scrollable library grids.
+     Spec library fills the viewport — sticky-right opens a blank gap. */
+  .param-admin-shell .param-admin-library-table .parameters-table-grid:not(.parameter-spec-library-grid) th:first-child,
+  .param-admin-shell .param-admin-library-table .parameters-table-grid:not(.parameter-spec-library-grid) td:first-child,
+  .param-admin-shell .param-admin-library-table .parameters-table-grid:not(.parameter-spec-library-grid) th:nth-child(2),
+  .param-admin-shell .param-admin-library-table .parameters-table-grid:not(.parameter-spec-library-grid) td:nth-child(2),
+  .param-admin-shell .param-admin-library-table .parameters-table-grid:not(.parameter-spec-library-grid) th:last-child,
+  .param-admin-shell .param-admin-library-table .parameters-table-grid:not(.parameter-spec-library-grid) td:last-child {
+    position: sticky;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid th,
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid td,
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid th:first-child,
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:first-child,
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid th:nth-child(2),
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:nth-child(2),
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid th:last-child,
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid td:last-child {
+    position: static;
+    left: auto;
+    right: auto;
+    box-shadow: none;
+  }
 }
 
 .project-primary-dts-viewer {

@@ -9,14 +9,12 @@ import {
   TriangleAlert
 } from "lucide-react";
 
+import { ColumnFilter } from "@/components/ColumnFilter";
 import type { ModuleImportance } from "@/domain/parameter-topology/moduleRegistry";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 
-export type DtsWorkbenchSortKey =
-  | "propertyKey"
-  | "moduleName"
-  | "importance";
+export type DtsWorkbenchSortKey = "propertyKey" | "importance";
 
 export type DtsWorkbenchSort = {
   key: DtsWorkbenchSortKey;
@@ -25,6 +23,12 @@ export type DtsWorkbenchSort = {
 
 export type DtsParameterWorkbenchTableProps = {
   rows: DtsParameterWorkbenchRow[];
+  /** Distinct module names for the column filter; defaults to names from `rows`. */
+  moduleFilterOptions?: readonly string[];
+  /** Selected module names; empty means no column filter (show all). */
+  moduleFilterSelected?: readonly string[];
+  onModuleFilterToggle?: (moduleName: string) => void;
+  onModuleFilterClear?: () => void;
   selectedBindingId: string | null;
   draftBindingIds: ReadonlySet<string>;
   selectedBindingIds?: ReadonlySet<string>;
@@ -110,9 +114,6 @@ function compareRows(
     case "propertyKey":
       result = left.propertyKey.localeCompare(right.propertyKey, "zh-Hans-CN");
       break;
-    case "moduleName":
-      result = left.moduleName.localeCompare(right.moduleName, "zh-Hans-CN");
-      break;
     case "importance":
       result = importanceRank[left.importance] - importanceRank[right.importance];
       break;
@@ -154,6 +155,10 @@ function SortableHeader({
  */
 export function DtsParameterWorkbenchTable({
   rows,
+  moduleFilterOptions,
+  moduleFilterSelected: controlledModuleFilterSelected,
+  onModuleFilterToggle,
+  onModuleFilterClear,
   selectedBindingId,
   draftBindingIds,
   selectedBindingIds,
@@ -166,15 +171,40 @@ export function DtsParameterWorkbenchTable({
     key: "importance",
     dir: "desc"
   });
+  const [uncontrolledModuleFilter, setUncontrolledModuleFilter] = useState<string[]>([]);
+  const moduleFilterControlled =
+    controlledModuleFilterSelected != null &&
+    onModuleFilterToggle != null &&
+    onModuleFilterClear != null;
+  const moduleFilterSelected = moduleFilterControlled
+    ? [...controlledModuleFilterSelected]
+    : uncontrolledModuleFilter;
   const selectionEnabled = Boolean(onSelectedBindingIdsChange && selectedBindingIds);
   const draftRows = useMemo(
     () => rows.filter((row) => draftBindingIds.has(row.bindingId)),
     [draftBindingIds, rows]
   );
+  const moduleValues = useMemo(() => {
+    const source = moduleFilterOptions ?? rows.map((row) => row.moduleName);
+    return Array.from(new Set(source.map((name) => name.trim()).filter(Boolean))).sort((left, right) =>
+      left.localeCompare(right, "zh-Hans-CN")
+    );
+  }, [moduleFilterOptions, rows]);
+  const activeModuleFilter = useMemo(
+    () => moduleFilterSelected.filter((name) => moduleValues.includes(name)),
+    [moduleFilterSelected, moduleValues]
+  );
+  const filteredRows = useMemo(() => {
+    // When the parent controls the filter, `rows` are already filtered.
+    if (moduleFilterControlled) return rows;
+    if (activeModuleFilter.length === 0) return rows;
+    const selected = new Set(activeModuleFilter);
+    return rows.filter((row) => selected.has(row.moduleName));
+  }, [activeModuleFilter, moduleFilterControlled, rows]);
   const sortedRows = useMemo(() => {
-    if (!sort) return rows;
-    return [...rows].sort((left, right) => compareRows(left, right, sort));
-  }, [rows, sort]);
+    if (!sort) return filteredRows;
+    return [...filteredRows].sort((left, right) => compareRows(left, right, sort));
+  }, [filteredRows, sort]);
 
   const updateSort = (key: DtsWorkbenchSortKey) => {
     setSort((current) => {
@@ -184,6 +214,24 @@ export function DtsParameterWorkbenchTable({
       if (current.dir === "asc") return { key, dir: "desc" };
       return null;
     });
+  };
+
+  const toggleModuleFilter = (value: string) => {
+    if (moduleFilterControlled) {
+      onModuleFilterToggle(value);
+      return;
+    }
+    setUncontrolledModuleFilter((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
+    );
+  };
+
+  const clearModuleFilter = () => {
+    if (moduleFilterControlled) {
+      onModuleFilterClear();
+      return;
+    }
+    setUncontrolledModuleFilter([]);
   };
 
   const allDraftSelected =
@@ -228,8 +276,18 @@ export function DtsParameterWorkbenchTable({
           <span role="columnheader">
             <SortableHeader label="参数名" sortKey="propertyKey" sort={sort} onSort={updateSort} />
           </span>
-          <span role="columnheader">
-            <SortableHeader label="所属模块" sortKey="moduleName" sort={sort} onSort={updateSort} />
+          <span role="columnheader" className="dts-parameter-workbench-table__module-filter-col">
+            <span className="dts-parameter-workbench-table__head-cell">
+              <span>所属模块</span>
+              <ColumnFilter
+                label="所属模块"
+                groupLabel="所属模块筛选"
+                values={moduleValues}
+                selectedValues={activeModuleFilter}
+                onToggle={toggleModuleFilter}
+                onClear={clearModuleFilter}
+              />
+            </span>
           </span>
           <span role="columnheader" className="dts-parameter-workbench-table__driver-col">
             <span className="dts-parameter-workbench-table__driver-col-label">器件 / 驱动</span>

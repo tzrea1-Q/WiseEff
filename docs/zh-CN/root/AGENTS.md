@@ -16,6 +16,7 @@
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
+- 表格列多选筛选复用 `ColumnFilter`：见 [表格列多选筛选 UX](../design-docs/ux-table-column-filter.md)。
 
 ## Agent skills
 

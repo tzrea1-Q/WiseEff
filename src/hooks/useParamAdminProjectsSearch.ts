@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  formatCsvQueryParam,
+  parseCsvQueryParam
+} from "@/application/parameters/parameterAdminUrl";
 
 export type ParamAdminProjectsSearch = {
   q: string;
-  status: string;
+  /** Empty = all statuses. */
+  statuses: string[];
   sort: string;
 };
 
 const defaultSearch: ParamAdminProjectsSearch = {
   q: "",
-  status: "all",
+  statuses: [],
   sort: "name-asc"
 };
 
@@ -16,7 +21,7 @@ function parseFromLocation(): ParamAdminProjectsSearch {
   const params = new URL(window.location.href).searchParams;
   return {
     q: params.get("q") ?? "",
-    status: params.get("status") ?? "all",
+    statuses: parseCsvQueryParam(params.get("status")),
     sort: params.get("sort") ?? "name-asc"
   };
 }
@@ -24,7 +29,7 @@ function parseFromLocation(): ParamAdminProjectsSearch {
 function applyToLocation(search: ParamAdminProjectsSearch) {
   const url = new URL(window.location.href);
   const params = url.searchParams;
-  const setOrDelete = (key: string, value: string | undefined, omitValue = "all") => {
+  const setOrDelete = (key: string, value: string | null | undefined, omitValue?: string) => {
     if (!value || value === omitValue) {
       params.delete(key);
       return;
@@ -32,8 +37,8 @@ function applyToLocation(search: ParamAdminProjectsSearch) {
     params.set(key, value);
   };
 
-  setOrDelete("q", search.q.trim() || undefined, "");
-  setOrDelete("status", search.status);
+  setOrDelete("q", search.q.trim() || null);
+  setOrDelete("status", formatCsvQueryParam(search.statuses));
   setOrDelete("sort", search.sort, "name-asc");
 
   const query = params.toString();
@@ -68,7 +73,8 @@ export function buildParamAdminProjectsPath(search: Partial<ParamAdminProjectsSe
   const merged = { ...defaultSearch, ...search };
   const params = new URLSearchParams();
   if (merged.q.trim()) params.set("q", merged.q.trim());
-  if (merged.status !== "all") params.set("status", merged.status);
+  const status = formatCsvQueryParam(merged.statuses);
+  if (status) params.set("status", status);
   if (merged.sort !== "name-asc") params.set("sort", merged.sort);
   const query = params.toString();
   return `/parameter-admin/projects${query ? `?${query}` : ""}`;

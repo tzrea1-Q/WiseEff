@@ -10,6 +10,7 @@ export type GovernanceAuditAction =
   | "spec-review-dismissed"
   | "spec-draft-created"
   | "spec-activated"
+  | "spec-updated"
   | "identity-mapping-resolved"
   | "identity-mapping-dismissed"
   | "config-revision-validated"

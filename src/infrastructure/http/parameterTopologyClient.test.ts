@@ -301,7 +301,9 @@ describe("createHttpParameterTopologyRepository", () => {
               driverModule: "sc8562",
               lifecycle: "active",
               currentVersionId: "spec-ver-1",
-              currentVersion: 1
+              currentVersion: 1,
+              valueShape: { kind: "cells" },
+              compatiblePatterns: ["vendor,sc8562"]
             }
           ]
         })
@@ -313,7 +315,12 @@ describe("createHttpParameterTopologyRepository", () => {
     );
 
     const specs = await repository.listSpecs({ propertyKey: "gpio_int", driverModule: "sc8562" });
-    expect(specs[0]).toMatchObject({ propertyKey: "gpio_int", driverModule: "sc8562" });
+    expect(specs[0]).toMatchObject({
+      propertyKey: "gpio_int",
+      driverModule: "sc8562",
+      valueShape: { kind: "cells" },
+      compatiblePatterns: ["vendor,sc8562"]
+    });
     expect(specs[0]).not.toHaveProperty("path");
     expect(specs[0]).not.toHaveProperty("recommendedValue");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("propertyKey=gpio_int");

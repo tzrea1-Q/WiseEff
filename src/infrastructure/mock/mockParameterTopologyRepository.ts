@@ -444,7 +444,12 @@ function toSummary(detail: SpecFixture): ParameterSpecSummary {
     driverModule: detail.driverModule,
     lifecycle: detail.lifecycle,
     currentVersionId: detail.currentVersionId,
-    currentVersion: detail.currentVersion
+    currentVersion: detail.currentVersion,
+    valueShape:
+      detail.valueShape && typeof detail.valueShape === "object" && !Array.isArray(detail.valueShape)
+        ? { ...(detail.valueShape as Record<string, unknown>) }
+        : detail.valueShape,
+    compatiblePatterns: detail.compatiblePatterns ? [...detail.compatiblePatterns] : null
   };
 }
 
@@ -521,6 +526,29 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
         documentation: input.documentation,
         displayName: input.displayName ?? existing.displayName,
         description: input.description ?? existing.description
+      };
+      store.specs.set(specId, updated);
+      return cloneDetail(updated);
+    },
+
+    async updateParameterSpec(specId, input) {
+      const existing = store.specs.get(specId);
+      if (!existing) {
+        throw new Error(`ParameterSpec not found: ${specId}`);
+      }
+      if (existing.lifecycle === "draft") {
+        throw new Error(`Draft specs must be activated, not updated: ${specId}`);
+      }
+      const updated: SpecFixture = {
+        ...existing,
+        valueShape: input.valueShape ?? existing.valueShape,
+        constraints: input.constraints,
+        documentation: input.documentation,
+        displayName: input.displayName ?? existing.displayName,
+        description: input.description ?? existing.description,
+        units: input.units === undefined ? existing.units : input.units,
+        exampleValue: input.exampleValue === undefined ? existing.exampleValue : input.exampleValue,
+        policyTarget: input.policyTarget === undefined ? existing.policyTarget : input.policyTarget
       };
       store.specs.set(specId, updated);
       return cloneDetail(updated);

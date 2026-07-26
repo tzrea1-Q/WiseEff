@@ -117,6 +117,7 @@ function createAppParameterTopologyRepository(
     listSpecs: vi.fn().mockResolvedValue([]),
     getSpec: vi.fn(),
     activateParameterSpec: vi.fn(),
+    updateParameterSpec: vi.fn(),
     listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
     resolveSpecReviewTask: vi.fn().mockResolvedValue(undefined),
     listBindings: vi.fn().mockResolvedValue(TOPOLOGY_TEACHING_BINDINGS),
@@ -3257,7 +3258,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     const scopeNav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
     expect(within(scopeNav).getByRole("button", { name: "组织治理" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("region", { name: "批量参数导入" })).toBeInTheDocument();
+    const topbar = document.querySelector(".topbar") as HTMLElement;
+    expect(within(topbar).getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "参数规格库" })).toBeInTheDocument();
     expect(screen.queryByText("项目共享参数库")).not.toBeInTheDocument();
   });

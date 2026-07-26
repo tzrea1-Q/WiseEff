@@ -29,14 +29,15 @@ const SPEC_SUMMARY: ParameterSpecSummary = {
   driverModule: "sc8562",
   lifecycle: "active",
   currentVersionId: "specver-sc8562-gpio-int-3",
-  currentVersion: 3
+  currentVersion: 3,
+  valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
+  compatiblePatterns: ["vendor,sc8562"]
 };
 
 const SPEC_DETAIL: ParameterSpecDetail = {
   ...SPEC_SUMMARY,
   displayName: "SC8562 GPIO interrupt",
   description: "Interrupt GPIO cells",
-  valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
   schemaDefault: null,
   exampleValue: "<&gpio13 29 0>",
   schemaNamespace: "vendor,sc8562/bindings",
@@ -92,6 +93,7 @@ function createRepository(
     listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [OPEN_REVIEW_TASK], nextCursor: null }),
     resolveSpecReviewTask: vi.fn().mockResolvedValue(undefined),
     activateParameterSpec: vi.fn().mockResolvedValue(SPEC_DETAIL),
+    updateParameterSpec: vi.fn().mockResolvedValue(SPEC_DETAIL),
     listBindings: vi.fn().mockResolvedValue([]),
     listBindingHistory: vi.fn().mockResolvedValue([]),
     listBindingCompare: vi.fn().mockResolvedValue([]),
@@ -374,7 +376,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     );
   });
 
-  it("keeps filters, sort, and selection in the URL", async () => {
+  it("keeps filters and selection in the URL", async () => {
     const repository = createRepository();
     renderPage({ repository });
 
@@ -383,19 +385,15 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索规格" }), {
       target: { value: "gpio" }
     });
-    fireEvent.change(screen.getByRole("combobox", { name: "生命周期" }), {
-      target: { value: "active" }
-    });
-    fireEvent.change(screen.getByRole("combobox", { name: "排序" }), {
-      target: { value: "propertyKey-desc" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "查看 gpio_int" }));
+    const lifecycleTrigger = screen.getByRole("button", { name: "筛选审核状态" });
+    fireEvent.click(lifecycleTrigger);
+    fireEvent.click(screen.getByRole("checkbox", { name: "active" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑 gpio_int" }));
 
     await waitFor(() => {
       const params = new URL(window.location.href).searchParams;
       expect(params.get("q")).toBe("gpio");
       expect(params.get("lifecycle")).toBe("active");
-      expect(params.get("sort")).toBe("propertyKey-desc");
       expect(params.get("spec")).toBe("spec-sc8562-gpio-int");
     });
   });
@@ -407,11 +405,24 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
       path: "/parameter-admin/specs?spec=spec-sc8562-gpio-int"
     });
 
-    const detail = await screen.findByRole("region", { name: "规格详情" });
-    expect(within(detail).getByText("gpio_int")).toBeInTheDocument();
-    const history = within(detail).getByRole("region", { name: "Schema 历史" });
-    expect(within(history).getByText(/v3 · vendor,sc8562\/bindings/)).toBeInTheDocument();
+    const detail = await screen.findByRole("dialog", { name: /规格详情 gpio_int/ });
+    expect(within(detail).getByRole("heading", { name: "gpio_int" })).toBeInTheDocument();
+    expect(within(detail).getByLabelText("属性键")).toHaveValue("gpio_int");
+    expect(within(detail).getByLabelText("展示名")).toHaveValue("SC8562 GPIO interrupt");
+    expect(within(detail).getByLabelText("compatible")).toHaveValue("vendor,sc8562");
+    expect((within(detail).getByLabelText("规格说明") as HTMLTextAreaElement).value).toMatch(
+      /three-cell interrupt/
+    );
+    expect((within(detail).getByLabelText("Schema 历史") as HTMLTextAreaElement).value).toMatch(
+      /v3 · vendor,sc8562\/bindings/
+    );
+    expect(within(detail).getByText("参数规格库 · 可编辑")).toBeInTheDocument();
     expect(repository.getSpec).toHaveBeenCalledWith("spec-sc8562-gpio-int");
+
+    fireEvent.click(within(detail).getByRole("button", { name: "取消" }));
+    await waitFor(() => {
+      expect(new URL(window.location.href).searchParams.get("spec")).toBeNull();
+    });
   });
 
   it("resolves a spec review task and surfaces a governance audit record", async () => {
@@ -568,7 +579,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
   it("pages the spec library client-side and hides structural properties by default", async () => {
     const repository = createRepository({
       listSpecs: vi.fn().mockResolvedValue(
-        Array.from({ length: 30 }, (_, index) => ({
+        Array.from({ length: 60 }, (_, index) => ({
           ...SPEC_SUMMARY,
           id: `spec-${index}`,
           propertyKey: index === 0 ? "#address-cells" : `prop_${index}`,
@@ -581,13 +592,49 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     const library = await screen.findByRole("region", { name: "参数规格库" });
     expect(within(library).queryByText("#address-cells")).not.toBeInTheDocument();
-    expect(within(library).getByText(/29 \/ 29/)).toBeInTheDocument();
-    expect(within(library).getAllByRole("button", { name: /查看 prop_/ }).length).toBeLessThanOrEqual(25);
+    expect(within(library).getByText(/59 \/ 59/)).toBeInTheDocument();
+    expect(within(library).getAllByRole("button", { name: /编辑 prop_/ })).toHaveLength(50);
 
     fireEvent.click(within(library).getByRole("button", { name: "下一页" }));
     await waitFor(() => {
       expect(within(library).getByText(/第 2/)).toBeInTheDocument();
     });
+  });
+
+  it("shows driver modules under 所属模块 column", async () => {
+    const repository = createRepository({
+      listSpecs: vi.fn().mockResolvedValue([
+        {
+          ...SPEC_SUMMARY,
+          id: "spec-mapped",
+          propertyKey: "gpio_int",
+          driverModule: "sc8562",
+          compatiblePatterns: ["vendor,sc8562"]
+        },
+        {
+          ...SPEC_SUMMARY,
+          id: "spec-unmapped",
+          propertyKey: "other_prop",
+          driverModule: "unknown-ic",
+          compatiblePatterns: null,
+          valueShape: { kind: "strings" }
+        }
+      ])
+    });
+
+    renderPage({ repository, path: "/parameter-admin/specs" });
+
+    const library = await screen.findByRole("region", { name: "参数规格库" });
+    const table = within(library).getByRole("table");
+    expect(within(library).getByRole("columnheader", { name: "所属模块" })).toBeInTheDocument();
+    expect(within(table).getByText("sc8562")).toBeInTheDocument();
+    expect(within(table).getByText("unknown-ic")).toBeInTheDocument();
+    expect(within(table).queryByText("充电策略")).not.toBeInTheDocument();
+    expect(within(table).queryByText("未映射")).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "compatible" })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "驱动模块" })).not.toBeInTheDocument();
+    expect(within(table).getByText("cells")).toBeInTheDocument();
+    expect(within(table).getByText("strings")).toBeInTheDocument();
   });
 
   it("behaves identically when backed by the mock topology adapter", async () => {
@@ -596,7 +643,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     const library = await screen.findByRole("region", { name: "参数规格库" });
     expect(within(library).getAllByText("gpio_int").length).toBeGreaterThan(0);
-    expect(within(library).getAllByRole("button", { name: "查看 gpio_int" }).length).toBeGreaterThan(0);
+    expect(within(library).getAllByRole("button", { name: "编辑 gpio_int" }).length).toBeGreaterThan(0);
 
     cleanup();
     renderPage({ repository, path: "/parameter-admin/spec-review" });

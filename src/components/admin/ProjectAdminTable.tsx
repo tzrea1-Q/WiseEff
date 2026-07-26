@@ -1,5 +1,6 @@
 import { Pencil, Search, Trash2 } from "lucide-react";
 import { useMemo } from "react";
+import { ColumnFilter } from "@/components/ColumnFilter";
 import type { ParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import type { ParameterAdminProjectRow } from "@/parameterAdminProjects";
 
@@ -13,21 +14,21 @@ type ProjectAdminTableProps = {
   onManageFiles: (projectId: string) => void;
 };
 
-const statusOptions = [
-  { value: "all", label: "全部状态" },
+const STATUS_FILTER_OPTIONS = [
   { value: "initialized", label: "在研" },
   { value: "maintenance", label: "维护" },
   { value: "initialization_pending_review", label: "待审阅" },
   { value: "initialization_rejected", label: "已驳回" },
   { value: "not_initialized", label: "未初始化" }
-];
+] as const;
 
 function filterRows(rows: ParameterAdminProjectRow[], search: ParamAdminProjectsSearch) {
   const query = search.q.trim().toLowerCase();
+  const statuses = search.statuses ?? [];
   return rows.filter((row) => {
     const matchesQuery =
       !query || row.name.toLowerCase().includes(query) || row.code.toLowerCase().includes(query) || row.id.toLowerCase().includes(query);
-    const matchesStatus = search.status === "all" || row.status === search.status;
+    const matchesStatus = statuses.length === 0 || statuses.includes(row.status);
     return matchesQuery && matchesStatus;
   });
 }
@@ -60,7 +61,19 @@ export function ProjectAdminTable({
   onManageFiles
 }: ProjectAdminTableProps) {
   const filteredRows = useMemo(() => sortRows(filterRows(rows, search), search.sort), [rows, search]);
-  const filtersActive = search.q.trim().length > 0 || search.status !== "all";
+  const selectedStatuses = search.statuses ?? [];
+  const filtersActive = search.q.trim().length > 0 || selectedStatuses.length > 0;
+  const statusValues = STATUS_FILTER_OPTIONS.map((option) => option.value);
+  const statusLabelByValue = Object.fromEntries(
+    STATUS_FILTER_OPTIONS.map((option) => [option.value, option.label])
+  ) as Record<string, string>;
+
+  const toggleStatus = (value: string) => {
+    const next = selectedStatuses.includes(value)
+      ? selectedStatuses.filter((item) => item !== value)
+      : [...selectedStatuses, value];
+    onUpdateSearch({ statuses: next });
+  };
 
   return (
     <section className="parameters-table param-admin-library-table project-admin-library-table">
@@ -89,18 +102,6 @@ export function ProjectAdminTable({
         </label>
         <div className="parameters-table-filters param-admin-library-filters">
           <select
-            aria-label="状态筛选"
-            className="library-sort"
-            value={search.status}
-            onChange={(event) => onUpdateSearch({ status: event.target.value })}
-          >
-            {statusOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <select
             aria-label="排序"
             className="library-sort"
             value={search.sort}
@@ -116,7 +117,7 @@ export function ProjectAdminTable({
               aria-label="清除筛选"
               className="clear-filters"
               type="button"
-              onClick={() => onUpdateSearch({ q: "", status: "all" })}
+              onClick={() => onUpdateSearch({ q: "", statuses: [] })}
             >
               清除筛选
             </button>
@@ -134,7 +135,20 @@ export function ProjectAdminTable({
               <th scope="col">#</th>
               <th scope="col">项目名称</th>
               <th scope="col">项目代号</th>
-              <th scope="col">状态</th>
+              <th scope="col">
+                <span className="param-admin-library-head-cell">
+                  <span>状态</span>
+                  <ColumnFilter
+                    label="状态"
+                    groupLabel="状态筛选"
+                    values={statusValues}
+                    selectedValues={selectedStatuses}
+                    renderLabel={(value) => statusLabelByValue[value] ?? value}
+                    onToggle={toggleStatus}
+                    onClear={() => onUpdateSearch({ statuses: [] })}
+                  />
+                </span>
+              </th>
               <th scope="col">模块</th>
               <th scope="col">参数</th>
               <th scope="col">最近更新</th>
@@ -202,9 +216,9 @@ export function ProjectAdminTable({
 
       {filteredRows.length === 0 ? (
         <div className="parameters-table-empty">
-          <p>没有匹配的项目。调整筛选条件，或新建第一个项目。</p>
+          <p>没有匹配的项目。</p>
           {filtersActive ? (
-            <button type="button" className="button subtle" onClick={() => onUpdateSearch({ q: "", status: "all" })}>
+            <button type="button" className="button subtle" onClick={() => onUpdateSearch({ q: "", statuses: [] })}>
               清除筛选条件
             </button>
           ) : null}
