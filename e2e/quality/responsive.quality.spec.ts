@@ -1,5 +1,13 @@
 import { expect, test } from "playwright/test";
-import { expectNoHorizontalOverflow, expectUsablePage, prepareInteractionSurface, seedQualityRuntime } from "./helpers";
+import {
+  expectBoundedInteractiveControls,
+  expectBoundedMainScroll,
+  expectNoHorizontalOverflow,
+  expectUsablePage,
+  expectVisibleFormControlAffordances,
+  prepareInteractionSurface,
+  seedQualityRuntime
+} from "./helpers";
 
 const viewports = [
   { name: "desktop", width: 1440, height: 900 },
@@ -17,6 +25,14 @@ const routes = [
   { path: "/user-permissions", heading: "用户权限管理" }
 ] as const;
 
+const parameterAdminRoutes = [
+  { path: "/parameter-admin", heading: "项目参数管理后台" },
+  { path: "/parameter-admin/specs", heading: "项目参数管理后台" },
+  { path: "/parameter-admin/spec-review", heading: "项目参数管理后台" },
+  { path: "/parameter-admin/modules", heading: "项目参数管理后台" },
+  { path: "/parameter-admin/identity-mapping", heading: "项目参数管理后台" }
+] as const;
+
 test.describe("M5.11 responsive quality gate", () => {
   test.beforeAll(() => {
     seedQualityRuntime();
@@ -32,6 +48,23 @@ test.describe("M5.11 responsive quality gate", () => {
         await expect(page.getByText(route.heading, { exact: true }).first()).toBeVisible();
         await expect(page.locator("main, .main-content").first().locator("button").first()).toBeVisible();
         await expectNoHorizontalOverflow(page);
+      });
+    }
+  }
+
+  for (const viewport of viewports) {
+    for (const route of parameterAdminRoutes) {
+      test(`${route.path} stays within layout budget at ${viewport.name}`, async ({ page }) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await page.goto(route.path);
+        await expectUsablePage(page);
+        await prepareInteractionSurface(page);
+
+        await expect(page.getByText(route.heading, { exact: true }).first()).toBeVisible();
+        await expectNoHorizontalOverflow(page);
+        await expectBoundedMainScroll(page);
+        await expectBoundedInteractiveControls(page);
+        await expectVisibleFormControlAffordances(page);
       });
     }
   }

@@ -65,7 +65,7 @@ export function OrganizationIdentityMappingPanel() {
   const openTasks = tasks.filter((task) => task.status === "open");
 
   return (
-    <section className="param-admin-main" aria-label="身份映射治理">
+    <section className="param-admin-main param-admin-governance-card" aria-label="身份映射治理">
       <div className="parameters-table-heading">
         <div>
           <h2>身份映射治理</h2>

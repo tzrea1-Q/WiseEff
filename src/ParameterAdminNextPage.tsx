@@ -5,6 +5,12 @@ import type { ParameterModuleRegistryRepository } from "@/application/ports/Para
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import {
+  buildParameterAdminOrganizationPath,
+  isParameterAdminOrganizationEntryPath,
+  parseParameterAdminOrganizationPath,
+  type ParameterAdminOrganizationView
+} from "@/application/parameters/parameterAdminOrganizationPath";
 import { resolveParameterModuleRegistryRepository } from "@/application/parameters/parameterModuleRegistryResolve";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
@@ -13,7 +19,9 @@ import { OrganizationBulkImportPanel } from "@/components/parameter-admin-next/O
 import { OrganizationIdentityMappingPanel } from "@/components/parameter-admin-next/OrganizationIdentityMappingPanel";
 import { OrganizationModuleGovernancePanel } from "@/components/parameter-admin-next/OrganizationModuleGovernancePanel";
 import { OrganizationSpecGovernancePanel } from "@/components/parameter-admin-next/OrganizationSpecGovernancePanel";
+import { ParameterAdminAuditBanner } from "@/components/parameter-admin-next/ParameterAdminAuditBanner";
 import { ParameterAdminNextScopeNav } from "@/components/parameter-admin-next/ParameterAdminNextScopeNav";
+import { ParameterAdminOrganizationSubNav } from "@/components/parameter-admin-next/ParameterAdminOrganizationSubNav";
 import { ParameterAdminProvider } from "@/components/parameter-admin-next/ParameterAdminProvider";
 import { ProjectsOperationsPanel } from "@/components/parameter-admin-next/ProjectsOperationsPanel";
 
@@ -23,6 +31,10 @@ function buildParameterAuditCenterPath(projectId: string) {
     params.set("projectId", projectId);
   }
   return `/audit?${params.toString()}`;
+}
+
+function normalizeSearch(search: string): string {
+  return search.startsWith("?") ? search.slice(1) : search;
 }
 
 export type ParameterAdminNextPageProps = {
@@ -48,7 +60,8 @@ export type ParameterAdminNextPageProps = {
 
 /**
  * Redesigned parameter admin organized by governance scope (ADR-0001).
- * Canonical routes: `/parameter-admin` (organization) and `/parameter-admin/projects` (project operations).
+ * Organization sub-routes: specs, spec-review, modules, identity-mapping.
+ * Project routes: `/parameter-admin/projects` and deep views.
  */
 export function ParameterAdminNextPage({
   area,
@@ -99,16 +112,27 @@ export function ParameterAdminNextPage({
   const pathname =
     pathnameProp ??
     (area === "projects" ? "/parameter-admin/projects" : "/parameter-admin");
+  const parsedOrganizationView =
+    area === "organization" ? parseParameterAdminOrganizationPath(pathname) : null;
+  const organizationView: ParameterAdminOrganizationView | null =
+    area !== "organization"
+      ? null
+      : parsedOrganizationView ??
+        (isParameterAdminOrganizationEntryPath(pathname) ? "specs" : null);
 
   useEffect(() => {
     if (area !== "organization") {
       return;
     }
-    const raw = search.startsWith("?") ? search.slice(1) : search;
+    const raw = normalizeSearch(search);
     if (raw.includes("audit=open")) {
       onNavigate(buildParameterAuditCenterPath(activeProjectId));
+      return;
     }
-  }, [area, search, activeProjectId, onNavigate]);
+    if (isParameterAdminOrganizationEntryPath(pathname)) {
+      onNavigate(buildParameterAdminOrganizationPath("specs", raw));
+    }
+  }, [area, search, pathname, activeProjectId, onNavigate]);
 
   return (
     <ParameterAdminProvider
@@ -133,8 +157,9 @@ export function ParameterAdminNextPage({
             parameterFileRepository={parameterFileRepository}
             dtsStructuredRepository={dtsStructuredRepository}
           />
-        ) : (
+        ) : organizationView ? (
           <>
+            <ParameterAdminOrganizationSubNav active={organizationView} onNavigate={onNavigate} />
             <OrganizationBulkImportPanel
               projects={projects}
               parameters={parameters}
@@ -144,11 +169,25 @@ export function ParameterAdminNextPage({
               parameterActions={parameterActions}
               runtimeMode={runtimeMode}
             />
-            <OrganizationIdentityMappingPanel />
-            <OrganizationModuleGovernancePanel />
-            <OrganizationSpecGovernancePanel search={search} pathname={pathname} />
+            <ParameterAdminAuditBanner />
+            {organizationView === "specs" ? (
+              <OrganizationSpecGovernancePanel
+                search={search}
+                pathname={pathname}
+                focus="library"
+              />
+            ) : null}
+            {organizationView === "spec-review" ? (
+              <OrganizationSpecGovernancePanel
+                search={search}
+                pathname={pathname}
+                focus="review"
+              />
+            ) : null}
+            {organizationView === "modules" ? <OrganizationModuleGovernancePanel /> : null}
+            {organizationView === "identity-mapping" ? <OrganizationIdentityMappingPanel /> : null}
           </>
-        )}
+        ) : null}
       </div>
     </ParameterAdminProvider>
   );

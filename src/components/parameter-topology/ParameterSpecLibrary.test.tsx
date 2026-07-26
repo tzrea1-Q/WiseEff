@@ -69,21 +69,11 @@ describe("ParameterSpecLibrary", () => {
     const library = screen.getByRole("region", { name: "参数规格库" });
     const table = within(library).getByRole("table");
 
-    for (const header of [
-      "属性键",
-      "驱动模块",
-      "compatible",
-      "值类型",
-      "Schema 来源/版本",
-      "示例值",
-      "业务分类",
-      "审核状态",
-      "使用量"
-    ]) {
+    for (const header of ["属性键", "驱动模块", "审核状态", "操作"]) {
       expect(within(table).getByRole("columnheader", { name: header })).toBeInTheDocument();
     }
 
-    expect(within(table).queryByRole("columnheader", { name: /推荐值|默认值/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: /推荐值|默认值|使用量|示例值/ })).not.toBeInTheDocument();
     expect(within(table).queryByText(/amba\.i2c@|\/amba\//)).not.toBeInTheDocument();
 
     const nameCells = within(table).getAllByRole("cell", { name: /gpio_int/ });
@@ -92,8 +82,6 @@ describe("ParameterSpecLibrary", () => {
       expect(cell.textContent).not.toMatch(/amba|i2c@|FDF5E000/);
     }
 
-    expect(within(table).getByText("示例值")).toBeInTheDocument();
-    expect(within(table).getByText("<&gpio13 29 0>")).toBeInTheDocument();
     expect(library.textContent).not.toMatch(/推荐值|默认值/);
   });
 
@@ -113,10 +101,10 @@ describe("ParameterSpecLibrary", () => {
     expect(rows.some((row) => row.textContent?.includes("sc8562") && row.textContent?.includes("gpio_int"))).toBe(true);
     expect(rows.some((row) => row.textContent?.includes("mt5788") && row.textContent?.includes("gpio_int"))).toBe(true);
     expect(within(library).queryByText("status")).not.toBeInTheDocument();
-    expect(within(library).getByText("2 / 3 项")).toBeInTheDocument();
+    expect(within(library).getByText(/2 \/ 3 项/)).toBeInTheDocument();
   });
 
-  it("filters by driver, compatible, business category, schema source, and lifecycle", () => {
+  it("filters by driver and lifecycle", () => {
     render(
       <ParameterSpecLibrary
         specs={[gpioIntSc8562, gpioIntMt5788, pathLikeLegacy]}
@@ -126,15 +114,6 @@ describe("ParameterSpecLibrary", () => {
 
     fireEvent.change(screen.getByRole("combobox", { name: "驱动模块" }), {
       target: { value: "sc8562" }
-    });
-    fireEvent.change(screen.getByRole("combobox", { name: "compatible" }), {
-      target: { value: "vendor,sc8562" }
-    });
-    fireEvent.change(screen.getByRole("combobox", { name: "业务分类" }), {
-      target: { value: "Charge Pump IC" }
-    });
-    fireEvent.change(screen.getByRole("combobox", { name: "Schema 来源" }), {
-      target: { value: "vendor" }
     });
     fireEvent.change(screen.getByRole("combobox", { name: "生命周期" }), {
       target: { value: "active" }
@@ -205,6 +184,7 @@ describe("SpecReviewQueue", () => {
     render(<SpecReviewQueue tasks={[ambiguousTask]} onApprove={onApprove} onDismiss={vi.fn()} />);
 
     const queue = screen.getByRole("region", { name: "规格审核队列" });
+    fireEvent.click(within(queue).getByRole("button", { name: "展开 gpio_int" }));
     expect(within(queue).getByText("compatible unmatched")).toBeInTheDocument();
     expect(within(queue).getAllByText("vendor,sc8562 / gpio_int").length).toBeGreaterThan(0);
     expect(within(queue).getAllByText("mediatek,mt5788 / gpio_int").length).toBeGreaterThan(0);
@@ -261,6 +241,7 @@ describe("SpecReviewQueue", () => {
     );
 
     const queue = screen.getByRole("region", { name: "规格审核队列" });
+    fireEvent.click(within(queue).getByRole("button", { name: "展开 gpio_int" }));
     fireEvent.change(within(queue).getByRole("combobox", { name: "选择 Schema" }), {
       target: { value: "schema-other" }
     });
@@ -310,6 +291,7 @@ describe("SpecReviewQueue", () => {
 
     const queue = screen.getByRole("region", { name: "规格审核队列" });
     expect(within(queue).getByText("未匹配")).toBeInTheDocument();
+    fireEvent.click(within(queue).getByRole("button", { name: "展开 mystery_prop" }));
     const createButton = within(queue).getByRole("button", { name: "创建中…" });
     expect(createButton).toBeDisabled();
   });

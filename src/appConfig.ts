@@ -14,6 +14,12 @@ import {
   TerminalSquare
 } from "lucide-react";
 
+import {
+  isParameterAdminOrganizationEntryPath,
+  parseParameterAdminOrganizationPath,
+  PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS
+} from "@/application/parameters/parameterAdminOrganizationPath";
+
 export type PageKey =
   | "home"
   | "parameter-home"
@@ -82,11 +88,11 @@ export const navigationItems: PageConfig[] = [
   {
     key: "parameter-admin",
     path: "/parameter-admin",
-    label: "管理后台",
+    label: "参数后台",
     group: "参数管理",
     icon: Database,
     title: "项目参数管理后台",
-    subtitle: "组织治理与项目运营；页内切换规格库、审核队列、模块映射、项目文件与基线"
+    subtitle: "组织治理与项目运营；子路由涵盖规格库、规格审核、模块映射、身份映射与批量导入"
   },
   {
     key: "node-debugging",
@@ -100,7 +106,7 @@ export const navigationItems: PageConfig[] = [
   {
     key: "debugging-admin",
     path: "/debugging-admin",
-    label: "管理后台",
+    label: "调试后台",
     group: "调试平台",
     icon: Gauge,
     title: "调试管理后台",
@@ -127,7 +133,7 @@ export const navigationItems: PageConfig[] = [
   {
     key: "log-admin",
     path: "/log-admin",
-    label: "管理后台",
+    label: "日志后台",
     group: "日志分析",
     icon: Activity,
     title: "日志分析管理后台",
@@ -195,7 +201,37 @@ export function getPageByPath(path: string): PageConfig {
     const adminNav = navigationItems.find((item) => item.key === "parameter-admin");
     return {
       ...(adminNav as PageConfig),
-      path
+      path,
+      subtitle: "项目运营"
+    };
+  }
+
+  // Organization-scoped sub-views share the same sidebar entry.
+  if (
+    path === "/parameter-admin/specs" ||
+    path === "/parameter-admin/spec-review" ||
+    path === "/parameter-admin/modules" ||
+    path === "/parameter-admin/identity-mapping" ||
+    path.startsWith("/parameter-admin/specs/") ||
+    path.startsWith("/parameter-admin/spec-review/") ||
+    path.startsWith("/parameter-admin/modules/") ||
+    path.startsWith("/parameter-admin/identity-mapping/")
+  ) {
+    const adminNav = navigationItems.find((item) => item.key === "parameter-admin");
+    const view = parseParameterAdminOrganizationPath(path);
+    return {
+      ...(adminNav as PageConfig),
+      path,
+      subtitle: view ? PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS[view] : (adminNav?.subtitle ?? "规格库")
+    };
+  }
+
+  if (isParameterAdminOrganizationEntryPath(path)) {
+    const adminNav = navigationItems.find((item) => item.key === "parameter-admin");
+    return {
+      ...(adminNav as PageConfig),
+      path,
+      subtitle: PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS.specs
     };
   }
 
@@ -259,6 +295,15 @@ export function getXiaozeContextSummary(path: string): string {
     case "parameter-admin":
       if (path === "/parameter-admin/projects" || path.startsWith("/parameter-admin/projects/")) {
         return "正在关注项目参数文件、配置集、发布基线、结构浏览与冲突裁决。";
+      }
+      if (path.includes("/spec-review")) {
+        return "正在关注规格审核队列与 Schema 决议。";
+      }
+      if (path.includes("/modules")) {
+        return "正在关注业务模块树与驱动 / compatible 映射。";
+      }
+      if (path.includes("/identity-mapping")) {
+        return "正在关注迁移期身份映射任务与无损决议。";
       }
       return "正在关注组织级规格库、规格审核、模块映射、批量导入与身份映射治理。";
     case "log-admin":

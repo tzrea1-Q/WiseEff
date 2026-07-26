@@ -67,6 +67,7 @@ describe("ParameterAdminNextPage · a11y", () => {
         area="organization"
         onNavigate={() => {}}
         search=""
+        pathname="/parameter-admin/specs"
         parameterTopologyRepository={createRepository()}
       />
     );
@@ -97,6 +98,7 @@ describe("ParameterAdminNextPage · a11y", () => {
         area="organization"
         onNavigate={() => {}}
         search="lifecycle=draft"
+        pathname="/parameter-admin/specs"
         parameterTopologyRepository={createRepository()}
       />
     );

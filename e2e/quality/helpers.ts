@@ -98,6 +98,95 @@ export async function expectNoHorizontalOverflow(page: Page, tolerancePx = 2) {
   expect(overflow).toBeLessThanOrEqual(tolerancePx);
 }
 
+export async function expectBoundedMainScroll(
+  page: Page,
+  options: { maxViewportMultiples?: number } = {}
+) {
+  const maxViewportMultiples = options.maxViewportMultiples ?? 4;
+  const metrics = await page.evaluate(() => {
+    const main = document.querySelector("main, .main-content");
+    const viewportHeight = window.innerHeight;
+    if (!main) {
+      return { scrollHeight: 0, viewportHeight };
+    }
+    return { scrollHeight: main.scrollHeight, viewportHeight };
+  });
+
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.viewportHeight * maxViewportMultiples);
+}
+
+export async function expectBoundedInteractiveControls(
+  page: Page,
+  options: { maxControls?: number; maxOptions?: number } = {}
+) {
+  const maxControls = options.maxControls ?? 200;
+  const maxOptions = options.maxOptions ?? 500;
+  const counts = await page.evaluate(() => {
+    const main = document.querySelector("main, .main-content");
+    if (!main) {
+      return { controls: 0, options: 0 };
+    }
+
+    const controls = main.querySelectorAll(
+      "button, input, select, textarea, [role='button'], [role='combobox']"
+    ).length;
+    const options = main.querySelectorAll("option").length;
+    return { controls, options };
+  });
+
+  expect(counts.controls).toBeLessThanOrEqual(maxControls);
+  expect(counts.options).toBeLessThanOrEqual(maxOptions);
+}
+
+export async function expectVisibleFormControlAffordances(page: Page) {
+  const missingAffordances = await page.evaluate(() => {
+    const main = document.querySelector("main, .main-content");
+    if (!main) {
+      return [] as string[];
+    }
+
+    const failures: string[] = [];
+    const controls = main.querySelectorAll("input:not([type='hidden']), select, textarea");
+
+    for (const control of controls) {
+      const element = control as HTMLElement;
+      if (!element.offsetParent && element.getAttribute("type") !== "hidden") {
+        continue;
+      }
+
+      const style = window.getComputedStyle(element);
+      const borderVisible =
+        style.borderTopStyle !== "none" &&
+        style.borderRightStyle !== "none" &&
+        style.borderBottomStyle !== "none" &&
+        style.borderLeftStyle !== "none" &&
+        (parseFloat(style.borderTopWidth) > 0 ||
+          parseFloat(style.borderRightWidth) > 0 ||
+          parseFloat(style.borderBottomWidth) > 0 ||
+          parseFloat(style.borderLeftWidth) > 0);
+      const background = style.backgroundColor;
+      const hasBackground =
+        background !== "transparent" &&
+        background !== "rgba(0, 0, 0, 0)" &&
+        background !== "";
+      const hasShadow = style.boxShadow !== "none";
+
+      if (!borderVisible && !hasBackground && !hasShadow) {
+        failures.push(
+          element.getAttribute("aria-label") ??
+            element.getAttribute("name") ??
+            element.getAttribute("id") ??
+            element.tagName.toLowerCase()
+        );
+      }
+    }
+
+    return failures;
+  });
+
+  expect(missingAffordances).toEqual([]);
+}
+
 function runNpmScript(script: string) {
   const invocation =
     process.platform === "win32"

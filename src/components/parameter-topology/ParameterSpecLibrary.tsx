@@ -1,8 +1,14 @@
 import { Search } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { LibrarySelectFilter } from "@/components/admin/LibrarySelectFilter";
+import {
+  isStructuralPropertyKey,
+  paginateItems
+} from "@/domain/parameter-topology/moduleProvenance";
 import { ParameterSpecDetail, type ParameterSpecDetailView } from "./ParameterSpecDetail";
 import { DraftSpecActivatePanel, type ActivateDraftSpecInput } from "./DraftSpecActivatePanel";
+
+const SPEC_LIBRARY_PAGE_SIZE = 25;
 
 export type ParameterSpecLibraryRow = {
   id: string;
@@ -137,20 +143,6 @@ const LIFECYCLE_OPTIONS = [
   { value: "needs_review", label: "needs_review" }
 ] as const;
 
-function formatExample(value: unknown): string {
-  if (value == null) {
-    return "—";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
 function uniqueOptions(values: Array<string | null | undefined>, allLabel: string) {
   const items = Array.from(new Set(values.filter((value): value is string => Boolean(value && value.trim())))).sort();
   return [{ value: "all", label: allLabel }, ...items.map((value) => ({ value, label: value }))];
@@ -231,46 +223,50 @@ export function ParameterSpecLibrary({
   activatePending = false
 }: ParameterSpecLibraryProps) {
   const [uncontrolledFilters, setUncontrolledFilters] = useState<ParameterSpecLibraryFilters>(EMPTY_FILTERS);
+  const [showStructural, setShowStructural] = useState(false);
+  const [page, setPage] = useState(1);
   const isControlled = controlledFilters != null && onFiltersChange != null;
   const filters = isControlled ? controlledFilters : uncontrolledFilters;
   const setFilters = (next: ParameterSpecLibraryFilters | ((current: ParameterSpecLibraryFilters) => ParameterSpecLibraryFilters)) => {
     const resolved = typeof next === "function" ? next(filters) : next;
+    setPage(1);
     if (isControlled) {
       onFiltersChange(resolved);
       return;
     }
     setUncontrolledFilters(resolved);
   };
-  const filtered = useMemo(() => filterParameterSpecLibrary(specs, filters), [specs, filters]);
+
+  const scopedSpecs = useMemo(
+    () =>
+      showStructural
+        ? specs
+        : specs.filter((spec) => !isStructuralPropertyKey(spec.propertyKey)),
+    [showStructural, specs]
+  );
+  const filtered = useMemo(() => filterParameterSpecLibrary(scopedSpecs, filters), [scopedSpecs, filters]);
+  const pagination = useMemo(
+    () => paginateItems(filtered, page, SPEC_LIBRARY_PAGE_SIZE),
+    [filtered, page]
+  );
 
   const driverOptions = useMemo(
     () => uniqueOptions(
-      specs.map((spec) => spec.driverModule),
+      scopedSpecs.map((spec) => spec.driverModule),
       "全部驱动"
     ),
-    [specs]
+    [scopedSpecs]
   );
+
   const compatibleOptions = useMemo(
     () => uniqueOptions(
-      specs.map((spec) => spec.compatible),
+      scopedSpecs.map((spec) => spec.compatible),
       "全部 compatible"
     ),
-    [specs]
+    [scopedSpecs]
   );
-  const categoryOptions = useMemo(
-    () => uniqueOptions(
-      specs.map((spec) => spec.businessCategory),
-      "全部业务分类"
-    ),
-    [specs]
-  );
-  const schemaSourceOptions = useMemo(
-    () => uniqueOptions(
-      specs.map((spec) => spec.schemaSource),
-      "全部 Schema 来源"
-    ),
-    [specs]
-  );
+
+  const structuralHiddenCount = specs.length - scopedSpecs.length;
 
   const filtersActive =
     filters.q.trim().length > 0 ||
@@ -320,26 +316,26 @@ export function ParameterSpecLibrary({
               onChange={(compatible) => setFilters((current) => ({ ...current, compatible }))}
             />
             <LibrarySelectFilter
-              ariaLabel="业务分类"
-              value={filters.businessCategory}
-              options={categoryOptions}
-              disabled={loading}
-              onChange={(businessCategory) => setFilters((current) => ({ ...current, businessCategory }))}
-            />
-            <LibrarySelectFilter
-              ariaLabel="Schema 来源"
-              value={filters.schemaSource}
-              options={schemaSourceOptions}
-              disabled={loading}
-              onChange={(schemaSource) => setFilters((current) => ({ ...current, schemaSource }))}
-            />
-            <LibrarySelectFilter
               ariaLabel="生命周期"
               value={filters.lifecycle}
               options={[...LIFECYCLE_OPTIONS]}
               disabled={loading}
               onChange={(lifecycle) => setFilters((current) => ({ ...current, lifecycle }))}
             />
+            <label className="parameters-table-checkbox">
+              <input
+                type="checkbox"
+                checked={showStructural}
+                onChange={(event) => {
+                  setShowStructural(event.target.checked);
+                  setPage(1);
+                }}
+              />
+              显示结构属性
+              {structuralHiddenCount > 0 && !showStructural
+                ? `（已隐藏 ${structuralHiddenCount}）`
+                : ""}
+            </label>
             {filtersActive ? (
               <button aria-label="清除筛选" className="clear-filters" type="button" onClick={clearFilters}>
                 清除筛选
@@ -347,7 +343,7 @@ export function ParameterSpecLibrary({
             ) : null}
           </div>
           <span className="parameters-table-count">
-            {filtered.length} / {specs.length} 项
+            {filtered.length} / {scopedSpecs.length} 项 · 第 {pagination.page} / {pagination.totalPages} 页
           </span>
         </div>
 
@@ -358,35 +354,21 @@ export function ParameterSpecLibrary({
                 <th scope="col">#</th>
                 <th scope="col">属性键</th>
                 <th scope="col">驱动模块</th>
-                <th scope="col">compatible</th>
-                <th scope="col">值类型</th>
-                <th scope="col">Schema 来源/版本</th>
-                <th scope="col">示例值</th>
-                <th scope="col">业务分类</th>
                 <th scope="col">审核状态</th>
-                <th scope="col">使用量</th>
                 <th scope="col">操作</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((spec, index) => (
+              {pagination.pageItems.map((spec, index) => (
                 <tr key={spec.id} data-selected={selectedSpecId === spec.id ? "true" : undefined}>
-                  <td data-label="#">{index + 1}</td>
+                  <td data-label="#">
+                    {(pagination.page - 1) * pagination.pageSize + index + 1}
+                  </td>
                   <td data-label="属性键">
                     <strong>{spec.propertyKey}</strong>
                   </td>
                   <td data-label="驱动模块">{spec.driverModule ?? "—"}</td>
-                  <td data-label="compatible">{spec.compatible ?? "—"}</td>
-                  <td data-label="值类型">{spec.valueType}</td>
-                  <td data-label="Schema 来源/版本">
-                    {spec.schemaSource}/{spec.schemaVersion ?? "—"}
-                  </td>
-                  <td data-label="示例值">
-                    <code title="示例值">{formatExample(spec.exampleValue)}</code>
-                  </td>
-                  <td data-label="业务分类">{spec.businessCategory ?? "—"}</td>
                   <td data-label="审核状态">{spec.reviewState}</td>
-                  <td data-label="使用量">{spec.usageCount}</td>
                   <td data-label="操作">
                     <button
                       type="button"
@@ -402,6 +384,27 @@ export function ParameterSpecLibrary({
             </tbody>
           </table>
         </div>
+
+        {pagination.totalPages > 1 ? (
+          <div className="parameters-table-pagination param-admin-row-actions">
+            <button
+              type="button"
+              className="button subtle"
+              disabled={pagination.page <= 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              上一页
+            </button>
+            <button
+              type="button"
+              className="button subtle"
+              disabled={pagination.page >= pagination.totalPages}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              下一页
+            </button>
+          </div>
+        ) : null}
 
         {filtered.length === 0 ? (
           <div className="parameters-table-empty">
