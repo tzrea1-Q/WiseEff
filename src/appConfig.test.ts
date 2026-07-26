@@ -26,7 +26,7 @@ describe("WiseEff prototype configuration", () => {
     expect(organization.key).toBe("parameter-admin");
     expect(organization.label).toBe("参数后台");
     expect(organization.title).toContain("参数管理后台");
-    expect(getXiaozeContextSummary("/parameter-admin")).toContain("规格库");
+    expect(getXiaozeContextSummary("/parameter-admin")).toContain("参数库");
 
     expect(projects.key).toBe("parameter-admin");
     expect(projects.path).toBe("/parameter-admin/projects");

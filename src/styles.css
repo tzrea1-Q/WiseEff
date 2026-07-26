@@ -16134,6 +16134,72 @@ body.xiaoze-popup-resize-active {
   align-items: center;
 }
 
+.parameter-spec-library-pagination {
+  margin-top: 10px;
+}
+
+.parameter-spec-library-page-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 2px;
+}
+
+.parameter-spec-library-page-nav__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.parameter-spec-library-page-nav__btn:hover:not(:disabled) {
+  background: var(--surface-low, #f8fafc);
+}
+
+.parameter-spec-library-page-nav__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.parameter-spec-library-page-nav__current {
+  min-width: 3.5rem;
+  padding: 0 6px;
+  color: var(--outline-strong);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.parameter-spec-library-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+  color: var(--outline-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.parameter-spec-library-page-size select {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .param-admin-row-action {
   min-height: 30px;
   padding: 4px 10px;
@@ -21854,90 +21920,7 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .param-admin-shell .spec-review-queue {
-  display: grid;
-  gap: 14px;
   margin-bottom: 18px;
-  padding: 16px;
-  background: var(--surface);
-  border: 1px solid var(--outline);
-  border-radius: 12px;
-}
-
-.param-admin-shell .spec-review-queue .parameters-table-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.param-admin-shell .spec-review-queue__list {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.param-admin-shell .spec-review-queue__item {
-  display: grid;
-  gap: 12px;
-  padding: 12px 14px;
-  background: #f7f9fc;
-  border: 1px solid #e4ebf4;
-  border-radius: 10px;
-}
-
-.param-admin-shell .spec-review-queue__summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.param-admin-shell .spec-review-queue__summary-main {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.param-admin-shell .spec-review-queue__detail {
-  display: grid;
-  gap: 12px;
-  padding-top: 4px;
-  border-top: 1px solid #e4ebf4;
-}
-
-.param-admin-shell .spec-review-queue__form {
-  display: grid;
-  gap: 10px;
-}
-
-.param-admin-shell .spec-review-queue__form label {
-  display: grid;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.param-admin-shell .spec-review-queue__form input,
-.param-admin-shell .spec-review-queue__form select,
-.param-admin-shell .spec-review-queue__form textarea {
-  width: 100%;
-  min-height: 34px;
-  padding: 7px 10px;
-  color: var(--text);
-  background: #fff;
-  border: 1px solid var(--outline);
-  border-radius: 8px;
-  font: inherit;
-  font-size: 13px;
-}
-
-.param-admin-shell .spec-review-queue__form textarea {
-  min-height: 64px;
-  resize: vertical;
 }
 
 .param-admin-shell .spec-review-queue__mismatch-warning {
@@ -21948,9 +21931,105 @@ button.dts-topology-navigator__disclosure:focus-visible {
   padding: 8px 10px;
 }
 
-.param-admin-shell .spec-review-queue__load-more {
-  display: flex;
-  justify-content: center;
+.param-admin-shell .spec-review-queue__picked-detail {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/*
+ * Spec-review is a 7-col grid. Override the shared library 6-col nth-child widths
+ * so table-layout:fixed percentages fill the row (otherwise a large right gap appears).
+ * Columns: # | 参数名 | 节点 | 所属模块 | 匹配状态 | 受影响项目 | 操作
+ */
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid th:nth-child(1),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid td:nth-child(1) {
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid th:nth-child(2),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid td:nth-child(2) {
+  width: 16%;
+  min-width: 96px;
+  max-width: none;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid th:nth-child(3),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid td:nth-child(3) {
+  width: 22%;
+  min-width: 120px;
+  max-width: none;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid th:nth-child(4),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid td:nth-child(4) {
+  width: 18%;
+  min-width: 100px;
+  max-width: none;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid th:nth-child(5),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid td:nth-child(5) {
+  width: 14%;
+  min-width: 88px;
+  max-width: none;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid th:nth-child(6),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid td:nth-child(6) {
+  width: 10%;
+  min-width: 72px;
+  max-width: none;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid th:nth-child(7),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid td:nth-child(7),
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid th:last-child,
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid td:last-child {
+  width: 88px;
+  min-width: 88px;
+  max-width: 88px;
+  text-align: left;
+}
+
+/*
+ * Narrow: hide 所属模块 + 受影响项目 and stretch remaining columns.
+ * Spec-review omits <colgroup> so display:none cells do not leave a right gap
+ * under table-layout:fixed.
+ */
+@media (max-width: 1180px) {
+  .parameters-table-grid.spec-review-library-grid th:nth-child(4),
+  .parameters-table-grid.spec-review-library-grid td:nth-child(4),
+  .parameters-table-grid.spec-review-library-grid th:nth-child(6),
+  .parameters-table-grid.spec-review-library-grid td:nth-child(6) {
+    display: none;
+  }
+
+  .parameters-table-grid.spec-review-library-grid th:nth-child(3),
+  .parameters-table-grid.spec-review-library-grid td:nth-child(3),
+  .parameters-table-grid.spec-review-library-grid th:nth-child(5),
+  .parameters-table-grid.spec-review-library-grid td:nth-child(5),
+  .parameters-table-grid.spec-review-library-grid th:nth-child(7),
+  .parameters-table-grid.spec-review-library-grid td:nth-child(7) {
+    display: table-cell;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid th:nth-child(2),
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid td:nth-child(2) {
+    width: 28%;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid th:nth-child(3),
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid td:nth-child(3) {
+    width: 40%;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid th:nth-child(5),
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid.spec-review-library-grid td:nth-child(5) {
+    width: 20%;
+  }
 }
 
 .param-admin-shell .parameters-table-scroll {

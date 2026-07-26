@@ -92,7 +92,7 @@ export function ParameterSpecDetailDialog({
       >
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
-            <span className="eyebrow">{editable ? "参数规格库 · 可编辑" : "参数规格库 · 只读"}</span>
+            <span className="eyebrow">{editable ? "参数库 · 可编辑" : "参数库 · 只读"}</span>
             <h2 id="parameter-spec-detail-dialog-title">{detail.propertyKey}</h2>
             <p>
               {editable

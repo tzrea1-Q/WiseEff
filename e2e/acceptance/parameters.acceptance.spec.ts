@@ -296,7 +296,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(page).toHaveURL(/\/audit/);
     await expect(page.getByLabel("搜索审计记录")).toBeVisible();
     await page.goto("/parameter-admin");
-    await expect(page.getByRole("region", { name: "参数规格库" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("region", { name: "参数库" })).toBeVisible({ timeout: 30_000 });
 
     await expect(page.getByRole("region", { name: "批量参数导入" })).toBeVisible();
     await page.getByRole("button", { name: "打开批量参数导入" }).click();

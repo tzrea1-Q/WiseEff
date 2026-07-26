@@ -192,7 +192,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     // API mode /parameters mounts topology workspace; blank-reason UX is enforced on
     // draft-spec activation (and identity mapping) rather than the legacy parameters table.
     await page.goto("/parameter-admin");
-    const library = page.getByRole("region", { name: "参数规格库" });
+    const library = page.getByRole("region", { name: "参数库" });
     await expect(library).toBeVisible({ timeout: 30_000 });
 
     const draftFilter = library.getByRole("button", { name: /draft/i }).first();

@@ -73,7 +73,7 @@ describe("ParameterAdminNextPage · a11y", () => {
       />
     );
 
-    await screen.findByRole("region", { name: "参数规格库" });
+    await screen.findByRole("region", { name: "参数库" });
 
     const orgTab = screen.getByRole("button", { name: "组织治理" });
     const projectTab = screen.getByRole("button", { name: "项目运营" });
@@ -101,7 +101,7 @@ describe("ParameterAdminNextPage · a11y", () => {
       />
     );
 
-    await screen.findByRole("region", { name: "参数规格库" });
+    await screen.findByRole("region", { name: "参数库" });
     const trigger = screen.getByRole("button", { name: "筛选审核状态" });
     expect(trigger).toHaveClass("active");
     expect(trigger).toHaveTextContent("1");
