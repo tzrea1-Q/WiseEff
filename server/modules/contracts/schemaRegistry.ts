@@ -164,6 +164,61 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "DeleteResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+
+  "parameterModules.getRegistry": {
+    summary: "Get parameter module registry with mappings",
+    tags: ["parameter-modules"],
+    responseBody: "ParameterModuleRegistryResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterModules.discoveryHints": {
+    summary: "List unclassified compatible discovery hints",
+    tags: ["parameter-modules"],
+    responseBody: "ParameterModuleDiscoveryHintsResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterModules.dismissCompatible": {
+    summary: "Dismiss a compatible from the unclassified queue",
+    tags: ["parameter-modules"],
+    requestBody: "DismissCompatibleRequest",
+    responseBody: "ParameterModuleDiscoveryHintsResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterModules.restoreCompatible": {
+    summary: "Restore a dismissed compatible to the unclassified queue",
+    tags: ["parameter-modules"],
+    responseBody: "ParameterModuleDiscoveryHintsResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterModules.previewMapping": {
+    summary: "Preview scoped impact of creating a module mapping",
+    tags: ["parameter-modules"],
+    requestBody: "CreateModuleMappingRequest",
+    responseBody: "ModuleMappingPreviewResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterModules.createMapping": {
+    summary: "Create a module mapping and apply scoped recompute",
+    tags: ["parameter-modules"],
+    requestBody: "CreateModuleMappingRequest",
+    responseBody: "ModuleMappingMutationResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterModules.deleteMapping": {
+    summary: "Delete a module mapping and apply scoped recompute",
+    tags: ["parameter-modules"],
+    responseBody: "ModuleMappingMutationResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterModules.recomputeBindings": {
+    summary: "Recompute binding module assignments (operations tool)",
+    tags: ["parameter-modules"],
+    requestBody: "RecomputeBindingModulesRequest",
+    responseBody: "RecomputeBindingModulesResponse",
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+
   "parameters.admin.listProjects": {
     summary: "List projects for parameter admin",
     tags: ["parameters"],
