@@ -34,10 +34,10 @@ function createSeedStore(): Store {
     ],
     mappings: [
       {
-        id: "map-sc8562-driver",
+        id: "map-sc8562-compatible",
         moduleId: "mod-charging",
-        matchKind: "driver",
-        matchValue: "sc8562",
+        matchKind: "compatible",
+        matchValue: "vendor,sc8562",
         priority: 100
       }
     ],

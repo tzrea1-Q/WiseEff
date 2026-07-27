@@ -5,10 +5,8 @@ import type { ParameterModuleRegistryRepository } from "@/application/ports/Para
 import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
 import {
   filterUnmappedCompatibles,
-  filterUnmappedDrivers,
   toUnmappedCompatibleHint,
   type UnmappedCompatibleHint,
-  type UnmappedDriverHint,
 } from "@/domain/parameter-topology/moduleDiscovery";
 import {
   EMPTY_PARAMETER_MODULE_REGISTRY,
@@ -21,16 +19,11 @@ import { isAutoDiscoveredModuleName } from "@/domain/parameter-topology/modulePr
 import { buildModuleTree, type FlatModuleNode, type ModuleTreeNode } from "@/domain/modules/moduleTree";
 import { createHttpParameterModuleRegistryRepository } from "@/infrastructure/http/parameterModuleRegistryClient";
 
-export type { UnmappedCompatibleHint, UnmappedDriverHint };
+export type { UnmappedCompatibleHint };
 
 export type ParameterModuleMappingPanelProps = {
   canAdmin?: boolean;
   repository?: ParameterModuleRegistryRepository;
-  /**
-   * Drivers observed in the org (e.g. from parameter specs).
-   * The panel filters out those already covered by a driver mapping.
-   */
-  observedDrivers?: UnmappedDriverHint[];
 };
 
 const importanceOptions: Array<{ value: ModuleImportance; label: string }> = [
@@ -40,7 +33,6 @@ const importanceOptions: Array<{ value: ModuleImportance; label: string }> = [
 ];
 
 const matchKindOptions: Array<{ value: ModuleMatchKind; label: string }> = [
-  { value: "driver", label: "驱动" },
   { value: "compatible", label: "compatible" },
   { value: "instance", label: "器件实例" }
 ];
@@ -236,8 +228,7 @@ function ParameterModuleTreeItem({
  */
 export function ParameterModuleMappingPanel({
   canAdmin = false,
-  repository,
-  observedDrivers = []
+  repository
 }: ParameterModuleMappingPanelProps) {
   const client = useMemo(
     () => repository ?? createHttpParameterModuleRegistryRepository(),
@@ -251,7 +242,7 @@ export function ParameterModuleMappingPanel({
   const [moduleName, setModuleName] = useState("");
   const [moduleImportance, setModuleImportance] = useState<ModuleImportance>("medium");
   const [mappingModuleId, setMappingModuleId] = useState("");
-  const [matchKind, setMatchKind] = useState<ModuleMatchKind>("driver");
+  const [matchKind, setMatchKind] = useState<ModuleMatchKind>("compatible");
   const [matchValue, setMatchValue] = useState("");
   const [recomputing, setRecomputing] = useState(false);
   const [recomputeNotice, setRecomputeNotice] = useState<string | null>(null);
@@ -283,7 +274,12 @@ export function ParameterModuleMappingPanel({
       .then((hints) => {
         if (cancelled) return;
         setObservedCompatibles(
-          hints.compatibles.map((hint) => toUnmappedCompatibleHint(hint)),
+          hints.compatibles.map((hint) =>
+            toUnmappedCompatibleHint({
+              compatible: hint.compatible,
+              bindingCount: hint.bindingCount,
+            }),
+          ),
         );
       })
       .catch(() => {
@@ -334,11 +330,6 @@ export function ParameterModuleMappingPanel({
       (node) => node.id !== moveTarget.id && !node.path.startsWith(blockedPrefix)
     );
   }, [flatModuleNodes, moveTarget]);
-
-  const unmappedDrivers = useMemo(
-    () => filterUnmappedDrivers(observedDrivers, registry.mappings),
-    [observedDrivers, registry.mappings]
-  );
 
   const unmappedCompatibles = useMemo(
     () => filterUnmappedCompatibles(observedCompatibles, registry.mappings),
@@ -498,27 +489,6 @@ export function ParameterModuleMappingPanel({
       );
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "创建驱动组归属失败。");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const mapUnmappedDriver = async (driverModule: string) => {
-    if (!canAdmin || !mappingModuleId) return;
-    setMatchKind("driver");
-    setMatchValue(driverModule);
-    setBusy(true);
-    setError(null);
-    try {
-      const next = await client.createMapping({
-        moduleId: mappingModuleId,
-        matchKind: "driver",
-        matchValue: driverModule
-      });
-      setRegistry(next);
-      setMatchValue("");
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "归属驱动失败。");
     } finally {
       setBusy(false);
     }
@@ -811,34 +781,6 @@ export function ParameterModuleMappingPanel({
                       {selectedModuleName
                         ? `在「${selectedModuleName}」下创建驱动组`
                         : "创建驱动组并归属"}
-                    </button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section aria-labelledby="unmapped-queue-title">
-          <h4 id="unmapped-queue-title">待归类驱动（driver）</h4>
-          {unmappedDrivers.length === 0 ? (
-            <p>当前没有待归类的驱动。</p>
-          ) : (
-            <ul>
-              {unmappedDrivers.map((hint) => (
-                <li key={hint.driverModule}>
-                  <code>{hint.driverModule}</code>
-                  <small>{hint.bindingCount} 个参数</small>
-                  {canAdmin ? (
-                    <button
-                      type="button"
-                      className="button subtle"
-                      disabled={busy || !mappingModuleId}
-                      onClick={() => void mapUnmappedDriver(hint.driverModule)}
-                    >
-                      {selectedModuleName
-                        ? `归属到「${selectedModuleName}」`
-                        : "归属到当前模块"}
                     </button>
                   ) : null}
                 </li>

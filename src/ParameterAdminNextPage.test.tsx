@@ -77,8 +77,8 @@ const SEED_REGISTRY: ParameterModuleRegistry = {
     {
       id: "map-sc8562",
       moduleId: "mod-charging",
-      matchKind: "driver",
-      matchValue: "sc8562",
+      matchKind: "compatible",
+      matchValue: "vendor,sc8562",
       priority: 100
     }
   ]

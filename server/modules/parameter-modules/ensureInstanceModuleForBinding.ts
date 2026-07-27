@@ -1,6 +1,9 @@
 /**
  * Ensure instance-level parameter_modules rows exist during ingest and resolve
  * binding.module_id to the instance module (not only the driver group).
+ *
+ * Stable identity is `source_key` (ADR-0004). Name is display-only once a module
+ * is curated — ingest must never rename or move curated modules.
  */
 
 import {
@@ -10,7 +13,13 @@ import {
   isModuleScaffoldingNode,
   isScaffoldingDriverLabel,
 } from "./modulePlacement";
-import { createParameterModule, getParameterModuleById } from "../parameters/parameterModuleRepository";
+import {
+  adoptParameterModuleSourceKey,
+  createParameterModule,
+  getParameterModuleById,
+  getParameterModuleBySourceKey,
+} from "../parameters/parameterModuleRepository";
+import type { ModuleKind } from "../parameters/types";
 import type { Queryable } from "../../shared/database/client";
 import {
   resolveModuleIdForBinding,
@@ -49,6 +58,21 @@ function leafSegment(locator: string): string {
 function nodePathFromLocator(locator: string | null | undefined): string {
   if (!locator || locator === "/") return "";
   return locator.startsWith("/") ? locator.slice(1) : locator;
+}
+
+export function compatibleSourceKey(compatible: string): string {
+  return `compatible:${normalizeMatchValue(compatible) ?? compatible.trim().toLowerCase()}`;
+}
+
+export function nodeSourceKey(nodeLocator: string | null | undefined, fallbackInstance?: string | null): string {
+  const path = nodePathFromLocator(nodeLocator);
+  if (path) return `node:${path}`;
+  const instance = displayInstanceName(fallbackInstance) ?? BOARD_INSTANCE_MODULE_NAME;
+  return `node:${instance}`;
+}
+
+export function unclassifiedBucketSourceKey(label: string): string {
+  return `unclassified:${normalizeMatchValue(label) ?? label.trim().toLowerCase()}`;
 }
 
 async function findMappedModuleId(
@@ -126,25 +150,56 @@ async function ensureBoardInstanceModuleId(
     organizationId,
     name: BOARD_INSTANCE_MODULE_NAME,
     parentId: boardParentId,
+    kind: "instance",
+    sourceKey: nodeSourceKey("/", BOARD_INSTANCE_MODULE_NAME),
   });
 }
 
+/**
+ * Resolve or create a module by stable source_key, with a one-time name fallback
+ * that adopts unkeyed rows. Never renames or moves curated modules.
+ */
 async function ensureNamedModule(
   db: Queryable,
   input: {
     organizationId: string;
     name: string;
     parentId: string | null;
+    kind: ModuleKind;
+    sourceKey: string;
     description?: string;
     scope?: string;
   },
 ): Promise<string> {
-  const existing = await findModuleIdByName(db, {
+  const byKey = await getParameterModuleBySourceKey(db, {
+    organizationId: input.organizationId,
+    sourceKey: input.sourceKey,
+  });
+  if (byKey) {
+    return byKey.id;
+  }
+
+  const existingId = await findModuleIdByName(db, {
     organizationId: input.organizationId,
     name: input.name,
     parentId: input.parentId,
   });
-  if (existing) return existing;
+  if (existingId) {
+    const existing = await getParameterModuleById(db, {
+      organizationId: input.organizationId,
+      moduleId: existingId,
+    });
+    if (existing && !existing.sourceKey) {
+      await adoptParameterModuleSourceKey(db, {
+        organizationId: input.organizationId,
+        moduleId: existingId,
+        sourceKey: input.sourceKey,
+        kind: input.kind,
+        origin: existing.origin === "curated" ? "curated" : "auto",
+      });
+    }
+    return existingId;
+  }
 
   const created = await createParameterModule(db, {
     organizationId: input.organizationId,
@@ -152,6 +207,9 @@ async function ensureNamedModule(
     parentId: input.parentId,
     description: input.description ?? "",
     scope: input.scope ?? "",
+    kind: input.kind,
+    origin: "auto",
+    sourceKey: input.sourceKey,
   });
   return created.id;
 }
@@ -188,6 +246,8 @@ async function ensureProvisionalUnclassifiedModule(
     organizationId: input.organizationId,
     name: moduleName,
     parentId: unclassifiedModuleId(input.organizationId),
+    kind: "unclassified",
+    sourceKey: unclassifiedBucketSourceKey(input.label),
     description: "待管理员配置模块归属的临时分组。",
     scope: input.label,
   });
@@ -276,6 +336,8 @@ export async function resolveBindingInstanceModuleId(
         organizationId: input.organizationId,
         name: instanceModuleName,
         parentId: groupModuleId,
+        kind: "instance",
+        sourceKey: nodeSourceKey(input.nodeLocator, instanceModuleName),
         description: `${instanceModuleName} DTS 实例模块。`,
         scope: `实例 ${instanceModuleName}`,
       });
@@ -333,6 +395,8 @@ export async function resolveBindingInstanceModuleId(
       organizationId: input.organizationId,
       name: displayInstance,
       parentId: parentModuleId,
+      kind: "instance",
+      sourceKey: nodeSourceKey(input.nodeLocator, displayInstance),
       description: `${displayInstance} DTS 实例模块。`,
       scope: `实例 ${displayInstance}`,
     });

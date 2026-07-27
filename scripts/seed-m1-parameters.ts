@@ -221,7 +221,7 @@ export function parsePowerManagementConfig(configPath: string, source: string): 
 }
 
 export type SeedModuleMapping = {
-  matchKind: "instance" | "compatible" | "driver";
+  matchKind: "instance" | "compatible";
   /** Already-normalized match value (trim + lower). */
   matchValue: string;
   moduleName: string;

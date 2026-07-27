@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   filterUnmappedCompatibles,
-  filterUnmappedDrivers,
   toUnmappedCompatibleHint,
 } from "./moduleDiscovery";
 import type { ParameterModuleMapping } from "./moduleRegistry";
@@ -18,24 +17,13 @@ const mappings: ParameterModuleMapping[] = [
   {
     id: "m2",
     moduleId: "mod-sc8562",
-    matchKind: "driver",
+    matchKind: "compatible",
     matchValue: "sc8562",
     priority: 100,
   },
 ];
 
 describe("moduleDiscovery", () => {
-  it("filters observed drivers that already have a driver mapping", () => {
-    const result = filterUnmappedDrivers(
-      [
-        { driverModule: "sc8562", bindingCount: 4 },
-        { driverModule: "mt5788", bindingCount: 2 },
-      ],
-      mappings,
-    );
-    expect(result).toEqual([{ driverModule: "mt5788", bindingCount: 2 }]);
-  });
-
   it("filters observed compatibles that already have a compatible mapping", () => {
     const result = filterUnmappedCompatibles(
       [

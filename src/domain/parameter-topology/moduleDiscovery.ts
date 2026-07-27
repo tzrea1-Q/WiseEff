@@ -1,40 +1,17 @@
 import type { ParameterModuleMapping } from "./moduleRegistry";
 import { driverGroupDisplayNameFromCompatible } from "./modulePlacement";
 
-export type UnmappedDriverHint = {
-  driverModule: string;
-  bindingCount: number;
-};
-
 export type UnmappedCompatibleHint = {
   compatible: string;
   bindingCount: number;
   suggestedGroupName: string;
 };
 
-export function mappedDriverValues(mappings: readonly ParameterModuleMapping[]): Set<string> {
-  return new Set(
-    mappings
-      .filter((mapping) => mapping.matchKind === "driver")
-      .map((mapping) => mapping.matchValue.trim().toLocaleLowerCase()),
-  );
-}
-
 export function mappedCompatibleValues(mappings: readonly ParameterModuleMapping[]): Set<string> {
   return new Set(
     mappings
       .filter((mapping) => mapping.matchKind === "compatible")
       .map((mapping) => mapping.matchValue.trim().toLocaleLowerCase()),
-  );
-}
-
-export function filterUnmappedDrivers(
-  observedDrivers: readonly UnmappedDriverHint[],
-  mappings: readonly ParameterModuleMapping[],
-): UnmappedDriverHint[] {
-  const mapped = mappedDriverValues(mappings);
-  return observedDrivers.filter(
-    (hint) => !mapped.has(hint.driverModule.trim().toLocaleLowerCase()),
   );
 }
 

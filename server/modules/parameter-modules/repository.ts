@@ -1,18 +1,31 @@
 import type { Queryable } from "../../shared/database/client";
+import {
+  driverGroupDisplayNameFromCompatible,
+  isScaffoldingDriverLabel,
+} from "./modulePlacement";
 import type {
+  ModuleImportance,
   ModuleMatchKind,
   ParameterModuleMappingRow,
   ParameterModuleRegistryDto,
   ParameterModuleRow
 } from "./types";
 
-function moduleFromRow(row: ParameterModuleRow) {
+function moduleFromRow(
+  row: ParameterModuleRow,
+  effectiveImportance: ModuleImportance,
+) {
   return {
     id: row.id,
     name: row.name,
     parentId: row.parent_id ?? null,
     sortOrder: row.sort_order,
-    importance: row.importance ?? "medium"
+    importance: row.importance ?? "medium",
+    kind: row.kind ?? "business",
+    origin: row.origin ?? "curated",
+    sourceKey: row.source_key ?? null,
+    effectiveImportance,
+    parameterCount: Number(row.parameter_count ?? 0),
   };
 }
 
@@ -26,6 +39,22 @@ function mappingFromRow(row: ParameterModuleMappingRow) {
   };
 }
 
+function resolveEffectiveImportance(
+  moduleId: string,
+  byId: Map<string, ParameterModuleRow>,
+): ModuleImportance {
+  const seen = new Set<string>();
+  let current = byId.get(moduleId);
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    if (current.kind === "business") {
+      return current.importance ?? "medium";
+    }
+    current = current.parent_id ? byId.get(current.parent_id) : undefined;
+  }
+  return byId.get(moduleId)?.importance ?? "medium";
+}
+
 /**
  * Registry read: modules from the v1 parameter_modules tree + DTS mappings.
  * Module CRUD lives in v1 (`parameterModuleRepository`); this module only owns mappings.
@@ -35,12 +64,27 @@ export async function readRegistry(
   organizationId: string
 ): Promise<ParameterModuleRegistryDto> {
   const modules = await db.query<ParameterModuleRow>(
-    `select id, name, parent_id, sort_order, coalesce(importance, 'medium') as importance
-       from parameter_modules
-      where organization_id = $1
-      order by sort_order asc, path asc, name asc`,
+    `select
+       pm.id,
+       pm.name,
+       pm.parent_id,
+       pm.sort_order,
+       coalesce(pm.importance, 'medium') as importance,
+       coalesce(pm.kind, 'business') as kind,
+       coalesce(pm.origin, 'curated') as origin,
+       pm.source_key,
+       pm.path,
+       (
+         select count(*)::text
+         from project_parameter_bindings b
+         where b.module_id = pm.id
+       ) as parameter_count
+       from parameter_modules pm
+      where pm.organization_id = $1
+      order by pm.sort_order asc, pm.path asc, pm.name asc`,
     [organizationId]
   );
+  const byId = new Map(modules.rows.map((row) => [row.id, row]));
   const mappings = await db.query<ParameterModuleMappingRow>(
     `select id, parameter_module_id, match_kind, match_value, priority
        from parameter_module_mappings
@@ -49,7 +93,9 @@ export async function readRegistry(
     [organizationId]
   );
   return {
-    modules: modules.rows.map(moduleFromRow),
+    modules: modules.rows.map((row) =>
+      moduleFromRow(row, resolveEffectiveImportance(row.id, byId)),
+    ),
     mappings: mappings.rows.map(mappingFromRow)
   };
 }
@@ -98,6 +144,81 @@ export async function deleteMappingRow(
   return result.rowCount ?? 0;
 }
 
+export async function listSubtreeModuleIds(
+  db: Queryable,
+  input: { organizationId: string; moduleId: string },
+): Promise<string[]> {
+  const result = await db.query<{ id: string }>(
+    `
+    select child.id
+    from parameter_modules root
+    inner join parameter_modules child
+      on child.organization_id = root.organization_id
+     and (child.id = root.id or child.path like root.path || '/%')
+    where root.organization_id = $1
+      and root.id = $2
+    order by child.depth desc, child.path desc
+    `,
+    [input.organizationId, input.moduleId],
+  );
+  return result.rows.map((row) => row.id);
+}
+
+export async function deleteMappingsForModules(
+  db: Queryable,
+  input: { organizationId: string; moduleIds: string[] },
+): Promise<Array<{ id: string; matchKind: ModuleMatchKind; matchValue: string }>> {
+  if (input.moduleIds.length === 0) return [];
+  const result = await db.query<{
+    id: string;
+    match_kind: ModuleMatchKind;
+    match_value: string;
+  }>(
+    `
+    delete from parameter_module_mappings
+    where organization_id = $1
+      and parameter_module_id = any($2::text[])
+    returning id, match_kind, match_value
+    `,
+    [input.organizationId, input.moduleIds],
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    matchKind: row.match_kind,
+    matchValue: row.match_value,
+  }));
+}
+
+/** Delete empty auto instance/driver-group modules in a subtree, deepest first. Keeps the root id. */
+export async function deleteEmptyAutoDescendants(
+  db: Queryable,
+  input: { organizationId: string; rootModuleId: string; subtreeModuleIds: string[] },
+): Promise<string[]> {
+  const deleted: string[] = [];
+  for (const moduleId of input.subtreeModuleIds) {
+    if (moduleId === input.rootModuleId) continue;
+    const result = await db.query<{ id: string }>(
+      `
+      delete from parameter_modules pm
+      where pm.organization_id = $1
+        and pm.id = $2
+        and pm.origin = 'auto'
+        and pm.kind in ('instance', 'driver-group', 'unclassified')
+        and not exists (
+          select 1 from parameter_modules child where child.parent_id = pm.id
+        )
+        and not exists (
+          select 1 from project_parameter_bindings b where b.module_id = pm.id
+        )
+      returning pm.id
+      `,
+      [input.organizationId, moduleId],
+    );
+    if (result.rows[0]) deleted.push(result.rows[0].id);
+  }
+  return deleted;
+}
+
 export type RecomputeBindingRow = {
   id: string;
   projectId: string;
@@ -113,6 +234,13 @@ export type RecomputeBindingRow = {
 export type ObservedCompatibleHintRow = {
   compatible: string;
   bindingCount: number;
+  projectCount: number;
+  suggestedGroupName: string;
+};
+
+export type ObservedCompatibleHintsPage = {
+  items: ObservedCompatibleHintRow[];
+  total: number;
 };
 
 type RecomputeBindingDbRow = {
@@ -189,11 +317,19 @@ export async function listBindingsForModuleRecompute(
 
 export async function listObservedCompatiblesForDiscovery(
   db: Queryable,
-  input: { organizationId: string },
-): Promise<ObservedCompatibleHintRow[]> {
-  const result = await db.query<{ compatible: string; binding_count: string }>(
+  input: { organizationId: string; limit?: number },
+): Promise<ObservedCompatibleHintsPage> {
+  const limit = Math.max(1, Math.min(input.limit ?? 200, 500));
+  const result = await db.query<{
+    compatible: string;
+    binding_count: string;
+    project_count: string;
+  }>(
     `
-    select lower(lnr.compatible) as compatible, count(*)::text as binding_count
+    select
+      lower(lnr.compatible) as compatible,
+      count(*)::text as binding_count,
+      count(distinct b.project_id)::text as project_count
     from project_parameter_bindings b
     left join lateral (
       select compatible
@@ -205,15 +341,88 @@ export async function listObservedCompatiblesForDiscovery(
     where b.organization_id = $1
       and lnr.compatible is not null
       and trim(lnr.compatible) <> ''
+      and not exists (
+        select 1
+        from parameter_module_mappings mm
+        where mm.organization_id = b.organization_id
+          and mm.match_kind = 'compatible'
+          and lower(mm.match_value) = lower(lnr.compatible)
+      )
+      and not exists (
+        select 1
+        from parameter_module_dismissed_compatibles dc
+        where dc.organization_id = b.organization_id
+          and lower(dc.compatible) = lower(lnr.compatible)
+      )
     group by lower(lnr.compatible)
     order by count(*) desc, lower(lnr.compatible) asc
     `,
     [input.organizationId],
   );
-  return result.rows.map((row) => ({
-    compatible: row.compatible,
-    bindingCount: Number(row.binding_count),
-  }));
+
+  const filtered = result.rows
+    .filter((row) => !isScaffoldingDriverLabel(row.compatible))
+    .map((row) => ({
+      compatible: row.compatible,
+      bindingCount: Number(row.binding_count),
+      projectCount: Number(row.project_count),
+      suggestedGroupName: driverGroupDisplayNameFromCompatible(row.compatible),
+    }));
+
+  return {
+    items: filtered.slice(0, limit),
+    total: filtered.length,
+  };
+}
+
+export async function insertDismissedCompatible(
+  db: Queryable,
+  input: {
+    id: string;
+    organizationId: string;
+    compatible: string;
+    reason: string;
+    dismissedByUserId: string | null;
+  },
+): Promise<void> {
+  const compatible = input.compatible.trim().toLowerCase();
+  await db.query(
+    `
+    delete from parameter_module_dismissed_compatibles
+    where organization_id = $1
+      and lower(compatible) = $2
+    `,
+    [input.organizationId, compatible],
+  );
+  await db.query(
+    `
+    insert into parameter_module_dismissed_compatibles
+      (id, organization_id, compatible, reason, dismissed_by_user_id)
+    values ($1, $2, $3, $4, $5)
+    `,
+    [
+      input.id,
+      input.organizationId,
+      compatible,
+      input.reason,
+      input.dismissedByUserId,
+    ],
+  );
+}
+
+export async function deleteDismissedCompatible(
+  db: Queryable,
+  input: { organizationId: string; compatible: string },
+): Promise<number> {
+  const result = await db.query(
+    `
+    delete from parameter_module_dismissed_compatibles
+    where organization_id = $1
+      and lower(compatible) = lower($2)
+    `,
+    [input.organizationId, input.compatible],
+  );
+  return result.rowCount ?? 0;
 }
 
 /**
@@ -266,4 +475,47 @@ export async function updateBindingModuleId(
      where id = $2 and organization_id = $3`,
     [input.moduleId, input.bindingId, input.organizationId]
   );
+}
+
+export async function collectEmptyUnclassifiedBuckets(
+  db: Queryable,
+  organizationId: string,
+): Promise<string[]> {
+  const result = await db.query<{ id: string; name: string }>(
+    `
+    delete from parameter_modules pm
+    where pm.organization_id = $1
+      and pm.origin = 'auto'
+      and pm.kind = 'unclassified'
+      and pm.name like '未分类 · %'
+      and not exists (
+        select 1 from parameter_modules child
+        where child.parent_id = pm.id
+      )
+      and not exists (
+        select 1 from project_parameter_bindings b
+        where b.module_id = pm.id
+      )
+    returning pm.id, pm.name
+    `,
+    [organizationId],
+  );
+  return result.rows.map((row) => row.id);
+}
+
+export async function getModuleNamesByIds(
+  db: Queryable,
+  input: { organizationId: string; moduleIds: string[] },
+): Promise<Map<string, string>> {
+  if (input.moduleIds.length === 0) return new Map();
+  const result = await db.query<{ id: string; name: string }>(
+    `
+    select id, name
+    from parameter_modules
+    where organization_id = $1
+      and id = any($2::text[])
+    `,
+    [input.organizationId, input.moduleIds],
+  );
+  return new Map(result.rows.map((row) => [row.id, row.name]));
 }

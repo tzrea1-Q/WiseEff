@@ -45,10 +45,9 @@ function createFakeDb(input: { mappings: MappingRow[]; existingModuleIds?: Set<s
 }
 
 describe("resolveModuleIdForBinding", () => {
-  it("prefers an instance mapping over compatible and driver mappings", async () => {
+  it("prefers an instance mapping over a compatible mapping", async () => {
     const { db } = createFakeDb({
       mappings: [
-        { organizationId: "org-1", matchKind: "driver", matchValue: "sc8562", moduleId: "mod-driver", priority: 0 },
         {
           organizationId: "org-1",
           matchKind: "compatible",
@@ -79,7 +78,6 @@ describe("resolveModuleIdForBinding", () => {
   it("falls back to a compatible mapping when no instance mapping matches", async () => {
     const { db } = createFakeDb({
       mappings: [
-        { organizationId: "org-1", matchKind: "driver", matchValue: "sc8562", moduleId: "mod-driver", priority: 0 },
         {
           organizationId: "org-1",
           matchKind: "compatible",
@@ -100,11 +98,9 @@ describe("resolveModuleIdForBinding", () => {
     expect(moduleId).toBe("mod-compatible");
   });
 
-  it("falls back to a driver mapping when no instance/compatible mapping matches", async () => {
-    const { db } = createFakeDb({
-      mappings: [
-        { organizationId: "org-1", matchKind: "driver", matchValue: "sc8562", moduleId: "mod-driver", priority: 0 },
-      ],
+  it("falls back to unclassified when only a retired driver-style signal remains", async () => {
+    const { db, insertedModules } = createFakeDb({
+      mappings: [],
     });
 
     const moduleId = await resolveModuleIdForBinding(db, {
@@ -114,7 +110,8 @@ describe("resolveModuleIdForBinding", () => {
       instanceName: "sc8562@6E",
     });
 
-    expect(moduleId).toBe("mod-driver");
+    expect(moduleId).toBe(unclassifiedModuleId("org-1"));
+    expect(insertedModules).toHaveLength(1);
   });
 
   it("ensures and returns the deterministic unclassified module when no mapping matches", async () => {

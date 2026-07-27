@@ -5,6 +5,7 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
   createModuleMapping,
+  disbandDriverGroupModule,
   getParameterModuleRegistry,
   recomputeBindingModules
 } from "./service";
@@ -29,12 +30,26 @@ function makeReadableDb(): Database {
   const query = vi.fn(async (text: string) => {
     if (text.includes("from parameter_modules") && !text.includes("select id from")) {
       return {
-        rows: [{ id: "m1", name: "充电策略", parent_id: null, sort_order: 0, importance: "high" }],
+        rows: [{
+          id: "m1",
+          name: "充电策略",
+          parent_id: null,
+          sort_order: 0,
+          importance: "high",
+          kind: "business",
+          origin: "curated",
+          source_key: null,
+          path: "m1",
+          parameter_count: "0",
+        }],
         rowCount: 1
       };
     }
     if (text.includes("from parameter_module_mappings")) {
       return { rows: [], rowCount: 0 };
+    }
+    if (text.includes("insert into audit_events") || text.includes("into audit_events")) {
+      return { rows: [], rowCount: 1 };
     }
     return { rows: [], rowCount: 0 };
   });
@@ -64,8 +79,8 @@ describe("parameter module registry service", () => {
     await expect(
       createModuleMapping(db, makeAuth({ permissions: ["parameter:view"] }), {
         moduleId: "m1",
-        matchKind: "driver",
-        matchValue: "sc8562"
+        matchKind: "compatible",
+        matchValue: "vendor,sc8562"
       })
     ).rejects.toBeInstanceOf(ApiError);
   });
@@ -84,8 +99,8 @@ describe("parameter module registry service", () => {
     await expect(
       createModuleMapping(db, makeAuth(), {
         moduleId: "missing",
-        matchKind: "driver",
-        matchValue: "sc8562"
+        matchKind: "compatible",
+        matchValue: "vendor,sc8562"
       })
     ).rejects.toBeInstanceOf(ApiError);
   });
@@ -104,7 +119,7 @@ type RecomputeBindingRow = {
 
 function makeRecomputeDb(input: {
   bindings: RecomputeBindingRow[];
-  driverMappings?: Record<string, string>;
+  instanceMappings?: Record<string, string>;
   conflicts?: Set<string>;
 }): {
   db: Database;
@@ -118,7 +133,7 @@ function makeRecomputeDb(input: {
     if (text.includes("from parameter_module_mappings")) {
       const [, matchKind, matchValue] = values as [string, string, string];
       const moduleId =
-        matchKind === "driver" ? input.driverMappings?.[matchValue] : undefined;
+        matchKind === "instance" ? input.instanceMappings?.[matchValue] : undefined;
       return {
         rows: moduleId ? [{ parameter_module_id: moduleId }] : [],
         rowCount: moduleId ? 1 : 0
@@ -128,7 +143,6 @@ function makeRecomputeDb(input: {
       return { rows: [], rowCount: 1 };
     }
     if (text.includes("from project_parameter_bindings") && text.includes("id <>")) {
-      // conflict pre-check: exclude id is the last value
       const bindingId = values[values.length - 1] as string;
       return input.conflicts?.has(bindingId)
         ? { rows: [{ id: "other-binding" }], rowCount: 1 }
@@ -138,6 +152,12 @@ function makeRecomputeDb(input: {
       const [moduleId, bindingId] = values as [string, string];
       updates.push({ bindingId, moduleId });
       return { rows: [], rowCount: 1 };
+    }
+    if (text.includes("insert into audit_events") || text.includes("into audit_events")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (text.includes("delete from parameter_modules pm")) {
+      return { rows: [], rowCount: 0 };
     }
     return { rows: [], rowCount: 0 };
   });
@@ -159,11 +179,11 @@ describe("recomputeBindingModules", () => {
           parameter_spec_id: "spec-1",
           module_id: "mod-old",
           driver_module: "sc8562",
-          compatible: null,
-          instance_name: null
+          compatible: "vendor,sc8562",
+          instance_name: "sc8562@6E"
         }
       ],
-      driverMappings: { sc8562: "mod-charge" }
+      instanceMappings: { "sc8562@6e": "mod-charge" }
     });
 
     const result = await recomputeBindingModules(db, makeAuth(), {});
@@ -183,11 +203,11 @@ describe("recomputeBindingModules", () => {
           parameter_spec_id: "spec-1",
           module_id: "mod-charge",
           driver_module: "sc8562",
-          compatible: null,
-          instance_name: null
+          compatible: "vendor,sc8562",
+          instance_name: "sc8562@6E"
         }
       ],
-      driverMappings: { sc8562: "mod-charge" }
+      instanceMappings: { "sc8562@6e": "mod-charge" }
     });
 
     const result = await recomputeBindingModules(db, makeAuth(), {});
@@ -206,11 +226,11 @@ describe("recomputeBindingModules", () => {
           parameter_spec_id: "spec-1",
           module_id: "mod-old",
           driver_module: "sc8562",
-          compatible: null,
-          instance_name: null
+          compatible: "vendor,sc8562",
+          instance_name: "sc8562@6E"
         }
       ],
-      driverMappings: { sc8562: "mod-charge" },
+      instanceMappings: { "sc8562@6e": "mod-charge" },
       conflicts: new Set(["bind-1"])
     });
 
@@ -226,5 +246,129 @@ describe("recomputeBindingModules", () => {
     await expect(
       recomputeBindingModules(db, makeAuth({ permissions: ["parameter:view"] }), {})
     ).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("disbandDriverGroupModule", () => {
+  it("rejects modules that are not driver groups", async () => {
+    const query = vi.fn(async (text: string) => {
+      if (text.includes("from parameter_modules") && text.includes("limit 1")) {
+        return {
+          rows: [
+            {
+              id: "biz-1",
+              organization_id: "org-1",
+              parent_id: null,
+              name: "业务",
+              path: "biz-1",
+              depth: 1,
+              sort_order: 0,
+              description: "",
+              scope: "org",
+              importance: "medium",
+              kind: "business",
+              origin: "curated",
+              source_key: null,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const db = {
+      query,
+      transaction: vi.fn(async (fn) => fn({ query } as never)),
+    } as unknown as Database;
+
+    await expect(disbandDriverGroupModule(db, makeAuth(), { moduleId: "biz-1" })).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      status: 400,
+    });
+  });
+
+  it("drops mappings, deletes an empty driver group, and audits", async () => {
+    const groupId = "dg-1";
+    const deletedModules: string[] = [];
+    const audits: Array<{ kind: string; action: string }> = [];
+
+    const query = vi.fn(async (text: string, values: unknown[] = []) => {
+      if (text.includes("from parameter_modules") && text.includes("limit 1")) {
+        return {
+          rows: [
+            {
+              id: groupId,
+              organization_id: "org-1",
+              parent_id: "biz-1",
+              name: "SC8562",
+              path: `biz-1/${groupId}`,
+              depth: 2,
+              sort_order: 0,
+              description: "",
+              scope: "org",
+              importance: null,
+              kind: "driver-group",
+              origin: "curated",
+              source_key: "compatible:vendor,sc8562",
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (text.includes("inner join parameter_modules child") || text.includes("child.path like")) {
+        return { rows: [{ id: groupId }], rowCount: 1 };
+      }
+      if (text.includes("delete from parameter_module_mappings") && text.includes("any($2")) {
+        return {
+          rows: [{ id: "map-1", match_kind: "compatible", match_value: "vendor,sc8562" }],
+          rowCount: 1,
+        };
+      }
+      if (text.includes("from project_parameter_bindings") && text.includes("driver_module")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes("delete from parameter_modules pm") && text.includes("origin = 'auto'")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes("kind = 'unclassified'") && text.includes("origin = 'auto'")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (
+        text.includes("select count(*)::text as count") &&
+        text.includes("parent_id = $2")
+      ) {
+        return { rows: [{ count: "0" }], rowCount: 1 };
+      }
+      if (text.includes("select count(*)") && text.includes("parent_id")) {
+        return { rows: [{ count: "0" }], rowCount: 1 };
+      }
+      if (text.includes("count(*)") && text.includes("parameter_definitions")) {
+        return { rows: [{ count: "0" }], rowCount: 1 };
+      }
+      if (text.includes("delete from parameter_modules") && !text.includes(" pm")) {
+        deletedModules.push(String(values[1]));
+        return { rows: [], rowCount: 1 };
+      }
+      if (text.includes("insert into audit_events") || text.includes("into audit_events")) {
+        audits.push({ kind: String(values[6]), action: String(values[7]) });
+        return { rows: [], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const db = {
+      query,
+      transaction: vi.fn(async (fn) => fn({ query } as never)),
+    } as unknown as Database;
+
+    const result = await disbandDriverGroupModule(db, makeAuth(), { moduleId: groupId });
+
+    expect(result).toEqual({
+      removedMappings: 1,
+      reparkedBindings: 0,
+      deletedDescendants: 0,
+    });
+    expect(deletedModules).toContain(groupId);
+    expect(audits.some((row) => String(row.kind).includes("driver-group-disbanded"))).toBe(true);
   });
 });

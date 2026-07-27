@@ -6,6 +6,7 @@ export type RouteModule =
   | "notifications"
   | "users"
   | "parameters"
+  | "parameter-modules"
   | "logs"
   | "product-feedback"
   | "jobs"
@@ -101,6 +102,14 @@ export const routeManifest = [
   { id: "parameters.updateModule", method: "PATCH", path: "/api/v1/parameter-modules/:moduleId", module: "parameters", stability: "mvp" },
   { id: "parameters.moveModule", method: "POST", path: "/api/v1/parameter-modules/:moduleId/move", module: "parameters", stability: "mvp" },
   { id: "parameters.deleteModule", method: "DELETE", path: "/api/v1/parameter-modules/:moduleId", module: "parameters", stability: "mvp" },
+  { id: "parameterModules.getRegistry", method: "GET", path: "/api/v2/parameter-modules", module: "parameter-modules", stability: "mvp" },
+  { id: "parameterModules.discoveryHints", method: "GET", path: "/api/v2/parameter-modules/discovery-hints", module: "parameter-modules", stability: "mvp" },
+  { id: "parameterModules.dismissCompatible", method: "POST", path: "/api/v2/parameter-modules/discovery-hints/dismissals", module: "parameter-modules", stability: "mvp" },
+  { id: "parameterModules.restoreCompatible", method: "DELETE", path: "/api/v2/parameter-modules/discovery-hints/dismissals/:compatible", module: "parameter-modules", stability: "mvp" },
+  { id: "parameterModules.previewMapping", method: "POST", path: "/api/v2/parameter-modules/mappings/preview", module: "parameter-modules", stability: "mvp" },
+  { id: "parameterModules.createMapping", method: "POST", path: "/api/v2/parameter-modules/mappings", module: "parameter-modules", stability: "mvp" },
+  { id: "parameterModules.deleteMapping", method: "DELETE", path: "/api/v2/parameter-modules/mappings/:mappingId", module: "parameter-modules", stability: "mvp" },
+  { id: "parameterModules.recomputeBindings", method: "POST", path: "/api/v2/parameter-modules/recompute-bindings", module: "parameter-modules", stability: "mvp" },
   { id: "parameters.admin.listProjects", method: "GET", path: "/api/v1/parameters/admin/projects", module: "parameters", stability: "mvp" },
   { id: "parameters.admin.getProject", method: "GET", path: "/api/v1/parameters/admin/projects/:projectId", module: "parameters", stability: "mvp" },
   { id: "parameters.admin.createProject", method: "POST", path: "/api/v1/parameters/admin/projects", module: "parameters", stability: "mvp" },

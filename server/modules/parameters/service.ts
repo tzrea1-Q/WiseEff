@@ -2378,6 +2378,15 @@ export async function updateParameterModuleForAuth(
     throw new ApiError("VALIDATION_FAILED", "Module name is required.", 400);
   }
 
+  if (body.importance !== undefined && current.kind !== "business") {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Importance can only be set on business-category modules.",
+      400,
+      { moduleId, kind: current.kind }
+    );
+  }
+
   if (nextName !== current.name) {
     const conflict = await getParameterModuleByName(db, {
       organizationId,
@@ -2501,6 +2510,23 @@ export async function deleteParameterModuleForAuth(
   const current = await getParameterModuleById(db, { organizationId, moduleId });
   if (!current) {
     throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
+  }
+
+  if (current.kind === "driver-group") {
+    const { disbandDriverGroupModule } = await import("../parameter-modules/service");
+    await disbandDriverGroupModule(db, auth, { moduleId });
+    await createParameterModuleAudit(
+      db,
+      auth,
+      {
+        kind: "parameter-module-admin-delete",
+        action: "delete",
+        module: current,
+        metadata: { disbanded: true }
+      },
+      context
+    );
+    return;
   }
 
   const childCount = await countParameterModuleChildren(db, { organizationId, moduleId });

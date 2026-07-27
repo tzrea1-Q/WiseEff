@@ -38,6 +38,16 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Enablement override | An overlay's explicit statement about one node's enablement. Three states: inherit from base, force enabled, force disabled. Inherit means the overlay carries no `status` for that node |
 | Non-standard enablement value | A DTS `status` value that is neither `ok`/`okay` nor `disabled`, such as `reserved` or `fail`. Treated as not enabled, but its original text is preserved and one-click toggling is refused so the author's intent is not silently overwritten |
 | Runtime mode | Whether the frontend reads live APIs or mock fixtures. Both serve the same semantic model; mock is a data-source substitution, never a different product |
+| Module kind | A module's role in the three-layer attribution tree: business category, driver group, or device instance. Stated on the module, orthogonal to origin — adopting an instance module makes it curated but never makes it a business category |
+| Business category | A module humans reason in, such as 充电策略 or 电池安全. Holds driver groups, never holds parameters of its own device |
+| Driver group | The module a compatible resolves to. Gathers every device instance sharing that compatible under one business category |
+| Device instance module | The module for one DTS node instance. The leaf that parameters actually hang from |
+| Module origin | Who authored a business module: curated (a human made it a business concept), auto-discovered (DTS ingest created it from a device instance or driver group), or unclassified (the fallback bucket for bindings nothing else claimed). A stated fact about the module, never inferred from its name |
+| Curated module | A business module a human owns. Ingest may file bindings into it but never renames, moves, or deletes it |
+| Auto-discovered module | A module ingest created to hold bindings it could place but no human has claimed. Ingest still owns its name and position |
+| Module adoption | The moment an Admin renames, moves, or re-weights an auto-discovered module. The module becomes curated from then on; there is no separate "adopt" action |
+| Unclassified queue | The compatibles observed on project parameters that no driver group claims yet. Scaffolding compatibles never enter it, and an Admin can dismiss an entry, so the queue is expected to reach empty |
+| Dismissed compatible | A compatible an Admin declared out of scope for the module tree. It leaves the unclassified queue without gaining a driver group, and the decision is reversible |
 
 ## ADRs
 
@@ -46,3 +56,5 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0001`](docs/adr/0001-parameter-admin-organized-by-governance-scope.md) — parameter admin is organized by governance scope
 - [`0002`](docs/adr/0002-mock-runtime-serves-the-semantic-parameter-model.md) — mock runtime serves the semantic parameter model through the same ports
 - [`0003`](docs/adr/0003-node-enablement-is-not-a-parameter.md) — node enablement is not a parameter, but rides the parameter draft pipeline
+- [`0004`](docs/adr/0004-module-tree-states-kind-and-origin.md) — the module tree states kind and origin instead of inferring them
+- [`0005`](docs/adr/0005-compatible-and-instance-are-the-only-attribution-levers.md) — compatible and instance are the only attribution levers
