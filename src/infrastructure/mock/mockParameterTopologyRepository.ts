@@ -2,6 +2,8 @@ import type {
   ActivateParameterSpecInput,
   BindingDraftResult,
   CreateBindingDraftInput,
+  CreateNodeEnablementDraftInput,
+  NodeEnablementDraftResult,
   ParameterTopologyRepository
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
@@ -16,6 +18,10 @@ import type {
   ValidationRun
 } from "@/domain/parameter-topology/types";
 import { driverFallbackModuleId } from "@/domain/parameter-topology/moduleRegistry";
+import {
+  withEffectiveEnablement,
+  withSourceEnablement
+} from "@/domain/parameter-topology/nodeEnablement";
 
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
 const DEFAULT_PROJECT_ID = "project-teaching";
@@ -81,28 +87,6 @@ function seedSpecs(): Map<string, SpecFixture> {
       constraints: { cellsPerGroup: 3 },
       documentation: "gpio_int is a three-cell interrupt specifier.",
       compatiblePatterns: ["mediatek,mt5788"],
-      policyTarget: null
-    },
-    {
-      id: "spec-sc8562-status",
-      organizationId: DEFAULT_ORG_ID,
-      sourceKind: "dts",
-      specificationKey: "dts/sc8562/status",
-      propertyKey: "status",
-      driverModule: "sc8562",
-      lifecycle: "active",
-      currentVersionId: "specver-sc8562-status-1",
-      currentVersion: 1,
-      displayName: "SC8562 status",
-      description: "Node enablement status.",
-      valueShape: { kind: "strings", maxItems: 1 },
-      schemaDefault: "okay",
-      exampleValue: '"okay"',
-      schemaNamespace: "linux,devicetree/bindings",
-      units: null,
-      constraints: null,
-      documentation: "Standard DT status property.",
-      compatiblePatterns: ["vendor,sc8562"],
       policyTarget: null
     },
     {
@@ -182,35 +166,13 @@ function seedBindings(): ProjectParameterBinding[] {
       schemaState: "valid",
       policyState: "pass",
       moduleId: driverFallbackModuleId("mt5788")
-    },
-    {
-      id: "binding-sc8562-status",
-      parameterSpecId: "spec-sc8562-status",
-      parameterSpecVersionId: "specver-sc8562-status-1",
-      propertyKey: "status",
-      driverModule: "sc8562",
-      logicalNodeId: "logical-sc8562",
-      instanceName: "sc8562@6E",
-      locator: "/amba/i2c@FDF5E000/sc8562@6E",
-      effectiveValue: { kind: "strings", values: ["okay"] },
-      rawValue: '"okay"',
-      schemaState: "valid",
-      policyState: "not_applicable",
-      moduleId: driverFallbackModuleId("sc8562")
     }
   ];
 }
 
 function seedSourceTopology(): TopologyTree {
-  return {
-    view: "source",
-    revisionId: DEFAULT_REVISION_ID,
-    configSetId: DEFAULT_CONFIG_SET_ID,
-    projectId: DEFAULT_PROJECT_ID,
-    status: "resolved",
-    incompleteBase: false,
-    diagnostics: [],
-    nodes: [
+  const nodes = withSourceEnablement(
+    [
       {
         id: "src-amba",
         fileVersionId: "fv-base",
@@ -244,7 +206,19 @@ function seedSourceTopology(): TopologyTree {
         endColumn: 1,
         contentHash: "hash-i2c",
         sourceOrder: 2,
-        properties: []
+        properties: [
+          {
+            id: "src-prop-i2c-status",
+            propertyName: "status",
+            startLine: 44,
+            startColumn: 1,
+            endLine: 44,
+            endColumn: 20,
+            contentHash: "hash-i2c-status",
+            sourceOrder: 1,
+            rawText: '"disabled"'
+          }
+        ]
       },
       {
         id: "src-sc8562",
@@ -272,14 +246,102 @@ function seedSourceTopology(): TopologyTree {
             endColumn: 30,
             contentHash: "hash-gpio-int",
             sourceOrder: 1
+          },
+          {
+            id: "src-prop-status",
+            propertyName: "status",
+            startLine: 49,
+            startColumn: 1,
+            endLine: 49,
+            endColumn: 18,
+            contentHash: "hash-status",
+            sourceOrder: 2,
+            rawText: '"okay"'
           }
         ]
       }
-    ]
+    ].map((node) => ({
+      ...node,
+      rawStatus:
+        [...node.properties].reverse().find((prop) => prop.propertyName === "status")?.rawText ?? null
+    }))
+  );
+
+  return {
+    view: "source",
+    revisionId: DEFAULT_REVISION_ID,
+    configSetId: DEFAULT_CONFIG_SET_ID,
+    projectId: DEFAULT_PROJECT_ID,
+    status: "resolved",
+    incompleteBase: false,
+    diagnostics: [],
+    nodes
   };
 }
 
 function seedEffectiveTopology(): TopologyTree {
+  const nodes = withEffectiveEnablement([
+    {
+      id: "eff-amba",
+      logicalNodeId: "logical-amba",
+      locator: "/amba",
+      name: "amba",
+      parentLogicalNodeId: null,
+      rawStatus: null,
+      effects: []
+    },
+    {
+      id: "eff-i2c",
+      logicalNodeId: "logical-i2c",
+      locator: "/amba/i2c@FDF5E000",
+      name: "i2c",
+      unitAddress: "FDF5E000",
+      parentLogicalNodeId: "logical-amba",
+      rawStatus: '"disabled"',
+      effects: []
+    },
+    {
+      id: "eff-sc8562",
+      logicalNodeId: "logical-sc8562",
+      locator: "/amba/i2c@FDF5E000/sc8562@6E",
+      name: "sc8562",
+      unitAddress: "6E",
+      compatible: "vendor,sc8562",
+      parentLogicalNodeId: "logical-i2c",
+      rawStatus: '"okay"',
+      effects: [
+        {
+          id: "eff-gpio-int",
+          propertyName: "gpio_int",
+          effectKind: "set" as const,
+          nodeOccurrenceId: "src-sc8562",
+          propertyOccurrenceId: "src-prop-gpio-int",
+          sourceOrder: 1
+        }
+      ]
+    },
+    {
+      id: "eff-mt5788",
+      logicalNodeId: "logical-mt5788",
+      locator: "/amba/i2c@FDF5E000/mt5788@55",
+      name: "mt5788",
+      unitAddress: "55",
+      compatible: "mediatek,mt5788",
+      parentLogicalNodeId: "logical-i2c",
+      rawStatus: '"okay"',
+      effects: [
+        {
+          id: "eff-mt-gpio-int",
+          propertyName: "gpio_int",
+          effectKind: "set" as const,
+          nodeOccurrenceId: null,
+          propertyOccurrenceId: null,
+          sourceOrder: 1
+        }
+      ]
+    }
+  ]);
+
   return {
     view: "effective",
     revisionId: DEFAULT_REVISION_ID,
@@ -288,63 +350,7 @@ function seedEffectiveTopology(): TopologyTree {
     status: "resolved",
     incompleteBase: false,
     diagnostics: [],
-    nodes: [
-      {
-        id: "eff-amba",
-        logicalNodeId: "logical-amba",
-        locator: "/amba",
-        name: "amba",
-        parentLogicalNodeId: null,
-        effects: []
-      },
-      {
-        id: "eff-i2c",
-        logicalNodeId: "logical-i2c",
-        locator: "/amba/i2c@FDF5E000",
-        name: "i2c",
-        unitAddress: "FDF5E000",
-        parentLogicalNodeId: "logical-amba",
-        effects: []
-      },
-      {
-        id: "eff-sc8562",
-        logicalNodeId: "logical-sc8562",
-        locator: "/amba/i2c@FDF5E000/sc8562@6E",
-        name: "sc8562",
-        unitAddress: "6E",
-        compatible: "vendor,sc8562",
-        parentLogicalNodeId: "logical-i2c",
-        effects: [
-          {
-            id: "eff-gpio-int",
-            propertyName: "gpio_int",
-            effectKind: "set",
-            nodeOccurrenceId: "src-sc8562",
-            propertyOccurrenceId: "src-prop-gpio-int",
-            sourceOrder: 1
-          }
-        ]
-      },
-      {
-        id: "eff-mt5788",
-        logicalNodeId: "logical-mt5788",
-        locator: "/amba/i2c@FDF5E000/mt5788@55",
-        name: "mt5788",
-        unitAddress: "55",
-        compatible: "mediatek,mt5788",
-        parentLogicalNodeId: "logical-i2c",
-        effects: [
-          {
-            id: "eff-mt-gpio-int",
-            propertyName: "gpio_int",
-            effectKind: "set",
-            nodeOccurrenceId: null,
-            propertyOccurrenceId: null,
-            sourceOrder: 1
-          }
-        ]
-      }
-    ]
+    nodes
   };
 }
 
@@ -719,6 +725,38 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
           role: "overlay",
           propertyKey: binding.propertyKey,
           targetRef: binding.locator
+        },
+        overlayFileId: "file-teaching-dts",
+        overlayFileName: "power.dtso"
+      };
+    },
+
+    async createNodeEnablementDraft(
+      projectId,
+      input: CreateNodeEnablementDraftInput
+    ): Promise<NodeEnablementDraftResult> {
+      void projectId;
+      draftCounter += 1;
+      const action = input.target === "unstated" ? "delete" : "set";
+      const rawText =
+        input.target === "unstated"
+          ? ""
+          : input.target === "force-disabled"
+            ? '"disabled"'
+            : `"${input.spellingOverride ?? "ok"}"`;
+      return {
+        draftId: `draft-enablement-mock-${draftCounter}`,
+        candidateRevisionId: `rev-draft-${draftCounter}`,
+        workingCandidateRevisionId: `rev-draft-${draftCounter}`,
+        rawText,
+        action,
+        logicalNodeId: input.logicalNodeId,
+        target: input.target,
+        previousRaw: null,
+        writeTarget: {
+          role: "overlay",
+          propertyKey: "status",
+          targetRef: "mock-node"
         },
         overlayFileId: "file-teaching-dts",
         overlayFileName: "power.dtso"

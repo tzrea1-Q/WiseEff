@@ -85,7 +85,7 @@ psql "$DATABASE_URL" -c "select count(*) as open_spec_reviews from parameter_spe
 npm run parameter-identities:check
 ```
 
-在 **finalize** 前于 Admin UI（`/parameter-admin`）清零所有开放映射/规格审核。`stage-review` 可有意保留 open inferred 任务；finalize 与 cutover 前必须清零。
+在 **finalize** 前于 Admin UI（`/parameter-admin`）清零所有开放映射/规格审核。`stage-review` 可有意保留 open inferred 任务；finalize 与 cutover 前必须清零。开放的**结构**规格审核任务（例如遗留 `status` 行）在迁移 finalize 时以系统性原因驳回，不得阻塞晋级——见 [ADR-0003](../../adr/0003-node-enablement-is-not-a-parameter.md)。
 
 ## 6. 全量编译
 

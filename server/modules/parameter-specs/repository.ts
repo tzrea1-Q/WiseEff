@@ -670,6 +670,8 @@ export async function countOpenSpecReviewTasksForRevision(
     extraConditions.push(
       `coalesce(t.source_evidence->>'propertyKey', '') <> all($${values.length}::text[])`,
     );
+    // Match isStructuralPropertyKey: any `#…` cells key is structural.
+    extraConditions.push(`coalesce(t.source_evidence->>'propertyKey', '') not like '#%'`);
   }
 
   if (input.unmatchedOnly) {

@@ -5,22 +5,21 @@ import type {
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
-import type { BindingDraftResult } from "@/application/ports/ParameterTopologyRepository";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
 
-export type PendingBindingDraft = BindingDraftResult & {
-  projectId: string;
-  currentRawValue: string;
-  reason: string;
-  /** Business module display name (same source as workbench「所属模块」). */
-  moduleName: string;
-};
+import {
+  isBindingDraft,
+  isEnablementDraft,
+  type PendingTopologyDraft
+} from "./draftTrayTypes";
+
+export type { PendingBindingDraft, PendingEnablementDraft, PendingTopologyDraft } from "./draftTrayTypes";
 
 export type DtsBindingDraftTrayProps = {
   projectId: string;
-  drafts: PendingBindingDraft[];
-  /** When non-empty, only these binding ids are included in submit. Empty = submit all drafts. */
+  drafts: PendingTopologyDraft[];
+  /** When non-empty, only selected binding drafts are included; enablement drafts on the same tip always ride along. */
   selectedBindingIds?: ReadonlySet<string>;
   candidates: WorkflowAssigneeCandidates | null;
   candidatesError?: string | null;
@@ -36,27 +35,35 @@ function nonBlank(value: string): boolean {
   return value.trim().length > 0;
 }
 
-function identityBlocker(projectId: string, drafts: PendingBindingDraft[]): string | null {
-  const incomplete = drafts.some((draft) =>
-    draft.projectId !== projectId ||
-    !nonBlank(draft.draftId) ||
-    !nonBlank(draft.candidateRevisionId) ||
-    !nonBlank(draft.projectParameterBindingId) ||
-    !nonBlank(draft.parameterSpecId) ||
-    !nonBlank(draft.writeTarget.propertyKey) ||
-    !nonBlank(draft.reason)
-  );
-  return incomplete ? "草稿缺少完整的项目、工作版本、binding 或规格身份，已阻止提交。" : null;
+function identityBlocker(projectId: string, drafts: PendingTopologyDraft[]): string | null {
+  const incomplete = drafts.some((draft) => {
+    if (draft.projectId !== projectId || !nonBlank(draft.draftId) || !nonBlank(draft.candidateRevisionId)) {
+      return true;
+    }
+    if (!nonBlank(draft.reason)) return true;
+    if (isBindingDraft(draft)) {
+      return (
+        !nonBlank(draft.projectParameterBindingId) ||
+        !nonBlank(draft.parameterSpecId) ||
+        !nonBlank(draft.writeTarget.propertyKey)
+      );
+    }
+    if (isEnablementDraft(draft)) {
+      return !nonBlank(draft.logicalNodeId);
+    }
+    return true;
+  });
+  return incomplete ? "草稿缺少完整的项目、工作版本、编辑目标或原因，已阻止提交。" : null;
 }
 
-function candidateBlocker(drafts: PendingBindingDraft[]): string | null {
+function candidateBlocker(drafts: PendingTopologyDraft[]): string | null {
   const candidateIds = new Set(drafts.map((draft) => draft.candidateRevisionId));
   return candidateIds.size > 1
     ? "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。"
     : null;
 }
 
-function actionValueBlocker(drafts: PendingBindingDraft[]): string | null {
+function actionValueBlocker(drafts: PendingTopologyDraft[]): string | null {
   const emptySet = drafts.some((draft) => draft.action === "set" && !nonBlank(draft.rawText));
   if (emptySet) {
     return "set action 必须携带非空 rawText，已阻止提交。";
@@ -67,27 +74,89 @@ function actionValueBlocker(drafts: PendingBindingDraft[]): string | null {
     : null;
 }
 
-function draftBatchSignature(projectId: string, drafts: PendingBindingDraft[]): string {
+function draftBatchSignature(projectId: string, drafts: PendingTopologyDraft[]): string {
   const items = drafts
-    .map((draft) => ({
-      draftId: draft.draftId,
-      candidateRevisionId: draft.candidateRevisionId,
-      projectParameterBindingId: draft.projectParameterBindingId,
-      parameterSpecId: draft.parameterSpecId,
-      action: draft.action,
-      rawText: draft.rawText,
-      reason: draft.reason,
-      currentRawValue: draft.currentRawValue,
-      writeTarget: {
-        role: draft.writeTarget.role,
-        propertyKey: draft.writeTarget.propertyKey,
-        targetRef: draft.writeTarget.targetRef ?? null
-      },
-      overlayFileId: draft.overlayFileId,
-      overlayFileName: draft.overlayFileName
-    }))
+    .map((draft) => {
+      if (isBindingDraft(draft)) {
+        return {
+          kind: "binding" as const,
+          draftId: draft.draftId,
+          candidateRevisionId: draft.candidateRevisionId,
+          projectParameterBindingId: draft.projectParameterBindingId,
+          parameterSpecId: draft.parameterSpecId,
+          action: draft.action,
+          rawText: draft.rawText,
+          reason: draft.reason,
+          currentRawValue: draft.currentRawValue,
+          writeTarget: {
+            role: draft.writeTarget.role,
+            propertyKey: draft.writeTarget.propertyKey,
+            targetRef: draft.writeTarget.targetRef ?? null
+          },
+          overlayFileId: draft.overlayFileId,
+          overlayFileName: draft.overlayFileName
+        };
+      }
+      return {
+        kind: "enablement" as const,
+        draftId: draft.draftId,
+        candidateRevisionId: draft.candidateRevisionId,
+        logicalNodeId: draft.logicalNodeId,
+        action: draft.action,
+        rawText: draft.rawText,
+        reason: draft.reason,
+        currentRawValue: draft.currentRawValue,
+        nodeLabel: draft.nodeLabel
+      };
+    })
     .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
   return JSON.stringify({ projectId, items });
+}
+
+function resolveSubmitDrafts(
+  drafts: PendingTopologyDraft[],
+  selectedBindingIds?: ReadonlySet<string>
+): PendingTopologyDraft[] {
+  if (!selectedBindingIds || selectedBindingIds.size === 0) return drafts;
+  const selectedBindings = drafts.filter(
+    (draft) =>
+      isBindingDraft(draft) && selectedBindingIds.has(draft.projectParameterBindingId)
+  );
+  if (selectedBindings.length === 0) return [];
+  const tips = new Set(selectedBindings.map((draft) => draft.candidateRevisionId));
+  return drafts.filter((draft) => {
+    if (isBindingDraft(draft)) {
+      return selectedBindingIds.has(draft.projectParameterBindingId);
+    }
+    return tips.has(draft.candidateRevisionId);
+  });
+}
+
+function formatEnablementValue(raw: string | null): string {
+  if (raw == null || !raw.trim()) return "未声明";
+  return formatDtsRawValueForUi(raw) || raw;
+}
+
+function toSubmitItem(draft: PendingTopologyDraft) {
+  if (isEnablementDraft(draft)) {
+    return {
+      draftId: draft.draftId,
+      editSubjectKind: "node-enablement" as const,
+      logicalNodeId: draft.logicalNodeId,
+      action: draft.action,
+      targetValue: draft.rawText,
+      reason: draft.reason
+    };
+  }
+  return {
+    draftId: draft.draftId,
+    editSubjectKind: "binding" as const,
+    projectParameterBindingId: draft.projectParameterBindingId,
+    parameterSpecId: draft.parameterSpecId,
+    action: draft.action,
+    targetValue: draft.rawText,
+    reason: draft.reason
+  };
 }
 
 export function DtsBindingDraftTray({
@@ -118,10 +187,10 @@ export function DtsBindingDraftTray({
     signature: string;
   } | null>(null);
 
-  const submitDrafts = useMemo(() => {
-    if (!selectedBindingIds || selectedBindingIds.size === 0) return drafts;
-    return drafts.filter((draft) => selectedBindingIds.has(draft.projectParameterBindingId));
-  }, [drafts, selectedBindingIds]);
+  const submitDrafts = useMemo(
+    () => resolveSubmitDrafts(drafts, selectedBindingIds),
+    [drafts, selectedBindingIds]
+  );
   const submitBatchSignature = useMemo(
     () => draftBatchSignature(projectId, submitDrafts),
     [projectId, submitDrafts]
@@ -202,7 +271,7 @@ export function DtsBindingDraftTray({
   if (drafts.length === 0) return null;
 
   return (
-    <section className="dts-binding-draft-tray dts-draft-tray binding-draft-submission" role="region" aria-label="绑定变更提交">
+    <section className="dts-binding-draft-tray dts-draft-tray binding-draft-submission" role="region" aria-label="参数修改提交">
       <header>
         <div>
           <p className="eyebrow">Current edits</p>
@@ -210,7 +279,7 @@ export function DtsBindingDraftTray({
           <p>
             {selectedBindingIds && selectedBindingIds.size > 0
               ? `将提交已选 ${submitDrafts.length} / ${drafts.length} 项草稿。`
-              : "未勾选时提交全部草稿；勾选后仅提交选中项。"}
+              : "未勾选时提交全部草稿；勾选后仅提交选中 binding，同版本节点启用草稿一并提交。"}
           </p>
         </div>
         <span>
@@ -223,37 +292,46 @@ export function DtsBindingDraftTray({
       </header>
 
       <div className="dts-binding-draft-tray__items">
-        {drafts.map((draft) => (
-          <article className="dts-binding-draft-tray__item" key={draft.draftId}>
-            <div className="dts-binding-draft-tray__item-heading">
-              <div>
-                <strong><code>{draft.writeTarget.propertyKey}</code></strong>
-                <span>{draft.moduleName}</span>
+        {drafts.map((draft) => {
+          const diffLabel = isBindingDraft(draft)
+            ? `${draft.writeTarget.propertyKey} 值变更`
+            : `${draft.nodeLabel} 节点启用变更`;
+          const currentValue = isBindingDraft(draft)
+            ? formatDtsRawValueForUi(draft.currentRawValue) || "（属性不存在）"
+            : formatEnablementValue(draft.currentRawValue);
+          const targetValue = draft.action === "delete"
+            ? (isBindingDraft(draft) ? "删除属性（tombstone）" : "未声明")
+            : formatEnablementValue(draft.rawText);
+
+          return (
+            <article className="dts-binding-draft-tray__item" key={draft.draftId}>
+              <div className="dts-binding-draft-tray__item-heading">
+                <div>
+                  {isBindingDraft(draft) ? (
+                    <strong><code>{draft.writeTarget.propertyKey}</code></strong>
+                  ) : (
+                    <strong>{draft.nodeLabel}</strong>
+                  )}
+                  <span>{isBindingDraft(draft) ? draft.moduleName : "节点启用"}</span>
+                </div>
+                <button
+                  type="button"
+                  className="button subtle"
+                  aria-label="移出本轮修改"
+                  disabled={submitting}
+                  onClick={() => onRemove(draft.draftId)}
+                >
+                  <X size={15} strokeWidth={1.9} aria-hidden="true" />
+                  移除
+                </button>
               </div>
-              <button
-                type="button"
-                className="button subtle"
-                aria-label="移出本轮修改"
-                disabled={submitting}
-                onClick={() => onRemove(draft.draftId)}
-              >
-                <X size={15} strokeWidth={1.9} aria-hidden="true" />
-                移除
-              </button>
-            </div>
-            <div className="dts-binding-draft-tray__diff" aria-label={`${draft.writeTarget.propertyKey} 值变更`}>
-              <ParameterValueDiff
-                baseValue={formatDtsRawValueForUi(draft.currentRawValue) || "（属性不存在）"}
-                targetValue={
-                  draft.action === "delete"
-                    ? "删除属性（tombstone）"
-                    : formatDtsRawValueForUi(draft.rawText) || draft.rawText || "—"
-                }
-              />
-            </div>
-            <p><strong>原因：</strong>{draft.reason}</p>
-          </article>
-        ))}
+              <div className="dts-binding-draft-tray__diff" aria-label={diffLabel}>
+                <ParameterValueDiff baseValue={currentValue} targetValue={targetValue} />
+              </div>
+              <p><strong>原因：</strong>{draft.reason}</p>
+            </article>
+          );
+        })}
       </div>
 
       {!displayedCandidates && !displayedCandidatesError ? <p role="status">正在加载项目角色候选人…</p> : null}
@@ -314,14 +392,7 @@ export function DtsBindingDraftTray({
             setSubmitError(null);
             void onSubmit({
               projectId,
-              items: submitDrafts.map((draft) => ({
-                draftId: draft.draftId,
-                projectParameterBindingId: draft.projectParameterBindingId,
-                parameterSpecId: draft.parameterSpecId,
-                action: draft.action,
-                targetValue: draft.rawText,
-                reason: draft.reason
-              })),
+              items: submitDrafts.map((draft) => toSubmitItem(draft)),
               assignees: { hardwareCommitterId, softwareCommitterId, softwareUserId }
             })
               .then((result) => {
@@ -352,7 +423,7 @@ export function DtsBindingDraftTray({
           {submitting ? "提交中…" : "提交审核"}
         </button>
         {submitted ? (
-          <button type="button" className="button subtle" onClick={() => onNavigate("/parameter-review")}>查看审核队列</button>
+          <button type="button" className="button subtle" onClick={() => onNavigate("/parameter-review")}>查看变更审阅</button>
         ) : null}
       </div>
     </section>

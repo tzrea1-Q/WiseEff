@@ -74,12 +74,14 @@ describe("vendorDtSchemaGenerator unit", () => {
           exampleValue: "<&gpio13 29 0>",
           constraints: { cells: 3 }
         },
+        // status must be ignored — ADR-0003 node enablement, not a binding property
         status: { valueShape: "string-list", constraints: {} }
       }
     });
     expect(binding.body).toContain("phandle-array");
     expect(binding.body).toContain("additionalProperties: false");
     expect(binding.body).not.toContain("additionalProperties: true");
+    expect(binding.body).not.toMatch(/^\s*status:/m);
     expect(binding.body).not.toMatch(/required:[\s\S]*status/);
   });
 

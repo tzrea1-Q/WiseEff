@@ -1,6 +1,8 @@
 import type {
   BindingDraftResult,
   CreateBindingDraftInput,
+  CreateNodeEnablementDraftInput,
+  NodeEnablementDraftResult,
   ParameterTopologyRepository
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
@@ -246,6 +248,23 @@ function bindingDraftFromDto(dto: BindingDraftResult): BindingDraftResult {
   };
 }
 
+function nodeEnablementDraftFromDto(dto: NodeEnablementDraftResult): NodeEnablementDraftResult {
+  return {
+    draftId: dto.draftId,
+    candidateRevisionId: dto.candidateRevisionId,
+    workingCandidateRevisionId: dto.workingCandidateRevisionId,
+    rebasedDraftIds: dto.rebasedDraftIds,
+    rawText: dto.rawText,
+    action: dto.action,
+    logicalNodeId: dto.logicalNodeId,
+    target: dto.target,
+    previousRaw: dto.previousRaw,
+    writeTarget: dto.writeTarget,
+    overlayFileId: dto.overlayFileId,
+    overlayFileName: dto.overlayFileName
+  };
+}
+
 function isAbortError(error: unknown): boolean {
   if (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") {
     return true;
@@ -424,6 +443,13 @@ export function createHttpParameterTopologyRepository(
         input
       );
       return bindingDraftFromDto(response.item);
+    },
+    async createNodeEnablementDraft(projectId, input: CreateNodeEnablementDraftInput) {
+      const response = await apiClient.post<ItemEnvelope<NodeEnablementDraftResult>>(
+        `/api/v2/projects/${encodeURIComponent(projectId)}/node-enablement-drafts`,
+        input
+      );
+      return nodeEnablementDraftFromDto(response.item);
     }
   };
 }

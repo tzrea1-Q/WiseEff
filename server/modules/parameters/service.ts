@@ -15,10 +15,12 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { nodePathToParameterIdentity } from "../parameter-files/pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
-import { writebackMergedParameterValue, type WritebackServiceContext } from "../parameter-files/writebackService";
+import { writebackMergedEnablementValue, writebackMergedParameterValue, type WritebackServiceContext } from "../parameter-files/writebackService";
 import {
+  loadLogicalNodeEnablementContext,
   resolveInitializationSuggestion,
-  verifyBindingWriteLock
+  verifyBindingWriteLock,
+  verifyEnablementWriteLock
 } from "../parameter-topology/editService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import { isValidMergeLink } from "./mergeLink";
@@ -30,15 +32,19 @@ import {
   applyUpdatedImportItem,
   bindParameterSource,
   createChangeRequest,
+  createEnablementChangeRequest,
+  createEnablementSubmissionItem,
   getImportBatchForUpdate,
   createSubmissionItem,
   createSubmissionRound,
   deleteDraft as deleteDraftRow,
   deleteDraftForParameter,
   findOpenChangeRequest,
+  findOpenEnablementChangeRequest,
   findProjectValueBySource,
   getChangeRequestById,
   getBindingDraftForSubmission,
+  getEnablementDraftForSubmission,
   getDraftWriteLock,
   getProjectById,
   getProjectParameterForUpdate,
@@ -129,8 +135,17 @@ export type SubmitParameterChangesInput = {
       }
     | {
         draftId: string;
+        editSubjectKind?: "binding";
         projectParameterBindingId: string;
         parameterSpecId: string;
+        action?: ParameterChangeAction;
+        targetValue: string;
+        reason: string;
+      }
+    | {
+        draftId: string;
+        editSubjectKind: "node-enablement";
+        logicalNodeId: string;
         action?: ParameterChangeAction;
         targetValue: string;
         reason: string;
@@ -143,6 +158,21 @@ export type SubmitParameterChangesInput = {
     softwareUserId?: string;
   };
 };
+
+type EnablementSubmissionItem = Extract<
+  SubmitParameterChangesInput["items"][number],
+  { logicalNodeId: string }
+>;
+
+function isEnablementSubmissionItem(
+  item: SubmitParameterChangesInput["items"][number]
+): item is EnablementSubmissionItem {
+  return (
+    "draftId" in item &&
+    (("editSubjectKind" in item && item.editSubjectKind === "node-enablement") ||
+      ("logicalNodeId" in item && !("projectParameterBindingId" in item)))
+  );
+}
 
 /** One structured DTS property edit unit (browser editor → change request). */
 export type StructuredEditUnit = {
@@ -436,17 +466,37 @@ function getCompleteWorkflowAssignees(input: SubmitParameterChangesInput) {
 }
 
 function assertUniqueSubmissionParameters(items: SubmitParameterChangesInput["items"]) {
-  const parameterIds = new Set<string>();
+  const bindingIds = new Set<string>();
+  const enablementIds = new Set<string>();
+  const legacyParameterIds = new Set<string>();
 
   for (const item of items) {
-    const parameterId = "draftId" in item ? item.projectParameterBindingId : item.parameterId;
-    if (parameterIds.has(parameterId)) {
-      throw new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", 400, {
-        parameterId
-      });
+    if ("draftId" in item) {
+      if (isEnablementSubmissionItem(item)) {
+        if (enablementIds.has(item.logicalNodeId)) {
+          throw new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", 400, {
+            logicalNodeId: item.logicalNodeId
+          });
+        }
+        enablementIds.add(item.logicalNodeId);
+        continue;
+      }
+
+      if (bindingIds.has(item.projectParameterBindingId)) {
+        throw new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", 400, {
+          parameterId: item.projectParameterBindingId
+        });
+      }
+      bindingIds.add(item.projectParameterBindingId);
+      continue;
     }
 
-    parameterIds.add(parameterId);
+    if (legacyParameterIds.has(item.parameterId)) {
+      throw new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", 400, {
+        parameterId: item.parameterId
+      });
+    }
+    legacyParameterIds.add(item.parameterId);
   }
 }
 
@@ -1107,13 +1157,111 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         { projectId: input.projectId }
       );
     }
-    const parameters: Array<{
+    const bindingEntries: Array<{
       item: SubmitParameterChangesInput["items"][number];
       parameter: Awaited<ReturnType<typeof loadParameterForSubmission>>;
       parameterId: string;
       exactDraft?: NonNullable<Awaited<ReturnType<typeof getBindingDraftForSubmission>>>;
     }> = [];
+    const enablementEntries: Array<{
+      item: EnablementSubmissionItem;
+      exactDraft: NonNullable<Awaited<ReturnType<typeof getEnablementDraftForSubmission>>>;
+      currentValue: string;
+    }> = [];
+
     for (const item of input.items) {
+      if ("draftId" in item && isEnablementSubmissionItem(item)) {
+        if (!useSemanticIdentity) {
+          throw new ApiError("CONFLICT", "Enablement draft submission requires completed semantic identity cutover.", 409, {
+            draftId: item.draftId
+          });
+        }
+
+        const loadedDraft = await getEnablementDraftForSubmission(tx, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          userId: auth.user.id,
+          draftId: item.draftId
+        });
+        if (!loadedDraft) {
+          throw new ApiError("NOT_FOUND", "Enablement draft was not found for this project.", 404, {
+            draftId: item.draftId,
+            projectId: input.projectId
+          });
+        }
+        if (loadedDraft.logicalNodeId !== item.logicalNodeId) {
+          throw new ApiError("CONFLICT", "Enablement draft identity does not match the submitted logical node.", 409, {
+            draftId: item.draftId,
+            logicalNodeId: item.logicalNodeId
+          });
+        }
+        const submittedAction = item.action ?? "set";
+        if (
+          loadedDraft.action !== submittedAction ||
+          loadedDraft.targetValue !== item.targetValue ||
+          loadedDraft.reason !== item.reason
+        ) {
+          throw new ApiError("CONFLICT", "Enablement draft action, value, or reason changed before submission.", 409, {
+            draftId: item.draftId
+          });
+        }
+        if (
+          !loadedDraft.candidateConfigRevisionId ||
+          loadedDraft.candidateStatus !== "draft" ||
+          !loadedDraft.candidateActionProven
+        ) {
+          throw new ApiError("CONFLICT", "Enablement draft candidate revision is missing, stale, or action-mismatched.", 409, {
+            draftId: item.draftId,
+            action: submittedAction,
+            candidateConfigRevisionId: loadedDraft.candidateConfigRevisionId,
+            candidateStatus: loadedDraft.candidateStatus,
+            candidateHasStatusEffect: loadedDraft.candidateHasStatusEffect,
+            candidateValueMatchesDraft: loadedDraft.candidateValueMatchesDraft,
+            candidateDeleteTombstone: loadedDraft.candidateDeleteTombstone
+          });
+        }
+        if (!loadedDraft.writeLock || !loadedDraft.writeLockMatchesRevision) {
+          throw new ApiError("CONFLICT", "Enablement draft is missing exact writeback lock metadata.", 409, {
+            draftId: item.draftId
+          });
+        }
+        await verifyEnablementWriteLock(tx, loadedDraft.writeLock);
+
+        const openRequest = await findOpenEnablementChangeRequest(tx, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          logicalNodeId: item.logicalNodeId
+        });
+        if (openRequest) {
+          throw new ApiError("CONFLICT", "Logical node already has an open change request.", 409, {
+            logicalNodeId: item.logicalNodeId,
+            requestId: openRequest.id
+          });
+        }
+
+        const nodeContext = await loadLogicalNodeEnablementContext(tx, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          configRevisionId: loadedDraft.writeLock.baseConfigRevisionId,
+          logicalNodeId: item.logicalNodeId
+        });
+        await assertSensitiveNodeWriteAllowed(tx, auth, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          nodePath: nodeContext.nodeLocator,
+          compatible: nodeContext.compatible,
+          actorType: context.actorType ?? "user",
+          requestId: context.requestId
+        });
+
+        enablementEntries.push({
+          item,
+          exactDraft: loadedDraft,
+          currentValue: nodeContext.currentRaw ?? ""
+        });
+        continue;
+      }
+
       let parameterId: string;
       let exactDraft: NonNullable<Awaited<ReturnType<typeof getBindingDraftForSubmission>>> | undefined;
       if ("draftId" in item) {
@@ -1214,17 +1362,22 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         });
       }
 
-      parameters.push({ item, parameter, parameterId, exactDraft });
+      if ("draftId" in item) {
+        bindingEntries.push({ item, parameter, parameterId, exactDraft });
+      } else {
+        bindingEntries.push({ item, parameter, parameterId });
+      }
     }
 
     const tipIds = [
       ...new Set(
-        parameters
-          .map(({ exactDraft }) => exactDraft?.candidateConfigRevisionId?.trim())
-          .filter((id): id is string => Boolean(id))
+        [
+          ...bindingEntries.map(({ exactDraft }) => exactDraft?.candidateConfigRevisionId?.trim()),
+          ...enablementEntries.map(({ exactDraft }) => exactDraft.candidateConfigRevisionId?.trim())
+        ].filter((id): id is string => Boolean(id))
       )
     ];
-    if (parameters.some(({ item }) => "draftId" in item) && tipIds.length > 1) {
+    if (input.items.some((item) => "draftId" in item) && tipIds.length > 1) {
       throw new ApiError(
         "CONFLICT",
         "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
@@ -1235,18 +1388,38 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
 
     await assertWorkflowAssigneesAreEligible(tx, auth, input.projectId, workflowAssignees);
 
-    for (const { item, exactDraft } of parameters) {
+    const promotionDrafts: Array<{ draftId: string; candidateConfigRevisionId: string }> = [];
+    const seenPromotionTips = new Set<string>();
+    for (const { item, exactDraft } of bindingEntries) {
       if (!("draftId" in item) || !exactDraft?.candidateConfigRevisionId) continue;
-      const promoted = await promoteBindingDraftCandidateForReview(tx, {
-        organizationId: auth.organization.id,
-        projectId: input.projectId,
+      if (seenPromotionTips.has(exactDraft.candidateConfigRevisionId)) continue;
+      seenPromotionTips.add(exactDraft.candidateConfigRevisionId);
+      promotionDrafts.push({
         draftId: item.draftId,
         candidateConfigRevisionId: exactDraft.candidateConfigRevisionId
       });
+    }
+    for (const { item, exactDraft } of enablementEntries) {
+      if (!exactDraft.candidateConfigRevisionId) continue;
+      if (seenPromotionTips.has(exactDraft.candidateConfigRevisionId)) continue;
+      seenPromotionTips.add(exactDraft.candidateConfigRevisionId);
+      promotionDrafts.push({
+        draftId: item.draftId,
+        candidateConfigRevisionId: exactDraft.candidateConfigRevisionId
+      });
+    }
+
+    for (const draft of promotionDrafts) {
+      const promoted = await promoteBindingDraftCandidateForReview(tx, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        draftId: draft.draftId,
+        candidateConfigRevisionId: draft.candidateConfigRevisionId
+      });
       if (!promoted) {
-        throw new ApiError("CONFLICT", "Binding draft candidate changed before review promotion.", 409, {
-          draftId: item.draftId,
-          candidateConfigRevisionId: exactDraft.candidateConfigRevisionId
+        throw new ApiError("CONFLICT", "Draft candidate changed before review promotion.", 409, {
+          draftId: draft.draftId,
+          candidateConfigRevisionId: draft.candidateConfigRevisionId
         });
       }
     }
@@ -1262,7 +1435,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
     });
 
     const items = [];
-    for (const { item, parameter, exactDraft } of parameters) {
+    for (const { item, parameter, exactDraft } of bindingEntries) {
       let projectParameterBindingId: string | undefined;
       let parameterSpecId: string | undefined;
       let writeLock;
@@ -1379,6 +1552,47 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       items.push(submissionItem);
     }
 
+    for (const { item, exactDraft, currentValue } of enablementEntries) {
+      const request = await createEnablementChangeRequest(tx, {
+        id: randomUUID(),
+        organizationId: auth.organization.id,
+        submissionRoundId: round.id,
+        projectId: input.projectId,
+        logicalNodeId: item.logicalNodeId,
+        baseVersion: 0,
+        currentValue,
+        targetValue: item.targetValue,
+        action: item.action ?? "set",
+        status,
+        submitterUserId: auth.user.id,
+        assignedToUserId: workflowAssignees?.hardwareCommitterId,
+        workflowAssignees,
+        candidateConfigRevisionId: exactDraft.candidateConfigRevisionId ?? undefined,
+        writeLock: exactDraft.writeLock ?? undefined
+      });
+
+      const submissionItem = await createEnablementSubmissionItem(tx, {
+        id: randomUUID(),
+        organizationId: auth.organization.id,
+        submissionRoundId: round.id,
+        changeRequestId: request.id,
+        logicalNodeId: item.logicalNodeId,
+        currentValue,
+        targetValue: item.targetValue,
+        action: item.action ?? "set",
+        reason: item.reason,
+        candidateConfigRevisionId: exactDraft.candidateConfigRevisionId ?? undefined
+      });
+
+      await deleteDraftRow(tx, {
+        organizationId: auth.organization.id,
+        userId: auth.user.id,
+        draftId: item.draftId
+      });
+
+      items.push(submissionItem);
+    }
+
     await createAuditEvent(tx, {
       id: randomUUID(),
       organizationId: auth.organization.id,
@@ -1394,19 +1608,17 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       metadata: {
         itemCount: items.length,
         status,
-        bindingDraftIds: parameters.flatMap(({ item }) => ("draftId" in item ? [item.draftId] : [])),
-        projectParameterBindingIds: parameters.flatMap(({ item, exactDraft }) => {
-          if (exactDraft) return [exactDraft.bindingId];
-          return "draftId" in item || !item.projectParameterBindingId ? [] : [item.projectParameterBindingId];
-        }),
-        parameterSpecIds: parameters.flatMap(({ item, exactDraft }) => {
-          if (exactDraft) return [exactDraft.parameterSpecId];
-          return "draftId" in item || !item.parameterSpecId ? [] : [item.parameterSpecId];
-        }),
-        actions: parameters.map(({ item }) => ("draftId" in item ? item.action ?? "set" : "set")),
-        candidateConfigRevisionIds: parameters.flatMap(({ exactDraft }) =>
-          exactDraft?.candidateConfigRevisionId ? [exactDraft.candidateConfigRevisionId] : []
-        )
+        bindingDraftIds: bindingEntries.flatMap(({ item }) => ("draftId" in item ? [item.draftId] : [])),
+        enablementDraftIds: enablementEntries.map(({ item }) => item.draftId),
+        projectParameterBindingIds: bindingEntries.flatMap(({ exactDraft }) =>
+          exactDraft ? [exactDraft.bindingId] : []
+        ),
+        logicalNodeIds: enablementEntries.map(({ item }) => item.logicalNodeId),
+        parameterSpecIds: bindingEntries.flatMap(({ exactDraft }) =>
+          exactDraft ? [exactDraft.parameterSpecId] : []
+        ),
+        actions: input.items.map((item) => ("draftId" in item ? item.action ?? "set" : "set")),
+        candidateConfigRevisionIds: tipIds
       },
       traceId: context.requestId ?? randomUUID()
     });
@@ -1831,6 +2043,8 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     });
 
     const semanticIdentity = await mustUseSemanticParameterIdentity(tx);
+    const isEnablementMerge =
+      request.editSubjectKind === "node-enablement" || Boolean(request.logicalNodeId);
     if (semanticIdentity) {
       if (!context.objectStore) {
         throw new ApiError(
@@ -1848,11 +2062,18 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
           { requestId: input.requestId }
         );
       }
-      // Post-cutover change requests identify the binding via parameterId.
-      if (!request.parameterId) {
+      if (!isEnablementMerge && !request.parameterId) {
         throw new ApiError(
           "CONFLICT",
           "Semantic merge requires a project parameter binding write lock.",
+          409,
+          { requestId: input.requestId }
+        );
+      }
+      if (isEnablementMerge && !request.logicalNodeId) {
+        throw new ApiError(
+          "CONFLICT",
+          "Semantic enablement merge requires a logical node write lock.",
           409,
           { requestId: input.requestId }
         );
@@ -1872,21 +2093,35 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     }
 
     if (semanticIdentity) {
-      const writeback = await writebackMergedParameterValue(
-        tx,
-        context.objectStore!,
-        auth,
-        {
-          projectId: request.projectId!,
-          parameterDefinitionId: merged.parameterDefinitionId,
-          mergedValue: merged.targetValue,
-          action: merged.action,
-          projectParameterBindingId: merged.projectParameterBindingId,
-          parameterSpecId: merged.parameterSpecId,
-          changeRequestId: input.requestId,
-        },
-        context
-      );
+      const writeback = isEnablementMerge
+        ? await writebackMergedEnablementValue(
+            tx,
+            context.objectStore!,
+            auth,
+            {
+              projectId: request.projectId!,
+              logicalNodeId: request.logicalNodeId!,
+              mergedValue: merged.targetValue,
+              action: merged.action,
+              changeRequestId: input.requestId,
+            },
+            context
+          )
+        : await writebackMergedParameterValue(
+            tx,
+            context.objectStore!,
+            auth,
+            {
+              projectId: request.projectId!,
+              parameterDefinitionId: merged.parameterDefinitionId,
+              mergedValue: merged.targetValue,
+              action: merged.action,
+              projectParameterBindingId: merged.projectParameterBindingId,
+              parameterSpecId: merged.parameterSpecId,
+              changeRequestId: input.requestId,
+            },
+            context
+          );
       if (writeback.skipped) {
         throw new ApiError(
           "CONFLICT",

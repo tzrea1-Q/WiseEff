@@ -7,8 +7,6 @@ description: WiseEff vendor binding for huawei,multi_btb_temp (generated from ve
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   sensor-names:
     $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   compatible:

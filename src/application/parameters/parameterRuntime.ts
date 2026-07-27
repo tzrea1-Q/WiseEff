@@ -43,7 +43,7 @@ export function findOpenChangeRequestForParameter(
 }
 
 export function formatOpenChangeRequestBlockerMessage(parameterName: string): string {
-  return `参数「${parameterName}」已有进行中的变更请求，请先在「参数审阅」中处理后再提交。`;
+  return `参数「${parameterName}」已有进行中的变更请求，请先在「变更审阅」中处理后再提交。`;
 }
 
 export function formatParameterRuntimeError(error: unknown): string {

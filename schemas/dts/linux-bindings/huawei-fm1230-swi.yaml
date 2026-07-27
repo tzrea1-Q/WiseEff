@@ -7,8 +7,6 @@ description: WiseEff vendor binding for huawei,fm1230_swi (generated from vendor
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   compatible:
     contains:
       const: huawei,fm1230_swi

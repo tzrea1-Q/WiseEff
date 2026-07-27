@@ -678,4 +678,51 @@ describe("buildDtsWorkbenchRows", () => {
     expect(rows.map((row) => row.propertyKey)).toEqual(["gpio_int", "board_id"]);
     expect(rows.find((row) => row.propertyKey === "board_id")?.moduleName).toBe("board");
   });
+
+  it("surfaces a no-effect notice when the owning node is unreachable", () => {
+    const nodesWithEnablement: EffectiveTopologyNode[] = effectiveNodes.map((node) => {
+      if (node.logicalNodeId === "logical-i2c") {
+        return {
+          ...node,
+          enablement: {
+            selfEnabled: false,
+            override: "force-disabled",
+            rawStatus: '"disabled"',
+            rawToken: "disabled",
+            reachable: false,
+            blockingAncestorId: null,
+            blockingAncestorLabel: null
+          }
+        };
+      }
+      if (node.logicalNodeId === "logical-sc8562") {
+        return {
+          ...node,
+          enablement: {
+            selfEnabled: true,
+            override: "force-enabled",
+            rawStatus: '"okay"',
+            rawToken: "okay",
+            reachable: false,
+            blockingAncestorId: "logical-i2c",
+            blockingAncestorLabel: "i2c@FDF5E000"
+          }
+        };
+      }
+      return node;
+    });
+
+    const [row] = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [binding],
+      sourceNodes,
+      effectiveNodes: nodesWithEnablement,
+      mappingTasks: []
+    });
+
+    expect(row?.nodeEnablementNotice).toContain("所属节点不可达");
+    expect(row?.nodeEnablementNotice).toContain("i2c@FDF5E000");
+  });
 });

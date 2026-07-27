@@ -125,7 +125,7 @@ export function buildSpecEditorSavePayload(
   if (policy.error) return { payload: null, error: policy.error };
 
   if (!draft.documentation.trim()) {
-    return { payload: null, error: "规格说明不能为空。" };
+    return { payload: null, error: "参数说明不能为空。" };
   }
   if (!draft.reason.trim()) {
     return { payload: null, error: "请填写修改原因。" };
@@ -245,8 +245,8 @@ export function ParameterSpecDetail({ detail, draft, onDraftChange, editable }: 
           )
           .join("\n")
       : detail.usageCount > 0
-        ? `绑定约 ${detail.usageCount} 处（明细暂未加载）`
-        : "暂无项目绑定";
+        ? `项目参数约 ${detail.usageCount} 处（明细暂未加载）`
+        : "暂无项目参数";
   const historyText =
     detail.schemaHistory && detail.schemaHistory.length > 0
       ? detail.schemaHistory
@@ -256,9 +256,9 @@ export function ParameterSpecDetail({ detail, draft, onDraftChange, editable }: 
   const isDraft = detail.reviewState === "draft" && detail.organizationId != null;
 
   return (
-    <section className="shared-definition-panel" aria-label="规格详情">
+    <section className="shared-definition-panel" aria-label="参数定义详情">
       <div className="panel-header">
-        <strong>规格详情</strong>
+        <strong>参数定义详情</strong>
         <span>{editable ? (isDraft ? "草稿可编辑 · 保存时激活" : "可编辑") : "只读"}</span>
       </div>
       <form className="param-def-form" onSubmit={(event) => event.preventDefault()}>
@@ -278,7 +278,7 @@ export function ParameterSpecDetail({ detail, draft, onDraftChange, editable }: 
             <ReadOnlyField label="驱动模块" value={detail.driverModule ?? ""} mono />
             <ReadOnlyField label="compatible" value={compatibleText} mono />
             <ReadOnlyField label="所属模块" value={moduleText} />
-            <ReadOnlyField label="规格键" value={detail.specificationKey ?? ""} mono />
+            <ReadOnlyField label="定义标识" value={detail.specificationKey ?? ""} mono />
             <ReadOnlyField label="来源" value={detail.sourceKind ?? detail.schemaSource} />
             <ReadOnlyField label="Schema 命名空间" value={detail.schemaNamespace ?? ""} mono />
             <ReadOnlyField
@@ -388,12 +388,12 @@ export function ParameterSpecDetail({ detail, draft, onDraftChange, editable }: 
                   rows={2}
                 />
                 <EditableField
-                  label="规格说明"
+                  label="参数说明"
                   value={draft.documentation}
                   onChange={(documentation) => onDraftChange({ documentation })}
                   multiline
                   rows={3}
-                  placeholder="描述属性语义、取值范围与使用注意"
+                  placeholder="描述参数含义、取值范围与使用注意"
                 />
                 <EditableField
                   label="修改原因"
@@ -408,7 +408,7 @@ export function ParameterSpecDetail({ detail, draft, onDraftChange, editable }: 
             ) : (
               <>
                 <ReadOnlyField label="展示描述" value={detail.description ?? ""} />
-                <ReadOnlyField label="规格说明" value={detail.documentation ?? ""} />
+                <ReadOnlyField label="参数说明" value={detail.documentation ?? ""} />
               </>
             )}
           </div>

@@ -1,6 +1,8 @@
 import { CircleX } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
+
 import {
   matchStatusLabel,
   nodeNameFromEvidence,
@@ -99,7 +101,7 @@ export function SpecReviewTaskDialog({
       className="modal-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label={`规格审核 ${task.propertyKey}`}
+      aria-label={`${PARAMETER_ADMIN_UI.specReview} ${task.propertyKey}`}
       onClick={isPending ? undefined : onClose}
     >
       <div
@@ -108,7 +110,7 @@ export function SpecReviewTaskDialog({
       >
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
-            <span className="eyebrow">规格审核 · 裁决</span>
+            <span className="eyebrow">{PARAMETER_ADMIN_UI.specReviewDialogEyebrow}</span>
             <h2 id="spec-review-task-dialog-title">{task.propertyKey}</h2>
             <p>
               {nodeName ? `节点 ${nodeName}` : "节点未标注"}
@@ -116,7 +118,7 @@ export function SpecReviewTaskDialog({
               {task.driverModule ? `所属模块 ${task.driverModule}` : "所属模块未映射"}
               {" · "}
               {matchStatus}
-              。从候选或参数库选择规格后批准；属性键不一致须额外确认。
+              。从系统推荐或参数定义库选择定义后批准；属性键不一致须额外确认。
             </p>
           </div>
           <button
@@ -174,9 +176,9 @@ export function SpecReviewTaskDialog({
                     />
                   </label>
                   <label>
-                    推理证据
+                    {PARAMETER_ADMIN_UI.specReviewEvidence}
                     <textarea
-                      aria-label="推理证据"
+                      aria-label={PARAMETER_ADMIN_UI.specReviewEvidence}
                       className="parameter-admin-code-editor"
                       value={task.evidence.length > 0 ? task.evidence.join("\n") : "—"}
                       rows={Math.min(6, Math.max(2, task.evidence.length || 1))}
@@ -187,9 +189,9 @@ export function SpecReviewTaskDialog({
                   </label>
                   {task.candidates.length > 0 ? (
                     <label>
-                      候选规格
+                      {PARAMETER_ADMIN_UI.specReviewCandidates}
                       <textarea
-                        aria-label="候选规格"
+                        aria-label={PARAMETER_ADMIN_UI.specReviewCandidates}
                         className="parameter-admin-code-editor"
                         value={task.candidates.map((candidate) => candidate.label).join("\n")}
                         rows={Math.min(5, Math.max(2, task.candidates.length))}
@@ -203,24 +205,24 @@ export function SpecReviewTaskDialog({
               </fieldset>
 
               <fieldset className="def-group">
-                <legend>裁决</legend>
+                <legend>{PARAMETER_ADMIN_UI.specReviewDecision}</legend>
                 <div className="def-group-fields">
                   <label>
-                    搜索参数库
+                    {PARAMETER_ADMIN_UI.searchSpecLibrary}
                     <input
-                      aria-label="搜索参数库"
+                      aria-label={PARAMETER_ADMIN_UI.searchSpecLibrary}
                       value={draft.libraryQuery}
                       onChange={(event) =>
                         setDraft((current) => ({ ...current, libraryQuery: event.target.value }))
                       }
-                      placeholder="按属性键、驱动或规格键搜索"
+                      placeholder={PARAMETER_ADMIN_UI.searchSpecPlaceholder}
                       disabled={isPending}
                     />
                   </label>
                   <label>
-                    选择规格
+                    {PARAMETER_ADMIN_UI.selectSpec}
                     <select
-                      aria-label="选择规格"
+                      aria-label={PARAMETER_ADMIN_UI.selectSpec}
                       value={draft.schemaId}
                       disabled={isPending}
                       onChange={(event) =>
@@ -231,7 +233,7 @@ export function SpecReviewTaskDialog({
                         }))
                       }
                     >
-                      <option value="">请选择规格…</option>
+                      <option value="">{PARAMETER_ADMIN_UI.selectSpecPlaceholder}</option>
                       {options.map((candidate) => (
                         <option key={candidate.id} value={candidate.id}>
                           {candidate.label}
@@ -260,7 +262,7 @@ export function SpecReviewTaskDialog({
                           }))
                         }
                       />
-                      高风险：所选规格属性键为「{picked?.propertyKey}」，与任务「{task.propertyKey}」不一致。确认后继续。
+                      高风险：所选参数定义属性键为「{picked?.propertyKey}」，与任务「{task.propertyKey}」不一致。确认后继续。
                     </label>
                   ) : null}
                   <label>
@@ -270,7 +272,7 @@ export function SpecReviewTaskDialog({
                       value={draft.reason}
                       rows={3}
                       disabled={isPending}
-                      placeholder="说明为何选择该规格"
+                      placeholder={PARAMETER_ADMIN_UI.approveReasonPlaceholder}
                       onChange={(event) =>
                         setDraft((current) => ({ ...current, reason: event.target.value }))
                       }
@@ -310,7 +312,7 @@ export function SpecReviewTaskDialog({
                 })
               }
             >
-              {isPending && pendingAction === "create" ? "创建中…" : "创建草稿规格"}
+              {isPending && pendingAction === "create" ? "创建中…" : PARAMETER_ADMIN_UI.createDraftSpec}
             </button>
           ) : null}
           <button

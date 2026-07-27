@@ -25,6 +25,9 @@ import type {
   TopologyDiagnostic
 } from "@/domain/parameter-topology/types";
 import { parseDtsValue } from "@/domain/parameter-topology/parseDtsValue";
+import { measureStatusSpelling } from "@/domain/parameter-topology/enablementEdit";
+import { nodeEnablementLabel } from "@/domain/parameter-topology/nodeEnablement";
+import type { TopologyNodeEnablement } from "@/domain/parameter-topology/types";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import {
@@ -38,8 +41,10 @@ import {
 import type { BindingEditValidation } from "./BindingDetailPanel";
 import {
   DtsBindingDraftTray,
-  type PendingBindingDraft
+  type PendingTopologyDraft
 } from "./DtsBindingDraftTray";
+import { DtsNodeEnablementDialog } from "./DtsNodeEnablementDialog";
+import type { PendingEnablementDraft } from "./draftTrayTypes";
 import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
@@ -101,18 +106,66 @@ function mapServerDraftsToPending(
   projectId: string,
   drafts: ParameterDraftDto[],
   bindings: ProjectParameterBinding[],
+  effectiveNodes: EffectiveTopologyNode[],
   moduleRegistry: ParameterModuleRegistry,
   sharedTip?: string
-): PendingBindingDraft[] {
+): PendingTopologyDraft[] {
   const bindingById = new Map(bindings.map((binding) => [binding.id, binding]));
-  return drafts.flatMap((draft) => {
+  const nodesByLogicalId = new Map(effectiveNodes.map((node) => [node.logicalNodeId, node]));
+  return drafts.flatMap((draft): PendingTopologyDraft[] => {
+    if (draft.projectId !== projectId) return [];
+    const candidateRevisionId = draft.candidateConfigRevisionId?.trim() || sharedTip || "";
+    if (!candidateRevisionId) return [];
+
+    // TODO: drop optional chaining once listDrafts always returns enablement draft fields.
+    if (draft.editSubjectKind === "node-enablement") {
+      const logicalNodeId = draft.logicalNodeId?.trim();
+      if (!logicalNodeId) return [];
+      const node = nodesByLogicalId.get(logicalNodeId);
+      const nodeLabel =
+        draft.nodeLabel?.trim() ||
+        (node
+          ? nodeEnablementLabel({
+              name: node.name,
+              unitAddress: node.unitAddress,
+              locator: node.locator
+            })
+          : logicalNodeId);
+      return [
+        {
+          kind: "enablement",
+          draftId: draft.id,
+          candidateRevisionId,
+          rawText: draft.targetValue,
+          action: draft.action ?? "set",
+          logicalNodeId,
+          target:
+            draft.action === "delete"
+              ? "unstated"
+              : draft.targetValue.includes("disabled")
+                ? "force-disabled"
+                : "force-enabled",
+          writeTarget: {
+            role: "overlay",
+            propertyKey: "status",
+            targetRef: nodeLabel
+          },
+          overlayFileId: "",
+          overlayFileName: "",
+          projectId,
+          reason: draft.reason,
+          nodeLabel,
+          currentRawValue: draft.currentValue ?? node?.enablement?.rawStatus ?? null
+        } satisfies PendingEnablementDraft & { kind: "enablement" }
+      ];
+    }
+
     const bindingId = draft.projectParameterBindingId;
-    if (!bindingId || draft.projectId !== projectId) return [];
+    if (!bindingId) return [];
     const binding = bindingById.get(bindingId);
     if (!binding) return [];
-    const candidateRevisionId = draft.candidateConfigRevisionId?.trim() || sharedTip || "";
     const parameterSpecId = (draft.parameterSpecId ?? binding.parameterSpecId).trim();
-    if (!candidateRevisionId || !parameterSpecId) return [];
+    if (!parameterSpecId) return [];
     const moduleAssignment = describeModuleAssignment(
       binding.moduleId,
       {
@@ -124,6 +177,7 @@ function mapServerDraftsToPending(
     );
     return [
       {
+        kind: "binding",
         draftId: draft.id,
         parameterId: draft.parameterId,
         candidateRevisionId,
@@ -286,9 +340,16 @@ export function ApiProjectTopologyWorkspace({
   } | null>(null);
   const preferredRevisionId =
     preferredRevision?.projectId === projectId ? preferredRevision.revisionId : undefined;
-  const [pendingDrafts, setPendingDrafts] = useState<PendingBindingDraft[]>([]);
+  const [pendingDrafts, setPendingDrafts] = useState<PendingTopologyDraft[]>([]);
   const [serverDrafts, setServerDrafts] = useState<ParameterDraftDto[] | null>(null);
   const [selectedDraftBindingIds, setSelectedDraftBindingIds] = useState<Set<string>>(new Set());
+  const [enablementDialogTarget, setEnablementDialogTarget] = useState<{
+    logicalNodeId: string;
+    nodeLabel: string;
+    enablement: TopologyNodeEnablement;
+  } | null>(null);
+  const [enablementDialogBusy, setEnablementDialogBusy] = useState(false);
+  const [enablementDialogError, setEnablementDialogError] = useState<string | null>(null);
   const [workflowCandidates, setWorkflowCandidates] = useState<WorkflowAssigneeCandidates | null>(null);
   const [workflowCandidatesError, setWorkflowCandidatesError] = useState<string | null>(null);
   const [projectMutationKinds, setProjectMutationKinds] = useState<ReadonlyMap<string, ProjectMutationLock>>(
@@ -327,6 +388,8 @@ export function ApiProjectTopologyWorkspace({
     setPreferredRevision(null);
     setPendingDrafts([]);
     setServerDrafts(null);
+    setEnablementDialogTarget(null);
+    setEnablementDialogError(null);
     setWorkflowCandidates(null);
     setWorkflowCandidatesError(null);
   }, [projectId]);
@@ -358,7 +421,9 @@ export function ApiProjectTopologyWorkspace({
   useEffect(() => {
     if (!serverDrafts || loadState.kind !== "ready") return;
     const bindingDrafts = serverDrafts.filter(
-      (draft) => draft.projectId === projectId && draft.projectParameterBindingId
+      (draft) =>
+        draft.projectId === projectId &&
+        (draft.projectParameterBindingId || draft.editSubjectKind === "node-enablement")
     );
     if (bindingDrafts.length === 0) return;
 
@@ -374,6 +439,7 @@ export function ApiProjectTopologyWorkspace({
         projectId,
         bindingDrafts,
         loadState.bindings,
+        loadState.effectiveNodes,
         moduleRegistry,
         sharedTip
       );
@@ -552,6 +618,7 @@ export function ApiProjectTopologyWorkspace({
         const tip = draft.workingCandidateRevisionId ?? draft.candidateRevisionId;
         const previousDraft = current.find(
           (item) =>
+            item.kind === "binding" &&
             item.projectId === requestProjectId &&
             item.projectParameterBindingId === draft.projectParameterBindingId
         );
@@ -564,17 +631,23 @@ export function ApiProjectTopologyWorkspace({
           },
           moduleRegistry
         );
-        const nextDraft: PendingBindingDraft = {
+        const nextDraft: PendingTopologyDraft = {
+          kind: "binding",
           ...draft,
           candidateRevisionId: tip,
           projectId: requestProjectId,
-          currentRawValue: previousDraft?.currentRawValue ?? binding.rawValue,
+          currentRawValue: previousDraft?.kind === "binding"
+            ? previousDraft.currentRawValue
+            : binding.rawValue,
           reason: input.reason,
-          moduleName: previousDraft?.moduleName ?? moduleAssignment.moduleName
+          moduleName: previousDraft?.kind === "binding"
+            ? previousDraft.moduleName
+            : moduleAssignment.moduleName
         };
         const withoutBinding = current.filter(
           (item) =>
             !(
+              item.kind === "binding" &&
               item.projectId === requestProjectId &&
               item.projectParameterBindingId === draft.projectParameterBindingId
             )
@@ -632,6 +705,131 @@ export function ApiProjectTopologyWorkspace({
       };
     } finally {
       releaseProjectMutation(requestProjectId, "draft", mutationToken);
+    }
+  };
+
+  const measuredStatusSpelling = useMemo(() => {
+    if (loadState.kind !== "ready") return "ok" as const;
+    return measureStatusSpelling(
+      loadState.effectiveNodes.map((node) => node.enablement?.rawStatus ?? null)
+    );
+  }, [loadState]);
+
+  const handleOpenNodeEnablement = useCallback((logicalNodeId: string) => {
+    if (loadState.kind !== "ready") return;
+    const node = loadState.effectiveNodes.find((item) => item.logicalNodeId === logicalNodeId);
+    if (!node) return;
+    setEnablementDialogError(null);
+    setEnablementDialogTarget({
+      logicalNodeId,
+      nodeLabel: nodeEnablementLabel({
+        name: node.name,
+        unitAddress: node.unitAddress,
+        locator: node.locator
+      }),
+      enablement: node.enablement ?? {
+        selfEnabled: true,
+        override: "unstated",
+        rawStatus: null,
+        rawToken: null,
+        reachable: true,
+        blockingAncestorId: null,
+        blockingAncestorLabel: null
+      }
+    });
+  }, [loadState]);
+
+  const handleCreateEnablementDraft = async (input: {
+    target: "force-enabled" | "force-disabled" | "unstated";
+    reason: string;
+    acknowledgeNonstandard?: boolean;
+    spellingOverride?: "ok" | "okay";
+  }) => {
+    const activeMutationLock = projectMutationsRef.current.get(projectId);
+    const activeMutation = activeMutationLock?.kind ?? null;
+    if (activeMutation) {
+      setEnablementDialogError(`该项目的 ${activeMutation} mutation 仍在处理中，落定前不能创建或替换草稿。`);
+      return;
+    }
+    if (!repository || loadState.kind !== "ready" || !enablementDialogTarget) {
+      setEnablementDialogError("拓扑尚未就绪，无法提交编辑。");
+      return;
+    }
+
+    const requestProjectId = projectId;
+    const requestGeneration = projectGenerationRef.current;
+    const { logicalNodeId, nodeLabel } = enablementDialogTarget;
+    if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
+      setEnablementDialogError("项目已切换，已忽略上一项目的草稿请求。");
+      return;
+    }
+    const mutationToken = acquireProjectMutation(requestProjectId, "draft", requestGeneration);
+    if (!mutationToken) {
+      setEnablementDialogError("该项目已有 mutation 正在处理中，已阻止并发草稿创建。");
+      return;
+    }
+
+    setEnablementDialogBusy(true);
+    setEnablementDialogError(null);
+    try {
+      const draft = await repository.createNodeEnablementDraft(requestProjectId, {
+        logicalNodeId,
+        baseRevisionId: loadState.revisionId,
+        target: input.target,
+        reason: input.reason,
+        acknowledgeNonstandard: input.acknowledgeNonstandard,
+        spellingOverride: input.spellingOverride
+      });
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
+
+      setPendingDrafts((current) => {
+        if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return current;
+        const tip = draft.workingCandidateRevisionId ?? draft.candidateRevisionId;
+        const previousDraft = current.find(
+          (item) =>
+            item.kind === "enablement" &&
+            item.projectId === requestProjectId &&
+            item.logicalNodeId === draft.logicalNodeId
+        );
+        const nextDraft: PendingTopologyDraft = {
+          kind: "enablement",
+          ...draft,
+          candidateRevisionId: tip,
+          projectId: requestProjectId,
+          reason: input.reason,
+          nodeLabel,
+          currentRawValue:
+            previousDraft?.kind === "enablement"
+              ? previousDraft.currentRawValue
+              : draft.previousRaw ?? enablementDialogTarget.enablement.rawStatus
+        };
+        const withoutNode = current.filter(
+          (item) =>
+            !(
+              item.kind === "enablement" &&
+              item.projectId === requestProjectId &&
+              item.logicalNodeId === draft.logicalNodeId
+            )
+        );
+        const aligned = withoutNode.map((item) =>
+          item.projectId === requestProjectId ? { ...item, candidateRevisionId: tip } : item
+        );
+        return [...aligned, nextDraft];
+      });
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
+      setPreferredRevision({ projectId: requestProjectId, revisionId: draft.workingCandidateRevisionId ?? draft.candidateRevisionId });
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
+      setReloadToken((token) => token + 1);
+      setEnablementDialogTarget(null);
+    } catch (error) {
+      if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return;
+      const mapped: ParameterTopologyMappedError = mapParameterTopologyError(error);
+      setEnablementDialogError(mapped.message);
+    } finally {
+      releaseProjectMutation(requestProjectId, "draft", mutationToken);
+      if (isCurrentProjectRequest(requestProjectId, requestGeneration)) {
+        setEnablementDialogBusy(false);
+      }
     }
   };
 
@@ -765,7 +963,7 @@ export function ApiProjectTopologyWorkspace({
 
   const statusBanner =
     loadState.status === "needs_mapping"
-      ? "修订状态：needs_mapping — 存在未解决身份映射，发布前须完成审核。"
+      ? "修订状态：needs_mapping — 存在未解决节点对应，发布前须完成审核。"
       : loadState.status === "invalid"
         ? "修订状态：invalid — 解析/编译失败，修复后方可编辑或发布。"
         : null;
@@ -777,7 +975,11 @@ export function ApiProjectTopologyWorkspace({
     loadState.status !== "needs_mapping" &&
     !projectMutationKind;
 
-  const draftBindingIds = new Set(projectDrafts.map((draft) => draft.projectParameterBindingId));
+  const draftBindingIds = new Set(
+    projectDrafts
+      .filter((draft) => draft.kind === "binding")
+      .map((draft) => draft.projectParameterBindingId)
+  );
   const { other: productDiagnostics, summary: danglingSummary } =
     partitionDanglingReferenceDiagnostics(loadState.diagnostics);
   const showGovernancePanel = Boolean(
@@ -806,6 +1008,7 @@ export function ApiProjectTopologyWorkspace({
   ) : null;
 
   return (
+    <>
       <DtsParameterWorkbench
         projectId={projectId}
         configSetId={loadState.configSetId}
@@ -823,6 +1026,7 @@ export function ApiProjectTopologyWorkspace({
         onSelectBinding={handleSelectBinding}
         onEditBinding={handleEditBinding}
         onCreateDraft={handleValidateEdit}
+        onEditNodeEnablement={canEditSemantic ? handleOpenNodeEnablement : undefined}
         loadBindingHistory={loadBindingHistory}
         loadBindingCompare={loadBindingCompare}
         loadParameterSpec={loadParameterSpec}
@@ -854,5 +1058,22 @@ export function ApiProjectTopologyWorkspace({
           ) : undefined
         }
       />
+      {enablementDialogTarget ? (
+        <DtsNodeEnablementDialog
+          open
+          nodeLabel={enablementDialogTarget.nodeLabel}
+          enablement={enablementDialogTarget.enablement}
+          measuredSpelling={measuredStatusSpelling}
+          busy={enablementDialogBusy}
+          error={enablementDialogError}
+          onClose={() => {
+            if (enablementDialogBusy) return;
+            setEnablementDialogTarget(null);
+            setEnablementDialogError(null);
+          }}
+          onConfirm={handleCreateEnablementDraft}
+        />
+      ) : null}
+    </>
   );
 }

@@ -6,8 +6,6 @@ version: 1
 schemaNamespace: vendor/huawei,battery_temp_fitting
 compatible:
   - huawei,battery_temp_fitting
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
   btf_temp_lth:
     valueShape: string-list
@@ -24,11 +22,6 @@ properties:
     exampleValue: "\"bat0_raw_temp\""
     constraints: {}
     documentation: huawei,battery_temp_fitting 的 DTS 属性「replace sensor」（replace_sensor），用于驱动读取的设备树配置。
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   temp_para:
     valueShape: string-list
     exampleValue: "\"-32767\", \"1\", \"2300\", \"0\", \"4200\", \"0\",\n\t\t\"55\", \"32767\", \"2300\", \"0\", \"4195\", \"0\""

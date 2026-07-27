@@ -73,7 +73,7 @@ describe("ParameterSpecLibrary", () => {
       />
     );
 
-    const library = screen.getByRole("region", { name: "参数库" });
+    const library = screen.getByRole("region", { name: "参数定义库" });
     const table = within(library).getByRole("table");
 
     for (const header of ["参数名", "所属模块", "值类型", "审核状态", "操作"]) {
@@ -113,10 +113,10 @@ describe("ParameterSpecLibrary", () => {
       />
     );
 
-    const search = screen.getByRole("searchbox", { name: "搜索规格" });
+    const search = screen.getByRole("searchbox", { name: "搜索参数定义" });
     fireEvent.change(search, { target: { value: "gpio_int" } });
 
-    const library = screen.getByRole("region", { name: "参数库" });
+    const library = screen.getByRole("region", { name: "参数定义库" });
     const rows = within(library).getAllByRole("row");
     expect(rows.some((row) => row.textContent?.includes("sc8562") && row.textContent?.includes("gpio_int"))).toBe(true);
     expect(rows.some((row) => row.textContent?.includes("mt5788") && row.textContent?.includes("gpio_int"))).toBe(true);
@@ -138,7 +138,7 @@ describe("ParameterSpecLibrary", () => {
     await user.click(screen.getByRole("button", { name: "筛选审核状态" }));
     await user.click(screen.getByRole("checkbox", { name: "active" }));
 
-    const library = screen.getByRole("region", { name: "参数库" });
+    const library = screen.getByRole("region", { name: "参数定义库" });
     const dataRows = within(library)
       .getAllByRole("row")
       .filter((row) => row.querySelector("td"));
@@ -158,7 +158,7 @@ describe("ParameterSpecLibrary", () => {
 
     render(<ParameterSpecLibrary specs={specs} onSelectSpec={vi.fn()} />);
 
-    const library = screen.getByRole("region", { name: "参数库" });
+    const library = screen.getByRole("region", { name: "参数定义库" });
     expect(within(library).getByText(/55 \/ 55 项 · 第 1 \/ 2 页/)).toBeInTheDocument();
     expect(within(library).getByLabelText("每页条数")).toHaveValue("50");
     const pageOneRows = within(library)
@@ -186,7 +186,7 @@ describe("ParameterSpecLibrary", () => {
 
     render(<ParameterSpecLibrary specs={specs} onSelectSpec={vi.fn()} />);
 
-    const library = screen.getByRole("region", { name: "参数库" });
+    const library = screen.getByRole("region", { name: "参数定义库" });
     fireEvent.change(within(library).getByLabelText("每页条数"), { target: { value: "20" } });
 
     expect(within(library).getByText(/55 \/ 55 项 · 第 1 \/ 3 页/)).toBeInTheDocument();
@@ -227,7 +227,7 @@ describe("ParameterSpecLibrary", () => {
       />
     );
 
-    const detail = screen.getByRole("dialog", { name: /规格详情 gpio_int/ });
+    const detail = screen.getByRole("dialog", { name: /参数定义详情 gpio_int/ });
     expect(within(detail).getByLabelText("compatible")).toHaveValue("vendor,sc8562");
     expect(within(detail).getByLabelText("Schema 默认值")).toHaveValue("<0>");
     expect(within(detail).getByLabelText("示例值")).toHaveValue("<&gpio13 29 0>");
@@ -236,7 +236,7 @@ describe("ParameterSpecLibrary", () => {
     expect(within(detail).getByLabelText("使用情况")).toHaveValue("P-AURORA · sc8562@6E");
     expect((within(detail).getByLabelText("Schema 历史") as HTMLTextAreaElement).value).toMatch(/narrowed phandle/);
     expect(detail.textContent).not.toMatch(/推荐值/);
-    expect(within(detail).getByText("参数库 · 可编辑")).toBeInTheDocument();
+    expect(within(detail).getByText("参数定义库 · 可编辑")).toBeInTheDocument();
     expect(within(detail).getByRole("button", { name: "保存" })).toBeInTheDocument();
 
     fireEvent.click(within(detail).getByRole("button", { name: "取消" }));
@@ -262,13 +262,13 @@ describe("SpecReviewQueue", () => {
     const onApprove = vi.fn();
     render(<SpecReviewQueue tasks={[ambiguousTask]} onApprove={onApprove} onDismiss={vi.fn()} />);
 
-    const queue = screen.getByRole("region", { name: "规格审核队列" });
-    expect(within(queue).getByText("歧义")).toBeInTheDocument();
+    const queue = screen.getByRole("region", { name: "定义匹配审核队列" });
+    expect(within(queue).getByText("匹配冲突")).toBeInTheDocument();
     expect(within(queue).getByText("sc8562@6E")).toBeInTheDocument();
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
 
-    const dialog = screen.getByRole("dialog", { name: "规格审核 gpio_int" });
-    expect(within(dialog).getByLabelText("推理证据")).toHaveValue(
+    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 gpio_int" });
+    expect(within(dialog).getByLabelText("匹配依据")).toHaveValue(
       "compatible unmatched\nnodename=sc8562@6E"
     );
     expect(within(dialog).getAllByText("vendor,sc8562 / gpio_int").length).toBeGreaterThan(0);
@@ -278,7 +278,7 @@ describe("SpecReviewQueue", () => {
     const approve = within(dialog).getByRole("button", { name: "批准" });
     expect(approve).toBeDisabled();
 
-    fireEvent.change(within(dialog).getByRole("combobox", { name: "选择规格" }), {
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "选择参数定义" }), {
       target: { value: "schema-b" }
     });
     expect(approve).toBeDisabled();
@@ -325,11 +325,11 @@ describe("SpecReviewQueue", () => {
       />
     );
 
-    const queue = screen.getByRole("region", { name: "规格审核队列" });
+    const queue = screen.getByRole("region", { name: "定义匹配审核队列" });
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
 
-    const dialog = screen.getByRole("dialog", { name: "规格审核 gpio_int" });
-    fireEvent.change(within(dialog).getByRole("combobox", { name: "选择规格" }), {
+    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 gpio_int" });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "选择参数定义" }), {
       target: { value: "schema-other" }
     });
     fireEvent.change(within(dialog).getByLabelText("审核原因"), {
@@ -376,10 +376,10 @@ describe("SpecReviewQueue", () => {
       />
     );
 
-    const queue = screen.getByRole("region", { name: "规格审核队列" });
-    expect(within(queue).getByText("未匹配")).toBeInTheDocument();
+    const queue = screen.getByRole("region", { name: "定义匹配审核队列" });
+    expect(within(queue).getByText("未找到定义")).toBeInTheDocument();
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 mystery_prop" }));
-    const dialog = screen.getByRole("dialog", { name: "规格审核 mystery_prop" });
+    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 mystery_prop" });
     const createButton = within(dialog).getByRole("button", { name: "创建中…" });
     expect(createButton).toBeDisabled();
   });
@@ -405,7 +405,7 @@ describe("SpecReviewQueue", () => {
       />
     );
 
-    const queue = screen.getByRole("region", { name: "规格审核队列" });
+    const queue = screen.getByRole("region", { name: "定义匹配审核队列" });
     expect(within(queue).queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
     fireEvent.change(within(queue).getByLabelText("每页条数"), { target: { value: "20" } });
 

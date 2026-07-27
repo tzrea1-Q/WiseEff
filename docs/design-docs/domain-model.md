@@ -29,7 +29,7 @@ Project parameter files are first-class project-scoped entities that host DTS/JS
 | --- | --- |
 | `ProjectParameterFile` | One hosted `.dts` or `.json` file per project (`file_name` unique per project), optional `module_hint`, `enabled` flag, and `current_version_id`. |
 | `ProjectParameterFileVersion` | Immutable file bytes in object storage with `version_number`, `checksum`, `parsed_index`, and `origin` (`upload` or `writeback`). |
-| `DtsNode` | Structural node for a file version: `node_path` (includes `@unitAddress`), labels, optional `compatible`/`status`, parent link. |
+| `DtsNode` | Structural node for a file version: `node_path` (includes `@unitAddress`), labels, optional `compatible`/`status` (raw DTS text for enablement derivation only — not a parameter), parent link. |
 | `DtsProperty` | Typed property on a node: `value_type` (`u32-array` \| `bytes` \| `string-list` \| `phandle-list` \| `mixed` \| `bool` \| `empty`), `raw_text`, `normalized_value`. |
 | `DtsPhandleRef` | Phandle edge from a property to a target label (optional resolved node id). |
 | `ParameterFileSyncConflict` | Open queue row when the same project value has competing `file_sync` and `manual` drafts with different target values. |
@@ -159,8 +159,9 @@ Path-derived `(name, module)` / full DTS path identity is being replaced by:
 | Manual spec lifecycle | Unmatched `createSpec` creates org-owned **draft** specs with typed shapes inferred from occurrence AST. Admin `activate` promotes draft→active with complete constraints; only active+complete specs can `resolve`. |
 | Tenant-owned review resolve | Spec-review `resolve` validates organization/project/revision/occurrence/logical-node ownership via a tenant-scoped join; raw evidence IDs alone are not trusted (migration 0055 hardening). |
 | Exact writeback identity | Merge/writeback locks binding revision, occurrence, file version, checksum, and CST span. Shared base revisions are immutable; stale identity → `409`. |
+| Node enablement / reachability | First-class per **logical node instance** (ADR-0003), derived from that node's own DTS `status` — absent, `ok`, or `okay` means self-enabled; anything else means self-disabled. Reachability additionally requires every ancestor to be enabled; unreachable nodes report the blocking ancestor. Never enters `ParameterSpec`, bindings, or the spec review queue. Edits use `editSubjectKind: node-enablement` on the shared draft/submission pipeline. |
 
-**Round 4 golden fixture counts (locked in tests):** aurora project-primary DTS (`aurora-board.dts`) resolves to **58 nodes / 228 parsed properties** (`goldenPowerFixture.test.ts`); semantic ingest persists **176 property occurrences** per revision (`ingestService.test.ts`, `matcher.test.ts` overlay golden); M1 DTS seed structural ingest = **684 `dts_properties` rows** (`seedM1DtsFiles.test.ts`, 228 × 3 projects).
+**Round 4 golden fixture counts (locked in tests):** aurora project-primary DTS (`aurora-board.dts`) resolves to **58 nodes / 228 parsed properties** (`goldenPowerFixture.test.ts`); semantic ingest persists **176 property occurrences** per revision (`ingestService.test.ts`); matcher overlay golden match is **120** after structural keys (including `status`) are excluded (`matcher.test.ts`); M1 DTS seed structural ingest = **684 `dts_properties` rows** (`seedM1DtsFiles.test.ts`, 228 × 3 projects).
 
 HTTP for the semantic surface lives under `/api/v2` (see api-contract). Production cutover is maintenance-only, fail-closed, and whole-snapshot rollback only — see `docs/runbooks/parameter-identity-cutover.md`. Do not dual-write or expose a compatibility projection in production. Post-cutover activity paths use binding/spec/occurrence IDs only and must not create shadow PPV/definition rows. **TD-042 remains a BLOCKER** until a clean non-customer snapshot rehearsal completes — round 4–6 fixes do not clear production cutover readiness.
 

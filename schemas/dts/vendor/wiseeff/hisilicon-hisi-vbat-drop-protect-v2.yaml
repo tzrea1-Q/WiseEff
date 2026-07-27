@@ -8,14 +8,7 @@ compatible:
   - hisilicon,hisi_vbat_drop_protect_v2
 childNodes:
   - middle_cpu
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   vbat_drop_vol_mv:
     valueShape: u32-array
     exampleValue: <2500>

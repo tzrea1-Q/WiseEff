@@ -1566,7 +1566,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(topbar.querySelector(".topbar-subtitle")).toBeNull();
     expect(within(topbar).getByRole("group", { name: "工作台视图" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "进入 参数审阅" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "进入 变更审阅" })).not.toBeInTheDocument();
     expect(within(topbar).queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "对比分析" })).not.toBeInTheDocument();
@@ -2962,7 +2962,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/parameter-home",
-        present: ["热榜", "概览", "参数修改", "参数审阅"],
+        present: ["热榜", "概览", "参数修改", "变更审阅"],
         absent: [
           "推荐依据",
           "保留原看板指标，用来解释工作台行动排序",
@@ -3016,7 +3016,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       },
       {
         path: "/parameter-admin",
-        present: ["项目参数管理后台", "组织治理", "项目运营", "批量参数导入", "参数库"],
+        present: ["项目参数管理后台", "组织配置", "项目运营", "批量参数导入", "参数定义库"],
         absent: ["项目参数 Admin", "items", "events", "建设中"]
       },
       {
@@ -3236,7 +3236,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     render(<App initialAppState={adminState} />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
-    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
+    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
 
     expect(within(scopeNav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
     expect(
@@ -3256,11 +3256,11 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(<App initialAppState={adminState} />);
 
-    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
-    expect(within(scopeNav).getByRole("button", { name: "组织治理" })).toHaveAttribute("aria-current", "page");
+    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
+    expect(within(scopeNav).getByRole("button", { name: "组织配置" })).toHaveAttribute("aria-current", "page");
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(within(topbar).getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();
-    expect(await screen.findByRole("region", { name: "参数库" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "参数定义库" })).toBeInTheDocument();
     expect(screen.queryByText("项目共享参数库")).not.toBeInTheDocument();
   });
 
@@ -3272,7 +3272,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
     const parameterGroup = parameterAdminNavGroup(sidebar);
     expect(within(parameterGroup).getByRole("button", { name: /^参数后台$/ })).toBeInTheDocument();
-    expect(within(parameterGroup).queryByRole("button", { name: /组织治理/ })).not.toBeInTheDocument();
+    expect(within(parameterGroup).queryByRole("button", { name: /组织配置/ })).not.toBeInTheDocument();
     expect(within(parameterGroup).queryByRole("button", { name: /项目运营/ })).not.toBeInTheDocument();
   });
 
@@ -3286,7 +3286,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       "aria-current",
       "page"
     );
-    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
+    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
     expect(within(scopeNav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
   });
 

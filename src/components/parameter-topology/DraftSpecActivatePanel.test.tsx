@@ -30,20 +30,20 @@ function draftDetail(overrides: Partial<ParameterSpecDetailView> = {}): Paramete
 describe("DraftSpecActivatePanel", () => {
   it("prefills cells constraint from inferred cellsPerGroup for gpio_int", () => {
     render(<DraftSpecActivatePanel detail={draftDetail()} onActivate={() => undefined} />);
-    expect(screen.getByLabelText("推断值形状摘要").textContent).toContain("cellsPerGroup=3");
+    expect(screen.getByLabelText("自动识别的取值形态摘要").textContent).toContain("cellsPerGroup=3");
     expect((screen.getByLabelText("单元格数量约束") as HTMLInputElement).value).toBe("3");
   });
 
   it("submits full inferred valueShape on activate (gpio_int three-cell)", () => {
     const onActivate = vi.fn();
     render(<DraftSpecActivatePanel detail={draftDetail()} onActivate={onActivate} />);
-    fireEvent.change(screen.getByLabelText("规格说明"), {
+    fireEvent.change(screen.getByLabelText("参数说明"), {
       target: { value: "GPIO interrupt cells for sc8562" },
     });
     fireEvent.change(screen.getByLabelText("激活原因"), {
       target: { value: "Inferred three-cell phandle group from occurrence" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "激活规格" }));
+    fireEvent.click(screen.getByRole("button", { name: "激活定义" }));
     expect(onActivate).toHaveBeenCalledTimes(1);
     expect(onActivate.mock.calls[0]?.[0]).toMatchObject({
       valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
@@ -59,7 +59,7 @@ describe("DraftSpecActivatePanel", () => {
       />,
     );
     expect(screen.getByRole("alert").textContent).toMatch(/缺少完整 valueShape/);
-    expect(screen.getByRole("button", { name: "激活规格" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "激活定义" })).toBeDisabled();
   });
 
   it("blocks activation when inferred cell grouping is incomplete", () => {
@@ -70,7 +70,7 @@ describe("DraftSpecActivatePanel", () => {
       />,
     );
     expect(screen.getByRole("alert").textContent).toMatch(/bits.*groups/i);
-    expect(screen.getByRole("button", { name: "激活规格" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "激活定义" })).toBeDisabled();
   });
 
   it("blocks activation when inferred byte length is missing", () => {
@@ -81,7 +81,7 @@ describe("DraftSpecActivatePanel", () => {
       />,
     );
     expect(screen.getByRole("alert").textContent).toMatch(/length/i);
-    expect(screen.getByRole("button", { name: "激活规格" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "激活定义" })).toBeDisabled();
   });
 
   it("resets inferred cells and operator input when the selected draft changes", () => {
@@ -89,7 +89,7 @@ describe("DraftSpecActivatePanel", () => {
       <DraftSpecActivatePanel detail={draftDetail()} onActivate={() => undefined} />,
     );
     fireEvent.change(screen.getByLabelText("单元格数量约束"), { target: { value: "2" } });
-    fireEvent.change(screen.getByLabelText("规格说明"), { target: { value: "previous docs" } });
+    fireEvent.change(screen.getByLabelText("参数说明"), { target: { value: "previous docs" } });
     fireEvent.change(screen.getByLabelText("激活原因"), { target: { value: "previous reason" } });
 
     rerender(
@@ -104,16 +104,16 @@ describe("DraftSpecActivatePanel", () => {
     );
 
     expect((screen.getByLabelText("单元格数量约束") as HTMLInputElement).value).toBe("1");
-    expect((screen.getByLabelText("规格说明") as HTMLTextAreaElement).value).toBe("");
+    expect((screen.getByLabelText("参数说明") as HTMLTextAreaElement).value).toBe("");
     expect((screen.getByLabelText("激活原因") as HTMLTextAreaElement).value).toBe("");
   });
 
   it("rejects a fractional cell constraint", () => {
     render(<DraftSpecActivatePanel detail={draftDetail()} onActivate={() => undefined} />);
     fireEvent.change(screen.getByLabelText("单元格数量约束"), { target: { value: "1.5" } });
-    fireEvent.change(screen.getByLabelText("规格说明"), { target: { value: "docs" } });
+    fireEvent.change(screen.getByLabelText("参数说明"), { target: { value: "docs" } });
     fireEvent.change(screen.getByLabelText("激活原因"), { target: { value: "reason" } });
 
-    expect(screen.getByRole("button", { name: "激活规格" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "激活定义" })).toBeDisabled();
   });
 });

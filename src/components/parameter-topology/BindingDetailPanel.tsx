@@ -55,7 +55,7 @@ export function BindingDetailPanel({
     ? {}
     : {
         role: "region" as const,
-        "aria-label": "绑定详情",
+        "aria-label": "项目参数详情",
         "data-binding-id": binding.id
       };
 
@@ -73,13 +73,13 @@ export function BindingDetailPanel({
 
       <dl className="binding-detail-panel__meta">
         <div>
-          <dt>绑定 ID</dt>
+          <dt>参数记录 ID</dt>
           <dd>
             <code>{binding.id}</code>
           </dd>
         </div>
         <div>
-          <dt>规格版本</dt>
+          <dt>定义版本</dt>
           <dd>
             <code>{binding.parameterSpecVersionId}</code>
           </dd>
@@ -176,9 +176,9 @@ export function BindingDetailPanel({
       </section>
 
       {openMappings.length > 0 ? (
-        <section aria-label="绑定映射提示">
-          <h4>关联映射</h4>
-          <p>存在 {openMappings.length} 个未解决映射，发布前须完成审核。</p>
+        <section aria-label="节点对应提示">
+          <h4>关联节点对应</h4>
+          <p>存在 {openMappings.length} 个未解决节点对应，发布前须完成确认。</p>
         </section>
       ) : null}
     </Wrapper>

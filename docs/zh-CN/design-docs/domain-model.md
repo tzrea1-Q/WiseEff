@@ -67,7 +67,7 @@
 | `ImportBatch` | 批量导入批次 |
 | `ProjectParameterFile` | 项目托管的 DTS/JSON 参数文件（项目内 `file_name` 唯一） |
 | `ProjectParameterFileVersion` | 不可变文件版本；对象存储字节 + `parsed_index` + `origin`（`upload` / `writeback`） |
-| `DtsNode` | 文件版本上的结构化节点：`node_path`（含 `@unitAddress`）、labels、可选 `compatible`/`status`、父节点 |
+| `DtsNode` | 文件版本上的结构化节点：`node_path`（含 `@unitAddress`）、labels、可选 `compatible`/`status`（原始 DTS 文本仅用于派生启用状态——不是参数）、父节点 |
 | `DtsProperty` | 节点上的类型化属性：`value_type`、`raw_text`、`normalized_value` |
 | `DtsPhandleRef` | 属性到目标 label 的 phandle 边（可选解析后的节点 id） |
 | `ParameterFileSyncConflict` | 同一项目值上 `file_sync` 草稿与 `manual` 草稿目标值冲突时的裁决队列 |
@@ -195,8 +195,9 @@ stateDiagram-v2
 | 手工规格生命周期 | 未匹配 `createSpec` 仅创建本组织 **draft** 规格（从 occurrence AST 推断类型）。Admin `activate` 将 draft→active 并补齐约束；仅 active+完整规格可 `resolve`。 |
 | 租户拥有校验 resolve | 规格审核 `resolve` 经租户级 join 校验 org/project/revision/occurrence/logical node；不得单独信任 raw evidence ID（0055 加固）。 |
 | 精确回写身份 | 合入/回写锁定 binding revision、occurrence、文件版本、checksum 与 CST span。共享 base revision 不可变；身份过期 → `409`。 |
+| 节点启用状态 / 可达性 | 按**逻辑节点实例**的一等概念（ADR-0003），仅由该节点自身 DTS `status` 派生——缺省、`ok` 或 `okay` 为自身启用，其余为自身禁用。可达性还要求祖先链全部启用；不可达节点报出阻断祖先。永不进入 `ParameterSpec`、binding 或规格审核队列。编辑走共享草稿/提交管线的 `editSubjectKind: node-enablement`。 |
 
-**第四轮黄金 fixture 计数（测试锁定）：** aurora 项目主 DTS（`aurora-board.dts`）解析为 **58 节点 / 228 个属性**；语义 ingest 每 revision **176 个 property occurrence**；M1 DTS seed 结构入库 = **684 行 `dts_properties`**（228 × 3 个项目）。
+**第四轮黄金 fixture 计数（测试锁定）：** aurora 项目主 DTS（`aurora-board.dts`）解析为 **58 节点 / 228 个属性**；语义 ingest 每 revision **176 个 property occurrence**；matcher overlay 黄金匹配在排除结构键（含 `status`）后为 **120**（`matcher.test.ts`）；M1 DTS seed 结构入库 = **684 行 `dts_properties`**（228 × 3 个项目）。
 
 语义 HTTP 表面位于 `/api/v2`。生产切换仅限维护窗口、失败关闭，且只能整快照回滚——见 `docs/runbooks/parameter-identity-cutover.md`。生产禁止双写或兼容投影。Cutover 后活动路径只使用 binding/spec/occurrence ID，不得再创建 shadow PPV/definition 行。**TD-042 仍为 BLOCKER**——第四至第六轮修复均不构成生产 cutover 就绪声明。
 

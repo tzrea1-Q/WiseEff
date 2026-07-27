@@ -73,11 +73,11 @@ describe("ParameterAdminNextPage · a11y", () => {
       />
     );
 
-    await screen.findByRole("region", { name: "参数库" });
+    await screen.findByRole("region", { name: "参数定义库" });
 
-    const orgTab = screen.getByRole("button", { name: "组织治理" });
+    const orgTab = screen.getByRole("button", { name: "组织配置" });
     const projectTab = screen.getByRole("button", { name: "项目运营" });
-    const search = screen.getByRole("searchbox", { name: "搜索规格" });
+    const search = screen.getByRole("searchbox", { name: "搜索参数定义" });
     const lifecycle = screen.getByRole("button", { name: "筛选审核状态" });
 
     orgTab.focus();
@@ -101,7 +101,7 @@ describe("ParameterAdminNextPage · a11y", () => {
       />
     );
 
-    await screen.findByRole("region", { name: "参数库" });
+    await screen.findByRole("region", { name: "参数定义库" });
     const trigger = screen.getByRole("button", { name: "筛选审核状态" });
     expect(trigger).toHaveClass("active");
     expect(trigger).toHaveTextContent("1");
@@ -135,7 +135,7 @@ describe("ParameterAdminNextPage · a11y", () => {
       />
     );
 
-    expect(screen.getByRole("navigation", { name: "参数管理后台治理范围" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "参数管理后台配置范围" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目运营" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "项目运营" })).toBeInTheDocument();
   });

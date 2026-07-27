@@ -130,7 +130,7 @@ function buildUserActions(input: DerivePersonalWorkbenchInput, roleId: PlatformR
       kind: "todo",
       priority: "secondary",
       title: "处理待合入参数变更",
-      description: "参数变更已进入软件开发人员合入节点，请在参数审阅页完成最后一步推进。",
+      description: "参数变更已进入软件开发人员合入节点，请在变更审阅页完成最后一步推进。",
       meta: `${input.signals.waitingMerge} 项待合入`,
       path: "/parameter-review",
       source: "review"
@@ -299,7 +299,7 @@ function buildScenarioEntries(
   const candidates: WorkbenchScenarioEntry[] =
     roleView === "admin"
       ? [
-          entry("admin", "管理后台", "维护参数库、模块映射、批量导入与项目运营。", "/parameter-admin", "parameter-admin", "导入批次", input.signals.unappliedImportBatches),
+          entry("admin", "管理后台", "维护参数定义库、驱动归属、批量导入与项目运营。", "/parameter-admin", "parameter-admin", "导入批次", input.signals.unappliedImportBatches),
           {
             ...entry("new-project", "新建项目", "启动项目参数初始化流程。", "/parameter-home", "parameter-home", "项目", input.projects.length),
             action: "new-project" as const
@@ -308,7 +308,7 @@ function buildScenarioEntries(
         ]
       : roleView === "committer"
         ? [
-            entry("review", "处理审阅", "进入当前角色的参数审阅队列。", "/parameter-review", "parameter-review", "待审", input.signals.reviewQueue),
+            entry("review", "处理审阅", "进入当前角色的变更审阅队列。", "/parameter-review", "parameter-review", "待审", input.signals.reviewQueue),
             entry("risk", "高风险专项", "按风险热区聚焦审阅对象。", "/parameter-review", "parameter-review", "热区", input.hotspots.length),
             entry("library", "查看参数库", "回到参数目录核对上下文。", "/parameters", "parameters", "参数", input.projects.length)
           ]

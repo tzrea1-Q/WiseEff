@@ -53,6 +53,10 @@ export type ParameterDraftDto = {
   /** Display name for history (property key); avoids falling back to binding UUID. */
   name?: string;
   module?: string;
+  /** Draft edit subject once node-enablement hydration lands server-side. */
+  editSubjectKind?: "binding" | "node-enablement";
+  logicalNodeId?: string;
+  nodeLabel?: string;
   /**
    * Baseline / “before” value for history diffs.
    * Prefer write-lock base raw text over catalog tip (which may already include the candidate).
@@ -70,8 +74,17 @@ export type SubmitParameterChangesInput = {
       }
     | {
         draftId: string;
+        editSubjectKind?: "binding";
         projectParameterBindingId: string;
         parameterSpecId: string;
+        action?: "set" | "delete";
+        targetValue: string;
+        reason: string;
+      }
+    | {
+        draftId: string;
+        editSubjectKind: "node-enablement";
+        logicalNodeId: string;
         action?: "set" | "delete";
         targetValue: string;
         reason: string;

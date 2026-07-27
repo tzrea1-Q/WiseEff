@@ -15,6 +15,7 @@ export type GovernanceAuditAction =
   | "identity-mapping-dismissed"
   | "config-revision-validated"
   | "binding-edited"
+  | "enablement-changed"
   | "baseline-mutated"
   | "config-revision-published"
   | "identity-migrated";

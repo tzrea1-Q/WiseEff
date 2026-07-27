@@ -115,7 +115,7 @@ describe("UserPermissionsPage", () => {
     const tooltip = screen.getByRole("tooltip", { name: "软件开发角色权限" });
     expect(within(tooltip).getByRole("heading", { name: "软件开发" })).toBeInTheDocument();
     expect(
-      within(tooltip).getByText("软件侧可查看并提交参数修改，在参数审阅页完成合入推进，并使用参数调试和日志分析。")
+      within(tooltip).getByText("软件侧可查看并提交参数修改，在变更审阅页完成合入推进，并使用参数调试和日志分析。")
     ).toBeInTheDocument();
     expect(within(tooltip).getByText("查看参数")).toBeInTheDocument();
     expect(within(tooltip).getByText("修改参数")).toBeInTheDocument();

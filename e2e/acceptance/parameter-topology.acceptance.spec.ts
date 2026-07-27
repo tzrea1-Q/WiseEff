@@ -2152,4 +2152,33 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       });
     }
   });
+
+  test.describe("Node enablement (ADR-0003) — pending browser automation", () => {
+  test("PARAM-ENABLE-GATE-001: structural keys do not block publish gates", async () => {
+    // @acceptance PARAM-ENABLE-GATE-001
+    // @operation PARAM-ENABLE-GATE-001
+    test.skip(true, "Pending: full disposable-DB gate evidence for structural review dismissal.");
+  });
+
+  test("PARAM-ENABLE-VISIBLE-001: topology badges and workbench no-effect notice", async ({ page }) => {
+    // @acceptance PARAM-ENABLE-VISIBLE-001
+    // @operation PARAM-ENABLE-VISIBLE-001
+    test.skip(true, "Pending: playwright UI coverage for enablement badges and no-effect rows.");
+    void page;
+  });
+
+  test("PARAM-ENABLE-TOGGLE-001: disable with reason shares working tip with binding edit", async ({ page }) => {
+    // @acceptance PARAM-ENABLE-TOGGLE-001
+    // @operation PARAM-ENABLE-TOGGLE-001
+    test.skip(true, "Pending: mixed-round enablement + binding submit without mixed-working-tips.");
+    void page;
+  });
+
+  test("PARAM-ENABLE-GUARD-001: non-standard status requires acknowledgement override", async ({ page }) => {
+    // @acceptance PARAM-ENABLE-GUARD-001
+    // @operation PARAM-ENABLE-GUARD-001
+    test.skip(true, "Pending: reserved-status read-only path and secondary override dialog.");
+    void page;
+  });
+  });
 });

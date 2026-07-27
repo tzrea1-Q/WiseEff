@@ -53,6 +53,10 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `PARAM-IDENTITY-MAP-001` | B | Yes | Open identity mapping blocks validate (`open-mapping`); resolve clears the blocker with governance audit evidence. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-IDENTITY-MAP-ADMIN-001` | B | Yes | Admin resolves identity mapping tasks from `/parameter-admin` with candidate evidence and governance audit. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-CONFIG-PUBLISH-GATE-001` | B | Yes | Real toolchain validate succeeds on golden/candidate Config Set after status=okay + vendor linux-bindings (not schema-failed-as-success); bindingId + provenance persist from DB after reload. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-GATE-001` | B | Yes | Structural properties (including `status`) produce no spec review task and do not block candidate promotion or migration finalize; pre-existing structural tasks dismissed with a systemic reason. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-VISIBLE-001` | B | Yes | Topology tree shows enabled/disabled badges and unreachable markers; workbench rows under a disabled node show the no-effect notice. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-TOGGLE-001` | B | Yes | Disable requires reason and confirmation; enablement draft submits in the same round as a binding edit without `mixed-working-tips`; distinct `enablement-changed` audit. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-GUARD-001` | B | Yes | Non-standard `status` values render read-only; secondary override requires explicit acknowledgement before write. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 
 ## Interpretation
 

@@ -82,6 +82,18 @@ function createRepository(
       overlayFileId: "file-overlay",
       overlayFileName: "overlay.dts"
     }),
+    createNodeEnablementDraft: vi.fn().mockResolvedValue({
+      draftId: "draft-enable-1",
+      candidateRevisionId: "rev-candidate-2",
+      rawText: '"disabled"',
+      action: "set",
+      logicalNodeId: "logical-sc8562",
+      target: "force-disabled",
+      writeTarget: { role: "overlay", propertyKey: "status", targetRef: "sc8562@6E" },
+      overlayFileId: "file-overlay",
+      overlayFileName: "overlay.dts",
+      previousRaw: '"okay"'
+    }),
     ...overrides
   };
 }
@@ -327,7 +339,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       )
     );
 
-    const tray = await screen.findByRole("region", { name: "绑定变更提交" });
+    const tray = await screen.findByRole("region", { name: "参数修改提交" });
     expect(within(tray).getByText(/^本轮 2 项$/)).toBeVisible();
     expect(within(tray).getByText("Hydrated gpio draft")).toBeVisible();
     expect(within(tray).getByText("Hydrated mt5788 draft")).toBeVisible();
@@ -383,7 +395,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       )
     );
 
-    const tray = await screen.findByRole("region", { name: "绑定变更提交" });
+    const tray = await screen.findByRole("region", { name: "参数修改提交" });
     expect(within(tray).getByRole("alert")).toHaveTextContent(/不在同一工作版本上.*无法一起提交/);
     expect(within(tray).getByText("2 项")).toBeVisible();
     expect(within(tray).queryByText(/^本轮 2 项$/)).not.toBeInTheDocument();
@@ -513,7 +525,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     fireEvent.click(within(auroraWorkspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
     await createGpioDraftFromWorkbench(auroraWorkspace, fireEvent, { reason: "Create Aurora candidate before switching projects" });
 
-    await screen.findByRole("region", { name: "绑定变更提交" });
+    await screen.findByRole("region", { name: "参数修改提交" });
     await waitFor(() => {
       expect(getTopology).toHaveBeenCalledWith(
         "aurora",
@@ -541,7 +553,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       );
     });
     await waitFor(() => {
-      expect(screen.queryByRole("region", { name: "绑定变更提交" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "参数修改提交" })).not.toBeInTheDocument();
       expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-revision-id",
         "rev-nebula-current"
@@ -623,7 +635,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByRole("region", { name: "绑定变更提交" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "参数修改提交" })).not.toBeInTheDocument();
     });
     expect(listWorkflowAssignees).not.toHaveBeenCalled();
     expect(repository.getTopology).not.toHaveBeenCalledWith(
@@ -721,7 +733,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(screen.queryByRole("region", { name: "绑定变更提交" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "参数修改提交" })).not.toBeInTheDocument();
     expect(vi.mocked(repository.getTopology).mock.calls.filter(([requestProjectId]) => requestProjectId === "aurora").length).toBe(auroraTopologyCalls);
     expect(repository.getTopology).not.toHaveBeenCalledWith(
       "aurora",
@@ -735,7 +747,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     await createGpioDraftFromWorkbench(workspace, fireEvent, {
       reason: "Current Aurora draft after stale response settled"
     });
-    await waitFor(() => expect(screen.getByRole("region", { name: "绑定变更提交" })).toBeVisible());
+    await waitFor(() => expect(screen.getByRole("region", { name: "参数修改提交" })).toBeVisible());
     expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
       "data-revision-id",
       "rev-aurora-current"
@@ -812,7 +824,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       await draftRequest.promise.catch(() => undefined);
     });
 
-    expect(screen.queryByRole("region", { name: "绑定变更提交" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "参数修改提交" })).not.toBeInTheDocument();
     expect(screen.queryByText("Stale Aurora draft failed")).not.toBeInTheDocument();
 
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
@@ -820,7 +832,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     await createGpioDraftFromWorkbench(workspace, fireEvent, {
       reason: "Current Aurora draft after stale error settled"
     });
-    await waitFor(() => expect(screen.getByRole("region", { name: "绑定变更提交" })).toBeVisible());
+    await waitFor(() => expect(screen.getByRole("region", { name: "参数修改提交" })).toBeVisible());
     expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
       "data-revision-id",
       "rev-aurora-current"
@@ -906,7 +918,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       reason: "First binding draft",
       rawValue: "<&gpio13 30 0>"
     });
-    await screen.findByRole("region", { name: "绑定变更提交" });
+    await screen.findByRole("region", { name: "参数修改提交" });
 
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · mt5788/ }));
@@ -917,7 +929,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
 
-    const tray = await screen.findByRole("region", { name: "绑定变更提交" });
+    const tray = await screen.findByRole("region", { name: "参数修改提交" });
     expect(within(tray).getByText(/^本轮 2 项$/)).toBeVisible();
     expect(within(tray).queryByText("技术身份")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
@@ -969,7 +981,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
     await createGpioDraftFromWorkbench(workspace, fireEvent, { reason: "Raise gpio line for typed workflow", rawValue: "<&gpio13 30 0>" });
 
-    const submission = await screen.findByRole("region", { name: "绑定变更提交" });
+    const submission = await screen.findByRole("region", { name: "参数修改提交" });
     expect(within(submission).getByRole("heading", { name: "本轮已修改" })).toBeVisible();
     await waitFor(() => expect(listWorkflowAssignees).toHaveBeenCalledWith("aurora"));
     expect(await within(submission).findByLabelText("硬件 MDE")).toHaveValue("u-hw");
@@ -989,7 +1001,8 @@ describe("ApiProjectTopologyWorkspace", () => {
             targetValue: "<&gpio13 30 0>",
             reason: "Raise gpio line for typed workflow",
             projectParameterBindingId: "binding-sc8562-gpio-int",
-            parameterSpecId: "spec-sc8562-gpio-int"
+            parameterSpecId: "spec-sc8562-gpio-int",
+            editSubjectKind: "binding"
           }
         ],
         assignees: {
@@ -999,7 +1012,7 @@ describe("ApiProjectTopologyWorkspace", () => {
         }
       });
     });
-    fireEvent.click(within(submission).getByRole("button", { name: "查看审核队列" }));
+    fireEvent.click(within(submission).getByRole("button", { name: "查看变更审阅" }));
     expect(onNavigate).toHaveBeenCalledWith("/parameter-review");
   });
 
@@ -1065,7 +1078,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       );
     });
 
-    const tray = await screen.findByRole("region", { name: "绑定变更提交" });
+    const tray = await screen.findByRole("region", { name: "参数修改提交" });
     const diff = within(tray).getByLabelText("gpio_int 值变更");
     expect(within(diff).getByText("<&gpio13 29 0>")).toBeVisible();
     expect(within(diff).getByText("<&gpio13 31 0>")).toBeVisible();
@@ -1122,7 +1135,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
     await createGpioDraftFromWorkbench(workspace, fireEvent, { reason: "Lock Aurora while submitting", rawValue: "<&gpio13 30 0>" });
 
-    const tray = await screen.findByRole("region", { name: "绑定变更提交" });
+    const tray = await screen.findByRole("region", { name: "参数修改提交" });
     const submit = within(tray).getByRole("button", { name: "提交审核" });
     await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
@@ -1239,7 +1252,7 @@ describe("ApiProjectTopologyWorkspace", () => {
         "candidate-first"
       );
     });
-    await screen.findByRole("region", { name: "绑定变更提交" });
+    await screen.findByRole("region", { name: "参数修改提交" });
 
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
@@ -1249,7 +1262,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
 
-    let tray = screen.getByRole("region", { name: "绑定变更提交", hidden: true });
+    let tray = screen.getByRole("region", { name: "参数修改提交", hidden: true });
     const blockedSubmit = within(tray).getByText("提交审核").closest("button") as HTMLButtonElement;
     expect(blockedSubmit).toBeDisabled();
     expect(within(tray).getByRole("alert", { hidden: true })).toHaveTextContent(/正在创建 typed draft/);
@@ -1319,7 +1332,7 @@ describe("ApiProjectTopologyWorkspace", () => {
         "rev-real-1"
       );
     });
-    expect(screen.queryByRole("region", { name: "绑定变更提交" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "参数修改提交" })).not.toBeInTheDocument();
     expect(screen.queryByText("candidate-replacement")).not.toBeInTheDocument();
     expect(submitBindingChanges).not.toHaveBeenCalled();
   });
@@ -1365,7 +1378,7 @@ describe("ApiProjectTopologyWorkspace", () => {
     let workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
     await createGpioDraftFromWorkbench(workspace, fireEvent, { reason: "Create existing draft" });
-    await screen.findByRole("region", { name: "绑定变更提交" });
+    await screen.findByRole("region", { name: "参数修改提交" });
     await waitFor(() => {
       expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
         "data-revision-id",
@@ -1380,14 +1393,14 @@ describe("ApiProjectTopologyWorkspace", () => {
       rawValue: "<&gpio13 31 0>"
     });
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(2));
-    let tray = screen.getByRole("region", { name: "绑定变更提交", hidden: true });
+    let tray = screen.getByRole("region", { name: "参数修改提交", hidden: true });
     expect(within(tray).getByRole("button", { name: "提交审核", hidden: true })).toBeDisabled();
 
     await act(async () => {
       rejectReplacement(new Error("replacement rejected"));
       await replacementRequest.catch(() => undefined);
     });
-    tray = screen.getByRole("region", { name: "绑定变更提交", hidden: true });
+    tray = screen.getByRole("region", { name: "参数修改提交", hidden: true });
     const submit = within(tray).getByText("提交审核").closest("button") as HTMLButtonElement;
     await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);

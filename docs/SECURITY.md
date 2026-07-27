@@ -98,7 +98,7 @@ Audit records should capture:
 
 Audit should cover login/security events, parameter writes, review decisions, log uploads/reruns/archive actions, device reads/writes, Agent tools, admin changes, and exports.
 
-M1 parameter-management writes emit audit events from the backend for `parameter-submit`, `parameter-review-advance`, `parameter-review-reject`, `parameter-merge`, and `batch-import`. The frontend audit drawer is not the security boundary; audit creation happens server-side with the authenticated actor and request trace id.
+M1 parameter-management writes emit audit events from the backend for `parameter-submit`, `parameter-review-advance`, `parameter-review-reject`, `parameter-merge`, and `batch-import`. Node enablement writes on the shared topology draft pipeline emit `parameter-topology-governance` / `enablement-changed` with previous value, new value, reason, and logical node identity. Enablement uses the same `canEditParameters` gate and existing `dts_sensitive_node_rules` matching as binding edits (`parameter:edit-critical` when a rule requires it). The frontend audit drawer is not the security boundary; audit creation happens server-side with the authenticated actor and request trace id.
 
 M2 log-analysis writes emit backend audit events for `log-upload`, `log-upload-failed`, `log-rerun`, `log-archive`, `log-unarchive`, and `log-feedback`. The UI may hide or disable actions by role, but the server permission check and audit write are the authoritative boundary.
 

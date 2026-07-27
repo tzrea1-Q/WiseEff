@@ -76,9 +76,10 @@ Example (from seed overlay shape):
 
 ### 3.3 Managed properties (v1 rules)
 
-**Exclude from surface by default:**
+**Exclude from surface by default** (and route to the correct non-parameter model where applicable):
 
-- `compatible`, `reg`, `status` (unless Admin policy says otherwise for a module)
+- `compatible`, `reg` — structural identity / addressing only
+- `status` — **node enablement**, not a parameter; excluded from matching, spec library, and spec review; surfaced and edited via topology `enablement` and `POST .../node-enablement-drafts` (ADR-0003)
 - `#*-cells`, `ranges`, `interrupt-controller`, `gpio-controller`
 - Empty / boolean presence markers that are structural only
 

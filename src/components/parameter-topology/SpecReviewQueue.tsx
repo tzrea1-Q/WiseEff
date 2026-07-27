@@ -13,6 +13,7 @@ import {
   type SpecReviewMatchStatus,
   type SpecReviewTaskView
 } from "./specReviewShared";
+import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 
 export type {
   SpecReviewApproveInput,
@@ -29,7 +30,11 @@ export {
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
 const DEFAULT_PAGE_SIZE: (typeof PAGE_SIZE_OPTIONS)[number] = 50;
-const MATCH_STATUS_VALUES: readonly SpecReviewMatchStatus[] = ["未匹配", "歧义", "有候选"];
+const MATCH_STATUS_VALUES: readonly SpecReviewMatchStatus[] = [
+  PARAMETER_ADMIN_UI.matchUnmatched,
+  PARAMETER_ADMIN_UI.matchAmbiguous,
+  PARAMETER_ADMIN_UI.matchHasCandidates
+];
 
 export type SpecReviewQueueProps = {
   tasks: readonly SpecReviewTaskView[];
@@ -182,13 +187,14 @@ export function SpecReviewQueue({
 
   return (
     <>
-      <section className="parameters-table param-admin-library-table spec-review-queue" aria-label="规格审核队列">
+      <section
+        className="parameters-table param-admin-library-table spec-review-queue"
+        aria-label={PARAMETER_ADMIN_UI.specReviewQueue}
+      >
         <div className="parameters-table-heading">
           <div>
-            <h2>规格审核队列</h2>
-            <p>
-              可从候选或全库搜索选择规格；属性键不一致时需额外确认。未匹配任务可创建草稿规格（需激活后再裁决）。
-            </p>
+            <h2>{PARAMETER_ADMIN_UI.specReviewQueue}</h2>
+            <p>{PARAMETER_ADMIN_UI.specReviewQueueBlurb}</p>
           </div>
         </div>
 
@@ -347,7 +353,7 @@ export function SpecReviewQueue({
 
         {filtered.length === 0 ? (
           <div className="parameters-table-empty">
-            <p>{tasks.length === 0 ? "没有待审核的推理规格。" : "没有匹配的审核任务。"}</p>
+            <p>{tasks.length === 0 ? PARAMETER_ADMIN_UI.specReviewEmpty : PARAMETER_ADMIN_UI.specReviewNoFilterMatch}</p>
             {filtersActive ? (
               <button type="button" className="button subtle" onClick={clearFilters}>
                 清除筛选条件

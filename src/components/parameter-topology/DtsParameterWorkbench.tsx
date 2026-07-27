@@ -64,6 +64,8 @@ export type DtsParameterWorkbenchProps = {
     rawValue: string;
     reason: string;
   }) => Promise<BindingEditValidation>;
+  /** Opens node enablement edit for the given logical node id. */
+  onEditNodeEnablement?: (logicalNodeId: string) => void;
   /** Loads per-binding revision history when a detail dialog opens. */
   loadBindingHistory?: (bindingId: string) => Promise<BindingHistoryEntry[]>;
   /** Loads cross-project compare peers when a detail dialog opens. */
@@ -151,7 +153,7 @@ export function DtsParameterWorkbench({
   sourceRows: _sourceRows,
   effectiveRows,
   sourceNodes: _sourceNodes,
-  effectiveNodes: _effectiveNodes,
+  effectiveNodes,
   moduleRegistry,
   draftBindingIds,
   selectedBindingIds: controlledSelectedBindingIds,
@@ -160,6 +162,7 @@ export function DtsParameterWorkbench({
   onSelectBinding,
   onEditBinding,
   onCreateDraft,
+  onEditNodeEnablement,
   loadBindingHistory,
   loadBindingCompare,
   loadParameterSpec,
@@ -350,6 +353,28 @@ export function DtsParameterWorkbench({
     () => new Map(currentRows.map((row) => [row.bindingId, row])),
     [currentRows]
   );
+
+  const effectiveNodesByLogicalId = useMemo(
+    () => new Map(effectiveNodes.map((node) => [node.logicalNodeId, node])),
+    [effectiveNodes]
+  );
+
+  const selectedLogicalNodeId = useMemo(() => {
+    if (selectedBindingId) {
+      return rowsByBindingId.get(selectedBindingId)?.logicalNodeId ?? null;
+    }
+    if (!subtreeBindingIds) return null;
+    const logicalIds = new Set(
+      currentRows
+        .filter((row) => subtreeBindingIds.has(row.bindingId) && row.logicalNodeId)
+        .map((row) => row.logicalNodeId as string)
+    );
+    return logicalIds.size === 1 ? [...logicalIds][0] : null;
+  }, [currentRows, rowsByBindingId, selectedBindingId, subtreeBindingIds]);
+
+  const selectedEnablementNode = selectedLogicalNodeId
+    ? effectiveNodesByLogicalId.get(selectedLogicalNodeId) ?? null
+    : null;
 
   const upsertLocalDraft = (
     bindingId: string,
@@ -656,9 +681,21 @@ export function DtsParameterWorkbench({
           role="region"
           aria-label="模块导航"
         >
-          <h3 className="dts-parameter-workbench__navigator-title">
-            模块导航
-          </h3>
+          <div className="dts-parameter-workbench__navigator-header">
+            <h3 className="dts-parameter-workbench__navigator-title">
+              模块导航
+            </h3>
+            {canEdit && onEditNodeEnablement && selectedEnablementNode ? (
+              <button
+                type="button"
+                className="button subtle dts-parameter-workbench__enablement-action"
+                aria-label={`节点启用：${selectedEnablementNode.locator}`}
+                onClick={() => onEditNodeEnablement(selectedEnablementNode.logicalNodeId)}
+              >
+                节点启用…
+              </button>
+            ) : null}
+          </div>
           <DtsTopologyNavigator
             view="effective"
             nodes={tree}

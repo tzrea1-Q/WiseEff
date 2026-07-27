@@ -1,12 +1,11 @@
 {
   "linuxDtSchemaRevision": "v6.12-pinned-stub",
   "dtschemaVersion": "2026.6",
-  "vendorContentHash": "e7e32fdf18859216dae96de730f5cb3036063383c47bb94ad70e5fbabd4f4892",
+  "vendorContentHash": "fd4051a43b5d62f050eabd3a57c26e583498c5dda95f1a9c3c701670399042f0",
   "importedAt": "2026-07-16T00:00:00.000Z",
   "schemaPaths": [
     "vendor/wiseeff/arm-amba-bus.yaml",
     "vendor/wiseeff/arm-gic-v3.yaml",
-    "vendor/wiseeff/common-status.yaml",
     "vendor/wiseeff/hisilicon-gpio.yaml",
     "vendor/wiseeff/hisilicon-hisi-bci-battery.yaml",
     "vendor/wiseeff/hisilicon-hisi-vbat-drop-protect-v2.yaml",

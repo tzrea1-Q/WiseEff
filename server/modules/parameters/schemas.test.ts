@@ -47,3 +47,38 @@ describe("submitRoundBodySchema binding draft actions", () => {
     ).toThrow();
   });
 });
+
+describe("submitRoundBodySchema enablement draft actions", () => {
+  const enablementIdentity = {
+    draftId: "draft-enablement",
+    editSubjectKind: "node-enablement" as const,
+    logicalNodeId: "logical-charging-core",
+    reason: "Disable charging_core for bring-up"
+  };
+
+  it("parses enablement set submissions", () => {
+    const parsed = submitRoundBodySchema.parse({
+      projectId: "project-aurora",
+      items: [{ ...enablementIdentity, action: "set", targetValue: '"disabled"' }]
+    });
+
+    expect(parsed.items[0]).toEqual({
+      ...enablementIdentity,
+      action: "set",
+      targetValue: '"disabled"'
+    });
+  });
+
+  it("preserves enablement delete tombstones", () => {
+    const parsed = submitRoundBodySchema.parse({
+      projectId: "project-aurora",
+      items: [{ ...enablementIdentity, action: "delete", targetValue: "" }]
+    });
+
+    expect(parsed.items[0]).toEqual({
+      ...enablementIdentity,
+      action: "delete",
+      targetValue: ""
+    });
+  });
+});

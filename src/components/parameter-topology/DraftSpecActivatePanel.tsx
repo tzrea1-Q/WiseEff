@@ -60,7 +60,7 @@ function valueShapeFromDetail(detail: ParameterSpecDetailView): {
     if (kind === "unknown" || kind === "mixed") {
       return {
         shape: fromDetail,
-        blockReason: `当前推断类型为「${kind}」，无法激活；请人工修订 occurrence 或改用库内规格。`,
+        blockReason: `当前推断类型为「${kind}」，无法激活；请人工修订 occurrence 或改用库内参数定义。`,
       };
     }
     if (
@@ -107,7 +107,7 @@ function valueShapeFromDetail(detail: ParameterSpecDetailView): {
   }
   return {
     shape: null,
-    blockReason: "规格缺少完整 valueShape 字段；请从 occurrence 重新创建草稿后再激活。",
+    blockReason: "参数定义缺少完整 valueShape 字段；请从 occurrence 重新创建草稿后再激活。",
   };
 }
 
@@ -143,17 +143,17 @@ export function DraftSpecActivatePanel({ detail, onActivate, pending = false }: 
     !pending;
 
   return (
-    <section className="shared-definition-panel draft-spec-activate-panel" aria-label="激活草稿规格">
+    <section className="shared-definition-panel draft-spec-activate-panel" aria-label="激活草稿定义">
       <form className="param-def-form" onSubmit={(event) => event.preventDefault()}>
         <fieldset className="def-group">
-          <legend>激活草稿规格</legend>
+          <legend>激活草稿定义</legend>
           <div className="def-group-fields def-group-fields--stack">
             <p className="form-hint">
-              补齐约束与说明后激活；仅 active 且约束完整的规格可用于审核批准。
+              补齐约束与说明后激活；仅已启用且约束完整的定义可用于审核批准。
             </p>
             {valueShape ? (
-              <p className="form-hint" aria-label="推断值形状摘要">
-                推断值形状：{String(valueShape.kind)}
+              <p className="form-hint" aria-label="自动识别的取值形态摘要">
+                自动识别的取值形态：{String(valueShape.kind)}
                 {typeof valueShape.bits === "number" ? ` · bits=${valueShape.bits}` : ""}
                 {typeof valueShape.groups === "number" ? ` · groups=${valueShape.groups}` : ""}
                 {cellCount != null ? ` · cellsPerGroup=${cellCount}` : ""}
@@ -179,9 +179,9 @@ export function DraftSpecActivatePanel({ detail, onActivate, pending = false }: 
               </label>
             ) : null}
             <label>
-              规格说明
+              参数说明
               <textarea
-                aria-label="规格说明"
+                aria-label="参数说明"
                 rows={2}
                 value={documentation}
                 onChange={(event) => setDocumentation(event.target.value)}
@@ -219,7 +219,7 @@ export function DraftSpecActivatePanel({ detail, onActivate, pending = false }: 
                   });
                 }}
               >
-                {pending ? "激活中…" : "激活规格"}
+                {pending ? "激活中…" : "激活定义"}
               </button>
             </div>
           </div>

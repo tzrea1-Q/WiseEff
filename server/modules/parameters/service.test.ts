@@ -304,6 +304,47 @@ function writeLockFixtureRows(suffix: "a" | "b") {
   ] as const;
 }
 
+function enablementWriteLockFixtureRows() {
+  return [[{ id: "fv-en", checksum: "checksum-en" }]] as const;
+}
+
+function enablementDraftSubmissionRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: (overrides.id as string) ?? "draft-enablement",
+    project_id: PROJECT_ID,
+    logical_node_id: (overrides.logical_node_id as string) ?? "logical-node-1",
+    candidate_config_revision_id: (overrides.candidate_config_revision_id as string) ?? "candidate-tip-en",
+    candidate_status: "draft",
+    candidate_has_status_effect: true,
+    candidate_value_matches_draft: true,
+    candidate_delete_tombstone: false,
+    candidate_action_proven: true,
+    write_lock_matches_revision: true,
+    target_value: (overrides.target_value as string) ?? '"disabled"',
+    action: "set",
+    reason: (overrides.reason as string) ?? "Disable node",
+    base_config_revision_id: "base-rev-1",
+    binding_revision_id: null,
+    property_occurrence_id: null,
+    source_file_version_id: "fv-en",
+    expected_checksum: "checksum-en",
+    occurrence_span: null,
+    ...overrides
+  };
+}
+
+function enablementNodeContextRow() {
+  return {
+    node_locator: "/charging_core",
+    compatible: "wiseeff,charging_core",
+    logical_node_revision_id: "lnr-1"
+  };
+}
+
+function enablementStatusEffectRows() {
+  return [{ effect_kind: "set", raw_text: '"disabled"' }];
+}
+
 describe("parameter service", () => {
   it("non-admin cannot create or apply import batches", async () => {
     const { db, calls, txCalls } = createFakeDb();
@@ -1939,6 +1980,98 @@ describe("parameter service", () => {
 
     expect(txCalls.some((call) => call.text.includes("insert into parameter_submission_rounds"))).toBe(false);
     expect(txCalls.some((call) => call.text.includes("update dts_config_revisions"))).toBe(false);
+  });
+
+  it("submitParameterChanges creates enablement change requests from node-enablement drafts", async () => {
+    const draftId = "draft-enablement";
+    const logicalNodeId = "logical-node-1";
+    const tipId = "candidate-tip-en";
+
+    const { db, txCalls } = createFakeDb(
+      [
+        [enablementDraftSubmissionRow({ id: draftId, logical_node_id: logicalNodeId, candidate_config_revision_id: tipId })],
+        ...enablementWriteLockFixtureRows(),
+        [],
+        [enablementNodeContextRow()],
+        enablementStatusEffectRows(),
+        [],
+        [{ id: tipId }],
+        [
+          {
+            id: "round-1",
+            project_id: PROJECT_ID,
+            project_name: "Aurora",
+            submitter: "Riley Chen",
+            status: "submitted",
+            summary: "Parameter changes submitted.",
+            created_at: "2026-05-25T05:00:00.000Z"
+          }
+        ],
+        [
+          {
+            id: "request-enablement",
+            submission_round_id: "round-1",
+            project_id: PROJECT_ID,
+            project_parameter_value_id: logicalNodeId,
+            module: "charging_core",
+            title: "status",
+            current_value: "",
+            target_value: '"disabled"',
+            action: "set",
+            candidate_config_revision_id: tipId,
+            edit_subject_kind: "node-enablement",
+            logical_node_id: logicalNodeId,
+            submitter: "Riley Chen",
+            status: "submitted",
+            risk: "Low",
+            created_at: "2026-05-25T05:00:01.000Z",
+            updated_at: "2026-05-25T05:00:01.000Z",
+            assigned_to: null,
+            reviewer_note: null,
+            reject_reason: null,
+            fast_track: false
+          }
+        ],
+        [
+          {
+            change_request_id: "request-enablement",
+            project_parameter_value_id: logicalNodeId,
+            name: "status",
+            module: "节点启用",
+            current_value: "",
+            target_value: '"disabled"',
+            action: "set",
+            candidate_config_revision_id: tipId,
+            unit: "",
+            risk: "Low",
+            reason: "Disable node"
+          }
+        ],
+        [],
+        []
+      ],
+      { semanticCutoverComplete: true }
+    );
+
+    const round = await submitParameterChanges(db, makeAuth(), {
+      projectId: PROJECT_ID,
+      items: [
+        {
+          draftId,
+          editSubjectKind: "node-enablement",
+          logicalNodeId,
+          action: "set",
+          targetValue: '"disabled"',
+          reason: "Disable node"
+        }
+      ]
+    });
+
+    expect(round.items).toHaveLength(1);
+    expect(txCalls.some((call) => call.text.includes("edit_subject_kind") && call.text.includes("node-enablement"))).toBe(
+      true
+    );
+    expect(txCalls.some((call) => call.text.includes("delete from parameter_drafts"))).toBe(true);
   });
 
   it("ordinary user cannot advance review", async () => {

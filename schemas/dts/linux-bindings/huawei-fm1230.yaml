@@ -7,8 +7,6 @@ description: WiseEff vendor binding for huawei,fm1230 (generated from vendor pro
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   battct_id_gpio-supply:
     $ref: /schemas/types.yaml#/definitions/phandle-array
   ic_index:

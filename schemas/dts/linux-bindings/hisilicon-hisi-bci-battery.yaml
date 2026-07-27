@@ -7,8 +7,6 @@ description: WiseEff vendor binding for hisilicon,hisi_bci_battery (generated fr
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   battery_board_type:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   battery_design_fcc:

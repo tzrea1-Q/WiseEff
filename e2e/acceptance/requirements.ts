@@ -368,5 +368,29 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     workflow: "B",
     title: "Publish is blocked by compiler/edit diagnostics; clean revisions validate/publish with audit and semantic persistence after reload.",
     required: true
+  },
+  {
+    id: "PARAM-ENABLE-GATE-001",
+    workflow: "B",
+    title: "Structural properties do not create spec review tasks or block candidate promotion or migration finalize.",
+    required: true
+  },
+  {
+    id: "PARAM-ENABLE-VISIBLE-001",
+    workflow: "B",
+    title: "Topology shows node enablement badges and workbench no-effect notices for disabled nodes.",
+    required: true
+  },
+  {
+    id: "PARAM-ENABLE-TOGGLE-001",
+    workflow: "B",
+    title: "Node disable requires reason and confirmation; enablement drafts share the working tip with binding edits.",
+    required: true
+  },
+  {
+    id: "PARAM-ENABLE-GUARD-001",
+    workflow: "B",
+    title: "Non-standard status values are read-only unless explicitly acknowledged for override.",
+    required: true
   }
 ];

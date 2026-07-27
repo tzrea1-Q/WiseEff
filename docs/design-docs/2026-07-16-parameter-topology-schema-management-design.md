@@ -382,7 +382,7 @@ The migration deduplicates by schema identity rather than source occurrence:
 - project SC8562 `gpio_int` occurrences reuse one `PropertySpec` version;
 - SC8562 and MT5788 `gpio_int` do not share a specification;
 - address, path, and effective value remain project-instance data;
-- common keys such as `status` are shared only when a schema explicitly gives them the same specification identity.
+- `status` is **not** a matched property: vendor schemas no longer emit a `status` PropertySpec, `common-status.yaml` is retired (documentation-only), and ingest short-circuits structural keys before matching (ADR-0003).
 
 All values, drafts, change requests, approvals, audit events, and baselines are remapped. `LegacyMigrationEvidence` preserves old ID, old full name, original locator, original value, source record hash, new IDs, and migration run.
 

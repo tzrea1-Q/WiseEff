@@ -5,7 +5,7 @@ import type { WorkflowAssigneeCandidates } from "@/application/ports/ParameterRe
 
 import {
   DtsBindingDraftTray,
-  type PendingBindingDraft
+  type PendingTopologyDraft
 } from "./DtsBindingDraftTray";
 
 const candidates: WorkflowAssigneeCandidates = {
@@ -14,8 +14,9 @@ const candidates: WorkflowAssigneeCandidates = {
   softwareUsers: [{ id: "u-user", name: "Software Merger" }]
 };
 
-function draft(overrides: Partial<PendingBindingDraft> = {}): PendingBindingDraft {
+function draft(overrides: Partial<Extract<PendingTopologyDraft, { kind: "binding" }>> = {}): PendingTopologyDraft {
   return {
+    kind: "binding",
     projectId: "aurora",
     currentRawValue: "<&gpio13 29 0>",
     reason: "Move interrupt line",
@@ -34,6 +35,28 @@ function draft(overrides: Partial<PendingBindingDraft> = {}): PendingBindingDraf
   };
 }
 
+function enablementDraft(
+  overrides: Partial<Extract<PendingTopologyDraft, { kind: "enablement" }>> = {}
+): PendingTopologyDraft {
+  return {
+    kind: "enablement",
+    projectId: "aurora",
+    reason: "Disable during bring-up",
+    nodeLabel: "sc8562@6E",
+    currentRawValue: '"okay"',
+    draftId: "draft-enable-1",
+    candidateRevisionId: "candidate-1",
+    rawText: '"disabled"',
+    action: "set",
+    logicalNodeId: "logical-sc8562",
+    target: "force-disabled",
+    writeTarget: { role: "overlay", propertyKey: "status", targetRef: "sc8562@6E" },
+    overlayFileId: "file-overlay",
+    overlayFileName: "overlay.dts",
+    ...overrides
+  };
+}
+
 describe("DtsBindingDraftTray", () => {
   it("shows semantic identities and submits the exact typed binding payload", async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
@@ -48,7 +71,7 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    const tray = screen.getByRole("region", { name: "绑定变更提交" });
+    const tray = screen.getByRole("region", { name: "参数修改提交" });
     expect(within(tray).getByRole("heading", { name: "本轮已修改" })).toBeVisible();
     expect(within(tray).getByText("gpio_int")).toBeVisible();
     const diff = within(tray).getByLabelText("gpio_int 值变更");
@@ -72,6 +95,7 @@ describe("DtsBindingDraftTray", () => {
         items: [
           {
             draftId: "draft-typed-1",
+            editSubjectKind: "binding",
             projectParameterBindingId: "binding-sc8562-gpio-int",
             parameterSpecId: "spec-sc8562-gpio-int",
             action: "set",
@@ -507,5 +531,49 @@ describe("DtsBindingDraftTray", () => {
       }));
     });
     expect(onSubmit.mock.calls[0][0].items).toHaveLength(1);
+  });
+
+  it("submits enablement drafts with editSubjectKind and rides along selected binding tips", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[
+          draft({ draftId: "draft-a", projectParameterBindingId: "binding-a" }),
+          enablementDraft(),
+          enablementDraft({
+            draftId: "draft-enable-2",
+            logicalNodeId: "logical-other",
+            candidateRevisionId: "candidate-2"
+          })
+        ]}
+        selectedBindingIds={new Set(["binding-a"])}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmit={onSubmit}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "提交审核" }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        items: [
+          expect.objectContaining({
+            draftId: "draft-a",
+            editSubjectKind: "binding"
+          }),
+          expect.objectContaining({
+            draftId: "draft-enable-1",
+            editSubjectKind: "node-enablement",
+            logicalNodeId: "logical-sc8562",
+            action: "set",
+            targetValue: '"disabled"',
+            reason: "Disable during bring-up"
+          })
+        ]
+      }));
+    });
+    expect(onSubmit.mock.calls[0][0].items).toHaveLength(2);
   });
 });

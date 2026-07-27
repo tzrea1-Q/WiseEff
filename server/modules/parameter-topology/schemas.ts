@@ -159,3 +159,18 @@ export type TopologyView = z.infer<typeof topologyViewSchema>;
 export type ResolveIdentityMappingTaskBody = z.infer<typeof resolveIdentityMappingTaskBodySchema>;
 export type DtsValueDto = z.infer<typeof dtsValueSchema>;
 export type CreateBindingDraftBody = z.infer<typeof createBindingDraftBodySchema>;
+
+export const createNodeEnablementDraftParamsSchema = z.object({
+  projectId: nonEmptyString
+});
+
+export const createNodeEnablementDraftBodySchema = z.object({
+  logicalNodeId: nonEmptyString,
+  baseRevisionId: nonEmptyString,
+  target: z.enum(["force-enabled", "force-disabled", "unstated"]),
+  reason: nonEmptyString,
+  acknowledgeNonstandard: z.boolean().optional(),
+  spellingOverride: z.enum(["ok", "okay"]).optional()
+});
+
+export type CreateNodeEnablementDraftBody = z.infer<typeof createNodeEnablementDraftBodySchema>;

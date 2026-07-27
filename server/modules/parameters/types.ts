@@ -166,6 +166,8 @@ export type ChangeRequestDto = {
   id: string;
   submissionRoundId?: string;
   projectId?: string;
+  editSubjectKind?: "binding" | "node-enablement";
+  logicalNodeId?: string;
   parameterId: string;
   baseVersion?: number;
   module: string;

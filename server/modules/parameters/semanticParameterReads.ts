@@ -167,13 +167,15 @@ export async function upsertSemanticDraft(
       id, organization_id, project_id, user_id,
       target_value, reason, origin, origin_file_version_id,
       action,
+      edit_subject_kind,
       project_parameter_binding_id,
       base_config_revision_id, binding_revision_id, property_occurrence_id,
       source_file_version_id, expected_checksum, occurrence_span,
       candidate_config_revision_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'binding', $10, $11, $12, $13, $14, $15, $16::jsonb, $17)
     on conflict (project_id, project_parameter_binding_id, user_id)
+      where edit_subject_kind = 'binding' and project_parameter_binding_id is not null
     do update set
       target_value = excluded.target_value,
       reason = excluded.reason,

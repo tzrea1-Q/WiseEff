@@ -347,6 +347,19 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "409": "ErrorResponse"
     }
   },
+  "parameterTopology.createNodeEnablementDraft": {
+    summary: "Create a node enablement draft that shares the binding draft tip pipeline",
+    tags: ["parameters"],
+    requestBody: "CreateNodeEnablementDraftRequest",
+    responseBody: "NodeEnablementDraftResponse",
+    successStatus: 201,
+    additionalResponses: {
+      "400": "ErrorResponse",
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
 
   "logs.uploadFile": {
     summary: "Upload log file",

@@ -11,6 +11,8 @@ import {
   bindingHistoryParamsSchema,
   createBindingDraftBodySchema,
   createBindingDraftParamsSchema,
+  createNodeEnablementDraftBodySchema,
+  createNodeEnablementDraftParamsSchema,
   identityMappingTaskParamsSchema,
   listIdentityMappingTasksQuerySchema,
   projectBindingsParamsSchema,
@@ -23,6 +25,7 @@ import {
 } from "./schemas";
 import {
   createBindingDraft,
+  createNodeEnablementDraft,
   getBindingCompare,
   getBindingHistory,
   getTopology,
@@ -182,6 +185,24 @@ export function registerParameterTopologyRoutes(
       {
         projectId: params.projectId,
         bindingId: params.bindingId,
+        ...body
+      },
+      { objectStore: options.objectStore }
+    );
+    return { status: 201, body: { item } };
+  });
+
+  router.post("/api/v2/projects/:projectId/node-enablement-drafts", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanEdit(auth);
+    const params = parseWithSchema(createNodeEnablementDraftParamsSchema, request.params);
+    const body = parseWithSchema(createNodeEnablementDraftBodySchema, request.body ?? {});
+    const item = await createNodeEnablementDraft(
+      db,
+      auth,
+      {
+        projectId: params.projectId,
         ...body
       },
       { objectStore: options.objectStore }

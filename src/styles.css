@@ -19805,6 +19805,51 @@ body.xiaoze-popup-resize-active {
   word-break: break-word;
 }
 
+.topology-tree__enablement-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.topology-tree__enablement-badge.is-enabled {
+  color: #027a48;
+  background: color-mix(in srgb, #12b76a 16%, #fff);
+}
+
+.topology-tree__enablement-badge.is-disabled,
+.topology-tree__enablement-badge.is-nonstandard {
+  color: #b42318;
+  background: color-mix(in srgb, #f04438 14%, #fff);
+}
+
+.topology-tree__enablement-badge.is-unreachable {
+  color: #b54708;
+  background: color-mix(in srgb, #f79009 16%, #fff);
+}
+
+.topology-tree__blocker-link {
+  width: fit-content;
+  margin: 0 8px 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--app-primary, #155eef);
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.topology-tree__row {
+  display: grid;
+  gap: 0;
+}
+
 .binding-property-table {
   min-width: 0;
   overflow-x: auto;
@@ -20305,13 +20350,31 @@ body.xiaoze-popup-resize-active {
   background: #3f5573;
 }
 
-.dts-parameter-workbench__navigator-title {
+.dts-parameter-workbench__navigator-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   flex-shrink: 0;
-  margin: 0;
   padding: 14px 16px 10px;
+}
+
+.dts-parameter-workbench__navigator-title {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
   color: var(--dts-workbench-ink);
   font-size: 13px;
   letter-spacing: .01em;
+}
+
+.dts-parameter-workbench__enablement-action {
+  flex: 0 0 auto;
+  align-self: center;
+  width: auto;
+  min-height: 32px;
+  padding: 0 10px;
+  white-space: nowrap;
 }
 
 .dts-topology-navigator {
@@ -20701,6 +20764,18 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .dts-parameter-workbench-table__draft-badge {
   color: #5b40a0;
   background: #eee9ff;
+}
+
+.dts-parameter-workbench-table__enablement-notice {
+  display: block;
+  margin-top: 4px;
+  color: #b54708;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.dts-parameter-workbench-table__enablement-path {
+  color: var(--muted, #667085);
 }
 
 .dts-parameter-workbench-table__actions-col {
@@ -21331,6 +21406,230 @@ button.dts-topology-navigator__disclosure:focus-visible {
   gap: 12px;
 }
 
+.dts-node-enablement-dialog {
+  --dts-dialog-border: #dbe3ef;
+  --dts-workbench-ink: #152238;
+  --dts-workbench-muted: #52657d;
+  --dts-workbench-blue: #075bc4;
+  --dts-workbench-blue-soft: #edf4ff;
+  width: min(32rem, calc(100vw - 2rem));
+  max-width: min(32rem, calc(100vw - 2rem));
+  color: var(--dts-workbench-ink);
+  gap: 0.75rem;
+}
+
+.dts-node-enablement-dialog__header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--dts-dialog-border);
+}
+
+.dts-node-enablement-dialog__header [data-slot="dialog-description"] {
+  margin-top: 4px;
+  color: var(--dts-workbench-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dts-node-enablement-dialog__header code {
+  font-size: 12px;
+}
+
+.dts-node-enablement-dialog__content {
+  min-width: 0;
+}
+
+.dts-node-enablement-dialog__summary,
+.dts-node-enablement-dialog__panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px;
+  background: #fbfcff;
+  border: 1px solid var(--dts-dialog-border);
+  border-radius: 10px;
+}
+
+.dts-node-enablement-dialog__summary strong,
+.dts-node-enablement-dialog__panel > strong {
+  display: block;
+  color: var(--dts-workbench-ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.dts-node-enablement-dialog__summary p,
+.dts-node-enablement-dialog__panel > p {
+  margin: 0;
+  color: var(--dts-workbench-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dts-node-enablement-dialog__summary code,
+.dts-node-enablement-dialog__raw code,
+.dts-node-enablement-dialog__hint code {
+  overflow-wrap: anywhere;
+}
+
+.dts-node-enablement-dialog__blocked {
+  margin-top: 6px !important;
+  color: #9a3412 !important;
+}
+
+.dts-node-enablement-dialog__raw {
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #e8edf4;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.dts-node-enablement-dialog__panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dts-node-enablement-dialog__positions {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.dts-node-enablement-dialog__positions legend {
+  margin: 0 0 8px;
+  color: var(--dts-workbench-ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.dts-node-enablement-dialog__choice-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dts-node-enablement-dialog__choice {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--dts-workbench-muted);
+  background: #fff;
+  border: 1px solid var(--dts-dialog-border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.dts-node-enablement-dialog__choice input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.dts-node-enablement-dialog__choice.is-selected {
+  color: var(--dts-workbench-blue);
+  background: var(--dts-workbench-blue-soft);
+  border-color: #9ec0ef;
+  box-shadow: 0 0 0 1px #9ec0ef;
+}
+
+.dts-node-enablement-dialog__choice:hover {
+  border-color: #8eacd7;
+}
+
+.dts-node-enablement-dialog__field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dts-node-enablement-dialog__field label,
+.dts-node-enablement-dialog__field [data-slot="label"] {
+  color: var(--dts-workbench-ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.dts-node-enablement-dialog__hint {
+  margin: 0;
+  color: var(--dts-workbench-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.dts-node-enablement-dialog__field select,
+.dts-node-enablement-dialog__field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--dts-dialog-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--dts-workbench-ink);
+  font-size: 13px;
+}
+
+.dts-node-enablement-dialog__field select {
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+.dts-node-enablement-dialog__field textarea {
+  min-height: 84px;
+  padding: 10px 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.dts-node-enablement-dialog__field select:focus,
+.dts-node-enablement-dialog__field textarea:focus {
+  outline: none;
+  border-color: #8eacd7;
+  box-shadow: 0 0 0 1px #8eacd7;
+}
+
+.dts-node-enablement-dialog__confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #e8edf4;
+  border-radius: 8px;
+  color: var(--dts-workbench-ink);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.dts-node-enablement-dialog__confirm input {
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.dts-node-enablement-dialog__error {
+  margin: 0;
+}
+
+.dts-node-enablement-dialog__footer {
+  padding-top: 4px;
+  border-top: 1px solid var(--dts-dialog-border);
+}
+
+.dts-node-enablement-dialog__unstated {
+  margin-right: auto;
+}
+
 .dts-binding-draft-card {
   display: grid;
   gap: 10px;
@@ -21728,6 +22027,31 @@ button.dts-topology-navigator__disclosure:focus-visible {
   .dts-binding-draft-dialog textarea {
     min-height: 44px;
   }
+
+  .dts-node-enablement-dialog {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .dts-node-enablement-dialog button,
+  .dts-node-enablement-dialog [data-slot="button"] {
+    min-width: 44px;
+    min-height: 44px;
+    height: auto;
+  }
+
+  .dts-node-enablement-dialog__choice {
+    min-height: 44px;
+  }
+
+  .dts-node-enablement-dialog textarea,
+  .dts-node-enablement-dialog select {
+    min-height: 44px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -21748,6 +22072,12 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
   .dts-binding-draft-dialog,
   .dts-binding-draft-dialog__overlay {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .dts-node-enablement-dialog,
+  .dts-node-enablement-dialog__overlay {
     animation: none !important;
     transition: none !important;
   }

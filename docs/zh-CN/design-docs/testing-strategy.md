@@ -251,14 +251,14 @@ npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <ar
 | 领域 | 测试 / 命令 | 证明内容 |
 | --- | --- | --- |
 | 厂商 dt-schema | `goldenPowerFixture.test.ts`、`scripts/vendorDtSchemaGenerator.test.ts` | 由属性规格确定性生成 linux-bindings；黄金 DTB 通过真实 `dt-validate`；负例按预期失败 |
-| 黄金计数 | `goldenPowerFixture.test.ts`（176 属性）、`seedM1DtsFiles.test.ts`（528 行 `dts_properties`）、`matcher.test.ts`、`ingestService.test.ts` | 锁定 **176/528** 拓扑/seed 计数 |
+| 黄金计数 | `goldenPowerFixture.test.ts`（拓扑解析）、`seedM1DtsFiles.test.ts`（`dts_properties`）、`matcher.test.ts`（排除结构键后匹配 120）、`ingestService.test.ts`（occurrence 176） | 锁定 **176 occurrence / 120 matched / 684 seed 行** |
 | stage → finalize | `migration.test.ts`（临时 PostgreSQL、重连、注入失败） | 可运维 `stage-review` 事务；原子 `finalize`；cutover 拒绝非 `finalized` 运行 |
 | 精确回写 | `editService.test.ts`、合入工作流测试 | occurrence 锁定合入/回写；base 不可变；身份过期 → `409` |
 | Matcher / 审核作用域 | `matcher.test.ts`、`matcherScope.integration.test.ts` | override 按节点 locator 指纹隔离；`blocker_scope` 门禁 |
 | Manifest 门禁 | `manifestBackfillMigration.test.ts`、`configRevisionManifest.test.ts`、`editService` needs_review 路径 | 从 `dts_config_revision_members` 回填；`needs_review` 对编辑/校验/发布/回写失败关闭 |
 | 全局规格 hotspot | `postCutoverDashboard.integration.test.ts` | 租户项目包含 `organization_id IS NULL` 厂商规格 |
 | 未匹配审核 | `service.test.ts`、`routes.test.ts` | `createSpec` + `confirmPropertyMismatch` 与治理审计 |
-| 浏览器验收 | `parameter-topology.acceptance.spec.ts` | `PARAM-SPEC-GOVERN-001` 至 `PARAM-CONFIG-PUBLISH-GATE-001`；API 模式无教学回退 |
+| 浏览器验收 | `parameter-topology.acceptance.spec.ts` | `PARAM-SPEC-GOVERN-001` 至 `PARAM-CONFIG-PUBLISH-GATE-001`；`PARAM-ENABLE-*` 占位已登记（ADR-0003）；API 模式无教学回退 |
 
 拓扑发布前工具链门禁：
 

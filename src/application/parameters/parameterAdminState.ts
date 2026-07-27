@@ -117,13 +117,13 @@ export function auditKindForResolveDecision(
 export function auditKindLabel(kind: ParameterAdminAuditHint["kind"]): string {
   switch (kind) {
     case "spec-review-dismissed":
-      return "规格审核驳回";
+      return "定义匹配审核驳回";
     case "spec-review-create-spec":
-      return "创建草稿规格";
+      return "创建草稿定义";
     case "spec-activated":
-      return "激活参数规格";
+      return "激活参数定义";
     case "spec-updated":
-      return "更新参数规格";
+      return "更新参数定义";
     case "module-created":
       return "创建业务模块";
     case "module-renamed":
@@ -133,17 +133,17 @@ export function auditKindLabel(kind: ParameterAdminAuditHint["kind"]): string {
     case "module-deleted":
       return "删除业务模块";
     case "module-mapping-created":
-      return "创建驱动映射";
+      return "创建驱动归属";
     case "module-mapping-deleted":
-      return "删除驱动映射";
+      return "删除驱动归属";
     case "module-bindings-recomputed":
       return "重算模块归属";
     case "import-batch-applied":
       return "批量导入应用";
     case "identity-mapping-resolved":
-      return "身份映射确认";
+      return "节点对应确认";
     case "identity-mapping-dismissed":
-      return "身份映射驳回";
+      return "节点对应驳回";
     case "project-updated":
       return "更新项目";
     case "project-deleted":
@@ -162,6 +162,6 @@ export function auditKindLabel(kind: ParameterAdminAuditHint["kind"]): string {
       return "文件冲突裁决";
     case "spec-review-resolved":
     default:
-      return "规格审核批准";
+      return "定义匹配审核批准";
   }
 }

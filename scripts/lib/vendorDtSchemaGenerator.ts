@@ -48,11 +48,8 @@ const GPIO_CONTROLLER_TEMPLATE: Record<string, VendorProperty> = {
     valueShape: "u32-array",
     exampleValue: "<2>",
     constraints: { minItems: 1, maxItems: 1 }
-  },
-  status: {
-    valueShape: "string-list",
-    constraints: { enum: ["okay", "disabled", "reserved", "fail", "fail-needs-probe"] }
   }
+  // `status` is node enablement (ADR-0003), never a generated binding property.
 };
 
 const KNOWN_SHAPES = new Set([
@@ -228,7 +225,8 @@ function mergeCommonRefProperties(
     const refPath = join(vendorDir, ref.replace(/^wiseeff\//, ""));
     const common = yaml.load(readFileSync(refPath, "utf8")) as VendorSpecDoc;
     for (const [name, prop] of Object.entries(common.properties ?? {})) {
-      if (name in properties) continue;
+      // ADR-0003: status is node enablement, never a dt-schema property.
+      if (name === "status" || name in properties) continue;
       const converted = propertyToDtSchema(name, prop);
       if (converted.schema) properties[name] = converted.schema;
     }
@@ -253,7 +251,7 @@ function buildVendorProperties(
   }
 
   for (const [name, prop] of Object.entries(spec.properties ?? {})) {
-    if (name === "compatible") continue;
+    if (name === "compatible" || name === "status") continue;
     const converted = propertyToDtSchema(name, prop);
     blockers.push(...converted.blockers);
     if (!converted.schema) continue;
@@ -275,9 +273,7 @@ function buildVendorProperties(
 
   properties.compatible = { contains: { const: compatible } };
 
-  if (!spec.required?.includes("status")) {
-    required.delete("status");
-  }
+  required.delete("status");
   required.add("compatible");
 
   return { properties, blockers, required };
@@ -327,8 +323,7 @@ export function renderBindingFromVendorSpec(
         type: "object",
         properties: {
           compatible: properties.compatible,
-          "#gpio-cells": { const: cellsConst },
-          ...(properties.status ? { status: properties.status } : {})
+          "#gpio-cells": { const: cellsConst }
         },
         required: ["compatible"],
         additionalProperties: false,

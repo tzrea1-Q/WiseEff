@@ -6,11 +6,4 @@ version: 1
 schemaNamespace: vendor/nodename/hi6xxx_coul
 nodename:
   - hi6xxx_coul
-commonRefs:
-  - wiseeff/common-status.yaml
-properties:
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
+properties: {}

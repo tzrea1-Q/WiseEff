@@ -9,14 +9,7 @@ compatible:
 childNodes:
   - battery0
   - battery1
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   unbalance_th:
     valueShape: u32-array
     exampleValue: <100 10000>

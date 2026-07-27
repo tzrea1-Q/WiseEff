@@ -37,7 +37,7 @@ describe("permission-aware routing", () => {
 
     const navigation = within(screen.getByRole("navigation", { name: /主导航|涓诲鑸?/ }));
     expect(navigation.getByRole("button", { name: /参数修改|鍙傛暟淇敼/ })).toBeInTheDocument();
-    expect(navigation.queryByRole("button", { name: /参数审阅|鍙傛暟瀹￠槄/ })).not.toBeInTheDocument();
+    expect(navigation.queryByRole("button", { name: /变更审阅|鍙傛暟瀹￠槄/ })).not.toBeInTheDocument();
     expect(navigation.queryByRole("button", { name: /参数调试|鍙傛暟璋冭瘯/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /用户管理|鐢ㄦ埛绠＄悊/ })).not.toBeInTheDocument();
   });

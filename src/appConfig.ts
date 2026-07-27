@@ -19,6 +19,7 @@ import {
   parseParameterAdminOrganizationPath,
   PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS
 } from "@/application/parameters/parameterAdminOrganizationPath";
+import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 
 export type PageKey =
   | "home"
@@ -79,7 +80,7 @@ export const navigationItems: PageConfig[] = [
   {
     key: "parameter-review",
     path: "/parameter-review",
-    label: "参数审阅",
+    label: "变更审阅",
     group: "参数管理",
     icon: ShieldCheck,
     title: "参数管理员工作台",
@@ -92,7 +93,7 @@ export const navigationItems: PageConfig[] = [
     group: "参数管理",
     icon: Database,
     title: "项目参数管理后台",
-    subtitle: "组织治理与项目运营；子路由涵盖参数库、规格审核、模块映射、身份映射与批量导入"
+    subtitle: "组织配置与项目运营；子路由涵盖参数定义库、定义匹配审核、驱动归属、节点对应与批量导入"
   },
   {
     key: "node-debugging",
@@ -222,7 +223,7 @@ export function getPageByPath(path: string): PageConfig {
     return {
       ...(adminNav as PageConfig),
       path,
-      subtitle: view ? PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS[view] : (adminNav?.subtitle ?? "参数库")
+      subtitle: view ? PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS[view] : (adminNav?.subtitle ?? PARAMETER_ADMIN_UI.specLibrary)
     };
   }
 
@@ -297,15 +298,15 @@ export function getXiaozeContextSummary(path: string): string {
         return "正在关注项目参数文件、配置集、发布基线、结构浏览与冲突裁决。";
       }
       if (path.includes("/spec-review")) {
-        return "正在关注规格审核队列与 Schema 决议。";
+        return PARAMETER_ADMIN_UI.xiaozeSpecReview;
       }
       if (path.includes("/modules")) {
-        return "正在关注业务模块树与驱动 / compatible 映射。";
+        return "正在关注业务模块树与驱动 / compatible 归属配置。";
       }
       if (path.includes("/identity-mapping")) {
-        return "正在关注迁移期身份映射任务与无损决议。";
+        return PARAMETER_ADMIN_UI.xiaozeIdentityMapping;
       }
-      return "正在关注组织级参数库、规格审核、模块映射、批量导入与身份映射治理。";
+      return PARAMETER_ADMIN_UI.xiaozeOrgDefault;
     case "log-admin":
       return "正在关注分析吞吐、失败记录、权限覆盖和使用趋势。";
     case "debugging-admin":

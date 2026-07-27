@@ -15,13 +15,17 @@ import { ingestDtsFileVersion } from "./structuralIngest";
 import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
 import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
 import { loadPreCutoverWritebackSource } from "../parameters/legacyParameterIdentityAdapter";
-import { getChangeRequestWriteLock } from "../parameters/repository";
+import { getChangeRequestEnablementWriteLock, getChangeRequestWriteLock } from "../parameters/repository";
 import {
+  applyLockedEnablementWriteback,
   applyLockedOverlayWriteback,
   resolveBindingWriteLock,
+  resolveEnablementWriteLock,
   type BindingEditAction,
   type BindingWriteLockContext,
   type BindingWriteLockFields,
+  type EnablementWriteLockContext,
+  type EnablementWriteLockFields,
 } from "../parameter-topology/editService";
 import { createDtsToolchainRunner } from "./dtsToolchain";
 import type { ParameterFileFormat } from "./types";
@@ -46,6 +50,15 @@ export type WritebackMergedParameterValueInput = {
   /** Locked merge identity — required for post-cutover exact writeback. */
   writeLock?: BindingWriteLockFields;
   changeRequestId?: string;
+};
+
+export type WritebackMergedEnablementValueInput = {
+  projectId: string;
+  logicalNodeId: string;
+  mergedValue: string;
+  action?: BindingEditAction;
+  changeRequestId?: string;
+  writeLock?: EnablementWriteLockFields;
 };
 
 export type WritebackServiceContext = AuditCorrelationContext & {
@@ -268,6 +281,56 @@ async function resolveLockedWritebackContext(
   };
 }
 
+async function resolveLockedEnablementWritebackContext(
+  db: Queryable,
+  auth: AuthContext,
+  input: WritebackMergedEnablementValueInput,
+): Promise<{ lock: EnablementWriteLockContext }> {
+  const persistedLock =
+    input.writeLock ??
+    (input.changeRequestId
+      ? await getChangeRequestEnablementWriteLock(db, {
+          organizationId: auth.organization.id,
+          requestId: input.changeRequestId,
+        })
+      : null);
+
+  if (!persistedLock) {
+    throw new ApiError("CONFLICT", "Exact enablement writeback requires locked merge identity.", 409, {
+      reason: "missing-write-lock",
+      changeRequestId: input.changeRequestId,
+      logicalNodeId: input.logicalNodeId,
+    });
+  }
+
+  const resolved = await resolveEnablementWriteLock(db, auth, {
+    logicalNodeId: input.logicalNodeId,
+    baseRevisionId: persistedLock.baseConfigRevisionId,
+  });
+
+  if (
+    resolved.sourceFileVersionId !== persistedLock.sourceFileVersionId ||
+    resolved.expectedChecksum !== persistedLock.expectedChecksum
+  ) {
+    throw new ApiError("CONFLICT", "Persisted enablement write lock no longer matches topology.", 409, {
+      reason: "stale-write-lock",
+    });
+  }
+
+  return {
+    lock: {
+      ...persistedLock,
+      propertyKey: "status",
+      targetRef: resolved.targetRef,
+      expectedRawText: resolved.expectedRawText,
+      nodeSpan: resolved.nodeSpan,
+      overlayFileId: resolved.overlayFileId,
+      overlayFileName: resolved.overlayFileName,
+      overlayFileVersionId: resolved.overlayFileVersionId,
+    },
+  };
+}
+
 async function createWritebackAudit(
   db: Queryable,
   auth: AuthContext,
@@ -380,6 +443,74 @@ export function patchDtsProperty(content: string, nodePath: string, newValue: st
   property.cst.normalizedValue = classified.normalizedValue;
 
   return Buffer.from(serializeDts(doc), "utf8");
+}
+
+export async function writebackMergedEnablementValue(
+  db: Queryable,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: WritebackMergedEnablementValueInput,
+  context: WritebackServiceContext = {},
+): Promise<
+  | { skipped: true }
+  | {
+      skipped: false;
+      fileId: string;
+      versionId: string;
+      versionNumber: number;
+      candidateRevisionId?: string;
+    }
+> {
+  const { lock } = await resolveLockedEnablementWritebackContext(db, auth, input);
+  const nodePath = `${lock.targetRef}/status`;
+
+  await assertSensitiveNodeWriteAllowed(db, auth, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    nodePath,
+    sourceFileName: lock.overlayFileName,
+    actorType: "user",
+    requestId: context.requestId,
+  });
+
+  const applied = await applyLockedEnablementWriteback(
+    db,
+    auth,
+    {
+      lock,
+      mergedValue: input.mergedValue,
+      action: input.action ?? "set",
+    },
+    {
+      objectStore,
+      skipSemanticGates: context.skipSemanticGates,
+      toolchain: context.toolchain ?? createDtsToolchainRunner(),
+    },
+  );
+
+  await createWritebackAudit(
+    db,
+    auth,
+    {
+      projectId: input.projectId,
+      parameterDefinitionId: input.logicalNodeId,
+      nodePath,
+      fileId: applied.fileId,
+      fileName: lock.overlayFileName,
+      versionNumber: applied.versionNumber,
+      candidateRevisionId: applied.candidateRevisionId,
+      action: input.action ?? "set",
+    },
+    context,
+  );
+
+  return {
+    skipped: false,
+    fileId: applied.fileId,
+    versionId: applied.fileVersionId,
+    versionNumber: applied.versionNumber,
+    candidateRevisionId: applied.candidateRevisionId,
+  };
 }
 
 export async function writebackMergedParameterValue(

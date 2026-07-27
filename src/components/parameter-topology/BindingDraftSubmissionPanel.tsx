@@ -3,13 +3,13 @@ import type {
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
-import type { BindingDraftResult } from "@/application/ports/ParameterTopologyRepository";
+import type { PendingBindingDraftCore } from "./draftTrayTypes";
 
-export type PendingBindingDraft = BindingDraftResult & { projectId: string; reason: string };
+export type { PendingBindingDraftCore as PendingBindingDraft } from "./draftTrayTypes";
 
 export type BindingDraftSubmissionPanelProps = {
   projectId: string;
-  draft: PendingBindingDraft;
+  draft: PendingBindingDraftCore;
   candidates: WorkflowAssigneeCandidates | null;
   candidatesError?: string | null;
   onSubmit: (
@@ -47,9 +47,9 @@ export function BindingDraftSubmissionPanel({
   const assigneesReady = Boolean(hardwareCommitterId && softwareCommitterId && softwareUserId);
 
   return (
-    <section className="binding-draft-submission" role="region" aria-label="绑定变更提交">
+    <section className="binding-draft-submission" role="region" aria-label="参数修改提交">
       <header>
-        <h3>提交 binding 变更</h3>
+        <h3>提交参数修改</h3>
         <p>
           <code>{draft.writeTarget.propertyKey}</code> · candidate <code>{draft.candidateRevisionId}</code>
         </p>
@@ -130,7 +130,7 @@ export function BindingDraftSubmissionPanel({
           {submitting ? "提交中…" : "提交审核"}
         </button>
         {submitted ? (
-          <button type="button" className="button subtle" onClick={() => onNavigate("/parameter-review")}>查看审核队列</button>
+          <button type="button" className="button subtle" onClick={() => onNavigate("/parameter-review")}>查看变更审阅</button>
         ) : null}
       </div>
     </section>

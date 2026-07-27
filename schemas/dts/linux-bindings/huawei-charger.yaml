@@ -7,8 +7,6 @@ description: WiseEff vendor binding for huawei,charger (generated from vendor pr
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   charge_done_sleep_enabled:
     $ref: /schemas/types.yaml#/definitions/flag
   recharge_para:

@@ -36,6 +36,8 @@ function row(overrides: Partial<DtsParameterWorkbenchRow>): DtsParameterWorkbenc
     effects: [],
     searchText: "gpio_int",
     view: "effective",
+    nodeEnablement: null,
+    nodeEnablementNotice: null,
     ...overrides
   };
 }

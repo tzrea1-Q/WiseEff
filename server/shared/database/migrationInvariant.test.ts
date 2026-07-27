@@ -80,3 +80,51 @@ describe("binding module_id migration invariants", () => {
     expect(migration).toContain("unique nulls not distinct (project_id, logical_node_id, parameter_spec_id, module_id)");
   });
 });
+
+describe("structural spec-review dismiss migration invariants", () => {
+  it("dismisses structural open review tasks and deprecates status specs", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0068_dismiss_structural_spec_reviews.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("systemic:structural-property-not-a-parameter");
+    expect(migration).toContain("'status'");
+    expect(migration).toContain("lifecycle = 'deprecated'");
+    expect(migration).toContain("0068");
+    expect(migration).not.toContain("delete from parameter_spec_review_tasks");
+  });
+});
+
+describe("node enablement draft migration invariants", () => {
+  it("adds edit_subject_kind, logical_node_id, and partial unique indexes", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0069_node_enablement_drafts.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("edit_subject_kind");
+    expect(migration).toContain("node-enablement");
+    expect(migration).toContain("logical_node_id");
+    expect(migration).toContain("alter column project_parameter_binding_id drop not null");
+    expect(migration).toContain("parameter_drafts_binding_user_unique");
+    expect(migration).toContain("parameter_drafts_enablement_user_unique");
+    expect(migration).toContain("parameter_drafts_project_binding_user_key");
+    expect(migration).toContain("parameter_drafts_enablement_subject_check");
+  });
+});
+
+describe("node enablement change request migration invariants", () => {
+  it("mirrors enablement identity onto change requests, submission items, and history", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0070_node_enablement_change_requests.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("parameter_change_requests_edit_subject_kind_check");
+    expect(migration).toContain("parameter_change_requests_enablement_subject_check");
+    expect(migration).toContain("parameter_change_requests_open_enablement_unique");
+    expect(migration).toContain("parameter_submission_items_enablement_subject_check");
+    expect(migration).toContain("alter column project_parameter_binding_id drop not null");
+    expect(migration).toContain("alter table parameter_history_entries");
+    expect(migration).toContain("parameter_history_entries_logical_node_idx");
+    expect(migration).toContain("node-enablement");
+  });
+});

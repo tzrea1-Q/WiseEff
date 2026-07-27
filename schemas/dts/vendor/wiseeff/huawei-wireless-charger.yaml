@@ -6,8 +6,6 @@ version: 1
 schemaNamespace: vendor/huawei,wireless_charger
 compatible:
   - huawei,wireless_charger
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
   pmax:
     valueShape: u32-array
@@ -29,11 +27,6 @@ properties:
     exampleValue: /bits/ 8 <2>
     constraints: {}
     documentation: huawei,wireless_charger 的 DTS 属性「sc err tx」（sc_err_tx），用于驱动读取的设备树配置。
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   trx_plim:
     valueShape: string-list
     exampleValue: "\"5000\", \"5500\", \"1200\", \"-1\", \"2\", \"-1\", \"-1\", \"-1\",\n\t\t\"12000\", \"12000\", \"2300\", \"-1\", \"6|9|10\", \"-1\", \"3\", \"-1\",\n\t\t\"12000\", \"12000\", \"2300\", \"-1\", \"255\", \"-1\", \"3|4\", \"-1\""
