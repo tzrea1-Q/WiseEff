@@ -3236,7 +3236,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     render(<App initialAppState={adminState} />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
-    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
+    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
 
     expect(within(scopeNav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
     expect(
@@ -3256,7 +3256,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     render(<App initialAppState={adminState} />);
 
-    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
+    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
     expect(within(scopeNav).getByRole("button", { name: "组织配置" })).toHaveAttribute("aria-current", "page");
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(within(topbar).getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();
@@ -3286,7 +3286,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       "aria-current",
       "page"
     );
-    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
+    const scopeNav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
     expect(within(scopeNav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
   });
 
