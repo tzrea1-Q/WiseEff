@@ -367,6 +367,7 @@ M5.12 之后，GitHub Actions 也会归档这些自动化验收产物。PR 和 p
 - [ ] 导入/预览入口有校验和 diff 风格反馈。
 - [ ] 用户权限或治理入口可达。
 - [ ] `?audit=open` 可以打开审计抽屉。
+- [ ] 在 **模块归属**（`/parameter-admin/modules`）通过队列预览/确认归类一条 compatible（按范围的 mapping apply）。将 `POST /api/v2/parameter-modules/recompute-bindings` 视为运维回填工具（`dryRun` 仅预览）；日常治理不要用全量重算。
 - [ ] 删除、清理或导入类操作有确认、撤销或恢复反馈。
 
 通过标准：
