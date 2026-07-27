@@ -1,6 +1,8 @@
 import type {
   BindingDraftResult,
   CreateBindingDraftInput,
+  CreateNodeEnablementDraftInput,
+  NodeEnablementDraftResult,
   ParameterTopologyRepository
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
@@ -35,6 +37,7 @@ export type ParameterTopologyRuntimeAction =
   | { type: "TOPOLOGY_MAPPING_RESOLVED"; taskId: string }
   | { type: "TOPOLOGY_VALIDATION_READY"; run: ValidationRun }
   | { type: "TOPOLOGY_DRAFT_READY"; draft: BindingDraftResult }
+  | { type: "TOPOLOGY_ENABLEMENT_DRAFT_READY"; draft: NodeEnablementDraftResult }
   | { type: "TOPOLOGY_ERROR"; error: ParameterTopologyMappedError }
   | { type: "TOPOLOGY_CANCELLED" };
 
@@ -148,6 +151,12 @@ export function createParameterTopologyRuntime({ dispatch, repository }: Options
       return run(
         (api) => api.createBindingDraft(projectId, bindingId, input),
         (draft) => ({ type: "TOPOLOGY_DRAFT_READY", draft })
+      );
+    },
+    createNodeEnablementDraft(projectId: string, input: CreateNodeEnablementDraftInput) {
+      return run(
+        (api) => api.createNodeEnablementDraft(projectId, input),
+        (draft) => ({ type: "TOPOLOGY_ENABLEMENT_DRAFT_READY", draft })
       );
     }
   };

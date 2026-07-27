@@ -253,6 +253,13 @@ export const routeManifest = [
     module: "parameters",
     stability: "mvp"
   },
+  {
+    id: "parameterTopology.createNodeEnablementDraft",
+    method: "POST",
+    path: "/api/v2/projects/:projectId/node-enablement-drafts",
+    module: "parameters",
+    stability: "mvp"
+  },
 
   { id: "logs.uploadFile", method: "POST", path: "/api/v1/log-files", module: "logs", stability: "mvp" },
   { id: "logs.upload", method: "POST", path: "/api/v1/logs", module: "logs", stability: "mvp" },

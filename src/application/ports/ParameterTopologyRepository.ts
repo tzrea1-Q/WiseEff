@@ -59,6 +59,34 @@ export type BindingDraftResult = {
   overlayFileName: string;
 };
 
+export type CreateNodeEnablementDraftInput = {
+  logicalNodeId: string;
+  baseRevisionId: string;
+  target: "force-enabled" | "force-disabled" | "unstated";
+  reason: string;
+  acknowledgeNonstandard?: boolean;
+  spellingOverride?: "ok" | "okay";
+};
+
+export type NodeEnablementDraftResult = {
+  draftId: string;
+  candidateRevisionId: string;
+  workingCandidateRevisionId?: string;
+  rebasedDraftIds?: string[];
+  rawText: string;
+  action: "set" | "delete";
+  logicalNodeId: string;
+  target: "force-enabled" | "force-disabled" | "unstated";
+  previousRaw?: string | null;
+  writeTarget: {
+    role: string;
+    propertyKey: string;
+    targetRef?: string | null;
+  };
+  overlayFileId: string;
+  overlayFileName: string;
+};
+
 export type ActivateParameterSpecInput = {
   valueShape: Record<string, unknown>;
   constraints: Record<string, unknown>;
@@ -106,4 +134,8 @@ export interface ParameterTopologyRepository {
     bindingId: string,
     input: CreateBindingDraftInput
   ): Promise<BindingDraftResult>;
+  createNodeEnablementDraft(
+    projectId: string,
+    input: CreateNodeEnablementDraftInput
+  ): Promise<NodeEnablementDraftResult>;
 }

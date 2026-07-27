@@ -33,8 +33,10 @@ import {
 import { normalizeBindingSchemaState } from "./schemaState";
 import {
   createBindingDraft as createBindingDraftEdit,
+  createNodeEnablementDraft as createNodeEnablementDraftEdit,
   type BindingDraftResult,
-  type CreateBindingDraftDeps
+  type CreateBindingDraftDeps,
+  type NodeEnablementDraftResult
 } from "./editService";
 import { writeGovernanceAudit } from "./governanceAudit";
 import { getProjectById } from "../parameters/repository";
@@ -59,6 +61,7 @@ import {
 } from "./repository";
 import type {
   CreateBindingDraftBody,
+  CreateNodeEnablementDraftBody,
   DtsValueDto,
   ProjectBindingDto,
   ResolveIdentityMappingTaskBody,
@@ -1265,4 +1268,45 @@ export async function createBindingDraft(
     overlayFileId: draft.overlayFileId,
     overlayFileName: draft.overlayFileName
   };
+}
+
+export type CreateNodeEnablementDraftServiceResult = NodeEnablementDraftResult;
+
+/**
+ * Org-isolated node enablement draft API: status writeback via shared tip pipeline.
+ */
+export async function createNodeEnablementDraft(
+  db: Database,
+  auth: AuthContext,
+  input: {
+    projectId: string;
+  } & CreateNodeEnablementDraftBody,
+  deps: CreateBindingDraftDeps = {}
+): Promise<CreateNodeEnablementDraftServiceResult> {
+  requireCanEdit(auth);
+
+  const project = await getProjectById(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId
+  });
+  if (!project) {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, {
+      projectId: input.projectId
+    });
+  }
+
+  return createNodeEnablementDraftEdit(
+    db,
+    auth,
+    {
+      projectId: input.projectId,
+      logicalNodeId: input.logicalNodeId,
+      baseRevisionId: input.baseRevisionId,
+      target: input.target,
+      reason: input.reason,
+      acknowledgeNonstandard: input.acknowledgeNonstandard,
+      spellingOverride: input.spellingOverride
+    },
+    deps
+  );
 }

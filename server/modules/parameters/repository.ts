@@ -50,7 +50,7 @@ import {
 import { resetParameterIdentityCutoverCache } from "./cutoverAwareIdentity";
 import { LEGACY_IDENTITY_SQL } from "./legacyParameterIdentityNames";
 import { deletePreCutoverProjectParameterValues } from "./legacyParameterIdentityAdapter";
-import type { BindingWriteLockFields } from "../parameter-topology/editService";
+import type { BindingWriteLockFields, EnablementWriteLockFields } from "../parameter-topology/editService";
 
 export type ParameterWriteLockRow = {
   base_config_revision_id: string | null;
@@ -158,7 +158,7 @@ export async function getBindingDraftForSubmission(
   >(
     `
     with locked_draft as materialized (
-      select d.*, b.parameter_spec_id, b.logical_node_id
+      select d.*, b.parameter_spec_id, b.logical_node_id as binding_logical_node_id
       from parameter_drafts d
       inner join project_parameter_bindings b
         on b.id = d.project_parameter_binding_id
@@ -202,7 +202,7 @@ export async function getBindingDraftForSubmission(
         on candidate_effect.logical_node_revision_id = candidate_lnr.id
        and candidate_effect.config_revision_id = candidate_lnr.config_revision_id
       inner join locked_draft d
-        on candidate_lnr.logical_node_id = d.logical_node_id
+        on candidate_lnr.logical_node_id = d.binding_logical_node_id
        and candidate_lnr.config_revision_id = d.candidate_config_revision_id
       inner join locked_candidate candidate
         on candidate.id = candidate_lnr.config_revision_id
@@ -283,6 +283,222 @@ export async function getBindingDraftForSubmission(
   };
 }
 
+export type { EnablementWriteLockFields };
+
+export function toEnablementWriteLockFields(
+  row: ParameterWriteLockRow
+): EnablementWriteLockFields | null {
+  if (!row.base_config_revision_id || !row.source_file_version_id || !row.expected_checksum) {
+    return null;
+  }
+  return {
+    baseConfigRevisionId: row.base_config_revision_id,
+    propertyOccurrenceId: row.property_occurrence_id,
+    sourceFileVersionId: row.source_file_version_id,
+    expectedChecksum: row.expected_checksum,
+    occurrenceSpan: row.occurrence_span,
+  };
+}
+
+export type EnablementDraftForSubmission = {
+  id: string;
+  projectId: string;
+  logicalNodeId: string;
+  candidateConfigRevisionId: string | null;
+  candidateStatus: string | null;
+  candidateHasStatusEffect: boolean;
+  candidateValueMatchesDraft: boolean;
+  candidateDeleteTombstone: boolean;
+  candidateActionProven: boolean;
+  targetValue: string;
+  action: ParameterChangeAction;
+  reason: string;
+  writeLock: EnablementWriteLockFields | null;
+  writeLockMatchesRevision: boolean;
+};
+
+/**
+ * Enablement twin of getBindingDraftForSubmission.
+ * Candidate proof comes from `status` occurrence effects on the logical node,
+ * not from binding revisions, and the write lock carries no binding_revision_id.
+ */
+export async function getEnablementDraftForSubmission(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    userId: string;
+    draftId: string;
+  }
+): Promise<EnablementDraftForSubmission | null> {
+  const result = await db.query<
+    ParameterWriteLockRow & {
+      id: string;
+      project_id: string;
+      logical_node_id: string;
+      candidate_config_revision_id: string | null;
+      candidate_status: string | null;
+      candidate_has_status_effect: boolean;
+      candidate_value_matches_draft: boolean;
+      candidate_delete_tombstone: boolean;
+      candidate_action_proven: boolean;
+      write_lock_matches_revision: boolean;
+      target_value: string;
+      action: ParameterChangeAction;
+      reason: string;
+    }
+  >(
+    `
+    with locked_draft as materialized (
+      select d.*, base_lnr.node_locator as base_node_locator
+      from parameter_drafts d
+      inner join dts_logical_nodes ln
+        on ln.id = d.logical_node_id
+       and ln.organization_id = d.organization_id
+       and ln.project_id = d.project_id
+      -- Tip candidates may mint a new logical_node_id for the same locator when
+      -- continuity rematches; prove status by node_locator, not stable id equality.
+      inner join dts_logical_node_revisions base_lnr
+        on base_lnr.logical_node_id = d.logical_node_id
+       and base_lnr.config_revision_id = d.base_config_revision_id
+      where d.organization_id = $1
+        and d.project_id = $2
+        and d.user_id = $3
+        and d.id = $4
+        and d.edit_subject_kind = 'node-enablement'
+      limit 1
+      for update of d
+    ),
+    locked_candidate as materialized (
+      select candidate.id, candidate.status, candidate.config_set_id
+      from dts_config_revisions candidate
+      inner join locked_draft d
+        on candidate.id = d.candidate_config_revision_id
+       and candidate.organization_id = d.organization_id
+       and candidate.project_id = d.project_id
+      inner join dts_config_revisions base_candidate
+        on base_candidate.id = d.base_config_revision_id
+       and base_candidate.organization_id = d.organization_id
+       and base_candidate.project_id = d.project_id
+       and base_candidate.config_set_id = candidate.config_set_id
+      for update of candidate
+    ),
+    locked_status_effects as materialized (
+      select candidate_effect.id, candidate_effect.effect_kind, candidate_occurrence.raw_text
+      from dts_logical_node_revisions candidate_lnr
+      inner join dts_occurrence_effects candidate_effect
+        on candidate_effect.logical_node_revision_id = candidate_lnr.id
+       and candidate_effect.config_revision_id = candidate_lnr.config_revision_id
+       and candidate_effect.property_name = 'status'
+      inner join locked_draft d
+        on candidate_lnr.node_locator = d.base_node_locator
+       and candidate_lnr.config_revision_id = d.candidate_config_revision_id
+      inner join locked_candidate candidate
+        on candidate.id = candidate_lnr.config_revision_id
+      left join dts_property_occurrences candidate_occurrence
+        on candidate_occurrence.id = candidate_effect.property_occurrence_id
+      for update of candidate_lnr, candidate_effect
+    )
+    select
+      d.id,
+      d.project_id,
+      d.logical_node_id,
+      d.candidate_config_revision_id,
+      candidate.status as candidate_status,
+      exists (
+        select 1 from locked_status_effects where effect_kind in ('set', 'override')
+      ) as candidate_has_status_effect,
+      exists (
+        select 1
+        from locked_status_effects
+        where effect_kind in ('set', 'override')
+          and raw_text = d.target_value
+      ) as candidate_value_matches_draft,
+      (
+        not exists (
+          select 1 from locked_status_effects where effect_kind in ('set', 'override')
+        )
+        and exists (select 1 from locked_status_effects where effect_kind = 'delete')
+      ) as candidate_delete_tombstone,
+      case d.action
+        when 'set' then exists (
+          select 1
+          from locked_status_effects
+          where effect_kind in ('set', 'override')
+            and raw_text = d.target_value
+        )
+        when 'delete' then (
+          not exists (
+            select 1 from locked_status_effects where effect_kind in ('set', 'override')
+          )
+          and exists (select 1 from locked_status_effects where effect_kind = 'delete')
+        )
+        else false
+      end as candidate_action_proven,
+      exists (
+        select 1
+        from dts_config_revision_members locked_member
+        inner join dts_config_revisions base_revision
+          on base_revision.id = locked_member.config_revision_id
+         and base_revision.organization_id = d.organization_id
+         and base_revision.project_id = d.project_id
+        where locked_member.config_revision_id = d.base_config_revision_id
+          and locked_member.file_version_id = d.source_file_version_id
+      ) as write_lock_matches_revision,
+      d.target_value,
+      d.action,
+      d.reason,
+      d.base_config_revision_id,
+      d.binding_revision_id,
+      d.property_occurrence_id,
+      d.source_file_version_id,
+      d.expected_checksum,
+      d.occurrence_span
+    from locked_draft d
+    left join locked_candidate candidate on candidate.id = d.candidate_config_revision_id
+    `,
+    [input.organizationId, input.projectId, input.userId, input.draftId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    logicalNodeId: row.logical_node_id,
+    candidateConfigRevisionId: row.candidate_config_revision_id,
+    candidateStatus: row.candidate_status,
+    candidateHasStatusEffect: row.candidate_has_status_effect,
+    candidateValueMatchesDraft: row.candidate_value_matches_draft,
+    candidateDeleteTombstone: row.candidate_delete_tombstone,
+    candidateActionProven: row.candidate_action_proven,
+    targetValue: row.target_value,
+    action: row.action,
+    reason: row.reason,
+    writeLock: toEnablementWriteLockFields(row),
+    writeLockMatchesRevision: row.write_lock_matches_revision
+  };
+}
+
+export async function findOpenEnablementChangeRequest(
+  db: Queryable,
+  query: { organizationId: string; projectId: string; logicalNodeId: string }
+): Promise<{ id: string; status: ParameterChangeRequestStatus } | null> {
+  const result = await db.query<{ id: string; status: ParameterChangeRequestStatus }>(
+    `
+    select id, status
+    from parameter_change_requests
+    where organization_id = $1
+      and project_id = $2
+      and logical_node_id = $3
+      and edit_subject_kind = 'node-enablement'
+      and status not in ('merged', 'rejected', 'withdrawn')
+    limit 1
+    `,
+    [query.organizationId, query.projectId, query.logicalNodeId]
+  );
+  return result.rows[0] ?? null;
+}
+
 export async function promoteBindingDraftCandidateForReview(
   db: Queryable,
   input: {
@@ -333,12 +549,38 @@ export async function getChangeRequestWriteLock(
     from parameter_change_requests
     where organization_id = $1
       and id = $2
+      and edit_subject_kind = 'binding'
     limit 1
     `,
     [input.organizationId, input.requestId]
   );
   const row = result.rows[0];
   return row ? toWriteLockFields(row) : null;
+}
+
+export async function getChangeRequestEnablementWriteLock(
+  db: Queryable,
+  input: { organizationId: string; requestId: string }
+): Promise<EnablementWriteLockFields | null> {
+  const result = await db.query<ParameterWriteLockRow>(
+    `
+    select
+      base_config_revision_id,
+      binding_revision_id,
+      property_occurrence_id,
+      source_file_version_id,
+      expected_checksum,
+      occurrence_span
+    from parameter_change_requests
+    where organization_id = $1
+      and id = $2
+      and edit_subject_kind = 'node-enablement'
+    limit 1
+    `,
+    [input.organizationId, input.requestId]
+  );
+  const row = result.rows[0];
+  return row ? toEnablementWriteLockFields(row) : null;
 }
 
 export { resetParameterIdentityCutoverCache };
@@ -562,6 +804,8 @@ type ChangeRequestRow = {
   project_id: string;
   project_parameter_value_id: string;
   parameter_definition_id?: string;
+  edit_subject_kind?: string | null;
+  logical_node_id?: string | null;
   base_version?: number | string;
   module: string;
   module_description?: string | null;
@@ -694,6 +938,7 @@ export type ChangeRequestMergeResult = {
   parameterSpecId?: string;
   projectParameterBindingId?: string;
   candidateConfigRevisionId?: string;
+  logicalNodeId?: string;
 };
 
 type ChangeRequestMergeRow = {
@@ -708,6 +953,7 @@ type ChangeRequestMergeRow = {
   parameter_spec_id?: string | null;
   project_parameter_binding_id?: string | null;
   candidate_config_revision_id?: string | null;
+  logical_node_id?: string | null;
 };
 
 type SubmissionItemRow = {
@@ -1070,6 +1316,12 @@ async function toChangeRequestDto(db: Queryable, row: ChangeRequestRow): Promise
     id: row.id,
     submissionRoundId: row.submission_round_id ?? undefined,
     projectId: row.project_id,
+    ...(row.edit_subject_kind === "node-enablement"
+      ? { editSubjectKind: "node-enablement" as const }
+      : row.edit_subject_kind === "binding"
+        ? { editSubjectKind: "binding" as const }
+        : {}),
+    ...(row.logical_node_id ? { logicalNodeId: row.logical_node_id } : {}),
     parameterId: row.project_parameter_value_id,
     baseVersion: row.base_version === undefined ? undefined : Number(row.base_version),
     module: row.module,
@@ -1141,7 +1393,8 @@ function toChangeRequestMergeResult(row: ChangeRequestMergeRow): ChangeRequestMe
       : {}),
     ...(row.candidate_config_revision_id
       ? { candidateConfigRevisionId: row.candidate_config_revision_id }
-      : {})
+      : {}),
+    ...(row.logical_node_id ? { logicalNodeId: row.logical_node_id } : {})
   };
 }
 
@@ -1911,6 +2164,8 @@ export async function listOpenBindingDraftsForUser(
     id: string;
     candidateConfigRevisionId: string | null;
     projectParameterBindingId: string | null;
+    editSubjectKind: "binding" | "node-enablement";
+    logicalNodeId: string | null;
     updatedAt: string;
   }>
 > {
@@ -1918,15 +2173,17 @@ export async function listOpenBindingDraftsForUser(
     id: string;
     candidate_config_revision_id: string | null;
     project_parameter_binding_id: string | null;
+    edit_subject_kind: string;
+    logical_node_id: string | null;
     updated_at: Date | string;
   }>(
     `
-    select id, candidate_config_revision_id, project_parameter_binding_id, updated_at
+    select id, candidate_config_revision_id, project_parameter_binding_id,
+           edit_subject_kind, logical_node_id, updated_at
     from parameter_drafts
     where organization_id = $1
       and project_id = $2
       and user_id = $3
-      and project_parameter_binding_id is not null
     order by updated_at desc, id asc
     `,
     [input.organizationId, input.projectId, input.userId],
@@ -1935,6 +2192,9 @@ export async function listOpenBindingDraftsForUser(
     id: row.id,
     candidateConfigRevisionId: row.candidate_config_revision_id,
     projectParameterBindingId: row.project_parameter_binding_id,
+    editSubjectKind:
+      row.edit_subject_kind === "node-enablement" ? "node-enablement" : "binding",
+    logicalNodeId: row.logical_node_id,
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : row.updated_at.toISOString(),
   }));
 }
@@ -1957,7 +2217,6 @@ export async function rebaseOpenBindingDraftCandidates(
     where organization_id = $1
       and project_id = $2
       and user_id = $3
-      and project_parameter_binding_id is not null
       and candidate_config_revision_id is distinct from $4
       and ($5::text is null or id <> $5)
     returning id
@@ -1971,6 +2230,158 @@ export async function rebaseOpenBindingDraftCandidates(
     ],
   );
   return result.rows.map((row) => row.id);
+}
+
+/**
+ * Upsert an open node-enablement draft for (project, logical node, user).
+ * Uses select-then-update/insert so binding drafts' partial unique index is untouched.
+ */
+export async function upsertEnablementDraft(
+  db: Queryable,
+  input: {
+    id: string;
+    organizationId: string;
+    projectId: string;
+    logicalNodeId: string;
+    userId: string;
+    targetValue: string;
+    action?: ParameterChangeAction;
+    reason: string;
+    origin?: "manual" | "file_sync";
+    originFileVersionId?: string;
+    writeLock?: {
+      baseConfigRevisionId?: string;
+      propertyOccurrenceId?: string | null;
+      sourceFileVersionId?: string;
+      expectedChecksum?: string;
+      occurrenceSpan?: { start: number; end: number } | null;
+    };
+    candidateConfigRevisionId?: string;
+  },
+): Promise<{ id: string; projectId: string; targetValue: string; action: ParameterChangeAction; reason: string; updatedAt: string }> {
+  const existing = await db.query<{ id: string }>(
+    `
+    select id
+    from parameter_drafts
+    where project_id = $1
+      and user_id = $2
+      and logical_node_id = $3
+      and edit_subject_kind = 'node-enablement'
+    limit 1
+    `,
+    [input.projectId, input.userId, input.logicalNodeId],
+  );
+
+  const draftId = existing.rows[0]?.id ?? input.id;
+  const occurrenceSpanJson = input.writeLock?.occurrenceSpan
+    ? JSON.stringify(input.writeLock.occurrenceSpan)
+    : null;
+
+  if (existing.rows[0]) {
+    const updated = await db.query<{
+      id: string;
+      project_id: string;
+      target_value: string;
+      action: ParameterChangeAction;
+      reason: string;
+      updated_at: Date | string;
+    }>(
+      `
+      update parameter_drafts
+      set target_value = $2,
+          reason = $3,
+          origin = $4,
+          origin_file_version_id = $5,
+          action = $6,
+          project_parameter_binding_id = null,
+          base_config_revision_id = coalesce($7, base_config_revision_id),
+          binding_revision_id = null,
+          property_occurrence_id = coalesce($8, property_occurrence_id),
+          source_file_version_id = coalesce($9, source_file_version_id),
+          expected_checksum = coalesce($10, expected_checksum),
+          occurrence_span = coalesce($11::jsonb, occurrence_span),
+          candidate_config_revision_id = coalesce($12, candidate_config_revision_id),
+          updated_at = now()
+      where id = $1
+      returning id, project_id, target_value, action, reason, updated_at
+      `,
+      [
+        draftId,
+        input.targetValue,
+        input.reason,
+        input.origin ?? "manual",
+        input.originFileVersionId ?? null,
+        input.action ?? "set",
+        input.writeLock?.baseConfigRevisionId ?? null,
+        input.writeLock?.propertyOccurrenceId ?? null,
+        input.writeLock?.sourceFileVersionId ?? null,
+        input.writeLock?.expectedChecksum ?? null,
+        occurrenceSpanJson,
+        input.candidateConfigRevisionId ?? null,
+      ],
+    );
+    const row = updated.rows[0]!;
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      targetValue: row.target_value,
+      action: row.action,
+      reason: row.reason,
+      updatedAt: typeof row.updated_at === "string" ? row.updated_at : row.updated_at.toISOString(),
+    };
+  }
+
+  const inserted = await db.query<{
+    id: string;
+    project_id: string;
+    target_value: string;
+    action: ParameterChangeAction;
+    reason: string;
+    updated_at: Date | string;
+  }>(
+    `
+    insert into parameter_drafts (
+      id, organization_id, project_id, user_id,
+      target_value, reason, origin, origin_file_version_id,
+      action, edit_subject_kind, logical_node_id, project_parameter_binding_id,
+      base_config_revision_id, binding_revision_id, property_occurrence_id,
+      source_file_version_id, expected_checksum, occurrence_span,
+      candidate_config_revision_id
+    )
+    values (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, 'node-enablement', $10, null,
+      $11, null, $12, $13, $14, $15::jsonb, $16
+    )
+    returning id, project_id, target_value, action, reason, updated_at
+    `,
+    [
+      draftId,
+      input.organizationId,
+      input.projectId,
+      input.userId,
+      input.targetValue,
+      input.reason,
+      input.origin ?? "manual",
+      input.originFileVersionId ?? null,
+      input.action ?? "set",
+      input.logicalNodeId,
+      input.writeLock?.baseConfigRevisionId ?? null,
+      input.writeLock?.propertyOccurrenceId ?? null,
+      input.writeLock?.sourceFileVersionId ?? null,
+      input.writeLock?.expectedChecksum ?? null,
+      occurrenceSpanJson,
+      input.candidateConfigRevisionId ?? null,
+    ],
+  );
+  const row = inserted.rows[0]!;
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    targetValue: row.target_value,
+    action: row.action,
+    reason: row.reason,
+    updatedAt: typeof row.updated_at === "string" ? row.updated_at : row.updated_at.toISOString(),
+  };
 }
 
 export async function upsertDraft(
@@ -2498,6 +2909,110 @@ export async function createChangeRequest(
   return toChangeRequestDto(db, result.rows[0]);
 }
 
+export async function createEnablementChangeRequest(
+  db: Queryable,
+  input: {
+    id: string;
+    organizationId: string;
+    submissionRoundId: string;
+    projectId: string;
+    logicalNodeId: string;
+    baseVersion: number;
+    currentValue: string;
+    targetValue: string;
+    action?: ParameterChangeAction;
+    status: ParameterChangeRequestStatus;
+    submitterUserId: string;
+    assignedToUserId?: string;
+    workflowAssignees?: Partial<ParameterWorkflowAssigneesDto>;
+    candidateConfigRevisionId?: string;
+    writeLock?: EnablementWriteLockFields;
+  }
+) {
+  const result = await db.query<ChangeRequestRow>(
+    `
+    with inserted as (
+      insert into parameter_change_requests (
+        id, organization_id, submission_round_id, project_id,
+        base_version, current_value, target_value, status, submitter_user_id,
+        assigned_to_user_id, workflow_hardware_committer_user_id, workflow_software_committer_user_id,
+        workflow_software_user_id, parameter_spec_id, project_parameter_binding_id,
+        candidate_config_revision_id,
+        base_config_revision_id, binding_revision_id, property_occurrence_id,
+        source_file_version_id, expected_checksum, occurrence_span, action,
+        edit_subject_kind, logical_node_id
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, null, null, $14, $15, null, $16, $17, $18, $19::jsonb, $20, 'node-enablement', $21)
+      returning *
+    )
+    select
+      inserted.id,
+      inserted.submission_round_id,
+      inserted.project_id,
+      coalesce(inserted.logical_node_id, '') as project_parameter_value_id,
+      coalesce(
+        nullif(trim(both '/' from split_part(lnr.node_locator, '/', 2)), ''),
+        nullif(trim(lnr.name), ''),
+        '节点启用'
+      ) as module,
+      coalesce(nullif(trim(lnr.name), ''), 'status') as title,
+      inserted.current_value,
+      inserted.target_value,
+      inserted.action,
+      inserted.candidate_config_revision_id,
+      inserted.edit_subject_kind,
+      inserted.logical_node_id,
+      users.name as submitter,
+      inserted.status,
+      'Low' as risk,
+      'legacy-text' as value_kind,
+      'DTS' as config_format,
+      inserted.created_at,
+      inserted.updated_at,
+      inserted.assigned_to_user_id,
+      inserted.workflow_hardware_committer_user_id,
+      inserted.workflow_software_committer_user_id,
+      inserted.workflow_software_user_id,
+      assignee.name as assigned_to,
+      inserted.reviewer_note,
+      inserted.reject_reason,
+      inserted.fast_track,
+      null::text as source_file_name,
+      null::text as source_node_path
+    from inserted
+    left join dts_logical_node_revisions lnr
+      on lnr.logical_node_id = inserted.logical_node_id
+     and lnr.config_revision_id = inserted.base_config_revision_id
+    inner join users on users.id = inserted.submitter_user_id
+    left join users assignee on assignee.id = inserted.assigned_to_user_id
+    `,
+    [
+      input.id,
+      input.organizationId,
+      input.submissionRoundId,
+      input.projectId,
+      input.baseVersion,
+      input.currentValue,
+      input.targetValue,
+      input.status,
+      input.submitterUserId,
+      input.assignedToUserId ?? null,
+      input.workflowAssignees?.hardwareCommitterId ?? null,
+      input.workflowAssignees?.softwareCommitterId ?? null,
+      input.workflowAssignees?.softwareUserId ?? null,
+      input.candidateConfigRevisionId ?? null,
+      input.writeLock?.baseConfigRevisionId ?? null,
+      input.writeLock?.propertyOccurrenceId ?? null,
+      input.writeLock?.sourceFileVersionId ?? null,
+      input.writeLock?.expectedChecksum ?? null,
+      input.writeLock?.occurrenceSpan ? JSON.stringify(input.writeLock.occurrenceSpan) : null,
+      input.action ?? "set",
+      input.logicalNodeId
+    ]
+  );
+  return toChangeRequestDto(db, result.rows[0]);
+}
+
 export async function hasEligibleWorkflowAssignee(
   db: Queryable,
   input: {
@@ -2672,6 +3187,64 @@ export async function createSubmissionItem(
     ]
   );
 
+  return toSubmissionItemDto(result.rows[0]);
+}
+
+export async function createEnablementSubmissionItem(
+  db: Queryable,
+  input: {
+    id: string;
+    organizationId: string;
+    submissionRoundId: string;
+    changeRequestId: string;
+    logicalNodeId: string;
+    currentValue: string;
+    targetValue: string;
+    action?: ParameterChangeAction;
+    reason: string;
+    candidateConfigRevisionId?: string;
+  }
+) {
+  const result = await db.query<SubmissionItemRow>(
+    `
+    with inserted as (
+      insert into parameter_submission_items (
+        id, organization_id, submission_round_id, change_request_id,
+        current_value, target_value, reason, project_parameter_binding_id,
+        candidate_config_revision_id, action, edit_subject_kind, logical_node_id
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, null, $8, $9, 'node-enablement', $10)
+      returning *
+    )
+    select
+      inserted.change_request_id,
+      coalesce(inserted.logical_node_id, '') as project_parameter_value_id,
+      'status' as name,
+      '节点启用' as module,
+      inserted.current_value,
+      inserted.target_value,
+      inserted.action,
+      inserted.candidate_config_revision_id,
+      '' as unit,
+      'Low' as risk,
+      'legacy-text' as value_kind,
+      'DTS' as config_format,
+      inserted.reason
+    from inserted
+    `,
+    [
+      input.id,
+      input.organizationId,
+      input.submissionRoundId,
+      input.changeRequestId,
+      input.currentValue,
+      input.targetValue,
+      input.reason,
+      input.candidateConfigRevisionId ?? null,
+      input.action ?? "set",
+      input.logicalNodeId
+    ]
+  );
   return toSubmissionItemDto(result.rows[0]);
 }
 
@@ -3076,13 +3649,31 @@ export async function getChangeRequestById(
         pcr.id,
         pcr.submission_round_id,
         pcr.project_id,
-        coalesce(pcr.project_parameter_binding_id, '') as project_parameter_value_id,
+        coalesce(pcr.project_parameter_binding_id, pcr.logical_node_id, '') as project_parameter_value_id,
         null::text as parameter_definition_id,
+        pcr.edit_subject_kind,
+        pcr.logical_node_id,
         pcr.base_version,
-        ${CR_MODULE_NAME_SEMANTIC_SQL},
-        ${CR_MODULE_DESCRIPTION_FROM_BINDING_SQL},
-        ${CR_PARAMETER_DESCRIPTION_SEMANTIC_SQL},
-        coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key) as title,
+        case
+          when pcr.edit_subject_kind = 'node-enablement' then coalesce(
+            nullif(trim(both '/' from split_part(lnr.node_locator, '/', 2)), ''),
+            nullif(trim(lnr.name), ''),
+            '节点启用'
+          )
+          else ${CR_MODULE_NAME_SEMANTIC_SQL}
+        end as module,
+        case
+          when pcr.edit_subject_kind = 'node-enablement' then ${CR_MODULE_DESCRIPTION_FROM_BINDING_SQL}
+          else ${CR_MODULE_DESCRIPTION_FROM_BINDING_SQL}
+        end as module_description,
+        case
+          when pcr.edit_subject_kind = 'node-enablement' then null::text
+          else ${CR_PARAMETER_DESCRIPTION_SEMANTIC_SQL}
+        end as parameter_description,
+        case
+          when pcr.edit_subject_kind = 'node-enablement' then coalesce(nullif(trim(lnr.name), ''), 'status')
+          else coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), ps.specification_key)
+        end as title,
         pcr.current_value,
         pcr.target_value,
         pcr.action,
@@ -3108,6 +3699,9 @@ export async function getChangeRequestById(
       from parameter_change_requests pcr
       left join parameter_specs ps on ps.id = pcr.parameter_spec_id
       left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      left join dts_logical_node_revisions lnr
+        on lnr.logical_node_id = pcr.logical_node_id
+       and lnr.config_revision_id = pcr.base_config_revision_id
       left join lateral (
         select psv.*
         from parameter_spec_versions psv
@@ -3425,6 +4019,181 @@ export async function updateChangeRequestStatus(
   return result.rows[0] ? toChangeRequestDto(db, result.rows[0]) : null;
 }
 
+async function mergeEnablementChangeRequest(
+  db: Queryable,
+  input: {
+    historyId: string;
+    organizationId: string;
+    requestId: string;
+    expectedVersion?: number;
+    actorUserId: string;
+  }
+) {
+  const result = await db.query<ChangeRequestMergeRow>(
+    `
+    with request_to_merge as (
+      select
+        id,
+        organization_id,
+        project_id,
+        logical_node_id,
+        candidate_config_revision_id,
+        base_config_revision_id,
+        property_occurrence_id,
+        source_file_version_id,
+        expected_checksum,
+        occurrence_span,
+        base_version,
+        target_value,
+        action
+      from parameter_change_requests
+      where organization_id = $1
+        and id = $2
+        and status = 'software_merge'
+        and edit_subject_kind = 'node-enablement'
+        and logical_node_id is not null
+        and project_parameter_binding_id is null
+      for update
+    ),
+    candidate_lock as materialized (
+      select
+        request_to_merge.*,
+        base_lnr.node_locator as base_node_locator
+      from request_to_merge
+      inner join dts_config_revisions base_candidate
+        on base_candidate.id = request_to_merge.base_config_revision_id
+       and base_candidate.organization_id = request_to_merge.organization_id
+       and base_candidate.project_id = request_to_merge.project_id
+      inner join dts_config_revisions candidate
+        on candidate.id = request_to_merge.candidate_config_revision_id
+       and candidate.organization_id = request_to_merge.organization_id
+       and candidate.project_id = request_to_merge.project_id
+       and candidate.config_set_id = base_candidate.config_set_id
+       and candidate.status = 'pending_approval'
+      inner join dts_logical_node_revisions base_lnr
+        on base_lnr.logical_node_id = request_to_merge.logical_node_id
+       and base_lnr.config_revision_id = request_to_merge.base_config_revision_id
+      for update of candidate
+    ),
+    locked_status_effects as materialized (
+      select candidate_effect.id, candidate_effect.effect_kind, candidate_occurrence.raw_text
+      from dts_logical_node_revisions candidate_lnr
+      inner join dts_occurrence_effects candidate_effect
+        on candidate_effect.logical_node_revision_id = candidate_lnr.id
+       and candidate_effect.config_revision_id = candidate_lnr.config_revision_id
+       and candidate_effect.property_name = 'status'
+      inner join candidate_lock
+        on candidate_lnr.node_locator = candidate_lock.base_node_locator
+       and candidate_lnr.config_revision_id = candidate_lock.candidate_config_revision_id
+      left join dts_property_occurrences candidate_occurrence
+        on candidate_occurrence.id = candidate_effect.property_occurrence_id
+      for update of candidate_lnr, candidate_effect
+    ),
+    locked_set_proof as materialized (
+      select locked_status_effects.id
+      from candidate_lock
+      inner join locked_status_effects
+        on locked_status_effects.effect_kind in ('set', 'override')
+       and locked_status_effects.raw_text = candidate_lock.target_value
+      where candidate_lock.action = 'set'
+      for update of locked_status_effects
+    ),
+    locked_delete_proof as materialized (
+      select locked_status_effects.id
+      from candidate_lock
+      inner join locked_status_effects
+        on locked_status_effects.effect_kind = 'delete'
+      where candidate_lock.action = 'delete'
+        and not exists (
+          select 1
+          from locked_status_effects active
+          where active.effect_kind in ('set', 'override')
+        )
+      for update of locked_status_effects
+    ),
+    locked_request as (
+      select candidate_lock.*
+      from candidate_lock
+      where candidate_lock.base_config_revision_id is not null
+        and candidate_lock.source_file_version_id is not null
+        and candidate_lock.expected_checksum is not null
+        and (
+          (candidate_lock.action = 'set' and exists (select 1 from locked_set_proof))
+          or (candidate_lock.action = 'delete' and exists (select 1 from locked_delete_proof))
+        )
+    ),
+    file_lock as (
+      select locked_request.*
+      from locked_request
+      inner join project_parameter_file_versions pfv
+        on pfv.id = locked_request.source_file_version_id
+       and pfv.checksum = locked_request.expected_checksum
+    ),
+    occurrence_lock as (
+      select file_lock.*
+      from file_lock
+      where file_lock.property_occurrence_id is null
+         or exists (
+           select 1
+           from dts_property_occurrences po
+           where po.id = file_lock.property_occurrence_id
+             and po.file_version_id = file_lock.source_file_version_id
+             and (
+               file_lock.occurrence_span is null
+               or (
+                 po.start_offset = (file_lock.occurrence_span->>'start')::int
+                 and po.end_offset = (file_lock.occurrence_span->>'end')::int
+               )
+             )
+         )
+    ),
+    inserted_history as (
+      insert into parameter_history_entries (
+        id, organization_id, project_id,
+        version, value, changed_by_user_id, request_id,
+        logical_node_id
+      )
+      select
+        $3,
+        $1,
+        occurrence_lock.project_id,
+        coalesce($4, occurrence_lock.base_version) + 1,
+        occurrence_lock.target_value,
+        $5,
+        occurrence_lock.id,
+        occurrence_lock.logical_node_id
+      from occurrence_lock
+      returning id
+    )
+    select
+      occurrence_lock.id,
+      occurrence_lock.logical_node_id as project_parameter_value_id,
+      null::text as parameter_definition_id,
+      null::text as parameter_spec_id,
+      null::text as project_parameter_binding_id,
+      occurrence_lock.candidate_config_revision_id,
+      occurrence_lock.project_id,
+      occurrence_lock.target_value,
+      occurrence_lock.action,
+      occurrence_lock.base_version,
+      coalesce($4, occurrence_lock.base_version) + 1 as new_version,
+      occurrence_lock.logical_node_id
+    from occurrence_lock
+    inner join inserted_history on true
+    `,
+    [
+      input.organizationId,
+      input.requestId,
+      input.historyId,
+      input.expectedVersion ?? null,
+      input.actorUserId
+    ]
+  );
+  const merged = result.rows[0];
+  if (!merged) return null;
+  return toChangeRequestMergeResult(merged);
+}
+
 export async function mergeChangeRequest(
   db: Queryable,
   input: {
@@ -3436,6 +4205,19 @@ export async function mergeChangeRequest(
   }
 ) {
   if (await mustUseSemanticParameterIdentity(db)) {
+    const subject = await db.query<{ edit_subject_kind: string }>(
+      `
+      select edit_subject_kind
+      from parameter_change_requests
+      where organization_id = $1 and id = $2
+      limit 1
+      `,
+      [input.organizationId, input.requestId]
+    );
+    if (subject.rows[0]?.edit_subject_kind === "node-enablement") {
+      return mergeEnablementChangeRequest(db, input);
+    }
+
     const result = await db.query<ChangeRequestMergeRow>(
       `
       with request_to_merge as (
@@ -3459,6 +4241,7 @@ export async function mergeChangeRequest(
         where organization_id = $1
           and id = $2
           and status = 'software_merge'
+          and edit_subject_kind = 'binding'
           and project_parameter_binding_id is not null
         for update
       ),

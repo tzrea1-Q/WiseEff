@@ -3,13 +3,13 @@ import type {
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
-import type { BindingDraftResult } from "@/application/ports/ParameterTopologyRepository";
+import type { PendingBindingDraftCore } from "./draftTrayTypes";
 
-export type PendingBindingDraft = BindingDraftResult & { projectId: string; reason: string };
+export type { PendingBindingDraftCore as PendingBindingDraft } from "./draftTrayTypes";
 
 export type BindingDraftSubmissionPanelProps = {
   projectId: string;
-  draft: PendingBindingDraft;
+  draft: PendingBindingDraftCore;
   candidates: WorkflowAssigneeCandidates | null;
   candidatesError?: string | null;
   onSubmit: (

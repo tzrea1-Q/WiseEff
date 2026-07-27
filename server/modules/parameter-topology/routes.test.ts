@@ -23,7 +23,8 @@ vi.mock("./service", () => ({
   listIdentityMappingTasks: vi.fn(),
   resolveIdentityMappingTask: vi.fn(),
   validateConfigRevision: vi.fn(),
-  createBindingDraft: vi.fn()
+  createBindingDraft: vi.fn(),
+  createNodeEnablementDraft: vi.fn()
 }));
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
@@ -455,6 +456,57 @@ describe("parameter semantic v2 routes", () => {
         bindingId: "binding-1",
         baseRevisionId: "rev-1",
         reason: "Raise limit"
+      }),
+      expect.objectContaining({ objectStore: undefined })
+    );
+  });
+
+  it("POST /api/v2/projects/:projectId/node-enablement-drafts creates enablement draft for editors", async () => {
+    vi.mocked(topologyService.createNodeEnablementDraft).mockResolvedValue({
+      draftId: "draft-en-1",
+      candidateRevisionId: "rev-candidate",
+      workingCandidateRevisionId: "rev-candidate",
+      rebasedDraftIds: [],
+      rawText: '"disabled"',
+      action: "set",
+      logicalNodeId: "node-1",
+      target: "force-disabled",
+      previousRaw: null,
+      writeTarget: { role: "overlay", propertyKey: "status", targetRef: "charging_core" },
+      overlayFileId: "file-overlay",
+      overlayFileName: "overlay.dts"
+    });
+
+    const response = await requestJson(
+      makeServer({ db: makeDb(), auth: makeEditorAuth() }),
+      "/api/v2/projects/project-1/node-enablement-drafts",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          logicalNodeId: "node-1",
+          baseRevisionId: "rev-1",
+          target: "force-disabled",
+          reason: "Board power rail offline"
+        })
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body?.item).toMatchObject({
+      draftId: "draft-en-1",
+      logicalNodeId: "node-1",
+      rawText: '"disabled"',
+      target: "force-disabled"
+    });
+    expect(topologyService.createNodeEnablementDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ permissions: expect.arrayContaining(["parameter:edit"]) }),
+      expect.objectContaining({
+        projectId: "project-1",
+        logicalNodeId: "node-1",
+        baseRevisionId: "rev-1",
+        target: "force-disabled",
+        reason: "Board power rail offline"
       }),
       expect.objectContaining({ objectStore: undefined })
     );

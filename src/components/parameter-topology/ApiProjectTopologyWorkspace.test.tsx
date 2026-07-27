@@ -82,6 +82,18 @@ function createRepository(
       overlayFileId: "file-overlay",
       overlayFileName: "overlay.dts"
     }),
+    createNodeEnablementDraft: vi.fn().mockResolvedValue({
+      draftId: "draft-enable-1",
+      candidateRevisionId: "rev-candidate-2",
+      rawText: '"disabled"',
+      action: "set",
+      logicalNodeId: "logical-sc8562",
+      target: "force-disabled",
+      writeTarget: { role: "overlay", propertyKey: "status", targetRef: "sc8562@6E" },
+      overlayFileId: "file-overlay",
+      overlayFileName: "overlay.dts",
+      previousRaw: '"okay"'
+    }),
     ...overrides
   };
 }

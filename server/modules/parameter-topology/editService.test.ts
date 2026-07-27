@@ -11,6 +11,7 @@ import { createOrReuseBinding, upsertBindingRevisionValues } from "./bindingServ
 import {
   applyLockedOverlayWriteback,
   createBindingDraft,
+  createNodeEnablementDraft,
   resolveBindingWriteLock,
   unchangedSourceBytes,
 } from "./editService";
@@ -2146,5 +2147,169 @@ describe.skipIf(!databaseAvailable)("applyLockedOverlayWriteback", () => {
       schema_state: "valid",
       policy_state: "not_applicable",
     });
+  });
+});
+
+describe.skipIf(!databaseAvailable)("createNodeEnablementDraft", () => {
+  let db: InMemoryTestDatabase | undefined;
+  let auth: AuthContext;
+
+  beforeEach(async () => {
+    db = await createInMemoryTestDatabase();
+    await seedGraph(db);
+    auth = makeAuth();
+  });
+
+  afterEach(async () => {
+    await db?.rollback();
+    db = undefined;
+  });
+
+  it("creates an enablement draft and shares the working tip with a binding draft", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth);
+
+    const logical = await db!.query<{ logical_node_id: string }>(
+      `
+      select logical_node_id
+      from dts_logical_node_revisions
+      where config_revision_id = $1 and node_locator like '%charging_core%'
+      limit 1
+      `,
+      [fixture.revision.id],
+    );
+    const logicalNodeId = logical.rows[0]?.logical_node_id;
+    expect(logicalNodeId).toBeTruthy();
+
+    const enablement = await createNodeEnablementDraft(
+      db!,
+      auth,
+      {
+        projectId: PROJECT_ID,
+        logicalNodeId: logicalNodeId!,
+        baseRevisionId: fixture.revision.id,
+        target: "force-disabled",
+        reason: "Disable charging_core for board bring-up",
+      },
+      { toolchain: passToolchain },
+    );
+
+    expect(enablement.logicalNodeId).toBe(logicalNodeId);
+    expect(enablement.action).toBe("set");
+    expect(enablement.rawText).toBe('"disabled"');
+    expect(enablement.target).toBe("force-disabled");
+    expect(enablement.candidateRevisionId).toBeTruthy();
+
+    const storedEnablement = await db!.query<{
+      edit_subject_kind: string;
+      logical_node_id: string | null;
+      project_parameter_binding_id: string | null;
+      candidate_config_revision_id: string | null;
+      target_value: string;
+    }>(
+      `select edit_subject_kind, logical_node_id, project_parameter_binding_id,
+              candidate_config_revision_id, target_value
+       from parameter_drafts where id = $1`,
+      [enablement.draftId],
+    );
+    expect(storedEnablement.rows[0]).toMatchObject({
+      edit_subject_kind: "node-enablement",
+      logical_node_id: logicalNodeId,
+      project_parameter_binding_id: null,
+      candidate_config_revision_id: enablement.candidateRevisionId,
+      target_value: '"disabled"',
+    });
+
+    const binding = await createBindingDraft(
+      db!,
+      auth,
+      {
+        bindingId: fixture.binding.id,
+        baseRevisionId: enablement.candidateRevisionId,
+        targetValue: {
+          kind: "cells",
+          bits: 32,
+          groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+        },
+        reason: "Tune after disable",
+      },
+      { toolchain: passToolchain },
+    );
+
+    expect(binding.workingCandidateRevisionId).toBe(binding.candidateRevisionId);
+    expect(binding.rebasedDraftIds).toEqual(expect.arrayContaining([enablement.draftId]));
+
+    const tips = await db!.query<{ id: string; candidate_config_revision_id: string | null }>(
+      `select id, candidate_config_revision_id from parameter_drafts
+       where organization_id = $1 and project_id = $2 and user_id = $3
+       order by id`,
+      [ORG_ID, PROJECT_ID, USER_ID],
+    );
+    expect(tips.rows).toHaveLength(2);
+    expect(new Set(tips.rows.map((row) => row.candidate_config_revision_id)).size).toBe(1);
+    expect(tips.rows[0]!.candidate_config_revision_id).toBe(binding.candidateRevisionId);
+
+    const { getEnablementDraftForSubmission, getBindingDraftForSubmission } = await import(
+      "../parameters/repository"
+    );
+    const forSubmit = await getEnablementDraftForSubmission(db!, {
+      organizationId: ORG_ID,
+      projectId: PROJECT_ID,
+      userId: USER_ID,
+      draftId: enablement.draftId,
+    });
+    expect(forSubmit).not.toBeNull();
+    expect(forSubmit?.candidateActionProven).toBe(true);
+    expect(forSubmit?.logicalNodeId).toBe(logicalNodeId);
+    expect(forSubmit?.targetValue).toBe('"disabled"');
+    expect(forSubmit?.writeLockMatchesRevision).toBe(true);
+
+    const bindingForSubmit = await getBindingDraftForSubmission(db!, {
+      organizationId: ORG_ID,
+      projectId: PROJECT_ID,
+      userId: USER_ID,
+      draftId: binding.draftId,
+    });
+    expect(bindingForSubmit).toMatchObject({
+      candidateActionProven: true,
+      candidateStatus: "draft",
+      targetValue: binding.rawText,
+      writeLockMatchesBinding: true,
+    });
+
+    const { submitParameterChanges } = await import("../parameters/service");
+    const round = await submitParameterChanges(db!, auth, {
+      projectId: PROJECT_ID,
+      items: [
+        {
+          draftId: enablement.draftId,
+          editSubjectKind: "node-enablement",
+          logicalNodeId: logicalNodeId!,
+          action: "set",
+          targetValue: '"disabled"',
+          reason: "Disable charging_core for board bring-up",
+        },
+        {
+          draftId: binding.draftId,
+          projectParameterBindingId: binding.projectParameterBindingId,
+          parameterSpecId: binding.parameterSpecId,
+          action: "set",
+          targetValue: binding.rawText,
+          reason: "Tune after disable",
+        },
+      ],
+    });
+    expect(round.items.length).toBeGreaterThanOrEqual(2);
+    expect(
+      (
+        await db!.query<{ status: string }>(
+          `select status from dts_config_revisions where id = $1`,
+          [binding.candidateRevisionId],
+        )
+      ).rows[0]?.status,
+    ).toBe("pending_approval");
+    expect(
+      (await db!.query(`select 1 from parameter_drafts where user_id = $1 and project_id = $2`, [USER_ID, PROJECT_ID]))
+        .rows,
+    ).toHaveLength(0);
   });
 });

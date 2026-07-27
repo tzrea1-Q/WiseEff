@@ -65,11 +65,11 @@ The four batches below are independently mergeable. Batch 1 ships first and alon
 
 ## Batch 3 — Make enablement editable
 
-- [ ] Generalize the draft subject in `server/modules/parameter-topology/editService.ts` from `bindingId` to an edit target discriminated union (`binding` | `node-enablement`), keeping working-tip coordination, candidate revision creation, toolchain validation, and gate evaluation shared.
-- [ ] Writeback through the existing `ensureOverlayProperty` mechanics: `set` for enable/disable, `delete` for returning to unstated. Preserve existing spelling on an existing property; use the measured project convention for new ones.
-- [ ] Toggle UI in the node detail surface: two positions plus a low-emphasis "return to unstated" action, disabled-path reason field, and confirmation step.
-- [ ] Non-standard values render read-only with the reason shown, behind a secondary "change anyway" entry point that displays the original text, requires a reason, and states that the original intent will be overwritten.
-- [ ] Authorization via `canEditParameters` plus existing `SensitiveNodeRule` evaluation; distinct audit event type for enablement changes carrying previous value, new value, and reason.
+- [x] Generalize the draft subject in `server/modules/parameter-topology/editService.ts` from `bindingId` to an edit target discriminated union (`binding` | `node-enablement`), keeping working-tip coordination, candidate revision creation, toolchain validation, and gate evaluation shared.
+- [x] Writeback through the existing `ensureOverlayProperty` mechanics: `set` for enable/disable, `delete` for returning to unstated. Preserve existing spelling on an existing property; use the measured project convention for new ones.
+- [x] Toggle UI in the node detail surface: two positions plus a low-emphasis "return to unstated" action, disabled-path reason field, and confirmation step.
+- [x] Non-standard values render read-only with the reason shown, behind a secondary "change anyway" entry point that displays the original text, requires a reason, and states that the original intent will be overwritten.
+- [x] Authorization via `canEditParameters` plus existing `SensitiveNodeRule` evaluation; distinct audit event type for enablement changes carrying previous value, new value, and reason.
 
 ## Batch 4 — Close out
 

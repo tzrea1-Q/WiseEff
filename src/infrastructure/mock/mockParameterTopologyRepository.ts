@@ -2,6 +2,8 @@ import type {
   ActivateParameterSpecInput,
   BindingDraftResult,
   CreateBindingDraftInput,
+  CreateNodeEnablementDraftInput,
+  NodeEnablementDraftResult,
   ParameterTopologyRepository
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
@@ -723,6 +725,38 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
           role: "overlay",
           propertyKey: binding.propertyKey,
           targetRef: binding.locator
+        },
+        overlayFileId: "file-teaching-dts",
+        overlayFileName: "power.dtso"
+      };
+    },
+
+    async createNodeEnablementDraft(
+      projectId,
+      input: CreateNodeEnablementDraftInput
+    ): Promise<NodeEnablementDraftResult> {
+      void projectId;
+      draftCounter += 1;
+      const action = input.target === "unstated" ? "delete" : "set";
+      const rawText =
+        input.target === "unstated"
+          ? ""
+          : input.target === "force-disabled"
+            ? '"disabled"'
+            : `"${input.spellingOverride ?? "ok"}"`;
+      return {
+        draftId: `draft-enablement-mock-${draftCounter}`,
+        candidateRevisionId: `rev-draft-${draftCounter}`,
+        workingCandidateRevisionId: `rev-draft-${draftCounter}`,
+        rawText,
+        action,
+        logicalNodeId: input.logicalNodeId,
+        target: input.target,
+        previousRaw: null,
+        writeTarget: {
+          role: "overlay",
+          propertyKey: "status",
+          targetRef: "mock-node"
         },
         overlayFileId: "file-teaching-dts",
         overlayFileName: "power.dtso"

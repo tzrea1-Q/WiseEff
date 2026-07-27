@@ -8,6 +8,12 @@
 
 import { createHash, randomUUID } from "node:crypto";
 
+import {
+  measureStatusSpelling,
+  resolveEnablementWrite,
+  type EnablementEditTarget,
+  type StatusSpelling,
+} from "../../../src/domain/parameter-topology/enablementEdit";
 import type { AuthContext } from "../auth/types";
 import { parseDts, serializeDts, type DtsNodeCst, type DtsPropertyCst } from "../dts";
 import { indentDtsRawValueForWriteback } from "../dts/rawValueWriteback";
@@ -23,7 +29,13 @@ import { countOpenSpecReviewTasksForRevision } from "../parameter-specs/reposito
 import { canEditParameters } from "../parameters/policy";
 import { mustUseSemanticParameterIdentity } from "../parameters/semanticParameterReads";
 import { ensurePreCutoverLinkedParameterValue } from "../parameters/legacyParameterIdentityAdapter";
-import { upsertDraft, listOpenBindingDraftsForUser, rebaseOpenBindingDraftCandidates } from "../parameters/repository";
+import { assertSensitiveNodeWriteAllowed } from "../parameters/sensitiveNode";
+import {
+  upsertDraft,
+  upsertEnablementDraft,
+  listOpenBindingDraftsForUser,
+  rebaseOpenBindingDraftCandidates,
+} from "../parameters/repository";
 import { countOpenIdentityMappingTasksForRevision, upsertBindingRevisionValues } from "./bindingService";
 import {
   assertCanPromoteCandidateToDraft,
@@ -120,6 +132,32 @@ export type BindingDraftResult = {
   overlayFileName: string;
 };
 
+export type CreateNodeEnablementDraftInput = {
+  projectId: string;
+  logicalNodeId: string;
+  baseRevisionId: string;
+  target: EnablementEditTarget;
+  reason: string;
+  acknowledgeNonstandard?: boolean;
+  spellingOverride?: StatusSpelling;
+};
+
+export type NodeEnablementDraftResult = {
+  draftId: string;
+  candidateRevisionId: string;
+  workingCandidateRevisionId: string;
+  rebasedDraftIds: string[];
+  action: BindingEditAction;
+  rawText: string;
+  logicalNodeId: string;
+  writeTarget: BindingDraftWriteTarget;
+  overlayFileId: string;
+  overlayFileName: string;
+  /** Previous effective status raw text (null when unstated). */
+  previousRaw: string | null;
+  target: EnablementEditTarget;
+};
+
 type BindingContextRow = {
   binding_id: string;
   organization_id: string;
@@ -185,6 +223,19 @@ export type BindingWriteLockFields = {
 
 export type BindingWriteLockContext = BindingWriteLockFields & {
   propertyKey: string;
+  targetRef: string;
+  expectedRawText?: string | null;
+  nodeSpan?: { start: number; end: number };
+  overlayFileId: string;
+  overlayFileName: string;
+  overlayFileVersionId: string;
+};
+
+/** Enablement write locks omit bindingRevisionId — status is not a binding. */
+export type EnablementWriteLockFields = Omit<BindingWriteLockFields, "bindingRevisionId">;
+
+export type EnablementWriteLockContext = EnablementWriteLockFields & {
+  propertyKey: "status";
   targetRef: string;
   expectedRawText?: string | null;
   nodeSpan?: { start: number; end: number };
@@ -973,7 +1024,9 @@ export async function createBindingDraft(
   }
   const resolvedWorkingTip = openWorkingTips[0] ?? null;
   const sameBindingOpenDraft = openDrafts.find(
-    (draft) => draft.projectParameterBindingId === binding.binding_id,
+    (draft) =>
+      draft.editSubjectKind === "binding" &&
+      draft.projectParameterBindingId === binding.binding_id,
   );
 
   let effectiveBaseRevisionId = input.baseRevisionId;
@@ -1178,8 +1231,42 @@ export async function createBindingDraft(
   await carryForwardBindingRevisions(db, {
     baseRevisionId: revision.id,
     candidateRevisionId,
-    excludeBindingId: action === "delete" ? binding.binding_id : undefined,
+    // Always exclude the edited binding — ingest match may attach a remapped
+    // logical-node binding while this draft still keys the original binding id.
+    excludeBindingId: binding.binding_id,
   });
+
+  if (action === "set") {
+    const baseBindingRevision = await db.query<{ parameter_spec_version_id: string }>(
+      `
+      select parameter_spec_version_id
+      from project_parameter_binding_revisions
+      where id = $1
+      limit 1
+      `,
+      [bindingRevision.rows[0]!.id],
+    );
+    const parameterSpecVersionId = baseBindingRevision.rows[0]?.parameter_spec_version_id;
+    if (!parameterSpecVersionId) {
+      throw new ApiError("CONFLICT", "Base binding revision is missing a parameter spec version.", 409, {
+        reason: "missing-spec-version",
+        bindingId: binding.binding_id,
+        bindingRevisionId: bindingRevision.rows[0]!.id,
+      });
+    }
+    await upsertBindingRevisionValues(db, {
+      bindingId: binding.binding_id,
+      configRevisionId: candidateRevisionId,
+      parameterSpecVersionId,
+      values: {
+        typedValue: input.targetValue!,
+        canonicalValue: input.targetValue!,
+        rawValue: rawText,
+        schemaState: "valid",
+        policyState: "not_applicable",
+      },
+    });
+  }
 
   // Fail-closed before toolchain when ingest already left a blocked diagnosable status.
   // Never overwrite needs_mapping / invalid to draft.
@@ -1317,6 +1404,469 @@ export async function createBindingDraft(
     candidateOverlayContent,
     overlayFileId: overlayMember.file_id,
     overlayFileName: overlayMember.file_name,
+  };
+}
+
+export async function loadLogicalNodeEnablementContext(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string;
+    logicalNodeId: string;
+  },
+): Promise<{
+  nodeLocator: string;
+  compatible: string | null;
+  currentRaw: string | null;
+}> {
+  const node = await db.query<{
+    node_locator: string;
+    compatible: string | null;
+    logical_node_revision_id: string;
+  }>(
+    `
+    select lnr.id as logical_node_revision_id, lnr.node_locator, lnr.compatible
+    from dts_logical_node_revisions lnr
+    inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
+    inner join dts_config_set cs on cs.id = cr.config_set_id
+    where lnr.config_revision_id = $1
+      and lnr.logical_node_id = $2
+      and cs.organization_id = $3
+      and cs.project_id = $4
+    limit 1
+    `,
+    [input.configRevisionId, input.logicalNodeId, input.organizationId, input.projectId],
+  );
+  const row = node.rows[0];
+  if (!row) {
+    throw new ApiError("NOT_FOUND", "Logical node was not found in this config revision.", 404, {
+      logicalNodeId: input.logicalNodeId,
+      configRevisionId: input.configRevisionId,
+    });
+  }
+
+  const statusEffects = await db.query<{
+    effect_kind: string;
+    raw_text: string | null;
+  }>(
+    `
+    select oe.effect_kind, po.raw_text
+    from dts_occurrence_effects oe
+    left join dts_property_occurrences po on po.id = oe.property_occurrence_id
+    where oe.config_revision_id = $1
+      and oe.logical_node_revision_id = $2
+      and oe.property_name = 'status'
+    order by oe.source_order asc
+    `,
+    [input.configRevisionId, row.logical_node_revision_id],
+  );
+
+  let currentRaw: string | null = null;
+  for (const effect of statusEffects.rows) {
+    if (effect.effect_kind === "delete") {
+      currentRaw = null;
+    } else {
+      currentRaw = effect.raw_text;
+    }
+  }
+
+  return {
+    nodeLocator: row.node_locator,
+    compatible: row.compatible,
+    currentRaw,
+  };
+}
+
+async function listRevisionStatusRawValues(
+  db: Queryable,
+  configRevisionId: string,
+): Promise<Array<string | null>> {
+  const result = await db.query<{ raw_text: string | null }>(
+    `
+    select po.raw_text
+    from dts_occurrence_effects oe
+    left join dts_property_occurrences po on po.id = oe.property_occurrence_id
+    where oe.config_revision_id = $1
+      and oe.property_name = 'status'
+      and oe.effect_kind in ('set', 'override')
+    `,
+    [configRevisionId],
+  );
+  return result.rows.map((row) => row.raw_text);
+}
+
+/**
+ * Create a node-enablement draft that patches (or deletes) `status` on a logical node.
+ * Shares working tip / candidate revision coordination with binding drafts (ADR-0003).
+ */
+export async function createNodeEnablementDraft(
+  db: Database | Queryable,
+  auth: AuthContext,
+  input: CreateNodeEnablementDraftInput,
+  deps: CreateBindingDraftDeps = {},
+): Promise<NodeEnablementDraftResult> {
+  requireCanEdit(auth);
+
+  const openDrafts = await listOpenBindingDraftsForUser(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    userId: auth.user.id,
+  });
+  const openWorkingTips = [
+    ...new Set(
+      openDrafts
+        .map((draft) => draft.candidateConfigRevisionId?.trim())
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  if (openWorkingTips.length > 1) {
+    throw new ApiError(
+      "CONFLICT",
+      "本轮草稿不在同一工作版本上，无法一起提交。请移除冲突项或清空后重新编辑。",
+      409,
+      { reason: "mixed-working-tips" },
+    );
+  }
+  const resolvedWorkingTip = openWorkingTips[0] ?? null;
+  const sameEnablementOpenDraft = openDrafts.find(
+    (draft) =>
+      draft.editSubjectKind === "node-enablement" &&
+      draft.logicalNodeId === input.logicalNodeId,
+  );
+
+  let effectiveBaseRevisionId = input.baseRevisionId;
+  if (resolvedWorkingTip && input.baseRevisionId !== resolvedWorkingTip) {
+    if (sameEnablementOpenDraft) {
+      effectiveBaseRevisionId = resolvedWorkingTip;
+    } else {
+      throw new ApiError(
+        "CONFLICT",
+        "请刷新后基于本轮最新工作版本继续编辑。",
+        409,
+        {
+          reason: "stale-working-tip",
+          logicalNodeId: input.logicalNodeId,
+          baseRevisionId: input.baseRevisionId,
+          workingCandidateRevisionId: resolvedWorkingTip,
+        },
+      );
+    }
+  }
+
+  const revision = await getConfigRevisionById(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    revisionId: effectiveBaseRevisionId,
+  });
+  if (!revision) {
+    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", 409, {
+      reason: "stale-revision",
+      logicalNodeId: input.logicalNodeId,
+      baseRevisionId: input.baseRevisionId,
+    });
+  }
+
+  throwIfManifestNeedsReview(revision);
+
+  if (revision.status === "needs_mapping") {
+    throw new ApiError("CONFLICT", "Config revision has unresolved identity mapping.", 409, {
+      reason: "unresolved-mapping",
+      configRevisionId: revision.id,
+    });
+  }
+  if (revision.status === "invalid") {
+    throw new ApiError("CONFLICT", "Config revision is invalid and cannot accept edits.", 409, {
+      reason: "invalid-revision",
+      configRevisionId: revision.id,
+    });
+  }
+
+  const nodeContext = await loadLogicalNodeEnablementContext(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    configRevisionId: revision.id,
+    logicalNodeId: input.logicalNodeId,
+  });
+
+  await assertSensitiveNodeWriteAllowed(db, auth, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    nodePath: nodeContext.nodeLocator,
+    compatible: nodeContext.compatible,
+    actorType: "user",
+  });
+
+  const projectSpelling =
+    input.spellingOverride ??
+    measureStatusSpelling(await listRevisionStatusRawValues(db, revision.id));
+
+  let writePlan: { action: BindingEditAction; rawText: string | null };
+  try {
+    writePlan = resolveEnablementWrite({
+      target: input.target,
+      currentRaw: nodeContext.currentRaw,
+      projectSpelling,
+      acknowledgeNonstandard: input.acknowledgeNonstandard,
+    });
+  } catch (error) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      error instanceof Error ? error.message : "Enablement write plan failed.",
+      400,
+      {
+        reason: "nonstandard-status",
+        currentRaw: nodeContext.currentRaw,
+        logicalNodeId: input.logicalNodeId,
+      },
+    );
+  }
+
+  const {
+    writeTarget,
+    overlayMember,
+    baseMember,
+    members,
+    targetRef,
+    occurrenceSpan,
+    expectedRawText,
+    nodeSpan,
+  } = await resolveWriteTarget(db, {
+    configRevisionId: revision.id,
+    logicalNodeId: input.logicalNodeId,
+    propertyKey: "status",
+    nodeLocator: nodeContext.nodeLocator,
+  });
+
+  const memberContents = new Map<string, string>();
+  for (const member of members) {
+    try {
+      const content = await loadFileContentFromVersion(db, member.file_version_id, deps.objectStore);
+      memberContents.set(member.file_version_id, content);
+    } catch (error) {
+      throw new ApiError("CONFLICT", "Config set source text unavailable for enablement edit.", 409, {
+        reason: "missing-source-text",
+        fileVersionId: member.file_version_id,
+        fileName: member.file_name,
+        cause: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const overlayContent = memberContents.get(overlayMember.file_version_id)!;
+  const rawText = writePlan.rawText ?? "";
+
+  const candidateOverlayContent = ensureOverlayProperty(overlayContent, {
+    propertyKey: "status",
+    rawText: writePlan.rawText,
+    action: writePlan.action,
+    targetRef,
+    expectedChecksum: overlayMember.checksum,
+    occurrenceSpan,
+    expectedRawText,
+    nodeSpan,
+  });
+
+  const candidateOverlayVersionId = randomUUID();
+  const overlayChecksum = checksumOf(candidateOverlayContent);
+  let candidateStorageKey = `${auth.organization.id}/${overlayChecksum}-candidate-${overlayMember.file_name}`;
+
+  if (deps.objectStore) {
+    const stored = await deps.objectStore.put({
+      organizationId: auth.organization.id,
+      fileName: overlayMember.file_name,
+      contentType: "text/plain",
+      bytes: Buffer.from(candidateOverlayContent, "utf8"),
+    });
+    candidateStorageKey = stored.storageKey;
+  }
+
+  await db.query(
+    `
+    insert into project_parameter_file_versions (
+      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+    )
+    select $1, $2, coalesce(max(version_number), 0) + 1, $3, $4, $5, $6::jsonb, 'writeback', $7
+    from project_parameter_file_versions
+    where file_id = $2
+    `,
+    [
+      candidateOverlayVersionId,
+      overlayMember.file_id,
+      candidateStorageKey,
+      overlayChecksum,
+      Buffer.byteLength(candidateOverlayContent, "utf8"),
+      JSON.stringify({ sourceText: candidateOverlayContent }),
+      auth.user.id,
+    ],
+  );
+
+  const overlayOrderFromMembers = members
+    .filter((m) => m.role === "overlay")
+    .sort((a, b) => a.sort_order - b.sort_order || a.file_name.localeCompare(b.file_name))
+    .map((m) => m.file_name);
+
+  const candidateMembers: ConfigRevisionManifestMember[] = members.map((member) => {
+    const isEditedOverlay = member.file_id === overlayMember.file_id;
+    const content = isEditedOverlay
+      ? candidateOverlayContent
+      : memberContents.get(member.file_version_id)!;
+    return {
+      fileId: member.file_id,
+      fileVersionId: isEditedOverlay ? candidateOverlayVersionId : member.file_version_id,
+      fileName: member.file_name,
+      role: member.role,
+      sortOrder: member.sort_order,
+      content,
+    };
+  });
+
+  const persistedIncludes = revision.includeSearchPaths;
+  const persistedOverlays = revision.overlayOrder;
+  const persistedEntry = revision.entryFile ?? baseMember.file_name;
+  const normalizedManifest = normalizePersistedManifest({
+    entryFile: persistedEntry,
+    includeSearchPaths: persistedIncludes ?? ["."],
+    overlayOrder:
+      persistedOverlays && persistedOverlays.length > 0 ? persistedOverlays : overlayOrderFromMembers,
+    members: candidateMembers,
+  });
+  if (!normalizedManifest.ok) {
+    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, 400, {
+      reason: normalizedManifest.failure.code,
+    });
+  }
+
+  const manifest: ConfigRevisionManifest = {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    configSetId: revision.configSetId,
+    entryFile: normalizedManifest.manifest.entryFile,
+    includeSearchPaths: normalizedManifest.manifest.includeSearchPaths,
+    overlayOrder: normalizedManifest.manifest.overlayOrder,
+    members: candidateMembers,
+  };
+
+  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
+  const candidateRevisionId = ingested.id;
+
+  await carryForwardBindingRevisions(db, {
+    baseRevisionId: revision.id,
+    candidateRevisionId,
+  });
+
+  if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
+    const diagnostics = await loadRevisionDiagnostics(db, candidateRevisionId);
+    const reason =
+      ingested.status === "needs_mapping" ? "unresolved-mapping" : "resolve-failure";
+    throw new ApiError(
+      ingested.status === "needs_mapping" ? "CONFLICT" : "VALIDATION_FAILED",
+      ingested.status === "needs_mapping"
+        ? "Candidate config revision has unresolved identity mapping."
+        : "Candidate config revision failed resolve.",
+      ingested.status === "needs_mapping" ? 409 : 400,
+      {
+        reason,
+        candidateRevisionId,
+        candidateStatus: ingested.status,
+        diagnostics,
+      },
+    );
+  }
+
+  const semanticCounts = await loadCandidateSemanticGateCounts(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    configRevisionId: candidateRevisionId,
+  });
+
+  const earlyGate = assertCanPromoteCandidateToDraft({
+    status: ingested.status,
+    ...semanticCounts,
+    toolchainOk: true,
+    toolchainFailureCode: null,
+  });
+  if (!earlyGate.ok) {
+    await ensureCandidateKeepStatus(db, candidateRevisionId, earlyGate.keepStatus);
+    throw candidateGateError(candidateRevisionId, earlyGate.reason, earlyGate.keepStatus);
+  }
+
+  const finalGate = assertCanPromoteCandidateToDraft({
+    status: ingested.status,
+    ...semanticCounts,
+    toolchainOk: true,
+    toolchainFailureCode: null,
+  });
+  if (!finalGate.ok) {
+    await ensureCandidateKeepStatus(db, candidateRevisionId, finalGate.keepStatus);
+    throw candidateGateError(candidateRevisionId, finalGate.reason, finalGate.keepStatus);
+  }
+
+  await updateConfigRevisionStatus(db, {
+    id: candidateRevisionId,
+    status: "draft",
+  });
+
+  const persistedDraft = await upsertEnablementDraft(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    logicalNodeId: input.logicalNodeId,
+    userId: auth.user.id,
+    targetValue: rawText,
+    reason: input.reason,
+    origin: "manual",
+    action: writePlan.action,
+    candidateConfigRevisionId: candidateRevisionId,
+    writeLock: {
+      baseConfigRevisionId: revision.id,
+      propertyOccurrenceId: writeTarget.occurrenceId ?? null,
+      sourceFileVersionId: writeTarget.fileVersionId!,
+      expectedChecksum: writeTarget.checksum!,
+      occurrenceSpan: writeTarget.occurrenceSpan ?? null,
+    },
+  });
+  const draftId = persistedDraft.id;
+
+  const rebasedDraftIds = await rebaseOpenBindingDraftCandidates(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    userId: auth.user.id,
+    candidateConfigRevisionId: candidateRevisionId,
+    excludeDraftId: draftId,
+  });
+
+  await writeGovernanceAudit(db, auth, {
+    action: "enablement-changed",
+    projectId: input.projectId,
+    targetType: "dts-logical-node",
+    targetId: input.logicalNodeId,
+    metadata: {
+      draftId,
+      candidateRevisionId,
+      previousRaw: nodeContext.currentRaw,
+      nextRaw: writePlan.rawText,
+      target: input.target,
+      reason: input.reason,
+      writeTargetRole: writeTarget.role,
+      targetRef,
+      action: writePlan.action,
+    },
+  });
+
+  return {
+    draftId,
+    candidateRevisionId,
+    workingCandidateRevisionId: candidateRevisionId,
+    rebasedDraftIds,
+    action: writePlan.action,
+    rawText,
+    logicalNodeId: input.logicalNodeId,
+    writeTarget,
+    overlayFileId: overlayMember.file_id,
+    overlayFileName: overlayMember.file_name,
+    previousRaw: nodeContext.currentRaw,
+    target: input.target,
   };
 }
 
@@ -1695,6 +2245,190 @@ export async function verifyBindingWriteLock(
   }
 }
 
+/** Fail-closed verification of persisted enablement write lock before merge/writeback. */
+export async function verifyEnablementWriteLock(
+  db: Queryable,
+  lock: {
+    baseConfigRevisionId: string;
+    propertyOccurrenceId?: string | null;
+    sourceFileVersionId: string;
+    expectedChecksum: string;
+    occurrenceSpan?: { start: number; end: number } | null;
+  },
+): Promise<void> {
+  const fileVersion = await db.query<{ id: string; checksum: string }>(
+    `
+    select id, checksum
+    from project_parameter_file_versions
+    where id = $1
+    limit 1
+    `,
+    [lock.sourceFileVersionId],
+  );
+  const fileRow = fileVersion.rows[0];
+  if (!fileRow || fileRow.checksum !== lock.expectedChecksum) {
+    throw new ApiError("CONFLICT", "Source file checksum lock is stale.", 409, {
+      reason: "stale-checksum",
+      sourceFileVersionId: lock.sourceFileVersionId,
+      expectedChecksum: lock.expectedChecksum,
+      actualChecksum: fileRow?.checksum,
+    });
+  }
+
+  if (lock.propertyOccurrenceId) {
+    const occurrence = await db.query<{
+      id: string;
+      start_offset: number;
+      end_offset: number;
+      file_version_id: string;
+    }>(
+      `
+      select id, start_offset, end_offset, file_version_id
+      from dts_property_occurrences
+      where id = $1
+      limit 1
+      `,
+      [lock.propertyOccurrenceId],
+    );
+    const occ = occurrence.rows[0];
+    if (!occ || occ.file_version_id !== lock.sourceFileVersionId) {
+      throw new ApiError("CONFLICT", "Property occurrence lock is stale.", 409, {
+        reason: "stale-occurrence",
+        propertyOccurrenceId: lock.propertyOccurrenceId,
+      });
+    }
+    if (lock.occurrenceSpan) {
+      if (
+        Number(occ.start_offset) !== lock.occurrenceSpan.start ||
+        Number(occ.end_offset) !== lock.occurrenceSpan.end
+      ) {
+        throw new ApiError("CONFLICT", "Occurrence CST span lock is stale.", 409, {
+          reason: "stale-span",
+          propertyOccurrenceId: lock.propertyOccurrenceId,
+          occurrenceSpan: lock.occurrenceSpan,
+        });
+      }
+    }
+  }
+}
+
+/** Resolve exact writeback lock metadata for node enablement at a config revision head. */
+export async function resolveEnablementWriteLock(
+  db: Queryable,
+  auth: AuthContext,
+  input: { logicalNodeId: string; baseRevisionId?: string },
+): Promise<EnablementWriteLockContext> {
+  const node = await db.query<{ project_id: string }>(
+    `
+    select project_id
+    from dts_logical_nodes
+    where id = $1 and organization_id = $2
+    limit 1
+    `,
+    [input.logicalNodeId, auth.organization.id],
+  );
+  const projectId = node.rows[0]?.project_id;
+  if (!projectId) {
+    throw new ApiError("NOT_FOUND", "Logical node was not found for enablement write lock.", 404, {
+      logicalNodeId: input.logicalNodeId,
+    });
+  }
+
+  let baseRevisionId = input.baseRevisionId;
+  if (!baseRevisionId) {
+    const head = await db.query<{ config_revision_id: string }>(
+      `
+      select lnr.config_revision_id
+      from dts_logical_node_revisions lnr
+      inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
+      where lnr.logical_node_id = $1
+        and cr.organization_id = $2
+        and cr.project_id = $3
+        and cr.status <> 'resolving'
+      order by cr.revision_number desc
+      limit 1
+      `,
+      [input.logicalNodeId, auth.organization.id, projectId],
+    );
+    baseRevisionId = head.rows[0]?.config_revision_id;
+  }
+  if (!baseRevisionId) {
+    throw new ApiError("CONFLICT", "No config revision is available for enablement write lock.", 409, {
+      reason: "stale-revision",
+      logicalNodeId: input.logicalNodeId,
+    });
+  }
+
+  const revision = await getConfigRevisionById(db, {
+    organizationId: auth.organization.id,
+    projectId,
+    revisionId: baseRevisionId,
+  });
+  if (!revision) {
+    throw new ApiError("CONFLICT", "Base config revision is stale or missing.", 409, {
+      reason: "stale-revision",
+      logicalNodeId: input.logicalNodeId,
+      baseRevisionId,
+    });
+  }
+
+  const nodeContext = await loadLogicalNodeEnablementContext(db, {
+    organizationId: auth.organization.id,
+    projectId,
+    configRevisionId: baseRevisionId,
+    logicalNodeId: input.logicalNodeId,
+  });
+
+  const {
+    writeTarget,
+    overlayMember,
+    occurrenceSpan,
+    expectedRawText,
+    nodeSpan,
+    targetRef,
+  } = await resolveWriteTarget(db, {
+    configRevisionId: baseRevisionId,
+    logicalNodeId: input.logicalNodeId,
+    propertyKey: "status",
+    nodeLocator: nodeContext.nodeLocator,
+  });
+
+  if (!writeTarget.fileVersionId || !writeTarget.checksum) {
+    throw new ApiError("CONFLICT", "Write target file version is incomplete for enablement lock.", 409, {
+      reason: "missing-write-target",
+      logicalNodeId: input.logicalNodeId,
+    });
+  }
+
+  return {
+    baseConfigRevisionId: baseRevisionId,
+    propertyOccurrenceId: writeTarget.occurrenceId ?? null,
+    sourceFileVersionId: writeTarget.fileVersionId,
+    expectedChecksum: writeTarget.checksum,
+    occurrenceSpan: occurrenceSpan ?? writeTarget.occurrenceSpan ?? null,
+    propertyKey: "status",
+    targetRef,
+    expectedRawText,
+    nodeSpan,
+    overlayFileId: overlayMember.file_id,
+    overlayFileName: overlayMember.file_name,
+    overlayFileVersionId: overlayMember.file_version_id,
+  };
+}
+
+export type ApplyLockedEnablementWritebackInput = {
+  lock: EnablementWriteLockContext;
+  mergedValue: string;
+  action?: BindingEditAction;
+};
+
+export type ApplyLockedEnablementWritebackResult = {
+  fileId: string;
+  fileVersionId: string;
+  versionNumber: number;
+  candidateRevisionId: string;
+};
+
 export type ApplyLockedOverlayWritebackInput = {
   lock: BindingWriteLockContext;
   bindingId: string;
@@ -1949,5 +2683,225 @@ export async function applyLockedOverlayWriteback(
     versionNumber,
     candidateRevisionId: ingested.id,
     ...(bindingRevisionId ? { bindingRevisionId } : {}),
+  };
+}
+
+/**
+ * Patch the locked overlay file for node enablement, ingest a candidate revision,
+ * and run semantic gates (L0). Does not upsert binding revisions.
+ */
+export async function applyLockedEnablementWriteback(
+  db: Database | Queryable,
+  auth: AuthContext,
+  input: ApplyLockedEnablementWritebackInput,
+  deps: CreateBindingDraftDeps = {},
+): Promise<ApplyLockedEnablementWritebackResult> {
+  await verifyEnablementWriteLock(db, input.lock);
+
+  const revision = await getConfigRevisionById(db, {
+    organizationId: auth.organization.id,
+    revisionId: input.lock.baseConfigRevisionId,
+  });
+  if (!revision) {
+    throw new ApiError("CONFLICT", "Base config revision is stale for writeback.", 409, {
+      reason: "stale-revision",
+      baseConfigRevisionId: input.lock.baseConfigRevisionId,
+    });
+  }
+
+  throwIfManifestNeedsReview(revision);
+
+  const members = await loadRevisionMembers(db, input.lock.baseConfigRevisionId);
+  const baseMember = members.find((member) => member.role === "base");
+  const overlayMember = members.find((member) => member.file_id === input.lock.overlayFileId);
+  if (!baseMember || !overlayMember) {
+    throw new ApiError("CONFLICT", "Config revision members missing for locked writeback.", 409, {
+      reason: "missing-members",
+      baseConfigRevisionId: input.lock.baseConfigRevisionId,
+    });
+  }
+
+  const memberContents = new Map<string, string>();
+  for (const member of members) {
+    memberContents.set(
+      member.file_version_id,
+      await loadFileContentFromVersion(db, member.file_version_id, deps.objectStore),
+    );
+  }
+
+  const overlayContent = memberContents.get(input.lock.sourceFileVersionId);
+  if (overlayContent === undefined) {
+    throw new ApiError("CONFLICT", "Locked overlay file version is not part of the base revision.", 409, {
+      reason: "stale-file-version",
+      sourceFileVersionId: input.lock.sourceFileVersionId,
+    });
+  }
+
+  const action: BindingEditAction = input.action ?? "set";
+  const rawText = action === "delete" ? null : input.mergedValue;
+  const candidateOverlayContent = ensureOverlayProperty(overlayContent, {
+    propertyKey: input.lock.propertyKey,
+    rawText,
+    action,
+    targetRef: input.lock.targetRef,
+    expectedChecksum: input.lock.expectedChecksum,
+    occurrenceSpan: input.lock.occurrenceSpan ?? undefined,
+    expectedRawText: input.lock.expectedRawText,
+    nodeSpan: input.lock.nodeSpan,
+  });
+
+  const candidateOverlayVersionId = randomUUID();
+  const overlayChecksum = checksumOf(candidateOverlayContent);
+  let candidateStorageKey = `${auth.organization.id}/${overlayChecksum}-writeback-${overlayMember.file_name}`;
+
+  if (deps.objectStore) {
+    const stored = await deps.objectStore.put({
+      organizationId: auth.organization.id,
+      fileName: overlayMember.file_name,
+      contentType: "text/plain",
+      bytes: Buffer.from(candidateOverlayContent, "utf8"),
+    });
+    candidateStorageKey = stored.storageKey;
+  }
+
+  const nextVersion = await db.query<{ next: number }>(
+    `
+    select coalesce(max(version_number), 0) + 1 as next
+    from project_parameter_file_versions
+    where file_id = $1
+    `,
+    [overlayMember.file_id],
+  );
+  const versionNumber = Number(nextVersion.rows[0]?.next ?? 1);
+
+  await db.query(
+    `
+    insert into project_parameter_file_versions (
+      id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+    ) values ($1, $2, $3, $4, $5, $6, $7::jsonb, 'writeback', $8)
+    `,
+    [
+      candidateOverlayVersionId,
+      overlayMember.file_id,
+      versionNumber,
+      candidateStorageKey,
+      overlayChecksum,
+      Buffer.byteLength(candidateOverlayContent, "utf8"),
+      JSON.stringify({ sourceText: candidateOverlayContent }),
+      auth.user.id,
+    ],
+  );
+
+  await db.query(
+    `
+    update project_parameter_files
+    set current_version_id = $2, updated_at = now()
+    where id = $1
+    `,
+    [overlayMember.file_id, candidateOverlayVersionId],
+  );
+
+  const overlayOrderFromMembers = members
+    .filter((member) => member.role === "overlay")
+    .sort((a, b) => a.sort_order - b.sort_order || a.file_name.localeCompare(b.file_name))
+    .map((member) => member.file_name);
+
+  const candidateMembers: ConfigRevisionManifestMember[] = members.map((member) => {
+    const isEditedOverlay = member.file_id === overlayMember.file_id;
+    const content = isEditedOverlay
+      ? candidateOverlayContent
+      : memberContents.get(member.file_version_id)!;
+    return {
+      fileId: member.file_id,
+      fileVersionId: isEditedOverlay ? candidateOverlayVersionId : member.file_version_id,
+      fileName: member.file_name,
+      role: member.role,
+      sortOrder: member.sort_order,
+      content,
+    };
+  });
+
+  const normalizedManifest = normalizePersistedManifest({
+    entryFile: revision.entryFile ?? baseMember.file_name,
+    includeSearchPaths: revision.includeSearchPaths ?? ["."],
+    overlayOrder:
+      revision.overlayOrder && revision.overlayOrder.length > 0
+        ? revision.overlayOrder
+        : overlayOrderFromMembers,
+    members: candidateMembers,
+  });
+  if (!normalizedManifest.ok) {
+    throw new ApiError("VALIDATION_FAILED", normalizedManifest.failure.message, 400, {
+      reason: normalizedManifest.failure.code,
+    });
+  }
+
+  const manifest: ConfigRevisionManifest = {
+    organizationId: auth.organization.id,
+    projectId: revision.projectId,
+    configSetId: revision.configSetId,
+    entryFile: normalizedManifest.manifest.entryFile,
+    includeSearchPaths: normalizedManifest.manifest.includeSearchPaths,
+    overlayOrder: normalizedManifest.manifest.overlayOrder,
+    members: candidateMembers,
+  };
+
+  const ingested = await ingestConfigRevisionInTransaction(db, manifest, auth);
+  if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
+    throw new ApiError(
+      ingested.status === "needs_mapping" ? "CONFLICT" : "VALIDATION_FAILED",
+      ingested.status === "needs_mapping"
+        ? "Writeback candidate revision has unresolved identity mapping."
+        : "Writeback candidate revision failed resolve.",
+      ingested.status === "needs_mapping" ? 409 : 400,
+      {
+        reason: ingested.status === "needs_mapping" ? "unresolved-mapping" : "resolve-failure",
+        candidateRevisionId: ingested.id,
+        candidateStatus: ingested.status,
+      },
+    );
+  }
+
+  const semanticCounts = await loadCandidateSemanticGateCounts(db, {
+    organizationId: auth.organization.id,
+    projectId: revision.projectId,
+    configRevisionId: ingested.id,
+  });
+  if (!deps.skipSemanticGates) {
+    const earlyGate = assertCanPromoteCandidateToDraft({
+      status: ingested.status,
+      ...semanticCounts,
+      toolchainOk: true,
+      toolchainFailureCode: null,
+    });
+    if (!earlyGate.ok) {
+      await ensureCandidateKeepStatus(db, ingested.id, earlyGate.keepStatus);
+      throw candidateGateError(ingested.id, earlyGate.reason, earlyGate.keepStatus);
+    }
+  }
+
+  if (!deps.skipSemanticGates) {
+    const finalGate = assertCanPromoteCandidateToDraft({
+      status: ingested.status,
+      ...semanticCounts,
+      toolchainOk: true,
+      toolchainFailureCode: null,
+    });
+    if (!finalGate.ok) {
+      await ensureCandidateKeepStatus(db, ingested.id, finalGate.keepStatus);
+      throw candidateGateError(ingested.id, finalGate.reason, finalGate.keepStatus);
+    }
+  }
+
+  await updateConfigRevisionStatus(db, {
+    id: ingested.id,
+    status: "compiled",
+  });
+
+  return {
+    fileId: overlayMember.file_id,
+    fileVersionId: candidateOverlayVersionId,
+    versionNumber,
+    candidateRevisionId: ingested.id,
   };
 }

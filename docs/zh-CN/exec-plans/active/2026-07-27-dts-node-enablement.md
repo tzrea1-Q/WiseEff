@@ -65,11 +65,11 @@
 
 ## 批次 3 — 让启停可改
 
-- [ ] 在 `server/modules/parameter-topology/editService.ts` 中把草稿主体从 `bindingId` 泛化为编辑目标可辨识联合（`binding` | `node-enablement`），保持工作版本协调、候选修订生成、toolchain 校验与闸门评估共享。
-- [ ] 复用现有 `ensureOverlayProperty` 写回机制：启用/禁用走 `set`，回到未声明走 `delete`。已有属性保持其原拼写，新写入采用实测的项目习惯。
-- [ ] 节点详情中的开关 UI：两档 + 低调的"恢复为未声明"动作，禁用路径的理由输入与二次确认。
-- [ ] 非标准取值渲染为只读并说明原因，另设二级"仍要修改"入口：展示原文、要求填写理由、明确告知将覆盖原始意图。
-- [ ] 鉴权走 `canEditParameters` 加现有 `SensitiveNodeRule` 评估；启停变更使用独立审计事件类型，携带原值、新值与理由。
+- [x] 在 `server/modules/parameter-topology/editService.ts` 中把草稿主体从 `bindingId` 泛化为编辑目标可辨识联合（`binding` | `node-enablement`），保持工作版本协调、候选修订生成、toolchain 校验与闸门评估共享。
+- [x] 复用现有 `ensureOverlayProperty` 写回机制：启用/禁用走 `set`，回到未声明走 `delete`。已有属性保持其原拼写，新写入采用实测的项目习惯。
+- [x] 节点详情中的开关 UI：两档 + 低调的"恢复为未声明"动作，禁用路径的理由输入与二次确认。
+- [x] 非标准取值渲染为只读并说明原因，另设二级"仍要修改"入口：展示原文、要求填写理由、明确告知将覆盖原始意图。
+- [x] 鉴权走 `canEditParameters` 加现有 `SensitiveNodeRule` 评估；启停变更使用独立审计事件类型，携带原值、新值与理由。
 
 ## 批次 4 — 收尾
 
