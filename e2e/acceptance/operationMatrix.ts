@@ -804,5 +804,69 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["PARAM-ENABLE-GUARD-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
     assertions: ["ui"]
+  },
+  {
+    id: "MOD-ATTR-QUEUE-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Browse the unclassified compatible queue with parameter/project counts; dismiss and restore entries with audit.",
+    coverage: "automated",
+    acceptanceIds: ["MOD-ATTR-QUEUE-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api", "audit"]
+  },
+  {
+    id: "MOD-ATTR-CLASSIFY-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Classify one compatible with impact preview, confirm scoped apply, and collect emptied unclassified buckets.",
+    coverage: "automated",
+    acceptanceIds: ["MOD-ATTR-CLASSIFY-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api", "audit"]
+  },
+  {
+    id: "MOD-ATTR-BULK-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action: "Bulk-select compatibles and file them into one business category in a single confirm.",
+    coverage: "automated",
+    acceptanceIds: ["MOD-ATTR-BULK-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api", "audit"]
+  },
+  {
+    id: "MOD-ATTR-TREE-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Exercise kind-scoped tree actions: no delete on instances, rename adopts auto modules, adopted names survive re-ingest.",
+    coverage: "automated",
+    acceptanceIds: ["MOD-ATTR-TREE-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "MOD-ATTR-IMPORTANCE-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Set importance on a business category and confirm inheritance on driver groups/instances and the workbench filter.",
+    coverage: "automated",
+    acceptanceIds: ["MOD-ATTR-IMPORTANCE-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
   }
 ];

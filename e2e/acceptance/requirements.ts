@@ -392,5 +392,39 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     workflow: "B",
     title: "Non-standard status values are read-only unless explicitly acknowledged for override.",
     required: true
+  },
+  {
+    id: "MOD-ATTR-QUEUE-001",
+    workflow: "C",
+    title:
+      "The unclassified compatible queue lists only non-scaffolding, non-dismissed compatibles with parameter and project counts; dismissing removes an entry and restoring brings it back, both audited.",
+    required: true
+  },
+  {
+    id: "MOD-ATTR-CLASSIFY-001",
+    workflow: "C",
+    title:
+      "Classifying a compatible shows the impact preview, applies on confirm, moves parameters into the new driver group, and removes the emptied unclassified bucket.",
+    required: true
+  },
+  {
+    id: "MOD-ATTR-BULK-001",
+    workflow: "C",
+    title: "Several selected compatibles are filed into one business category in a single confirmed action.",
+    required: true
+  },
+  {
+    id: "MOD-ATTR-TREE-001",
+    workflow: "C",
+    title:
+      "Tree actions are kind-scoped: an instance module offers no delete, renaming an auto module adopts it, and the adopted name survives a re-ingest.",
+    required: true
+  },
+  {
+    id: "MOD-ATTR-IMPORTANCE-001",
+    workflow: "C",
+    title:
+      "Importance set on a business category is inherited by its driver groups and instances and drives the workbench importance filter.",
+    required: true
   }
 ];

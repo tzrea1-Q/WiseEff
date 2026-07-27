@@ -466,6 +466,16 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | `POST` | `/api/v2/projects/:projectId/config-revisions/:revisionId/validate` | 失败关闭工具链校验。再次校验失败会**撤销**此前的 `validated` 标记；开放身份映射或被 dismiss 且未匹配的规格审核保持 fail-closed。 |
 | `POST` | `/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts` | 类型化绑定草稿 + **精确 occurrence** Config Set 回写：锁定 binding revision、occurrence、文件版本、checksum 与 CST span（默认强制 schema；**base** binding revision 不可变；合入值在 **candidate** revision）。身份过期 → `409`。Cutover 后语义合并在缺 `objectStore`、项目范围、write lock 或真实 DTC 工具链时失败关闭——生产路径无 `WISEEFF_WRITEBACK_SKIP_TOOLCHAIN`。Cutover 后草稿不得再创建 shadow `project_parameter_values` / `parameter_definitions`。 |
 | `POST` | `/api/v2/projects/:projectId/node-enablement-drafts` | 共享工作 tip 管线上的节点启用草稿。请求体：`{ logicalNodeId, baseRevisionId, target: force-enabled\|force-disabled\|unstated, reason, acknowledgeNonstandard?, spellingOverride? }`。在锁定的 overlay 文件上写入或删除 DTS `status`；与 binding 草稿共享 candidate revision 协调（混用 tip → `409 mixed-working-tips`）。要求 `parameter:edit`；适用 `dts_sensitive_node_rules`。审计：`parameter-topology-governance` / `enablement-changed`。 |
+| `GET` | `/api/v2/parameter-modules` | 组织模块注册表：`{ item: { modules, mappings } }`。模块 DTO 含 `kind`、`origin`、`sourceKey`、`effectiveImportance`、`parameterCount`（及 `name`、`parentId`、`sortOrder`、`importance`）。模块 CRUD 仍走 v1。 |
+| `GET` | `/api/v2/parameter-modules/discovery-hints` | 从 binding 观测未映射 `compatible`（`{ item: { compatibles: [{ compatible, bindingCount, projectCount, suggestedGroupName }], total } }`），排除已忽略与脚手架标签。 |
+| `POST` | `/api/v2/parameter-modules/discovery-hints/dismissals` | Admin 从队列忽略 compatible（`{ compatible, reason? }`）；返回刷新后的 hints。审计：`parameter-module-compatible-dismissed`。 |
+| `DELETE` | `/api/v2/parameter-modules/discovery-hints/dismissals/:compatible` | Admin 恢复已忽略的 compatible。审计：`parameter-module-compatible-restored`。 |
+| `POST` | `/api/v2/parameter-modules/mappings/preview` | Admin 映射干跑（`{ moduleId, matchKind, matchValue, priority? }`）；`matchKind` 仅 `compatible` \| `instance`。返回 `{ item: MappingApplyPreview }`，不落库。 |
+| `POST` | `/api/v2/parameter-modules/mappings` | Admin 创建映射并**按规则范围应用**到匹配 binding。返回 `{ item: registry, apply: MappingApplyPreview }`（`201`）。审计：`parameter-module-mapping-created`。 |
+| `DELETE` | `/api/v2/parameter-modules/mappings/:mappingId` | Admin 删除映射并对受影响 binding 做范围重停放。返回 `{ item: registry, apply: MappingApplyPreview }`。审计：`parameter-module-mapping-deleted`。 |
+| `POST` | `/api/v2/parameter-modules/recompute-bindings` | Admin 全组织或单项目重算（可选 `{ projectId, dryRun }`）。`dryRun: true` 返回 `{ updated, conflicts, dryRun: true, preview }` 不写库。正式应用返回 `{ updated, conflicts, preview? }`；唯一键冲突 → `409`。运维/回填工具——日常归类走映射的范围应用，而非全量重算。审计：`parameter-module-bindings-recomputed`。 |
+
+`MappingApplyPreview`：`{ affectedBindings, byProject: [{ projectId, count }], fromModules: [{ moduleId, moduleName, count }], toModuleId, emptiedModules, conflicts }`。
 
 值拆分：`exampleValue` / `schemaDefault` / `policyTarget` / `effectiveValue` 分字段；不得折叠为业务 `recommendedValue`。拓扑载荷携带 API provenance（`sourceChain` / occurrence span）；API 模式下客户端不得发明教学回退数据。
 

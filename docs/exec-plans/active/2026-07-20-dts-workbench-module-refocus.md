@@ -34,7 +34,7 @@
 - [x] M4 精简列 + 排序
 - [x] M5 重要性筛选 + 草稿多选（已接入选择性提交）
 - [x] M6 语义导出；详情历史/跨项目对比占位
-- [x] M7 管理后台 `ParameterModuleMappingPanel`
+- [x] M7 管理后台 `ParameterModuleMappingPanel` — **superseded** by [`2026-07-27-module-attribution-redesign.md`](2026-07-27-module-attribution-redesign.md) Batches 7–9 (`OrganizationModuleGovernancePanel` + 模块归属 queue/classify/tree)
 - [x] 窄测 + `npm run build`
 
 ## 方案决策（架构选型，2026-07-20）

@@ -109,6 +109,9 @@ Org-scoped hierarchical parameter taxonomy (source of truth). Root nodes backfil
 | `sort_order` | `integer` | Required, defaults to `0` |
 | `description` | `text` | Required, defaults to `''` |
 | `scope` | `text` | Required, defaults to `''` |
+| `kind` | `text` | Required, defaults to `business`; check: `business`, `driver-group`, `instance`, `unclassified` (migration `0072`) |
+| `origin` | `text` | Required, defaults to `curated`; check: `curated`, `auto` (migration `0072`) |
+| `source_key` | `text` | Nullable stable instance identity; unique per org when set (migration `0072`) |
 | `created_at` | `timestamptz` | Defaults to `now()` |
 | `updated_at` | `timestamptz` | Defaults to `now()` |
 
@@ -117,6 +120,25 @@ Indexes:
 - `parameter_modules_org_path_idx` on `organization_id, path`
 - `parameter_modules_org_parent_idx` on `organization_id, parent_id, sort_order`
 - `parameter_modules_org_parent_name_unique_idx` unique on `organization_id, coalesce(parent_id, ''), name`
+- `parameter_modules_org_source_key_unique_idx` unique on `organization_id, source_key` where `source_key is not null`
+
+### `parameter_module_dismissed_compatibles`
+
+Org-scoped Admin dismissals for observed `compatible` values removed from the unclassified discovery queue without creating a driver group (migration `0073`).
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `text` | Primary key |
+| `organization_id` | `text` | Required, references `organizations(id)` |
+| `compatible` | `text` | Required; unique per org case-insensitively |
+| `reason` | `text` | Required, defaults to `''` |
+| `dismissed_by_user_id` | `text` | Nullable, references `users(id)` |
+| `dismissed_at` | `timestamptz` | Defaults to `now()` |
+
+Indexes:
+
+- `parameter_module_dismissed_compatibles_org_compatible_idx` unique on `organization_id, lower(compatible)`
+- `parameter_module_dismissed_compatibles_org_idx` on `organization_id`
 
 ### `project_modules`
 

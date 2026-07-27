@@ -53,6 +53,7 @@ Rules:
 - `server/modules/parameters/`: M1 parameter workflow routes and services.
 - `server/modules/parameter-files/`: project DTS/JSON parameter file upload, sync, conflicts, and writeback; P2 adds board-level config sets grouping files into a buildable unit (`project → dts_config_set → files`), immutable release baselines for compare/rollback/release, a `dtc`-backed validation gate, and lossless export; P3 adds structured read/search HTTP, sensitive-node RBAC (`0045`), and Admin UI panels wired through `DtsStructuredRepository`.
 - `server/modules/parameter-topology/`: semantic config revisions, source occurrences, effective logical nodes, project bindings, identity mapping tasks, ingest/edit services, and maintenance-only identity migration/cutover.
+- `server/modules/parameter-modules/`: v2 module registry, discovery hints, compatible dismissals, mapping preview/scoped apply, binding recompute (`dryRun`), and driver-group disband helpers used by workbench attribution and `/parameter-admin/modules`.
 - `server/modules/parameter-specs/`: versioned parameter/driver/property specifications, example/default/policy value split, and spec review tasks.
 - `server/modules/dts/`: pure DTS lexer/parser (CST), value typing, overlay/label resolver, config-set effective-tree resolver, and lossless serializer (no `src/` imports).
 - `server/modules/logs/`: M2 log upload, analysis records, object storage, and worker boundary.

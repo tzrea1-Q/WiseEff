@@ -413,6 +413,7 @@ Checklist:
 - [ ] Import/preview controls show validation and diff-style feedback.
 - [ ] User permissions or governance entry points are reachable.
 - [ ] Audit drawer opens from `?audit=open`.
+- [ ] On **Module attribution** (`/parameter-admin/modules`), classify a compatible via queue preview/confirm (scoped mapping apply). Treat `POST /api/v2/parameter-modules/recompute-bindings` as an ops backfill tool (`dryRun` for preview only); do not use full recompute for routine governance.
 - [ ] Deletion or cleanup actions require confirmation and provide undo or recovery feedback where implemented.
 
 Pass criteria:
