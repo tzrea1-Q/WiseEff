@@ -19805,6 +19805,51 @@ body.xiaoze-popup-resize-active {
   word-break: break-word;
 }
 
+.topology-tree__enablement-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.topology-tree__enablement-badge.is-enabled {
+  color: #027a48;
+  background: color-mix(in srgb, #12b76a 16%, #fff);
+}
+
+.topology-tree__enablement-badge.is-disabled,
+.topology-tree__enablement-badge.is-nonstandard {
+  color: #b42318;
+  background: color-mix(in srgb, #f04438 14%, #fff);
+}
+
+.topology-tree__enablement-badge.is-unreachable {
+  color: #b54708;
+  background: color-mix(in srgb, #f79009 16%, #fff);
+}
+
+.topology-tree__blocker-link {
+  width: fit-content;
+  margin: 0 8px 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--app-primary, #155eef);
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.topology-tree__row {
+  display: grid;
+  gap: 0;
+}
+
 .binding-property-table {
   min-width: 0;
   overflow-x: auto;
@@ -20701,6 +20746,18 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .dts-parameter-workbench-table__draft-badge {
   color: #5b40a0;
   background: #eee9ff;
+}
+
+.dts-parameter-workbench-table__enablement-notice {
+  display: block;
+  margin-top: 4px;
+  color: #b54708;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.dts-parameter-workbench-table__enablement-path {
+  color: var(--muted, #667085);
 }
 
 .dts-parameter-workbench-table__actions-col {

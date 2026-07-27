@@ -3,6 +3,7 @@ import type {
   BindingSchemaState,
   DtsValue,
   EffectiveTopologyEffect,
+  TopologyNodeEnablement,
   TopologyView
 } from "./types";
 import type { ModuleImportance } from "./moduleRegistry";
@@ -50,6 +51,12 @@ export type DtsParameterWorkbenchRow = {
   effects: EffectiveTopologyEffect[];
   searchText: string;
   view: TopologyView;
+  /**
+   * Owning node enablement. When the node is disabled or unreachable, the
+   * parameter has no runtime effect until enablement is restored.
+   */
+  nodeEnablement: TopologyNodeEnablement | null;
+  nodeEnablementNotice: string | null;
 };
 
 /** @deprecated Prefer the explicit DtsParameterWorkbenchRow contract name. */

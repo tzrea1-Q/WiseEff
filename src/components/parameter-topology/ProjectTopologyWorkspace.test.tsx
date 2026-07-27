@@ -264,8 +264,7 @@ describe("topology teaching fixtures", () => {
   it("keeps binding identity separate from locator paths", () => {
     expect(TOPOLOGY_TEACHING_BINDINGS.map((b: ProjectParameterBinding) => b.id)).toEqual([
       "binding-sc8562-gpio-int",
-      "binding-mt5788-gpio-int",
-      "binding-sc8562-status"
+      "binding-mt5788-gpio-int"
     ]);
     expect(TOPOLOGY_TEACHING_SOURCE_NODES.some((n: SourceTopologyNode) => n.labels.includes("amba"))).toBe(
       true

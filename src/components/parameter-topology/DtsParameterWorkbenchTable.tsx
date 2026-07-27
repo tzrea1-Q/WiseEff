@@ -340,6 +340,20 @@ export function DtsParameterWorkbenchTable({
                     草稿
                   </span>
                 ) : null}
+                {row.nodeEnablementNotice ? (
+                  <small
+                    className="dts-parameter-workbench-table__enablement-notice"
+                    title={row.nodeEnablementNotice}
+                  >
+                    {row.nodeEnablementNotice}
+                    {row.topologyPath ? (
+                      <span className="dts-parameter-workbench-table__enablement-path">
+                        {" "}
+                        · {row.topologyPath}
+                      </span>
+                    ) : null}
+                  </small>
+                ) : null}
               </span>
               <span role="cell" data-label="所属模块">
                 <span className="dts-parameter-workbench-table__module">

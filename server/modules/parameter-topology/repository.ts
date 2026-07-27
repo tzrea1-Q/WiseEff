@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import type { Queryable } from "../../shared/database/client";
+import {
+  withEffectiveEnablement,
+  withSourceEnablement,
+} from "../../../src/domain/parameter-topology/nodeEnablement";
 import type {
   ConfigRevisionManifestMember,
   ConfigRevisionManifestState,
@@ -12,6 +16,7 @@ import type {
   PersistedPropertyOccurrence,
   PersistedValidationDiagnostic,
 } from "./types";
+import type { TopologyNodeEnablement } from "../../../src/domain/parameter-topology/types";
 
 type RevisionRow = {
   id: string;
@@ -566,6 +571,7 @@ type SourcePropertyRow = {
   end_column: number | string;
   content_hash: string;
   source_order: number | string;
+  raw_text: string;
 };
 
 type SourceNodeRowWithFile = SourceNodeRow & { file_name: string | null };
@@ -600,7 +606,9 @@ export async function listSourceTopology(
       endColumn: number;
       contentHash: string;
       sourceOrder: number;
+      rawText?: string;
     }>;
+    enablement: TopologyNodeEnablement;
   }>;
 }> {
   const [nodesResult, propsResult] = await Promise.all([
@@ -621,7 +629,7 @@ export async function listSourceTopology(
     db.query<SourcePropertyRow>(
       `
       select id, node_occurrence_id, property_name, start_line, start_column, end_line, end_column,
-             content_hash, source_order
+             content_hash, source_order, raw_text
       from dts_property_occurrences
       where config_revision_id = $1
       order by source_order asc
@@ -637,8 +645,10 @@ export async function listSourceTopology(
     propertiesByNode.set(prop.node_occurrence_id, list);
   }
 
-  return {
-    nodes: nodesResult.rows.map((node) => ({
+  const mapped = nodesResult.rows.map((node) => {
+    const properties = propertiesByNode.get(node.id) ?? [];
+    const statusProp = [...properties].reverse().find((prop) => prop.property_name === "status");
+    return {
       id: node.id,
       fileVersionId: node.file_version_id,
       ...(node.file_name ? { fileName: node.file_name } : {}),
@@ -655,7 +665,8 @@ export async function listSourceTopology(
       endColumn: Number(node.end_column),
       contentHash: node.content_hash,
       sourceOrder: Number(node.source_order),
-      properties: (propertiesByNode.get(node.id) ?? []).map((prop) => ({
+      rawStatus: statusProp?.raw_text ?? null,
+      properties: properties.map((prop) => ({
         id: prop.id,
         propertyName: prop.property_name,
         startLine: Number(prop.start_line),
@@ -664,9 +675,12 @@ export async function listSourceTopology(
         endColumn: Number(prop.end_column),
         contentHash: prop.content_hash,
         sourceOrder: Number(prop.source_order),
+        ...(prop.property_name === "status" ? { rawText: prop.raw_text } : {}),
       })),
-    })),
-  };
+    };
+  });
+
+  return { nodes: withSourceEnablement(mapped) };
 }
 
 type EffectiveNodeRow = {
@@ -686,6 +700,13 @@ type EffectRow = {
   effect_kind: "set" | "override" | "delete";
   node_occurrence_id: string | null;
   property_occurrence_id: string | null;
+  source_order: number | string;
+};
+
+type StatusEffectRow = {
+  logical_node_revision_id: string;
+  effect_kind: "set" | "override" | "delete";
+  raw_text: string | null;
   source_order: number | string;
 };
 
@@ -709,9 +730,10 @@ export async function listEffectiveTopology(
       propertyOccurrenceId: string | null;
       sourceOrder: number;
     }>;
+    enablement: TopologyNodeEnablement;
   }>;
 }> {
-  const [nodesResult, effectsResult] = await Promise.all([
+  const [nodesResult, effectsResult, statusResult] = await Promise.all([
     db.query<EffectiveNodeRow>(
       `
       select id, logical_node_id, node_locator, name, unit_address, compatible, parent_logical_node_id
@@ -731,6 +753,17 @@ export async function listEffectiveTopology(
       `,
       [configRevisionId],
     ),
+    db.query<StatusEffectRow>(
+      `
+      select oe.logical_node_revision_id, oe.effect_kind, po.raw_text, oe.source_order
+      from dts_occurrence_effects oe
+      left join dts_property_occurrences po on po.id = oe.property_occurrence_id
+      where oe.config_revision_id = $1
+        and oe.property_name = 'status'
+      order by oe.source_order asc
+      `,
+      [configRevisionId],
+    ),
   ]);
 
   const effectsByNode = new Map<string, EffectRow[]>();
@@ -740,25 +773,36 @@ export async function listEffectiveTopology(
     effectsByNode.set(effect.logical_node_revision_id, list);
   }
 
-  return {
-    nodes: nodesResult.rows.map((node) => ({
-      id: node.id,
-      logicalNodeId: node.logical_node_id,
-      locator: node.node_locator,
-      name: node.name,
-      unitAddress: node.unit_address ?? undefined,
-      compatible: node.compatible ?? undefined,
-      parentLogicalNodeId: node.parent_logical_node_id,
-      effects: (effectsByNode.get(node.id) ?? []).map((effect) => ({
-        id: effect.id,
-        propertyName: effect.property_name,
-        effectKind: effect.effect_kind,
-        nodeOccurrenceId: effect.node_occurrence_id,
-        propertyOccurrenceId: effect.property_occurrence_id,
-        sourceOrder: Number(effect.source_order),
-      })),
+  const rawStatusByNode = new Map<string, string | null>();
+  for (const row of statusResult.rows) {
+    // Last effect wins (ordered ascending by source_order).
+    if (row.effect_kind === "delete") {
+      rawStatusByNode.set(row.logical_node_revision_id, null);
+    } else {
+      rawStatusByNode.set(row.logical_node_revision_id, row.raw_text);
+    }
+  }
+
+  const mapped = nodesResult.rows.map((node) => ({
+    id: node.id,
+    logicalNodeId: node.logical_node_id,
+    locator: node.node_locator,
+    name: node.name,
+    unitAddress: node.unit_address ?? undefined,
+    compatible: node.compatible ?? undefined,
+    parentLogicalNodeId: node.parent_logical_node_id,
+    rawStatus: rawStatusByNode.has(node.id) ? rawStatusByNode.get(node.id)! : null,
+    effects: (effectsByNode.get(node.id) ?? []).map((effect) => ({
+      id: effect.id,
+      propertyName: effect.property_name,
+      effectKind: effect.effect_kind,
+      nodeOccurrenceId: effect.node_occurrence_id,
+      propertyOccurrenceId: effect.property_occurrence_id,
+      sourceOrder: Number(effect.source_order),
     })),
-  };
+  }));
+
+  return { nodes: withEffectiveEnablement(mapped) };
 }
 
 /** Config revision statuses that may serve as identity continuity baselines. */

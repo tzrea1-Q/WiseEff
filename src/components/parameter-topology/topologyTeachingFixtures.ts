@@ -8,8 +8,9 @@ import type {
   SourceTopologyNode
 } from "@/domain/parameter-topology/types";
 import { driverFallbackModuleId } from "@/domain/parameter-topology/moduleRegistry";
+import { withEffectiveEnablement, withSourceEnablement } from "@/domain/parameter-topology/nodeEnablement";
 
-export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
+const RAW_SOURCE_NODES = [
   {
     id: "src-amba",
     fileVersionId: "fv-base",
@@ -25,7 +26,8 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
     endColumn: 1,
     contentHash: "hash-amba",
     sourceOrder: 1,
-    properties: []
+    properties: [] as SourceTopologyNode["properties"],
+    rawStatus: null as string | null
   },
   {
     id: "src-amba-overlay",
@@ -33,7 +35,7 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
     fileName: "power.dtso",
     parentOccurrenceId: null,
     name: "amba",
-    labels: [],
+    labels: [] as string[],
     refTarget: "amba",
     isOverlayRoot: true,
     nodePath: "/&amba",
@@ -43,7 +45,8 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
     endColumn: 1,
     contentHash: "hash-amba-overlay",
     sourceOrder: 2,
-    properties: []
+    properties: [] as SourceTopologyNode["properties"],
+    rawStatus: null as string | null
   },
   {
     id: "src-i2c",
@@ -52,7 +55,7 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
     parentOccurrenceId: "src-amba",
     name: "i2c",
     unitAddress: "FDF5E000",
-    labels: [],
+    labels: [] as string[],
     isOverlayRoot: false,
     nodePath: "/amba/i2c@FDF5E000",
     startLine: 42,
@@ -61,7 +64,8 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
     endColumn: 1,
     contentHash: "hash-i2c",
     sourceOrder: 3,
-    properties: []
+    properties: [] as SourceTopologyNode["properties"],
+    rawStatus: '"disabled"' as string | null
   },
   {
     id: "src-sc8562",
@@ -90,7 +94,8 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
         contentHash: "hash-gpio-int",
         sourceOrder: 1
       }
-    ]
+    ],
+    rawStatus: '"okay"' as string | null
   },
   {
     id: "src-unresolved",
@@ -98,7 +103,7 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
     fileName: "power.dtso",
     parentOccurrenceId: null,
     name: "missing",
-    labels: [],
+    labels: [] as string[],
     refTarget: "ghost_label",
     isOverlayRoot: true,
     nodePath: "/&ghost_label",
@@ -108,17 +113,21 @@ export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = [
     endColumn: 1,
     contentHash: "hash-ghost",
     sourceOrder: 5,
-    properties: []
+    properties: [] as SourceTopologyNode["properties"],
+    rawStatus: null as string | null
   }
 ];
 
-export const TOPOLOGY_TEACHING_EFFECTIVE_NODES: EffectiveTopologyNode[] = [
+export const TOPOLOGY_TEACHING_SOURCE_NODES: SourceTopologyNode[] = withSourceEnablement(RAW_SOURCE_NODES);
+
+export const TOPOLOGY_TEACHING_EFFECTIVE_NODES: EffectiveTopologyNode[] = withEffectiveEnablement([
   {
     id: "eff-amba",
     logicalNodeId: "logical-amba",
     locator: "/amba",
     name: "amba",
     parentLogicalNodeId: null,
+    rawStatus: null,
     effects: []
   },
   {
@@ -128,6 +137,7 @@ export const TOPOLOGY_TEACHING_EFFECTIVE_NODES: EffectiveTopologyNode[] = [
     name: "i2c",
     unitAddress: "FDF5E000",
     parentLogicalNodeId: "logical-amba",
+    rawStatus: '"disabled"',
     effects: []
   },
   {
@@ -138,11 +148,12 @@ export const TOPOLOGY_TEACHING_EFFECTIVE_NODES: EffectiveTopologyNode[] = [
     unitAddress: "6E",
     compatible: "vendor,sc8562",
     parentLogicalNodeId: "logical-i2c",
+    rawStatus: '"okay"',
     effects: [
       {
         id: "eff-gpio-int",
         propertyName: "gpio_int",
-        effectKind: "set",
+        effectKind: "set" as const,
         nodeOccurrenceId: "src-sc8562",
         propertyOccurrenceId: "src-prop-gpio-int",
         sourceOrder: 1
@@ -157,18 +168,19 @@ export const TOPOLOGY_TEACHING_EFFECTIVE_NODES: EffectiveTopologyNode[] = [
     unitAddress: "55",
     compatible: "mediatek,mt5788",
     parentLogicalNodeId: "logical-i2c",
+    rawStatus: '"okay"',
     effects: [
       {
         id: "eff-mt-gpio-int",
         propertyName: "gpio_int",
-        effectKind: "set",
+        effectKind: "set" as const,
         nodeOccurrenceId: null,
         propertyOccurrenceId: null,
         sourceOrder: 1
       }
     ]
   }
-];
+]);
 
 export const TOPOLOGY_TEACHING_BINDINGS: ProjectParameterBinding[] = [
   {
@@ -220,20 +232,5 @@ export const TOPOLOGY_TEACHING_BINDINGS: ProjectParameterBinding[] = [
     schemaState: "valid",
     policyState: "pass",
     moduleId: driverFallbackModuleId("mt5788")
-  },
-  {
-    id: "binding-sc8562-status",
-    parameterSpecId: "spec-sc8562-status",
-    parameterSpecVersionId: "specver-sc8562-status-1",
-    propertyKey: "status",
-    driverModule: "sc8562",
-    logicalNodeId: "logical-sc8562",
-    instanceName: "sc8562@6E",
-    locator: "/amba/i2c@FDF5E000/sc8562@6E",
-    effectiveValue: { kind: "strings", values: ["okay"] },
-    rawValue: '"okay"',
-    schemaState: "valid",
-    policyState: "not_applicable",
-    moduleId: driverFallbackModuleId("sc8562")
   }
 ];

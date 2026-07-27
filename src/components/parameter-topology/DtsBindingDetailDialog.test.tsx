@@ -64,6 +64,8 @@ function gpioRow(overrides: Partial<DtsParameterWorkbenchRow> = {}): DtsParamete
     ],
     searchText: "gpio_int sc8562 sc8562@6e gpio13",
     view: "effective",
+    nodeEnablement: null,
+    nodeEnablementNotice: null,
     ...overrides
   };
 }

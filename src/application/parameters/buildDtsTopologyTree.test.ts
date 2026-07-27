@@ -179,7 +179,9 @@ function row(
     governanceState,
     effects: [],
     searchText: bindingId,
-    view
+    view,
+    nodeEnablement: null,
+    nodeEnablementNotice: null
   };
 }
 

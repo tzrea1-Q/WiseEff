@@ -129,6 +129,28 @@ export type SourceTopologyProperty = {
   endColumn: number;
   contentHash: string;
   sourceOrder: number;
+  /** Present when the topology API selects property raw text (used for status enablement). */
+  rawText?: string;
+};
+
+export type EffectiveTopologyEffect = {
+  id: string;
+  propertyName: string | null;
+  effectKind: "set" | "override" | "delete";
+  nodeOccurrenceId: string | null;
+  propertyOccurrenceId: string | null;
+  sourceOrder: number;
+};
+
+/** Serializable node enablement attached to topology DTOs (ADR-0003). */
+export type TopologyNodeEnablement = {
+  selfEnabled: boolean;
+  override: "unstated" | "force-enabled" | "force-disabled" | "nonstandard";
+  rawStatus: string | null;
+  rawToken: string | null;
+  reachable: boolean;
+  blockingAncestorId: string | null;
+  blockingAncestorLabel: string | null;
 };
 
 export type SourceTopologyNode = {
@@ -150,15 +172,8 @@ export type SourceTopologyNode = {
   contentHash: string;
   sourceOrder: number;
   properties: SourceTopologyProperty[];
-};
-
-export type EffectiveTopologyEffect = {
-  id: string;
-  propertyName: string | null;
-  effectKind: "set" | "override" | "delete";
-  nodeOccurrenceId: string | null;
-  propertyOccurrenceId: string | null;
-  sourceOrder: number;
+  /** Derived when source property raw text for `status` is available. */
+  enablement?: TopologyNodeEnablement;
 };
 
 export type EffectiveTopologyNode = {
@@ -170,6 +185,8 @@ export type EffectiveTopologyNode = {
   compatible?: string;
   parentLogicalNodeId: string | null;
   effects: EffectiveTopologyEffect[];
+  /** Derived from effective `status`; absent means unstated/enabled. */
+  enablement?: TopologyNodeEnablement;
 };
 
 export type TopologyTree =

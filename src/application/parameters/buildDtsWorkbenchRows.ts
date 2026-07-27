@@ -262,6 +262,17 @@ export function buildDtsWorkbenchRows({
       moduleRegistry
     );
 
+    const nodeEnablement = effectiveNode?.enablement ?? null;
+    let nodeEnablementNotice: string | null = null;
+    if (nodeEnablement && !nodeEnablement.selfEnabled) {
+      nodeEnablementNotice =
+        nodeEnablement.override === "nonstandard"
+          ? `所属节点启用状态为非标准取值（${nodeEnablement.rawToken ?? "?"}），此参数不生效`
+          : "所属节点已禁用，此参数不生效";
+    } else if (nodeEnablement && !nodeEnablement.reachable && nodeEnablement.blockingAncestorLabel) {
+      nodeEnablementNotice = `所属节点不可达（阻断点：${nodeEnablement.blockingAncestorLabel}），此参数不生效`;
+    }
+
     return {
       bindingId: binding.id,
       parameterSpecId: binding.parameterSpecId,
@@ -308,9 +319,12 @@ export function buildDtsWorkbenchRows({
         valueShapeSummary,
         binding.schemaState,
         binding.policyState,
-        governanceState
+        governanceState,
+        nodeEnablementNotice
       ]),
-      view
+      view,
+      nodeEnablement,
+      nodeEnablementNotice
     };
   });
 

@@ -57,11 +57,11 @@
 
 ## 批次 2 — 让启停可见
 
-- [ ] 在 `src/domain/parameter-topology/` 中加入启用派生：自身启用状态取自本节点 `status`，可达性取自祖先链，另含非标准取值的分类。词汇表硬编码于此——它来自 Devicetree 规范，不来自厂商 YAML。
-- [ ] 通过拓扑端口与 API 响应暴露启用与可达性，使 mock 与 API 模式服务同一语义模型（ADR-0002）。
-- [ ] `TopologyTree.tsx` / `DtsTopologyNavigator.tsx`：节点行上的启用/禁用徽标，以及"不可达"标记，标出阻断的祖先并可跳转。
-- [ ] `DtsParameterWorkbenchTable.tsx`：行级提示"所属节点已禁用，此参数不生效"，并可跳转到该节点。
-- [ ] Mock 对齐：从 `mockParameterTopologyRepository.ts` 移除 `spec-sc8562-status` 与 `binding-sc8562-status`，改为在 mock 拓扑节点上以字段表达启用状态。
+- [x] 在 `src/domain/parameter-topology/` 中加入启用派生：自身启用状态取自本节点 `status`，可达性取自祖先链，另含非标准取值的分类。词汇表硬编码于此——它来自 Devicetree 规范，不来自厂商 YAML。
+- [x] 通过拓扑端口与 API 响应暴露启用与可达性，使 mock 与 API 模式服务同一语义模型（ADR-0002）。
+- [x] `TopologyTree.tsx` / `DtsTopologyNavigator.tsx`：节点行上的启用/禁用徽标，以及"不可达"标记，标出阻断的祖先并可跳转。
+- [x] `DtsParameterWorkbenchTable.tsx`：行级提示"所属节点已禁用，此参数不生效"，并可跳转到该节点。
+- [x] Mock 对齐：从 `mockParameterTopologyRepository.ts` 移除 `spec-sc8562-status` 与 `binding-sc8562-status`，改为在 mock 拓扑节点上以字段表达启用状态。
 
 ## 批次 3 — 让启停可改
 

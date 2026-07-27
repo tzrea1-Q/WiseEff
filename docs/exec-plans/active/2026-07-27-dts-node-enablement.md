@@ -57,11 +57,11 @@ The four batches below are independently mergeable. Batch 1 ships first and alon
 
 ## Batch 2 — Make enablement visible
 
-- [ ] Add the enablement derivation to `src/domain/parameter-topology/`: self-enablement from the node's own `status`, reachability from the ancestor chain, and classification of non-standard values. Vocabulary is hard-coded here; it comes from the Devicetree specification, not from vendor YAML.
-- [ ] Surface enablement and reachability through the topology port and API response so mock and API modes serve the same semantic model (ADR-0002).
-- [ ] `TopologyTree.tsx` / `DtsTopologyNavigator.tsx`: enabled/disabled badge per node row, plus an "unreachable" marker naming the blocking ancestor with navigation to it.
-- [ ] `DtsParameterWorkbenchTable.tsx`: row-level notice that the owning node is disabled and the parameter therefore has no effect, with a link to the node.
-- [ ] Mock parity: remove `spec-sc8562-status` and `binding-sc8562-status` from `mockParameterTopologyRepository.ts` and express enablement as a field on the mock topology nodes.
+- [x] Add the enablement derivation to `src/domain/parameter-topology/`: self-enablement from the node's own `status`, reachability from the ancestor chain, and classification of non-standard values. Vocabulary is hard-coded here; it comes from the Devicetree specification, not from vendor YAML.
+- [x] Surface enablement and reachability through the topology port and API response so mock and API modes serve the same semantic model (ADR-0002).
+- [x] `TopologyTree.tsx` / `DtsTopologyNavigator.tsx`: enabled/disabled badge per node row, plus an "unreachable" marker naming the blocking ancestor with navigation to it.
+- [x] `DtsParameterWorkbenchTable.tsx`: row-level notice that the owning node is disabled and the parameter therefore has no effect, with a link to the node.
+- [x] Mock parity: remove `spec-sc8562-status` and `binding-sc8562-status` from `mockParameterTopologyRepository.ts` and express enablement as a field on the mock topology nodes.
 
 ## Batch 3 — Make enablement editable
 
