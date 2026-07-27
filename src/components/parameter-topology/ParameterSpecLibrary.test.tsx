@@ -76,13 +76,13 @@ describe("ParameterSpecLibrary", () => {
     const library = screen.getByRole("region", { name: "参数定义库" });
     const table = within(library).getByRole("table");
 
-    for (const header of ["参数名", "所属模块", "值类型", "审核状态", "操作"]) {
+    for (const header of ["参数名", "预测模块", "值类型", "审核状态", "操作"]) {
       expect(within(table).getByRole("columnheader", { name: new RegExp(header) })).toBeInTheDocument();
     }
     expect(within(table).queryByRole("columnheader", { name: /^驱动模块$/ })).not.toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: /compatible/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选compatible" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "筛选所属模块" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选预测模块" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选驱动模块" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "筛选审核状态" })).toBeInTheDocument();
 
@@ -95,9 +95,8 @@ describe("ParameterSpecLibrary", () => {
       expect(cell.textContent).not.toMatch(/amba|i2c@|FDF5E000/);
     }
 
-    expect(within(table).getByText("sc8562")).toBeInTheDocument();
-    expect(within(table).getByText("mt5788")).toBeInTheDocument();
-    expect(within(table).queryByText("充电策略")).not.toBeInTheDocument();
+    expect(within(table).getByText("充电策略")).toBeInTheDocument();
+    expect(within(table).getByText("未分类 · mt5788（预测）")).toBeInTheDocument();
     expect(within(table).queryByText("未映射")).not.toBeInTheDocument();
     expect(within(table).queryByText("vendor,sc8562")).not.toBeInTheDocument();
     expect(within(table).getAllByText("phandle-list").length).toBeGreaterThan(0);
@@ -105,7 +104,7 @@ describe("ParameterSpecLibrary", () => {
     expect(library.textContent).not.toMatch(/推荐值|默认值/);
   });
 
-  it("searches by property key and shows driver instances separately", () => {
+  it("searches by property key and shows predicted modules separately", () => {
     render(
       <ParameterSpecLibrary
         specs={[gpioIntSc8562, gpioIntMt5788, pathLikeLegacy]}
@@ -118,13 +117,13 @@ describe("ParameterSpecLibrary", () => {
 
     const library = screen.getByRole("region", { name: "参数定义库" });
     const rows = within(library).getAllByRole("row");
-    expect(rows.some((row) => row.textContent?.includes("sc8562") && row.textContent?.includes("gpio_int"))).toBe(true);
-    expect(rows.some((row) => row.textContent?.includes("mt5788") && row.textContent?.includes("gpio_int"))).toBe(true);
+    expect(rows.some((row) => row.textContent?.includes("充电策略") && row.textContent?.includes("gpio_int"))).toBe(true);
+    expect(rows.some((row) => row.textContent?.includes("未分类 · mt5788") && row.textContent?.includes("gpio_int"))).toBe(true);
     expect(within(library).queryByText("status")).not.toBeInTheDocument();
     expect(within(library).getByText(/2 \/ 3 项/)).toBeInTheDocument();
   });
 
-  it("filters by driver and lifecycle via ColumnFilter multi-select", async () => {
+  it("filters by predicted module and lifecycle via ColumnFilter multi-select", async () => {
     const user = userEvent.setup();
     render(
       <ParameterSpecLibrary
@@ -133,8 +132,8 @@ describe("ParameterSpecLibrary", () => {
       />
     );
 
-    await user.click(screen.getByRole("button", { name: "筛选所属模块" }));
-    await user.click(screen.getByRole("checkbox", { name: "sc8562" }));
+    await user.click(screen.getByRole("button", { name: "筛选预测模块" }));
+    await user.click(screen.getByRole("checkbox", { name: "充电策略" }));
     await user.click(screen.getByRole("button", { name: "筛选审核状态" }));
     await user.click(screen.getByRole("checkbox", { name: "active" }));
 
@@ -144,7 +143,7 @@ describe("ParameterSpecLibrary", () => {
       .filter((row) => row.querySelector("td"));
     expect(dataRows).toHaveLength(1);
     expect(dataRows[0]?.textContent).toContain("gpio_int");
-    expect(dataRows[0]?.textContent).toContain("sc8562");
+    expect(dataRows[0]?.textContent).toContain("充电策略");
     expect(dataRows[0]?.textContent).not.toContain("mt5788");
     expect(dataRows[0]?.textContent).not.toContain("status");
   });

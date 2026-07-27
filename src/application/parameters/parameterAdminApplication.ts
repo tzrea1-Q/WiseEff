@@ -8,6 +8,7 @@ import type {
 import type {
   CreateModuleMappingInput,
   CreateParameterModuleInput,
+  MappingMutationResult,
   ModuleDiscoveryHints,
   ParameterModuleRegistryRepository,
   RecomputeBindingModulesResult,
@@ -64,8 +65,8 @@ export type ParameterAdminApplication = {
   createModule(input: CreateParameterModuleInput): Promise<ParameterModuleRegistry>;
   updateModule(moduleId: string, input: UpdateParameterModuleInput): Promise<ParameterModuleRegistry>;
   deleteModule(moduleId: string): Promise<ParameterModuleRegistry>;
-  createModuleMapping(input: CreateModuleMappingInput): Promise<ParameterModuleRegistry>;
-  deleteModuleMapping(mappingId: string): Promise<ParameterModuleRegistry>;
+  createModuleMapping(input: CreateModuleMappingInput): Promise<MappingMutationResult>;
+  deleteModuleMapping(mappingId: string): Promise<MappingMutationResult>;
   recomputeBindingModules(input?: { projectId?: string }): Promise<RecomputeBindingModulesResult>;
   asModuleRegistryRepository(): ParameterModuleRegistryRepository;
 
@@ -105,9 +106,13 @@ export function createParameterAdminApplication({
   const asModuleRegistryRepository = (): ParameterModuleRegistryRepository => ({
     getRegistry: () => moduleRegistry.getRegistry(),
     getDiscoveryHints: () => moduleRegistry.getDiscoveryHints(),
+    dismissCompatible: (input) => moduleRegistry.dismissCompatible(input),
+    restoreDismissedCompatible: (compatible) =>
+      moduleRegistry.restoreDismissedCompatible(compatible),
     createModule: (input) => moduleRegistry.createModule(input),
     updateModule: (moduleId, input) => moduleRegistry.updateModule(moduleId, input),
     deleteModule: (moduleId) => moduleRegistry.deleteModule(moduleId),
+    previewMapping: (input) => moduleRegistry.previewMapping(input),
     createMapping: (input) => moduleRegistry.createMapping(input),
     deleteMapping: (mappingId) => moduleRegistry.deleteMapping(mappingId),
     recomputeBindings: (input) => moduleRegistry.recomputeBindings(input)

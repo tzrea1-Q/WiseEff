@@ -19,12 +19,22 @@ export const MODULE_MAPPING_PRIORITY_MAX = 999;
 
 export type ModuleImportance = "high" | "medium" | "low";
 
+export type ModuleKind = "business" | "driver-group" | "instance" | "unclassified";
+
+export type ModuleOrigin = "curated" | "auto";
+
 export type ParameterModule = {
   id: string;
   name: string;
   parentId: string | null;
   sortOrder: number;
   importance: ModuleImportance;
+  kind: ModuleKind;
+  origin: ModuleOrigin;
+  sourceKey: string | null;
+  /** Nearest ancestor business category importance (or own, when business). */
+  effectiveImportance: ModuleImportance;
+  parameterCount: number;
 };
 
 export type ParameterModuleMapping = {

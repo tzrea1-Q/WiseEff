@@ -36,6 +36,7 @@ describe("moduleDiscovery", () => {
       {
         compatible: "vendor,new-driver",
         bindingCount: 3,
+        projectCount: 0,
         suggestedGroupName: "new-driver",
       },
     ]);

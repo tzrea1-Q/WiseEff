@@ -131,24 +131,24 @@ PR2 在 PR1 合并后才开始，这样 UI 直接对着真实的 `kind` / `origi
 
 ### 批次 7 — 队列
 
-- [ ] 新增 `src/components/parameter-topology/UnclassifiedCompatibleQueue.tsx`：表格列为 compatible、影响参数数、涉及项目、建议驱动组；列筛选遵循 `docs/design-docs/ux-table-column-filter.md`；行复选框支持批量；提供忽略与恢复动作。
-- [ ] 新增 `ClassifyCompatibleDialog.tsx`：用 `ModuleTreeSelect` 选目标业务分类（限定 `kind = business`，支持就地新建），驱动组名可编辑并预填建议值，从预览端点取影响预览，阻断项按阻断项渲染。批量模式下多个 compatible 走同一个对话框归到同一业务分类。
-- [ ] 删除 `OrganizationModuleGovernancePanel.tsx` 里的 `observedDrivers` 属性和 `listSpecs({})` 聚合。
+- [x] 新增 `src/components/parameter-topology/UnclassifiedCompatibleQueue.tsx`：表格列为 compatible、影响参数数、涉及项目、建议驱动组；列筛选遵循 `docs/design-docs/ux-table-column-filter.md`；行复选框支持批量；提供忽略与恢复动作。
+- [x] 新增 `ClassifyCompatibleDialog.tsx`：用 `ModuleTreeSelect` 选目标业务分类（限定 `kind = business`，支持就地新建），驱动组名可编辑并预填建议值，从预览端点取影响预览，阻断项按阻断项渲染。批量模式下多个 compatible 走同一个对话框归到同一业务分类。
+- [x] 删除 `OrganizationModuleGovernancePanel.tsx` 里的 `observedDrivers` 属性和 `listSpecs({})` 聚合。
 
 ### 批次 8 — 树
 
-- [ ] 树重写为 `ModuleAttributionTree.tsx`：每个模块一行，含名称、kind 徽标、参数计数、已匹配的 compatible（若有），重要性只在业务分类行显示且用高/中/低。操作按 kind 出现，且只出现服务端会接受的那些。默认展开到驱动组层并显示实例计数，实例按需展开。
-- [ ] 用基于真实 `origin` 和 `kind` 的筛选取代「显示自动发现」复选框。若无其他消费方，删除 `isAutoDiscoveredModuleName`。
-- [ ] 去掉独立的「归属规则」卡片；规则渲染在它指向的模块上，删规则是该模块上的一个动作。
-- [ ] 移动目标选择器排除非业务分类模块。
+- [x] 树重写为 `ModuleAttributionTree.tsx`：每个模块一行，含名称、kind 徽标、参数计数、已匹配的 compatible（若有），重要性只在业务分类行显示且用高/中/低。操作按 kind 出现，且只出现服务端会接受的那些。默认展开到驱动组层并显示实例计数，实例按需展开。
+- [x] 用基于真实 `origin` 和 `kind` 的筛选取代「显示自动发现」复选框。若无其他消费方，删除 `isAutoDiscoveredModuleName`。
+- [x] 去掉独立的「归属规则」卡片；规则渲染在它指向的模块上，删规则是该模块上的一个动作。
+- [x] 移动目标选择器排除非业务分类模块。
 
 ### 批次 9 — 文案、mock 对齐与清理
 
-- [ ] 在 `src/application/parameters/parameterAdminUiCopy.ts` 里给这个页面改名。建议标签页改为「模块归属」，简介围绕三层结构和队列重写。`moduleMapping`、`moduleMappingBlurb`、`moduleDiscoveryDriver`、`mappingRules`、`addMapping`、`deleteMapping` 全部变更或消失；`adminSubtitle` 和三个 `xiaoze*` 字符串里出现了「驱动归属」，需一并跟进。
-- [ ] `OrganizationSpecGovernancePanel.tsx` 消费收窄后的 `deriveModuleAssignment`；定义库里的模块列标注为预测而不是既定归属。
-- [ ] 按 ADR-0002 做 mock 对齐：`mockParameterTopologyRepository` 与模块注册表 mock 提供 `kind`、`origin`、`effectiveImportance`、`parameterCount`、预览与忽略。
-- [ ] 更新 `src/ParameterAdminNextPage.test.tsx`，为队列、对话框、按 kind 的树操作补组件测试。
-- [ ] 移除旧面板 header 里的内联 `style={{...}}`；新组件只用 `src/styles.css` 的类。
+- [x] 在 `src/application/parameters/parameterAdminUiCopy.ts` 里给这个页面改名。建议标签页改为「模块归属」，简介围绕三层结构和队列重写。`moduleMapping`、`moduleMappingBlurb`、`moduleDiscoveryDriver`、`mappingRules`、`addMapping`、`deleteMapping` 全部变更或消失；`adminSubtitle` 和三个 `xiaoze*` 字符串里出现了「驱动归属」，需一并跟进。
+- [x] `OrganizationSpecGovernancePanel.tsx` 消费收窄后的 `deriveModuleAssignment`；定义库里的模块列标注为预测而不是既定归属。
+- [x] 按 ADR-0002 做 mock 对齐：`mockParameterTopologyRepository` 与模块注册表 mock 提供 `kind`、`origin`、`effectiveImportance`、`parameterCount`、预览与忽略。
+- [x] 更新 `src/ParameterAdminNextPage.test.tsx`，为队列、对话框、按 kind 的树操作补组件测试。
+- [x] 移除旧面板 header 里的内联 `style={{...}}`；新组件只用 `src/styles.css` 的类。
 
 ## UI 交互自动化
 

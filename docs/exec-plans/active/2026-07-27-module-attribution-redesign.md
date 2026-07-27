@@ -131,24 +131,24 @@ Branch `feat/module-attribution-ui`, cut after PR1 merges.
 
 ### Batch 7 — Queue
 
-- [ ] New `src/components/parameter-topology/UnclassifiedCompatibleQueue.tsx`: table with compatible, affected parameters, projects, and suggested driver group; column filters per `docs/design-docs/ux-table-column-filter.md`; row checkboxes for bulk selection; dismiss and restore actions.
-- [ ] New `ClassifyCompatibleDialog.tsx`: target business category via `ModuleTreeSelect` restricted to `kind = business` with inline create, editable driver-group name prefilled from the suggestion, impact preview from the preview endpoint, and blockers rendered as blockers. Bulk mode files several compatibles into one business category through the same dialog.
-- [ ] Delete the `observedDrivers` prop and the `listSpecs({})` aggregation in `OrganizationModuleGovernancePanel.tsx`.
+- [x] New `src/components/parameter-topology/UnclassifiedCompatibleQueue.tsx`: table with compatible, affected parameters, projects, and suggested driver group; column filters per `docs/design-docs/ux-table-column-filter.md`; row checkboxes for bulk selection; dismiss and restore actions.
+- [x] New `ClassifyCompatibleDialog.tsx`: target business category via `ModuleTreeSelect` restricted to `kind = business` with inline create, editable driver-group name prefilled from the suggestion, impact preview from the preview endpoint, and blockers rendered as blockers. Bulk mode files several compatibles into one business category through the same dialog.
+- [x] Delete the `observedDrivers` prop and the `listSpecs({})` aggregation in `OrganizationModuleGovernancePanel.tsx`.
 
 ### Batch 8 — Tree
 
-- [ ] Rewrite the tree as `ModuleAttributionTree.tsx`: one line per module carrying name, kind badge, parameter count, matched compatible where present, and importance only on business rows in 高/中/低. Actions appear per kind, and only the ones the server will accept. Default expansion stops at the driver-group layer with instance counts shown; instances expand on demand.
-- [ ] Retire the 显示自动发现 checkbox in favour of filters over real `origin` and `kind`. Delete `isAutoDiscoveredModuleName` if nothing else consumes it.
-- [ ] Drop the standalone 归属规则 card; rules render on the module they point at, and removing a rule is an action on that module.
-- [ ] Move-target selection excludes non-business modules.
+- [x] Rewrite the tree as `ModuleAttributionTree.tsx`: one line per module carrying name, kind badge, parameter count, matched compatible where present, and importance only on business rows in 高/中/低. Actions appear per kind, and only the ones the server will accept. Default expansion stops at the driver-group layer with instance counts shown; instances expand on demand.
+- [x] Retire the 显示自动发现 checkbox in favour of filters over real `origin` and `kind`. Delete `isAutoDiscoveredModuleName` if nothing else consumes it.
+- [x] Drop the standalone 归属规则 card; rules render on the module they point at, and removing a rule is an action on that module.
+- [x] Move-target selection excludes non-business modules.
 
 ### Batch 9 — Copy, parity, and cleanup
 
-- [ ] Rename the surface in `src/application/parameters/parameterAdminUiCopy.ts`. Proposal: tab 模块归属, blurb rewritten around the three layers and the queue. Keys `moduleMapping`, `moduleMappingBlurb`, `moduleDiscoveryDriver`, `mappingRules`, `addMapping`, `deleteMapping` all change or disappear; `adminSubtitle` and the three `xiaoze*` strings mention 驱动归属 and must follow.
-- [ ] `OrganizationSpecGovernancePanel.tsx` consumes the narrowed `deriveModuleAssignment`; label the spec-library module column as a prediction rather than an assignment.
-- [ ] Mock parity per ADR-0002: `mockParameterTopologyRepository` and the module-registry mock serve `kind`, `origin`, `effectiveImportance`, `parameterCount`, preview, and dismissals.
-- [ ] Update `src/ParameterAdminNextPage.test.tsx` and add component tests for the queue, the dialog, and kind-scoped tree actions.
-- [ ] Retire the inline `style={{...}}` block in the old panel header; the new components use `src/styles.css` classes only.
+- [x] Rename the surface in `src/application/parameters/parameterAdminUiCopy.ts`. Proposal: tab 模块归属, blurb rewritten around the three layers and the queue. Keys `moduleMapping`, `moduleMappingBlurb`, `moduleDiscoveryDriver`, `mappingRules`, `addMapping`, `deleteMapping` all change or disappear; `adminSubtitle` and the three `xiaoze*` strings mention 驱动归属 and must follow.
+- [x] `OrganizationSpecGovernancePanel.tsx` consumes the narrowed `deriveModuleAssignment`; label the spec-library module column as a prediction rather than an assignment.
+- [x] Mock parity per ADR-0002: `mockParameterTopologyRepository` and the module-registry mock serve `kind`, `origin`, `effectiveImportance`, `parameterCount`, preview, and dismissals.
+- [x] Update `src/ParameterAdminNextPage.test.tsx` and add component tests for the queue, the dialog, and kind-scoped tree actions.
+- [x] Retire the inline `style={{...}}` block in the old panel header; the new components use `src/styles.css` classes only.
 
 ## UI Interaction Automation
 
