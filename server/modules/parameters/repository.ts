@@ -836,18 +836,19 @@ type ChangeRequestRow = {
 };
 
 /** Prefer binding leaf module name; fall back to spec-key prefix. */
-const CR_MODULE_NAME_SEMANTIC_SQL = `
+const CR_MODULE_NAME_SEMANTIC_EXPR = `
       coalesce(
         nullif(trim(binding_pm.name), ''),
         nullif(split_part(ps.specification_key, '/', 1), ''),
         ''
-      ) as module`;
+      )`;
+const CR_MODULE_NAME_SEMANTIC_SQL = `${CR_MODULE_NAME_SEMANTIC_EXPR} as module`;
 
 /**
  * Prefer category/ancestor module intro over instance boilerplate
  * (e.g. "sc8562@6E DTS 实例模块。").
  */
-const CR_MODULE_DESCRIPTION_FROM_BINDING_SQL = `
+const CR_MODULE_DESCRIPTION_FROM_BINDING_EXPR = `
       coalesce(
         (
           select nullif(trim(ancestor.description), '')
@@ -860,7 +861,8 @@ const CR_MODULE_DESCRIPTION_FROM_BINDING_SQL = `
           limit 1
         ),
         nullif(trim(binding_pm.description), '')
-      ) as module_description`;
+      )`;
+const CR_MODULE_DESCRIPTION_FROM_BINDING_SQL = `${CR_MODULE_DESCRIPTION_FROM_BINDING_EXPR} as module_description`;
 
 const CR_MODULE_JOINS_SEMANTIC_SQL = `
     left join project_parameter_bindings b on b.id = pcr.project_parameter_binding_id
@@ -891,8 +893,8 @@ const CR_MODULE_JOINS_LEGACY_SQL = `
     left join parameter_modules binding_pm on binding_pm.id = b.module_id
     left join parameter_modules def_pm on def_pm.id = pd.parameter_module_id`;
 
-const CR_PARAMETER_DESCRIPTION_SEMANTIC_SQL = `
-      nullif(trim(psv.description), '') as parameter_description`;
+const CR_PARAMETER_DESCRIPTION_SEMANTIC_EXPR = `nullif(trim(psv.description), '')`;
+const CR_PARAMETER_DESCRIPTION_SEMANTIC_SQL = `${CR_PARAMETER_DESCRIPTION_SEMANTIC_EXPR} as parameter_description`;
 
 const CR_PARAMETER_DESCRIPTION_LEGACY_SQL = `
       nullif(trim(pd.description), '') as parameter_description`;
@@ -3660,15 +3662,12 @@ export async function getChangeRequestById(
             nullif(trim(lnr.name), ''),
             '节点启用'
           )
-          else ${CR_MODULE_NAME_SEMANTIC_SQL}
+          else ${CR_MODULE_NAME_SEMANTIC_EXPR}
         end as module,
-        case
-          when pcr.edit_subject_kind = 'node-enablement' then ${CR_MODULE_DESCRIPTION_FROM_BINDING_SQL}
-          else ${CR_MODULE_DESCRIPTION_FROM_BINDING_SQL}
-        end as module_description,
+        ${CR_MODULE_DESCRIPTION_FROM_BINDING_SQL},
         case
           when pcr.edit_subject_kind = 'node-enablement' then null::text
-          else ${CR_PARAMETER_DESCRIPTION_SEMANTIC_SQL}
+          else ${CR_PARAMETER_DESCRIPTION_SEMANTIC_EXPR}
         end as parameter_description,
         case
           when pcr.edit_subject_kind = 'node-enablement' then coalesce(nullif(trim(lnr.name), ''), 'status')

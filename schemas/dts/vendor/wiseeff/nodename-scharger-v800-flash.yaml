@@ -6,14 +6,7 @@ version: 1
 schemaNamespace: vendor/nodename/scharger_v800_flash
 nodename:
   - scharger_v800_flash
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   vendor,led-type:
     valueShape: u32-array
     exampleValue: <0>

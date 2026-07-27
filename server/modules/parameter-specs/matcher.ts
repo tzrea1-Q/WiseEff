@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { isStructuralPropertyKey } from "../../../src/domain/parameter-topology/parameterSurface";
 import { isReleasableDriver, isReleasableProperty } from "./schemaLoader";
 import type {
   DriverSchema,
@@ -396,6 +397,8 @@ export function bindGoldenOverlayProperties(
 
   for (const node of nodes) {
     for (const propertyKey of Object.keys(node.properties)) {
+      // ADR-0003: structural keys (status, …) are node enablement / topology, not parameters.
+      if (isStructuralPropertyKey(propertyKey)) continue;
       totalProperties += 1;
       const decision = matchProperty(node, propertyKey, registry);
       if (decision.kind === "matched") {

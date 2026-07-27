@@ -88,6 +88,7 @@ Semantic library and project topology UI live under `src/components/parameter-to
 
 - Parameter specs + spec review queue (`/parameter-admin`)
 - Source vs effective topology browse and search on `/parameters`
+- **Node enablement:** topology tree rows show enabled/disabled badges and unreachable markers (blocking ancestor); workbench parameter rows under a disabled node show a no-effect notice; node detail opens `DtsNodeEnablementDialog` for three-state enablement edits (shared draft round with binding edits)
 - Typed binding edit with schema diagnostics
 - Binding-centric typed draft submission with project-scoped Hardware Committer, Software Committer, and Software User assignees; subsequent stages run on the real `/parameter-review` UI
 - Identity mapping task resolution

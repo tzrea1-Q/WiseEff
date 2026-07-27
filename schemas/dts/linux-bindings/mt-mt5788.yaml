@@ -7,8 +7,6 @@ description: WiseEff vendor binding for mt,mt5788 (generated from vendor propert
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   gpio_en:
     $ref: /schemas/types.yaml#/definitions/phandle-array
   gpio_int:

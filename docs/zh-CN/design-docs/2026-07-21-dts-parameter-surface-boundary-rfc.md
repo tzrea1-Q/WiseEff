@@ -56,7 +56,11 @@
 
 ### 3.3 受管属性（v1）
 
-**默认排除：** `compatible`、`reg`、`status`（除非模块策略另开）、`#*-cells`、`ranges`、`interrupt-controller`、`gpio-controller`、纯结构布尔占位。
+**默认排除**（并在适用时路由到正确的非参数模型）：
+
+- `compatible`、`reg` — 仅结构身份/寻址
+- `status` — **节点启用状态**，不是参数；不参与匹配、规格库与规格审核；经拓扑 `enablement` 与 `POST .../node-enablement-drafts` 展示与编辑（ADR-0003）
+- `#*-cells`、`ranges`、`interrupt-controller`、`gpio-controller`、纯结构布尔占位
 
 **默认纳入：** 受管节点上其余属性（含业务用 phandle 列表等）。
 

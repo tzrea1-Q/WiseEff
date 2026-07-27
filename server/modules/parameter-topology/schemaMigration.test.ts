@@ -16,7 +16,17 @@ const migration0062 = "0062_parameter_change_action.sql";
 const migration0063 = "0063_parameter_submission_candidate_identity.sql";
 const migration0066 = "0066_parameter_module_mappings.sql";
 const migration0067 = "0067_binding_module_id.sql";
+const migration0068 = "0068_dismiss_structural_spec_reviews.sql";
+const migration0069 = "0069_node_enablement_drafts.sql";
+const migration0070 = "0070_node_enablement_change_requests.sql";
+const migration0071 = "0071_relax_enablement_subject_checks.sql";
 
+const enablementMigrations = [
+  migration0068,
+  migration0069,
+  migration0070,
+  migration0071
+] as const;
 const REQUIRED_TABLES = [
   "parameter_specs",
   "parameter_spec_versions",
@@ -350,7 +360,8 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
         migration0062,
         migration0063,
         migration0066,
-        migration0067
+        migration0067,
+        ...enablementMigrations
       ]);
       expect((await db.query(`select id from parameter_drafts order by id`)).rows).toEqual([]);
       expect(
@@ -494,7 +505,8 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
         migration0062,
         migration0063,
         migration0066,
-        migration0067
+        migration0067,
+        ...enablementMigrations
       ]);
       expect((await db.query(`select id from parameter_drafts order by id`)).rows).toEqual([
         { id: "draft-0061-valid" }
@@ -549,7 +561,13 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
       }
 
       const pending = await applyMigrations(db, migrationsDir);
-      expect(pending).toEqual([migration0062, migration0063, migration0066, migration0067]);
+      expect(pending).toEqual([
+        migration0062,
+        migration0063,
+        migration0066,
+        migration0067,
+        ...enablementMigrations
+      ]);
 
       for (const table of ["parameter_drafts", "parameter_submission_items", "parameter_change_requests"]) {
         expect(await columnDefinition(db, table, "action")).toEqual({
@@ -585,7 +603,8 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
       expect(await applyMigrations(db, migrationsDir)).toEqual([
         migration0063,
         migration0066,
-        migration0067
+        migration0067,
+        ...enablementMigrations
       ]);
       for (const table of ["parameter_submission_items", "parameter_change_requests"]) {
         expect(await columnDefinition(db, table, "candidate_config_revision_id")).toEqual({

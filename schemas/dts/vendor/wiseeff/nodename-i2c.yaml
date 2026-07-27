@@ -6,8 +6,6 @@ version: 1
 schemaNamespace: vendor/nodename/i2c
 nodename:
   - i2c
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
   "#address-cells":
     valueShape: u32-array
@@ -24,8 +22,3 @@ properties:
     exampleValue: <0x220022>
     constraints: {}
     documentation: i2c 的 DTS 属性「hold time」（hold-time），用于驱动读取的设备树配置。
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

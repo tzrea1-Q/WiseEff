@@ -6,8 +6,6 @@ version: 1
 schemaNamespace: vendor/nodename/battery_checker
 nodename:
   - battery_checker
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
   matchable:
     valueShape: phandle-list
@@ -19,8 +17,3 @@ properties:
     exampleValue: <150>
     constraints: {}
     documentation: battery_checker 的 DTS 属性「spare cycles」（spare-cycles），用于驱动读取的设备树配置。
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

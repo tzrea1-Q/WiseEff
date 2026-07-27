@@ -67,6 +67,10 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-IDENTITY-MAP-001` | P1 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-IDENTITY-MAP-ADMIN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-CONFIG-PUBLISH-GATE-001` | P0 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-GATE-001` | P1 | parameters | automated | `/parameters` | Admin | api, db | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-VISIBLE-001` | P0 | parameters | automated | `/parameters` | Admin, Hardware User | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-TOGGLE-001` | P0 | parameters | automated | `/parameters` | Software User, Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-GUARD-001` | P1 | parameters | automated | `/parameters` | Admin | ui | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 
 ## Deferred Or Conditional Operations
 

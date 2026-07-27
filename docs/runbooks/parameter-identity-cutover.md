@@ -92,7 +92,7 @@ psql "$DATABASE_URL" -c "select count(*) as open_spec_reviews from parameter_spe
 npm run parameter-identities:check
 ```
 
-Resolve every open mapping/spec review in Admin UI (`/parameter-admin`) before **finalize**. Preflight blockers are stop-ship for finalize and cutover; `stage-review` may persist open inferred tasks intentionally.
+Resolve every open mapping/spec review in Admin UI (`/parameter-admin`) before **finalize**. Preflight blockers are stop-ship for finalize and cutover; `stage-review` may persist open inferred tasks intentionally. Open **structural** spec-review tasks (for example legacy `status` rows) are dismissed during migration finalize with a systemic reason and must not block promotion — see [ADR-0003](../adr/0003-node-enablement-is-not-a-parameter.md).
 
 ## 6. Compile-all configs
 

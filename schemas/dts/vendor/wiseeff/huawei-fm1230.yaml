@@ -6,8 +6,6 @@ version: 1
 schemaNamespace: vendor/huawei,fm1230
 compatible:
   - huawei,fm1230
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
   battct_id_gpio-supply:
     valueShape: phandle-list
@@ -36,8 +34,3 @@ properties:
     constraints: {}
     units: ms
     documentation: huawei,fm1230 的 DTS 属性「ow reset start delay」（ow_reset_start_delay），用于驱动读取的设备树配置。
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

@@ -756,5 +756,53 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["PARAM-CONFIG-PUBLISH-GATE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
     assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "PARAM-ENABLE-GATE-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Structural properties do not create spec review tasks or block candidate promotion or migration finalize.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-ENABLE-GATE-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["api", "db"]
+  },
+  {
+    id: "PARAM-ENABLE-VISIBLE-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Admin", "Hardware User"],
+    action: "Browse topology enablement badges and workbench no-effect notices for disabled nodes.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-ENABLE-VISIBLE-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "PARAM-ENABLE-TOGGLE-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Software User", "Admin"],
+    action: "Disable a node with reason and confirmation; submit enablement draft in the same round as a binding edit.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-ENABLE-TOGGLE-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "PARAM-ENABLE-GUARD-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Non-standard status values stay read-only until an explicit acknowledgement override.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-ENABLE-GUARD-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui"]
   }
 ];

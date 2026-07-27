@@ -42,12 +42,15 @@ create unique index if not exists parameter_drafts_enablement_user_unique
 alter table parameter_drafts
   drop constraint if exists parameter_drafts_enablement_subject_check;
 
+-- Binding rows may lack project_parameter_binding_id until identity migration
+-- fills semantic FKs on legacy PPV-backed drafts. Enablement rows must never
+-- carry a binding id. Application code still requires binding_id for new binding edits.
 alter table parameter_drafts
   add constraint parameter_drafts_enablement_subject_check
   check (
     (
       edit_subject_kind = 'binding'
-      and project_parameter_binding_id is not null
+      and logical_node_id is null
     )
     or (
       edit_subject_kind = 'node-enablement'

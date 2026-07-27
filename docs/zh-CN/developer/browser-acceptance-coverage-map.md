@@ -50,6 +50,10 @@
 - `PARAM-IDENTITY-MAP-001`：未解决身份映射阻断 validate（`open-mapping`）；决议后清除阻断并写治理审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-IDENTITY-MAP-ADMIN-001`：Admin 在 `/parameter-admin` 决议身份映射任务（含候选证据与治理审计）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-CONFIG-PUBLISH-GATE-001`：真实工具链 validate 在黄金/候选 Config Set 上成功（status=okay + vendor linux-bindings；不以 schema-failed 冒充成功）；刷新后 bindingId 与 provenance 从 DB 持久（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-ENABLE-GATE-001`：结构属性（含 `status`）不产生规格审核任务、不阻塞候选晋级与迁移 finalize；存量结构任务以系统性原因驳回（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-ENABLE-VISIBLE-001`：拓扑树显示启用/禁用徽标与不可达标记；禁用节点下参数行显示不生效提示（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-ENABLE-TOGGLE-001`：禁用需理由与二次确认；启停草稿可与 binding 编辑同轮提交且不触发 `mixed-working-tips`；独立 `enablement-changed` 审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-ENABLE-GUARD-001`：非标准 `status` 只读；二级覆盖入口须显式确认后方可写入（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 
 ## 同类中文文档
 

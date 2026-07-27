@@ -150,6 +150,9 @@ export function buildVendorSchemaDocuments(): SchemaDocument[] {
       };
     }
 
+    // ADR-0003: status is node enablement — strip before emitting vendor specs.
+    delete properties.status;
+
     documents.push({
       $id: bucket.schemaId,
       title: bucket.compatible[0] ?? bucket.nodename[0] ?? bucket.schemaId,
@@ -159,27 +162,11 @@ export function buildVendorSchemaDocuments(): SchemaDocument[] {
       schemaNamespace: bucket.schemaNamespace,
       compatible: bucket.compatible.length > 0 ? bucket.compatible : undefined,
       nodename: bucket.nodename.length > 0 ? bucket.nodename : undefined,
-      commonRefs: properties.status ? ["wiseeff/common-status.yaml"] : undefined,
       properties,
     });
   }
 
-  documents.push({
-    $id: "wiseeff/common-status.yaml",
-    title: "Common status property",
-    source: "vendor",
-    lifecycle: "active",
-    version: 1,
-    schemaNamespace: "vendor/common",
-    properties: {
-      status: {
-        valueShape: "string-list",
-        exampleValue: '"okay"',
-        constraints: { enum: ["okay", "disabled", "reserved", "fail"] },
-        documentation: "Standard DT status; illustrative enum only.",
-      },
-    },
-  });
+  // common-status.yaml is retired documentation-only; do not emit a matching schema.
 
   // Fixture schemas for precedence / ambiguity tests (not part of golden coverage).
   documents.push({

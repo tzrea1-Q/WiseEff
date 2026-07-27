@@ -6,8 +6,6 @@ version: 1
 schemaNamespace: vendor/huawei,wireless_sc
 compatible:
   - huawei,wireless_sc
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
   bat_para:
     valueShape: string-list
@@ -24,11 +22,6 @@ properties:
     exampleValue: <14>
     constraints: {}
     documentation: huawei,wireless_sc 的 DTS 属性「init para col」（init_para_col），用于驱动读取的设备树配置。
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   volt_para00:
     valueShape: string-list
     exampleValue: "\"4555\", \"1802\", \"386\""

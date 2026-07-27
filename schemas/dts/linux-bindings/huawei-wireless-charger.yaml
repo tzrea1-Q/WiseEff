@@ -7,8 +7,6 @@ description: WiseEff vendor binding for huawei,wireless_charger (generated from 
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   pmax:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   rx_mode_para:

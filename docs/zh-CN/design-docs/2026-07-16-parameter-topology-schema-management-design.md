@@ -382,7 +382,7 @@ DTS 值不能压缩成无类型字符串。`DtsValue` 必须覆盖：
 - 不同项目的 SC8562 `gpio_int` 复用一个 `PropertySpec` 版本；
 - SC8562 和 MT5788 的 `gpio_int` 不共享规格；
 - 地址、路径和实际值保留为项目实例数据；
-- `status` 等公共属性只有在 Schema 明确表示同一规格时才能共享。
+- `status` **不是**匹配属性：vendor schema 不再生成 `status` PropertySpec，`common-status.yaml` 已退役（仅作文档），ingest 在匹配前短路结构键（ADR-0003）。
 
 全部项目值、草稿、变更单、审批、审计事件和基线都重映射。`LegacyMigrationEvidence` 保存旧 ID、旧完整名称、原定位路径、原值、源码记录哈希、新 ID 和迁移批次。
 

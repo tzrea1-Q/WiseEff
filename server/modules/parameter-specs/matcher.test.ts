@@ -245,13 +245,14 @@ describe("schema registry matcher", () => {
     expect(tasks[0]?.candidateSchemas.length).toBeGreaterThan(1);
   });
 
-  it("binds all 176 golden overlay properties to distinct reviewed gpio_int specs", () => {
+  it("binds all non-structural golden overlay properties to distinct reviewed gpio_int specs", () => {
     const reg = registry();
     const nodes = effectiveOverlayNodes();
     const coverage = bindGoldenOverlayProperties(nodes, reg);
 
-    expect(coverage.totalProperties).toBe(176);
-    expect(coverage.matchedProperties).toBe(176);
+    // status and other structural keys are excluded from the parameter surface (ADR-0003).
+    expect(coverage.totalProperties).toBe(120);
+    expect(coverage.matchedProperties).toBe(120);
     expect(coverage.unmatched).toEqual([]);
     expect(coverage.ambiguous).toEqual([]);
 

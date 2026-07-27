@@ -25,12 +25,15 @@ alter table parameter_change_requests
 alter table parameter_change_requests
   drop constraint if exists parameter_change_requests_enablement_subject_check;
 
+-- Same rule as 0069: legacy PPV-backed binding rows may have a null binding id
+-- until identity migration backfills it. Discriminator is edit_subject_kind +
+-- logical_node_id, not binding_id nullability.
 alter table parameter_change_requests
   add constraint parameter_change_requests_enablement_subject_check
   check (
     (
       edit_subject_kind = 'binding'
-      and project_parameter_binding_id is not null
+      and logical_node_id is null
     )
     or (
       edit_subject_kind = 'node-enablement'
@@ -71,7 +74,7 @@ alter table parameter_submission_items
   check (
     (
       edit_subject_kind = 'binding'
-      and project_parameter_binding_id is not null
+      and logical_node_id is null
     )
     or (
       edit_subject_kind = 'node-enablement'

@@ -7,8 +7,6 @@ description: WiseEff vendor binding for huawei,batt_identify (generated from ven
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   gpios:
     $ref: /schemas/types.yaml#/definitions/phandle-array
   id_voltage_gpiov:

@@ -70,14 +70,14 @@ Round 4 closes parent-agent review blockers on branch `fix/parameter-topology-ro
 | Area | Tests / command | Proves |
 | --- | --- | --- |
 | Vendor dt-schema | `server/modules/dts/goldenPowerFixture.test.ts`, `scripts/vendorDtSchemaGenerator.test.ts` | Deterministic linux-bindings from property specs; golden DTBs pass real `dt-validate`; negative fixtures fail with expected diagnostics |
-| Golden counts | `goldenPowerFixture.test.ts` (176 properties), `seedM1DtsFiles.test.ts` (528 `dts_properties`), `matcher.test.ts`, `ingestService.test.ts` | Locked **176/528** topology/seed counts |
+| Golden counts | `goldenPowerFixture.test.ts` (parsed topology), `seedM1DtsFiles.test.ts` (`dts_properties`), `matcher.test.ts` (120 matched after structural exclusion), `ingestService.test.ts` (176 occurrences) | Locked **176 occurrences / 120 matched / 684 seed rows** |
 | Stage → finalize | `server/modules/parameter-topology/migration.test.ts` (temp PostgreSQL, reconnect, inject-fail) | Durable `stage-review` transaction; atomic `finalize`; cutover rejects non-`finalized` runs |
 | Exact writeback | `server/modules/parameter-topology/editService.test.ts`, merge workflow tests | Occurrence-locked merge/writeback; immutable base; stale identity → `409` |
 | Matcher / review scope | `server/modules/parameter-specs/matcher.test.ts`, `matcherScope.integration.test.ts` | Override isolation by node locator fingerprint; `blocker_scope` honored on validate/release |
 | Manifest gates | `server/modules/parameter-topology/manifestBackfillMigration.test.ts`, `configRevisionManifest.test.ts`, `editService` needs_review paths | Backfill from `dts_config_revision_members`; `needs_review` fail-closed on edit/validate/release/writeback |
 | Global-spec hotspots | `server/modules/parameters/dashboard/postCutoverDashboard.integration.test.ts` | Tenant projects include `organization_id IS NULL` vendor specs |
 | Unmatched review | `server/modules/parameter-specs/service.test.ts`, `routes.test.ts` | `createSpec` + `confirmPropertyMismatch` with governance audit |
-| Browser acceptance | `e2e/acceptance/parameter-topology.acceptance.spec.ts` | `PARAM-SPEC-GOVERN-001` through `PARAM-CONFIG-PUBLISH-GATE-001`; no teaching fallback in API mode |
+| Browser acceptance | `e2e/acceptance/parameter-topology.acceptance.spec.ts` | `PARAM-SPEC-GOVERN-001` through `PARAM-CONFIG-PUBLISH-GATE-001`; `PARAM-ENABLE-*` stubs registered (ADR-0003); no teaching fallback in API mode |
 
 Toolchain gate before topology release work:
 

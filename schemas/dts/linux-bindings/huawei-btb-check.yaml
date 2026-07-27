@@ -7,8 +7,6 @@ description: WiseEff vendor binding for huawei,btb_check (generated from vendor 
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   vol_check_para:
     $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   compatible:

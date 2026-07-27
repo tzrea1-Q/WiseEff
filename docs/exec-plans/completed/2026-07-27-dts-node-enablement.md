@@ -1,6 +1,6 @@
 # DTS node enablement — execution plan
 
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-07-27-dts-node-enablement.md`](../../zh-CN/exec-plans/active/2026-07-27-dts-node-enablement.md)  
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-07-27-dts-node-enablement.md`](../../zh-CN/exec-plans/completed/2026-07-27-dts-node-enablement.md)  
 > ADR: [`docs/adr/0003-node-enablement-is-not-a-parameter.md`](../../adr/0003-node-enablement-is-not-a-parameter.md)  
 > Branch: `feat/dts-node-enablement`
 
@@ -73,9 +73,9 @@ The four batches below are independently mergeable. Batch 1 ships first and alon
 
 ## Batch 4 — Close out
 
-- [ ] Stop generating `status` in `scripts/lib/vendorDtSchemaGenerator.ts` (line ~54) and regenerate the 35 affected files under `schemas/dts/vendor/wiseeff/`; retire `common-status.yaml` or reduce it to documentation that no longer feeds matching.
-- [ ] Verify `PARAM-CONFIG-PUBLISH-GATE-001` still passes — its fixture depends on `status=okay` and must not silently start relying on a spec that no longer exists.
-- [ ] Documentation updates per the matrix below, plus `npm run docs:check`.
+- [x] Stop generating `status` in `scripts/lib/vendorDtSchemaGenerator.ts` (line ~54) and regenerate the 35 affected files under `schemas/dts/vendor/wiseeff/`; retire `common-status.yaml` or reduce it to documentation that no longer feeds matching.
+- [x] Verify `PARAM-CONFIG-PUBLISH-GATE-001` still passes — its fixture depends on `status=okay` and must not silently start relying on a spec that no longer exists. *(Evidence: `validateConfigRevision` / `dtsToolchain` / `goldenPowerFixture` / regenerated linux-bindings contain no `status` property schema; DTS fixtures still use `status = "okay"` as enablement text.)*
+- [x] Documentation updates per the matrix below, plus `npm run docs:check`.
 
 ## UI Interaction Automation
 
@@ -115,6 +115,26 @@ Existing IDs to re-verify: `PARAM-SPEC-GOVERN-001` (queue contents change), `PAR
 ## Documentation Update Gate
 
 Blocking. This plan cannot move to `completed/` until every Update and Review row is either done or explicitly recorded as unchanged with evidence, and until the new requirement and operation IDs exist. Run `npm run docs:check`. Any deferred item goes to `docs/exec-plans/tech-debt-tracker.md`.
+
+### Gate evidence (Batch 4 docs)
+
+| Matrix row | Evidence |
+| --- | --- |
+| Domain glossary / ADR index | Already done in `CONTEXT.md` (glossary + ADR-0003 link). |
+| Planning | `docs/PLANS.md` + `docs/zh-CN/PLANS.md` link this plan; plan + zh companion updated. |
+| Domain model | `domain-model.md` + zh — node enablement/reachability first-class; `status` not a parameter. |
+| Parameter surface RFC §3.3 | EN + zh — structural `status` routed to node enablement. |
+| DTS assessment §4.1 | Node-level enable/disable marked addressed (ADR-0003 / this plan). |
+| Schema management design | EN + zh — `status` excluded from vendor matching. |
+| Frontend | `FRONTEND.md` + `docs/zh-CN/frontend.md` — badges, no-effect notice, enablement dialog. |
+| Security | `SECURITY.md` + zh — `enablement-changed` audit; sensitive-node reuse. |
+| API contract | EN + zh — topology `enablement`, `POST .../node-enablement-drafts`, submit `editSubjectKind`. |
+| Acceptance coverage | Four `PARAM-ENABLE-*` IDs in maps + `requirements.ts` / `operationMatrix.ts` / acceptance spec stubs. |
+| Generated schemas | Done — `vendorDtSchemaGenerator` / `vendorSchemaGenerator` no longer emit `status`; 34 vendor YAMLs + linux-bindings regenerated; `common-status.yaml` documentation-only; `catalog.json` updated; golden overlay skips structural keys. |
+| Testing strategy | Review: no strategy change; enablement covered by topology/edit domain + server tests. |
+| Runbooks | `parameter-identity-cutover.md` + zh — finalize dismisses structural spec-review tasks. |
+| Product specs | `prototype-functional-spec.md` + zh — enablement visible/editable on topology workbench. |
+| Reliability / Architecture / AGENTS | No change — N/A. |
 
 ## Verification
 

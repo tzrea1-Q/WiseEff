@@ -1,17 +1,15 @@
+%YAML 1.2
+---
+# Documentation only — ADR-0003 / node enablement.
+# `status` is not a parameter-surface property and must not feed matching.
+# Kept on disk for historical reference; removed from catalog.json schemaPaths.
 $id: wiseeff/common-status.yaml
-title: Common status property
+title: Common status property (retired — node enablement)
 source: vendor
-lifecycle: active
-version: 1
+lifecycle: deprecated
+version: 2
 schemaNamespace: vendor/common
-properties:
-  status:
-    valueShape: string-list
-    exampleValue: '"okay"'
-    constraints:
-      enum:
-        - okay
-        - disabled
-        - reserved
-        - fail
-    documentation: Standard DT status; illustrative enum only.
+documentation: |
+  DTS `status` is first-class node enablement (ADR-0003), not a vendor parameter
+  property. Do not re-add this file to catalog.json or commonRefs.
+properties: {}

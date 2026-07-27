@@ -6,8 +6,6 @@ version: 1
 schemaNamespace: vendor/huawei,direct_charge_ic
 compatible:
   - huawei,direct_charge_ic
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
   ic_para1:
     valueShape: string-list
@@ -19,8 +17,3 @@ properties:
     exampleValue: "\"lvc_mode\", \"ic_para1\",\n\t\t\"sc_mode\", \"ic_para2\",\n\t\t\"sc4_mode\", \"ic_para3\""
     constraints: {}
     documentation: huawei,direct_charge_ic 的 DTS 属性「mode para」（mode_para），用于驱动读取的设备树配置。
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。

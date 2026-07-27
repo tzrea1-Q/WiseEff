@@ -6,8 +6,6 @@ version: 1
 schemaNamespace: vendor/huawei,direct_charger
 compatible:
   - huawei,direct_charger
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
   bat_para:
     valueShape: string-list
@@ -24,11 +22,6 @@ properties:
     exampleValue: "\"1\""
     constraints: {}
     documentation: huawei,direct_charger 的 DTS 属性「stage need to jump」（stage_need_to_jump），用于驱动读取的设备树配置。
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   temp_para:
     valueShape: string-list
     exampleValue: "\"-32767\", \"10\", \"0\",\n\t\t\"45\", \"32767\", \"0\""

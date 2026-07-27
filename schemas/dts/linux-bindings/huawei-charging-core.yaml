@@ -7,8 +7,6 @@ description: WiseEff vendor binding for huawei,charging_core (generated from ven
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   ichg_max:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   iin_max:

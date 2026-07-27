@@ -1,6 +1,6 @@
 # DTS 节点启用状态 — 执行方案
 
-> English: [`docs/exec-plans/active/2026-07-27-dts-node-enablement.md`](../../../exec-plans/active/2026-07-27-dts-node-enablement.md)  
+> English: [`docs/exec-plans/completed/2026-07-27-dts-node-enablement.md`](../../../exec-plans/completed/2026-07-27-dts-node-enablement.md)  
 > ADR：[`docs/adr/0003-node-enablement-is-not-a-parameter.md`](../../../adr/0003-node-enablement-is-not-a-parameter.md)  
 > 分支：`feat/dts-node-enablement`
 
@@ -73,9 +73,9 @@
 
 ## 批次 4 — 收尾
 
-- [ ] 停止在 `scripts/lib/vendorDtSchemaGenerator.ts`（约 54 行）生成 `status`，并重新生成 `schemas/dts/vendor/wiseeff/` 下受影响的 35 份文件；下线 `common-status.yaml`，或将其降为不再参与匹配的文档。
-- [ ] 验证 `PARAM-CONFIG-PUBLISH-GATE-001` 仍然通过——其 fixture 依赖 `status=okay`，不能悄悄改为依赖一条已不存在的 spec。
-- [ ] 按下方矩阵完成文档更新，并运行 `npm run docs:check`。
+- [x] 停止在 `scripts/lib/vendorDtSchemaGenerator.ts`（约 54 行）生成 `status`，并重新生成 `schemas/dts/vendor/wiseeff/` 下受影响的 35 份文件；下线 `common-status.yaml`，或将其降为不再参与匹配的文档。
+- [x] 验证 `PARAM-CONFIG-PUBLISH-GATE-001` 仍然通过——其 fixture 依赖 `status=okay`，不能悄悄改为依赖一条已不存在的 spec。*（证据：`validateConfigRevision` / `dtsToolchain` / `goldenPowerFixture` / 重新生成的 linux-bindings 不再含 `status` 属性 schema；DTS fixture 仍以 `status = "okay"` 作为启停文本。）*
+- [x] 按下方矩阵完成文档更新，并运行 `npm run docs:check`。
 
 ## UI 交互自动化
 
@@ -115,6 +115,26 @@
 ## 文档更新闸门
 
 阻塞性。在所有"更新"与"复查"行完成、或以证据明确记录为无需变更，且新的需求 ID 与操作 ID 已存在之前，本方案不得移入 `completed/`。运行 `npm run docs:check`。任何延后项写入 `docs/exec-plans/tech-debt-tracker.md`。
+
+### 闸门证据（批次 4 文档）
+
+| 矩阵行 | 证据 |
+| --- | --- |
+| 领域词汇表 / ADR 索引 | 已在 `CONTEXT.md` 完成（词汇表 + ADR-0003 链接）。 |
+| 计划 | `docs/PLANS.md` + `docs/zh-CN/PLANS.md` 已链到本方案；中英文方案已更新。 |
+| 领域模型 | `domain-model.md` + 中文版 — 节点启用/可达性为一等概念；`status` 不是参数。 |
+| 参数面 RFC §3.3 | 中英文 — 结构属性 `status` 路由到节点启用状态。 |
+| DTS 评估 §4.1 | 节点级启停已标记为已解决（ADR-0003 / 本方案）。 |
+| Schema 管理设计 | 中英文 — `status` 不再参与 vendor 匹配。 |
+| 前端 | `FRONTEND.md` + `docs/zh-CN/frontend.md` — 徽标、不生效提示、启停对话框。 |
+| 安全 | `SECURITY.md` + 中文版 — `enablement-changed` 审计；复用 sensitive-node。 |
+| API 契约 | 中英文 — 拓扑 `enablement`、`POST .../node-enablement-drafts`、提交 `editSubjectKind`。 |
+| 验收覆盖 | 四个 `PARAM-ENABLE-*` ID 已登记至 maps + `requirements.ts` / `operationMatrix.ts` / acceptance 占位。 |
+| 生成的 schema | 已完成 — `vendorDtSchemaGenerator` / `vendorSchemaGenerator` 不再生成 `status`；34 份 vendor YAML + linux-bindings 已重生；`common-status.yaml` 仅作文档；`catalog.json` 已更新；golden overlay 跳过结构键。 |
+| 测试策略 | 复查：策略无变更；启停由拓扑/edit 领域与服务端测试覆盖。 |
+| 运维手册 | `parameter-identity-cutover.md` + 中文版 — finalize 驳回结构规格审核任务。 |
+| 产品规格 | `prototype-functional-spec.md` + 中文版 — 工作台可见/可编辑启停。 |
+| 可靠性 / 架构 / AGENTS | 无变更 — 不适用。 |
 
 ## 验证
 

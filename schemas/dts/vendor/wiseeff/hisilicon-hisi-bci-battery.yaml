@@ -6,8 +6,6 @@ version: 1
 schemaNamespace: vendor/hisilicon,hisi_bci_battery
 compatible:
   - hisilicon,hisi_bci_battery
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
   battery_board_type:
     valueShape: u32-array
@@ -19,11 +17,6 @@ properties:
     exampleValue: <5525>
     constraints: {}
     documentation: 电池相关参数「battery_design_fcc」，用于容量、标识或采样策略。
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   vth_correct_para:
     valueShape: u32-array
     exampleValue: <1 2800>

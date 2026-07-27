@@ -7,8 +7,6 @@ description: WiseEff vendor binding for huawei,bypass_bst_hl7603 (generated from
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   const_vout:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   gpio_enable:

@@ -7,8 +7,6 @@ description: WiseEff vendor binding for sc8562 (generated from vendor property s
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   fcp_support:
     $ref: /schemas/types.yaml#/definitions/uint32-array
   gpio_int:

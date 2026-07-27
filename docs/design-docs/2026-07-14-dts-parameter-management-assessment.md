@@ -81,7 +81,7 @@ WiseEff 的一个核心目标是管理各项目的配置参数，其中最主要
 | 值是单串 | 自描述表（#18）、间接引用组（#17）、多行矩阵（#5）退化为不透明 blob，无法按行/列/元素寻址、diff、校验 |
 | JSON 数组不透明 | `parseIndex.ts` 的 `walkJson` 只递归纯对象，数组/标量都 `JSON.stringify` 成叶子 → 数组元素不可单独管理，重排即假 diff |
 | 基数假设错误 | 「一个定义 ↔ 一个值 ↔ 一个节点路径」无法表达编号序列（`volt_para0..31`，#19）与多实例（`@0/@1`、`@77/@75`）；`(name, module)` + `limit 1` 会**碰撞/串数据** |
-| 无「节点」一等实体 | 无法表达 `@address`、`label`、`compatible`、父子边、兄弟顺序，以及节点级 `status=disabled` 启停 |
+| 无「节点」一等实体 | 无法表达 `@address`、`label`、`compatible`、父子边、兄弟顺序，以及节点级 `status=disabled` 启停 — **addressed** by semantic topology + [ADR-0003](../adr/0003-node-enablement-is-not-a-parameter.md) / [node enablement plan](../exec-plans/completed/2026-07-27-dts-node-enablement.md) (enablement/reachability on topology API; `status` is not a parameter) |
 
 ### 4.2 兼容性维度（DTS 特有，全缺）
 

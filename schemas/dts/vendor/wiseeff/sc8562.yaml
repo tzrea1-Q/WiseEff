@@ -6,8 +6,6 @@ version: 1
 schemaNamespace: vendor/sc8562
 compatible:
   - sc8562
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
   compatible:
     valueShape: string-list
@@ -56,11 +54,6 @@ properties:
     exampleValue: <0>
     constraints: {}
     documentation: sc8562 的 DTS 属性「slave mode」（slave_mode），用于驱动读取的设备树配置。
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   vout_ovp_mv:
     valueShape: u32-array
     exampleValue: <5000>

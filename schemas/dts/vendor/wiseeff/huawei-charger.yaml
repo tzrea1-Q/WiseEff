@@ -6,8 +6,6 @@ version: 1
 schemaNamespace: vendor/huawei,charger
 compatible:
   - huawei,charger
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
   charge_done_sleep_enabled:
     valueShape: bool
@@ -19,11 +17,6 @@ properties:
     exampleValue: <96 60 3 5 1 0 1 100>
     constraints: {}
     documentation: huawei,charger 的 DTS 属性「recharge para」（recharge_para），用于驱动读取的设备树配置。
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   support_new_pd_process:
     valueShape: u32-array
     exampleValue: <1>

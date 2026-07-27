@@ -6,14 +6,7 @@ version: 1
 schemaNamespace: vendor/huawei,direct_charge_turbo
 compatible:
   - huawei,direct_charge_turbo
-commonRefs:
-  - wiseeff/common-status.yaml
 properties:
-  status:
-    valueShape: string-list
-    exampleValue: "\"ok\""
-    constraints: {}
-    documentation: 节点启用状态（如 okay / disabled），控制该设备是否参与探测。
   time_para_group:
     valueShape: string-list
     exampleValue: "\"2\", \"0\", \"time_para01\", \"0X1\",\n\t\t\"4\", \"0\", \"time_para02\", \"0X0\""

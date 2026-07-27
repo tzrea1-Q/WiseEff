@@ -7,8 +7,6 @@ description: WiseEff vendor binding for huawei,soh_core (generated from vendor p
 maintainers:
   - WiseEff
 properties:
-  status:
-    $ref: /schemas/types.yaml#/definitions/non-unique-string-array
   compatible:
     contains:
       const: huawei,soh_core
