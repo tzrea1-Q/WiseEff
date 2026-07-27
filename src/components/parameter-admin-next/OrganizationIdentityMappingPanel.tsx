@@ -24,7 +24,7 @@ export function OrganizationIdentityMappingPanel() {
     } catch (loadError) {
       setTasks([]);
       dispatch({ type: "SET_QUEUE_COUNTS", counts: { identityMapping: 0 } });
-      setError(loadError instanceof Error ? loadError.message : "无法加载身份映射任务。");
+      setError(loadError instanceof Error ? loadError.message : "无法加载节点对应任务。");
     } finally {
       setLoading(false);
     }
@@ -48,15 +48,15 @@ export function OrganizationIdentityMappingPanel() {
                 : "identity-mapping-resolved",
             summary:
               input.decision === "dismissed"
-                ? `已驳回身份映射任务 ${taskId}`
-                : `已确认身份映射 ${input.selectedLogicalNodeId ?? taskId}`,
+                ? `已驳回节点对应任务 ${taskId}`
+                : `已确认节点对应 ${input.selectedLogicalNodeId ?? taskId}`,
             reason: input.reason,
             recordedAt: new Date().toISOString()
           }
         });
         await reload();
       } catch (resolveError) {
-        setError(resolveError instanceof Error ? resolveError.message : "身份映射决议失败。");
+        setError(resolveError instanceof Error ? resolveError.message : "节点对应确认失败。");
       }
     },
     [application, dispatch, reload]
@@ -65,14 +65,14 @@ export function OrganizationIdentityMappingPanel() {
   const openTasks = tasks.filter((task) => task.status === "open");
 
   return (
-    <section className="param-admin-main param-admin-governance-card" aria-label="身份映射治理">
+    <section className="param-admin-main param-admin-governance-card" aria-label="节点对应确认">
       <div className="parameters-table-heading">
         <div>
-          <h2>身份映射治理</h2>
-          <p>决议迁移期未能自动对齐的参数身份。待处理 {state.queueCounts.identityMapping}。</p>
+          <h2>节点对应确认</h2>
+          <p>确认迁移期未能自动对齐的参数节点对应关系。待处理 {state.queueCounts.identityMapping}。</p>
         </div>
       </div>
-      {loading && openTasks.length === 0 ? <p className="form-hint">正在加载身份映射任务…</p> : null}
+      {loading && openTasks.length === 0 ? <p className="form-hint">正在加载节点对应任务…</p> : null}
       {error ? (
         <p className="form-error" role="alert">
           {error}
@@ -80,7 +80,7 @@ export function OrganizationIdentityMappingPanel() {
       ) : null}
       {!loading && openTasks.length === 0 ? (
         <p className="form-hint" role="status">
-          当前没有待处理的身份映射任务。
+          当前没有待处理的节点对应任务。
         </p>
       ) : (
         <IdentityMappingReview tasks={tasks} onResolve={handleResolve} />

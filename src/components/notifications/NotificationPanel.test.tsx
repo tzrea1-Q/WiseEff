@@ -6,7 +6,7 @@ const sampleItems = [
   {
     id: "notif-1",
     category: "parameter.review.submitted",
-    title: "参数审阅 · Aurora",
+    title: "变更审阅 · Aurora",
     body: "提交了 2 项修改",
     severity: "info" as const,
     actionUrl: "/parameter-review?project=aurora",
@@ -46,7 +46,7 @@ describe("NotificationPanel", () => {
       />
     );
 
-    expect(screen.getByText("参数审阅 · Aurora")).toBeInTheDocument();
+    expect(screen.getByText("变更审阅 · Aurora")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "全部标为已读" }));
     expect(onMarkAllRead).toHaveBeenCalled();
   });

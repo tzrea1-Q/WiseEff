@@ -45,7 +45,7 @@ function resolveRisk(task: IdentityMappingTask, candidateCount: number): string 
     return evidence.risk;
   }
   if (candidateCount > 1) {
-    return "高风险（歧义）";
+    return "高风险（匹配冲突）";
   }
   return "中风险";
 }
@@ -65,8 +65,8 @@ export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingRevie
   }
 
   return (
-    <section className="identity-mapping-review" aria-label="映射审核">
-      <h3>映射审核</h3>
+    <section className="identity-mapping-review" aria-label="节点对应审核">
+      <h3>节点对应审核</h3>
       <ul className="identity-mapping-review__list">
         {openTasks.map((task) => {
           const candidates = resolveCandidates(task);
@@ -87,7 +87,7 @@ export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingRevie
               {evidenceLines.length > 0 ? (
                 <div>
                   <h4>证据</h4>
-                  <ul aria-label="映射证据">
+                  <ul aria-label="对应依据">
                     {evidenceLines.map((line, index) => (
                       <li key={`${index}:${line}`}>{line}</li>
                     ))}
@@ -96,8 +96,8 @@ export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingRevie
               ) : null}
 
               <div>
-                <h4>候选逻辑节点</h4>
-                <ul aria-label="映射候选">
+                <h4>候选拓扑节点</h4>
+                <ul aria-label="对应候选">
                   {candidates.map((candidate) => (
                     <li key={candidate.logicalNodeId}>
                       <code>{candidate.logicalNodeId}</code>
@@ -112,9 +112,9 @@ export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingRevie
               {onResolve ? (
                 <div className="identity-mapping-review__form">
                   <label>
-                    选择候选
+                    选择对应节点
                     <select
-                      aria-label="选择映射候选"
+                      aria-label="选择对应节点"
                       value={draft.selectedLogicalNodeId}
                       disabled={busy}
                       onChange={(event) =>
@@ -124,7 +124,7 @@ export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingRevie
                         }))
                       }
                     >
-                      <option value="">请选择逻辑节点…</option>
+                      <option value="">请选择拓扑节点…</option>
                       {candidates.map((candidate) => (
                         <option key={candidate.logicalNodeId} value={candidate.logicalNodeId}>
                           {candidate.nodeLocator ?? candidate.logicalNodeId}
@@ -136,11 +136,11 @@ export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingRevie
                   <label>
                     确认原因
                     <textarea
-                      aria-label="映射确认原因"
+                      aria-label="确认原因"
                       value={draft.reason}
                       disabled={busy}
                       rows={2}
-                      placeholder="说明为何选择该候选"
+                      placeholder="说明为何选择该节点"
                       onChange={(event) =>
                         setDrafts((current) => ({
                           ...current,
@@ -165,7 +165,7 @@ export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingRevie
                         ).finally(() => setBusyTaskId(null));
                       }}
                     >
-                      {busy ? "提交中…" : "确认映射"}
+                      {busy ? "提交中…" : "确认对应"}
                     </button>
                     <button
                       type="button"

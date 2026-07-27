@@ -11,7 +11,7 @@ export type ParameterAdminNextScopeNavProps = {
  */
 export function ParameterAdminNextScopeNav({ active, onNavigate }: ParameterAdminNextScopeNavProps) {
   return (
-    <nav className="parameter-admin-subnav" aria-label="参数管理后台治理范围">
+    <nav className="parameter-admin-subnav" aria-label="参数管理后台配置范围">
       <button
         type="button"
         className={`parameter-admin-subnav__tab${active === "organization" ? " is-active" : ""}`}
@@ -19,7 +19,7 @@ export function ParameterAdminNextScopeNav({ active, onNavigate }: ParameterAdmi
         onClick={() => onNavigate("/parameter-admin")}
       >
         <Building2 size={16} aria-hidden="true" />
-        组织治理
+        组织配置
       </button>
       <button
         type="button"

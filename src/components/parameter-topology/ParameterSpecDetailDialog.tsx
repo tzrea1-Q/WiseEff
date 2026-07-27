@@ -1,6 +1,8 @@
 import { CircleX } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
+
 import {
   ParameterSpecDetail,
   buildSpecEditorSavePayload,
@@ -67,7 +69,7 @@ export function ParameterSpecDetailDialog({
       return;
     }
     if (!onSave) {
-      setLocalError("当前环境未接线规格保存能力。");
+      setLocalError("当前环境未接线参数定义保存能力。");
       return;
     }
     const built = buildSpecEditorSavePayload(detail, draft);
@@ -83,7 +85,7 @@ export function ParameterSpecDetailDialog({
       className="modal-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label={`规格详情 ${detail.propertyKey}`}
+      aria-label={`${PARAMETER_ADMIN_UI.specDetail} ${detail.propertyKey}`}
       onClick={pending ? undefined : onClose}
     >
       <div
@@ -92,14 +94,14 @@ export function ParameterSpecDetailDialog({
       >
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
-            <span className="eyebrow">{editable ? "参数库 · 可编辑" : "参数库 · 只读"}</span>
+            <span className="eyebrow">{editable ? PARAMETER_ADMIN_UI.specDetailEyebrowEditable : PARAMETER_ADMIN_UI.specDetailEyebrowReadonly}</span>
             <h2 id="parameter-spec-detail-dialog-title">{detail.propertyKey}</h2>
             <p>
               {editable
                 ? isDraft
-                  ? "修改展示信息、值形状与约束后保存并激活，供审核队列批准绑定。"
+                  ? "修改展示信息、取值形态与约束后保存并激活，供定义匹配审核批准项目参数。"
                   : detail.organizationId == null
-                    ? "平台全局目录规格可修改展示信息、约束与说明；属性键 / 驱动 / compatible 等身份字段不可改。"
+                    ? "平台全局目录定义可修改展示信息、约束与说明；属性键 / 驱动 / compatible 等身份字段不可改。"
                     : "修改展示信息、约束与说明后保存；属性键 / 驱动 / compatible 等身份字段不可改。"
                 : "当前未接线保存能力，仅可查看。"}
             </p>

@@ -963,7 +963,7 @@ export function ApiProjectTopologyWorkspace({
 
   const statusBanner =
     loadState.status === "needs_mapping"
-      ? "修订状态：needs_mapping — 存在未解决身份映射，发布前须完成审核。"
+      ? "修订状态：needs_mapping — 存在未解决节点对应，发布前须完成审核。"
       : loadState.status === "invalid"
         ? "修订状态：invalid — 解析/编译失败，修复后方可编辑或发布。"
         : null;

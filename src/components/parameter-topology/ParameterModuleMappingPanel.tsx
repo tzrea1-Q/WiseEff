@@ -449,7 +449,7 @@ export function ParameterModuleMappingPanel({
       setRegistry(next);
       setMatchValue("");
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "创建映射失败。");
+      setError(createError instanceof Error ? createError.message : "创建归属失败。");
     } finally {
       setBusy(false);
     }
@@ -463,7 +463,7 @@ export function ParameterModuleMappingPanel({
       const next = await client.deleteMapping(mappingId);
       setRegistry(next);
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "删除映射失败。");
+      setError(deleteError instanceof Error ? deleteError.message : "删除归属失败。");
     } finally {
       setBusy(false);
     }
@@ -494,10 +494,10 @@ export function ParameterModuleMappingPanel({
       setRegistry(next);
       const recompute = await client.recomputeBindings();
       setRecomputeNotice(
-        `已为 ${hint.compatible} 创建驱动组并映射，重算了 ${recompute.updated} 个参数绑定。`,
+        `已为 ${hint.compatible} 创建驱动组并归属，重算了 ${recompute.updated} 个项目参数。`,
       );
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "创建驱动组映射失败。");
+      setError(createError instanceof Error ? createError.message : "创建驱动组归属失败。");
     } finally {
       setBusy(false);
     }
@@ -518,7 +518,7 @@ export function ParameterModuleMappingPanel({
       setRegistry(next);
       setMatchValue("");
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "映射驱动失败。");
+      setError(createError instanceof Error ? createError.message : "归属驱动失败。");
     } finally {
       setBusy(false);
     }
@@ -531,7 +531,7 @@ export function ParameterModuleMappingPanel({
     setRecomputeNotice(null);
     try {
       const result = await client.recomputeBindings();
-      setRecomputeNotice(`已重算模块归属，更新 ${result.updated} 个参数绑定。`);
+      setRecomputeNotice(`已重算模块归属，更新 ${result.updated} 个项目参数。`);
     } catch (recomputeError) {
       setError(
         recomputeError instanceof Error ? recomputeError.message : "重算模块归属失败。"
@@ -543,7 +543,7 @@ export function ParameterModuleMappingPanel({
 
   if (loading) {
     return (
-      <section className="parameter-module-mapping-panel" aria-label="模块映射管理" aria-busy="true">
+      <section className="parameter-module-mapping-panel" aria-label="驱动归属配置" aria-busy="true">
         <p role="status">
           <LoaderCircle className="dts-status-icon dts-status-icon--spin" size={16} strokeWidth={2} aria-hidden="true" />
           正在加载模块注册表…
@@ -553,12 +553,12 @@ export function ParameterModuleMappingPanel({
   }
 
   return (
-    <section className="parameter-module-mapping-panel" aria-label="模块映射管理">
+    <section className="parameter-module-mapping-panel" aria-label="驱动归属配置">
       <header>
         <h3>模块与驱动关系</h3>
         <p>
-          维护业务模块，并把 DTS 驱动 / compatible / 器件实例映射到模块。
-          下方「模块发现队列」来自已 ingest 的绑定，与规格审核队列无关。
+          维护业务模块，并把 DTS 驱动 / compatible / 器件实例归属到模块。
+          下方「待归类驱动」来自已解析的项目参数，与定义匹配审核无关。
         </p>
         {canAdmin ? (
           <div
@@ -585,7 +585,7 @@ export function ParameterModuleMappingPanel({
               />
               重算模块归属
             </button>
-            <small>映射变更后，按新映射重算并写回参数绑定的模块归属。</small>
+            <small>归属变更后，按新规则重算并写回项目参数的模块归属。</small>
           </div>
         ) : null}
       </header>
@@ -716,7 +716,7 @@ export function ParameterModuleMappingPanel({
         </section>
 
         <section aria-labelledby="mapping-list-title">
-          <h4 id="mapping-list-title">映射规则</h4>
+          <h4 id="mapping-list-title">归属规则</h4>
           <ul>
             {registry.mappings.map((mapping) => {
               const moduleNameLabel = registry.modules.find((module) => module.id === mapping.moduleId)?.name ?? mapping.moduleId;
@@ -729,7 +729,7 @@ export function ParameterModuleMappingPanel({
                       type="button"
                       className="button subtle"
                       disabled={busy}
-                      aria-label={`删除映射 ${mapping.matchKind}:${mapping.matchValue}`}
+                      aria-label={`删除归属 ${mapping.matchKind}:${mapping.matchValue}`}
                       onClick={() => void removeMapping(mapping.id)}
                     >
                       <Trash2 size={14} strokeWidth={2} aria-hidden="true" />
@@ -739,7 +739,7 @@ export function ParameterModuleMappingPanel({
                 </li>
               );
             })}
-            {registry.mappings.length === 0 ? <li>尚未配置映射规则。</li> : null}
+            {registry.mappings.length === 0 ? <li>尚未配置归属规则。</li> : null}
           </ul>
           {canAdmin ? (
             <div className="parameter-module-mapping-panel__form">
@@ -784,16 +784,16 @@ export function ParameterModuleMappingPanel({
                 onClick={() => void createMapping()}
               >
                 <Plus size={14} strokeWidth={2} aria-hidden="true" />
-                添加映射
+                添加归属
               </button>
             </div>
           ) : null}
         </section>
 
         <section aria-labelledby="unmapped-compatible-queue-title">
-          <h4 id="unmapped-compatible-queue-title">模块发现队列（compatible）</h4>
+          <h4 id="unmapped-compatible-queue-title">待归类驱动（compatible）</h4>
           {unmappedCompatibles.length === 0 ? (
-            <p>当前没有未映射的 compatible 提示。</p>
+            <p>当前没有待归类的 compatible。</p>
           ) : (
             <ul>
               {unmappedCompatibles.map((hint) => (
@@ -810,7 +810,7 @@ export function ParameterModuleMappingPanel({
                     >
                       {selectedModuleName
                         ? `在「${selectedModuleName}」下创建驱动组`
-                        : "创建驱动组并映射"}
+                        : "创建驱动组并归属"}
                     </button>
                   ) : null}
                 </li>
@@ -820,9 +820,9 @@ export function ParameterModuleMappingPanel({
         </section>
 
         <section aria-labelledby="unmapped-queue-title">
-          <h4 id="unmapped-queue-title">模块发现队列（driver）</h4>
+          <h4 id="unmapped-queue-title">待归类驱动（driver）</h4>
           {unmappedDrivers.length === 0 ? (
-            <p>当前没有未映射驱动提示。</p>
+            <p>当前没有待归类的驱动。</p>
           ) : (
             <ul>
               {unmappedDrivers.map((hint) => (
@@ -837,8 +837,8 @@ export function ParameterModuleMappingPanel({
                       onClick={() => void mapUnmappedDriver(hint.driverModule)}
                     >
                       {selectedModuleName
-                        ? `映射到「${selectedModuleName}」`
-                        : "映射到当前模块"}
+                        ? `归属到「${selectedModuleName}」`
+                        : "归属到当前模块"}
                     </button>
                   ) : null}
                 </li>

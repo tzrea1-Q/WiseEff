@@ -71,7 +71,7 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    const tray = screen.getByRole("region", { name: "绑定变更提交" });
+    const tray = screen.getByRole("region", { name: "参数修改提交" });
     expect(within(tray).getByRole("heading", { name: "本轮已修改" })).toBeVisible();
     expect(within(tray).getByText("gpio_int")).toBeVisible();
     const diff = within(tray).getByLabelText("gpio_int 值变更");

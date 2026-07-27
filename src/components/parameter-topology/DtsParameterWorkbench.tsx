@@ -681,19 +681,21 @@ export function DtsParameterWorkbench({
           role="region"
           aria-label="模块导航"
         >
-          <h3 className="dts-parameter-workbench__navigator-title">
-            模块导航
-          </h3>
-          {canEdit && onEditNodeEnablement && selectedEnablementNode ? (
-            <button
-              type="button"
-              className="button subtle dts-parameter-workbench__enablement-action"
-              aria-label={`节点启用：${selectedEnablementNode.locator}`}
-              onClick={() => onEditNodeEnablement(selectedEnablementNode.logicalNodeId)}
-            >
-              节点启用…
-            </button>
-          ) : null}
+          <div className="dts-parameter-workbench__navigator-header">
+            <h3 className="dts-parameter-workbench__navigator-title">
+              模块导航
+            </h3>
+            {canEdit && onEditNodeEnablement && selectedEnablementNode ? (
+              <button
+                type="button"
+                className="button subtle dts-parameter-workbench__enablement-action"
+                aria-label={`节点启用：${selectedEnablementNode.locator}`}
+                onClick={() => onEditNodeEnablement(selectedEnablementNode.logicalNodeId)}
+              >
+                节点启用…
+              </button>
+            ) : null}
+          </div>
           <DtsTopologyNavigator
             view="effective"
             nodes={tree}

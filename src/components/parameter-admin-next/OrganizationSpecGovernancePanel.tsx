@@ -311,8 +311,8 @@ export function OrganizationSpecGovernancePanel({
           reason: input.reason,
           confirmPropertyMismatch: input.confirmPropertyMismatch
         });
-        pushAudit(auditKindForResolveDecision("resolved"), input.reason, "规格审核已批准");
-        setReviewActionSuccess("规格审核已批准。");
+        pushAudit(auditKindForResolveDecision("resolved"), input.reason, "定义匹配审核已批准");
+        setReviewActionSuccess("定义匹配审核已批准。");
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
@@ -335,8 +335,8 @@ export function OrganizationSpecGovernancePanel({
           decision: "dismissed",
           reason: input.reason
         });
-        pushAudit(auditKindForResolveDecision("dismissed"), input.reason, "规格审核已驳回");
-        setReviewActionSuccess("规格审核已驳回。");
+        pushAudit(auditKindForResolveDecision("dismissed"), input.reason, "定义匹配审核已驳回");
+        setReviewActionSuccess("定义匹配审核已驳回。");
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
@@ -430,7 +430,7 @@ export function OrganizationSpecGovernancePanel({
           payload.mode === "activate" ? "spec-activated" : "spec-updated",
           payload.reason,
           payload.mode === "activate"
-            ? `激活规格 ${payload.specId}`
+            ? `激活定义 ${payload.specId}`
             : `更新规格 ${payload.specId}`
         );
         await reloadSpecs();

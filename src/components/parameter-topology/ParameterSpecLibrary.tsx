@@ -2,6 +2,10 @@ import { ChevronLeft, ChevronRight, Pencil, Search } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import {
+  formatParameterSpecLifecycle,
+  PARAMETER_ADMIN_UI
+} from "@/application/parameters/parameterAdminUiCopy";
+import {
   isStructuralPropertyKey,
   paginateItems
 } from "@/domain/parameter-topology/moduleProvenance";
@@ -305,11 +309,11 @@ export function ParameterSpecLibrary({
 
   return (
     <div className="parameter-spec-library-layout">
-      <section className="parameters-table param-admin-library-table" aria-label="参数库">
+      <section className="parameters-table param-admin-library-table" aria-label={PARAMETER_ADMIN_UI.specLibrary}>
         <div className="parameters-table-heading">
           <div>
-            <h2>参数库</h2>
-            <p>按属性键与驱动规格治理共享定义；同名属性按驱动/模块区分。路径仅作定位参考。</p>
+            <h2>{PARAMETER_ADMIN_UI.specLibrary}</h2>
+            <p>{PARAMETER_ADMIN_UI.specLibraryBlurb}</p>
           </div>
         </div>
 
@@ -317,7 +321,7 @@ export function ParameterSpecLibrary({
           <label className="parameters-table-search">
             <Search size={16} aria-hidden="true" />
             <input
-              aria-label="搜索规格"
+              aria-label={PARAMETER_ADMIN_UI.specLibrarySearch}
               type="search"
               value={filters.q}
               disabled={loading}
@@ -392,7 +396,7 @@ export function ParameterSpecLibrary({
                   </td>
                   <td data-label="所属模块">{spec.driverModule ?? "—"}</td>
                   <td data-label="值类型">{spec.valueType}</td>
-                  <td data-label="审核状态">{spec.reviewState}</td>
+                  <td data-label="审核状态">{formatParameterSpecLifecycle(spec.reviewState)}</td>
                   <td data-label="操作">
                     <button
                       type="button"
@@ -458,7 +462,7 @@ export function ParameterSpecLibrary({
 
         {filtered.length === 0 ? (
           <div className="parameters-table-empty">
-            <p>{loading ? "正在加载规格…" : "没有匹配的参数规格。"}</p>
+            <p>{loading ? PARAMETER_ADMIN_UI.specLibraryLoading : PARAMETER_ADMIN_UI.specLibraryEmpty}</p>
             {filtersActive ? (
               <button type="button" className="button subtle" onClick={clearFilters}>
                 清除筛选条件
@@ -479,7 +483,7 @@ export function ParameterSpecLibrary({
             (onActivateDraftSpec
               ? async (payload) => {
                   if (payload.mode !== "activate") {
-                    throw new Error("当前仅支持激活草稿规格。");
+                    throw new Error("当前仅支持激活草稿定义。");
                   }
                   await onActivateDraftSpec({
                     specId: payload.specId,

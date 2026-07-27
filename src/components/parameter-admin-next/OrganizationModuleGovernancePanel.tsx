@@ -105,7 +105,7 @@ export function OrganizationModuleGovernancePanel() {
         pushModuleAudit(
           dispatch,
           "module-bindings-recomputed",
-          `已重算模块归属，更新 ${result.updated} 个参数绑定`
+          `已重算模块归属，更新 ${result.updated} 个项目参数`
         );
         return result;
       }

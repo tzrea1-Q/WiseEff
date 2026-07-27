@@ -271,7 +271,7 @@ export function DtsBindingDraftTray({
   if (drafts.length === 0) return null;
 
   return (
-    <section className="dts-binding-draft-tray dts-draft-tray binding-draft-submission" role="region" aria-label="绑定变更提交">
+    <section className="dts-binding-draft-tray dts-draft-tray binding-draft-submission" role="region" aria-label="参数修改提交">
       <header>
         <div>
           <p className="eyebrow">Current edits</p>
@@ -423,7 +423,7 @@ export function DtsBindingDraftTray({
           {submitting ? "提交中…" : "提交审核"}
         </button>
         {submitted ? (
-          <button type="button" className="button subtle" onClick={() => onNavigate("/parameter-review")}>查看审核队列</button>
+          <button type="button" className="button subtle" onClick={() => onNavigate("/parameter-review")}>查看变更审阅</button>
         ) : null}
       </div>
     </section>

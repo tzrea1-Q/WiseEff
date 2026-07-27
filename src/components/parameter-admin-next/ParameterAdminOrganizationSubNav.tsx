@@ -3,6 +3,7 @@ import {
   PARAMETER_ADMIN_ORGANIZATION_VIEWS,
   type ParameterAdminOrganizationView
 } from "@/application/parameters/parameterAdminOrganizationPath";
+import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 
 export type ParameterAdminOrganizationSubNavProps = {
   active: ParameterAdminOrganizationView;
@@ -17,7 +18,7 @@ export function ParameterAdminOrganizationSubNav({
   onNavigate
 }: ParameterAdminOrganizationSubNavProps) {
   return (
-    <nav className="parameter-admin-subnav" aria-label="组织治理子视图">
+    <nav className="parameter-admin-subnav" aria-label={PARAMETER_ADMIN_UI.orgSubnavAria}>
       {PARAMETER_ADMIN_ORGANIZATION_VIEWS.map((view) => (
         <button
           key={view}

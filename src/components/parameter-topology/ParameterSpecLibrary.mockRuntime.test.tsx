@@ -46,7 +46,7 @@ describe("mock runtime semantic parameter model (seam)", () => {
       />
     );
 
-    const library = screen.getByRole("region", { name: "参数库" });
+    const library = screen.getByRole("region", { name: "参数定义库" });
     expect(library).toBeInTheDocument();
     expect(screen.getAllByText("gpio_int").length).toBeGreaterThan(0);
     expect(screen.getAllByText("sc8562").length).toBeGreaterThan(0);

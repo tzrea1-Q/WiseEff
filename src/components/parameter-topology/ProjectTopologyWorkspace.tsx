@@ -64,15 +64,15 @@ function collectPublishBlockers(input: {
     blockers.push("缺少 base 配置");
   }
   if (input.openMappings.length > 0) {
-    blockers.push(`存在 ${input.openMappings.length} 个未解决身份映射`);
+    blockers.push(`存在 ${input.openMappings.length} 个未解决节点对应`);
   }
   const schemaInvalid = input.bindings.filter((binding) => binding.schemaState === "invalid");
   if (schemaInvalid.length > 0) {
-    blockers.push(`${schemaInvalid.length} 个绑定 schema 无效`);
+    blockers.push(`${schemaInvalid.length} 个项目参数 schema 无效`);
   }
   const policyFail = input.bindings.filter((binding) => binding.policyState === "fail");
   if (policyFail.length > 0) {
-    blockers.push(`${policyFail.length} 个绑定 policy 未通过`);
+    blockers.push(`${policyFail.length} 个项目参数 policy 未通过`);
   }
   const toolchainErrors = input.diagnostics.filter(
     (item) => (item.severity ?? "error").toLocaleLowerCase() === "error"
@@ -244,11 +244,11 @@ export function ProjectTopologyWorkspace({
           </label>
         </div>
         <label>
-          搜索绑定
+          搜索项目参数
           <input
             type="search"
             role="searchbox"
-            aria-label="搜索绑定"
+            aria-label="搜索项目参数"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="gpio_int"
@@ -314,7 +314,7 @@ export function ProjectTopologyWorkspace({
         ) : null}
 
         {showProperties ? (
-          <section className="project-topology-workspace__table" aria-label="绑定属性表">
+          <section className="project-topology-workspace__table" aria-label="项目参数表">
             <BindingPropertyTable
               bindings={visibleBindings}
               selectedBindingId={selectedBinding?.id ?? null}
@@ -343,7 +343,7 @@ export function ProjectTopologyWorkspace({
       </div>
 
       {showDetailDrawer && selectedBinding ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="绑定详情">
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="项目参数详情">
           <div className="binding-detail-drawer">
             <BindingDetailPanel
               binding={selectedBinding}

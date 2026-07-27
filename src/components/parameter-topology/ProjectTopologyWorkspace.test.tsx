@@ -36,7 +36,7 @@ const OPEN_MAPPING: IdentityMappingTask = {
       { logicalNodeId: "logical-sc8562", nodeLocator: "/amba/i2c@FDF5E000/sc8562@6E", name: "sc8562" },
       { logicalNodeId: "logical-mt5788", nodeLocator: "/amba/i2c@FDF5E000/mt5788@55", name: "mt5788" }
     ],
-    risk: "高风险（歧义）"
+    risk: "高风险（匹配冲突）"
   }
 };
 
@@ -104,7 +104,7 @@ describe("ProjectTopologyWorkspace", () => {
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
     expect(within(workspace).getByText(/\/amba\/i2c@FDF5E000\/sc8562@6E · L\d+/)).toBeVisible();
     fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
-    const sourceDetail = within(workspace).getByRole("region", { name: "绑定详情" });
+    const sourceDetail = within(workspace).getByRole("region", { name: "项目参数详情" });
     expect(within(sourceDetail).getByRole("region", { name: "源 occurrence" })).toBeVisible();
     expect(within(sourceDetail).getByText(/覆盖写入|set/i)).toBeVisible();
 
@@ -112,7 +112,7 @@ describe("ProjectTopologyWorkspace", () => {
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
     fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
 
-    const effectiveDetail = within(workspace).getByRole("region", { name: "绑定详情" });
+    const effectiveDetail = within(workspace).getByRole("region", { name: "项目参数详情" });
     expect(within(effectiveDetail).getByText(/来源链|provenance/i)).toBeVisible();
     expect(within(effectiveDetail).getByText(/power\.dtso · \/amba\/i2c@FDF5E000\/sc8562@6E · L48 · set/)).toBeVisible();
   });
@@ -129,7 +129,7 @@ describe("ProjectTopologyWorkspace", () => {
     renderWorkspace();
     const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
 
-    fireEvent.change(within(workspace).getByRole("searchbox", { name: "搜索绑定" }), {
+    fireEvent.change(within(workspace).getByRole("searchbox", { name: "搜索项目参数" }), {
       target: { value: "gpio_int" }
     });
 
@@ -139,7 +139,7 @@ describe("ProjectTopologyWorkspace", () => {
     expect(within(workspace).getByText("mt5788")).toBeVisible();
 
     fireEvent.click(cells[0]!);
-    const detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    const detail = within(workspace).getByRole("region", { name: "项目参数详情" });
     expect(detail).toHaveAttribute("data-binding-id", "binding-sc8562-gpio-int");
   });
 
@@ -162,7 +162,7 @@ describe("ProjectTopologyWorkspace", () => {
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
     fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
 
-    const detail = within(workspace).getByRole("region", { name: "绑定详情" });
+    const detail = within(workspace).getByRole("region", { name: "项目参数详情" });
     const valueInput = within(detail).getByLabelText(/目标值|原始值|raw/i);
     fireEvent.change(valueInput, { target: { value: "<&gpio13 29>" } });
     fireEvent.change(within(detail).getByLabelText("修改原因"), { target: { value: "Invalid cell count probe" } });
@@ -183,11 +183,11 @@ describe("ProjectTopologyWorkspace", () => {
     });
 
     const workspace = screen.getByRole("region", { name: "项目拓扑工作区" });
-    expect(within(workspace).queryByRole("region", { name: "映射审核" })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("region", { name: "节点对应审核" })).not.toBeInTheDocument();
     expect(within(workspace).getAllByText(/Undefined node reference: gpio99/).length).toBeGreaterThan(0);
     expect(within(workspace).getByRole("button", { name: "校验" })).toBeDisabled();
     const blockers = within(workspace).getByRole("status", { name: "发布阻断项" });
-    expect(blockers).toHaveTextContent(/未解决身份映射/);
+    expect(blockers).toHaveTextContent(/未解决节点对应/);
     expect(blockers).toHaveTextContent(/Undefined node reference: gpio99/);
   });
 
@@ -213,7 +213,7 @@ describe("ProjectTopologyWorkspace", () => {
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
     fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
 
-    expect(within(workspace).getByRole("dialog", { name: "绑定详情" })).toBeVisible();
+    expect(within(workspace).getByRole("dialog", { name: "项目参数详情" })).toBeVisible();
   });
 
   it("uses tree → properties → detail navigation with breadcrumb on mobile", () => {
@@ -224,10 +224,10 @@ describe("ProjectTopologyWorkspace", () => {
 
     fireEvent.click(within(workspace).getByRole("treeitem", { name: /sc8562@6E/ }));
     expect(within(workspace).getByRole("cell", { name: "gpio_int" })).toBeVisible();
-    expect(within(workspace).queryByRole("region", { name: "绑定详情" })).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("region", { name: "项目参数详情" })).not.toBeInTheDocument();
 
     fireEvent.click(within(workspace).getByRole("cell", { name: "gpio_int" }));
-    expect(within(workspace).getByRole("region", { name: "绑定详情" })).toBeVisible();
+    expect(within(workspace).getByRole("region", { name: "项目参数详情" })).toBeVisible();
     expect(within(workspace).getByRole("navigation", { name: "拓扑导航" })).toHaveTextContent(/树|属性|详情/);
   });
 

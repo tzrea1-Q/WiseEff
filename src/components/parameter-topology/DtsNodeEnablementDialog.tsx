@@ -108,6 +108,7 @@ export function DtsNodeEnablementDialog({
       <DialogContent
         aria-label="节点启用状态"
         className="dts-node-enablement-dialog max-h-[calc(100vh-2rem)] w-full sm:max-w-lg overflow-y-auto"
+        overlayClassName="dts-node-enablement-dialog__overlay"
         showCloseButton={false}
       >
         <DialogHeader className="dts-node-enablement-dialog__header flex-row items-start justify-between">
@@ -129,66 +130,99 @@ export function DtsNodeEnablementDialog({
           </Button>
         </DialogHeader>
 
-        <div className="dts-node-enablement-dialog__content grid gap-4">
-          <div className="dts-node-enablement-dialog__current" aria-label="当前状态">
-            <strong>当前</strong>
-            <p>
-              {enablementPositionLabel(enablement)}
-              {enablement.rawStatus ? (
-                <span> · <code>{formatStatusDisplay(enablement.rawStatus)}</code></span>
-              ) : null}
-            </p>
-            {!enablement.reachable && enablement.blockingAncestorLabel ? (
-              <p className="dts-node-enablement-dialog__blocked" role="status">
-                不可达：阻断于 {enablement.blockingAncestorLabel}
+        <div className="dts-node-enablement-dialog__content grid gap-3">
+          <section className="dts-node-enablement-dialog__summary" aria-label="当前状态">
+            <div>
+              <strong>当前状态</strong>
+              <p>
+                {enablementPositionLabel(enablement)}
+                {enablement.rawStatus ? (
+                  <span>
+                    {" "}
+                    · <code>{formatStatusDisplay(enablement.rawStatus)}</code>
+                  </span>
+                ) : null}
               </p>
-            ) : null}
-          </div>
+              {!enablement.reachable && enablement.blockingAncestorLabel ? (
+                <p className="dts-node-enablement-dialog__blocked" role="status">
+                  不可达：阻断于 {enablement.blockingAncestorLabel}
+                </p>
+              ) : null}
+            </div>
+          </section>
 
           {isNonstandard && !nonstandardRevealed ? (
-            <div className="dts-node-enablement-dialog__nonstandard" role="region" aria-label="非标准 status">
+            <section
+              className="dts-node-enablement-dialog__panel"
+              role="region"
+              aria-label="非标准 status"
+            >
+              <strong>非标准取值</strong>
               <p>
                 该节点使用非标准取值，不能直接切换启停。原文保留为只读；如需覆盖须明确确认并说明理由。
               </p>
-              <p><code>{formatStatusDisplay(enablement.rawStatus)}</code></p>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy}
-                onClick={() => setNonstandardRevealed(true)}
-              >
-                仍要修改
-              </Button>
-            </div>
+              <p className="dts-node-enablement-dialog__raw">
+                <code>{formatStatusDisplay(enablement.rawStatus)}</code>
+              </p>
+              <div className="dts-node-enablement-dialog__panel-actions">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => setNonstandardRevealed(true)}
+                >
+                  仍要修改
+                </Button>
+              </div>
+            </section>
           ) : null}
 
           {showEditForm ? (
-            <>
+            <section className="dts-node-enablement-dialog__panel" aria-label="启用状态编辑">
               <fieldset className="dts-node-enablement-dialog__positions" disabled={busy}>
                 <legend>目标状态</legend>
-                <label>
-                  <input
-                    type="radio"
-                    name="enablement-target"
-                    checked={target === "force-enabled"}
-                    onChange={() => setTarget("force-enabled")}
-                  />
-                  启用
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="enablement-target"
-                    checked={target === "force-disabled"}
-                    onChange={() => setTarget("force-disabled")}
-                  />
-                  禁用
-                </label>
+                <div className="dts-node-enablement-dialog__choice-row" role="presentation">
+                  <label
+                    className={[
+                      "dts-node-enablement-dialog__choice",
+                      target === "force-enabled" ? "is-selected" : ""
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    <input
+                      type="radio"
+                      name="enablement-target"
+                      checked={target === "force-enabled"}
+                      onChange={() => setTarget("force-enabled")}
+                    />
+                    <span>启用</span>
+                  </label>
+                  <label
+                    className={[
+                      "dts-node-enablement-dialog__choice",
+                      target === "force-disabled" ? "is-selected" : ""
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    <input
+                      type="radio"
+                      name="enablement-target"
+                      checked={target === "force-disabled"}
+                      onChange={() => setTarget("force-disabled")}
+                    />
+                    <span>禁用</span>
+                  </label>
+                </div>
               </fieldset>
 
               {target === "force-enabled" ? (
-                <div>
-                  <Label htmlFor={spellingId}>写入拼写（项目实测：{measuredSpelling}）</Label>
+                <div className="dts-node-enablement-dialog__field">
+                  <Label htmlFor={spellingId}>写入拼写</Label>
+                  <p className="dts-node-enablement-dialog__hint">
+                    项目实测习惯为 <code>{measuredSpelling}</code>
+                  </p>
                   <select
                     id={spellingId}
                     aria-label="status 拼写"
@@ -202,20 +236,23 @@ export function DtsNodeEnablementDialog({
                 </div>
               ) : null}
 
-              <div>
+              <div className="dts-node-enablement-dialog__field">
                 <Label htmlFor={reasonId}>修改原因</Label>
                 <Textarea
                   id={reasonId}
                   aria-label="修改原因"
                   value={reason}
                   disabled={busy}
-                  placeholder={target === "force-disabled" ? "说明为何禁用此节点" : "说明为何修改节点启用状态"}
+                  rows={3}
+                  placeholder={
+                    target === "force-disabled" ? "说明为何禁用此节点" : "说明为何修改节点启用状态"
+                  }
                   onChange={(event) => setReason(event.target.value)}
                 />
               </div>
 
               {target === "force-disabled" ? (
-                <label className="dts-node-enablement-dialog__confirm">
+                <label className="dts-node-enablement-dialog__confirm" htmlFor={disableConfirmId}>
                   <input
                     id={disableConfirmId}
                     type="checkbox"
@@ -223,12 +260,12 @@ export function DtsNodeEnablementDialog({
                     disabled={busy}
                     onChange={(event) => setDisableConfirmed(event.target.checked)}
                   />
-                  我确认要禁用此节点
+                  <span>我确认要禁用此节点</span>
                 </label>
               ) : null}
 
               {isNonstandard && nonstandardRevealed ? (
-                <label className="dts-node-enablement-dialog__confirm">
+                <label className="dts-node-enablement-dialog__confirm" htmlFor={nonstandardAckId}>
                   <input
                     id={nonstandardAckId}
                     type="checkbox"
@@ -236,13 +273,17 @@ export function DtsNodeEnablementDialog({
                     disabled={busy}
                     onChange={(event) => setAcknowledgeNonstandard(event.target.checked)}
                   />
-                  我了解将覆盖非标准 status 原文
+                  <span>我了解将覆盖非标准 status 原文</span>
                 </label>
               ) : null}
-            </>
+            </section>
           ) : null}
 
-          {error ? <p className="form-error" role="alert">{error}</p> : null}
+          {error ? (
+            <p className="dts-node-enablement-dialog__error form-error" role="alert">
+              {error}
+            </p>
+          ) : null}
         </div>
 
         <DialogFooter className="dts-node-enablement-dialog__footer">
@@ -261,11 +302,7 @@ export function DtsNodeEnablementDialog({
             取消
           </Button>
           {showEditForm ? (
-            <Button
-              type="button"
-              disabled={!canConfirm}
-              onClick={() => void submitTarget(target)}
-            >
+            <Button type="button" disabled={!canConfirm} onClick={() => void submitTarget(target)}>
               {busy ? "校验中…" : "校验并加入本轮"}
             </Button>
           ) : null}

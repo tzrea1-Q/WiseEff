@@ -1,3 +1,5 @@
+import { PARAMETER_ADMIN_UI, type SpecReviewMatchStatusUi } from "@/application/parameters/parameterAdminUiCopy";
+
 export type SpecReviewCandidate = {
   id: string;
   label: string;
@@ -22,7 +24,7 @@ export type SpecReviewApproveInput = {
   confirmPropertyMismatch?: boolean;
 };
 
-export type SpecReviewMatchStatus = "未匹配" | "歧义" | "有候选";
+export type SpecReviewMatchStatus = SpecReviewMatchStatusUi;
 
 /** Parse `nodename=…` from inference evidence lines. */
 export function nodeNameFromEvidence(evidence: readonly string[]): string | null {
@@ -36,9 +38,9 @@ export function nodeNameFromEvidence(evidence: readonly string[]): string | null
 }
 
 export function matchStatusLabel(task: Pick<SpecReviewTaskView, "candidates" | "ambiguous">): SpecReviewMatchStatus {
-  if (task.candidates.length === 0) return "未匹配";
-  if (task.ambiguous) return "歧义";
-  return "有候选";
+  if (task.candidates.length === 0) return PARAMETER_ADMIN_UI.matchUnmatched;
+  if (task.ambiguous) return PARAMETER_ADMIN_UI.matchAmbiguous;
+  return PARAMETER_ADMIN_UI.matchHasCandidates;
 }
 
 export function selectedSpec(

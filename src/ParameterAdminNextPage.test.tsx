@@ -300,8 +300,8 @@ describe("ParameterAdminNextPage · shell", () => {
   it("presents organization and project areas as peer destinations", () => {
     const { onNavigate } = renderPage({ path: "/parameter-admin/specs" });
 
-    const nav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
-    expect(within(nav).getByRole("button", { name: "组织治理" })).toHaveAttribute("aria-current", "page");
+    const nav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
+    expect(within(nav).getByRole("button", { name: "组织配置" })).toHaveAttribute("aria-current", "page");
     expect(within(nav).getByRole("button", { name: "项目运营" })).not.toHaveAttribute("aria-current");
 
     fireEvent.click(within(nav).getByRole("button", { name: "项目运营" }));
@@ -315,11 +315,11 @@ describe("ParameterAdminNextPage · shell", () => {
       state: initialState
     });
 
-    const nav = screen.getByRole("navigation", { name: "参数管理后台治理范围" });
+    const nav = screen.getByRole("navigation", { name: "参数管理后台配置范围" });
     expect(within(nav).getByRole("button", { name: "项目运营" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("region", { name: "项目运营" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "参数库" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
   });
 });
 
@@ -337,28 +337,28 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
   it("renders only the spec library on /parameter-admin/specs", async () => {
     renderPage({ path: "/parameter-admin/specs" });
 
-    expect(await screen.findByRole("region", { name: "参数库" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "规格审核队列" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "模块映射管理" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "身份映射治理" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "参数定义库" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "定义匹配审核队列" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "驱动归属配置" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "节点对应确认" })).not.toBeInTheDocument();
   });
 
   it("renders only the spec review queue on /parameter-admin/spec-review", async () => {
     renderPage({ path: "/parameter-admin/spec-review" });
 
-    expect(await screen.findByRole("region", { name: "规格审核队列" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "参数库" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "模块映射管理" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "定义匹配审核队列" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "驱动归属配置" })).not.toBeInTheDocument();
   });
 
   it("marks the active organization sub-view and navigates between peers", async () => {
     const { onNavigate } = renderPage({ path: "/parameter-admin/modules" });
 
-    const orgNav = await screen.findByRole("navigation", { name: "组织治理子视图" });
-    expect(within(orgNav).getByRole("button", { name: "模块映射" })).toHaveAttribute("aria-current", "page");
-    expect(within(orgNav).getByRole("button", { name: "参数库" })).not.toHaveAttribute("aria-current");
+    const orgNav = await screen.findByRole("navigation", { name: "组织配置子视图" });
+    expect(within(orgNav).getByRole("button", { name: "驱动归属配置" })).toHaveAttribute("aria-current", "page");
+    expect(within(orgNav).getByRole("button", { name: "参数定义库" })).not.toHaveAttribute("aria-current");
 
-    fireEvent.click(within(orgNav).getByRole("button", { name: "规格审核" }));
+    fireEvent.click(within(orgNav).getByRole("button", { name: "定义匹配审核" }));
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/spec-review");
   });
 });
@@ -368,7 +368,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const repository = createRepository();
     renderPage({ repository });
 
-    const library = await screen.findByRole("region", { name: "参数库" });
+    const library = await screen.findByRole("region", { name: "参数定义库" });
     expect(within(library).getByText("gpio_int")).toBeInTheDocument();
     expect(repository.listSpecs).toHaveBeenCalled();
     expect(repository.listSpecReviewTasks).toHaveBeenCalledWith(
@@ -380,9 +380,9 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const repository = createRepository();
     renderPage({ repository });
 
-    await screen.findByRole("region", { name: "参数库" });
+    await screen.findByRole("region", { name: "参数定义库" });
 
-    fireEvent.change(screen.getByRole("searchbox", { name: "搜索规格" }), {
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索参数定义" }), {
       target: { value: "gpio" }
     });
     const lifecycleTrigger = screen.getByRole("button", { name: "筛选审核状态" });
@@ -405,18 +405,18 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
       path: "/parameter-admin/specs?spec=spec-sc8562-gpio-int"
     });
 
-    const detail = await screen.findByRole("dialog", { name: /规格详情 gpio_int/ });
+    const detail = await screen.findByRole("dialog", { name: /参数定义详情 gpio_int/ });
     expect(within(detail).getByRole("heading", { name: "gpio_int" })).toBeInTheDocument();
     expect(within(detail).getByLabelText("属性键")).toHaveValue("gpio_int");
     expect(within(detail).getByLabelText("展示名")).toHaveValue("SC8562 GPIO interrupt");
     expect(within(detail).getByLabelText("compatible")).toHaveValue("vendor,sc8562");
-    expect((within(detail).getByLabelText("规格说明") as HTMLTextAreaElement).value).toMatch(
+    expect((within(detail).getByLabelText("参数说明") as HTMLTextAreaElement).value).toMatch(
       /three-cell interrupt/
     );
     expect((within(detail).getByLabelText("Schema 历史") as HTMLTextAreaElement).value).toMatch(
       /v3 · vendor,sc8562\/bindings/
     );
-    expect(within(detail).getByText("参数库 · 可编辑")).toBeInTheDocument();
+    expect(within(detail).getByText("参数定义库 · 可编辑")).toBeInTheDocument();
     expect(repository.getSpec).toHaveBeenCalledWith("spec-sc8562-gpio-int");
 
     fireEvent.click(within(detail).getByRole("button", { name: "取消" }));
@@ -435,13 +435,13 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     renderPage({ repository, path: "/parameter-admin/spec-review" });
 
-    const queue = await screen.findByRole("region", { name: "规格审核队列" });
+    const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     expect(within(queue).getByText("gpio_int")).toBeInTheDocument();
 
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
-    const dialog = screen.getByRole("dialog", { name: "规格审核 gpio_int" });
-    expect(within(dialog).getByLabelText("推理证据")).toHaveValue("compatible unmatched");
-    fireEvent.change(within(dialog).getByRole("combobox", { name: "选择规格" }), {
+    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 gpio_int" });
+    expect(within(dialog).getByLabelText("匹配依据")).toHaveValue("compatible unmatched");
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "选择参数定义" }), {
       target: { value: "spec-sc8562-gpio-int" }
     });
     fireEvent.change(within(dialog).getByLabelText("审核原因"), {
@@ -456,7 +456,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
         reason: "Matched SC8562"
       })
     );
-    await waitFor(() => expect(within(queue).getByText("没有待审核的推理规格。")).toBeInTheDocument());
+    await waitFor(() => expect(within(queue).getByText("没有待确认的自动匹配。")).toBeInTheDocument());
 
     const audit = screen.getByRole("status", { name: "治理审计" });
     expect(audit).toHaveTextContent(/spec-review-resolved/);
@@ -473,9 +473,9 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     renderPage({ repository, path: "/parameter-admin/spec-review" });
 
-    const queue = await screen.findByRole("region", { name: "规格审核队列" });
+    const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
-    const dialog = screen.getByRole("dialog", { name: "规格审核 gpio_int" });
+    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 gpio_int" });
     fireEvent.change(within(dialog).getByLabelText("审核原因"), {
       target: { value: "Not actionable" }
     });
@@ -487,7 +487,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
         reason: "Not actionable"
       })
     );
-    await waitFor(() => expect(within(queue).getByText("没有待审核的推理规格。")).toBeInTheDocument());
+    await waitFor(() => expect(within(queue).getByText("没有待确认的自动匹配。")).toBeInTheDocument());
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/spec-review-dismissed/);
   });
 
@@ -510,13 +510,13 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     renderPage({ repository, path: "/parameter-admin/spec-review" });
 
-    const queue = await screen.findByRole("region", { name: "规格审核队列" });
+    const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 mystery_prop" }));
-    const dialog = screen.getByRole("dialog", { name: "规格审核 mystery_prop" });
+    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 mystery_prop" });
     fireEvent.change(within(dialog).getByLabelText("审核原因"), {
       target: { value: "Need manual draft" }
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "创建草稿规格" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "创建草稿定义" }));
 
     await waitFor(() =>
       expect(resolveSpecReviewTask).toHaveBeenCalledWith("review-task-mystery", {
@@ -555,7 +555,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     renderPage({ repository, path: "/parameter-admin/spec-review" });
 
-    const queue = await screen.findByRole("region", { name: "规格审核队列" });
+    const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     expect(listSpecReviewTasks).toHaveBeenCalledWith(
       expect.objectContaining({ status: "open", limit: 50 })
     );
@@ -564,8 +564,8 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     expect(within(queue).queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
 
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
-    expect(screen.getByRole("dialog", { name: "规格审核 gpio_int" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "选择规格" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "定义匹配审核 gpio_int" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "选择参数定义" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -581,9 +581,9 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     expect(await within(queue).findByText("status")).toBeInTheDocument();
 
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 status" }));
-    expect(screen.getByRole("dialog", { name: "规格审核 status" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "定义匹配审核 status" })).toBeInTheDocument();
     expect(within(queue).getByRole("button", { name: "编辑 gpio_int" })).toBeInTheDocument();
-    expect(screen.getAllByRole("combobox", { name: "选择规格" })).toHaveLength(1);
+    expect(screen.getAllByRole("combobox", { name: "选择参数定义" })).toHaveLength(1);
   });
 
   it("pages the spec library client-side and hides structural properties by default", async () => {
@@ -600,7 +600,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     renderPage({ repository, path: "/parameter-admin/specs" });
 
-    const library = await screen.findByRole("region", { name: "参数库" });
+    const library = await screen.findByRole("region", { name: "参数定义库" });
     expect(within(library).queryByText("#address-cells")).not.toBeInTheDocument();
     expect(within(library).getByText(/59 \/ 59/)).toBeInTheDocument();
     expect(within(library).getAllByRole("button", { name: /编辑 prop_/ })).toHaveLength(50);
@@ -634,7 +634,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     renderPage({ repository, path: "/parameter-admin/specs" });
 
-    const library = await screen.findByRole("region", { name: "参数库" });
+    const library = await screen.findByRole("region", { name: "参数定义库" });
     const table = within(library).getByRole("table");
     expect(within(library).getByRole("columnheader", { name: "所属模块" })).toBeInTheDocument();
     expect(within(table).getByText("sc8562")).toBeInTheDocument();
@@ -651,17 +651,17 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const repository = createMockParameterTopologyRepository();
     renderPage({ repository, path: "/parameter-admin/specs" });
 
-    const library = await screen.findByRole("region", { name: "参数库" });
+    const library = await screen.findByRole("region", { name: "参数定义库" });
     expect(within(library).getAllByText("gpio_int").length).toBeGreaterThan(0);
     expect(within(library).getAllByRole("button", { name: "编辑 gpio_int" }).length).toBeGreaterThan(0);
 
     cleanup();
     renderPage({ repository, path: "/parameter-admin/spec-review" });
 
-    const queue = await screen.findByRole("region", { name: "规格审核队列" });
+    const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
-    const dialog = screen.getByRole("dialog", { name: "规格审核 gpio_int" });
-    fireEvent.change(within(dialog).getByRole("combobox", { name: "选择规格" }), {
+    const dialog = screen.getByRole("dialog", { name: "定义匹配审核 gpio_int" });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "选择参数定义" }), {
       target: { value: "spec-sc8562-gpio-int" }
     });
     fireEvent.change(within(dialog).getByLabelText("审核原因"), {
@@ -669,7 +669,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "批准" }));
 
-    await waitFor(() => expect(within(queue).getByText("没有待审核的推理规格。")).toBeInTheDocument());
+    await waitFor(() => expect(within(queue).getByText("没有待确认的自动匹配。")).toBeInTheDocument());
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/spec-review-resolved/);
   });
 });
@@ -679,7 +679,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     const moduleRegistry = createModuleRegistry();
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
-    const panel = await screen.findByRole("region", { name: "模块映射管理" });
+    const panel = await screen.findByRole("region", { name: "驱动归属配置" });
     expect(within(panel).getAllByText("充电策略").length).toBeGreaterThan(0);
     expect(within(panel).getByText("driver:sc8562")).toBeInTheDocument();
     expect(moduleRegistry.getRegistry).toHaveBeenCalled();
@@ -689,7 +689,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     const moduleRegistry = createModuleRegistry();
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
-    const panel = await screen.findByRole("region", { name: "模块映射管理" });
+    const panel = await screen.findByRole("region", { name: "驱动归属配置" });
 
     fireEvent.change(within(panel).getByRole("textbox", { name: "模块名称" }), {
       target: { value: "电源路径" }
@@ -748,7 +748,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     const moduleRegistry = createModuleRegistry();
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
-    const panel = await screen.findByRole("region", { name: "模块映射管理" });
+    const panel = await screen.findByRole("region", { name: "驱动归属配置" });
 
     fireEvent.change(within(panel).getByRole("combobox", { name: "目标模块" }), {
       target: { value: "mod-charging" }
@@ -759,7 +759,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     fireEvent.change(within(panel).getByRole("textbox", { name: "匹配值" }), {
       target: { value: "vendor,mt5788" }
     });
-    fireEvent.click(within(panel).getByRole("button", { name: "添加映射" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "添加归属" }));
 
     await waitFor(() =>
       expect(moduleRegistry.createMapping).toHaveBeenCalledWith({
@@ -776,7 +776,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     fireEvent.change(within(panel).getByRole("textbox", { name: "匹配值" }), {
       target: { value: "sc8562@6E" }
     });
-    fireEvent.click(within(panel).getByRole("button", { name: "添加映射" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "添加归属" }));
 
     await waitFor(() =>
       expect(moduleRegistry.createMapping).toHaveBeenCalledWith({
@@ -786,7 +786,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
       })
     );
 
-    fireEvent.click(within(panel).getByRole("button", { name: "删除映射 compatible:vendor,mt5788" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "删除归属 compatible:vendor,mt5788" }));
     await waitFor(() => expect(moduleRegistry.deleteMapping).toHaveBeenCalled());
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-mapping-deleted/);
   });
@@ -801,18 +801,18 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     const moduleRegistry = createModuleRegistry();
     renderPage({ repository, moduleRegistry, path: "/parameter-admin/modules" });
 
-    const panel = await screen.findByRole("region", { name: "模块映射管理" });
-    const driverQueue = within(panel).getByRole("region", { name: "模块发现队列（driver）" });
+    const panel = await screen.findByRole("region", { name: "驱动归属配置" });
+    const driverQueue = within(panel).getByRole("region", { name: "待归类驱动（driver）" });
     expect(within(driverQueue).getByText("mt5788")).toBeInTheDocument();
     expect(within(driverQueue).queryByText("sc8562")).not.toBeInTheDocument();
 
-    const compatibleQueue = within(panel).getByRole("region", { name: "模块发现队列（compatible）" });
+    const compatibleQueue = within(panel).getByRole("region", { name: "待归类驱动（compatible）" });
     expect(within(compatibleQueue).getByText("vendor,unmapped-ic")).toBeInTheDocument();
 
     fireEvent.click(within(panel).getByRole("button", { name: "重算模块归属" }));
     await waitFor(() => expect(moduleRegistry.recomputeBindings).toHaveBeenCalled());
     await waitFor(() =>
-      expect(within(panel).getByText(/已重算模块归属，更新 3 个参数绑定/)).toBeInTheDocument()
+      expect(within(panel).getByText(/已重算模块归属，更新 3 个项目参数/)).toBeInTheDocument()
     );
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(
       /module-bindings-recomputed/
@@ -823,7 +823,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     const moduleRegistry = createMockParameterModuleRegistryRepository();
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
-    const panel = await screen.findByRole("region", { name: "模块映射管理" });
+    const panel = await screen.findByRole("region", { name: "驱动归属配置" });
     expect(within(panel).getAllByText("充电策略").length).toBeGreaterThan(0);
 
     fireEvent.change(within(panel).getByRole("textbox", { name: "模块名称" }), {
@@ -982,7 +982,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       path: "/parameter-admin/identity-mapping"
     });
 
-    const region = await screen.findByRole("region", { name: "身份映射治理" });
+    const region = await screen.findByRole("region", { name: "节点对应确认" });
     expect(within(region).getByText("/amba/i2c@FDF5E000/sc8562@6E")).toBeInTheDocument();
     expect(within(region).getByText("unit address matched")).toBeInTheDocument();
     expect(listMappingTasks).toHaveBeenCalled();
@@ -999,14 +999,14 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       path: "/parameter-admin/identity-mapping"
     });
 
-    const review = await screen.findByRole("region", { name: "映射审核" });
-    fireEvent.change(within(review).getByRole("combobox", { name: "选择映射候选" }), {
+    const review = await screen.findByRole("region", { name: "节点对应审核" });
+    fireEvent.change(within(review).getByRole("combobox", { name: "选择对应节点" }), {
       target: { value: "logical-sc8562" }
     });
-    fireEvent.change(within(review).getByLabelText("映射确认原因"), {
+    fireEvent.change(within(review).getByLabelText("确认原因"), {
       target: { value: "Same board instance" }
     });
-    fireEvent.click(within(review).getByRole("button", { name: "确认映射" }));
+    fireEvent.click(within(review).getByRole("button", { name: "确认对应" }));
 
     await waitFor(() =>
       expect(resolveMapping).toHaveBeenCalledWith("map-admin-1", {
@@ -1019,7 +1019,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/identity-mapping-resolved/)
     );
     await waitFor(() =>
-      expect(screen.getByText("当前没有待处理的身份映射任务。")).toBeInTheDocument()
+      expect(screen.getByText("当前没有待处理的节点对应任务。")).toBeInTheDocument()
     );
   });
 
@@ -1029,14 +1029,14 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       path: "/parameter-admin/identity-mapping"
     });
 
-    const review = await screen.findByRole("region", { name: "映射审核" });
-    fireEvent.change(within(review).getByRole("combobox", { name: "选择映射候选" }), {
+    const review = await screen.findByRole("region", { name: "节点对应审核" });
+    fireEvent.change(within(review).getByRole("combobox", { name: "选择对应节点" }), {
       target: { value: "logical-sc8562" }
     });
-    fireEvent.change(within(review).getByLabelText("映射确认原因"), {
+    fireEvent.change(within(review).getByLabelText("确认原因"), {
       target: { value: "Mock continuity" }
     });
-    fireEvent.click(within(review).getByRole("button", { name: "确认映射" }));
+    fireEvent.click(within(review).getByRole("button", { name: "确认对应" }));
 
     await waitFor(() =>
       expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/identity-mapping-resolved/)

@@ -1,3 +1,5 @@
+import { PARAMETER_ADMIN_UI } from "./parameterAdminUiCopy";
+
 export type ParameterAdminOrganizationView =
   | "specs"
   | "spec-review"
@@ -15,10 +17,10 @@ export const PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS: Record<
   ParameterAdminOrganizationView,
   string
 > = {
-  specs: "参数库",
-  "spec-review": "规格审核",
-  modules: "模块映射",
-  "identity-mapping": "身份映射"
+  specs: PARAMETER_ADMIN_UI.specLibrary,
+  "spec-review": PARAMETER_ADMIN_UI.specReview,
+  modules: PARAMETER_ADMIN_UI.moduleMapping,
+  "identity-mapping": PARAMETER_ADMIN_UI.identityMapping
 };
 
 /**
