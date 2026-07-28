@@ -31,7 +31,13 @@ export type RecomputeBindingModulesResult = {
 };
 
 export type ModuleDiscoveryHints = {
-  compatibles: Array<{ compatible: string; bindingCount: number }>;
+  compatibles: Array<{
+    compatible: string;
+    bindingCount: number;
+    projectCount?: number;
+    suggestedGroupName?: string;
+  }>;
+  total?: number;
 };
 
 /**

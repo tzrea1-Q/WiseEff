@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type {
   CreateModuleMappingInput,
   CreateParameterModuleInput,
@@ -31,36 +31,6 @@ function pushModuleAudit(
  */
 export function OrganizationModuleGovernancePanel() {
   const { application, dispatch } = useParameterAdmin();
-  const [observedDrivers, setObservedDrivers] = useState<
-    Array<{ driverModule: string; bindingCount: number }>
-  >([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    application
-      .listSpecs({})
-      .then((specs) => {
-        if (cancelled) return;
-        const counts = new Map<string, number>();
-        for (const spec of specs) {
-          const driver = spec.driverModule?.trim();
-          if (!driver) continue;
-          counts.set(driver, (counts.get(driver) ?? 0) + 1);
-        }
-        setObservedDrivers(
-          Array.from(counts.entries()).map(([driverModule, bindingCount]) => ({
-            driverModule,
-            bindingCount
-          }))
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setObservedDrivers([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [application]);
 
   const repository = useMemo((): ParameterModuleRegistryRepository => {
     const base = application.asModuleRegistryRepository();
@@ -112,11 +82,5 @@ export function OrganizationModuleGovernancePanel() {
     };
   }, [application, dispatch]);
 
-  return (
-    <ParameterModuleMappingPanel
-      canAdmin
-      repository={repository}
-      observedDrivers={observedDrivers}
-    />
-  );
+  return <ParameterModuleMappingPanel canAdmin repository={repository} />;
 }

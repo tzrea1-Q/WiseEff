@@ -128,3 +128,36 @@ describe("node enablement change request migration invariants", () => {
     expect(migration).toContain("node-enablement");
   });
 });
+
+describe("module kind/origin migration invariants", () => {
+  it("adds kind, origin, source_key and retires driver match kind", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0072_module_kind_origin.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("add column if not exists kind");
+    expect(migration).toContain("add column if not exists origin");
+    expect(migration).toContain("add column if not exists source_key");
+    expect(migration).toContain("parameter_modules_kind_check");
+    expect(migration).toContain("parameter_modules_origin_check");
+    expect(migration).toContain("parameter_modules_org_source_key_unique_idx");
+    expect(migration).toContain("'driver-group'");
+    expect(migration).toContain("delete from parameter_module_mappings");
+    expect(migration).toContain("match_kind = 'driver'");
+    expect(migration).toContain("check (match_kind in ('compatible', 'instance'))");
+    expect(migration).not.toContain("check (match_kind in ('driver', 'compatible', 'instance'))");
+  });
+});
+
+describe("dismissed compatibles migration invariants", () => {
+  it("creates dismissed-compatibles table with org+compatible uniqueness", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0073_dismissed_compatibles.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("create table if not exists parameter_module_dismissed_compatibles");
+    expect(migration).toContain("parameter_module_dismissed_compatibles_org_compatible_idx");
+    expect(migration).toContain("lower(compatible)");
+    expect(migration).toContain("dismissed_by_user_id");
+  });
+});

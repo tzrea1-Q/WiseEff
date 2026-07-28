@@ -9,7 +9,7 @@ describe("createMockParameterModuleRegistryRepository", () => {
     expect(registry.modules.some((module) => module.name === "充电策略")).toBe(true);
     expect(registry.mappings).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ matchKind: "driver", matchValue: "sc8562" })
+        expect.objectContaining({ matchKind: "compatible", matchValue: "vendor,sc8562" })
       ])
     );
   });

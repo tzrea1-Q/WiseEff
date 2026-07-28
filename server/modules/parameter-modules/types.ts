@@ -1,6 +1,10 @@
-export type ModuleMatchKind = "driver" | "compatible" | "instance";
+export type ModuleMatchKind = "compatible" | "instance";
 
 export type ModuleImportance = "high" | "medium" | "low";
+
+export type ModuleKind = "business" | "driver-group" | "instance" | "unclassified";
+
+export type ModuleOrigin = "curated" | "auto";
 
 export type ParameterModuleDto = {
   id: string;
@@ -8,6 +12,11 @@ export type ParameterModuleDto = {
   parentId: string | null;
   sortOrder: number;
   importance: ModuleImportance;
+  kind: ModuleKind;
+  origin: ModuleOrigin;
+  sourceKey: string | null;
+  effectiveImportance: ModuleImportance;
+  parameterCount: number;
 };
 
 export type ParameterModuleMappingDto = {
@@ -29,6 +38,11 @@ export type ParameterModuleRow = {
   parent_id: string | null;
   sort_order: number;
   importance: ModuleImportance;
+  kind: ModuleKind;
+  origin: ModuleOrigin;
+  source_key: string | null;
+  path: string;
+  parameter_count: string | number | null;
 };
 
 export type ParameterModuleMappingRow = {

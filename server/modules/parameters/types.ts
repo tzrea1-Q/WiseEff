@@ -41,6 +41,10 @@ export type ProjectModuleDto = {
 
 export type ModuleImportance = "high" | "medium" | "low";
 
+export type ModuleKind = "business" | "driver-group" | "instance" | "unclassified";
+
+export type ModuleOrigin = "curated" | "auto";
+
 export type ParameterModuleDto = {
   id: string;
   parentId: string | null;
@@ -51,6 +55,9 @@ export type ParameterModuleDto = {
   description: string;
   scope: string;
   importance: ModuleImportance;
+  kind: ModuleKind;
+  origin: ModuleOrigin;
+  sourceKey: string | null;
 };
 
 export type ParameterHistoryEntryDto = {

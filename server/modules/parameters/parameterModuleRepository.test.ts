@@ -85,7 +85,10 @@ describe("parameterModuleRepository", () => {
         sortOrder: 0,
         description: "",
         scope: "",
-        importance: "medium"
+        importance: "medium",
+        kind: "business",
+        origin: "curated",
+        sourceKey: null
       },
       {
         id: "pm-b",
@@ -96,7 +99,10 @@ describe("parameterModuleRepository", () => {
         sortOrder: 0,
         description: "",
         scope: "",
-        importance: "medium"
+        importance: "medium",
+        kind: "business",
+        origin: "curated",
+        sourceKey: null
       }
     ]);
   });

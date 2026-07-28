@@ -6,15 +6,20 @@ import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   createModuleMappingBodySchema,
+  dismissCompatibleBodySchema,
+  dismissedCompatibleParamsSchema,
   moduleMappingParamsSchema,
   recomputeBindingsBodySchema
 } from "./schemas";
 import {
   createModuleMapping,
   deleteModuleMapping,
+  dismissCompatible,
   getModuleDiscoveryHints,
   getParameterModuleRegistry,
-  recomputeBindingModules
+  previewModuleMapping,
+  recomputeBindingModules,
+  restoreDismissedCompatible
 } from "./service";
 
 function requireDb(db: Database | undefined) {
@@ -59,6 +64,32 @@ export function registerParameterModuleRoutes(
     return { status: 200, body: result };
   });
 
+  router.post("/api/v2/parameter-modules/discovery-hints/dismissals", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(dismissCompatibleBodySchema, request.body ?? {});
+    const result = await dismissCompatible(db, auth, body);
+    return { status: 200, body: result };
+  });
+
+  router.delete("/api/v2/parameter-modules/discovery-hints/dismissals/:compatible", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(dismissedCompatibleParamsSchema, {
+      compatible: decodeURIComponent(request.params.compatible ?? "")
+    });
+    const result = await restoreDismissedCompatible(db, auth, params);
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-modules/mappings/preview", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(createModuleMappingBodySchema, request.body ?? {});
+    const result = await previewModuleMapping(db, auth, body);
+    return { status: 200, body: result };
+  });
+
   router.post("/api/v2/parameter-modules/mappings", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -79,7 +110,10 @@ export function registerParameterModuleRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(recomputeBindingsBodySchema, request.body ?? {});
-    const result = await recomputeBindingModules(db, auth, { projectId: body.projectId });
+    const result = await recomputeBindingModules(db, auth, {
+      projectId: body.projectId,
+      dryRun: body.dryRun
+    });
     return { status: 200, body: result };
   });
 }

@@ -14,7 +14,7 @@ const registry: ParameterModuleRegistry = {
     { id: "safety", name: "电池安全", parentId: null, sortOrder: 1, importance: "medium" }
   ],
   mappings: [
-    { id: "map-driver-sc8562", moduleId: "charge", matchKind: "driver", matchValue: "sc8562", priority: 0 },
+    { id: "map-compat-sc8562", moduleId: "charge", matchKind: "compatible", matchValue: "vendor,sc8562", priority: 0 },
     { id: "map-instance-sc8562-6e", moduleId: "safety", matchKind: "instance", matchValue: "sc8562@6E", priority: 0 }
   ]
 };
@@ -30,7 +30,7 @@ describe("deriveModuleAssignment", () => {
     expect(assignment.moduleName).toContain("sc8562");
   });
 
-  it("prefers instance matches over driver matches", () => {
+  it("prefers instance matches over compatible matches", () => {
     const assignment = deriveModuleAssignment(
       { driverModule: "sc8562", compatible: "vendor,sc8562", instanceName: "sc8562@6E" },
       registry
@@ -40,7 +40,7 @@ describe("deriveModuleAssignment", () => {
     expect(assignment.importance).toBe("medium");
   });
 
-  it("uses the driver mapping when no higher-priority rule matches", () => {
+  it("uses the compatible mapping when no higher-priority rule matches", () => {
     const assignment = deriveModuleAssignment(
       { driverModule: "sc8562", compatible: "vendor,sc8562", instanceName: "sc8562@7F" },
       registry
@@ -51,22 +51,22 @@ describe("deriveModuleAssignment", () => {
 
   it("matches case-insensitively", () => {
     const assignment = deriveModuleAssignment(
-      { driverModule: "SC8562", compatible: null, instanceName: null },
+      { driverModule: "SC8562", compatible: "Vendor,SC8562", instanceName: null },
       registry
     );
     expect(assignment.moduleId).toBe("charge");
   });
 
-  it("prefers instance matches over driver matches even when driver priority is very high", () => {
+  it("prefers instance matches over compatible matches even when compatible priority is very high", () => {
     const skewed: ParameterModuleRegistry = {
       ...registry,
       mappings: [
-        { id: "map-driver-high", moduleId: "charge", matchKind: "driver", matchValue: "sc8562", priority: 999 },
+        { id: "map-compat-high", moduleId: "charge", matchKind: "compatible", matchValue: "vendor,sc8562", priority: 999 },
         { id: "map-instance", moduleId: "safety", matchKind: "instance", matchValue: "sc8562@6E", priority: 0 }
       ]
     };
     const assignment = deriveModuleAssignment(
-      { driverModule: "sc8562", compatible: null, instanceName: "sc8562@6E" },
+      { driverModule: "sc8562", compatible: "vendor,sc8562", instanceName: "sc8562@6E" },
       skewed
     );
     expect(assignment.moduleId).toBe("safety");
@@ -117,8 +117,6 @@ describe("describeModuleAssignment (phase 2 browse source of truth)", () => {
   });
 
   it("never substitutes a different module even when a higher-priority mapping matches another module", () => {
-    // A mapping exists that would resolve "sc8562@6E" to "safety" via deriveModuleAssignment,
-    // but the binding's persisted moduleId ("charge") must win — no read-time override.
     const assignment = describeModuleAssignment(
       "charge",
       { driverModule: "sc8562", compatible: "vendor,sc8562", instanceName: "sc8562@6E" },

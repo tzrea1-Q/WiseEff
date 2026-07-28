@@ -426,7 +426,7 @@ export function buildDtsPowerSeed(baseSource: string): DtsPowerSeed {
 }
 
 export type DtsPowerSeedModuleMapping = {
-  matchKind: "instance" | "compatible" | "driver";
+  matchKind: "instance" | "compatible";
   matchValue: string;
   moduleName: string;
   priority?: number;
@@ -503,15 +503,6 @@ export function buildSeedModuleMappings(resolved: ResolvedDts): DtsPowerSeedModu
       moduleName: group.moduleName,
       priority: 300,
     });
-    const shortDriver = driverGroupDisplayNameFromCompatible(compatibleKey);
-    if (shortDriver) {
-      putMapping({
-        matchKind: "driver",
-        matchValue: shortDriver,
-        moduleName: group.moduleName,
-        priority: 100,
-      });
-    }
   }
 
   for (const [instanceKey, instance] of placement.instances) {

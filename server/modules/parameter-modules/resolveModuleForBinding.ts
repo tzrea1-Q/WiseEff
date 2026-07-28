@@ -3,7 +3,7 @@
  *
  * Every binding write (ingest, spec review, legacy migration, seeds) must persist a
  * durable module_id — never null. Priority mirrors the frontend registry derivation
- * (`src/domain/parameter-topology/moduleRegistry.ts`): instance > compatible > driver.
+ * (`src/domain/parameter-topology/moduleRegistry.ts`): instance > compatible.
  * When no admin mapping matches, the write falls back to a single deterministic
  * org-scoped "未分类" module so the FK/NOT NULL constraint never blocks a write.
  */
@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 
 import type { Queryable } from "../../shared/database/client";
 
-export type ModuleBindingMatchKind = "driver" | "compatible" | "instance";
+export type ModuleBindingMatchKind = "compatible" | "instance";
 
 const UNCLASSIFIED_MODULE_NAME = "未分类";
 
@@ -65,7 +65,7 @@ async function findMappedModuleId(
 
 /**
  * Resolve the durable business module for a binding write.
- * Priority: instance mapping > compatible mapping > driver mapping > deterministic
+ * Priority: instance mapping > compatible mapping > deterministic
  * org-scoped "未分类" module. Never returns null/undefined (clean cutover: no
  * optional module on the write path).
  */
@@ -81,7 +81,6 @@ export async function resolveModuleIdForBinding(
   const candidates: Array<{ kind: ModuleBindingMatchKind; value: string | null }> = [
     { kind: "instance", value: normalizeMatchValue(input.instanceName) },
     { kind: "compatible", value: normalizeMatchValue(input.compatible) },
-    { kind: "driver", value: normalizeMatchValue(input.driverModule) },
   ];
 
   for (const candidate of candidates) {

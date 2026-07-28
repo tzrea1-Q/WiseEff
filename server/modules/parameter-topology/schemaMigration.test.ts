@@ -20,12 +20,16 @@ const migration0068 = "0068_dismiss_structural_spec_reviews.sql";
 const migration0069 = "0069_node_enablement_drafts.sql";
 const migration0070 = "0070_node_enablement_change_requests.sql";
 const migration0071 = "0071_relax_enablement_subject_checks.sql";
+const migration0072 = "0072_module_kind_origin.sql";
+const migration0073 = "0073_dismissed_compatibles.sql";
 
 const enablementMigrations = [
   migration0068,
   migration0069,
   migration0070,
-  migration0071
+  migration0071,
+  migration0072,
+  migration0073
 ] as const;
 const REQUIRED_TABLES = [
   "parameter_specs",

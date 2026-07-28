@@ -6,13 +6,12 @@
  * This layer never changes binding/spec identity; it only assigns a display module.
  */
 
-/** How a mapping rule matches a binding. Priority: instance > compatible > driver. */
-export type ModuleMatchKind = "driver" | "compatible" | "instance";
+/** How a mapping rule matches a binding. Priority: instance > compatible. */
+export type ModuleMatchKind = "compatible" | "instance";
 
 export const MODULE_MATCH_PRIORITY: Record<ModuleMatchKind, number> = {
   instance: 3,
-  compatible: 2,
-  driver: 1
+  compatible: 2
 };
 
 /** Mapping priority is capped so it cannot cross a match-kind boundary. */
@@ -83,8 +82,6 @@ function normalize(value: string | null | undefined): string | null {
 
 function candidateValue(kind: ModuleMatchKind, input: ModuleAssignmentInput): string | null {
   switch (kind) {
-    case "driver":
-      return normalize(input.driverModule);
     case "compatible":
       return normalize(input.compatible);
     case "instance":
@@ -102,7 +99,7 @@ function compareRank(
 
 /**
  * Resolves the business module for a binding using the admin registry.
- * Order: mapping(instance > compatible > driver) → declared v1 module → driver fallback.
+ * Order: mapping(instance > compatible) → declared v1 module → driver fallback.
  */
 export function deriveModuleAssignment(
   input: ModuleAssignmentInput,

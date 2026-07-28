@@ -15,6 +15,9 @@ type ParameterModuleRow = {
   description: string;
   scope: string;
   importance: "high" | "medium" | "low" | null;
+  kind: "business" | "driver-group" | "instance" | "unclassified" | null;
+  origin: "curated" | "auto" | null;
+  source_key: string | null;
 };
 
 function toParameterModuleDto(row: ParameterModuleRow): ParameterModuleDto {
@@ -27,7 +30,10 @@ function toParameterModuleDto(row: ParameterModuleRow): ParameterModuleDto {
     sortOrder: Number(row.sort_order),
     description: row.description,
     scope: row.scope,
-    importance: row.importance ?? "medium"
+    importance: row.importance ?? "medium",
+    kind: row.kind ?? "business",
+    origin: row.origin ?? "curated",
+    sourceKey: row.source_key ?? null
   };
 }
 
@@ -41,7 +47,10 @@ const parameterModuleColumns = `
   sort_order,
   description,
   scope,
-  importance
+  importance,
+  kind,
+  origin,
+  source_key
 `;
 
 export async function listParameterModules(db: Queryable, query: { organizationId: string }) {
@@ -96,6 +105,57 @@ export async function getParameterModuleByName(
   return result.rows[0] ? toParameterModuleDto(result.rows[0]) : null;
 }
 
+export async function getParameterModuleBySourceKey(
+  db: Queryable,
+  query: { organizationId: string; sourceKey: string }
+): Promise<ParameterModuleDto | null> {
+  const result = await db.query<ParameterModuleRow>(
+    `
+    select ${parameterModuleColumns}
+    from parameter_modules
+    where organization_id = $1
+      and source_key = $2
+    limit 1
+    `,
+    [query.organizationId, query.sourceKey]
+  );
+  return result.rows[0] ? toParameterModuleDto(result.rows[0]) : null;
+}
+
+/** One-time adopt: attach a stable source_key to an unkeyed module without renaming it. */
+export async function adoptParameterModuleSourceKey(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    moduleId: string;
+    sourceKey: string;
+    kind?: ParameterModuleDto["kind"];
+    origin?: ParameterModuleDto["origin"];
+  }
+): Promise<ParameterModuleDto | null> {
+  const result = await db.query<ParameterModuleRow>(
+    `
+    update parameter_modules
+    set
+      source_key = coalesce(source_key, $3),
+      kind = coalesce($4, kind),
+      origin = coalesce($5, origin),
+      updated_at = now()
+    where organization_id = $1
+      and id = $2
+    returning ${parameterModuleColumns}
+    `,
+    [
+      input.organizationId,
+      input.moduleId,
+      input.sourceKey,
+      input.kind ?? null,
+      input.origin ?? null
+    ]
+  );
+  return result.rows[0] ? toParameterModuleDto(result.rows[0]) : null;
+}
+
 export async function countParameterModuleChildren(
   db: Queryable,
   query: { organizationId: string; moduleId: string }
@@ -140,6 +200,9 @@ export async function createParameterModule(
     scope?: string;
     sortOrder?: number;
     importance?: "high" | "medium" | "low";
+    kind?: ParameterModuleDto["kind"];
+    origin?: ParameterModuleDto["origin"];
+    sourceKey?: string | null;
   }
 ) {
   const id = randomUUID();
@@ -161,9 +224,10 @@ export async function createParameterModule(
   const result = await db.query<ParameterModuleRow>(
     `
     insert into parameter_modules (
-      id, organization_id, parent_id, name, path, depth, sort_order, description, scope, importance
+      id, organization_id, parent_id, name, path, depth, sort_order, description, scope,
+      importance, kind, origin, source_key
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
     returning ${parameterModuleColumns}
     `,
     [
@@ -176,7 +240,10 @@ export async function createParameterModule(
       input.sortOrder ?? 0,
       input.description ?? "",
       input.scope ?? "",
-      input.importance ?? "medium"
+      input.importance ?? "medium",
+      input.kind ?? "business",
+      input.origin ?? "curated",
+      input.sourceKey ?? null
     ]
   );
 
@@ -203,7 +270,15 @@ export async function updateParameterModule(
     return null;
   }
 
+  if (input.importance !== undefined && existing.kind !== "business") {
+    throw new Error("Importance can only be set on business-category modules");
+  }
+
   const nextName = input.name?.trim() ?? existing.name;
+  const shouldPromote =
+    existing.origin === "auto" &&
+    (input.name !== undefined || input.importance !== undefined);
+
   const result = await db.query<ParameterModuleRow>(
     `
     update parameter_modules
@@ -213,6 +288,7 @@ export async function updateParameterModule(
       scope = coalesce($5, scope),
       sort_order = coalesce($6, sort_order),
       importance = coalesce($7, importance),
+      origin = case when $8::boolean then 'curated' else origin end,
       updated_at = now()
     where organization_id = $1
       and id = $2
@@ -225,7 +301,8 @@ export async function updateParameterModule(
       input.description ?? null,
       input.scope ?? null,
       input.sortOrder ?? null,
-      input.importance ?? null
+      input.importance ?? null,
+      shouldPromote
     ]
   );
 
@@ -287,6 +364,7 @@ export async function moveParameterModule(
         else $4 || substring(path from length($5) + 1)
       end,
       depth = depth + $6,
+      origin = case when id = $2 and origin = 'auto' then 'curated' else origin end,
       updated_at = now()
     where organization_id = $1
       and (id = $2 or path like $5 || '/%')
@@ -304,6 +382,17 @@ export async function deleteParameterModule(
   db: Queryable,
   input: { organizationId: string; moduleId: string }
 ) {
+  const existing = await getParameterModuleById(db, input);
+  if (!existing) {
+    return false;
+  }
+  if (existing.kind === "instance") {
+    throw new Error("Cannot delete a device-instance module");
+  }
+  if (existing.kind === "unclassified" && existing.parentId === null) {
+    throw new Error("Cannot delete the unclassified root module");
+  }
+
   const childCount = await countParameterModuleChildren(db, input);
   if (childCount > 0) {
     throw new Error("Cannot delete parameter module with child modules");

@@ -77,8 +77,8 @@ const SEED_REGISTRY: ParameterModuleRegistry = {
     {
       id: "map-sc8562",
       moduleId: "mod-charging",
-      matchKind: "driver",
-      matchValue: "sc8562",
+      matchKind: "compatible",
+      matchValue: "vendor,sc8562",
       priority: 100
     }
   ]
@@ -122,7 +122,15 @@ function createModuleRegistry(
       mappings: registry.mappings.map((mapping) => ({ ...mapping }))
     })),
     getDiscoveryHints: vi.fn(async () => ({
-      compatibles: [{ compatible: "vendor,unmapped-ic", bindingCount: 2 }]
+      compatibles: [
+        {
+          compatible: "vendor,unmapped-ic",
+          bindingCount: 2,
+          projectCount: 1,
+          suggestedGroupName: "unmapped-ic"
+        }
+      ],
+      total: 1
     })),
     createModule: vi.fn(async (input) => {
       moduleSeq += 1;
@@ -681,7 +689,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
 
     const panel = await screen.findByRole("region", { name: "驱动归属配置" });
     expect(within(panel).getAllByText("充电策略").length).toBeGreaterThan(0);
-    expect(within(panel).getByText("driver:sc8562")).toBeInTheDocument();
+    expect(within(panel).getByText("compatible:vendor,sc8562")).toBeInTheDocument();
     expect(moduleRegistry.getRegistry).toHaveBeenCalled();
   });
 
@@ -791,20 +799,12 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-mapping-deleted/);
   });
 
-  it("surfaces unmapped drivers as a queue and shows recompute outcome", async () => {
-    const repository = createRepository({
-      listSpecs: vi.fn().mockResolvedValue([
-        SPEC_SUMMARY,
-        { ...SPEC_SUMMARY, id: "spec-mt5788-gpio-int", driverModule: "mt5788", propertyKey: "gpio_int" }
-      ])
-    });
+  it("surfaces unmapped compatibles as a queue and shows recompute outcome", async () => {
     const moduleRegistry = createModuleRegistry();
-    renderPage({ repository, moduleRegistry, path: "/parameter-admin/modules" });
+    renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
     const panel = await screen.findByRole("region", { name: "驱动归属配置" });
-    const driverQueue = within(panel).getByRole("region", { name: "待归类驱动（driver）" });
-    expect(within(driverQueue).getByText("mt5788")).toBeInTheDocument();
-    expect(within(driverQueue).queryByText("sc8562")).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("region", { name: "待归类驱动（driver）" })).not.toBeInTheDocument();
 
     const compatibleQueue = within(panel).getByRole("region", { name: "待归类驱动（compatible）" });
     expect(within(compatibleQueue).getByText("vendor,unmapped-ic")).toBeInTheDocument();
