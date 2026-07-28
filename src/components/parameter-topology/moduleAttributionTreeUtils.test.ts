@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import {
+  aggregateSubtreeParameterCounts,
   canDeleteModule,
   canEditImportance,
   canMoveModule,
+  canReclassifyModule,
   defaultExpandedModuleIds,
   filterModulesForAttribution,
   toBusinessFlatNodes
@@ -16,6 +18,8 @@ const modules: ParameterModule[] = [
     name: "Power",
     parentId: null,
     sortOrder: 0,
+    description: "",
+    scope: "",
     importance: "high",
     kind: "business",
     origin: "curated",
@@ -28,6 +32,8 @@ const modules: ParameterModule[] = [
     name: "Group",
     parentId: "b",
     sortOrder: 0,
+    description: "",
+    scope: "",
     importance: "medium",
     kind: "driver-group",
     origin: "auto",
@@ -40,6 +46,8 @@ const modules: ParameterModule[] = [
     name: "Inst",
     parentId: "g",
     sortOrder: 0,
+    description: "",
+    scope: "",
     importance: "medium",
     kind: "instance",
     origin: "auto",
@@ -50,8 +58,8 @@ const modules: ParameterModule[] = [
 ];
 
 describe("moduleAttributionTreeUtils", () => {
-  it("defaults expansion to business and driver-group layers", () => {
-    expect([...defaultExpandedModuleIds(modules)].sort()).toEqual(["b", "g"]);
+  it("defaults expansion to business categories only", () => {
+    expect([...defaultExpandedModuleIds(modules)].sort()).toEqual(["b"]);
   });
 
   it("restricts move targets to business modules", () => {
@@ -66,11 +74,31 @@ describe("moduleAttributionTreeUtils", () => {
     expect(canDeleteModule(modules[1]!)).toBe(true);
   });
 
+  it("allows moving logical nodes but not deleting them", () => {
+    const logical: ParameterModule = {
+      ...modules[2]!,
+      id: "l",
+      name: "btb_check",
+      kind: "logical"
+    };
+    expect(canMoveModule(logical)).toBe(true);
+    expect(canDeleteModule(logical)).toBe(false);
+    expect(canReclassifyModule(logical)).toBe(true);
+    expect(canReclassifyModule(modules[1]!)).toBe(false);
+  });
+
   it("keeps ancestors when filtering by kind", () => {
     const visible = filterModulesForAttribution(modules, {
       kinds: ["instance"],
       origins: ["auto", "curated"]
     });
     expect(visible.map((module) => module.id).sort()).toEqual(["b", "g", "i"]);
+  });
+
+  it("rolls direct parameter counts up the parent tree for display", () => {
+    const totals = aggregateSubtreeParameterCounts(modules);
+    expect(totals.get("i")).toBe(1);
+    expect(totals.get("g")).toBe(2); // group direct 1 + instance 1
+    expect(totals.get("b")).toBe(2); // business 0 + subtree 2
   });
 });

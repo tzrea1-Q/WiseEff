@@ -172,6 +172,7 @@ describe("DTS power seed catalog", () => {
     const seed = buildDtsPowerSeed(baseSource);
     const names = new Set(seed.parameterModules.map((module) => module.name));
     const parentOf = (name: string) => seed.parameterModules.find((module) => module.name === name)?.parent;
+    const moduleOf = (name: string) => seed.parameterModules.find((module) => module.name === name);
 
     expect(names.has("Power Bus")).toBe(false);
     expect(parentOf("hl7603")).toBe("Charger IC");
@@ -188,6 +189,20 @@ describe("DTS power seed catalog", () => {
     expect(parentOf("scharger_v800_coul")).toBe("scharger_v800");
     expect(parentOf("board")).toBe("Board Identity");
     expect(names.has("/")).toBe(false);
+
+    expect(moduleOf("Power")?.kind).toBe("business");
+    expect(moduleOf("Power")?.origin).toBe("curated");
+    expect(moduleOf("hl7603")?.kind).toBe("driver-group");
+    expect(moduleOf("hl7603")?.origin).toBe("auto");
+    expect(moduleOf("hl7603")?.sourceKey).toMatch(/^compatible:/);
+    expect(moduleOf("hl7603@75")?.kind).toBe("instance");
+    expect(moduleOf("hl7603@75")?.sourceKey).toMatch(/^node:/);
+    // Type C (no compatible) must seed as logical, not instance (ADR-0006).
+    expect(moduleOf("fm1230")?.kind).toBe("logical");
+    expect(moduleOf("battery0")?.kind).toBe("logical");
+    expect(moduleOf("btb_check")?.kind).toBe("logical");
+    expect(moduleOf("board")?.kind).toBe("instance");
+    expect(moduleOf("board")?.sourceKey).toBe("node:board");
 
     const mappings = buildSeedModuleMappings(resolveDts(baseSource));
     expect(mappings).toEqual(

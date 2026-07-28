@@ -2334,6 +2334,8 @@ export async function createParameterModuleForAuth(
   }
 
   return db.transaction(async (tx) => {
+    const kind = body.kind ?? "business";
+    const origin = body.origin ?? (kind === "driver-group" ? "auto" : "curated");
     const module = await createParameterModule(tx, {
       organizationId,
       name,
@@ -2341,7 +2343,10 @@ export async function createParameterModuleForAuth(
       description: body.description?.trim(),
       scope: body.scope?.trim(),
       sortOrder: body.sortOrder,
-      importance: body.importance
+      importance: kind === "business" ? body.importance : undefined,
+      kind,
+      origin,
+      sourceKey: body.sourceKey ?? null
     });
 
     await createParameterModuleAudit(
@@ -2378,12 +2383,66 @@ export async function updateParameterModuleForAuth(
     throw new ApiError("VALIDATION_FAILED", "Module name is required.", 400);
   }
 
-  if (body.importance !== undefined && current.kind !== "business") {
+  const reclassifyKinds = new Set(["business", "instance", "logical"] as const);
+  const nextKind = body.kind ?? current.kind;
+
+  if (body.kind !== undefined && body.kind !== current.kind) {
+    if (!reclassifyKinds.has(current.kind as "business" | "instance" | "logical")) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Only business, instance, and logical modules can be reclassified.",
+        400,
+        { moduleId, kind: current.kind }
+      );
+    }
+    if (!reclassifyKinds.has(body.kind)) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Modules can only be reclassified to business, instance, or logical.",
+        400,
+        { moduleId, kind: body.kind }
+      );
+    }
+
+    if (body.kind === "business") {
+      if (current.parentId) {
+        const parent = await getParameterModuleById(db, {
+          organizationId,
+          moduleId: current.parentId
+        });
+        if (!parent || parent.kind !== "business") {
+          throw new ApiError(
+            "VALIDATION_FAILED",
+            "A business category must sit under another business category or at the root.",
+            400,
+            { moduleId, parentId: current.parentId, parentKind: parent?.kind ?? null }
+          );
+        }
+      }
+    }
+
+    if (current.kind === "business" && body.kind !== "business") {
+      const siblings = await listParameterModules(db, { organizationId });
+      const hasBusinessChild = siblings.some(
+        (module) => module.parentId === moduleId && module.kind === "business"
+      );
+      if (hasBusinessChild) {
+        throw new ApiError(
+          "VALIDATION_FAILED",
+          "Cannot leave the business category while business children remain.",
+          400,
+          { moduleId }
+        );
+      }
+    }
+  }
+
+  if (body.importance !== undefined && nextKind !== "business") {
     throw new ApiError(
       "VALIDATION_FAILED",
       "Importance can only be set on business-category modules.",
       400,
-      { moduleId, kind: current.kind }
+      { moduleId, kind: nextKind }
     );
   }
 
@@ -2409,7 +2468,8 @@ export async function updateParameterModuleForAuth(
       description: body.description?.trim(),
       scope: body.scope?.trim(),
       sortOrder: body.sortOrder,
-      importance: body.importance
+      importance: body.importance,
+      kind: body.kind
     });
     if (!module) {
       throw new ApiError("NOT_FOUND", "Parameter module was not found.", 404, { moduleId });
@@ -2422,7 +2482,10 @@ export async function updateParameterModuleForAuth(
         kind: "parameter-module-admin-update",
         action: "update",
         module,
-        metadata: { previousName: current.name }
+        metadata: {
+          previousName: current.name,
+          previousKind: current.kind
+        }
       },
       context
     );

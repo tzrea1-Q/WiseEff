@@ -161,3 +161,32 @@ describe("dismissed compatibles migration invariants", () => {
     expect(migration).toContain("dismissed_by_user_id");
   });
 });
+
+describe("business misclassified-as-instance correction", () => {
+  it("restores curated business parents wrongly marked instance by 0072 batt-prefix", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0074_fix_business_misclassified_as_instance.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("kind = 'business'");
+    expect(migration).toContain("origin = 'curated'");
+    expect(migration).toContain("source_key is null");
+    expect(migration).toContain("match_kind = 'instance'");
+    expect(migration).toContain("child.kind = 'business'");
+  });
+});
+
+describe("logical module kind migration invariants", () => {
+  it("widens kind check to include logical without bulk backfill", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0075_module_logical_kind.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("parameter_modules_kind_check");
+    expect(migration).toContain("'logical'");
+    expect(migration).toContain(
+      "check (kind in ('business', 'driver-group', 'instance', 'logical', 'unclassified'))"
+    );
+    expect(migration).not.toMatch(/update\s+parameter_modules/i);
+  });
+});

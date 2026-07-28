@@ -99,12 +99,12 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 
 ### 模块归属管理（`/parameter-admin/modules`，页签 **模块归属**）
 
-`OrganizationModuleGovernancePanel` 组装 `ParameterModuleMappingPanel`，后者再组合 `UnclassifiedCompatibleQueue`、`ClassifyCompatibleDialog` 与 `ModuleAttributionTree`。种子与 ingest 构建三层树：**业务分类 → 驱动组 → 实例模块**；总线/脚手架节点不进产品树。组织映射仅匹配 `compatible` 或 `instance`（无 `driver` 匹配类型）。
+`OrganizationModuleGovernancePanel` 组装 `ParameterModuleMappingPanel`，默认以 `ModuleAttributionTree` 为主界面，归类时打开 `ClassifyCompatibleDialog`。种子与 ingest 构建 **业务分类 → 驱动组 → 器件实例 / 逻辑节点** 树；总线/脚手架节点不进产品树。组织映射仅匹配 `compatible` 或 `instance`（无 `driver` 匹配类型）。
 
 - **放置辅助：** `src/domain/parameter-topology/modulePlacement.ts`（服务端镜像在 `server/modules/parameter-modules/`）。
-- **绑定写入：** ingest 通过 `resolveBindingInstanceModuleId` 确保/创建实例模块并把 `module_id` 指到实例。未映射 `compatible` 进入临时桶 `未分类 · {driver}`，不阻断 ingest。
-- **待归类队列：** `GET /api/v2/parameter-modules/discovery-hints` 列出未忽略的 compatible 及参数/项目计数；通过 v2 dismissal 路由忽略/恢复（写审计）。批量归类打开 `ClassifyCompatibleDialog`，先 `POST /api/v2/parameter-modules/mappings/preview`，确认后 `POST /api/v2/parameter-modules/mappings` 按范围应用。
-- **按 kind 分级的树：** `ModuleAttributionTree` 展示 kind 徽标、参数计数与仅业务行的重要性（注册表 `effectiveImportance`）。操作遵循服务端 kind 守卫（`instance` 不可删；驱动组删除=解散；未分类根只读）。
+- **绑定写入：** ingest 通过 `resolveBindingInstanceModuleId` 确保/创建模块并写入 `module_id`。有 compatible 证据的节点落为 `instance`；无 compatible 的 Type C 节点落为 `logical`。未映射 `compatible` 进入临时桶 `未分类 · {driver}`，不阻断 ingest。
+- **未分类队列（次级）：** 有待归类项时，模块归属内出现子菜单「模块树 / 未分类队列」及数量徽标（`/parameter-admin/modules/queue`），树视图顶部有提示条；队列为空时子菜单与队列 UI 均隐藏。归类走 `ClassifyCompatibleDialog` → preview → 范围 apply。
+- **按 kind 分级的树：** `ModuleAttributionTree` 展示 kind 徽标（`business` / `driver-group` / `instance` / `logical` / `unclassified`）、参数计数与仅业务行的重要性（注册表 `effectiveImportance`）。操作遵循服务端 kind 守卫（`instance` 与 `logical` 不可删；`logical` 可移动；驱动组删除=解散；未分类根只读）。编辑弹框可在 `{business, instance, logical}` 间受控改类型（ADR-0006）。驱动组行只显示只读摘要「N 条 compatible」；匹配规则在 `ModuleEditDialog` 内增删，不在树上直接移除。从队列归类 compatible 时，在所选业务分类下创建的是 **驱动组**（不是业务分类），并写入 `source_key = compatible:{normalized}`；match 值会去掉 DTS 外层引号，使 `"mt,mt5788"` 与 `mt,mt5788` 视为同一杠杆。
 - **运维重算：** 仅管理员的 `recompute-bindings`（可选 `dryRun`）为回填工具；日常治理用映射范围应用。`db:seed:m1` 在 ingest 后仍可执行 `recomputeBindingModules`。
 
 ## 主要页面流
@@ -120,7 +120,7 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 参数域与调试域各自维护独立的组织级模块树。共享选择器：`src/components/common/ModuleTreeSelect.tsx`。
 
 - `/parameters`：模块筛选与分组使用 `moduleId` 子树包含；深链 `?module=<moduleId>`。
-- `/parameter-admin`：`ModuleManagementDialog` 支持创建子模块、移动、受控删除；库筛选与导入预览使用树形选择。
+- `/parameter-admin/modules`：`ModuleAttributionTree` 管理业务分类 / 驱动组 / 器件实例 / 逻辑节点归属；新建与修改走 `ModuleCreateDialog` / `ModuleEditDialog`（名称、受控模块类型、业务分类重要性、描述、适用范围），并保留移动与受控删除；库筛选与导入预览使用树形选择。
 - `/debugging-admin`：`DebugModuleManagementDialog` 管理调试节点模块树；节点目录与编辑弹窗通过 `ModuleTreeSelect` 选模块。
 
 API mode 从 `/api/v1/parameter-modules` 与 `/api/v1/debugging/admin/modules` 加载；mock mode 由 `src/config/power-management.json` 的 `parent`/`path` 经 `buildPowerManagementModuleTree()` 派生。

@@ -7,15 +7,23 @@ import type {
 export type CreateParameterModuleInput = {
   name: string;
   parentId?: string | null;
+  description?: string;
+  scope?: string;
   sortOrder?: number;
   importance?: ModuleImportance;
+  kind?: "business" | "driver-group";
+  origin?: "curated" | "auto";
+  sourceKey?: string | null;
 };
 
 export type UpdateParameterModuleInput = {
   name?: string;
+  description?: string;
+  scope?: string;
   parentId?: string | null;
   sortOrder?: number;
   importance?: ModuleImportance;
+  kind?: "business" | "instance" | "logical";
 };
 
 export type CreateModuleMappingInput = {

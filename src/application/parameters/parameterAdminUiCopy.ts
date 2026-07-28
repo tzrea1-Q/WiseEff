@@ -51,11 +51,14 @@ export const PARAMETER_ADMIN_UI = {
 
   moduleMapping: "模块归属",
   moduleMappingManage: "模块归属",
-  moduleMappingBlurb:
-    "业务分类 → 驱动组 → 器件实例。先清空下方未分类队列，再在树里维护已归属的模块。",
+  moduleMappingBlurb: "业务分类 → 驱动组 → 器件实例 / 逻辑节点。在树里维护已归属模块。",
   moduleTreeTitle: "模块树",
+  moduleTreeSubnav: "模块树",
   moduleDiscoveryCompatible: "未分类队列",
   moduleDiscoveryCompatibleEmpty: "当前没有待归类的 compatible。",
+  moduleQueueSubnavAria: "模块归属子视图",
+  moduleQueueBanner: "有待归类的 compatible",
+  moduleQueueBannerAction: "去处理未分类队列",
   classifyCompatible: "归类",
   classifyCompatibleBulk: "批量归类",
   dismissCompatible: "忽略",

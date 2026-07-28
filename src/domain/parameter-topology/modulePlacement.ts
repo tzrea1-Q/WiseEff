@@ -16,10 +16,28 @@ export const MODULE_SCAFFOLDING_SEGMENT_RE =
 
 const PROVISIONAL_UNCLASSIFIED_PREFIX = "未分类 · ";
 
+/**
+ * Normalize DTS match tokens (compatible / instance): trim, strip one layer of
+ * surrounding quotes, lowercase. `"mt,mt5788"` and `mt,mt5788` must compare equal.
+ */
+export function normalizeMatchToken(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  let trimmed = value.trim();
+  if (trimmed.length >= 2) {
+    const first = trimmed[0]!;
+    const last = trimmed[trimmed.length - 1]!;
+    if ((first === '"' || first === "'") && last === first) {
+      trimmed = trimmed.slice(1, -1).trim();
+    }
+  }
+  const lower = trimmed.toLowerCase();
+  return lower === "" ? null : lower;
+}
+
 /** Compatible tail / driver / module-leaf label that is scaffolding-only. */
 export function isScaffoldingDriverLabel(label: string | null | undefined): boolean {
   if (!label) return false;
-  let bare = label.trim().toLowerCase();
+  let bare = normalizeMatchToken(label) ?? label.trim().toLowerCase();
   if (bare.startsWith(PROVISIONAL_UNCLASSIFIED_PREFIX.toLowerCase())) {
     bare = bare.slice(PROVISIONAL_UNCLASSIFIED_PREFIX.length).trim();
   }
@@ -97,7 +115,7 @@ export function classifyModuleInstanceTaxonomy(
 
 /** Compatible tail fallback when instance names do not share a stable prefix. */
 export function driverGroupDisplayNameFromCompatible(compatible: string): string {
-  const normalized = compatible.trim().toLowerCase();
+  const normalized = normalizeMatchToken(compatible) ?? compatible.trim().toLowerCase();
   return normalized.includes(",")
     ? normalized.slice(normalized.lastIndexOf(",") + 1).trim()
     : normalized;

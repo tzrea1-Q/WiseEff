@@ -2,7 +2,7 @@ export type ModuleMatchKind = "compatible" | "instance";
 
 export type ModuleImportance = "high" | "medium" | "low";
 
-export type ModuleKind = "business" | "driver-group" | "instance" | "unclassified";
+export type ModuleKind = "business" | "driver-group" | "instance" | "logical" | "unclassified";
 
 export type ModuleOrigin = "curated" | "auto";
 
@@ -11,6 +11,8 @@ export type ParameterModuleDto = {
   name: string;
   parentId: string | null;
   sortOrder: number;
+  description: string;
+  scope: string;
   importance: ModuleImportance;
   kind: ModuleKind;
   origin: ModuleOrigin;
@@ -37,6 +39,8 @@ export type ParameterModuleRow = {
   name: string;
   parent_id: string | null;
   sort_order: number;
+  description: string;
+  scope: string;
   importance: ModuleImportance;
   kind: ModuleKind;
   origin: ModuleOrigin;

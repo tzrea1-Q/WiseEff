@@ -25,6 +25,8 @@ type ModuleDto = {
   name: string;
   parentId?: string | null;
   sortOrder?: number;
+  description?: string;
+  scope?: string;
   importance?: ModuleImportance;
   kind?: ModuleKind;
   origin?: ModuleOrigin;
@@ -61,6 +63,8 @@ function mapModule(module: ModuleDto): ParameterModule {
     name: module.name,
     parentId: module.parentId ?? null,
     sortOrder: module.sortOrder ?? 0,
+    description: module.description ?? "",
+    scope: module.scope ?? "",
     importance,
     kind: module.kind ?? "business",
     origin: module.origin ?? "curated",
@@ -157,8 +161,13 @@ export function createHttpParameterModuleRegistryRepository(
       await apiClient.post(V1_MODULES, {
         name: input.name,
         parentId: input.parentId,
+        description: input.description,
+        scope: input.scope,
         sortOrder: input.sortOrder,
-        importance: input.importance
+        importance: input.importance,
+        kind: input.kind,
+        origin: input.origin,
+        sourceKey: input.sourceKey
       });
       return getRegistry();
     },
@@ -171,8 +180,11 @@ export function createHttpParameterModuleRegistryRepository(
       }
       const patch: Record<string, unknown> = {};
       if (input.name !== undefined) patch.name = input.name;
+      if (input.description !== undefined) patch.description = input.description;
+      if (input.scope !== undefined) patch.scope = input.scope;
       if (input.sortOrder !== undefined) patch.sortOrder = input.sortOrder;
       if (input.importance !== undefined) patch.importance = input.importance;
+      if (input.kind !== undefined) patch.kind = input.kind;
       if (Object.keys(patch).length > 0) {
         await apiClient.patch(`${V1_MODULES}/${encodeURIComponent(moduleId)}`, patch);
       }

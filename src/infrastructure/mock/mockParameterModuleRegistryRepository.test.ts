@@ -12,7 +12,8 @@ describe("createMockParameterModuleRegistryRepository", () => {
         kind: "business",
         origin: "curated",
         effectiveImportance: "high",
-        parameterCount: 12
+        // Direct 12 + child 电池安全 4
+        parameterCount: 16
       })
     );
     expect(registry.mappings).toEqual(
@@ -25,12 +26,33 @@ describe("createMockParameterModuleRegistryRepository", () => {
   it("supports create, rename, move, delete, mapping, preview, dismiss, and recompute", async () => {
     const repo = createMockParameterModuleRegistryRepository();
 
-    let registry = await repo.createModule({ name: "电源路径", importance: "low" });
+    let registry = await repo.createModule({
+      name: "电源路径",
+      importance: "low",
+      description: "路径管理",
+      scope: "组织"
+    });
     const created = registry.modules.find((module) => module.name === "电源路径");
-    expect(created).toBeTruthy();
+    expect(created).toEqual(
+      expect.objectContaining({
+        description: "路径管理",
+        scope: "组织",
+        importance: "low"
+      })
+    );
 
-    registry = await repo.updateModule(created!.id, { name: "电源路径组" });
-    expect(registry.modules.find((module) => module.id === created!.id)?.name).toBe("电源路径组");
+    registry = await repo.updateModule(created!.id, {
+      name: "电源路径组",
+      description: "更新描述",
+      scope: "项目"
+    });
+    expect(registry.modules.find((module) => module.id === created!.id)).toEqual(
+      expect.objectContaining({
+        name: "电源路径组",
+        description: "更新描述",
+        scope: "项目"
+      })
+    );
 
     registry = await repo.updateModule(created!.id, { parentId: "mod-charging" });
     expect(registry.modules.find((module) => module.id === created!.id)?.parentId).toBe("mod-charging");

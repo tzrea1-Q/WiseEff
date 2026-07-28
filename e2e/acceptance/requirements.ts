@@ -417,7 +417,14 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "MOD-ATTR-TREE-001",
     workflow: "C",
     title:
-      "Tree actions are kind-scoped: an instance module offers no delete, renaming an auto module adopts it, and the adopted name survives a re-ingest.",
+      "Tree actions are kind-scoped: instance and logical modules offer no delete, logical modules can move, renaming an auto module adopts it, and the adopted name survives a re-ingest.",
+    required: true
+  },
+  {
+    id: "MOD-ATTR-RECLASSIFY-001",
+    workflow: "C",
+    title:
+      "Admin reclassifies a logical module to a business category in the edit dialog; the tree kind badge and filters update, and re-ingest does not revert the curated kind.",
     required: true
   },
   {

@@ -184,7 +184,13 @@ export function ParameterAdminNextPage({
                 focus="review"
               />
             ) : null}
-            {organizationView === "modules" ? <OrganizationModuleGovernancePanel /> : null}
+            {organizationView === "modules" ? (
+              <OrganizationModuleGovernancePanel
+                pathname={pathname}
+                search={search}
+                onNavigate={onNavigate}
+              />
+            ) : null}
             {organizationView === "identity-mapping" ? <OrganizationIdentityMappingPanel /> : null}
           </>
         ) : null}

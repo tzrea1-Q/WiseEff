@@ -26,6 +26,8 @@ describe("ClassifyCompatibleDialog", () => {
             name: "Power",
             parentId: null,
             sortOrder: 0,
+            description: "",
+            scope: "",
             importance: "high",
             kind: "business",
             origin: "curated",
@@ -48,7 +50,14 @@ describe("ClassifyCompatibleDialog", () => {
     );
 
     expect(screen.getByRole("dialog", { name: "归类到业务分类" })).toBeInTheDocument();
-    expect(screen.getByText(/预计影响 3 个项目参数/)).toBeInTheDocument();
+    expect(
+      screen.getByText((_, node) => {
+        return (
+          node?.tagName === "P" &&
+          (node.textContent ?? "").replace(/\s+/g, " ").trim() === "预计影响 3 个项目参数"
+        );
+      })
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("vendor,alpha 驱动组名称"), {
       target: { value: "Alpha Group" }

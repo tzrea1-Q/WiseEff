@@ -25,6 +25,7 @@ import {
 } from "./repository";
 import { resolveBindingInstanceModuleId } from "./ensureInstanceModuleForBinding";
 import { deleteParameterModule, getParameterModuleById } from "../parameters/parameterModuleRepository";
+import { normalizeMatchToken } from "./modulePlacement";
 import type { CreateModuleMappingBody } from "./schemas";
 import type { ModuleMatchKind, ParameterModuleRegistryDto } from "./types";
 
@@ -68,9 +69,7 @@ async function writeModuleAttributionAudit(
 }
 
 function normalizeMatch(value: string | null | undefined): string | null {
-  if (value === null || value === undefined) return null;
-  const trimmed = value.trim().toLowerCase();
-  return trimmed === "" ? null : trimmed;
+  return normalizeMatchToken(value);
 }
 
 function bindingMatchesRule(
@@ -404,7 +403,8 @@ export async function dismissCompatible(
   input: { compatible: string; reason?: string },
 ): Promise<{ item: ModuleDiscoveryHintsDto }> {
   requireCanAdmin(auth);
-  const compatible = input.compatible.trim();
+  const compatible =
+    normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
   if (!compatible) {
     throw new ApiError("VALIDATION_FAILED", "compatible is required.", 400);
   }
@@ -430,9 +430,11 @@ export async function restoreDismissedCompatible(
   input: { compatible: string },
 ): Promise<{ item: ModuleDiscoveryHintsDto }> {
   requireCanAdmin(auth);
+  const compatible =
+    normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
   const removed = await deleteDismissedCompatible(db, {
     organizationId: auth.organization.id,
-    compatible: input.compatible,
+    compatible,
   });
   if (removed === 0) {
     throw new ApiError("NOT_FOUND", "Dismissed compatible not found.", 404);

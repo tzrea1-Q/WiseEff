@@ -15,7 +15,7 @@ type ParameterModuleRow = {
   description: string;
   scope: string;
   importance: "high" | "medium" | "low" | null;
-  kind: "business" | "driver-group" | "instance" | "unclassified" | null;
+  kind: "business" | "driver-group" | "instance" | "logical" | "unclassified" | null;
   origin: "curated" | "auto" | null;
   source_key: string | null;
 };
@@ -156,6 +156,35 @@ export async function adoptParameterModuleSourceKey(
   return result.rows[0] ? toParameterModuleDto(result.rows[0]) : null;
 }
 
+/**
+ * Re-assert kind on auto-discovered modules during ingest. Curated rows are never
+ * overwritten — manual reclassify must stick across re-ingest (ADR-0006).
+ */
+export async function reassertAutoParameterModuleKind(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    moduleId: string;
+    kind: ParameterModuleDto["kind"];
+  }
+): Promise<ParameterModuleDto | null> {
+  const result = await db.query<ParameterModuleRow>(
+    `
+    update parameter_modules
+    set
+      kind = $3,
+      updated_at = now()
+    where organization_id = $1
+      and id = $2
+      and origin = 'auto'
+      and kind <> $3
+    returning ${parameterModuleColumns}
+    `,
+    [input.organizationId, input.moduleId, input.kind]
+  );
+  return result.rows[0] ? toParameterModuleDto(result.rows[0]) : null;
+}
+
 export async function countParameterModuleChildren(
   db: Queryable,
   query: { organizationId: string; moduleId: string }
@@ -259,7 +288,8 @@ export async function updateParameterModule(
     description?: string;
     scope?: string;
     sortOrder?: number;
-    importance?: "high" | "medium" | "low";
+    importance?: "high" | "medium" | "low" | null;
+    kind?: ParameterModuleDto["kind"];
   }
 ) {
   const existing = await getParameterModuleById(db, {
@@ -270,14 +300,22 @@ export async function updateParameterModule(
     return null;
   }
 
-  if (input.importance !== undefined && existing.kind !== "business") {
+  const nextKind = input.kind ?? existing.kind;
+  if (input.importance !== undefined && input.importance !== null && nextKind !== "business") {
     throw new Error("Importance can only be set on business-category modules");
   }
 
   const nextName = input.name?.trim() ?? existing.name;
   const shouldPromote =
     existing.origin === "auto" &&
-    (input.name !== undefined || input.importance !== undefined);
+    (input.name !== undefined || input.importance !== undefined || input.kind !== undefined);
+
+  const clearImportance = input.kind !== undefined && input.kind !== "business" && existing.kind === "business";
+  const nextImportance = clearImportance
+    ? "medium"
+    : input.importance === null
+      ? existing.importance
+      : input.importance ?? null;
 
   const result = await db.query<ParameterModuleRow>(
     `
@@ -287,7 +325,12 @@ export async function updateParameterModule(
       description = coalesce($4, description),
       scope = coalesce($5, scope),
       sort_order = coalesce($6, sort_order),
-      importance = coalesce($7, importance),
+      importance = case
+        when $9::boolean then 'medium'
+        when $7::text is not null then $7
+        else importance
+      end,
+      kind = coalesce($10, kind),
       origin = case when $8::boolean then 'curated' else origin end,
       updated_at = now()
     where organization_id = $1
@@ -301,8 +344,10 @@ export async function updateParameterModule(
       input.description ?? null,
       input.scope ?? null,
       input.sortOrder ?? null,
-      input.importance ?? null,
-      shouldPromote
+      nextImportance,
+      shouldPromote,
+      clearImportance,
+      input.kind ?? null
     ]
   );
 

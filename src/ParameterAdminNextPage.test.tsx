@@ -75,6 +75,8 @@ const SEED_REGISTRY: ParameterModuleRegistry = {
       name: "充电策略",
       parentId: null,
       sortOrder: 0,
+      description: "",
+      scope: "",
       importance: "high",
       kind: "business",
       origin: "curated",
@@ -87,6 +89,8 @@ const SEED_REGISTRY: ParameterModuleRegistry = {
       name: "电池安全",
       parentId: "mod-charging",
       sortOrder: 1,
+      description: "",
+      scope: "",
       importance: "medium",
       kind: "business",
       origin: "curated",
@@ -189,6 +193,8 @@ function createModuleRegistry(
             name: input.name,
             parentId: input.parentId ?? null,
             sortOrder: input.sortOrder ?? registry.modules.length,
+            description: input.description ?? "",
+            scope: input.scope ?? "",
             importance,
             kind: "business",
             origin: "curated",
@@ -211,6 +217,8 @@ function createModuleRegistry(
             ? {
                 ...module,
                 name: input.name ?? module.name,
+                description: input.description ?? module.description,
+                scope: input.scope ?? module.scope,
                 parentId: input.parentId === undefined ? module.parentId : input.parentId,
                 sortOrder: input.sortOrder ?? module.sortOrder,
                 importance: input.importance ?? module.importance,
@@ -769,24 +777,39 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
 
-    fireEvent.change(within(panel).getByRole("textbox", { name: "模块名称" }), {
+    fireEvent.click(within(panel).getByRole("button", { name: "新建业务分类" }));
+    const createDialog = screen.getByRole("dialog", { name: "新增根模块" });
+    fireEvent.change(within(createDialog).getByLabelText("模块名称"), {
       target: { value: "电源路径" }
     });
-    fireEvent.click(within(panel).getByRole("button", { name: "创建模块" }));
+    fireEvent.change(within(createDialog).getByLabelText("模块展示描述"), {
+      target: { value: "路径说明" }
+    });
+    fireEvent.change(within(createDialog).getByLabelText("适用范围"), {
+      target: { value: "组织" }
+    });
+    fireEvent.click(within(createDialog).getByRole("button", { name: "创建" }));
 
-    await waitFor(() => expect(moduleRegistry.createModule).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "电源路径" })
-    ));
     await waitFor(() =>
-      expect(within(panel).getByRole("button", { name: "重命名模块 电源路径" })).toBeInTheDocument()
+      expect(moduleRegistry.createModule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "电源路径",
+          description: "路径说明",
+          scope: "组织"
+        })
+      )
+    );
+    await waitFor(() =>
+      expect(within(panel).getByRole("button", { name: "修改模块 电源路径" })).toBeInTheDocument()
     );
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-created/);
 
-    fireEvent.click(within(panel).getByRole("button", { name: "重命名模块 电源路径" }));
-    fireEvent.change(within(panel).getByRole("textbox", { name: "新模块名称" }), {
+    fireEvent.click(within(panel).getByRole("button", { name: "修改模块 电源路径" }));
+    const editDialog = screen.getByRole("dialog", { name: "修改模块 电源路径" });
+    fireEvent.change(within(editDialog).getByLabelText("模块名称"), {
       target: { value: "电源路径组" }
     });
-    fireEvent.click(within(panel).getByRole("button", { name: "确认重命名" }));
+    fireEvent.click(within(editDialog).getByRole("button", { name: "保存" }));
 
     await waitFor(() =>
       expect(moduleRegistry.updateModule).toHaveBeenCalledWith(
@@ -795,11 +818,12 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
       )
     );
     await waitFor(() =>
-      expect(within(panel).getByRole("button", { name: "重命名模块 电源路径组" })).toBeInTheDocument()
+      expect(within(panel).getByRole("button", { name: "修改模块 电源路径组" })).toBeInTheDocument()
     );
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-renamed/);
 
-    fireEvent.click(within(panel).getByRole("button", { name: "移动模块 电源路径组" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "电源路径组 更多操作" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "移动模块 电源路径组" }));
     fireEvent.click(within(panel).getByRole("button", { name: "根级（无父模块）" }));
     fireEvent.click(within(panel).getByRole("button", { name: "充电策略" }));
     fireEvent.click(within(panel).getByRole("button", { name: "确认移动" }));
@@ -810,13 +834,14 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     );
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-moved/);
 
+    fireEvent.click(within(panel).getByRole("button", { name: "电源路径组 更多操作" }));
     await waitFor(() =>
-      expect(within(panel).getByRole("button", { name: "删除模块 电源路径组" })).toBeInTheDocument()
+      expect(screen.getByRole("menuitem", { name: "删除模块 电源路径组" })).toBeInTheDocument()
     );
-    fireEvent.click(within(panel).getByRole("button", { name: "删除模块 电源路径组" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除模块 电源路径组" }));
     await waitFor(() => expect(moduleRegistry.deleteModule).toHaveBeenCalledWith("mod-new-1"));
     await waitFor(() =>
-      expect(within(panel).queryByRole("button", { name: "删除模块 电源路径组" })).not.toBeInTheDocument()
+      expect(within(panel).queryByRole("button", { name: "电源路径组 更多操作" })).not.toBeInTheDocument()
     );
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-deleted/);
   });
@@ -833,24 +858,55 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-mapping-deleted/);
   });
 
-  it("surfaces unmapped compatibles as a queue and shows recompute outcome", async () => {
+  it("keeps the module tree primary and opens the unclassified queue via secondary nav", async () => {
     const moduleRegistry = createModuleRegistry();
-    renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
+    const { onNavigate } = renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
     expect(within(panel).queryByRole("region", { name: "待归类驱动（driver）" })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("region", { name: "未分类队列" })).not.toBeInTheDocument();
+    expect(within(panel).getByText("有待归类的 compatible")).toBeInTheDocument();
 
-    const compatibleQueue = within(panel).getByRole("region", { name: "未分类队列" });
-    expect(within(compatibleQueue).getByText("vendor,unmapped-ic")).toBeInTheDocument();
-
-    fireEvent.click(within(panel).getByRole("button", { name: "重算模块归属" }));
-    await waitFor(() => expect(moduleRegistry.recomputeBindings).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(within(panel).getByText(/已重算模块归属，更新 3 个项目参数/)).toBeInTheDocument()
+    const moduleSubnav = within(panel).getByRole("navigation", { name: "模块归属子视图" });
+    expect(within(moduleSubnav).getByRole("button", { name: "模块树" })).toHaveAttribute(
+      "aria-current",
+      "page"
     );
+    fireEvent.click(within(moduleSubnav).getByRole("button", { name: /未分类队列/ }));
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/modules/queue");
+
+    fireEvent.click(within(panel).getByRole("button", { name: "运维：全量重算" }));
+    await waitFor(() => expect(moduleRegistry.recomputeBindings).toHaveBeenCalled());
+    const resultDialog = await screen.findByRole("dialog", { name: "全量重算结果" });
+    expect(within(resultDialog).getByText("更新的项目参数")).toBeInTheDocument();
+    expect(within(resultDialog).getByText("3")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(
       /module-bindings-recomputed/
     );
+    fireEvent.click(within(resultDialog).getByRole("button", { name: "知道了" }));
+    expect(screen.queryByRole("dialog", { name: "全量重算结果" })).not.toBeInTheDocument();
+  });
+
+  it("renders the unclassified queue on the modules/queue sub-route", async () => {
+    const moduleRegistry = createModuleRegistry();
+    renderPage({ moduleRegistry, path: "/parameter-admin/modules/queue" });
+
+    const panel = await screen.findByRole("region", { name: "模块归属" });
+    const compatibleQueue = within(panel).getByRole("region", { name: "未分类队列" });
+    expect(within(compatibleQueue).getByText("vendor,unmapped-ic")).toBeInTheDocument();
+    expect(within(panel).queryByRole("tree", { name: "模块归属树" })).not.toBeInTheDocument();
+  });
+
+  it("hides the queue secondary nav when discovery is empty", async () => {
+    const moduleRegistry = createModuleRegistry({
+      getDiscoveryHints: vi.fn(async () => ({ compatibles: [], total: 0 }))
+    });
+    renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
+
+    const panel = await screen.findByRole("region", { name: "模块归属" });
+    expect(within(panel).queryByRole("navigation", { name: "模块归属子视图" })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("region", { name: "未分类队列" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("tree", { name: "模块归属树" })).toBeInTheDocument();
   });
 
   it("behaves identically when backed by the mock module registry adapter", async () => {
@@ -860,12 +916,14 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     const panel = await screen.findByRole("region", { name: "模块归属" });
     expect(within(panel).getAllByText("充电策略").length).toBeGreaterThan(0);
 
-    fireEvent.change(within(panel).getByRole("textbox", { name: "模块名称" }), {
+    fireEvent.click(within(panel).getByRole("button", { name: "新建业务分类" }));
+    const createDialog = screen.getByRole("dialog", { name: "新增根模块" });
+    fireEvent.change(within(createDialog).getByLabelText("模块名称"), {
       target: { value: "Mock 模块" }
     });
-    fireEvent.click(within(panel).getByRole("button", { name: "创建模块" }));
+    fireEvent.click(within(createDialog).getByRole("button", { name: "创建" }));
     await waitFor(() =>
-      expect(within(panel).getByRole("button", { name: "重命名模块 Mock 模块" })).toBeInTheDocument()
+      expect(within(panel).getByRole("button", { name: "修改模块 Mock 模块" })).toBeInTheDocument()
     );
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-created/);
   });
