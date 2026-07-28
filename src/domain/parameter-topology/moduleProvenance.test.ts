@@ -1,18 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  isAutoDiscoveredModuleName,
-  isStructuralPropertyKey,
-  paginateItems
-} from "./moduleProvenance";
+import { isStructuralPropertyKey, paginateItems } from "./moduleProvenance";
 
 describe("moduleProvenance", () => {
-  it("marks device-tree unit-address names as auto-discovered", () => {
-    expect(isAutoDiscoveredModuleName("i2c@FDF5E000")).toBe(true);
-    expect(isAutoDiscoveredModuleName("pmic@0")).toBe(true);
-    expect(isAutoDiscoveredModuleName("Power")).toBe(false);
-    expect(isAutoDiscoveredModuleName("Battery")).toBe(false);
-  });
-
   it("marks hash-prefixed property keys as structural", () => {
     expect(isStructuralPropertyKey("#address-cells")).toBe(true);
     expect(isStructuralPropertyKey("#gpio-cells")).toBe(true);

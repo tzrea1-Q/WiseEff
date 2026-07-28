@@ -40,6 +40,11 @@
 - `MOD-TREE-PARAM-002`：Admin 移动参数模块到新父节点，循环移动被拒绝（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-DEBUG-001`：Admin 创建嵌套调试节点模块，父模块筛选包含子模块下的节点（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-AUTHZ-001`：非 Admin 不能变更模块树；删除非空模块返回 409（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
+- `MOD-ATTR-QUEUE-001`：未分类 compatible 队列只列非 scaffolding、未忽略项，并显示参数/项目数；忽略与恢复均写审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `MOD-ATTR-CLASSIFY-001`：归类时展示影响预览，确认后按范围应用并回收空未分类桶（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `MOD-ATTR-BULK-001`：勾选多个 compatible，一次确认归入同一业务分类（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `MOD-ATTR-TREE-001`：树操作按 kind 分级；实例不可删；重命名自动模块即纳入（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `MOD-ATTR-IMPORTANCE-001`：业务分类重要性被驱动组/实例继承并驱动工作台筛选（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-FILE-ADMIN-001`：Admin 上传项目参数文件、列出版本、手动同步生成 `file_sync` 草稿，并在 `/parameter-admin/projects` 打开参数文件面板（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-FILE-CONFLICT-001`：Admin 裁决 file/UI 草稿冲突，可选择保留文件值或 UI 值（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-IMPORT-DTS-FULL-001`：完整 `.dts` 经 `parse-dts` 产出带 `@address` 的 module 路径；`/include/` 被拒绝；向导显示服务端解析提示（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。

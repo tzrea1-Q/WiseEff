@@ -55,7 +55,7 @@ For M1 parameter management:
 - Drafts and submission rounds require project-scoped `parameter:edit`.
 - Review advancement and rejection require the matching hardware/software workflow role or admin privilege.
 - Merge writes require the software-user workflow slot or admin privilege and re-check high-risk review evidence before updating the current value.
-- Parameter module tree CRUD (`/api/v1/parameter-modules*`) requires `admin:access` (`canAdminParameters`). Non-admin users may still list modules when they have `parameter:view`. Deletes return `409` when child modules or assigned parameters remain; moves reject cycles with `409`.
+- Parameter module tree CRUD (`/api/v1/parameter-modules*`) requires `admin:access` (`canAdminParameters`). Non-admin users may still list modules when they have `parameter:view`. Deletes return `409` when child modules or assigned parameters remain; moves reject cycles with `409`. **Kind-scoped write guards:** `instance` modules cannot be deleted; the org `unclassified` root is read-only (no rename/move/delete); `driver-group` delete routes through **disband** (drops subtree mappings, re-parks bindings, removes empty auto descendants). v2 module-attribution routes (`/api/v2/parameter-modules/*` except registry/discovery-hints GET) require the same admin gate.
 
 For M2 log analysis:
 
@@ -98,7 +98,7 @@ Audit records should capture:
 
 Audit should cover login/security events, parameter writes, review decisions, log uploads/reruns/archive actions, device reads/writes, Agent tools, admin changes, and exports.
 
-M1 parameter-management writes emit audit events from the backend for `parameter-submit`, `parameter-review-advance`, `parameter-review-reject`, `parameter-merge`, and `batch-import`. Node enablement writes on the shared topology draft pipeline emit `parameter-topology-governance` / `enablement-changed` with previous value, new value, reason, and logical node identity. Enablement uses the same `canEditParameters` gate and existing `dts_sensitive_node_rules` matching as binding edits (`parameter:edit-critical` when a rule requires it). The frontend audit drawer is not the security boundary; audit creation happens server-side with the authenticated actor and request trace id.
+M1 parameter-management writes emit audit events from the backend for `parameter-submit`, `parameter-review-advance`, `parameter-review-reject`, `parameter-merge`, and `batch-import`. Module-attribution v2 writes additionally emit `parameter-module-mapping-created`, `parameter-module-mapping-deleted`, `parameter-module-compatible-dismissed`, `parameter-module-compatible-restored`, `parameter-module-driver-group-disbanded`, and `parameter-module-bindings-recomputed` (scoped mapping apply and ops recompute). Node enablement writes on the shared topology draft pipeline emit `parameter-topology-governance` / `enablement-changed` with previous value, new value, reason, and logical node identity. Enablement uses the same `canEditParameters` gate and existing `dts_sensitive_node_rules` matching as binding edits (`parameter:edit-critical` when a rule requires it). The frontend audit drawer is not the security boundary; audit creation happens server-side with the authenticated actor and request trace id.
 
 M2 log-analysis writes emit backend audit events for `log-upload`, `log-upload-failed`, `log-rerun`, `log-archive`, `log-unarchive`, and `log-feedback`. The UI may hide or disable actions by role, but the server permission check and audit write are the authoritative boundary.
 

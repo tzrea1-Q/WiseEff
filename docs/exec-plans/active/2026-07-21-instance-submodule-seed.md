@@ -12,6 +12,8 @@
 
 Ship Type U/N/C module placement for demo seed and ingest, plus Admin discovery for unmapped drivers.
 
+> **Superseded (Admin discovery UI):** driver discovery in this plan is superseded by [`2026-07-27-module-attribution-redesign.md`](2026-07-27-module-attribution-redesign.md) — compatible queue only (no spec-library driver aggregation).
+
 ## Documentation Impact Matrix
 
 | Document | Impact | Action |

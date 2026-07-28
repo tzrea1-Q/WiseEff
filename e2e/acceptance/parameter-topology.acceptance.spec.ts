@@ -2181,4 +2181,53 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     void page;
   });
   });
+
+  test.describe("Module attribution redesign — pending browser automation", () => {
+    test("MOD-ATTR-QUEUE-001: unclassified queue dismiss and restore", async ({ page }) => {
+      // @acceptance MOD-ATTR-QUEUE-001
+      // @operation MOD-ATTR-QUEUE-001
+      test.skip(
+        true,
+        "Pending: playwright coverage for unclassified queue counts, dismiss, and restore with audit."
+      );
+      void page;
+    });
+
+    test("MOD-ATTR-CLASSIFY-001: classify with impact preview and scoped apply", async ({ page }) => {
+      // @acceptance MOD-ATTR-CLASSIFY-001
+      // @operation MOD-ATTR-CLASSIFY-001
+      test.skip(
+        true,
+        "Pending: playwright coverage for classify dialog preview, apply, and emptied-bucket GC."
+      );
+      void page;
+    });
+
+    test("MOD-ATTR-BULK-001: bulk classify into one business category", async ({ page }) => {
+      // @acceptance MOD-ATTR-BULK-001
+      // @operation MOD-ATTR-BULK-001
+      test.skip(true, "Pending: playwright coverage for multi-select bulk classify confirm.");
+      void page;
+    });
+
+    test("MOD-ATTR-TREE-001: kind-scoped tree actions and adoption", async ({ page }) => {
+      // @acceptance MOD-ATTR-TREE-001
+      // @operation MOD-ATTR-TREE-001
+      test.skip(
+        true,
+        "Pending: playwright coverage for kind-scoped actions and rename adoption across re-ingest."
+      );
+      void page;
+    });
+
+    test("MOD-ATTR-IMPORTANCE-001: business importance inheritance", async ({ page }) => {
+      // @acceptance MOD-ATTR-IMPORTANCE-001
+      // @operation MOD-ATTR-IMPORTANCE-001
+      test.skip(
+        true,
+        "Pending: playwright coverage for business importance edit and workbench filter inheritance."
+      );
+      void page;
+    });
+  });
 });

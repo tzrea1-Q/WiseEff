@@ -131,65 +131,64 @@ Branch `feat/module-attribution-ui`, cut after PR1 merges.
 
 ### Batch 7 — Queue
 
-- [ ] New `src/components/parameter-topology/UnclassifiedCompatibleQueue.tsx`: table with compatible, affected parameters, projects, and suggested driver group; column filters per `docs/design-docs/ux-table-column-filter.md`; row checkboxes for bulk selection; dismiss and restore actions.
-- [ ] New `ClassifyCompatibleDialog.tsx`: target business category via `ModuleTreeSelect` restricted to `kind = business` with inline create, editable driver-group name prefilled from the suggestion, impact preview from the preview endpoint, and blockers rendered as blockers. Bulk mode files several compatibles into one business category through the same dialog.
-- [ ] Delete the `observedDrivers` prop and the `listSpecs({})` aggregation in `OrganizationModuleGovernancePanel.tsx`.
+- [x] New `src/components/parameter-topology/UnclassifiedCompatibleQueue.tsx`: table with compatible, affected parameters, projects, and suggested driver group; column filters per `docs/design-docs/ux-table-column-filter.md`; row checkboxes for bulk selection; dismiss and restore actions.
+- [x] New `ClassifyCompatibleDialog.tsx`: target business category via `ModuleTreeSelect` restricted to `kind = business` with inline create, editable driver-group name prefilled from the suggestion, impact preview from the preview endpoint, and blockers rendered as blockers. Bulk mode files several compatibles into one business category through the same dialog.
+- [x] Delete the `observedDrivers` prop and the `listSpecs({})` aggregation in `OrganizationModuleGovernancePanel.tsx`.
 
 ### Batch 8 — Tree
 
-- [ ] Rewrite the tree as `ModuleAttributionTree.tsx`: one line per module carrying name, kind badge, parameter count, matched compatible where present, and importance only on business rows in 高/中/低. Actions appear per kind, and only the ones the server will accept. Default expansion stops at the driver-group layer with instance counts shown; instances expand on demand.
-- [ ] Retire the 显示自动发现 checkbox in favour of filters over real `origin` and `kind`. Delete `isAutoDiscoveredModuleName` if nothing else consumes it.
-- [ ] Drop the standalone 归属规则 card; rules render on the module they point at, and removing a rule is an action on that module.
-- [ ] Move-target selection excludes non-business modules.
+- [x] Rewrite the tree as `ModuleAttributionTree.tsx`: one line per module carrying name, kind badge, parameter count, matched compatible where present, and importance only on business rows in 高/中/低. Actions appear per kind, and only the ones the server will accept. Default expansion stops at the driver-group layer with instance counts shown; instances expand on demand.
+- [x] Retire the 显示自动发现 checkbox in favour of filters over real `origin` and `kind`. Delete `isAutoDiscoveredModuleName` if nothing else consumes it.
+- [x] Drop the standalone 归属规则 card; rules render on the module they point at, and removing a rule is an action on that module.
+- [x] Move-target selection excludes non-business modules.
 
 ### Batch 9 — Copy, parity, and cleanup
 
-- [ ] Rename the surface in `src/application/parameters/parameterAdminUiCopy.ts`. Proposal: tab 模块归属, blurb rewritten around the three layers and the queue. Keys `moduleMapping`, `moduleMappingBlurb`, `moduleDiscoveryDriver`, `mappingRules`, `addMapping`, `deleteMapping` all change or disappear; `adminSubtitle` and the three `xiaoze*` strings mention 驱动归属 and must follow.
-- [ ] `OrganizationSpecGovernancePanel.tsx` consumes the narrowed `deriveModuleAssignment`; label the spec-library module column as a prediction rather than an assignment.
-- [ ] Mock parity per ADR-0002: `mockParameterTopologyRepository` and the module-registry mock serve `kind`, `origin`, `effectiveImportance`, `parameterCount`, preview, and dismissals.
-- [ ] Update `src/ParameterAdminNextPage.test.tsx` and add component tests for the queue, the dialog, and kind-scoped tree actions.
-- [ ] Retire the inline `style={{...}}` block in the old panel header; the new components use `src/styles.css` classes only.
+- [x] Rename the surface in `src/application/parameters/parameterAdminUiCopy.ts`. Proposal: tab 模块归属, blurb rewritten around the three layers and the queue. Keys `moduleMapping`, `moduleMappingBlurb`, `moduleDiscoveryDriver`, `mappingRules`, `addMapping`, `deleteMapping` all change or disappear; `adminSubtitle` and the three `xiaoze*` strings mention 驱动归属 and must follow.
+- [x] `OrganizationSpecGovernancePanel.tsx` consumes the narrowed `deriveModuleAssignment`; label the spec-library module column as a prediction rather than an assignment.
+- [x] Mock parity per ADR-0002: `mockParameterTopologyRepository` and the module-registry mock serve `kind`, `origin`, `effectiveImportance`, `parameterCount`, preview, and dismissals.
+- [x] Update `src/ParameterAdminNextPage.test.tsx` and add component tests for the queue, the dialog, and kind-scoped tree actions.
+- [x] Retire the inline `style={{...}}` block in the old panel header; the new components use `src/styles.css` classes only.
 
 ## UI Interaction Automation
 
-New requirement IDs for `docs/developer/browser-acceptance-coverage-map.md` and operation IDs for `docs/developer/user-operation-coverage-matrix.md`, all in `e2e/acceptance/parameter-topology.acceptance.spec.ts`:
+New requirement IDs for `docs/developer/browser-acceptance-coverage-map.md` and operation IDs for `docs/developer/user-operation-coverage-matrix.md`, all in `e2e/acceptance/parameter-topology.acceptance.spec.ts` (registered; browser bodies currently `test.skip` pending full disposable-DB playwright, same pattern as `PARAM-ENABLE-*`):
 
-| ID | PR | Behavior |
-| --- | --- | --- |
-| `MOD-ATTR-QUEUE-001` | 2 | The queue lists only non-scaffolding, non-dismissed compatibles with parameter and project counts; dismissing removes an entry and restoring brings it back, both audited |
-| `MOD-ATTR-CLASSIFY-001` | 2 | Classifying a compatible shows the impact preview, applies on confirm, moves the parameters into the new driver group, and removes the emptied `未分类 · x` bucket |
-| `MOD-ATTR-BULK-001` | 2 | Several selected compatibles are filed into one business category in a single confirmed action |
-| `MOD-ATTR-TREE-001` | 2 | Tree actions are kind-scoped: an instance module offers no delete, renaming an auto module adopts it, and the adopted name survives a re-ingest |
-| `MOD-ATTR-IMPORTANCE-001` | 2 | Importance set on a business category is inherited by its driver groups and instances and drives the workbench importance filter |
+| ID | PR | Behavior | Status |
+| --- | --- | --- | --- |
+| `MOD-ATTR-QUEUE-001` | 2 | The queue lists only non-scaffolding, non-dismissed compatibles with parameter and project counts; dismissing removes an entry and restoring brings it back, both audited | Registered |
+| `MOD-ATTR-CLASSIFY-001` | 2 | Classifying a compatible shows the impact preview, applies on confirm, moves the parameters into the new driver group, and removes the emptied `未分类 · x` bucket | Registered |
+| `MOD-ATTR-BULK-001` | 2 | Several selected compatibles are filed into one business category in a single confirmed action | Registered |
+| `MOD-ATTR-TREE-001` | 2 | Tree actions are kind-scoped: an instance module offers no delete, renaming an auto module adopts it, and the adopted name survives a re-ingest | Registered |
+| `MOD-ATTR-IMPORTANCE-001` | 2 | Importance set on a business category is inherited by its driver groups and instances and drives the workbench importance filter | Registered |
 
-Existing IDs to re-verify: `MOD-TREE-PARAM-001` and `MOD-TREE-PARAM-002` (module CRUD and move now kind-scoped), `MOD-TREE-AUTHZ-001` (delete semantics change for driver groups and instances), `PARAM-TOPOLOGY-BROWSE-001` (module path names and inherited importance reach the workbench).
+Existing IDs to re-verify after merge: `MOD-TREE-PARAM-001` and `MOD-TREE-PARAM-002` (module CRUD and move now kind-scoped), `MOD-TREE-AUTHZ-001` (delete semantics change for driver groups and instances), `PARAM-TOPOLOGY-BROWSE-001` (module path names and inherited importance reach the workbench).
 
 ## Documentation Impact Matrix
 
-| Area | Action | Paths |
-| --- | --- | --- |
-| Domain glossary | Update | `CONTEXT.md` (done: module kind, business category, driver group, device instance module, module origin, curated/auto-discovered module, module adoption, unclassified queue, dismissed compatible) |
-| ADR | Update | `docs/adr/0004-module-tree-states-kind-and-origin.md` (done), `docs/adr/0005-compatible-and-instance-are-the-only-attribution-levers.md` (done), `CONTEXT.md` ADR index (done) |
-| Planning | Update | `docs/PLANS.md`, `docs/zh-CN/PLANS.md`, this plan + zh companion |
-| Domain model | Update | `docs/design-docs/domain-model.md`, `docs/zh-CN/design-docs/domain-model.md` — three-layer attribution, kind/origin, adoption |
-| API contract | Update | `docs/design-docs/api-contract.md`, `docs/zh-CN/design-docs/api-contract.md` — preview endpoint, dismissals, narrowed match kinds, registry DTO fields, scoped apply response |
-| Frontend | Update | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` — the panel is replaced; both currently document `ParameterModuleMappingPanel` and `deriveModuleAssignment` |
-| Security / governance | Update | `docs/SECURITY.md` — new v2 audit event kinds and the kind-scoped write guards |
-| Instance submodule plan | Update | `docs/exec-plans/active/2026-07-21-instance-submodule-seed.md` and its zh companion — its Admin discovery section describes the driver queue this plan deletes |
-| Module refocus plan | Review | `docs/exec-plans/active/2026-07-20-dts-workbench-module-refocus.md` — M7 shipped the panel being replaced; mark superseded |
-| Acceptance coverage | Update | `docs/developer/browser-acceptance-coverage-map.md`, `docs/developer/user-operation-coverage-matrix.md`, `e2e/acceptance/requirements.ts`, `e2e/acceptance/operationMatrix.ts` |
-| Generated schema summary | Update | `docs/generated/` database schema summary — three new columns and one new table |
-| Product specs | Review | `docs/product-specs/prototype-functional-spec.md` — the admin attribution workflow changes shape |
-| Testing strategy | Review | `docs/design-docs/testing-strategy.md` — no strategy change expected |
-| Runbooks | Review | `docs/runbooks/` — full recompute becomes an operations tool and may need a note |
-| Architecture / AGENTS | Review | `ARCHITECTURE.md` — confirm the module registry description still holds |
-| Reliability | No change | — |
-| References | No change | — |
+| Area | Action | Paths | Status |
+| --- | --- | --- | --- |
+| Domain glossary | Update | `CONTEXT.md` (module kind, business category, driver group, device instance module, module origin, curated/auto-discovered module, module adoption, unclassified queue, dismissed compatible) | Done |
+| ADR | Update | `docs/adr/0004-module-tree-states-kind-and-origin.md`, `docs/adr/0005-compatible-and-instance-are-the-only-attribution-levers.md`, `CONTEXT.md` ADR index | Done |
+| Planning | Update | `docs/PLANS.md`, `docs/zh-CN/PLANS.md`, this plan + zh companion | Done |
+| Domain model | Update | `docs/design-docs/domain-model.md`, `docs/zh-CN/design-docs/domain-model.md` — three-layer attribution, kind/origin, adoption | Done |
+| API contract | Update | `docs/design-docs/api-contract.md`, `docs/zh-CN/design-docs/api-contract.md` — preview endpoint, dismissals, narrowed match kinds, registry DTO fields, scoped apply response | Done |
+| Frontend | Update | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` — panel replaced by queue + attribution tree | Done |
+| Security / governance | Update | `docs/SECURITY.md`, `docs/zh-CN/SECURITY.md` — new v2 audit event kinds and kind-scoped write guards | Done |
+| Instance submodule plan | Update | `docs/exec-plans/active/2026-07-21-instance-submodule-seed.md` and zh companion — driver queue removed | Done |
+| Module refocus plan | Review | `docs/exec-plans/active/2026-07-20-dts-workbench-module-refocus.md` — M7 panel superseded by this redesign | Done |
+| Acceptance coverage | Update | `docs/developer/browser-acceptance-coverage-map.md` (+ zh), `e2e/acceptance/requirements.ts`, `e2e/acceptance/operationMatrix.ts`, regenerated EN ops matrix | Done |
+| Generated schema summary | Update | `docs/generated/db-schema.md` — kind/origin/source_key + dismissed table | Done |
+| Product specs | Review | `docs/product-specs/prototype-functional-spec.md` (+ zh) — admin attribution workflow shape | Done |
+| Testing strategy | Review | `docs/design-docs/testing-strategy.md` (+ zh) — noted MOD-ATTR pending browser automation | Done |
+| Runbooks | Review | `docs/runbooks/manual-acceptance.md` — full recompute as operations tool | Done |
+| Architecture / AGENTS | Review | `ARCHITECTURE.md` (+ zh) — module registry description refreshed | Done |
+| Reliability | No change | — | N/A |
+| References | No change | — | N/A |
 
 ## Documentation Update Gate
 
-Blocking. Neither PR merges with its documentation rows unaddressed, and the plan cannot move to `completed/` until every Update and Review row is done or recorded as unchanged with evidence, and the five new requirement and operation IDs exist. Run `npm run docs:check`. Deferred items go to `docs/exec-plans/tech-debt-tracker.md`.
-
+Blocking. Neither PR merges with its documentation rows unaddressed, and the plan cannot move to `completed/` until every Update and Review row is done or recorded as unchanged with evidence, and the five new requirement and operation IDs exist. Run `npm run docs:check`. Deferred full browser bodies for `MOD-ATTR-*` stay as `test.skip` (tracked with the PARAM-ENABLE pending pattern) until disposable-DB playwright is wired; IDs themselves are registered.
 ## Verification
 
 ```bash

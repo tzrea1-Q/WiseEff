@@ -22249,6 +22249,204 @@ button.dts-topology-navigator__disclosure:focus-visible {
   }
 }
 
+.parameter-module-mapping-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+}
+
+.parameter-module-mapping-panel__stack {
+  display: grid;
+  gap: 16px;
+}
+
+.module-attribution-tree {
+  display: grid;
+  gap: 12px;
+}
+
+.module-attribution-tree__head h4 {
+  margin: 0 0 8px;
+}
+
+.module-attribution-tree__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+
+.module-attribution-tree__filters fieldset {
+  margin: 0;
+  padding: 0;
+  border: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.module-attribution-tree__filters legend {
+  padding: 0;
+  margin-right: 8px;
+  font-size: 12px;
+  color: #5a6b82;
+}
+
+.module-attribution-tree__list,
+.module-attribution-tree__group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.module-attribution-tree__item {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.module-attribution-tree__item.is-child {
+  margin-left: 18px;
+}
+
+.module-attribution-tree__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #d9e2ef;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.module-attribution-tree__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.module-attribution-tree__toggle.is-spacer {
+  visibility: hidden;
+}
+
+.module-attribution-tree__label {
+  font-weight: 600;
+}
+
+.module-attribution-tree__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid #cfd9e6;
+  color: #3d4f66;
+  background: #f5f8fc;
+}
+
+.module-attribution-tree__badge.is-auto {
+  border-color: #f0c36d;
+  background: #fff8e8;
+  color: #8a5a00;
+}
+
+.module-attribution-tree__count,
+.module-attribution-tree__instances,
+.module-attribution-tree__importance {
+  font-size: 12px;
+  color: #5a6b82;
+}
+
+.module-attribution-tree__importance.is-inherited {
+  font-style: italic;
+}
+
+.module-attribution-tree__rules {
+  list-style: none;
+  margin: 0 0 0 30px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.module-attribution-tree__rules li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.module-attribution-tree__rename,
+.module-attribution-tree__create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+
+.module-attribution-tree__create label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.unclassified-compatible-queue {
+  display: grid;
+  gap: 10px;
+}
+
+.unclassified-compatible-queue__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.unclassified-compatible-queue__head h4 {
+  margin: 0 0 4px;
+}
+
+.unclassified-compatible-queue__table {
+  width: 100%;
+}
+
+.classify-compatible-dialog__body {
+  display: grid;
+  gap: 12px;
+}
+
+.classify-compatible-dialog__hints {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.classify-compatible-dialog__hints li {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #d9e2ef;
+  border-radius: 8px;
+}
+
+.classify-compatible-dialog__preview {
+  display: grid;
+  gap: 6px;
+}
+
 .param-admin-shell .spec-review-queue {
   margin-bottom: 18px;
 }

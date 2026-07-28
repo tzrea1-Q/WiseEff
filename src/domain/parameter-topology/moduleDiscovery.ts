@@ -4,6 +4,7 @@ import { driverGroupDisplayNameFromCompatible } from "./modulePlacement";
 export type UnmappedCompatibleHint = {
   compatible: string;
   bindingCount: number;
+  projectCount: number;
   suggestedGroupName: string;
 };
 
@@ -28,10 +29,15 @@ export function filterUnmappedCompatibles(
 export function toUnmappedCompatibleHint(input: {
   compatible: string;
   bindingCount: number;
+  projectCount?: number;
+  suggestedGroupName?: string;
 }): UnmappedCompatibleHint {
   return {
     compatible: input.compatible,
     bindingCount: input.bindingCount,
-    suggestedGroupName: driverGroupDisplayNameFromCompatible(input.compatible),
+    projectCount: input.projectCount ?? 0,
+    suggestedGroupName:
+      input.suggestedGroupName?.trim() ||
+      driverGroupDisplayNameFromCompatible(input.compatible),
   };
 }

@@ -37,6 +37,16 @@ export function OrganizationModuleGovernancePanel() {
     return {
       getRegistry: () => base.getRegistry(),
       getDiscoveryHints: () => base.getDiscoveryHints(),
+      dismissCompatible: async (input) => {
+        const next = await base.dismissCompatible(input);
+        pushModuleAudit(dispatch, "module-mapping-deleted", `已忽略 compatible ${input.compatible}`);
+        return next;
+      },
+      restoreDismissedCompatible: async (compatible) => {
+        const next = await base.restoreDismissedCompatible(compatible);
+        pushModuleAudit(dispatch, "module-mapping-created", `已恢复 compatible ${compatible}`);
+        return next;
+      },
       async createModule(input: CreateParameterModuleInput) {
         const next = await base.createModule(input);
         pushModuleAudit(dispatch, "module-created", `已创建业务模块「${input.name}」`);
@@ -56,6 +66,7 @@ export function OrganizationModuleGovernancePanel() {
         pushModuleAudit(dispatch, "module-deleted", `已删除业务模块 ${moduleId}`);
         return next;
       },
+      previewMapping: (input) => base.previewMapping(input),
       async createMapping(input: CreateModuleMappingInput) {
         const next = await base.createMapping(input);
         pushModuleAudit(

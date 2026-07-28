@@ -1,30 +1,78 @@
 import type {
   CreateModuleMappingInput,
   CreateParameterModuleInput,
+  MappingApplyPreview,
+  MappingMutationResult,
   ModuleDiscoveryHints,
   ParameterModuleRegistryRepository,
   RecomputeBindingModulesResult,
   UpdateParameterModuleInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
-import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
+import type {
+  ModuleImportance,
+  ModuleKind,
+  ModuleOrigin,
+  ParameterModule,
+  ParameterModuleRegistry
+} from "@/domain/parameter-topology/moduleRegistry";
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
 
 type ApiClient = ReturnType<typeof createApiClient>;
-type RegistryEnvelope = { item: ParameterModuleRegistry };
+
+type ModuleDto = {
+  id: string;
+  name: string;
+  parentId?: string | null;
+  sortOrder?: number;
+  importance?: ModuleImportance;
+  kind?: ModuleKind;
+  origin?: ModuleOrigin;
+  sourceKey?: string | null;
+  effectiveImportance?: ModuleImportance;
+  parameterCount?: number;
+};
+
+type MappingDto = {
+  id: string;
+  moduleId: string;
+  matchKind: ParameterModuleRegistry["mappings"][number]["matchKind"];
+  matchValue: string;
+  priority?: number;
+};
+
+type RegistryDto = {
+  modules: ModuleDto[];
+  mappings: MappingDto[];
+};
+
+type RegistryEnvelope = { item: RegistryDto };
+type MappingMutationEnvelope = { item: RegistryDto; apply: MappingApplyPreview };
+type PreviewEnvelope = { item: MappingApplyPreview };
+type DiscoveryEnvelope = { item: ModuleDiscoveryHints };
 
 const REGISTRY_BASE = "/api/v2/parameter-modules";
 const V1_MODULES = "/api/v1/parameter-modules";
 
-function registryFromDto(dto: ParameterModuleRegistry): ParameterModuleRegistry {
+function mapModule(module: ModuleDto): ParameterModule {
+  const importance = module.importance ?? "medium";
   return {
-    modules: dto.modules.map((module) => ({
-      id: module.id,
-      name: module.name,
-      parentId: module.parentId ?? null,
-      sortOrder: module.sortOrder ?? 0,
-      importance: module.importance ?? "medium"
-    })),
+    id: module.id,
+    name: module.name,
+    parentId: module.parentId ?? null,
+    sortOrder: module.sortOrder ?? 0,
+    importance,
+    kind: module.kind ?? "business",
+    origin: module.origin ?? "curated",
+    sourceKey: module.sourceKey ?? null,
+    effectiveImportance: module.effectiveImportance ?? importance,
+    parameterCount: module.parameterCount ?? 0
+  };
+}
+
+function registryFromDto(dto: RegistryDto): ParameterModuleRegistry {
+  return {
+    modules: dto.modules.map(mapModule),
     mappings: dto.mappings.map((mapping) => ({
       id: mapping.id,
       moduleId: mapping.moduleId,
@@ -32,6 +80,17 @@ function registryFromDto(dto: ParameterModuleRegistry): ParameterModuleRegistry 
       matchValue: mapping.matchValue,
       priority: mapping.priority ?? 0
     }))
+  };
+}
+
+function emptyPreview(toModuleId: string | null = null): MappingApplyPreview {
+  return {
+    affectedBindings: 0,
+    byProject: [],
+    fromModules: [],
+    toModuleId,
+    emptiedModules: [],
+    conflicts: []
   };
 }
 
@@ -49,12 +108,51 @@ export function createHttpParameterModuleRegistryRepository(
 
   return {
     getRegistry,
+
     async getDiscoveryHints() {
-      const response = await apiClient.get<{ item: ModuleDiscoveryHints }>(
-        `${REGISTRY_BASE}/discovery-hints`,
-      );
-      return response.item;
+      const response = await apiClient.get<DiscoveryEnvelope>(`${REGISTRY_BASE}/discovery-hints`);
+      return {
+        compatibles: response.item.compatibles.map((hint) => ({
+          compatible: hint.compatible,
+          bindingCount: hint.bindingCount,
+          projectCount: hint.projectCount ?? 0,
+          suggestedGroupName: hint.suggestedGroupName ?? hint.compatible
+        })),
+        total: response.item.total ?? response.item.compatibles.length
+      };
     },
+
+    async dismissCompatible(input) {
+      const response = await apiClient.post<DiscoveryEnvelope>(
+        `${REGISTRY_BASE}/discovery-hints/dismissals`,
+        input
+      );
+      return {
+        compatibles: response.item.compatibles.map((hint) => ({
+          compatible: hint.compatible,
+          bindingCount: hint.bindingCount,
+          projectCount: hint.projectCount ?? 0,
+          suggestedGroupName: hint.suggestedGroupName ?? hint.compatible
+        })),
+        total: response.item.total ?? response.item.compatibles.length
+      };
+    },
+
+    async restoreDismissedCompatible(compatible: string) {
+      const response = await apiClient.delete<DiscoveryEnvelope>(
+        `${REGISTRY_BASE}/discovery-hints/dismissals/${encodeURIComponent(compatible)}`
+      );
+      return {
+        compatibles: response.item.compatibles.map((hint) => ({
+          compatible: hint.compatible,
+          bindingCount: hint.bindingCount,
+          projectCount: hint.projectCount ?? 0,
+          suggestedGroupName: hint.suggestedGroupName ?? hint.compatible
+        })),
+        total: response.item.total ?? response.item.compatibles.length
+      };
+    },
+
     async createModule(input: CreateParameterModuleInput) {
       await apiClient.post(V1_MODULES, {
         name: input.name,
@@ -64,6 +162,7 @@ export function createHttpParameterModuleRegistryRepository(
       });
       return getRegistry();
     },
+
     async updateModule(moduleId: string, input: UpdateParameterModuleInput) {
       if (input.parentId !== undefined) {
         await apiClient.post(`${V1_MODULES}/${encodeURIComponent(moduleId)}/move`, {
@@ -79,24 +178,48 @@ export function createHttpParameterModuleRegistryRepository(
       }
       return getRegistry();
     },
+
     async deleteModule(moduleId: string) {
       await apiClient.delete(`${V1_MODULES}/${encodeURIComponent(moduleId)}`);
       return getRegistry();
     },
-    async createMapping(input: CreateModuleMappingInput) {
-      const response = await apiClient.post<RegistryEnvelope>(`${REGISTRY_BASE}/mappings`, input);
-      return registryFromDto(response.item);
+
+    async previewMapping(input: CreateModuleMappingInput) {
+      const response = await apiClient.post<PreviewEnvelope>(
+        `${REGISTRY_BASE}/mappings/preview`,
+        input
+      );
+      return response.item;
     },
-    async deleteMapping(mappingId: string) {
-      const response = await apiClient.delete<RegistryEnvelope>(
+
+    async createMapping(input: CreateModuleMappingInput): Promise<MappingMutationResult> {
+      const response = await apiClient.post<MappingMutationEnvelope>(
+        `${REGISTRY_BASE}/mappings`,
+        input
+      );
+      return {
+        registry: registryFromDto(response.item),
+        apply: response.apply ?? emptyPreview(input.moduleId)
+      };
+    },
+
+    async deleteMapping(mappingId: string): Promise<MappingMutationResult> {
+      const response = await apiClient.delete<MappingMutationEnvelope>(
         `${REGISTRY_BASE}/mappings/${encodeURIComponent(mappingId)}`
       );
-      return registryFromDto(response.item);
+      return {
+        registry: registryFromDto(response.item),
+        apply: response.apply ?? emptyPreview(null)
+      };
     },
-    async recomputeBindings(input?: { projectId?: string }) {
+
+    async recomputeBindings(input?: { projectId?: string; dryRun?: boolean }) {
+      const body: Record<string, unknown> = {};
+      if (input?.projectId) body.projectId = input.projectId;
+      if (input?.dryRun) body.dryRun = true;
       return apiClient.post<RecomputeBindingModulesResult>(
         `${REGISTRY_BASE}/recompute-bindings`,
-        input?.projectId ? { projectId: input.projectId } : {}
+        body
       );
     }
   };

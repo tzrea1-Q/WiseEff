@@ -44,6 +44,8 @@
 | `ProjectModule` | 项目或参数模块（按项目镜像组织级 `parameter_modules` 元数据） |
 
 组织级 `parameter_modules` 与调试域 `debug_node_modules` 为**独立树**；父级筛选默认包含子树。过渡期内仍保留扁平 `module` 文本列（TD-037 后续删除）。
+
+`ParameterModule` 行携带 `kind`（`business` | `driver-group` | `instance` | `unclassified`）、`origin`（`curated` | `auto`）与可选稳定键 `source_key`（实例身份，非展示名）。产品归属为三层树：**业务分类 → 驱动组 → 实例模块**（总线/脚手架节点不进树）。管理员**纳入（adoption）**：对 `origin=auto` 的模块重命名或移动时提升为 `curated`。注册表读取暴露 `effectiveImportance`，由最近业务祖先继承（驱动组与实例不单独存重要性）。
 | `ProjectMember` | 项目成员和角色 |
 | `ProjectInitializationDraft` | 项目参数初始化草稿 |
 | `ProjectInitializationReview` | 初始化审阅记录 |

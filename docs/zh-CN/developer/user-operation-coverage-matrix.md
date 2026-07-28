@@ -38,6 +38,11 @@
 - `MOD-TREE-PARAM-002`：Admin 移动参数模块到新父节点，循环移动返回 409（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-DEBUG-001`：Admin 在 `/debugging-admin` 创建嵌套调试节点模块，父模块筛选包含子模块节点（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
 - `MOD-TREE-AUTHZ-001`：Hardware User 不能变更模块树；Admin 删除仍含子模块或参数的模块时返回 409（`e2e/acceptance/hierarchical-modules.acceptance.spec.ts`）。
+- `MOD-ATTR-QUEUE-001`：Admin 在 `/parameter-admin` 浏览未分类 compatible 队列，忽略/恢复并写审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `MOD-ATTR-CLASSIFY-001`：Admin 归类 compatible 时预览影响并按范围应用（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `MOD-ATTR-BULK-001`：Admin 批量勾选 compatible 归入同一业务分类（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `MOD-ATTR-TREE-001`：Admin 在模块归属树执行按 kind 分级的操作（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `MOD-ATTR-IMPORTANCE-001`：Admin 在业务分类设重要性并确认继承到工作台筛选（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-FILE-UPLOAD-001`：Admin 在 `/parameter-admin/projects` 上传 JSON 参数文件并列出文件与版本（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-FILE-SYNC-001`：Admin 手动同步参数文件，当解析值与 DB 当前值不一致时创建 `file_sync` 草稿（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-FILE-RESOLVE-001`：Admin 通过 API 裁决 file/UI 草稿冲突（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。

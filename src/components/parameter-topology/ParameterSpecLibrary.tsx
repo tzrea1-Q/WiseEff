@@ -22,7 +22,7 @@ export type ParameterSpecLibraryRow = {
   /** Null means platform-global catalog; Admins may still update via PATCH. */
   organizationId: string | null;
   propertyKey: string;
-  /** Business module from registry mapping (workbench 所属模块). */
+  /** Predicted business module from registry mapping (not a stored assignment). */
   moduleName: string | null;
   moduleMapped: boolean;
   driverModule: string | null;
@@ -273,8 +273,8 @@ export function ParameterSpecLibrary({
     setPage(1);
   };
 
-  const driverValues = useMemo(
-    () => uniqueValues(scopedSpecs.map((spec) => spec.driverModule)),
+  const moduleValues = useMemo(
+    () => uniqueValues(scopedSpecs.map((spec) => spec.moduleName)),
     [scopedSpecs]
   );
   const lifecycleValues = useMemo(() => {
@@ -357,14 +357,14 @@ export function ParameterSpecLibrary({
                 <th scope="col">参数名</th>
                 <th scope="col">
                   <span className="param-admin-library-head-cell">
-                    <span>所属模块</span>
+                    <span>{PARAMETER_ADMIN_UI.specModulePrediction}</span>
                     <ColumnFilter
-                      label="所属模块"
-                      groupLabel="所属模块筛选"
-                      values={driverValues}
-                      selectedValues={filters.driverModules}
-                      onToggle={(value) => patchFilterList("driverModules", value)}
-                      onClear={() => setFilters((current) => ({ ...current, driverModules: [] }))}
+                      label={PARAMETER_ADMIN_UI.specModulePrediction}
+                      groupLabel="预测模块筛选"
+                      values={moduleValues}
+                      selectedValues={filters.moduleNames}
+                      onToggle={(value) => patchFilterList("moduleNames", value)}
+                      onClear={() => setFilters((current) => ({ ...current, moduleNames: [] }))}
                     />
                   </span>
                 </th>
@@ -394,7 +394,11 @@ export function ParameterSpecLibrary({
                   <td data-label="参数名">
                     <strong>{spec.propertyKey}</strong>
                   </td>
-                  <td data-label="所属模块">{spec.driverModule ?? "—"}</td>
+                  <td data-label={PARAMETER_ADMIN_UI.specModulePrediction}>
+                    {spec.moduleName
+                      ? `${spec.moduleName}${spec.moduleMapped ? "" : "（预测）"}`
+                      : "—"}
+                  </td>
                   <td data-label="值类型">{spec.valueType}</td>
                   <td data-label="审核状态">{formatParameterSpecLifecycle(spec.reviewState)}</td>
                   <td data-label="操作">

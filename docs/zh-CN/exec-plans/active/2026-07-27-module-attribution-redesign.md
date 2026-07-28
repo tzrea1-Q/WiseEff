@@ -131,65 +131,64 @@ PR2 在 PR1 合并后才开始，这样 UI 直接对着真实的 `kind` / `origi
 
 ### 批次 7 — 队列
 
-- [ ] 新增 `src/components/parameter-topology/UnclassifiedCompatibleQueue.tsx`：表格列为 compatible、影响参数数、涉及项目、建议驱动组；列筛选遵循 `docs/design-docs/ux-table-column-filter.md`；行复选框支持批量；提供忽略与恢复动作。
-- [ ] 新增 `ClassifyCompatibleDialog.tsx`：用 `ModuleTreeSelect` 选目标业务分类（限定 `kind = business`，支持就地新建），驱动组名可编辑并预填建议值，从预览端点取影响预览，阻断项按阻断项渲染。批量模式下多个 compatible 走同一个对话框归到同一业务分类。
-- [ ] 删除 `OrganizationModuleGovernancePanel.tsx` 里的 `observedDrivers` 属性和 `listSpecs({})` 聚合。
+- [x] 新增 `src/components/parameter-topology/UnclassifiedCompatibleQueue.tsx`：表格列为 compatible、影响参数数、涉及项目、建议驱动组；列筛选遵循 `docs/design-docs/ux-table-column-filter.md`；行复选框支持批量；提供忽略与恢复动作。
+- [x] 新增 `ClassifyCompatibleDialog.tsx`：用 `ModuleTreeSelect` 选目标业务分类（限定 `kind = business`，支持就地新建），驱动组名可编辑并预填建议值，从预览端点取影响预览，阻断项按阻断项渲染。批量模式下多个 compatible 走同一个对话框归到同一业务分类。
+- [x] 删除 `OrganizationModuleGovernancePanel.tsx` 里的 `observedDrivers` 属性和 `listSpecs({})` 聚合。
 
 ### 批次 8 — 树
 
-- [ ] 树重写为 `ModuleAttributionTree.tsx`：每个模块一行，含名称、kind 徽标、参数计数、已匹配的 compatible（若有），重要性只在业务分类行显示且用高/中/低。操作按 kind 出现，且只出现服务端会接受的那些。默认展开到驱动组层并显示实例计数，实例按需展开。
-- [ ] 用基于真实 `origin` 和 `kind` 的筛选取代「显示自动发现」复选框。若无其他消费方，删除 `isAutoDiscoveredModuleName`。
-- [ ] 去掉独立的「归属规则」卡片；规则渲染在它指向的模块上，删规则是该模块上的一个动作。
-- [ ] 移动目标选择器排除非业务分类模块。
+- [x] 树重写为 `ModuleAttributionTree.tsx`：每个模块一行，含名称、kind 徽标、参数计数、已匹配的 compatible（若有），重要性只在业务分类行显示且用高/中/低。操作按 kind 出现，且只出现服务端会接受的那些。默认展开到驱动组层并显示实例计数，实例按需展开。
+- [x] 用基于真实 `origin` 和 `kind` 的筛选取代「显示自动发现」复选框。若无其他消费方，删除 `isAutoDiscoveredModuleName`。
+- [x] 去掉独立的「归属规则」卡片；规则渲染在它指向的模块上，删规则是该模块上的一个动作。
+- [x] 移动目标选择器排除非业务分类模块。
 
 ### 批次 9 — 文案、mock 对齐与清理
 
-- [ ] 在 `src/application/parameters/parameterAdminUiCopy.ts` 里给这个页面改名。建议标签页改为「模块归属」，简介围绕三层结构和队列重写。`moduleMapping`、`moduleMappingBlurb`、`moduleDiscoveryDriver`、`mappingRules`、`addMapping`、`deleteMapping` 全部变更或消失；`adminSubtitle` 和三个 `xiaoze*` 字符串里出现了「驱动归属」，需一并跟进。
-- [ ] `OrganizationSpecGovernancePanel.tsx` 消费收窄后的 `deriveModuleAssignment`；定义库里的模块列标注为预测而不是既定归属。
-- [ ] 按 ADR-0002 做 mock 对齐：`mockParameterTopologyRepository` 与模块注册表 mock 提供 `kind`、`origin`、`effectiveImportance`、`parameterCount`、预览与忽略。
-- [ ] 更新 `src/ParameterAdminNextPage.test.tsx`，为队列、对话框、按 kind 的树操作补组件测试。
-- [ ] 移除旧面板 header 里的内联 `style={{...}}`；新组件只用 `src/styles.css` 的类。
+- [x] 在 `src/application/parameters/parameterAdminUiCopy.ts` 里给这个页面改名。建议标签页改为「模块归属」，简介围绕三层结构和队列重写。`moduleMapping`、`moduleMappingBlurb`、`moduleDiscoveryDriver`、`mappingRules`、`addMapping`、`deleteMapping` 全部变更或消失；`adminSubtitle` 和三个 `xiaoze*` 字符串里出现了「驱动归属」，需一并跟进。
+- [x] `OrganizationSpecGovernancePanel.tsx` 消费收窄后的 `deriveModuleAssignment`；定义库里的模块列标注为预测而不是既定归属。
+- [x] 按 ADR-0002 做 mock 对齐：`mockParameterTopologyRepository` 与模块注册表 mock 提供 `kind`、`origin`、`effectiveImportance`、`parameterCount`、预览与忽略。
+- [x] 更新 `src/ParameterAdminNextPage.test.tsx`，为队列、对话框、按 kind 的树操作补组件测试。
+- [x] 移除旧面板 header 里的内联 `style={{...}}`；新组件只用 `src/styles.css` 的类。
 
 ## UI 交互自动化
 
-需要加进 `docs/developer/browser-acceptance-coverage-map.md` 的需求 ID 和 `docs/developer/user-operation-coverage-matrix.md` 的操作 ID，均落在 `e2e/acceptance/parameter-topology.acceptance.spec.ts`：
+需要加进 `docs/developer/browser-acceptance-coverage-map.md` 的需求 ID 和 `docs/developer/user-operation-coverage-matrix.md` 的操作 ID，均落在 `e2e/acceptance/parameter-topology.acceptance.spec.ts`（已登记；浏览器用例体当前为 `test.skip`，与 `PARAM-ENABLE-*` 相同，待 disposable-DB playwright 补齐）：
 
-| ID | PR | 行为 |
-| --- | --- | --- |
-| `MOD-ATTR-QUEUE-001` | 2 | 队列只列出非 scaffolding、未被忽略的 compatible，并显示参数数与项目数；忽略移除条目、恢复让它回来，两者都写审计 |
-| `MOD-ATTR-CLASSIFY-001` | 2 | 归类一个 compatible 时展示影响预览，确认后应用，参数被移入新驱动组，空掉的 `未分类 · x` 桶被删除 |
-| `MOD-ATTR-BULK-001` | 2 | 勾选多个 compatible，在一次确认里归到同一业务分类 |
-| `MOD-ATTR-TREE-001` | 2 | 树上操作按 kind 分级：实例模块没有删除项；重命名自动模块即纳入；重命名后的名字能扛过一次重新 ingest |
-| `MOD-ATTR-IMPORTANCE-001` | 2 | 在业务分类上设的重要性被驱动组和实例继承，并驱动工作台的重要性筛选 |
+| ID | PR | 行为 | 状态 |
+| --- | --- | --- | --- |
+| `MOD-ATTR-QUEUE-001` | 2 | 队列只列出非 scaffolding、未被忽略的 compatible，并显示参数数与项目数；忽略移除条目、恢复让它回来，两者都写审计 | 已登记 |
+| `MOD-ATTR-CLASSIFY-001` | 2 | 归类一个 compatible 时展示影响预览，确认后应用，参数被移入新驱动组，空掉的 `未分类 · x` 桶被删除 | 已登记 |
+| `MOD-ATTR-BULK-001` | 2 | 勾选多个 compatible，在一次确认里归到同一业务分类 | 已登记 |
+| `MOD-ATTR-TREE-001` | 2 | 树上操作按 kind 分级：实例模块没有删除项；重命名自动模块即纳入；重命名后的名字能扛过一次重新 ingest | 已登记 |
+| `MOD-ATTR-IMPORTANCE-001` | 2 | 在业务分类上设的重要性被驱动组和实例继承，并驱动工作台的重要性筛选 | 已登记 |
 
-需重新验证的既有 ID：`MOD-TREE-PARAM-001`、`MOD-TREE-PARAM-002`（模块 CRUD 与移动改为按 kind 分级）、`MOD-TREE-AUTHZ-001`（驱动组和实例的删除语义变化）、`PARAM-TOPOLOGY-BROWSE-001`（模块路径名与继承重要性传到工作台）。
+合并后需重新验证的既有 ID：`MOD-TREE-PARAM-001`、`MOD-TREE-PARAM-002`、`MOD-TREE-AUTHZ-001`、`PARAM-TOPOLOGY-BROWSE-001`。
 
 ## 文档影响矩阵
 
-| 领域 | 动作 | 路径 |
-| --- | --- | --- |
-| 领域词表 | Update | `CONTEXT.md`（已完成：module kind、business category、driver group、device instance module、module origin、curated/auto-discovered module、module adoption、unclassified queue、dismissed compatible） |
-| ADR | Update | `docs/adr/0004-module-tree-states-kind-and-origin.md`（已完成）、`docs/adr/0005-compatible-and-instance-are-the-only-attribution-levers.md`（已完成）、`CONTEXT.md` ADR 索引（已完成） |
-| 计划 | Update | `docs/PLANS.md`、`docs/zh-CN/PLANS.md`、本计划及英文版 |
-| 领域模型 | Update | `docs/design-docs/domain-model.md`、`docs/zh-CN/design-docs/domain-model.md` — 三层归属、kind/origin、纳入 |
-| API 契约 | Update | `docs/design-docs/api-contract.md`、`docs/zh-CN/design-docs/api-contract.md` — 预览端点、忽略、收窄的匹配类型、注册表 DTO 字段、按范围应用的响应 |
-| 前端 | Update | `docs/FRONTEND.md`、`docs/zh-CN/frontend.md` — 面板被替换；两者当前都在描述 `ParameterModuleMappingPanel` 与 `deriveModuleAssignment` |
-| 安全 / 治理 | Update | `docs/SECURITY.md` — 新的 v2 审计事件类型与按 kind 的写入约束 |
-| 实例子模块计划 | Update | `docs/exec-plans/active/2026-07-21-instance-submodule-seed.md` 及中文版 — 其 Admin 发现章节描述的正是本计划要删掉的 driver 队列 |
-| 模块重聚焦计划 | Review | `docs/exec-plans/active/2026-07-20-dts-workbench-module-refocus.md` — M7 交付的正是被替换的面板，标记为已被取代 |
-| 验收覆盖 | Update | `docs/developer/browser-acceptance-coverage-map.md`、`docs/developer/user-operation-coverage-matrix.md`、`e2e/acceptance/requirements.ts`、`e2e/acceptance/operationMatrix.ts` |
-| 生成的 schema 摘要 | Update | `docs/generated/` 数据库 schema 摘要 — 三个新列、一张新表 |
-| 产品规格 | Review | `docs/product-specs/prototype-functional-spec.md` — 后台归属工作流形态改变 |
-| 测试策略 | Review | `docs/design-docs/testing-strategy.md` — 预计策略不变 |
-| 运维手册 | Review | `docs/runbooks/` — 全量重算变成运维工具，可能需要补一条说明 |
-| 架构 / AGENTS | Review | `ARCHITECTURE.md` — 确认模块注册表的描述是否仍然成立 |
-| 可靠性 | No change | — |
-| 参考资料 | No change | — |
+| 领域 | 动作 | 路径 | 状态 |
+| --- | --- | --- | --- |
+| 领域词表 | Update | `CONTEXT.md` | 完成 |
+| ADR | Update | ADR-0004、ADR-0005、`CONTEXT.md` ADR 索引 | 完成 |
+| 计划 | Update | `docs/PLANS.md`、`docs/zh-CN/PLANS.md`、本计划及英文版 | 完成 |
+| 领域模型 | Update | `docs/design-docs/domain-model.md`（+ 中文） | 完成 |
+| API 契约 | Update | `docs/design-docs/api-contract.md`（+ 中文） | 完成 |
+| 前端 | Update | `docs/FRONTEND.md`、`docs/zh-CN/frontend.md` | 完成 |
+| 安全 / 治理 | Update | `docs/SECURITY.md`、`docs/zh-CN/SECURITY.md` | 完成 |
+| 实例子模块计划 | Update | `2026-07-21-instance-submodule-seed`（+ 中文） | 完成 |
+| 模块重聚焦计划 | Review | `2026-07-20-dts-workbench-module-refocus` — 标记已被本改造取代 | 完成 |
+| 验收覆盖 | Update | coverage map（+ 中文）、requirements、operationMatrix | 完成 |
+| 生成的 schema 摘要 | Update | `docs/generated/db-schema.md` | 完成 |
+| 产品规格 | Review | `prototype-functional-spec`（+ 中文） | 完成 |
+| 测试策略 | Review | `testing-strategy`（+ 中文） | 完成 |
+| 运维手册 | Review | `manual-acceptance.md` | 完成 |
+| 架构 / AGENTS | Review | `ARCHITECTURE.md`（+ 中文） | 完成 |
+| 可靠性 | No change | — | 不适用 |
+| 参考资料 | No change | — | 不适用 |
 
 ## 文档更新闸门
 
-阻断性。任一 PR 的文档行未处理不得合并；每一条 Update 与 Review 行完成或有证据记录为无需变更、且五个新的需求与操作 ID 已存在之前，本计划不得移入 `completed/`。运行 `npm run docs:check`。延期项进 `docs/exec-plans/tech-debt-tracker.md`。
-
+阻断性。任一 PR 的文档行未处理不得合并；每一条 Update 与 Review 行完成或有证据记录为无需变更、且五个新的需求与操作 ID 已存在之前，本计划不得移入 `completed/`。运行 `npm run docs:check`。`MOD-ATTR-*` 的完整浏览器用例体延期为 `test.skip`（同 PARAM-ENABLE 模式）；ID 本身已登记。
 ## 验证
 
 ```bash

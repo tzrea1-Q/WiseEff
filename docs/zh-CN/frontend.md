@@ -93,18 +93,19 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 
 - **物化 `module_id`（唯一真相源）。** 每条 binding 都带非空 `module_id`，外键指向 `parameter_modules(id)`；浏览唯一键为 `(project_id, logical_node_id, parameter_spec_id, module_id)`（迁移 `0067`）。写路径（ingest / `createOrReuseBinding`）经 `resolveModuleIdForBinding` 按 instance > compatible > driver 优先级解析模块，未命中则落到组织“未分类”模块——绝不为 null。种子始终写入 `module_id`，工作台不会读到没有模块的 binding。
 - **工作台以 `binding.moduleId` 为准。** `/api/v2/projects/:projectId/parameter-bindings` DTO 暴露 `moduleId: string`；`buildDtsWorkbenchRows` 直接读取 `binding.moduleId`，再从注册表（`GET /api/v2/parameter-modules`）取名称/重要性/排序。当 binding 已带 `moduleId` 时**不再**重新派生模块；`deriveModuleAssignment` 仅保留给重算工具与测试。
-- **显式重算（管理员）。** `POST /api/v2/parameter-modules/recompute-bindings`（可选 `{ projectId }`）为现有 binding 重新解析 `module_id`，返回 `{ updated, conflicts }`；唯一冲突以 `409` 暴露。`ParameterModuleMappingPanel` 提供仅管理员可见的「重算模块归属」按钮，避免映射变更后 binding 身份悄悄漂移。
+- **显式重算（管理员，运维）。** `POST /api/v2/parameter-modules/recompute-bindings`（可选 `{ projectId, dryRun }`）为现有 binding 重新解析 `module_id`。`dryRun: true` 仅预览不写库。面板将其作为全量回填工具；日常归类走映射的范围应用（`POST /api/v2/parameter-modules/mappings` + preview），而非全量重算。
 - **真实详情历史 + 跨项目对比。** 详情弹窗打开时，`ApiProjectTopologyWorkspace` 加载 `GET /api/v2/projects/:projectId/bindings/:bindingId/history`（由 revision 推导的 `from -> to` 条目）与 `GET /api/v2/projects/:projectId/bindings/:bindingId/compare`（同组织内共享 `parameter_spec_id` + `module_id` 的其他项目，排除源项目）。历史仅来自 `project_parameter_binding_revisions`——绝不使用遗留扁平 `parameter_history_entries`。历史 API 会折叠相邻 config revision tip 中 raw 值未变的快照（存储层仍按 config revision 保留 tip）；初始 tip 保留且 `fromRawValue` 为 null。由于绑定 revision 表没有 per-revision 的 actor / 原因列，历史不暴露 actor/原因。对比对端按 `projectId` 去重。查看弹窗仅保留精简入口（覆盖率摘要 + **打开跨项目对比**）；成熟对比面（目标选择、文本差异、`+/-` raw diff、项目概览、**使用该项目配置加入草稿**）放在次级 `DtsBindingCompareDialog`。对端作草稿写入本地草稿袋并打开 `DtsBindingDraftDialog`。空态显示「暂无历史记录。」/「暂无其他项目的对比数据。」，不再出现阶段一占位文案。
 - **查看弹窗规格含义。** 只读详情还会加载 `GET /api/v2/parameter-specs/:specId`，展示显示名、documentation/description、示意性 `exampleValue`（绝不作为推荐值）、单位、约束，以及可选的 schemaDefault/policyTarget。
 
-### 实例子模块与模块发现（U / N / C）
+### 模块归属管理（`/parameter-admin/modules`，页签 **模块归属**）
 
-种子与 ingest 构建三层模块树：**业务叶子 → 驱动组（U/N）→ 实例模块**；无 `compatible` 的 Type C 节点挂在父实例下。总线/脚手架节点（`gic`、`gpio*`、`amba`、`i2c@*`、`spmi*`、`pmic@*`）不进产品模块树。组织映射以 `compatible`（优先）或 `driver` 为稳定键，不用单元地址或 `*_1` 后缀。
+`OrganizationModuleGovernancePanel` 组装 `ParameterModuleMappingPanel`，后者再组合 `UnclassifiedCompatibleQueue`、`ClassifyCompatibleDialog` 与 `ModuleAttributionTree`。种子与 ingest 构建三层树：**业务分类 → 驱动组 → 实例模块**；总线/脚手架节点不进产品树。组织映射仅匹配 `compatible` 或 `instance`（无 `driver` 匹配类型）。
 
 - **放置辅助：** `src/domain/parameter-topology/modulePlacement.ts`（服务端镜像在 `server/modules/parameter-modules/`）。
-- **绑定写入：** ingest 通过 `resolveBindingInstanceModuleId` 确保/创建实例模块，并把 `module_id` 指到实例（而非仅驱动组）。未映射的 `compatible` 进入临时模块 `未分类 · {driver}`，不阻断 ingest。
-- **管理端发现队列：** `/parameter-admin` → `ParameterModuleMappingPanel` 调用 `GET /api/v2/parameter-modules/discovery-hints`，与现有映射对比后展示未映射 compatible；管理员可一键在选定业务模块下创建驱动组并添加 `compatible` 映射，然后重算归属。该队列与规格审核未匹配任务无关。
-- **种子重算：** `db:seed:m1` 在语义 ingest 后执行 `recomputeBindingModules`，使既有 binding 在映射变更后落到实例级 `module_id`。
+- **绑定写入：** ingest 通过 `resolveBindingInstanceModuleId` 确保/创建实例模块并把 `module_id` 指到实例。未映射 `compatible` 进入临时桶 `未分类 · {driver}`，不阻断 ingest。
+- **待归类队列：** `GET /api/v2/parameter-modules/discovery-hints` 列出未忽略的 compatible 及参数/项目计数；通过 v2 dismissal 路由忽略/恢复（写审计）。批量归类打开 `ClassifyCompatibleDialog`，先 `POST /api/v2/parameter-modules/mappings/preview`，确认后 `POST /api/v2/parameter-modules/mappings` 按范围应用。
+- **按 kind 分级的树：** `ModuleAttributionTree` 展示 kind 徽标、参数计数与仅业务行的重要性（注册表 `effectiveImportance`）。操作遵循服务端 kind 守卫（`instance` 不可删；驱动组删除=解散；未分类根只读）。
+- **运维重算：** 仅管理员的 `recompute-bindings`（可选 `dryRun`）为回填工具；日常治理用映射范围应用。`db:seed:m1` 在 ingest 后仍可执行 `recomputeBindingModules`。
 
 ## 主要页面流
 
