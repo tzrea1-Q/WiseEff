@@ -48,6 +48,10 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Module adoption | The moment an Admin renames, moves, or re-weights an auto-discovered module. The module becomes curated from then on; there is no separate "adopt" action |
 | Unclassified queue | The compatibles observed on project parameters that no driver group claims yet. Scaffolding compatibles never enter it, and an Admin can dismiss an entry, so the queue is expected to reach empty |
 | Dismissed compatible | A compatible an Admin declared out of scope for the module tree. It leaves the unclassified queue without gaining a driver group, and the decision is reversible |
+| Driver registration | An organization's declaration that a device is in scope, stated as a curated driver group naming its business category and the exact compatibles it claims. Not a separate record: the driver group is the registration |
+| Parse coverage | Whether a compatible is matched by a pinned schema document, including through a prefix pattern. A fact about the platform's schema catalog, never about one organization |
+| Observed coverage | Whether a registered driver has produced parameters in at least one project. None means declared but not yet seen, which is a normal state rather than a misconfiguration |
+| Not-yet-observed driver group | A registered driver group holding no parameters. Shown in the tree rather than hidden, because being visible before the DTS arrives is why it was registered |
 
 ## ADRs
 
@@ -58,3 +62,5 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0003`](docs/adr/0003-node-enablement-is-not-a-parameter.md) — node enablement is not a parameter, but rides the parameter draft pipeline
 - [`0004`](docs/adr/0004-module-tree-states-kind-and-origin.md) — the module tree states kind and origin instead of inferring them
 - [`0005`](docs/adr/0005-compatible-and-instance-are-the-only-attribution-levers.md) — compatible and instance are the only attribution levers
+- [`0006`](docs/adr/0006-logical-nodes-and-manual-kind-correction.md) — logical nodes and manual kind correction
+- [`0007`](docs/adr/0007-driver-registry-is-a-view-over-curated-driver-groups.md) — the driver registry is a view over curated driver groups

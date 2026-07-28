@@ -2,6 +2,7 @@ import type { Queryable } from "../../shared/database/client";
 import {
   driverGroupDisplayNameFromCompatible,
   isScaffoldingDriverLabel,
+  normalizeMatchToken,
 } from "./modulePlacement";
 import type {
   ModuleImportance,
@@ -20,6 +21,8 @@ function moduleFromRow(
     name: row.name,
     parentId: row.parent_id ?? null,
     sortOrder: row.sort_order,
+    description: row.description ?? "",
+    scope: row.scope ?? "",
     importance: row.importance ?? "medium",
     kind: row.kind ?? "business",
     origin: row.origin ?? "curated",
@@ -56,6 +59,45 @@ function resolveEffectiveImportance(
 }
 
 /**
+ * Bindings hang on leaf modules (usually instances). Roll direct counts up the
+ * parentId tree so business / driver-group rows show subtree totals.
+ */
+function rollupSubtreeParameterCounts(
+  rows: readonly ParameterModuleRow[],
+): Map<string, number> {
+  const direct = new Map(rows.map((row) => [row.id, Number(row.parameter_count ?? 0)]));
+  const childrenByParent = new Map<string, string[]>();
+  for (const row of rows) {
+    if (!row.parent_id) continue;
+    const siblings = childrenByParent.get(row.parent_id) ?? [];
+    siblings.push(row.id);
+    childrenByParent.set(row.parent_id, siblings);
+  }
+
+  const totals = new Map<string, number>();
+  const visiting = new Set<string>();
+
+  const totalFor = (moduleId: string): number => {
+    const cached = totals.get(moduleId);
+    if (cached !== undefined) return cached;
+    if (visiting.has(moduleId)) return direct.get(moduleId) ?? 0;
+    visiting.add(moduleId);
+    let sum = direct.get(moduleId) ?? 0;
+    for (const childId of childrenByParent.get(moduleId) ?? []) {
+      sum += totalFor(childId);
+    }
+    visiting.delete(moduleId);
+    totals.set(moduleId, sum);
+    return sum;
+  };
+
+  for (const row of rows) {
+    totalFor(row.id);
+  }
+  return totals;
+}
+
+/**
  * Registry read: modules from the v1 parameter_modules tree + DTS mappings.
  * Module CRUD lives in v1 (`parameterModuleRepository`); this module only owns mappings.
  */
@@ -69,6 +111,8 @@ export async function readRegistry(
        pm.name,
        pm.parent_id,
        pm.sort_order,
+       coalesce(pm.description, '') as description,
+       coalesce(pm.scope, '') as scope,
        coalesce(pm.importance, 'medium') as importance,
        coalesce(pm.kind, 'business') as kind,
        coalesce(pm.origin, 'curated') as origin,
@@ -85,6 +129,7 @@ export async function readRegistry(
     [organizationId]
   );
   const byId = new Map(modules.rows.map((row) => [row.id, row]));
+  const subtreeCounts = rollupSubtreeParameterCounts(modules.rows);
   const mappings = await db.query<ParameterModuleMappingRow>(
     `select id, parameter_module_id, match_kind, match_value, priority
        from parameter_module_mappings
@@ -94,7 +139,10 @@ export async function readRegistry(
   );
   return {
     modules: modules.rows.map((row) =>
-      moduleFromRow(row, resolveEffectiveImportance(row.id, byId)),
+      moduleFromRow(
+        { ...row, parameter_count: subtreeCounts.get(row.id) ?? 0 },
+        resolveEffectiveImportance(row.id, byId),
+      ),
     ),
     mappings: mappings.rows.map(mappingFromRow)
   };
@@ -122,6 +170,8 @@ export async function insertMapping(
     priority: number;
   }
 ): Promise<void> {
+  const matchValue =
+    normalizeMatchToken(input.matchValue) ?? input.matchValue.trim().toLowerCase();
   await db.query(
     `insert into parameter_module_mappings
        (id, organization_id, parameter_module_id, match_kind, match_value, priority)
@@ -129,7 +179,7 @@ export async function insertMapping(
      on conflict (organization_id, match_kind, match_value)
        do update set parameter_module_id = excluded.parameter_module_id,
                      priority = excluded.priority`,
-    [input.id, input.organizationId, input.moduleId, input.matchKind, input.matchValue, input.priority]
+    [input.id, input.organizationId, input.moduleId, input.matchKind, matchValue, input.priority]
   );
 }
 
@@ -203,7 +253,7 @@ export async function deleteEmptyAutoDescendants(
       where pm.organization_id = $1
         and pm.id = $2
         and pm.origin = 'auto'
-        and pm.kind in ('instance', 'driver-group', 'unclassified')
+        and pm.kind in ('instance', 'logical', 'driver-group', 'unclassified')
         and not exists (
           select 1 from parameter_modules child where child.parent_id = pm.id
         )
@@ -327,7 +377,7 @@ export async function listObservedCompatiblesForDiscovery(
   }>(
     `
     select
-      lower(lnr.compatible) as compatible,
+      lower(trim(both '"' from trim(both '''' from trim(both from lnr.compatible)))) as compatible,
       count(*)::text as binding_count,
       count(distinct b.project_id)::text as project_count
     from project_parameter_bindings b
@@ -346,16 +396,18 @@ export async function listObservedCompatiblesForDiscovery(
         from parameter_module_mappings mm
         where mm.organization_id = b.organization_id
           and mm.match_kind = 'compatible'
-          and lower(mm.match_value) = lower(lnr.compatible)
+          and lower(trim(both '"' from trim(both '''' from trim(both from mm.match_value))))
+            = lower(trim(both '"' from trim(both '''' from trim(both from lnr.compatible))))
       )
       and not exists (
         select 1
         from parameter_module_dismissed_compatibles dc
         where dc.organization_id = b.organization_id
-          and lower(dc.compatible) = lower(lnr.compatible)
+          and lower(trim(both '"' from trim(both '''' from trim(both from dc.compatible))))
+            = lower(trim(both '"' from trim(both '''' from trim(both from lnr.compatible))))
       )
-    group by lower(lnr.compatible)
-    order by count(*) desc, lower(lnr.compatible) asc
+    group by lower(trim(both '"' from trim(both '''' from trim(both from lnr.compatible))))
+    order by count(*) desc, compatible asc
     `,
     [input.organizationId],
   );
@@ -385,12 +437,13 @@ export async function insertDismissedCompatible(
     dismissedByUserId: string | null;
   },
 ): Promise<void> {
-  const compatible = input.compatible.trim().toLowerCase();
+  const compatible =
+    normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
   await db.query(
     `
     delete from parameter_module_dismissed_compatibles
     where organization_id = $1
-      and lower(compatible) = $2
+      and lower(trim(both '"' from trim(both '''' from trim(both from compatible)))) = $2
     `,
     [input.organizationId, compatible],
   );
@@ -414,13 +467,15 @@ export async function deleteDismissedCompatible(
   db: Queryable,
   input: { organizationId: string; compatible: string },
 ): Promise<number> {
+  const compatible =
+    normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
   const result = await db.query(
     `
     delete from parameter_module_dismissed_compatibles
     where organization_id = $1
-      and lower(compatible) = lower($2)
+      and lower(trim(both '"' from trim(both '''' from trim(both from compatible)))) = $2
     `,
-    [input.organizationId, input.compatible],
+    [input.organizationId, compatible],
   );
   return result.rowCount ?? 0;
 }

@@ -1,23 +1,51 @@
 import { useState } from "react";
+import type { ModuleImportance, ModuleKind } from "@/domain/parameter-topology/moduleRegistry";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
 import { shouldShowFieldError } from "@/components/common/fieldValidation";
+
+const IMPORTANCE_OPTIONS: Array<{ value: ModuleImportance; label: string }> = [
+  { value: "high", label: "高" },
+  { value: "medium", label: "中" },
+  { value: "low", label: "低" }
+];
+
+const RECLASSIFY_KIND_OPTIONS: Array<{ value: "business" | "instance" | "logical"; label: string }> = [
+  { value: "business", label: "业务分类" },
+  { value: "instance", label: "器件实例" },
+  { value: "logical", label: "逻辑节点" }
+];
 
 export function ModuleDefinitionForm({
   module,
   existingNames,
   currentName,
   onChange,
-  showErrors = false
+  showErrors = false,
+  showImportance = false,
+  importance = "medium",
+  onImportanceChange,
+  showKind = false,
+  kind = "business",
+  onKindChange
 }: {
   module: ParameterModuleDraft;
   existingNames: readonly string[];
   currentName?: string;
   onChange: (patch: Partial<ParameterModuleDraft>) => void;
   showErrors?: boolean;
+  /** When true, show business-module importance (parameter attribution only). */
+  showImportance?: boolean;
+  importance?: ModuleImportance;
+  onImportanceChange?: (value: ModuleImportance) => void;
+  /** When true, show controlled kind reclassify (business / instance / logical). */
+  showKind?: boolean;
+  kind?: ModuleKind;
+  onKindChange?: (value: "business" | "instance" | "logical") => void;
 }) {
   const [nameTouched, setNameTouched] = useState(false);
   const nameError = getModuleNameError(module.name, existingNames, currentName);
   const visibleNameError = shouldShowFieldError(nameError, { touched: nameTouched, submitted: showErrors });
+  const importanceVisible = showImportance && (!showKind || kind === "business");
 
   return (
     <form className="param-module-def-form" onSubmit={(event) => event.preventDefault()}>
@@ -32,6 +60,40 @@ export function ModuleDefinitionForm({
         />
         {visibleNameError ? <span className="field-error">{nameError}</span> : null}
       </label>
+      {showKind ? (
+        <label>
+          模块类型
+          <select
+            aria-label="模块类型"
+            value={kind === "driver-group" || kind === "unclassified" ? "business" : kind}
+            onChange={(event) =>
+              onKindChange?.(event.target.value as "business" | "instance" | "logical")
+            }
+          >
+            {RECLASSIFY_KIND_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      {importanceVisible ? (
+        <label>
+          重要性
+          <select
+            aria-label="模块重要性"
+            value={importance}
+            onChange={(event) => onImportanceChange?.(event.target.value as ModuleImportance)}
+          >
+            {IMPORTANCE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       <label>
         展示描述
         <textarea

@@ -18,7 +18,7 @@ type ModuleRow = {
   description: string;
   scope: string;
   importance: "medium";
-  kind: "business" | "driver-group" | "instance" | "unclassified";
+  kind: "business" | "driver-group" | "instance" | "logical" | "unclassified";
   origin: "curated" | "auto";
   sourceKey: string | null;
 };
@@ -91,6 +91,15 @@ function createFakeDb(input: {
         hit.sourceKey = hit.sourceKey ?? sourceKey;
         if (kind) hit.kind = kind as ModuleRow["kind"];
         if (origin) hit.origin = origin as ModuleRow["origin"];
+        return { rows: [toDbRow(hit)], rowCount: 1 };
+      }
+      if (text.includes("origin = 'auto'") && text.includes("kind <> $3")) {
+        const [organizationId, moduleId, kind] = values as [string, string, ModuleRow["kind"]];
+        const hit = modules.get(moduleId);
+        if (!hit || hit.organizationId !== organizationId || hit.origin !== "auto" || hit.kind === kind) {
+          return { rows: [], rowCount: 0 };
+        }
+        hit.kind = kind;
         return { rows: [toDbRow(hit)], rowCount: 1 };
       }
       if (text.includes("where organization_id = $1") && text.includes("and id = $2")) {
@@ -297,7 +306,7 @@ describe("resolveBindingInstanceModuleId", () => {
     expect(inserts).toHaveLength(0);
   });
 
-  it("nests Type C instances under the parent instance module", async () => {
+  it("nests Type C logical nodes under the parent module", async () => {
     const { db, modules } = createFakeDb({
       modules: [
         baseModule({
@@ -307,7 +316,7 @@ describe("resolveBindingInstanceModuleId", () => {
           parentId: "mod-battery-balance",
           path: "x/mod-bcb",
           depth: 3,
-          kind: "instance",
+          kind: "logical",
           origin: "auto",
           sourceKey: "node:battery_charge_balance",
         }),
@@ -334,7 +343,58 @@ describe("resolveBindingInstanceModuleId", () => {
     const created = [...modules.values()].find((module) => module.id === moduleId);
     expect(created?.name).toBe("battery0");
     expect(created?.parentId).toBe("mod-bcb");
+    expect(created?.kind).toBe("logical");
     expect(created?.sourceKey).toBe("node:battery_charge_balance/battery0");
+  });
+
+  it("reasserts kind on auto modules found by source_key without touching curated rows", async () => {
+    const sourceKey = "node:btb_check";
+    const { db, modules } = createFakeDb({
+      modules: [
+        baseModule({
+          id: "mod-btb",
+          organizationId: "org-1",
+          name: "btb_check",
+          parentId: "mod-protection",
+          path: "x/mod-btb",
+          depth: 3,
+          kind: "instance",
+          origin: "auto",
+          sourceKey,
+        }),
+        baseModule({
+          id: "mod-curated",
+          organizationId: "org-1",
+          name: "charging_core",
+          parentId: "mod-policy",
+          path: "x/mod-curated",
+          depth: 3,
+          kind: "instance",
+          origin: "curated",
+          sourceKey: "node:charging_core",
+        }),
+      ],
+    });
+
+    const autoId = await resolveBindingInstanceModuleId(db, {
+      organizationId: "org-1",
+      driverModule: null,
+      compatible: null,
+      instanceName: "btb_check",
+      nodeLocator: "/btb_check",
+    });
+    expect(autoId).toBe("mod-btb");
+    expect(modules.get("mod-btb")?.kind).toBe("logical");
+
+    const curatedId = await resolveBindingInstanceModuleId(db, {
+      organizationId: "org-1",
+      driverModule: null,
+      compatible: null,
+      instanceName: "charging_core",
+      nodeLocator: "/charging_core",
+    });
+    expect(curatedId).toBe("mod-curated");
+    expect(modules.get("mod-curated")?.kind).toBe("instance");
   });
 
   it("uses a provisional unclassified child module when compatible is unmapped", async () => {

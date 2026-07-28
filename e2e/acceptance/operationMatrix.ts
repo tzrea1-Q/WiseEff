@@ -850,9 +850,22 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin",
     roles: ["Admin"],
     action:
-      "Exercise kind-scoped tree actions: no delete on instances, rename adopts auto modules, adopted names survive re-ingest.",
+      "Exercise kind-scoped tree actions: no delete on instances or logical nodes, move allowed on logical, rename adopts auto modules, adopted names survive re-ingest.",
     coverage: "automated",
     acceptanceIds: ["MOD-ATTR-TREE-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "MOD-ATTR-RECLASSIFY-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Reclassify a logical module to business via the edit dialog; verify kind badge/filters and that re-ingest keeps the curated kind.",
+    coverage: "automated",
+    acceptanceIds: ["MOD-ATTR-RECLASSIFY-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
     assertions: ["ui", "api"]
   },

@@ -12,12 +12,14 @@ import {
   driverGroupDisplayNameFromCompatible,
   isModuleScaffoldingNode,
   isScaffoldingDriverLabel,
+  normalizeMatchToken,
 } from "./modulePlacement";
 import {
   adoptParameterModuleSourceKey,
   createParameterModule,
   getParameterModuleById,
   getParameterModuleBySourceKey,
+  reassertAutoParameterModuleKind,
 } from "../parameters/parameterModuleRepository";
 import type { ModuleKind } from "../parameters/types";
 import type { Queryable } from "../../shared/database/client";
@@ -30,9 +32,7 @@ import {
 const PROVISIONAL_UNCLASSIFIED_PREFIX = "未分类 · ";
 
 function normalizeMatchValue(value: string | null | undefined): string | null {
-  if (value === null || value === undefined) return null;
-  const trimmed = value.trim().toLowerCase();
-  return trimmed === "" ? null : trimmed;
+  return normalizeMatchToken(value);
 }
 
 function displayInstanceName(instanceName: string | null | undefined): string | null {
@@ -87,7 +87,7 @@ async function findMappedModuleId(
       on pm.id = mm.parameter_module_id and pm.organization_id = mm.organization_id
     where mm.organization_id = $1
       and mm.match_kind = $2
-      and lower(mm.match_value) = $3
+      and lower(trim(both '"' from trim(both '''' from trim(both from mm.match_value)))) = $3
     order by mm.priority desc
     limit 1
     `,
@@ -176,6 +176,13 @@ async function ensureNamedModule(
     sourceKey: input.sourceKey,
   });
   if (byKey) {
+    if (byKey.origin === "auto" && byKey.kind !== input.kind) {
+      await reassertAutoParameterModuleKind(db, {
+        organizationId: input.organizationId,
+        moduleId: byKey.id,
+        kind: input.kind,
+      });
+    }
     return byKey.id;
   }
 
@@ -395,10 +402,10 @@ export async function resolveBindingInstanceModuleId(
       organizationId: input.organizationId,
       name: displayInstance,
       parentId: parentModuleId,
-      kind: "instance",
+      kind: "logical",
       sourceKey: nodeSourceKey(input.nodeLocator, displayInstance),
-      description: `${displayInstance} DTS 实例模块。`,
-      scope: `实例 ${displayInstance}`,
+      description: `${displayInstance} DTS 逻辑节点模块。`,
+      scope: `逻辑节点 ${displayInstance}`,
     });
   }
 

@@ -58,6 +58,9 @@ export type PowerManagementParameterModule = {
   description: string;
   scope: string;
   parent?: string;
+  kind?: "business" | "driver-group" | "instance" | "logical";
+  origin?: "curated" | "auto";
+  sourceKey?: string | null;
 };
 
 export type PowerManagementConfig = {
@@ -85,7 +88,10 @@ const powerManagementConfigSchema = z.object({
         name: z.string(),
         description: z.string(),
         scope: z.string(),
-        parent: z.string().optional()
+        parent: z.string().optional(),
+        kind: z.enum(["business", "driver-group", "instance", "logical"]).optional(),
+        origin: z.enum(["curated", "auto"]).optional(),
+        sourceKey: z.string().nullable().optional()
       })
     )
     .optional(),
@@ -317,12 +323,16 @@ export async function seedM1Parameters(
       const parentPath = module.parent ? modulePathByName.get(module.parent) ?? null : null;
       const modulePath = parentPath ? `${parentPath}/${id}` : id;
       const depth = module.parent ? (modulePath.match(/\//g)?.length ?? 0) + 1 : 1;
+      const kind = module.kind ?? "business";
+      const origin = module.origin ?? (kind === "business" ? "curated" : "auto");
+      const sourceKey = module.sourceKey ?? null;
       const result = await tx.query<{ id: string }>(
         `
         insert into parameter_modules (
-          id, organization_id, parent_id, name, path, depth, sort_order, description, scope
+          id, organization_id, parent_id, name, path, depth, sort_order, description, scope,
+          kind, origin, source_key
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         on conflict (id) do update set
           parent_id = excluded.parent_id,
           name = excluded.name,
@@ -331,6 +341,9 @@ export async function seedM1Parameters(
           sort_order = excluded.sort_order,
           description = coalesce(nullif(excluded.description, ''), parameter_modules.description),
           scope = coalesce(nullif(excluded.scope, ''), parameter_modules.scope),
+          kind = excluded.kind,
+          origin = excluded.origin,
+          source_key = coalesce(excluded.source_key, parameter_modules.source_key),
           updated_at = now()
         returning id
         `,
@@ -343,7 +356,10 @@ export async function seedM1Parameters(
           depth,
           index,
           module.description,
-          module.scope
+          module.scope,
+          kind,
+          origin,
+          sourceKey
         ]
       );
       const persistedId = result.rows[0]?.id ?? id;

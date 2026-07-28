@@ -98,6 +98,29 @@ describe("resolveModuleIdForBinding", () => {
     expect(moduleId).toBe("mod-compatible");
   });
 
+  it("treats DTS-quoted compatible as equal to an unquoted mapping value", async () => {
+    const { db } = createFakeDb({
+      mappings: [
+        {
+          organizationId: "org-1",
+          matchKind: "compatible",
+          matchValue: "mt,mt5788",
+          moduleId: "mod-mt5788",
+          priority: 300,
+        },
+      ],
+    });
+
+    const moduleId = await resolveModuleIdForBinding(db, {
+      organizationId: "org-1",
+      driverModule: "mt5788",
+      compatible: '"mt,mt5788"',
+      instanceName: null,
+    });
+
+    expect(moduleId).toBe("mod-mt5788");
+  });
+
   it("falls back to unclassified when only a retired driver-style signal remains", async () => {
     const { db, insertedModules } = createFakeDb({
       mappings: [],

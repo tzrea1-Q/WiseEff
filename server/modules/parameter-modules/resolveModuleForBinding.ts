@@ -10,6 +10,7 @@
 
 import { createHash } from "node:crypto";
 
+import { normalizeMatchToken } from "./modulePlacement";
 import type { Queryable } from "../../shared/database/client";
 
 export type ModuleBindingMatchKind = "compatible" | "instance";
@@ -17,9 +18,7 @@ export type ModuleBindingMatchKind = "compatible" | "instance";
 const UNCLASSIFIED_MODULE_NAME = "未分类";
 
 function normalizeMatchValue(value: string | null | undefined): string | null {
-  if (value === null || value === undefined) return null;
-  const trimmed = value.trim().toLowerCase();
-  return trimmed === "" ? null : trimmed;
+  return normalizeMatchToken(value);
 }
 
 /** Deterministic id for the org-scoped unclassified module, matching migration 0067's backfill formula. */
@@ -54,7 +53,7 @@ async function findMappedModuleId(
       on pm.id = mm.parameter_module_id and pm.organization_id = mm.organization_id
     where mm.organization_id = $1
       and mm.match_kind = $2
-      and lower(mm.match_value) = $3
+      and lower(trim(both '"' from trim(both '''' from trim(both from mm.match_value)))) = $3
     order by mm.priority desc
     limit 1
     `,

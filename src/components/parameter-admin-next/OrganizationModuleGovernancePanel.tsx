@@ -29,7 +29,15 @@ function pushModuleAudit(
 /**
  * Organization-scoped module tree + driver mapping, composed over the admin facade.
  */
-export function OrganizationModuleGovernancePanel() {
+export function OrganizationModuleGovernancePanel({
+  pathname = "/parameter-admin/modules",
+  search = "",
+  onNavigate
+}: {
+  pathname?: string;
+  search?: string;
+  onNavigate?: (path: string) => void;
+}) {
   const { application, dispatch } = useParameterAdmin();
 
   const repository = useMemo((): ParameterModuleRegistryRepository => {
@@ -55,9 +63,15 @@ export function OrganizationModuleGovernancePanel() {
       async updateModule(moduleId: string, input: UpdateParameterModuleInput) {
         const next = await base.updateModule(moduleId, input);
         if (input.name !== undefined) {
-          pushModuleAudit(dispatch, "module-renamed", `已重命名业务模块为「${input.name}」`);
+          pushModuleAudit(dispatch, "module-renamed", `已更新业务模块「${input.name}」`);
         } else if (input.parentId !== undefined) {
           pushModuleAudit(dispatch, "module-moved", `已移动业务模块 ${moduleId}`);
+        } else if (
+          input.description !== undefined ||
+          input.scope !== undefined ||
+          input.importance !== undefined
+        ) {
+          pushModuleAudit(dispatch, "module-renamed", `已更新业务模块 ${moduleId}`);
         }
         return next;
       },
@@ -93,5 +107,13 @@ export function OrganizationModuleGovernancePanel() {
     };
   }, [application, dispatch]);
 
-  return <ParameterModuleMappingPanel canAdmin repository={repository} />;
+  return (
+    <ParameterModuleMappingPanel
+      canAdmin
+      repository={repository}
+      pathname={pathname}
+      search={search}
+      onNavigate={onNavigate}
+    />
+  );
 }

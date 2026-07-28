@@ -16,6 +16,10 @@ import {
   planInstanceModulePlacements,
   type ResolvedPlacementNode,
 } from "../server/modules/parameter-modules/modulePlacement";
+import {
+  compatibleSourceKey,
+  nodeSourceKey,
+} from "../server/modules/parameter-modules/ensureInstanceModuleForBinding";
 import { isParameterSurfaceRow } from "../server/modules/parameter-topology/parameterSurface";
 import { mergePrimaryDtsBoard, primaryBoardFileName } from "./merge-primary-dts";
 
@@ -62,13 +66,19 @@ export type DtsPowerSeedProjectFile = {
   source: string;
 };
 
+export type DtsPowerSeedModule = {
+  name: string;
+  description: string;
+  scope: string;
+  parent?: string;
+  /** Stated at seed time (ADR-0006) — do not rely on migration backfill. */
+  kind?: "business" | "driver-group" | "instance" | "logical";
+  origin?: "curated" | "auto";
+  sourceKey?: string | null;
+};
+
 export type DtsPowerSeed = {
-  parameterModules: Array<{
-    name: string;
-    description: string;
-    scope: string;
-    parent?: string;
-  }>;
+  parameterModules: DtsPowerSeedModule[];
   parameterLibrary: DtsPowerSeedParameter[];
   projectFiles: DtsPowerSeedProjectFile[];
 };
@@ -445,10 +455,20 @@ export function buildParameterModulesFromResolved(resolved: ResolvedDts): DtsPow
   const placement = planInstanceModulePlacements(toPlacementNodes(resolved), (nodePath) =>
     businessCategoryForNodePath(nodePath),
   );
-  const modules = moduleMetadata.map((module) => ({ ...module }));
+  type SeededModule = DtsPowerSeedModule & {
+    kind: NonNullable<DtsPowerSeedModule["kind"]>;
+    origin: NonNullable<DtsPowerSeedModule["origin"]>;
+    sourceKey: string | null;
+  };
+  const modules: SeededModule[] = moduleMetadata.map((module) => ({
+    ...module,
+    kind: module.kind ?? "business",
+    origin: module.origin ?? "curated",
+    sourceKey: module.sourceKey ?? null
+  }));
   const seen = new Set(modules.map((module) => module.name));
 
-  const ensureModule = (entry: (typeof modules)[number]) => {
+  const ensureModule = (entry: SeededModule) => {
     if (seen.has(entry.name)) return;
     modules.push(entry);
     seen.add(entry.name);
@@ -460,6 +480,9 @@ export function buildParameterModulesFromResolved(resolved: ResolvedDts): DtsPow
       parent: group.businessCategory,
       description: `${group.moduleName} 驱动组（compatible: ${group.compatibleKey}）。`,
       scope: `共享 compatible ${group.compatibleKey} 的实例分组`,
+      kind: "driver-group",
+      origin: "auto",
+      sourceKey: compatibleSourceKey(group.compatibleKey)
     });
   }
 
@@ -468,11 +491,22 @@ export function buildParameterModulesFromResolved(resolved: ResolvedDts): DtsPow
       ? placement.driverGroups.get(instance.compatibleKey)
       : null;
     if (group && instance.moduleName === group.moduleName) continue;
+    const isLogical = instance.taxonomy === "C";
     ensureModule({
       name: instance.moduleName,
       parent: instance.parentModuleName,
-      description: `${instance.moduleName} DTS 实例模块。`,
-      scope: `实例 ${instance.moduleName} 的可管理参数`,
+      description: isLogical
+        ? `${instance.moduleName} DTS 逻辑节点模块。`
+        : `${instance.moduleName} DTS 实例模块。`,
+      scope: isLogical
+        ? `逻辑节点 ${instance.moduleName} 的可管理参数`
+        : `实例 ${instance.moduleName} 的可管理参数`,
+      kind: isLogical ? "logical" : "instance",
+      origin: "auto",
+      sourceKey: nodeSourceKey(
+        instance.nodePath ? `/${instance.nodePath}` : null,
+        instance.moduleName
+      )
     });
   }
 
@@ -481,6 +515,9 @@ export function buildParameterModulesFromResolved(resolved: ResolvedDts): DtsPow
     parent: "Board Identity",
     description: "板级身份参数（board_id 等根级属性）。",
     scope: "板级唯一标识与构建身份",
+    kind: "instance",
+    origin: "auto",
+    sourceKey: nodeSourceKey("/", BOARD_INSTANCE_MODULE_NAME)
   });
 
   return modules;

@@ -35,6 +35,8 @@ function makeReadableDb(): Database {
           name: "充电策略",
           parent_id: null,
           sort_order: 0,
+          description: "",
+          scope: "",
           importance: "high",
           kind: "business",
           origin: "curated",

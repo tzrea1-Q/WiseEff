@@ -17,3 +17,7 @@ We decided the tree keeps one shape but every module **states** two orthogonal f
 - That forces ingest off name-based lookup. `ensureNamedModule` currently finds a module by `(organization_id, parent_id, name)`, so the first human rename makes ingest miss and create a duplicate. Modules gain a stable `source_key` (the compatible for a driver group, the node path for an instance) that ingest matches on instead.
 - The admin UI shows kind-scoped actions rather than the same three buttons on every row, which also stops users from hitting the `RESTRICT` foreign key by trying to delete a module that still has bindings.
 - Importance becomes a property of business categories only; driver groups and instances inherit from the nearest ancestor business category. Before this, every machine-created module kept the `medium` default, so the workbench importance filter partitioned almost nothing.
+
+## Follow-up
+
+ADR-0006 splits nodes without compatible evidence into `kind=logical`, and opens controlled kind correction on the edit path so the "edit to fix a wrong guess" consequence above is actually reachable.

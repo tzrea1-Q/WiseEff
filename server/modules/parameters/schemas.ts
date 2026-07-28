@@ -58,7 +58,11 @@ export const createParameterModuleBodySchema = z.object({
   description: z.string().optional(),
   scope: z.string().optional(),
   sortOrder: z.number().int().optional(),
-  importance: moduleImportanceSchema.optional()
+  importance: moduleImportanceSchema.optional(),
+  /** Admin classify creates driver groups; default remains business. */
+  kind: z.enum(["business", "driver-group"]).optional(),
+  origin: z.enum(["curated", "auto"]).optional(),
+  sourceKey: z.string().min(1).nullable().optional()
 });
 
 export const updateParameterModuleBodySchema = z
@@ -67,7 +71,9 @@ export const updateParameterModuleBodySchema = z
     description: z.string().optional(),
     scope: z.string().optional(),
     sortOrder: z.number().int().optional(),
-    importance: moduleImportanceSchema.optional()
+    importance: moduleImportanceSchema.optional(),
+    /** Manual reclassify — logical nodes are ingest-only on create. */
+    kind: z.enum(["business", "instance", "logical"]).optional()
   })
   .refine((body) => Object.values(body).some((value) => value !== undefined), {
     message: "At least one field is required."

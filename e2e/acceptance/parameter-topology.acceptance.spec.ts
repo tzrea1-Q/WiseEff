@@ -2215,7 +2215,17 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       // @operation MOD-ATTR-TREE-001
       test.skip(
         true,
-        "Pending: playwright coverage for kind-scoped actions and rename adoption across re-ingest."
+        "Pending: playwright coverage for kind-scoped actions (instance/logical no-delete, logical move) and rename adoption across re-ingest."
+      );
+      void page;
+    });
+
+    test("MOD-ATTR-RECLASSIFY-001: logical to business kind correction", async ({ page }) => {
+      // @acceptance MOD-ATTR-RECLASSIFY-001
+      // @operation MOD-ATTR-RECLASSIFY-001
+      test.skip(
+        true,
+        "Pending: playwright coverage for edit-dialog reclassify of logical→business with curated kind surviving re-ingest."
       );
       void page;
     });

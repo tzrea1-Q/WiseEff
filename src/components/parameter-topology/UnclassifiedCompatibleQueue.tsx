@@ -94,11 +94,11 @@ export function UnclassifiedCompatibleQueue({
       </div>
 
       {hints.length === 0 ? null : (
-        <div className="param-admin-library-table">
-          <table className="parameter-spec-library-grid param-admin-library-grid unclassified-compatible-queue__table">
+        <div className="unclassified-compatible-queue__table-wrap">
+          <table className="unclassified-compatible-queue__table">
             <thead>
               <tr>
-                <th scope="col">
+                <th scope="col" className="unclassified-compatible-queue__col-check">
                   <input
                     type="checkbox"
                     aria-label="全选可见行"
@@ -121,7 +121,7 @@ export function UnclassifiedCompatibleQueue({
                     }}
                   />
                 </th>
-                <th scope="col">
+                <th scope="col" className="unclassified-compatible-queue__col-compatible">
                   <div className="table-header-with-filter">
                     <span>{PARAMETER_ADMIN_UI.queueColCompatible}</span>
                     <ColumnFilter
@@ -136,9 +136,13 @@ export function UnclassifiedCompatibleQueue({
                     />
                   </div>
                 </th>
-                <th scope="col">{PARAMETER_ADMIN_UI.queueColBindings}</th>
-                <th scope="col">{PARAMETER_ADMIN_UI.queueColProjects}</th>
-                <th scope="col">
+                <th scope="col" className="unclassified-compatible-queue__col-num">
+                  {PARAMETER_ADMIN_UI.queueColBindings}
+                </th>
+                <th scope="col" className="unclassified-compatible-queue__col-num">
+                  {PARAMETER_ADMIN_UI.queueColProjects}
+                </th>
+                <th scope="col" className="unclassified-compatible-queue__col-suggested">
                   <div className="table-header-with-filter">
                     <span>{PARAMETER_ADMIN_UI.queueColSuggested}</span>
                     <ColumnFilter
@@ -153,7 +157,9 @@ export function UnclassifiedCompatibleQueue({
                     />
                   </div>
                 </th>
-                <th scope="col">{PARAMETER_ADMIN_UI.queueColActions}</th>
+                <th scope="col" className="unclassified-compatible-queue__col-actions">
+                  {PARAMETER_ADMIN_UI.queueColActions}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -164,7 +170,7 @@ export function UnclassifiedCompatibleQueue({
               ) : (
                 visibleHints.map((hint) => (
                   <tr key={hint.compatible}>
-                    <td>
+                    <td className="unclassified-compatible-queue__col-check">
                       <input
                         type="checkbox"
                         aria-label={`选择 ${hint.compatible}`}
@@ -175,14 +181,16 @@ export function UnclassifiedCompatibleQueue({
                         }
                       />
                     </td>
-                    <td>
-                      <code>{hint.compatible}</code>
+                    <td className="unclassified-compatible-queue__col-compatible">
+                      <code title={hint.compatible}>{hint.compatible}</code>
                     </td>
-                    <td>{hint.bindingCount}</td>
-                    <td>{hint.projectCount}</td>
-                    <td>{hint.suggestedGroupName}</td>
-                    <td>
-                      <div className="param-admin-row-actions">
+                    <td className="unclassified-compatible-queue__col-num">{hint.bindingCount}</td>
+                    <td className="unclassified-compatible-queue__col-num">{hint.projectCount}</td>
+                    <td className="unclassified-compatible-queue__col-suggested">
+                      <span title={hint.suggestedGroupName}>{hint.suggestedGroupName}</span>
+                    </td>
+                    <td className="unclassified-compatible-queue__col-actions">
+                      <div className="unclassified-compatible-queue__row-actions">
                         {canAdmin ? (
                           <>
                             <button
@@ -195,7 +203,7 @@ export function UnclassifiedCompatibleQueue({
                             </button>
                             <button
                               type="button"
-                              className="button subtle"
+                              className="button ghost"
                               disabled={busy}
                               onClick={() => onDismiss(hint.compatible)}
                             >

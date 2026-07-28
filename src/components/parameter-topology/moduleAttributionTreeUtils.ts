@@ -5,6 +5,7 @@ export const MODULE_KIND_LABEL: Record<ParameterModule["kind"], string> = {
   business: "业务分类",
   "driver-group": "驱动组",
   instance: "器件实例",
+  logical: "逻辑节点",
   unclassified: "未分类"
 };
 
@@ -79,10 +80,11 @@ export function toBusinessFlatNodes(modules: readonly ParameterModule[]): FlatMo
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
+/** Expand root business categories only — nested business / driver groups stay collapsed. */
 export function defaultExpandedModuleIds(modules: readonly ParameterModule[]): Set<string> {
   return new Set(
     modules
-      .filter((module) => module.kind === "business" || module.kind === "driver-group")
+      .filter((module) => module.kind === "business" && module.parentId === null)
       .map((module) => module.id)
   );
 }
@@ -109,7 +111,7 @@ export type AttributionFilters = {
 };
 
 export const DEFAULT_ATTRIBUTION_FILTERS: AttributionFilters = {
-  kinds: ["business", "driver-group", "instance", "unclassified"],
+  kinds: ["business", "driver-group", "instance", "logical", "unclassified"],
   origins: ["curated", "auto"]
 };
 
@@ -150,22 +152,98 @@ export function buildAttributionTree(
   return buildModuleTree(toAttributionFlatNodes(visible));
 }
 
+/** Org-scoped fallback bucket — read-only on the server; no rename/move/delete. */
+export function isUnclassifiedRoot(module: ParameterModule): boolean {
+  return module.kind === "unclassified" && module.parentId === null;
+}
+
 export function canRenameModule(module: ParameterModule): boolean {
-  return !(module.kind === "unclassified" && module.parentId === null);
+  return !isUnclassifiedRoot(module);
+}
+
+/** Same gate as rename: edit name / description / scope via the module dialog. */
+export function canEditModuleDetails(module: ParameterModule): boolean {
+  return canRenameModule(module);
+}
+
+/** Unclassified root has no mutations; expose a view entry so Admins can inspect / open the queue. */
+export function canViewUnclassifiedRoot(module: ParameterModule): boolean {
+  return isUnclassifiedRoot(module);
+}
+
+export function canAddChildModule(module: ParameterModule): boolean {
+  return module.kind === "business";
 }
 
 export function canMoveModule(module: ParameterModule): boolean {
-  return module.kind === "business" || module.kind === "driver-group";
+  return module.kind === "business" || module.kind === "driver-group" || module.kind === "logical";
+}
+
+export function siblingModuleNames(
+  modules: readonly ParameterModule[],
+  parentId: string | null,
+  excludeId?: string
+): string[] {
+  return modules
+    .filter((module) => module.parentId === parentId && module.id !== excludeId)
+    .map((module) => module.name);
+}
+
+/**
+ * Registry `parameterCount` is direct bindings on that module_id.
+ * Attribution params hang on instance leaves, so parents are usually 0 unless rolled up.
+ * Returns subtree totals (self + all descendants) for tree display.
+ */
+export function aggregateSubtreeParameterCounts(
+  modules: readonly ParameterModule[]
+): ReadonlyMap<string, number> {
+  const direct = new Map(modules.map((module) => [module.id, module.parameterCount]));
+  const childrenByParent = new Map<string, string[]>();
+  for (const module of modules) {
+    if (!module.parentId) continue;
+    const siblings = childrenByParent.get(module.parentId) ?? [];
+    siblings.push(module.id);
+    childrenByParent.set(module.parentId, siblings);
+  }
+
+  const totals = new Map<string, number>();
+  const visiting = new Set<string>();
+
+  const totalFor = (moduleId: string): number => {
+    const cached = totals.get(moduleId);
+    if (cached !== undefined) return cached;
+    if (visiting.has(moduleId)) return direct.get(moduleId) ?? 0;
+    visiting.add(moduleId);
+    let sum = direct.get(moduleId) ?? 0;
+    for (const childId of childrenByParent.get(moduleId) ?? []) {
+      sum += totalFor(childId);
+    }
+    visiting.delete(moduleId);
+    totals.set(moduleId, sum);
+    return sum;
+  };
+
+  for (const module of modules) {
+    totalFor(module.id);
+  }
+  return totals;
 }
 
 export function canDeleteModule(module: ParameterModule): boolean {
   if (module.kind === "instance") return false;
+  if (module.kind === "logical") return false;
   if (module.kind === "unclassified") return false;
   return module.kind === "business" || module.kind === "driver-group";
 }
 
 export function canEditImportance(module: ParameterModule): boolean {
   return module.kind === "business";
+}
+
+/** Manual kind correction among business / instance / logical (ADR-0006). */
+export function canReclassifyModule(module: ParameterModule): boolean {
+  if (isUnclassifiedRoot(module)) return false;
+  return module.kind === "business" || module.kind === "instance" || module.kind === "logical";
 }
 
 export function deleteActionLabel(module: ParameterModule): string {

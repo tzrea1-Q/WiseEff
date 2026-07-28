@@ -68,6 +68,11 @@ describe("driverGroupDisplayNameFromCompatible", () => {
     expect(driverGroupDisplayNameFromCompatible("huawei,bypass_bst_hl7603")).toBe("bypass_bst_hl7603");
     expect(driverGroupDisplayNameFromCompatible("huawei,fm1230")).toBe("fm1230");
   });
+
+  it("strips DTS surrounding quotes before taking the tail", () => {
+    expect(driverGroupDisplayNameFromCompatible('"mt,mt5788"')).toBe("mt5788");
+    expect(driverGroupDisplayNameFromCompatible("'huawei,fm1230'")).toBe("fm1230");
+  });
 });
 
 describe("planInstanceModulePlacements", () => {

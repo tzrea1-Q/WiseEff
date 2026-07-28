@@ -12,6 +12,7 @@ import type {
   ParameterModuleMapping,
   ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
+import { aggregateSubtreeParameterCounts } from "@/components/parameter-topology/moduleAttributionTreeUtils";
 
 type Store = {
   modules: ParameterModule[];
@@ -22,8 +23,13 @@ type Store = {
 };
 
 function cloneRegistry(store: Store): ParameterModuleRegistry {
+  const modules = store.modules.map((module) => ({ ...module }));
+  const subtreeCounts = aggregateSubtreeParameterCounts(modules);
   return {
-    modules: store.modules.map((module) => ({ ...module })),
+    modules: modules.map((module) => ({
+      ...module,
+      parameterCount: subtreeCounts.get(module.id) ?? 0
+    })),
     mappings: store.mappings.map((mapping) => ({ ...mapping }))
   };
 }
@@ -58,6 +64,8 @@ function createSeedStore(): Store {
         name: "充电策略",
         parentId: null,
         sortOrder: 0,
+        description: "充电相关业务分类",
+        scope: "组织",
         importance: "high",
         kind: "business",
         origin: "curated",
@@ -70,6 +78,8 @@ function createSeedStore(): Store {
         name: "电池安全",
         parentId: "mod-charging",
         sortOrder: 1,
+        description: "电池安全子分类",
+        scope: "组织",
         importance: "medium",
         kind: "business",
         origin: "curated",
@@ -151,16 +161,20 @@ export function createMockParameterModuleRegistryRepository(
 
     async createModule(input: CreateParameterModuleInput) {
       moduleSeq += 1;
-      const importance = input.importance ?? "medium";
+      const kind = input.kind ?? "business";
+      const origin = input.origin ?? (kind === "driver-group" ? "auto" : "curated");
+      const importance = kind === "business" ? (input.importance ?? "medium") : "medium";
       store.modules.push({
         id: `mod-mock-${moduleSeq}`,
         name: input.name,
         parentId: input.parentId ?? null,
         sortOrder: input.sortOrder ?? store.modules.length,
+        description: input.description ?? "",
+        scope: input.scope ?? "",
         importance,
-        kind: "business",
-        origin: "curated",
-        sourceKey: null,
+        kind,
+        origin,
+        sourceKey: input.sourceKey ?? null,
         effectiveImportance: importance,
         parameterCount: 0
       });
@@ -176,6 +190,8 @@ export function createMockParameterModuleRegistryRepository(
         target.name = input.name;
         if (target.origin === "auto") target.origin = "curated";
       }
+      if (input.description !== undefined) target.description = input.description;
+      if (input.scope !== undefined) target.scope = input.scope;
       if (input.parentId !== undefined) {
         target.parentId = input.parentId;
         if (target.origin === "auto") target.origin = "curated";
@@ -184,6 +200,13 @@ export function createMockParameterModuleRegistryRepository(
       if (input.importance !== undefined) {
         target.importance = input.importance;
         target.effectiveImportance = input.importance;
+        if (target.origin === "auto") target.origin = "curated";
+      }
+      if (input.kind !== undefined) {
+        target.kind = input.kind;
+        if (input.kind !== "business") {
+          target.importance = "medium";
+        }
         if (target.origin === "auto") target.origin = "curated";
       }
       return cloneRegistry(store);

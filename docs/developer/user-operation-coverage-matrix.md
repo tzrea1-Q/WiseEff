@@ -75,6 +75,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `MOD-ATTR-CLASSIFY-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-BULK-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-TREE-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `MOD-ATTR-RECLASSIFY-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-IMPORTANCE-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 
 ## Deferred Or Conditional Operations

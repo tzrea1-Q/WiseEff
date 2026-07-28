@@ -16,6 +16,7 @@ import {
 
 import {
   isParameterAdminOrganizationEntryPath,
+  parseParameterAdminModulesSubView,
   parseParameterAdminOrganizationPath,
   PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS
 } from "@/application/parameters/parameterAdminOrganizationPath";
@@ -220,10 +221,17 @@ export function getPageByPath(path: string): PageConfig {
   ) {
     const adminNav = navigationItems.find((item) => item.key === "parameter-admin");
     const view = parseParameterAdminOrganizationPath(path);
+    const modulesSub = parseParameterAdminModulesSubView(path);
+    const subtitle =
+      modulesSub === "queue"
+        ? PARAMETER_ADMIN_UI.moduleDiscoveryCompatible
+        : view
+          ? PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS[view]
+          : (adminNav?.subtitle ?? PARAMETER_ADMIN_UI.specLibrary);
     return {
       ...(adminNav as PageConfig),
       path,
-      subtitle: view ? PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS[view] : (adminNav?.subtitle ?? PARAMETER_ADMIN_UI.specLibrary)
+      subtitle
     };
   }
 
