@@ -202,6 +202,22 @@ describe("platform admin role migration invariants", () => {
   });
 });
 
+describe("driver schema overlay platform tier migration invariants", () => {
+  it("renames overlay tables and adds platform tier columns", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0079_driver_schema_platform_tier.sql"),
+      "utf8",
+    );
+    expect(migration).toContain("rename to driver_schema_overlays");
+    expect(migration).toContain("rename to driver_schema_overlay_properties");
+    expect(migration).toContain("alter column organization_id drop not null");
+    expect(migration).toContain("driver_schema_overlays_platform_compatible_active_uidx");
+    expect(migration).toContain("lifecycle in ('draft', 'active', 'deprecated', 'superseded')");
+    expect(migration).toContain("superseded_by_schema_id");
+    expect(migration).toContain("driver_schema_overlay_promotions");
+  });
+});
+
 describe("organization driver schema overlay migration invariants", () => {
   it("adds org-scoped overlay tables with active-compatible uniqueness", () => {
     const migration = readFileSync(

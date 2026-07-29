@@ -4,7 +4,7 @@ import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import {
   driverModuleFromOverlayCompatible,
-} from "./organizationDriverSchemaMaterialize";
+} from "./driverSchemaOverlayMaterialize";
 import { buildManualSpecIds } from "./specIdentity";
 import type { DriverSchema, PropertySpec, SpecReviewTaskDraft } from "./types";
 

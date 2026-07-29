@@ -26,6 +26,8 @@ const migration0074 = "0074_fix_business_misclassified_as_instance.sql";
 const migration0075 = "0075_module_logical_kind.sql";
 const migration0076 = "0076_organization_driver_schemas.sql";
 const migration0077 = "0077_organization_driver_schema_properties_link_specs.sql";
+const migration0078 = "0078_platform_admin_role.sql";
+const migration0079 = "0079_driver_schema_platform_tier.sql";
 
 const enablementMigrations = [
   migration0068,
@@ -38,6 +40,8 @@ const enablementMigrations = [
   migration0075,
   migration0076,
   migration0077,
+  migration0078,
+  migration0079,
 ] as const;
 const REQUIRED_TABLES = [
   "parameter_specs",
@@ -65,8 +69,9 @@ const REQUIRED_TABLES = [
   "audit_subject_links",
   "legacy_parameter_migration_evidence",
   "parameter_draft_identity_invalidations",
-  "organization_driver_schemas",
-  "organization_driver_schema_properties",
+  "driver_schema_overlays",
+  "driver_schema_overlay_properties",
+  "driver_schema_overlay_promotions",
 ] as const;
 
 const databaseAvailable = await isTestDatabaseAvailable();

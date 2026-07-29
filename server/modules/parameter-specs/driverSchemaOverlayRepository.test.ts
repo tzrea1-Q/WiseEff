@@ -7,11 +7,12 @@ import {
   insertOrganizationDriverSchema,
   listOrganizationDriverSchemas,
   setOrganizationDriverSchemaLifecycle,
-  type OrganizationDriverSchemaPropertyRow,
   type OrganizationDriverSchemaRow,
-} from "./organizationDriverSchemaRepository";
+  type OrganizationDriverSchemaPropertyRow,
+} from "./driverSchemaOverlayRepository";
 
 type SchemaState = OrganizationDriverSchemaRow & {
+  superseded_by_schema_id: string | null;
   properties: OrganizationDriverSchemaPropertyRow[];
 };
 
@@ -33,7 +34,7 @@ function createFakeDb() {
   const query = vi.fn(async (text: string, values: unknown[] = []) => {
     const sql = text.replace(/\s+/g, " ").trim().toLowerCase();
 
-    if (sql.includes("insert into organization_driver_schemas")) {
+    if (sql.includes("insert into driver_schema_overlays")) {
       const [
         id,
         organizationId,
@@ -65,7 +66,7 @@ function createFakeDb() {
         )
       ) {
         const error = new Error(
-          'duplicate key value violates unique constraint "organization_driver_schemas_org_compatible_active_uidx"',
+          'duplicate key value violates unique constraint "driver_schema_overlays_org_compatible_active_uidx"',
         ) as Error & { code?: string };
         error.code = "23505";
         throw error;
@@ -84,12 +85,13 @@ function createFakeDb() {
         created_at: now,
         updated_at: now,
         activated_at: activatedAt,
+        superseded_by_schema_id: null,
         properties: [],
       });
       return { rows: [], rowCount: 1 };
     }
 
-    if (sql.includes("insert into organization_driver_schema_properties")) {
+    if (sql.includes("insert into driver_schema_overlay_properties")) {
       const [id, schemaId, parameterSpecId, propertyKey, sortOrder] = values as [
         string,
         string,
@@ -111,7 +113,7 @@ function createFakeDb() {
       specs.set(parameterSpecId, spec);
       schema.properties.push({
         id,
-        organization_driver_schema_id: schemaId,
+        driver_schema_overlay_id: schemaId,
         parameter_spec_id: parameterSpecId,
         parameter_spec_version_id: spec.version_id,
         property_key: propertyKey,
@@ -128,7 +130,7 @@ function createFakeDb() {
     }
 
     if (
-      sql.includes("from organization_driver_schemas") &&
+      sql.includes("from driver_schema_overlays") &&
       sql.includes("organization_id = $1 and id = $2")
     ) {
       const [organizationId, schemaId] = values as [string, string];
@@ -139,7 +141,7 @@ function createFakeDb() {
     }
 
     if (
-      sql.includes("from organization_driver_schemas") &&
+      sql.includes("from driver_schema_overlays") &&
       sql.includes("lower(compatible) = lower($2)") &&
       sql.includes("lifecycle = 'active'")
     ) {
@@ -156,7 +158,7 @@ function createFakeDb() {
     }
 
     if (
-      sql.includes("from organization_driver_schemas") &&
+      sql.includes("from driver_schema_overlays") &&
       sql.includes("organization_id = $1") &&
       sql.includes("($2::text[] is null or lifecycle = any($2::text[]))")
     ) {
@@ -168,13 +170,13 @@ function createFakeDb() {
       return { rows, rowCount: rows.length };
     }
 
-    if (sql.includes("from organization_driver_schema_properties") && sql.includes("= any($1::text[])")) {
+    if (sql.includes("from driver_schema_overlay_properties") && sql.includes("= any($1::text[])")) {
       const [schemaIds] = values as [string[]];
       const rows = schemaIds.flatMap((id) => schemas.get(id)?.properties ?? []);
       return { rows, rowCount: rows.length };
     }
 
-    if (sql.includes("update organization_driver_schemas") && sql.includes("set lifecycle = $3")) {
+    if (sql.includes("update driver_schema_overlays") && sql.includes("set lifecycle = $3")) {
       const [organizationId, schemaId, lifecycle, updatedByUserId] = values as [
         string,
         string,
@@ -194,7 +196,7 @@ function createFakeDb() {
         )
       ) {
         const error = new Error(
-          'duplicate key value violates unique constraint "organization_driver_schemas_org_compatible_active_uidx"',
+          'duplicate key value violates unique constraint "driver_schema_overlays_org_compatible_active_uidx"',
         ) as Error & { code?: string };
         error.code = "23505";
         throw error;

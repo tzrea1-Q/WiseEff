@@ -12,6 +12,9 @@ export type SchemaSource = "linux" | "vendor" | "manual" | "inferred";
 
 export type SpecLifecycle = "draft" | "active" | "deprecated";
 
+/** Overlay row lifecycle includes superseded after platform promotion (ADR-0009). */
+export type OverlayLifecycle = SpecLifecycle | "superseded";
+
 /** Precedence for releasable matches: linux base → vendor add/narrow → reviewed manual gap-fill. */
 export const SCHEMA_SOURCE_PRECEDENCE: Record<SchemaSource, number> = {
   linux: 0,
