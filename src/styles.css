@@ -24211,3 +24211,85 @@ button.dts-topology-navigator__disclosure:focus-visible {
   background: rgba(245, 158, 11, 0.65);
   outline: 1px solid rgba(217, 119, 6, 0.55);
 }
+
+.platform-console-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+.platform-console-page__header h1 {
+  margin: 0 0 8px;
+}
+
+.platform-console-page__error {
+  color: #b91c1c;
+}
+
+.platform-console-page__notice {
+  color: #047857;
+  margin: 12px 0;
+}
+
+.platform-console-candidate-list {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.platform-console-candidate {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.platform-console-candidate__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.platform-console-candidate__meta {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.platform-console-candidate__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.platform-console-contributors-table,
+.platform-console-divergence table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.platform-console-contributors-table th,
+.platform-console-contributors-table td,
+.platform-console-divergence th,
+.platform-console-divergence td {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.platform-console-confirm-dialog {
+  max-width: 520px;
+}
+
+.platform-console-confirm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}

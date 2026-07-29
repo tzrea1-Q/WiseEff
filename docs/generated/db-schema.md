@@ -1123,10 +1123,14 @@ Additive-only tables for topology- and schema-aware parameter identity. Producti
 - M3 debugging persists devices, detected targets, debugging parameters, sessions, snapshots, node operations, and debugging events for the simulator-backed workflow.
 - M4-M5 Agent persists sessions, messages, tool calls, approvals, run traces, provider latency/token/cost metadata, safety status, and fallback reasons. Production object storage, HDC gateway, and live Agent provider seams exist, while real target-environment evidence remains a pilot acceptance responsibility.
 
-### `organization_driver_schemas` (migration `0076`)
+### `driver_schema_overlays` (migrations `0076`, renamed `0079`)
 
-Org-scoped manual driver schema overlays (ADR-0008). Columns: `id`, `organization_id`, `compatible` (exact), `display_name`, `notes`, `lifecycle` (`draft`|`active`|`deprecated`), `version`, authorship timestamps, `activated_at`. Partial unique index on `(organization_id, lower(compatible))` where `lifecycle = 'active'`.
+Organization- and platform-scoped manual driver schema overlays (ADR-0008 / ADR-0009). Columns: `id`, `organization_id` (nullable for platform rows), `compatible` (exact), `display_name`, `notes`, `lifecycle` (`draft`|`active`|`deprecated`|`superseded`), `version`, `superseded_by_schema_id`, authorship timestamps, `activated_at`. Partial unique index on `(organization_id, lower(compatible))` where `lifecycle = 'active'` and `organization_id is not null`; partial unique on `lower(compatible)` where `lifecycle = 'active'` and `organization_id is null` (platform tier).
 
-### `organization_driver_schema_properties` (migration `0076`, aligned `0077`)
+### `driver_schema_overlay_properties` (migrations `0076`/`0077`, renamed `0079`)
 
-Overlay property membership links `parameter_spec_id` (+ denormalized `property_key`, `sort_order`). Types/units/docs live on the linked ParameterSpec / `dts_property_specs`; the overlay does not store a parallel definition. Cascades on schema delete. Unique `(organization_driver_schema_id, property_key)` and `(organization_driver_schema_id, parameter_spec_id)`.
+Overlay property membership links `parameter_spec_id` (+ denormalized `property_key`, `sort_order`). Types/units/docs live on the linked ParameterSpec / `dts_property_specs`. Cascades on overlay delete. Unique `(driver_schema_overlay_id, property_key)` and `(driver_schema_overlay_id, parameter_spec_id)`.
+
+### `driver_schema_overlay_promotions` (migration `0079`)
+
+Promotion provenance: `platform_schema_id`, `source_schema_id`, `source_organization_id`, `promoted_by_user_id`, `promoted_at`, `documentation_source`. Unique `(platform_schema_id, source_schema_id)`.

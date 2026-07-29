@@ -183,7 +183,8 @@ describe("moduleAttributionTreeUtils", () => {
       covered: 2,
       overlayCovered: 1,
       platformCovered: 1,
-      shadowedCount: 0
+      shadowedCount: 0,
+      promotedCount: 0
     });
   });
 
@@ -226,7 +227,8 @@ describe("moduleAttributionTreeUtils", () => {
       covered: 1,
       overlayCovered: 0,
       platformCovered: 1,
-      shadowedCount: 1
+      shadowedCount: 1,
+      promotedCount: 0
     });
   });
 

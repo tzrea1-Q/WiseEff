@@ -376,7 +376,11 @@ export function ParameterModuleMappingPanel({
       );
     } catch (overlayError) {
       setError(
-        overlayError instanceof Error ? overlayError.message : "保存组织解析 schema 失败。"
+        overlayError instanceof Error
+          ? overlayError.message.includes("platform overlay")
+            ? PARAMETER_ADMIN_UI.organizationDriverSchemaPlatformBlocked
+            : overlayError.message
+          : "保存组织解析 schema 失败。",
       );
     } finally {
       setBusy(false);

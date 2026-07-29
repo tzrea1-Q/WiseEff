@@ -59,6 +59,14 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `DRV-SCHEMA-003` | C | Yes | Activating an overlay for a compatible a pinned schema already covers is rejected with an explanation. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-SCHEMA-004` | C | Yes | Activating an overlay for an already-uploaded device upgrades existing provisional specs in place without a re-upload and closes related review tasks. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-CREATE-KIND-001` | C | Yes | Admin creates empty business, driver-group, instance, or logical modules from the attribution tree with parent-kind rules, required compatibles for driver groups, and not-yet-observed markers on empty curated nodes. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PLAT-ROLE-001` | C | No | Platform admin sees `/platform-console` in the sidebar; other roles get permission-denied on direct navigation. | — |
+| `PLAT-ROLE-002` | C | No | Organization Admin cannot grant `platform-admin` and the control is not rendered. | — |
+| `PLAT-ROLE-003` | C | No | Platform admin access to another organization's parameters, logs, and users remains denied. | — |
+| `DRV-PROMOTE-001` | C | No | Overlay shadowed by pinned or platform schema names the replacing tier. | — |
+| `DRV-PROMOTE-002` | C | No | Promoted overlay reads as promoted and links the platform row. | — |
+| `DRV-PROMOTE-003` | C | No | Authoring overlay when platform row covers compatible is refused with reason. | — |
+| `DRV-PROMOTE-004` | C | No | After promotion, org without overlay sees platform-covered compatible on attribution tree. | — |
+| `DRV-PROMOTE-005` | C | No | Console promotion shows cross-tenant blast radius; revert restores contributors. | — |
 | `PARAM-FILE-ADMIN-001` | C | Yes | Admin uploads a project parameter file, lists versions, manual sync creates a `file_sync` draft, and the project files panel renders in `/parameter-admin/projects`. | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
 | `PARAM-FILE-CONFLICT-001` | C | Yes | Admin resolves an open file/UI draft conflict by keeping the file or UI value. | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
 | `PARAM-SPEC-GOVERN-001` | C | Yes | Admin searches ingested parameter specs (distinct sc8562/mt5788 `gpio_int`), opens detail, and resolves a spec review task with governance audit. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |

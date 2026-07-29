@@ -88,6 +88,8 @@ export const PARAMETER_ADMIN_UI = {
   moduleAttributionCoveragePartial: "解析 {covered}/{total}",
   moduleAttributionCoverageCovered: "解析已覆盖",
   moduleAttributionCoverageOverlay: "解析组织覆盖",
+  moduleAttributionCoveragePlatform: "解析平台覆盖",
+  moduleAttributionCoveragePromoted: "解析已晋升至平台",
   moduleAttributionCoverageShadowed: "解析已被遮蔽",
   moduleAttributionCoverageUncovered: "解析未覆盖",
   authorOverlaySchema: "编写解析 schema",
@@ -115,6 +117,8 @@ export const PARAMETER_ADMIN_UI = {
   organizationDriverSchemaCreateNew: "新建定义",
   organizationDriverSchemaSelectSpec: "参数定义",
   organizationDriverSchemaMode: "来源",
+  organizationDriverSchemaPlatformBlocked:
+    "该 compatible 已有 active 平台 overlay，无法新建组织 overlay。",
   queueColCompatible: "compatible",
   queueColBindings: "影响参数",
   queueColProjects: "涉及项目",

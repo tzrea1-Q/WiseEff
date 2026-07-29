@@ -127,7 +127,18 @@ export type DriverCoverageSummary = {
   overlayCovered: number;
   platformCovered: number;
   shadowedCount: number;
+  promotedCount: number;
 };
+
+export function isPromotedParseCoverage(
+  coverage: DriverRegistryEntry["parseCoverages"][number]["coverage"],
+): boolean {
+  return Boolean(
+    coverage.covered &&
+      coverage.scope === "organization" &&
+      coverage.shadowedBy?.some((entry) => entry.scope === "platform"),
+  );
+}
 
 export function isOverlayParseCoverage(coverage: DriverRegistryEntry["parseCoverages"][number]["coverage"]): boolean {
   return coverage.covered && coverage.scope === "organization";
@@ -150,10 +161,13 @@ export function summarizeDriverCoverage(
     let overlayCovered = 0;
     let platformCovered = 0;
     let shadowedCount = 0;
+    let promotedCount = 0;
     for (const row of entry.parseCoverages) {
       if (!row.coverage.covered) continue;
       covered += 1;
-      if (isShadowedParseCoverage(row.coverage)) {
+      if (isPromotedParseCoverage(row.coverage)) {
+        promotedCount += 1;
+      } else if (isShadowedParseCoverage(row.coverage)) {
         shadowedCount += 1;
       }
       if (isOverlayParseCoverage(row.coverage)) {
@@ -162,7 +176,7 @@ export function summarizeDriverCoverage(
         platformCovered += 1;
       }
     }
-    map.set(entry.moduleId, { total, covered, overlayCovered, platformCovered, shadowedCount });
+    map.set(entry.moduleId, { total, covered, overlayCovered, platformCovered, shadowedCount, promotedCount });
   }
   return map;
 }
