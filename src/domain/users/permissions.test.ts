@@ -4,6 +4,7 @@ import {
   getPlatformRole,
   getRolesByDiscipline,
   migrateLegacyRoleId,
+  pickPrimaryPlatformRoleId,
   platformRoles,
   roleCanBeAssignedToWorkflowSlot,
   roleHasPermission,
@@ -24,6 +25,13 @@ describe("platform user roles", () => {
       "admin",
       "platform-admin"
     ]);
+  });
+
+  it("picks the highest-ranked binding as the primary UI role", () => {
+    expect(pickPrimaryPlatformRoleId(["admin", "platform-admin"])).toBe("platform-admin");
+    expect(pickPrimaryPlatformRoleId(["platform-admin", "admin"])).toBe("platform-admin");
+    expect(pickPrimaryPlatformRoleId(["hardware-user", "admin"])).toBe("admin");
+    expect(pickPrimaryPlatformRoleId([])).toBe("guest");
   });
 
   it("maps legacy prototype roles into platform roles", () => {

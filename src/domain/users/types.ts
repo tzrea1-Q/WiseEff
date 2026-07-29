@@ -192,6 +192,17 @@ export function comparePlatformRoles(left: string, right: string): number {
   return roleRank[migrateLegacyRoleId(left)] - roleRank[migrateLegacyRoleId(right)];
 }
 
+/**
+ * When a user holds multiple role bindings, the UI active role is the highest-ranked
+ * one so platform-admin is not shadowed by a co-bound admin (roles[0] order is unstable).
+ */
+export function pickPrimaryPlatformRoleId(roleIds: readonly string[]): PlatformRoleId {
+  if (roleIds.length === 0) return "guest";
+  return roleIds
+    .map((roleId) => migrateLegacyRoleId(roleId))
+    .reduce((best, roleId) => (comparePlatformRoles(roleId, best) > 0 ? roleId : best));
+}
+
 export function getRolesByDiscipline(discipline: RoleDiscipline): PlatformRole[] {
   return platformRoles.filter((role) => "discipline" in role && role.discipline === discipline);
 }
