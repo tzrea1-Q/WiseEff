@@ -327,7 +327,8 @@ function createModuleRegistry(
                 covered: true as const,
                 pattern: "vendor,sc8562",
                 driverId: "drv-1",
-                source: "yaml"
+                source: "yaml",
+                scope: "platform" as const
               }
             }
           ]

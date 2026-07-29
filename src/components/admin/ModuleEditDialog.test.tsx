@@ -28,7 +28,8 @@ describe("ModuleEditDialog", () => {
             covered: true,
             pattern: "vendor,sc8562*",
             source: "manual",
-            driverId: "driver:org/org-1/vendor,sc8562:v1"
+            driverId: "driver:org/org-1/vendor,sc8562:v1",
+            scope: "organization"
           },
           { compatible: "vendor,other", covered: false }
         ]}
@@ -62,7 +63,7 @@ describe("ModuleEditDialog", () => {
           { id: "m2", matchKind: "compatible", matchValue: "vendor,other" }
         ]}
         compatibleCoverages={[
-          { compatible: "vendor,sc8562", covered: true, pattern: "vendor,sc8562*" },
+          { compatible: "vendor,sc8562", covered: true, pattern: "vendor,sc8562*", scope: "platform" },
           { compatible: "vendor,other", covered: false }
         ]}
         onSave={vi.fn()}

@@ -161,6 +161,13 @@ export function ParameterModuleMappingPanel({
         pattern?: string;
         source?: string;
         driverId?: string;
+        scope?: "platform" | "organization";
+        shadowedBy?: Array<{
+          pattern: string;
+          driverId: string;
+          source: string;
+          scope: "platform" | "organization";
+        }>;
       }>
     >();
     for (const entry of driverRegistry) {
@@ -171,7 +178,9 @@ export function ParameterModuleMappingPanel({
           covered: coverage.covered,
           pattern: coverage.covered ? coverage.pattern : undefined,
           source: coverage.covered ? coverage.source : undefined,
-          driverId: coverage.covered ? coverage.driverId : undefined
+          driverId: coverage.covered ? coverage.driverId : undefined,
+          scope: coverage.covered ? coverage.scope : undefined,
+          shadowedBy: coverage.covered ? coverage.shadowedBy : undefined
         }))
       );
     }

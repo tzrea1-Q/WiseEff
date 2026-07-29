@@ -33,6 +33,13 @@ export type ModuleEditCompatibleCoverage = {
   pattern?: string;
   source?: string;
   driverId?: string;
+  scope?: "platform" | "organization";
+  shadowedBy?: Array<{
+    pattern: string;
+    driverId: string;
+    source: string;
+    scope: "platform" | "organization";
+  }>;
 };
 
 export function ModuleEditDialog({
@@ -168,16 +175,17 @@ export function ModuleEditDialog({
                     const showPattern =
                       Boolean(coverage?.pattern) &&
                       coverage?.pattern !== mapping.matchValue;
-                    const isOverlay =
-                      coverage?.covered &&
-                      coverage.source === "manual" &&
-                      coverage.driverId != null &&
-                      String(coverage.driverId).includes(":org/");
+                    const isShadowed =
+                      Boolean(coverage?.covered) &&
+                      Boolean(coverage?.shadowedBy && coverage.shadowedBy.length > 0);
+                    const isOverlay = coverage?.covered && coverage.scope === "organization";
                     const coverageLabel = !coverage?.covered
                       ? PARAMETER_ADMIN_UI.driverRegistryCoverageUncovered
-                      : isOverlay
-                        ? PARAMETER_ADMIN_UI.driverRegistryCoverageOverlay
-                        : PARAMETER_ADMIN_UI.driverRegistryCoverageCovered;
+                      : isShadowed
+                        ? PARAMETER_ADMIN_UI.driverRegistryCoverageShadowed
+                        : isOverlay
+                          ? PARAMETER_ADMIN_UI.driverRegistryCoverageOverlay
+                          : PARAMETER_ADMIN_UI.driverRegistryCoverageCovered;
                     return (
                       <li key={mapping.id}>
                         <div className="module-edit-compatible-rules__rule">

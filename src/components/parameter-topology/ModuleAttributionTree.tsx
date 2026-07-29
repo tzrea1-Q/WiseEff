@@ -122,6 +122,9 @@ function formatCoverageChip(summary: DriverCoverageSummary): {
     return { label: PARAMETER_ADMIN_UI.moduleAttributionCoverageUncovered, uncovered: true };
   }
   if (summary.covered >= summary.total) {
+    if (summary.shadowedCount > 0) {
+      return { label: PARAMETER_ADMIN_UI.moduleAttributionCoverageShadowed, uncovered: false };
+    }
     if (summary.overlayCovered > 0) {
       return { label: PARAMETER_ADMIN_UI.moduleAttributionCoverageOverlay, uncovered: false };
     }

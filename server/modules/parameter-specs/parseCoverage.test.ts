@@ -58,6 +58,7 @@ describe("lookupParseCoverage", () => {
       pattern: "sc8562",
       driverId: "sc8562",
       source: "vendor",
+      scope: "platform",
     });
   });
 
@@ -75,19 +76,88 @@ describe("lookupParseCoverage", () => {
       pattern: "sc85*",
       driverId: "sc85-family",
       source: "vendor",
+      scope: "platform",
     });
   });
 
-  it("agrees with matchDriver on whether a node is covered", () => {
+  it("picks vendor over an earlier linux prefix instead of array order", () => {
     const registry = registryOf(
-      driver({ id: "exact", compatible: "sc8562" }),
+      driver({
+        id: "linux-family",
+        compatible: "sc85*",
+        patterns: ["sc85*"],
+        source: "linux",
+      }),
+      driver({ id: "vendor-exact", compatible: "sc8562", source: "vendor" }),
+    );
+
+    expect(lookupParseCoverage("sc8562", registry)).toEqual({
+      covered: true,
+      pattern: "sc8562",
+      driverId: "vendor-exact",
+      source: "vendor",
+      scope: "platform",
+      shadowedBy: [
+        {
+          pattern: "sc85*",
+          driverId: "linux-family",
+          source: "linux",
+          scope: "platform",
+        },
+      ],
+    });
+  });
+
+  it("reports organization scope for an overlay and shadows it when a pinned vendor also matches", () => {
+    const registry = registryOf(
+      driver({
+        id: "driver:org/org-a/sc8562:v1",
+        compatible: "sc8562",
+        source: "manual",
+      }),
+      driver({ id: "vendor-exact", compatible: "sc8562", source: "vendor" }),
+    );
+
+    expect(lookupParseCoverage("sc8562", registry)).toEqual({
+      covered: true,
+      pattern: "sc8562",
+      driverId: "vendor-exact",
+      source: "vendor",
+      scope: "platform",
+      shadowedBy: [
+        {
+          pattern: "sc8562",
+          driverId: "driver:org/org-a/sc8562:v1",
+          source: "manual",
+          scope: "organization",
+        },
+      ],
+    });
+  });
+
+  it("agrees with matchDriver on the chosen driver when both are covered", () => {
+    const registry = registryOf(
+      driver({
+        id: "linux-family",
+        compatible: "sc85*",
+        patterns: ["sc85*"],
+        source: "linux",
+      }),
+      driver({ id: "vendor-exact", compatible: "sc8562", source: "vendor" }),
       driver({ id: "prefix", compatible: "mt57*", patterns: ["mt57*"] }),
     );
 
     for (const compatible of ["sc8562", "mt5788", "vendor,orphan"]) {
       const coverage = lookupParseCoverage(compatible, registry);
-      const decision = matchDriver({ name: "n", compatible: [compatible], properties: {}, nodeLocator: "/n" }, registry);
+      const decision = matchDriver(
+        { name: "n", compatible: [compatible], properties: {}, nodeLocator: "/n" },
+        registry,
+      );
       expect(coverage.covered).toBe(decision.kind === "matched");
+      if (coverage.covered && decision.kind === "matched") {
+        expect(coverage.driverId).toBe(decision.value.id);
+        expect(coverage.source).toBe(decision.value.source);
+      }
     }
   });
 });
