@@ -5,7 +5,7 @@ export type AcceptanceOperationAssertion = "ui" | "api" | "db" | "audit" | "scre
 export type AcceptanceOperation = {
   id: string;
   priority: AcceptanceOperationPriority;
-  area: "auth" | "shell" | "parameters" | "logs" | "debugging" | "agent" | "permissions" | "notifications" | "product-feedback";
+  area: "auth" | "shell" | "parameters" | "logs" | "debugging" | "agent" | "permissions" | "notifications" | "product-feedback" | "platform";
   route: string;
   roles: string[];
   action: string;
