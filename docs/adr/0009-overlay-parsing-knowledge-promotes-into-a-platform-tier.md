@@ -30,4 +30,4 @@ We decided that overlay parsing knowledge is **promotable**, and that the promot
 
 ## Follow-up
 
-This record fixes the direction; nothing ships with it. The organization overlay remains the only writable tier, and the structure it already has — nullable-ready scoping, a total tier order, per-organization cache keys, and full authorship provenance — is what makes the promotion additive rather than a migration. The cheapest first increment is the pair of signals: the "your overlay is shadowed / was promoted" chip on the attribution tree, and the cross-organization duplicate report. Both are reads over existing data, and together they turn "should this be promoted" from an unanswerable question into a queue.
+Implemented: platform tier storage, matcher split, promotion API, platform console, org-facing shadowed/promoted signals, and `platform-admin`. Remaining: browser Playwright evidence for `PLAT-ROLE-*` / `DRV-PROMOTE-*`, and optional DB-level double-write integration coverage for promote-in-place ParameterSpec ids.

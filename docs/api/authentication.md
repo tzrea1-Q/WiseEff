@@ -51,7 +51,7 @@ Access tokens must include `sub` and organization claims. The trusted OIDC token
 ]
 ```
 
-Allowed role ids are `guest`, `hardware-user`, `software-user`, `hardware-committer`, `software-committer`, and `admin`. Unsupported role ids are rejected.
+Allowed role ids are `guest`, `hardware-user`, `software-user`, `hardware-committer`, `software-committer`, `admin`, and `platform-admin`. Unsupported role ids are rejected. Self-service registration never accepts `admin` or `platform-admin`. Only a caller who already holds `platform-admin` may grant or revoke that role through user governance.
 
 ## Production Mode With Local Accounts
 

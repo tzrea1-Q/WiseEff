@@ -38,6 +38,10 @@ Current frontend permissions include:
 - `parameter:review`
 - `admin:access`
 - `users:manage`
+- `platform:access` (platform console; `platform-admin` only)
+- `platform:schema-promote` (cross-org overlay promotion; `platform-admin` only)
+
+`platform-admin` is the first cross-organization role. It keeps a home organization on `AuthContext` and does **not** widen access to other tenants' parameters, logs, users, or projects. It unlocks platform-scoped rows (`organization_id IS NULL`) and one bounded aggregate read (promotion candidates). Only a caller who already holds `platform-admin` may grant or revoke that role. Platform-scoped audit events may use a null `organization_id` and fan out one organization-scoped event per affected tenant; ordinary list endpoints still filter by the caller's organization.
 
 When adding backend business routes, map frontend capabilities to server-side authorization checks and include negative tests for forbidden users.
 

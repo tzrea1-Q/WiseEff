@@ -303,7 +303,12 @@ Additive semantic surface used by the topology/schema program. Production remain
 | `POST` | `/api/v2/organization-driver-schemas` | Admin create draft overlay (`{ compatible, displayName, notes?, properties[] }`). Each property is either `{ parameterSpecId }` (link definition library) or `{ propertyKey, valueShape, … }` (create/ensure the org manual ParameterSpec then link). Exact compatible only; rejects when a pinned releasable schema already covers the compatible (`409`). Returns `{ item }` (`201`). |
 | `PATCH` | `/api/v2/organization-driver-schemas/:schemaId` | Admin update draft overlay metadata/properties (same property link/create shape). Active property sets are immutable. |
 | `POST` | `/api/v2/organization-driver-schemas/:schemaId/activate` | Activate overlay: merges into org schema registry, upgrades matching provisional manual specs in place, resolves related open review tasks. Returns `{ schema, upgradedSpecIds, resolvedReviewTaskIds }`. |
-| `POST` | `/api/v2/organization-driver-schemas/:schemaId/deprecate` | Deprecate an overlay so it no longer participates in matching. |
+| `POST` | `/api/v2/organization-driver-schemas/:schemaId/deprecate` | Deprecate an overlay so it no longer participates in matching. Rejects create/activate when an active **platform** overlay already covers the compatible. |
+| `GET` | `/api/v2/platform/driver-schemas/promotion-candidates` | `platform:schema-promote` only. Cross-org aggregate of active organization overlays grouped by `lower(compatible)`. Fixed projection: compatible, contributor organization ids, property keys/shapes, equivalence verdict, divergence (if any), existing platform overlay ids. Does **not** return full overlay records. |
+| `POST` | `/api/v2/platform/driver-schemas/promotions` | `platform:schema-promote`. Body `{ compatible, documentationSourceOrganizationId? }`. Requires equivalent contributors. Writes platform overlay (`organization_id IS NULL`), promotes linked ParameterSpecs in place, marks contributors `superseded`, invalidates every org schema registry cache, fans out platform + per-tenant audit. |
+| `POST` | `/api/v2/platform/driver-schemas/promotions/:promotionId/revert` | `platform:schema-promote`. Deprecates the platform overlay and restores contributor overlays to `active`. |
+
+`DriverRegistryParseCoverage` when covered includes `scope: "platform" | "organization"` and optional `shadowedBy[]` for lower-tier matches that lost to the chosen tier.
 
 `MappingApplyPreview` shape: `{ affectedBindings, byProject: [{ projectId, count }], fromModules: [{ moduleId, moduleName, count }], toModuleId, emptiedModules, conflicts }`.
 

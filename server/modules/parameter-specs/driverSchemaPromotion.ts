@@ -84,12 +84,49 @@ function contributorProjection(schema: OrganizationDriverSchemaRecord): Contribu
     documentationByKey[property.propertyKey] = property.documentation ?? "";
   }
   return {
-    organizationId: schema.organizationId,
+    organizationId: schema.organizationId!,
     schemaId: schema.id,
     propertyKeys: properties.map((property) => property.propertyKey).sort(),
     properties,
     documentationByKey,
   };
+}
+
+/** Exported for unit tests — promotion eligibility without I/O. */
+export function areContributorsEquivalent(
+  overlays: readonly OrganizationDriverSchemaRecord[],
+): boolean {
+  return equivalenceVerdict(overlays.map(contributorProjection)).equivalent;
+}
+
+/** Exported for unit tests — fixed projection shape without DB. */
+export function projectPromotionCandidates(
+  overlays: readonly OrganizationDriverSchemaRecord[],
+): PromotionCandidateProjection[] {
+  const grouped = new Map<string, OrganizationDriverSchemaRecord[]>();
+  for (const overlay of overlays) {
+    const key = overlay.compatible.toLowerCase();
+    const list = grouped.get(key) ?? [];
+    list.push(overlay);
+    grouped.set(key, list);
+  }
+  const items: PromotionCandidateProjection[] = [];
+  for (const group of grouped.values()) {
+    const contributors = group.map(contributorProjection);
+    const verdict = equivalenceVerdict(contributors);
+    items.push({
+      compatible: group[0].compatible,
+      contributorOrganizationIds: contributors.map((entry) => entry.organizationId),
+      contributorCount: contributors.length,
+      propertyKeys: verdict.propertyKeys,
+      contributors,
+      equivalent: verdict.equivalent,
+      ...(verdict.divergence ? { divergence: verdict.divergence } : {}),
+      hasActivePlatformOverlay: false,
+    });
+  }
+  items.sort((left, right) => left.compatible.localeCompare(right.compatible));
+  return items;
 }
 
 function equivalenceVerdict(contributors: ContributorProjection[]): {

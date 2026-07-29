@@ -28,5 +28,6 @@
 - [docs/zh-CN/runbooks/staging-deployment.md](staging-deployment.md)
 - [docs/zh-CN/runbooks/backup-restore.md](backup-restore.md)
 - [docs/zh-CN/runbooks/parameter-identity-cutover.md](parameter-identity-cutover.md)
+- [docs/zh-CN/runbooks/platform-admin-and-schema-promotion.md](platform-admin-and-schema-promotion.md)
 - [docs/zh-CN/runbooks/hdc-device-lab.md](hdc-device-lab.md)
 - [docs/zh-CN/runbooks/adb-device-lab.md](adb-device-lab.md)：本机真实 ADB 设备证据采集。
