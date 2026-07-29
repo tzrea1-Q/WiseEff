@@ -75,7 +75,7 @@ describe("ModuleAttributionTree", () => {
         onMove={vi.fn()}
         onDelete={onDelete}
         onRemoveMapping={onRemoveMapping}
-        onCreateBusinessModule={vi.fn()}
+        onCreateModule={vi.fn()}
       />
     );
 
@@ -105,7 +105,7 @@ describe("ModuleAttributionTree", () => {
     fireEvent.click(within(tree).getByRole("button", { name: "SC8562 更多操作" }));
     expect(screen.getByRole("menuitem", { name: "解散驱动组 SC8562" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "移动模块 SC8562" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /添加子模块到 SC8562/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /添加子模块到 SC8562/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "移动模块 SC8562" }));
     const moveDialog = screen.getByRole("dialog", { name: "移动模块 SC8562" });
@@ -139,7 +139,7 @@ describe("ModuleAttributionTree", () => {
         onMove={vi.fn()}
         onDelete={vi.fn()}
         onRemoveMapping={vi.fn()}
-        onCreateBusinessModule={vi.fn()}
+        onCreateModule={vi.fn()}
       />
     );
 
@@ -165,7 +165,7 @@ describe("ModuleAttributionTree", () => {
   });
 
   it("opens create and edit dialogs for module details including importance", () => {
-    const onCreateBusinessModule = vi.fn();
+    const onCreateModule = vi.fn();
     const onUpdateModule = vi.fn();
 
     render(
@@ -177,12 +177,12 @@ describe("ModuleAttributionTree", () => {
         onMove={vi.fn()}
         onDelete={vi.fn()}
         onRemoveMapping={vi.fn()}
-        onCreateBusinessModule={onCreateBusinessModule}
+        onCreateModule={onCreateModule}
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "新建业务分类" }));
-    const createDialog = screen.getByRole("dialog", { name: "新增根模块" });
+    fireEvent.click(screen.getByRole("button", { name: "新建模块" }));
+    const createDialog = screen.getByRole("dialog", { name: "新建模块" });
     fireEvent.change(within(createDialog).getByLabelText("模块名称"), {
       target: { value: "热管理" }
     });
@@ -196,13 +196,16 @@ describe("ModuleAttributionTree", () => {
       target: { value: "组织" }
     });
     fireEvent.click(within(createDialog).getByRole("button", { name: "创建" }));
-    expect(onCreateBusinessModule).toHaveBeenCalledWith({
-      name: "热管理",
-      description: "散热相关",
-      scope: "组织",
-      importance: "high",
-      parentId: null
-    });
+    expect(onCreateModule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "热管理",
+        description: "散热相关",
+        scope: "组织",
+        importance: "high",
+        parentId: null,
+        kind: "business"
+      })
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "修改模块 Power" }));
     const editDialog = screen.getByRole("dialog", { name: "修改模块 Power" });
@@ -229,7 +232,7 @@ describe("ModuleAttributionTree", () => {
         onMove={vi.fn()}
         onDelete={vi.fn()}
         onRemoveMapping={vi.fn()}
-        onCreateBusinessModule={vi.fn()}
+        onCreateModule={vi.fn()}
       />
     );
 
@@ -270,7 +273,7 @@ describe("ModuleAttributionTree", () => {
         onMove={vi.fn()}
         onDelete={vi.fn()}
         onRemoveMapping={vi.fn()}
-        onCreateBusinessModule={vi.fn()}
+        onCreateModule={vi.fn()}
       />
     );
 
@@ -297,12 +300,154 @@ describe("ModuleAttributionTree", () => {
         onMove={vi.fn()}
         onDelete={vi.fn()}
         onRemoveMapping={vi.fn()}
-        onCreateBusinessModule={vi.fn()}
+        onCreateModule={vi.fn()}
       />
     );
 
     fireEvent.click(within(tree).getByRole("button", { name: "查看 未分类" }));
     expect(onOpenUnclassifiedQueue).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog", { name: "查看未分类" })).not.toBeInTheDocument();
+  });
+
+  it("shows overlay coverage chip when fully covered by organization schema", () => {
+    const overlayGroup: ParameterModule = {
+      ...modules[1]!,
+      id: "mod-overlay",
+      name: "OverlayDG"
+    };
+    const coverage = new Map([
+      ["mod-overlay", { total: 1, covered: 1, overlayCovered: 1, platformCovered: 0 }]
+    ]);
+
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={[modules[0]!, overlayGroup]}
+        mappings={[]}
+        driverCoverage={coverage}
+        onUpdateModule={vi.fn()}
+        onMove={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveMapping={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    const tree = screen.getByRole("tree", { name: "模块归属树" });
+    expect(within(tree).getByText("· 解析组织覆盖")).toBeInTheDocument();
+  });
+
+  it("shows parse coverage chips and filters to uncovered driver groups", () => {
+    const coveredGroup: ParameterModule = {
+      ...modules[1]!,
+      id: "mod-covered",
+      name: "CoveredDG",
+      parameterCount: 2
+    };
+    const uncoveredGroup: ParameterModule = {
+      ...modules[1]!,
+      id: "mod-uncovered",
+      name: "UncoveredDG",
+      parameterCount: 0,
+      origin: "curated"
+    };
+    const coverage = new Map([
+      ["mod-covered", { total: 2, covered: 2, overlayCovered: 0, platformCovered: 2 }],
+      ["mod-uncovered", { total: 2, covered: 0, overlayCovered: 0, platformCovered: 0 }],
+      ["mod-group", { total: 2, covered: 1, overlayCovered: 0, platformCovered: 1 }]
+    ]);
+    const details = new Map([
+      [
+        "mod-group",
+        [
+          { compatible: "vendor,sc8562", covered: true, pattern: "vendor,sc8562" },
+          { compatible: "vendor,other", covered: false }
+        ]
+      ]
+    ]);
+
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={[modules[0]!, modules[1]!, coveredGroup, uncoveredGroup]}
+        mappings={[
+          ...mappings,
+          {
+            id: "map-2",
+            moduleId: "mod-group",
+            matchKind: "compatible",
+            matchValue: "vendor,other",
+            priority: 100
+          }
+        ]}
+        driverCoverage={coverage}
+        driverCoverageDetails={details}
+        onUpdateModule={vi.fn()}
+        onMove={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveMapping={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    const tree = screen.getByRole("tree", { name: "模块归属树" });
+    expect(within(tree).getByText("· 解析已覆盖")).toBeInTheDocument();
+    expect(within(tree).getByText("· 解析未覆盖")).toBeInTheDocument();
+    expect(within(tree).getByText("· 解析 1/2")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "只看解析未覆盖" }));
+    expect(within(tree).queryByText("CoveredDG")).not.toBeInTheDocument();
+    expect(within(tree).getByText("UncoveredDG")).toBeInTheDocument();
+    expect(within(tree).getByText("SC8562")).toBeInTheDocument();
+
+    fireEvent.click(within(tree).getByRole("button", { name: "修改模块 SC8562" }));
+    const editDialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    expect(within(editDialog).getByText("已覆盖")).toBeInTheDocument();
+    expect(within(editDialog).getByText("未覆盖")).toBeInTheDocument();
+  });
+
+  it("closes the module editor before handing off to overlay schema authoring", () => {
+    const onAuthorOverlaySchema = vi.fn();
+    const uncovered = new Map([
+      [
+        "mod-group",
+        [
+          {
+            compatible: "vendor,orphan",
+            coverage: { covered: false, pattern: null, driverId: null, source: null }
+          }
+        ]
+      ]
+    ]);
+
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={modules}
+        mappings={[
+          {
+            id: "map-orphan",
+            moduleId: "mod-group",
+            matchKind: "compatible",
+            matchValue: "vendor,orphan",
+            priority: 100
+          }
+        ]}
+        driverCoverageDetails={uncovered}
+        onUpdateModule={vi.fn()}
+        onMove={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveMapping={vi.fn()}
+        onCreateModule={vi.fn()}
+        onAuthorOverlaySchema={onAuthorOverlaySchema}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
+    expect(screen.getByRole("dialog", { name: "修改模块 SC8562" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "编写解析 schema" }));
+    expect(onAuthorOverlaySchema).toHaveBeenCalledWith("vendor,orphan");
+    expect(screen.queryByRole("dialog", { name: "修改模块 SC8562" })).not.toBeInTheDocument();
   });
 });

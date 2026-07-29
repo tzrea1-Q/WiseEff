@@ -24,10 +24,12 @@ import {
   canViewUnclassifiedRoot,
   countInstanceChildren,
   defaultExpandedModuleIds,
+  isNotYetObservedModule,
   isUnclassifiedRoot,
   mappingsForModule,
   siblingModuleNames,
-  type AttributionFilters
+  type AttributionFilters,
+  type DriverCoverageSummary
 } from "./moduleAttributionTreeUtils";
 
 export type ModuleAttributionTreeProps = {
@@ -35,6 +37,13 @@ export type ModuleAttributionTreeProps = {
   mappings: readonly ParameterModuleMapping[];
   canAdmin?: boolean;
   busy?: boolean;
+  /** Parse coverage rollup from listDriverRegistry (moduleId → summary). */
+  driverCoverage?: ReadonlyMap<string, DriverCoverageSummary>;
+  /** Per-compatible coverage rows keyed by moduleId (for edit dialog detail). */
+  driverCoverageDetails?: ReadonlyMap<
+    string,
+    readonly { compatible: string; covered: boolean; pattern?: string }[]
+  >;
   /** When set, 「查看」on the unclassified root prefers opening the queue. */
   hasUnclassifiedQueue?: boolean;
   onOpenUnclassifiedQueue?: () => void;
@@ -55,13 +64,17 @@ export type ModuleAttributionTreeProps = {
     moduleId: string;
     matchValue: string;
   }) => void | Promise<void>;
-  onCreateBusinessModule: (input: {
+  onCreateModule: (input: {
     name: string;
     description?: string;
     scope?: string;
-    importance: ModuleImportance;
+    importance?: ModuleImportance;
     parentId?: string | null;
+    kind?: "business" | "driver-group" | "instance" | "logical";
+    compatibles?: string[];
+    sourceKey?: string | null;
   }) => void | Promise<void>;
+  onAuthorOverlaySchema?: (compatible: string) => void;
 };
 
 const KIND_FILTER_OPTIONS = (Object.keys(MODULE_KIND_LABEL) as Array<ParameterModule["kind"]>).map(
@@ -89,6 +102,7 @@ type RowProps = {
   modulesById: ReadonlyMap<string, ParameterModule>;
   modules: readonly ParameterModule[];
   mappings: readonly ParameterModuleMapping[];
+  driverCoverage?: ReadonlyMap<string, DriverCoverageSummary>;
   expandedIds: ReadonlySet<string>;
   canAdmin: boolean;
   busy: boolean;
@@ -100,12 +114,37 @@ type RowProps = {
   onDelete: (id: string) => void;
 };
 
+function formatCoverageChip(summary: DriverCoverageSummary): {
+  label: string;
+  uncovered: boolean;
+} {
+  if (summary.total === 0) {
+    return { label: PARAMETER_ADMIN_UI.moduleAttributionCoverageUncovered, uncovered: true };
+  }
+  if (summary.covered >= summary.total) {
+    if (summary.overlayCovered > 0) {
+      return { label: PARAMETER_ADMIN_UI.moduleAttributionCoverageOverlay, uncovered: false };
+    }
+    return { label: PARAMETER_ADMIN_UI.moduleAttributionCoverageCovered, uncovered: false };
+  }
+  if (summary.covered === 0) {
+    return { label: PARAMETER_ADMIN_UI.moduleAttributionCoverageUncovered, uncovered: true };
+  }
+  return {
+    label: PARAMETER_ADMIN_UI.moduleAttributionCoveragePartial
+      .replace("{covered}", String(summary.covered))
+      .replace("{total}", String(summary.total)),
+    uncovered: true
+  };
+}
+
 function ModuleAttributionTreeRow({
   node,
   depth,
   modulesById,
   modules,
   mappings,
+  driverCoverage,
   expandedIds,
   canAdmin,
   busy,
@@ -125,6 +164,9 @@ function ModuleAttributionTreeRow({
   const compatibleCount = mappingsForModule(mappings, module.id).filter(
     (mapping) => mapping.matchKind === "compatible"
   ).length;
+  const coverageSummary =
+    module.kind === "driver-group" ? driverCoverage?.get(module.id) : undefined;
+  const coverageChip = coverageSummary ? formatCoverageChip(coverageSummary) : null;
 
   return (
     <li
@@ -169,6 +211,11 @@ function ModuleAttributionTreeRow({
           {module.origin === "auto" ? (
             <span className="module-attribution-tree__origin">{MODULE_ORIGIN_LABEL.auto}</span>
           ) : null}
+          {isNotYetObservedModule(module) ? (
+            <span className="module-attribution-tree__not-yet-observed">
+              {PARAMETER_ADMIN_UI.driverRegistryNotYetObserved}
+            </span>
+          ) : null}
         </div>
 
         <div className="module-attribution-tree__meta">
@@ -176,6 +223,15 @@ function ModuleAttributionTreeRow({
           {module.kind === "driver-group" && compatibleCount > 0 ? (
             <span className="module-attribution-tree__rules-summary">
               · {compatibleCount} 条 compatible
+            </span>
+          ) : null}
+          {coverageChip ? (
+            <span
+              className={`module-attribution-tree__coverage-chip${
+                coverageChip.uncovered ? " is-uncovered" : ""
+              }`}
+            >
+              · {coverageChip.label}
             </span>
           ) : null}
           {!isExpanded && module.kind === "driver-group" && instanceCount > 0 ? (
@@ -209,6 +265,7 @@ function ModuleAttributionTreeRow({
               modulesById={modulesById}
               modules={modules}
               mappings={mappings}
+              driverCoverage={driverCoverage}
               expandedIds={expandedIds}
               canAdmin={canAdmin}
               busy={busy}
@@ -234,6 +291,8 @@ export function ModuleAttributionTree({
   mappings,
   canAdmin = false,
   busy = false,
+  driverCoverage,
+  driverCoverageDetails,
   hasUnclassifiedQueue = false,
   onOpenUnclassifiedQueue,
   onUpdateModule,
@@ -241,7 +300,8 @@ export function ModuleAttributionTree({
   onDelete,
   onRemoveMapping,
   onAddCompatibleMapping,
-  onCreateBusinessModule
+  onCreateModule,
+  onAuthorOverlaySchema
 }: ModuleAttributionTreeProps) {
   const [filters, setFilters] = useState<AttributionFilters>(DEFAULT_ATTRIBUTION_FILTERS);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() =>
@@ -261,7 +321,10 @@ export function ModuleAttributionTree({
     });
   }, [modules]);
 
-  const tree = useMemo(() => buildAttributionTree(modules, filters), [filters, modules]);
+  const tree = useMemo(
+    () => buildAttributionTree(modules, filters, driverCoverage),
+    [filters, modules, driverCoverage]
+  );
   const modulesById = useMemo(
     () => new Map(modules.map((module) => [module.id, module])),
     [modules]
@@ -277,6 +340,10 @@ export function ModuleAttributionTree({
     ? (modulesById.get(viewingUnclassifiedId) ?? null)
     : null;
   const movingModule = moveModuleId ? (modulesById.get(moveModuleId) ?? null) : null;
+  const editingCompatibleCoverages =
+    editingModule?.kind === "driver-group"
+      ? (driverCoverageDetails?.get(editingModule.id) ?? undefined)
+      : undefined;
 
   const toggleExpanded = (moduleId: string) => {
     setExpandedIds((current) => {
@@ -300,12 +367,15 @@ export function ModuleAttributionTree({
   };
 
   const handleCreate = (draft: ModuleCreateSaveDraft) => {
-    void onCreateBusinessModule({
+    void onCreateModule({
       name: draft.name,
       description: draft.description,
       scope: draft.scope,
-      importance: draft.importance ?? "medium",
-      parentId: createParentId ?? null
+      importance: draft.importance,
+      parentId: draft.parentId !== undefined ? draft.parentId : (createParentId ?? null),
+      kind: draft.kind ?? "business",
+      compatibles: draft.compatibles,
+      sourceKey: draft.sourceKey
     });
     closeCreateDialog();
   };
@@ -343,7 +413,7 @@ export function ModuleAttributionTree({
               disabled={busy}
               onClick={() => setCreateParentId(null)}
             >
-              新建业务分类
+              新建模块
             </button>
           ) : null}
         </div>
@@ -370,6 +440,32 @@ export function ModuleAttributionTree({
               }))
             }
           />
+          <label className="module-attribution-tree__filter-toggle">
+            <input
+              type="checkbox"
+              checked={filters.hideNotYetObserved}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  hideNotYetObserved: event.target.checked
+                }))
+              }
+            />
+            <span>{PARAMETER_ADMIN_UI.moduleAttributionHideNotYetObserved}</span>
+          </label>
+          <label className="module-attribution-tree__filter-toggle">
+            <input
+              type="checkbox"
+              checked={filters.onlyUncoveredParse}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  onlyUncoveredParse: event.target.checked
+                }))
+              }
+            />
+            <span>{PARAMETER_ADMIN_UI.moduleAttributionOnlyUncoveredParse}</span>
+          </label>
         </div>
       </div>
 
@@ -386,6 +482,7 @@ export function ModuleAttributionTree({
               modulesById={modulesById}
               modules={modules}
               mappings={mappings}
+              driverCoverage={driverCoverage}
               expandedIds={expandedIds}
               canAdmin={canAdmin}
               busy={busy}
@@ -405,6 +502,9 @@ export function ModuleAttributionTree({
           existingNames={siblingModuleNames(modules, createParentId ?? null)}
           parentName={createParent?.name ?? null}
           showImportance
+          allowKindSelect
+          modules={modules}
+          initialParentId={createParentId ?? null}
           onCancel={closeCreateDialog}
           onCreate={handleCreate}
         />
@@ -424,6 +524,7 @@ export function ModuleAttributionTree({
                 )
               : undefined
           }
+          compatibleCoverages={editingCompatibleCoverages}
           onCancel={() => setEditingModuleId(null)}
           onSave={handleSaveEdit}
           onRemoveCompatibleMapping={
@@ -435,6 +536,15 @@ export function ModuleAttributionTree({
             editingModule.kind === "driver-group" && onAddCompatibleMapping
               ? (matchValue) =>
                   void onAddCompatibleMapping({ moduleId: editingModule.id, matchValue })
+              : undefined
+          }
+          canAdmin={canAdmin}
+          onAuthorOverlaySchema={
+            onAuthorOverlaySchema
+              ? (compatible) => {
+                  setEditingModuleId(null);
+                  onAuthorOverlaySchema(compatible);
+                }
               : undefined
           }
         />

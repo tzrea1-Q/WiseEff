@@ -29,7 +29,7 @@ import {
   upsertOccurrenceSpecDecision,
   type PersistedMatcherOverride,
 } from "../parameter-specs/repository";
-import { loadSchemaRegistry } from "../parameter-specs/schemaLoader";
+import { getCachedOrganizationSchemaRegistry } from "../parameter-specs/schemaRegistryCache";
 import type { MatchableNode, SchemaRegistry, SpecReviewTaskDraft } from "../parameter-specs/types";
 import { resolveBindingInstanceModuleId } from "../parameter-modules/ensureInstanceModuleForBinding";
 import { BOARD_INSTANCE_MODULE_NAME } from "../parameter-modules/modulePlacement";
@@ -899,7 +899,10 @@ async function ingestConfigRevisionTx(
     }
   }
 
-  const registry = loadSchemaRegistry(schemasRoot);
+  const registry = await getCachedOrganizationSchemaRegistry(tx, {
+    schemasRoot,
+    organizationId: manifest.organizationId,
+  });
 
   const continuity = await buildLogicalRevisionsWithContinuity(tx, {
     effectiveNodes: resolved.effective.nodesByLocator,

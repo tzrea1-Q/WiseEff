@@ -2320,12 +2320,54 @@ export async function createParameterModuleForAuth(
   const organizationId = auth.organization.id;
   const name = body.name.trim();
   const parentId = body.parentId ?? null;
+  const kind = body.kind ?? "business";
 
+  let parent: ParameterModuleDto | null = null;
   if (parentId) {
-    const parent = await getParameterModuleById(db, { organizationId, moduleId: parentId });
+    parent = await getParameterModuleById(db, { organizationId, moduleId: parentId });
     if (!parent) {
       throw new ApiError("NOT_FOUND", "Parent parameter module was not found.", 404, { parentId });
     }
+  }
+
+  if (kind === "business") {
+    if (parent && parent.kind !== "business") {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Business modules must be root or under another business module.",
+        400,
+        { parentId, parentKind: parent.kind }
+      );
+    }
+  } else if (kind === "driver-group" || kind === "logical") {
+    if (!parent || parent.kind !== "business") {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        `${kind} modules must be created under a business category.`,
+        400,
+        { parentId, parentKind: parent?.kind ?? null }
+      );
+    }
+  } else if (kind === "instance") {
+    if (!parent || parent.kind !== "driver-group") {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Instance modules must be created under a driver group.",
+        400,
+        { parentId, parentKind: parent?.kind ?? null }
+      );
+    }
+  }
+
+  if (kind === "driver-group") {
+    const { registerOrClaimDriver } = await import("../parameter-modules/service");
+    const result = await registerOrClaimDriver(db, auth, {
+      displayName: name,
+      businessCategoryId: parentId as string,
+      compatibles: body.compatibles ?? [],
+      notes: body.description?.trim()
+    });
+    return result.item;
   }
 
   const existing = await getParameterModuleByName(db, { organizationId, name, parentId });
@@ -2333,9 +2375,10 @@ export async function createParameterModuleForAuth(
     throw new ApiError("CONFLICT", "Parameter module already exists under this parent.", 409, { name, parentId });
   }
 
+  const sourceKey =
+    kind === "instance" || kind === "logical" ? (body.sourceKey?.trim() || null) : null;
+
   return db.transaction(async (tx) => {
-    const kind = body.kind ?? "business";
-    const origin = body.origin ?? (kind === "driver-group" ? "auto" : "curated");
     const module = await createParameterModule(tx, {
       organizationId,
       name,
@@ -2345,8 +2388,8 @@ export async function createParameterModuleForAuth(
       sortOrder: body.sortOrder,
       importance: kind === "business" ? body.importance : undefined,
       kind,
-      origin,
-      sourceKey: body.sourceKey ?? null
+      origin: "curated",
+      sourceKey
     });
 
     await createParameterModuleAudit(
@@ -2355,7 +2398,12 @@ export async function createParameterModuleForAuth(
       {
         kind: "parameter-module-admin-create",
         action: "create",
-        module
+        module,
+        metadata: {
+          kind,
+          sourceKey,
+          compatibles: body.compatibles ?? []
+        }
       },
       context
     );

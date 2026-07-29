@@ -881,5 +881,109 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["MOD-ATTR-IMPORTANCE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
     assertions: ["ui", "api"]
+  },
+  {
+    id: "DRV-REG-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Register a driver before any upload and confirm it appears as a not-yet-observed curated driver group with a parse-coverage chip in the tree.",
+    coverage: "automated",
+    acceptanceIds: ["DRV-REG-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "DRV-REG-002",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Claim an observed-but-unregistered driver from the queue or module tree and confirm origin becomes curated.",
+    coverage: "automated",
+    acceptanceIds: ["DRV-REG-002"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "DRV-REG-003",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Upload a DTS and confirm the one-shot ingest summary reports matched registered drivers and new unregistered compatibles.",
+    coverage: "automated",
+    acceptanceIds: ["DRV-REG-003"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "DRV-SCHEMA-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Author and activate an organization overlay schema from an uncovered driver group; confirm the coverage chip shows organization coverage.",
+    coverage: "automated",
+    acceptanceIds: ["DRV-SCHEMA-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "DRV-SCHEMA-002",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Upload a DTS claimed only by an active organization overlay and confirm typed bindings without unmatched review tasks for defined properties.",
+    coverage: "automated",
+    acceptanceIds: ["DRV-SCHEMA-002"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "DRV-SCHEMA-003",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Attempt to activate an overlay for a compatible already covered by a pinned schema and confirm a clear rejection.",
+    coverage: "automated",
+    acceptanceIds: ["DRV-SCHEMA-003"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "DRV-SCHEMA-004",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Activate an overlay for an already-uploaded device and confirm provisional specs upgrade in place without re-upload.",
+    coverage: "automated",
+    acceptanceIds: ["DRV-SCHEMA-004"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "MOD-ATTR-CREATE-KIND-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action:
+      "Create empty business, driver-group, instance, and logical modules from the attribution tree with parent-kind rules and required driver-group compatibles; confirm empty curated nodes show not-yet-observed.",
+    coverage: "automated",
+    acceptanceIds: ["MOD-ATTR-CREATE-KIND-001"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
   }
 ];

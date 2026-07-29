@@ -11,6 +11,7 @@ export type UnclassifiedCompatibleQueueProps = {
   selectedCompatibles: readonly string[];
   onSelectionChange: (next: string[]) => void;
   onClassify: (hints: UnmappedCompatibleHint[]) => void;
+  onClaim?: (hint: UnmappedCompatibleHint) => void;
   onDismiss: (compatible: string) => void;
 };
 
@@ -34,6 +35,7 @@ export function UnclassifiedCompatibleQueue({
   selectedCompatibles,
   onSelectionChange,
   onClassify,
+  onClaim,
   onDismiss
 }: UnclassifiedCompatibleQueueProps) {
   const [compatibleFilter, setCompatibleFilter] = useState<string[]>([]);
@@ -201,6 +203,16 @@ export function UnclassifiedCompatibleQueue({
                             >
                               {PARAMETER_ADMIN_UI.classifyCompatible}
                             </button>
+                            {onClaim ? (
+                              <button
+                                type="button"
+                                className="button subtle"
+                                disabled={busy}
+                                onClick={() => onClaim(hint)}
+                              >
+                                {PARAMETER_ADMIN_UI.claimDriver}
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               className="button ghost"

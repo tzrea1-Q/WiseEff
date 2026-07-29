@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import {
+  driverModuleFromOverlayCompatible,
+} from "./organizationDriverSchemaMaterialize";
+import { buildManualSpecIds } from "./specIdentity";
 import type { DriverSchema, PropertySpec, SpecReviewTaskDraft } from "./types";
 
 type ReviewTaskRow = {
@@ -1124,22 +1128,52 @@ function driverSchemaRootId(driverSchemaId: string): string {
   return driverSchemaId.replace(/:v\d+$/, "");
 }
 
+function organizationIdFromOverlayNamespace(schemaNamespace: string): string | null {
+  const match = /^org\/([^/]+)\//.exec(schemaNamespace);
+  return match?.[1] ?? null;
+}
+
+function compatibleFromOverlayNamespace(schemaNamespace: string): string | null {
+  const match = /^org\/[^/]+\/(.+)$/.exec(schemaNamespace);
+  return match?.[1] ?? null;
+}
+
 /**
  * Ensure ParameterSpec (+ version) and dts_property_specs rows exist for a matched property.
  * Binding FKs require these rows before createOrReuseBinding / upsertBindingRevisionValues.
+ * Org overlay matches write organization-scoped manual specs so they share identity with
+ * provisional surface rows (ADR-0008).
  */
 export async function upsertMatchedPropertySpec(
   db: Queryable,
   property: PropertySpec,
 ): Promise<{ parameterSpecId: string; parameterSpecVersionId: string }> {
-  const specificationKey = `${property.schemaNamespace}/${property.propertyKey}`;
+  const overlayOrgId =
+    property.source === "manual" ? organizationIdFromOverlayNamespace(property.schemaNamespace) : null;
+  const overlayCompatible = overlayOrgId
+    ? compatibleFromOverlayNamespace(property.schemaNamespace)
+    : null;
+  const manualIds =
+    overlayOrgId && overlayCompatible
+      ? buildManualSpecIds({
+          organizationId: overlayOrgId,
+          propertyKey: property.propertyKey,
+          driverModule: driverModuleFromOverlayCompatible(overlayCompatible),
+        })
+      : null;
+
   await db.query(
     `
     insert into parameter_specs (id, organization_id, source_kind, specification_key)
-    values ($1, null, 'dts', $2)
+    values ($1, $2, $3, $4)
     on conflict (id) do nothing
     `,
-    [property.parameterSpecId, specificationKey],
+    [
+      property.parameterSpecId,
+      overlayOrgId,
+      overlayOrgId ? "manual" : "dts",
+      manualIds?.specificationKey ?? `${property.schemaNamespace}/${property.propertyKey}`,
+    ],
   );
   await db.query(
     `
@@ -1181,13 +1215,13 @@ export async function upsertMatchedPropertySpec(
       documentation = excluded.documentation
     `,
     [
-      `dps:${property.parameterSpecId}`,
+      manualIds?.dtsPropertySpecId ?? `dps:${property.parameterSpecId}`,
       property.parameterSpecId,
       // Prefer null here; callers upsert drivers first and may patch later.
       // Avoid FK failures when driver_schemas row is not yet present.
       null,
       property.propertyKey,
-      property.schemaNamespace,
+      manualIds?.schemaNamespace ?? property.schemaNamespace,
       property.units ?? null,
       JSON.stringify(property.constraints ?? {}),
       property.documentation ?? null,
@@ -1209,16 +1243,23 @@ export async function upsertMatchedDriverSchema(
   driver: DriverSchema,
 ): Promise<{ driverSchemaId: string; driverSchemaVersionId: string }> {
   const rootId = driverSchemaRootId(driver.id);
+  const overlayOrgId =
+    driver.source === "manual" ? organizationIdFromOverlayNamespace(driver.schemaNamespace) : null;
   const driverParamSpecId = `pspec:driver:${driver.schemaNamespace}`;
   const driverParamVersionId = `psv:driver:${driver.schemaNamespace}:v${driver.version}`;
 
   await db.query(
     `
     insert into parameter_specs (id, organization_id, source_kind, specification_key)
-    values ($1, null, 'dts', $2)
+    values ($1, $2, $3, $4)
     on conflict (id) do nothing
     `,
-    [driverParamSpecId, `driver/${driver.schemaNamespace}`],
+    [
+      driverParamSpecId,
+      overlayOrgId,
+      overlayOrgId ? "manual" : "dts",
+      `driver/${driver.schemaNamespace}`,
+    ],
   );
   await db.query(
     `
@@ -1241,10 +1282,10 @@ export async function upsertMatchedDriverSchema(
   await db.query(
     `
     insert into driver_schemas (id, parameter_spec_id, organization_id, schema_namespace)
-    values ($1, $2, null, $3)
+    values ($1, $2, $3, $4)
     on conflict (id) do nothing
     `,
-    [rootId, driverParamSpecId, driver.schemaNamespace],
+    [rootId, driverParamSpecId, overlayOrgId, driver.schemaNamespace],
   );
   await db.query(
     `

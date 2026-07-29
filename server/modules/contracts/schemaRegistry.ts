@@ -218,6 +218,59 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "RecomputeBindingModulesResponse",
     additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterModules.listDriverRegistry": {
+    summary: "List curated driver-group registry entries with parse coverage",
+    tags: ["parameter-modules"],
+    responseBody: "DriverRegistryListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterModules.registerDriver": {
+    summary: "Register or claim a driver group with exact compatible mappings",
+    tags: ["parameter-modules"],
+    requestBody: "RegisterOrClaimDriverRequest",
+    responseBody: "RegisterOrClaimDriverResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterSpecs.listOrganizationDriverSchemas": {
+    summary: "List organization-owned manual driver schema overlays",
+    tags: ["parameters"],
+    responseBody: "OrganizationDriverSchemaListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterSpecs.getOrganizationDriverSchema": {
+    summary: "Get one organization driver schema overlay",
+    tags: ["parameters"],
+    responseBody: "OrganizationDriverSchemaResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterSpecs.createOrganizationDriverSchema": {
+    summary: "Create a draft organization driver schema overlay",
+    tags: ["parameters"],
+    requestBody: "CreateOrganizationDriverSchemaRequest",
+    responseBody: "OrganizationDriverSchemaResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterSpecs.updateOrganizationDriverSchema": {
+    summary: "Update a draft organization driver schema overlay",
+    tags: ["parameters"],
+    requestBody: "UpdateOrganizationDriverSchemaRequest",
+    responseBody: "OrganizationDriverSchemaResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterSpecs.activateOrganizationDriverSchema": {
+    summary: "Activate an organization driver schema overlay and upgrade provisional specs",
+    tags: ["parameters"],
+    responseBody: "ActivateOrganizationDriverSchemaResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterSpecs.deprecateOrganizationDriverSchema": {
+    summary: "Deprecate an organization driver schema overlay",
+    tags: ["parameters"],
+    responseBody: "OrganizationDriverSchemaResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
 
   "parameters.admin.listProjects": {
     summary: "List projects for parameter admin",

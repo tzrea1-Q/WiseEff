@@ -1,11 +1,12 @@
 import { CircleX } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type {
   ModuleImportance,
   ModuleKind,
   ParameterModuleMapping
 } from "@/domain/parameter-topology/moduleRegistry";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
+import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { canSubmitModuleDraft, ModuleDefinitionForm } from "./ModuleDefinitionForm";
 
 export type ModuleEditSavePatch = ParameterModuleDraft & {
@@ -26,17 +27,28 @@ export type ModuleEditCompatibleMapping = Pick<
   "id" | "matchKind" | "matchValue"
 >;
 
+export type ModuleEditCompatibleCoverage = {
+  compatible: string;
+  covered: boolean;
+  pattern?: string;
+  source?: string;
+  driverId?: string;
+};
+
 export function ModuleEditDialog({
   module,
   existingNames,
   showImportance = false,
   showKind = false,
   compatibleMappings,
+  compatibleCoverages,
   busy = false,
   onSave,
   onCancel,
   onRemoveCompatibleMapping,
-  onAddCompatibleMapping
+  onAddCompatibleMapping,
+  onAuthorOverlaySchema,
+  canAdmin = false
 }: {
   module: EditableModule;
   existingNames: readonly string[];
@@ -44,11 +56,15 @@ export function ModuleEditDialog({
   showKind?: boolean;
   /** Driver-group compatible levers shown as editable attributes (ADR-0005). */
   compatibleMappings?: readonly ModuleEditCompatibleMapping[];
+  /** Optional parse-coverage detail per compatible (from driver registry). */
+  compatibleCoverages?: readonly ModuleEditCompatibleCoverage[];
   busy?: boolean;
   onSave: (patch: ModuleEditSavePatch) => void;
   onCancel: () => void;
   onRemoveCompatibleMapping?: (mappingId: string) => void | Promise<void>;
   onAddCompatibleMapping?: (matchValue: string) => void | Promise<void>;
+  onAuthorOverlaySchema?: (compatible: string) => void;
+  canAdmin?: boolean;
 }) {
   const addFieldId = useId();
   const [draft, setDraft] = useState<ParameterModuleDraft>({
@@ -92,6 +108,13 @@ export function ModuleEditDialog({
   const trimmedCompatible = newCompatible.trim();
   const canAddCompatible =
     Boolean(onAddCompatibleMapping) && trimmedCompatible.length > 0 && !busy;
+  const coverageByCompatible = useMemo(() => {
+    const map = new Map<string, ModuleEditCompatibleCoverage>();
+    for (const row of compatibleCoverages ?? []) {
+      map.set(row.compatible, row);
+    }
+    return map;
+  }, [compatibleCoverages]);
 
   return (
     <div className="modal-backdrop param-admin-module-edit-backdrop" role="dialog" aria-modal="true" aria-label={`修改模块 ${module.name}`}>
@@ -140,34 +163,74 @@ export function ModuleEditDialog({
 
               {(compatibleMappings?.length ?? 0) > 0 ? (
                 <ul className="module-edit-compatible-rules__list">
-                  {compatibleMappings!.map((mapping) => (
-                    <li key={mapping.id}>
-                      <code>
-                        {mapping.matchKind}:{mapping.matchValue}
-                      </code>
-                      {onRemoveCompatibleMapping ? (
-                        <button
-                          type="button"
-                          className="button ghost"
-                          disabled={busy}
-                          aria-label={`移除规则 ${mapping.matchKind}:${mapping.matchValue}`}
-                          onClick={() => {
-                            const label = `${mapping.matchKind}:${mapping.matchValue}`;
-                            if (
-                              !window.confirm(
-                                `确定移除规则 ${label}？\n命中该 compatible 的参数将在下次归属解析时重新落点。`
-                              )
-                            ) {
-                              return;
-                            }
-                            void onRemoveCompatibleMapping(mapping.id);
-                          }}
-                        >
-                          移除
-                        </button>
-                      ) : null}
-                    </li>
-                  ))}
+                  {compatibleMappings!.map((mapping) => {
+                    const coverage = coverageByCompatible.get(mapping.matchValue);
+                    const showPattern =
+                      Boolean(coverage?.pattern) &&
+                      coverage?.pattern !== mapping.matchValue;
+                    const isOverlay =
+                      coverage?.covered &&
+                      coverage.source === "manual" &&
+                      coverage.driverId != null &&
+                      String(coverage.driverId).includes(":org/");
+                    const coverageLabel = !coverage?.covered
+                      ? PARAMETER_ADMIN_UI.driverRegistryCoverageUncovered
+                      : isOverlay
+                        ? PARAMETER_ADMIN_UI.driverRegistryCoverageOverlay
+                        : PARAMETER_ADMIN_UI.driverRegistryCoverageCovered;
+                    return (
+                      <li key={mapping.id}>
+                        <div className="module-edit-compatible-rules__rule">
+                          <code>
+                            {mapping.matchKind}:{mapping.matchValue}
+                          </code>
+                          {coverage ? (
+                            <span
+                              className={`module-edit-compatible-rules__coverage${
+                                coverage.covered ? "" : " is-uncovered"
+                              }`}
+                            >
+                              {coverageLabel}
+                              {showPattern ? ` · ${coverage.pattern}` : ""}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="module-edit-compatible-rules__actions">
+                          {!coverage?.covered && canAdmin && onAuthorOverlaySchema ? (
+                            <button
+                              type="button"
+                              className="button subtle"
+                              disabled={busy}
+                              onClick={() => onAuthorOverlaySchema(mapping.matchValue)}
+                            >
+                              {PARAMETER_ADMIN_UI.authorOverlaySchema}
+                            </button>
+                          ) : null}
+                          {onRemoveCompatibleMapping ? (
+                          <button
+                            type="button"
+                            className="button ghost"
+                            disabled={busy}
+                            aria-label={`移除规则 ${mapping.matchKind}:${mapping.matchValue}`}
+                            onClick={() => {
+                              const label = `${mapping.matchKind}:${mapping.matchValue}`;
+                              if (
+                                !window.confirm(
+                                  `确定移除规则 ${label}？\n命中该 compatible 的参数将在下次归属解析时重新落点。`
+                                )
+                              ) {
+                                return;
+                              }
+                              void onRemoveCompatibleMapping(mapping.id);
+                            }}
+                          >
+                            移除
+                          </button>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <p className="muted module-edit-compatible-rules__empty">尚未挂接 compatible 规则。</p>

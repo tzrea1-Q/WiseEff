@@ -7,16 +7,18 @@ import {
 } from "./parameterAdminOrganizationPath";
 
 describe("parameterAdminOrganizationPath · modules sub-views", () => {
-  it("maps modules and modules/queue to the modules organization view", () => {
+  it("maps modules, modules/queue, and modules/registry to the modules organization view", () => {
     expect(parseParameterAdminOrganizationPath("/parameter-admin/modules")).toBe("modules");
     expect(parseParameterAdminOrganizationPath("/parameter-admin/modules/queue")).toBe("modules");
+    expect(parseParameterAdminOrganizationPath("/parameter-admin/modules/registry")).toBe("modules");
     expect(parseParameterAdminOrganizationPath("/parameter-admin/modules/other")).toBeNull();
   });
 
-  it("distinguishes tree vs queue sub-views", () => {
+  it("distinguishes tree and queue; legacy registry path falls back to tree", () => {
     expect(parseParameterAdminModulesSubView("/parameter-admin/modules")).toBe("tree");
     expect(parseParameterAdminModulesSubView("/parameter-admin/modules/")).toBe("tree");
     expect(parseParameterAdminModulesSubView("/parameter-admin/modules/queue")).toBe("queue");
+    expect(parseParameterAdminModulesSubView("/parameter-admin/modules/registry")).toBe("tree");
     expect(parseParameterAdminModulesSubView("/parameter-admin/specs")).toBeNull();
   });
 

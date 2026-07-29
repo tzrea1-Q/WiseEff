@@ -85,6 +85,20 @@ const SEED_REGISTRY: ParameterModuleRegistry = {
       parameterCount: 12
     },
     {
+      id: "mod-sc8562",
+      name: "SC8562",
+      parentId: "mod-charging",
+      sortOrder: 0,
+      description: "",
+      scope: "",
+      importance: "medium",
+      kind: "driver-group",
+      origin: "curated",
+      sourceKey: "compatible:vendor,sc8562",
+      effectiveImportance: "high",
+      parameterCount: 8
+    },
+    {
       id: "mod-battery",
       name: "电池安全",
       parentId: "mod-charging",
@@ -102,7 +116,7 @@ const SEED_REGISTRY: ParameterModuleRegistry = {
   mappings: [
     {
       id: "map-sc8562",
-      moduleId: "mod-charging",
+      moduleId: "mod-sc8562",
       matchKind: "compatible",
       matchValue: "vendor,sc8562",
       priority: 100
@@ -184,6 +198,7 @@ function createModuleRegistry(
     createModule: vi.fn(async (input) => {
       moduleSeq += 1;
       const importance = input.importance ?? "medium";
+      const kind = input.kind ?? "business";
       registry = {
         ...registry,
         modules: [
@@ -196,9 +211,9 @@ function createModuleRegistry(
             description: input.description ?? "",
             scope: input.scope ?? "",
             importance,
-            kind: "business",
-            origin: "curated",
-            sourceKey: null,
+            kind,
+            origin: input.origin ?? "curated",
+            sourceKey: input.sourceKey ?? null,
             effectiveImportance: importance,
             parameterCount: 0
           }
@@ -292,7 +307,106 @@ function createModuleRegistry(
         }
       };
     }),
-    recomputeBindings: vi.fn(async () => ({ updated: 3, conflicts: [] }))
+    recomputeBindings: vi.fn(async () => ({ updated: 3, conflicts: [] })),
+    listDriverRegistry: vi.fn(async () => ({
+      items: [
+        {
+          moduleId: "mod-sc8562",
+          name: "SC8562",
+          origin: "curated" as const,
+          businessCategoryId: "mod-charging",
+          businessCategoryName: "充电策略",
+          compatibles: ["vendor,sc8562"],
+          parameterCount: 8,
+          observed: true,
+          notYetObserved: false,
+          parseCoverages: [
+            {
+              compatible: "vendor,sc8562",
+              coverage: {
+                covered: true as const,
+                pattern: "vendor,sc8562",
+                driverId: "drv-1",
+                source: "yaml"
+              }
+            }
+          ]
+        }
+      ],
+      total: 1
+    })),
+    registerOrClaimDriver: vi.fn(async (input) => {
+      moduleSeq += 1;
+      const id = `mod-new-${moduleSeq}`;
+      registry = {
+        ...registry,
+        modules: [
+          ...registry.modules,
+          {
+            id,
+            name: input.displayName,
+            parentId: input.businessCategoryId,
+            sortOrder: registry.modules.length,
+            description: input.notes ?? "",
+            scope: "",
+            importance: "medium" as const,
+            kind: "driver-group" as const,
+            origin: "curated" as const,
+            sourceKey: null,
+            effectiveImportance: "medium" as const,
+            parameterCount: 0
+          }
+        ],
+        mappings: [
+          ...registry.mappings,
+          ...input.compatibles.map((compatible, index) => ({
+            id: `map-driver-${moduleSeq}-${index}`,
+            moduleId: id,
+            matchKind: "compatible" as const,
+            matchValue: compatible,
+            priority: 0
+          }))
+        ]
+      };
+      return {
+        mode: "registered" as const,
+        item: {
+          id,
+          name: input.displayName,
+          parentId: input.businessCategoryId,
+          kind: "driver-group" as const,
+          origin: "curated" as const
+        }
+      };
+    }),
+    createOrganizationDriverSchema: vi.fn(async (input) => ({
+      id: "ods-test-1",
+      compatible: input.compatible,
+      displayName: input.displayName,
+      notes: input.notes ?? "",
+      lifecycle: "draft",
+      version: 1,
+      properties: input.properties.map((property, index) => ({
+        id: `ods-prop-${index}`,
+        propertyKey: property.propertyKey,
+        valueShape: property.valueShape,
+        units: property.units ?? null,
+        documentation: property.documentation ?? ""
+      }))
+    })),
+    activateOrganizationDriverSchema: vi.fn(async (schemaId) => ({
+      schema: {
+        id: schemaId,
+        compatible: "vendor,sc8562",
+        displayName: "SC8562",
+        notes: "",
+        lifecycle: "active",
+        version: 1,
+        properties: []
+      },
+      upgradedSpecIds: [],
+      resolvedReviewTaskIds: []
+    }))
   };
 
   return { ...base, ...overrides };
@@ -725,7 +839,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const library = await screen.findByRole("region", { name: "参数定义库" });
     const table = within(library).getByRole("table");
     expect(within(library).getByRole("columnheader", { name: "预测模块" })).toBeInTheDocument();
-    expect(within(table).getByText("充电策略")).toBeInTheDocument();
+    expect(within(table).getByText("SC8562")).toBeInTheDocument();
     expect(within(table).getByText("未分类 · unknown-ic（预测）")).toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: "所属模块" })).not.toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: "compatible" })).not.toBeInTheDocument();
@@ -767,7 +881,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
     expect(within(panel).getAllByText("充电策略").length).toBeGreaterThan(0);
-    expect(within(panel).getByText("compatible:vendor,sc8562")).toBeInTheDocument();
+    expect(within(panel).getByText(/1 条 compatible/)).toBeInTheDocument();
     expect(moduleRegistry.getRegistry).toHaveBeenCalled();
   });
 
@@ -777,8 +891,8 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
 
-    fireEvent.click(within(panel).getByRole("button", { name: "新建业务分类" }));
-    const createDialog = screen.getByRole("dialog", { name: "新增根模块" });
+    fireEvent.click(within(panel).getByRole("button", { name: "新建模块" }));
+    const createDialog = screen.getByRole("dialog", { name: "新建模块" });
     fireEvent.change(within(createDialog).getByLabelText("模块名称"), {
       target: { value: "电源路径" }
     });
@@ -795,7 +909,8 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
         expect.objectContaining({
           name: "电源路径",
           description: "路径说明",
-          scope: "组织"
+          scope: "组织",
+          kind: "business"
         })
       )
     );
@@ -824,9 +939,10 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
 
     fireEvent.click(within(panel).getByRole("button", { name: "电源路径组 更多操作" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "移动模块 电源路径组" }));
-    fireEvent.click(within(panel).getByRole("button", { name: "根级（无父模块）" }));
-    fireEvent.click(within(panel).getByRole("button", { name: "充电策略" }));
-    fireEvent.click(within(panel).getByRole("button", { name: "确认移动" }));
+    const moveDialog = screen.getByRole("dialog", { name: "移动模块 电源路径组" });
+    fireEvent.click(within(moveDialog).getByRole("button", { name: /根级（无父模块）|目标业务分类/ }));
+    fireEvent.click(within(moveDialog).getByRole("button", { name: "充电策略" }));
+    fireEvent.click(within(moveDialog).getByRole("button", { name: "确认移动" }));
     await waitFor(() =>
       expect(moduleRegistry.updateModule).toHaveBeenCalledWith("mod-new-1", {
         parentId: "mod-charging"
@@ -851,11 +967,17 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
-    expect(within(panel).getByText("compatible:vendor,sc8562")).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: "修改模块 SC8562" }));
+    const editDialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    expect(within(editDialog).getByText("compatible:vendor,sc8562")).toBeInTheDocument();
 
-    fireEvent.click(within(panel).getByRole("button", { name: "删除归属 compatible:vendor,sc8562" }));
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.click(
+      within(editDialog).getByRole("button", { name: "移除规则 compatible:vendor,sc8562" })
+    );
     await waitFor(() => expect(moduleRegistry.deleteMapping).toHaveBeenCalled());
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-mapping-deleted/);
+    confirmSpy.mockRestore();
   });
 
   it("keeps the module tree primary and opens the unclassified queue via secondary nav", async () => {
@@ -863,16 +985,17 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     const { onNavigate } = renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
-    expect(within(panel).queryByRole("region", { name: "待归类驱动（driver）" })).not.toBeInTheDocument();
-    expect(within(panel).queryByRole("region", { name: "未分类队列" })).not.toBeInTheDocument();
-    expect(within(panel).getByText("有待归类的 compatible")).toBeInTheDocument();
+    expect(within(panel).queryByRole("region", { name: "未登记驱动" })).not.toBeInTheDocument();
+    expect(within(panel).getByText("有未登记的驱动")).toBeInTheDocument();
 
     const moduleSubnav = within(panel).getByRole("navigation", { name: "模块归属子视图" });
-    expect(within(moduleSubnav).getByRole("button", { name: "模块树" })).toHaveAttribute(
+    expect(within(moduleSubnav).getByRole("button", { name: "归属树" })).toHaveAttribute(
       "aria-current",
       "page"
     );
-    fireEvent.click(within(moduleSubnav).getByRole("button", { name: /未分类队列/ }));
+    expect(within(moduleSubnav).queryByRole("button", { name: "驱动登记" })).not.toBeInTheDocument();
+    expect(within(panel).getByText("· 解析已覆盖")).toBeInTheDocument();
+    fireEvent.click(within(moduleSubnav).getByRole("button", { name: /未登记驱动/ }));
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/modules/queue");
 
     fireEvent.click(within(panel).getByRole("button", { name: "运维：全量重算" }));
@@ -892,7 +1015,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     renderPage({ moduleRegistry, path: "/parameter-admin/modules/queue" });
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
-    const compatibleQueue = within(panel).getByRole("region", { name: "未分类队列" });
+    const compatibleQueue = within(panel).getByRole("region", { name: "未登记驱动" });
     expect(within(compatibleQueue).getByText("vendor,unmapped-ic")).toBeInTheDocument();
     expect(within(panel).queryByRole("tree", { name: "模块归属树" })).not.toBeInTheDocument();
   });
@@ -904,8 +1027,9 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
-    expect(within(panel).queryByRole("navigation", { name: "模块归属子视图" })).not.toBeInTheDocument();
-    expect(within(panel).queryByRole("region", { name: "未分类队列" })).not.toBeInTheDocument();
+    const moduleSubnav = within(panel).getByRole("navigation", { name: "模块归属子视图" });
+    expect(within(moduleSubnav).queryByRole("button", { name: /未登记驱动/ })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("region", { name: "未登记驱动" })).not.toBeInTheDocument();
     expect(within(panel).getByRole("tree", { name: "模块归属树" })).toBeInTheDocument();
   });
 
@@ -916,8 +1040,8 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     const panel = await screen.findByRole("region", { name: "模块归属" });
     expect(within(panel).getAllByText("充电策略").length).toBeGreaterThan(0);
 
-    fireEvent.click(within(panel).getByRole("button", { name: "新建业务分类" }));
-    const createDialog = screen.getByRole("dialog", { name: "新增根模块" });
+    fireEvent.click(within(panel).getByRole("button", { name: "新建模块" }));
+    const createDialog = screen.getByRole("dialog", { name: "新建模块" });
     fireEvent.change(within(createDialog).getByLabelText("模块名称"), {
       target: { value: "Mock 模块" }
     });

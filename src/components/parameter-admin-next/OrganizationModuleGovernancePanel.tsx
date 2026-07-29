@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import type {
   CreateModuleMappingInput,
+  CreateOrganizationDriverSchemaInput,
   CreateParameterModuleInput,
   ParameterModuleRegistryRepository,
   UpdateParameterModuleInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterAdminAuditHint } from "@/application/parameters/parameterAdminState";
+import { mapParameterSpecToLibraryRow } from "@/components/parameter-topology/ParameterSpecLibrary";
 import { ParameterModuleMappingPanel } from "@/components/parameter-topology/ParameterModuleMappingPanel";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 
@@ -57,7 +59,15 @@ export function OrganizationModuleGovernancePanel({
       },
       async createModule(input: CreateParameterModuleInput) {
         const next = await base.createModule(input);
-        pushModuleAudit(dispatch, "module-created", `已创建业务模块「${input.name}」`);
+        const kindLabel =
+          input.kind === "driver-group"
+            ? "驱动组"
+            : input.kind === "instance"
+              ? "器件实例"
+              : input.kind === "logical"
+                ? "逻辑节点"
+                : "业务模块";
+        pushModuleAudit(dispatch, "module-created", `已创建${kindLabel}「${input.name}」`);
         return next;
       },
       async updateModule(moduleId: string, input: UpdateParameterModuleInput) {
@@ -103,6 +113,29 @@ export function OrganizationModuleGovernancePanel({
           `已重算模块归属，更新 ${result.updated} 个项目参数`
         );
         return result;
+      },
+      listDriverRegistry: () => base.listDriverRegistry(),
+      async registerOrClaimDriver(input) {
+        const result = await base.registerOrClaimDriver(input);
+        pushModuleAudit(
+          dispatch,
+          "module-created",
+          result.mode === "claimed"
+            ? `已认领驱动组「${result.item.name}」`
+            : `已登记驱动组「${result.item.name}」`
+        );
+        return result;
+      },
+      createOrganizationDriverSchema: (input: CreateOrganizationDriverSchemaInput) =>
+        base.createOrganizationDriverSchema(input),
+      activateOrganizationDriverSchema: async (schemaId) => {
+        const result = await base.activateOrganizationDriverSchema(schemaId);
+        pushModuleAudit(
+          dispatch,
+          "module-created",
+          `已激活组织解析 schema「${result.schema.displayName}」`
+        );
+        return result;
       }
     };
   }, [application, dispatch]);
@@ -111,6 +144,22 @@ export function OrganizationModuleGovernancePanel({
     <ParameterModuleMappingPanel
       canAdmin
       repository={repository}
+      listLibrarySpecs={async () => {
+        const specs = await application.listSpecs({});
+        return specs.map((spec) =>
+          mapParameterSpecToLibraryRow({
+            id: spec.id,
+            organizationId: spec.organizationId ?? null,
+            propertyKey: spec.propertyKey,
+            specificationKey: spec.specificationKey,
+            driverModule: spec.driverModule,
+            lifecycle: spec.lifecycle,
+            currentVersion: spec.currentVersion,
+            compatiblePatterns: spec.compatiblePatterns,
+            valueShape: spec.valueShape
+          })
+        );
+      }}
       pathname={pathname}
       search={search}
       onNavigate={onNavigate}

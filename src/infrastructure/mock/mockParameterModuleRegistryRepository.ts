@@ -1,9 +1,14 @@
 import type {
+  ActivateOrganizationDriverSchemaResult,
   CreateModuleMappingInput,
+  CreateOrganizationDriverSchemaInput,
   CreateParameterModuleInput,
+  DriverRegistryEntry,
   MappingApplyPreview,
   ModuleDiscoveryHints,
+  OrganizationDriverSchema,
   ParameterModuleRegistryRepository,
+  RegisterOrClaimDriverInput,
   RecomputeBindingModulesResult,
   UpdateParameterModuleInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
@@ -20,6 +25,8 @@ type Store = {
   discovery: ModuleDiscoveryHints;
   dismissed: string[];
   recomputeResult: RecomputeBindingModulesResult;
+  driverRegistry: DriverRegistryEntry[];
+  organizationDriverSchemas: OrganizationDriverSchema[];
 };
 
 function cloneRegistry(store: Store): ParameterModuleRegistry {
@@ -109,7 +116,27 @@ function createSeedStore(): Store {
       total: 1
     },
     dismissed: [],
-    recomputeResult: { updated: 2, conflicts: [] }
+    recomputeResult: { updated: 2, conflicts: [] },
+    driverRegistry: [
+      {
+        moduleId: "mod-charging",
+        name: "SC8562",
+        origin: "curated",
+        businessCategoryId: "mod-charging",
+        businessCategoryName: "充电策略",
+        compatibles: ["vendor,sc8562"],
+        parameterCount: 12,
+        observed: true,
+        notYetObserved: false,
+        parseCoverages: [
+          {
+            compatible: "vendor,sc8562",
+            coverage: { covered: true, pattern: "vendor,sc8562", driverId: "sc8562", source: "pinned" }
+          }
+        ]
+      }
+    ],
+    organizationDriverSchemas: []
   };
 }
 
@@ -131,7 +158,20 @@ export function createMockParameterModuleRegistryRepository(
         }
       : base.discovery,
     dismissed: seed.dismissed ? [...seed.dismissed] : [],
-    recomputeResult: seed.recomputeResult ?? base.recomputeResult
+    recomputeResult: seed.recomputeResult ?? base.recomputeResult,
+    driverRegistry: seed.driverRegistry
+      ? seed.driverRegistry.map((entry) => ({
+          ...entry,
+          compatibles: [...entry.compatibles],
+          parseCoverages: entry.parseCoverages.map((row) => ({ ...row, coverage: { ...row.coverage } }))
+        }))
+      : base.driverRegistry,
+    organizationDriverSchemas: seed.organizationDriverSchemas
+      ? seed.organizationDriverSchemas.map((schema) => ({
+          ...schema,
+          properties: schema.properties.map((property) => ({ ...property }))
+        }))
+      : base.organizationDriverSchemas
   };
   let moduleSeq = 0;
   let mappingSeq = 0;
@@ -162,10 +202,11 @@ export function createMockParameterModuleRegistryRepository(
     async createModule(input: CreateParameterModuleInput) {
       moduleSeq += 1;
       const kind = input.kind ?? "business";
-      const origin = input.origin ?? (kind === "driver-group" ? "auto" : "curated");
+      const origin = input.origin ?? "curated";
       const importance = kind === "business" ? (input.importance ?? "medium") : "medium";
+      const moduleId = `mod-mock-${moduleSeq}`;
       store.modules.push({
-        id: `mod-mock-${moduleSeq}`,
+        id: moduleId,
         name: input.name,
         parentId: input.parentId ?? null,
         sortOrder: input.sortOrder ?? store.modules.length,
@@ -178,6 +219,18 @@ export function createMockParameterModuleRegistryRepository(
         effectiveImportance: importance,
         parameterCount: 0
       });
+      if (kind === "driver-group" && (input.compatibles?.length ?? 0) > 0) {
+        for (const compatible of input.compatibles ?? []) {
+          mappingSeq += 1;
+          store.mappings.push({
+            id: `map-mock-${mappingSeq}`,
+            moduleId,
+            matchKind: "compatible",
+            matchValue: compatible.trim().toLowerCase(),
+            priority: 0
+          });
+        }
+      }
       return cloneRegistry(store);
     },
 
@@ -268,6 +321,145 @@ export function createMockParameterModuleRegistryRepository(
         };
       }
       return { ...store.recomputeResult, conflicts: [...store.recomputeResult.conflicts] };
+    },
+
+    async listDriverRegistry() {
+      return {
+        items: store.driverRegistry.map((entry) => ({
+          ...entry,
+          compatibles: [...entry.compatibles],
+          parseCoverages: entry.parseCoverages.map((row) => ({ ...row, coverage: { ...row.coverage } }))
+        })),
+        total: store.driverRegistry.length
+      };
+    },
+
+    async registerOrClaimDriver(input: RegisterOrClaimDriverInput) {
+      moduleSeq += 1;
+      const moduleId = `mod-mock-driver-${moduleSeq}`;
+      const business = store.modules.find((module) => module.id === input.businessCategoryId);
+      const compatibles = [...new Set(input.compatibles.map((value) => value.trim().toLowerCase()))];
+      const existing = store.driverRegistry.find((entry) =>
+        entry.compatibles.some((compatible) => compatibles.includes(compatible))
+      );
+      const mode = existing ? "claimed" : "registered";
+      const targetId = existing?.moduleId ?? moduleId;
+      const entry: DriverRegistryEntry = {
+        moduleId: targetId,
+        name: input.displayName.trim(),
+        origin: "curated",
+        businessCategoryId: input.businessCategoryId,
+        businessCategoryName: business?.name ?? null,
+        compatibles,
+        parameterCount: existing?.parameterCount ?? 0,
+        observed: (existing?.parameterCount ?? 0) > 0,
+        notYetObserved: (existing?.parameterCount ?? 0) === 0,
+        parseCoverages: compatibles.map((compatible) => ({
+          compatible,
+          coverage: { covered: false }
+        }))
+      };
+      if (existing) {
+        const index = store.driverRegistry.indexOf(existing);
+        store.driverRegistry[index] = entry;
+      } else {
+        store.driverRegistry.push(entry);
+        store.modules.push({
+          id: moduleId,
+          name: input.displayName.trim(),
+          parentId: input.businessCategoryId,
+          sortOrder: store.modules.length,
+          description: input.notes ?? "",
+          scope: "",
+          importance: "medium",
+          kind: "driver-group",
+          origin: "curated",
+          sourceKey: `compatible:${compatibles[0]}`,
+          effectiveImportance: "medium",
+          parameterCount: 0
+        });
+        for (const compatible of compatibles) {
+          mappingSeq += 1;
+          store.mappings.push({
+            id: `map-mock-${mappingSeq}`,
+            moduleId,
+            matchKind: "compatible",
+            matchValue: compatible,
+            priority: 0
+          });
+        }
+      }
+      return {
+        mode,
+        item: {
+          id: targetId,
+          name: entry.name,
+          parentId: input.businessCategoryId,
+          kind: "driver-group" as const,
+          origin: "curated" as const,
+          description: input.notes
+        }
+      };
+    },
+
+    async createOrganizationDriverSchema(input: CreateOrganizationDriverSchemaInput) {
+      const schema: OrganizationDriverSchema = {
+        id: `ods-mock-${store.organizationDriverSchemas.length + 1}`,
+        compatible: input.compatible,
+        displayName: input.displayName,
+        notes: input.notes ?? "",
+        lifecycle: "draft",
+        version: 1,
+        properties: input.properties.map((property, index) => {
+          if ("parameterSpecId" in property) {
+            return {
+              id: `ods-prop-mock-${index + 1}`,
+              parameterSpecId: property.parameterSpecId,
+              propertyKey: property.propertyKey ?? `linked-${index + 1}`,
+              valueShape: { kind: "unknown" as const },
+              units: null,
+              documentation: ""
+            };
+          }
+          return {
+            id: `ods-prop-mock-${index + 1}`,
+            parameterSpecId: `pspec-mock-${index + 1}`,
+            propertyKey: property.propertyKey,
+            valueShape: property.valueShape,
+            units: property.units ?? null,
+            documentation: property.documentation ?? ""
+          };
+        })
+      };
+      store.organizationDriverSchemas.push(schema);
+      return schema;
+    },
+
+    async activateOrganizationDriverSchema(schemaId: string): Promise<ActivateOrganizationDriverSchemaResult> {
+      const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
+      if (!schema) {
+        throw new Error(`Organization driver schema not found: ${schemaId}`);
+      }
+      schema.lifecycle = "active";
+      for (const entry of store.driverRegistry) {
+        entry.parseCoverages = entry.parseCoverages.map((row) => {
+          if (row.compatible !== schema.compatible) return row;
+          return {
+            compatible: row.compatible,
+            coverage: {
+              covered: true,
+              pattern: schema.compatible,
+              driverId: `driver:org/mock/${schema.compatible}:v${schema.version}`,
+              source: "manual"
+            }
+          };
+        });
+      }
+      return {
+        schema: { ...schema, properties: schema.properties.map((property) => ({ ...property })) },
+        upgradedSpecIds: [],
+        resolvedReviewTaskIds: []
+      };
     }
   };
 }

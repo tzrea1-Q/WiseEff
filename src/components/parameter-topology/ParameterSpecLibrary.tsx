@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Pencil, Search } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Pencil, Search } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { ColumnFilter } from "@/components/ColumnFilter";
 import {
@@ -212,6 +212,8 @@ export type ParameterSpecLibraryProps = {
   detail?: ParameterSpecDetailView | null;
   reviewQueueSlot?: ReactNode;
   loading?: boolean;
+  /** Hide page heading when embedded in another dialog. */
+  embedded?: boolean;
   /** When both are provided, filters are controlled by the parent (URL SoT). */
   filters?: ParameterSpecLibraryFilters;
   onFiltersChange?: (filters: ParameterSpecLibraryFilters) => void;
@@ -231,6 +233,7 @@ export function ParameterSpecLibrary({
   detail = null,
   reviewQueueSlot = null,
   loading = false,
+  embedded = false,
   filters: controlledFilters,
   onFiltersChange,
   onSelectSpec,
@@ -308,14 +311,16 @@ export function ParameterSpecLibrary({
   };
 
   return (
-    <div className="parameter-spec-library-layout">
+    <div className={`parameter-spec-library-layout${embedded ? " is-embedded" : ""}`}>
       <section className="parameters-table param-admin-library-table" aria-label={PARAMETER_ADMIN_UI.specLibrary}>
-        <div className="parameters-table-heading">
-          <div>
-            <h2>{PARAMETER_ADMIN_UI.specLibrary}</h2>
-            <p>{PARAMETER_ADMIN_UI.specLibraryBlurb}</p>
+        {embedded ? null : (
+          <div className="parameters-table-heading">
+            <div>
+              <h2>{PARAMETER_ADMIN_UI.specLibrary}</h2>
+              <p>{PARAMETER_ADMIN_UI.specLibraryBlurb}</p>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="parameters-table-toolbar">
           <label className="parameters-table-search">
@@ -386,8 +391,27 @@ export function ParameterSpecLibrary({
               </tr>
             </thead>
             <tbody>
-              {pagination.pageItems.map((spec, index) => (
-                <tr key={spec.id} data-selected={selectedSpecId === spec.id ? "true" : undefined}>
+              {pagination.pageItems.map((spec, index) => {
+                const isSelected = selectedSpecId === spec.id;
+                return (
+                <tr
+                  key={spec.id}
+                  data-selected={isSelected ? "true" : undefined}
+                  className={embedded ? "parameter-spec-library-grid__row--selectable" : undefined}
+                  tabIndex={embedded ? 0 : undefined}
+                  aria-selected={embedded ? isSelected : undefined}
+                  onClick={embedded ? () => onSelectSpec(spec.id) : undefined}
+                  onKeyDown={
+                    embedded
+                      ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onSelectSpec(spec.id);
+                          }
+                        }
+                      : undefined
+                  }
+                >
                   <td data-label="#">
                     {(pagination.page - 1) * pagination.pageSize + index + 1}
                   </td>
@@ -402,18 +426,35 @@ export function ParameterSpecLibrary({
                   <td data-label="值类型">{spec.valueType}</td>
                   <td data-label="审核状态">{formatParameterSpecLifecycle(spec.reviewState)}</td>
                   <td data-label="操作">
-                    <button
-                      type="button"
-                      className="button subtle dts-parameter-workbench-table__icon-action"
-                      aria-label={`编辑 ${spec.propertyKey}`}
-                      title="编辑"
-                      onClick={() => onSelectSpec(spec.id)}
-                    >
-                      <Pencil size={16} strokeWidth={1.9} aria-hidden="true" />
-                    </button>
+                    {embedded ? (
+                      <button
+                        type="button"
+                        className={`button ${isSelected ? "primary" : "subtle"} parameter-spec-library-grid__pick`}
+                        aria-label={`选用 ${spec.propertyKey}`}
+                        aria-pressed={isSelected}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelectSpec(spec.id);
+                        }}
+                      >
+                        <Check size={14} strokeWidth={2} aria-hidden="true" />
+                        {isSelected ? "已选" : "选用"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="button subtle dts-parameter-workbench-table__icon-action"
+                        aria-label={`编辑 ${spec.propertyKey}`}
+                        title="编辑"
+                        onClick={() => onSelectSpec(spec.id)}
+                      >
+                        <Pencil size={16} strokeWidth={1.9} aria-hidden="true" />
+                      </button>
+                    )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

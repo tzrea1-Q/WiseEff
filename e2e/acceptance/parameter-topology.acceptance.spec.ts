@@ -2240,4 +2240,98 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       void page;
     });
   });
+
+  test.describe("Driver registry — pending browser automation", () => {
+    test("DRV-REG-001: register driver before upload as not-yet-observed group", async ({ page }) => {
+      // @acceptance DRV-REG-001
+      // @operation DRV-REG-001
+      test.skip(
+        true,
+        "Pending: playwright coverage for pre-upload driver registration appearing as not-yet-observed curated driver group with parse-coverage chip."
+      );
+      void page;
+    });
+
+    test("DRV-REG-002: claim observed-unregistered driver promotes curated", async ({ page }) => {
+      // @acceptance DRV-REG-002
+      // @operation DRV-REG-002
+      test.skip(
+        true,
+        "Pending: playwright coverage for claiming an observed-but-unregistered driver from queue or module tree."
+      );
+      void page;
+    });
+
+    test("DRV-REG-003: upload ingest summary reports registered vs unregistered", async ({ page }) => {
+      // @acceptance DRV-REG-003
+      // @operation DRV-REG-003
+      test.skip(
+        true,
+        "Pending: playwright coverage for one-shot upload ingest summary of matched registered and new unregistered compatibles."
+      );
+      void page;
+    });
+  });
+
+  test.describe("Organization driver schema overlay — pending browser automation", () => {
+    test("DRV-SCHEMA-001: author and activate overlay; chip shows organization coverage", async ({
+      page
+    }) => {
+      // @acceptance DRV-SCHEMA-001
+      // @operation DRV-SCHEMA-001
+      test.skip(
+        true,
+        "Pending: playwright coverage for authoring/activating an org overlay from an uncovered driver group."
+      );
+      void page;
+    });
+
+    test("DRV-SCHEMA-002: overlay-only compatible binds typed properties on upload", async ({
+      page
+    }) => {
+      // @acceptance DRV-SCHEMA-002
+      // @operation DRV-SCHEMA-002
+      test.skip(
+        true,
+        "Pending: playwright + API coverage for DTS upload matching only an active organization overlay."
+      );
+      void page;
+    });
+
+    test("DRV-SCHEMA-003: reject overlay when pinned schema already covers", async ({ page }) => {
+      // @acceptance DRV-SCHEMA-003
+      // @operation DRV-SCHEMA-003
+      test.skip(
+        true,
+        "Pending: playwright/API coverage for rejecting overlay activate when pinned schema covers the compatible."
+      );
+      void page;
+    });
+
+    test("DRV-SCHEMA-004: activate upgrades provisional specs without re-upload", async ({
+      page
+    }) => {
+      // @acceptance DRV-SCHEMA-004
+      // @operation DRV-SCHEMA-004
+      test.skip(
+        true,
+        "Pending: playwright/API coverage for retroactive provisional-spec upgrade on overlay activate."
+      );
+      void page;
+    });
+  });
+
+  test.describe("Pre-upload module create — pending browser automation", () => {
+    test("MOD-ATTR-CREATE-KIND-001: create four kinds with parent rules and not-yet-observed", async ({
+      page
+    }) => {
+      // @acceptance MOD-ATTR-CREATE-KIND-001
+      // @operation MOD-ATTR-CREATE-KIND-001
+      test.skip(
+        true,
+        "Pending: playwright coverage for attribution-tree create of business/driver-group/instance/logical with parent-kind rules, required compatibles, and not-yet-observed markers."
+      );
+      void page;
+    });
+  });
 });

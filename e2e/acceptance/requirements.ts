@@ -433,5 +433,61 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title:
       "Importance set on a business category is inherited by its driver groups and instances and drives the workbench importance filter.",
     required: true
+  },
+  {
+    id: "DRV-REG-001",
+    workflow: "C",
+    title:
+      "Admin registers a driver before any DTS upload; it appears in the module tree as a not-yet-observed curated driver group with a parse-coverage chip.",
+    required: true
+  },
+  {
+    id: "DRV-REG-002",
+    workflow: "C",
+    title:
+      "Admin claims an observed-but-unregistered driver from the queue or module tree; the driver group origin becomes curated.",
+    required: true
+  },
+  {
+    id: "DRV-REG-003",
+    workflow: "C",
+    title:
+      "After a DTS upload, the one-shot ingest summary reports matched registered drivers and newly observed unregistered compatibles.",
+    required: true
+  },
+  {
+    id: "DRV-SCHEMA-001",
+    workflow: "C",
+    title:
+      "Admin authors a draft organization overlay schema from an uncovered driver group, activates it, and sees the coverage chip change to organization-covered.",
+    required: true
+  },
+  {
+    id: "DRV-SCHEMA-002",
+    workflow: "C",
+    title:
+      "Uploading a DTS whose compatible only the organization overlay claims binds typed properties and does not open unmatched review tasks for those properties.",
+    required: true
+  },
+  {
+    id: "DRV-SCHEMA-003",
+    workflow: "C",
+    title:
+      "Activating an overlay for a compatible a pinned schema already covers is rejected with an explanation.",
+    required: true
+  },
+  {
+    id: "DRV-SCHEMA-004",
+    workflow: "C",
+    title:
+      "Activating an overlay for an already-uploaded device upgrades existing provisional specs in place without a re-upload and closes related review tasks.",
+    required: true
+  },
+  {
+    id: "MOD-ATTR-CREATE-KIND-001",
+    workflow: "C",
+    title:
+      "Admin creates empty business, driver-group, instance, or logical modules from the attribution tree with parent-kind rules, required compatibles for driver groups, and not-yet-observed markers on empty curated nodes.",
+    required: true
   }
 ];

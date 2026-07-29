@@ -12,6 +12,7 @@ import {
   deleteEmptyAutoDescendants,
   deleteMappingRow,
   deleteMappingsForModules,
+  findCompatibleMapping,
   getModuleNamesByIds,
   insertDismissedCompatible,
   insertMapping,
@@ -23,11 +24,27 @@ import {
   updateBindingModuleId,
   type RecomputeBindingRow,
 } from "./repository";
-import { resolveBindingInstanceModuleId } from "./ensureInstanceModuleForBinding";
-import { deleteParameterModule, getParameterModuleById } from "../parameters/parameterModuleRepository";
-import { normalizeMatchToken } from "./modulePlacement";
+import {
+  compatibleSourceKey,
+  resolveBindingInstanceModuleId,
+} from "./ensureInstanceModuleForBinding";
+import {
+  createParameterModule,
+  deleteParameterModule,
+  getParameterModuleById,
+  moveParameterModule,
+  updateParameterModule,
+} from "../parameters/parameterModuleRepository";
+import type { ParameterModuleDto } from "../parameters/types";
+import { isScaffoldingDriverLabel, normalizeMatchToken } from "./modulePlacement";
 import type { CreateModuleMappingBody } from "./schemas";
-import type { ModuleMatchKind, ParameterModuleRegistryDto } from "./types";
+import type { ModuleMatchKind, ModuleOrigin, ParameterModuleRegistryDto } from "./types";
+import { getCachedOrganizationSchemaRegistry } from "../parameter-specs/schemaRegistryCache";
+import { lookupParseCoverage, type ParseCoverage } from "../parameter-specs/parseCoverage";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const schemasRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../schemas/dts");
 
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
@@ -660,3 +677,219 @@ export async function deleteModuleMapping(
     return { item, apply };
   });
 }
+
+export type RegisterOrClaimDriverInput = {
+  displayName: string;
+  businessCategoryId: string;
+  compatibles: string[];
+  notes?: string;
+};
+
+export type RegisterOrClaimDriverResult = {
+  mode: "registered" | "claimed";
+  item: ParameterModuleDto;
+};
+
+export async function registerOrClaimDriver(
+  db: Database,
+  auth: AuthContext,
+  input: RegisterOrClaimDriverInput,
+): Promise<RegisterOrClaimDriverResult> {
+  requireCanAdmin(auth);
+
+  const displayName = input.displayName.trim();
+  if (!displayName) {
+    throw new ApiError("VALIDATION_FAILED", "displayName is required.", 400);
+  }
+  const notes = input.notes?.trim() ?? "";
+  const compatibles = [
+    ...new Set(
+      input.compatibles
+        .map((value) => normalizeMatchToken(value) ?? value.trim().toLowerCase())
+        .filter((value) => value.length > 0),
+    ),
+  ];
+  if (compatibles.length === 0) {
+    throw new ApiError("VALIDATION_FAILED", "At least one exact compatible is required.", 400);
+  }
+
+  return db.transaction(async (tx) => {
+    const business = await getParameterModuleById(tx, {
+      organizationId: auth.organization.id,
+      moduleId: input.businessCategoryId,
+    });
+    if (!business || business.kind !== "business") {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Target must be an existing business-category module.",
+        400,
+      );
+    }
+
+    const existingByCompatible: Array<{ compatible: string; moduleId: string }> = [];
+    for (const compatible of compatibles) {
+      const mapping = await findCompatibleMapping(tx, {
+        organizationId: auth.organization.id,
+        compatible,
+      });
+      if (mapping) {
+        existingByCompatible.push({ compatible, moduleId: mapping.moduleId });
+      }
+    }
+
+    const distinctModuleIds = [...new Set(existingByCompatible.map((row) => row.moduleId))];
+    if (distinctModuleIds.length > 1) {
+      throw new ApiError(
+        "CONFLICT",
+        "Compatibles already map to different driver groups; resolve the conflict before registering.",
+        409,
+        { moduleIds: distinctModuleIds },
+      );
+    }
+
+    let mode: "registered" | "claimed" = "registered";
+    let module: ParameterModuleDto;
+
+    if (distinctModuleIds.length === 1) {
+      mode = "claimed";
+      const moduleId = distinctModuleIds[0];
+      const existing = await getParameterModuleById(tx, {
+        organizationId: auth.organization.id,
+        moduleId,
+      });
+      if (!existing || existing.kind !== "driver-group") {
+        throw new ApiError(
+          "CONFLICT",
+          "Existing compatible mapping does not target a driver-group module.",
+          409,
+        );
+      }
+
+      if (existing.parentId !== input.businessCategoryId) {
+        const moved = await moveParameterModule(tx, {
+          organizationId: auth.organization.id,
+          moduleId,
+          parentId: input.businessCategoryId,
+        });
+        if (!moved) {
+          throw new ApiError("NOT_FOUND", "Driver group module not found.", 404);
+        }
+      }
+
+      const updated = await updateParameterModule(tx, {
+        organizationId: auth.organization.id,
+        moduleId,
+        name: displayName,
+        description: notes,
+      });
+      if (!updated) {
+        throw new ApiError("NOT_FOUND", "Driver group module not found.", 404);
+      }
+      module = updated;
+    } else {
+      module = await createParameterModule(tx, {
+        organizationId: auth.organization.id,
+        name: displayName,
+        parentId: input.businessCategoryId,
+        description: notes,
+        kind: "driver-group",
+        origin: "curated",
+        sourceKey: compatibleSourceKey(compatibles[0]),
+      });
+    }
+
+    for (const compatible of compatibles) {
+      await insertMapping(tx, {
+        id: randomUUID(),
+        organizationId: auth.organization.id,
+        moduleId: module.id,
+        matchKind: "compatible",
+        matchValue: compatible,
+        priority: 0,
+      });
+    }
+
+    await writeModuleAttributionAudit(tx, auth, {
+      kind: "parameter-module-driver-registered",
+      action: mode === "claimed" ? "claim" : "register",
+      targetId: module.id,
+      metadata: {
+        mode,
+        displayName,
+        businessCategoryId: input.businessCategoryId,
+        compatibles,
+        notes,
+      },
+    });
+
+    return { mode, item: module };
+  });
+}
+
+export type DriverRegistryEntry = {
+  moduleId: string;
+  name: string;
+  origin: ModuleOrigin;
+  businessCategoryId: string | null;
+  businessCategoryName: string | null;
+  compatibles: string[];
+  parameterCount: number;
+  observed: boolean;
+  notYetObserved: boolean;
+  parseCoverages: Array<{ compatible: string; coverage: ParseCoverage }>;
+};
+
+export async function listDriverRegistry(
+  db: Database,
+  auth: AuthContext,
+): Promise<{ items: DriverRegistryEntry[]; total: number }> {
+  requireCanView(auth);
+  const registry = await readRegistry(db, auth.organization.id);
+  const schemaRegistry = await getCachedOrganizationSchemaRegistry(db, {
+    schemasRoot,
+    organizationId: auth.organization.id,
+  });
+  const byId = new Map(registry.modules.map((module) => [module.id, module]));
+  const mappingsByModule = new Map<string, string[]>();
+  for (const mapping of registry.mappings) {
+    if (mapping.matchKind !== "compatible") continue;
+    const list = mappingsByModule.get(mapping.moduleId) ?? [];
+    list.push(mapping.matchValue);
+    mappingsByModule.set(mapping.moduleId, list);
+  }
+
+  const items: DriverRegistryEntry[] = [];
+  for (const module of registry.modules) {
+    if (module.kind !== "driver-group") continue;
+    if (isScaffoldingDriverLabel(module.name)) continue;
+    const compatibles = mappingsByModule.get(module.id) ?? [];
+    if (
+      compatibles.length > 0 &&
+      compatibles.every((compatible) => isScaffoldingDriverLabel(compatible))
+    ) {
+      continue;
+    }
+    const parent = module.parentId ? byId.get(module.parentId) : null;
+    const observed = module.parameterCount > 0;
+    items.push({
+      moduleId: module.id,
+      name: module.name,
+      origin: module.origin,
+      businessCategoryId: parent?.kind === "business" ? parent.id : module.parentId,
+      businessCategoryName: parent?.kind === "business" ? parent.name : parent?.name ?? null,
+      compatibles,
+      parameterCount: module.parameterCount,
+      observed,
+      notYetObserved: module.origin === "curated" && !observed,
+      parseCoverages: compatibles.map((compatible) => ({
+        compatible,
+        coverage: lookupParseCoverage(compatible, schemaRegistry),
+      })),
+    });
+  }
+
+  items.sort((left, right) => left.name.localeCompare(right.name));
+  return { items, total: items.length };
+}
+
+

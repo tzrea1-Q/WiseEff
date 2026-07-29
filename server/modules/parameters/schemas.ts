@@ -52,18 +52,34 @@ export const parameterModuleParamsSchema = z.object({
 
 export const moduleImportanceSchema = z.enum(["high", "medium", "low"]);
 
-export const createParameterModuleBodySchema = z.object({
-  name: nonEmptyString,
-  parentId: nonEmptyString.nullable().optional(),
-  description: z.string().optional(),
-  scope: z.string().optional(),
-  sortOrder: z.number().int().optional(),
-  importance: moduleImportanceSchema.optional(),
-  /** Admin classify creates driver groups; default remains business. */
-  kind: z.enum(["business", "driver-group"]).optional(),
-  origin: z.enum(["curated", "auto"]).optional(),
-  sourceKey: z.string().min(1).nullable().optional()
-});
+export const createParameterModuleBodySchema = z
+  .object({
+    name: nonEmptyString,
+    parentId: nonEmptyString.nullable().optional(),
+    description: z.string().optional(),
+    scope: z.string().optional(),
+    sortOrder: z.number().int().optional(),
+    importance: moduleImportanceSchema.optional(),
+    /** Admin create supports empty pre-upload nodes; default remains business. */
+    kind: z.enum(["business", "driver-group", "instance", "logical"]).optional(),
+    origin: z.enum(["curated", "auto"]).optional(),
+    sourceKey: z.string().min(1).nullable().optional(),
+    /** Exact compatibles; required when kind is driver-group. */
+    compatibles: z.array(z.string()).optional()
+  })
+  .superRefine((body, ctx) => {
+    if ((body.kind ?? "business") !== "driver-group") return;
+    const compatibles = (body.compatibles ?? [])
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+    if (compatibles.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "At least one exact compatible is required for driver-group.",
+        path: ["compatibles"]
+      });
+    }
+  });
 
 export const updateParameterModuleBodySchema = z
   .object({

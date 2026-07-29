@@ -183,7 +183,7 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       file.currentVersionId = version.id;
       file.currentVersionNumber = version.versionNumber;
       file.updatedAt = MOCK_NOW;
-      return { ...version };
+      return { item: { ...version } };
     },
 
     async listVersions(projectId, fileId) {

@@ -225,7 +225,8 @@ export function registerParameterFileRoutes(
       body: {
         item: result.file,
         version: result.version,
-        ...(result.unsupportedConstructs ? { unsupportedConstructs: result.unsupportedConstructs } : {})
+        ...(result.unsupportedConstructs ? { unsupportedConstructs: result.unsupportedConstructs } : {}),
+        ...(result.driverSummary ? { driverSummary: result.driverSummary } : {}),
       }
     };
   });
@@ -261,7 +262,8 @@ export function registerParameterFileRoutes(
       status: 201,
       body: {
         item: result.version,
-        ...(result.unsupportedConstructs ? { unsupportedConstructs: result.unsupportedConstructs } : {})
+        ...(result.unsupportedConstructs ? { unsupportedConstructs: result.unsupportedConstructs } : {}),
+        ...(result.driverSummary ? { driverSummary: result.driverSummary } : {}),
       }
     };
   });
