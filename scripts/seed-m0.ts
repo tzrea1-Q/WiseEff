@@ -55,6 +55,15 @@ export async function seedM0Foundation(db: Database) {
     ["urb-xu-admin", "u-xu-yun", organizationId, "admin"]
   );
 
+  await db.query(
+    `
+    insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+    values ($1, $2, $3, null, $4)
+    on conflict (id) do update set role_id = excluded.role_id
+    `,
+    ["urb-xu-platform-admin", "u-xu-yun", organizationId, "platform-admin"]
+  );
+
   return seedLocalDemoCredentials(db);
 }
 

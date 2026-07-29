@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { serializePostgresJsonb } from "../../shared/database/jsonb";
 import type { CreateAuditEventInput } from "./types";
@@ -5,7 +6,7 @@ import type { AuditEventListItemDto, ListAuditEventsQuery, ListAuditEventsResult
 
 type AuditEventRow = {
   id: string;
-  organization_id: string;
+  organization_id: string | null;
   project_id: string | null;
   actor_user_id: string | null;
   actor_type: "user" | "agent" | "system";
@@ -42,6 +43,10 @@ function toListItem(row: AuditEventRow): AuditEventListItemDto {
 }
 
 export async function createAuditEvent(db: Queryable, input: CreateAuditEventInput) {
+  if (input.organizationId === null) {
+    throw new Error("Platform-scoped audit events must be written via writePlatformAuditEvent.");
+  }
+
   await db.query(
     `
     insert into audit_events (
@@ -66,6 +71,51 @@ export async function createAuditEvent(db: Queryable, input: CreateAuditEventInp
       input.traceId
     ]
   );
+}
+
+export async function writePlatformAuditEvent(
+  db: Queryable,
+  input: Omit<CreateAuditEventInput, "organizationId" | "id"> & {
+    id?: string;
+    affectedOrganizationIds: readonly string[];
+  }
+) {
+  const traceId = input.traceId;
+  const platformEventId = input.id ?? randomUUID();
+
+  await db.query(
+    `
+    insert into audit_events (
+      id, organization_id, project_id, actor_user_id, actor_type, app, kind,
+      action, severity, target_type, target_id, metadata, trace_id
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)
+    `,
+    [
+      platformEventId,
+      null,
+      input.projectId,
+      input.actorUserId,
+      input.actorType,
+      input.app,
+      input.kind,
+      input.action,
+      input.severity,
+      input.targetType,
+      input.targetId,
+      serializePostgresJsonb(input.metadata ?? {}),
+      traceId
+    ]
+  );
+
+  for (const organizationId of input.affectedOrganizationIds) {
+    await createAuditEvent(db, {
+      ...input,
+      id: randomUUID(),
+      organizationId,
+      traceId
+    });
+  }
 }
 
 export async function listAuditEvents(db: Queryable, query: ListAuditEventsQuery): Promise<ListAuditEventsResult> {

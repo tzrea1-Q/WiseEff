@@ -12,7 +12,15 @@ export type TokenVerifierOptions = {
   now?: () => Date;
 };
 
-const roleIds = new Set<BackendRoleId>(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin"]);
+const roleIds = new Set<BackendRoleId>([
+  "guest",
+  "hardware-user",
+  "software-user",
+  "hardware-committer",
+  "software-committer",
+  "admin",
+  "platform-admin"
+]);
 const permissionIds = new Set<BackendPermission>([
   "parameter:view",
   "parameter:edit",

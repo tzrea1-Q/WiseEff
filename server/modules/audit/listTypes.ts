@@ -1,7 +1,7 @@
 import type { AuditSeverity } from "./types";
 
 export type ListAuditEventsQuery = {
-  organizationId: string;
+  organizationId: string | null;
   projectId?: string;
   app?: string;
   apps?: string[];
@@ -19,7 +19,7 @@ export type ListAuditEventsQuery = {
 
 export type AuditEventListItemDto = {
   id: string;
-  organizationId: string;
+  organizationId: string | null;
   projectId: string | null;
   actorUserId: string | null;
   actorType: "user" | "agent" | "system";

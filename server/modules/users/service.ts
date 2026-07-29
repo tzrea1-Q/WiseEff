@@ -25,7 +25,15 @@ import {
 import { notifyUserDeactivated, notifyUserRoleChanged } from "../notifications/producers";
 import type { CreateUserInput, ReplaceUserRolesInput, UpdateUserActiveInput, UpdateUserProfileInput } from "./types";
 
-const roleIds = new Set<BackendRoleId>(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin"]);
+const roleIds = new Set<BackendRoleId>([
+  "guest",
+  "hardware-user",
+  "software-user",
+  "hardware-committer",
+  "software-committer",
+  "admin",
+  "platform-admin"
+]);
 const scryptAsync = promisify(scrypt);
 const passwordHashPrefix = "scrypt";
 
@@ -74,7 +82,32 @@ async function hashPassword(password: string) {
 }
 
 function hasAdminRole(roles: RoleBinding[]) {
-  return roles.some((role) => role.roleId === "admin");
+  return roles.some((role) => role.roleId === "admin" || role.roleId === "platform-admin");
+}
+
+function callerHasPlatformAdmin(auth: AuthContext) {
+  return auth.roles.some((role) => role.roleId === "platform-admin");
+}
+
+function rolesIncludePlatformAdmin(roles: RoleBinding[]) {
+  return roles.some((role) => role.roleId === "platform-admin");
+}
+
+function assertPlatformAdminGrantAllowed(auth: AuthContext, currentRoles: RoleBinding[], nextRoles: RoleBinding[]) {
+  const currentHasPlatformAdmin = rolesIncludePlatformAdmin(currentRoles);
+  const nextHasPlatformAdmin = rolesIncludePlatformAdmin(nextRoles);
+  if (currentHasPlatformAdmin === nextHasPlatformAdmin) {
+    return;
+  }
+
+  if (!callerHasPlatformAdmin(auth)) {
+    throw new ApiError(
+      "FORBIDDEN",
+      "Only a platform super admin may grant or revoke the platform-admin role.",
+      403,
+      { roleId: "platform-admin" }
+    );
+  }
 }
 
 async function assertNoSelfLockout(
@@ -285,6 +318,7 @@ export async function replaceUserRoles(
     if (!user) {
       throw new ApiError("NOT_FOUND", "User was not found.", 404, { userId });
     }
+    assertPlatformAdminGrantAllowed(auth, user.roles, roles);
     await replaceRoleBindings(tx, { organizationId: auth.organization.id, userId, roles });
     await auditUserMutation(tx, auth, {
       kind: "user-role-replace",

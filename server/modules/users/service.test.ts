@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
 import {
+  listGovernedUsers,
   approveRegistrationRoleRequest,
   createUser,
   deactivateUser,
@@ -163,6 +164,67 @@ describe("user governance service", () => {
     await expect(deactivateUser(db, adminAuth, adminAuth.user.id, { isActive: false }, { requestId: "request-1" })).rejects.toThrow(
       "Active Admin cannot disable itself."
     );
+  });
+
+  it("rejects non-platform-admin callers granting platform-admin to another user", async () => {
+    const { db } = createDb((text) => (text.includes("from users") ? [userRow()] : []));
+
+    await expect(
+      replaceUserRoles(
+        db,
+        adminAuth,
+        "u-target",
+        { roles: [{ projectId: null, roleId: "platform-admin" }] },
+        { requestId: "request-1" }
+      )
+    ).rejects.toThrow("Only a platform super admin may grant or revoke the platform-admin role.");
+  });
+
+  it("rejects non-platform-admin callers granting platform-admin to themselves", async () => {
+    const { db } = createDb((text) => (text.includes("from users") ? [userRow({ id: "u-admin" })] : []));
+
+    await expect(
+      replaceUserRoles(
+        db,
+        adminAuth,
+        adminAuth.user.id,
+        { roles: [{ projectId: null, roleId: "platform-admin" }] },
+        { requestId: "request-1" }
+      )
+    ).rejects.toThrow("Only a platform super admin may grant or revoke the platform-admin role.");
+  });
+
+  it("allows platform-admin callers to grant platform-admin", async () => {
+    const platformAdminAuth: AuthContext = {
+      ...adminAuth,
+      roles: [{ projectId: null, roleId: "platform-admin" }],
+      permissions: [...adminAuth.permissions, "platform:access", "platform:schema-promote"]
+    };
+    const { db, txCalls } = createDb((text) => (text.includes("from users") || text.includes("returning") ? [userRow()] : []));
+
+    await replaceUserRoles(
+      db,
+      platformAdminAuth,
+      "u-target",
+      { roles: [{ projectId: null, roleId: "platform-admin" }] },
+      { requestId: "request-1" }
+    );
+
+    expect(txCalls.some((call) => call.text.includes("insert into user_role_bindings"))).toBe(true);
+  });
+
+  it("keeps governed user listing scoped to the caller organization for platform-admin", async () => {
+    const platformAdminAuth: AuthContext = {
+      ...adminAuth,
+      roles: [{ projectId: null, roleId: "platform-admin" }],
+      permissions: [...adminAuth.permissions, "platform:access", "platform:schema-promote"]
+    };
+    const { calls, db } = createDb(() => []);
+
+    await listGovernedUsers(db, platformAdminAuth);
+
+    const listUsersCall = calls.find((call) => call.text.includes("from users"));
+    expect(listUsersCall?.values[0]).toBe("org-chargelab");
   });
 
   it("prevents removing the active admin's last Admin capability", async () => {

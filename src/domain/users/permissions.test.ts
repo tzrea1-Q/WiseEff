@@ -21,7 +21,8 @@ describe("platform user roles", () => {
       "software-user",
       "hardware-committer",
       "software-committer",
-      "admin"
+      "admin",
+      "platform-admin"
     ]);
   });
 
@@ -88,8 +89,11 @@ describe("platform user roles", () => {
     expect(roleCanBeAssignedToWorkflowSlot("software-user", "softwareUser")).toBe(true);
     expect(roleCanBeAssignedToWorkflowSlot("software-committer", "softwareUser")).toBe(true);
     expect(roleCanBeAssignedToWorkflowSlot("admin", "hardwareCommitter")).toBe(false);
+    expect(roleCanBeAssignedToWorkflowSlot("platform-admin", "hardwareCommitter")).toBe(false);
     expect(roleCanBeAssignedToWorkflowSlot("admin", "softwareCommitter")).toBe(false);
+    expect(roleCanBeAssignedToWorkflowSlot("platform-admin", "softwareCommitter")).toBe(false);
     expect(roleCanBeAssignedToWorkflowSlot("admin", "softwareUser")).toBe(false);
+    expect(roleCanBeAssignedToWorkflowSlot("platform-admin", "softwareUser")).toBe(false);
   });
 
   it("returns Guest for unknown role lookups", () => {

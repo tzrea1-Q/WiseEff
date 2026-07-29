@@ -14,7 +14,8 @@ const acceptanceUsersByRole = {
   "software-user": { userId: "u-liu-min", name: "Liu Min", email: "liu@chargelab.cn" },
   "hardware-committer": { userId: "u-wang-jie", name: "Wang Jie", email: "wang@chargelab.cn" },
   "software-committer": { userId: "u-sun-mei", name: "Sun Mei", email: "sun@chargelab.cn" },
-  admin: { userId: "u-xu-yun", name: "Xu Yun", email: "xu@chargelab.cn" }
+  admin: { userId: "u-xu-yun", name: "Xu Yun", email: "xu@chargelab.cn" },
+  "platform-admin": { userId: "u-platform-admin", name: "Platform Operator", email: "platform@chargelab.cn" }
 } as const;
 
 export type AcceptanceRoleId = keyof typeof acceptanceUsersByRole;
@@ -25,7 +26,8 @@ const roleLabels: Record<AcceptanceRoleId, string> = {
   "software-user": "Software User",
   "hardware-committer": "Hardware Committer",
   "software-committer": "Software Committer",
-  admin: "Admin"
+  admin: "Admin",
+  "platform-admin": "Platform Super Admin"
 };
 
 async function writeBrowserTokenBeforeRoute(page: Page, token: string, route: string) {

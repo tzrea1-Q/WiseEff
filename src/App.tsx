@@ -613,8 +613,12 @@ function canAdvanceReviewRequest(activeRoleId: string, request: ChangeRequest) {
   return canPerform(activeRoleId, "parameter.review");
 }
 
+function isAdminCapabilityRole(roleId: PlatformRoleId) {
+  return roleId === "admin" || roleId === "platform-admin";
+}
+
 function wouldHaveActiveAdmin(_state: PrototypeState, nextUsers: User[]) {
-  return nextUsers.some((user) => user.isActive && user.roleId === "admin");
+  return nextUsers.some((user) => user.isActive && isAdminCapabilityRole(migrateLegacyRoleId(user.roleId)));
 }
 
 export function isEditableProjectLifecycleStatus(status: ProjectInitializationStatus) {
@@ -1573,7 +1577,13 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         return state;
       }
       const nextRoleId = migrateLegacyRoleId(action.roleId);
-      if (action.userId === state.currentUserId && nextRoleId !== "admin") {
+      if (
+        nextRoleId === "platform-admin" &&
+        migrateLegacyRoleId(state.activeRoleId) !== "platform-admin"
+      ) {
+        return state;
+      }
+      if (action.userId === state.currentUserId && !isAdminCapabilityRole(nextRoleId)) {
         return state;
       }
 

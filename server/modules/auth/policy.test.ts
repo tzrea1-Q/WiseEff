@@ -7,6 +7,7 @@ describe("auth policy", () => {
     expect(compareRoles("software-user", "hardware-user")).toBe(0);
     expect(compareRoles("hardware-committer", "software-user")).toBeGreaterThan(0);
     expect(compareRoles("admin", "software-committer")).toBeGreaterThan(0);
+    expect(compareRoles("platform-admin", "admin")).toBeGreaterThan(0);
   });
 
   it("checks action permissions", () => {
@@ -19,6 +20,9 @@ describe("auth policy", () => {
     expect(canPerform("software-user", "parameter:review")).toBe(false);
     expect(canPerform("hardware-committer", "parameter:review")).toBe(true);
     expect(canPerform("admin", "users:manage")).toBe(true);
+    expect(canPerform("platform-admin", "platform:access")).toBe(true);
+    expect(canPerform("platform-admin", "platform:schema-promote")).toBe(true);
+    expect(canPerform("admin", "platform:access")).toBe(false);
     expect(canPerform("admin", "parameter:edit-critical")).toBe(true);
     expect(canPerform("hardware-committer", "parameter:edit-critical")).toBe(true);
     expect(canPerform("software-committer", "parameter:edit-critical")).toBe(true);

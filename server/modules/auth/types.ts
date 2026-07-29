@@ -4,7 +4,8 @@ export type BackendRoleId =
   | "software-user"
   | "hardware-committer"
   | "software-committer"
-  | "admin";
+  | "admin"
+  | "platform-admin";
 
 export type BackendPermission =
   | "parameter:view"
@@ -23,7 +24,9 @@ export type BackendPermission =
   | "logs:feedback"
   | "parameter:review"
   | "admin:access"
-  | "users:manage";
+  | "users:manage"
+  | "platform:access"
+  | "platform:schema-promote";
 
 export type AuthenticatedUser = {
   id: string;

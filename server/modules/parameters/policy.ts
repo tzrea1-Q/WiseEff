@@ -9,7 +9,10 @@ function hasRole(auth: AuthContext, roles: BackendRoleId[], projectId?: string) 
   return auth.roles.some(
     (binding) =>
       roles.includes(binding.roleId) &&
-      (binding.roleId === "admin" || projectId === undefined || binding.projectId === projectId)
+      (binding.roleId === "admin" ||
+        binding.roleId === "platform-admin" ||
+        projectId === undefined ||
+        binding.projectId === projectId)
   );
 }
 

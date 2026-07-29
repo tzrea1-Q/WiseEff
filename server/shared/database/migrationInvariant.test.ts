@@ -191,6 +191,17 @@ describe("logical module kind migration invariants", () => {
   });
 });
 
+describe("platform admin role migration invariants", () => {
+  it("inserts the platform-admin catalog row and allows nullable audit organization scope", () => {
+    const migration = readFileSync(path.join(root, "server", "migrations", "0078_platform_admin_role.sql"), "utf8");
+
+    expect(migration).toContain("'platform-admin'");
+    expect(migration).toContain("platform:access");
+    expect(migration).toContain("platform:schema-promote");
+    expect(migration).toContain("alter table audit_events alter column organization_id drop not null");
+  });
+});
+
 describe("organization driver schema overlay migration invariants", () => {
   it("adds org-scoped overlay tables with active-compatible uniqueness", () => {
     const migration = readFileSync(

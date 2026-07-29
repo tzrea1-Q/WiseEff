@@ -27,7 +27,15 @@ export type OidcVerifierOptions = {
   now?: () => Date;
 };
 
-const roleIds = new Set<BackendRoleId>(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin"]);
+const roleIds = new Set<BackendRoleId>([
+  "guest",
+  "hardware-user",
+  "software-user",
+  "hardware-committer",
+  "software-committer",
+  "admin",
+  "platform-admin"
+]);
 
 function bearerToken(authorization: string | string[] | undefined) {
   const header = Array.isArray(authorization) ? authorization[0] : authorization;

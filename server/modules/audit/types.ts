@@ -8,7 +8,7 @@ export type AuditActorType = "user" | "agent" | "system";
 
 export type CreateAuditEventInput = {
   id: string;
-  organizationId: string;
+  organizationId: string | null;
   projectId: string | null;
   actorUserId: string | null;
   actorType: AuditActorType;

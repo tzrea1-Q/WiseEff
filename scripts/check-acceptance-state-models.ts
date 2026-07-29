@@ -12,7 +12,8 @@ const roleIds = [
   "software-user",
   "hardware-committer",
   "software-committer",
-  "admin"
+  "admin",
+  "platform-admin"
 ] as const satisfies readonly BackendRoleId[];
 
 export type AuditEventSummary = {

@@ -17,7 +17,15 @@ const scryptAsync = promisify(scrypt);
 const passwordHashPrefix = "scrypt";
 const defaultSessionTtlMs = 1000 * 60 * 60 * 24 * 7;
 const allowedLocalOrganizations = new Set(["硬件部", "软件部"]);
-const roleIds = new Set<BackendRoleId>(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin"]);
+const roleIds = new Set<BackendRoleId>([
+  "guest",
+  "hardware-user",
+  "software-user",
+  "hardware-committer",
+  "software-committer",
+  "admin",
+  "platform-admin"
+]);
 const approvalRequiredRoleIds = new Set<BackendRoleId>(["hardware-committer", "software-committer"]);
 const defaultSelfRegistrationRoleId: BackendRoleId = "hardware-user";
 
@@ -112,7 +120,7 @@ function optionalBearerToken(authorization: string | string[] | undefined) {
 }
 
 function assignedRoleForRegistration(roleId: BackendRoleId): BackendRoleId {
-  if (roleId === "admin") {
+  if (roleId === "admin" || roleId === "platform-admin") {
     throw new ApiError("VALIDATION_FAILED", "Admin registration is not allowed.", 400, { roleId });
   }
 

@@ -6,7 +6,8 @@ const roleRank: Record<BackendRoleId, number> = {
   "software-user": 1,
   "hardware-committer": 2,
   "software-committer": 2,
-  admin: 3
+  admin: 3,
+  "platform-admin": 4
 };
 
 const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
@@ -77,6 +78,27 @@ const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
     "parameter:review",
     "admin:access",
     "users:manage"
+  ],
+  "platform-admin": [
+    "parameter:view",
+    "parameter:edit",
+    "parameter:edit-critical",
+    "debugging:use",
+    "debugging:view",
+    "debugging:read",
+    "debugging:write",
+    "debugging:rollback",
+    "debugging:admin",
+    "logs:view",
+    "logs:upload",
+    "logs:feedback",
+    "logs:analyze",
+    "logs:archive",
+    "parameter:review",
+    "admin:access",
+    "users:manage",
+    "platform:access",
+    "platform:schema-promote"
   ]
 };
 
