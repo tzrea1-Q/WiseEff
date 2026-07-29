@@ -15,6 +15,12 @@ export type ParseCoverage =
   | ({
       covered: true;
       shadowedBy?: ParseCoverageMatch[];
+      /**
+       * True when this organization's overlay for the compatible was superseded
+       * by a platform-tier promotion (ADR-0009). Distinct from shadowedBy, which
+       * means an still-active lower-tier match lost at lookup time.
+       */
+      promoted?: boolean;
     } & ParseCoverageMatch);
 
 function patternMatches(pattern: string, value: string): boolean {

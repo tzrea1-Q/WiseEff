@@ -133,21 +133,22 @@ export type DriverCoverageSummary = {
 export function isPromotedParseCoverage(
   coverage: DriverRegistryEntry["parseCoverages"][number]["coverage"],
 ): boolean {
-  return Boolean(
-    coverage.covered &&
-      coverage.scope === "organization" &&
-      coverage.shadowedBy?.some((entry) => entry.scope === "platform"),
-  );
+  return Boolean(coverage.covered && coverage.promoted);
 }
 
 export function isOverlayParseCoverage(coverage: DriverRegistryEntry["parseCoverages"][number]["coverage"]): boolean {
-  return coverage.covered && coverage.scope === "organization";
+  return coverage.covered && coverage.scope === "organization" && !coverage.promoted;
 }
 
 export function isShadowedParseCoverage(
   coverage: DriverRegistryEntry["parseCoverages"][number]["coverage"]
 ): boolean {
-  return Boolean(coverage.covered && coverage.shadowedBy && coverage.shadowedBy.length > 0);
+  return Boolean(
+    coverage.covered &&
+      !coverage.promoted &&
+      coverage.shadowedBy &&
+      coverage.shadowedBy.length > 0,
+  );
 }
 
 /** moduleId → parse coverage rollup, derived from listDriverRegistry(). */

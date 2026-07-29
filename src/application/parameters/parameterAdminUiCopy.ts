@@ -82,6 +82,7 @@ export const PARAMETER_ADMIN_UI = {
   driverRegistryCoverageCovered: "已覆盖",
   driverRegistryCoverageOverlay: "组织覆盖",
   driverRegistryCoverageShadowed: "已被平台覆盖遮蔽",
+  driverRegistryCoveragePromoted: "已晋升至平台",
   driverRegistryCoverageUncovered: "未覆盖",
   moduleAttributionHideNotYetObserved: "隐藏未实测",
   moduleAttributionOnlyUncoveredParse: "只看解析未覆盖",

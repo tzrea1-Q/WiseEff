@@ -40,6 +40,7 @@ export type ModuleEditCompatibleCoverage = {
     source: string;
     scope: "platform" | "organization";
   }>;
+  promoted?: boolean;
 };
 
 export function ModuleEditDialog({
@@ -177,11 +178,15 @@ export function ModuleEditDialog({
                       coverage?.pattern !== mapping.matchValue;
                     const isShadowed =
                       Boolean(coverage?.covered) &&
+                      !coverage?.promoted &&
                       Boolean(coverage?.shadowedBy && coverage.shadowedBy.length > 0);
+                    const isPromoted = Boolean(coverage?.covered && coverage.promoted);
                     const isOverlay = coverage?.covered && coverage.scope === "organization";
                     const coverageLabel = !coverage?.covered
                       ? PARAMETER_ADMIN_UI.driverRegistryCoverageUncovered
-                      : isShadowed
+                      : isPromoted
+                        ? PARAMETER_ADMIN_UI.driverRegistryCoveragePromoted
+                        : isShadowed
                         ? PARAMETER_ADMIN_UI.driverRegistryCoverageShadowed
                         : isOverlay
                           ? PARAMETER_ADMIN_UI.driverRegistryCoverageOverlay

@@ -180,7 +180,8 @@ export function ParameterModuleMappingPanel({
           source: coverage.covered ? coverage.source : undefined,
           driverId: coverage.covered ? coverage.driverId : undefined,
           scope: coverage.covered ? coverage.scope : undefined,
-          shadowedBy: coverage.covered ? coverage.shadowedBy : undefined
+          shadowedBy: coverage.covered ? coverage.shadowedBy : undefined,
+          promoted: coverage.covered ? coverage.promoted : undefined
         }))
       );
     }

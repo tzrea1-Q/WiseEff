@@ -40,6 +40,7 @@ import { isScaffoldingDriverLabel, normalizeMatchToken } from "./modulePlacement
 import type { CreateModuleMappingBody } from "./schemas";
 import type { ModuleMatchKind, ModuleOrigin, ParameterModuleRegistryDto } from "./types";
 import { getCachedOrganizationSchemaRegistry } from "../parameter-specs/schemaRegistryCache";
+import { listOrganizationDriverSchemas } from "../parameter-specs/driverSchemaOverlayRepository";
 import { lookupParseCoverage, type ParseCoverage } from "../parameter-specs/parseCoverage";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -849,6 +850,15 @@ export async function listDriverRegistry(
     schemasRoot,
     organizationId: auth.organization.id,
   });
+  const supersededOverlays = await listOrganizationDriverSchemas(db, {
+    organizationId: auth.organization.id,
+    lifecycle: "superseded",
+  });
+  const promotedCompatibles = new Set(
+    supersededOverlays
+      .filter((overlay) => Boolean(overlay.supersededBySchemaId))
+      .map((overlay) => overlay.compatible.toLowerCase()),
+  );
   const byId = new Map(registry.modules.map((module) => [module.id, module]));
   const mappingsByModule = new Map<string, string[]>();
   for (const mapping of registry.mappings) {
@@ -881,10 +891,17 @@ export async function listDriverRegistry(
       parameterCount: module.parameterCount,
       observed,
       notYetObserved: module.origin === "curated" && !observed,
-      parseCoverages: compatibles.map((compatible) => ({
-        compatible,
-        coverage: lookupParseCoverage(compatible, schemaRegistry),
-      })),
+      parseCoverages: compatibles.map((compatible) => {
+        const coverage = lookupParseCoverage(compatible, schemaRegistry);
+        if (
+          coverage.covered &&
+          coverage.scope === "platform" &&
+          promotedCompatibles.has(compatible.toLowerCase())
+        ) {
+          return { compatible, coverage: { ...coverage, promoted: true } };
+        }
+        return { compatible, coverage };
+      }),
     });
   }
 

@@ -82,6 +82,7 @@ export type DriverRegistryParseCoverage =
         source: string;
         scope: "platform" | "organization";
       }>;
+      promoted?: boolean;
     };
 
 export type DriverRegistryEntry = {
