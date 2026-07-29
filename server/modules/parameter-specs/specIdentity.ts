@@ -73,14 +73,56 @@ export function buildManualSpecIds(input: {
   const rawDriver = input.driverModule ?? "";
   const schemaNamespace = sanitizeSpecSegment(input.driverModule ?? "manual");
   const propertySegment = sanitizeSpecSegment(input.propertyKey);
-  // specification_key is also covered by a database uniqueness constraint. Keep
-  // the readable prefix, but derive uniqueness from the same lossless raw tuple.
   const specificationKey = `${schemaNamespace}/${propertySegment}-${manualSpecificationKeyDigest({
     driverModule: rawDriver,
     propertyKey: input.propertyKey,
   })}`;
   const parameterSpecId = stableSemanticId("parameter_spec", [
     canonicalIdentityPart("organizationId", input.organizationId),
+    "manual",
+    canonicalIdentityPart("driverModule", rawDriver),
+    canonicalIdentityPart("propertyKey", input.propertyKey),
+  ]);
+  const parameterSpecVersionId = stableSemanticId("parameter_spec_version", [
+    canonicalIdentityPart("parameterSpecId", parameterSpecId),
+    canonicalIdentityPart("version", "1"),
+  ]);
+  const dtsPropertySpecId = stableSemanticId("dts_property_spec", [
+    canonicalIdentityPart("parameterSpecId", parameterSpecId),
+    canonicalIdentityPart("propertyKey", input.propertyKey),
+  ]);
+  return {
+    schemaNamespace,
+    specificationKey,
+    parameterSpecId,
+    parameterSpecVersionId,
+    dtsPropertySpecId,
+  };
+}
+
+/**
+ * Platform manual specs omit organizationId from identity (ADR-0009).
+ * Must not reuse buildManualSpecIds — that bakes in tenant scope.
+ */
+export function buildPlatformManualSpecIds(input: {
+  propertyKey: string;
+  driverModule: string | null;
+}): {
+  schemaNamespace: string;
+  specificationKey: string;
+  parameterSpecId: string;
+  parameterSpecVersionId: string;
+  dtsPropertySpecId: string;
+} {
+  const rawDriver = input.driverModule ?? "";
+  const schemaNamespace = sanitizeSpecSegment(input.driverModule ?? "manual");
+  const propertySegment = sanitizeSpecSegment(input.propertyKey);
+  const specificationKey = `platform/${schemaNamespace}/${propertySegment}-${manualSpecificationKeyDigest({
+    driverModule: rawDriver,
+    propertyKey: input.propertyKey,
+  })}`;
+  const parameterSpecId = stableSemanticId("parameter_spec", [
+    canonicalIdentityPart("scope", "platform"),
     "manual",
     canonicalIdentityPart("driverModule", rawDriver),
     canonicalIdentityPart("propertyKey", input.propertyKey),
