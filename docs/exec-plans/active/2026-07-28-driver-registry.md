@@ -6,11 +6,11 @@ Make the platform's supported-driver scope declarable and visible before a DTS u
 
 ## Status
 
-Planning only. This document is the agreed design; no implementation has started.
+Implementation complete on `feat/driver-registry` pending PR. Batches 1–8 done: server seams, registry UI, queue claim, upload `driverSummary` + frontend dialog, bilingual FRONTEND, API contract, acceptance IDs, domain/tech-debt review. Playwright browser evidence still required before marking the plan completed.
 
 ## Git & PR Workflow
 
-- Feature branch: `feat/driver-registry`, cut from `main` after the ADR-0006 work on `feat/module-logical-kind` merges.
+- Feature branch: `feat/driver-registry` (cut from `feat/module-logical-kind` per agreed baseline B).
 - Implementation commits on the feature branch only.
 - Parent agent opens and merges the GitHub PR; do not push to `main` from this plan.
 
@@ -26,18 +26,18 @@ Settled during design; do not relitigate without updating ADR-0007.
 - Registering an already-mapped compatible claims the existing driver group: reuse, move when the target category differs, promote `origin` to `curated`.
 - No report entity. The unclassified queue is re-framed as "observed but not registered"; the upload response carries a one-shot ingest summary; "registered but never observed" is a coverage column.
 - Zero-parameter registered driver groups stay visible in the tree with a not-yet-observed marker, behind a default-off hide toggle.
-- The registry lives on `/parameter-admin/modules` as a view toggle beside the attribution tree, sharing the queue below.
+- The registry **read model** is consumed by the attribution tree (coverage chips + edit-dialog detail), not a separate `/modules/registry` table view. Sub-nav is tree + unregistered queue only; legacy registry URLs redirect to the tree.
 
 ## Batches
 
-1. **Registry read model.** Expose `loadSchemaRegistry` outside the ingest transaction with a process-level cache keyed on the catalog content hash, and add a lookup that answers "is this compatible covered by a pinned schema, and by which pattern". Keep ingest reading the same cached instance so parse coverage and matching can never disagree.
-2. **Registry query.** Server query listing driver-group modules for an organization with their compatible rules, subtree binding counts, `origin`, and parse coverage. Reuse `isScaffoldingDriverLabel` so scaffolding leftovers never appear as drivers.
-3. **Register action.** One transaction creating a curated driver group under the declared business category plus its exact mappings, with an audit event. Reject a target that is not a business category, mirroring the parent/child guards added for ADR-0006.
-4. **Claim action.** When a compatible already maps, reuse the module, move it when the declared category differs, promote `origin`, and apply the declared display name. Emit the same audit event shape as batch 3 with a `claimed` discriminator.
-5. **Tree marker.** Not-yet-observed marker on zero-parameter curated driver groups, plus a default-off hide toggle next to the existing kind and origin filters.
-6. **Registry view.** View toggle on `/parameter-admin/modules` between the attribution tree and the registry table, sharing the queue below. Re-frame the queue heading and empty state as unregistered drivers, and add a one-click claim entry from a queue row.
-7. **Upload summary.** Thread the semantic ingest result through `parameter-files` upload responses (`routes.ts` currently returns only `item`, `version`, and `unsupportedConstructs`) and show a one-shot post-upload dialog: registered drivers matched, new unregistered compatibles found.
-8. **Documentation and acceptance.** ADR-0007 (done), `CONTEXT.md` terms (done), bilingual frontend pages, acceptance and operation coverage maps, tech-debt entries.
+1. **Registry read model.** [x] Expose `loadSchemaRegistry` outside the ingest transaction with a process-level cache keyed on the catalog content hash, and add a lookup that answers "is this compatible covered by a pinned schema, and by which pattern". Keep ingest reading the same cached instance so parse coverage and matching can never disagree.
+2. **Registry query.** [x] Server query listing driver-group modules for an organization with their compatible rules, subtree binding counts, `origin`, and parse coverage. Reuse `isScaffoldingDriverLabel` so scaffolding leftovers never appear as drivers.
+3. **Register action.** [x] One transaction creating a curated driver group under the declared business category plus its exact mappings, with an audit event. Reject a target that is not a business category, mirroring the parent/child guards added for ADR-0006.
+4. **Claim action.** [x] When a compatible already maps, reuse the module, move it when the declared category differs, promote `origin`, and apply the declared display name. Emit the same audit event shape as batch 3 with a `claimed` discriminator.
+5. **Tree marker.** [x] Not-yet-observed marker on zero-parameter curated driver groups, plus a default-off hide toggle next to the existing kind and origin filters.
+6. **Registry view.** [x] Initially a peer table under `/parameter-admin/modules/registry`. Folded into the attribution tree: coverage chips, uncovered filter, and edit-dialog per-compatible detail; registry tab removed; queue claim retained.
+7. **Upload summary.** [x] DTS upload responses include a one-shot `driverSummary`; `ProjectParameterFilesPanel` shows `DriverUploadSummaryDialog` after upload.
+8. **Documentation and acceptance.** [x] ADR-0007 + CONTEXT, bilingual FRONTEND, API contract, acceptance IDs, domain-model + TD-045 notes.
 
 ## Risks
 
@@ -52,9 +52,9 @@ Behavior changes are user-facing, so requirement and operation IDs must be regis
 
 | ID | Behavior | Status |
 | --- | --- | --- |
-| `DRV-REG-001` | Register a driver before any upload; it appears in the tree as a not-yet-observed driver group | To register |
-| `DRV-REG-002` | Claim an observed-but-unregistered driver from the queue or registry view; origin becomes curated | To register |
-| `DRV-REG-003` | Upload summary reports matched registered drivers and new unregistered compatibles | To register |
+| `DRV-REG-001` | Register a driver before any upload; it appears in the tree as a not-yet-observed driver group with a parse-coverage chip | Registered (Playwright stub) |
+| `DRV-REG-002` | Claim an observed-but-unregistered driver from the queue or module tree; origin becomes curated | Registered (Playwright stub) |
+| `DRV-REG-003` | Upload summary reports matched registered drivers and new unregistered compatibles | Registered (Playwright stub) |
 
 ## Documentation Impact Matrix
 
@@ -63,12 +63,12 @@ Behavior changes are user-facing, so requirement and operation IDs must be regis
 | ADR | Update | `docs/adr/0007-driver-registry-is-a-view-over-curated-driver-groups.md` (new), `docs/adr/0006-*.md` follow-up | Done |
 | Domain context | Update | `CONTEXT.md` glossary and ADR index | Done |
 | Planning | Update | `docs/PLANS.md` active plan list | Done |
-| Frontend | Update | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` | Pending implementation |
-| API contract | Update | `docs/design-docs/api-contract.md` — registry query, register/claim, upload summary field | Pending implementation |
-| Acceptance maps | Update | `docs/developer/browser-acceptance-coverage-map.md`, `docs/developer/user-operation-coverage-matrix.md` | Pending implementation |
-| Product specs | Review | `docs/product-specs/product-spec.md` — supported-driver scope becomes a declared contract | Pending implementation |
-| Domain model | Review | `docs/design-docs/domain-model.md` — registration vocabulary lives in ADR-0007 | Pending implementation |
-| Tech debt | Review | `docs/exec-plans/tech-debt-tracker.md`, `docs/zh-CN/exec-plans/tech-debt-tracker.md` — TD-045 interaction with the registry view | Pending implementation |
+| Frontend | Update | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md` | Done |
+| API contract | Update | `docs/design-docs/api-contract.md` — registry query, register/claim, upload summary field | Done |
+| Acceptance maps | Update | `docs/developer/browser-acceptance-coverage-map.md`, `docs/developer/user-operation-coverage-matrix.md` | Done |
+| Product specs | Review | `docs/product-specs/product-spec.md` — no product-spec section names driver registration; vocabulary lives in ADR-0007 / FRONTEND | Reviewed — no change |
+| Domain model | Review | `docs/design-docs/domain-model.md` — registration vocabulary + `logical` kind | Done |
+| Tech debt | Review | `docs/exec-plans/tech-debt-tracker.md`, `docs/zh-CN/exec-plans/tech-debt-tracker.md` — TD-045 interaction with the registry view | Done |
 | Generated schema | No change | — | No migration; the decision adds no tables or columns |
 | Security / reliability | No change | — | — |
 
@@ -83,7 +83,7 @@ npx vitest run server/modules/parameter-modules src/components/parameter-topolog
 npm run test:server -- --run server/modules/parameter-specs server/modules/parameter-files
 npm run build
 npm run docs:check
-# playwright-cli: /parameter-admin/modules registry view at 1440x900, 768x1024, 390x844
+# playwright-cli: /parameter-admin/modules tree coverage chips at 1440x900, 768x1024, 390x844
 ```
 
 ## Deferred

@@ -145,3 +145,51 @@ export type ResolveSpecReviewTaskBody = z.infer<typeof resolveSpecReviewTaskBody
 export type ActivateParameterSpecBody = z.infer<typeof activateParameterSpecBodySchema>;
 export type UpdateParameterSpecBody = z.infer<typeof updateParameterSpecBodySchema>;
 export type ResolveSpecReviewTaskResultDto = z.infer<typeof resolveSpecReviewTaskResultSchema>;
+
+const propertyValueShapeSchema = z.union([
+  z.object({ kind: z.literal("bool") }),
+  z.object({ kind: z.literal("empty") }),
+  z.object({ kind: z.literal("string-list") }),
+  z.object({ kind: z.literal("u32-array") }),
+  z.object({ kind: z.literal("phandle-list") }),
+  z.object({ kind: z.literal("bytes") }),
+  z.object({ kind: z.literal("mixed") }),
+  z.object({ kind: z.literal("unknown") }),
+  z.record(z.string(), z.unknown()),
+]);
+
+export const organizationDriverSchemaPropertyBodySchema = z.union([
+  z.object({
+    parameterSpecId: nonEmptyString,
+    propertyKey: z.string().min(1).optional(),
+  }),
+  z.object({
+    propertyKey: nonEmptyString,
+    valueShape: propertyValueShapeSchema,
+    units: z.string().nullable().optional(),
+    constraints: z.record(z.string(), z.unknown()).optional(),
+    exampleValue: z.unknown().optional(),
+    documentation: z.string().optional(),
+    copyFromParameterSpecId: z.string().min(1).optional(),
+  }),
+]);
+
+export const createOrganizationDriverSchemaBodySchema = z.object({
+  compatible: nonEmptyString,
+  displayName: nonEmptyString,
+  notes: z.string().optional(),
+  properties: z.array(organizationDriverSchemaPropertyBodySchema).min(1),
+});
+
+export const updateOrganizationDriverSchemaBodySchema = z.object({
+  displayName: z.string().min(1).optional(),
+  notes: z.string().optional(),
+  properties: z.array(organizationDriverSchemaPropertyBodySchema).min(1).optional(),
+});
+
+export const organizationDriverSchemaParamsSchema = z.object({
+  schemaId: nonEmptyString,
+});
+
+export type CreateOrganizationDriverSchemaBody = z.infer<typeof createOrganizationDriverSchemaBodySchema>;
+export type UpdateOrganizationDriverSchemaBody = z.infer<typeof updateOrganizationDriverSchemaBodySchema>;

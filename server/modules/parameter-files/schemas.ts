@@ -26,7 +26,15 @@ export const unsupportedConstructSchema = z.object({
 export const uploadProjectParameterFileResponseSchema = z.object({
   item: z.record(z.string(), z.unknown()),
   version: z.record(z.string(), z.unknown()),
-  unsupportedConstructs: z.array(unsupportedConstructSchema).optional()
+  unsupportedConstructs: z.array(unsupportedConstructSchema).optional(),
+  driverSummary: z
+    .object({
+      matchedRegistered: z.array(z.string()),
+      newUnregistered: z.array(z.string()),
+      matchedRegisteredCount: z.number().int().nonnegative(),
+      newUnregisteredCount: z.number().int().nonnegative(),
+    })
+    .optional(),
 });
 
 export const configSetRoleSchema = z.enum(["base", "overlay", "charging", "thermal", "misc"]);

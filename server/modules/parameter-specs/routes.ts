@@ -7,11 +7,14 @@ import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   activateParameterSpecBodySchema,
+  createOrganizationDriverSchemaBodySchema,
   listParameterSpecsQuerySchema,
   listSpecReviewTasksQuerySchema,
+  organizationDriverSchemaParamsSchema,
   parameterSpecParamsSchema,
   parameterSpecReviewTaskParamsSchema,
   resolveSpecReviewTaskBodySchema,
+  updateOrganizationDriverSchemaBodySchema,
   updateParameterSpecBodySchema
 } from "./schemas";
 import {
@@ -22,6 +25,14 @@ import {
   resolveSpecReviewTask,
   updateParameterSpec,
 } from "./service";
+import {
+  activateOrganizationDriverSchemaForAuth,
+  createOrganizationDriverSchemaForAuth,
+  deprecateOrganizationDriverSchemaForAuth,
+  getOrganizationDriverSchemaForAuth,
+  listOrganizationDriverSchemasForAuth,
+  updateOrganizationDriverSchemaForAuth,
+} from "./organizationDriverSchemaService";
 
 function requireDb(db: Database | undefined) {
   if (!db) {
@@ -139,5 +150,53 @@ export function registerParameterSpecRoutes(
       { requestId: request.requestId },
     );
     return { status: 200, body: result };
+  });
+
+  router.get("/api/v2/organization-driver-schemas", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const result = await listOrganizationDriverSchemasForAuth(db, auth);
+    return { status: 200, body: result };
+  });
+
+  router.get("/api/v2/organization-driver-schemas/:schemaId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(organizationDriverSchemaParamsSchema, request.params);
+    const item = await getOrganizationDriverSchemaForAuth(db, auth, params.schemaId);
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v2/organization-driver-schemas", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(createOrganizationDriverSchemaBodySchema, request.body ?? {});
+    const item = await createOrganizationDriverSchemaForAuth(db, auth, body);
+    return { status: 201, body: { item } };
+  });
+
+  router.patch("/api/v2/organization-driver-schemas/:schemaId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(organizationDriverSchemaParamsSchema, request.params);
+    const body = parseWithSchema(updateOrganizationDriverSchemaBodySchema, request.body ?? {});
+    const item = await updateOrganizationDriverSchemaForAuth(db, auth, params.schemaId, body);
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v2/organization-driver-schemas/:schemaId/activate", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(organizationDriverSchemaParamsSchema, request.params);
+    const result = await activateOrganizationDriverSchemaForAuth(db, auth, params.schemaId);
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/organization-driver-schemas/:schemaId/deprecate", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(organizationDriverSchemaParamsSchema, request.params);
+    const item = await deprecateOrganizationDriverSchemaForAuth(db, auth, params.schemaId);
+    return { status: 200, body: { item } };
   });
 }

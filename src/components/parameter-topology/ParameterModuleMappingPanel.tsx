@@ -8,14 +8,24 @@ import {
 } from "@/application/parameters/parameterAdminOrganizationPath";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import type {
+  CreateOrganizationDriverSchemaInput,
+  DriverRegistryEntry,
   MappingApplyPreview,
   ParameterModuleRegistryRepository,
+  RegisterOrClaimDriverInput,
   RecomputeBindingModulesResult
 } from "@/application/ports/ParameterModuleRegistryRepository";
+import { OrganizationDriverSchemaDialog, type LinkedOverlaySpec } from "@/components/admin/OrganizationDriverSchemaDialog";
+import { OverlaySpecPickerDialog } from "@/components/admin/OverlaySpecPickerDialog";
 import { ClassifyCompatibleDialog } from "@/components/parameter-topology/ClassifyCompatibleDialog";
 import { ModuleAttributionTree } from "@/components/parameter-topology/ModuleAttributionTree";
+import { RegisterDriverDialog } from "@/components/parameter-topology/RegisterDriverDialog";
 import { RecomputeBindingsResultDialog } from "@/components/parameter-topology/RecomputeBindingsResultDialog";
 import { UnclassifiedCompatibleQueue } from "@/components/parameter-topology/UnclassifiedCompatibleQueue";
+import { type ParameterSpecLibraryRow } from "@/components/parameter-topology/ParameterSpecLibrary";
+import {
+  summarizeDriverCoverage
+} from "@/components/parameter-topology/moduleAttributionTreeUtils";
 import {
   filterUnmappedCompatibles,
   toUnmappedCompatibleHint,
@@ -33,6 +43,8 @@ export type { UnmappedCompatibleHint };
 export type ParameterModuleMappingPanelProps = {
   canAdmin?: boolean;
   repository?: ParameterModuleRegistryRepository;
+  /** Load definition-library rows for overlay property linking. */
+  listLibrarySpecs?: () => Promise<ParameterSpecLibraryRow[]>;
   pathname?: string;
   search?: string;
   onNavigate?: (path: string) => void;
@@ -44,6 +56,7 @@ export type ParameterModuleMappingPanelProps = {
 export function ParameterModuleMappingPanel({
   canAdmin = false,
   repository,
+  listLibrarySpecs,
   pathname = "/parameter-admin/modules",
   search = "",
   onNavigate
@@ -53,6 +66,7 @@ export function ParameterModuleMappingPanel({
     [repository]
   );
   const [registry, setRegistry] = useState<ParameterModuleRegistry>(EMPTY_PARAMETER_MODULE_REGISTRY);
+  const [driverRegistry, setDriverRegistry] = useState<DriverRegistryEntry[]>([]);
   const [observedCompatibles, setObservedCompatibles] = useState<UnmappedCompatibleHint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +76,18 @@ export function ParameterModuleMappingPanel({
   const [recomputeResult, setRecomputeResult] = useState<RecomputeBindingModulesResult | null>(null);
   const [selectedCompatibles, setSelectedCompatibles] = useState<string[]>([]);
   const [classifyHints, setClassifyHints] = useState<UnmappedCompatibleHint[] | null>(null);
+  const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
+  const [registerDraft, setRegisterDraft] = useState<{
+    displayName: string;
+    compatibles: string[];
+  } | null>(null);
+  const [overlaySchemaDraft, setOverlaySchemaDraft] = useState<{
+    compatible: string;
+  } | null>(null);
+  const [overlayLinkedSpecs, setOverlayLinkedSpecs] = useState<LinkedOverlaySpec[]>([]);
+  const [overlayPickerOpen, setOverlayPickerOpen] = useState(false);
+  const [overlayLibrarySpecs, setOverlayLibrarySpecs] = useState<ParameterSpecLibraryRow[]>([]);
+  const [overlayLibraryLoading, setOverlayLibraryLoading] = useState(false);
 
   const refreshDiscoveryHints = async () => {
     const hints = await client.getDiscoveryHints();
@@ -81,10 +107,11 @@ export function ParameterModuleMappingPanel({
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([client.getRegistry(), client.getDiscoveryHints()])
-      .then(([nextRegistry, hints]) => {
+    Promise.all([client.getRegistry(), client.getDiscoveryHints(), client.listDriverRegistry()])
+      .then(([nextRegistry, hints, driverList]) => {
         if (cancelled) return;
         setRegistry(nextRegistry);
+        setDriverRegistry(driverList.items);
         setObservedCompatibles(
           hints.compatibles.map((hint) =>
             toUnmappedCompatibleHint({
@@ -100,6 +127,7 @@ export function ParameterModuleMappingPanel({
         if (cancelled) return;
         setError(loadError instanceof Error ? loadError.message : "无法加载模块注册表。");
         setRegistry(EMPTY_PARAMETER_MODULE_REGISTRY);
+        setDriverRegistry([]);
         setObservedCompatibles([]);
       })
       .finally(() => {
@@ -119,14 +147,48 @@ export function ParameterModuleMappingPanel({
   const requestedSubView: ParameterAdminModulesSubView =
     parseParameterAdminModulesSubView(pathname) ?? "tree";
   const activeSubView: ParameterAdminModulesSubView =
-    requestedSubView === "queue" && hasQueue ? "queue" : "tree";
+    requestedSubView === "queue" && !hasQueue ? "tree" : requestedSubView;
+  const driverCoverage = useMemo(
+    () => summarizeDriverCoverage(driverRegistry),
+    [driverRegistry]
+  );
+  const driverCoverageDetails = useMemo(() => {
+    const map = new Map<
+      string,
+      Array<{
+        compatible: string;
+        covered: boolean;
+        pattern?: string;
+        source?: string;
+        driverId?: string;
+      }>
+    >();
+    for (const entry of driverRegistry) {
+      map.set(
+        entry.moduleId,
+        entry.parseCoverages.map(({ compatible, coverage }) => ({
+          compatible,
+          covered: coverage.covered,
+          pattern: coverage.covered ? coverage.pattern : undefined,
+          source: coverage.covered ? coverage.source : undefined,
+          driverId: coverage.covered ? coverage.driverId : undefined
+        }))
+      );
+    }
+    return map;
+  }, [driverRegistry]);
 
   useEffect(() => {
     if (!onNavigate) return;
+    // Legacy /modules/registry bookmarks → tree.
+    if (/^\/parameter-admin\/modules\/registry\/?$/.test(pathname)) {
+      onNavigate(buildParameterAdminModulesPath("tree", search));
+      return;
+    }
     if (requestedSubView === "queue" && !loading && !hasQueue) {
       onNavigate(buildParameterAdminModulesPath("tree", search));
     }
-  }, [hasQueue, loading, onNavigate, requestedSubView, search]);
+  }, [hasQueue, loading, onNavigate, pathname, requestedSubView, search]);
 
   const goToSubView = (subView: ParameterAdminModulesSubView) => {
     onNavigate?.(buildParameterAdminModulesPath(subView, search));
@@ -261,6 +323,87 @@ export function ParameterModuleMappingPanel({
     }
   };
 
+  const refreshDriverRegistry = async () => {
+    const list = await client.listDriverRegistry();
+    setDriverRegistry(list.items);
+  };
+
+  const registerDriver = async (input: RegisterOrClaimDriverInput) => {
+    if (!canAdmin) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await client.registerOrClaimDriver(input);
+      setRegistry(await client.getRegistry());
+      await refreshDriverRegistry();
+      await refreshDiscoveryHints();
+      setRegisterDialogOpen(false);
+      setRegisterDraft(null);
+      setRecomputeNotice(
+        result.mode === "claimed" ? `已认领驱动组「${result.item.name}」。` : `已登记驱动组「${result.item.name}」。`
+      );
+      goToSubView("tree");
+    } catch (registerError) {
+      setError(registerError instanceof Error ? registerError.message : "登记驱动失败。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitOverlaySchema = async (input: CreateOrganizationDriverSchemaInput) => {
+    if (!canAdmin) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await client.createOrganizationDriverSchema(input);
+      const result = await client.activateOrganizationDriverSchema(created.id);
+      await refreshDriverRegistry();
+      setOverlaySchemaDraft(null);
+      setOverlayLinkedSpecs([]);
+      setOverlayPickerOpen(false);
+      setOverlayLibrarySpecs([]);
+      setRecomputeNotice(
+        `已激活组织解析 schema「${result.schema.displayName}」，覆盖 compatible ${input.compatible}。`
+      );
+    } catch (overlayError) {
+      setError(
+        overlayError instanceof Error ? overlayError.message : "保存组织解析 schema 失败。"
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openOverlaySchemaDraft = (draft: { compatible: string }) => {
+    setOverlaySchemaDraft(draft);
+    setOverlayLinkedSpecs([]);
+    setOverlayPickerOpen(false);
+  };
+
+  const openOverlaySpecPicker = async () => {
+    setOverlayPickerOpen(true);
+    if (!listLibrarySpecs) {
+      setOverlayLibrarySpecs([]);
+      return;
+    }
+    setOverlayLibraryLoading(true);
+    try {
+      setOverlayLibrarySpecs(await listLibrarySpecs());
+    } catch {
+      setOverlayLibrarySpecs([]);
+    } finally {
+      setOverlayLibraryLoading(false);
+    }
+  };
+
+  const excludedOverlaySpecIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of overlayLinkedSpecs) {
+      if (item.kind === "link") ids.add(item.parameterSpecId);
+    }
+    return ids;
+  }, [overlayLinkedSpecs]);
+
   if (loading) {
     return (
       <section
@@ -309,21 +452,21 @@ export function ParameterModuleMappingPanel({
         ) : null}
       </header>
 
-      {hasQueue ? (
-        <nav
-          className="parameter-module-mapping-panel__subnav"
-          aria-label={PARAMETER_ADMIN_UI.moduleQueueSubnavAria}
+      <nav
+        className="parameter-module-mapping-panel__subnav"
+        aria-label={PARAMETER_ADMIN_UI.moduleQueueSubnavAria}
+      >
+        <button
+          type="button"
+          className={`parameter-module-mapping-panel__subnav-tab${
+            activeSubView === "tree" ? " is-active" : ""
+          }`}
+          aria-current={activeSubView === "tree" ? "page" : undefined}
+          onClick={() => goToSubView("tree")}
         >
-          <button
-            type="button"
-            className={`parameter-module-mapping-panel__subnav-tab${
-              activeSubView === "tree" ? " is-active" : ""
-            }`}
-            aria-current={activeSubView === "tree" ? "page" : undefined}
-            onClick={() => goToSubView("tree")}
-          >
-            {PARAMETER_ADMIN_UI.moduleTreeSubnav}
-          </button>
+          {PARAMETER_ADMIN_UI.moduleTreeSubnav}
+        </button>
+        {hasQueue ? (
           <button
             type="button"
             className={`parameter-module-mapping-panel__subnav-tab${
@@ -335,8 +478,8 @@ export function ParameterModuleMappingPanel({
             {PARAMETER_ADMIN_UI.moduleDiscoveryCompatible}
             <span className="parameter-module-mapping-panel__subnav-count">{queueCount}</span>
           </button>
-        </nav>
-      ) : null}
+        ) : null}
+      </nav>
 
       {recomputeNotice ? (
         <p className="parameter-module-mapping-panel__notice" role="status">
@@ -355,7 +498,7 @@ export function ParameterModuleMappingPanel({
           <p>
             <strong>{PARAMETER_ADMIN_UI.moduleQueueBanner}</strong>
             <span>
-              共 {queueCount} 项。主界面继续维护模块树；点上方「未分类队列」或右侧按钮去处理。
+              共 {queueCount} 项。主界面继续维护归属树；点上方「未登记驱动」或右侧按钮去处理。
             </span>
           </p>
           <button type="button" className="button" onClick={() => goToSubView("queue")}>
@@ -373,16 +516,26 @@ export function ParameterModuleMappingPanel({
               selectedCompatibles={selectedCompatibles}
               onSelectionChange={setSelectedCompatibles}
               onClassify={(hints) => setClassifyHints([...hints])}
+              onClaim={(hint) => {
+                setRegisterDraft({
+                  displayName: hint.suggestedGroupName,
+                  compatibles: [hint.compatible],
+                });
+                setRegisterDialogOpen(true);
+              }}
               onDismiss={(compatible) => void dismissCompatible(compatible)}
             />
-          ) : (
+        ) : (
           <ModuleAttributionTree
             modules={registry.modules}
             mappings={registry.mappings}
+            driverCoverage={driverCoverage}
+            driverCoverageDetails={driverCoverageDetails}
             canAdmin={canAdmin}
             busy={busy}
             hasUnclassifiedQueue={hasQueue}
             onOpenUnclassifiedQueue={() => goToSubView("queue")}
+            onAuthorOverlaySchema={(compatible) => openOverlaySchemaDraft({ compatible })}
             onUpdateModule={async (moduleId, patch) => {
               setBusy(true);
               setError(null);
@@ -411,6 +564,7 @@ export function ParameterModuleMappingPanel({
               try {
                 setRegistry(await client.deleteModule(moduleId));
                 await refreshDiscoveryHints();
+                await refreshDriverRegistry();
               } catch (deleteError) {
                 setError(deleteError instanceof Error ? deleteError.message : "删除模块失败。");
               } finally {
@@ -424,6 +578,7 @@ export function ParameterModuleMappingPanel({
                 const result = await client.deleteMapping(mappingId);
                 setRegistry(result.registry);
                 await refreshDiscoveryHints();
+                await refreshDriverRegistry();
               } catch (mappingError) {
                 setError(mappingError instanceof Error ? mappingError.message : "删除归属失败。");
               } finally {
@@ -441,6 +596,7 @@ export function ParameterModuleMappingPanel({
                 });
                 setRegistry(result.registry);
                 await refreshDiscoveryHints();
+                await refreshDriverRegistry();
               } catch (mappingError) {
                 setError(
                   mappingError instanceof Error ? mappingError.message : "添加 compatible 规则失败。"
@@ -449,19 +605,37 @@ export function ParameterModuleMappingPanel({
                 setBusy(false);
               }
             }}
-            onCreateBusinessModule={async (input) => {
+            onCreateModule={async (input) => {
               setBusy(true);
               setError(null);
               try {
-                setRegistry(
-                  await client.createModule({
-                    name: input.name,
-                    description: input.description,
-                    scope: input.scope,
-                    importance: input.importance,
-                    parentId: input.parentId
-                  })
-                );
+                if (input.kind === "driver-group") {
+                  if (!input.parentId) {
+                    throw new Error("驱动组必须选择业务分类父级。");
+                  }
+                  await client.registerOrClaimDriver({
+                    displayName: input.name,
+                    businessCategoryId: input.parentId,
+                    compatibles: input.compatibles ?? [],
+                    notes: input.description
+                  });
+                  setRegistry(await client.getRegistry());
+                  await refreshDriverRegistry();
+                  await refreshDiscoveryHints();
+                } else {
+                  setRegistry(
+                    await client.createModule({
+                      name: input.name,
+                      description: input.description,
+                      scope: input.scope,
+                      importance: input.importance,
+                      parentId: input.parentId,
+                      kind: input.kind ?? "business",
+                      origin: "curated",
+                      sourceKey: input.sourceKey
+                    })
+                  );
+                }
               } catch (createError) {
                 setError(createError instanceof Error ? createError.message : "创建模块失败。");
               } finally {
@@ -471,6 +645,75 @@ export function ParameterModuleMappingPanel({
           />
         )}
       </div>
+
+      {registerDialogOpen ? (
+        <RegisterDriverDialog
+          modules={registry.modules}
+          busy={busy}
+          initialDisplayName={registerDraft?.displayName ?? ""}
+          initialCompatibles={registerDraft?.compatibles ?? []}
+          onCancel={() => {
+            setRegisterDialogOpen(false);
+            setRegisterDraft(null);
+          }}
+          onConfirm={(input) => void registerDriver(input)}
+        />
+      ) : null}
+
+      {overlaySchemaDraft ? (
+        <OrganizationDriverSchemaDialog
+          compatible={overlaySchemaDraft.compatible}
+          linkedSpecs={overlayLinkedSpecs}
+          busy={busy}
+          suspended={overlayPickerOpen}
+          onCancel={() => {
+            setOverlaySchemaDraft(null);
+            setOverlayLinkedSpecs([]);
+            setOverlayPickerOpen(false);
+            setOverlayLibrarySpecs([]);
+          }}
+          onAddProperty={() => void openOverlaySpecPicker()}
+          onRemoveProperty={(index) =>
+            setOverlayLinkedSpecs((current) => current.filter((_, rowIndex) => rowIndex !== index))
+          }
+          onSubmit={(input) => void submitOverlaySchema(input)}
+        />
+      ) : null}
+
+      {overlaySchemaDraft && overlayPickerOpen ? (
+        <OverlaySpecPickerDialog
+          specs={overlayLibrarySpecs}
+          loading={overlayLibraryLoading}
+          busy={busy}
+          excludedSpecIds={excludedOverlaySpecIds}
+          onBack={() => setOverlayPickerOpen(false)}
+          onConfirm={(result) => {
+            if (result.kind === "link") {
+              setOverlayLinkedSpecs((current) => [
+                ...current,
+                {
+                  kind: "link",
+                  parameterSpecId: result.parameterSpecId,
+                  propertyKey: result.propertyKey,
+                  driverModule: result.driverModule
+                }
+              ]);
+            } else {
+              setOverlayLinkedSpecs((current) => [
+                ...current,
+                {
+                  kind: "create",
+                  propertyKey: result.propertyKey,
+                  valueShape: result.valueShape,
+                  ...(result.units ? { units: result.units } : {}),
+                  ...(result.documentation ? { documentation: result.documentation } : {})
+                }
+              ]);
+            }
+            setOverlayPickerOpen(false);
+          }}
+        />
+      ) : null}
 
       {classifyHints ? (
         <ClassifyCompatibleDialog

@@ -9,6 +9,7 @@ import {
   dismissCompatibleBodySchema,
   dismissedCompatibleParamsSchema,
   moduleMappingParamsSchema,
+  registerOrClaimDriverBodySchema,
   recomputeBindingsBodySchema
 } from "./schemas";
 import {
@@ -17,8 +18,10 @@ import {
   dismissCompatible,
   getModuleDiscoveryHints,
   getParameterModuleRegistry,
+  listDriverRegistry,
   previewModuleMapping,
   recomputeBindingModules,
+  registerOrClaimDriver,
   restoreDismissedCompatible
 } from "./service";
 
@@ -115,5 +118,20 @@ export function registerParameterModuleRoutes(
       dryRun: body.dryRun
     });
     return { status: 200, body: result };
+  });
+
+  router.get("/api/v2/parameter-modules/driver-registry", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const result = await listDriverRegistry(db, auth);
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-modules/driver-registry", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(registerOrClaimDriverBodySchema, request.body ?? {});
+    const result = await registerOrClaimDriver(db, auth, body);
+    return { status: 201, body: result };
   });
 }

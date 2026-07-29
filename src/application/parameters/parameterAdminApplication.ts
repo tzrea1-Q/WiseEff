@@ -115,7 +115,12 @@ export function createParameterAdminApplication({
     previewMapping: (input) => moduleRegistry.previewMapping(input),
     createMapping: (input) => moduleRegistry.createMapping(input),
     deleteMapping: (mappingId) => moduleRegistry.deleteMapping(mappingId),
-    recomputeBindings: (input) => moduleRegistry.recomputeBindings(input)
+    recomputeBindings: (input) => moduleRegistry.recomputeBindings(input),
+    listDriverRegistry: () => moduleRegistry.listDriverRegistry(),
+    registerOrClaimDriver: (input) => moduleRegistry.registerOrClaimDriver(input),
+    createOrganizationDriverSchema: (input) => moduleRegistry.createOrganizationDriverSchema(input),
+    activateOrganizationDriverSchema: (schemaId) =>
+      moduleRegistry.activateOrganizationDriverSchema(schemaId)
   });
 
   return {

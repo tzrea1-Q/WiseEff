@@ -49,7 +49,10 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Unclassified queue | The compatibles observed on project parameters that no driver group claims yet. Scaffolding compatibles never enter it, and an Admin can dismiss an entry, so the queue is expected to reach empty |
 | Dismissed compatible | A compatible an Admin declared out of scope for the module tree. It leaves the unclassified queue without gaining a driver group, and the decision is reversible |
 | Driver registration | An organization's declaration that a device is in scope, stated as a curated driver group naming its business category and the exact compatibles it claims. Not a separate record: the driver group is the registration |
-| Parse coverage | Whether a compatible is matched by a pinned schema document, including through a prefix pattern. A fact about the platform's schema catalog, never about one organization |
+| Parse coverage | Whether a compatible is matched by a releasable schema — a pinned `schemas/dts` document (including prefix patterns) or an active organization overlay (exact compatible only). The chip distinguishes platform vs organization coverage |
+| Organization driver schema overlay | An org-owned manual driver schema (exact compatible + property definitions) that merges into the schema registry as the lowest releasable tier. Closes "parse uncovered" without editing repository files (ADR-0008) |
+| Platform driver schema tier | A promoted overlay row scoped to no organization, readable by every tenant, matched ahead of org overlays and behind vendor. The target of promotion; not yet implemented (ADR-0009) |
+| Overlay promotion | The reviewed platform act that lifts an organization overlay into the platform tier, superseding the contributing org rows instead of deleting them. Requires the linked ParameterSpecs to be platform-scoped first (ADR-0009) |
 | Observed coverage | Whether a registered driver has produced parameters in at least one project. None means declared but not yet seen, which is a normal state rather than a misconfiguration |
 | Not-yet-observed driver group | A registered driver group holding no parameters. Shown in the tree rather than hidden, because being visible before the DTS arrives is why it was registered |
 
@@ -64,3 +67,5 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0005`](docs/adr/0005-compatible-and-instance-are-the-only-attribution-levers.md) — compatible and instance are the only attribution levers
 - [`0006`](docs/adr/0006-logical-nodes-and-manual-kind-correction.md) — logical nodes and manual kind correction
 - [`0007`](docs/adr/0007-driver-registry-is-a-view-over-curated-driver-groups.md) — the driver registry is a view over curated driver groups
+- [`0008`](docs/adr/0008-platform-authored-parsing-is-an-org-scoped-overlay.md) — platform-authored parsing is an org-scoped overlay, not repository editing
+- [`0009`](docs/adr/0009-overlay-parsing-knowledge-promotes-into-a-platform-tier.md) — overlay parsing knowledge promotes into a platform tier

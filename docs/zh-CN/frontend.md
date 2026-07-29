@@ -103,8 +103,11 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 
 - **放置辅助：** `src/domain/parameter-topology/modulePlacement.ts`（服务端镜像在 `server/modules/parameter-modules/`）。
 - **绑定写入：** ingest 通过 `resolveBindingInstanceModuleId` 确保/创建模块并写入 `module_id`。有 compatible 证据的节点落为 `instance`；无 compatible 的 Type C 节点落为 `logical`。未映射 `compatible` 进入临时桶 `未分类 · {driver}`，不阻断 ingest。
-- **未分类队列（次级）：** 有待归类项时，模块归属内出现子菜单「模块树 / 未分类队列」及数量徽标（`/parameter-admin/modules/queue`），树视图顶部有提示条；队列为空时子菜单与队列 UI 均隐藏。归类走 `ClassifyCompatibleDialog` → preview → 范围 apply。
-- **按 kind 分级的树：** `ModuleAttributionTree` 展示 kind 徽标（`business` / `driver-group` / `instance` / `logical` / `unclassified`）、参数计数与仅业务行的重要性（注册表 `effectiveImportance`）。操作遵循服务端 kind 守卫（`instance` 与 `logical` 不可删；`logical` 可移动；驱动组删除=解散；未分类根只读）。编辑弹框可在 `{business, instance, logical}` 间受控改类型（ADR-0006）。驱动组行只显示只读摘要「N 条 compatible」；匹配规则在 `ModuleEditDialog` 内增删，不在树上直接移除。从队列归类 compatible 时，在所选业务分类下创建的是 **驱动组**（不是业务分类），并写入 `source_key = compatible:{normalized}`；match 值会去掉 DTS 外层引号，使 `"mt,mt5788"` 与 `mt,mt5788` 视为同一杠杆。
+- **未登记队列（次级）：** 有待归类项时，模块归属内出现子菜单「模块树 / 未登记驱动」及数量徽标（`/parameter-admin/modules/queue`），树视图顶部有提示条；队列为空时队列子菜单隐藏。队列表示「实测到但未登记」的差集（ADR-0007）。归类走 `ClassifyCompatibleDialog`；**认领登记**打开预填 compatible 的登记对话框。归类调用 preview → 范围 apply。旧书签 `/parameter-admin/modules/registry` 会重定向到归属树。
+- **树上的驱动覆盖：** 不再有独立的驱动登记路由。`GET /api/v2/parameter-modules/driver-registry` 仍提供解析/实测覆盖，但呈现在归属树：驱动组行显示覆盖徽标（「解析已覆盖」/「解析组织覆盖」/「解析 N/M」/「解析未覆盖」），可用默认关闭的「只看解析未覆盖」筛选；`ModuleEditDialog` 在每条 compatible 规则旁展示覆盖明细。未覆盖规则提供「编写解析 schema」，会先关闭模块编辑再打开 `OrganizationDriverSchemaDialog`；「添加参数定义」进入嵌套的 `OverlaySpecPickerDialog`（嵌入定义库搜索与列筛选表，可新建）。保存并激活走 `/api/v2/organization-driver-schemas`。登记/认领仍走 `POST /api/v2/parameter-modules/driver-registry`（树上按驱动组新建，或队列认领）。参数数为 0 的 curated 驱动组 / 器件实例 / 逻辑节点在树上标「未实测」，可用默认关闭的「隐藏未实测」过滤。
+- **上传前新建（统一入口）：** 归属树「新建模块」打开带类型选择的 `ModuleCreateDialog`（`business` / `driver-group` / `instance` / `logical`）。父级按类型规则过滤（业务分类：根或其他业务；驱动组与逻辑节点：业务；器件实例：驱动组）。驱动组须至少 1 条 exact compatible，并走 `registerOrClaimDriver`；其余 kind 走 `POST /api/v1/parameter-modules` 且 `origin=curated`。实例/逻辑可填可选 `sourceKey` 预留 ingest 命中键（本轮不做按名自动合并）。
+- **按 kind 分级的树：** `ModuleAttributionTree` 展示 kind 徽标（`business` / `driver-group` / `instance` / `logical` / `unclassified`）、参数计数、驱动组解析覆盖徽标与仅业务行的重要性（注册表 `effectiveImportance`）。操作遵循服务端 kind 守卫（`instance` 与 `logical` 不可删；`logical` 可移动；驱动组删除=解散；未分类根只读；业务与驱动组可添加子模块）。编辑弹框可在 `{business, instance, logical}` 间受控改类型（ADR-0006）。驱动组行显示只读摘要「N 条 compatible」与覆盖徽标；匹配规则与逐条覆盖状态在 `ModuleEditDialog` 内维护，不在树上直接移除。从队列归类 compatible 时，在所选业务分类下创建的是 **驱动组**（不是业务分类），并写入 `source_key = compatible:{normalized}`；match 值会去掉 DTS 外层引号，使 `"mt,mt5788"` 与 `mt,mt5788` 视为同一杠杆。
+- **上传驱动摘要：** DTS 文件上传响应可带 `driverSummary`（`matchedRegistered` / `newUnregistered`），对照文件内 compatible 与已登记映射；`ProjectParameterFilesPanel` 上传成功后弹出 `DriverUploadSummaryDialog`。
 - **运维重算：** 仅管理员的 `recompute-bindings`（可选 `dryRun`）为回填工具；日常治理用映射范围应用。`db:seed:m1` 在 ingest 后仍可执行 `recomputeBindingModules`。
 
 ## 主要页面流
@@ -120,7 +123,7 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 参数域与调试域各自维护独立的组织级模块树。共享选择器：`src/components/common/ModuleTreeSelect.tsx`。
 
 - `/parameters`：模块筛选与分组使用 `moduleId` 子树包含；深链 `?module=<moduleId>`。
-- `/parameter-admin/modules`：`ModuleAttributionTree` 管理业务分类 / 驱动组 / 器件实例 / 逻辑节点归属；新建与修改走 `ModuleCreateDialog` / `ModuleEditDialog`（名称、受控模块类型、业务分类重要性、描述、适用范围），并保留移动与受控删除；库筛选与导入预览使用树形选择。
+- `/parameter-admin/modules`：`ModuleAttributionTree` 管理业务分类 / 驱动组 / 器件实例 / 逻辑节点归属；「新建模块」走带类型选择的 `ModuleCreateDialog`（父级过滤、驱动组 compatible、可选 sourceKey），修改走 `ModuleEditDialog`（名称、受控改类型、业务分类重要性、描述、适用范围），并保留移动与受控删除；库筛选与导入预览使用树形选择。
 - `/debugging-admin`：`DebugModuleManagementDialog` 管理调试节点模块树；节点目录与编辑弹窗通过 `ModuleTreeSelect` 选模块。
 
 API mode 从 `/api/v1/parameter-modules` 与 `/api/v1/debugging/admin/modules` 加载；mock mode 由 `src/config/power-management.json` 的 `parent`/`path` 经 `buildPowerManagementModuleTree()` 派生。

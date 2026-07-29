@@ -34,9 +34,9 @@ export const PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS: Record<
 export function parseParameterAdminOrganizationPath(
   pathname: string
 ): ParameterAdminOrganizationView | null {
-  const match = pathname.match(
-    /^\/parameter-admin\/(specs|spec-review|modules|identity-mapping)(?:\/queue)?\/?$/
-  );
+  const ORG_ADMIN_PATH =
+    /^\/parameter-admin\/(specs|spec-review|modules|identity-mapping)(?:\/(queue|registry))?\/?$/;
+  const match = pathname.match(ORG_ADMIN_PATH);
   if (!match?.[1]) {
     return null;
   }
@@ -51,6 +51,11 @@ export function parseParameterAdminModulesSubView(
   }
   if (/^\/parameter-admin\/modules\/queue\/?$/.test(pathname)) {
     return "queue";
+  }
+  // Legacy /modules/registry bookmarks: organization path still resolves to modules;
+  // callers redirect to tree. Treat as tree so subtitle/nav do not blank.
+  if (/^\/parameter-admin\/modules\/registry\/?$/.test(pathname)) {
+    return "tree";
   }
   return null;
 }
@@ -68,8 +73,7 @@ export function buildParameterAdminModulesPath(
   search = ""
 ): string {
   const raw = search.startsWith("?") ? search.slice(1) : search;
-  const base =
-    subView === "queue" ? "/parameter-admin/modules/queue" : "/parameter-admin/modules";
+  const base = subView === "queue" ? "/parameter-admin/modules/queue" : "/parameter-admin/modules";
   return `${base}${raw ? `?${raw}` : ""}`;
 }
 

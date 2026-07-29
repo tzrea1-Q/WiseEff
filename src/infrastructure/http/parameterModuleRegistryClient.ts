@@ -1,10 +1,16 @@
 import type {
+  ActivateOrganizationDriverSchemaResult,
   CreateModuleMappingInput,
+  CreateOrganizationDriverSchemaInput,
   CreateParameterModuleInput,
+  DriverRegistryEntry,
   MappingApplyPreview,
   MappingMutationResult,
   ModuleDiscoveryHints,
+  OrganizationDriverSchema,
   ParameterModuleRegistryRepository,
+  RegisterOrClaimDriverInput,
+  RegisterOrClaimDriverResult,
   RecomputeBindingModulesResult,
   UpdateParameterModuleInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
@@ -52,9 +58,13 @@ type RegistryEnvelope = { item: RegistryDto };
 type MappingMutationEnvelope = { item: RegistryDto; apply: MappingApplyPreview };
 type PreviewEnvelope = { item: MappingApplyPreview };
 type DiscoveryEnvelope = { item: ModuleDiscoveryHints };
+type DriverRegistryListResponse = { items: DriverRegistryEntry[]; total: number };
+type RegisterOrClaimDriverResponse = RegisterOrClaimDriverResult;
+type OrganizationDriverSchemaEnvelope = { item: OrganizationDriverSchema };
 
 const REGISTRY_BASE = "/api/v2/parameter-modules";
 const V1_MODULES = "/api/v1/parameter-modules";
+const ORG_DRIVER_SCHEMAS_BASE = "/api/v2/organization-driver-schemas";
 
 function mapModule(module: ModuleDto): ParameterModule {
   const importance = module.importance ?? "medium";
@@ -232,6 +242,29 @@ export function createHttpParameterModuleRegistryRepository(
       return apiClient.post<RecomputeBindingModulesResult>(
         `${REGISTRY_BASE}/recompute-bindings`,
         body
+      );
+    },
+
+    async listDriverRegistry() {
+      return apiClient.get<DriverRegistryListResponse>(`${REGISTRY_BASE}/driver-registry`);
+    },
+
+    async registerOrClaimDriver(input: RegisterOrClaimDriverInput) {
+      return apiClient.post<RegisterOrClaimDriverResponse>(`${REGISTRY_BASE}/driver-registry`, input);
+    },
+
+    async createOrganizationDriverSchema(input: CreateOrganizationDriverSchemaInput) {
+      const response = await apiClient.post<OrganizationDriverSchemaEnvelope>(
+        ORG_DRIVER_SCHEMAS_BASE,
+        input
+      );
+      return response.item;
+    },
+
+    async activateOrganizationDriverSchema(schemaId: string) {
+      return apiClient.post<ActivateOrganizationDriverSchemaResult>(
+        `${ORG_DRIVER_SCHEMAS_BASE}/${encodeURIComponent(schemaId)}/activate`,
+        {}
       );
     }
   };

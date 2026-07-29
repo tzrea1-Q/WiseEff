@@ -1,6 +1,7 @@
 import type {
   ModuleImportance,
   ModuleMatchKind,
+  ModuleOrigin,
   ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
 
@@ -11,9 +12,10 @@ export type CreateParameterModuleInput = {
   scope?: string;
   sortOrder?: number;
   importance?: ModuleImportance;
-  kind?: "business" | "driver-group";
+  kind?: "business" | "driver-group" | "instance" | "logical";
   origin?: "curated" | "auto";
   sourceKey?: string | null;
+  compatibles?: string[];
 };
 
 export type UpdateParameterModuleInput = {
@@ -66,6 +68,102 @@ export type ModuleDiscoveryHints = {
   total: number;
 };
 
+export type DriverRegistryParseCoverage =
+  | { covered: false }
+  | {
+      covered: true;
+      pattern: string;
+      driverId: string;
+      source: string;
+    };
+
+export type DriverRegistryEntry = {
+  moduleId: string;
+  name: string;
+  origin: ModuleOrigin;
+  businessCategoryId: string | null;
+  businessCategoryName: string | null;
+  compatibles: string[];
+  parameterCount: number;
+  observed: boolean;
+  notYetObserved: boolean;
+  parseCoverages: Array<{ compatible: string; coverage: DriverRegistryParseCoverage }>;
+};
+
+export type RegisterOrClaimDriverInput = {
+  displayName: string;
+  businessCategoryId: string;
+  compatibles: string[];
+  notes?: string;
+};
+
+export type RegisterOrClaimDriverResult = {
+  mode: "registered" | "claimed";
+  item: {
+    id: string;
+    name: string;
+    parentId: string | null;
+    kind: "business" | "driver-group" | "instance" | "logical" | "unclassified";
+    origin: ModuleOrigin;
+    description?: string;
+  };
+};
+
+export type OrganizationDriverSchemaValueShapeKind =
+  | "u32-array"
+  | "string-list"
+  | "bool"
+  | "mixed"
+  | "unknown";
+
+/**
+ * Overlay properties link ParameterSpecs (definition library).
+ * Either attach an existing row, or create one into the library via propertyKey+valueShape.
+ */
+export type CreateOrganizationDriverSchemaPropertyInput =
+  | {
+      parameterSpecId: string;
+      propertyKey?: string;
+    }
+  | {
+      propertyKey: string;
+      valueShape: { kind: OrganizationDriverSchemaValueShapeKind };
+      units?: string;
+      constraints?: Record<string, unknown>;
+      documentation?: string;
+      copyFromParameterSpecId?: string;
+    };
+
+export type CreateOrganizationDriverSchemaInput = {
+  compatible: string;
+  displayName: string;
+  notes?: string;
+  properties: CreateOrganizationDriverSchemaPropertyInput[];
+};
+
+export type OrganizationDriverSchema = {
+  id: string;
+  compatible: string;
+  displayName: string;
+  notes: string;
+  lifecycle: string;
+  version: number;
+  properties: Array<{
+    id: string;
+    parameterSpecId: string;
+    propertyKey: string;
+    valueShape: { kind: OrganizationDriverSchemaValueShapeKind } | Record<string, unknown>;
+    units: string | null;
+    documentation: string;
+  }>;
+};
+
+export type ActivateOrganizationDriverSchemaResult = {
+  schema: OrganizationDriverSchema;
+  upgradedSpecIds: string[];
+  resolvedReviewTaskIds: string[];
+};
+
 /**
  * Admin-maintained business-module registry (phase 1, additive).
  * Read path feeds the workbench grouping; write path is admin-only governance.
@@ -90,4 +188,12 @@ export interface ParameterModuleRegistryRepository {
     projectId?: string;
     dryRun?: boolean;
   }): Promise<RecomputeBindingModulesResult>;
+  listDriverRegistry(): Promise<{ items: DriverRegistryEntry[]; total: number }>;
+  registerOrClaimDriver(input: RegisterOrClaimDriverInput): Promise<RegisterOrClaimDriverResult>;
+  createOrganizationDriverSchema(
+    input: CreateOrganizationDriverSchemaInput
+  ): Promise<OrganizationDriverSchema>;
+  activateOrganizationDriverSchema(
+    schemaId: string
+  ): Promise<ActivateOrganizationDriverSchemaResult>;
 }

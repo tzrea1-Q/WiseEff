@@ -1,6 +1,7 @@
 import type {
   DownloadParameterFileVersionResult,
   FileSyncSummary,
+  IngestDriverSummary,
   ParameterFileConflictResolution,
   ParameterFileRepository,
   ParameterFileSyncConflict,
@@ -13,7 +14,15 @@ import { createDefaultApiClient } from "./defaultApiClient";
 
 type ItemsEnvelope<T> = { items: T[] };
 type ItemEnvelope<T> = { item: T };
-type UploadFileEnvelope = { item: ProjectParameterFile; version: ProjectParameterFileVersion };
+type UploadFileEnvelope = {
+  item: ProjectParameterFile;
+  version: ProjectParameterFileVersion;
+  driverSummary?: IngestDriverSummary;
+};
+type UploadVersionEnvelope = {
+  item: ProjectParameterFileVersion;
+  driverSummary?: IngestDriverSummary;
+};
 type ApiClient = ReturnType<typeof createApiClient>;
 
 function contentDispositionFileName(header: string | null) {
@@ -56,11 +65,22 @@ export function createParameterFileClient(client: ApiClient = createDefaultApiCl
       return response.items;
     },
     async uploadFile(projectId: string, input: UploadParameterFileInput) {
-      return client.post<UploadFileEnvelope>(routeProjectFiles(projectId), input);
+      const response = await client.post<UploadFileEnvelope>(routeProjectFiles(projectId), input);
+      return {
+        item: response.item,
+        version: response.version,
+        ...(response.driverSummary ? { driverSummary: response.driverSummary } : {}),
+      };
     },
     async uploadVersion(projectId: string, fileId: string, input: UploadParameterFileInput) {
-      const response = await client.post<ItemEnvelope<ProjectParameterFileVersion>>(routeFileVersions(projectId, fileId), input);
-      return response.item;
+      const response = await client.post<UploadVersionEnvelope>(
+        routeFileVersions(projectId, fileId),
+        input,
+      );
+      return {
+        item: response.item,
+        ...(response.driverSummary ? { driverSummary: response.driverSummary } : {}),
+      };
     },
     async listVersions(projectId: string, fileId: string) {
       const response = await client.get<ItemsEnvelope<ProjectParameterFileVersion>>(routeFileVersions(projectId, fileId));

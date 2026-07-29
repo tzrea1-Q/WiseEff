@@ -33,10 +33,29 @@ import type {
   ProjectParameterFileVersionDto
 } from "./types";
 import { detectUnsupportedDtsConstructs, type UnsupportedConstruct } from "./unsupported";
+import { listRegisteredCompatibles } from "../parameter-modules/repository";
+import {
+  buildIngestDriverSummary,
+  type IngestDriverSummary,
+} from "../parameter-modules/ingestDriverSummary";
 
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
 export type ParameterFileServiceContext = AuditCorrelationContext;
+
+/** Pull quoted compatible strings from a DTS source for the one-shot upload summary. */
+export function extractCompatiblesFromDtsSource(source: string): string[] {
+  const found: string[] = [];
+  const propertyRe = /\bcompatible\s*=\s*([^;]+);/g;
+  const quotedRe = /"([^"]+)"/g;
+  for (const match of source.matchAll(propertyRe)) {
+    const rhs = match[1] ?? "";
+    for (const quoted of rhs.matchAll(quotedRe)) {
+      if (quoted[1]) found.push(quoted[1]);
+    }
+  }
+  return found;
+}
 
 type StoredVersionRef = {
   storageKey: string;
@@ -225,6 +244,7 @@ export async function uploadProjectParameterFile(
   file: ProjectParameterFileDto;
   version: ProjectParameterFileVersionDto;
   unsupportedConstructs?: UnsupportedConstruct[];
+  driverSummary?: IngestDriverSummary;
 }> {
   requireParameterFileAdmin(auth);
   const normalized = parseUploadInput(input);
@@ -305,10 +325,20 @@ export async function uploadProjectParameterFile(
       context
     );
 
+    let driverSummary: IngestDriverSummary | undefined;
+    if (format === "dts") {
+      const registered = await listRegisteredCompatibles(tx, auth.organization.id);
+      driverSummary = buildIngestDriverSummary({
+        observedCompatibles: extractCompatiblesFromDtsSource(source),
+        registeredCompatibles: new Set(registered),
+      });
+    }
+
     return {
       file: { ...file, currentVersionId: version.id, currentVersionNumber: version.versionNumber },
       version,
-      ...(unsupportedConstructs.length > 0 ? { unsupportedConstructs } : {})
+      ...(unsupportedConstructs.length > 0 ? { unsupportedConstructs } : {}),
+      ...(driverSummary ? { driverSummary } : {}),
     };
   });
 }

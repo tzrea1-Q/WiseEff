@@ -90,7 +90,7 @@ Org-scoped parameter modules are a hierarchical taxonomy independent from the de
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/parameter-modules` | List org parameter module tree nodes. |
-| `POST` | `/api/v1/parameter-modules` | Create a module (`name`, optional `parentId`). |
+| `POST` | `/api/v1/parameter-modules` | Create a module (`name`, optional `parentId`, optional `kind` ∈ `business` \| `driver-group` \| `instance` \| `logical`, optional `compatibles[]` required when `kind=driver-group`, optional `sourceKey` for instance/logical). Admin create always persists `origin=curated`. Parent kind rules: business under null/business; driver-group and logical under business; instance under driver-group. `kind=driver-group` reuses register-or-claim semantics (create curated group + exact mappings, or claim an existing compatible mapping). |
 | `PATCH` | `/api/v1/parameter-modules/:moduleId` | Update module metadata (`name`, `description`, `scope`, `sortOrder`). |
 | `POST` | `/api/v1/parameter-modules/:moduleId/move` | Reparent a module (`parentId`, nullable for root). |
 | `DELETE` | `/api/v1/parameter-modules/:moduleId` | Delete an empty leaf module. |
@@ -188,8 +188,8 @@ View routes require `canViewParameters`; upload, version upload, sync, and confl
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/projects/:projectId/parameter-files` | List hosted files with current version metadata. |
-| `POST` | `/api/v1/projects/:projectId/parameter-files` | Upload a new file or first version. Returns `201 { item, version }`. |
-| `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | Upload the next file version. Returns `201 { item }` (version DTO). |
+| `POST` | `/api/v1/projects/:projectId/parameter-files` | Upload a new file or first version. Returns `201 { item, version, unsupportedConstructs?, driverSummary? }`. For DTS uploads, `driverSummary` compares file compatibles to registered mappings (`matchedRegistered` / `newUnregistered`). |
+| `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | Upload the next file version. Returns `201 { item }` (version DTO) plus optional `unsupportedConstructs` / `driverSummary` as above. |
 | `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | List version history for one file. |
 | `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/content` | Download raw file bytes for one version. |
 | `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/sync` | Diff the current or requested version against DB and upsert `file_sync` drafts. Returns `{ item: syncSummary }`. |
@@ -296,6 +296,14 @@ Additive semantic surface used by the topology/schema program. Production remain
 | `POST` | `/api/v2/parameter-modules/mappings` | Admin create mapping with **scoped apply** for bindings matching the new rule. Returns `{ item: registry, apply: MappingApplyPreview }` (`201`). Audit: `parameter-module-mapping-created`. |
 | `DELETE` | `/api/v2/parameter-modules/mappings/:mappingId` | Admin delete mapping with scoped re-park for affected bindings. Returns `{ item: registry, apply: MappingApplyPreview }`. Audit: `parameter-module-mapping-deleted`. |
 | `POST` | `/api/v2/parameter-modules/recompute-bindings` | Admin full-org or per-project recompute (optional `{ projectId, dryRun }`). `dryRun: true` returns `{ updated, conflicts, dryRun: true, preview }` without writes. Apply path returns `{ updated, conflicts, preview? }`; unique-key conflicts → `409`. Ops/backfill tool — daily classify uses scoped mapping apply, not full recompute. Audit: `parameter-module-bindings-recomputed`. |
+| `GET` | `/api/v2/parameter-modules/driver-registry` | Org driver-registry view: `{ items: DriverRegistryEntry[], total }`. Each entry is a driver-group module with exact compatibles, `origin`, business category, parameter/observed coverage, and per-compatible parse coverage (pinned schema pattern **or** active org overlay; `source`/`driverId` identify which). Scaffolding labels excluded. |
+| `POST` | `/api/v2/parameter-modules/driver-registry` | Admin register or claim a driver (`{ displayName, businessCategoryId, compatibles[], notes? }`). Creates a curated driver-group + exact compatible mappings, or claims an existing mapped group (move + rename + promote). Returns `{ mode: 'registered'\|'claimed', item }` (`201`). Audit: `parameter-module-driver-registered`. |
+| `GET` | `/api/v2/organization-driver-schemas` | List org-owned manual driver schema overlays (`{ items, total }`). |
+| `GET` | `/api/v2/organization-driver-schemas/:schemaId` | Get one overlay (`{ item }`). |
+| `POST` | `/api/v2/organization-driver-schemas` | Admin create draft overlay (`{ compatible, displayName, notes?, properties[] }`). Each property is either `{ parameterSpecId }` (link definition library) or `{ propertyKey, valueShape, … }` (create/ensure the org manual ParameterSpec then link). Exact compatible only; rejects when a pinned releasable schema already covers the compatible (`409`). Returns `{ item }` (`201`). |
+| `PATCH` | `/api/v2/organization-driver-schemas/:schemaId` | Admin update draft overlay metadata/properties (same property link/create shape). Active property sets are immutable. |
+| `POST` | `/api/v2/organization-driver-schemas/:schemaId/activate` | Activate overlay: merges into org schema registry, upgrades matching provisional manual specs in place, resolves related open review tasks. Returns `{ schema, upgradedSpecIds, resolvedReviewTaskIds }`. |
+| `POST` | `/api/v2/organization-driver-schemas/:schemaId/deprecate` | Deprecate an overlay so it no longer participates in matching. |
 
 `MappingApplyPreview` shape: `{ affectedBindings, byProject: [{ projectId, count }], fromModules: [{ moduleId, moduleName, count }], toModuleId, emptiedModules, conflicts }`.
 

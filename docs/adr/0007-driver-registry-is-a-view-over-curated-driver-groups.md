@@ -20,3 +20,8 @@ We decided the driver registry is a **read view over data that already exists** 
 - A registered driver that no DTS has produced yet appears in the tree as a driver group with zero parameters. It is marked as not yet observed rather than hidden, because being visible before the DTS arrives is the reason it exists.
 - Platform-authored drivers land as `source = 'manual'`, whose existing precedence is "fill gaps only when no linux or vendor driver matches". Nothing an operator adds can shadow a released vendor schema.
 - `loadSchemaRegistry` is synchronous, uncached, and called inside the ingest transaction (`ingestService.ts`). Serving a parse-coverage column requires exposing and caching the registry outside ingest; this is the largest implementation cost the decision carries.
+- The registry read view no longer has its own product route. Parse and observed coverage surface on the attribution tree (row chips, uncovered filter, and per-compatible detail in `ModuleEditDialog`). `/parameter-admin/modules/registry` bookmarks redirect to the tree; the `GET/POST .../driver-registry` API remains the data seam.
+
+## Follow-up
+
+Rejecting platform-authored schema documents left "parseable, unregistered" reportable but not fixable from the product. ADR-0008 settles that: an organization-scoped manual driver overlay closes the coverage gap, while `schemas/dts` stays repository-managed.

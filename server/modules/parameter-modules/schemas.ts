@@ -27,6 +27,16 @@ export const dismissedCompatibleParamsSchema = z.object({
   compatible: z.string().trim().min(1).max(200)
 });
 
+export const registerOrClaimDriverBodySchema = z.object({
+  displayName: z.string().trim().min(1).max(200),
+  businessCategoryId: z.string().trim().min(1),
+  compatibles: z
+    .array(z.string().trim().min(1).max(200))
+    .min(1),
+  notes: z.string().trim().max(500).optional()
+});
+
 export type CreateModuleMappingBody = z.infer<typeof createModuleMappingBodySchema>;
+export type RegisterOrClaimDriverBody = z.infer<typeof registerOrClaimDriverBodySchema>;
 export type RecomputeBindingsBody = z.infer<typeof recomputeBindingsBodySchema>;
 export type DismissCompatibleBody = z.infer<typeof dismissCompatibleBodySchema>;

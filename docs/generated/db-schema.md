@@ -1122,3 +1122,11 @@ Additive-only tables for topology- and schema-aware parameter identity. Producti
 - Product feedback persists Internal Beta reports, ordered attachment metadata, admin triage status, and audit-backed updates.
 - M3 debugging persists devices, detected targets, debugging parameters, sessions, snapshots, node operations, and debugging events for the simulator-backed workflow.
 - M4-M5 Agent persists sessions, messages, tool calls, approvals, run traces, provider latency/token/cost metadata, safety status, and fallback reasons. Production object storage, HDC gateway, and live Agent provider seams exist, while real target-environment evidence remains a pilot acceptance responsibility.
+
+### `organization_driver_schemas` (migration `0076`)
+
+Org-scoped manual driver schema overlays (ADR-0008). Columns: `id`, `organization_id`, `compatible` (exact), `display_name`, `notes`, `lifecycle` (`draft`|`active`|`deprecated`), `version`, authorship timestamps, `activated_at`. Partial unique index on `(organization_id, lower(compatible))` where `lifecycle = 'active'`.
+
+### `organization_driver_schema_properties` (migration `0076`, aligned `0077`)
+
+Overlay property membership links `parameter_spec_id` (+ denormalized `property_key`, `sort_order`). Types/units/docs live on the linked ParameterSpec / `dts_property_specs`; the overlay does not store a parallel definition. Cascades on schema delete. Unique `(organization_driver_schema_id, property_key)` and `(organization_driver_schema_id, parameter_spec_id)`.

@@ -183,6 +183,55 @@ export async function insertMapping(
   );
 }
 
+export async function findCompatibleMapping(
+  db: Queryable,
+  input: { organizationId: string; compatible: string },
+): Promise<{ id: string; moduleId: string; matchValue: string; priority: number } | null> {
+  const matchValue =
+    normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
+  const result = await db.query<{
+    id: string;
+    parameter_module_id: string;
+    match_value: string;
+    priority: number;
+  }>(
+    `
+    select id, parameter_module_id, match_value, priority
+    from parameter_module_mappings
+    where organization_id = $1
+      and match_kind = 'compatible'
+      and match_value = $2
+    limit 1
+    `,
+    [input.organizationId, matchValue],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    moduleId: row.parameter_module_id,
+    matchValue: row.match_value,
+    priority: row.priority,
+  };
+}
+
+export async function listRegisteredCompatibles(
+  db: Queryable,
+  organizationId: string,
+): Promise<string[]> {
+  const result = await db.query<{ match_value: string }>(
+    `
+    select distinct match_value
+    from parameter_module_mappings
+    where organization_id = $1
+      and match_kind = 'compatible'
+    order by match_value asc
+    `,
+    [organizationId],
+  );
+  return result.rows.map((row) => row.match_value);
+}
+
 export async function deleteMappingRow(
   db: Queryable,
   input: { organizationId: string; mappingId: string }

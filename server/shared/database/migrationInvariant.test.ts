@@ -190,3 +190,28 @@ describe("logical module kind migration invariants", () => {
     expect(migration).not.toMatch(/update\s+parameter_modules/i);
   });
 });
+
+describe("organization driver schema overlay migration invariants", () => {
+  it("adds org-scoped overlay tables with active-compatible uniqueness", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0076_organization_driver_schemas.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("organization_driver_schemas");
+    expect(migration).toContain("organization_driver_schema_properties");
+    expect(migration).toContain("organization_driver_schemas_org_compatible_active_uidx");
+    expect(migration).toContain("where lifecycle = 'active'");
+    expect(migration).toContain("on delete cascade");
+    expect(migration).toContain("parameter_spec_id");
+  });
+
+  it("requires overlay properties to link ParameterSpec rows", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0077_organization_driver_schema_properties_link_specs.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("parameter_spec_id");
+    expect(migration).toContain("drop column if exists value_shape");
+    expect(migration).toContain("organization_driver_schema_properties_schema_spec_uidx");
+  });
+});

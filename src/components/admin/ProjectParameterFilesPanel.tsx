@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import type {
   FileSyncSummary,
+  IngestDriverSummary,
   ParameterFileRepository,
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
+import { DriverUploadSummaryDialog } from "@/components/admin/DriverUploadSummaryDialog";
 
 type ProjectParameterFilesPanelProps = {
   projectId: string;
   repository: ParameterFileRepository;
+  onOpenUnregisteredDrivers?: () => void;
 };
 
 function readFileAsBase64(file: File): Promise<string> {
@@ -47,7 +50,11 @@ function chooseLatestVersion(versions: ProjectParameterFileVersion[]) {
   return [...versions].sort((left, right) => right.versionNumber - left.versionNumber)[0];
 }
 
-export function ProjectParameterFilesPanel({ projectId, repository }: ProjectParameterFilesPanelProps) {
+export function ProjectParameterFilesPanel({
+  projectId,
+  repository,
+  onOpenUnregisteredDrivers,
+}: ProjectParameterFilesPanelProps) {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [files, setFiles] = useState<
@@ -66,6 +73,10 @@ export function ProjectParameterFilesPanel({ projectId, repository }: ProjectPar
   const [uploadError, setUploadError] = useState("");
   const [actionError, setActionError] = useState("");
   const [summaryText, setSummaryText] = useState("");
+  const [driverUploadSummary, setDriverUploadSummary] = useState<{
+    fileName: string;
+    summary: IngestDriverSummary;
+  } | null>(null);
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
@@ -94,9 +105,15 @@ export function ProjectParameterFilesPanel({ projectId, repository }: ProjectPar
     setSummaryText("");
     try {
       const contentBase64 = await readFileAsBase64(file);
-      await repository.uploadFile(projectId, { fileName: file.name, contentBase64 });
+      const uploaded = await repository.uploadFile(projectId, {
+        fileName: file.name,
+        contentBase64,
+      });
       await loadFiles();
       setSummaryText(`已上传文件：${file.name}`);
+      if (uploaded.driverSummary) {
+        setDriverUploadSummary({ fileName: file.name, summary: uploaded.driverSummary });
+      }
     } catch (uploadFileError) {
       setUploadError(uploadFileError instanceof Error ? uploadFileError.message : "上传参数文件失败。");
     } finally {
@@ -276,6 +293,14 @@ export function ProjectParameterFilesPanel({ projectId, repository }: ProjectPar
             );
           })}
         </ul>
+      ) : null}
+      {driverUploadSummary ? (
+        <DriverUploadSummaryDialog
+          fileName={driverUploadSummary.fileName}
+          summary={driverUploadSummary.summary}
+          onClose={() => setDriverUploadSummary(null)}
+          onOpenUnregisteredQueue={onOpenUnregisteredDrivers}
+        />
       ) : null}
     </section>
   );

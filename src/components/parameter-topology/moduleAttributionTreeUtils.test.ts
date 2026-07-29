@@ -3,12 +3,16 @@ import { describe, expect, it } from "vitest";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import {
   aggregateSubtreeParameterCounts,
+  allowedCreateKindsForParent,
+  canAddChildModule,
   canDeleteModule,
   canEditImportance,
   canMoveModule,
   canReclassifyModule,
   defaultExpandedModuleIds,
   filterModulesForAttribution,
+  isNotYetObservedModule,
+  summarizeDriverCoverage,
   toBusinessFlatNodes
 } from "./moduleAttributionTreeUtils";
 
@@ -90,7 +94,9 @@ describe("moduleAttributionTreeUtils", () => {
   it("keeps ancestors when filtering by kind", () => {
     const visible = filterModulesForAttribution(modules, {
       kinds: ["instance"],
-      origins: ["auto", "curated"]
+      origins: ["auto", "curated"],
+      hideNotYetObserved: false,
+      onlyUncoveredParse: false
     });
     expect(visible.map((module) => module.id).sort()).toEqual(["b", "g", "i"]);
   });
@@ -100,5 +106,107 @@ describe("moduleAttributionTreeUtils", () => {
     expect(totals.get("i")).toBe(1);
     expect(totals.get("g")).toBe(2); // group direct 1 + instance 1
     expect(totals.get("b")).toBe(2); // business 0 + subtree 2
+  });
+
+  it("marks curated empty driver-group, instance, and logical modules as not yet observed", () => {
+    expect(
+      isNotYetObservedModule({
+        ...modules[1]!,
+        origin: "curated",
+        parameterCount: 0
+      })
+    ).toBe(true);
+    expect(
+      isNotYetObservedModule({
+        ...modules[2]!,
+        origin: "curated",
+        parameterCount: 0
+      })
+    ).toBe(true);
+    expect(
+      isNotYetObservedModule({
+        ...modules[2]!,
+        kind: "logical",
+        origin: "curated",
+        parameterCount: 0
+      })
+    ).toBe(true);
+    expect(isNotYetObservedModule(modules[1]!)).toBe(false);
+  });
+
+  it("scopes create kinds by parent kind", () => {
+    expect(allowedCreateKindsForParent(null)).toEqual(["business"]);
+    expect(allowedCreateKindsForParent("business")).toEqual([
+      "business",
+      "driver-group",
+      "logical"
+    ]);
+    expect(allowedCreateKindsForParent("driver-group")).toEqual(["instance"]);
+    expect(canAddChildModule(modules[0]!)).toBe(true);
+    expect(canAddChildModule(modules[1]!)).toBe(true);
+    expect(canAddChildModule(modules[2]!)).toBe(false);
+  });
+
+  it("summarizes parse coverage per driver-group module", () => {
+    const summary = summarizeDriverCoverage([
+      {
+        moduleId: "g",
+        name: "Group",
+        origin: "auto",
+        businessCategoryId: "b",
+        businessCategoryName: "Power",
+        compatibles: ["a", "b", "c"],
+        parameterCount: 1,
+        observed: true,
+        notYetObserved: false,
+        parseCoverages: [
+          { compatible: "a", coverage: { covered: true, pattern: "a", driverId: "d1", source: "yaml" } },
+          {
+            compatible: "b",
+            coverage: {
+              covered: true,
+              pattern: "b",
+              driverId: "driver:org/org-1/b:v1",
+              source: "manual"
+            }
+          },
+          { compatible: "c", coverage: { covered: false } }
+        ]
+      }
+    ]);
+    expect(summary.get("g")).toEqual({
+      total: 3,
+      covered: 2,
+      overlayCovered: 1,
+      platformCovered: 1
+    });
+  });
+
+  it("filters to uncovered driver-groups while keeping ancestors", () => {
+    const coverage = summarizeDriverCoverage([
+      {
+        moduleId: "g",
+        name: "Group",
+        origin: "auto",
+        businessCategoryId: "b",
+        businessCategoryName: "Power",
+        compatibles: ["a"],
+        parameterCount: 1,
+        observed: true,
+        notYetObserved: false,
+        parseCoverages: [{ compatible: "a", coverage: { covered: false } }]
+      }
+    ]);
+    const visible = filterModulesForAttribution(
+      modules,
+      {
+        kinds: ["business", "driver-group", "instance", "logical", "unclassified"],
+        origins: ["curated", "auto"],
+        hideNotYetObserved: false,
+        onlyUncoveredParse: true
+      },
+      coverage
+    );
+    expect(visible.map((module) => module.id).sort()).toEqual(["b", "g"]);
   });
 });

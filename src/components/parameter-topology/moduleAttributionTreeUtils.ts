@@ -1,5 +1,6 @@
 import type { ParameterModule, ParameterModuleMapping } from "@/domain/parameter-topology/moduleRegistry";
 import { buildModuleTree, type FlatModuleNode, type ModuleTreeNode } from "@/domain/modules/moduleTree";
+import type { DriverRegistryEntry } from "@/application/ports/ParameterModuleRegistryRepository";
 
 export const MODULE_KIND_LABEL: Record<ParameterModule["kind"], string> = {
   business: "业务分类",
@@ -108,12 +109,131 @@ export function countInstanceChildren(
 export type AttributionFilters = {
   kinds: Array<ParameterModule["kind"]>;
   origins: Array<ParameterModule["origin"]>;
+  hideNotYetObserved: boolean;
+  /** When true, keep only driver-groups whose parse coverage is incomplete. */
+  onlyUncoveredParse: boolean;
 };
 
 export const DEFAULT_ATTRIBUTION_FILTERS: AttributionFilters = {
   kinds: ["business", "driver-group", "instance", "logical", "unclassified"],
-  origins: ["curated", "auto"]
+  origins: ["curated", "auto"],
+  hideNotYetObserved: false,
+  onlyUncoveredParse: false
 };
+
+export type DriverCoverageSummary = {
+  total: number;
+  covered: number;
+  overlayCovered: number;
+  platformCovered: number;
+};
+
+export function isOverlayParseCoverage(coverage: DriverRegistryEntry["parseCoverages"][number]["coverage"]): boolean {
+  return (
+    coverage.covered &&
+    coverage.source === "manual" &&
+    String(coverage.driverId).includes(":org/")
+  );
+}
+
+/** moduleId → parse coverage rollup, derived from listDriverRegistry(). */
+export function summarizeDriverCoverage(
+  entries: readonly DriverRegistryEntry[]
+): ReadonlyMap<string, DriverCoverageSummary> {
+  const map = new Map<string, DriverCoverageSummary>();
+  for (const entry of entries) {
+    const total = entry.parseCoverages.length;
+    let covered = 0;
+    let overlayCovered = 0;
+    let platformCovered = 0;
+    for (const row of entry.parseCoverages) {
+      if (!row.coverage.covered) continue;
+      covered += 1;
+      if (isOverlayParseCoverage(row.coverage)) {
+        overlayCovered += 1;
+      } else {
+        platformCovered += 1;
+      }
+    }
+    map.set(entry.moduleId, { total, covered, overlayCovered, platformCovered });
+  }
+  return map;
+}
+
+export type CreateModuleKind = "business" | "driver-group" | "instance" | "logical";
+
+/** Curated empty nodes that have not been observed via ingest yet. */
+export function isNotYetObservedModule(module: ParameterModule): boolean {
+  return (
+    module.origin === "curated" &&
+    module.parameterCount === 0 &&
+    (module.kind === "driver-group" || module.kind === "instance" || module.kind === "logical")
+  );
+}
+
+/** @deprecated Prefer {@link isNotYetObservedModule}. */
+export function isNotYetObservedDriverGroup(module: ParameterModule): boolean {
+  return isNotYetObservedModule(module);
+}
+
+export function allowedCreateKindsForParent(
+  parentKind: ParameterModule["kind"] | null | undefined
+): CreateModuleKind[] {
+  if (parentKind == null) return ["business"];
+  if (parentKind === "business") return ["business", "driver-group", "logical"];
+  if (parentKind === "driver-group") return ["instance"];
+  return [];
+}
+
+export function parentCandidatesForCreateKind(
+  modules: readonly ParameterModule[],
+  kind: CreateModuleKind
+): Array<{ id: string | null; name: string }> {
+  if (kind === "business") {
+    return [
+      { id: null, name: "（根级）" },
+      ...modules
+        .filter((module) => module.kind === "business")
+        .map((module) => ({ id: module.id, name: module.name }))
+    ];
+  }
+  if (kind === "driver-group" || kind === "logical") {
+    return modules
+      .filter((module) => module.kind === "business")
+      .map((module) => ({ id: module.id, name: module.name }));
+  }
+  return modules
+    .filter((module) => module.kind === "driver-group")
+    .map((module) => ({ id: module.id, name: module.name }));
+}
+
+/** Tree nodes for create-dialog parent picker (`ModuleTreeSelect`). */
+export function parentFlatNodesForCreateKind(
+  modules: readonly ParameterModule[],
+  kind: CreateModuleKind
+): FlatModuleNode[] {
+  if (kind === "instance") {
+    return toAttributionFlatNodes(
+      modules.filter((module) => module.kind === "business" || module.kind === "driver-group")
+    );
+  }
+  return toBusinessFlatNodes(modules);
+}
+
+export function isValidCreateParent(
+  modules: readonly ParameterModule[],
+  kind: CreateModuleKind,
+  parentId: string | null
+): boolean {
+  if (kind === "business") {
+    if (parentId === null) return true;
+    return modules.some((module) => module.id === parentId && module.kind === "business");
+  }
+  if (kind === "driver-group" || kind === "logical") {
+    return Boolean(parentId) && modules.some((module) => module.id === parentId && module.kind === "business");
+  }
+  return Boolean(parentId) && modules.some((module) => module.id === parentId && module.kind === "driver-group");
+}
 
 /**
  * Keep a module if it matches filters, or if an ancestor/descendant does so the tree
@@ -121,14 +241,23 @@ export const DEFAULT_ATTRIBUTION_FILTERS: AttributionFilters = {
  */
 export function filterModulesForAttribution(
   modules: readonly ParameterModule[],
-  filters: AttributionFilters
+  filters: AttributionFilters,
+  coverage?: ReadonlyMap<string, DriverCoverageSummary>
 ): ParameterModule[] {
   const kindSet = new Set(filters.kinds);
   const originSet = new Set(filters.origins);
   const byId = new Map(modules.map((module) => [module.id, module]));
 
-  const matches = (module: ParameterModule) =>
-    kindSet.has(module.kind) && originSet.has(module.origin);
+  const matches = (module: ParameterModule) => {
+    if (!kindSet.has(module.kind) || !originSet.has(module.origin)) return false;
+    if (filters.hideNotYetObserved && isNotYetObservedModule(module)) return false;
+    if (filters.onlyUncoveredParse) {
+      if (module.kind !== "driver-group") return false;
+      const summary = coverage?.get(module.id);
+      if (!summary || summary.total === 0 || summary.covered >= summary.total) return false;
+    }
+    return true;
+  };
 
   const matchedIds = new Set(modules.filter(matches).map((module) => module.id));
 
@@ -146,9 +275,10 @@ export function filterModulesForAttribution(
 
 export function buildAttributionTree(
   modules: readonly ParameterModule[],
-  filters: AttributionFilters
+  filters: AttributionFilters,
+  coverage?: ReadonlyMap<string, DriverCoverageSummary>
 ): ModuleTreeNode[] {
-  const visible = filterModulesForAttribution(modules, filters);
+  const visible = filterModulesForAttribution(modules, filters, coverage);
   return buildModuleTree(toAttributionFlatNodes(visible));
 }
 
@@ -172,7 +302,7 @@ export function canViewUnclassifiedRoot(module: ParameterModule): boolean {
 }
 
 export function canAddChildModule(module: ParameterModule): boolean {
-  return module.kind === "business";
+  return module.kind === "business" || module.kind === "driver-group";
 }
 
 export function canMoveModule(module: ParameterModule): boolean {

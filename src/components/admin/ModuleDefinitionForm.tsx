@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { ModuleImportance, ModuleKind } from "@/domain/parameter-topology/moduleRegistry";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
 import { shouldShowFieldError } from "@/components/common/fieldValidation";
@@ -26,7 +26,9 @@ export function ModuleDefinitionForm({
   onImportanceChange,
   showKind = false,
   kind = "business",
-  onKindChange
+  onKindChange,
+  leading = null,
+  trailing = null
 }: {
   module: ParameterModuleDraft;
   existingNames: readonly string[];
@@ -41,6 +43,9 @@ export function ModuleDefinitionForm({
   showKind?: boolean;
   kind?: ModuleKind;
   onKindChange?: (value: "business" | "instance" | "logical") => void;
+  /** Extra fields rendered inside the same styled form (e.g. create kind / parent). */
+  leading?: ReactNode;
+  trailing?: ReactNode;
 }) {
   const [nameTouched, setNameTouched] = useState(false);
   const nameError = getModuleNameError(module.name, existingNames, currentName);
@@ -49,6 +54,7 @@ export function ModuleDefinitionForm({
 
   return (
     <form className="param-module-def-form" onSubmit={(event) => event.preventDefault()}>
+      {leading}
       <label>
         模块名称
         <input
@@ -113,6 +119,7 @@ export function ModuleDefinitionForm({
           onChange={(event) => onChange({ scope: event.target.value })}
         />
       </label>
+      {trailing}
     </form>
   );
 }

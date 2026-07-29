@@ -75,10 +75,33 @@ export type DownloadParameterFileVersionResult = {
 
 export type ParameterFileConflictResolution = "file" | "ui";
 
+/** One-shot DTS upload comparison against registered drivers (ADR-0007). */
+export type IngestDriverSummary = {
+  matchedRegistered: string[];
+  newUnregistered: string[];
+  matchedRegisteredCount: number;
+  newUnregisteredCount: number;
+};
+
+export type UploadParameterFileResult = {
+  item: ProjectParameterFile;
+  version: ProjectParameterFileVersion;
+  driverSummary?: IngestDriverSummary;
+};
+
+export type UploadParameterFileVersionResult = {
+  item: ProjectParameterFileVersion;
+  driverSummary?: IngestDriverSummary;
+};
+
 export interface ParameterFileRepository {
   listFiles(projectId: string): Promise<ProjectParameterFile[]>;
-  uploadFile(projectId: string, input: UploadParameterFileInput): Promise<{ item: ProjectParameterFile; version: ProjectParameterFileVersion }>;
-  uploadVersion(projectId: string, fileId: string, input: UploadParameterFileInput): Promise<ProjectParameterFileVersion>;
+  uploadFile(projectId: string, input: UploadParameterFileInput): Promise<UploadParameterFileResult>;
+  uploadVersion(
+    projectId: string,
+    fileId: string,
+    input: UploadParameterFileInput
+  ): Promise<UploadParameterFileVersionResult>;
   listVersions(projectId: string, fileId: string): Promise<ProjectParameterFileVersion[]>;
   downloadVersion(projectId: string, fileId: string, versionId: string): Promise<DownloadParameterFileVersionResult>;
   syncFile(projectId: string, fileId: string): Promise<FileSyncSummary>;

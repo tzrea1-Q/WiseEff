@@ -45,6 +45,14 @@
 - `MOD-ATTR-BULK-001`：勾选多个 compatible，一次确认归入同一业务分类（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `MOD-ATTR-TREE-001`：树操作按 kind 分级；实例不可删；重命名自动模块即纳入（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `MOD-ATTR-IMPORTANCE-001`：业务分类重要性被驱动组/实例继承并驱动工作台筛选（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `MOD-ATTR-CREATE-KIND-001`：归属树按类型新建空业务/驱动组/实例/逻辑节点（父级规则、驱动组必填 compatible、空 curated 未实测）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `DRV-REG-001`：上传前登记驱动；树上出现带解析覆盖徽标的未实测 curated 驱动组（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `DRV-REG-002`：从队列或模块树认领已观测未登记驱动，origin 变为 curated（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `DRV-REG-003`：DTS 上传后一次性摘要报告已登记匹配与新观测未登记 compatible（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `DRV-SCHEMA-001`：Admin 从未覆盖驱动组编写并激活组织叠加层，覆盖徽标变为组织覆盖（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `DRV-SCHEMA-002`：仅组织叠加层声明的 compatible 上传后绑定类型化属性，且不进入未匹配审核（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `DRV-SCHEMA-003`：钉扎 schema 已覆盖时激活叠加层被拒绝并说明原因（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `DRV-SCHEMA-004`：激活叠加层时就地升级已有 provisional spec，无需重传（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-FILE-ADMIN-001`：Admin 上传项目参数文件、列出版本、手动同步生成 `file_sync` 草稿，并在 `/parameter-admin/projects` 打开参数文件面板（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-FILE-CONFLICT-001`：Admin 裁决 file/UI 草稿冲突，可选择保留文件值或 UI 值（`e2e/acceptance/parameter-files.acceptance.spec.ts`）。
 - `PARAM-IMPORT-DTS-FULL-001`：完整 `.dts` 经 `parse-dts` 产出带 `@address` 的 module 路径；`/include/` 被拒绝；向导显示服务端解析提示（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。

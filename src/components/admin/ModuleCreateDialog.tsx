@@ -1,11 +1,31 @@
 import { CircleX } from "lucide-react";
-import { useEffect, useState } from "react";
-import type { ModuleImportance } from "@/domain/parameter-topology/moduleRegistry";
+import { useEffect, useId, useMemo, useState } from "react";
+import type { ModuleImportance, ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
+import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
+import {
+  allowedCreateKindsForParent,
+  isValidCreateParent,
+  MODULE_KIND_LABEL,
+  parentFlatNodesForCreateKind,
+  siblingModuleNames,
+  type CreateModuleKind
+} from "@/components/parameter-topology/moduleAttributionTreeUtils";
 import { canSubmitModuleDraft, ModuleDefinitionForm } from "./ModuleDefinitionForm";
 
 export type ModuleCreateSaveDraft = ParameterModuleDraft & {
   importance?: ModuleImportance;
+  kind?: CreateModuleKind;
+  parentId?: string | null;
+  compatibles?: string[];
+  sourceKey?: string | null;
+};
+
+const CREATE_KIND_LABEL: Record<CreateModuleKind, string> = {
+  business: MODULE_KIND_LABEL.business,
+  "driver-group": MODULE_KIND_LABEL["driver-group"],
+  instance: MODULE_KIND_LABEL.instance,
+  logical: MODULE_KIND_LABEL.logical
 };
 
 const emptyModuleDraft = (): ParameterModuleDraft => ({
@@ -14,12 +34,20 @@ const emptyModuleDraft = (): ParameterModuleDraft => ({
   scope: ""
 });
 
+function defaultKindForParent(parentKind: ParameterModule["kind"] | null | undefined): CreateModuleKind {
+  const allowed = allowedCreateKindsForParent(parentKind);
+  return allowed[0] ?? "business";
+}
+
 export function ModuleCreateDialog({
   parentName,
   existingNames,
   eyebrow = "模块创建",
   showImportance = false,
   initialImportance = "medium",
+  allowKindSelect = false,
+  modules = [],
+  initialParentId = null,
   onCreate,
   onCancel
 }: {
@@ -28,26 +56,106 @@ export function ModuleCreateDialog({
   eyebrow?: string;
   showImportance?: boolean;
   initialImportance?: ModuleImportance;
+  /** Attribution-tree create: kind picker, parent filter, compatibles / sourceKey. */
+  allowKindSelect?: boolean;
+  modules?: readonly ParameterModule[];
+  initialParentId?: string | null;
   onCreate: (draft: ModuleCreateSaveDraft) => void;
   onCancel: () => void;
 }) {
+  const initialParent = initialParentId
+    ? (modules.find((module) => module.id === initialParentId) ?? null)
+    : null;
   const [draft, setDraft] = useState<ParameterModuleDraft>(emptyModuleDraft);
   const [importance, setImportance] = useState<ModuleImportance>(initialImportance);
-  const isChildModule = Boolean(parentName);
-  const dialogLabel = isChildModule ? `在 ${parentName} 下创建子模块` : "新增根模块";
-  const title = isChildModule ? `在「${parentName}」下创建子模块` : "新增根模块";
-  const description = isChildModule
-    ? showImportance
-      ? "填写子模块名称、重要性、描述与适用范围。创建后会出现在所选父模块下。"
-      : "填写子模块名称、描述与适用范围。创建后会出现在所选父模块下。"
-    : showImportance
-      ? "填写根模块名称、重要性、描述与适用范围。创建后会出现在模块列表顶层。"
-      : "填写根模块名称、描述与适用范围。创建后会出现在模块列表顶层。";
+  const [kind, setKind] = useState<CreateModuleKind>(() =>
+    allowKindSelect ? defaultKindForParent(initialParent?.kind ?? null) : "business"
+  );
+  const [parentId, setParentId] = useState<string | null>(initialParentId ?? null);
+  const [compatiblesText, setCompatiblesText] = useState("");
+  const [sourceKey, setSourceKey] = useState("");
+  const parentFieldId = useId();
+
+  const parentNodes = useMemo(
+    () => (allowKindSelect ? parentFlatNodesForCreateKind(modules, kind) : []),
+    [allowKindSelect, modules, kind]
+  );
+  const allowedKinds = useMemo(() => {
+    if (!allowKindSelect) return ["business"] as CreateModuleKind[];
+    // When opened from a specific parent row, constrain kinds to that parent.
+    if (initialParentId !== undefined && initialParentId !== null) {
+      return allowedCreateKindsForParent(initialParent?.kind ?? null);
+    }
+    if (initialParentId === null && !initialParent) {
+      // Root "新建模块" — all kinds, parent chosen in dialog.
+      return ["business", "driver-group", "instance", "logical"] as CreateModuleKind[];
+    }
+    return allowedCreateKindsForParent(initialParent?.kind ?? null);
+  }, [allowKindSelect, initialParent, initialParentId]);
+
+  const resolvedExistingNames = allowKindSelect
+    ? siblingModuleNames(modules, parentId)
+    : existingNames;
+
+  const selectedParentName = allowKindSelect
+    ? parentId === null
+      ? null
+      : (modules.find((module) => module.id === parentId)?.name ?? null)
+    : (parentName ?? null);
+  const isChildModule = Boolean(selectedParentName);
+  const dialogLabel = allowKindSelect
+    ? "新建模块"
+    : isChildModule
+      ? `在 ${selectedParentName} 下创建子模块`
+      : "新增根模块";
+  const title = allowKindSelect
+    ? "新建模块"
+    : isChildModule
+      ? `在「${selectedParentName}」下创建子模块`
+      : "新增根模块";
+  const description = allowKindSelect
+    ? "选择类型与父级，创建空的业务分类、驱动组、器件实例或逻辑节点；驱动组须填写至少一条 exact compatible。"
+    : isChildModule
+      ? showImportance
+        ? "填写子模块名称、重要性、描述与适用范围。创建后会出现在所选父模块下。"
+        : "填写子模块名称、描述与适用范围。创建后会出现在所选父模块下。"
+      : showImportance
+        ? "填写根模块名称、重要性、描述与适用范围。创建后会出现在模块列表顶层。"
+        : "填写根模块名称、描述与适用范围。创建后会出现在模块列表顶层。";
+  const parentPlaceholder =
+    kind === "business"
+      ? "根级（无父模块）"
+      : kind === "instance"
+        ? "选择驱动组"
+        : "选择业务分类";
 
   useEffect(() => {
     setDraft(emptyModuleDraft());
     setImportance(initialImportance);
-  }, [parentName, initialImportance]);
+    setCompatiblesText("");
+    setSourceKey("");
+    const nextKind = allowKindSelect ? defaultKindForParent(initialParent?.kind ?? null) : "business";
+    setKind(nextKind);
+    setParentId(initialParentId ?? null);
+  }, [parentName, initialImportance, allowKindSelect, initialParentId, initialParent?.kind]);
+
+  useEffect(() => {
+    if (!allowKindSelect) return;
+    if (!allowedKinds.includes(kind)) {
+      setKind(allowedKinds[0] ?? "business");
+    }
+  }, [allowKindSelect, allowedKinds, kind]);
+
+  useEffect(() => {
+    if (!allowKindSelect) return;
+    if (isValidCreateParent(modules, kind, parentId)) return;
+    if (kind === "business") {
+      setParentId(null);
+      return;
+    }
+    const fallback = parentNodes.find((node) => isValidCreateParent(modules, kind, node.id));
+    setParentId(fallback?.id ?? null);
+  }, [allowKindSelect, modules, kind, parentId, parentNodes]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -60,11 +168,31 @@ export function ModuleCreateDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onCancel]);
 
-  const canCreate = canSubmitModuleDraft(draft, existingNames);
+  const compatibles = compatiblesText
+    .split("\n")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  const needsCompatibles = allowKindSelect && kind === "driver-group";
+  const parentMissing = allowKindSelect && !isValidCreateParent(modules, kind, parentId);
+  const showImportanceField = allowKindSelect ? kind === "business" : showImportance;
+  const canCreate =
+    canSubmitModuleDraft(draft, resolvedExistingNames) &&
+    (!needsCompatibles || compatibles.length > 0) &&
+    !parentMissing &&
+    (!allowKindSelect || allowedKinds.includes(kind));
 
+  const handleParentChange = (next: string | string[]) => {
+    const nextId = typeof next === "string" ? next : "";
+    if (!nextId) {
+      if (kind === "business") setParentId(null);
+      return;
+    }
+    if (!isValidCreateParent(modules, kind, nextId)) return;
+    setParentId(nextId);
+  };
   return (
     <div className="modal-backdrop param-admin-module-edit-backdrop" role="dialog" aria-modal="true" aria-label={dialogLabel}>
-      <div className="submission-dialog param-admin-module-edit-dialog">
+      <div className="submission-dialog param-admin-module-edit-dialog module-create-dialog">
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">{eyebrow}</span>
@@ -78,12 +206,73 @@ export function ModuleCreateDialog({
 
         <div className="param-admin-module-edit-body">
           <ModuleDefinitionForm
-            existingNames={existingNames}
+            existingNames={resolvedExistingNames}
             module={draft}
-            showImportance={showImportance}
+            showImportance={showImportanceField}
             importance={importance}
             onImportanceChange={setImportance}
             onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+            leading={
+              allowKindSelect ? (
+                <>
+                  <label>
+                    模块类型
+                    <select
+                      aria-label="模块类型"
+                      value={kind}
+                      onChange={(event) => setKind(event.target.value as CreateModuleKind)}
+                    >
+                      {allowedKinds.map((value) => (
+                        <option key={value} value={value}>
+                          {CREATE_KIND_LABEL[value]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="module-create-dialog__parent-field">
+                    <span className="module-create-dialog__parent-label" id={parentFieldId}>
+                      父级
+                    </span>
+                    <ModuleTreeSelect
+                      mode="single"
+                      label="父级模块"
+                      labelledBy={parentFieldId}
+                      nodes={parentNodes}
+                      value={parentId ?? ""}
+                      onChange={handleParentChange}
+                      placeholder={parentPlaceholder}
+                    />
+                  </div>
+                </>
+              ) : null
+            }
+            trailing={
+              <>
+                {needsCompatibles ? (
+                  <label>
+                    Exact compatible（每行一条，至少一条）
+                    <textarea
+                      aria-label="Exact compatible"
+                      rows={3}
+                      placeholder={"huawei,bypass_bst_hl7603\nhuawei,hl7603"}
+                      value={compatiblesText}
+                      onChange={(event) => setCompatiblesText(event.target.value)}
+                    />
+                  </label>
+                ) : null}
+                {allowKindSelect && (kind === "instance" || kind === "logical") ? (
+                  <label>
+                    sourceKey（可选）
+                    <input
+                      aria-label="sourceKey"
+                      placeholder="节点路径或稳定键，便于日后 ingest 命中"
+                      value={sourceKey}
+                      onChange={(event) => setSourceKey(event.target.value)}
+                    />
+                  </label>
+                ) : null}
+              </>
+            }
           />
         </div>
 
@@ -103,7 +292,17 @@ export function ModuleCreateDialog({
                 name: draft.name.trim(),
                 description: draft.description.trim(),
                 scope: draft.scope.trim(),
-                ...(showImportance ? { importance } : {})
+                ...(showImportanceField ? { importance } : {}),
+                ...(allowKindSelect
+                  ? {
+                      kind,
+                      parentId,
+                      ...(needsCompatibles ? { compatibles } : {}),
+                      ...(kind === "instance" || kind === "logical"
+                        ? { sourceKey: sourceKey.trim() || null }
+                        : {})
+                    }
+                  : {})
               });
             }}
           >
