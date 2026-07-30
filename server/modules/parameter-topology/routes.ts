@@ -17,6 +17,7 @@ import {
   listIdentityMappingTasksQuerySchema,
   projectBindingsParamsSchema,
   projectBindingsQuerySchema,
+  reopenIdentityMappingTaskBodySchema,
   resolveIdentityMappingTaskBodySchema,
   topologyParamsSchema,
   topologyQuerySchema,
@@ -31,6 +32,7 @@ import {
   getTopology,
   listIdentityMappingTasks,
   listProjectBindings,
+  reopenIdentityMappingTask,
   resolveIdentityMappingTask,
   validateConfigRevision
 } from "./service";
@@ -149,6 +151,21 @@ export function registerParameterTopologyRoutes(
     const params = parseWithSchema(identityMappingTaskParamsSchema, request.params);
     const body = parseWithSchema(resolveIdentityMappingTaskBodySchema, request.body);
     const item = await resolveIdentityMappingTask(
+      db,
+      auth,
+      { ...body, taskId: params.taskId },
+      { requestId: request.requestId }
+    );
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v2/identity-mapping-tasks/:taskId/reopen", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(identityMappingTaskParamsSchema, request.params);
+    const body = parseWithSchema(reopenIdentityMappingTaskBodySchema, request.body ?? {});
+    const item = await reopenIdentityMappingTask(
       db,
       auth,
       { ...body, taskId: params.taskId },

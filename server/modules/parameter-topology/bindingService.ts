@@ -70,7 +70,8 @@ export type IdentityMappingTask = {
   previousLogicalNodeId: string | null;
   candidateLogicalNodeIds: string[];
   evidence: Record<string, unknown>;
-  status: "open" | "resolved" | "dismissed";
+  taskKind: "identity-ambiguity" | "singleton-cardinality";
+  status: "open" | "resolved" | "dismissed" | "new_identity";
   reviewerUserId?: string;
   reason?: string;
   createdAt: string;
@@ -177,7 +178,8 @@ type IdentityMappingTaskRow = {
   previous_logical_node_id: string | null;
   candidate_logical_node_ids: unknown;
   evidence: unknown;
-  status: "open" | "resolved" | "dismissed";
+  task_kind: "identity-ambiguity" | "singleton-cardinality";
+  status: "open" | "resolved" | "dismissed" | "new_identity";
   reviewer_user_id: string | null;
   reason: string | null;
   created_at: string | Date;
@@ -242,6 +244,7 @@ function toMappingTask(row: IdentityMappingTaskRow): IdentityMappingTask {
         : typeof row.evidence === "string"
           ? (JSON.parse(row.evidence) as Record<string, unknown>)
           : {},
+    taskKind: row.task_kind,
     status: row.status,
     reviewerUserId: row.reviewer_user_id ?? undefined,
     reason: row.reason ?? undefined,
@@ -477,7 +480,7 @@ export async function listIdentityMappingTaskRows(
   input: {
     organizationId: string;
     projectId?: string;
-    status?: "open" | "resolved" | "dismissed";
+    status?: "open" | "resolved" | "dismissed" | "new_identity";
   },
 ): Promise<IdentityMappingTask[]> {
   const values: unknown[] = [input.organizationId];
@@ -530,6 +533,28 @@ export async function countOpenIdentityMappingTasksForRevision(
     where organization_id = $1
       and config_revision_id = $2
       and status = 'open'
+    `,
+    [input.organizationId, input.configRevisionId],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+/**
+ * A mapping task blocks semantic release while it is untriaged/rejected. This
+ * includes persisted singleton-cardinality conflicts, which are represented by
+ * the same blocking-task queue and cannot be cleared by selecting one instance.
+ */
+export async function countBlockingIdentityMappingTasksForRevision(
+  db: Queryable,
+  input: { organizationId: string; configRevisionId: string },
+): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from identity_mapping_tasks
+    where organization_id = $1
+      and config_revision_id = $2
+      and status in ('open', 'dismissed')
     `,
     [input.organizationId, input.configRevisionId],
   );
@@ -812,7 +837,7 @@ export async function resolveIdentityMappingTaskRow(
   input: {
     taskId: string;
     organizationId: string;
-    status: "resolved" | "dismissed";
+    status: "resolved" | "dismissed" | "new_identity";
     selectedLogicalNodeId?: string | null;
     reviewerUserId: string;
     reason: string;
@@ -854,6 +879,35 @@ export async function resolveIdentityMappingTaskRow(
       input.reason,
       evidencePatch,
     ],
+  );
+  const row = result.rows[0];
+  return row ? toMappingTask(row) : null;
+}
+
+export async function reopenIdentityMappingTaskRow(
+  db: Queryable,
+  input: { taskId: string; organizationId: string; reason: string },
+): Promise<IdentityMappingTask | null> {
+  const result = await db.query<IdentityMappingTaskRow>(
+    `
+    update identity_mapping_tasks
+    set status = 'open',
+        reviewer_user_id = null,
+        reason = $3,
+        resolved_at = null,
+        evidence = coalesce(evidence, '{}'::jsonb)
+          - 'selectedLogicalNodeId'
+          - 'selectedNodeLocator'
+          - 'selectedName'
+          - 'selectedUnitAddress'
+          - 'continuityReusable'
+    where id = $1
+      and organization_id = $2
+      and task_kind = 'identity-ambiguity'
+      and status in ('dismissed', 'new_identity')
+    returning *
+    `,
+    [input.taskId, input.organizationId, input.reason],
   );
   const row = result.rows[0];
   return row ? toMappingTask(row) : null;

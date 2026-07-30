@@ -22,6 +22,7 @@ vi.mock("./service", () => ({
   listProjectBindings: vi.fn(),
   listIdentityMappingTasks: vi.fn(),
   resolveIdentityMappingTask: vi.fn(),
+  reopenIdentityMappingTask: vi.fn(),
   validateConfigRevision: vi.fn(),
   createBindingDraft: vi.fn(),
   createNodeEnablementDraft: vi.fn()
@@ -365,6 +366,30 @@ describe("parameter semantic v2 routes", () => {
 
     expect(response.status).toBe(200);
     expect(topologyService.resolveIdentityMappingTask).toHaveBeenCalled();
+  });
+
+  it("POST /api/v2/identity-mapping-tasks/:taskId/reopen lets admins reopen a completed outcome", async () => {
+    vi.mocked(topologyService.reopenIdentityMappingTask).mockResolvedValue({
+      id: "map-1",
+      status: "open"
+    });
+
+    const response = await requestJson(
+      makeServer({ db: makeDb(), auth: makeAdminAuth() }),
+      "/api/v2/identity-mapping-tasks/map-1/reopen",
+      {
+        method: "POST",
+        body: JSON.stringify({ reason: "Review new continuity evidence" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(topologyService.reopenIdentityMappingTask).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ user: expect.objectContaining({ id: "user-1" }) }),
+      expect.objectContaining({ taskId: "map-1", reason: "Review new continuity evidence" }),
+      expect.objectContaining({ requestId: "test-request" })
+    );
   });
 
   it("POST /api/v2/projects/:projectId/config-revisions/:revisionId/validate requires admin", async () => {

@@ -19,6 +19,7 @@ import { ApiError } from "../../shared/http/errors";
 import {
   applyReviewedIdentityMapping,
   continuityReuseFromTaskEvidence,
+  countBlockingIdentityMappingTasksForRevision,
   countOpenIdentityMappingTasksForRevision,
   getBindingForProject,
   getIdentityMappingTaskById,
@@ -27,6 +28,7 @@ import {
   listIdentityMappingTaskRows,
   listProjectBindingRows,
   lockOpenIdentityMappingTask,
+  reopenIdentityMappingTaskRow,
   resolveIdentityMappingTaskRow,
   selectedCandidateBelongsToRevision
 } from "./bindingService";
@@ -64,6 +66,7 @@ import type {
   CreateNodeEnablementDraftBody,
   DtsValueDto,
   ProjectBindingDto,
+  ReopenIdentityMappingTaskBody,
   ResolveIdentityMappingTaskBody,
   TopologyView
 } from "./schemas";
@@ -225,7 +228,7 @@ export async function listProjectBindings(
 export async function listIdentityMappingTasks(
   db: Database,
   auth: AuthContext,
-  input: { projectId?: string; status?: "open" | "resolved" | "dismissed" } = {}
+  input: { projectId?: string; status?: "open" | "resolved" | "dismissed" | "new_identity" } = {}
 ) {
   requireCanView(auth);
   if (input.projectId) {
@@ -251,7 +254,9 @@ export async function listIdentityMappingTasks(
       configRevisionId: item.configRevisionId,
       previousLogicalNodeId: item.previousLogicalNodeId,
       candidateLogicalNodeIds: item.candidateLogicalNodeIds,
+      candidateCount: item.candidateLogicalNodeIds.length,
       evidence: item.evidence ?? {},
+      taskKind: item.taskKind,
       status: item.status,
       reason: item.reason,
       createdAt: item.createdAt,
@@ -414,6 +419,35 @@ export async function resolveIdentityMappingTask(
       throw new ApiError("CONFLICT", "Identity mapping task is not open.", 409, { taskId: input.taskId });
     }
 
+    if (existing.taskKind === "singleton-cardinality") {
+      throw new ApiError(
+        "CONFLICT",
+        "Singleton-per-project conflicts must be fixed in the registration or topology; identity decisions cannot discard instances.",
+        409,
+        {
+          code: "singleton-cardinality-conflict",
+          taskId: input.taskId,
+          candidateCount: existing.candidateLogicalNodeIds.length
+        }
+      );
+    }
+
+    if (
+      input.decision === "new-identity" &&
+      existing.candidateLogicalNodeIds.length > 1 &&
+      input.confirmAllCandidates !== true
+    ) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Confirm all candidates before keeping multiple new identities.",
+        400,
+        {
+          code: "confirm-all-candidates-required",
+          candidateCount: existing.candidateLogicalNodeIds.length
+        }
+      );
+    }
+
     if (
       input.decision === "resolved" &&
       input.selectedLogicalNodeId &&
@@ -461,7 +495,7 @@ export async function resolveIdentityMappingTask(
     const resolved = await resolveIdentityMappingTaskRow(tx, {
       taskId: input.taskId,
       organizationId: auth.organization.id,
-      status: input.decision,
+      status: input.decision === "new-identity" ? "new_identity" : input.decision,
       selectedLogicalNodeId: input.selectedLogicalNodeId,
       reviewerUserId: auth.user.id,
       reason: input.reason,
@@ -475,11 +509,13 @@ export async function resolveIdentityMappingTask(
       organizationId: auth.organization.id,
       configRevisionId: existing.configRevisionId
     });
+    const blockingRemaining = await countBlockingIdentityMappingTasksForRevision(tx, {
+      organizationId: auth.organization.id,
+      configRevisionId: existing.configRevisionId
+    });
 
-    // Dismiss never clears identity ambiguity. Resolve clears needs_mapping only when
-    // every open mapping task is gone and this resolve path completed without errors.
-    const nextStatus =
-      input.decision === "resolved" && openRemaining === 0 ? "resolved" : "needs_mapping";
+    // Dismissed and singleton tasks remain blocking; resolved/new_identity clear.
+    const nextStatus = blockingRemaining === 0 ? "resolved" : "needs_mapping";
 
     await updateConfigRevisionStatus(tx, {
       id: existing.configRevisionId,
@@ -491,7 +527,12 @@ export async function resolveIdentityMappingTask(
       tx,
       auth,
       {
-        action: input.decision === "resolved" ? "identity-mapping-resolved" : "identity-mapping-dismissed",
+        action:
+          input.decision === "resolved"
+            ? "identity-mapping-resolved"
+            : input.decision === "new-identity"
+              ? "identity-mapping-new-identity"
+              : "identity-mapping-dismissed",
         projectId: existing.projectId,
         targetType: "identity-mapping-task",
         targetId: resolved.id,
@@ -502,6 +543,7 @@ export async function resolveIdentityMappingTask(
           selectedLogicalNodeId: input.selectedLogicalNodeId ?? null,
           candidateCount: existing.candidateLogicalNodeIds.length,
           openMappingTasksRemaining: openRemaining,
+          blockingMappingTasksRemaining: blockingRemaining,
           revisionStatus: nextStatus,
           evidenceHash: evidenceHash(existing.evidence),
           reasonHash: evidenceHash(input.reason)
@@ -515,6 +557,76 @@ export async function resolveIdentityMappingTask(
       status: resolved.status,
       selectedLogicalNodeId: input.selectedLogicalNodeId
     };
+  });
+}
+
+export async function reopenIdentityMappingTask(
+  db: Database,
+  auth: AuthContext,
+  input: ReopenIdentityMappingTaskBody & { taskId: string },
+  context: AuditCorrelationContext = {}
+) {
+  requireCanAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    const known = await getIdentityMappingTaskById(tx, {
+      organizationId: auth.organization.id,
+      taskId: input.taskId
+    });
+    if (!known) {
+      throw new ApiError("NOT_FOUND", "Identity mapping task was not found.", 404, {
+        taskId: input.taskId
+      });
+    }
+    if (known.taskKind !== "identity-ambiguity" || known.status === "resolved") {
+      throw new ApiError(
+        "CONFLICT",
+        "This completed mapping cannot be reopened; use protected re-resolve for an applied mapping.",
+        409,
+        { taskId: input.taskId, status: known.status, taskKind: known.taskKind }
+      );
+    }
+    if (known.status === "open") {
+      throw new ApiError("CONFLICT", "Identity mapping task is already open.", 409, {
+        taskId: input.taskId
+      });
+    }
+
+    const reopened = await reopenIdentityMappingTaskRow(tx, {
+      taskId: input.taskId,
+      organizationId: auth.organization.id,
+      reason: input.reason
+    });
+    if (!reopened) {
+      throw new ApiError("CONFLICT", "Identity mapping task cannot be reopened.", 409, {
+        taskId: input.taskId,
+        status: known.status
+      });
+    }
+
+    await updateConfigRevisionStatus(tx, {
+      id: known.configRevisionId,
+      status: "needs_mapping",
+      resolvedAt: null
+    });
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: "identity-mapping-reopened",
+        projectId: known.projectId,
+        targetType: "identity-mapping-task",
+        targetId: reopened.id,
+        metadata: {
+          taskId: reopened.id,
+          configRevisionId: known.configRevisionId,
+          previousStatus: known.status,
+          reasonHash: evidenceHash(input.reason)
+        }
+      },
+      context
+    );
+    return { id: reopened.id, status: reopened.status };
   });
 }
 

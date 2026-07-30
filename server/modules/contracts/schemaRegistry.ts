@@ -477,6 +477,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "IdentityMappingTaskResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterTopology.reopenIdentityMappingTask": {
+    summary: "Reopen a non-destructive identity mapping outcome",
+    tags: ["parameters"],
+    requestBody: "ReopenIdentityMappingTaskRequest",
+    responseBody: "IdentityMappingTaskResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterTopology.validateConfigRevision": {
     summary: "Validate a config revision with the DTS toolchain gate",
     tags: ["parameters"],

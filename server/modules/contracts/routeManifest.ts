@@ -281,6 +281,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterTopology.reopenIdentityMappingTask",
+    method: "POST",
+    path: "/api/v2/identity-mapping-tasks/:taskId/reopen",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterTopology.validateConfigRevision",
     method: "POST",
     path: "/api/v2/projects/:projectId/config-revisions/:revisionId/validate",

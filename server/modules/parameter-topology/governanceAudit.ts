@@ -17,6 +17,8 @@ export type GovernanceAuditAction =
   | "spec-version-cutover-finalized"
   | "identity-mapping-resolved"
   | "identity-mapping-dismissed"
+  | "identity-mapping-new-identity"
+  | "identity-mapping-reopened"
   | "config-revision-validated"
   | "binding-edited"
   | "enablement-changed"

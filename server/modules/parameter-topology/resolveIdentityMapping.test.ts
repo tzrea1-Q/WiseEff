@@ -6,7 +6,7 @@ import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import { createOrReuseBinding, upsertBindingRevisionValues } from "./bindingService";
-import { resolveIdentityMappingTask } from "./service";
+import { reopenIdentityMappingTask, resolveIdentityMappingTask } from "./service";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -240,6 +240,14 @@ async function seedMultiTaskAmbiguousRevision(db: InMemoryTestDatabase) {
   return { revisionId, taskA, taskB, prevBindingA, prevBindingB };
 }
 
+async function revisionStatus(db: InMemoryTestDatabase, revisionId: string): Promise<string | undefined> {
+  const result = await db.query<{ status: string }>(
+    `select status from dts_config_revisions where id = $1`,
+    [revisionId],
+  );
+  return result.rows[0]?.status;
+}
+
 describe.skipIf(!databaseAvailable)("resolveIdentityMappingTask transaction", () => {
   let db: InMemoryTestDatabase | undefined;
   let auth: AuthContext;
@@ -376,6 +384,52 @@ describe.skipIf(!databaseAvailable)("resolveIdentityMappingTask transaction", ()
     expect(bindingB.rows[0]?.binding_id).toBe(prevBindingB.id);
   });
 
+  it("confirming multiple candidates as new identities keeps every instance and clears the mapping blocker", async () => {
+    const { revisionId, taskA, taskB } = await seedMultiTaskAmbiguousRevision(db!);
+
+    await resolveIdentityMappingTask(db!, auth, {
+      taskId: taskA,
+      decision: "new-identity",
+      reason: "Both A candidates are distinct new devices",
+      confirmAllCandidates: true,
+    });
+    await resolveIdentityMappingTask(db!, auth, {
+      taskId: taskB,
+      decision: "new-identity",
+      reason: "Both B candidates are distinct new devices",
+      confirmAllCandidates: true,
+    });
+
+    const taskStatuses = await db!.query<{ status: string }>(
+      `select status from identity_mapping_tasks where config_revision_id = $1 order by id`,
+      [revisionId],
+    );
+    expect(taskStatuses.rows).toEqual([{ status: "new_identity" }, { status: "new_identity" }]);
+
+    const revisionStatus = await db!.query<{ status: string }>(
+      `select status from dts_config_revisions where id = $1`,
+      [revisionId],
+    );
+    expect(revisionStatus.rows[0]?.status).toBe("resolved");
+
+    const remainingInstances = await db!.query<{ logical_node_id: string }>(
+      `
+      select logical_node_id
+      from dts_logical_node_revisions
+      where config_revision_id = $1
+        and logical_node_id = any($2::text[])
+      order by logical_node_id
+      `,
+      [revisionId, [CAND_A1, CAND_A2, CAND_B1, CAND_B2]],
+    );
+    expect(remainingInstances.rows.map((row) => row.logical_node_id)).toEqual([
+      CAND_A1,
+      CAND_A2,
+      CAND_B1,
+      CAND_B2,
+    ]);
+  });
+
   it("dismiss does not make a still-ambiguous revision releasable", async () => {
     const { revisionId, taskA, taskB } = await seedMultiTaskAmbiguousRevision(db!);
 
@@ -419,5 +473,25 @@ describe.skipIf(!databaseAvailable)("resolveIdentityMappingTask transaction", ()
       [revisionId],
     );
     expect(afterLastDismiss.rows[0]?.status).toBe("needs_mapping");
+  });
+
+  it("reopens a completed non-destructive outcome and restores the revision blocker", async () => {
+    const { revisionId, taskA, taskB } = await seedMultiTaskAmbiguousRevision(db!);
+    for (const taskId of [taskA, taskB]) {
+      await resolveIdentityMappingTask(db!, auth, {
+        taskId,
+        decision: "new-identity",
+        reason: "No predecessor",
+        confirmAllCandidates: true,
+      });
+    }
+
+    const reopened = await reopenIdentityMappingTask(db!, auth, {
+      taskId: taskA,
+      reason: "New evidence needs review",
+    });
+
+    expect(reopened).toEqual({ id: taskA, status: "open" });
+    expect(await revisionStatus(db!, revisionId)).toBe("needs_mapping");
   });
 });

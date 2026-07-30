@@ -340,3 +340,16 @@ describe("parameter spec version cutover migration invariants (ADR-0014)", () =>
     expect(migration).toContain("to_version_id");
   });
 });
+
+describe("identity mapping singleton blockers migration invariants", () => {
+  it("extends mapping outcomes and singleton task kind", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0085_identity_mapping_and_singleton_blockers.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("new_identity");
+    expect(migration).toContain("task_kind");
+    expect(migration).toContain("singleton-cardinality");
+    expect(migration).toContain("identity_mapping_singleton_blocker_idx");
+  });
+});

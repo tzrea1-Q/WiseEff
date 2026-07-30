@@ -33,6 +33,7 @@ const migration0081 = "0081_remove_structural_parameter_specs.sql";
 const migration0082 = "0082_attribution_subjects.sql";
 const migration0083 = "0083_parameter_spec_versioning.sql";
 const migration0084 = "0084_parameter_spec_version_cutover.sql";
+const migration0085 = "0085_identity_mapping_and_singleton_blockers.sql";
 
 const enablementMigrations = [
   migration0068,
@@ -52,6 +53,7 @@ const enablementMigrations = [
   migration0082,
   migration0083,
   migration0084,
+  migration0085,
 ] as const;
 const REQUIRED_TABLES = [
   "parameter_specs",
