@@ -75,6 +75,14 @@ export type DriverRegistryParseCoverage =
       pattern: string;
       driverId: string;
       source: string;
+      scope: "platform" | "organization";
+      shadowedBy?: Array<{
+        pattern: string;
+        driverId: string;
+        source: string;
+        scope: "platform" | "organization";
+      }>;
+      promoted?: boolean;
     };
 
 export type DriverRegistryEntry = {

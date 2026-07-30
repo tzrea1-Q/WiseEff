@@ -122,7 +122,7 @@ describe("WiseEff prototype configuration", () => {
   });
 
   it("places feedback admin directly after the sidebar feedback entry", () => {
-    expect(utilityItems.map((item) => item.label)).toEqual(["反馈管理", "审计中心", "用户管理"]);
+    expect(utilityItems.map((item) => item.label)).toEqual(["平台控制台", "反馈管理", "审计中心", "用户管理"]);
   });
 
   it("does not expose a disabled Agent utility item", () => {

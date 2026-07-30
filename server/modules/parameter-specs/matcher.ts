@@ -94,11 +94,16 @@ export function matchDriver(
   const bySource = {
     linux: candidates.filter((driver) => driver.source === "linux"),
     vendor: candidates.filter((driver) => driver.source === "vendor"),
-    manual: candidates.filter((driver) => driver.source === "manual"),
+    manualPlatform: candidates.filter(
+      (driver) => driver.source === "manual" && driver.scope !== "organization",
+    ),
+    manualOrganization: candidates.filter(
+      (driver) => driver.source === "manual" && driver.scope === "organization",
+    ),
   };
 
   // Same-tier multiplicity is always ambiguous.
-  for (const tier of ["linux", "vendor", "manual"] as const) {
+  for (const tier of ["linux", "vendor", "manualPlatform", "manualOrganization"] as const) {
     if (bySource[tier].length > 1) {
       return {
         kind: "ambiguous",
@@ -127,11 +132,18 @@ export function matchDriver(
       evidence: evidenceForDriver(bySource.linux[0], node),
     };
   }
-  if (bySource.manual.length === 1) {
+  if (bySource.manualPlatform.length === 1) {
     return {
       kind: "matched",
-      value: bySource.manual[0],
-      evidence: evidenceForDriver(bySource.manual[0], node),
+      value: bySource.manualPlatform[0],
+      evidence: evidenceForDriver(bySource.manualPlatform[0], node),
+    };
+  }
+  if (bySource.manualOrganization.length === 1) {
+    return {
+      kind: "matched",
+      value: bySource.manualOrganization[0],
+      evidence: evidenceForDriver(bySource.manualOrganization[0], node),
     };
   }
 
@@ -243,7 +255,12 @@ export function matchProperty(
   const vendorCommon = byKey.filter(
     (property) => property.source === "vendor" && property.driverSchemaId === null,
   );
-  const manual = byKey.filter((property) => property.source === "manual");
+  const manualPlatform = byKey.filter(
+    (property) => property.source === "manual" && property.scope !== "organization",
+  );
+  const manualOrganization = byKey.filter(
+    (property) => property.source === "manual" && property.scope === "organization",
+  );
 
   let chosen: PropertySpec[];
   if (vendorLocal.length > 0) {
@@ -252,8 +269,10 @@ export function matchProperty(
     chosen = vendorCommon;
   } else if (linux.length > 0) {
     chosen = linux;
+  } else if (manualPlatform.length > 0) {
+    chosen = manualPlatform;
   } else {
-    chosen = manual;
+    chosen = manualOrganization;
   }
 
   if (chosen.length === 1) {

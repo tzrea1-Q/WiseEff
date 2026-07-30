@@ -126,13 +126,28 @@ export type DriverCoverageSummary = {
   covered: number;
   overlayCovered: number;
   platformCovered: number;
+  shadowedCount: number;
+  promotedCount: number;
 };
 
+export function isPromotedParseCoverage(
+  coverage: DriverRegistryEntry["parseCoverages"][number]["coverage"],
+): boolean {
+  return Boolean(coverage.covered && coverage.promoted);
+}
+
 export function isOverlayParseCoverage(coverage: DriverRegistryEntry["parseCoverages"][number]["coverage"]): boolean {
-  return (
+  return coverage.covered && coverage.scope === "organization" && !coverage.promoted;
+}
+
+export function isShadowedParseCoverage(
+  coverage: DriverRegistryEntry["parseCoverages"][number]["coverage"]
+): boolean {
+  return Boolean(
     coverage.covered &&
-    coverage.source === "manual" &&
-    String(coverage.driverId).includes(":org/")
+      !coverage.promoted &&
+      coverage.shadowedBy &&
+      coverage.shadowedBy.length > 0,
   );
 }
 
@@ -146,16 +161,23 @@ export function summarizeDriverCoverage(
     let covered = 0;
     let overlayCovered = 0;
     let platformCovered = 0;
+    let shadowedCount = 0;
+    let promotedCount = 0;
     for (const row of entry.parseCoverages) {
       if (!row.coverage.covered) continue;
       covered += 1;
+      if (isPromotedParseCoverage(row.coverage)) {
+        promotedCount += 1;
+      } else if (isShadowedParseCoverage(row.coverage)) {
+        shadowedCount += 1;
+      }
       if (isOverlayParseCoverage(row.coverage)) {
         overlayCovered += 1;
       } else {
         platformCovered += 1;
       }
     }
-    map.set(entry.moduleId, { total, covered, overlayCovered, platformCovered });
+    map.set(entry.moduleId, { total, covered, overlayCovered, platformCovered, shadowedCount, promotedCount });
   }
   return map;
 }

@@ -85,6 +85,14 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `DRV-SCHEMA-003` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-SCHEMA-004` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-CREATE-KIND-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PLAT-ROLE-001` | P1 | platform | manual | `/platform-console` | Platform Admin | ui | — |
+| `PLAT-ROLE-002` | P1 | platform | manual | `/user-permissions` | Admin | ui | — |
+| `PLAT-ROLE-003` | P1 | platform | manual | `/parameters` | Platform Admin | api | — |
+| `DRV-PROMOTE-001` | P1 | parameters | manual | `/parameter-admin` | Admin | ui | — |
+| `DRV-PROMOTE-002` | P1 | parameters | manual | `/parameter-admin` | Admin | ui | — |
+| `DRV-PROMOTE-003` | P1 | parameters | manual | `/parameter-admin` | Admin | ui, api | — |
+| `DRV-PROMOTE-004` | P1 | parameters | manual | `/parameter-admin` | Admin | ui | — |
+| `DRV-PROMOTE-005` | P1 | platform | manual | `/platform-console` | Platform Admin | ui, api | — |
 
 ## Deferred Or Conditional Operations
 

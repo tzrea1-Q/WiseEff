@@ -9,7 +9,8 @@ export type ActionKey =
   | "debugging.use"
   | "logs.upload"
   | "admin.access"
-  | "users.manage";
+  | "users.manage"
+  | "platform.schema-promote";
 
 const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   home: "guest",
@@ -27,7 +28,8 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   "debugging-admin": "admin",
   "user-permissions": "admin",
   "feedback-admin": "admin",
-  audit: "admin"
+  audit: "admin",
+  "platform-console": "platform-admin"
 };
 
 const actionRequiredRoles: Record<ActionKey, PlatformRoleId> = {
@@ -38,7 +40,8 @@ const actionRequiredRoles: Record<ActionKey, PlatformRoleId> = {
   "debugging.use": "hardware-user",
   "logs.upload": "hardware-user",
   "admin.access": "admin",
-  "users.manage": "admin"
+  "users.manage": "admin",
+  "platform.schema-promote": "platform-admin"
 };
 
 const roleLabels: Record<PlatformRoleId, string> = {
@@ -47,7 +50,8 @@ const roleLabels: Record<PlatformRoleId, string> = {
   "software-user": "Software User",
   "hardware-committer": "Hardware Committer",
   "software-committer": "Software Committer",
-  admin: "Admin"
+  admin: "Admin",
+  "platform-admin": "Platform Super Admin"
 };
 
 export function getRequiredRoleForPage(pageKey: PageKey): PlatformRoleId {
@@ -74,7 +78,7 @@ export function canAccessPage(roleId: string, pageKey: PageKey): boolean {
 export function canPerform(roleId: string, actionKey: ActionKey): boolean {
   const normalizedRole = migrateLegacyRoleId(roleId);
   if (actionKey === "parameter.merge") {
-    return normalizedRole === "software-user" || normalizedRole === "admin";
+    return normalizedRole === "software-user" || normalizedRole === "admin" || normalizedRole === "platform-admin";
   }
   return comparePlatformRoles(normalizedRole, getRequiredRoleForAction(actionKey)) >= 0;
 }

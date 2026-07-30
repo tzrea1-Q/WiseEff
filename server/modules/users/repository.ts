@@ -225,7 +225,7 @@ export async function countActiveAdmins(db: Queryable, organizationId: string) {
     join user_role_bindings on user_role_bindings.user_id = users.id
     where users.organization_id = $1
       and users.is_active = true
-      and user_role_bindings.role_id = 'admin'
+      and user_role_bindings.role_id in ('admin', 'platform-admin')
     `,
     [organizationId]
   );
@@ -241,7 +241,7 @@ export async function listActiveAdminUserIds(db: Queryable, organizationId: stri
     join user_role_bindings on user_role_bindings.user_id = users.id
     where users.organization_id = $1
       and users.is_active = true
-      and user_role_bindings.role_id = 'admin'
+      and user_role_bindings.role_id in ('admin', 'platform-admin')
     order by users.id asc
     `,
     [organizationId]

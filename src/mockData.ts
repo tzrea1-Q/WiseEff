@@ -406,6 +406,17 @@ export const roles: Role[] = [...platformRoles];
 
 export const users: User[] = [
   { id: "u-xu-yun", name: "Xu Yun", email: "xu@chargelab.cn", username: "xu.yun", title: "Platform Owner", roleId: "admin", isActive: true, createdAt: "2024-11-02T09:30:00.000Z", lastActive: "just now" },
+  {
+    id: "u-platform-admin",
+    name: "Platform Operator",
+    email: "platform@chargelab.cn",
+    username: "platform.admin",
+    title: "Platform Super Admin",
+    roleId: "platform-admin",
+    isActive: true,
+    createdAt: "2025-05-01T09:00:00.000Z",
+    lastActive: "just now"
+  },
   { id: "u-zhao-heng", name: "Zhao Heng", email: "zhao@chargelab.cn", username: "zhao.heng", title: "Hardware Engineer", roleId: "hardware-user", isActive: true, createdAt: "2025-01-14T03:12:00.000Z", lastActive: "2h ago" },
   { id: "u-liu-min", name: "Liu Min", email: "liu@chargelab.cn", username: "liu.min", title: "Software Engineer", roleId: "software-user", isActive: true, createdAt: "2025-02-03T08:04:00.000Z", lastActive: "today 09:12" },
   { id: "u-wang-jie", name: "Wang Jie", email: "wang@chargelab.cn", username: "wang.jie", title: "Hardware Reviewer", roleId: "hardware-committer", isActive: true, createdAt: "2024-12-20T12:00:00.000Z", lastActive: "yesterday" },

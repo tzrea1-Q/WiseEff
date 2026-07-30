@@ -12,6 +12,9 @@ export type SchemaSource = "linux" | "vendor" | "manual" | "inferred";
 
 export type SpecLifecycle = "draft" | "active" | "deprecated";
 
+/** Overlay row lifecycle includes superseded after platform promotion (ADR-0009). */
+export type OverlayLifecycle = SpecLifecycle | "superseded";
+
 /** Precedence for releasable matches: linux base → vendor add/narrow → reviewed manual gap-fill. */
 export const SCHEMA_SOURCE_PRECEDENCE: Record<SchemaSource, number> = {
   linux: 0,
@@ -30,6 +33,9 @@ export type PropertyValueShape =
   | { kind: "mixed" }
   | { kind: "unknown" };
 
+/** Discriminates platform vs organization within the manual source tier (ADR-0009). */
+export type SchemaScope = "platform" | "organization";
+
 export type DriverSchema = {
   id: string;
   /** Primary compatible used in matcher evidence / golden assertions. */
@@ -38,6 +44,11 @@ export type DriverSchema = {
   /** Optional nodename selectors for child nodes without compatible. */
   nodenamePatterns: string[];
   source: SchemaSource;
+  /**
+   * Optional until materialization emits it. Pinned schemas are platform;
+   * organization overlays are organization. Used to split the manual tier.
+   */
+  scope?: SchemaScope;
   schemaNamespace: string;
   version: number;
   lifecycle: SpecLifecycle;
@@ -53,6 +64,8 @@ export type PropertySpec = {
   propertyKey: string;
   schemaNamespace: string;
   source: SchemaSource;
+  /** Optional until materialization emits it; mirrors DriverSchema.scope. */
+  scope?: SchemaScope;
   lifecycle: SpecLifecycle;
   valueShape: PropertyValueShape;
   units?: string;

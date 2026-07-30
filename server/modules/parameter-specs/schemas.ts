@@ -191,5 +191,16 @@ export const organizationDriverSchemaParamsSchema = z.object({
   schemaId: nonEmptyString,
 });
 
+export const promoteDriverSchemaOverlayBodySchema = z.object({
+  compatible: nonEmptyString,
+  displayName: z.string().min(1).optional(),
+  notes: z.string().optional(),
+  documentationSourceOrganizationId: z.string().min(1).optional(),
+});
+
+export const driverSchemaPromotionParamsSchema = z.object({
+  promotionId: nonEmptyString,
+});
+
 export type CreateOrganizationDriverSchemaBody = z.infer<typeof createOrganizationDriverSchemaBodySchema>;
 export type UpdateOrganizationDriverSchemaBody = z.infer<typeof updateOrganizationDriverSchemaBodySchema>;

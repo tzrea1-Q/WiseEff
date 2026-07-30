@@ -8,7 +8,8 @@ const acceptanceRoleBindings = [
   { bindingId: "acceptance-role-software-user-binding", userId: "u-liu-min", roleId: "software-user" },
   { bindingId: "acceptance-role-hardware-committer-binding", userId: "u-wang-jie", roleId: "hardware-committer" },
   { bindingId: "acceptance-role-software-committer-binding", userId: "u-sun-mei", roleId: "software-committer" },
-  { bindingId: "acceptance-role-admin-binding", userId: "u-xu-yun", roleId: "admin" }
+  { bindingId: "acceptance-role-admin-binding", userId: "u-xu-yun", roleId: "admin" },
+  { bindingId: "acceptance-role-platform-admin-binding", userId: "u-platform-admin", roleId: "platform-admin" }
 ] as const;
 
 export async function seedAcceptanceRoleMatrix() {
@@ -25,6 +26,20 @@ export async function seedAcceptanceRoleMatrix() {
         is_active = excluded.is_active
       `,
       ["acceptance-role-guest", organizationId]
+    );
+
+    await client.query(
+      `
+      insert into users (id, organization_id, name, email, title, is_active)
+      values ($1, $2, 'Platform Operator', 'platform@chargelab.cn', 'Platform Super Admin', true)
+      on conflict (id) do update set
+        organization_id = excluded.organization_id,
+        name = excluded.name,
+        email = excluded.email,
+        title = excluded.title,
+        is_active = excluded.is_active
+      `,
+      ["u-platform-admin", organizationId]
     );
 
     for (const binding of acceptanceRoleBindings) {

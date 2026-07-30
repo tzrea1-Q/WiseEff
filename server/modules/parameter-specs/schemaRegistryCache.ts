@@ -7,8 +7,12 @@ import { loadSchemaRegistry } from "./schemaLoader";
 import {
   mergePinnedRegistryWithOverlay,
   overlayDigest,
-} from "./organizationDriverSchemaMaterialize";
-import { listOrganizationDriverSchemas } from "./organizationDriverSchemaRepository";
+  platformOverlayDigest,
+} from "./driverSchemaOverlayMaterialize";
+import {
+  listActivePlatformDriverSchemaOverlays,
+  listOrganizationDriverSchemas,
+} from "./driverSchemaOverlayRepository";
 import type { SchemaCatalog, SchemaRegistry } from "./types";
 
 type PinnedCacheEntry = {
@@ -18,12 +22,15 @@ type PinnedCacheEntry = {
 
 type OrgCacheEntry = {
   contentHash: string;
+  platformOverlayDigest: string;
   overlayDigest: string;
   registry: SchemaRegistry;
 };
 
 const pinnedCacheByRoot = new Map<string, PinnedCacheEntry>();
 const orgCacheByKey = new Map<string, OrgCacheEntry>();
+let cachedPlatformOverlayDigest = "";
+let cachedPlatformOverlaySchemasRoot: string | null = null;
 
 function readCatalogContentHash(schemasRoot: string): string {
   const catalog = JSON.parse(readFileSync(join(schemasRoot, "catalog.json"), "utf8")) as SchemaCatalog;
@@ -49,10 +56,23 @@ export function getCachedSchemaRegistry(schemasRoot: string): SchemaRegistry {
   return registry;
 }
 
+async function loadPlatformOverlayDigest(db: Queryable, schemasRoot: string): Promise<string> {
+  try {
+    const overlays = await listActivePlatformDriverSchemaOverlays(db);
+    return createHash("sha256").update(platformOverlayDigest(overlays)).digest("hex");
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code?: unknown }).code)
+        : "";
+    if (code === "42P01") return "";
+    throw error;
+  }
+}
+
 /**
- * Organization-aware registry: pinned schemas/dts plus active (and optionally
- * draft for read models that need them) org overlay drivers (ADR-0008).
- * Cache key is (organizationId, contentHash, overlayDigest).
+ * Organization-aware registry: pinned schemas/dts plus active platform and org overlays.
+ * Cache key is (organizationId, contentHash, platformOverlayDigest, orgOverlayDigest).
  */
 export async function getCachedOrganizationSchemaRegistry(
   db: Queryable,
@@ -68,14 +88,16 @@ export async function getCachedOrganizationSchemaRegistry(
   const lifecycles = input.includeDrafts
     ? (["active", "draft"] as const)
     : (["active"] as const);
-  let overlays: Awaited<ReturnType<typeof listOrganizationDriverSchemas>> = [];
+
+  let platformOverlays: Awaited<ReturnType<typeof listActivePlatformDriverSchemaOverlays>> = [];
+  let orgOverlays: Awaited<ReturnType<typeof listOrganizationDriverSchemas>> = [];
   try {
-    overlays = await listOrganizationDriverSchemas(db, {
+    platformOverlays = await listActivePlatformDriverSchemaOverlays(db);
+    orgOverlays = await listOrganizationDriverSchemas(db, {
       organizationId: input.organizationId,
       lifecycle: [...lifecycles],
     });
   } catch (error) {
-    // Migration 0076 not applied yet — keep the modules page usable on pinned schemas only.
     const code =
       error && typeof error === "object" && "code" in error
         ? String((error as { code?: unknown }).code)
@@ -83,29 +105,41 @@ export async function getCachedOrganizationSchemaRegistry(
     if (code !== "42P01") throw error;
     return pinned;
   }
-  const digest = createHash("sha256")
-    .update(overlayDigest(overlays))
+
+  const platformDigest = createHash("sha256")
+    .update(platformOverlayDigest(platformOverlays))
     .digest("hex");
+  const orgDigest = createHash("sha256").update(overlayDigest(orgOverlays)).digest("hex");
   const key = orgCacheKey(input.schemasRoot, input.organizationId);
   const existing = orgCacheByKey.get(key);
   if (
     existing &&
     existing.contentHash === contentHash &&
-    existing.overlayDigest === digest &&
+    existing.platformOverlayDigest === platformDigest &&
+    existing.overlayDigest === orgDigest &&
     !input.includeDrafts
   ) {
     return existing.registry;
   }
-  const merged = mergePinnedRegistryWithOverlay(pinned, overlays);
+  const merged = mergePinnedRegistryWithOverlay(pinned, [...platformOverlays, ...orgOverlays]);
   if (!input.includeDrafts) {
-    orgCacheByKey.set(key, { contentHash, overlayDigest: digest, registry: merged });
+    orgCacheByKey.set(key, {
+      contentHash,
+      platformOverlayDigest: platformDigest,
+      overlayDigest: orgDigest,
+      registry: merged,
+    });
   }
+  cachedPlatformOverlayDigest = platformDigest;
+  cachedPlatformOverlaySchemasRoot = input.schemasRoot;
   return merged;
 }
 
 export function invalidateOrganizationSchemaRegistryCache(organizationId?: string): void {
   if (!organizationId) {
     orgCacheByKey.clear();
+    cachedPlatformOverlayDigest = "";
+    cachedPlatformOverlaySchemasRoot = null;
     return;
   }
   for (const key of [...orgCacheByKey.keys()]) {
@@ -115,7 +149,29 @@ export function invalidateOrganizationSchemaRegistryCache(organizationId?: strin
   }
 }
 
+/** Platform-tier overlay changes invalidate every organization's cached registry. */
+export async function invalidatePlatformSchemaRegistryCache(
+  db: Queryable,
+  schemasRoot: string,
+): Promise<void> {
+  const nextDigest = await loadPlatformOverlayDigest(db, schemasRoot);
+  if (
+    cachedPlatformOverlaySchemasRoot === schemasRoot &&
+    cachedPlatformOverlayDigest === nextDigest &&
+    orgCacheByKey.size > 0
+  ) {
+    orgCacheByKey.clear();
+    cachedPlatformOverlayDigest = nextDigest;
+    return;
+  }
+  orgCacheByKey.clear();
+  cachedPlatformOverlayDigest = nextDigest;
+  cachedPlatformOverlaySchemasRoot = schemasRoot;
+}
+
 export function clearSchemaRegistryCache(): void {
   pinnedCacheByRoot.clear();
   orgCacheByKey.clear();
+  cachedPlatformOverlayDigest = "";
+  cachedPlatformOverlaySchemasRoot = null;
 }

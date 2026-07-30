@@ -316,7 +316,7 @@ describe("ModuleAttributionTree", () => {
       name: "OverlayDG"
     };
     const coverage = new Map([
-      ["mod-overlay", { total: 1, covered: 1, overlayCovered: 1, platformCovered: 0 }]
+      ["mod-overlay", { total: 1, covered: 1, overlayCovered: 1, platformCovered: 0, shadowedCount: 0, promotedCount: 0 }]
     ]);
 
     render(
@@ -334,7 +334,7 @@ describe("ModuleAttributionTree", () => {
     );
 
     const tree = screen.getByRole("tree", { name: "模块归属树" });
-    expect(within(tree).getByText("· 解析组织覆盖")).toBeInTheDocument();
+    expect(within(tree).getByText("· 组织级解析覆盖")).toBeInTheDocument();
   });
 
   it("shows parse coverage chips and filters to uncovered driver groups", () => {
@@ -352,9 +352,9 @@ describe("ModuleAttributionTree", () => {
       origin: "curated"
     };
     const coverage = new Map([
-      ["mod-covered", { total: 2, covered: 2, overlayCovered: 0, platformCovered: 2 }],
-      ["mod-uncovered", { total: 2, covered: 0, overlayCovered: 0, platformCovered: 0 }],
-      ["mod-group", { total: 2, covered: 1, overlayCovered: 0, platformCovered: 1 }]
+      ["mod-covered", { total: 2, covered: 2, overlayCovered: 0, platformCovered: 2, shadowedCount: 0, promotedCount: 0 }],
+      ["mod-uncovered", { total: 2, covered: 0, overlayCovered: 0, platformCovered: 0, shadowedCount: 0, promotedCount: 0 }],
+      ["mod-group", { total: 2, covered: 1, overlayCovered: 0, platformCovered: 1, shadowedCount: 0, promotedCount: 0 }]
     ]);
     const details = new Map([
       [
@@ -391,19 +391,19 @@ describe("ModuleAttributionTree", () => {
     );
 
     const tree = screen.getByRole("tree", { name: "模块归属树" });
-    expect(within(tree).getByText("· 解析已覆盖")).toBeInTheDocument();
+    expect(within(tree).getByText("· 平台级解析覆盖")).toBeInTheDocument();
     expect(within(tree).getByText("· 解析未覆盖")).toBeInTheDocument();
-    expect(within(tree).getByText("· 解析 1/2")).toBeInTheDocument();
+    expect(within(tree).getByText("· 解析覆盖 1/2")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "只看解析未覆盖" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "仅显示解析未覆盖" }));
     expect(within(tree).queryByText("CoveredDG")).not.toBeInTheDocument();
     expect(within(tree).getByText("UncoveredDG")).toBeInTheDocument();
     expect(within(tree).getByText("SC8562")).toBeInTheDocument();
 
     fireEvent.click(within(tree).getByRole("button", { name: "修改模块 SC8562" }));
     const editDialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
-    expect(within(editDialog).getByText("已覆盖")).toBeInTheDocument();
-    expect(within(editDialog).getByText("未覆盖")).toBeInTheDocument();
+    expect(within(editDialog).getByText("官方解析覆盖")).toBeInTheDocument();
+    expect(within(editDialog).getByText("解析未覆盖")).toBeInTheDocument();
   });
 
   it("closes the module editor before handing off to overlay schema authoring", () => {
@@ -446,7 +446,7 @@ describe("ModuleAttributionTree", () => {
     fireEvent.click(screen.getByRole("button", { name: "修改模块 SC8562" }));
     expect(screen.getByRole("dialog", { name: "修改模块 SC8562" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "编写解析 schema" }));
+    fireEvent.click(screen.getByRole("button", { name: "配置组织级解析" }));
     expect(onAuthorOverlaySchema).toHaveBeenCalledWith("vendor,orphan");
     expect(screen.queryByRole("dialog", { name: "修改模块 SC8562" })).not.toBeInTheDocument();
   });

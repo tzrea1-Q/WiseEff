@@ -1,6 +1,6 @@
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { permissionsForRoles } from "./policy";
+import { compareRoles, permissionsForRoles } from "./policy";
 import type { AuthContext, BackendRoleId } from "./types";
 
 type AuthRow = {
@@ -44,7 +44,9 @@ function authContextFromRows(rows: AuthRow[]) {
     throw new ApiError("FORBIDDEN", "User is inactive.", 403);
   }
 
-  const roles = rows.map((row) => ({ projectId: row.project_id, roleId: row.role_id }));
+  const roles = rows
+    .map((row) => ({ projectId: row.project_id, roleId: row.role_id }))
+    .sort((left, right) => compareRoles(right.roleId, left.roleId));
 
   return {
     user: {

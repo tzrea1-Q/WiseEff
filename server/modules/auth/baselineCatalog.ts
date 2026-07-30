@@ -95,6 +95,32 @@ export const baselinePlatformRoles: BaselineRoleSeed[] = [
       "admin:access",
       "users:manage"
     ]
+  ],
+  [
+    "platform-admin",
+    "Platform Super Admin",
+    "admin",
+    [
+      "parameter:view",
+      "parameter:edit",
+      "parameter:edit-critical",
+      "debugging:use",
+      "debugging:view",
+      "debugging:read",
+      "debugging:write",
+      "debugging:rollback",
+      "debugging:admin",
+      "logs:view",
+      "logs:upload",
+      "logs:feedback",
+      "logs:analyze",
+      "logs:archive",
+      "parameter:review",
+      "admin:access",
+      "users:manage",
+      "platform:access",
+      "platform:schema-promote"
+    ]
   ]
 ] as const;
 

@@ -97,6 +97,7 @@ import {
 } from "@/parameterValueKind";
 import {
   migrateLegacyRoleId,
+  pickPrimaryPlatformRoleId,
   platformRoles,
   roleCanBeAssignedToWorkflowSlot,
   roleSupportsWorkflowSlot,
@@ -613,8 +614,12 @@ function canAdvanceReviewRequest(activeRoleId: string, request: ChangeRequest) {
   return canPerform(activeRoleId, "parameter.review");
 }
 
+function isAdminCapabilityRole(roleId: PlatformRoleId) {
+  return roleId === "admin" || roleId === "platform-admin";
+}
+
 function wouldHaveActiveAdmin(_state: PrototypeState, nextUsers: User[]) {
-  return nextUsers.some((user) => user.isActive && user.roleId === "admin");
+  return nextUsers.some((user) => user.isActive && isAdminCapabilityRole(migrateLegacyRoleId(user.roleId)));
 }
 
 export function isEditableProjectLifecycleStatus(status: ProjectInitializationStatus) {
@@ -1573,7 +1578,13 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         return state;
       }
       const nextRoleId = migrateLegacyRoleId(action.roleId);
-      if (action.userId === state.currentUserId && nextRoleId !== "admin") {
+      if (
+        nextRoleId === "platform-admin" &&
+        migrateLegacyRoleId(state.activeRoleId) !== "platform-admin"
+      ) {
+        return state;
+      }
+      if (action.userId === state.currentUserId && !isAdminCapabilityRole(nextRoleId)) {
         return state;
       }
 
@@ -2071,7 +2082,7 @@ function AppShell({
   );
 
   const hydrateAuthContext = useCallback((context: AuthContextDto) => {
-    const primaryRole = context.roles[0]?.roleId ?? "guest";
+    const primaryRole = pickPrimaryPlatformRoleId(context.roles.map((role) => role.roleId));
     setApiAuthPermissions(context.permissions);
     dispatch({
       type: "HYDRATE_AUTH_CONTEXT",
@@ -2082,7 +2093,7 @@ function AppShell({
         ...(context.user.email ? { email: context.user.email } : {}),
         ...(context.user.username ? { username: context.user.username } : {}),
         title: context.user.title,
-        roleId: migrateLegacyRoleId(primaryRole),
+        roleId: primaryRole,
         isActive: context.user.isActive,
         createdAt: new Date().toISOString(),
         lastActive: "just now"
@@ -2200,7 +2211,7 @@ function AppShell({
       .getCurrentAuthContext()
       .then(async (context) => {
         if (cancelledRef.current) return;
-        const primaryRoleId = context.roles[0]?.roleId ?? "guest";
+        const primaryRoleId = pickPrimaryPlatformRoleId(context.roles.map((role) => role.roleId));
         hydrateAuthContext(context);
         setApiAuthStatus("authenticated");
         setApiAuthError("");
@@ -2316,7 +2327,7 @@ function AppShell({
 
   const handleAuthSession = useCallback(
     async (session: AuthSessionDto) => {
-      const primaryRoleId = session.auth.roles[0]?.roleId ?? "guest";
+      const primaryRoleId = pickPrimaryPlatformRoleId(session.auth.roles.map((role) => role.roleId));
       hydrateAuthContext(session.auth);
       setApiAuthStatus("authenticated");
       setApiAuthError("");

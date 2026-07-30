@@ -28,7 +28,8 @@ describe("ModuleEditDialog", () => {
             covered: true,
             pattern: "vendor,sc8562*",
             source: "manual",
-            driverId: "driver:org/org-1/vendor,sc8562:v1"
+            driverId: "driver:org/org-1/vendor,sc8562:v1",
+            scope: "organization"
           },
           { compatible: "vendor,other", covered: false }
         ]}
@@ -41,9 +42,9 @@ describe("ModuleEditDialog", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
-    expect(within(dialog).getByText(/组织覆盖 · vendor,sc8562\*/)).toBeInTheDocument();
-    expect(within(dialog).getByText("未覆盖")).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "编写解析 schema" }));
+    expect(within(dialog).getByText(/组织级解析覆盖 · vendor,sc8562\*/)).toBeInTheDocument();
+    expect(within(dialog).getByText("解析未覆盖")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "配置组织级解析" }));
     expect(onAuthorOverlaySchema).toHaveBeenCalledWith("vendor,other");
   });
 
@@ -62,7 +63,7 @@ describe("ModuleEditDialog", () => {
           { id: "m2", matchKind: "compatible", matchValue: "vendor,other" }
         ]}
         compatibleCoverages={[
-          { compatible: "vendor,sc8562", covered: true, pattern: "vendor,sc8562*" },
+          { compatible: "vendor,sc8562", covered: true, pattern: "vendor,sc8562*", scope: "platform" },
           { compatible: "vendor,other", covered: false }
         ]}
         onSave={vi.fn()}
@@ -74,8 +75,8 @@ describe("ModuleEditDialog", () => {
 
     const dialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
     expect(within(dialog).getByText("compatible:vendor,sc8562")).toBeInTheDocument();
-    expect(within(dialog).getByText(/已覆盖 · vendor,sc8562\*/)).toBeInTheDocument();
-    expect(within(dialog).getByText("未覆盖")).toBeInTheDocument();
+    expect(within(dialog).getByText(/平台级解析覆盖 · vendor,sc8562\*/)).toBeInTheDocument();
+    expect(within(dialog).getByText("解析未覆盖")).toBeInTheDocument();
   });
 
   it("saves name and description changes", () => {

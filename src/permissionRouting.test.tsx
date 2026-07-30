@@ -42,6 +42,14 @@ describe("permission-aware routing", () => {
     expect(screen.queryByRole("button", { name: /用户管理|鐢ㄦ埛绠＄悊/ })).not.toBeInTheDocument();
   });
 
+  it("lets platform-admin see the platform console utility entry", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    render(<App initialAppState={{ ...initialState, activeRoleId: "platform-admin", currentUserId: "u-platform-admin" }} />);
+
+    expect(screen.getByRole("button", { name: "平台控制台" })).toBeInTheDocument();
+  });
+
   it("lets Admin see the shared user permissions utility entry", async () => {
     window.history.replaceState(null, "", "/parameter-home");
 

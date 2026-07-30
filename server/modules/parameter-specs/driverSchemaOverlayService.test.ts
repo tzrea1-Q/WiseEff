@@ -3,11 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { driverModuleFromOverlayCompatible } from "./organizationDriverSchemaMaterialize";
+import { driverModuleFromOverlayCompatible } from "./driverSchemaOverlayMaterialize";
 import {
   activateOrganizationDriverSchemaForAuth,
   createOrganizationDriverSchemaForAuth,
-} from "./organizationDriverSchemaService";
+} from "./driverSchemaOverlayService";
 import { buildManualSpecIds } from "./specIdentity";
 
 function makeAuth(): AuthContext {
@@ -65,7 +65,7 @@ function createServiceDb(seed?: { schemas?: SchemaRow[]; provisionalSpecIds?: st
     if (sql.includes("insert into dts_property_specs")) {
       return { rows: [], rowCount: 1 };
     }
-    if (sql.includes("insert into organization_driver_schemas")) {
+    if (sql.includes("insert into driver_schema_overlays")) {
       const [id, organizationId, compatible, displayName, notes, lifecycle, version] = values as [
         string,
         string,
@@ -87,7 +87,7 @@ function createServiceDb(seed?: { schemas?: SchemaRow[]; provisionalSpecIds?: st
       });
       return { rows: [], rowCount: 1 };
     }
-    if (sql.includes("insert into organization_driver_schema_properties")) {
+    if (sql.includes("insert into driver_schema_overlay_properties")) {
       const [id, schemaId, parameterSpecId, propertyKey] = values as [string, string, string, string];
       const schema = schemas.get(schemaId);
       if (!schema) throw new Error("missing schema");
@@ -102,7 +102,7 @@ function createServiceDb(seed?: { schemas?: SchemaRow[]; provisionalSpecIds?: st
       });
       return { rows: [], rowCount: 1 };
     }
-    if (sql.includes("from organization_driver_schemas") && sql.includes("id = $2")) {
+    if (sql.includes("from driver_schema_overlays") && sql.includes("id = $2")) {
       const [organizationId, schemaId] = values as [string, string];
       const hit = schemas.get(schemaId);
       if (!hit || hit.organizationId !== organizationId) return { rows: [], rowCount: 0 };
@@ -116,6 +116,7 @@ function createServiceDb(seed?: { schemas?: SchemaRow[]; provisionalSpecIds?: st
             notes: hit.notes,
             lifecycle: hit.lifecycle,
             version: hit.version,
+            superseded_by_schema_id: null,
             created_by_user_id: "user-1",
             updated_by_user_id: "user-1",
             created_at: "2026-07-29T00:00:00.000Z",
@@ -126,13 +127,13 @@ function createServiceDb(seed?: { schemas?: SchemaRow[]; provisionalSpecIds?: st
         rowCount: 1,
       };
     }
-    if (sql.includes("from organization_driver_schema_properties") && sql.includes("= any($1::text[])")) {
+    if (sql.includes("from driver_schema_overlay_properties") && sql.includes("= any($1::text[])")) {
       const [ids] = values as [string[]];
       const rows = ids.flatMap((id) => {
         const schema = schemas.get(id);
         return (schema?.properties ?? []).map((property) => ({
           id: property.id,
-          organization_driver_schema_id: id,
+          driver_schema_overlay_id: id,
           parameter_spec_id: property.parameterSpecId,
           parameter_spec_version_id: `${property.parameterSpecId}:v1`,
           property_key: property.propertyKey,
@@ -149,13 +150,20 @@ function createServiceDb(seed?: { schemas?: SchemaRow[]; provisionalSpecIds?: st
       return { rows, rowCount: rows.length };
     }
     if (
-      sql.includes("from organization_driver_schemas") &&
+      sql.includes("from driver_schema_overlays") &&
+      sql.includes("organization_id is null") &&
+      sql.includes("lower(compatible) = lower($1)")
+    ) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (
+      sql.includes("from driver_schema_overlays") &&
       sql.includes("lower(compatible) = lower($2)") &&
       sql.includes("lifecycle = 'active'")
     ) {
       return { rows: [], rowCount: 0 };
     }
-    if (sql.includes("update organization_driver_schemas") && sql.includes("set lifecycle = $3")) {
+    if (sql.includes("update driver_schema_overlays") && sql.includes("set lifecycle = $3")) {
       const [organizationId, schemaId, lifecycle] = values as [string, string, "draft" | "active" | "deprecated"];
       const hit = schemas.get(schemaId);
       if (!hit || hit.organizationId !== organizationId) return { rows: [], rowCount: 0 };
@@ -184,7 +192,7 @@ function createServiceDb(seed?: { schemas?: SchemaRow[]; provisionalSpecIds?: st
       audits.push({ action: String(values[7]), metadata: {} });
       return { rows: [], rowCount: 1 };
     }
-    if (sql.includes("from organization_driver_schemas") && sql.includes("organization_id = $1")) {
+    if (sql.includes("from driver_schema_overlays") && sql.includes("organization_id = $1")) {
       return { rows: [], rowCount: 0 };
     }
     throw new Error(`Unhandled SQL: ${text}`);

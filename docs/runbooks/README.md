@@ -23,6 +23,7 @@ Runbooks describe repeatable operational procedures. They complement the design 
 - [HDC Device Lab](hdc-device-lab.md): real-device evidence collection.
 - [ADB Device Lab](adb-device-lab.md): local real-device ADB evidence collection.
 - [Agent Provider](agent-provider.md): live provider readiness, fallback, and trace evidence.
+- [Platform Admin And Schema Promotion](platform-admin-and-schema-promotion.md): bootstrap the first `platform-admin`, and promote/revert organization driver schema overlays to the platform tier.
 
 ## Evidence Rule
 

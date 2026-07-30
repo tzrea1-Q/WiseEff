@@ -6,7 +6,8 @@ export type PlatformRoleId =
   | "software-user"
   | "hardware-committer"
   | "software-committer"
-  | "admin";
+  | "admin"
+  | "platform-admin";
 
 export type PermissionKey =
   | "parameter:view"
@@ -16,13 +17,15 @@ export type PermissionKey =
   | "logs:upload"
   | "parameter:review"
   | "admin:access"
-  | "users:manage";
+  | "users:manage"
+  | "platform:access"
+  | "platform:schema-promote";
 
 export type RoleCapability = "view" | "edit" | "publish" | "manage-permissions";
 
 export type PlatformRole = {
   id: PlatformRoleId;
-  name: "Guest" | "Hardware User" | "Software User" | "Hardware Committer" | "Software Committer" | "Admin";
+  name: "Guest" | "Hardware User" | "Software User" | "Hardware Committer" | "Software Committer" | "Admin" | "Platform Super Admin";
   description: string;
   discipline?: RoleDiscipline;
   level: "guest" | "user" | "committer" | "admin";
@@ -110,6 +113,24 @@ export const platformRoles = [
       "admin:access",
       "users:manage"
     ]
+  },
+  {
+    id: "platform-admin",
+    name: "Platform Super Admin",
+    description: "Cross-organization platform operator with org-admin capabilities inside the home organization.",
+    level: "admin",
+    permissions: [
+      "parameter:view",
+      "parameter:edit",
+      "parameter:edit-critical",
+      "debugging:use",
+      "logs:upload",
+      "parameter:review",
+      "admin:access",
+      "users:manage",
+      "platform:access",
+      "platform:schema-promote"
+    ]
   }
 ] as const satisfies readonly PlatformRole[];
 
@@ -119,7 +140,8 @@ const roleRank: Record<PlatformRoleId, number> = {
   "software-user": 1,
   "hardware-committer": 2,
   "software-committer": 2,
-  admin: 3
+  admin: 3,
+  "platform-admin": 4
 };
 
 export function isPlatformRoleId(value: string): value is PlatformRoleId {
@@ -129,7 +151,8 @@ export function isPlatformRoleId(value: string): value is PlatformRoleId {
     value === "software-user" ||
     value === "hardware-committer" ||
     value === "software-committer" ||
-    value === "admin"
+    value === "admin" ||
+    value === "platform-admin"
   );
 }
 
@@ -169,6 +192,17 @@ export function comparePlatformRoles(left: string, right: string): number {
   return roleRank[migrateLegacyRoleId(left)] - roleRank[migrateLegacyRoleId(right)];
 }
 
+/**
+ * When a user holds multiple role bindings, the UI active role is the highest-ranked
+ * one so platform-admin is not shadowed by a co-bound admin (roles[0] order is unstable).
+ */
+export function pickPrimaryPlatformRoleId(roleIds: readonly string[]): PlatformRoleId {
+  if (roleIds.length === 0) return "guest";
+  return roleIds
+    .map((roleId) => migrateLegacyRoleId(roleId))
+    .reduce((best, roleId) => (comparePlatformRoles(roleId, best) > 0 ? roleId : best));
+}
+
 export function getRolesByDiscipline(discipline: RoleDiscipline): PlatformRole[] {
   return platformRoles.filter((role) => "discipline" in role && role.discipline === discipline);
 }
@@ -177,7 +211,7 @@ export function roleIncludesRole(roleId: string, includedRoleId: string): boolea
   const role = migrateLegacyRoleId(roleId);
   const includedRole = migrateLegacyRoleId(includedRoleId);
 
-  if (role === includedRole || role === "admin") {
+  if (role === includedRole || role === "admin" || role === "platform-admin") {
     return true;
   }
 
@@ -193,7 +227,7 @@ export type WorkflowRoleSlot = "hardwareCommitter" | "softwareCommitter" | "soft
 export function roleSupportsWorkflowSlot(roleId: string, slot: WorkflowRoleSlot): boolean {
   const role = getPlatformRole(roleId);
 
-  if (role.id === "admin") {
+  if (role.id === "admin" || role.id === "platform-admin") {
     return true;
   }
 
@@ -211,7 +245,7 @@ export function roleSupportsWorkflowSlot(roleId: string, slot: WorkflowRoleSlot)
 export function roleCanBeAssignedToWorkflowSlot(roleId: string, slot: WorkflowRoleSlot): boolean {
   const role = getPlatformRole(roleId);
 
-  if (role.id === "admin") {
+  if (role.id === "admin" || role.id === "platform-admin") {
     return false;
   }
 

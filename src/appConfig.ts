@@ -11,7 +11,8 @@ import {
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
-  TerminalSquare
+  TerminalSquare,
+  TowerControl
 } from "lucide-react";
 
 import {
@@ -38,7 +39,8 @@ export type PageKey =
   | "debugging-admin"
   | "user-permissions"
   | "feedback-admin"
-  | "audit";
+  | "audit"
+  | "platform-console";
 
 export type PageConfig = {
   key: PageKey;
@@ -144,6 +146,7 @@ export const navigationItems: PageConfig[] = [
 ];
 
 export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: string }> = [
+  { label: "平台控制台", icon: TowerControl, path: "/platform-console" },
   { label: "反馈管理", icon: MessageSquareText, path: "/feedback-admin" },
   { label: "审计中心", icon: ScrollText, path: "/audit" },
   { label: "用户管理", icon: Settings2, path: "/user-permissions" }
@@ -171,6 +174,18 @@ export function getPageByPath(path: string): PageConfig {
       icon: Settings2,
       title: "用户权限管理",
       subtitle: "统一管理雷泽平台用户、四档角色和访问权限"
+    };
+  }
+
+  if (path === "/platform-console") {
+    return {
+      key: "platform-console",
+      path: "/platform-console",
+      label: "平台控制台",
+      group: "平台总览",
+      icon: TowerControl,
+      title: "平台控制台",
+      subtitle: ""
     };
   }
 

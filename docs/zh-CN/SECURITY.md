@@ -37,6 +37,10 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 - `parameter:review`
 - `admin:access`
 - `users:manage`
+- `platform:access`（平台控制台；仅 `platform-admin`）
+- `platform:schema-promote`（跨组织覆盖晋升；仅 `platform-admin`）
+
+`platform-admin` 是第一个跨组织角色。`AuthContext` 仍绑定主组织，**不会**扩大对其他租户参数、日志、用户或项目的访问。它解锁平台作用域行（`organization_id IS NULL`）以及一个有界聚合读（晋升候选）。只有已持有 `platform-admin` 的调用方才能授予或撤销该角色。平台级审计事件可将 `organization_id` 置空，并向每个受影响租户扇出一条组织作用域事件；普通列表接口仍按调用方组织过滤。
 
 新增后端业务路由时，必须把前端 capability 映射到服务端授权检查，并补 forbidden 用户的负向测试。
 

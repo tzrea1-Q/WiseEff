@@ -10,18 +10,19 @@ import { ApiError } from "../../shared/http/errors";
 import { lookupParseCoverage } from "./parseCoverage";
 import {
   driverModuleFromOverlayCompatible,
-} from "./organizationDriverSchemaMaterialize";
+} from "./driverSchemaOverlayMaterialize";
 import {
   findActiveOrganizationDriverSchemaByCompatible,
+  findActivePlatformDriverSchemaOverlayByCompatible,
   getOrganizationDriverSchema,
   insertOrganizationDriverSchema,
   listOrganizationDriverSchemas,
   replaceOrganizationDriverSchemaProperties,
   setOrganizationDriverSchemaLifecycle,
   updateOrganizationDriverSchemaMeta,
-  type OrganizationDriverSchemaPropertyInput,
+  type DriverSchemaOverlayPropertyInput,
   type OrganizationDriverSchemaRecord,
-} from "./organizationDriverSchemaRepository";
+} from "./driverSchemaOverlayRepository";
 import { getCachedSchemaRegistry, invalidateOrganizationSchemaRegistryCache } from "./schemaRegistryCache";
 import { buildManualSpecIds } from "./specIdentity";
 import type { PropertyValueShape, SpecLifecycle } from "./types";
@@ -176,8 +177,8 @@ async function resolveOverlayPropertyLinks(
     compatible: string;
     properties: OverlayPropertyInput[];
   },
-): Promise<OrganizationDriverSchemaPropertyInput[]> {
-  const links: OrganizationDriverSchemaPropertyInput[] = [];
+): Promise<DriverSchemaOverlayPropertyInput[]> {
+  const links: DriverSchemaOverlayPropertyInput[] = [];
   for (const [index, property] of input.properties.entries()) {
     if ("parameterSpecId" in property && property.parameterSpecId) {
       const specId = property.parameterSpecId;
@@ -348,6 +349,22 @@ function assertPinnedDoesNotCover(compatible: string) {
   }
 }
 
+async function assertNoActivePlatformOverlayCovers(db: Queryable, compatible: string) {
+  const platformOverlay = await findActivePlatformDriverSchemaOverlayByCompatible(db, compatible);
+  if (platformOverlay) {
+    throw new ApiError(
+      "CONFLICT",
+      "An active platform overlay already covers this compatible; organization authoring is not allowed.",
+      409,
+      {
+        platformSchemaId: platformOverlay.id,
+        compatible: platformOverlay.compatible,
+        displayName: platformOverlay.displayName,
+      },
+    );
+  }
+}
+
 /**
  * Historical binding revision schemaState stays immutable (round-5). Activation
  * upgrades the provisional/manual ParameterSpec in place so the current view
@@ -460,6 +477,7 @@ export async function createOrganizationDriverSchemaForAuth(
   requireCanAdmin(auth);
   const compatible = assertExactCompatible(input.compatible);
   assertPinnedDoesNotCover(compatible);
+  await assertNoActivePlatformOverlayCovers(db, compatible);
   if (!input.displayName.trim()) {
     throw new ApiError("VALIDATION_FAILED", "displayName is required.", 400);
   }
@@ -584,6 +602,7 @@ export async function activateOrganizationDriverSchemaForAuth(
     }
 
     assertPinnedDoesNotCover(existing.compatible);
+    await assertNoActivePlatformOverlayCovers(tx, existing.compatible);
 
     const otherActive = await findActiveOrganizationDriverSchemaByCompatible(tx, {
       organizationId: auth.organization.id,

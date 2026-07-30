@@ -131,7 +131,7 @@ function createSeedStore(): Store {
         parseCoverages: [
           {
             compatible: "vendor,sc8562",
-            coverage: { covered: true, pattern: "vendor,sc8562", driverId: "sc8562", source: "pinned" }
+            coverage: { covered: true, pattern: "vendor,sc8562", driverId: "sc8562", source: "pinned", scope: "platform" }
           }
         ]
       }
@@ -450,7 +450,8 @@ export function createMockParameterModuleRegistryRepository(
               covered: true,
               pattern: schema.compatible,
               driverId: `driver:org/mock/${schema.compatible}:v${schema.version}`,
-              source: "manual"
+              source: "manual",
+              scope: "organization"
             }
           };
         });

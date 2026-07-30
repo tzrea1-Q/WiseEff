@@ -160,14 +160,18 @@ describe("moduleAttributionTreeUtils", () => {
         observed: true,
         notYetObserved: false,
         parseCoverages: [
-          { compatible: "a", coverage: { covered: true, pattern: "a", driverId: "d1", source: "yaml" } },
+          {
+            compatible: "a",
+            coverage: { covered: true, pattern: "a", driverId: "d1", source: "yaml", scope: "platform" }
+          },
           {
             compatible: "b",
             coverage: {
               covered: true,
               pattern: "b",
               driverId: "driver:org/org-1/b:v1",
-              source: "manual"
+              source: "manual",
+              scope: "organization"
             }
           },
           { compatible: "c", coverage: { covered: false } }
@@ -178,7 +182,90 @@ describe("moduleAttributionTreeUtils", () => {
       total: 3,
       covered: 2,
       overlayCovered: 1,
-      platformCovered: 1
+      platformCovered: 1,
+      shadowedCount: 0,
+      promotedCount: 0
+    });
+  });
+
+  it("counts promoted coverages when platform coverage replaces a superseded org overlay", () => {
+    const summary = summarizeDriverCoverage([
+      {
+        moduleId: "g",
+        name: "Group",
+        origin: "auto",
+        businessCategoryId: "b",
+        businessCategoryName: "Power",
+        compatibles: ["a"],
+        parameterCount: 1,
+        observed: true,
+        notYetObserved: false,
+        parseCoverages: [
+          {
+            compatible: "a",
+            coverage: {
+              covered: true,
+              pattern: "a",
+              driverId: "driver:platform/a:v1",
+              source: "manual",
+              scope: "platform",
+              promoted: true
+            }
+          }
+        ]
+      }
+    ]);
+    expect(summary.get("g")).toEqual({
+      total: 1,
+      covered: 1,
+      overlayCovered: 0,
+      platformCovered: 1,
+      shadowedCount: 0,
+      promotedCount: 1
+    });
+  });
+
+  it("counts shadowed coverages when a lower-tier match lost to platform", () => {
+    const summary = summarizeDriverCoverage([
+      {
+        moduleId: "g",
+        name: "Group",
+        origin: "auto",
+        businessCategoryId: "b",
+        businessCategoryName: "Power",
+        compatibles: ["a"],
+        parameterCount: 1,
+        observed: true,
+        notYetObserved: false,
+        parseCoverages: [
+          {
+            compatible: "a",
+            coverage: {
+              covered: true,
+              pattern: "a",
+              driverId: "vendor-a",
+              source: "vendor",
+              scope: "platform",
+              shadowedBy: [
+                {
+                  pattern: "a",
+                  driverId: "driver:org/org-1/a:v1",
+                  source: "manual",
+                  scope: "organization"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]);
+    expect(summary.get("g")).toEqual({
+      total: 1,
+      covered: 1,
+      overlayCovered: 0,
+      platformCovered: 1,
+      shadowedCount: 1,
+      promotedCount: 0
     });
   });
 

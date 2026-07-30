@@ -10,7 +10,9 @@ import {
   createOrganizationDriverSchemaBodySchema,
   listParameterSpecsQuerySchema,
   listSpecReviewTasksQuerySchema,
+  driverSchemaPromotionParamsSchema,
   organizationDriverSchemaParamsSchema,
+  promoteDriverSchemaOverlayBodySchema,
   parameterSpecParamsSchema,
   parameterSpecReviewTaskParamsSchema,
   resolveSpecReviewTaskBodySchema,
@@ -32,7 +34,12 @@ import {
   getOrganizationDriverSchemaForAuth,
   listOrganizationDriverSchemasForAuth,
   updateOrganizationDriverSchemaForAuth,
-} from "./organizationDriverSchemaService";
+} from "./driverSchemaOverlayService";
+import {
+  listPromotionCandidatesForAuth,
+  promoteDriverSchemaOverlayForAuth,
+  revertDriverSchemaOverlayPromotionForAuth,
+} from "./driverSchemaPromotion";
 
 function requireDb(db: Database | undefined) {
   if (!db) {
@@ -198,5 +205,30 @@ export function registerParameterSpecRoutes(
     const params = parseWithSchema(organizationDriverSchemaParamsSchema, request.params);
     const item = await deprecateOrganizationDriverSchemaForAuth(db, auth, params.schemaId);
     return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v2/platform/driver-schemas/promotion-candidates", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const result = await listPromotionCandidatesForAuth(db, auth);
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/platform/driver-schemas/promotions", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(promoteDriverSchemaOverlayBodySchema, request.body ?? {});
+    const result = await promoteDriverSchemaOverlayForAuth(db, auth, body);
+    return { status: 201, body: result };
+  });
+
+  router.post("/api/v2/platform/driver-schemas/promotions/:promotionId/revert", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(driverSchemaPromotionParamsSchema, {
+      promotionId: request.params.promotionId,
+    });
+    const result = await revertDriverSchemaOverlayPromotionForAuth(db, auth, params.promotionId);
+    return { status: 200, body: result };
   });
 }

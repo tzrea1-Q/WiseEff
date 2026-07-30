@@ -1,6 +1,14 @@
 import { z } from "zod";
 
-const roleIdSchema = z.enum(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin"]);
+const roleIdSchema = z.enum([
+  "guest",
+  "hardware-user",
+  "software-user",
+  "hardware-committer",
+  "software-committer",
+  "admin",
+  "platform-admin"
+]);
 
 export const roleBindingSchema = z.object({
   projectId: z.string().min(1).nullable().optional(),

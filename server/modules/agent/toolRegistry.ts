@@ -27,7 +27,9 @@ function readEffectiveProjectId(context: AgentToolExecutionContext, payload: Rec
 }
 
 function requireScopedProjectOrGlobalAdmin(context: AgentToolExecutionContext, projectId?: string) {
-  const hasGlobalAdmin = context.auth.roles.some((role) => role.roleId === "admin" && role.projectId === null);
+  const hasGlobalAdmin = context.auth.roles.some(
+    (role) => (role.roleId === "admin" || role.roleId === "platform-admin") && role.projectId === null
+  );
   if (!projectId && !hasGlobalAdmin) {
     throw new ApiError("FORBIDDEN", "Agent project access is required.", 403, { projectId });
   }

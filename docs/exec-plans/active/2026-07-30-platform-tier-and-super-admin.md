@@ -10,17 +10,11 @@ Give overlay parsing knowledge a way out of the organization that authored it, a
 
 ## Status
 
-Planning only. No code, no migration. Blocked on the prerequisite below.
+Implementation complete on `feat/org-driver-schema-overlay` (Batches 1–9). Pending PR push/review and browser Playwright evidence for `PLAT-ROLE-*` / `DRV-PROMOTE-*`.
 
 ## Prerequisite and sequencing
 
-`feat/org-driver-schema-overlay` is **not merged**: migrations `0076` and `0077` are still untracked in the worktree, and the whole overlay feature lives on that branch. Phase B starts from `main` **after** that PR merges.
-
-Phase A does not depend on the overlay at all and can start immediately.
-
-Batch 1 sits outside both phases: it is the pair of signals ADR-0009 named as the cheapest first increment, needs no schema change and no new actor, and is worth shipping on its own.
-
-**Considered and rejected:** folding `organization_id` nullability into `0076` while it is still unmerged, to avoid an `alter table` later. Rejected because the platform tier's uniqueness, supersede, and provenance invariants have to land together; half of them sitting unused in `0076` is dead schema the next reader has to reverse-engineer.
+`feat/org-driver-schema-overlay` carried both the ADR-0008 overlay and this plan's batches so Phase B could land against the renamed overlay tables in one line of work. Future follow-ups should still prefer the three-branch split when changing auth vs schema in isolation.
 
 ## Git & PR Workflow
 

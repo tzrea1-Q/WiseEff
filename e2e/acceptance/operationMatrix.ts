@@ -5,7 +5,7 @@ export type AcceptanceOperationAssertion = "ui" | "api" | "db" | "audit" | "scre
 export type AcceptanceOperation = {
   id: string;
   priority: AcceptanceOperationPriority;
-  area: "auth" | "shell" | "parameters" | "logs" | "debugging" | "agent" | "permissions" | "notifications" | "product-feedback";
+  area: "auth" | "shell" | "parameters" | "logs" | "debugging" | "agent" | "permissions" | "notifications" | "product-feedback" | "platform";
   route: string;
   roles: string[];
   action: string;
@@ -984,6 +984,30 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "automated",
     acceptanceIds: ["MOD-ATTR-CREATE-KIND-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "PLAT-ROLE-001",
+    priority: "P1",
+    area: "platform",
+    route: "/platform-console",
+    roles: ["Platform Admin"],
+    action: "Open platform console from sidebar and confirm access.",
+    coverage: "manual",
+    acceptanceIds: ["PLAT-ROLE-001"],
+    specFiles: [],
+    assertions: ["ui"]
+  },
+  {
+    id: "DRV-PROMOTE-005",
+    priority: "P1",
+    area: "platform",
+    route: "/platform-console",
+    roles: ["Platform Admin"],
+    action: "Promote compatible with blast-radius confirmation and revert to restore contributors.",
+    coverage: "manual",
+    acceptanceIds: ["DRV-PROMOTE-005"],
+    specFiles: [],
     assertions: ["ui", "api"]
   }
 ];

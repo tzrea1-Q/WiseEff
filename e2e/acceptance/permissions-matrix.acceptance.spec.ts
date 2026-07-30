@@ -12,12 +12,13 @@ useBrowserDiagnostics(test);
 const permissionsEligibilityReason = "M5.5 permissions matrix eligibility guard";
 
 const visibleRoleExpectations = [
-  { role: "Guest", canOpenDebugging: false, canOpenReview: false },
-  { role: "Hardware User", canOpenDebugging: true, canOpenReview: false },
-  { role: "Software User", canOpenDebugging: true, canOpenReview: true },
-  { role: "Hardware Committer", canOpenDebugging: true, canOpenReview: true },
-  { role: "Software Committer", canOpenDebugging: true, canOpenReview: true },
-  { role: "Admin", canOpenDebugging: true, canOpenReview: true }
+  { role: "Guest", canOpenDebugging: false, canOpenReview: false, canOpenPlatformConsole: false },
+  { role: "Hardware User", canOpenDebugging: true, canOpenReview: false, canOpenPlatformConsole: false },
+  { role: "Software User", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: false },
+  { role: "Hardware Committer", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: false },
+  { role: "Software Committer", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: false },
+  { role: "Admin", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: false },
+  { role: "Platform Super Admin", canOpenDebugging: true, canOpenReview: true, canOpenPlatformConsole: true }
 ] as const;
 
 async function setPrototypeRole(page: import("playwright/test").Page, roleName: string) {
@@ -98,13 +99,22 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
         await expect(page.getByText(`Current role: ${expectation.role}`)).toBeVisible();
       }
 
+      await navigateWithinApp(page, "/platform-console");
+      if (expectation.canOpenPlatformConsole) {
+        await expect(page.getByRole("heading", { name: /Permission denied/i })).toHaveCount(0);
+        await expect(page.getByRole("heading", { name: "平台控制台" })).toBeVisible();
+      } else {
+        await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
+        await expect(page.getByText(`Current role: ${expectation.role}`)).toBeVisible();
+      }
+
       await recordOperationEvidence({
         operationId: "PERM-MATRIX-001",
         title: `visible route permissions for ${expectation.role}`,
         status: "passed",
         page,
         testInfo,
-        notes: `${expectation.role} visibility was checked for debugging and parameter review route access.`
+        notes: `${expectation.role} visibility was checked for debugging, parameter review, and platform console route access.`
       });
     });
   }

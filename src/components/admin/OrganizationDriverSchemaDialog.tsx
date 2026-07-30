@@ -95,7 +95,7 @@ export function OrganizationDriverSchemaDialog({
             <span className="eyebrow">{PARAMETER_ADMIN_UI.organizationDriverSchemaDialogTitle}</span>
             <h2>{PARAMETER_ADMIN_UI.organizationDriverSchemaDialogTitle}</h2>
             <p>
-              为本 compatible 声明解析属性：从定义库选用或新建参数定义，保存后立即激活并刷新解析覆盖。
+              为该 compatible 配置组织级解析定义：从定义库选用或新建参数定义，保存后立即激活并刷新解析覆盖状态。
             </p>
           </div>
           <button

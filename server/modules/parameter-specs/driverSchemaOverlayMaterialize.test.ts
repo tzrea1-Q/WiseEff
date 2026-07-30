@@ -5,8 +5,8 @@ import {
   driverModuleFromOverlayCompatible,
   materializeOrganizationDriverSchema,
   mergePinnedRegistryWithOverlay,
-} from "./organizationDriverSchemaMaterialize";
-import type { OrganizationDriverSchemaRecord } from "./organizationDriverSchemaRepository";
+} from "./driverSchemaOverlayMaterialize";
+import type { OrganizationDriverSchemaRecord } from "./driverSchemaOverlayRepository";
 import { buildManualSpecIds } from "./specIdentity";
 import type { SchemaRegistry } from "./types";
 
@@ -60,6 +60,7 @@ function overlayRecord(
     notes: "",
     lifecycle: "active",
     version: 1,
+    supersededBySchemaId: null,
     createdByUserId: "user-1",
     updatedByUserId: "user-1",
     createdAt: "2026-07-29T00:00:00.000Z",

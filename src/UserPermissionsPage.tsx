@@ -58,7 +58,8 @@ const roleLabels: Record<PlatformRoleId, string> = {
   "software-user": "软件开发",
   "hardware-committer": "硬件MDE",
   "software-committer": "软件MDE",
-  admin: "管理员"
+  admin: "管理员",
+  "platform-admin": "平台超级管理员"
 };
 
 const roleCapabilityDescriptions: Record<PlatformRoleId, string> = {
@@ -67,7 +68,8 @@ const roleCapabilityDescriptions: Record<PlatformRoleId, string> = {
   "software-user": "软件侧可查看并提交参数修改，在变更审阅页完成合入推进，并使用参数调试和日志分析。",
   "hardware-committer": "包含硬件开发权限，并可执行硬件侧参数检视。",
   "software-committer": "包含软件开发权限，并可执行软件侧参数检视。",
-  admin: "包含全部提交人权限，并可访问各应用后台和用户管理。"
+  admin: "包含全部提交人权限，并可访问各应用后台和用户管理。",
+  "platform-admin": "跨组织平台运营角色，在本组织内拥有管理员能力，并可访问平台控制台。"
 };
 
 const permissionLabels: Record<PermissionKey, string> = {
@@ -78,7 +80,9 @@ const permissionLabels: Record<PermissionKey, string> = {
   "logs:upload": "上传日志智能分析",
   "parameter:review": "审阅参数提交",
   "admin:access": "访问应用后台",
-  "users:manage": "管理用户权限"
+  "users:manage": "管理用户权限",
+  "platform:access": "访问平台控制台",
+  "platform:schema-promote": "晋升驱动 schema 覆盖"
 };
 
 type UserColumnFilterKey = "user" | "title" | "role" | "status" | "lastActive";
@@ -94,6 +98,22 @@ type RoleHintState = {
 function roleLabelOf(roleId: PlatformRoleId) {
   const normalizedRoleId = migrateLegacyRoleId(roleId);
   return roleLabels[normalizedRoleId] ?? normalizedRoleId;
+}
+
+function canGrantPlatformAdmin(state: PrototypeState) {
+  const currentUser = state.users.find((user) => user.id === state.currentUserId);
+  return migrateLegacyRoleId(currentUser?.roleId ?? "guest") === "platform-admin";
+}
+
+function visiblePlatformRoles(state: PrototypeState) {
+  return platformRoles.filter((role) => role.id !== "platform-admin" || canGrantPlatformAdmin(state));
+}
+
+function assignableRolesForUser(state: PrototypeState, userRoleId: PlatformRoleId) {
+  const normalizedRoleId = migrateLegacyRoleId(userRoleId);
+  return platformRoles.filter(
+    (role) => role.id !== "platform-admin" || canGrantPlatformAdmin(state) || normalizedRoleId === "platform-admin"
+  );
 }
 
 function statusLabelOf(isActive: boolean) {
@@ -483,7 +503,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                                 });
                               }}
                             >
-                              {platformRoles.map((role) => (
+                              {assignableRolesForUser(state, normalizedRoleId).map((role) => (
                                 <option key={role.id} value={role.id}>
                                   {roleLabelOf(role.id)}
                                 </option>
@@ -651,7 +671,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                   value={initialRoleId}
                   onChange={(event) => setInitialRoleId(event.target.value as PlatformRoleId)}
                 >
-                  {platformRoles.map((role) => (
+                  {visiblePlatformRoles(state).map((role) => (
                     <option key={role.id} value={role.id}>
                       {roleLabelOf(role.id)}
                     </option>

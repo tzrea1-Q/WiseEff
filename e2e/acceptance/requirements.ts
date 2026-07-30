@@ -489,5 +489,53 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title:
       "Admin creates empty business, driver-group, instance, or logical modules from the attribution tree with parent-kind rules, required compatibles for driver groups, and not-yet-observed markers on empty curated nodes.",
     required: true
+  },
+  {
+    id: "PLAT-ROLE-001",
+    workflow: "C",
+    title: "Platform admin sees platform console; other roles are denied on direct navigation.",
+    required: false
+  },
+  {
+    id: "PLAT-ROLE-002",
+    workflow: "C",
+    title: "Organization Admin cannot grant platform-admin and the control is hidden.",
+    required: false
+  },
+  {
+    id: "PLAT-ROLE-003",
+    workflow: "C",
+    title: "Platform admin cannot access another organization's parameters, logs, or users.",
+    required: false
+  },
+  {
+    id: "DRV-PROMOTE-001",
+    workflow: "C",
+    title: "Shadowed overlay names the tier that replaced it on the attribution tree.",
+    required: false
+  },
+  {
+    id: "DRV-PROMOTE-002",
+    workflow: "C",
+    title: "Promoted overlay reads as promoted and links the platform row.",
+    required: false
+  },
+  {
+    id: "DRV-PROMOTE-003",
+    workflow: "C",
+    title: "Authoring an org overlay when platform covers compatible is refused with reason.",
+    required: false
+  },
+  {
+    id: "DRV-PROMOTE-004",
+    workflow: "C",
+    title: "After promotion, org without overlay sees platform-covered compatible on tree.",
+    required: false
+  },
+  {
+    id: "DRV-PROMOTE-005",
+    workflow: "C",
+    title: "Console promotion confirms cross-tenant blast radius; revert restores contributors.",
+    required: false
   }
 ];

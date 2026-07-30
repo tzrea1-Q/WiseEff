@@ -1,8 +1,64 @@
 import { describe, expect, it } from "vitest";
 import type { Queryable } from "../../shared/database/client";
-import { createAuditEvent, listAuditEvents } from "./repository";
+import { createAuditEvent, listAuditEvents, writePlatformAuditEvent } from "./repository";
 
 describe("audit repository", () => {
+  it("rejects platform-scoped audit rows outside writePlatformAuditEvent", async () => {
+    const db: Queryable = {
+      query: async () => ({ rows: [], rowCount: 0 })
+    };
+
+    await expect(
+      createAuditEvent(db, {
+        id: "audit-platform",
+        organizationId: null,
+        projectId: null,
+        actorUserId: "u-platform-admin",
+        actorType: "user",
+        app: "platform-console",
+        kind: "schema-promotion",
+        action: "promote",
+        severity: "High",
+        targetType: "driver-schema-overlay",
+        targetId: "overlay-1",
+        metadata: {},
+        traceId: "trace-platform"
+      })
+    ).rejects.toThrow("Platform-scoped audit events must be written via writePlatformAuditEvent.");
+  });
+
+  it("fans out platform audit events to affected organizations", async () => {
+    const calls: Array<{ text: string; values: unknown[] }> = [];
+    const db: Queryable = {
+      query: async <Row,>(text: string, values: unknown[] = []) => {
+        calls.push({ text, values });
+        return { rows: [] as Row[], rowCount: 1 };
+      }
+    };
+
+    await writePlatformAuditEvent(db, {
+      id: "audit-platform",
+      projectId: null,
+      actorUserId: "u-platform-admin",
+      actorType: "user",
+      app: "platform-console",
+      kind: "schema-promotion",
+      action: "promote",
+      severity: "High",
+      targetType: "driver-schema-overlay",
+      targetId: "overlay-1",
+      metadata: { compatible: "demo-board" },
+      traceId: "trace-platform",
+      affectedOrganizationIds: ["org-chargelab", "org-hardware-department"]
+    });
+
+    expect(calls).toHaveLength(3);
+    expect(calls[0].values[1]).toBeNull();
+    expect(calls[1].values[1]).toBe("org-chargelab");
+    expect(calls[2].values[1]).toBe("org-hardware-department");
+    expect(calls.every((call) => call.values[12] === "trace-platform")).toBe(true);
+  });
+
   it("inserts audit events with metadata", async () => {
     const calls: Array<{ text: string; values: unknown[] }> = [];
     const db: Queryable = {

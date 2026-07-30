@@ -5,7 +5,15 @@ import { ApiError } from "../../shared/http/errors";
 import { z } from "zod";
 import type { createLocalAuthService, LocalAuthSessionResult } from "./localAuth";
 
-const platformRoleIdSchema = z.enum(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin"]);
+const platformRoleIdSchema = z.enum([
+  "guest",
+  "hardware-user",
+  "software-user",
+  "hardware-committer",
+  "software-committer",
+  "admin",
+  "platform-admin"
+]);
 
 export const developmentAuthContext: AuthContext = {
   user: {

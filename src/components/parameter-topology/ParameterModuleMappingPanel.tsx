@@ -161,6 +161,13 @@ export function ParameterModuleMappingPanel({
         pattern?: string;
         source?: string;
         driverId?: string;
+        scope?: "platform" | "organization";
+        shadowedBy?: Array<{
+          pattern: string;
+          driverId: string;
+          source: string;
+          scope: "platform" | "organization";
+        }>;
       }>
     >();
     for (const entry of driverRegistry) {
@@ -171,7 +178,10 @@ export function ParameterModuleMappingPanel({
           covered: coverage.covered,
           pattern: coverage.covered ? coverage.pattern : undefined,
           source: coverage.covered ? coverage.source : undefined,
-          driverId: coverage.covered ? coverage.driverId : undefined
+          driverId: coverage.covered ? coverage.driverId : undefined,
+          scope: coverage.covered ? coverage.scope : undefined,
+          shadowedBy: coverage.covered ? coverage.shadowedBy : undefined,
+          promoted: coverage.covered ? coverage.promoted : undefined
         }))
       );
     }
@@ -363,11 +373,15 @@ export function ParameterModuleMappingPanel({
       setOverlayPickerOpen(false);
       setOverlayLibrarySpecs([]);
       setRecomputeNotice(
-        `已激活组织解析 schema「${result.schema.displayName}」，覆盖 compatible ${input.compatible}。`
+        `已激活组织级解析「${result.schema.displayName}」，覆盖 compatible ${input.compatible}。`
       );
     } catch (overlayError) {
       setError(
-        overlayError instanceof Error ? overlayError.message : "保存组织解析 schema 失败。"
+        overlayError instanceof Error
+          ? overlayError.message.includes("platform overlay")
+            ? PARAMETER_ADMIN_UI.organizationDriverSchemaPlatformBlocked
+            : overlayError.message
+          : "保存组织解析 schema 失败。",
       );
     } finally {
       setBusy(false);
@@ -452,21 +466,21 @@ export function ParameterModuleMappingPanel({
         ) : null}
       </header>
 
-      <nav
-        className="parameter-module-mapping-panel__subnav"
-        aria-label={PARAMETER_ADMIN_UI.moduleQueueSubnavAria}
-      >
-        <button
-          type="button"
-          className={`parameter-module-mapping-panel__subnav-tab${
-            activeSubView === "tree" ? " is-active" : ""
-          }`}
-          aria-current={activeSubView === "tree" ? "page" : undefined}
-          onClick={() => goToSubView("tree")}
+      {hasQueue ? (
+        <nav
+          className="parameter-module-mapping-panel__subnav"
+          aria-label={PARAMETER_ADMIN_UI.moduleQueueSubnavAria}
         >
-          {PARAMETER_ADMIN_UI.moduleTreeSubnav}
-        </button>
-        {hasQueue ? (
+          <button
+            type="button"
+            className={`parameter-module-mapping-panel__subnav-tab${
+              activeSubView === "tree" ? " is-active" : ""
+            }`}
+            aria-current={activeSubView === "tree" ? "page" : undefined}
+            onClick={() => goToSubView("tree")}
+          >
+            {PARAMETER_ADMIN_UI.moduleTreeSubnav}
+          </button>
           <button
             type="button"
             className={`parameter-module-mapping-panel__subnav-tab${
@@ -478,8 +492,8 @@ export function ParameterModuleMappingPanel({
             {PARAMETER_ADMIN_UI.moduleDiscoveryCompatible}
             <span className="parameter-module-mapping-panel__subnav-count">{queueCount}</span>
           </button>
-        ) : null}
-      </nav>
+        </nav>
+      ) : null}
 
       {recomputeNotice ? (
         <p className="parameter-module-mapping-panel__notice" role="status">
