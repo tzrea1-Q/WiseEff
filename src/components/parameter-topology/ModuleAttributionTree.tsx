@@ -131,7 +131,7 @@ type RowProps = {
   onAddChild: (id: string) => void;
   onStartMove: (id: string) => void;
   onDelete: (id: string) => void;
-  onReorder: (id: string, direction: "up" | "down") => void;
+  onReorder?: (moduleId: string, direction: "up" | "down") => void;
 };
 
 function formatCoverageChip(summary: DriverCoverageSummary): {
@@ -276,7 +276,9 @@ function ModuleAttributionTreeRow({
             onAddChild={() => onAddChild(module.id)}
             onMove={() => onStartMove(module.id)}
             onDelete={() => onDelete(module.id)}
-            onReorder={(direction) => onReorder(module.id, direction)}
+            onReorder={
+              onReorder ? (direction) => onReorder(module.id, direction) : undefined
+            }
           />
         ) : (
           <span className="module-attribution-tree__actions is-spacer" aria-hidden="true" />
@@ -385,13 +387,12 @@ export function ModuleAttributionTree({
         .map((mapping) => mapping.matchValue)
     );
   }, [editingModule, mappings]);
-  const editingOverlaySchemas = useMemo(
-    () =>
-      organizationDriverSchemas.filter((schema) =>
-        editingCompatibleValues.has(schema.compatible)
-      ),
-    [editingCompatibleValues, organizationDriverSchemas]
-  );
+  const editingOverlaySchemas = useMemo(() => {
+    if (editingCompatibleValues.size === 0) return [];
+    return organizationDriverSchemas.filter((schema) =>
+      editingCompatibleValues.has(schema.compatible)
+    );
+  }, [editingCompatibleValues, organizationDriverSchemas]);
   const editingDriverRegistration =
     editingModule?.kind === "driver-group"
       ? driverRegistrationByModuleId?.get(editingModule.id)
@@ -450,14 +451,14 @@ export function ModuleAttributionTree({
     setMoveModuleId(null);
   };
 
-  const handleReorder = (moduleId: string, direction: "up" | "down") => {
+  const handleReorder = async (moduleId: string, direction: "up" | "down") => {
     const module = modulesById.get(moduleId);
     if (!module) return;
     const updates = sortOrderSwapUpdates(module, direction, modules);
     if (!updates) return;
-    void Promise.all(
-      updates.map((update) => onUpdateModule(update.id, { sortOrder: update.sortOrder }))
-    );
+    for (const patch of updates) {
+      await onUpdateModule(patch.id, { sortOrder: patch.sortOrder });
+    }
   };
 
   return (
@@ -554,7 +555,7 @@ export function ModuleAttributionTree({
               onAddChild={(id) => setCreateParentId(id)}
               onStartMove={(id) => setMoveModuleId(id)}
               onDelete={(id) => void onDelete(id)}
-              onReorder={handleReorder}
+              onReorder={canAdmin ? (id, direction) => void handleReorder(id, direction) : undefined}
             />
           ))}
         </ul>

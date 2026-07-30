@@ -10,10 +10,11 @@ import {
   canEditImportance,
   canMoveModule,
   canReclassifyModule,
-  deleteModuleDecision,
   defaultExpandedModuleIds,
+  deleteModuleDecision,
   filterModulesForAttribution,
   isNotYetObservedModule,
+  siblingModules,
   sortOrderSwapUpdates,
   summarizeDriverCoverage,
   toBusinessFlatNodes
@@ -75,10 +76,37 @@ describe("moduleAttributionTreeUtils", () => {
 
   it("enforces kind-scoped write guards", () => {
     expect(canDeleteModule(modules[2]!)).toBe(false);
+    expect(deleteModuleDecision(modules[2]!).allowed).toBe(false);
     expect(canMoveModule(modules[2]!)).toBe(true);
     expect(canEditImportance(modules[0]!)).toBe(true);
     expect(canEditImportance(modules[1]!)).toBe(false);
     expect(canDeleteModule(modules[1]!)).toBe(true);
+  });
+
+  it("returns reasons for forbidden child creation on node-type modules", () => {
+    const decision = addChildModuleDecision(modules[2]!);
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) {
+      expect(decision.reason).toMatch(/节点类型/);
+    }
+  });
+
+  it("swaps sortOrder among siblings for reorder", () => {
+    const siblings: ParameterModule[] = [
+      { ...modules[0]!, sortOrder: 0 },
+      {
+        ...modules[0]!,
+        id: "b2",
+        name: "Thermal",
+        sortOrder: 1
+      }
+    ];
+    const updates = sortOrderSwapUpdates(siblings[1]!, "up", siblings);
+    expect(updates).toEqual([
+      { id: "b2", sortOrder: 0 },
+      { id: "b", sortOrder: 1 }
+    ]);
+    expect(siblingModules(siblings, siblings[1]!).map((module) => module.id)).toEqual(["b", "b2"]);
   });
 
   it("allows reclassify on business and node-type modules", () => {

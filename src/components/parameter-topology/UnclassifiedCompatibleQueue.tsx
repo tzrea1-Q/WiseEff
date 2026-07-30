@@ -240,9 +240,9 @@ export function UnclassifiedCompatibleQueue({
       {dismissedHints.length > 0 ? (
         <section
           className="unclassified-compatible-queue__dismissed"
-          aria-label="已忽略"
+          aria-labelledby="unclassified-compatible-dismissed-title"
         >
-          <h5>已忽略</h5>
+          <h5 id="unclassified-compatible-dismissed-title">已忽略</h5>
           <ul className="unclassified-compatible-queue__dismissed-list">
             {dismissedHints.map((hint) => (
               <li key={hint.compatible} className="unclassified-compatible-queue__dismissed-row">

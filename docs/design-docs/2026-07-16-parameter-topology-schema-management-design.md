@@ -322,12 +322,14 @@ Search covers property key, driver, `compatible`, address, current path, busines
 
 ## 12. Validation state and diagnostics
 
-A configuration revision follows:
+A configuration revision follows (ADR-0012 — releasing is the release baseline, not this tip):
 
 ```text
 draft → resolving → needs-mapping | invalid
-      → resolved → validated → compiled → pending-approval → published
+      → resolved → validated → compiled → pending-approval
 ```
+
+Publication / device consumption happens at the **release baseline** (`dts_release_baseline`), which pins file versions. A config revision is a derived read model of one parsed file version and is never published.
 
 The following conditions block approval or publication:
 

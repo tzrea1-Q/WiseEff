@@ -367,8 +367,11 @@ export function ModuleEditDialog({
           ) : null}
 
           {module.kind === "driver-group" && (overlaySchemas?.length ?? 0) > 0 ? (
-            <section className="module-edit-overlay-schemas" aria-label="组织级解析覆盖">
-              <h3>组织级解析覆盖</h3>
+            <section className="module-edit-overlay-schemas" aria-label={PARAMETER_ADMIN_UI.organizationDriverSchemaOverlays}>
+              <div className="module-edit-overlay-schemas__head">
+                <h3>{PARAMETER_ADMIN_UI.organizationDriverSchemaOverlays}</h3>
+                <p className="muted">与本驱动组 compatible 匹配的组织级解析配置。</p>
+              </div>
               <ul className="module-edit-overlay-schemas__list">
                 {overlaySchemas!.map((schema) => {
                   const superseded = schema.lifecycle === "superseded";
@@ -402,10 +405,10 @@ export function ModuleEditDialog({
                           type="button"
                           className="button ghost"
                           disabled={busy}
-                          aria-label={`废弃 ${schema.displayName}`}
+                          aria-label={`${PARAMETER_ADMIN_UI.organizationDriverSchemaDeprecate} ${schema.displayName}`}
                           onClick={() => void openDeprecationPreview(schema)}
                         >
-                          废弃
+                          {PARAMETER_ADMIN_UI.organizationDriverSchemaDeprecate}
                         </button>
                       ) : null}
                     </li>
@@ -448,12 +451,12 @@ export function ModuleEditDialog({
           className="modal-backdrop"
           role="dialog"
           aria-modal="true"
-          aria-label="废弃解析影响预览"
+          aria-label="停用解析影响预览"
         >
           <div className="submission-dialog param-admin-editor-dialog">
             <div className="submission-dialog-head">
               <div>
-                <span className="eyebrow">组织级解析 · 废弃</span>
+                <span className="eyebrow">组织级解析 · 停用</span>
                 <h2>{deprecatingSchema.displayName}</h2>
               </div>
             </div>
@@ -497,7 +500,7 @@ export function ModuleEditDialog({
                   closeDeprecationPreview();
                 }}
               >
-                确认废弃
+                确认{PARAMETER_ADMIN_UI.organizationDriverSchemaDeprecate}
               </button>
             </div>
           </div>
