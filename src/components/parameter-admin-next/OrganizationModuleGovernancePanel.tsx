@@ -62,11 +62,9 @@ export function OrganizationModuleGovernancePanel({
         const kindLabel =
           input.kind === "driver-group"
             ? "驱动组"
-            : input.kind === "instance"
-              ? "器件实例"
-              : input.kind === "logical"
-                ? "逻辑节点"
-                : "业务模块";
+            : input.kind === "node-type"
+              ? "节点类型"
+              : "业务模块";
         pushModuleAudit(dispatch, "module-created", `已创建${kindLabel}「${input.name}」`);
         return next;
       },
@@ -156,7 +154,8 @@ export function OrganizationModuleGovernancePanel({
             lifecycle: spec.lifecycle,
             currentVersion: spec.currentVersion,
             compatiblePatterns: spec.compatiblePatterns,
-            valueShape: spec.valueShape
+            valueShape: spec.valueShape,
+            attributionModules: spec.attributionModules,
           })
         );
       }}

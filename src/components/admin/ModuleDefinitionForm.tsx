@@ -9,10 +9,9 @@ const IMPORTANCE_OPTIONS: Array<{ value: ModuleImportance; label: string }> = [
   { value: "low", label: "低" }
 ];
 
-const RECLASSIFY_KIND_OPTIONS: Array<{ value: "business" | "instance" | "logical"; label: string }> = [
+const RECLASSIFY_KIND_OPTIONS: Array<{ value: "business" | "node-type"; label: string }> = [
   { value: "business", label: "业务分类" },
-  { value: "instance", label: "器件实例" },
-  { value: "logical", label: "逻辑节点" }
+  { value: "node-type", label: "节点类型" }
 ];
 
 export function ModuleDefinitionForm({
@@ -39,10 +38,10 @@ export function ModuleDefinitionForm({
   showImportance?: boolean;
   importance?: ModuleImportance;
   onImportanceChange?: (value: ModuleImportance) => void;
-  /** When true, show controlled kind reclassify (business / instance / logical). */
+  /** When true, show controlled kind reclassify (business / node-type). */
   showKind?: boolean;
   kind?: ModuleKind;
-  onKindChange?: (value: "business" | "instance" | "logical") => void;
+  onKindChange?: (value: "business" | "node-type") => void;
   /** Extra fields rendered inside the same styled form (e.g. create kind / parent). */
   leading?: ReactNode;
   trailing?: ReactNode;
@@ -73,7 +72,7 @@ export function ModuleDefinitionForm({
             aria-label="模块类型"
             value={kind === "driver-group" || kind === "unclassified" ? "business" : kind}
             onChange={(event) =>
-              onKindChange?.(event.target.value as "business" | "instance" | "logical")
+              onKindChange?.(event.target.value as "business" | "node-type")
             }
           >
             {RECLASSIFY_KIND_OPTIONS.map((option) => (

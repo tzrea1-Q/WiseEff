@@ -12,7 +12,7 @@ export type CreateParameterModuleInput = {
   scope?: string;
   sortOrder?: number;
   importance?: ModuleImportance;
-  kind?: "business" | "driver-group" | "instance" | "logical";
+  kind?: "business" | "driver-group" | "node-type";
   origin?: "curated" | "auto";
   sourceKey?: string | null;
   compatibles?: string[];
@@ -25,7 +25,7 @@ export type UpdateParameterModuleInput = {
   parentId?: string | null;
   sortOrder?: number;
   importance?: ModuleImportance;
-  kind?: "business" | "instance" | "logical";
+  kind?: "business" | "node-type";
 };
 
 export type CreateModuleMappingInput = {
@@ -111,7 +111,7 @@ export type RegisterOrClaimDriverResult = {
     id: string;
     name: string;
     parentId: string | null;
-    kind: "business" | "driver-group" | "instance" | "logical" | "unclassified";
+    kind: "business" | "driver-group" | "node-type" | "unclassified";
     origin: ModuleOrigin;
     description?: string;
   };

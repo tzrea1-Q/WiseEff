@@ -11,7 +11,7 @@ import { canSubmitModuleDraft, ModuleDefinitionForm } from "./ModuleDefinitionFo
 
 export type ModuleEditSavePatch = ParameterModuleDraft & {
   importance?: ModuleImportance;
-  kind?: "business" | "instance" | "logical";
+  kind?: "business" | "node-type";
 };
 
 type EditableModule = {
@@ -81,8 +81,8 @@ export function ModuleEditDialog({
     scope: module.scope ?? ""
   });
   const [importance, setImportance] = useState<ModuleImportance>(module.importance ?? "medium");
-  const [kind, setKind] = useState<"business" | "instance" | "logical">(
-    module.kind === "instance" || module.kind === "logical" ? module.kind : "business"
+  const [kind, setKind] = useState<"business" | "node-type">(
+    module.kind === "node-type" ? module.kind : "business"
   );
   const [newCompatible, setNewCompatible] = useState("");
 
@@ -93,7 +93,7 @@ export function ModuleEditDialog({
       scope: module.scope ?? ""
     });
     setImportance(module.importance ?? "medium");
-    setKind(module.kind === "instance" || module.kind === "logical" ? module.kind : "business");
+    setKind(module.kind === "node-type" ? module.kind : "business");
     setNewCompatible("");
   }, [module]);
 

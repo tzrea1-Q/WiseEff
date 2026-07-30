@@ -1,4 +1,6 @@
 import type { ParameterSpecLibraryRow } from "./ParameterSpecLibrary";
+import { formatSpecAttributionLabel } from "./ParameterSpecLibrary";
+import { formatParameterSpecLifecycle } from "@/application/parameters/parameterAdminUiCopy";
 
 export type SpecUsageEntry = {
   projectCode: string;
@@ -228,15 +230,7 @@ export type ParameterSpecDetailProps = {
  * Identity fields are locked; governance fields are editable when `editable`.
  */
 export function ParameterSpecDetail({ detail, draft, onDraftChange, editable }: ParameterSpecDetailProps) {
-  const compatibleText =
-    (detail.compatiblePatterns && detail.compatiblePatterns.length > 0
-      ? detail.compatiblePatterns.join(", ")
-      : detail.compatible) ?? "";
-  const moduleText = detail.moduleName
-    ? `${detail.moduleName}${detail.moduleMapped ? "" : "（未映射）"}`
-    : detail.moduleMapped
-      ? ""
-      : "未映射";
+  const moduleText = formatSpecAttributionLabel(detail);
   const usageText =
     detail.usage && detail.usage.length > 0
       ? detail.usage
@@ -275,17 +269,8 @@ export function ParameterSpecDetail({ detail, draft, onDraftChange, editable }: 
             ) : (
               <ReadOnlyField label="展示名" value={detail.displayName ?? ""} />
             )}
-            <ReadOnlyField label="驱动模块" value={detail.driverModule ?? ""} mono />
-            <ReadOnlyField label="compatible" value={compatibleText} mono />
             <ReadOnlyField label="所属模块" value={moduleText} />
-            <ReadOnlyField label="定义标识" value={detail.specificationKey ?? ""} mono />
-            <ReadOnlyField label="来源" value={detail.sourceKind ?? detail.schemaSource} />
-            <ReadOnlyField label="Schema 命名空间" value={detail.schemaNamespace ?? ""} mono />
-            <ReadOnlyField
-              label="当前版本"
-              value={detail.schemaVersion != null ? `v${detail.schemaVersion}` : ""}
-            />
-            <ReadOnlyField label="审核状态" value={detail.reviewState} />
+            <ReadOnlyField label="审核状态" value={formatParameterSpecLifecycle(detail.reviewState)} />
           </div>
         </fieldset>
 

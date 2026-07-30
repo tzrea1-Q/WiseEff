@@ -162,7 +162,7 @@ Internal Beta 用户可以从侧边栏「问题反馈」提交产品级反馈。
 - 五步批量参数导入向导：第 1 步必须选择目标项目（可新建项目）；第 2 步支持上传或粘贴 `.xlsx`、`.csv`、JSON 及 DTS 片段并展示解析报告；第 3 步逐行审阅（差异对比、编辑、跳过）；第 4–5 步为批次预览与确认应用。
 - 批量参数导入入口。
 - 参数数据库管理视图。
-- 嵌套模块树管理（创建子模块、移动、受控删除）；父级模块筛选包含子树。`/parameter-admin/modules`（**模块归属**）提供三层归属树（业务 → 驱动组 → 实例）、待归类 compatible 队列（可忽略/恢复）、归类预览确认（`ClassifyCompatibleDialog`）与按 kind 分级的归属树（`ModuleAttributionTree`）。
+- 嵌套模块树管理（创建子模块、移动、受控删除）；父级模块筛选包含子树。`/parameter-admin/modules`（**模块归属**）提供归属**分类学**树（业务 → {驱动组 | 节点类型单元} → 嵌套节点类型\*）、待归类 compatible 与节点类型队列（可忽略/恢复）、归类预览确认（`ClassifyCompatibleDialog`）与按 kind 分级的归属树（`ModuleAttributionTree`）。绑定只挂在驱动组与节点类型单元；按实例浏览走工作台 `groupByDevice` 层（ADR-0010）。
 - 当前库上参数列表管理。
 - 应用使用数据指标。
 - 用户权限管理。

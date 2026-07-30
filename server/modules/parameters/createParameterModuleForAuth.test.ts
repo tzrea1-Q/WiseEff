@@ -17,7 +17,7 @@ type ModuleRow = {
   description: string;
   scope: string;
   importance: "high" | "medium" | "low";
-  kind: "business" | "driver-group" | "instance" | "logical" | "unclassified";
+  kind: "business" | "driver-group" | "node-type" | "unclassified";
   origin: "curated" | "auto";
   sourceKey: string | null;
 };
@@ -26,7 +26,7 @@ type MappingRow = {
   id: string;
   organizationId: string;
   moduleId: string;
-  matchKind: "compatible" | "instance";
+  matchKind: "compatible" | "node-type";
   matchValue: string;
   priority: number;
 };
@@ -294,7 +294,15 @@ describe("createParameterModuleBodySchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts instance and logical kinds", () => {
+  it("accepts node-type kind and rejects instance kind", () => {
+    expect(
+      createParameterModuleBodySchema.safeParse({
+        name: "usb0",
+        kind: "node-type",
+        parentId: "biz-power",
+        sourceKey: "nodetype:usb0"
+      }).success
+    ).toBe(true);
     expect(
       createParameterModuleBodySchema.safeParse({
         name: "usb0",
@@ -302,19 +310,12 @@ describe("createParameterModuleBodySchema", () => {
         parentId: "dg-1",
         sourceKey: "path:/soc/usb@0"
       }).success
-    ).toBe(true);
-    expect(
-      createParameterModuleBodySchema.safeParse({
-        name: "regulator-dummy",
-        kind: "logical",
-        parentId: "biz-power"
-      }).success
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 
 describe("createParameterModuleForAuth", () => {
-  it("creates curated business, driver-group, instance, and logical modules with parent rules", async () => {
+  it("creates curated business, driver-group, and node-type modules with parent rules", async () => {
     const { db, modules, mappings } = createStatefulDb({ modules: seedTree() });
 
     const business = await createParameterModuleForAuth(db, makeAuth(), {
@@ -338,26 +339,18 @@ describe("createParameterModuleForAuth", () => {
     expect(driverGroup.parentId).toBe("biz-power");
     expect(mappings.some((row) => row.matchValue === "huawei,bypass_bst_hl7603")).toBe(true);
 
-    const instance = await createParameterModuleForAuth(db, makeAuth(), {
-      name: "usb0",
-      kind: "instance",
-      parentId: "dg-sc8562",
-      sourceKey: "path:/soc/usb@0"
-    });
-    expect(instance.kind).toBe("instance");
-    expect(instance.origin).toBe("curated");
-    expect(instance.sourceKey).toBe("path:/soc/usb@0");
-
-    const logical = await createParameterModuleForAuth(db, makeAuth(), {
+    const nodeType = await createParameterModuleForAuth(db, makeAuth(), {
       name: "regulator-dummy",
-      kind: "logical",
-      parentId: "biz-power"
+      kind: "node-type",
+      parentId: "biz-power",
+      sourceKey: "nodetype:regulator-dummy"
     });
-    expect(logical.kind).toBe("logical");
-    expect(logical.origin).toBe("curated");
-    expect(logical.parentId).toBe("biz-power");
+    expect(nodeType.kind).toBe("node-type");
+    expect(nodeType.origin).toBe("curated");
+    expect(nodeType.parentId).toBe("biz-power");
+    expect(nodeType.sourceKey).toBe("nodetype:regulator-dummy");
 
-    expect([...modules.values()].some((module) => module.id === instance.id)).toBe(true);
+    expect([...modules.values()].some((module) => module.id === nodeType.id)).toBe(true);
   });
 
   it("rejects invalid parents", async () => {
@@ -374,17 +367,19 @@ describe("createParameterModuleForAuth", () => {
 
     await expect(
       createParameterModuleForAuth(db, makeAuth(), {
-        name: "bad-instance",
-        kind: "instance",
-        parentId: "biz-power"
+        name: "bad-node-type",
+        kind: "node-type",
+        parentId: "dg-sc8562",
+        sourceKey: "nodetype:usb0"
       })
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED" } satisfies Partial<ApiError>);
 
     await expect(
       createParameterModuleForAuth(db, makeAuth(), {
-        name: "bad-logical",
-        kind: "logical",
-        parentId: null
+        name: "bad-node-type-root",
+        kind: "node-type",
+        parentId: null,
+        sourceKey: "nodetype:regulator-dummy"
       })
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED" } satisfies Partial<ApiError>);
   });

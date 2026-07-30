@@ -302,7 +302,7 @@ export async function deleteEmptyAutoDescendants(
       where pm.organization_id = $1
         and pm.id = $2
         and pm.origin = 'auto'
-        and pm.kind in ('instance', 'logical', 'driver-group', 'unclassified')
+        and pm.kind in ('node-type', 'driver-group', 'unclassified')
         and not exists (
           select 1 from parameter_modules child where child.parent_id = pm.id
         )

@@ -11,6 +11,7 @@ import { selectPrimaryProjectDtsFile } from "@/application/parameters/selectPrim
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
+import { nodeTypeKeyForNode } from "@/domain/parameter-topology/modulePlacement";
 import {
   EMPTY_PARAMETER_MODULE_REGISTRY,
   describeModuleAssignment,
@@ -171,7 +172,7 @@ function mapServerDraftsToPending(
       {
         driverModule: binding.driverModule,
         compatible: null,
-        instanceName: binding.instanceName
+        nodeType: binding.instanceName ? nodeTypeKeyForNode({ name: binding.instanceName }) : null
       },
       moduleRegistry
     );
@@ -627,7 +628,7 @@ export function ApiProjectTopologyWorkspace({
           {
             driverModule: binding.driverModule,
             compatible: null,
-            instanceName: binding.instanceName
+            nodeType: binding.instanceName ? nodeTypeKeyForNode({ name: binding.instanceName }) : null
           },
           moduleRegistry
         );

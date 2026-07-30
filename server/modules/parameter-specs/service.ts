@@ -171,7 +171,8 @@ export async function listParameterSpecs(
       currentVersionId: row.currentVersionId,
       currentVersion: row.currentVersion,
       valueShape: row.valueShape,
-      compatiblePatterns: row.compatiblePatterns
+      compatiblePatterns: row.compatiblePatterns,
+      attributionModules: row.attributionModules,
     })),
   };
 }
@@ -211,6 +212,7 @@ export async function getParameterSpec(
       documentation: row.documentation,
       compatiblePatterns: row.compatiblePatterns,
       policyTarget: row.policyTarget,
+      attributionModules: row.attributionModules,
     },
   };
 }
@@ -646,6 +648,7 @@ export async function activateParameterSpec(
         documentation: refreshed.documentation,
         compatiblePatterns: refreshed.compatiblePatterns,
         policyTarget: refreshed.policyTarget,
+        attributionModules: refreshed.attributionModules,
       },
     };
   });
@@ -763,6 +766,7 @@ export async function updateParameterSpec(
         documentation: refreshed.documentation,
         compatiblePatterns: refreshed.compatiblePatterns,
         policyTarget: refreshed.policyTarget,
+        attributionModules: refreshed.attributionModules,
       },
     };
   });

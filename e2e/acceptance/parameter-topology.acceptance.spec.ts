@@ -2215,17 +2215,17 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       // @operation MOD-ATTR-TREE-001
       test.skip(
         true,
-        "Pending: playwright coverage for kind-scoped actions (instance/logical no-delete, logical move) and rename adoption across re-ingest."
+        "Pending: playwright coverage for kind-scoped actions (node-type/driver-group no-delete, node-type move) and rename adoption across re-ingest."
       );
       void page;
     });
 
-    test("MOD-ATTR-RECLASSIFY-001: logical to business kind correction", async ({ page }) => {
+    test("MOD-ATTR-RECLASSIFY-001: node-type to business kind correction", async ({ page }) => {
       // @acceptance MOD-ATTR-RECLASSIFY-001
       // @operation MOD-ATTR-RECLASSIFY-001
       test.skip(
         true,
-        "Pending: playwright coverage for edit-dialog reclassify of logical→business with curated kind surviving re-ingest."
+        "Pending: playwright coverage for edit-dialog reclassify of node-type→business with curated kind surviving re-ingest."
       );
       void page;
     });
@@ -2322,14 +2322,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
   });
 
   test.describe("Pre-upload module create — pending browser automation", () => {
-    test("MOD-ATTR-CREATE-KIND-001: create four kinds with parent rules and not-yet-observed", async ({
+    test("MOD-ATTR-CREATE-KIND-001: create business/driver-group with parent rules and not-yet-observed", async ({
       page
     }) => {
       // @acceptance MOD-ATTR-CREATE-KIND-001
       // @operation MOD-ATTR-CREATE-KIND-001
       test.skip(
         true,
-        "Pending: playwright coverage for attribution-tree create of business/driver-group/instance/logical with parent-kind rules, required compatibles, and not-yet-observed markers."
+        "Pending: playwright coverage for attribution-tree create of business/driver-group with parent-kind rules, required compatibles, not-yet-observed markers, and stated (non-predicted) spec attribution."
       );
       void page;
     });

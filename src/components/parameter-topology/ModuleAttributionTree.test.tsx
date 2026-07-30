@@ -36,16 +36,16 @@ const modules: ParameterModule[] = [
     parameterCount: 4
   },
   {
-    id: "mod-instance",
-    name: "sc8562@6E",
+    id: "mod-node-type",
+    name: "sc8562",
     parentId: "mod-group",
     sortOrder: 0,
     description: "",
     scope: "",
     importance: "medium",
-    kind: "instance",
+    kind: "node-type",
     origin: "auto",
-    sourceKey: "node:/amba/sc8562@6E",
+    sourceKey: "nodetype:sc8562",
     effectiveImportance: "high",
     parameterCount: 4
   }
@@ -89,18 +89,12 @@ describe("ModuleAttributionTree", () => {
     ).not.toBeInTheDocument();
 
     expect(within(tree).getByRole("button", { name: "SC8562 更多操作" })).toBeInTheDocument();
-    expect(within(tree).queryByRole("button", { name: /删除模块 sc8562@6E/ })).not.toBeInTheDocument();
-    expect(within(tree).queryByRole("button", { name: /移动模块 sc8562@6E/ })).not.toBeInTheDocument();
-
-    // Business expands by default; driver groups stay collapsed with instance counts.
-    expect(within(tree).getByText("· 1 实例")).toBeInTheDocument();
-    expect(within(tree).queryByText("器件实例")).not.toBeInTheDocument();
+    expect(within(tree).queryByRole("button", { name: /删除模块 sc8562/ })).not.toBeInTheDocument();
 
     fireEvent.click(within(tree).getByRole("button", { name: "展开 SC8562 子模块" }));
-    expect(within(tree).getByText("器件实例")).toBeInTheDocument();
-    expect(within(tree).getByRole("button", { name: "修改模块 sc8562@6E" })).toBeInTheDocument();
-    // Instance only exposes edit; no overflow menu.
-    expect(within(tree).queryByRole("button", { name: "sc8562@6E 更多操作" })).not.toBeInTheDocument();
+    expect(within(tree).getByText("节点类型")).toBeInTheDocument();
+    expect(within(tree).getByRole("button", { name: "修改模块 sc8562" })).toBeInTheDocument();
+    expect(within(tree).getByRole("button", { name: "sc8562 更多操作" })).toBeInTheDocument();
 
     fireEvent.click(within(tree).getByRole("button", { name: "SC8562 更多操作" }));
     expect(screen.getByRole("menuitem", { name: "解散驱动组 SC8562" })).toBeInTheDocument();
@@ -239,7 +233,7 @@ describe("ModuleAttributionTree", () => {
     const filters = screen.getByLabelText("模块树筛选");
     fireEvent.click(within(filters).getByRole("button", { name: /类型/ }));
     fireEvent.click(screen.getByRole("checkbox", { name: "驱动组" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "器件实例" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "节点类型" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "未分类" }));
 
     const tree = screen.getByRole("tree", { name: "模块归属树" });

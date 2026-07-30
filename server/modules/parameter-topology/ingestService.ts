@@ -31,7 +31,7 @@ import {
 } from "../parameter-specs/repository";
 import { getCachedOrganizationSchemaRegistry } from "../parameter-specs/schemaRegistryCache";
 import type { MatchableNode, SchemaRegistry, SpecReviewTaskDraft } from "../parameter-specs/types";
-import { resolveBindingInstanceModuleId } from "../parameter-modules/ensureInstanceModuleForBinding";
+import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
 import { BOARD_INSTANCE_MODULE_NAME } from "../parameter-modules/modulePlacement";
 import { isParameterSurfaceRow, isStructuralPropertyKey } from "./parameterSurface";
 import { upsertProvisionalSurfacePropertySpec } from "./provisionalSurfaceBinding";
@@ -598,7 +598,7 @@ async function matchBindAndQueueReviews(
           specId: override.parameterSpecId,
         });
         if (!spec?.currentVersionId) continue;
-        const overrideModuleId = await resolveBindingInstanceModuleId(tx, {
+        const overrideModuleId = await resolveAttributionModuleForBinding(tx, {
           organizationId: input.organizationId,
           driverModule: spec.driverModule,
           compatible: matchable.compatible[0] ?? null,
@@ -648,7 +648,7 @@ async function matchBindAndQueueReviews(
           tx,
           decision.value,
         );
-        const matchedModuleId = await resolveBindingInstanceModuleId(tx, {
+        const matchedModuleId = await resolveAttributionModuleForBinding(tx, {
           organizationId: input.organizationId,
           driverModule: driverModuleFromSchemaNamespace(decision.value.schemaNamespace),
           compatible: matchable.compatible[0] ?? null,
@@ -699,7 +699,7 @@ async function matchBindAndQueueReviews(
             occurrenceRawText: property.rawText,
           },
         );
-        const surfaceModuleId = await resolveBindingInstanceModuleId(tx, {
+        const surfaceModuleId = await resolveAttributionModuleForBinding(tx, {
           organizationId: input.organizationId,
           driverModule,
           compatible: matchable.compatible[0] ?? null,

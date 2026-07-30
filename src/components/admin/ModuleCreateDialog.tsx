@@ -24,8 +24,7 @@ export type ModuleCreateSaveDraft = ParameterModuleDraft & {
 const CREATE_KIND_LABEL: Record<CreateModuleKind, string> = {
   business: MODULE_KIND_LABEL.business,
   "driver-group": MODULE_KIND_LABEL["driver-group"],
-  instance: MODULE_KIND_LABEL.instance,
-  logical: MODULE_KIND_LABEL.logical
+  "node-type": MODULE_KIND_LABEL["node-type"]
 };
 
 const emptyModuleDraft = (): ParameterModuleDraft => ({
@@ -88,7 +87,7 @@ export function ModuleCreateDialog({
     }
     if (initialParentId === null && !initialParent) {
       // Root "新建模块" — all kinds, parent chosen in dialog.
-      return ["business", "driver-group", "instance", "logical"] as CreateModuleKind[];
+      return ["business", "driver-group", "node-type"] as CreateModuleKind[];
     }
     return allowedCreateKindsForParent(initialParent?.kind ?? null);
   }, [allowKindSelect, initialParent, initialParentId]);
@@ -114,7 +113,7 @@ export function ModuleCreateDialog({
       ? `在「${selectedParentName}」下创建子模块`
       : "新增根模块";
   const description = allowKindSelect
-    ? "选择类型与父级，创建空的业务分类、驱动组、器件实例或逻辑节点；驱动组须填写至少一条 exact compatible。"
+    ? "选择类型与父级，创建空的业务分类、驱动组或节点类型；驱动组须填写至少一条 exact compatible。"
     : isChildModule
       ? showImportance
         ? "填写子模块名称、重要性、描述与适用范围。创建后会出现在所选父模块下。"
@@ -125,7 +124,7 @@ export function ModuleCreateDialog({
   const parentPlaceholder =
     kind === "business"
       ? "根级（无父模块）"
-      : kind === "instance"
+      : kind === "node-type"
         ? "选择驱动组"
         : "选择业务分类";
 
@@ -260,7 +259,7 @@ export function ModuleCreateDialog({
                     />
                   </label>
                 ) : null}
-                {allowKindSelect && (kind === "instance" || kind === "logical") ? (
+                {allowKindSelect && kind === "node-type" ? (
                   <label>
                     sourceKey（可选）
                     <input
@@ -298,7 +297,7 @@ export function ModuleCreateDialog({
                       kind,
                       parentId,
                       ...(needsCompatibles ? { compatibles } : {}),
-                      ...(kind === "instance" || kind === "logical"
+                      ...(kind === "node-type"
                         ? { sourceKey: sourceKey.trim() || null }
                         : {})
                     }

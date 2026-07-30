@@ -22,7 +22,6 @@ import {
   canEditImportance,
   canReclassifyModule,
   canViewUnclassifiedRoot,
-  countInstanceChildren,
   defaultExpandedModuleIds,
   isNotYetObservedModule,
   isUnclassifiedRoot,
@@ -54,7 +53,7 @@ export type ModuleAttributionTreeProps = {
       description?: string;
       scope?: string;
       importance?: ModuleImportance;
-      kind?: "business" | "instance" | "logical";
+      kind?: "business" | "node-type";
     }
   ) => void | Promise<void>;
   onMove: (moduleId: string, parentId: string | null) => void | Promise<void>;
@@ -70,7 +69,7 @@ export type ModuleAttributionTreeProps = {
     scope?: string;
     importance?: ModuleImportance;
     parentId?: string | null;
-    kind?: "business" | "driver-group" | "instance" | "logical";
+    kind?: "business" | "driver-group" | "node-type";
     compatibles?: string[];
     sourceKey?: string | null;
   }) => void | Promise<void>;
@@ -169,7 +168,6 @@ function ModuleAttributionTreeRow({
 
   const hasChildren = node.children.length > 0;
   const isExpanded = expandedIds.has(node.id);
-  const instanceCount = countInstanceChildren(modules, module.id);
   const compatibleCount = mappingsForModule(mappings, module.id).filter(
     (mapping) => mapping.matchKind === "compatible"
   ).length;
@@ -243,9 +241,6 @@ function ModuleAttributionTreeRow({
               · {coverageChip.label}
             </span>
           ) : null}
-          {!isExpanded && module.kind === "driver-group" && instanceCount > 0 ? (
-            <span className="module-attribution-tree__instances">· {instanceCount} 实例</span>
-          ) : null}
         </div>
 
         {canAdmin || canViewUnclassifiedRoot(module) ? (
@@ -293,7 +288,7 @@ function ModuleAttributionTreeRow({
 }
 
 /**
- * Kind-scoped module attribution tree: business → driver-group → instance.
+ * Kind-scoped module attribution tree: business → driver-group → node-type.
  */
 export function ModuleAttributionTree({
   modules,
@@ -413,7 +408,7 @@ export function ModuleAttributionTree({
         <div className="module-attribution-tree__head-main">
           <div>
             <h4 id="module-attribution-tree-title">{PARAMETER_ADMIN_UI.moduleTreeTitle}</h4>
-            <p className="muted">默认只展开顶层业务分类；再逐级点开驱动组查看器件实例与逻辑节点。</p>
+            <p className="muted">默认只展开顶层业务分类；再逐级点开驱动组与节点类型。</p>
           </div>
           {canAdmin ? (
             <button

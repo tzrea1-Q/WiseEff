@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Database, Queryable } from "../../shared/database/client";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
+import { nodeTypeKeyForNode } from "../parameter-modules/modulePlacement";
 import { listStructuralPropertyKeys } from "./parameterSurface";
 
 export type ParameterIdentityMigrationCoverage = {
@@ -642,7 +643,7 @@ async function ensureBinding(
     parameterSpecId: string;
     driverModule?: string | null;
     compatible?: string | null;
-    instanceName?: string | null;
+    nodeType?: string | null;
     apply: boolean;
   }
 ): Promise<string> {
@@ -657,7 +658,7 @@ async function ensureBinding(
     organizationId: input.organizationId,
     driverModule: input.driverModule ?? null,
     compatible: input.compatible ?? null,
-    instanceName: input.instanceName ?? null
+    nodeType: input.nodeType ?? null
   });
 
   const existing = await db.query<{ id: string }>(
@@ -1445,7 +1446,10 @@ async function runParameterIdentityMigration(
         resolvedNode.kind === "one" && resolvedNode.compatible
           ? resolvedNode.compatible.replace(/^"+|"+$/g, "")
           : null,
-      instanceName: resolvedNode.kind === "one" ? resolvedNode.nodeName : null,
+      nodeType:
+        resolvedNode.kind === "one" && resolvedNode.nodeName
+          ? nodeTypeKeyForNode({ name: resolvedNode.nodeName })
+          : null,
       apply: writesActivity
     });
 

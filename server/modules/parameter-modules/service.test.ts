@@ -121,7 +121,8 @@ type RecomputeBindingRow = {
 
 function makeRecomputeDb(input: {
   bindings: RecomputeBindingRow[];
-  instanceMappings?: Record<string, string>;
+  nodeTypeMappings?: Record<string, string>;
+  compatibleMappings?: Record<string, string>;
   conflicts?: Set<string>;
 }): {
   db: Database;
@@ -135,11 +136,21 @@ function makeRecomputeDb(input: {
     if (text.includes("from parameter_module_mappings")) {
       const [, matchKind, matchValue] = values as [string, string, string];
       const moduleId =
-        matchKind === "instance" ? input.instanceMappings?.[matchValue] : undefined;
+        matchKind === "node-type"
+          ? input.nodeTypeMappings?.[matchValue]
+          : matchKind === "compatible"
+            ? input.compatibleMappings?.[matchValue]
+            : undefined;
       return {
         rows: moduleId ? [{ parameter_module_id: moduleId }] : [],
         rowCount: moduleId ? 1 : 0
       };
+    }
+    if (text.includes("and source_key = $2")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (text.includes("from parameter_modules") && text.includes("and name = $2")) {
+      return { rows: [], rowCount: 0 };
     }
     if (text.includes("insert into parameter_modules")) {
       return { rows: [], rowCount: 1 };
@@ -181,11 +192,11 @@ describe("recomputeBindingModules", () => {
           parameter_spec_id: "spec-1",
           module_id: "mod-old",
           driver_module: "sc8562",
-          compatible: "vendor,sc8562",
+          compatible: null,
           instance_name: "sc8562@6E"
         }
       ],
-      instanceMappings: { "sc8562@6e": "mod-charge" }
+      nodeTypeMappings: { sc8562: "mod-charge" }
     });
 
     const result = await recomputeBindingModules(db, makeAuth(), {});
@@ -195,21 +206,32 @@ describe("recomputeBindingModules", () => {
     expect(updates).toEqual([{ bindingId: "bind-1", moduleId: "mod-charge" }]);
   });
 
-  it("skips bindings whose module_id is already correct", async () => {
+  it("is a no-op when every binding already matches compatible-then-node-type resolution", async () => {
     const { db, updates } = makeRecomputeDb({
       bindings: [
         {
-          id: "bind-1",
+          id: "bind-compat",
           project_id: "proj-1",
           logical_node_id: "ln-1",
           parameter_spec_id: "spec-1",
-          module_id: "mod-charge",
+          module_id: "mod-driver",
           driver_module: "sc8562",
-          compatible: "vendor,sc8562",
+          compatible: "richtek,sc8562",
           instance_name: "sc8562@6E"
+        },
+        {
+          id: "bind-nodetype",
+          project_id: "proj-1",
+          logical_node_id: "ln-2",
+          parameter_spec_id: "spec-2",
+          module_id: "mod-middle-cpu",
+          driver_module: "middle_cpu",
+          compatible: null,
+          instance_name: "middle_cpu"
         }
       ],
-      instanceMappings: { "sc8562@6e": "mod-charge" }
+      compatibleMappings: { "richtek,sc8562": "mod-driver" },
+      nodeTypeMappings: { middle_cpu: "mod-middle-cpu", sc8562: "mod-wrong" }
     });
 
     const result = await recomputeBindingModules(db, makeAuth(), {});
@@ -228,11 +250,11 @@ describe("recomputeBindingModules", () => {
           parameter_spec_id: "spec-1",
           module_id: "mod-old",
           driver_module: "sc8562",
-          compatible: "vendor,sc8562",
+          compatible: null,
           instance_name: "sc8562@6E"
         }
       ],
-      instanceMappings: { "sc8562@6e": "mod-charge" },
+      nodeTypeMappings: { sc8562: "mod-charge" },
       conflicts: new Set(["bind-1"])
     });
 

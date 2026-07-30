@@ -15,7 +15,7 @@ type ParameterModuleRow = {
   description: string;
   scope: string;
   importance: "high" | "medium" | "low" | null;
-  kind: "business" | "driver-group" | "instance" | "logical" | "unclassified" | null;
+  kind: "business" | "driver-group" | "node-type" | "unclassified" | null;
   origin: "curated" | "auto" | null;
   source_key: string | null;
 };
@@ -431,8 +431,8 @@ export async function deleteParameterModule(
   if (!existing) {
     return false;
   }
-  if (existing.kind === "instance") {
-    throw new Error("Cannot delete a device-instance module");
+  if (existing.kind === "node-type") {
+    throw new Error("Cannot delete a node-type module");
   }
   if (existing.kind === "unclassified" && existing.parentId === null) {
     throw new Error("Cannot delete the unclassified root module");

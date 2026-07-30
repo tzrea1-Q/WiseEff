@@ -61,7 +61,7 @@ export const createParameterModuleBodySchema = z
     sortOrder: z.number().int().optional(),
     importance: moduleImportanceSchema.optional(),
     /** Admin create supports empty pre-upload nodes; default remains business. */
-    kind: z.enum(["business", "driver-group", "instance", "logical"]).optional(),
+    kind: z.enum(["business", "driver-group", "node-type"]).optional(),
     origin: z.enum(["curated", "auto"]).optional(),
     sourceKey: z.string().min(1).nullable().optional(),
     /** Exact compatibles; required when kind is driver-group. */
@@ -88,8 +88,8 @@ export const updateParameterModuleBodySchema = z
     scope: z.string().optional(),
     sortOrder: z.number().int().optional(),
     importance: moduleImportanceSchema.optional(),
-    /** Manual reclassify — logical nodes are ingest-only on create. */
-    kind: z.enum(["business", "instance", "logical"]).optional()
+    /** Manual reclassify — node-type units are ingest-only on create. */
+    kind: z.enum(["business", "node-type"]).optional()
   })
   .refine((body) => Object.values(body).some((value) => value !== undefined), {
     message: "At least one field is required."

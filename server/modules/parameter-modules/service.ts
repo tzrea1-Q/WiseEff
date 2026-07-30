@@ -26,8 +26,8 @@ import {
 } from "./repository";
 import {
   compatibleSourceKey,
-  resolveBindingInstanceModuleId,
-} from "./ensureInstanceModuleForBinding";
+  resolveAttributionModuleForBinding,
+} from "./ensureAttributionModuleForBinding";
 import {
   createParameterModule,
   deleteParameterModule,
@@ -36,7 +36,7 @@ import {
   updateParameterModule,
 } from "../parameters/parameterModuleRepository";
 import type { ParameterModuleDto } from "../parameters/types";
-import { isScaffoldingDriverLabel, normalizeMatchToken } from "./modulePlacement";
+import { isScaffoldingDriverLabel, nodeTypeKeyForNode, normalizeMatchToken } from "./modulePlacement";
 import type { CreateModuleMappingBody } from "./schemas";
 import type { ModuleMatchKind, ModuleOrigin, ParameterModuleRegistryDto } from "./types";
 import { getCachedOrganizationSchemaRegistry } from "../parameter-specs/schemaRegistryCache";
@@ -90,6 +90,13 @@ function normalizeMatch(value: string | null | undefined): string | null {
   return normalizeMatchToken(value);
 }
 
+function nodeTypeFromInstanceName(instanceName: string | null | undefined): string | null {
+  if (!instanceName) return null;
+  const at = instanceName.indexOf("@");
+  const name = at >= 0 ? instanceName.slice(0, at) : instanceName;
+  return nodeTypeKeyForNode({ name });
+}
+
 function bindingMatchesRule(
   binding: RecomputeBindingRow,
   rule: { matchKind: ModuleMatchKind; matchValue: string },
@@ -99,7 +106,7 @@ function bindingMatchesRule(
   if (rule.matchKind === "compatible") {
     return normalizeMatch(binding.compatible) === expected;
   }
-  return normalizeMatch(binding.instanceName) === expected;
+  return nodeTypeFromInstanceName(binding.instanceName) === expected;
 }
 
 export type MappingApplyPreview = {
@@ -129,7 +136,7 @@ async function planMovesForModuleIds(
   const conflicts: string[] = [];
 
   for (const binding of scoped) {
-    const nextModuleId = await resolveBindingInstanceModuleId(db, {
+    const nextModuleId = await resolveAttributionModuleForBinding(db, {
       organizationId: input.organizationId,
       driverModule: binding.driverModule,
       compatible: binding.compatible,
@@ -308,7 +315,7 @@ async function planScopedMoves(
   const conflicts: string[] = [];
 
   for (const binding of scoped) {
-    const nextModuleId = await resolveBindingInstanceModuleId(db, {
+    const nextModuleId = await resolveAttributionModuleForBinding(db, {
       organizationId: input.organizationId,
       driverModule: binding.driverModule,
       compatible: binding.compatible,

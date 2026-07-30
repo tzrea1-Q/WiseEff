@@ -169,7 +169,8 @@ export function specSummaryFromDto(dto: ParameterSpecSummaryDto): ParameterSpecS
     currentVersionId: dto.currentVersionId,
     currentVersion: dto.currentVersion,
     valueShape: dto.valueShape ?? null,
-    compatiblePatterns: dto.compatiblePatterns ?? null
+    compatiblePatterns: dto.compatiblePatterns ?? null,
+    attributionModules: dto.attributionModules ?? [],
   };
 }
 

@@ -417,21 +417,21 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "MOD-ATTR-TREE-001",
     workflow: "C",
     title:
-      "Tree actions are kind-scoped: instance and logical modules offer no delete, logical modules can move, renaming an auto module adopts it, and the adopted name survives a re-ingest.",
+      "Tree actions are kind-scoped: node-type and driver-group modules offer no delete, node-type modules can move, renaming an auto module adopts it, and the adopted name survives a re-ingest.",
     required: true
   },
   {
     id: "MOD-ATTR-RECLASSIFY-001",
     workflow: "C",
     title:
-      "Admin reclassifies a logical module to a business category in the edit dialog; the tree kind badge and filters update, and re-ingest does not revert the curated kind.",
+      "Admin reclassifies a node-type module to a business category in the edit dialog; the tree kind badge and filters update, and re-ingest does not revert the curated kind.",
     required: true
   },
   {
     id: "MOD-ATTR-IMPORTANCE-001",
     workflow: "C",
     title:
-      "Importance set on a business category is inherited by its driver groups and instances and drives the workbench importance filter.",
+      "Importance set on a business category is inherited by its driver groups and node-type units and drives the workbench importance filter.",
     required: true
   },
   {
@@ -487,7 +487,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "MOD-ATTR-CREATE-KIND-001",
     workflow: "C",
     title:
-      "Admin creates empty business, driver-group, instance, or logical modules from the attribution tree with parent-kind rules, required compatibles for driver groups, and not-yet-observed markers on empty curated nodes.",
+      "Admin creates empty business or driver-group modules from the attribution tree with parent-kind rules, required compatibles for driver groups, and not-yet-observed markers on empty curated nodes; node-type units are ingest-only.",
     required: true
   },
   {

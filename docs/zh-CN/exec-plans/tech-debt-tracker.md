@@ -25,13 +25,15 @@
 - **TD-040（DTS 配置集/门禁后续）：** (1)(2)(3)(4) 状态见英文版；生产失败关闭 Schema/工具链校验由拓扑计划 Task 8/10/17 承接。
 - **TD-042（参数身份 cutover）：** Phase 7、第四轮与第五轮已完成既有语义迁移、状态门禁、不可变 base/candidate 和 fail-closed writeback。**第六轮**补齐 0058 scope、无损手工身份、global authz、完整 valueShape、真实角色 UI/merge、租户 cleanup/test 隔离、跨 origin candidate-less draft 失效和持久 `set|delete`；新增 0063，使 submission 锁定并推进 exact candidate、在 item/request 上持久化其 ID，merge 再次锁定复核。带 marker 的可丢弃库已覆盖实现链路，但它仍是空 legacy 合成库，不是生产近似快照或恢复演练。**缺少合法干净非客户快照与维护窗口**，尚未执行 apply→cutover→整库恢复→旧 API smoke，因此 TD-042 继续为 BLOCKER，不得宣称生产 cutover 就绪。
 - **TD-044（节点启停 e2e）：** `PARAM-ENABLE-GATE-001` / `VISIBLE-001` / `TOGGLE-001` / `GUARD-001` 已登记为 skipped stub；产品行为与单测/集成已在 `2026-07-27-dts-node-enablement` 落地。待补齐 Playwright 验收与 operation evidence。详见英文版 Open 表。
-- **TD-045（脚手架模块残留）：** 迁移 0072 步骤 4 的名字正则把总线/脚手架节点（`i2c@…`、`pmic@0`、`batt`）误建成产品模块。ADR-0006 / `0075` 刻意不做批量回填。驱动登记查询（ADR-0007）已用 `isScaffoldingDriverLabel` 过滤，不会把它们计入解析覆盖徽标或认领目标，但归属树仍可能被稀释。后续应按脚手架检测规则迁移 binding 到「未分类」并删除/隐藏这些模块。详见英文版 Open 表。
+- **TD-046（归属放置启发式）：** `modulePlacement.ts` 中 `businessCategoryForNodePath` 为演示级关键词路由，决定自动节点类型单元落在哪个业务分类下。详见英文版 Open 表（ADR-0010 记为技术债，本轮不替换）。
+- **TD-047（规格 driverModule 身份分裂）：** `parameter_specs.driverModule` 可与节点证据不一致；从 binding 陈述归属不解决该分裂。详见英文版 Open 表（ADR-0010）。
 
 ## 近期关闭项
 
 - **TD-035（参数批导完整 DTS / reviewMetadata）：** 已于 2026-07-15 关闭。计划归档：`docs/exec-plans/completed/2026-07-15-parameter-import-wizard-td035.md`。
 - **TD-041（结构化编辑回路）：** 已于 2026-07-15 在 P3.1 关闭。编辑→变更集→`submitStructuredEdits`→既有 CR 审阅合入→CST 回写已打通；回写载荷用 `rawText`。计划归档：`docs/exec-plans/completed/2026-07-14-dts-p31-structured-edit-loop.md`。
 - **TD-037（多层级模块）：** 已于 2026-07-09 在 `feat/hierarchical-modules` 分支关闭。参数域与调试域独立模块树、`module_id` 外键、子树筛选、`ModuleTreeSelect` UI 与 MOD-TREE 验收已交付。计划归档：`docs/exec-plans/completed/2026-07-09-wiseeff-hierarchical-modules.md`。
+- **TD-045（脚手架模块残留）：** 已于 2026-07-30 在 `feat/attribution-taxonomy-not-topology` 关闭（ADR-0010 / 迁移 `0080`）。脚手架模块离开产品树，binding 重放到组织未分类根。
 
 - **TD-029（小泽 checkpoint 持久化）：** 已于 2026-06-29 关闭。生产/自托管使用 `XIAOZE_CHECKPOINTER=postgres`；证据见 `docs/generated/xiaoze-checkpointer-evidence.md`。详情见英文版 Completed 表。
 - **TD-030（小泽聊天历史）：** 已于 2026-06-30 关闭。API 模式通过 `/api/v1/agent/xiaoze/threads` 与 `XiaozeThreadContext` 持久化线程；mock 模式仍用浏览器 localStorage。

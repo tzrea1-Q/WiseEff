@@ -35,7 +35,7 @@ describe("UnclassifiedCompatibleQueue", () => {
       />
     );
 
-    const region = screen.getByRole("region", { name: "未分类队列" });
+    const region = screen.getByRole("region", { name: "未登记驱动" });
     expect(within(region).getByText("vendor,alpha")).toBeInTheDocument();
     expect(within(region).getByText("vendor,beta")).toBeInTheDocument();
 

@@ -58,7 +58,7 @@ export type PowerManagementParameterModule = {
   description: string;
   scope: string;
   parent?: string;
-  kind?: "business" | "driver-group" | "instance" | "logical";
+  kind?: "business" | "driver-group" | "node-type";
   origin?: "curated" | "auto";
   sourceKey?: string | null;
 };
@@ -89,7 +89,7 @@ const powerManagementConfigSchema = z.object({
         description: z.string(),
         scope: z.string(),
         parent: z.string().optional(),
-        kind: z.enum(["business", "driver-group", "instance", "logical"]).optional(),
+        kind: z.enum(["business", "driver-group", "node-type"]).optional(),
         origin: z.enum(["curated", "auto"]).optional(),
         sourceKey: z.string().nullable().optional()
       })
@@ -227,7 +227,7 @@ export function parsePowerManagementConfig(configPath: string, source: string): 
 }
 
 export type SeedModuleMapping = {
-  matchKind: "instance" | "compatible";
+  matchKind: "node-type" | "compatible";
   /** Already-normalized match value (trim + lower). */
   matchValue: string;
   moduleName: string;
@@ -370,8 +370,8 @@ export async function seedM1Parameters(
     const resolvedMappings: SeedModuleMapping[] = moduleMappings.length > 0
       ? [...moduleMappings]
       : [...instanceModuleAssignments.entries()].map(([matchValue, moduleName]) => ({
-          matchKind: "instance" as const,
-          matchValue,
+          matchKind: "node-type" as const,
+          matchValue: matchValue.includes("@") ? matchValue.split("@")[0]! : matchValue,
           moduleName,
           priority: 500
         }));
@@ -380,7 +380,7 @@ export async function seedM1Parameters(
       const parameterModuleId = moduleIdByName.get(mapping.moduleName);
       if (!parameterModuleId || !mapping.matchValue) continue;
       const priority = mapping.priority
-        ?? (mapping.matchKind === "instance" ? 500 : mapping.matchKind === "compatible" ? 300 : 100);
+        ?? (mapping.matchKind === "node-type" ? 500 : mapping.matchKind === "compatible" ? 300 : 100);
       await tx.query(
         `
         insert into parameter_module_mappings (

@@ -9,6 +9,7 @@ import {
   isStructuralPropertyKey,
   paginateItems
 } from "@/domain/parameter-topology/moduleProvenance";
+import type { SpecAttributionModule } from "@/domain/parameter-topology/types";
 import type { ParameterSpecDetailView } from "./ParameterSpecDetail";
 import type { SpecEditorSavePayload } from "./ParameterSpecDetail";
 import { ParameterSpecDetailDialog } from "./ParameterSpecDetailDialog";
@@ -22,9 +23,8 @@ export type ParameterSpecLibraryRow = {
   /** Null means platform-global catalog; Admins may still update via PATCH. */
   organizationId: string | null;
   propertyKey: string;
-  /** Predicted business module from registry mapping (not a stored assignment). */
-  moduleName: string | null;
-  moduleMapped: boolean;
+  /** Distinct attribution units from project bindings; empty = not yet observed. */
+  attributionModules: SpecAttributionModule[];
   driverModule: string | null;
   compatible: string | null;
   valueType: string;
@@ -55,8 +55,7 @@ export function mapParameterSpecToLibraryRow(input: {
   businessCategory?: string | null;
   usageCount?: number | null;
   reviewState?: string | null;
-  moduleName?: string | null;
-  moduleMapped?: boolean | null;
+  attributionModules?: SpecAttributionModule[] | null;
 }): ParameterSpecLibraryRow {
   const propertyKey =
     input.propertyKey?.trim() ||
@@ -84,8 +83,7 @@ export function mapParameterSpecToLibraryRow(input: {
     id: input.id,
     organizationId: input.organizationId ?? null,
     propertyKey,
-    moduleName: input.moduleName?.trim() || null,
-    moduleMapped: input.moduleMapped === true,
+    attributionModules: input.attributionModules ?? [],
     driverModule: input.driverModule ?? null,
     compatible: input.compatiblePatterns?.[0] ?? null,
     valueType,
@@ -97,6 +95,32 @@ export function mapParameterSpecToLibraryRow(input: {
     reviewState: input.reviewState ?? input.lifecycle ?? "draft",
     usageCount: input.usageCount ?? 0
   };
+}
+
+/** Filter/search labels for the attribution column. */
+export function specAttributionFilterValues(spec: ParameterSpecLibraryRow): string[] {
+  if (spec.attributionModules.length > 0) {
+    return spec.attributionModules.map((module) => module.name);
+  }
+  if (spec.driverModule?.trim()) {
+    return [spec.driverModule.trim()];
+  }
+  return ["未归类"];
+}
+
+/** User-facing attribution cell / detail text (full tree path when available). */
+export function formatSpecAttributionLabel(spec: ParameterSpecLibraryRow): string {
+  if (spec.attributionModules.length > 0) {
+    return spec.attributionModules
+      .map((module) =>
+        module.path && module.path.length > 0 ? module.path.join(" / ") : module.name
+      )
+      .join("、");
+  }
+  if (spec.driverModule?.trim()) {
+    return `${spec.driverModule.trim()}（未实测）`;
+  }
+  return "未归类";
 }
 
 /** Small semantic mock for demos — property-key identity, not path names. */
@@ -112,8 +136,7 @@ export const SEMANTIC_MOCK_PARAMETER_SPECS: ParameterSpecLibraryRow[] = [
     currentVersion: 3,
     exampleValue: "<&gpio13 29 0>",
     businessCategory: "Charge Pump IC",
-    moduleName: "充电策略",
-    moduleMapped: true,
+    attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }],
     lifecycle: "active",
     usageCount: 2
   }),
@@ -128,9 +151,8 @@ export const SEMANTIC_MOCK_PARAMETER_SPECS: ParameterSpecLibraryRow[] = [
     currentVersion: 1,
     exampleValue: "<&gpio6 15 0>",
     businessCategory: "Wireless Charging",
-    moduleName: "未分类 · mt5788",
-    moduleMapped: false,
-    reviewState: "needs_review",
+    attributionModules: [],
+    reviewState: "draft",
     usageCount: 1
   })
 ];
@@ -156,7 +178,7 @@ const EMPTY_FILTERS: ParameterSpecLibraryFilters = {
   moduleNames: []
 };
 
-const LIFECYCLE_VALUES = ["draft", "active", "deprecated", "needs_review"] as const;
+const LIFECYCLE_VALUES = ["draft", "active", "deprecated"] as const;
 
 function uniqueValues(values: Array<string | null | undefined>): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value && value.trim())))).sort((left, right) =>
@@ -182,7 +204,8 @@ export function filterParameterSpecLibrary(
     if (q) {
       const haystack = [
         spec.propertyKey,
-        spec.moduleName,
+        formatSpecAttributionLabel(spec),
+        ...specAttributionFilterValues(spec),
         spec.driverModule,
         spec.compatible,
         spec.businessCategory,
@@ -201,7 +224,12 @@ export function filterParameterSpecLibrary(
     if (!matchesSelected(filters.businessCategories, spec.businessCategory)) return false;
     if (!matchesSelected(filters.schemaSources, spec.schemaSource)) return false;
     if (!matchesSelected(filters.lifecycles, spec.reviewState)) return false;
-    if (!matchesSelected(filters.moduleNames, spec.moduleName)) return false;
+    if (
+      filters.moduleNames.length > 0 &&
+      !specAttributionFilterValues(spec).some((value) => filters.moduleNames.includes(value))
+    ) {
+      return false;
+    }
     return true;
   });
 }
@@ -277,7 +305,7 @@ export function ParameterSpecLibrary({
   };
 
   const moduleValues = useMemo(
-    () => uniqueValues(scopedSpecs.map((spec) => spec.moduleName)),
+    () => uniqueValues(scopedSpecs.flatMap((spec) => specAttributionFilterValues(spec))),
     [scopedSpecs]
   );
   const lifecycleValues = useMemo(() => {
@@ -362,10 +390,10 @@ export function ParameterSpecLibrary({
                 <th scope="col">参数名</th>
                 <th scope="col">
                   <span className="param-admin-library-head-cell">
-                    <span>{PARAMETER_ADMIN_UI.specModulePrediction}</span>
+                    <span>{PARAMETER_ADMIN_UI.specAttributionModule}</span>
                     <ColumnFilter
-                      label={PARAMETER_ADMIN_UI.specModulePrediction}
-                      groupLabel="预测模块筛选"
+                      label={PARAMETER_ADMIN_UI.specAttributionModule}
+                      groupLabel="归属模块筛选"
                       values={moduleValues}
                       selectedValues={filters.moduleNames}
                       onToggle={(value) => patchFilterList("moduleNames", value)}
@@ -418,10 +446,8 @@ export function ParameterSpecLibrary({
                   <td data-label="参数名">
                     <strong>{spec.propertyKey}</strong>
                   </td>
-                  <td data-label={PARAMETER_ADMIN_UI.specModulePrediction}>
-                    {spec.moduleName
-                      ? `${spec.moduleName}${spec.moduleMapped ? "" : "（预测）"}`
-                      : "—"}
+                  <td data-label={PARAMETER_ADMIN_UI.specAttributionModule}>
+                    {formatSpecAttributionLabel(spec)}
                   </td>
                   <td data-label="值类型">{spec.valueType}</td>
                   <td data-label="审核状态">{formatParameterSpecLifecycle(spec.reviewState)}</td>

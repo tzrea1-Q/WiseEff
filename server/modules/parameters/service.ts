@@ -2339,20 +2339,11 @@ export async function createParameterModuleForAuth(
         { parentId, parentKind: parent.kind }
       );
     }
-  } else if (kind === "driver-group" || kind === "logical") {
+  } else if (kind === "driver-group" || kind === "node-type") {
     if (!parent || parent.kind !== "business") {
       throw new ApiError(
         "VALIDATION_FAILED",
         `${kind} modules must be created under a business category.`,
-        400,
-        { parentId, parentKind: parent?.kind ?? null }
-      );
-    }
-  } else if (kind === "instance") {
-    if (!parent || parent.kind !== "driver-group") {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        "Instance modules must be created under a driver group.",
         400,
         { parentId, parentKind: parent?.kind ?? null }
       );
@@ -2376,7 +2367,7 @@ export async function createParameterModuleForAuth(
   }
 
   const sourceKey =
-    kind === "instance" || kind === "logical" ? (body.sourceKey?.trim() || null) : null;
+    kind === "node-type" ? (body.sourceKey?.trim() || null) : null;
 
   return db.transaction(async (tx) => {
     const module = await createParameterModule(tx, {
@@ -2431,14 +2422,14 @@ export async function updateParameterModuleForAuth(
     throw new ApiError("VALIDATION_FAILED", "Module name is required.", 400);
   }
 
-  const reclassifyKinds = new Set(["business", "instance", "logical"] as const);
+  const reclassifyKinds = new Set(["business", "node-type"] as const);
   const nextKind = body.kind ?? current.kind;
 
   if (body.kind !== undefined && body.kind !== current.kind) {
-    if (!reclassifyKinds.has(current.kind as "business" | "instance" | "logical")) {
+    if (!reclassifyKinds.has(current.kind as "business" | "node-type")) {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Only business, instance, and logical modules can be reclassified.",
+        "Only business and node-type modules can be reclassified.",
         400,
         { moduleId, kind: current.kind }
       );
@@ -2446,7 +2437,7 @@ export async function updateParameterModuleForAuth(
     if (!reclassifyKinds.has(body.kind)) {
       throw new ApiError(
         "VALIDATION_FAILED",
-        "Modules can only be reclassified to business, instance, or logical.",
+        "Modules can only be reclassified to business or node-type.",
         400,
         { moduleId, kind: body.kind }
       );

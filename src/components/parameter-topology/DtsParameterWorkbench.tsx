@@ -194,7 +194,7 @@ export function DtsParameterWorkbench({
 
   const currentRows = effectiveRows;
   const moduleTree = useMemo(
-    () => buildModuleTree({ rows: currentRows, modules: moduleRegistry?.modules }),
+    () => buildModuleTree({ rows: currentRows, modules: moduleRegistry?.modules, groupByDevice: true }),
     [currentRows, moduleRegistry],
   );
   const tree = moduleTree;

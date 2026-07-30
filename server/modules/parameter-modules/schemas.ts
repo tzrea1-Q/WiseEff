@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const moduleMatchKindSchema = z.enum(["compatible", "instance"]);
+export const moduleMatchKindSchema = z.enum(["compatible", "node-type"]);
 
 export const createModuleMappingBodySchema = z.object({
   moduleId: z.string().trim().min(1),

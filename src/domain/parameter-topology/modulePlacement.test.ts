@@ -6,9 +6,25 @@ import {
   driverGroupDisplayNameFromCompatible,
   instanceModuleNameForNode,
   isModuleScaffoldingNode,
+  nodeTypeKeyForNode,
+  planAttributionModulePlacements,
   planInstanceModulePlacements,
   type ResolvedPlacementNode,
 } from "./modulePlacement";
+
+describe("nodeTypeKeyForNode", () => {
+  it("strips unit address and normalizes to a bare node-type key", () => {
+    expect(nodeTypeKeyForNode({ name: "hl7603", unitAddress: "77" })).toBe("hl7603");
+    expect(nodeTypeKeyForNode({ name: "HL7603", unitAddress: "75" })).toBe("hl7603");
+    expect(nodeTypeKeyForNode({ name: "middle_cpu" })).toBe("middle_cpu");
+    expect(nodeTypeKeyForNode({ name: '"Direct_Charger"' })).toBe("direct_charger");
+  });
+
+  it("maps the board root to the board node-type key", () => {
+    expect(nodeTypeKeyForNode({ name: "/" })).toBe(BOARD_INSTANCE_MODULE_NAME);
+    expect(nodeTypeKeyForNode({ name: "/", nodePath: "" })).toBe(BOARD_INSTANCE_MODULE_NAME);
+  });
+});
 
 describe("isModuleScaffoldingNode", () => {
   it("returns true for bus and interconnect scaffolding nodes", () => {
@@ -75,7 +91,109 @@ describe("driverGroupDisplayNameFromCompatible", () => {
   });
 });
 
-describe("planInstanceModulePlacements", () => {
+describe("planAttributionModulePlacements", () => {
+  const nodes: ResolvedPlacementNode[] = [
+    {
+      name: "hl7603",
+      unitAddress: "75",
+      compatible: "huawei,bypass_bst_hl7603",
+      nodePath: "amba/i2c@FF24E000/hl7603@75",
+    },
+    {
+      name: "hl7603",
+      unitAddress: "77",
+      compatible: "huawei,bypass_bst_hl7603",
+      nodePath: "amba/i2c@FF24E000/hl7603@77",
+    },
+    {
+      name: "fm1230",
+      compatible: "huawei,fm1230",
+      nodePath: "fm1230",
+    },
+    {
+      name: "fm1230_1",
+      compatible: "huawei,fm1230",
+      nodePath: "fm1230_1",
+    },
+    {
+      name: "battery_charge_balance",
+      compatible: "huawei,battery_charge_balance",
+      nodePath: "battery_charge_balance",
+    },
+    {
+      name: "battery0",
+      nodePath: "battery_charge_balance/battery0",
+    },
+    {
+      name: "scharger_v800",
+      nodePath: "spmi1/scharger_v800",
+    },
+    {
+      name: "scharger_v800_coul",
+      nodePath: "spmi1/scharger_v800/scharger_v800_coul",
+    },
+    {
+      name: "/",
+      nodePath: "",
+    },
+  ];
+
+  const businessCategoryForPath = (nodePath: string) => {
+    if (nodePath.includes("hl7603")) return "Charger IC";
+    if (nodePath.includes("fm1230")) return "Battery Authentication";
+    if (nodePath.includes("battery")) return "Battery Balance";
+    if (nodePath.includes("scharger")) return "Charger IC";
+    return "Board Identity";
+  };
+
+  it("places one driver group per compatible and never emits per-instance modules", () => {
+    const plan = planAttributionModulePlacements(nodes, businessCategoryForPath);
+    expect(plan.driverGroups.get("huawei,bypass_bst_hl7603")).toMatchObject({
+      moduleName: "hl7603",
+      businessCategory: "Charger IC",
+    });
+    expect(plan.nodeTypes.has("hl7603@75")).toBe(false);
+    expect(plan.nodeTypes.has("hl7603@77")).toBe(false);
+    expect(plan.nodeTypes.has("hl7603")).toBe(false);
+  });
+
+  it("places Type C config blocks as node-type units, nesting under ancestor units", () => {
+    const plan = planAttributionModulePlacements(nodes, businessCategoryForPath);
+    expect(plan.nodeTypes.get("battery0")).toMatchObject({
+      moduleName: "battery0",
+      parentModuleName: "battery_charge_balance",
+      sourceKey: "nodetype:battery0",
+    });
+    expect(plan.nodeTypes.get("scharger_v800")).toMatchObject({
+      moduleName: "scharger_v800",
+      parentModuleName: "Charger IC",
+      sourceKey: "nodetype:scharger_v800",
+    });
+    expect(plan.nodeTypes.get("scharger_v800_coul")).toMatchObject({
+      moduleName: "scharger_v800_coul",
+      parentModuleName: "scharger_v800",
+      sourceKey: "nodetype:scharger_v800_coul",
+    });
+  });
+
+  it("maps the board root to a board node-type unit under Board Identity", () => {
+    const plan = planAttributionModulePlacements(nodes, businessCategoryForPath);
+    expect(plan.nodeTypes.get(BOARD_INSTANCE_MODULE_NAME)).toMatchObject({
+      moduleName: BOARD_INSTANCE_MODULE_NAME,
+      parentModuleName: "Board Identity",
+      sourceKey: `nodetype:${BOARD_INSTANCE_MODULE_NAME}`,
+    });
+  });
+
+  it("skips scaffolding nodes and still exposes the board constant", () => {
+    const plan = planAttributionModulePlacements(nodes, businessCategoryForPath);
+    expect(plan.nodeTypes.has("amba")).toBe(false);
+    expect(plan.driverGroups.has("hisilicon,gpio")).toBe(false);
+    expect(BOARD_INSTANCE_MODULE_NAME).toBe("board");
+  });
+});
+
+describe("planInstanceModulePlacements (legacy)", () => {
   const nodes: ResolvedPlacementNode[] = [
     {
       name: "hl7603",
@@ -173,10 +291,6 @@ describe("planInstanceModulePlacements", () => {
       parentModuleName: "scharger_v800",
       taxonomy: "C",
     });
-  });
-
-  it("exposes the board instance module name constant", () => {
-    expect(BOARD_INSTANCE_MODULE_NAME).toBe("board");
   });
 
   it("derives stable instance module names from node identity", () => {
