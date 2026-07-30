@@ -27,6 +27,13 @@
 - **TD-044（节点启停 e2e）：** `PARAM-ENABLE-GATE-001` / `VISIBLE-001` / `TOGGLE-001` / `GUARD-001` 已登记为 skipped stub；产品行为与单测/集成已在 `2026-07-27-dts-node-enablement` 落地。待补齐 Playwright 验收与 operation evidence。详见英文版 Open 表。
 - **TD-046（归属放置启发式）：** `modulePlacement.ts` 中 `businessCategoryForNodePath` 为演示级关键词路由。**待讨论 D-AG-04**，见 `docs/design-docs/2026-07-31-attribution-governance-deferred-questions.md`（中文对照同目录 zh-CN）；**不排进** `2026-07-31-attribution-governance-follow-up`。ADR-0010 记为非权威启发式。
 - **TD-047（规格 driverModule 身份分裂）：** `parameter_specs.driverModule` 可与节点证据不一致。Follow-up PR9 仅做 UI 主体主展示；存储和解 / 不一致阻断为 **待讨论 D-AG-03**（同上 deferred 文档）。
+- **TD-048（参数定义多版本模型未启用）：** `version` 列唯一且 binding 指向版本行，但激活是就地 UPDATE，实际每个定义只有一行 version=1；mock 却在激活时递增版本，与 API 语义不一致。下一轮决策见 `docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md` D1/D2。
+- **TD-049（生命周期排序把 deprecated 与 draft 同等降权）：** 八处排序查询使用 `case when lifecycle = 'active' then 0 else 1 end`，但只有 `draft` 不可发布，软下线后该排序可能让草稿盖过绑定实际使用的已废弃定义。见 D6。
+- **TD-050（结构性属性借用了「废弃」）：** 迁移 `0068` 批量废弃 `status` 属性以将节点启停移出定义库（ADR-0003），但「废弃」意为不再推荐、而非「不是定义」。见 D7。
+- **TD-051（已 resolved 的节点对应任务无反向回滚）：** `applyReviewedIdentityMapping` 已重写绑定身份且无逆操作，选错逻辑节点只能靠重新上传 DTS 补救。见 D3。
+- **TD-052（定义数与实测处数未拆分）：** `aggregateSubtreeParameterCounts` 只上卷单一 `parameterCount`；驱动组直接持有定义后两个事实已分岔，废弃引用数又引入第三个计数。见 D4（承接 ADR-0010 的 out of scope）。
+- **TD-053（overlay 停用无接班约束、superseded 无组织侧呈现）：** 停用会直接撤走解析覆盖；被平台晋升后置为 `superseded` 的组织行在其自身治理界面没有定义好的呈现方式。见 D5、D8。
+- **TD-054（openapi 缺 listPromotionCandidates）：** 平台层晋升端点没有 OpenAPI schema 条目，导致完整 `npm run test:server` 失败。
 
 ## 近期关闭项
 
