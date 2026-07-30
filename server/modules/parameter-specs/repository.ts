@@ -883,6 +883,7 @@ type SpecListRow = {
   current_version: number | string | null;
   value_shape: unknown;
   compatible_patterns: unknown;
+  attribution_subject_id: string | null;
 };
 
 export type SpecAttributionModuleRow = {
@@ -906,6 +907,7 @@ export type ParameterSpecListRow = {
   valueShape: unknown | null;
   compatiblePatterns: string[] | null;
   attributionModules: SpecAttributionModuleRow[];
+  attributionSubjectId: string | null;
 };
 
 export type ParameterSpecDetailRow = ParameterSpecListRow & {
@@ -938,6 +940,7 @@ function toListRow(row: SpecListRow): ParameterSpecListRow {
       ? row.compatible_patterns.map(String)
       : null,
     attributionModules: [],
+    attributionSubjectId: row.attribution_subject_id ?? null,
   };
 }
 
@@ -1010,6 +1013,7 @@ export async function listParameterSpecRows(
         ''
       ) as driver_module,
       ps.definition_lifecycle as lifecycle,
+      ps.attribution_subject_id,
       psv.id as current_version_id,
       psv.version as current_version,
       psv.value_shape,
@@ -1172,6 +1176,7 @@ export async function getParameterSpecRow(
         ''
       ) as driver_module,
       ps.definition_lifecycle as lifecycle,
+      ps.attribution_subject_id,
       psv.id as current_version_id,
       psv.version as current_version,
       psv.version_status,

@@ -8,6 +8,7 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   activateParameterSpecBodySchema,
   createOrganizationDriverSchemaBodySchema,
+  createParameterSpecBodySchema,
   deprecateParameterSpecBodySchema,
   listParameterSpecsQuerySchema,
   listSpecReviewTasksQuerySchema,
@@ -23,6 +24,7 @@ import {
 } from "./schemas";
 import {
   activateParameterSpec,
+  createParameterSpec,
   deprecateParameterSpec,
   getParameterSpec,
   listParameterSpecs,
@@ -90,6 +92,25 @@ export function registerParameterSpecRoutes(
     const query = parseWithSchema(listParameterSpecsQuerySchema, flattenQuery(request.query));
     const result = await listParameterSpecs(db, auth, query);
     return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const body = parseWithSchema(createParameterSpecBodySchema, request.body ?? {});
+    const result = await createParameterSpec(
+      db,
+      auth,
+      {
+        ...body,
+        constraints: body.constraints ?? {},
+        valueShape: body.valueShape ?? { kind: "unknown" },
+        documentation: body.documentation ?? "",
+      },
+      { requestId: request.requestId },
+    );
+    return { status: 201, body: result };
   });
 
   router.get("/api/v2/parameter-specs/:specId", async (request) => {

@@ -13,6 +13,8 @@ export type GovernanceAuditAction =
   | "spec-updated"
   | "spec-deprecated"
   | "spec-restored"
+  | "spec-version-cutover-prepared"
+  | "spec-version-cutover-finalized"
   | "identity-mapping-resolved"
   | "identity-mapping-dismissed"
   | "config-revision-validated"

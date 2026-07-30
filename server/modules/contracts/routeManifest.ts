@@ -197,6 +197,13 @@ export const routeManifest = [
 
   { id: "parameterSpecs.list", method: "GET", path: "/api/v2/parameter-specs", module: "parameters", stability: "mvp" },
   {
+    id: "parameterSpecs.create",
+    method: "POST",
+    path: "/api/v2/parameter-specs",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterSpecs.get",
     method: "GET",
     path: "/api/v2/parameter-specs/:specId",

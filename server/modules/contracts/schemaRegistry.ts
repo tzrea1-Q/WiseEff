@@ -399,6 +399,14 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ParameterSpecListResponse",
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "parameterSpecs.create": {
+    summary: "Create a draft parameter definition bound to an attribution subject",
+    tags: ["parameters"],
+    requestBody: "CreateParameterSpecRequest",
+    responseBody: "ParameterSpecDetailResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterSpecs.get": {
     summary: "Get a parameter specification detail",
     tags: ["parameters"],

@@ -32,6 +32,7 @@ const migration0080 = "0080_attribution_taxonomy.sql";
 const migration0081 = "0081_remove_structural_parameter_specs.sql";
 const migration0082 = "0082_attribution_subjects.sql";
 const migration0083 = "0083_parameter_spec_versioning.sql";
+const migration0084 = "0084_parameter_spec_version_cutover.sql";
 
 const enablementMigrations = [
   migration0068,
@@ -50,6 +51,7 @@ const enablementMigrations = [
   migration0081,
   migration0082,
   migration0083,
+  migration0084,
 ] as const;
 const REQUIRED_TABLES = [
   "parameter_specs",

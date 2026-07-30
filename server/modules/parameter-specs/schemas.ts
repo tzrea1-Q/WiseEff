@@ -30,7 +30,8 @@ export const parameterSpecSummaryDtoSchema = z.object({
   currentVersion: z.number().int().nullable(),
   valueShape: z.unknown().nullable(),
   compatiblePatterns: z.array(z.string()).nullable(),
-  attributionModules: z.array(specAttributionModuleDtoSchema)
+  attributionModules: z.array(specAttributionModuleDtoSchema),
+  attributionSubjectId: z.string().nullable().optional()
 });
 
 export const parameterSpecDetailDtoSchema = parameterSpecSummaryDtoSchema.extend({
@@ -127,6 +128,35 @@ export const activateParameterSpecBodySchema = z.object({
   displayName: z.string().optional(),
   description: z.string().optional(),
   reason: nonEmptyString,
+  coverageClaim: z
+    .object({
+      kind: z.enum(["overlay-property", "pinned-schema-property"]),
+      overlayId: z.string().optional(),
+      overlayPropertyId: z.string().optional(),
+      upsertOverlay: z
+        .object({
+          compatible: nonEmptyString,
+          displayName: z.string().optional(),
+          createPropertyLink: z.literal(true),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
+export const createParameterSpecBodySchema = z.object({
+  attributionSubjectId: nonEmptyString,
+  propertyKey: nonEmptyString,
+  displayName: z.string().optional(),
+  description: z.string().optional(),
+  documentation: z.string().default(""),
+  valueShape: z.record(z.string(), z.unknown()).default({ kind: "unknown" }),
+  constraints: z.record(z.string(), z.unknown()).default({}),
+  units: z.string().nullable().optional(),
+  exampleValue: z.unknown().optional(),
+  /** Explicit confirmation when creating an org definition that overrides a platform one. */
+  overridePlatform: z.boolean().optional(),
+  reason: nonEmptyString,
 });
 
 export const updateParameterSpecBodySchema = z.object({
@@ -165,6 +195,7 @@ export type ListSpecReviewTasksQuery = z.infer<typeof listSpecReviewTasksQuerySc
 export type ParameterSpecReviewTaskDto = z.infer<typeof parameterSpecReviewTaskDtoSchema>;
 export type ResolveSpecReviewTaskBody = z.infer<typeof resolveSpecReviewTaskBodySchema>;
 export type ActivateParameterSpecBody = z.infer<typeof activateParameterSpecBodySchema>;
+export type CreateParameterSpecBody = z.infer<typeof createParameterSpecBodySchema>;
 export type UpdateParameterSpecBody = z.infer<typeof updateParameterSpecBodySchema>;
 export type DeprecateParameterSpecBody = z.infer<typeof deprecateParameterSpecBodySchema>;
 export type RestoreParameterSpecBody = z.infer<typeof restoreParameterSpecBodySchema>;

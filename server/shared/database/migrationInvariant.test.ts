@@ -324,3 +324,19 @@ describe("parameter spec versioning migration invariants (ADR-0014)", () => {
     expect(migration).toMatch(/parameter_spec_versions_version_status_check|version_status in/);
   });
 });
+
+describe("parameter spec version cutover migration invariants (ADR-0014)", () => {
+  it("introduces staged cutover run and item tables", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0084_parameter_spec_version_cutover.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("parameter_spec_version_cutover_runs");
+    expect(migration).toContain("parameter_spec_version_cutover_items");
+    expect(migration).toContain("preparing");
+    expect(migration).toContain("finalized");
+    expect(migration).toContain("incompatible");
+    expect(migration).toContain("from_version_id");
+    expect(migration).toContain("to_version_id");
+  });
+});
