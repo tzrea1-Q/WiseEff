@@ -561,6 +561,161 @@ export async function countBlockingIdentityMappingTasksForRevision(
   return Number(result.rows[0]?.count ?? 0);
 }
 
+type SingletonInstanceRow = {
+  attribution_subject_id: string;
+  display_name: string;
+  logical_node_id: string;
+  node_locator: string;
+  name: string;
+  unit_address: string | null;
+  compatible: string | null;
+};
+
+/**
+ * Reconcile persisted singleton-per-project conflicts for one revision. The
+ * source instances are never collapsed: the task records all candidates and
+ * release gates fail closed until the registration/topology is corrected.
+ */
+export async function syncSingletonCardinalityBlockingTasks(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; configRevisionId: string },
+): Promise<number> {
+  const result = await db.query<SingletonInstanceRow>(
+    `
+    select
+      pm.attribution_subject_id,
+      subject.display_name,
+      lnr.logical_node_id,
+      lnr.node_locator,
+      lnr.name,
+      lnr.unit_address,
+      lnr.compatible
+    from dts_logical_node_revisions lnr
+    inner join dts_config_revisions cr
+      on cr.id = lnr.config_revision_id
+     and cr.organization_id = $1
+     and cr.project_id = $2
+    inner join parameter_module_mappings mapping
+      on mapping.organization_id = $1
+     and mapping.match_kind = 'compatible'
+     and lower(trim(both '"' from trim(both '''' from trim(mapping.match_value))))
+       = lower(trim(both '"' from trim(both '''' from trim(coalesce(lnr.compatible, '')))))
+    inner join parameter_modules pm
+      on pm.id = mapping.parameter_module_id
+     and pm.organization_id = $1
+     and pm.attribution_subject_id is not null
+    inner join attribution_subjects subject
+      on subject.id = pm.attribution_subject_id
+    inner join driver_registrations registration
+      on registration.attribution_subject_id = subject.id
+     and registration.instance_cardinality = 'singleton-per-project'
+    where lnr.config_revision_id = $3
+    order by pm.attribution_subject_id, lnr.node_locator, lnr.logical_node_id
+    `,
+    [input.organizationId, input.projectId, input.configRevisionId],
+  );
+
+  const bySubject = new Map<string, SingletonInstanceRow[]>();
+  for (const row of result.rows) {
+    const instances = bySubject.get(row.attribution_subject_id) ?? [];
+    if (!instances.some((instance) => instance.logical_node_id === row.logical_node_id)) {
+      instances.push(row);
+    }
+    bySubject.set(row.attribution_subject_id, instances);
+  }
+  const conflicts = [...bySubject.entries()].filter(([, instances]) => instances.length > 1);
+  const conflictSubjectIds = conflicts.map(([subjectId]) => subjectId);
+
+  await db.query(
+    `
+    update identity_mapping_tasks
+    set status = 'resolved',
+        reason = 'singleton cardinality conflict cleared',
+        resolved_at = now()
+    where organization_id = $1
+      and project_id = $2
+      and config_revision_id = $3
+      and task_kind = 'singleton-cardinality'
+      and status in ('open', 'dismissed')
+      and (
+        cardinality($4::text[]) = 0
+        or coalesce(evidence->>'attributionSubjectId', '') <> all($4::text[])
+      )
+    `,
+    [input.organizationId, input.projectId, input.configRevisionId, conflictSubjectIds],
+  );
+
+  for (const [subjectId, instances] of conflicts) {
+    const evidence = {
+      blockerKind: "singleton-cardinality",
+      attributionSubjectId: subjectId,
+      displayName: instances[0]?.display_name ?? subjectId,
+      instanceCardinality: "singleton-per-project",
+      instanceCount: instances.length,
+      candidates: instances.map((instance) => ({
+        logicalNodeId: instance.logical_node_id,
+        nodeLocator: instance.node_locator,
+        name: instance.name,
+        unitAddress: instance.unit_address,
+        compatible: instance.compatible,
+      })),
+    };
+    const existing = await db.query<{ id: string }>(
+      `
+      select id
+      from identity_mapping_tasks
+      where organization_id = $1
+        and config_revision_id = $2
+        and task_kind = 'singleton-cardinality'
+        and evidence->>'attributionSubjectId' = $3
+      limit 1
+      `,
+      [input.organizationId, input.configRevisionId, subjectId],
+    );
+    if (existing.rows[0]) {
+      await db.query(
+        `
+        update identity_mapping_tasks
+        set candidate_logical_node_ids = $2::jsonb,
+            evidence = $3::jsonb,
+            status = 'open',
+            reviewer_user_id = null,
+            reason = 'singleton-per-project registration has multiple instances',
+            resolved_at = null
+        where id = $1
+        `,
+        [
+          existing.rows[0].id,
+          JSON.stringify(instances.map((instance) => instance.logical_node_id)),
+          JSON.stringify(evidence),
+        ],
+      );
+    } else {
+      await db.query(
+        `
+        insert into identity_mapping_tasks (
+          id, organization_id, project_id, config_revision_id,
+          previous_logical_node_id, candidate_logical_node_ids, evidence,
+          task_kind, status, reason
+        ) values ($1, $2, $3, $4, null, $5::jsonb, $6::jsonb,
+          'singleton-cardinality', 'open',
+          'singleton-per-project registration has multiple instances')
+        `,
+        [
+          randomUUID(),
+          input.organizationId,
+          input.projectId,
+          input.configRevisionId,
+          JSON.stringify(instances.map((instance) => instance.logical_node_id)),
+          JSON.stringify(evidence),
+        ],
+      );
+    }
+  }
+
+  return conflicts.length;
+}
+
 /**
  * True when the selected candidate logical node belongs to the same org/project/revision.
  */

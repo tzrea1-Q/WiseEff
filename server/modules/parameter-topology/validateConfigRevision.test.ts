@@ -477,6 +477,84 @@ describe.skipIf(!databaseAvailable)("validateConfigRevision fail-closed", () => 
     expect(await revisionStatus(db!, revision.id)).toBe("needs_mapping");
   });
 
+  it("persists singleton-per-project evidence and blocks validation without dropping instances", async () => {
+    const revision = await seedRevision(db!, auth);
+    await clearOpenReviews(db!);
+    await db!.query(`update dts_config_revisions set status = 'resolved' where id = $1`, [revision.id]);
+    await db!.query(
+      `
+      insert into attribution_subjects (
+        id, organization_id, subject_kind, display_name, origin, source_key
+      ) values ('subject-singleton', $1, 'driver-registration', 'Singleton service', 'curated', 'compatible:wiseeff,test')
+      `,
+      [ORG_ID],
+    );
+    await db!.query(
+      `
+      insert into driver_registrations (
+        attribution_subject_id, driver_nature, instance_cardinality, notes
+      ) values ('subject-singleton', 'logical-service', 'singleton-per-project', '')
+      `,
+    );
+    await db!.query(
+      `
+      insert into parameter_modules (
+        id, organization_id, parent_id, name, path, depth, sort_order, description, scope,
+        kind, origin, attribution_subject_id
+      ) values (
+        'module-singleton', $1, 'pmod-' || $1 || '-' || md5('未分类'),
+        'Singleton service', 'singleton/service', 2, 0, '', '',
+        'driver-group', 'curated', 'subject-singleton'
+      )
+      `,
+      [ORG_ID],
+    );
+    await db!.query(
+      `
+      insert into parameter_module_mappings (
+        id, organization_id, parameter_module_id, match_kind, match_value, priority
+      ) values
+        ('mapping-singleton-root', $1, 'module-singleton', 'compatible', 'wiseeff,test', 0),
+        ('mapping-singleton-amba', $1, 'module-singleton', 'compatible', 'wiseeff,amba', 0)
+      `,
+      [ORG_ID],
+    );
+
+    const result = await validateConfigRevision(
+      db!,
+      auth,
+      { projectId: PROJECT_ID, revisionId: revision.id },
+      {},
+      { toolchain: makeToolchain(toolchainResult()) },
+    );
+
+    expect(result).toMatchObject({ status: "failed", failureCode: "open-mapping" });
+    const blocker = await db!.query<{
+      task_kind: string;
+      candidate_logical_node_ids: unknown;
+      evidence: { attributionSubjectId?: string; instanceCount?: number };
+    }>(
+      `
+      select task_kind, candidate_logical_node_ids, evidence
+      from identity_mapping_tasks
+      where config_revision_id = $1 and task_kind = 'singleton-cardinality'
+      `,
+      [revision.id],
+    );
+    expect(blocker.rows).toHaveLength(1);
+    expect(blocker.rows[0]?.evidence).toMatchObject({
+      attributionSubjectId: "subject-singleton",
+      instanceCount: 2,
+    });
+    expect(blocker.rows[0]?.candidate_logical_node_ids).toHaveLength(2);
+
+    const instances = await db!.query<{ count: string }>(
+      `select count(*)::text as count from dts_logical_node_revisions where config_revision_id = $1`,
+      [revision.id],
+    );
+    expect(Number(instances.rows[0]?.count)).toBeGreaterThanOrEqual(2);
+  });
+
   it("marks validated only on the full success path and persists toolchain hashes", async () => {
     const revision = await seedRevision(db!, auth);
     await clearOpenReviews(db!);

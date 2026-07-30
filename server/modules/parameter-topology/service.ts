@@ -30,7 +30,8 @@ import {
   lockOpenIdentityMappingTask,
   reopenIdentityMappingTaskRow,
   resolveIdentityMappingTaskRow,
-  selectedCandidateBelongsToRevision
+  selectedCandidateBelongsToRevision,
+  syncSingletonCardinalityBlockingTasks
 } from "./bindingService";
 import { normalizeBindingSchemaState } from "./schemaState";
 import {
@@ -509,6 +510,11 @@ export async function resolveIdentityMappingTask(
       organizationId: auth.organization.id,
       configRevisionId: existing.configRevisionId
     });
+    await syncSingletonCardinalityBlockingTasks(tx, {
+      organizationId: auth.organization.id,
+      projectId: existing.projectId,
+      configRevisionId: existing.configRevisionId
+    });
     const blockingRemaining = await countBlockingIdentityMappingTasksForRevision(tx, {
       organizationId: auth.organization.id,
       configRevisionId: existing.configRevisionId
@@ -885,7 +891,12 @@ export async function validateConfigRevision(
     );
   }
 
-  const openMappings = await countOpenIdentityMappingTasksForRevision(db, {
+  await syncSingletonCardinalityBlockingTasks(db, {
+    organizationId: auth.organization.id,
+    projectId: revision.projectId,
+    configRevisionId: revision.id
+  });
+  const openMappings = await countBlockingIdentityMappingTasksForRevision(db, {
     organizationId: auth.organization.id,
     configRevisionId: revision.id
   });
@@ -905,7 +916,7 @@ export async function validateConfigRevision(
               code: "open-mapping",
               severity: "error",
               stage: "identity",
-              message: `Open identity mapping tasks remain (${openMappings}); validation fails closed.`,
+              message: `Blocking identity/cardinality tasks remain (${openMappings}); validation fails closed.`,
               fileName: "<identity>"
             }
           ],
