@@ -330,6 +330,10 @@ export type ResolveMappingInput = {
   confirmAllCandidates?: boolean;
 };
 
+export type ReopenMappingInput = {
+  reason: string;
+};
+
 export type ValidationRunStatus = "passed" | "failed" | "running";
 
 export type ValidationRun = {

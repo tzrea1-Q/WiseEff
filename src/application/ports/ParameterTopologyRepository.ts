@@ -6,6 +6,7 @@ import type {
   ParameterSpecSummary,
   ParameterSpecCutoverSummary,
   ProjectParameterBinding,
+  ReopenMappingInput,
   ResolveMappingInput,
   ResolveSpecReviewInput,
   SpecQuery,
@@ -25,6 +26,7 @@ export type {
   ParameterSpecSummary,
   ParameterSpecCutoverSummary,
   ProjectParameterBinding,
+  ReopenMappingInput,
   ResolveMappingInput,
   ResolveSpecReviewInput,
   SpecQuery,
@@ -171,6 +173,7 @@ export interface ParameterTopologyRepository {
   ): Promise<TopologyTree>;
   listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;
   resolveMapping(taskId: string, input: ResolveMappingInput): Promise<void>;
+  reopenMapping?(taskId: string, input: ReopenMappingInput): Promise<void>;
   validateRevision(projectId: string, revisionId: string): Promise<ValidationRun>;
   createBindingDraft(
     projectId: string,

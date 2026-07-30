@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import type { IdentityMappingTask, ResolveMappingInput } from "@/domain/parameter-topology/types";
+import type {
+  IdentityMappingTask,
+  ReopenMappingInput,
+  ResolveMappingInput
+} from "@/domain/parameter-topology/types";
 import { IdentityMappingReview } from "@/components/parameter-topology/IdentityMappingReview";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 
@@ -66,7 +70,30 @@ export function OrganizationIdentityMappingPanel() {
     [application, dispatch, reload]
   );
 
+  const handleReopen = useCallback(
+    async (taskId: string, input: ReopenMappingInput) => {
+      setError(null);
+      try {
+        await application.reopenMapping(taskId, input);
+        dispatch({
+          type: "PUSH_AUDIT_HINT",
+          hint: {
+            kind: "identity-mapping-reopened",
+            summary: `已重新打开节点对应任务 ${taskId}`,
+            reason: input.reason,
+            recordedAt: new Date().toISOString()
+          }
+        });
+        await reload();
+      } catch (reopenError) {
+        setError(reopenError instanceof Error ? reopenError.message : "重新打开节点对应任务失败。");
+      }
+    },
+    [application, dispatch, reload]
+  );
+
   const openTasks = tasks.filter((task) => task.status === "open");
+  const historyTasks = tasks.filter((task) => task.status !== "open");
 
   return (
     <section className="param-admin-main param-admin-governance-card" aria-label="节点对应确认">
@@ -76,18 +103,20 @@ export function OrganizationIdentityMappingPanel() {
           <p>确认迁移期未能自动对齐的参数节点对应关系。待处理 {state.queueCounts.identityMapping}。</p>
         </div>
       </div>
-      {loading && openTasks.length === 0 ? <p className="form-hint">正在加载节点对应任务…</p> : null}
+      {loading && openTasks.length === 0 && historyTasks.length === 0 ? (
+        <p className="form-hint">正在加载节点对应任务…</p>
+      ) : null}
       {error ? (
         <p className="form-error" role="alert">
           {error}
         </p>
       ) : null}
-      {!loading && openTasks.length === 0 ? (
+      {!loading && openTasks.length === 0 && historyTasks.length === 0 ? (
         <p className="form-hint" role="status">
           当前没有待处理的节点对应任务。
         </p>
       ) : (
-        <IdentityMappingReview tasks={tasks} onResolve={handleResolve} />
+        <IdentityMappingReview tasks={tasks} onResolve={handleResolve} onReopen={handleReopen} />
       )}
     </section>
   );

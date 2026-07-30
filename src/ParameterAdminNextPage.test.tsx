@@ -1278,6 +1278,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       target: { value: "Same board instance" }
     });
     fireEvent.click(within(review).getByRole("button", { name: "确认对应" }));
+    fireEvent.click(within(review).getByRole("button", { name: "确认不可逆对应" }));
 
     await waitFor(() =>
       expect(resolveMapping).toHaveBeenCalledWith("map-admin-1", {
@@ -1305,6 +1306,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       target: { value: "Mock continuity" }
     });
     fireEvent.click(within(review).getByRole("button", { name: "确认对应" }));
+    fireEvent.click(within(review).getByRole("button", { name: "确认不可逆对应" }));
 
     await waitFor(() =>
       expect(screen.getByText("当前没有待处理的节点对应任务。")).toBeInTheDocument()
