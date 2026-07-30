@@ -261,3 +261,28 @@ describe("attribution taxonomy migration invariants (ADR-0010)", () => {
     expect(migration).toMatch(/delete from parameter_module_mappings/i);
   });
 });
+
+describe("structural parameter cleanup migration invariants (ADR-0003)", () => {
+  it("removes structural definitions after full FK preflight and prevents re-entry", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0081_remove_structural_parameter_specs.sql"),
+      "utf8"
+    );
+
+    expect(migration).toContain("structural_parameter_specs");
+    expect(migration).toContain("delete from project_parameter_bindings");
+    expect(migration).toContain("delete from parameter_specs");
+    expect(migration).toContain("dts_property_specs_non_structural_key_check");
+    expect(migration).toContain("'status'");
+    expect(migration).toContain("'compatible'");
+    expect(migration).toContain("trim(property_key) not like '#%'");
+    expect(migration).toContain("refuse destructive cleanup");
+    // Direct FK preflight — not only via project_parameter_bindings.
+    expect(migration).toContain("parameter_change_requests");
+    expect(migration).toContain("parameter_history_entries");
+    expect(migration).toContain("debugging_parameters");
+    expect(migration).toContain("node_operations");
+    expect(migration).toContain("legacy_parameter_migration_evidence");
+    expect(migration).toContain("parameter_file_sync_conflicts");
+  });
+});

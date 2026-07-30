@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { isStructuralPropertyKey, paginateItems } from "./moduleProvenance";
+import { paginateItems } from "./moduleProvenance";
 
 describe("moduleProvenance", () => {
-  it("marks hash-prefixed property keys as structural", () => {
-    expect(isStructuralPropertyKey("#address-cells")).toBe(true);
-    expect(isStructuralPropertyKey("#gpio-cells")).toBe(true);
-    expect(isStructuralPropertyKey("gpio_int")).toBe(false);
-  });
-
   it("paginates with independent page arithmetic", () => {
     const items = Array.from({ length: 30 }, (_, index) => index + 1);
     expect(paginateItems(items, 1, 25)).toEqual({

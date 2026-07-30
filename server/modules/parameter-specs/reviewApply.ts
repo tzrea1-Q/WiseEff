@@ -9,6 +9,7 @@ import {
 import { updateConfigRevisionStatus } from "../parameter-topology/repository";
 import { DRAFT_PROVENANCE_KEY } from "./specCompleteness";
 import { buildManualSpecIds } from "./specIdentity";
+import { assertNonStructuralPropertyKey } from "./structuralPropertyGuard";
 import {
   draftValueShapeToJson,
   inferDraftValueShapeFromOccurrence,
@@ -472,6 +473,7 @@ export async function createOrgManualParameterSpec(
     occurrenceRawText: string | null;
   },
 ): Promise<{ parameterSpecId: string; parameterSpecVersionId: string; created: boolean; valueShape: Record<string, unknown> }> {
+  assertNonStructuralPropertyKey(input.propertyKey);
   const ids = buildManualSpecIds({
     organizationId: input.organizationId,
     propertyKey: input.propertyKey,

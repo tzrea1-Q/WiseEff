@@ -11,6 +11,7 @@ import { lookupParseCoverage } from "./parseCoverage";
 import {
   driverModuleFromOverlayCompatible,
 } from "./driverSchemaOverlayMaterialize";
+import { assertNonStructuralPropertyKey } from "./structuralPropertyGuard";
 import {
   findActiveOrganizationDriverSchemaByCompatible,
   findActivePlatformDriverSchemaOverlayByCompatible,
@@ -103,6 +104,7 @@ async function ensureCanonicalOverlayParameterSpec(
   if (!propertyKey) {
     throw new ApiError("VALIDATION_FAILED", "propertyKey is required.", 400);
   }
+  assertNonStructuralPropertyKey(propertyKey);
   const driverModule = driverModuleFromOverlayCompatible(input.compatible);
   const ids = buildManualSpecIds({
     organizationId: input.organizationId,

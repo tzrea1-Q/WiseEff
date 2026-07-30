@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -26,6 +28,16 @@ describe("parameterSurface", () => {
     expect(listStructuralPropertyKeys()).toContain("status");
     expect(listStructuralPropertyKeys()).toContain("phandle");
     expect(listStructuralPropertyKeys()).toContain("device_type");
+  });
+
+  it("keeps STRUCTURAL_PROPERTY_KEYS aligned with migration 0081 CHECK literals", () => {
+    const migration = readFileSync(
+      join(process.cwd(), "server/migrations/0081_remove_structural_parameter_specs.sql"),
+      "utf8"
+    );
+    for (const key of STRUCTURAL_PROPERTY_KEYS) {
+      expect(migration).toContain(`'${key}'`);
+    }
   });
 
   it("treats bare bus containers as scaffolding locators", () => {
