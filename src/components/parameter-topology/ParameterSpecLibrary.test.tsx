@@ -251,6 +251,58 @@ describe("ParameterSpecLibrary", () => {
     fireEvent.click(within(detail).getByRole("button", { name: "取消" }));
     expect(onCloseSpec).toHaveBeenCalled();
   });
+
+  it("deprecates and restores definitions through reason-gated lifecycle dialogs", () => {
+    const onDeprecateSpec = vi.fn();
+    const onRestoreSpec = vi.fn();
+    const { rerender } = render(
+      <ParameterSpecLibrary
+        specs={[gpioIntSc8562]}
+        detail={{ ...gpioIntSc8562, usage: [], schemaHistory: [] }}
+        selectedSpecId={gpioIntSc8562.id}
+        onSelectSpec={vi.fn()}
+        onDeprecateSpec={onDeprecateSpec}
+        onRestoreSpec={onRestoreSpec}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "废弃" }));
+    const deprecateDialog = screen.getByRole("dialog", { name: "废弃参数定义" });
+    fireEvent.change(within(deprecateDialog).getByLabelText("废弃原因"), {
+      target: { value: "由新版定义替代" }
+    });
+    fireEvent.click(within(deprecateDialog).getByRole("button", { name: "确认废弃" }));
+    expect(onDeprecateSpec).toHaveBeenCalledWith({
+      specId: gpioIntSc8562.id,
+      reason: "由新版定义替代"
+    });
+
+    rerender(
+      <ParameterSpecLibrary
+        specs={[{ ...gpioIntSc8562, reviewState: "deprecated" }]}
+        detail={{
+          ...gpioIntSc8562,
+          reviewState: "deprecated",
+          usage: [],
+          schemaHistory: []
+        }}
+        selectedSpecId={gpioIntSc8562.id}
+        onSelectSpec={vi.fn()}
+        onDeprecateSpec={onDeprecateSpec}
+        onRestoreSpec={onRestoreSpec}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "恢复" }));
+    const restoreDialog = screen.getByRole("dialog", { name: "恢复参数定义" });
+    fireEvent.change(within(restoreDialog).getByLabelText("恢复原因"), {
+      target: { value: "重新投入使用" }
+    });
+    fireEvent.click(within(restoreDialog).getByRole("button", { name: "确认恢复" }));
+    expect(onRestoreSpec).toHaveBeenCalledWith({
+      specId: gpioIntSc8562.id,
+      reason: "重新投入使用"
+    });
+  });
 });
 
 describe("SpecReviewQueue", () => {

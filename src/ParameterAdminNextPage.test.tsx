@@ -135,6 +135,8 @@ function createRepository(
     resolveSpecReviewTask: vi.fn().mockResolvedValue(undefined),
     activateParameterSpec: vi.fn().mockResolvedValue(SPEC_DETAIL),
     updateParameterSpec: vi.fn().mockResolvedValue(SPEC_DETAIL),
+    deprecateParameterSpec: vi.fn().mockResolvedValue({ ...SPEC_DETAIL, lifecycle: "deprecated" }),
+    restoreParameterSpec: vi.fn().mockResolvedValue({ ...SPEC_DETAIL, lifecycle: "active" }),
     listBindings: vi.fn().mockResolvedValue([]),
     listBindingHistory: vi.fn().mockResolvedValue([]),
     listBindingCompare: vi.fn().mockResolvedValue([]),
@@ -171,10 +173,12 @@ function createModuleRegistry(
           suggestedGroupName: "unmapped-ic"
         }
       ],
+      dismissedCompatibles: [],
       total: 1
     })),
     dismissCompatible: vi.fn(async () => ({
       compatibles: [],
+      dismissedCompatibles: [],
       total: 0
     })),
     restoreDismissedCompatible: vi.fn(async () => ({
@@ -186,6 +190,7 @@ function createModuleRegistry(
           suggestedGroupName: "unmapped-ic"
         }
       ],
+      dismissedCompatibles: [],
       total: 1
     })),
     previewMapping: vi.fn(async (input) => ({
@@ -613,7 +618,6 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     expect(within(detail).getByRole("heading", { name: "gpio_int" })).toBeInTheDocument();
     expect(within(detail).getByLabelText("属性键")).toHaveValue("gpio_int");
     expect(within(detail).getByLabelText("展示名")).toHaveValue("SC8562 GPIO interrupt");
-    expect(within(detail).getByLabelText("compatible")).toHaveValue("vendor,sc8562");
     expect((within(detail).getByLabelText("参数说明") as HTMLTextAreaElement).value).toMatch(
       /three-cell interrupt/
     );
@@ -622,11 +626,67 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     );
     expect(within(detail).getByText("参数定义库 · 可编辑")).toBeInTheDocument();
     expect(repository.getSpec).toHaveBeenCalledWith("spec-sc8562-gpio-int");
+    expect(screen.queryByRole("status", { name: "治理审计" })).not.toBeInTheDocument();
 
     fireEvent.click(within(detail).getByRole("button", { name: "取消" }));
     await waitFor(() => {
       expect(new URL(window.location.href).searchParams.get("spec")).toBeNull();
     });
+  });
+
+  it("deprecates a spec and shows concise success feedback", async () => {
+    const deprecateParameterSpec = vi
+      .fn()
+      .mockResolvedValue({ ...SPEC_DETAIL, lifecycle: "deprecated" });
+    const repository = createRepository({ deprecateParameterSpec });
+    renderPage({
+      repository,
+      path: "/parameter-admin/specs?spec=spec-sc8562-gpio-int"
+    });
+
+    const detail = await screen.findByRole("dialog", { name: /参数定义详情 gpio_int/ });
+    fireEvent.click(within(detail).getByRole("button", { name: "废弃" }));
+    const lifecycleDialog = screen.getByRole("dialog", { name: "废弃参数定义" });
+    fireEvent.change(within(lifecycleDialog).getByLabelText("废弃原因"), {
+      target: { value: "由平台定义接管" }
+    });
+    fireEvent.click(within(lifecycleDialog).getByRole("button", { name: "确认废弃" }));
+
+    await waitFor(() =>
+      expect(deprecateParameterSpec).toHaveBeenCalledWith("spec-sc8562-gpio-int", {
+        reason: "由平台定义接管"
+      })
+    );
+    expect(await screen.findByText("已废弃")).toBeInTheDocument();
+  });
+
+  it("restores a deprecated spec and shows concise success feedback", async () => {
+    const deprecatedDetail = { ...SPEC_DETAIL, lifecycle: "deprecated" as const };
+    const restoreParameterSpec = vi.fn().mockResolvedValue({ ...SPEC_DETAIL, lifecycle: "active" });
+    const repository = createRepository({
+      listSpecs: vi.fn().mockResolvedValue([{ ...SPEC_SUMMARY, lifecycle: "deprecated" }]),
+      getSpec: vi.fn().mockResolvedValue(deprecatedDetail),
+      restoreParameterSpec
+    });
+    renderPage({
+      repository,
+      path: "/parameter-admin/specs?spec=spec-sc8562-gpio-int"
+    });
+
+    const detail = await screen.findByRole("dialog", { name: /参数定义详情 gpio_int/ });
+    fireEvent.click(within(detail).getByRole("button", { name: "恢复" }));
+    const lifecycleDialog = screen.getByRole("dialog", { name: "恢复参数定义" });
+    fireEvent.change(within(lifecycleDialog).getByLabelText("恢复原因"), {
+      target: { value: "重新纳入治理" }
+    });
+    fireEvent.click(within(lifecycleDialog).getByRole("button", { name: "确认恢复" }));
+
+    await waitFor(() =>
+      expect(restoreParameterSpec).toHaveBeenCalledWith("spec-sc8562-gpio-int", {
+        reason: "重新纳入治理"
+      })
+    );
+    expect(await screen.findByText("已恢复")).toBeInTheDocument();
   });
 
   it("resolves a spec review task and surfaces a governance audit record", async () => {
@@ -662,9 +722,6 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     );
     await waitFor(() => expect(within(queue).getByText("没有待确认的自动匹配。")).toBeInTheDocument());
 
-    const audit = screen.getByRole("status", { name: "治理审计" });
-    expect(audit).toHaveTextContent(/spec-review-resolved/);
-    expect(audit).toHaveTextContent(/Matched SC8562/);
   });
 
   it("dismisses a spec review task with a governance audit record", async () => {
@@ -692,7 +749,6 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
       })
     );
     await waitFor(() => expect(within(queue).getByText("没有待确认的自动匹配。")).toBeInTheDocument());
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/spec-review-dismissed/);
   });
 
   it("creates a draft spec from an unmatched review task with audit", async () => {
@@ -729,10 +785,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
         reason: "Need manual draft"
       })
     );
-    await waitFor(() =>
-      expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/spec-review-create-spec/)
-    );
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/草稿规格「mystery_prop」已创建/);
+    await waitFor(() => expect(within(queue).getByText("没有待确认的自动匹配。")).toBeInTheDocument());
   });
 
   it("pages the review queue through the topology port cursor via 下一页 and opens one adjudication dialog at a time", async () => {
@@ -831,6 +884,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
           propertyKey: "other_prop",
           driverModule: "unknown-ic",
           compatiblePatterns: null,
+          attributionModules: [],
           valueShape: { kind: "strings" }
         }
       ])
@@ -840,9 +894,9 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     const library = await screen.findByRole("region", { name: "参数定义库" });
     const table = within(library).getByRole("table");
-    expect(within(library).getByRole("columnheader", { name: "预测模块" })).toBeInTheDocument();
-    expect(within(table).getByText("SC8562")).toBeInTheDocument();
-    expect(within(table).getByText("未分类 · unknown-ic（预测）")).toBeInTheDocument();
+    expect(within(library).getByRole("columnheader", { name: "归属模块" })).toBeInTheDocument();
+    expect(within(table).getByText("充电策略")).toBeInTheDocument();
+    expect(within(table).getByText("unknown-ic（未实测）")).toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: "所属模块" })).not.toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: "compatible" })).not.toBeInTheDocument();
     expect(within(table).getByText("cells")).toBeInTheDocument();
@@ -872,7 +926,6 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "批准" }));
 
     await waitFor(() => expect(within(queue).getByText("没有待确认的自动匹配。")).toBeInTheDocument());
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/spec-review-resolved/);
   });
 });
 
@@ -919,7 +972,6 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     await waitFor(() =>
       expect(within(panel).getByRole("button", { name: "修改模块 电源路径" })).toBeInTheDocument()
     );
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-created/);
 
     fireEvent.click(within(panel).getByRole("button", { name: "修改模块 电源路径" }));
     const editDialog = screen.getByRole("dialog", { name: "修改模块 电源路径" });
@@ -937,7 +989,6 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     await waitFor(() =>
       expect(within(panel).getByRole("button", { name: "修改模块 电源路径组" })).toBeInTheDocument()
     );
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-renamed/);
 
     fireEvent.click(within(panel).getByRole("button", { name: "电源路径组 更多操作" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "移动模块 电源路径组" }));
@@ -950,7 +1001,6 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
         parentId: "mod-charging"
       })
     );
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-moved/);
 
     fireEvent.click(within(panel).getByRole("button", { name: "电源路径组 更多操作" }));
     await waitFor(() =>
@@ -961,7 +1011,6 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     await waitFor(() =>
       expect(within(panel).queryByRole("button", { name: "电源路径组 更多操作" })).not.toBeInTheDocument()
     );
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-deleted/);
   });
 
   it("removes an inline mapping rule from the module tree with audit", async () => {
@@ -978,7 +1027,9 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
       within(editDialog).getByRole("button", { name: "移除规则 compatible:vendor,sc8562" })
     );
     await waitFor(() => expect(moduleRegistry.deleteMapping).toHaveBeenCalled());
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-mapping-deleted/);
+    await waitFor(() =>
+      expect(within(editDialog).queryByText("compatible:vendor,sc8562")).not.toBeInTheDocument()
+    );
     confirmSpy.mockRestore();
   });
 
@@ -1005,9 +1056,6 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     const resultDialog = await screen.findByRole("dialog", { name: "全量重算结果" });
     expect(within(resultDialog).getByText("更新的项目参数")).toBeInTheDocument();
     expect(within(resultDialog).getByText("3")).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(
-      /module-bindings-recomputed/
-    );
     fireEvent.click(within(resultDialog).getByRole("button", { name: "知道了" }));
     expect(screen.queryByRole("dialog", { name: "全量重算结果" })).not.toBeInTheDocument();
   });
@@ -1024,7 +1072,11 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
 
   it("hides the modules sub-nav when discovery is empty", async () => {
     const moduleRegistry = createModuleRegistry({
-      getDiscoveryHints: vi.fn(async () => ({ compatibles: [], total: 0 }))
+      getDiscoveryHints: vi.fn(async () => ({
+        compatibles: [],
+        dismissedCompatibles: [],
+        total: 0
+      }))
     });
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
@@ -1050,7 +1102,6 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     await waitFor(() =>
       expect(within(panel).getByRole("button", { name: "修改模块 Mock 模块" })).toBeInTheDocument()
     );
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/module-created/);
   });
 });
 
@@ -1109,7 +1160,7 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
       )
     );
     await waitFor(() =>
-      expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/import-batch-applied/)
+      expect(screen.queryByRole("dialog", { name: "批量参数导入向导" })).not.toBeInTheDocument()
     );
   });
 
@@ -1233,9 +1284,6 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       })
     );
     await waitFor(() =>
-      expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/identity-mapping-resolved/)
-    );
-    await waitFor(() =>
       expect(screen.getByText("当前没有待处理的节点对应任务。")).toBeInTheDocument()
     );
   });
@@ -1256,7 +1304,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
     fireEvent.click(within(review).getByRole("button", { name: "确认对应" }));
 
     await waitFor(() =>
-      expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/identity-mapping-resolved/)
+      expect(screen.getByText("当前没有待处理的节点对应任务。")).toBeInTheDocument()
     );
   });
 });

@@ -5,6 +5,10 @@ import type {
   ModuleKind,
   ParameterModuleMapping
 } from "@/domain/parameter-topology/moduleRegistry";
+import type {
+  OrganizationDriverSchema,
+  OrganizationDriverSchemaDeprecationImpact
+} from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { canSubmitModuleDraft, ModuleDefinitionForm } from "./ModuleDefinitionForm";
@@ -56,6 +60,9 @@ export function ModuleEditDialog({
   onRemoveCompatibleMapping,
   onAddCompatibleMapping,
   onAuthorOverlaySchema,
+  overlaySchemas,
+  onPreviewOverlayDeprecation,
+  onDeprecateOverlaySchema,
   canAdmin = false
 }: {
   module: EditableModule;
@@ -72,6 +79,14 @@ export function ModuleEditDialog({
   onRemoveCompatibleMapping?: (mappingId: string) => void | Promise<void>;
   onAddCompatibleMapping?: (matchValue: string) => void | Promise<void>;
   onAuthorOverlaySchema?: (compatible: string) => void;
+  overlaySchemas?: readonly OrganizationDriverSchema[];
+  onPreviewOverlayDeprecation?: (
+    schemaId: string
+  ) => Promise<OrganizationDriverSchemaDeprecationImpact>;
+  onDeprecateOverlaySchema?: (
+    schemaId: string,
+    input: { confirmCoverageLoss?: boolean }
+  ) => void | Promise<void>;
   canAdmin?: boolean;
 }) {
   const addFieldId = useId();
@@ -85,6 +100,13 @@ export function ModuleEditDialog({
     module.kind === "node-type" ? module.kind : "business"
   );
   const [newCompatible, setNewCompatible] = useState("");
+  const [deprecatingSchema, setDeprecatingSchema] = useState<OrganizationDriverSchema | null>(
+    null
+  );
+  const [deprecationImpact, setDeprecationImpact] =
+    useState<OrganizationDriverSchemaDeprecationImpact | null>(null);
+  const [impactError, setImpactError] = useState<string | null>(null);
+  const [coverageLossConfirmed, setCoverageLossConfirmed] = useState(false);
 
   useEffect(() => {
     setDraft({
@@ -124,8 +146,29 @@ export function ModuleEditDialog({
     return map;
   }, [compatibleCoverages]);
 
+  const openDeprecationPreview = async (schema: OrganizationDriverSchema) => {
+    if (!onPreviewOverlayDeprecation) return;
+    setImpactError(null);
+    setCoverageLossConfirmed(false);
+    try {
+      const impact = await onPreviewOverlayDeprecation(schema.id);
+      setDeprecatingSchema(schema);
+      setDeprecationImpact(impact);
+    } catch (error) {
+      setImpactError(error instanceof Error ? error.message : "无法加载废弃影响预览。");
+    }
+  };
+
+  const closeDeprecationPreview = () => {
+    setDeprecatingSchema(null);
+    setDeprecationImpact(null);
+    setImpactError(null);
+    setCoverageLossConfirmed(false);
+  };
+
   return (
-    <div className="modal-backdrop param-admin-module-edit-backdrop" role="dialog" aria-modal="true" aria-label={`修改模块 ${module.name}`}>
+    <>
+      <div className="modal-backdrop param-admin-module-edit-backdrop" role="dialog" aria-modal="true" aria-label={`修改模块 ${module.name}`}>
       <div className="submission-dialog param-admin-module-edit-dialog">
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
@@ -287,6 +330,56 @@ export function ModuleEditDialog({
               ) : null}
             </section>
           ) : null}
+
+          {module.kind === "driver-group" && (overlaySchemas?.length ?? 0) > 0 ? (
+            <section className="module-edit-overlay-schemas" aria-label="组织级解析覆盖">
+              <h3>组织级解析覆盖</h3>
+              <ul className="module-edit-overlay-schemas__list">
+                {overlaySchemas!.map((schema) => {
+                  const superseded = schema.lifecycle === "superseded";
+                  return (
+                    <li key={schema.id} className="module-edit-overlay-schemas__row">
+                      <div>
+                        <strong>{schema.displayName}</strong>
+                        <p className="muted">
+                          <code>{schema.compatible}</code> ·{" "}
+                          <span>
+                            {superseded
+                              ? "已提升至平台层"
+                              : schema.lifecycle === "active"
+                                ? "已启用"
+                                : "已废弃"}
+                          </span>
+                        </p>
+                        {superseded ? (
+                          <p className="muted">
+                            <span>
+                              {`后继来源：平台层解析 ${schema.supersededBySchemaId ?? "—"}`}
+                            </span>
+                          </p>
+                        ) : null}
+                      </div>
+                      {canAdmin &&
+                      schema.lifecycle === "active" &&
+                      onPreviewOverlayDeprecation &&
+                      onDeprecateOverlaySchema ? (
+                        <button
+                          type="button"
+                          className="button ghost"
+                          disabled={busy}
+                          aria-label={`废弃 ${schema.displayName}`}
+                          onClick={() => void openDeprecationPreview(schema)}
+                        >
+                          废弃
+                        </button>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+              {impactError ? <p className="form-error" role="alert">{impactError}</p> : null}
+            </section>
+          ) : null}
         </div>
 
         <div className="dialog-actions">
@@ -314,6 +407,67 @@ export function ModuleEditDialog({
           </button>
         </div>
       </div>
-    </div>
+      </div>
+      {deprecatingSchema && deprecationImpact ? (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="废弃解析影响预览"
+        >
+          <div className="submission-dialog param-admin-editor-dialog">
+            <div className="submission-dialog-head">
+              <div>
+                <span className="eyebrow">组织级解析 · 废弃</span>
+                <h2>{deprecatingSchema.displayName}</h2>
+              </div>
+            </div>
+            <div className="form-stack">
+              <p>{deprecationImpact.coverageLoss ? "解析覆盖将丢失" : "解析覆盖由后继来源继续提供"}</p>
+              <p>定义 {deprecationImpact.definitionCount} 项</p>
+              <p>项目 {deprecationImpact.projectCount} 个</p>
+              {deprecationImpact.successorSource ? (
+                <p>
+                  后继来源：
+                  {deprecationImpact.successorSource.scope === "platform"
+                    ? `平台层解析 ${deprecationImpact.successorSource.displayName}`
+                    : `${deprecationImpact.successorSource.source} ${deprecationImpact.successorSource.pattern}`}
+                </p>
+              ) : (
+                <p className="form-error">无后继解析来源；这是高风险操作。</p>
+              )}
+              {deprecationImpact.coverageLoss ? (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={coverageLossConfirmed}
+                    onChange={(event) => setCoverageLossConfirmed(event.target.checked)}
+                  />
+                  我确认该 compatible 将失去解析覆盖
+                </label>
+              ) : null}
+            </div>
+            <div className="dialog-actions">
+              <button type="button" className="button subtle" onClick={closeDeprecationPreview}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="button primary"
+                disabled={busy || (deprecationImpact.coverageLoss && !coverageLossConfirmed)}
+                onClick={() => {
+                  void onDeprecateOverlaySchema?.(deprecatingSchema.id, {
+                    confirmCoverageLoss: deprecationImpact.coverageLoss
+                  });
+                  closeDeprecationPreview();
+                }}
+              >
+                确认废弃
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

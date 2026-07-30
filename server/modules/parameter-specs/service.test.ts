@@ -4,7 +4,7 @@ import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { writeGovernanceAudit } from "../parameter-topology/governanceAudit";
-import { countOpenIdentityMappingTasksForRevision } from "../parameter-topology/bindingService";
+import { countBlockingIdentityMappingTasksForRevision } from "../parameter-topology/bindingService";
 import {
   applyDismissedSpecReview,
   applyResolvedSpecReview,
@@ -75,7 +75,7 @@ vi.mock("../parameter-topology/governanceAudit", () => ({
 }));
 
 vi.mock("../parameter-topology/bindingService", () => ({
-  countOpenIdentityMappingTasksForRevision: vi.fn(),
+  countBlockingIdentityMappingTasksForRevision: vi.fn(),
 }));
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
@@ -124,7 +124,7 @@ describe("parameter spec review service", () => {
     vi.clearAllMocks();
     vi.mocked(assertSpecResolvable).mockImplementation(() => undefined);
     vi.mocked(countOpenSpecReviewTasksForRevision).mockResolvedValue(0);
-    vi.mocked(countOpenIdentityMappingTasksForRevision).mockResolvedValue(0);
+    vi.mocked(countBlockingIdentityMappingTasksForRevision).mockResolvedValue(0);
     vi.mocked(refreshConfigRevisionAfterSpecReview).mockResolvedValue("resolved");
   });
 

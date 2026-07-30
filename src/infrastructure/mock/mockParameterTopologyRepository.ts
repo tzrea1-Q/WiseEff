@@ -597,6 +597,22 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       return cloneDetail(updated);
     },
 
+    async deprecateParameterSpec(specId) {
+      const existing = store.specs.get(specId);
+      if (!existing) throw new Error(`ParameterSpec not found: ${specId}`);
+      const updated: SpecFixture = { ...existing, lifecycle: "deprecated" };
+      store.specs.set(specId, updated);
+      return cloneDetail(updated);
+    },
+
+    async restoreParameterSpec(specId) {
+      const existing = store.specs.get(specId);
+      if (!existing) throw new Error(`ParameterSpec not found: ${specId}`);
+      const updated: SpecFixture = { ...existing, lifecycle: "active" };
+      store.specs.set(specId, updated);
+      return cloneDetail(updated);
+    },
+
     async listSpecReviewTasks(query = {}) {
       let items = store.reviewTasks.map((task) => ({
         ...task,

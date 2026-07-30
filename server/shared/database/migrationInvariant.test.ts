@@ -353,3 +353,16 @@ describe("identity mapping singleton blockers migration invariants", () => {
     expect(migration).toContain("identity_mapping_singleton_blocker_idx");
   });
 });
+
+describe("config revision lifecycle migration invariants", () => {
+  it("retires published because release happens at the file baseline layer", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0086_retire_config_revision_published.sql"),
+      "utf8",
+    );
+
+    expect(migration).toContain("where status = 'published'");
+    expect(migration).toContain("refuse to narrow");
+    expect(migration).not.toMatch(/check \(status in \([^)]*'published'/s);
+  });
+});

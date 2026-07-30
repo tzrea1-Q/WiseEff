@@ -117,6 +117,7 @@ export const routeManifest = [
   { id: "parameterSpecs.createOrganizationDriverSchema", method: "POST", path: "/api/v2/organization-driver-schemas", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.updateOrganizationDriverSchema", method: "PATCH", path: "/api/v2/organization-driver-schemas/:schemaId", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.activateOrganizationDriverSchema", method: "POST", path: "/api/v2/organization-driver-schemas/:schemaId/activate", module: "parameters", stability: "mvp" },
+  { id: "parameterSpecs.previewOrganizationDriverSchemaDeprecation", method: "GET", path: "/api/v2/organization-driver-schemas/:schemaId/deprecation-impact", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.deprecateOrganizationDriverSchema", method: "POST", path: "/api/v2/organization-driver-schemas/:schemaId/deprecate", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.listPromotionCandidates", method: "GET", path: "/api/v2/platform/driver-schemas/promotion-candidates", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.promoteDriverSchemaOverlay", method: "POST", path: "/api/v2/platform/driver-schemas/promotions", module: "parameters", stability: "mvp" },

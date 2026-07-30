@@ -126,6 +126,7 @@ export function OrganizationModuleGovernancePanel({
       },
       createOrganizationDriverSchema: (input: CreateOrganizationDriverSchemaInput) =>
         base.createOrganizationDriverSchema(input),
+      listOrganizationDriverSchemas: () => base.listOrganizationDriverSchemas?.() ?? Promise.resolve([]),
       activateOrganizationDriverSchema: async (schemaId) => {
         const result = await base.activateOrganizationDriverSchema(schemaId);
         pushModuleAudit(
@@ -134,7 +135,13 @@ export function OrganizationModuleGovernancePanel({
           `已激活组织解析 schema「${result.schema.displayName}」`
         );
         return result;
-      }
+      },
+      previewOrganizationDriverSchemaDeprecation: (schemaId) =>
+        base.previewOrganizationDriverSchemaDeprecation?.(schemaId) ??
+        Promise.reject(new Error("Overlay deprecation preview is unavailable.")),
+      deprecateOrganizationDriverSchema: (schemaId, input) =>
+        base.deprecateOrganizationDriverSchema?.(schemaId, input) ??
+        Promise.reject(new Error("Overlay deprecation is unavailable."))
     };
   }, [application, dispatch]);
 

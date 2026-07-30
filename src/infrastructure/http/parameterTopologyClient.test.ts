@@ -93,6 +93,36 @@ describe("parameterTopologyClient DTO mapping", () => {
 });
 
 describe("createHttpParameterTopologyRepository", () => {
+  it("deprecates and restores specs through lifecycle endpoints", async () => {
+    const fetchMock = fetchQueue(
+      { item: { ...specDetailDto, lifecycle: "deprecated" } },
+      { item: { ...specDetailDto, lifecycle: "active" } }
+    );
+    const repository = createHttpParameterTopologyRepository(
+      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
+    );
+
+    await repository.deprecateParameterSpec("spec-1", { reason: "platform takeover" });
+    await repository.restoreParameterSpec("spec-1", { reason: "resume governance" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://api.test/api/v2/parameter-specs/spec-1/deprecate",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ reason: "platform takeover" })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://api.test/api/v2/parameter-specs/spec-1/restore",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ reason: "resume governance" })
+      })
+    );
+  });
+
   it("lists bindings via v2 project bindings and maps DTOs", async () => {
     const fetchMock = fetchQueue({ items: [bindingDto] });
     const repository = createHttpParameterTopologyRepository(

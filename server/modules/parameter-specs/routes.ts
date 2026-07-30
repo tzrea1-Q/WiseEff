@@ -9,6 +9,7 @@ import {
   activateParameterSpecBodySchema,
   createOrganizationDriverSchemaBodySchema,
   createParameterSpecBodySchema,
+  deprecateOrganizationDriverSchemaBodySchema,
   deprecateParameterSpecBodySchema,
   listParameterSpecsQuerySchema,
   listSpecReviewTasksQuerySchema,
@@ -39,6 +40,7 @@ import {
   deprecateOrganizationDriverSchemaForAuth,
   getOrganizationDriverSchemaForAuth,
   listOrganizationDriverSchemasForAuth,
+  previewOrganizationDriverSchemaDeprecationForAuth,
   updateOrganizationDriverSchemaForAuth,
 } from "./driverSchemaOverlayService";
 import {
@@ -258,7 +260,16 @@ export function registerParameterSpecRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(organizationDriverSchemaParamsSchema, request.params);
-    const item = await deprecateOrganizationDriverSchemaForAuth(db, auth, params.schemaId);
+    const body = parseWithSchema(deprecateOrganizationDriverSchemaBodySchema, request.body ?? {});
+    const item = await deprecateOrganizationDriverSchemaForAuth(db, auth, params.schemaId, body);
+    return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v2/organization-driver-schemas/:schemaId/deprecation-impact", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(organizationDriverSchemaParamsSchema, request.params);
+    const item = await previewOrganizationDriverSchemaDeprecationForAuth(db, auth, params.schemaId);
     return { status: 200, body: { item } };
   });
 

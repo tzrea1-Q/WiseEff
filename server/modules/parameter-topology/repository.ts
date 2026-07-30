@@ -811,7 +811,6 @@ export const CONTINUITY_BASELINE_STATUSES = [
   "validated",
   "compiled",
   "pending_approval",
-  "published",
 ] as const;
 
 export type PreviousLogicalNodeRow = {

@@ -28,7 +28,7 @@ Stacked delivery on one branch (split to GitHub PRs by the parent agent if neede
 | PR3 | Versioned specs backend (`0083`, ADR-0014) | done |
 | PR4 | Create entry + staged version cutover | done |
 | PR5 | Identity mapping + singleton gate | done |
-| PR6 | Governance UI convergence | pending |
+| PR6 | Governance UI convergence | done |
 
 Implementation agents commit on this branch only; parent opens/merges GitHub PRs.
 

@@ -17,6 +17,7 @@ import {
   insertDismissedCompatible,
   insertMapping,
   listBindingsForModuleRecompute,
+  listDismissedCompatiblesForDiscovery,
   listObservedCompatiblesForDiscovery,
   listSubtreeModuleIds,
   moduleExists,
@@ -408,6 +409,14 @@ export type ModuleDiscoveryHintsDto = {
     projectCount: number;
     suggestedGroupName: string;
   }>;
+  dismissedCompatibles: Array<{
+    compatible: string;
+    bindingCount: number;
+    projectCount: number;
+    suggestedGroupName: string;
+    reason: string;
+    dismissedAt: string;
+  }>;
   total: number;
 };
 
@@ -416,10 +425,15 @@ export async function getModuleDiscoveryHints(
   auth: AuthContext,
 ): Promise<{ item: ModuleDiscoveryHintsDto }> {
   requireCanView(auth);
-  const page = await listObservedCompatiblesForDiscovery(db, {
-    organizationId: auth.organization.id,
-  });
-  return { item: { compatibles: page.items, total: page.total } };
+  const [page, dismissedCompatibles] = await Promise.all([
+    listObservedCompatiblesForDiscovery(db, {
+      organizationId: auth.organization.id,
+    }),
+    listDismissedCompatiblesForDiscovery(db, {
+      organizationId: auth.organization.id,
+    }),
+  ]);
+  return { item: { compatibles: page.items, dismissedCompatibles, total: page.total } };
 }
 
 export async function dismissCompatible(

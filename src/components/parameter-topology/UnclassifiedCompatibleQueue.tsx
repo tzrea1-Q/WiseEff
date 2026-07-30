@@ -6,6 +6,7 @@ import type { UnmappedCompatibleHint } from "@/domain/parameter-topology/moduleD
 
 export type UnclassifiedCompatibleQueueProps = {
   hints: readonly UnmappedCompatibleHint[];
+  dismissedHints?: readonly UnmappedCompatibleHint[];
   canAdmin?: boolean;
   busy?: boolean;
   selectedCompatibles: readonly string[];
@@ -13,6 +14,7 @@ export type UnclassifiedCompatibleQueueProps = {
   onClassify: (hints: UnmappedCompatibleHint[]) => void;
   onClaim?: (hint: UnmappedCompatibleHint) => void;
   onDismiss: (compatible: string) => void;
+  onRestore?: (compatible: string) => void;
 };
 
 function uniqueValues(values: readonly string[]): string[] {
@@ -30,13 +32,15 @@ function toggleValue(selected: readonly string[], value: string): string[] {
  */
 export function UnclassifiedCompatibleQueue({
   hints,
+  dismissedHints = [],
   canAdmin = false,
   busy = false,
   selectedCompatibles,
   onSelectionChange,
   onClassify,
   onClaim,
-  onDismiss
+  onDismiss,
+  onRestore
 }: UnclassifiedCompatibleQueueProps) {
   const [compatibleFilter, setCompatibleFilter] = useState<string[]>([]);
   const [suggestedFilter, setSuggestedFilter] = useState<string[]>([]);
@@ -232,6 +236,35 @@ export function UnclassifiedCompatibleQueue({
           </table>
         </div>
       )}
+
+      {dismissedHints.length > 0 ? (
+        <section
+          className="unclassified-compatible-queue__dismissed"
+          aria-label="已忽略"
+        >
+          <h5>已忽略</h5>
+          <ul className="unclassified-compatible-queue__dismissed-list">
+            {dismissedHints.map((hint) => (
+              <li key={hint.compatible} className="unclassified-compatible-queue__dismissed-row">
+                <code title={hint.compatible}>{hint.compatible}</code>
+                <span className="muted">
+                  {hint.bindingCount} 参数 · {hint.projectCount} 项目
+                </span>
+                {canAdmin && onRestore ? (
+                  <button
+                    type="button"
+                    className="button subtle"
+                    disabled={busy}
+                    onClick={() => onRestore(hint.compatible)}
+                  >
+                    {PARAMETER_ADMIN_UI.restoreCompatible}
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </section>
   );
 }

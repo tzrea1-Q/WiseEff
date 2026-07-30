@@ -3,15 +3,18 @@ import { describe, expect, it } from "vitest";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import {
   aggregateSubtreeParameterCounts,
+  addChildModuleDecision,
   allowedCreateKindsForParent,
   canAddChildModule,
   canDeleteModule,
   canEditImportance,
   canMoveModule,
   canReclassifyModule,
+  deleteModuleDecision,
   defaultExpandedModuleIds,
   filterModulesForAttribution,
   isNotYetObservedModule,
+  sortOrderSwapUpdates,
   summarizeDriverCoverage,
   toBusinessFlatNodes
 } from "./moduleAttributionTreeUtils";
@@ -131,6 +134,37 @@ describe("moduleAttributionTreeUtils", () => {
     expect(canAddChildModule(modules[0]!)).toBe(true);
     expect(canAddChildModule(modules[1]!)).toBe(true);
     expect(canAddChildModule(modules[2]!)).toBe(true);
+  });
+
+  it("returns disabled reasons and swaps only sibling sort orders", () => {
+    const unclassified: ParameterModule = {
+      ...modules[0]!,
+      id: "u",
+      name: "未分类",
+      kind: "unclassified",
+      origin: "auto",
+      sortOrder: 99
+    };
+    const sibling: ParameterModule = {
+      ...modules[1]!,
+      id: "g2",
+      name: "Group 2",
+      sortOrder: 10
+    };
+
+    expect(deleteModuleDecision(modules[2]!)).toEqual({
+      allowed: false,
+      reason: "节点类型不可删除，请改挂到其它父级或联系运维。"
+    });
+    expect(addChildModuleDecision(unclassified)).toEqual({
+      allowed: false,
+      reason: "未分类根不可添加子模块。"
+    });
+    expect(sortOrderSwapUpdates(modules[1]!, "down", [...modules, sibling])).toEqual([
+      { id: "g", sortOrder: 10 },
+      { id: "g2", sortOrder: 0 }
+    ]);
+    expect(sortOrderSwapUpdates(modules[1]!, "up", [...modules, sibling])).toBeNull();
   });
 
   it("summarizes parse coverage per driver-group module", () => {

@@ -4,7 +4,7 @@ import { canAdminParameters, canViewParameters } from "../parameters/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { writeGovernanceAudit } from "../parameter-topology/governanceAudit";
-import { countOpenIdentityMappingTasksForRevision } from "../parameter-topology/bindingService";
+import { countBlockingIdentityMappingTasksForRevision } from "../parameter-topology/bindingService";
 import { stableSemanticId } from "../parameter-topology/migration";
 import { randomUUID } from "node:crypto";
 import {
@@ -503,7 +503,7 @@ export async function resolveSpecReviewTask(
       projectId: applied.projectId,
       configRevisionId: applied.configRevisionId,
     });
-    const openMappingsRemaining = await countOpenIdentityMappingTasksForRevision(tx, {
+    const openMappingsRemaining = await countBlockingIdentityMappingTasksForRevision(tx, {
       organizationId: auth.organization.id,
       configRevisionId: applied.configRevisionId,
     });

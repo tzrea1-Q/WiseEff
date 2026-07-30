@@ -246,6 +246,8 @@ export type ParameterSpecLibraryProps = {
   onSelectSpec: (specId: string) => void;
   onCloseSpec?: () => void;
   onSaveSpec?: (payload: SpecEditorSavePayload) => void | Promise<void>;
+  onDeprecateSpec?: (input: { specId: string; reason: string }) => void | Promise<void>;
+  onRestoreSpec?: (input: { specId: string; reason: string }) => void | Promise<void>;
   savePending?: boolean;
   saveError?: string | null;
   onCreateSpec?: () => void;
@@ -266,6 +268,8 @@ export function ParameterSpecLibrary({
   onSelectSpec,
   onCloseSpec,
   onSaveSpec,
+  onDeprecateSpec,
+  onRestoreSpec,
   savePending = false,
   saveError = null,
   onCreateSpec,
@@ -554,6 +558,16 @@ export function ParameterSpecLibrary({
           onClose={() => onCloseSpec?.()}
           pending={savePending || activatePending}
           error={saveError}
+          onDeprecate={
+            onDeprecateSpec
+              ? ({ reason }) => onDeprecateSpec({ specId: detail.id, reason })
+              : undefined
+          }
+          onRestore={
+            onRestoreSpec
+              ? ({ reason }) => onRestoreSpec({ specId: detail.id, reason })
+              : undefined
+          }
           onSave={
             onSaveSpec ??
             (onActivateDraftSpec

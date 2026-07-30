@@ -61,6 +61,8 @@ export type ParameterAdminApplication = {
   resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput): Promise<void>;
   activateParameterSpec(specId: string, input: ActivateParameterSpecInput): Promise<ParameterSpecDetail>;
   updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
+  deprecateParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
+  restoreParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
 
   getModuleRegistry(): Promise<ParameterModuleRegistry>;
   getModuleDiscoveryHints(): Promise<ModuleDiscoveryHints>;
@@ -121,8 +123,15 @@ export function createParameterAdminApplication({
     listDriverRegistry: () => moduleRegistry.listDriverRegistry(),
     registerOrClaimDriver: (input) => moduleRegistry.registerOrClaimDriver(input),
     createOrganizationDriverSchema: (input) => moduleRegistry.createOrganizationDriverSchema(input),
+    listOrganizationDriverSchemas: () => moduleRegistry.listOrganizationDriverSchemas?.() ?? Promise.resolve([]),
     activateOrganizationDriverSchema: (schemaId) =>
-      moduleRegistry.activateOrganizationDriverSchema(schemaId)
+      moduleRegistry.activateOrganizationDriverSchema(schemaId),
+    previewOrganizationDriverSchemaDeprecation: (schemaId) =>
+      moduleRegistry.previewOrganizationDriverSchemaDeprecation?.(schemaId) ??
+      Promise.reject(new Error("Overlay deprecation preview is unavailable.")),
+    deprecateOrganizationDriverSchema: (schemaId, input) =>
+      moduleRegistry.deprecateOrganizationDriverSchema?.(schemaId, input) ??
+      Promise.reject(new Error("Overlay deprecation is unavailable."))
   });
 
   return {
@@ -146,6 +155,12 @@ export function createParameterAdminApplication({
     },
     updateParameterSpec(specId, input) {
       return topology.updateParameterSpec(specId, input);
+    },
+    deprecateParameterSpec(specId, input) {
+      return topology.deprecateParameterSpec(specId, input);
+    },
+    restoreParameterSpec(specId, input) {
+      return topology.restoreParameterSpec(specId, input);
     },
 
     getModuleRegistry() {

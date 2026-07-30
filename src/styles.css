@@ -24163,6 +24163,27 @@ button.dts-topology-navigator__disclosure:focus-visible {
   }
 }
 
+@media (max-width: 640px) {
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid colgroup {
+    display: none;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid tbody td:nth-child(n) {
+    display: grid;
+    width: auto;
+    min-width: 0;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid tbody td:first-child {
+    display: flex;
+  }
+}
+
 .project-primary-dts-viewer {
   display: grid;
   gap: 10px;

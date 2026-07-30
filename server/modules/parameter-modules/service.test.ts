@@ -6,6 +6,7 @@ import { ApiError } from "../../shared/http/errors";
 import {
   createModuleMapping,
   disbandDriverGroupModule,
+  getModuleDiscoveryHints,
   getParameterModuleRegistry,
   recomputeBindingModules
 } from "./service";
@@ -74,6 +75,41 @@ describe("parameter module registry service", () => {
     await expect(
       getParameterModuleRegistry(db, makeAuth({ permissions: [] }))
     ).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("returns persisted dismissed compatibles with current impact counts", async () => {
+    const query = vi.fn(async (text: string) => {
+      if (text.includes("from project_parameter_bindings") && text.includes("not exists")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes("from parameter_module_dismissed_compatibles dc")) {
+        return {
+          rows: [{
+            compatible: "vendor,dismissed",
+            reason: "out of scope",
+            dismissed_at: "2026-07-30T00:00:00.000Z",
+            binding_count: "4",
+            project_count: "2",
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const db = { query } as unknown as Database;
+
+    const result = await getModuleDiscoveryHints(db, makeAuth());
+
+    expect(result.item.dismissedCompatibles).toEqual([
+      {
+        compatible: "vendor,dismissed",
+        bindingCount: 4,
+        projectCount: 2,
+        suggestedGroupName: "dismissed",
+        reason: "out of scope",
+        dismissedAt: "2026-07-30T00:00:00.000Z",
+      },
+    ]);
   });
 
   it("rejects mapping creation without admin permission", async () => {

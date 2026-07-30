@@ -654,11 +654,32 @@ export async function activateOrganizationDriverSchemaForAuth(
   });
 }
 
-export async function deprecateOrganizationDriverSchemaForAuth(
+export type OrganizationDriverSchemaDeprecationImpact = {
+  schemaId: string;
+  compatible: string;
+  coverageLoss: boolean;
+  definitionCount: number;
+  projectCount: number;
+  successorSource:
+    | {
+        scope: "platform";
+        schemaId: string;
+        displayName: string;
+      }
+    | {
+        scope: "pinned";
+        driverId: string;
+        pattern: string;
+        source: string;
+      }
+    | null;
+};
+
+export async function previewOrganizationDriverSchemaDeprecationForAuth(
   db: Database,
   auth: AuthContext,
   schemaId: string,
-): Promise<OrganizationDriverSchemaRecord> {
+): Promise<OrganizationDriverSchemaDeprecationImpact> {
   requireCanAdmin(auth);
   const existing = await getOrganizationDriverSchema(db, {
     organizationId: auth.organization.id,
@@ -666,6 +687,88 @@ export async function deprecateOrganizationDriverSchemaForAuth(
   });
   if (!existing) {
     throw new ApiError("NOT_FOUND", "Organization driver schema not found.", 404);
+  }
+
+  const pinnedCoverage = lookupParseCoverage(
+    existing.compatible,
+    getCachedSchemaRegistry(schemasRoot),
+  );
+  const platformOverlay = pinnedCoverage.covered
+    ? null
+    : await findActivePlatformDriverSchemaOverlayByCompatible(db, existing.compatible);
+  const successorSource: OrganizationDriverSchemaDeprecationImpact["successorSource"] =
+    pinnedCoverage.covered
+      ? {
+          scope: "pinned",
+          driverId: pinnedCoverage.driverId,
+          pattern: pinnedCoverage.pattern,
+          source: pinnedCoverage.source,
+        }
+      : platformOverlay
+        ? {
+            scope: "platform",
+            schemaId: platformOverlay.id,
+            displayName: platformOverlay.displayName,
+          }
+        : null;
+  const projectImpact = await db.query<{ project_count: string }>(
+    `
+    select count(distinct b.project_id)::text as project_count
+    from project_parameter_bindings b
+    left join lateral (
+      select compatible
+      from dts_logical_node_revisions
+      where logical_node_id = b.logical_node_id
+      order by config_revision_id desc
+      limit 1
+    ) lnr on true
+    where b.organization_id = $1
+      and lower(trim(both '"' from trim(both '''' from trim(both from lnr.compatible))))
+        = lower($2)
+    `,
+    [auth.organization.id, existing.compatible.trim()],
+  );
+
+  return {
+    schemaId: existing.id,
+    compatible: existing.compatible,
+    coverageLoss: existing.lifecycle === "active" && successorSource === null,
+    definitionCount: existing.properties.length,
+    projectCount: Number(projectImpact.rows[0]?.project_count ?? 0),
+    successorSource,
+  };
+}
+
+export async function deprecateOrganizationDriverSchemaForAuth(
+  db: Database,
+  auth: AuthContext,
+  schemaId: string,
+  input: { confirmCoverageLoss?: boolean } = {},
+): Promise<OrganizationDriverSchemaRecord> {
+  requireCanAdmin(auth);
+  const impact = await previewOrganizationDriverSchemaDeprecationForAuth(db, auth, schemaId);
+  if (impact.coverageLoss && !input.confirmCoverageLoss) {
+    throw new ApiError(
+      "CONFLICT",
+      "Deprecating this overlay removes parse coverage and requires explicit confirmation.",
+      409,
+      { confirmRequired: true, impact },
+    );
+  }
+  const existing = await getOrganizationDriverSchema(db, {
+    organizationId: auth.organization.id,
+    schemaId,
+  });
+  if (!existing) {
+    throw new ApiError("NOT_FOUND", "Organization driver schema not found.", 404);
+  }
+  if (existing.lifecycle === "superseded") {
+    throw new ApiError(
+      "CONFLICT",
+      "Superseded organization overlays are read-only.",
+      409,
+      { successorSchemaId: existing.supersededBySchemaId },
+    );
   }
   const updated = await setOrganizationDriverSchemaLifecycle(db, {
     organizationId: auth.organization.id,
@@ -679,7 +782,7 @@ export async function deprecateOrganizationDriverSchemaForAuth(
   await writeAudit(db, auth, {
     action: "deprecated",
     subjectId: schemaId,
-    metadata: { compatible: updated.compatible },
+    metadata: { compatible: updated.compatible, impact, confirmCoverageLoss: Boolean(input.confirmCoverageLoss) },
   });
   invalidateOrganizationSchemaRegistryCache(auth.organization.id);
   return updated;

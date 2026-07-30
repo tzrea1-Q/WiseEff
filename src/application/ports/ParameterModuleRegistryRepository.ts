@@ -63,8 +63,14 @@ export type ModuleDiscoveryHint = {
   suggestedGroupName: string;
 };
 
+export type DismissedCompatibleHint = ModuleDiscoveryHint & {
+  reason: string;
+  dismissedAt: string;
+};
+
 export type ModuleDiscoveryHints = {
   compatibles: ModuleDiscoveryHint[];
+  dismissedCompatibles: DismissedCompatibleHint[];
   total: number;
 };
 
@@ -156,6 +162,7 @@ export type OrganizationDriverSchema = {
   notes: string;
   lifecycle: string;
   version: number;
+  supersededBySchemaId?: string | null;
   properties: Array<{
     id: string;
     parameterSpecId: string;
@@ -164,6 +171,18 @@ export type OrganizationDriverSchema = {
     units: string | null;
     documentation: string;
   }>;
+};
+
+export type OrganizationDriverSchemaDeprecationImpact = {
+  schemaId: string;
+  compatible: string;
+  coverageLoss: boolean;
+  definitionCount: number;
+  projectCount: number;
+  successorSource:
+    | { scope: "platform"; schemaId: string; displayName: string }
+    | { scope: "pinned"; driverId: string; pattern: string; source: string }
+    | null;
 };
 
 export type ActivateOrganizationDriverSchemaResult = {
@@ -201,7 +220,15 @@ export interface ParameterModuleRegistryRepository {
   createOrganizationDriverSchema(
     input: CreateOrganizationDriverSchemaInput
   ): Promise<OrganizationDriverSchema>;
+  listOrganizationDriverSchemas?(): Promise<OrganizationDriverSchema[]>;
   activateOrganizationDriverSchema(
     schemaId: string
   ): Promise<ActivateOrganizationDriverSchemaResult>;
+  previewOrganizationDriverSchemaDeprecation?(
+    schemaId: string
+  ): Promise<OrganizationDriverSchemaDeprecationImpact>;
+  deprecateOrganizationDriverSchema?(
+    schemaId: string,
+    input?: { confirmCoverageLoss?: boolean }
+  ): Promise<OrganizationDriverSchema>;
 }

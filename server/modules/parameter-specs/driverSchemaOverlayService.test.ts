@@ -7,6 +7,8 @@ import { driverModuleFromOverlayCompatible } from "./driverSchemaOverlayMaterial
 import {
   activateOrganizationDriverSchemaForAuth,
   createOrganizationDriverSchemaForAuth,
+  deprecateOrganizationDriverSchemaForAuth,
+  previewOrganizationDriverSchemaDeprecationForAuth,
 } from "./driverSchemaOverlayService";
 import { buildManualSpecIds } from "./specIdentity";
 
@@ -276,5 +278,69 @@ describe("organizationDriverSchemaService", () => {
     expect(upgradedVersions).toContain(ids.parameterSpecId);
     expect(result.resolvedReviewTaskIds).toEqual(["task-1"]);
     expect(resolvedTasks).toEqual(["task-1"]);
+  });
+
+  it("previews deprecation impact and requires explicit high-risk confirmation without successor", async () => {
+    const { db } = createServiceDb({
+      schemas: [
+        {
+          id: "ods-risk",
+          organizationId: "org-1",
+          compatible: "vendor,only-overlay-chip",
+          displayName: "Only Overlay",
+          notes: "",
+          lifecycle: "active",
+          version: 1,
+          properties: [
+            {
+              id: "prop-1",
+              parameterSpecId: "spec-1",
+              propertyKey: "reg",
+              valueShape: { kind: "u32-array" },
+              units: null,
+              constraints: {},
+              documentation: "",
+            },
+            {
+              id: "prop-2",
+              parameterSpecId: "spec-2",
+              propertyKey: "enable",
+              valueShape: { kind: "bool" },
+              units: null,
+              constraints: {},
+              documentation: "",
+            },
+          ],
+        },
+      ],
+    });
+    const baseQuery = vi.mocked(db.query).getMockImplementation()!;
+    vi.mocked(db.query).mockImplementation(async (text: string, values?: unknown[]) => {
+      if (text.replace(/\s+/g, " ").toLowerCase().includes("count(distinct b.project_id)")) {
+        return { rows: [{ project_count: "3" }], rowCount: 1 };
+      }
+      return baseQuery(text, values);
+    });
+
+    const impact = await previewOrganizationDriverSchemaDeprecationForAuth(
+      db,
+      makeAuth(),
+      "ods-risk",
+    );
+
+    expect(impact).toMatchObject({
+      schemaId: "ods-risk",
+      compatible: "vendor,only-overlay-chip",
+      coverageLoss: true,
+      definitionCount: 2,
+      projectCount: 3,
+      successorSource: null,
+    });
+    await expect(
+      deprecateOrganizationDriverSchemaForAuth(db, makeAuth(), "ods-risk", {}),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: expect.objectContaining({ confirmRequired: true }),
+    });
   });
 });

@@ -2083,23 +2083,21 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await review.getByLabel("映射确认原因").fill(`${descriptionPrefix} admin UI resolve ${runSuffix}`);
       await review.getByRole("button", { name: "确认映射" }).click();
 
-      await expect(page.getByRole("status", { name: "治理审计" })).toContainText(/identity-mapping-resolved/, {
-        timeout: 30_000
-      });
-
-      const resolvedDb = await withPgClient(async (client) => {
-        const result = await client.query<{ status: string }>(
-          `select status from identity_mapping_tasks where id = $1`,
-          [openMapTask.id]
-        );
-        return {
-          table: "identity_mapping_tasks",
-          predicate: `id=${openMapTask.id}`,
-          observed: result.rows[0] ? `status=${result.rows[0].status}` : "missing",
-          rowCount: result.rowCount ?? result.rows.length
-        };
-      });
-      expect(resolvedDb.observed).toContain("resolved");
+      await expect
+        .poll(
+          async () => {
+            const resolvedDb = await withPgClient(async (client) => {
+              const result = await client.query<{ status: string }>(
+                `select status from identity_mapping_tasks where id = $1`,
+                [openMapTask.id]
+              );
+              return result.rows[0]?.status ?? "missing";
+            });
+            return resolvedDb;
+          },
+          { timeout: 30_000 }
+        )
+        .toBe("resolved");
 
       const auditResponse = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
         headers: adminHeaders()

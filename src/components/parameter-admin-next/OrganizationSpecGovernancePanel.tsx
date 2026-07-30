@@ -440,6 +440,42 @@ export function OrganizationSpecGovernancePanel({
     [application, pushAudit, reloadSpecs, updateUrl]
   );
 
+  const handleDeprecateSpec = useCallback(
+    async (input: { specId: string; reason: string }) => {
+      setReviewActionError(null);
+      setActivatePendingSpecId(input.specId);
+      try {
+        await application.deprecateParameterSpec(input.specId, { reason: input.reason });
+        setReviewActionSuccess("已废弃");
+        await reloadSpecs();
+        updateUrl({ specId: null });
+      } catch (error) {
+        setReviewActionError(formatReviewActionError(error));
+      } finally {
+        setActivatePendingSpecId(null);
+      }
+    },
+    [application, reloadSpecs, updateUrl]
+  );
+
+  const handleRestoreSpec = useCallback(
+    async (input: { specId: string; reason: string }) => {
+      setReviewActionError(null);
+      setActivatePendingSpecId(input.specId);
+      try {
+        await application.restoreParameterSpec(input.specId, { reason: input.reason });
+        setReviewActionSuccess("已恢复");
+        await reloadSpecs();
+        updateUrl({ specId: null });
+      } catch (error) {
+        setReviewActionError(formatReviewActionError(error));
+      } finally {
+        setActivatePendingSpecId(null);
+      }
+    },
+    [application, reloadSpecs, updateUrl]
+  );
+
   const showLibrary = focus !== "review";
   const showReview = focus !== "library";
 
@@ -498,6 +534,8 @@ export function OrganizationSpecGovernancePanel({
           onSelectSpec={handleSelectSpec}
           onCloseSpec={handleCloseSpec}
           onSaveSpec={handleSaveSpec}
+          onDeprecateSpec={handleDeprecateSpec}
+          onRestoreSpec={handleRestoreSpec}
           savePending={activatePendingSpecId === urlState.specId}
           saveError={reviewActionError}
           onCreateSpec={() => {

@@ -138,6 +138,8 @@ export interface ParameterTopologyRepository {
   createParameterSpec(input: CreateParameterSpecInput): Promise<ParameterSpecDetail>;
   activateParameterSpec(specId: string, input: ActivateParameterSpecInput): Promise<ParameterSpecDetail>;
   updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
+  deprecateParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
+  restoreParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
   listSpecReviewTasks(query?: SpecReviewTaskQuery): Promise<SpecReviewTaskListResult>;
   resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput): Promise<void>;
   listBindings(projectId: string, revisionId: string): Promise<ProjectParameterBinding[]>;

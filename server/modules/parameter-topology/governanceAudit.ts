@@ -23,7 +23,6 @@ export type GovernanceAuditAction =
   | "binding-edited"
   | "enablement-changed"
   | "baseline-mutated"
-  | "config-revision-published"
   | "identity-migrated";
 
 /**

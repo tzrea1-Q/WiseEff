@@ -246,6 +246,10 @@ export const organizationDriverSchemaParamsSchema = z.object({
   schemaId: nonEmptyString,
 });
 
+export const deprecateOrganizationDriverSchemaBodySchema = z.object({
+  confirmCoverageLoss: z.boolean().optional(),
+});
+
 export const promoteDriverSchemaOverlayBodySchema = z.object({
   compatible: nonEmptyString,
   displayName: z.string().min(1).optional(),

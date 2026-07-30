@@ -403,6 +403,20 @@ export function createHttpParameterTopologyRepository(
       );
       return specDetailFromDto(response.item);
     },
+    async deprecateParameterSpec(specId, input) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/deprecate`,
+        input
+      );
+      return specDetailFromDto(response.item);
+    },
+    async restoreParameterSpec(specId, input) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/restore`,
+        input
+      );
+      return specDetailFromDto(response.item);
+    },
     async listBindings(projectId, revisionId) {
       const response = await apiClient.get<ItemsEnvelope<ProjectBindingDto>>(
         buildBindingsPath(projectId, revisionId)

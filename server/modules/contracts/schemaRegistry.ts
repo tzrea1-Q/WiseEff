@@ -265,11 +265,18 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ActivateOrganizationDriverSchemaResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterSpecs.previewOrganizationDriverSchemaDeprecation": {
+    summary: "Preview coverage and usage impact before overlay retirement",
+    tags: ["parameters"],
+    responseBody: "OrganizationDriverSchemaDeprecationImpactResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameterSpecs.deprecateOrganizationDriverSchema": {
     summary: "Deprecate an organization driver schema overlay",
     tags: ["parameters"],
+    requestBody: "DeprecateOrganizationDriverSchemaRequest",
     responseBody: "OrganizationDriverSchemaResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterSpecs.listPromotionCandidates": {
     summary: "List platform driver-schema promotion candidates by compatible",
