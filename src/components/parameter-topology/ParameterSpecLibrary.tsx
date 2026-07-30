@@ -297,6 +297,8 @@ export type ParameterSpecLibraryProps = {
   savePending?: boolean;
   saveError?: string | null;
   onCreateSpec?: () => void;
+  /** Platform super admin may deprecate/restore platform-global definitions. */
+  canDeprecateGlobal?: boolean;
   /** @deprecated Prefer onSaveSpec; kept for activate-only callers. */
   onActivateDraftSpec?: (input: ActivateDraftSpecInput) => void;
   activatePending?: boolean;
@@ -321,6 +323,7 @@ export function ParameterSpecLibrary({
   savePending = false,
   saveError = null,
   onCreateSpec,
+  canDeprecateGlobal = false,
   onActivateDraftSpec,
   activatePending = false
 }: ParameterSpecLibraryProps) {
@@ -613,6 +616,7 @@ export function ParameterSpecLibrary({
           onClose={() => onCloseSpec?.()}
           pending={savePending || activatePending}
           error={saveError}
+          canDeprecateGlobal={canDeprecateGlobal}
           onDeprecate={
             onDeprecateSpec
               ? async ({ reason }) => {

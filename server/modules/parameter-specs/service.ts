@@ -1283,6 +1283,7 @@ export async function deprecateParameterSpec(
   requireCanAdmin(auth);
 
   return db.transaction(async (tx) => {
+    // Org admins govern org-owned specs; platform super admins may also govern platform-global specs.
     const spec = isPlatformSuperAdmin(auth)
       ? await requireOrgOrGlobalSpec(tx, {
           organizationId: auth.organization.id,

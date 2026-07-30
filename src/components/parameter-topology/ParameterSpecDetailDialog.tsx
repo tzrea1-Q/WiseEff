@@ -23,6 +23,8 @@ export type ParameterSpecDetailDialogProps = {
   onFinalizeCutover?: (input: { reason: string }) => void | Promise<void>;
   pending?: boolean;
   error?: string | null;
+  /** Platform super admin may deprecate/restore platform-global definitions. */
+  canDeprecateGlobal?: boolean;
 };
 
 /**
@@ -40,13 +42,15 @@ export function ParameterSpecDetailDialog({
   onPrepareCutover,
   onFinalizeCutover,
   pending = false,
-  error = null
+  error = null,
+  canDeprecateGlobal = false
 }: ParameterSpecDetailDialogProps) {
   const editable = typeof onSave === "function";
   const isDraft = detail.reviewState === "draft" && detail.organizationId != null;
   const isDeprecated = detail.reviewState === "deprecated";
   const primaryLabel = formatSpecPrimaryLabel(detail);
   const cutover = detail.cutover;
+  const canGovernLifecycle = detail.organizationId != null || canDeprecateGlobal;
   const [draft, setDraft] = useState<SpecEditorDraft>(() => createSpecEditorDraft(detail));
   const [localError, setLocalError] = useState<string | null>(null);
   const [lifecycleKind, setLifecycleKind] = useState<"deprecate" | "restore" | null>(null);
@@ -233,7 +237,7 @@ export function ParameterSpecDetailDialog({
               取消
             </button>
           ) : null}
-          {!isDeprecated && onDeprecate ? (
+          {canGovernLifecycle && !isDeprecated && onDeprecate ? (
             <button
               type="button"
               className="button subtle"
@@ -246,7 +250,7 @@ export function ParameterSpecDetailDialog({
               废弃
             </button>
           ) : null}
-          {isDeprecated && onRestore ? (
+          {canGovernLifecycle && isDeprecated && onRestore ? (
             <button
               type="button"
               className="button subtle"

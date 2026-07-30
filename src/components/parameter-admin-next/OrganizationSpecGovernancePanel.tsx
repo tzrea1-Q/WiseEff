@@ -113,12 +113,15 @@ export type OrganizationSpecGovernancePanelProps = {
   pathname?: string;
   /** Which organization sub-view to render; defaults to both for backward-compatible tests. */
   focus?: "library" | "review";
+  /** Platform super admin may deprecate/restore platform-global definitions. */
+  isPlatformSuperAdmin?: boolean;
 };
 
 export function OrganizationSpecGovernancePanel({
   search,
   pathname = "/parameter-admin",
-  focus
+  focus,
+  isPlatformSuperAdmin = false
 }: OrganizationSpecGovernancePanelProps) {
   const { application, dispatch, state } = useParameterAdmin();
   const { urlState, updateUrl } = useParameterAdminUrl(search, pathname);
@@ -617,6 +620,7 @@ export function OrganizationSpecGovernancePanel({
           onRestoreSpec={handleRestoreSpec}
           onPrepareCutover={handlePrepareCutover}
           onFinalizeCutover={handleFinalizeCutover}
+          canDeprecateGlobal={isPlatformSuperAdmin}
           savePending={activatePendingSpecId === urlState.specId}
           saveError={reviewActionError}
           onCreateSpec={() => {

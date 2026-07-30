@@ -191,13 +191,37 @@ describe.skipIf(!databaseAvailable)("parameter spec lifecycle deprecate/restore"
     ).rejects.toMatchObject({ code: "CONFLICT", status: 409 } satisfies Partial<ApiError>);
   });
 
-  it("rejects deprecating a platform-global definition", async () => {
+  it("rejects org admin deprecating a platform-global definition", async () => {
     await expect(
       deprecateParameterSpec(db!, makeAuth(), {
         specId: GLOBAL_ACTIVE,
-        reason: "should stay catalog-owned",
+        reason: "org admin cannot govern platform rows",
       }),
     ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 } satisfies Partial<ApiError>);
+  });
+
+  it("platform super admin deprecates and restores a platform-global definition", async () => {
+    const platformAuth = makeAuth();
+    platformAuth.roles = [{ projectId: null, roleId: "platform-admin" }];
+    platformAuth.permissions = [
+      "parameter:view",
+      "parameter:edit",
+      "admin:access",
+      "platform:access",
+      "platform:schema-promote",
+    ];
+
+    const deprecated = await deprecateParameterSpec(db!, platformAuth, {
+      specId: GLOBAL_ACTIVE,
+      reason: "platform soft retire",
+    });
+    expect(deprecated.item.lifecycle).toBe("deprecated");
+
+    const restored = await restoreParameterSpec(db!, platformAuth, {
+      specId: GLOBAL_ACTIVE,
+      reason: "platform restore",
+    });
+    expect(restored.item.lifecycle).toBe("active");
   });
 
   it("HTTP deprecate then restore round-trips lifecycle on the public routes", async () => {
