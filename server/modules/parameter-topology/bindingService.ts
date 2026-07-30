@@ -855,6 +855,86 @@ export async function applyReviewedIdentityMapping(
   }
 }
 
+export async function reResolveReviewedIdentityMapping(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string;
+    previousLogicalNodeId: string;
+    priorSelectedLogicalNodeId: string;
+    nextSelectedLogicalNodeId: string;
+  },
+): Promise<void> {
+  await applyReviewedIdentityMapping(db, {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    configRevisionId: input.configRevisionId,
+    previousLogicalNodeId: input.priorSelectedLogicalNodeId,
+    selectedLogicalNodeId: input.previousLogicalNodeId,
+  });
+  await applyReviewedIdentityMapping(db, {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    configRevisionId: input.configRevisionId,
+    previousLogicalNodeId: input.previousLogicalNodeId,
+    selectedLogicalNodeId: input.nextSelectedLogicalNodeId,
+  });
+}
+
+export type IdentityMappingDownstreamUsage = {
+  drafts: number;
+  submissions: number;
+  operations: number;
+};
+
+export async function countIdentityMappingDownstreamUsage(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    logicalNodeIds: string[];
+  },
+): Promise<IdentityMappingDownstreamUsage> {
+  const result = await db.query<{
+    drafts: string;
+    submissions: string;
+    operations: string;
+  }>(
+    `
+    with affected_bindings as (
+      select id
+      from project_parameter_bindings
+      where organization_id = $1
+        and project_id = $2
+        and logical_node_id = any($3::text[])
+    )
+    select
+      (
+        select count(*)::text
+        from parameter_drafts
+        where project_parameter_binding_id in (select id from affected_bindings)
+      ) as drafts,
+      (
+        select count(*)::text
+        from parameter_submission_items
+        where project_parameter_binding_id in (select id from affected_bindings)
+      ) as submissions,
+      (
+        select count(*)::text
+        from node_operations
+        where project_parameter_binding_id in (select id from affected_bindings)
+      ) as operations
+    `,
+    [input.organizationId, input.projectId, input.logicalNodeIds],
+  );
+  return {
+    drafts: Number(result.rows[0]?.drafts ?? 0),
+    submissions: Number(result.rows[0]?.submissions ?? 0),
+    operations: Number(result.rows[0]?.operations ?? 0),
+  };
+}
+
 /** Fingerprint of a human-selected candidate for reuse on later revisons. */
 export type ContinuityReuseEvidence = {
   selectedLogicalNodeId: string;
@@ -922,7 +1002,7 @@ export async function listReviewedContinuityDecisions(
     [
       input.configSetId,
       input.previousLogicalNodeIds,
-      ["resolved", "validated", "compiled", "pending_approval", "published"],
+      ["resolved", "validated", "compiled", "pending_approval"],
     ],
   );
 
@@ -1030,6 +1110,49 @@ export async function resolveIdentityMappingTaskRow(
       input.taskId,
       input.organizationId,
       input.status,
+      input.reviewerUserId,
+      input.reason,
+      evidencePatch,
+    ],
+  );
+  const row = result.rows[0];
+  return row ? toMappingTask(row) : null;
+}
+
+export async function updateResolvedIdentityMappingTaskRow(
+  db: Queryable,
+  input: {
+    taskId: string;
+    organizationId: string;
+    selectedLogicalNodeId: string;
+    reviewerUserId: string;
+    reason: string;
+    continuityReuse: ContinuityReuseEvidence;
+  },
+): Promise<IdentityMappingTask | null> {
+  const evidencePatch = JSON.stringify({
+    selectedLogicalNodeId: input.continuityReuse.selectedLogicalNodeId,
+    selectedNodeLocator: input.continuityReuse.selectedNodeLocator ?? null,
+    selectedName: input.continuityReuse.selectedName ?? null,
+    selectedUnitAddress: input.continuityReuse.selectedUnitAddress ?? null,
+    continuityReusable: true,
+  });
+  const result = await db.query<IdentityMappingTaskRow>(
+    `
+    update identity_mapping_tasks
+    set reviewer_user_id = $3,
+        reason = $4,
+        resolved_at = now(),
+        evidence = coalesce(evidence, '{}'::jsonb) || $5::jsonb
+    where id = $1
+      and organization_id = $2
+      and task_kind = 'identity-ambiguity'
+      and status = 'resolved'
+    returning *
+    `,
+    [
+      input.taskId,
+      input.organizationId,
       input.reviewerUserId,
       input.reason,
       evidencePatch,

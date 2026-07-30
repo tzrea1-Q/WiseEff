@@ -36,7 +36,11 @@ import {
   listOpenBindingDraftsForUser,
   rebaseOpenBindingDraftCandidates,
 } from "../parameters/repository";
-import { countOpenIdentityMappingTasksForRevision, upsertBindingRevisionValues } from "./bindingService";
+import {
+  countBlockingIdentityMappingTasksForRevision,
+  syncSingletonCardinalityBlockingTasks,
+  upsertBindingRevisionValues,
+} from "./bindingService";
 import {
   assertCanPromoteCandidateToDraft,
   type CandidateGateFailureReason,
@@ -1917,7 +1921,8 @@ async function loadCandidateSemanticGateCounts(
   ambiguousBindings: number;
   resolverErrorDiagnostics: number;
 }> {
-  const openIdentityMappings = await countOpenIdentityMappingTasksForRevision(db, input);
+  await syncSingletonCardinalityBlockingTasks(db, input);
+  const openIdentityMappings = await countBlockingIdentityMappingTasksForRevision(db, input);
 
   // Structural DTS keys are not parameter-spec review material; exclude from candidate gates.
   const structuralKeys = listStructuralPropertyKeys();

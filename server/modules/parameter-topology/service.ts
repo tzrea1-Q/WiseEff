@@ -20,6 +20,7 @@ import {
   applyReviewedIdentityMapping,
   continuityReuseFromTaskEvidence,
   countBlockingIdentityMappingTasksForRevision,
+  countIdentityMappingDownstreamUsage,
   countOpenIdentityMappingTasksForRevision,
   getBindingForProject,
   getIdentityMappingTaskById,
@@ -29,9 +30,11 @@ import {
   listProjectBindingRows,
   lockOpenIdentityMappingTask,
   reopenIdentityMappingTaskRow,
+  reResolveReviewedIdentityMapping,
   resolveIdentityMappingTaskRow,
   selectedCandidateBelongsToRevision,
-  syncSingletonCardinalityBlockingTasks
+  syncSingletonCardinalityBlockingTasks,
+  updateResolvedIdentityMappingTaskRow
 } from "./bindingService";
 import { normalizeBindingSchemaState } from "./schemaState";
 import {
@@ -416,6 +419,126 @@ export async function resolveIdentityMappingTask(
         throw new ApiError("NOT_FOUND", "Identity mapping task was not found.", 404, {
           taskId: input.taskId
         });
+      }
+      if (
+        known.status === "resolved" &&
+        known.taskKind === "identity-ambiguity" &&
+        input.decision === "resolved" &&
+        input.selectedLogicalNodeId
+      ) {
+        const priorSelectedLogicalNodeId =
+          typeof known.evidence.selectedLogicalNodeId === "string"
+            ? known.evidence.selectedLogicalNodeId
+            : null;
+        if (priorSelectedLogicalNodeId === input.selectedLogicalNodeId) {
+          return {
+            id: known.id,
+            status: known.status,
+            selectedLogicalNodeId: input.selectedLogicalNodeId,
+            idempotent: true
+          };
+        }
+        if (
+          !priorSelectedLogicalNodeId ||
+          !known.previousLogicalNodeId ||
+          !known.candidateLogicalNodeIds.includes(input.selectedLogicalNodeId)
+        ) {
+          throw new ApiError(
+            "CONFLICT",
+            "Completed mapping lacks reversible continuity evidence; an explicit migration is required.",
+            409,
+            { code: "identity-mapping-migration-required", taskId: input.taskId }
+          );
+        }
+        const belongs = await selectedCandidateBelongsToRevision(tx, {
+          organizationId: auth.organization.id,
+          projectId: known.projectId,
+          configRevisionId: known.configRevisionId,
+          selectedLogicalNodeId: input.selectedLogicalNodeId
+        });
+        if (!belongs) {
+          throw new ApiError(
+            "VALIDATION_FAILED",
+            "selectedLogicalNodeId must belong to the same organization, project, and config revision.",
+            400,
+            {
+              selectedLogicalNodeId: input.selectedLogicalNodeId,
+              configRevisionId: known.configRevisionId
+            }
+          );
+        }
+        const downstream = await countIdentityMappingDownstreamUsage(tx, {
+          organizationId: auth.organization.id,
+          projectId: known.projectId,
+          logicalNodeIds: [
+            known.previousLogicalNodeId,
+            ...known.candidateLogicalNodeIds
+          ]
+        });
+        if (downstream.drafts + downstream.submissions + downstream.operations > 0) {
+          throw new ApiError(
+            "CONFLICT",
+            "Completed mapping has downstream workflow/device usage; migrate those references before re-resolving.",
+            409,
+            {
+              code: "identity-mapping-migration-required",
+              taskId: input.taskId,
+              downstream
+            }
+          );
+        }
+
+        await reResolveReviewedIdentityMapping(tx, {
+          organizationId: auth.organization.id,
+          projectId: known.projectId,
+          configRevisionId: known.configRevisionId,
+          previousLogicalNodeId: known.previousLogicalNodeId,
+          priorSelectedLogicalNodeId,
+          nextSelectedLogicalNodeId: input.selectedLogicalNodeId
+        });
+        const continuityReuse = continuityReuseFromTaskEvidence(
+          known.evidence,
+          input.selectedLogicalNodeId
+        );
+        const updated = await updateResolvedIdentityMappingTaskRow(tx, {
+          taskId: input.taskId,
+          organizationId: auth.organization.id,
+          selectedLogicalNodeId: input.selectedLogicalNodeId,
+          reviewerUserId: auth.user.id,
+          reason: input.reason,
+          continuityReuse
+        });
+        if (!updated) {
+          throw new ApiError("CONFLICT", "Identity mapping task changed during re-resolve.", 409, {
+            taskId: input.taskId
+          });
+        }
+        await writeGovernanceAudit(
+          tx,
+          auth,
+          {
+            action: "identity-mapping-resolved",
+            projectId: known.projectId,
+            targetType: "identity-mapping-task",
+            targetId: updated.id,
+            metadata: {
+              taskId: updated.id,
+              configRevisionId: known.configRevisionId,
+              priorSelectedLogicalNodeId,
+              selectedLogicalNodeId: input.selectedLogicalNodeId,
+              reResolved: true,
+              downstream,
+              reasonHash: evidenceHash(input.reason)
+            }
+          },
+          context
+        );
+        return {
+          id: updated.id,
+          status: updated.status,
+          selectedLogicalNodeId: input.selectedLogicalNodeId,
+          reResolved: true
+        };
       }
       throw new ApiError("CONFLICT", "Identity mapping task is not open.", 409, { taskId: input.taskId });
     }

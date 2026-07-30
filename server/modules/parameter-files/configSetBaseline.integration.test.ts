@@ -280,6 +280,65 @@ describe.skipIf(!databaseAvailable)("DTS config set / baseline / gate integratio
     });
   });
 
+  it("release gate uses persisted blocking tasks from the latest config revision", async () => {
+    const boardUpload = await uploadProjectParameterFile(db!, objectStore, auth, {
+      projectId: "project-csb-int",
+      fileName: "blocking-board.dts",
+      bytes: Buffer.from(uploadableSample, "utf8")
+    });
+    const configSet = await createConfigSet(db!, auth, {
+      projectId: "project-csb-int",
+      name: "blocking-gate-board"
+    });
+    await addConfigSetFile(db!, auth, {
+      configSetId: configSet.id,
+      fileId: boardUpload.file.id,
+      role: "base",
+      sortOrder: 0
+    });
+    const baseline = await createBaseline(db!, auth, {
+      configSetId: configSet.id,
+      name: "blocked-release"
+    });
+    await db!.query(
+      `
+      insert into dts_config_revisions (
+        id, organization_id, project_id, config_set_id, revision_number, status, created_by_user_id
+      ) values ('revision-blocked-release', 'org-csb-int', 'project-csb-int', $1, 1, 'resolved', 'user-csb-int')
+      `,
+      [configSet.id]
+    );
+    await db!.query(
+      `
+      insert into identity_mapping_tasks (
+        id, organization_id, project_id, config_revision_id,
+        previous_logical_node_id, candidate_logical_node_ids, evidence, status
+      ) values (
+        'task-blocked-release', 'org-csb-int', 'project-csb-int', 'revision-blocked-release',
+        null, '[]'::jsonb, '{}'::jsonb, 'dismissed'
+      )
+      `
+    );
+    const passValidator = createStubDtcValidator(() => ({
+      ok: true,
+      mode: "block",
+      compiler: "dtc",
+      diagnostics: []
+    }));
+
+    await expect(
+      releaseBaseline(db!, auth, baseline.id, { objectStore, validator: passValidator })
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: {
+        code: "revision-blocking-tasks",
+        configRevisionId: "revision-blocked-release",
+        blockingTaskCount: 1
+      }
+    });
+  });
+
   it("config set export bundle round-trips dts members losslessly", async () => {
     const boardUpload = await uploadProjectParameterFile(db!, objectStore, auth, {
       projectId: "project-csb-int",

@@ -921,13 +921,13 @@ async function assertFinalizePrerequisites(
     select count(*)::text as c
     from identity_mapping_tasks
     where migration_run_id = $1
-      and status = 'open'
+      and status in ('open', 'dismissed')
       ${orgClause}
     `,
     orgParams
   );
   if (Number(openMapping.rows[0]?.c ?? 0) > 0) {
-    throw new Error("finalize blocked: open identity mapping tasks remain");
+    throw new Error("finalize blocked: blocking identity mapping tasks remain");
   }
 }
 
@@ -2117,10 +2117,10 @@ export async function checkParameterIdentityCutover(db: Queryable): Promise<{
   }
 
   const openMapping = await db.query<{ c: string }>(
-    `select count(*)::text as c from identity_mapping_tasks where status = 'open'`
+    `select count(*)::text as c from identity_mapping_tasks where status in ('open', 'dismissed')`
   );
   if (Number(openMapping.rows[0]?.c ?? 0) > 0) {
-    blockers.push("open identity mapping tasks remain");
+    blockers.push("blocking identity mapping tasks remain");
   }
 
   const openInferredReviews = await db.query<{ c: string }>(

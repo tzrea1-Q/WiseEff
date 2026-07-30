@@ -494,4 +494,95 @@ describe.skipIf(!databaseAvailable)("resolveIdentityMappingTask transaction", ()
     expect(reopened).toEqual({ id: taskA, status: "open" });
     expect(await revisionStatus(db!, revisionId)).toBe("needs_mapping");
   });
+
+  it("re-resolves a completed mapping without downstream usage and treats the same target as idempotent", async () => {
+    const { revisionId, taskA } = await seedMultiTaskAmbiguousRevision(db!);
+    await resolveIdentityMappingTask(db!, auth, {
+      taskId: taskA,
+      decision: "resolved",
+      selectedLogicalNodeId: CAND_A1,
+      reason: "Initial continuity choice",
+    });
+
+    const repeated = await resolveIdentityMappingTask(db!, auth, {
+      taskId: taskA,
+      decision: "resolved",
+      selectedLogicalNodeId: CAND_A1,
+      reason: "Retry the same request",
+    });
+    expect(repeated).toMatchObject({
+      id: taskA,
+      status: "resolved",
+      selectedLogicalNodeId: CAND_A1,
+      idempotent: true,
+    });
+
+    const switched = await resolveIdentityMappingTask(db!, auth, {
+      taskId: taskA,
+      decision: "resolved",
+      selectedLogicalNodeId: CAND_A2,
+      reason: "Corrected continuity choice",
+    });
+    expect(switched).toMatchObject({
+      id: taskA,
+      status: "resolved",
+      selectedLogicalNodeId: CAND_A2,
+      reResolved: true,
+    });
+
+    expect(
+      (
+        await db!.query<{ logical_node_id: string }>(
+          `select logical_node_id from dts_logical_node_revisions where config_revision_id = $1 and node_locator = $2`,
+          [revisionId, LOCATOR_A1],
+        )
+      ).rows[0]?.logical_node_id,
+    ).toBe(CAND_A1);
+    expect(
+      (
+        await db!.query<{ logical_node_id: string }>(
+          `select logical_node_id from dts_logical_node_revisions where config_revision_id = $1 and node_locator = $2`,
+          [revisionId, LOCATOR_A2],
+        )
+      ).rows[0]?.logical_node_id,
+    ).toBe(PREV_A);
+  });
+
+  it("requires explicit migration before re-resolving bindings used by downstream drafts", async () => {
+    const { taskA, prevBindingA } = await seedMultiTaskAmbiguousRevision(db!);
+    await resolveIdentityMappingTask(db!, auth, {
+      taskId: taskA,
+      decision: "resolved",
+      selectedLogicalNodeId: CAND_A1,
+      reason: "Initial continuity choice",
+    });
+    await db!.query(
+      `
+      insert into parameter_drafts (
+        id, organization_id, project_id, user_id,
+        target_value, reason, origin, project_parameter_binding_id
+      ) values (
+        'draft-map-reresolve', $1, $2, $3,
+        '<2>', 'downstream draft', 'manual', $4
+      )
+      `,
+      [ORG_ID, PROJECT_ID, USER_ID, prevBindingA.id],
+    );
+
+    await expect(
+      resolveIdentityMappingTask(db!, auth, {
+        taskId: taskA,
+        decision: "resolved",
+        selectedLogicalNodeId: CAND_A2,
+        reason: "Try to change continuity",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: {
+        code: "identity-mapping-migration-required",
+        downstream: { drafts: 1, submissions: 0, operations: 0 },
+      },
+    });
+  });
 });
