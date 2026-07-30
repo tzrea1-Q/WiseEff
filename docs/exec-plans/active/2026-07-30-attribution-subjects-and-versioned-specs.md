@@ -59,7 +59,15 @@ Implementation agents commit on this branch only; parent opens/merges GitHub PRs
 
 ## Documentation Update Gate
 
-Block completion until: ADR 0013/0014 linked from README; EN+ZH domain model mention subjects; `npm run docs:check` green; deferred questions D1/D7 status updated.
+- [x] ADR 0013/0014 linked from README
+- [x] EN+ZH domain model mention subjects
+- [x] `api-contract.md` + `FRONTEND.md` (EN/ZH) updated for PR0–PR6 endpoints/UI
+- [x] `npm run docs:check` green (run at doc completion)
+- Deferred questions: `docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md` is **not present on this branch**; inline status below:
+  - **D1 (staged ParameterSpec version cutover):** **landed** — `activate` stages successor versions; auto-finalizes when no tip bindings; `finalizeParameterSpecVersionCutover` service exists; **no HTTP route yet** when bindings pending.
+  - **D7 (governance success feedback):** **partial** — `ParameterAdminAuditBanner` removed; panels use `form-hint` status lines, not the planned short toast.
+
+**Supersede note:** `docs/exec-plans/active/2026-07-30-parameter-governance-state-machine-completion.md` is not on this branch. Governance batches for attribution subjects, versioned specs, identity mapping, and UI convergence are absorbed by this plan (PR0–PR6).
 
 ## Verification
 

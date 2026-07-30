@@ -586,6 +586,7 @@ describe("releaseBaseline", () => {
     const { db, txCalls } = createFakeDb([
       [baselineRow()],
       [configSetRow()],
+      [], // getLatestConfigRevision → no revision; skip singleton/blocking gate
       [memberFileRow()],
       [fileRow()],
       [fileVersionRow()],
@@ -625,6 +626,7 @@ describe("releaseBaseline", () => {
     const { db, txCalls } = createFakeDb([
       [baselineRow()],
       [configSetRow()],
+      [], // getLatestConfigRevision → no revision; skip singleton/blocking gate
       [memberFileRow()],
       [fileRow()],
       [fileVersionRow()],

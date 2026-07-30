@@ -9,6 +9,7 @@ import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testi
 import type { ObjectStore } from "../logs/objectStore";
 import type { DtsPowerSeedProjectFile } from "../../../scripts/dts-power-seed";
 import { seedM1DtsFiles, seedM1SemanticTopology } from "../../../scripts/seed-m1-parameters";
+import { insertAttributionSubjectForNewModule } from "../parameter-modules/attributionSubjectRepository";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const seedDir = join(root, "src/config/dts-seed");
@@ -102,21 +103,43 @@ async function seedMinimalGraph(db: InMemoryTestDatabase) {
 }
 
 async function seedDriverGroupMappings(db: InMemoryTestDatabase) {
+  const chargePumpSubjectId = await insertAttributionSubjectForNewModule(db, {
+    moduleId: "pmod-seed-charge-pump-ic",
+    organizationId: ORG_ID,
+    kind: "driver-group",
+    displayName: "Charge Pump IC",
+    origin: "curated",
+    sourceKey: "compatible:fixture:sc8562",
+  });
+  const chargerSubjectId = await insertAttributionSubjectForNewModule(db, {
+    moduleId: "pmod-seed-charger-ic",
+    organizationId: ORG_ID,
+    kind: "driver-group",
+    displayName: "Charger IC",
+    origin: "curated",
+    sourceKey: "compatible:fixture:huawei,bypass_bst_hl7603",
+  });
   await db.query(
     `insert into parameter_modules (
-       id, organization_id, parent_id, name, path, depth, sort_order, description, scope, kind, origin
+       id, organization_id, parent_id, name, path, depth, sort_order, description, scope, kind, origin,
+       attribution_subject_id
      )
-     values ($1, $2, null, 'Charge Pump IC', $1, 1, 0, '', '', 'driver-group', 'curated')
-     on conflict (id) do nothing`,
-    ["pmod-seed-charge-pump-ic", ORG_ID]
+     values ($1, $2, null, 'Charge Pump IC', $1, 1, 0, '', '', 'driver-group', 'curated', $3)
+     on conflict (id) do update set
+       kind = excluded.kind,
+       attribution_subject_id = coalesce(parameter_modules.attribution_subject_id, excluded.attribution_subject_id)`,
+    ["pmod-seed-charge-pump-ic", ORG_ID, chargePumpSubjectId]
   );
   await db.query(
     `insert into parameter_modules (
-       id, organization_id, parent_id, name, path, depth, sort_order, description, scope, kind, origin
+       id, organization_id, parent_id, name, path, depth, sort_order, description, scope, kind, origin,
+       attribution_subject_id
      )
-     values ($1, $2, null, 'Charger IC', $1, 1, 1, '', '', 'driver-group', 'curated')
-     on conflict (id) do nothing`,
-    ["pmod-seed-charger-ic", ORG_ID]
+     values ($1, $2, null, 'Charger IC', $1, 1, 1, '', '', 'driver-group', 'curated', $3)
+     on conflict (id) do update set
+       kind = excluded.kind,
+       attribution_subject_id = coalesce(parameter_modules.attribution_subject_id, excluded.attribution_subject_id)`,
+    ["pmod-seed-charger-ic", ORG_ID, chargerSubjectId]
   );
   // sc8562 compatible -> Charge Pump IC; hl7603 compatible -> Charger IC.
   // Two hl7603 topology instances share the driver-group module; bindings differ by logical_node_id.

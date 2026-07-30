@@ -19,12 +19,26 @@ export async function insertAttributionSubjectForNewModule(
 ): Promise<string> {
   const subjectKind: AttributionSubjectKind =
     input.kind === "driver-group" ? "driver-registration" : "node-type-definition";
-  const subjectId = attributionSubjectIdForModule(input.moduleId, subjectKind);
+  const preferredId = attributionSubjectIdForModule(input.moduleId, subjectKind);
   const sourceKey =
     input.sourceKey?.trim() ||
     (input.kind === "driver-group"
       ? `compatible:legacy:${input.moduleId}`
       : `nodetype:legacy:${input.moduleId}`);
+
+  // Prefer an existing catalog subject for this org+source_key so seeds and
+  // shared-DB fixtures stay idempotent when module row ids drift.
+  const existingBySource = await db.query<{ id: string }>(
+    `
+    select id
+    from attribution_subjects
+    where organization_id is not distinct from $1
+      and source_key = $2
+    limit 1
+    `,
+    [input.organizationId, sourceKey],
+  );
+  const subjectId = existingBySource.rows[0]?.id ?? preferredId;
 
   await db.query(
     `

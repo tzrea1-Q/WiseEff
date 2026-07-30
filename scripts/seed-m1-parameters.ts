@@ -21,6 +21,7 @@ import { loadCommittedDtsSeedFiles } from "./compile-dts-seed";
 import { ensureLocalPostCutoverIdentity } from "../server/modules/parameter-topology/localPostCutover";
 import { LEGACY_SQL } from "../server/modules/parameter-topology/migration";
 import { syncVendorPropertyDocs } from "./sync-vendor-property-docs";
+import { insertAttributionSubjectForNewModule } from "../server/modules/parameter-modules/attributionSubjectRepository";
 
 /**
  * Demo projects use one self-contained project-primary DTS per project
@@ -326,13 +327,25 @@ export async function seedM1Parameters(
       const kind = module.kind ?? "business";
       const origin = module.origin ?? (kind === "business" ? "curated" : "auto");
       const sourceKey = module.sourceKey ?? null;
+      let attributionSubjectId: string | null = null;
+      if (kind === "driver-group" || kind === "node-type") {
+        attributionSubjectId = await insertAttributionSubjectForNewModule(tx, {
+          moduleId: id,
+          organizationId,
+          kind,
+          displayName: module.name,
+          origin,
+          sourceKey,
+          notes: module.description,
+        });
+      }
       const result = await tx.query<{ id: string }>(
         `
         insert into parameter_modules (
           id, organization_id, parent_id, name, path, depth, sort_order, description, scope,
-          kind, origin, source_key
+          kind, origin, source_key, attribution_subject_id
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         on conflict (id) do update set
           parent_id = excluded.parent_id,
           name = excluded.name,
@@ -344,6 +357,10 @@ export async function seedM1Parameters(
           kind = excluded.kind,
           origin = excluded.origin,
           source_key = coalesce(excluded.source_key, parameter_modules.source_key),
+          attribution_subject_id = coalesce(
+            excluded.attribution_subject_id,
+            parameter_modules.attribution_subject_id
+          ),
           updated_at = now()
         returning id
         `,
@@ -359,7 +376,8 @@ export async function seedM1Parameters(
           module.scope,
           kind,
           origin,
-          sourceKey
+          sourceKey,
+          attributionSubjectId
         ]
       );
       const persistedId = result.rows[0]?.id ?? id;
