@@ -141,6 +141,14 @@ export const updateParameterSpecBodySchema = z.object({
   reason: nonEmptyString,
 });
 
+export const deprecateParameterSpecBodySchema = z.object({
+  reason: nonEmptyString,
+});
+
+export const restoreParameterSpecBodySchema = z.object({
+  reason: nonEmptyString,
+});
+
 export const resolveSpecReviewTaskResultSchema = z.object({
   id: nonEmptyString,
   status: specReviewTaskStatusSchema,
@@ -158,6 +166,8 @@ export type ParameterSpecReviewTaskDto = z.infer<typeof parameterSpecReviewTaskD
 export type ResolveSpecReviewTaskBody = z.infer<typeof resolveSpecReviewTaskBodySchema>;
 export type ActivateParameterSpecBody = z.infer<typeof activateParameterSpecBodySchema>;
 export type UpdateParameterSpecBody = z.infer<typeof updateParameterSpecBodySchema>;
+export type DeprecateParameterSpecBody = z.infer<typeof deprecateParameterSpecBodySchema>;
+export type RestoreParameterSpecBody = z.infer<typeof restoreParameterSpecBodySchema>;
 export type ResolveSpecReviewTaskResultDto = z.infer<typeof resolveSpecReviewTaskResultSchema>;
 
 const propertyValueShapeSchema = z.union([

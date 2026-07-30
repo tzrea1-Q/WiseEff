@@ -418,6 +418,20 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ParameterSpecReviewTaskResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterSpecs.deprecate": {
+    summary: "Soft-deprecate a parameter definition (definition lifecycle)",
+    tags: ["parameters"],
+    requestBody: "DeprecateParameterSpecRequest",
+    responseBody: "ParameterSpecDetailResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterSpecs.restore": {
+    summary: "Restore a soft-deprecated parameter definition",
+    tags: ["parameters"],
+    requestBody: "RestoreParameterSpecRequest",
+    responseBody: "ParameterSpecDetailResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterTopology.getTopology": {
     summary: "Get source or effective DTS topology for a config revision",
     tags: ["parameters"],

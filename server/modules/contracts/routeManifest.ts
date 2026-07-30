@@ -218,6 +218,20 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterSpecs.deprecate",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/deprecate",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.restore",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/restore",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterTopology.getTopology",
     method: "GET",
     path: "/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology",

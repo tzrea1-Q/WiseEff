@@ -21,4 +21,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0009](0009-overlay-parsing-knowledge-promotes-into-a-platform-tier.md) | Overlay parsing knowledge promotes into a platform tier |
 | [0010](0010-attribution-tree-is-taxonomy-not-topology.md) | Attribution tree is taxonomy, not topology |
 | [0013](0013-attribution-subjects-are-stable-catalog-entities.md) | Attribution subjects are stable catalog entities |
-|
+| [0014](0014-parameter-definitions-are-versioned-subjects.md) | Parameter definitions are versioned subjects with soft retirement |

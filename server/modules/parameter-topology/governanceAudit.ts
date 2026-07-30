@@ -11,6 +11,8 @@ export type GovernanceAuditAction =
   | "spec-draft-created"
   | "spec-activated"
   | "spec-updated"
+  | "spec-deprecated"
+  | "spec-restored"
   | "identity-mapping-resolved"
   | "identity-mapping-dismissed"
   | "config-revision-validated"

@@ -8,6 +8,7 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   activateParameterSpecBodySchema,
   createOrganizationDriverSchemaBodySchema,
+  deprecateParameterSpecBodySchema,
   listParameterSpecsQuerySchema,
   listSpecReviewTasksQuerySchema,
   driverSchemaPromotionParamsSchema,
@@ -16,15 +17,18 @@ import {
   parameterSpecParamsSchema,
   parameterSpecReviewTaskParamsSchema,
   resolveSpecReviewTaskBodySchema,
+  restoreParameterSpecBodySchema,
   updateOrganizationDriverSchemaBodySchema,
   updateParameterSpecBodySchema
 } from "./schemas";
 import {
   activateParameterSpec,
+  deprecateParameterSpec,
   getParameterSpec,
   listParameterSpecs,
   listSpecReviewTasks,
   resolveSpecReviewTask,
+  restoreParameterSpec,
   updateParameterSpec,
 } from "./service";
 import {
@@ -135,6 +139,36 @@ export function registerParameterSpecRoutes(
         constraints: body.constraints ?? {},
         specId: params.specId,
       },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/deprecate", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(deprecateParameterSpecBodySchema, request.body ?? {});
+    const result = await deprecateParameterSpec(
+      db,
+      auth,
+      { ...body, specId: params.specId },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/restore", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(restoreParameterSpecBodySchema, request.body ?? {});
+    const result = await restoreParameterSpec(
+      db,
+      auth,
+      { ...body, specId: params.specId },
       { requestId: request.requestId },
     );
     return { status: 200, body: result };

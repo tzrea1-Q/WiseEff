@@ -169,7 +169,7 @@ export function assertSpecActivatable(input: {
 export function assertSpecResolvable(
   spec: Pick<
     ParameterSpecDetailRow,
-    "id" | "lifecycle" | "valueShape" | "constraints" | "documentation" | "currentVersionId"
+    "id" | "lifecycle" | "valueShape" | "constraints" | "documentation" | "currentVersionId" | "versionStatus"
   >,
 ): void {
   if (!spec.currentVersionId) {
@@ -183,6 +183,14 @@ export function assertSpecResolvable(
       "Only active parameter specs can resolve review tasks.",
       400,
       { parameterSpecId: spec.id, lifecycle: spec.lifecycle },
+    );
+  }
+  if (spec.versionStatus != null && spec.versionStatus !== "active") {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Only the active parameter spec version can resolve review tasks.",
+      400,
+      { parameterSpecId: spec.id, versionStatus: spec.versionStatus },
     );
   }
   if (isUnsupportedShape(spec.valueShape)) {

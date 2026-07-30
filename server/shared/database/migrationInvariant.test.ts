@@ -303,3 +303,24 @@ describe("attribution subjects migration invariants (ADR-0013)", () => {
     expect(migration).toContain("parameter_modules_subject_kind_check");
   });
 });
+
+describe("parameter spec versioning migration invariants (ADR-0014)", () => {
+  it("separates definition lifecycle from version status and copies content onto versions", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0083_parameter_spec_versioning.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("definition_lifecycle");
+    expect(migration).toContain("version_status");
+    expect(migration).toContain("attribution_subject_id");
+    expect(migration).toContain("activated_at");
+    expect(migration).toContain("'superseded'");
+    expect(migration).toContain("draft");
+    expect(migration).toContain("active");
+    expect(migration).toContain("deprecated");
+    expect(migration).toContain("reference_rules");
+    expect(migration).toContain("dts_property_specs");
+    expect(migration).toMatch(/parameter_specs_definition_lifecycle_check|definition_lifecycle in/);
+    expect(migration).toMatch(/parameter_spec_versions_version_status_check|version_status in/);
+  });
+});

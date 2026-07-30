@@ -78,6 +78,7 @@ describe("specCompleteness", () => {
       assertSpecResolvable({
         id: "spec-1",
         lifecycle: "draft",
+        versionStatus: "draft",
         currentVersionId: "ver-1",
         valueShape: { kind: "cells", bits: 32 },
         constraints: { cells: 1 },
@@ -86,11 +87,26 @@ describe("specCompleteness", () => {
     ).toThrow(/Only active/);
   });
 
+  it("rejects resolving when definition is active but version is not", () => {
+    expect(() =>
+      assertSpecResolvable({
+        id: "spec-1",
+        lifecycle: "active",
+        versionStatus: "superseded",
+        currentVersionId: "ver-1",
+        valueShape: { kind: "cells", bits: 32 },
+        constraints: { cells: 1 },
+        documentation: "docs",
+      }),
+    ).toThrow(/active parameter spec version/);
+  });
+
   it("rejects resolving active specs with incomplete constraints", () => {
     expect(() =>
       assertSpecResolvable({
         id: "spec-1",
         lifecycle: "active",
+        versionStatus: "active",
         currentVersionId: "ver-1",
         valueShape: { kind: "cells", bits: 32 },
         constraints: {},
