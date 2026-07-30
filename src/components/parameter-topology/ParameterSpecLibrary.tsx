@@ -5,10 +5,8 @@ import {
   formatParameterSpecLifecycle,
   PARAMETER_ADMIN_UI
 } from "@/application/parameters/parameterAdminUiCopy";
-import {
-  isStructuralPropertyKey,
-  paginateItems
-} from "@/domain/parameter-topology/moduleProvenance";
+import { paginateItems } from "@/domain/parameter-topology/moduleProvenance";
+import { isStructuralPropertyKey } from "@/domain/parameter-topology/parameterSurface";
 import type { SpecAttributionModule } from "@/domain/parameter-topology/types";
 import type { ParameterSpecDetailView } from "./ParameterSpecDetail";
 import type { SpecEditorSavePayload } from "./ParameterSpecDetail";
