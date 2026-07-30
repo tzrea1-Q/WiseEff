@@ -168,7 +168,7 @@ describe("DTS power seed catalog", () => {
     }
   });
 
-  it("builds business → driver-group → instance modules without Power Bus scaffolding", () => {
+  it("builds business → driver-group → node-type modules without Power Bus scaffolding", () => {
     const seed = buildDtsPowerSeed(baseSource);
     const names = new Set(seed.parameterModules.map((module) => module.name));
     const parentOf = (name: string) => seed.parameterModules.find((module) => module.name === name)?.parent;
@@ -176,12 +176,8 @@ describe("DTS power seed catalog", () => {
 
     expect(names.has("Power Bus")).toBe(false);
     expect(parentOf("hl7603")).toBe("Charger IC");
-    expect(parentOf("hl7603@75")).toBe("hl7603");
-    expect(parentOf("hl7603@77")).toBe("hl7603");
-    // Overlay-only board files no longer carry the synthetic base `compatible`, so
-    // top-level fragments (fm1230 / fm1230_1) become compatible-less (Type C) and sit
-    // directly under their path-derived business category instead of a driver group.
-    // Inline-compatible i2c children (hl7603) still form driver groups.
+    expect(names.has("hl7603@75")).toBe(false);
+    expect(names.has("hl7603@77")).toBe(false);
     expect(parentOf("fm1230")).toBe("Battery Authentication");
     expect(parentOf("fm1230_1")).toBe("Battery Authentication");
     expect(parentOf("battery0")).toBe("battery_charge_balance");
@@ -195,21 +191,18 @@ describe("DTS power seed catalog", () => {
     expect(moduleOf("hl7603")?.kind).toBe("driver-group");
     expect(moduleOf("hl7603")?.origin).toBe("auto");
     expect(moduleOf("hl7603")?.sourceKey).toMatch(/^compatible:/);
-    expect(moduleOf("hl7603@75")?.kind).toBe("instance");
-    expect(moduleOf("hl7603@75")?.sourceKey).toMatch(/^node:/);
-    // Type C (no compatible) must seed as logical, not instance (ADR-0006).
-    expect(moduleOf("fm1230")?.kind).toBe("logical");
-    expect(moduleOf("battery0")?.kind).toBe("logical");
-    expect(moduleOf("btb_check")?.kind).toBe("logical");
-    expect(moduleOf("board")?.kind).toBe("instance");
-    expect(moduleOf("board")?.sourceKey).toBe("node:board");
+    expect(moduleOf("battery0")?.kind).toBe("node-type");
+    expect(moduleOf("fm1230")?.kind).toBe("node-type");
+    expect(moduleOf("btb_check")?.kind).toBe("node-type");
+    expect(moduleOf("board")?.kind).toBe("node-type");
+    expect(moduleOf("board")?.sourceKey).toBe("nodetype:board");
 
     const mappings = buildSeedModuleMappings(resolveDts(baseSource));
     expect(mappings).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ matchKind: "instance", matchValue: "board", moduleName: "board" }),
-        expect.objectContaining({ matchKind: "instance", matchValue: "/", moduleName: "board" })
+        expect.objectContaining({ matchKind: "node-type", matchValue: "board", moduleName: "board" })
       ])
     );
+    expect(mappings.some((mapping) => mapping.matchKind === "instance")).toBe(false);
   });
 });

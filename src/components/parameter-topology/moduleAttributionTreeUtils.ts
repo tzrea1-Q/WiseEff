@@ -5,8 +5,7 @@ import type { DriverRegistryEntry } from "@/application/ports/ParameterModuleReg
 export const MODULE_KIND_LABEL: Record<ParameterModule["kind"], string> = {
   business: "业务分类",
   "driver-group": "驱动组",
-  instance: "器件实例",
-  logical: "逻辑节点",
+  "node-type": "节点类型",
   unclassified: "未分类"
 };
 
@@ -97,15 +96,6 @@ export function mappingsForModule(
   return mappings.filter((mapping) => mapping.moduleId === moduleId);
 }
 
-export function countInstanceChildren(
-  modules: readonly ParameterModule[],
-  parentId: string
-): number {
-  return modules.filter(
-    (module) => module.parentId === parentId && module.kind === "instance"
-  ).length;
-}
-
 export type AttributionFilters = {
   kinds: Array<ParameterModule["kind"]>;
   origins: Array<ParameterModule["origin"]>;
@@ -115,7 +105,7 @@ export type AttributionFilters = {
 };
 
 export const DEFAULT_ATTRIBUTION_FILTERS: AttributionFilters = {
-  kinds: ["business", "driver-group", "instance", "logical", "unclassified"],
+  kinds: ["business", "driver-group", "node-type", "unclassified"],
   origins: ["curated", "auto"],
   hideNotYetObserved: false,
   onlyUncoveredParse: false
@@ -182,14 +172,14 @@ export function summarizeDriverCoverage(
   return map;
 }
 
-export type CreateModuleKind = "business" | "driver-group" | "instance" | "logical";
+export type CreateModuleKind = "business" | "driver-group" | "node-type";
 
 /** Curated empty nodes that have not been observed via ingest yet. */
 export function isNotYetObservedModule(module: ParameterModule): boolean {
   return (
     module.origin === "curated" &&
     module.parameterCount === 0 &&
-    (module.kind === "driver-group" || module.kind === "instance" || module.kind === "logical")
+    (module.kind === "driver-group" || module.kind === "node-type")
   );
 }
 
@@ -202,8 +192,8 @@ export function allowedCreateKindsForParent(
   parentKind: ParameterModule["kind"] | null | undefined
 ): CreateModuleKind[] {
   if (parentKind == null) return ["business"];
-  if (parentKind === "business") return ["business", "driver-group", "logical"];
-  if (parentKind === "driver-group") return ["instance"];
+  if (parentKind === "business") return ["business", "driver-group", "node-type"];
+  if (parentKind === "driver-group") return ["node-type"];
   return [];
 }
 
@@ -219,14 +209,17 @@ export function parentCandidatesForCreateKind(
         .map((module) => ({ id: module.id, name: module.name }))
     ];
   }
-  if (kind === "driver-group" || kind === "logical") {
+  if (kind === "driver-group") {
     return modules
       .filter((module) => module.kind === "business")
       .map((module) => ({ id: module.id, name: module.name }));
   }
-  return modules
-    .filter((module) => module.kind === "driver-group")
-    .map((module) => ({ id: module.id, name: module.name }));
+  if (kind === "node-type") {
+    return modules
+      .filter((module) => module.kind === "business" || module.kind === "driver-group")
+      .map((module) => ({ id: module.id, name: module.name }));
+  }
+  return [];
 }
 
 /** Tree nodes for create-dialog parent picker (`ModuleTreeSelect`). */
@@ -234,7 +227,7 @@ export function parentFlatNodesForCreateKind(
   modules: readonly ParameterModule[],
   kind: CreateModuleKind
 ): FlatModuleNode[] {
-  if (kind === "instance") {
+  if (kind === "node-type") {
     return toAttributionFlatNodes(
       modules.filter((module) => module.kind === "business" || module.kind === "driver-group")
     );
@@ -251,10 +244,10 @@ export function isValidCreateParent(
     if (parentId === null) return true;
     return modules.some((module) => module.id === parentId && module.kind === "business");
   }
-  if (kind === "driver-group" || kind === "logical") {
+  if (kind === "driver-group") {
     return Boolean(parentId) && modules.some((module) => module.id === parentId && module.kind === "business");
   }
-  return Boolean(parentId) && modules.some((module) => module.id === parentId && module.kind === "driver-group");
+  return Boolean(parentId) && modules.some((module) => module.id === parentId && (module.kind === "business" || module.kind === "driver-group"));
 }
 
 /**
@@ -328,7 +321,7 @@ export function canAddChildModule(module: ParameterModule): boolean {
 }
 
 export function canMoveModule(module: ParameterModule): boolean {
-  return module.kind === "business" || module.kind === "driver-group" || module.kind === "logical";
+  return module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type";
 }
 
 export function siblingModuleNames(
@@ -343,7 +336,7 @@ export function siblingModuleNames(
 
 /**
  * Registry `parameterCount` is direct bindings on that module_id.
- * Attribution params hang on instance leaves, so parents are usually 0 unless rolled up.
+ * TODO(ADR-0010): split 定义数 vs 实测处数 in the tree UI; this rollup stays binding-based for now.
  * Returns subtree totals (self + all descendants) for tree display.
  */
 export function aggregateSubtreeParameterCounts(
@@ -382,8 +375,7 @@ export function aggregateSubtreeParameterCounts(
 }
 
 export function canDeleteModule(module: ParameterModule): boolean {
-  if (module.kind === "instance") return false;
-  if (module.kind === "logical") return false;
+  if (module.kind === "node-type") return false;
   if (module.kind === "unclassified") return false;
   return module.kind === "business" || module.kind === "driver-group";
 }
@@ -392,10 +384,10 @@ export function canEditImportance(module: ParameterModule): boolean {
   return module.kind === "business";
 }
 
-/** Manual kind correction among business / instance / logical (ADR-0006). */
+/** Manual kind correction among business / node-type (ADR-0010). */
 export function canReclassifyModule(module: ParameterModule): boolean {
   if (isUnclassifiedRoot(module)) return false;
-  return module.kind === "business" || module.kind === "instance" || module.kind === "logical";
+  return module.kind === "business" || module.kind === "node-type";
 }
 
 export function deleteActionLabel(module: ParameterModule): string {

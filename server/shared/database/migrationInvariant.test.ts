@@ -242,3 +242,22 @@ describe("organization driver schema overlay migration invariants", () => {
     expect(migration).toContain("organization_driver_schema_properties_schema_spec_uidx");
   });
 });
+
+describe("attribution taxonomy migration invariants (ADR-0010)", () => {
+  it("widens then narrows kind/match_kind and retires instance/logical", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0080_attribution_taxonomy.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("parameter_modules_kind_check");
+    expect(migration).toContain("parameter_module_mappings_match_kind_check");
+    expect(migration).toContain("'node-type'");
+    expect(migration).toContain("nodetype:");
+    expect(migration).toContain("check (kind in ('business', 'driver-group', 'node-type', 'unclassified'))");
+    expect(migration).toContain("check (match_kind in ('compatible', 'node-type'))");
+    expect(migration).toContain("kind = 'instance'");
+    expect(migration).toMatch(/kind in \('logical', 'instance'\)/);
+    expect(migration).toMatch(/delete from parameter_modules/i);
+    expect(migration).toMatch(/delete from parameter_module_mappings/i);
+  });
+});

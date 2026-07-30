@@ -101,32 +101,36 @@ async function seedMinimalGraph(db: InMemoryTestDatabase) {
   );
 }
 
-async function seedTwoDistinctModuleMappings(db: InMemoryTestDatabase) {
+async function seedDriverGroupMappings(db: InMemoryTestDatabase) {
   await db.query(
-    `insert into parameter_modules (id, organization_id, parent_id, name, path, depth, sort_order, description, scope)
-     values ($1, $2, null, 'Charge Pump IC', $1, 1, 0, '', '')
+    `insert into parameter_modules (
+       id, organization_id, parent_id, name, path, depth, sort_order, description, scope, kind, origin
+     )
+     values ($1, $2, null, 'Charge Pump IC', $1, 1, 0, '', '', 'driver-group', 'curated')
      on conflict (id) do nothing`,
     ["pmod-seed-charge-pump-ic", ORG_ID]
   );
   await db.query(
-    `insert into parameter_modules (id, organization_id, parent_id, name, path, depth, sort_order, description, scope)
-     values ($1, $2, null, 'Charger IC', $1, 1, 1, '', '')
+    `insert into parameter_modules (
+       id, organization_id, parent_id, name, path, depth, sort_order, description, scope, kind, origin
+     )
+     values ($1, $2, null, 'Charger IC', $1, 1, 1, '', '', 'driver-group', 'curated')
      on conflict (id) do nothing`,
     ["pmod-seed-charger-ic", ORG_ID]
   );
-  // sc8562@6E -> Charge Pump IC; hl7603@77 -> Charger IC. Both properties exist
-  // on distinct instances so the seed can demonstrate multiple modules.
+  // sc8562 compatible -> Charge Pump IC; hl7603 compatible -> Charger IC.
+  // Two hl7603 topology instances share the driver-group module; bindings differ by logical_node_id.
   await db.query(
     `insert into parameter_module_mappings (id, organization_id, parameter_module_id, match_kind, match_value, priority)
-     values ($1, $2, $3, 'instance', $4, 500)
+     values ($1, $2, $3, 'compatible', $4, 500)
      on conflict (organization_id, match_kind, match_value) do update set parameter_module_id = excluded.parameter_module_id`,
-    ["pmap-seed-sc8562-6e", ORG_ID, "pmod-seed-charge-pump-ic", "sc8562@6e"]
+    ["pmap-seed-sc8562", ORG_ID, "pmod-seed-charge-pump-ic", "sc8562"]
   );
   await db.query(
     `insert into parameter_module_mappings (id, organization_id, parameter_module_id, match_kind, match_value, priority)
-     values ($1, $2, $3, 'instance', $4, 500)
+     values ($1, $2, $3, 'compatible', $4, 500)
      on conflict (organization_id, match_kind, match_value) do update set parameter_module_id = excluded.parameter_module_id`,
-    ["pmap-seed-hl7603-77", ORG_ID, "pmod-seed-charger-ic", "hl7603@77"]
+    ["pmap-seed-hl7603", ORG_ID, "pmod-seed-charger-ic", "huawei,bypass_bst_hl7603"]
   );
 }
 
@@ -140,14 +144,14 @@ describe.skipIf(!databaseAvailable)("seedM1SemanticTopology", () => {
     // project (many prior config revisions and bindings); the cascading
     // cleanup below can take longer than the default hook timeout.
     await resetProjectTopology(db);
-    await seedTwoDistinctModuleMappings(db);
+    await seedDriverGroupMappings(db);
   }, 60_000);
 
   afterEach(async () => {
     await db?.rollback();
   });
 
-  it("writes module_id on every binding and assigns distinct modules for distinct instances", async () => {
+  it("writes module_id on every binding and assigns driver-group modules per compatible", async () => {
     const objectStore = createInMemoryObjectStore();
     const projectFile: DtsPowerSeedProjectFile = {
       projectId: "aurora",
@@ -170,6 +174,20 @@ describe.skipIf(!databaseAvailable)("seedM1SemanticTopology", () => {
     );
     expect(Number(totalBindings.rows[0]?.count ?? "0")).toBeGreaterThan(0);
 
+    const moduleKinds = await db!.query<{ kind: string }>(
+      `select distinct pm.kind
+       from project_parameter_bindings ppb
+       inner join parameter_modules pm on pm.id = ppb.module_id
+       where ppb.project_id = $1`,
+      [PROJECT_ID]
+    );
+    expect(moduleKinds.rows.map((row) => row.kind).sort()).toEqual(
+      expect.arrayContaining(["driver-group"])
+    );
+    for (const row of moduleKinds.rows) {
+      expect(["driver-group", "node-type", "unclassified"]).toContain(row.kind);
+    }
+
     const distinctModules = await db!.query<{ module_id: string }>(
       `select distinct module_id from project_parameter_bindings where project_id = $1`,
       [PROJECT_ID]
@@ -178,6 +196,30 @@ describe.skipIf(!databaseAvailable)("seedM1SemanticTopology", () => {
     expect(moduleIds).toContain("pmod-seed-charge-pump-ic");
     expect(moduleIds).toContain("pmod-seed-charger-ic");
     expect(moduleIds.length).toBeGreaterThan(1);
+
+    const hl7603Bindings = await db!.query<{
+      module_id: string;
+      logical_node_id: string;
+      unit_address: string;
+    }>(
+      `select ppb.module_id, ppb.logical_node_id, lnr.unit_address
+       from project_parameter_bindings ppb
+       inner join dts_logical_node_revisions lnr on lnr.logical_node_id = ppb.logical_node_id
+       inner join dts_config_revisions cr on cr.id = lnr.config_revision_id
+       where ppb.project_id = $1
+         and cr.project_id = $1
+         and lnr.name = 'hl7603'
+         and lnr.unit_address in ('75', '77')
+       group by ppb.module_id, ppb.logical_node_id, lnr.unit_address`,
+      [PROJECT_ID]
+    );
+    const hl7603Rows = hl7603Bindings.rows;
+    expect(hl7603Rows.length).toBeGreaterThanOrEqual(2);
+    const hl7603ModuleIds = new Set(hl7603Rows.map((row) => row.module_id));
+    const hl7603LogicalNodeIds = new Set(hl7603Rows.map((row) => row.logical_node_id));
+    expect(hl7603ModuleIds.size).toBe(1);
+    expect(hl7603LogicalNodeIds.size).toBeGreaterThanOrEqual(2);
+    expect([...hl7603ModuleIds][0]).toBe("pmod-seed-charger-ic");
   });
 
   it("is idempotent across reruns and does not duplicate config revisions", async () => {

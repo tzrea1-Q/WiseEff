@@ -1,11 +1,9 @@
 /**
- * Shared module resolution for DTS topology binding writes (phase 2, §5.1).
+ * Shared module resolution for DTS topology binding writes.
  *
  * Every binding write (ingest, spec review, legacy migration, seeds) must persist a
- * durable module_id — never null. Priority mirrors the frontend registry derivation
- * (`src/domain/parameter-topology/moduleRegistry.ts`): instance > compatible.
- * When no admin mapping matches, the write falls back to a single deterministic
- * org-scoped "未分类" module so the FK/NOT NULL constraint never blocks a write.
+ * durable module_id — never null. Attribution levers (ADR-0010): compatible >
+ * node-type > unclassified root. Never materializes per-instance modules.
  */
 
 import { createHash } from "node:crypto";
@@ -13,7 +11,7 @@ import { createHash } from "node:crypto";
 import { normalizeMatchToken } from "./modulePlacement";
 import type { Queryable } from "../../shared/database/client";
 
-export type ModuleBindingMatchKind = "compatible" | "instance";
+export type ModuleBindingMatchKind = "compatible" | "node-type";
 
 const UNCLASSIFIED_MODULE_NAME = "未分类";
 
@@ -63,10 +61,9 @@ async function findMappedModuleId(
 }
 
 /**
- * Resolve the durable business module for a binding write.
- * Priority: instance mapping > compatible mapping > deterministic
- * org-scoped "未分类" module. Never returns null/undefined (clean cutover: no
- * optional module on the write path).
+ * Resolve the durable attribution module for a binding write.
+ * Priority: compatible mapping → node-type mapping → deterministic
+ * org-scoped "未分类" module. Never returns null/undefined.
  */
 export async function resolveModuleIdForBinding(
   db: Queryable,
@@ -74,12 +71,12 @@ export async function resolveModuleIdForBinding(
     organizationId: string;
     driverModule: string | null;
     compatible: string | null;
-    instanceName: string | null;
+    nodeType: string | null;
   },
 ): Promise<string> {
   const candidates: Array<{ kind: ModuleBindingMatchKind; value: string | null }> = [
-    { kind: "instance", value: normalizeMatchValue(input.instanceName) },
     { kind: "compatible", value: normalizeMatchValue(input.compatible) },
+    { kind: "node-type", value: normalizeMatchValue(input.nodeType) },
   ];
 
   for (const candidate of candidates) {

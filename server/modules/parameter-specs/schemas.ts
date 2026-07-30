@@ -4,6 +4,19 @@ const nonEmptyString = z.string().min(1);
 
 export const parameterSourceKindSchema = z.enum(["dts", "json", "manual"]);
 export const specLifecycleSchema = z.enum(["draft", "active", "deprecated"]);
+export const specAttributionModuleKindSchema = z.enum([
+  "business",
+  "driver-group",
+  "node-type",
+  "unclassified"
+]);
+
+export const specAttributionModuleDtoSchema = z.object({
+  id: nonEmptyString,
+  name: nonEmptyString,
+  kind: specAttributionModuleKindSchema,
+  path: z.array(z.string()).optional()
+});
 
 export const parameterSpecSummaryDtoSchema = z.object({
   id: nonEmptyString,
@@ -16,7 +29,8 @@ export const parameterSpecSummaryDtoSchema = z.object({
   currentVersionId: z.string().nullable(),
   currentVersion: z.number().int().nullable(),
   valueShape: z.unknown().nullable(),
-  compatiblePatterns: z.array(z.string()).nullable()
+  compatiblePatterns: z.array(z.string()).nullable(),
+  attributionModules: z.array(specAttributionModuleDtoSchema)
 });
 
 export const parameterSpecDetailDtoSchema = parameterSpecSummaryDtoSchema.extend({

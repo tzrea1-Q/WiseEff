@@ -32,7 +32,8 @@ describe("mock runtime semantic parameter model (seam)", () => {
         specificationKey: item.specificationKey,
         driverModule: item.driverModule,
         lifecycle: item.lifecycle,
-        currentVersion: item.currentVersion
+        currentVersion: item.currentVersion,
+        attributionModules: item.attributionModules,
       })
     );
 
@@ -49,7 +50,7 @@ describe("mock runtime semantic parameter model (seam)", () => {
     const library = screen.getByRole("region", { name: "参数定义库" });
     expect(library).toBeInTheDocument();
     expect(screen.getAllByText("gpio_int").length).toBeGreaterThan(0);
-    expect(screen.getByRole("columnheader", { name: "预测模块" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "归属模块" })).toBeInTheDocument();
     // Spec identity is not rendered as a path-derived flat key
     expect(screen.queryByText(/amba\/i2c/)).not.toBeInTheDocument();
   });

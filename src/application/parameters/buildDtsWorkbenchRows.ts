@@ -12,6 +12,7 @@ import type {
   DtsWorkbenchGovernanceState,
   DtsParameterWorkbenchRow
 } from "@/domain/parameter-topology/workbenchTypes";
+import { nodeTypeKeyForNode, isProvisionalScaffoldingUnclassifiedModuleName, isScaffoldingDriverLabel } from "@/domain/parameter-topology/modulePlacement";
 import {
   describeModuleAssignment,
   EMPTY_PARAMETER_MODULE_REGISTRY,
@@ -19,10 +20,6 @@ import {
   type ParameterModuleRegistry
 } from "@/domain/parameter-topology/moduleRegistry";
 import { isParameterSurfaceRow } from "@/domain/parameter-topology/parameterSurface";
-import {
-  isProvisionalScaffoldingUnclassifiedModuleName,
-  isScaffoldingDriverLabel
-} from "@/domain/parameter-topology/modulePlacement";
 
 export type BuildDtsWorkbenchRowsInput = {
   projectId: string;
@@ -252,7 +249,7 @@ export function buildDtsWorkbenchRows({
       {
         driverModule: binding.driverModule,
         compatible: effectiveNode?.compatible ?? null,
-        instanceName: binding.instanceName
+        nodeType: binding.instanceName ? nodeTypeKeyForNode({ name: binding.instanceName }) : null
       },
       moduleRegistry
     );

@@ -1,5 +1,6 @@
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { nodeTypeKeyForNode } from "../parameter-modules/modulePlacement";
 import { resolveModuleIdForBinding } from "../parameter-modules/resolveModuleForBinding";
 import {
   createOrReuseBinding,
@@ -39,11 +40,15 @@ function asStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.length > 0);
 }
 
-/** DTS node locators end in "name@unitAddress" (or bare "name"), matching instance-mapping format. */
-function instanceNameFromNodeLocator(nodeLocator: string | null): string | null {
+/** Derive bare node-type key from a DTS node locator (unit address stripped). */
+function nodeTypeFromNodeLocator(nodeLocator: string | null): string | null {
   if (!nodeLocator) return null;
   const segments = nodeLocator.split("/").filter((segment) => segment.length > 0);
-  return segments.length > 0 ? segments[segments.length - 1]! : null;
+  const leaf = segments.length > 0 ? segments[segments.length - 1]! : null;
+  if (!leaf) return null;
+  const at = leaf.indexOf("@");
+  const name = at >= 0 ? leaf.slice(0, at) : leaf;
+  return nodeTypeKeyForNode({ name, nodePath: nodeLocator });
 }
 
 export type SpecReviewEvidence = {
@@ -197,7 +202,7 @@ export async function applyResolvedSpecReview(
     organizationId: input.organizationId,
     driverModule: spec?.driverModule ?? null,
     compatible: evidence.compatible[0] ?? null,
-    instanceName: instanceNameFromNodeLocator(evidence.nodeLocator),
+    nodeType: nodeTypeFromNodeLocator(evidence.nodeLocator),
   });
 
   const binding = await createOrReuseBinding(db, {

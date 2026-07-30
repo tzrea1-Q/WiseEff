@@ -17,7 +17,6 @@ import {
 } from "@/components/parameter-topology/ParameterSpecLibrary";
 import type { ParameterSpecDetailView } from "@/components/parameter-topology/ParameterSpecDetail";
 import { SpecReviewQueue, type SpecReviewTaskView } from "@/components/parameter-topology/SpecReviewQueue";
-import { deriveModuleAssignment } from "@/domain/parameter-topology/moduleRegistry";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 import { useParameterAdminUrl } from "./useParameterAdminUrl";
 
@@ -40,8 +39,7 @@ function toSpecDetailView(
       exampleValue: detail.exampleValue,
       schemaNamespace: detail.schemaNamespace,
       usageCount,
-      moduleName: libraryRow?.moduleName,
-      moduleMapped: libraryRow?.moduleMapped,
+      attributionModules: libraryRow?.attributionModules ?? detail.attributionModules ?? [],
       businessCategory: libraryRow?.businessCategory
     }),
     displayName: detail.displayName,
@@ -136,21 +134,12 @@ export function OrganizationSpecGovernancePanel({
   const reloadSpecs = useCallback(async () => {
     setSpecLoading(true);
     try {
-      const [items, registry] = await Promise.all([
+      const [items] = await Promise.all([
         application.listSpecs({}),
-        application.getModuleRegistry()
       ]);
       setSpecRows(
-        items.map((item) => {
-          const assignment = deriveModuleAssignment(
-            {
-              driverModule: item.driverModule,
-              compatible: item.compatiblePatterns?.[0] ?? null,
-              instanceName: null
-            },
-            registry
-          );
-          return mapParameterSpecToLibraryRow({
+        items.map((item) =>
+          mapParameterSpecToLibraryRow({
             id: item.id,
             organizationId: item.organizationId ?? null,
             propertyKey: item.propertyKey,
@@ -160,10 +149,9 @@ export function OrganizationSpecGovernancePanel({
             currentVersion: item.currentVersion,
             compatiblePatterns: item.compatiblePatterns,
             valueShape: item.valueShape,
-            moduleName: assignment.moduleName,
-            moduleMapped: assignment.mapped
-          });
-        })
+            attributionModules: item.attributionModules,
+          })
+        )
       );
     } catch {
       setSpecRows([]);

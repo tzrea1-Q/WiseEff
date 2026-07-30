@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Queryable } from "../../shared/database/client";
 import {
-  nodeSourceKey,
-  resolveBindingInstanceModuleId,
-} from "./ensureInstanceModuleForBinding";
+  resolveAttributionModuleForBinding,
+} from "./ensureAttributionModuleForBinding";
+import { nodeTypeSourceKey } from "./modulePlacement";
 import { unclassifiedModuleId } from "./resolveModuleForBinding";
 
 type ModuleRow = {
@@ -18,7 +18,7 @@ type ModuleRow = {
   description: string;
   scope: string;
   importance: "medium";
-  kind: "business" | "driver-group" | "instance" | "logical" | "unclassified";
+  kind: "business" | "driver-group" | "node-type" | "unclassified";
   origin: "curated" | "auto";
   sourceKey: string | null;
 };
@@ -201,9 +201,9 @@ function baseModule(partial: Partial<ModuleRow> & Pick<ModuleRow, "id" | "organi
   };
 }
 
-describe("resolveBindingInstanceModuleId", () => {
-  it("creates instance modules under a mapped compatible driver group for Type U", async () => {
-    const { db, modules, inserts } = createFakeDb({
+describe("resolveAttributionModuleForBinding", () => {
+  it("resolves bindings through a compatible mapping to the driver group", async () => {
+    const { db } = createFakeDb({
       modules: [
         baseModule({
           id: "mod-hl7603-group",
@@ -228,7 +228,7 @@ describe("resolveBindingInstanceModuleId", () => {
       ],
     });
 
-    const moduleId = await resolveBindingInstanceModuleId(db, {
+    const moduleId = await resolveAttributionModuleForBinding(db, {
       organizationId: "org-1",
       driverModule: "bypass_bst_hl7603",
       compatible: "huawei,bypass_bst_hl7603",
@@ -236,103 +236,63 @@ describe("resolveBindingInstanceModuleId", () => {
       nodeLocator: "/amba/i2c@FF24E000/hl7603@6E",
     });
 
-    expect(moduleId).not.toBe("mod-hl7603-group");
-    const created = [...modules.values()].find((module) => module.id === moduleId);
-    expect(created?.name).toBe("hl7603@6E");
-    expect(created?.sourceKey).toBe("node:amba/i2c@FF24E000/hl7603@6E");
-    expect(created?.kind).toBe("instance");
-    expect(created?.origin).toBe("auto");
-    expect(inserts.some((entry) => entry.values.includes("hl7603@6E"))).toBe(true);
+    expect(moduleId).toBe("mod-hl7603-group");
   });
 
-  it("preserves a curated rename across re-ingest via source_key (no duplicate)", async () => {
-    const sourceKey = nodeSourceKey("/amba/i2c@FF24E000/hl7603@6E", "hl7603@6E");
-    const { db, modules, inserts } = createFakeDb({
+  it("resolves bindings through a node-type mapping", async () => {
+    const { db } = createFakeDb({
       modules: [
         baseModule({
-          id: "mod-hl7603-group",
+          id: "mod-hl7603-type",
           organizationId: "org-1",
           name: "hl7603",
-          parentId: "mod-charger-ic",
-          path: "mod-charger-ic/mod-hl7603-group",
-          depth: 3,
-          kind: "driver-group",
-          origin: "auto",
-          sourceKey: "compatible:huawei,bypass_bst_hl7603",
-        }),
-        baseModule({
-          id: "mod-hl7603-instance",
-          organizationId: "org-1",
-          name: "备用电源旁路",
           parentId: "mod-hl7603-group",
-          path: "mod-charger-ic/mod-hl7603-group/mod-hl7603-instance",
+          path: "x/mod-hl7603-type",
           depth: 4,
-          kind: "instance",
-          origin: "curated",
-          sourceKey,
-        }),
-      ],
-      mappings: [
-        {
-          organizationId: "org-1",
-          matchKind: "compatible",
-          matchValue: "huawei,bypass_bst_hl7603",
-          moduleId: "mod-hl7603-group",
-          priority: 300,
-        },
-      ],
-    });
-
-    const first = await resolveBindingInstanceModuleId(db, {
-      organizationId: "org-1",
-      driverModule: "bypass_bst_hl7603",
-      compatible: "huawei,bypass_bst_hl7603",
-      instanceName: "hl7603@6E",
-      nodeLocator: "/amba/i2c@FF24E000/hl7603@6E",
-    });
-    const second = await resolveBindingInstanceModuleId(db, {
-      organizationId: "org-1",
-      driverModule: "bypass_bst_hl7603",
-      compatible: "huawei,bypass_bst_hl7603",
-      instanceName: "hl7603@6E",
-      nodeLocator: "/amba/i2c@FF24E000/hl7603@6E",
-    });
-
-    expect(first).toBe("mod-hl7603-instance");
-    expect(second).toBe("mod-hl7603-instance");
-    expect(modules.get("mod-hl7603-instance")?.name).toBe("备用电源旁路");
-    expect(modules.get("mod-hl7603-instance")?.origin).toBe("curated");
-    expect([...modules.values()].filter((module) => module.sourceKey === sourceKey)).toHaveLength(1);
-    expect(inserts).toHaveLength(0);
-  });
-
-  it("nests Type C logical nodes under the parent module", async () => {
-    const { db, modules } = createFakeDb({
-      modules: [
-        baseModule({
-          id: "mod-bcb",
-          organizationId: "org-1",
-          name: "battery_charge_balance",
-          parentId: "mod-battery-balance",
-          path: "x/mod-bcb",
-          depth: 3,
-          kind: "logical",
+          kind: "node-type",
           origin: "auto",
-          sourceKey: "node:battery_charge_balance",
+          sourceKey: nodeTypeSourceKey("hl7603"),
         }),
       ],
       mappings: [
         {
           organizationId: "org-1",
-          matchKind: "instance",
-          matchValue: "battery_charge_balance",
-          moduleId: "mod-bcb",
+          matchKind: "node-type",
+          matchValue: "hl7603",
+          moduleId: "mod-hl7603-type",
           priority: 500,
         },
       ],
     });
 
-    const moduleId = await resolveBindingInstanceModuleId(db, {
+    const moduleId = await resolveAttributionModuleForBinding(db, {
+      organizationId: "org-1",
+      driverModule: "bypass_bst_hl7603",
+      compatible: "huawei,bypass_bst_hl7603",
+      instanceName: "hl7603@6E",
+      nodeLocator: "/amba/i2c@FF24E000/hl7603@6E",
+    });
+
+    expect(moduleId).toBe("mod-hl7603-type");
+  });
+
+  it("materializes node-type modules with nodetype source keys during auto discovery", async () => {
+    const unclassifiedId = unclassifiedModuleId("org-1");
+    const { db, modules } = createFakeDb({
+      modules: [
+        baseModule({
+          id: unclassifiedId,
+          organizationId: "org-1",
+          name: "未分类",
+          kind: "unclassified",
+          origin: "auto",
+          sortOrder: 999,
+        }),
+      ],
+      mappings: [],
+    });
+
+    await resolveAttributionModuleForBinding(db, {
       organizationId: "org-1",
       driverModule: null,
       compatible: null,
@@ -340,64 +300,61 @@ describe("resolveBindingInstanceModuleId", () => {
       nodeLocator: "/battery_charge_balance/battery0",
     });
 
-    const created = [...modules.values()].find((module) => module.id === moduleId);
+    const created = [...modules.values()].find((module) => module.kind === "node-type");
     expect(created?.name).toBe("battery0");
-    expect(created?.parentId).toBe("mod-bcb");
-    expect(created?.kind).toBe("logical");
-    expect(created?.sourceKey).toBe("node:battery_charge_balance/battery0");
+    expect(created?.sourceKey).toBe(nodeTypeSourceKey("battery0"));
   });
 
-  it("reasserts kind on auto modules found by source_key without touching curated rows", async () => {
-    const sourceKey = "node:btb_check";
-    const { db, modules } = createFakeDb({
+  it("preserves a curated rename across re-ingest via source_key (no duplicate)", async () => {
+    const sourceKey = nodeTypeSourceKey("hl7603");
+    const { db, modules, inserts } = createFakeDb({
       modules: [
         baseModule({
-          id: "mod-btb",
+          id: "mod-hl7603-type",
           organizationId: "org-1",
-          name: "btb_check",
-          parentId: "mod-protection",
-          path: "x/mod-btb",
+          name: "备用电源旁路",
+          parentId: "mod-charger-ic",
+          path: "x/mod-hl7603-type",
           depth: 3,
-          kind: "instance",
-          origin: "auto",
+          kind: "node-type",
+          origin: "curated",
           sourceKey,
         }),
-        baseModule({
-          id: "mod-curated",
+      ],
+      mappings: [
+        {
           organizationId: "org-1",
-          name: "charging_core",
-          parentId: "mod-policy",
-          path: "x/mod-curated",
-          depth: 3,
-          kind: "instance",
-          origin: "curated",
-          sourceKey: "node:charging_core",
-        }),
+          matchKind: "node-type",
+          matchValue: "hl7603",
+          moduleId: "mod-hl7603-type",
+          priority: 500,
+        },
       ],
     });
 
-    const autoId = await resolveBindingInstanceModuleId(db, {
+    const first = await resolveAttributionModuleForBinding(db, {
       organizationId: "org-1",
-      driverModule: null,
-      compatible: null,
-      instanceName: "btb_check",
-      nodeLocator: "/btb_check",
+      driverModule: "bypass_bst_hl7603",
+      compatible: "huawei,bypass_bst_hl7603",
+      instanceName: "hl7603@6E",
+      nodeLocator: "/amba/i2c@FF24E000/hl7603@6E",
     });
-    expect(autoId).toBe("mod-btb");
-    expect(modules.get("mod-btb")?.kind).toBe("logical");
+    const second = await resolveAttributionModuleForBinding(db, {
+      organizationId: "org-1",
+      driverModule: "bypass_bst_hl7603",
+      compatible: "huawei,bypass_bst_hl7603",
+      instanceName: "hl7603@6E",
+      nodeLocator: "/amba/i2c@FF24E000/hl7603@6E",
+    });
 
-    const curatedId = await resolveBindingInstanceModuleId(db, {
-      organizationId: "org-1",
-      driverModule: null,
-      compatible: null,
-      instanceName: "charging_core",
-      nodeLocator: "/charging_core",
-    });
-    expect(curatedId).toBe("mod-curated");
-    expect(modules.get("mod-curated")?.kind).toBe("instance");
+    expect(first).toBe("mod-hl7603-type");
+    expect(second).toBe("mod-hl7603-type");
+    expect(modules.get("mod-hl7603-type")?.name).toBe("备用电源旁路");
+    expect(modules.get("mod-hl7603-type")?.origin).toBe("curated");
+    expect([...modules.values()].filter((module) => module.sourceKey === sourceKey)).toHaveLength(1);
   });
 
-  it("uses a provisional unclassified child module when compatible is unmapped", async () => {
+  it("does not create per-instance modules for unit-addressed nodes", async () => {
     const unclassifiedId = unclassifiedModuleId("org-1");
     const { db, modules } = createFakeDb({
       modules: [
@@ -405,18 +362,15 @@ describe("resolveBindingInstanceModuleId", () => {
           id: unclassifiedId,
           organizationId: "org-1",
           name: "未分类",
-          parentId: null,
-          path: unclassifiedId,
-          depth: 1,
-          sortOrder: 999,
           kind: "unclassified",
           origin: "auto",
+          sortOrder: 999,
         }),
       ],
       mappings: [],
     });
 
-    const moduleId = await resolveBindingInstanceModuleId(db, {
+    await resolveAttributionModuleForBinding(db, {
       organizationId: "org-1",
       driverModule: "new-driver",
       compatible: "vendor,new-driver",
@@ -424,14 +378,13 @@ describe("resolveBindingInstanceModuleId", () => {
       nodeLocator: "/amba/i2c@FF24E000/new_driver@10",
     });
 
-    const created = [...modules.values()].find((module) => module.id === moduleId);
-    expect(created?.name).toBe("未分类 · new-driver");
-    expect(created?.parentId).toBe(unclassifiedId);
-    expect(created?.kind).toBe("unclassified");
-    expect(created?.sourceKey).toBe("unclassified:new-driver");
+    expect([...modules.values()].some((module) => module.name === "new_driver@10")).toBe(false);
+    expect([...modules.values()].some((module) => module.name === "new_driver" && module.kind === "node-type")).toBe(
+      true,
+    );
   });
 
-  it("does not create 未分类 · scaffolding buckets for bus/gpio/gic drivers", async () => {
+  it("parks scaffolding drivers on the org unclassified root without provisional buckets", async () => {
     const unclassifiedId = unclassifiedModuleId("org-1");
     const { db, modules } = createFakeDb({
       modules: [
@@ -450,7 +403,7 @@ describe("resolveBindingInstanceModuleId", () => {
       mappings: [],
     });
 
-    const moduleId = await resolveBindingInstanceModuleId(db, {
+    const moduleId = await resolveAttributionModuleForBinding(db, {
       organizationId: "org-1",
       driverModule: "amba-bus",
       compatible: "arm,amba-bus",
@@ -462,33 +415,9 @@ describe("resolveBindingInstanceModuleId", () => {
     expect([...modules.values()].some((module) => module.name.startsWith("未分类 · "))).toBe(false);
   });
 
-  it("maps DTS root instance `/` to board under nested Board Identity (never creates `/`)", async () => {
-    const unclassifiedId = unclassifiedModuleId("org-1");
-    const { db, modules } = createFakeDb({
+  it("maps DTS root instance `/` through the board node-type mapping", async () => {
+    const { db } = createFakeDb({
       modules: [
-        baseModule({
-          id: unclassifiedId,
-          organizationId: "org-1",
-          name: "未分类",
-          kind: "unclassified",
-          origin: "auto",
-          sortOrder: 999,
-        }),
-        baseModule({
-          id: "mod-power",
-          organizationId: "org-1",
-          name: "Power",
-          sortOrder: 1,
-        }),
-        baseModule({
-          id: "mod-board-identity",
-          organizationId: "org-1",
-          name: "Board Identity",
-          parentId: "mod-power",
-          path: "mod-power/mod-board-identity",
-          depth: 2,
-          sortOrder: 10,
-        }),
         baseModule({
           id: "mod-board",
           organizationId: "org-1",
@@ -497,15 +426,15 @@ describe("resolveBindingInstanceModuleId", () => {
           path: "mod-power/mod-board-identity/mod-board",
           depth: 3,
           sortOrder: 1,
-          kind: "instance",
+          kind: "node-type",
           origin: "auto",
-          sourceKey: "node:board",
+          sourceKey: nodeTypeSourceKey("board"),
         }),
       ],
       mappings: [
         {
           organizationId: "org-1",
-          matchKind: "instance",
+          matchKind: "node-type",
           matchValue: "board",
           moduleId: "mod-board",
           priority: 500,
@@ -513,7 +442,7 @@ describe("resolveBindingInstanceModuleId", () => {
       ],
     });
 
-    const moduleId = await resolveBindingInstanceModuleId(db, {
+    const moduleId = await resolveAttributionModuleForBinding(db, {
       organizationId: "org-1",
       driverModule: null,
       compatible: null,
@@ -522,53 +451,5 @@ describe("resolveBindingInstanceModuleId", () => {
     });
 
     expect(moduleId).toBe("mod-board");
-    expect([...modules.values()].some((module) => module.name === "/")).toBe(false);
-  });
-
-  it("ensures board under nested Board Identity when root `/` has no instance mapping", async () => {
-    const unclassifiedId = unclassifiedModuleId("org-1");
-    const { db, modules } = createFakeDb({
-      modules: [
-        baseModule({
-          id: unclassifiedId,
-          organizationId: "org-1",
-          name: "未分类",
-          kind: "unclassified",
-          origin: "auto",
-          sortOrder: 999,
-        }),
-        baseModule({
-          id: "mod-power",
-          organizationId: "org-1",
-          name: "Power",
-          sortOrder: 1,
-        }),
-        baseModule({
-          id: "mod-board-identity",
-          organizationId: "org-1",
-          name: "Board Identity",
-          parentId: "mod-power",
-          path: "mod-power/mod-board-identity",
-          depth: 2,
-          sortOrder: 10,
-        }),
-      ],
-      mappings: [],
-    });
-
-    const moduleId = await resolveBindingInstanceModuleId(db, {
-      organizationId: "org-1",
-      driverModule: null,
-      compatible: null,
-      instanceName: "/",
-      nodeLocator: "/",
-    });
-
-    const created = [...modules.values()].find((module) => module.id === moduleId);
-    expect(created?.name).toBe("board");
-    expect(created?.parentId).toBe("mod-board-identity");
-    expect(created?.sourceKey).toBe("node:board");
-    expect([...modules.values()].some((module) => module.name === "/")).toBe(false);
-    expect(moduleId).not.toBe(unclassifiedId);
   });
 });

@@ -15,3 +15,7 @@ We decided to retire `driver` as a match kind rather than repair it: attribution
 - The `待归类驱动（driver）` queue disappears, and with it the frontend aggregation over `listSpecs()` that fed it — a second, spec-library-scoped definition of "observed driver" that never agreed with the server's binding-scoped compatible hints.
 - `deriveModuleAssignment` in `src/domain/parameter-topology/moduleRegistry.ts` loses its driver arm. It survives only as the parameter-spec library's prediction of where a spec's parameters would land, and is narrowed to compatible and instance.
 - The page can no longer honestly be called 驱动归属配置; the surface is renamed around modules rather than drivers.
+
+## Supersession (ADR-0010)
+
+Partially superseded by [ADR-0010](0010-attribution-tree-is-taxonomy-not-topology.md). The claim that **compatible and instance are the only attribution levers** is replaced by **compatible and node-type**. The `instance` match kind is removed; bare node names (unit address stripped) resolve driverless config nodes to node-type units. Retiring the inert `driver` lever (this ADR) is unchanged — `node-type` is not a revival of `driver`; see ADR-0010 § "Why `node-type` is not a revival of the retired `driver` lever".

@@ -6,7 +6,8 @@ export type BuildModuleTreeInput = {
   rows: DtsParameterWorkbenchRow[];
   /**
    * Admin module registry. When provided, nesting follows `parentId` so the
-   * navigator shows business roots → driver groups → instance modules.
+   * navigator shows business roots → driver groups → node-type modules.
+   * Per-instance browsing uses `groupByDevice` (module → device → parameter).
    * When omitted, keeps the legacy flat "one root per distinct moduleId" shape.
    */
   modules?: readonly ParameterModule[];
@@ -105,8 +106,8 @@ function promoteSingletonRoot(roots: DtsWorkbenchTreeNode[]): DtsWorkbenchTreeNo
 /**
  * Groups bindings into a business-first tree.
  * Default: module → parameter bindings (no required driver tier).
- * With `modules`, nest by registry parentId (business → group → instance).
- * Optional groupByDevice restores module → device/driver → parameter under the leaf.
+ * With `modules`, nest by registry parentId (business → {driver-group | node-type} → node-type*).
+ * Optional groupByDevice adds module → device/driver → parameter under the leaf module.
  */
 export function buildModuleTree({
   rows,

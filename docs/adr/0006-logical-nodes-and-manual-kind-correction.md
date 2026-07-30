@@ -22,3 +22,7 @@ We add a fifth kind, `logical`, for DTS nodes WiseEff cannot prove are devices (
 ## Follow-up
 
 ADR-0007 settles the driver registry: registering a driver is creating or claiming a curated driver group, so the registry is a view over existing data rather than a new store.
+
+## Supersession (ADR-0010)
+
+Superseded by [ADR-0010](0010-attribution-tree-is-taxonomy-not-topology.md). The `logical` kind and its reading as **one unprovable device per DTS instance** are retired. Driverless configuration nodes become **`node-type` units** keyed by bare node name (not per-instance `source_key = node:{locator}`). Manual reclassify among `{business, instance, logical}` becomes `{business, node-type}`. Scaffolding modules deferred here (`i2c@…`, `pmic@0`, `batt`) leave the tree entirely in migration `0080` (closes TD-045).

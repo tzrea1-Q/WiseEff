@@ -31,7 +31,8 @@ const SPEC_SUMMARY: ParameterSpecSummary = {
   currentVersionId: "specver-sc8562-gpio-int-3",
   currentVersion: 3,
   valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
-  compatiblePatterns: ["vendor,sc8562"]
+  compatiblePatterns: ["vendor,sc8562"],
+  attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }]
 };
 
 const SPEC_DETAIL: ParameterSpecDetail = {

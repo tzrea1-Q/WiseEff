@@ -136,7 +136,7 @@ async function unclassifiedModuleId(db: InMemoryTestDatabase): Promise<string> {
     organizationId: ORG_ID,
     driverModule: null,
     compatible: null,
-    instanceName: null,
+    nodeType: null,
   });
 }
 

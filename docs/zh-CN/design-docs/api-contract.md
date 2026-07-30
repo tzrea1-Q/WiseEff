@@ -454,7 +454,7 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
-| `GET` | `/api/v2/parameter-specs` | 列出版本化参数规格 |
+| `GET` | `/api/v2/parameter-specs` | 列出版本化参数规格。每项含 `attributionModules: Array<{ id, name, kind }>`——其 binding 解析到的归属单元（驱动组与节点类型单元）的去重集合，由服务端根据 binding 关系计算。空数组表示尚未在任何项目中实测到。规格层不重新执行 compatible 或 node-type 匹配（ADR-0010）。 |
 | `GET` | `/api/v2/parameter-specs/:specId` | 规格详情（example/default/policy 分字段） |
 | `GET` | `/api/v2/parameter-spec-review-tasks` | 组织范围、分页、按状态筛选的规格审核队列（`?status=&limit=&cursor=`） |
 | `POST` | `/api/v2/parameter-specs/:specId/activate` | Admin 仅可激活**本组织** draft（`organization_id === 调用者组织`），请求须携带完整 `valueShape`（bits/groups/cellsPerGroup/length 等推断字段）、`constraints`、`documentation`、`reason`。平台全局 draft（`organization_id IS NULL`）→ `403` 失败关闭。跨组织 → `404`。形状缺失/冲突 → `400`/`409`。仅成功产生审计：`parameter-topology-governance` / `spec-activated`。 |
@@ -470,12 +470,14 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 | `GET` | `/api/v2/parameter-modules/discovery-hints` | 从 binding 观测未映射 `compatible`（`{ item: { compatibles: [{ compatible, bindingCount, projectCount, suggestedGroupName }], total } }`），排除已忽略与脚手架标签。 |
 | `POST` | `/api/v2/parameter-modules/discovery-hints/dismissals` | Admin 从队列忽略 compatible（`{ compatible, reason? }`）；返回刷新后的 hints。审计：`parameter-module-compatible-dismissed`。 |
 | `DELETE` | `/api/v2/parameter-modules/discovery-hints/dismissals/:compatible` | Admin 恢复已忽略的 compatible。审计：`parameter-module-compatible-restored`。 |
-| `POST` | `/api/v2/parameter-modules/mappings/preview` | Admin 映射干跑（`{ moduleId, matchKind, matchValue, priority? }`）；`matchKind` 仅 `compatible` \| `instance`。返回 `{ item: MappingApplyPreview }`，不落库。 |
+| `POST` | `/api/v2/parameter-modules/mappings/preview` | Admin 映射干跑（`{ moduleId, matchKind, matchValue, priority? }`）；`matchKind` 仅 `compatible` \| `node-type`。返回 `{ item: MappingApplyPreview }`，不落库。 |
 | `POST` | `/api/v2/parameter-modules/mappings` | Admin 创建映射并**按规则范围应用**到匹配 binding。返回 `{ item: registry, apply: MappingApplyPreview }`（`201`）。审计：`parameter-module-mapping-created`。 |
 | `DELETE` | `/api/v2/parameter-modules/mappings/:mappingId` | Admin 删除映射并对受影响 binding 做范围重停放。返回 `{ item: registry, apply: MappingApplyPreview }`。审计：`parameter-module-mapping-deleted`。 |
 | `POST` | `/api/v2/parameter-modules/recompute-bindings` | Admin 全组织或单项目重算（可选 `{ projectId, dryRun }`）。`dryRun: true` 返回 `{ updated, conflicts, dryRun: true, preview }` 不写库。正式应用返回 `{ updated, conflicts, preview? }`；唯一键冲突 → `409`。运维/回填工具——日常归类走映射的范围应用，而非全量重算。审计：`parameter-module-bindings-recomputed`。 |
 
 `MappingApplyPreview`：`{ affectedBindings, byProject: [{ projectId, count }], fromModules: [{ moduleId, moduleName, count }], toModuleId, emptiedModules, conflicts }`。
+
+**Binding 模块身份（Phase 2，ADR-0010）：** 每条 `project_parameter_bindings` 行持久化非空 `module_id`，外键指向 `parameter_modules(id)`（迁移 `0067`）；浏览唯一键为 `(project_id, logical_node_id, parameter_spec_id, module_id)`。写路径经单一解析器：**compatible → node-type → 未分类根**——绝不为 null。`module_id` 必须指向**驱动组**或**节点类型单元**（或组织未分类根）；业务分类不接 binding。器件实例身份仅为 **`logical_node_id`**——同一驱动的多个实例共享定义、值由实例区分。binding DTO 暴露 `moduleId`；工作台以其为浏览真相源（不做 derive-on-read）。干净切换，无双读兼容层。
 
 值拆分：`exampleValue` / `schemaDefault` / `policyTarget` / `effectiveValue` 分字段；不得折叠为业务 `recommendedValue`。拓扑载荷携带 API provenance（`sourceChain` / occurrence span）；API 模式下客户端不得发明教学回退数据。
 

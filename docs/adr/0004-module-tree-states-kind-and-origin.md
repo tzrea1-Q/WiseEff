@@ -21,3 +21,7 @@ We decided the tree keeps one shape but every module **states** two orthogonal f
 ## Follow-up
 
 ADR-0006 splits nodes without compatible evidence into `kind=logical`, and opens controlled kind correction on the edit path so the "edit to fix a wrong guess" consequence above is actually reachable.
+
+## Supersession (ADR-0010)
+
+Partially superseded by [ADR-0010](0010-attribution-tree-is-taxonomy-not-topology.md). The claim that a **device instance is the leaf parameters hang from** and that the product tree is **business → driver group → instance** no longer holds. Bindings attach to **driver groups** and **node-type units** only; device instance identity lives in `logical_node_id`, and per-instance browsing uses the workbench `groupByDevice` layer. `kind` and `origin` as stated facts, adoption semantics, `source_key` ingest matching, and kind-scoped admin actions remain in force.

@@ -47,13 +47,13 @@ const modules: ParameterModule[] = [
   },
   {
     id: "i",
-    name: "Inst",
+    name: "sc8562",
     parentId: "g",
     sortOrder: 0,
     description: "",
     scope: "",
     importance: "medium",
-    kind: "instance",
+    kind: "node-type",
     origin: "auto",
     sourceKey: null,
     effectiveImportance: "high",
@@ -72,28 +72,21 @@ describe("moduleAttributionTreeUtils", () => {
 
   it("enforces kind-scoped write guards", () => {
     expect(canDeleteModule(modules[2]!)).toBe(false);
-    expect(canMoveModule(modules[2]!)).toBe(false);
+    expect(canMoveModule(modules[2]!)).toBe(true);
     expect(canEditImportance(modules[0]!)).toBe(true);
     expect(canEditImportance(modules[1]!)).toBe(false);
     expect(canDeleteModule(modules[1]!)).toBe(true);
   });
 
-  it("allows moving logical nodes but not deleting them", () => {
-    const logical: ParameterModule = {
-      ...modules[2]!,
-      id: "l",
-      name: "btb_check",
-      kind: "logical"
-    };
-    expect(canMoveModule(logical)).toBe(true);
-    expect(canDeleteModule(logical)).toBe(false);
-    expect(canReclassifyModule(logical)).toBe(true);
+  it("allows reclassify on business and node-type modules", () => {
+    const nodeType = modules[2]!;
+    expect(canReclassifyModule(nodeType)).toBe(true);
     expect(canReclassifyModule(modules[1]!)).toBe(false);
   });
 
   it("keeps ancestors when filtering by kind", () => {
     const visible = filterModulesForAttribution(modules, {
-      kinds: ["instance"],
+      kinds: ["node-type"],
       origins: ["auto", "curated"],
       hideNotYetObserved: false,
       onlyUncoveredParse: false
@@ -104,11 +97,11 @@ describe("moduleAttributionTreeUtils", () => {
   it("rolls direct parameter counts up the parent tree for display", () => {
     const totals = aggregateSubtreeParameterCounts(modules);
     expect(totals.get("i")).toBe(1);
-    expect(totals.get("g")).toBe(2); // group direct 1 + instance 1
-    expect(totals.get("b")).toBe(2); // business 0 + subtree 2
+    expect(totals.get("g")).toBe(2);
+    expect(totals.get("b")).toBe(2);
   });
 
-  it("marks curated empty driver-group, instance, and logical modules as not yet observed", () => {
+  it("marks curated empty driver-group and node-type modules as not yet observed", () => {
     expect(
       isNotYetObservedModule({
         ...modules[1]!,
@@ -123,14 +116,6 @@ describe("moduleAttributionTreeUtils", () => {
         parameterCount: 0
       })
     ).toBe(true);
-    expect(
-      isNotYetObservedModule({
-        ...modules[2]!,
-        kind: "logical",
-        origin: "curated",
-        parameterCount: 0
-      })
-    ).toBe(true);
     expect(isNotYetObservedModule(modules[1]!)).toBe(false);
   });
 
@@ -139,9 +124,9 @@ describe("moduleAttributionTreeUtils", () => {
     expect(allowedCreateKindsForParent("business")).toEqual([
       "business",
       "driver-group",
-      "logical"
+      "node-type"
     ]);
-    expect(allowedCreateKindsForParent("driver-group")).toEqual(["instance"]);
+    expect(allowedCreateKindsForParent("driver-group")).toEqual(["node-type"]);
     expect(canAddChildModule(modules[0]!)).toBe(true);
     expect(canAddChildModule(modules[1]!)).toBe(true);
     expect(canAddChildModule(modules[2]!)).toBe(false);
@@ -287,7 +272,7 @@ describe("moduleAttributionTreeUtils", () => {
     const visible = filterModulesForAttribution(
       modules,
       {
-        kinds: ["business", "driver-group", "instance", "logical", "unclassified"],
+        kinds: ["business", "driver-group", "node-type", "unclassified"],
         origins: ["curated", "auto"],
         hideNotYetObserved: false,
         onlyUncoveredParse: true

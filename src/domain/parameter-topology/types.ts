@@ -40,6 +40,14 @@ export type SpecQuery = {
   propertyKey?: string;
 };
 
+export type SpecAttributionModule = {
+  id: string;
+  name: string;
+  kind: "business" | "driver-group" | "node-type" | "unclassified";
+  /** Root→leaf display names for the attribution tree. */
+  path?: string[];
+};
+
 export type ParameterSpecSummary = {
   id: string;
   /** Null for platform-global specs (readable/bindable; not org-admin mutable). */
@@ -54,6 +62,8 @@ export type ParameterSpecSummary = {
   /** Present on list + detail for library scan columns. */
   valueShape: unknown | null;
   compatiblePatterns: string[] | null;
+  /** Distinct attribution units observed via project bindings; empty = not yet observed. */
+  attributionModules: SpecAttributionModule[];
 };
 
 export type ParameterSpecDetail = ParameterSpecSummary & {

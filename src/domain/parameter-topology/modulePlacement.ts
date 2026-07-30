@@ -83,11 +83,43 @@ export type InstanceModulePlacementPlan = {
   instances: Map<string, InstanceModulePlacement>;
 };
 
+export type NodeTypeUnitPlacement = {
+  moduleName: string;
+  parentModuleName: string;
+  nodePath: string;
+  sourceKey: string;
+};
+
+export type AttributionModulePlacementPlan = {
+  driverGroups: Map<string, DriverGroupPlacement>;
+  nodeTypes: Map<string, NodeTypeUnitPlacement>;
+};
+
+export function nodeTypeSourceKey(nodeTypeKey: string): string {
+  return `nodetype:${nodeTypeKey}`;
+}
+
 export function instanceModuleNameForNode(input: {
   name: string;
   unitAddress?: string | null;
 }): string {
   return input.unitAddress ? `${input.name}@${input.unitAddress}` : input.name;
+}
+
+/**
+ * Bare node-type attribution key: unit address stripped, match-token normalized.
+ * Board root (`/`) maps to {@link BOARD_INSTANCE_MODULE_NAME}.
+ */
+export function nodeTypeKeyForNode(input: {
+  name: string;
+  unitAddress?: string | null;
+  nodePath?: string | null;
+}): string {
+  if (input.name === "/" || input.name === BOARD_INSTANCE_MODULE_NAME) {
+    return BOARD_INSTANCE_MODULE_NAME;
+  }
+  const bare = input.name.includes("@") ? input.name.split("@")[0]! : input.name;
+  return normalizeMatchToken(bare) ?? bare.trim().toLowerCase();
 }
 
 export function isModuleScaffoldingNode(input: {
@@ -259,4 +291,77 @@ export function planInstanceModulePlacements(
   }
 
   return { driverGroups, instances };
+}
+
+/**
+ * Attribution placement: driver groups (compatible) and node-type units (driverless
+ * config blocks). Never emits per-device-instance modules.
+ */
+export function planAttributionModulePlacements(
+  nodes: readonly ResolvedPlacementNode[],
+  businessCategoryForPath: (nodePath: string) => string,
+): AttributionModulePlacementPlan {
+  const nodesByPath = new Map(nodes.map((node) => [node.nodePath, node]));
+  const driverGroups = new Map<string, DriverGroupPlacement>();
+  const nodeTypes = new Map<string, NodeTypeUnitPlacement>();
+  const compatibleMembers = new Map<
+    string,
+    Array<{ node: ResolvedPlacementNode; instanceLabel: string }>
+  >();
+
+  for (const node of nodes) {
+    const taxonomy = classifyModuleInstanceTaxonomy(node);
+    if (taxonomy === "scaffolding" || taxonomy === "C" || !node.compatible) continue;
+    const compatibleKey = normalizeMatchToken(node.compatible) ?? node.compatible.trim().toLowerCase();
+    const members = compatibleMembers.get(compatibleKey) ?? [];
+    members.push({ node, instanceLabel: instanceModuleNameForNode(node) });
+    compatibleMembers.set(compatibleKey, members);
+  }
+
+  const driverGroupNameByCompatible = new Map<string, string>();
+  for (const [compatibleKey, members] of compatibleMembers) {
+    const businessCategory = businessCategoryForPath(members[0]!.node.nodePath);
+    const groupName = driverGroupModuleNameForInstances(members.map((member) => member.instanceLabel));
+    driverGroups.set(compatibleKey, {
+      moduleName: groupName,
+      businessCategory,
+      compatibleKey,
+    });
+    driverGroupNameByCompatible.set(compatibleKey, groupName);
+  }
+
+  for (const node of nodes) {
+    const isBoard = node.name === "/" || node.nodePath === "";
+    if (!isBoard && classifyModuleInstanceTaxonomy(node) !== "C") continue;
+    if (!isBoard && isModuleScaffoldingNode(node)) continue;
+
+    const moduleName = nodeTypeKeyForNode(node);
+    const ancestor = nearestManageableAncestor(node.nodePath, nodesByPath);
+    let parentModuleName: string;
+    if (ancestor) {
+      const ancestorCompatible = ancestor.compatible
+        ? normalizeMatchToken(ancestor.compatible) ?? ancestor.compatible.trim().toLowerCase()
+        : null;
+      if (ancestorCompatible && driverGroupNameByCompatible.has(ancestorCompatible)) {
+        parentModuleName = driverGroupNameByCompatible.get(ancestorCompatible)!;
+      } else if (classifyModuleInstanceTaxonomy(ancestor) === "C") {
+        parentModuleName = nodeTypeKeyForNode(ancestor);
+      } else {
+        parentModuleName = businessCategoryForPath(node.nodePath);
+      }
+    } else {
+      parentModuleName = businessCategoryForPath(node.nodePath);
+    }
+
+    if (!nodeTypes.has(moduleName)) {
+      nodeTypes.set(moduleName, {
+        moduleName,
+        parentModuleName,
+        nodePath: node.nodePath,
+        sourceKey: nodeTypeSourceKey(moduleName),
+      });
+    }
+  }
+
+  return { driverGroups, nodeTypes };
 }

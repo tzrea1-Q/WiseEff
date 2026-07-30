@@ -349,6 +349,14 @@ describe("DtsParameterWorkbench", () => {
     expect(screen.queryByText("rx_fod_cond")).not.toBeInTheDocument();
   });
 
+  it("shows per-instance device nodes under each module navigator root", () => {
+    renderWorkbench();
+
+    const moduleNode = screen.getByRole("treeitem", { name: /未分类 · sc8562/ });
+    fireEvent.keyDown(moduleNode, { key: "ArrowRight" });
+    expect(screen.getByRole("treeitem", { name: /sc8562@6E/ })).toBeInTheDocument();
+  });
+
   it("keeps module filter scoped to parameters mode and does not filter the DTS source pane", async () => {
     const loadPrimaryDtsSource = vi.fn().mockResolvedValue({
       fileName: "aurora-board.dts",

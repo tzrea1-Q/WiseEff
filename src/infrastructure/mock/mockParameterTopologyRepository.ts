@@ -65,7 +65,8 @@ function seedSpecs(): Map<string, SpecFixture> {
       constraints: { cellsPerGroup: 3 },
       documentation: "gpio_int is a three-cell interrupt specifier.",
       compatiblePatterns: ["vendor,sc8562"],
-      policyTarget: null
+      policyTarget: null,
+      attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }]
     },
     {
       id: "spec-mt5788-gpio-int",
@@ -87,7 +88,8 @@ function seedSpecs(): Map<string, SpecFixture> {
       constraints: { cellsPerGroup: 3 },
       documentation: "gpio_int is a three-cell interrupt specifier.",
       compatiblePatterns: ["mediatek,mt5788"],
-      policyTarget: null
+      policyTarget: null,
+      attributionModules: []
     },
     {
       id: "spec-draft-mystery",
@@ -109,7 +111,8 @@ function seedSpecs(): Map<string, SpecFixture> {
       constraints: null,
       documentation: null,
       compatiblePatterns: null,
-      policyTarget: null
+      policyTarget: null,
+      attributionModules: []
     }
   ];
   return new Map(specs.map((spec) => [spec.id, spec]));
@@ -455,7 +458,8 @@ function toSummary(detail: SpecFixture): ParameterSpecSummary {
       detail.valueShape && typeof detail.valueShape === "object" && !Array.isArray(detail.valueShape)
         ? { ...(detail.valueShape as Record<string, unknown>) }
         : detail.valueShape,
-    compatiblePatterns: detail.compatiblePatterns ? [...detail.compatiblePatterns] : null
+    compatiblePatterns: detail.compatiblePatterns ? [...detail.compatiblePatterns] : null,
+    attributionModules: detail.attributionModules ? [...detail.attributionModules] : []
   };
 }
 
@@ -606,7 +610,8 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
           constraints: null,
           documentation: input.reason,
           compatiblePatterns: null,
-          policyTarget: null
+          policyTarget: null,
+          attributionModules: []
         });
         task.parameterSpecId = newId;
       }

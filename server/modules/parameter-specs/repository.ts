@@ -885,6 +885,14 @@ type SpecListRow = {
   compatible_patterns: unknown;
 };
 
+export type SpecAttributionModuleRow = {
+  id: string;
+  name: string;
+  kind: "business" | "driver-group" | "node-type" | "unclassified";
+  /** Root→leaf display names. */
+  path: string[];
+};
+
 export type ParameterSpecListRow = {
   id: string;
   organizationId: string | null;
@@ -897,6 +905,7 @@ export type ParameterSpecListRow = {
   currentVersion: number | null;
   valueShape: unknown | null;
   compatiblePatterns: string[] | null;
+  attributionModules: SpecAttributionModuleRow[];
 };
 
 export type ParameterSpecDetailRow = ParameterSpecListRow & {
@@ -925,7 +934,8 @@ function toListRow(row: SpecListRow): ParameterSpecListRow {
     valueShape: row.value_shape ?? null,
     compatiblePatterns: Array.isArray(row.compatible_patterns)
       ? row.compatible_patterns.map(String)
-      : null
+      : null,
+    attributionModules: [],
   };
 }
 
@@ -1017,7 +1027,99 @@ export async function listParameterSpecRows(
     `,
     values,
   );
-  return result.rows.map(toListRow);
+  const rows = result.rows.map(toListRow);
+  const attributionBySpec = await loadAttributionModulesBySpecIds(db, {
+    organizationId: input.organizationId,
+    specIds: rows.map((row) => row.id),
+  });
+  return rows.map((row) => ({
+    ...row,
+    attributionModules: attributionBySpec.get(row.id) ?? [],
+  }));
+}
+
+type AttributionModuleQueryRow = {
+  parameter_spec_id: string;
+  id: string;
+  name: string;
+  kind: SpecAttributionModuleRow["kind"];
+  path_names: string[] | null;
+};
+
+/** Distinct attribution units (driver-group / node-type) observed via project bindings. */
+export async function loadAttributionModulesBySpecIds(
+  db: Queryable,
+  input: { organizationId: string; specIds: readonly string[] },
+): Promise<Map<string, SpecAttributionModuleRow[]>> {
+  if (input.specIds.length === 0) {
+    return new Map();
+  }
+
+  const result = await db.query<AttributionModuleQueryRow>(
+    `
+    with recursive leaves as (
+      select distinct
+        ppb.parameter_spec_id,
+        pm.id,
+        pm.name,
+        pm.kind,
+        pm.parent_id
+      from project_parameter_bindings ppb
+      inner join parameter_modules pm on pm.id = ppb.module_id
+      where ppb.organization_id = $1
+        and ppb.parameter_spec_id = any($2::text[])
+        and pm.kind in ('driver-group', 'node-type')
+    ),
+    walk as (
+      select
+        leaves.parameter_spec_id,
+        leaves.id as leaf_id,
+        leaves.id as module_id,
+        leaves.name as module_name,
+        leaves.parent_id,
+        0 as depth
+      from leaves
+      union all
+      select
+        walk.parameter_spec_id,
+        walk.leaf_id,
+        parent.id,
+        parent.name,
+        parent.parent_id,
+        walk.depth + 1
+      from walk
+      inner join parameter_modules parent on parent.id = walk.parent_id
+      where walk.depth < 32
+    )
+    select
+      leaves.parameter_spec_id,
+      leaves.id,
+      leaves.name,
+      leaves.kind,
+      coalesce(
+        (
+          select array_agg(walk.module_name order by walk.depth desc)
+          from walk
+          where walk.parameter_spec_id = leaves.parameter_spec_id
+            and walk.leaf_id = leaves.id
+        ),
+        array[leaves.name]
+      ) as path_names
+    from leaves
+    order by leaves.parameter_spec_id asc, leaves.name asc
+    `,
+    [input.organizationId, input.specIds],
+  );
+
+  const map = new Map<string, SpecAttributionModuleRow[]>();
+  for (const row of result.rows) {
+    const modules = map.get(row.parameter_spec_id) ?? [];
+    const path =
+      row.path_names && row.path_names.length > 0 ? row.path_names : [row.name];
+    modules.push({ id: row.id, name: row.name, kind: row.kind, path });
+    map.set(row.parameter_spec_id, modules);
+  }
+  return map;
 }
 
 type SpecDetailRow = SpecListRow & {
@@ -1107,8 +1209,14 @@ export async function getParameterSpecRow(
   const row = result.rows[0];
   if (!row) return null;
 
+  const attributionBySpec = await loadAttributionModulesBySpecIds(db, {
+    organizationId: input.organizationId,
+    specIds: [row.id],
+  });
+
   return {
     ...toListRow(row),
+    attributionModules: attributionBySpec.get(row.id) ?? [],
     displayName: row.display_name,
     description: row.description,
     schemaDefault: row.schema_default ?? null,

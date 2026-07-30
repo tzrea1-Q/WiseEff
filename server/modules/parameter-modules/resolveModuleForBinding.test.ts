@@ -45,7 +45,7 @@ function createFakeDb(input: { mappings: MappingRow[]; existingModuleIds?: Set<s
 }
 
 describe("resolveModuleIdForBinding", () => {
-  it("prefers an instance mapping over a compatible mapping", async () => {
+  it("prefers a compatible mapping over a node-type mapping", async () => {
     const { db } = createFakeDb({
       mappings: [
         {
@@ -57,9 +57,9 @@ describe("resolveModuleIdForBinding", () => {
         },
         {
           organizationId: "org-1",
-          matchKind: "instance",
-          matchValue: "sc8562@6e",
-          moduleId: "mod-instance",
+          matchKind: "node-type",
+          matchValue: "sc8562",
+          moduleId: "mod-nodetype",
           priority: 0,
         },
       ],
@@ -69,33 +69,33 @@ describe("resolveModuleIdForBinding", () => {
       organizationId: "org-1",
       driverModule: "sc8562",
       compatible: "richtek,sc8562",
-      instanceName: "sc8562@6E",
-    });
-
-    expect(moduleId).toBe("mod-instance");
-  });
-
-  it("falls back to a compatible mapping when no instance mapping matches", async () => {
-    const { db } = createFakeDb({
-      mappings: [
-        {
-          organizationId: "org-1",
-          matchKind: "compatible",
-          matchValue: "richtek,sc8562",
-          moduleId: "mod-compatible",
-          priority: 0,
-        },
-      ],
-    });
-
-    const moduleId = await resolveModuleIdForBinding(db, {
-      organizationId: "org-1",
-      driverModule: "sc8562",
-      compatible: "richtek,sc8562",
-      instanceName: "sc8562@6E",
+      nodeType: "sc8562",
     });
 
     expect(moduleId).toBe("mod-compatible");
+  });
+
+  it("falls back to a node-type mapping when no compatible mapping matches", async () => {
+    const { db } = createFakeDb({
+      mappings: [
+        {
+          organizationId: "org-1",
+          matchKind: "node-type",
+          matchValue: "middle_cpu",
+          moduleId: "mod-middle-cpu",
+          priority: 0,
+        },
+      ],
+    });
+
+    const moduleId = await resolveModuleIdForBinding(db, {
+      organizationId: "org-1",
+      driverModule: "middle_cpu",
+      compatible: null,
+      nodeType: "middle_cpu",
+    });
+
+    expect(moduleId).toBe("mod-middle-cpu");
   });
 
   it("treats DTS-quoted compatible as equal to an unquoted mapping value", async () => {
@@ -115,22 +115,30 @@ describe("resolveModuleIdForBinding", () => {
       organizationId: "org-1",
       driverModule: "mt5788",
       compatible: '"mt,mt5788"',
-      instanceName: null,
+      nodeType: null,
     });
 
     expect(moduleId).toBe("mod-mt5788");
   });
 
-  it("falls back to unclassified when only a retired driver-style signal remains", async () => {
+  it("does not match retired instance mappings", async () => {
     const { db, insertedModules } = createFakeDb({
-      mappings: [],
+      mappings: [
+        {
+          organizationId: "org-1",
+          matchKind: "instance",
+          matchValue: "sc8562@6e",
+          moduleId: "mod-instance",
+          priority: 0,
+        },
+      ],
     });
 
     const moduleId = await resolveModuleIdForBinding(db, {
       organizationId: "org-1",
       driverModule: "sc8562",
       compatible: "richtek,sc8562",
-      instanceName: "sc8562@6E",
+      nodeType: "sc8562",
     });
 
     expect(moduleId).toBe(unclassifiedModuleId("org-1"));
@@ -144,7 +152,7 @@ describe("resolveModuleIdForBinding", () => {
       organizationId: "org-1",
       driverModule: "sc8562",
       compatible: "richtek,sc8562",
-      instanceName: "sc8562@6E",
+      nodeType: "sc8562",
     });
 
     expect(moduleId).toBe(unclassifiedModuleId("org-1"));
@@ -152,14 +160,14 @@ describe("resolveModuleIdForBinding", () => {
     expect(insertedModules[0]).toMatchObject({ organizationId: "org-1", name: "未分类" });
   });
 
-  it("never returns null/undefined even when driver/compatible/instance are all null", async () => {
+  it("never returns null/undefined even when driver/compatible/nodeType are all null", async () => {
     const { db } = createFakeDb({ mappings: [] });
 
     const moduleId = await resolveModuleIdForBinding(db, {
       organizationId: "org-1",
       driverModule: null,
       compatible: null,
-      instanceName: null,
+      nodeType: null,
     });
 
     expect(moduleId).toBe(unclassifiedModuleId("org-1"));
@@ -172,19 +180,19 @@ describe("resolveModuleIdForBinding", () => {
       organizationId: "org-1",
       driverModule: null,
       compatible: null,
-      instanceName: null,
+      nodeType: null,
     });
     const second = await resolveModuleIdForBinding(db, {
       organizationId: "org-1",
       driverModule: null,
       compatible: null,
-      instanceName: null,
+      nodeType: null,
     });
     const otherOrg = await resolveModuleIdForBinding(db, {
       organizationId: "org-2",
       driverModule: null,
       compatible: null,
-      instanceName: null,
+      nodeType: null,
     });
 
     expect(first).toBe(second);

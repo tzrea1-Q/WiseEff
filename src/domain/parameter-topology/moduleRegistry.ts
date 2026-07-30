@@ -6,11 +6,11 @@
  * This layer never changes binding/spec identity; it only assigns a display module.
  */
 
-/** How a mapping rule matches a binding. Priority: instance > compatible. */
-export type ModuleMatchKind = "compatible" | "instance";
+/** How a mapping rule matches a binding. Priority: node-type > compatible. */
+export type ModuleMatchKind = "compatible" | "node-type";
 
 export const MODULE_MATCH_PRIORITY: Record<ModuleMatchKind, number> = {
-  instance: 3,
+  "node-type": 3,
   compatible: 2
 };
 
@@ -19,7 +19,7 @@ export const MODULE_MAPPING_PRIORITY_MAX = 999;
 
 export type ModuleImportance = "high" | "medium" | "low";
 
-export type ModuleKind = "business" | "driver-group" | "instance" | "logical" | "unclassified";
+export type ModuleKind = "business" | "driver-group" | "node-type" | "unclassified";
 
 export type ModuleOrigin = "curated" | "auto";
 
@@ -76,7 +76,8 @@ export type ModuleAssignment = {
 export type ModuleAssignmentInput = {
   driverModule: string | null;
   compatible: string | null;
-  instanceName: string | null;
+  /** Bare node-type key (unit address stripped). Not a display path. */
+  nodeType: string | null;
   /**
    * Optional v1-declared module on the binding/spec (phase-2 materialization).
    * Used after mapping rules, before driver fallback.
@@ -96,8 +97,8 @@ function candidateValue(kind: ModuleMatchKind, input: ModuleAssignmentInput): st
   switch (kind) {
     case "compatible":
       return normalize(input.compatible);
-    case "instance":
-      return normalize(input.instanceName);
+    case "node-type":
+      return normalize(input.nodeType);
   }
 }
 
@@ -111,7 +112,8 @@ function compareRank(
 
 /**
  * Resolves the business module for a binding using the admin registry.
- * Order: mapping(instance > compatible) → declared v1 module → driver fallback.
+ * Order: mapping(compatible > node-type) → declared v1 module → driver fallback.
+ * Remap tooling only — not a display path.
  */
 export function deriveModuleAssignment(
   input: ModuleAssignmentInput,

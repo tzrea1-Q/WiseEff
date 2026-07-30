@@ -850,7 +850,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin",
     roles: ["Admin"],
     action:
-      "Exercise kind-scoped tree actions: no delete on instances or logical nodes, move allowed on logical, rename adopts auto modules, adopted names survive re-ingest.",
+      "Exercise kind-scoped tree actions: no delete on node-type or driver-group nodes, move allowed on node-type, rename adopts auto modules, adopted names survive re-ingest.",
     coverage: "automated",
     acceptanceIds: ["MOD-ATTR-TREE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
@@ -863,7 +863,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin",
     roles: ["Admin"],
     action:
-      "Reclassify a logical module to business via the edit dialog; verify kind badge/filters and that re-ingest keeps the curated kind.",
+      "Reclassify a node-type module to business via the edit dialog; verify kind badge/filters and that re-ingest keeps the curated kind.",
     coverage: "automated",
     acceptanceIds: ["MOD-ATTR-RECLASSIFY-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
@@ -876,7 +876,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin",
     roles: ["Admin"],
     action:
-      "Set importance on a business category and confirm inheritance on driver groups/instances and the workbench filter.",
+      "Set importance on a business category and confirm inheritance on driver groups/node-type units and the workbench filter.",
     coverage: "automated",
     acceptanceIds: ["MOD-ATTR-IMPORTANCE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
@@ -980,7 +980,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin",
     roles: ["Admin"],
     action:
-      "Create empty business, driver-group, instance, and logical modules from the attribution tree with parent-kind rules and required driver-group compatibles; confirm empty curated nodes show not-yet-observed.",
+      "Create empty business or driver-group modules from the attribution tree with parent-kind rules and required driver-group compatibles; confirm empty curated nodes show not-yet-observed (node-type is ingest-only).",
     coverage: "automated",
     acceptanceIds: ["MOD-ATTR-CREATE-KIND-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],

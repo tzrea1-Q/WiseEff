@@ -1,8 +1,8 @@
-export type ModuleMatchKind = "compatible" | "instance";
+export type ModuleMatchKind = "compatible" | "node-type";
 
 export type ModuleImportance = "high" | "medium" | "low";
 
-export type ModuleKind = "business" | "driver-group" | "instance" | "logical" | "unclassified";
+export type ModuleKind = "business" | "driver-group" | "node-type" | "unclassified";
 
 export type ModuleOrigin = "curated" | "auto";
 

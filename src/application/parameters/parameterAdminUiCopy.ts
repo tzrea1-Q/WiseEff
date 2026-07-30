@@ -14,7 +14,7 @@ export const PARAMETER_ADMIN_UI = {
   specLibraryEmpty: "没有匹配的参数定义。",
   specLibraryLoading: "正在加载参数定义…",
   specLibraryBlurb:
-    "按属性键与驱动维护可复用的参数定义；同名属性按驱动/模块区分。路径仅作定位参考。",
+    "按属性键与驱动维护可复用的参数定义；归属模块来自项目绑定实测，未观测驱动显示为未实测。",
   specDetail: "参数定义详情",
   specDetailEyebrowEditable: "参数定义库 · 可编辑",
   specDetailEyebrowReadonly: "参数定义库 · 只读",
@@ -51,7 +51,7 @@ export const PARAMETER_ADMIN_UI = {
 
   moduleMapping: "模块归属",
   moduleMappingManage: "模块归属",
-  moduleMappingBlurb: "业务分类 → 驱动组 → 器件实例 / 逻辑节点。在树里维护已归属模块。",
+  moduleMappingBlurb: "业务分类 → 驱动组 / 节点类型。在树里维护已归属模块；器件实例由工作台器件层浏览。",
   moduleTreeTitle: "模块树",
   moduleTreeSubnav: "归属树",
   moduleDiscoveryCompatible: "未登记驱动",
@@ -126,7 +126,7 @@ export const PARAMETER_ADMIN_UI = {
   queueColProjects: "涉及项目",
   queueColSuggested: "建议驱动组",
   queueColActions: "操作",
-  specModulePrediction: "预测模块",
+  specAttributionModule: "归属模块",
 
   identityMapping: "节点对应确认",
   identityMappingGovernance: "节点对应确认",
@@ -153,8 +153,7 @@ export const PARAMETER_ADMIN_UI = {
 
   lifecycleDraft: "草稿",
   lifecycleActive: "已启用",
-  lifecycleDeprecated: "已废弃",
-  lifecycleNeedsReview: "待复核"
+  lifecycleDeprecated: "已废弃"
 } as const;
 
 export type SpecReviewMatchStatusUi =
@@ -162,7 +161,7 @@ export type SpecReviewMatchStatusUi =
   | typeof PARAMETER_ADMIN_UI.matchAmbiguous
   | typeof PARAMETER_ADMIN_UI.matchHasCandidates;
 
-/** Localize lifecycle / review-state enums for display; keep raw value as fallback. */
+/** Localize lifecycle enums for display; keep raw value as fallback. */
 export function formatParameterSpecLifecycle(raw: string | null | undefined): string {
   switch ((raw ?? "").trim()) {
     case "draft":
@@ -171,8 +170,6 @@ export function formatParameterSpecLifecycle(raw: string | null | undefined): st
       return PARAMETER_ADMIN_UI.lifecycleActive;
     case "deprecated":
       return PARAMETER_ADMIN_UI.lifecycleDeprecated;
-    case "needs_review":
-      return PARAMETER_ADMIN_UI.lifecycleNeedsReview;
     default:
       return raw?.trim() || "—";
   }

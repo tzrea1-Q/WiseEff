@@ -14,8 +14,7 @@ const gpioIntSc8562: ParameterSpecLibraryRow = {
   id: "spec-sc8562-gpio-int",
   organizationId: "org-chargelab",
   propertyKey: "gpio_int",
-  moduleName: "充电策略",
-  moduleMapped: true,
+  attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }],
   driverModule: "sc8562",
   compatible: "vendor,sc8562",
   valueType: "phandle-list",
@@ -32,8 +31,7 @@ const gpioIntMt5788: ParameterSpecLibraryRow = {
   id: "spec-mt5788-gpio-int",
   organizationId: "org-chargelab",
   propertyKey: "gpio_int",
-  moduleName: "未分类 · mt5788",
-  moduleMapped: false,
+  attributionModules: [],
   driverModule: "mt5788",
   compatible: "mediatek,mt5788",
   valueType: "phandle-list",
@@ -42,7 +40,7 @@ const gpioIntMt5788: ParameterSpecLibraryRow = {
   schemaVersion: "1",
   exampleValue: "<&gpio6 15 0>",
   businessCategory: "Wireless Charging",
-  reviewState: "needs_review",
+  reviewState: "draft",
   usageCount: 1
 };
 
@@ -50,8 +48,7 @@ const pathLikeLegacy: ParameterSpecLibraryRow = {
   id: "spec-status",
   organizationId: "org-chargelab",
   propertyKey: "status",
-  moduleName: "充电策略",
-  moduleMapped: true,
+  attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }],
   driverModule: "sc8562",
   compatible: "vendor,sc8562",
   valueType: "string-list",
@@ -76,13 +73,13 @@ describe("ParameterSpecLibrary", () => {
     const library = screen.getByRole("region", { name: "参数定义库" });
     const table = within(library).getByRole("table");
 
-    for (const header of ["参数名", "预测模块", "值类型", "审核状态", "操作"]) {
+    for (const header of ["参数名", "归属模块", "值类型", "审核状态", "操作"]) {
       expect(within(table).getByRole("columnheader", { name: new RegExp(header) })).toBeInTheDocument();
     }
     expect(within(table).queryByRole("columnheader", { name: /^驱动模块$/ })).not.toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: /compatible/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选compatible" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "筛选预测模块" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选归属模块" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选驱动模块" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "筛选审核状态" })).toBeInTheDocument();
 
@@ -96,15 +93,15 @@ describe("ParameterSpecLibrary", () => {
     }
 
     expect(within(table).getByText("充电策略")).toBeInTheDocument();
-    expect(within(table).getByText("未分类 · mt5788（预测）")).toBeInTheDocument();
-    expect(within(table).queryByText("未映射")).not.toBeInTheDocument();
+    expect(within(table).getByText("mt5788（未实测）")).toBeInTheDocument();
+    expect(within(table).queryByText("（预测）")).not.toBeInTheDocument();
     expect(within(table).queryByText("vendor,sc8562")).not.toBeInTheDocument();
     expect(within(table).getAllByText("phandle-list").length).toBeGreaterThan(0);
 
     expect(library.textContent).not.toMatch(/推荐值|默认值/);
   });
 
-  it("searches by property key and shows predicted modules separately", () => {
+  it("searches by property key and shows attribution modules separately", () => {
     render(
       <ParameterSpecLibrary
         specs={[gpioIntSc8562, gpioIntMt5788, pathLikeLegacy]}
@@ -118,12 +115,12 @@ describe("ParameterSpecLibrary", () => {
     const library = screen.getByRole("region", { name: "参数定义库" });
     const rows = within(library).getAllByRole("row");
     expect(rows.some((row) => row.textContent?.includes("充电策略") && row.textContent?.includes("gpio_int"))).toBe(true);
-    expect(rows.some((row) => row.textContent?.includes("未分类 · mt5788") && row.textContent?.includes("gpio_int"))).toBe(true);
+    expect(rows.some((row) => row.textContent?.includes("mt5788（未实测）") && row.textContent?.includes("gpio_int"))).toBe(true);
     expect(within(library).queryByText("status")).not.toBeInTheDocument();
     expect(within(library).getByText(/2 \/ 3 项/)).toBeInTheDocument();
   });
 
-  it("filters by predicted module and lifecycle via ColumnFilter multi-select", async () => {
+  it("filters by attribution module and lifecycle via ColumnFilter multi-select", async () => {
     const user = userEvent.setup();
     render(
       <ParameterSpecLibrary
@@ -132,7 +129,7 @@ describe("ParameterSpecLibrary", () => {
       />
     );
 
-    await user.click(screen.getByRole("button", { name: "筛选预测模块" }));
+    await user.click(screen.getByRole("button", { name: "筛选归属模块" }));
     await user.click(screen.getByRole("checkbox", { name: "充电策略" }));
     await user.click(screen.getByRole("button", { name: "筛选审核状态" }));
     await user.click(screen.getByRole("checkbox", { name: "active" }));
@@ -215,6 +212,14 @@ describe("ParameterSpecLibrary", () => {
         selectedSpecId={gpioIntSc8562.id}
         detail={{
           ...gpioIntSc8562,
+          attributionModules: [
+            {
+              id: "mod-direct-charge-comp",
+              name: "direct_charge_comp",
+              kind: "node-type",
+              path: ["Power", "Direct Charging", "direct_charge_comp"]
+            }
+          ],
           schemaDefault: "<0>",
           policyTarget: "<&gpio_policy 1 0>",
           usage: [{ projectCode: "P-AURORA", instanceName: "sc8562@6E" }],
@@ -227,7 +232,11 @@ describe("ParameterSpecLibrary", () => {
     );
 
     const detail = screen.getByRole("dialog", { name: /参数定义详情 gpio_int/ });
-    expect(within(detail).getByLabelText("compatible")).toHaveValue("vendor,sc8562");
+    expect(within(detail).queryByLabelText("驱动模块")).not.toBeInTheDocument();
+    expect(within(detail).queryByLabelText("compatible")).not.toBeInTheDocument();
+    expect(within(detail).getByLabelText("所属模块")).toHaveValue(
+      "Power / Direct Charging / direct_charge_comp"
+    );
     expect(within(detail).getByLabelText("Schema 默认值")).toHaveValue("<0>");
     expect(within(detail).getByLabelText("示例值")).toHaveValue("<&gpio13 29 0>");
     expect(within(detail).getByText(/仅作示例，不参与校验或初始化/)).toBeInTheDocument();
