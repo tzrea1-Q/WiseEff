@@ -27,6 +27,8 @@ function createRepository(
     getSpec: vi.fn(),
     activateParameterSpec: vi.fn(),
     updateParameterSpec: vi.fn(),
+    deprecateParameterSpec: vi.fn(),
+    restoreParameterSpec: vi.fn(),
     listSpecReviewTasks: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
     resolveSpecReviewTask: vi.fn().mockResolvedValue(undefined),
     listBindings: vi.fn().mockResolvedValue([]),

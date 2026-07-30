@@ -194,7 +194,7 @@ stateDiagram-v2
 | Fail-closed 回写依赖 | Cutover 后语义合入须注入 `objectStore`、项目范围变更请求、精确 write lock 与真实 DTC 工具链校验。跳过回写或缺依赖均失败关闭；生产路径无 `WISEEFF_WRITEBACK_SKIP_TOOLCHAIN`。 |
 | 迁移 phase 审计 | `stage-review` 与 `finalize` 各向 `parameter_identity_migration_phases` 追加不可变行（不覆盖既有 phase 载荷）。Cutover 仅接受带成功 `finalize` phase 行的运行。 |
 | 迁移运行任务关联 | `stage-review` 创建的 inferred 规格审核与身份映射任务携带 `migration_run_id`；`finalize` 要求该运行关联任务全部 resolved 后才写入 activity FK。 |
-| 手工规格生命周期 | 未匹配 `createSpec` 仅创建本组织 **draft** 规格（从 occurrence AST 推断类型）。Admin `activate` 将 draft→active 并补齐约束；仅 active+完整规格可 `resolve`。 |
+| 手工规格生命周期 | 未匹配 `createSpec` 仅创建本组织 **draft** 规格（从 occurrence AST 推断类型）。Admin `activate` 将 draft→active 并补齐约束；仅 active+完整规格可 `resolve`。软下线（`deprecate`）将 draft 或 active → **deprecated**（仍可参与解析；默认定义库视图隐藏；不可被审核任务选中）。`restore` 在有 `activated_at` 时回到 active，否则回到 draft（ADR-0011）。 |
 | 租户拥有校验 resolve | 规格审核 `resolve` 经租户级 join 校验 org/project/revision/occurrence/logical node；不得单独信任 raw evidence ID（0055 加固）。 |
 | 精确回写身份 | 合入/回写锁定 binding revision、occurrence、文件版本、checksum 与 CST span。共享 base revision 不可变；身份过期 → `409`。 |
 | 节点启用状态 / 可达性 | 按**逻辑节点实例**的一等概念（ADR-0003），仅由该节点自身 DTS `status` 派生——缺省、`ok` 或 `okay` 为自身启用，其余为自身禁用。可达性还要求祖先链全部启用；不可达节点报出阻断祖先。永不进入 `ParameterSpec`、binding 或规格审核队列。编辑走共享草稿/提交管线的 `editSubjectKind: node-enablement`。 |

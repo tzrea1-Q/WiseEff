@@ -338,6 +338,8 @@ function createApiBoundaryRepository(
     updateParameterSpec: vi
       .fn<ParameterTopologyRepository["updateParameterSpec"]>()
       .mockResolvedValue(API_SENTINEL_SPEC),
+    deprecateParameterSpec: vi.fn(),
+    restoreParameterSpec: vi.fn(),
     listSpecReviewTasks: vi
       .fn<ParameterTopologyRepository["listSpecReviewTasks"]>()
       .mockResolvedValue({ items: [], nextCursor: null }),

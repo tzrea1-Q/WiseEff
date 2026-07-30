@@ -260,13 +260,12 @@ export function filterParameterSpecLibrary(
     if (!matchesSelected(filters.compatibles, spec.compatible)) return false;
     if (!matchesSelected(filters.businessCategories, spec.businessCategory)) return false;
     if (!matchesSelected(filters.schemaSources, spec.schemaSource)) return false;
-    if (
-      filters.lifecycles.length === 0 &&
-      spec.reviewState === "deprecated"
-    ) {
+    // Empty lifecycle filter means "default library view": hide soft-retired definitions.
+    if (filters.lifecycles.length === 0) {
+      if (spec.reviewState === "deprecated") return false;
+    } else if (!matchesSelected(filters.lifecycles, spec.reviewState)) {
       return false;
     }
-    if (!matchesSelected(filters.lifecycles, spec.reviewState)) return false;
     if (
       filters.moduleNames.length > 0 &&
       !specAttributionFilterValues(spec).some((value) => filters.moduleNames.includes(value))
@@ -616,12 +615,16 @@ export function ParameterSpecLibrary({
           error={saveError}
           onDeprecate={
             onDeprecateSpec
-              ? ({ reason }) => onDeprecateSpec({ specId: detail.id, reason })
+              ? async ({ reason }) => {
+                  await onDeprecateSpec({ specId: detail.id, reason });
+                }
               : undefined
           }
           onRestore={
             onRestoreSpec
-              ? ({ reason }) => onRestoreSpec({ specId: detail.id, reason })
+              ? async ({ reason }) => {
+                  await onRestoreSpec({ specId: detail.id, reason });
+                }
               : undefined
           }
           onPrepareCutover={

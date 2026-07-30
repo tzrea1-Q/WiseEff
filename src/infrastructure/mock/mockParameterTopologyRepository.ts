@@ -3,8 +3,10 @@ import type {
   BindingDraftResult,
   CreateBindingDraftInput,
   CreateNodeEnablementDraftInput,
+  DeprecateParameterSpecInput,
   NodeEnablementDraftResult,
-  ParameterTopologyRepository
+  ParameterTopologyRepository,
+  RestoreParameterSpecInput
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
   BindingCompareEntry,
@@ -29,7 +31,7 @@ const DEFAULT_CONFIG_SET_ID = "config-set-teaching";
 const DEFAULT_REVISION_ID = "revision-teaching-1";
 const DEFAULT_ORG_ID = "org-teaching";
 
-type SpecFixture = ParameterSpecDetail;
+type SpecFixture = ParameterSpecDetail & { activatedAt?: string | null };
 
 type Store = {
   specs: Map<string, SpecFixture>;
@@ -66,7 +68,9 @@ function seedSpecs(): Map<string, SpecFixture> {
       documentation: "gpio_int is a three-cell interrupt specifier.",
       compatiblePatterns: ["vendor,sc8562"],
       policyTarget: null,
-      attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }]
+      attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }],
+      referenceCount: 1,
+      activatedAt: "2026-07-01T00:00:00.000Z"
     },
     {
       id: "spec-mt5788-gpio-int",
@@ -89,7 +93,9 @@ function seedSpecs(): Map<string, SpecFixture> {
       documentation: "gpio_int is a three-cell interrupt specifier.",
       compatiblePatterns: ["mediatek,mt5788"],
       policyTarget: null,
-      attributionModules: []
+      attributionModules: [],
+      referenceCount: 0,
+      activatedAt: "2026-07-01T00:00:00.000Z"
     },
     {
       id: "spec-draft-mystery",
@@ -112,7 +118,34 @@ function seedSpecs(): Map<string, SpecFixture> {
       documentation: null,
       compatiblePatterns: null,
       policyTarget: null,
-      attributionModules: []
+      attributionModules: [],
+      referenceCount: 0,
+      activatedAt: null
+    },
+    {
+      id: "spec-deprecated-legacy",
+      organizationId: DEFAULT_ORG_ID,
+      sourceKind: "manual",
+      specificationKey: "manual/legacy_status",
+      propertyKey: "legacy_status",
+      driverModule: null,
+      lifecycle: "deprecated",
+      currentVersionId: "specver-deprecated-legacy-1",
+      currentVersion: 1,
+      displayName: "Legacy status (deprecated)",
+      description: "Soft-retired definition retained for parse coverage.",
+      valueShape: { kind: "string" },
+      schemaDefault: null,
+      exampleValue: null,
+      schemaNamespace: "manual",
+      units: null,
+      constraints: {},
+      documentation: "Deprecated fixture",
+      compatiblePatterns: null,
+      policyTarget: null,
+      attributionModules: [],
+      referenceCount: 0,
+      activatedAt: null
     }
   ];
   return new Map(specs.map((spec) => [spec.id, spec]));
@@ -459,19 +492,23 @@ function toSummary(detail: SpecFixture): ParameterSpecSummary {
         ? { ...(detail.valueShape as Record<string, unknown>) }
         : detail.valueShape,
     compatiblePatterns: detail.compatiblePatterns ? [...detail.compatiblePatterns] : null,
-    attributionModules: detail.attributionModules ? [...detail.attributionModules] : []
+    attributionModules: detail.attributionModules ? [...detail.attributionModules] : [],
+    referenceCount: detail.referenceCount ?? 0
   };
 }
 
 function cloneDetail(detail: SpecFixture): ParameterSpecDetail {
+  const { activatedAt: _activatedAt, ...publicDetail } = detail;
   return {
-    ...detail,
+    ...publicDetail,
     compatiblePatterns: detail.compatiblePatterns ? [...detail.compatiblePatterns] : null,
     constraints: detail.constraints ? { ...detail.constraints } : null,
     valueShape:
       detail.valueShape && typeof detail.valueShape === "object" && !Array.isArray(detail.valueShape)
         ? { ...(detail.valueShape as Record<string, unknown>) }
-        : detail.valueShape
+        : detail.valueShape,
+    referenceCount: detail.referenceCount ?? 0,
+    attributionModules: detail.attributionModules ? [...detail.attributionModules] : []
   };
 }
 
@@ -558,12 +595,13 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       if (!existing) {
         throw new Error(`ParameterSpec not found: ${specId}`);
       }
-      const nextVersion = (existing.currentVersion ?? 0) + 1;
+      if (existing.lifecycle !== "draft") {
+        throw new Error(`Only draft parameter specs can be activated: ${specId}`);
+      }
       const updated: SpecFixture = {
         ...existing,
         lifecycle: "active",
-        currentVersion: nextVersion,
-        currentVersionId: `specver-${specId}-${nextVersion}`,
+        activatedAt: existing.activatedAt ?? MOCK_NOW,
         valueShape: input.valueShape,
         constraints: input.constraints,
         documentation: input.documentation,
@@ -597,18 +635,31 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       return cloneDetail(updated);
     },
 
-    async deprecateParameterSpec(specId) {
+    async deprecateParameterSpec(specId, _input: DeprecateParameterSpecInput) {
       const existing = store.specs.get(specId);
-      if (!existing) throw new Error(`ParameterSpec not found: ${specId}`);
+      if (!existing) {
+        throw new Error(`ParameterSpec not found: ${specId}`);
+      }
+      if (existing.lifecycle !== "draft" && existing.lifecycle !== "active") {
+        throw new Error(`Only draft or active parameter specs can be deprecated: ${specId}`);
+      }
       const updated: SpecFixture = { ...existing, lifecycle: "deprecated" };
       store.specs.set(specId, updated);
       return cloneDetail(updated);
     },
 
-    async restoreParameterSpec(specId) {
+    async restoreParameterSpec(specId, _input: RestoreParameterSpecInput) {
       const existing = store.specs.get(specId);
-      if (!existing) throw new Error(`ParameterSpec not found: ${specId}`);
-      const updated: SpecFixture = { ...existing, lifecycle: "active" };
+      if (!existing) {
+        throw new Error(`ParameterSpec not found: ${specId}`);
+      }
+      if (existing.lifecycle !== "deprecated") {
+        throw new Error(`Only deprecated parameter specs can be restored: ${specId}`);
+      }
+      const updated: SpecFixture = {
+        ...existing,
+        lifecycle: existing.activatedAt ? "active" : "draft"
+      };
       store.specs.set(specId, updated);
       return cloneDetail(updated);
     },

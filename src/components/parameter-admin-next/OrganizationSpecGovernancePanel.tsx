@@ -163,6 +163,7 @@ export function OrganizationSpecGovernancePanel({
             compatiblePatterns: item.compatiblePatterns,
             valueShape: item.valueShape,
             attributionModules: item.attributionModules,
+            usageCount: item.referenceCount ?? 0
           })
         )
       );
@@ -233,7 +234,7 @@ export function OrganizationSpecGovernancePanel({
       .then((detail) => {
         if (!cancelled) {
           const libraryRow = specRows.find((row) => row.id === selectedId) ?? null;
-          setSpecDetail(toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow));
+          setSpecDetail(toSpecDetailView(detail, detail.referenceCount ?? libraryRow?.usageCount ?? 0, libraryRow));
         }
       })
       .catch(() => {
@@ -507,6 +508,46 @@ export function OrganizationSpecGovernancePanel({
       }
     },
     [application, reloadSpecs, showToast, updateUrl]
+  );
+
+  const handleDeprecateSpec = useCallback(
+    async (input: { specId: string; reason: string }) => {
+      setReviewActionError(null);
+      setReviewActionSuccess(null);
+      setActivatePendingSpecId(input.specId);
+      try {
+        await application.deprecateParameterSpec(input.specId, { reason: input.reason });
+        pushAudit("spec-deprecated", input.reason, `废弃定义 ${input.specId}`);
+        setReviewActionSuccess("定义已废弃（仍参与解析，默认库视图已隐藏）。");
+        await reloadSpecs();
+        updateUrl({ specId: null });
+      } catch (error) {
+        setReviewActionError(formatReviewActionError(error));
+      } finally {
+        setActivatePendingSpecId(null);
+      }
+    },
+    [application, pushAudit, reloadSpecs, updateUrl]
+  );
+
+  const handleRestoreSpec = useCallback(
+    async (input: { specId: string; reason: string }) => {
+      setReviewActionError(null);
+      setReviewActionSuccess(null);
+      setActivatePendingSpecId(input.specId);
+      try {
+        await application.restoreParameterSpec(input.specId, { reason: input.reason });
+        pushAudit("spec-restored", input.reason, `恢复定义 ${input.specId}`);
+        setReviewActionSuccess("定义已恢复。");
+        await reloadSpecs();
+        updateUrl({ specId: null });
+      } catch (error) {
+        setReviewActionError(formatReviewActionError(error));
+      } finally {
+        setActivatePendingSpecId(null);
+      }
+    },
+    [application, pushAudit, reloadSpecs, updateUrl]
   );
 
   const showLibrary = focus !== "review";

@@ -193,6 +193,7 @@ export async function listParameterSpecs(
       compatiblePatterns: row.compatiblePatterns,
       attributionModules: row.attributionModules,
       attributionSubjectId: row.attributionSubjectId,
+      referenceCount: row.referenceCount,
     })),
   };
 }
@@ -563,6 +564,7 @@ function toParameterSpecDetailDto(
     policyTarget: refreshed.policyTarget,
     attributionModules: refreshed.attributionModules,
     attributionSubjectId: refreshed.attributionSubjectId,
+    referenceCount: refreshed.referenceCount ?? 0,
     ...(cutover ? { cutover } : {}),
   };
 }
@@ -1252,6 +1254,10 @@ export async function updateParameterSpec(
           parameterSpecVersionId: spec.currentVersionId,
           reasonHash: hashReason(input.reason),
           lifecycle: spec.lifecycle,
+          previousValueShape: spec.valueShape ?? null,
+          nextValueShape: nextValueShape,
+          previousConstraints: spec.constraints ?? {},
+          nextConstraints: nextConstraints,
         },
       },
       context,

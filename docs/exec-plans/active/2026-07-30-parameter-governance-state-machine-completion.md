@@ -1,6 +1,6 @@
 # Parameter governance state machines — completion
 
-> Status: **planning only, no implementation started.** Decisions: ADR-0011 (spec deprecation is soft retirement), ADR-0012 (releasing happens at the file layer). Branches: `feat/spec-lifecycle-closure`, `feat/identity-mapping-decision-split`, `feat/parameter-governance-convergence`. Migrations `0081` / `0082` / `0083`. **Blocked on [PR #211](https://github.com/tzrea1-Q/WiseEff/pull/211) merging**, because migration `0080` is unmerged and numbering must not collide. Deferred questions live in `docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md`.
+> Status: **PR1 implementation in progress on `feat/spec-lifecycle-closure`.** Decisions: ADR-0011 (spec deprecation is soft retirement), ADR-0012 (releasing happens at the file layer — planned for PR3). Branches: `feat/spec-lifecycle-closure`, `feat/identity-mapping-decision-split`, `feat/parameter-governance-convergence`. Migrations `0081` / `0082` / `0083`. Deferred questions live in `docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md`.
 
 ## Goal
 
@@ -135,7 +135,7 @@ Three sequential PRs. Each branches from `main` **after** the previous one merge
 **Batch 1.1 — decision record and migration base**
 
 - `docs/adr/0011-spec-deprecation-is-soft-retirement.md`: state D1, D2, D3, D4, D5, D10. Must explain why hard retirement was rejected, why `active → draft` is a disguised hard retirement, and why the overlay act carries a different name.
-- `server/migrations/0081_spec_lifecycle_closure.sql`: add `parameter_spec_versions.activated_at timestamptz`; backfill `now()` for rows already `lifecycle = 'active'` and leave `null` for `draft` and `deprecated`. Record row counts before and after, in the style of `0072`.
+- `server/migrations/0083_parameter_spec_versioning.sql` (ADR-0014): includes `parameter_spec_versions.activated_at timestamptz` and soft-retirement restore semantics; the originally planned `0081_spec_lifecycle_closure.sql` was superseded after #215 and must not be reintroduced (collides with `0081_remove_structural_parameter_specs.sql`).
 - `server/shared/database/migrationInvariant.test.ts`: assert the column exists, that no `active` row has a null `activated_at`, and that the lifecycle check still allows exactly `draft | active | deprecated`.
 
 The `deprecated` backfill deserves attention: rows deprecated by migration `0068` get a null `activated_at`, so restoring one lands it in `draft` rather than `active`. That is the correct outcome — those rows were never activated through the product — but it must be an asserted decision, not an accident of the backfill.

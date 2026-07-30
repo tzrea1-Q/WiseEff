@@ -381,3 +381,18 @@ describe("config revision lifecycle migration invariants", () => {
     expect(migration).not.toMatch(/check \(status in \([^)]*'published'/s);
   });
 });
+
+describe("spec lifecycle closure migration invariants (ADR-0011)", () => {
+  it("lands activated_at on parameter_spec_versions via ADR-0014 versioning migration", () => {
+    // #215 / ADR-0014 absorbed the activated_at column into 0083; the original
+    // 0081_spec_lifecycle_closure.sql is obsolete and must not collide with
+    // 0081_remove_structural_parameter_specs.sql.
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0083_parameter_spec_versioning.sql"),
+      "utf8",
+    );
+    expect(migration).toContain("activated_at timestamptz");
+    expect(migration).toContain("lifecycle = 'active'");
+    expect(migration).toContain("activated_at is null");
+  });
+});

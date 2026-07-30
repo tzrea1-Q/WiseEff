@@ -73,6 +73,14 @@ const pathLikeLegacy: ParameterSpecLibraryRow = {
   usageCount: 0
 };
 
+const deprecatedLegacy: ParameterSpecLibraryRow = {
+  ...pathLikeLegacy,
+  id: "spec-deprecated-legacy",
+  propertyKey: "legacy_status",
+  reviewState: "deprecated",
+  usageCount: 3
+};
+
 describe("ParameterSpecLibrary", () => {
   it("places create-spec as a primary button in the library heading", () => {
     const onCreateSpec = vi.fn();
@@ -91,6 +99,18 @@ describe("ParameterSpecLibrary", () => {
     expect(create.closest(".parameters-table-filters")).toBeNull();
     fireEvent.click(create);
     expect(onCreateSpec).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides deprecated definitions from the default library view", () => {
+    render(
+      <ParameterSpecLibrary
+        specs={[gpioIntSc8562, gpioIntMt5788, deprecatedLegacy]}
+        onSelectSpec={vi.fn()}
+      />
+    );
+    const library = screen.getByRole("region", { name: "参数定义库" });
+    expect(within(library).queryByText("legacy_status")).not.toBeInTheDocument();
+    expect(within(library).getAllByText("gpio_int").length).toBeGreaterThan(0);
   });
 
   it("renders semantic columns without path identity or recommended/default labels", () => {

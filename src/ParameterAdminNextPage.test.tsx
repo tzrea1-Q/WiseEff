@@ -625,9 +625,6 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     expect((within(detail).getByLabelText("参数说明") as HTMLTextAreaElement).value).toMatch(
       /three-cell interrupt/
     );
-    expect((within(detail).getByLabelText("Schema 历史") as HTMLTextAreaElement).value).toMatch(
-      /v3 · vendor,sc8562\/bindings/
-    );
     expect(within(detail).getByText("参数定义库 · 可编辑")).toBeInTheDocument();
     expect(repository.getSpec).toHaveBeenCalledWith("spec-sc8562-gpio-int");
     expect(screen.queryByRole("status", { name: "治理审计" })).not.toBeInTheDocument();
@@ -880,7 +877,8 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
           id: "spec-mapped",
           propertyKey: "gpio_int",
           driverModule: "sc8562",
-          compatiblePatterns: ["vendor,sc8562"]
+          compatiblePatterns: ["vendor,sc8562"],
+          attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }]
         },
         {
           ...SPEC_SUMMARY,
@@ -902,6 +900,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     expect(within(table).getByText("充电策略")).toBeInTheDocument();
     expect(within(table).getByText("unknown-ic（未实测）")).toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: "所属模块" })).not.toBeInTheDocument();
+    expect(within(table).queryByText("（预测）")).not.toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: "compatible" })).not.toBeInTheDocument();
     expect(within(table).getByText("cells")).toBeInTheDocument();
     expect(within(table).getByText("strings")).toBeInTheDocument();

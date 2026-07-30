@@ -1,9 +1,11 @@
 import type {
   ActivateParameterSpecInput,
   CreateParameterSpecInput,
+  DeprecateParameterSpecInput,
   ParameterTopologyRepository,
   ResolveMappingInput,
   ResolveSpecReviewInput,
+  RestoreParameterSpecInput,
   UpdateParameterSpecInput
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
@@ -62,8 +64,8 @@ export type ParameterAdminApplication = {
   resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput): Promise<void>;
   activateParameterSpec(specId: string, input: ActivateParameterSpecInput): Promise<ParameterSpecDetail>;
   updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
-  deprecateParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
-  restoreParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
+  deprecateParameterSpec(specId: string, input: DeprecateParameterSpecInput): Promise<ParameterSpecDetail>;
+  restoreParameterSpec(specId: string, input: RestoreParameterSpecInput): Promise<ParameterSpecDetail>;
   getSpecVersionCutoverImpact(specId: string): Promise<ParameterSpecCutoverSummary>;
   prepareSpecVersionCutover(
     specId: string,

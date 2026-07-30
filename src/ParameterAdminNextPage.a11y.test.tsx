@@ -51,6 +51,8 @@ function createRepository(
     resolveSpecReviewTask: vi.fn(),
     activateParameterSpec: vi.fn(),
     updateParameterSpec: vi.fn(),
+    deprecateParameterSpec: vi.fn(),
+    restoreParameterSpec: vi.fn(),
     listBindings: vi.fn().mockResolvedValue([]),
     getTopology: vi.fn(),
     listMappingTasks: vi.fn().mockResolvedValue([]),

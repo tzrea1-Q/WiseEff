@@ -79,5 +79,6 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0008`](docs/adr/0008-platform-authored-parsing-is-an-org-scoped-overlay.md) — platform-authored parsing is an org-scoped overlay, not repository editing
 - [`0009`](docs/adr/0009-overlay-parsing-knowledge-promotes-into-a-platform-tier.md) — overlay parsing knowledge promotes into a platform tier
 - [`0010`](docs/adr/0010-attribution-tree-is-taxonomy-not-topology.md) — attribution tree is taxonomy, not topology
+- [`0011`](docs/adr/0011-spec-deprecation-is-soft-retirement.md) — parameter definition deprecation is soft retirement
 - [`0013`](docs/adr/0013-attribution-subjects-are-stable-catalog-entities.md) — attribution subjects are stable catalog entities
 - [`0014`](docs/adr/0014-parameter-definitions-are-versioned-subjects.md) — parameter definitions are versioned subjects with soft retirement

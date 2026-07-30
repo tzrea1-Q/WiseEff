@@ -101,6 +101,20 @@ describe("specCompleteness", () => {
     ).toThrow(/active parameter spec version/);
   });
 
+  it("rejects resolving deprecated specs (soft retirement keeps parsing, not review selection)", () => {
+    expect(() =>
+      assertSpecResolvable({
+        id: "spec-deprecated",
+        lifecycle: "deprecated",
+        versionStatus: "active",
+        currentVersionId: "ver-1",
+        valueShape: { kind: "cells", bits: 32 },
+        constraints: { cells: 1 },
+        documentation: "docs",
+      }),
+    ).toThrow(/Only active/);
+  });
+
   it("rejects resolving active specs with incomplete constraints", () => {
     expect(() =>
       assertSpecResolvable({
