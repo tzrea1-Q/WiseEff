@@ -48,7 +48,9 @@ Expand lazily via `/domain-modeling` when terms are resolved. Prefer terms from 
 | Module adoption | The moment an Admin renames, moves, or re-weights an auto-discovered module. The module becomes curated from then on; there is no separate "adopt" action |
 | Unclassified queue | Observed-but-unregistered compatibles plus node types ingest could not place. Scaffolding compatibles never enter it; an Admin can dismiss a compatible entry. Bindings with no attribution match park on the unclassified root module (ADR-0010) |
 | Dismissed compatible | A compatible an Admin declared out of scope for the module tree. It leaves the unclassified queue without gaining a driver group, and the decision is reversible |
-| Driver registration | An organization's declaration that a device is in scope, stated as a curated driver group naming its business category and the exact compatibles it claims. Not a separate record: the driver group is the registration |
+| Driver registration | Stable catalog subject (`DriverRegistration`) declaring a device or logical service is in scope, with `driverNature` and `instanceCardinality`. A taxonomy `driver-group` module places it in the tree but is not the registration itself (ADR-0013) |
+| Attribution subject | Stable catalog identity for where a parameter definition belongs: `DriverRegistration` or `NodeTypeDefinition`. Specs bind to subjects + `property_key`; never to a project `logical_node_id` (ADR-0013) |
+| ParameterSpecVersion | Versioned content of a parameter definition (shape, constraints, docs). Definition lifecycle is draft/active/deprecated; version status is draft/active/superseded. Soft retirement is definition-level (ADR-0014) |
 | Parse coverage | Whether a compatible is matched by a releasable schema — a pinned `schemas/dts` document (including prefix patterns) or an active organization overlay (exact compatible only). The chip distinguishes platform vs organization coverage |
 | Organization driver schema overlay | An org-owned manual driver schema (exact compatible + property definitions) that merges into the schema registry as the lowest releasable tier. Closes "parse uncovered" without editing repository files (ADR-0008) |
 | Platform driver schema tier | A promoted overlay row scoped to no organization (`driver_schema_overlays.organization_id IS NULL`), readable by every tenant, matched ahead of org overlays and behind vendor (ADR-0009) |
@@ -71,3 +73,5 @@ Architectural decisions: [`docs/adr/`](docs/adr/) (created lazily). Feature-scop
 - [`0008`](docs/adr/0008-platform-authored-parsing-is-an-org-scoped-overlay.md) — platform-authored parsing is an org-scoped overlay, not repository editing
 - [`0009`](docs/adr/0009-overlay-parsing-knowledge-promotes-into-a-platform-tier.md) — overlay parsing knowledge promotes into a platform tier
 - [`0010`](docs/adr/0010-attribution-tree-is-taxonomy-not-topology.md) — attribution tree is taxonomy, not topology
+- [`0013`](docs/adr/0013-attribution-subjects-are-stable-catalog-entities.md) — attribution subjects are stable catalog entities
+- [`0014`](docs/adr/0014-parameter-definitions-are-versioned-subjects.md) — parameter definitions are versioned subjects with soft retirement
