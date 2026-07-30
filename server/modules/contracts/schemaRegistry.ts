@@ -271,6 +271,26 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "OrganizationDriverSchemaResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "parameterSpecs.listPromotionCandidates": {
+    summary: "List platform driver-schema promotion candidates by compatible",
+    tags: ["parameters"],
+    responseBody: "DriverSchemaPromotionCandidateListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterSpecs.promoteDriverSchemaOverlay": {
+    summary: "Promote organization driver schema overlays into a platform-tier schema",
+    tags: ["parameters"],
+    requestBody: "PromoteDriverSchemaOverlayRequest",
+    responseBody: "PromoteDriverSchemaOverlayResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterSpecs.revertDriverSchemaPromotion": {
+    summary: "Revert a platform driver-schema promotion and restore contributor overlays",
+    tags: ["parameters"],
+    responseBody: "RevertDriverSchemaPromotionResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
 
   "parameters.admin.listProjects": {
     summary: "List projects for parameter admin",
