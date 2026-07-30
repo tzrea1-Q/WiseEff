@@ -286,3 +286,20 @@ describe("structural parameter cleanup migration invariants (ADR-0003)", () => {
     expect(migration).toContain("parameter_file_sync_conflicts");
   });
 });
+
+describe("attribution subjects migration invariants (ADR-0013)", () => {
+  it("introduces stable subjects and links driver-group/node-type modules", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0082_attribution_subjects.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("create table if not exists attribution_subjects");
+    expect(migration).toContain("create table if not exists driver_registrations");
+    expect(migration).toContain("create table if not exists node_type_definitions");
+    expect(migration).toContain("physical-device");
+    expect(migration).toContain("logical-service");
+    expect(migration).toContain("singleton-per-project");
+    expect(migration).toContain("attribution_subject_id");
+    expect(migration).toContain("parameter_modules_subject_kind_check");
+  });
+});

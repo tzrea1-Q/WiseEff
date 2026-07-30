@@ -2339,11 +2339,23 @@ export async function createParameterModuleForAuth(
         { parentId, parentKind: parent.kind }
       );
     }
-  } else if (kind === "driver-group" || kind === "node-type") {
+  } else if (kind === "driver-group") {
     if (!parent || parent.kind !== "business") {
       throw new ApiError(
         "VALIDATION_FAILED",
-        `${kind} modules must be created under a business category.`,
+        "driver-group modules must be created under a business category.",
+        400,
+        { parentId, parentKind: parent?.kind ?? null }
+      );
+    }
+  } else if (kind === "node-type") {
+    if (
+      !parent ||
+      (parent.kind !== "business" && parent.kind !== "driver-group" && parent.kind !== "node-type")
+    ) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "node-type modules must be created under a business, driver-group, or node-type module.",
         400,
         { parentId, parentKind: parent?.kind ?? null }
       );

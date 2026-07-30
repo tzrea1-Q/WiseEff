@@ -30,6 +30,7 @@ const migration0078 = "0078_platform_admin_role.sql";
 const migration0079 = "0079_driver_schema_platform_tier.sql";
 const migration0080 = "0080_attribution_taxonomy.sql";
 const migration0081 = "0081_remove_structural_parameter_specs.sql";
+const migration0082 = "0082_attribution_subjects.sql";
 
 const enablementMigrations = [
   migration0068,
@@ -46,6 +47,7 @@ const enablementMigrations = [
   migration0079,
   migration0080,
   migration0081,
+  migration0082,
 ] as const;
 const REQUIRED_TABLES = [
   "parameter_specs",

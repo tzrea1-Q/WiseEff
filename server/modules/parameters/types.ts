@@ -58,6 +58,8 @@ export type ParameterModuleDto = {
   kind: ModuleKind;
   origin: ModuleOrigin;
   sourceKey: string | null;
+  /** Stable catalog identity for driver-group / node-type placement nodes (ADR-0013). */
+  attributionSubjectId?: string | null;
 };
 
 export type ParameterHistoryEntryDto = {

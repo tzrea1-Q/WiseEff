@@ -30,8 +30,9 @@ async function ensureUnclassifiedModule(db: Queryable, organizationId: string): 
   await db.query(
     `
     insert into parameter_modules (
-      id, organization_id, parent_id, name, path, depth, sort_order, description, scope
-    ) values ($1, $2, null, $3, $1, 1, 999, '', '')
+      id, organization_id, parent_id, name, path, depth, sort_order, description, scope,
+      kind, origin, attribution_subject_id
+    ) values ($1, $2, null, $3, $1, 1, 999, '', '', 'unclassified', 'auto', null)
     on conflict (id) do nothing
     `,
     [id, organizationId, UNCLASSIFIED_MODULE_NAME],

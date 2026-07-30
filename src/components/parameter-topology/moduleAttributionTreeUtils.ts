@@ -194,6 +194,7 @@ export function allowedCreateKindsForParent(
   if (parentKind == null) return ["business"];
   if (parentKind === "business") return ["business", "driver-group", "node-type"];
   if (parentKind === "driver-group") return ["node-type"];
+  if (parentKind === "node-type") return ["node-type"];
   return [];
 }
 
@@ -216,7 +217,10 @@ export function parentCandidatesForCreateKind(
   }
   if (kind === "node-type") {
     return modules
-      .filter((module) => module.kind === "business" || module.kind === "driver-group")
+      .filter(
+        (module) =>
+          module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type"
+      )
       .map((module) => ({ id: module.id, name: module.name }));
   }
   return [];
@@ -229,7 +233,10 @@ export function parentFlatNodesForCreateKind(
 ): FlatModuleNode[] {
   if (kind === "node-type") {
     return toAttributionFlatNodes(
-      modules.filter((module) => module.kind === "business" || module.kind === "driver-group")
+      modules.filter(
+        (module) =>
+          module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type"
+      )
     );
   }
   return toBusinessFlatNodes(modules);
@@ -247,7 +254,14 @@ export function isValidCreateParent(
   if (kind === "driver-group") {
     return Boolean(parentId) && modules.some((module) => module.id === parentId && module.kind === "business");
   }
-  return Boolean(parentId) && modules.some((module) => module.id === parentId && (module.kind === "business" || module.kind === "driver-group"));
+  return (
+    Boolean(parentId) &&
+    modules.some(
+      (module) =>
+        module.id === parentId &&
+        (module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type")
+    )
+  );
 }
 
 /**
@@ -317,7 +331,7 @@ export function canViewUnclassifiedRoot(module: ParameterModule): boolean {
 }
 
 export function canAddChildModule(module: ParameterModule): boolean {
-  return module.kind === "business" || module.kind === "driver-group";
+  return module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type";
 }
 
 export function canMoveModule(module: ParameterModule): boolean {

@@ -127,9 +127,10 @@ describe("moduleAttributionTreeUtils", () => {
       "node-type"
     ]);
     expect(allowedCreateKindsForParent("driver-group")).toEqual(["node-type"]);
+    expect(allowedCreateKindsForParent("node-type")).toEqual(["node-type"]);
     expect(canAddChildModule(modules[0]!)).toBe(true);
     expect(canAddChildModule(modules[1]!)).toBe(true);
-    expect(canAddChildModule(modules[2]!)).toBe(false);
+    expect(canAddChildModule(modules[2]!)).toBe(true);
   });
 
   it("summarizes parse coverage per driver-group module", () => {
