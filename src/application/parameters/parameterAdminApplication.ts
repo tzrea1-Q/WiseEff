@@ -1,5 +1,6 @@
 import type {
   ActivateParameterSpecInput,
+  CreateParameterSpecInput,
   ParameterTopologyRepository,
   ResolveMappingInput,
   ResolveSpecReviewInput,
@@ -55,6 +56,7 @@ export type ParameterAdminImportActions = {
 export type ParameterAdminApplication = {
   listSpecs(query?: SpecQuery): Promise<ParameterSpecSummary[]>;
   getSpec(specId: string): Promise<ParameterSpecDetail>;
+  createParameterSpec(input: CreateParameterSpecInput): Promise<ParameterSpecDetail>;
   listSpecReviewTasks(query?: SpecReviewTaskQuery): Promise<SpecReviewTaskListResult>;
   resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput): Promise<void>;
   activateParameterSpec(specId: string, input: ActivateParameterSpecInput): Promise<ParameterSpecDetail>;
@@ -129,6 +131,9 @@ export function createParameterAdminApplication({
     },
     getSpec(specId) {
       return topology.getSpec(specId);
+    },
+    createParameterSpec(input) {
+      return topology.createParameterSpec(input);
     },
     listSpecReviewTasks(query = {}) {
       return topology.listSpecReviewTasks(query);

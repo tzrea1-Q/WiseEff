@@ -39,6 +39,7 @@ type ModuleDto = {
   sourceKey?: string | null;
   effectiveImportance?: ModuleImportance;
   parameterCount?: number;
+  attributionSubjectId?: string | null;
 };
 
 type MappingDto = {
@@ -80,7 +81,8 @@ function mapModule(module: ModuleDto): ParameterModule {
     origin: module.origin ?? "curated",
     sourceKey: module.sourceKey ?? null,
     effectiveImportance: module.effectiveImportance ?? importance,
-    parameterCount: module.parameterCount ?? 0
+    parameterCount: module.parameterCount ?? 0,
+    attributionSubjectId: module.attributionSubjectId ?? null
   };
 }
 

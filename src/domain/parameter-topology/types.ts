@@ -64,6 +64,8 @@ export type ParameterSpecSummary = {
   compatiblePatterns: string[] | null;
   /** Distinct attribution units observed via project bindings; empty = not yet observed. */
   attributionModules: SpecAttributionModule[];
+  /** Stable attribution subject for mature catalog identity (ADR-0013). */
+  attributionSubjectId?: string | null;
 };
 
 export type ParameterSpecDetail = ParameterSpecSummary & {

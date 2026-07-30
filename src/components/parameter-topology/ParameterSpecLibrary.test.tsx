@@ -117,7 +117,8 @@ describe("ParameterSpecLibrary", () => {
     expect(rows.some((row) => row.textContent?.includes("充电策略") && row.textContent?.includes("gpio_int"))).toBe(true);
     expect(rows.some((row) => row.textContent?.includes("mt5788（未实测）") && row.textContent?.includes("gpio_int"))).toBe(true);
     expect(within(library).queryByText("status")).not.toBeInTheDocument();
-    expect(within(library).getByText(/2 \/ 3 项/)).toBeInTheDocument();
+    // Structural keys (status) are excluded from the library scope.
+    expect(within(library).getByText(/2 \/ 2 项/)).toBeInTheDocument();
   });
 
   it("filters by attribution module and lifecycle via ColumnFilter multi-select", async () => {

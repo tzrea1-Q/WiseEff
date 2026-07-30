@@ -37,6 +37,8 @@ export type ParameterModule = {
   /** Nearest ancestor business category importance (or own, when business). */
   effectiveImportance: ModuleImportance;
   parameterCount: number;
+  /** Stable catalog identity for driver-group / node-type (ADR-0013). */
+  attributionSubjectId?: string | null;
 };
 
 export type ParameterModuleMapping = {

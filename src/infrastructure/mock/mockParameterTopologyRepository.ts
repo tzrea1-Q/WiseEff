@@ -520,6 +520,39 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       return cloneDetail(detail);
     },
 
+    async createParameterSpec(input) {
+      const id = `pspec:mock:${input.attributionSubjectId}:${input.propertyKey}`;
+      if (store.specs.has(id)) {
+        throw new Error(`ParameterSpec already exists: ${id}`);
+      }
+      const created: SpecFixture = {
+        id,
+        organizationId: "org-mock",
+        sourceKind: "manual",
+        specificationKey: `manual/${input.propertyKey}`,
+        propertyKey: input.propertyKey,
+        driverModule: null,
+        lifecycle: "draft",
+        currentVersionId: `${id}:v1`,
+        currentVersion: 1,
+        valueShape: input.valueShape ?? { kind: "unknown" },
+        compatiblePatterns: null,
+        attributionModules: [],
+        attributionSubjectId: input.attributionSubjectId,
+        displayName: input.displayName ?? input.propertyKey,
+        description: input.description ?? input.propertyKey,
+        schemaDefault: null,
+        exampleValue: input.exampleValue ?? null,
+        schemaNamespace: "manual",
+        units: input.units ?? null,
+        constraints: input.constraints ?? {},
+        documentation: input.documentation ?? "",
+        policyTarget: null,
+      };
+      store.specs.set(id, created);
+      return cloneDetail(created);
+    },
+
     async activateParameterSpec(specId, input: ActivateParameterSpecInput) {
       const existing = store.specs.get(specId);
       if (!existing) {

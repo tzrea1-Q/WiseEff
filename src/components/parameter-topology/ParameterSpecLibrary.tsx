@@ -248,6 +248,7 @@ export type ParameterSpecLibraryProps = {
   onSaveSpec?: (payload: SpecEditorSavePayload) => void | Promise<void>;
   savePending?: boolean;
   saveError?: string | null;
+  onCreateSpec?: () => void;
   /** @deprecated Prefer onSaveSpec; kept for activate-only callers. */
   onActivateDraftSpec?: (input: ActivateDraftSpecInput) => void;
   activatePending?: boolean;
@@ -267,6 +268,7 @@ export function ParameterSpecLibrary({
   onSaveSpec,
   savePending = false,
   saveError = null,
+  onCreateSpec,
   onActivateDraftSpec,
   activatePending = false
 }: ParameterSpecLibraryProps) {
@@ -361,6 +363,11 @@ export function ParameterSpecLibrary({
             />
           </label>
           <div className="parameters-table-filters param-admin-library-filters">
+            {onCreateSpec ? (
+              <button type="button" className="primary-button" disabled={loading} onClick={onCreateSpec}>
+                新建定义
+              </button>
+            ) : null}
             {filtersActive ? (
               <button aria-label="清除筛选" className="clear-filters" type="button" onClick={clearFilters}>
                 清除筛选

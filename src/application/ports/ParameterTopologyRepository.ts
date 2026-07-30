@@ -94,6 +94,30 @@ export type ActivateParameterSpecInput = {
   reason: string;
   displayName?: string;
   description?: string;
+  coverageClaim?: {
+    kind: "overlay-property" | "pinned-schema-property";
+    overlayId?: string;
+    overlayPropertyId?: string;
+    upsertOverlay?: {
+      compatible: string;
+      displayName?: string;
+      createPropertyLink: true;
+    };
+  };
+};
+
+export type CreateParameterSpecInput = {
+  attributionSubjectId: string;
+  propertyKey: string;
+  reason: string;
+  displayName?: string;
+  description?: string;
+  documentation?: string;
+  valueShape?: Record<string, unknown>;
+  constraints?: Record<string, unknown>;
+  units?: string | null;
+  exampleValue?: unknown;
+  overridePlatform?: boolean;
 };
 
 export type UpdateParameterSpecInput = {
@@ -111,6 +135,7 @@ export type UpdateParameterSpecInput = {
 export interface ParameterTopologyRepository {
   listSpecs(query: SpecQuery): Promise<ParameterSpecSummary[]>;
   getSpec(specId: string): Promise<ParameterSpecDetail>;
+  createParameterSpec(input: CreateParameterSpecInput): Promise<ParameterSpecDetail>;
   activateParameterSpec(specId: string, input: ActivateParameterSpecInput): Promise<ParameterSpecDetail>;
   updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
   listSpecReviewTasks(query?: SpecReviewTaskQuery): Promise<SpecReviewTaskListResult>;

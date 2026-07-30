@@ -171,6 +171,7 @@ export function specSummaryFromDto(dto: ParameterSpecSummaryDto): ParameterSpecS
     valueShape: dto.valueShape ?? null,
     compatiblePatterns: dto.compatiblePatterns ?? null,
     attributionModules: dto.attributionModules ?? [],
+    attributionSubjectId: dto.attributionSubjectId ?? null,
   };
 }
 
@@ -363,6 +364,13 @@ export function createHttpParameterTopologyRepository(
     async getSpec(specId) {
       const response = await apiClient.get<ItemEnvelope<ParameterSpecDetailDto>>(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}`
+      );
+      return specDetailFromDto(response.item);
+    },
+    async createParameterSpec(input) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        "/api/v2/parameter-specs",
+        input
       );
       return specDetailFromDto(response.item);
     },

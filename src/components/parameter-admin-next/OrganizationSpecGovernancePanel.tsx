@@ -17,6 +17,10 @@ import {
 } from "@/components/parameter-topology/ParameterSpecLibrary";
 import type { ParameterSpecDetailView } from "@/components/parameter-topology/ParameterSpecDetail";
 import { SpecReviewQueue, type SpecReviewTaskView } from "@/components/parameter-topology/SpecReviewQueue";
+import {
+  SpecCreateDialog,
+  subjectsFromModules
+} from "@/components/parameter-topology/SpecCreateDialog";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 import { useParameterAdminUrl } from "./useParameterAdminUrl";
 
@@ -130,6 +134,10 @@ export function OrganizationSpecGovernancePanel({
     null
   );
   const [activatePendingSpecId, setActivatePendingSpecId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createSubjects, setCreateSubjects] = useState<ReturnType<typeof subjectsFromModules>>([]);
 
   const reloadSpecs = useCallback(async () => {
     setSpecLoading(true);
@@ -492,11 +500,72 @@ export function OrganizationSpecGovernancePanel({
           onSaveSpec={handleSaveSpec}
           savePending={activatePendingSpecId === urlState.specId}
           saveError={reviewActionError}
+          onCreateSpec={() => {
+            setCreateError(null);
+            setCreateOpen(true);
+            void application.getModuleRegistry().then((registry) => {
+              setCreateSubjects(subjectsFromModules(registry.modules));
+            });
+          }}
           reviewQueueSlot={showReview ? reviewQueue : undefined}
         />
       ) : (
         reviewQueue
       )}
+
+      {createOpen ? (
+        <SpecCreateDialog
+          subjects={createSubjects}
+          busy={createBusy}
+          error={createError}
+          onCancel={() => {
+            if (createBusy) return;
+            setCreateOpen(false);
+            setCreateError(null);
+          }}
+          onConfirm={async (input) => {
+            setCreateBusy(true);
+            setCreateError(null);
+            try {
+              const { coverageCompatible, ...createInput } = input;
+              const created = await application.createParameterSpec(createInput);
+              if (coverageCompatible) {
+                await application.activateParameterSpec(created.id, {
+                  valueShape: (created.valueShape as Record<string, unknown>) ?? {
+                    kind: "cells",
+                    bits: 32,
+                    groups: 1,
+                    cellsPerGroup: 1,
+                  },
+                  constraints: created.constraints ?? { cells: 1 },
+                  documentation: created.documentation || createInput.documentation || "docs",
+                  reason: "activate after library create",
+                  coverageClaim: {
+                    kind: "overlay-property",
+                    upsertOverlay: {
+                      compatible: coverageCompatible,
+                      displayName: `${coverageCompatible} coverage overlay`,
+                      createPropertyLink: true,
+                    },
+                  },
+                });
+              }
+              setCreateOpen(false);
+              setReviewActionSuccess(coverageCompatible ? "已创建并激活" : "已保存草稿");
+              await reloadSpecs();
+              updateUrl({ specId: created.id });
+            } catch (error) {
+              setCreateError(
+                error instanceof WiseEffApiError
+                  ? error.message || "创建失败"
+                  : "创建失败，请重试。",
+              );
+            } finally {
+              setCreateBusy(false);
+            }
+          }}
+        />
+      ) : null}
     </div>
   );
 }
