@@ -26,8 +26,8 @@ Stacked delivery on one branch (split to GitHub PRs by the parent agent if neede
 | PR1 | Structural cohort removal (`0081`) | done |
 | PR2 | Attribution subjects (`0082`, ADR-0013) | done |
 | PR3 | Versioned specs backend (`0083`, ADR-0014) | done |
-| PR4 | Create entry + staged version cutover | in progress (backend create/coverage/cutover done; UI pending) |
-| PR5 | Identity mapping + singleton gate | pending |
+| PR4 | Create entry + staged version cutover | done |
+| PR5 | Identity mapping + singleton gate | in progress |
 | PR6 | Governance UI convergence | pending |
 
 Implementation agents commit on this branch only; parent opens/merges GitHub PRs.
