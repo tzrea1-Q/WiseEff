@@ -182,6 +182,8 @@ export function ModuleEditDialog({
                       Boolean(coverage?.shadowedBy && coverage.shadowedBy.length > 0);
                     const isPromoted = Boolean(coverage?.covered && coverage.promoted);
                     const isOverlay = coverage?.covered && coverage.scope === "organization";
+                    const isPlatform =
+                      coverage?.covered && coverage.scope === "platform" && !isPromoted && !isShadowed;
                     const coverageLabel = !coverage?.covered
                       ? PARAMETER_ADMIN_UI.driverRegistryCoverageUncovered
                       : isPromoted
@@ -190,7 +192,9 @@ export function ModuleEditDialog({
                         ? PARAMETER_ADMIN_UI.driverRegistryCoverageShadowed
                         : isOverlay
                           ? PARAMETER_ADMIN_UI.driverRegistryCoverageOverlay
-                          : PARAMETER_ADMIN_UI.driverRegistryCoverageCovered;
+                          : isPlatform
+                            ? PARAMETER_ADMIN_UI.driverRegistryCoveragePlatform
+                            : PARAMETER_ADMIN_UI.driverRegistryCoverageCovered;
                     return (
                       <li key={mapping.id}>
                         <div className="module-edit-compatible-rules__rule">

@@ -185,7 +185,7 @@ export function getPageByPath(path: string): PageConfig {
       group: "平台总览",
       icon: TowerControl,
       title: "平台控制台",
-      subtitle: "平台级驱动 schema 晋升与跨组织运营入口"
+      subtitle: ""
     };
   }
 

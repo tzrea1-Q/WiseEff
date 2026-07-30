@@ -48,9 +48,8 @@ export function PlatformConsolePage() {
       };
       const result = await client.promoteDriverSchemaOverlay(input);
       setNotice(
-        `已将 ${candidate.compatible} 晋升为平台 overlay（${result.platformSchemaId}），` +
-          `影响 ${result.affectedOrganizationIds.length} 个组织的贡献 overlay，` +
-          `全租户解析覆盖将随之更新。`,
+        `已将 ${candidate.compatible} 晋升为平台级解析（${result.platformSchemaId}），` +
+          `影响 ${result.affectedOrganizationIds.length} 个贡献组织；全组织解析匹配将随之更新。`,
       );
       setConfirmAction(null);
       await refresh();
@@ -68,8 +67,8 @@ export function PlatformConsolePage() {
     try {
       const result = await client.revertDriverSchemaPromotion(promotionId);
       setNotice(
-        `已撤销平台 overlay ${result.platformSchemaId}，` +
-          `恢复 ${result.restoredSchemaIds.length} 条组织贡献 overlay。`,
+        `已撤销平台级解析 ${result.platformSchemaId}，` +
+          `已恢复 ${result.restoredSchemaIds.length} 条组织级解析覆盖。`,
       );
       setConfirmAction(null);
       await refresh();
@@ -81,22 +80,14 @@ export function PlatformConsolePage() {
   };
 
   return (
-    <section className="platform-console-page">
-      <header className="platform-console-page__header">
-        <h1>平台控制台</h1>
-        <p>
-          审查各组织 active overlay 的 compatible 重复情况，将等价的解析知识晋升为平台 tier。
-          晋升后全租户可见，贡献 overlay 标记为已晋升而非删除。
-        </p>
-      </header>
-
+    <section className="platform-console-page" aria-label="平台控制台">
       {error ? <p className="platform-console-page__error" role="alert">{error}</p> : null}
       {notice ? <p className="platform-console-page__notice">{notice}</p> : null}
 
       {loading ? <p>正在加载晋升候选…</p> : null}
 
       {!loading && items.length === 0 ? (
-        <p className="platform-console-page__empty">当前没有 active 组织 overlay 可供分组审查。</p>
+        <p className="platform-console-page__empty">当前没有可供审查的组织级解析覆盖候选。</p>
       ) : null}
 
       <ul className="platform-console-candidate-list">
@@ -114,14 +105,14 @@ export function PlatformConsolePage() {
                   <strong>{candidate.compatible}</strong>
                   <span className="platform-console-candidate__meta">
                     {candidate.contributorCount} 个组织贡献
-                    {candidate.hasActivePlatformOverlay ? " · 已有平台 overlay" : ""}
+                    {candidate.hasActivePlatformOverlay ? " · 已有平台级覆盖" : ""}
                     {candidate.equivalent ? " · 属性等价" : " · 属性不一致"}
                   </span>
                 </div>
                 <div className="platform-console-candidate__actions">
                   <button
                     type="button"
-                    className="ghost-button"
+                    className="button subtle"
                     onClick={() =>
                       setExpandedCompatible(expanded ? null : candidate.compatible)
                     }
@@ -131,17 +122,17 @@ export function PlatformConsolePage() {
                   {canPromote ? (
                     <button
                       type="button"
-                      className="primary-button"
+                      className="button primary"
                       disabled={busy}
                       onClick={() => setConfirmAction({ kind: "promote", candidate })}
                     >
-                      晋升
+                      晋升至平台
                     </button>
                   ) : null}
                   {candidate.hasActivePlatformOverlay && revertPromotionId ? (
                     <button
                       type="button"
-                      className="ghost-button"
+                      className="button subtle"
                       disabled={busy}
                       onClick={() =>
                         setConfirmAction({
@@ -212,7 +203,7 @@ export function PlatformConsolePage() {
                   )}
                   {candidate.platformSchemaId ? (
                     <p className="platform-console-candidate__platform-link">
-                      平台 overlay：<code>{candidate.platformSchemaId}</code>
+                      平台级解析：<code>{candidate.platformSchemaId}</code>
                     </p>
                   ) : null}
                 </div>
@@ -226,26 +217,26 @@ export function PlatformConsolePage() {
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="确认操作">
           <div className="submission-dialog platform-console-confirm-dialog">
             <h2>
-              {confirmAction.kind === "promote" ? "确认晋升为平台 overlay" : "确认撤销平台 overlay"}
+              {confirmAction.kind === "promote" ? "确认晋升为平台级解析" : "确认撤销平台级解析"}
             </h2>
             {confirmAction.kind === "promote" ? (
               <p>
-                将把 compatible <strong>{confirmAction.candidate.compatible}</strong> 晋升为平台 tier。
-                此次操作影响 <strong>{confirmAction.candidate.contributorCount}</strong> 个组织的贡献
-                overlay，并将改变<strong>所有租户</strong>对该 compatible 的解析匹配结果。
-                贡献 overlay 将标记为已晋升，不会删除。
+                将把 <strong>{confirmAction.candidate.compatible}</strong> 晋升为平台级解析覆盖，对所有组织生效。
+                此次操作影响 <strong>{confirmAction.candidate.contributorCount}</strong> 个贡献组织，
+                并改变<strong>全部组织</strong>对该驱动的解析匹配结果。
+                各组织原有的组织级解析覆盖将改为展示「官方解析覆盖」，底层记录保留，不会删除。
               </p>
             ) : (
               <p>
-                将废弃平台 overlay 并恢复
-                <strong>{confirmAction.candidate.contributorCount}</strong> 个组织的贡献 overlay 为
-                active。全租户解析覆盖将回退到晋升前状态。
+                将废弃平台级解析覆盖，并恢复
+                <strong>{confirmAction.candidate.contributorCount}</strong> 个组织的组织级解析覆盖。
+                全部组织的解析匹配将回退至晋升前状态。
               </p>
             )}
             <div className="platform-console-confirm-dialog__actions">
               <button
                 type="button"
-                className="ghost-button"
+                className="button subtle"
                 disabled={busy}
                 onClick={() => setConfirmAction(null)}
               >
@@ -253,7 +244,7 @@ export function PlatformConsolePage() {
               </button>
               <button
                 type="button"
-                className="primary-button"
+                className="button primary"
                 disabled={busy}
                 onClick={() => {
                   if (confirmAction.kind === "promote") {

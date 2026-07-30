@@ -49,7 +49,7 @@
 - `DRV-REG-001`：Admin 上传前登记驱动并在树上看见未实测与解析覆盖徽标（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-REG-002`：Admin 从队列或模块树认领未登记驱动并使 origin 变为 curated（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-REG-003`：Admin 上传 DTS 后确认摘要报告已登记与新未登记 compatible（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `DRV-SCHEMA-001`：Admin 编写并激活组织叠加层，覆盖徽标变为组织覆盖（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `DRV-SCHEMA-001`：Admin 配置并激活组织级解析，覆盖徽标变为「组织级解析覆盖」（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-002`：仅叠加层声明的 compatible 上传后类型化绑定（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-003`：钉扎已覆盖时拒绝激活叠加层（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-SCHEMA-004`：激活时就地升级 provisional，无需重传（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。

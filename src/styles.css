@@ -97,8 +97,11 @@ body {
 
 .app-shell {
   --active-sidebar-width: var(--sidebar-width);
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
   display: flex;
+  overflow-x: clip;
   background:
     radial-gradient(circle at 65% 8%, rgba(80, 220, 255, 0.16), transparent 30%),
     linear-gradient(180deg, #f9f9ff 0%, #f4f7ff 100%);
@@ -350,13 +353,21 @@ body {
 .main-shell {
   display: flex;
   flex-direction: column;
-  width: calc(100vw - var(--active-sidebar-width));
-  max-width: calc(100vw - var(--active-sidebar-width));
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Sidebar is position:fixed (out of flow). Size against the shell, not 100vw —
+     100vw includes scrollbar width and fights expand/collapse + overflow-x:clip. */
+  width: calc(100% - var(--active-sidebar-width));
+  max-width: calc(100% - var(--active-sidebar-width));
   margin-left: var(--active-sidebar-width);
   height: 100vh;
   min-height: 0;
   overflow-x: clip;
-  transition: width 180ms ease, margin-left 180ms ease;
+  transition:
+    width 180ms ease,
+    max-width 180ms ease,
+    margin-left 180ms ease;
 }
 
 .home-main-shell {
@@ -11772,7 +11783,8 @@ td small {
   }
 
   .main-shell {
-    width: calc(100vw - var(--active-sidebar-width));
+    width: calc(100% - var(--active-sidebar-width));
+    max-width: calc(100% - var(--active-sidebar-width));
     margin-left: var(--active-sidebar-width);
   }
 
@@ -23325,16 +23337,20 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .module-move-dialog.submission-dialog {
-  /* ModuleTreeSelect menu is absolutely positioned; keep it visible outside the card. */
+  /* Short form; keep overflow visible so ModuleTreeSelect menu is not clipped. */
   overflow: visible;
 }
 
 .module-create-dialog.submission-dialog {
-  overflow: visible;
+  /* Must contain the long create form (kind + parent + definition + compatibles)
+     inside max-height; overflow:visible made Exact compatible spill over the footer. */
+  overflow: hidden;
 }
 
 .module-create-dialog .param-admin-module-edit-body {
-  overflow: visible;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .module-create-dialog__parent-field {
@@ -24213,13 +24229,12 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .platform-console-page {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 24px 20px 48px;
-}
-
-.platform-console-page__header h1 {
-  margin: 0 0 8px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 4px 48px;
+  box-sizing: border-box;
 }
 
 .platform-console-page__error {
@@ -24233,10 +24248,11 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .platform-console-candidate-list {
   list-style: none;
-  margin: 20px 0 0;
+  margin: 12px 0 0;
   padding: 0;
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .platform-console-candidate {
@@ -24244,13 +24260,27 @@ button.dts-topology-navigator__disclosure:focus-visible {
   border-radius: 10px;
   padding: 14px 16px;
   background: rgba(255, 255, 255, 0.92);
+  min-width: 0;
 }
 
 .platform-console-candidate__head {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px 16px;
   align-items: flex-start;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.platform-console-candidate__head > div:first-child {
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+.platform-console-candidate__head strong {
+  display: block;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .platform-console-candidate__meta {
@@ -24264,14 +24294,69 @@ button.dts-topology-navigator__disclosure:focus-visible {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.platform-console-candidate__body {
+  min-width: 0;
+  margin-top: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.platform-console-page .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 12px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.platform-console-page .button.primary {
+  color: #fff;
+  background: var(--app-primary);
+  border-color: var(--app-primary);
+}
+
+.platform-console-page .button.subtle,
+.platform-console-page .button.ghost {
+  color: #334155;
+  background: #fff;
+}
+
+.platform-console-page .button.subtle:hover:not(:disabled),
+.platform-console-page .button.ghost:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.platform-console-page .button.primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.platform-console-page .button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .platform-console-contributors-table,
 .platform-console-divergence table {
   width: 100%;
+  min-width: 420px;
   border-collapse: collapse;
-  margin-top: 12px;
   font-size: 13px;
+  table-layout: auto;
 }
 
 .platform-console-contributors-table th,
@@ -24281,10 +24366,12 @@ button.dts-topology-navigator__disclosure:focus-visible {
   border: 1px solid rgba(148, 163, 184, 0.25);
   padding: 6px 8px;
   text-align: left;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .platform-console-confirm-dialog {
-  max-width: 520px;
+  max-width: min(520px, calc(100vw - 32px));
 }
 
 .platform-console-confirm-dialog__actions {
@@ -24292,4 +24379,23 @@ button.dts-topology-navigator__disclosure:focus-visible {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .platform-console-page {
+    padding: 4px 0 40px;
+  }
+
+  .platform-console-candidate {
+    padding: 12px;
+  }
+
+  .platform-console-candidate__actions {
+    width: 100%;
+  }
+
+  .platform-console-candidate__actions .button {
+    flex: 1 1 auto;
+  }
 }

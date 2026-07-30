@@ -995,7 +995,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
       "page"
     );
     expect(within(moduleSubnav).queryByRole("button", { name: "驱动登记" })).not.toBeInTheDocument();
-    expect(within(panel).getByText("· 解析已覆盖")).toBeInTheDocument();
+    expect(within(panel).getByText("· 平台级解析覆盖")).toBeInTheDocument();
     fireEvent.click(within(moduleSubnav).getByRole("button", { name: /未登记驱动/ }));
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/modules/queue");
 
@@ -1021,15 +1021,14 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     expect(within(panel).queryByRole("tree", { name: "模块归属树" })).not.toBeInTheDocument();
   });
 
-  it("hides the queue secondary nav when discovery is empty", async () => {
+  it("hides the modules sub-nav when discovery is empty", async () => {
     const moduleRegistry = createModuleRegistry({
       getDiscoveryHints: vi.fn(async () => ({ compatibles: [], total: 0 }))
     });
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
-    const moduleSubnav = within(panel).getByRole("navigation", { name: "模块归属子视图" });
-    expect(within(moduleSubnav).queryByRole("button", { name: /未登记驱动/ })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("navigation", { name: "模块归属子视图" })).not.toBeInTheDocument();
     expect(within(panel).queryByRole("region", { name: "未登记驱动" })).not.toBeInTheDocument();
     expect(within(panel).getByRole("tree", { name: "模块归属树" })).toBeInTheDocument();
   });

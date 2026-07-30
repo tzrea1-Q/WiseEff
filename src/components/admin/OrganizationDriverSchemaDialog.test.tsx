@@ -28,7 +28,7 @@ describe("OrganizationDriverSchemaDialog", () => {
       />
     );
 
-    const dialog = screen.getByRole("dialog", { name: "编写组织解析 schema" });
+    const dialog = screen.getByRole("dialog", { name: "配置组织级解析" });
     fireEvent.change(within(dialog).getByLabelText("显示名称"), {
       target: { value: "Orphan Driver" }
     });
@@ -67,7 +67,7 @@ describe("OrganizationDriverSchemaDialog", () => {
       />
     );
 
-    const dialog = screen.getByRole("dialog", { name: "编写组织解析 schema" });
+    const dialog = screen.getByRole("dialog", { name: "配置组织级解析" });
     fireEvent.click(within(dialog).getByRole("button", { name: "保存并激活" }));
 
     await waitFor(() => {
