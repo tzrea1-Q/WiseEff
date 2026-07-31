@@ -24373,6 +24373,13 @@ button.dts-topology-navigator__disclosure:focus-visible {
   box-sizing: border-box;
 }
 
+.platform-console-page__title {
+  margin: 0 0 12px;
+  font-size: 1.35rem;
+  font-weight: 650;
+  color: var(--text);
+}
+
 .platform-console-page__error {
   color: #b91c1c;
 }

@@ -628,8 +628,12 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(scBinding!.driverModule).not.toBe(mtBinding!.driverModule);
 
     // Module-first navigator has no device leaves (groupByDevice off); provisional buckets are
-    //「未分类 · <driver>」, not instance paths like sc8562@6E.
-    const sc8562TreeItem = workspace.getByRole("treeitem", { name: /未分类 · sc8562/ });
+    //「未分类 · <driver>」or a「未分类」root with driver children after taxonomy placement.
+    const unclassifiedRoot = workspace.getByRole("treeitem", { name: /^未分类$/ });
+    if (await unclassifiedRoot.isVisible().catch(() => false)) {
+      await unclassifiedRoot.click({ timeout: 10_000 });
+    }
+    const sc8562TreeItem = workspace.getByRole("treeitem", { name: /未分类 · sc8562|^sc8562$/ }).first();
     await expect(sc8562TreeItem).toBeVisible({ timeout: 20_000 });
     await sc8562TreeItem.click({ timeout: 20_000 });
     const scopedSc8562Row = bindingRowById(workspace, scBinding!.id);
@@ -2087,17 +2091,18 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await review.getByLabel("确认原因").fill(`${descriptionPrefix} admin UI resolve ${runSuffix}`);
       await review.getByRole("button", { name: "确认对应" }).click();
 
+      let resolvedDbStatus = "missing";
       await expect
         .poll(
           async () => {
-            const resolvedDb = await withPgClient(async (client) => {
+            resolvedDbStatus = await withPgClient(async (client) => {
               const result = await client.query<{ status: string }>(
                 `select status from identity_mapping_tasks where id = $1`,
                 [openMapTask.id]
               );
               return result.rows[0]?.status ?? "missing";
             });
-            return resolvedDb;
+            return resolvedDbStatus;
           },
           { timeout: 30_000 }
         )
@@ -2133,7 +2138,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
             responseSummary: `openTask=${openMapTask.id}`
           })
         ],
-        db: [resolvedDb],
+        db: [
+          {
+            table: "identity_mapping_tasks",
+            predicate: `id=${openMapTask.id}`,
+            observed: `status=${resolvedDbStatus}`,
+            rowCount: 1
+          }
+        ],
         audit: [
           {
             id: mappingAuditItem?.id,

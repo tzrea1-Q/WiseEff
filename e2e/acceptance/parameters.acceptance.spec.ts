@@ -6,6 +6,7 @@ import { withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { signInBrowserAsRole } from "./helpers/bearerAuth";
+import { prepareInteractionSurface } from "./helpers/interactionSurface";
 
 useBrowserDiagnostics(test);
 
@@ -297,9 +298,12 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(page.getByLabel("搜索审计记录")).toBeVisible();
     await page.goto("/parameter-admin");
     await expect(page.getByRole("region", { name: "参数定义库" })).toBeVisible({ timeout: 30_000 });
+    await prepareInteractionSurface(page);
 
-    await expect(page.getByRole("region", { name: "批量参数导入" })).toBeVisible();
-    await page.getByRole("button", { name: "打开批量参数导入" }).click();
+    // Bulk import is a TopBar action when the shell TopBar is mounted.
+    const openImport = page.getByRole("button", { name: "打开批量参数导入" });
+    await expect(openImport).toBeVisible({ timeout: 15_000 });
+    await openImport.click();
     const importWizard = page.getByRole("dialog", { name: "批量参数导入向导" });
     await expect(importWizard).toBeVisible();
     await importWizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();
