@@ -355,6 +355,12 @@ describe("parameter repository", () => {
       null,
       "set",
       null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
       null
     ]);
     expect(draft).toMatchObject({ id: "draft-1", parameterId: "param-1", targetValue: "3100" });
