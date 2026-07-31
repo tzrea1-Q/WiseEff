@@ -122,11 +122,6 @@ export function ParameterModuleMappingPanel({
     setOrganizationDriverSchemas(await (client.listOrganizationDriverSchemas?.() ?? Promise.resolve([])));
   };
 
-  const refreshOrganizationDriverSchemas = async () => {
-    const schemas = await client.listOrganizationDriverSchemas();
-    setOrganizationDriverSchemas(schemas);
-  };
-
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -282,7 +277,7 @@ export function ParameterModuleMappingPanel({
     try {
       const hints = await client.dismissCompatible({ compatible });
       if (dismissedHint) {
-        setDismissedHints((current) => {
+        setDismissedCompatibles((current) => {
           if (current.some((hint) => hint.compatible === compatible)) return current;
           return [...current, dismissedHint];
         });
@@ -600,7 +595,7 @@ export function ParameterModuleMappingPanel({
           >
             {PARAMETER_ADMIN_UI.moduleDiscoveryCompatible}
             <span className="parameter-module-mapping-panel__subnav-count">
-              {queueCount > 0 ? queueCount : hasDismissed ? dismissedHints.length : 0}
+              {queueCount > 0 ? queueCount : dismissedCompatibles.length}
             </span>
           </button>
         </nav>
@@ -625,7 +620,7 @@ export function ParameterModuleMappingPanel({
             <span>
               {queueCount > 0
                 ? `共 ${queueCount} 项待归类。主界面继续维护归属树；点上方「未登记驱动」或右侧按钮去处理。`
-                : `有 ${dismissedHints.length} 项已忽略可恢复。点上方「未登记驱动」打开队列。`}
+                : `有 ${dismissedCompatibles.length} 项已忽略可恢复。点上方「未登记驱动」打开队列。`}
             </span>
           </p>
           <button type="button" className="button" onClick={() => goToSubView("queue")}>

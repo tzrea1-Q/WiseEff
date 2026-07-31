@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ParameterModule, ParameterModuleMapping } from "@/domain/parameter-topology/moduleRegistry";
@@ -150,6 +150,9 @@ describe("ModuleAttributionTree", () => {
       "已在同级最前。"
     );
     fireEvent.click(screen.getByRole("menuitem", { name: "下移 SC8562" }));
+    await waitFor(() => {
+      expect(onUpdateModule).toHaveBeenCalledTimes(2);
+    });
     expect(onUpdateModule).toHaveBeenNthCalledWith(1, "mod-group", { sortOrder: 10 });
     expect(onUpdateModule).toHaveBeenNthCalledWith(2, "mod-group-2", { sortOrder: 0 });
 
