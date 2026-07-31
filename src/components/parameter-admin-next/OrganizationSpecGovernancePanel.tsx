@@ -57,6 +57,7 @@ function toSpecDetailView(
     compatiblePatterns: detail.compatiblePatterns,
     schemaDefault: detail.schemaDefault,
     policyTarget: detail.policyTarget,
+    cutover: detail.cutover,
     usage: [],
     schemaHistory: detail.currentVersion
       ? [{ version: detail.currentVersion, source: detail.schemaNamespace ?? detail.sourceKind }]
@@ -476,6 +477,45 @@ export function OrganizationSpecGovernancePanel({
     [application, reloadSpecs, updateUrl]
   );
 
+  const handlePrepareCutover = useCallback(
+    async (specId: string) => {
+      setReviewActionError(null);
+      setActivatePendingSpecId(specId);
+      try {
+        const detail = await application.prepareSpecVersionCutover(specId, {
+          reason: "prepare version cutover",
+        });
+        const libraryRow = specRows.find((row) => row.id === specId) ?? null;
+        setSpecDetail(toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow));
+        setReviewActionSuccess("已准备版本切换，可确认完成切换。");
+        await reloadSpecs();
+      } catch (error) {
+        setReviewActionError(formatReviewActionError(error));
+      } finally {
+        setActivatePendingSpecId(null);
+      }
+    },
+    [application, reloadSpecs, specRows]
+  );
+
+  const handleFinalizeCutover = useCallback(
+    async (input: { specId: string; reason: string }) => {
+      setReviewActionError(null);
+      setActivatePendingSpecId(input.specId);
+      try {
+        await application.finalizeSpecVersionCutover(input.specId, { reason: input.reason });
+        setReviewActionSuccess("版本切换已完成。");
+        await reloadSpecs();
+        updateUrl({ specId: null });
+      } catch (error) {
+        setReviewActionError(formatReviewActionError(error));
+      } finally {
+        setActivatePendingSpecId(null);
+      }
+    },
+    [application, reloadSpecs, updateUrl]
+  );
+
   const showLibrary = focus !== "review";
   const showReview = focus !== "library";
 
@@ -536,6 +576,8 @@ export function OrganizationSpecGovernancePanel({
           onSaveSpec={handleSaveSpec}
           onDeprecateSpec={handleDeprecateSpec}
           onRestoreSpec={handleRestoreSpec}
+          onPrepareCutover={handlePrepareCutover}
+          onFinalizeCutover={handleFinalizeCutover}
           savePending={activatePendingSpecId === urlState.specId}
           saveError={reviewActionError}
           onCreateSpec={() => {

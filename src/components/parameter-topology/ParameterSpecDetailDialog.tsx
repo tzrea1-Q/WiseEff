@@ -18,6 +18,8 @@ export type ParameterSpecDetailDialogProps = {
   onSave?: (payload: SpecEditorSavePayload) => void | Promise<void>;
   onDeprecate?: (input: { reason: string }) => void | Promise<void>;
   onRestore?: (input: { reason: string }) => void | Promise<void>;
+  onPrepareCutover?: () => void | Promise<void>;
+  onFinalizeCutover?: (input: { reason: string }) => void | Promise<void>;
   pending?: boolean;
   error?: string | null;
 };
@@ -33,23 +35,28 @@ export function ParameterSpecDetailDialog({
   onSave,
   onDeprecate,
   onRestore,
+  onPrepareCutover,
+  onFinalizeCutover,
   pending = false,
   error = null
 }: ParameterSpecDetailDialogProps) {
   const editable = typeof onSave === "function";
   const isDraft = detail.reviewState === "draft" && detail.organizationId != null;
   const isDeprecated = detail.reviewState === "deprecated";
+  const cutover = detail.cutover;
   const [draft, setDraft] = useState<SpecEditorDraft>(() => createSpecEditorDraft(detail));
   const [localError, setLocalError] = useState<string | null>(null);
   const [lifecycleKind, setLifecycleKind] = useState<"deprecate" | "restore" | null>(null);
   const [lifecycleReason, setLifecycleReason] = useState("");
+  const [cutoverFinalizeReason, setCutoverFinalizeReason] = useState("");
 
   useEffect(() => {
     setDraft(createSpecEditorDraft(detail));
     setLocalError(null);
     setLifecycleKind(null);
     setLifecycleReason("");
-  }, [detail.id, detail.reviewState, detail.organizationId]);
+    setCutoverFinalizeReason("");
+  }, [detail.id, detail.reviewState, detail.organizationId, detail.cutover?.status]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -143,6 +150,59 @@ export function ParameterSpecDetailDialog({
         </div>
 
         <div className="param-admin-editor-dialog-body">
+          {cutover ? (
+            <div className="param-admin-cutover-panel" style={{ marginBottom: "1rem" }}>
+              <p className="eyebrow">版本切换</p>
+              <p>
+                语义版本 v{cutover.fromVersion} → v{cutover.toVersion}（{cutover.status === "ready" ? "可完成" : "准备中"}）
+              </p>
+              <p className="form-hint">
+                影响绑定：共 {cutover.impact.total}，待处理 {cutover.impact.pending}，就绪{" "}
+                {cutover.impact.ready}，不兼容 {cutover.impact.incompatible}
+              </p>
+              {cutover.status === "preparing" && cutover.impact.pending > 0 && onPrepareCutover ? (
+                <button
+                  type="button"
+                  className="button subtle"
+                  disabled={pending}
+                  onClick={() => void onPrepareCutover()}
+                >
+                  {pending ? "准备中…" : "准备切换"}
+                </button>
+              ) : null}
+              {cutover.status === "ready" && onFinalizeCutover ? (
+                <div className="form-stack" style={{ marginTop: "0.75rem" }}>
+                  <label className="field">
+                    <span>完成切换原因</span>
+                    <textarea
+                      aria-label="完成切换原因"
+                      value={cutoverFinalizeReason}
+                      rows={3}
+                      onChange={(event) => {
+                        setCutoverFinalizeReason(event.target.value);
+                        setLocalError(null);
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="button primary"
+                    disabled={pending}
+                    onClick={() => {
+                      const reason = cutoverFinalizeReason.trim();
+                      if (!reason) {
+                        setLocalError("请填写完成切换原因。");
+                        return;
+                      }
+                      void onFinalizeCutover({ reason });
+                    }}
+                  >
+                    {pending ? "切换中…" : "确认完成切换"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <ParameterSpecDetail
             detail={detail}
             draft={draft}

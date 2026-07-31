@@ -46,10 +46,13 @@ import type {
   ListParameterSpecsQuery,
   ListSpecReviewTasksQuery,
   ParameterSpecDetailDto,
+  ParameterSpecCutoverSummaryDto,
   ParameterSpecReviewTaskDto,
   ParameterSpecSummaryDto,
   ResolveSpecReviewTaskBody,
   RestoreParameterSpecBody,
+  PrepareParameterSpecCutoverBody,
+  FinalizeParameterSpecCutoverBody,
   UpdateParameterSpecBody,
 } from "./schemas";
 
@@ -207,7 +210,8 @@ export async function getParameterSpec(
   if (!row) {
     throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId });
   }
-  return { item: toParameterSpecDetailDto(row) };
+  const cutover = await loadOpenCutoverSummaryForSpec(db, auth.organization.id, specId);
+  return { item: toParameterSpecDetailDto(row, cutover) };
 }
 
 export async function listSpecReviewTasks(
@@ -532,7 +536,10 @@ function hashReason(reason: string) {
   return `r${hash.toString(16)}`;
 }
 
-function toParameterSpecDetailDto(refreshed: ParameterSpecDetailRow): ParameterSpecDetailDto {
+function toParameterSpecDetailDto(
+  refreshed: ParameterSpecDetailRow,
+  cutover?: ParameterSpecCutoverSummaryDto | null,
+): ParameterSpecDetailDto {
   return {
     id: refreshed.id,
     organizationId: refreshed.organizationId,
@@ -556,7 +563,101 @@ function toParameterSpecDetailDto(refreshed: ParameterSpecDetailRow): ParameterS
     policyTarget: refreshed.policyTarget,
     attributionModules: refreshed.attributionModules,
     attributionSubjectId: refreshed.attributionSubjectId,
+    ...(cutover ? { cutover } : {}),
   };
+}
+
+type CutoverImpactCounts = ParameterSpecCutoverSummaryDto["impact"];
+
+function emptyCutoverImpact(): CutoverImpactCounts {
+  return { pending: 0, ready: 0, incompatible: 0, skipped: 0, total: 0 };
+}
+
+async function loadCutoverImpactCounts(tx: Queryable, runId: string): Promise<CutoverImpactCounts> {
+  const counts = await tx.query<{ status: string; count: string }>(
+    `
+    select status, count(*)::text as count
+    from parameter_spec_version_cutover_items
+    where run_id = $1
+    group by status
+    `,
+    [runId],
+  );
+  const impact = emptyCutoverImpact();
+  for (const row of counts.rows) {
+    const count = Number(row.count ?? 0);
+    impact.total += count;
+    if (row.status === "pending") impact.pending = count;
+    else if (row.status === "ready") impact.ready = count;
+    else if (row.status === "incompatible") impact.incompatible = count;
+    else if (row.status === "skipped") impact.skipped = count;
+  }
+  return impact;
+}
+
+async function loadOpenCutoverSummaryForSpec(
+  tx: Queryable,
+  organizationId: string,
+  specId: string,
+): Promise<ParameterSpecCutoverSummaryDto | null> {
+  const run = await tx.query<{
+    id: string;
+    status: string;
+    from_version_id: string;
+    to_version_id: string;
+    from_version: number;
+    to_version: number;
+  }>(
+    `
+    select
+      r.id,
+      r.status,
+      r.from_version_id,
+      r.to_version_id,
+      fv.version as from_version,
+      tv.version as to_version
+    from parameter_spec_version_cutover_runs r
+    inner join parameter_spec_versions fv on fv.id = r.from_version_id
+    inner join parameter_spec_versions tv on tv.id = r.to_version_id
+    where r.organization_id = $1
+      and r.parameter_spec_id = $2
+      and r.status in ('preparing', 'ready')
+    limit 1
+    `,
+    [organizationId, specId],
+  );
+  const hit = run.rows[0];
+  if (!hit) return null;
+  const impact = await loadCutoverImpactCounts(tx, hit.id);
+  return {
+    runId: hit.id,
+    status: hit.status as "preparing" | "ready",
+    fromVersionId: hit.from_version_id,
+    toVersionId: hit.to_version_id,
+    fromVersion: hit.from_version,
+    toVersion: hit.to_version,
+    impact,
+  };
+}
+
+async function resolveOpenCutoverRunId(
+  tx: Queryable,
+  organizationId: string,
+  specId: string,
+): Promise<string | null> {
+  const run = await tx.query<{ id: string }>(
+    `
+    select id
+    from parameter_spec_version_cutover_runs
+    where organization_id = $1
+      and parameter_spec_id = $2
+      and status in ('preparing', 'ready')
+    limit 1
+    for update
+    `,
+    [organizationId, specId],
+  );
+  return run.rows[0]?.id ?? null;
 }
 
 function stableJson(value: unknown): string {
@@ -1305,6 +1406,202 @@ export async function restoreParameterSpec(
   });
 }
 
+export async function getParameterSpecVersionCutoverImpact(
+  db: Database,
+  auth: AuthContext,
+  specId: string,
+): Promise<{ item: ParameterSpecCutoverSummaryDto }> {
+  requireCanView(auth);
+  await requireOrgOwnedSpec(db, {
+    organizationId: auth.organization.id,
+    parameterSpecId: specId,
+  });
+  const cutover = await loadOpenCutoverSummaryForSpec(db, auth.organization.id, specId);
+  if (!cutover) {
+    throw new ApiError("NOT_FOUND", "No open version cutover run for this spec.", 404, { specId });
+  }
+  return { item: cutover };
+}
+
+export async function prepareParameterSpecVersionCutover(
+  db: Database,
+  auth: AuthContext,
+  input: PrepareParameterSpecCutoverBody & { specId: string },
+  context: AuditCorrelationContext = {},
+): Promise<{ item: ParameterSpecDetailDto }> {
+  requireCanAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    await requireOrgOwnedSpec(tx, {
+      organizationId: auth.organization.id,
+      parameterSpecId: input.specId,
+    });
+
+    const runId = await resolveOpenCutoverRunId(tx, auth.organization.id, input.specId);
+    if (!runId) {
+      throw new ApiError("NOT_FOUND", "No open version cutover run for this spec.", 404, {
+        specId: input.specId,
+      });
+    }
+
+    const run = await tx.query<{ id: string; status: string; parameter_spec_id: string }>(
+      `
+      select id, status, parameter_spec_id
+      from parameter_spec_version_cutover_runs
+      where id = $1
+        and organization_id = $2
+      limit 1
+      for update
+      `,
+      [runId, auth.organization.id],
+    );
+    const hit = run.rows[0];
+    if (!hit) {
+      throw new ApiError("NOT_FOUND", "Version cutover run was not found.", 404, { runId });
+    }
+
+    if (hit.status === "ready") {
+      const refreshed = await getParameterSpecRow(tx, {
+        organizationId: auth.organization.id,
+        specId: input.specId,
+      });
+      if (!refreshed) {
+        throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+      }
+      const cutover = await loadOpenCutoverSummaryForSpec(tx, auth.organization.id, input.specId);
+      return { item: toParameterSpecDetailDto(refreshed, cutover) };
+    }
+
+    if (hit.status !== "preparing") {
+      throw new ApiError("CONFLICT", "Cutover run cannot be prepared from its current status.", 409, {
+        runId,
+        status: hit.status,
+      });
+    }
+
+    const pendingItems = await tx.query<{ id: string; base_revision_id: string | null }>(
+      `
+      select id, base_revision_id
+      from parameter_spec_version_cutover_items
+      where run_id = $1
+        and status = 'pending'
+      `,
+      [runId],
+    );
+
+    for (const item of pendingItems.rows) {
+      if (!item.base_revision_id) {
+        await tx.query(
+          `
+          update parameter_spec_version_cutover_items
+          set status = 'incompatible', incompatibility_code = 'base-revision-missing'
+          where id = $1
+          `,
+          [item.id],
+        );
+        continue;
+      }
+
+      const revision = await tx.query<{ id: string }>(
+        `
+        select id
+        from project_parameter_binding_revisions
+        where id = $1
+        limit 1
+        `,
+        [item.base_revision_id],
+      );
+      if (!revision.rows[0]) {
+        await tx.query(
+          `
+          update parameter_spec_version_cutover_items
+          set status = 'incompatible', incompatibility_code = 'base-revision-missing'
+          where id = $1
+          `,
+          [item.id],
+        );
+      } else {
+        await tx.query(
+          `
+          update parameter_spec_version_cutover_items
+          set status = 'ready', successor_revision_id = $2
+          where id = $1
+          `,
+          [item.id, item.base_revision_id],
+        );
+      }
+    }
+
+    const impact = await loadCutoverImpactCounts(tx, runId);
+    const nextStatus =
+      impact.pending > 0 || impact.incompatible > 0 ? "preparing" : "ready";
+    await tx.query(
+      `
+      update parameter_spec_version_cutover_runs
+      set status = $2
+      where id = $1
+      `,
+      [runId, nextStatus],
+    );
+
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: "spec-version-cutover-prepared",
+        targetType: "parameter-spec",
+        targetId: input.specId,
+        metadata: {
+          parameterSpecId: input.specId,
+          runId,
+          nextStatus,
+          reasonHash: input.reason ? hashReason(input.reason) : null,
+          impact,
+        },
+      },
+      context,
+    );
+
+    const refreshed = await getParameterSpecRow(tx, {
+      organizationId: auth.organization.id,
+      specId: input.specId,
+    });
+    if (!refreshed) {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+    }
+    const cutover = await loadOpenCutoverSummaryForSpec(tx, auth.organization.id, input.specId);
+    return { item: toParameterSpecDetailDto(refreshed, cutover) };
+  });
+}
+
+export async function finalizeParameterSpecVersionCutoverForSpec(
+  db: Database,
+  auth: AuthContext,
+  input: FinalizeParameterSpecCutoverBody & { specId: string },
+  context: AuditCorrelationContext = {},
+): Promise<{ item: ParameterSpecDetailDto }> {
+  requireCanAdmin(auth);
+
+  const runId = await db.query<{ id: string }>(
+    `
+    select id
+    from parameter_spec_version_cutover_runs
+    where organization_id = $1
+      and parameter_spec_id = $2
+      and status in ('preparing', 'ready')
+    limit 1
+    `,
+    [auth.organization.id, input.specId],
+  );
+  const hit = runId.rows[0];
+  if (!hit) {
+    throw new ApiError("NOT_FOUND", "No open version cutover run for this spec.", 404, {
+      specId: input.specId,
+    });
+  }
+  return finalizeParameterSpecVersionCutover(db, auth, { runId: hit.id, reason: input.reason }, context);
+}
+
 export async function finalizeParameterSpecVersionCutover(
   db: Database,
   auth: AuthContext,
@@ -1374,6 +1671,18 @@ export async function finalizeParameterSpecVersionCutover(
         { runId: input.runId, blockingItems: Number(blockers.rows[0]?.count ?? 0) },
       );
     }
+
+    await tx.query(
+      `
+      update project_parameter_binding_revisions br
+      set parameter_spec_version_id = $1
+      from parameter_spec_version_cutover_items ci
+      where ci.run_id = $2
+        and ci.status = 'ready'
+        and br.id = ci.successor_revision_id
+      `,
+      [hit.to_version_id, input.runId],
+    );
 
     await tx.query(
       `

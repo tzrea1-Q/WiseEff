@@ -248,6 +248,8 @@ export type ParameterSpecLibraryProps = {
   onSaveSpec?: (payload: SpecEditorSavePayload) => void | Promise<void>;
   onDeprecateSpec?: (input: { specId: string; reason: string }) => void | Promise<void>;
   onRestoreSpec?: (input: { specId: string; reason: string }) => void | Promise<void>;
+  onPrepareCutover?: (specId: string) => void | Promise<void>;
+  onFinalizeCutover?: (input: { specId: string; reason: string }) => void | Promise<void>;
   savePending?: boolean;
   saveError?: string | null;
   onCreateSpec?: () => void;
@@ -270,6 +272,8 @@ export function ParameterSpecLibrary({
   onSaveSpec,
   onDeprecateSpec,
   onRestoreSpec,
+  onPrepareCutover,
+  onFinalizeCutover,
   savePending = false,
   saveError = null,
   onCreateSpec,
@@ -566,6 +570,14 @@ export function ParameterSpecLibrary({
           onRestore={
             onRestoreSpec
               ? ({ reason }) => onRestoreSpec({ specId: detail.id, reason })
+              : undefined
+          }
+          onPrepareCutover={
+            onPrepareCutover ? () => onPrepareCutover(detail.id) : undefined
+          }
+          onFinalizeCutover={
+            onFinalizeCutover
+              ? ({ reason }) => onFinalizeCutover({ specId: detail.id, reason })
               : undefined
           }
           onSave={

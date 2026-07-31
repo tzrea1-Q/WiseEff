@@ -212,6 +212,27 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterSpecs.getCutover",
+    method: "GET",
+    path: "/api/v2/parameter-specs/:specId/cutover",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.prepareCutover",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/cutover/prepare",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.finalizeCutover",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/cutover/finalize",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterSpecs.listReviewTasks",
     method: "GET",
     path: "/api/v2/parameter-spec-review-tasks",

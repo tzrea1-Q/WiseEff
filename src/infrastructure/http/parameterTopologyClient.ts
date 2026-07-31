@@ -187,7 +187,8 @@ export function specDetailFromDto(dto: ParameterSpecDetailDto): ParameterSpecDet
     units: dto.units,
     constraints: dto.constraints,
     documentation: dto.documentation,
-    policyTarget: dto.policyTarget
+    policyTarget: dto.policyTarget,
+    cutover: dto.cutover,
   };
 }
 
@@ -413,6 +414,26 @@ export function createHttpParameterTopologyRepository(
     async restoreParameterSpec(specId, input) {
       const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/restore`,
+        input
+      );
+      return specDetailFromDto(response.item);
+    },
+    async getSpecVersionCutoverImpact(specId) {
+      const response = await apiClient.get<ItemEnvelope<NonNullable<ParameterSpecDetailDto["cutover"]>>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover`
+      );
+      return response.item;
+    },
+    async prepareSpecVersionCutover(specId, input = {}) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover/prepare`,
+        input
+      );
+      return specDetailFromDto(response.item);
+    },
+    async finalizeSpecVersionCutover(specId, input) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover/finalize`,
         input
       );
       return specDetailFromDto(response.item);

@@ -11,6 +11,7 @@ import {
   createParameterSpecBodySchema,
   deprecateOrganizationDriverSchemaBodySchema,
   deprecateParameterSpecBodySchema,
+  finalizeParameterSpecCutoverBodySchema,
   listParameterSpecsQuerySchema,
   listSpecReviewTasksQuerySchema,
   driverSchemaPromotionParamsSchema,
@@ -18,6 +19,7 @@ import {
   promoteDriverSchemaOverlayBodySchema,
   parameterSpecParamsSchema,
   parameterSpecReviewTaskParamsSchema,
+  prepareParameterSpecCutoverBodySchema,
   resolveSpecReviewTaskBodySchema,
   restoreParameterSpecBodySchema,
   updateOrganizationDriverSchemaBodySchema,
@@ -27,9 +29,12 @@ import {
   activateParameterSpec,
   createParameterSpec,
   deprecateParameterSpec,
+  finalizeParameterSpecVersionCutoverForSpec,
   getParameterSpec,
+  getParameterSpecVersionCutoverImpact,
   listParameterSpecs,
   listSpecReviewTasks,
+  prepareParameterSpecVersionCutover,
   resolveSpecReviewTask,
   restoreParameterSpec,
   updateParameterSpec,
@@ -162,6 +167,45 @@ export function registerParameterSpecRoutes(
         constraints: body.constraints ?? {},
         specId: params.specId,
       },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.get("/api/v2/parameter-specs/:specId/cutover", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const result = await getParameterSpecVersionCutoverImpact(db, auth, params.specId);
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/cutover/prepare", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(prepareParameterSpecCutoverBodySchema, request.body ?? {});
+    const result = await prepareParameterSpecVersionCutover(
+      db,
+      auth,
+      { ...body, specId: params.specId },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/cutover/finalize", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(finalizeParameterSpecCutoverBodySchema, request.body ?? {});
+    const result = await finalizeParameterSpecVersionCutoverForSpec(
+      db,
+      auth,
+      { ...body, specId: params.specId },
       { requestId: request.requestId },
     );
     return { status: 200, body: result };

@@ -1,3 +1,4 @@
+import type { ParameterSpecCutoverSummary } from "@/domain/parameter-topology/types";
 import type { ParameterSpecLibraryRow } from "./ParameterSpecLibrary";
 import { formatSpecAttributionLabel } from "./ParameterSpecLibrary";
 import { formatParameterSpecLifecycle } from "@/application/parameters/parameterAdminUiCopy";
@@ -27,6 +28,7 @@ export type ParameterSpecDetailView = ParameterSpecLibraryRow & {
   policyTarget?: unknown;
   usage?: SpecUsageEntry[];
   schemaHistory?: SpecSchemaHistoryEntry[];
+  cutover?: ParameterSpecCutoverSummary;
 };
 
 /** Editable slice of a spec detail (maps to activate / update payloads). */

@@ -43,7 +43,40 @@ export const parameterSpecDetailDtoSchema = parameterSpecSummaryDtoSchema.extend
   units: z.string().nullable(),
   constraints: z.record(z.string(), z.unknown()).nullable(),
   documentation: z.string().nullable(),
-  policyTarget: z.unknown().nullable()
+  policyTarget: z.unknown().nullable(),
+  cutover: z
+    .object({
+      runId: nonEmptyString,
+      status: z.enum(["preparing", "ready"]),
+      fromVersionId: nonEmptyString,
+      toVersionId: nonEmptyString,
+      fromVersion: z.number().int(),
+      toVersion: z.number().int(),
+      impact: z.object({
+        pending: z.number().int(),
+        ready: z.number().int(),
+        incompatible: z.number().int(),
+        skipped: z.number().int(),
+        total: z.number().int(),
+      }),
+    })
+    .optional(),
+});
+
+export const parameterSpecCutoverSummaryDtoSchema = z.object({
+  runId: nonEmptyString,
+  status: z.enum(["preparing", "ready"]),
+  fromVersionId: nonEmptyString,
+  toVersionId: nonEmptyString,
+  fromVersion: z.number().int(),
+  toVersion: z.number().int(),
+  impact: z.object({
+    pending: z.number().int(),
+    ready: z.number().int(),
+    incompatible: z.number().int(),
+    skipped: z.number().int(),
+    total: z.number().int(),
+  }),
 });
 
 export const listParameterSpecsQuerySchema = z.object({
@@ -179,6 +212,14 @@ export const restoreParameterSpecBodySchema = z.object({
   reason: nonEmptyString,
 });
 
+export const prepareParameterSpecCutoverBodySchema = z.object({
+  reason: z.string().optional(),
+});
+
+export const finalizeParameterSpecCutoverBodySchema = z.object({
+  reason: nonEmptyString,
+});
+
 export const resolveSpecReviewTaskResultSchema = z.object({
   id: nonEmptyString,
   status: specReviewTaskStatusSchema,
@@ -190,6 +231,7 @@ export const resolveSpecReviewTaskResultSchema = z.object({
 
 export type ParameterSpecSummaryDto = z.infer<typeof parameterSpecSummaryDtoSchema>;
 export type ParameterSpecDetailDto = z.infer<typeof parameterSpecDetailDtoSchema>;
+export type ParameterSpecCutoverSummaryDto = z.infer<typeof parameterSpecCutoverSummaryDtoSchema>;
 export type ListParameterSpecsQuery = z.infer<typeof listParameterSpecsQuerySchema>;
 export type ListSpecReviewTasksQuery = z.infer<typeof listSpecReviewTasksQuerySchema>;
 export type ParameterSpecReviewTaskDto = z.infer<typeof parameterSpecReviewTaskDtoSchema>;
@@ -199,6 +241,8 @@ export type CreateParameterSpecBody = z.infer<typeof createParameterSpecBodySche
 export type UpdateParameterSpecBody = z.infer<typeof updateParameterSpecBodySchema>;
 export type DeprecateParameterSpecBody = z.infer<typeof deprecateParameterSpecBodySchema>;
 export type RestoreParameterSpecBody = z.infer<typeof restoreParameterSpecBodySchema>;
+export type PrepareParameterSpecCutoverBody = z.infer<typeof prepareParameterSpecCutoverBodySchema>;
+export type FinalizeParameterSpecCutoverBody = z.infer<typeof finalizeParameterSpecCutoverBodySchema>;
 export type ResolveSpecReviewTaskResultDto = z.infer<typeof resolveSpecReviewTaskResultSchema>;
 
 const propertyValueShapeSchema = z.union([

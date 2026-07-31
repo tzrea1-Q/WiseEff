@@ -4,6 +4,7 @@ import type {
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
+  ParameterSpecCutoverSummary,
   ProjectParameterBinding,
   ResolveMappingInput,
   ResolveSpecReviewInput,
@@ -22,6 +23,7 @@ export type {
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
+  ParameterSpecCutoverSummary,
   ProjectParameterBinding,
   ResolveMappingInput,
   ResolveSpecReviewInput,
@@ -140,6 +142,12 @@ export interface ParameterTopologyRepository {
   updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
   deprecateParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
   restoreParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
+  getSpecVersionCutoverImpact(specId: string): Promise<ParameterSpecCutoverSummary>;
+  prepareSpecVersionCutover(
+    specId: string,
+    input?: { reason?: string }
+  ): Promise<ParameterSpecDetail>;
+  finalizeSpecVersionCutover(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
   listSpecReviewTasks(query?: SpecReviewTaskQuery): Promise<SpecReviewTaskListResult>;
   resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput): Promise<void>;
   listBindings(projectId: string, revisionId: string): Promise<ProjectParameterBinding[]>;

@@ -13,7 +13,7 @@
 
 | 批次 | 主题 | 状态 |
 | --- | --- | --- |
-| PR7 | 有 tip binding 的版本 cutover：finalize HTTP + Admin「影响 → 确认切换」 | planned |
+| PR7 | 有 tip binding 的版本 cutover：finalize HTTP + Admin「影响 → 确认切换」 | done |
 | PR8 | 身份映射 UI：`new_identity` / `confirmAllCandidates`；singleton 仅说明+引导 | planned |
 | PR9 | 短 toast；软废弃默认离开库/评审不可选；claim 仅 overlay；定义库主展示归属主体；性质/基数只读 | planned |
 

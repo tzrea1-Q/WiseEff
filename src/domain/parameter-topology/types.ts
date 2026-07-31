@@ -48,6 +48,22 @@ export type SpecAttributionModule = {
   path?: string[];
 };
 
+export type ParameterSpecCutoverSummary = {
+  runId: string;
+  status: "preparing" | "ready";
+  fromVersionId: string;
+  toVersionId: string;
+  fromVersion: number;
+  toVersion: number;
+  impact: {
+    pending: number;
+    ready: number;
+    incompatible: number;
+    skipped: number;
+    total: number;
+  };
+};
+
 export type ParameterSpecSummary = {
   id: string;
   /** Null for platform-global specs (readable/bindable; not org-admin mutable). */
@@ -81,6 +97,8 @@ export type ParameterSpecDetail = ParameterSpecSummary & {
   documentation: string | null;
   /** Organization/product policy target — may participate in compliance. */
   policyTarget: unknown | null;
+  /** Present when an open version cutover run exists (ADR-0014). */
+  cutover?: ParameterSpecCutoverSummary;
 };
 
 export type BindingSchemaState = "valid" | "invalid" | "unreviewed";

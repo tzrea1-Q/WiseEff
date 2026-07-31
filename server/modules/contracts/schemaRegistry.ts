@@ -420,6 +420,26 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ParameterSpecDetailResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "parameterSpecs.getCutover": {
+    summary: "Get open parameter spec version cutover impact",
+    tags: ["parameters"],
+    responseBody: "ParameterSpecCutoverImpactResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterSpecs.prepareCutover": {
+    summary: "Prepare binding items for parameter spec version cutover",
+    tags: ["parameters"],
+    requestBody: "PrepareParameterSpecCutoverRequest",
+    responseBody: "ParameterSpecDetailResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterSpecs.finalizeCutover": {
+    summary: "Finalize parameter spec version cutover after prepare",
+    tags: ["parameters"],
+    requestBody: "FinalizeParameterSpecCutoverRequest",
+    responseBody: "ParameterSpecDetailResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterSpecs.listReviewTasks": {
     summary: "List organization-scoped parameter specification review tasks",
     tags: ["parameters"],

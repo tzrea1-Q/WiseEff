@@ -613,6 +613,22 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       return cloneDetail(updated);
     },
 
+    async getSpecVersionCutoverImpact(specId) {
+      const existing = store.specs.get(specId);
+      if (!existing?.cutover) {
+        throw new Error(`No open cutover for spec: ${specId}`);
+      }
+      return existing.cutover;
+    },
+
+    async prepareSpecVersionCutover(specId) {
+      throw new Error(`Cutover prepare is unavailable in mock mode (${specId}).`);
+    },
+
+    async finalizeSpecVersionCutover(specId) {
+      throw new Error(`Cutover finalize is unavailable in mock mode (${specId}).`);
+    },
+
     async listSpecReviewTasks(query = {}) {
       let items = store.reviewTasks.map((task) => ({
         ...task,

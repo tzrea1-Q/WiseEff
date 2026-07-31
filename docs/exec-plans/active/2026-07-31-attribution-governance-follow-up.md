@@ -17,7 +17,7 @@ Implementation agents commit on the feature branch only; parent opens/merges Git
 
 | Batch | Commit theme | Status |
 | --- | --- | --- |
-| PR7 | Spec version cutover finalize HTTP + Admin confirm flow | planned |
+| PR7 | Spec version cutover finalize HTTP + Admin confirm flow | done |
 | PR8 | Identity-mapping UI for `new_identity` / singleton guidance | planned |
 | PR9 | Honesty & UX polish (toast, deprecate defaults, overlay-only claim, subject-primary display, nature/cardinality read-only) | planned |
 
@@ -46,10 +46,10 @@ Carried from ADR-0013/0014 and the parent plan unless noted:
 
 ### PR7 — Cutover finalize
 
-- [ ] HTTP route(s) for cutover status/impact + `finalizeParameterSpecVersionCutover` (authz/audit aligned with activate).
-- [ ] OpenAPI + api-contract EN/ZH.
-- [ ] Admin UI on spec detail/activate path when run is `preparing`.
-- [ ] Integration tests: tip bindings → preparing → finalize → successor active / old superseded.
+- [x] HTTP route(s) for cutover status/impact + `finalizeParameterSpecVersionCutover` (authz/audit aligned with activate).
+- [x] OpenAPI + api-contract EN/ZH.
+- [x] Admin UI on spec detail/activate path when run is `preparing`.
+- [x] Integration tests: tip bindings → preparing → finalize → successor active / old superseded.
 
 ### PR8 — Identity mapping UI
 

@@ -33,6 +33,7 @@ import type {
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
+  ParameterSpecCutoverSummary,
   SpecQuery,
   SpecReviewTaskListResult,
   SpecReviewTaskQuery,
@@ -63,6 +64,12 @@ export type ParameterAdminApplication = {
   updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
   deprecateParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
   restoreParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
+  getSpecVersionCutoverImpact(specId: string): Promise<ParameterSpecCutoverSummary>;
+  prepareSpecVersionCutover(
+    specId: string,
+    input?: { reason?: string }
+  ): Promise<ParameterSpecDetail>;
+  finalizeSpecVersionCutover(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
 
   getModuleRegistry(): Promise<ParameterModuleRegistry>;
   getModuleDiscoveryHints(): Promise<ModuleDiscoveryHints>;
@@ -161,6 +168,15 @@ export function createParameterAdminApplication({
     },
     restoreParameterSpec(specId, input) {
       return topology.restoreParameterSpec(specId, input);
+    },
+    getSpecVersionCutoverImpact(specId) {
+      return topology.getSpecVersionCutoverImpact(specId);
+    },
+    prepareSpecVersionCutover(specId, input = {}) {
+      return topology.prepareSpecVersionCutover(specId, input);
+    },
+    finalizeSpecVersionCutover(specId, input) {
+      return topology.finalizeSpecVersionCutover(specId, input);
     },
 
     getModuleRegistry() {
