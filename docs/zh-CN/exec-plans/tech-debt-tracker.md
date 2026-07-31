@@ -25,8 +25,8 @@
 - **TD-040（DTS 配置集/门禁后续）：** (1)(2)(3)(4) 状态见英文版；生产失败关闭 Schema/工具链校验由拓扑计划 Task 8/10/17 承接。
 - **TD-042（参数身份 cutover）：** Phase 7、第四轮与第五轮已完成既有语义迁移、状态门禁、不可变 base/candidate 和 fail-closed writeback。**第六轮**补齐 0058 scope、无损手工身份、global authz、完整 valueShape、真实角色 UI/merge、租户 cleanup/test 隔离、跨 origin candidate-less draft 失效和持久 `set|delete`；新增 0063，使 submission 锁定并推进 exact candidate、在 item/request 上持久化其 ID，merge 再次锁定复核。带 marker 的可丢弃库已覆盖实现链路，但它仍是空 legacy 合成库，不是生产近似快照或恢复演练。**缺少合法干净非客户快照与维护窗口**，尚未执行 apply→cutover→整库恢复→旧 API smoke，因此 TD-042 继续为 BLOCKER，不得宣称生产 cutover 就绪。
 - **TD-044（节点启停 e2e）：** `PARAM-ENABLE-GATE-001` / `VISIBLE-001` / `TOGGLE-001` / `GUARD-001` 已登记为 skipped stub；产品行为与单测/集成已在 `2026-07-27-dts-node-enablement` 落地。待补齐 Playwright 验收与 operation evidence。详见英文版 Open 表。
-- **TD-046（归属放置启发式）：** `modulePlacement.ts` 中 `businessCategoryForNodePath` 为演示级关键词路由，决定自动节点类型单元落在哪个业务分类下。详见英文版 Open 表（ADR-0010 记为技术债，本轮不替换）。
-- **TD-047（规格 driverModule 身份分裂）：** `parameter_specs.driverModule` 可与节点证据不一致；从 binding 陈述归属不解决该分裂。详见英文版 Open 表（ADR-0010）。
+- **TD-046（归属放置启发式）：** `modulePlacement.ts` 中 `businessCategoryForNodePath` 为演示级关键词路由。**待讨论 D-AG-04**，见 `docs/design-docs/2026-07-31-attribution-governance-deferred-questions.md`（中文对照同目录 zh-CN）；**不排进** `2026-07-31-attribution-governance-follow-up`。ADR-0010 记为非权威启发式。
+- **TD-047（规格 driverModule 身份分裂）：** `parameter_specs.driverModule` 可与节点证据不一致。Follow-up PR9 仅做 UI 主体主展示；存储和解 / 不一致阻断为 **待讨论 D-AG-03**（同上 deferred 文档）。
 
 ## 近期关闭项
 

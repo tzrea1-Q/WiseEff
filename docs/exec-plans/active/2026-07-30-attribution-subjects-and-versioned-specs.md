@@ -1,9 +1,11 @@
 # Attribution subjects + versioned parameter definitions
 
-> Status: active implementation  
+> Status: PR0–PR6 implementation complete on branch; remaining decided gaps → follow-up plan  
 > Branch: `feat/attribution-subject-versioned-specs`  
 > Date: 2026-07-30  
-> Supersedes merge intent of open PRs #212–#214 (reusable commits only; not merged as-is)
+> Supersedes merge intent of open PRs #212–#214 (reusable commits only; not merged as-is)  
+> Follow-up (decided work): [`2026-07-31-attribution-governance-follow-up.md`](2026-07-31-attribution-governance-follow-up.md)  
+> Deferred discussion: [`docs/design-docs/2026-07-31-attribution-governance-deferred-questions.md`](../../design-docs/2026-07-31-attribution-governance-deferred-questions.md)
 
 ## Goal
 
@@ -13,6 +15,8 @@ Close the domain gaps found while grilling ADR-0010 / governance state machines:
 2. Explicit `driverNature` / `instanceCardinality` on driver registrations.
 3. Versioned parameter definition content with soft retirement at the definition layer.
 4. Mature create / migrate / identity-mapping / governance UX in later batches.
+
+Items (4) that were only partially landed in PR4–PR6, plus honesty gaps locked on 2026-07-31, continue under the follow-up plan. Do not reopen deferred questions inside this file.
 
 ## Git & PR Workflow
 
@@ -63,11 +67,12 @@ Implementation agents commit on this branch only; parent opens/merges GitHub PRs
 - [x] EN+ZH domain model mention subjects
 - [x] `api-contract.md` + `FRONTEND.md` (EN/ZH) updated for PR0–PR6 endpoints/UI
 - [x] `npm run docs:check` green (run at doc completion)
-- Deferred questions: `docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md` is **not present on this branch**; inline status below:
-  - **D1 (staged ParameterSpec version cutover):** **landed** — `activate` stages successor versions; auto-finalizes when no tip bindings; `finalizeParameterSpecVersionCutover` service exists; **no HTTP route yet** when bindings pending.
-  - **D7 (governance success feedback):** **partial** — `ParameterAdminAuditBanner` removed; panels use `form-hint` status lines, not the planned short toast.
+- [x] 2026-07-31 grill: decided leftovers → follow-up plan; open design questions → deferred doc
+  - Former **D1** (cutover HTTP when tip bindings exist) → follow-up **PR7**
+  - Former **D7** (short toast) → follow-up **PR9**
+  - Edit nature/cardinality, pinned claim, TD-046/047 bodies → [`2026-07-31-attribution-governance-deferred-questions.md`](../../design-docs/2026-07-31-attribution-governance-deferred-questions.md)
 
-**Supersede note:** `docs/exec-plans/active/2026-07-30-parameter-governance-state-machine-completion.md` is not on this branch. Governance batches for attribution subjects, versioned specs, identity mapping, and UI convergence are absorbed by this plan (PR0–PR6).
+**Supersede note:** `docs/exec-plans/active/2026-07-30-parameter-governance-state-machine-completion.md` is not on this branch. Governance batches for attribution subjects, versioned specs, identity mapping, and UI convergence are absorbed by this plan (PR0–PR6); remaining decided UX/API wiring is owned by the follow-up plan.
 
 ## Verification
 
