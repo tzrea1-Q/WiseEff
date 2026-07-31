@@ -10,7 +10,8 @@ import type {
   ParameterModuleRegistryRepository,
   RegisterOrClaimDriverInput,
   RecomputeBindingModulesResult,
-  UpdateParameterModuleInput
+  UpdateParameterModuleInput,
+  UpdateOrganizationDriverSchemaInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type {
   ParameterModule,
@@ -146,7 +147,26 @@ function createSeedStore(): Store {
         ]
       }
     ],
-    organizationDriverSchemas: []
+    organizationDriverSchemas: [
+      {
+        id: "ods-mock-seed",
+        compatible: "vendor,sc8562",
+        displayName: "SC8562 组织解析",
+        notes: "演示用组织级解析",
+        lifecycle: "active",
+        version: 1,
+        properties: [
+          {
+            id: "ods-prop-mock-seed",
+            parameterSpecId: "pspec-mock-seed",
+            propertyKey: "gpio-int",
+            valueShape: { kind: "u32-array" as const },
+            units: null,
+            documentation: ""
+          }
+        ]
+      }
+    ]
   };
 }
 
@@ -453,6 +473,19 @@ export function createMockParameterModuleRegistryRepository(
         ...schema,
         properties: schema.properties.map((property) => ({ ...property }))
       }));
+    },
+
+    async updateOrganizationDriverSchema(
+      schemaId: string,
+      input: UpdateOrganizationDriverSchemaInput
+    ) {
+      const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
+      if (!schema) {
+        throw new Error(`Organization driver schema not found: ${schemaId}`);
+      }
+      if (input.displayName !== undefined) schema.displayName = input.displayName;
+      if (input.notes !== undefined) schema.notes = input.notes;
+      return { ...schema, properties: schema.properties.map((property) => ({ ...property })) };
     },
 
     async activateOrganizationDriverSchema(schemaId: string): Promise<ActivateOrganizationDriverSchemaResult> {

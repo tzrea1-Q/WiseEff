@@ -134,7 +134,9 @@ export function createParameterAdminApplication({
     listDriverRegistry: () => moduleRegistry.listDriverRegistry(),
     registerOrClaimDriver: (input) => moduleRegistry.registerOrClaimDriver(input),
     createOrganizationDriverSchema: (input) => moduleRegistry.createOrganizationDriverSchema(input),
-    listOrganizationDriverSchemas: () => moduleRegistry.listOrganizationDriverSchemas?.() ?? Promise.resolve([]),
+    listOrganizationDriverSchemas: () => moduleRegistry.listOrganizationDriverSchemas(),
+    updateOrganizationDriverSchema: (schemaId, input) =>
+      moduleRegistry.updateOrganizationDriverSchema(schemaId, input),
     activateOrganizationDriverSchema: (schemaId) =>
       moduleRegistry.activateOrganizationDriverSchema(schemaId),
     previewOrganizationDriverSchemaDeprecation: (schemaId) =>

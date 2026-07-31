@@ -121,6 +121,15 @@ export const PARAMETER_ADMIN_UI = {
   organizationDriverSchemaMode: "来源",
   organizationDriverSchemaPlatformBlocked:
     "该驱动已存在平台级解析覆盖，无法再配置组织级解析。",
+  organizationDriverSchemaLifecycle: "生命周期",
+  organizationDriverSchemaDeprecate: "停用解析",
+  organizationDriverSchemaDeprecateConfirm:
+    "确定停用解析「{name}」（compatible {compatible}）？\n停用后该 compatible 的组织级解析覆盖将撤回，相关参数可能变为解析未覆盖。",
+  organizationDriverSchemaOverlays: "组织级解析",
+  organizationDriverSchemaOverlaysEmpty: "尚未配置组织级解析。",
+  moduleAttributionMoveUp: "上移",
+  moduleAttributionMoveDown: "下移",
+  dismissedCompatibleSection: "已忽略",
   queueColCompatible: "compatible",
   queueColBindings: "影响参数",
   queueColProjects: "涉及项目",

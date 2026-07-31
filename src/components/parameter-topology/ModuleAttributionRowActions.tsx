@@ -2,6 +2,7 @@ import { Eye, Pencil } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import {
   addChildModuleDecision,
@@ -31,6 +32,28 @@ type MenuPosition = {
   left: number;
 };
 
+function disabledMenuItem(
+  label: string,
+  reason: string,
+  ariaLabel: string,
+  danger = false
+) {
+  return (
+    <button
+      type="button"
+      className={`dropdown-item${danger ? " dropdown-item--danger" : ""}`}
+      role="menuitem"
+      disabled
+      aria-disabled="true"
+      aria-label={ariaLabel}
+      title={reason}
+      onClick={(event) => event.preventDefault()}
+    >
+      {label}
+    </button>
+  );
+}
+
 /**
  * Always-visible primary edit + overflow menu for secondary actions.
  * Menu is portaled to avoid clipping by the tree scroll container.
@@ -53,17 +76,19 @@ export function ModuleAttributionRowActions({
   const menuRef = useRef<HTMLDivElement>(null);
 
   const showView = canViewUnclassifiedRoot(module) && Boolean(onView);
-  const showEdit = canAdmin && canEditModuleDetails(module);
+  const editDecision = canEditModuleDetails(module);
+  const showEdit = canAdmin && editDecision;
   const addChildDecision = addChildModuleDecision(module);
   const moveDecision = moveModuleDecision(module);
   const deleteDecision = deleteModuleDecision(module);
-  const canMoveUp = Boolean(
-    onReorder && module.kind !== "unclassified" && sortOrderSwapUpdates(module, "up", modules)
-  );
-  const canMoveDown = Boolean(
-    onReorder && module.kind !== "unclassified" && sortOrderSwapUpdates(module, "down", modules)
-  );
-  const hasMore = canAdmin;
+  const canMoveUp = Boolean(onReorder && sortOrderSwapUpdates(module, "up", modules));
+  const canMoveDown = Boolean(onReorder && sortOrderSwapUpdates(module, "down", modules));
+  const showReorder = canAdmin && Boolean(onReorder);
+  const showAddChild = canAdmin;
+  const showMove = canAdmin;
+  const showDelete = canAdmin;
+  const hasMore =
+    showReorder || showAddChild || showMove || showDelete;
 
   const updateMenuPosition = () => {
     const trigger = triggerRef.current;
@@ -117,7 +142,6 @@ export function ModuleAttributionRowActions({
     window.addEventListener("mousedown", handlePointerDown);
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("resize", handleReposition);
-    // Close on any scroll — position would otherwise drift relative to the clipped tree.
     window.addEventListener("scroll", handleScroll, true);
 
     return () => {
@@ -137,20 +161,6 @@ export function ModuleAttributionRowActions({
     setMenuOpen(false);
   };
 
-  const disabledItem = (label: string, reason: string, ariaLabel: string, danger = false) => (
-    <button
-      type="button"
-      className={`dropdown-item${danger ? " dropdown-item--danger" : ""}`}
-      role="menuitem"
-      disabled
-      aria-disabled="true"
-      aria-label={ariaLabel}
-      title={reason}
-    >
-      {label}
-    </button>
-  );
-
   const menu =
     menuOpen && menuPosition
       ? createPortal(
@@ -160,70 +170,98 @@ export function ModuleAttributionRowActions({
             role="menu"
             style={{ top: menuPosition.top, left: menuPosition.left }}
           >
-            {onReorder ? (
+            {showReorder ? (
               <>
                 {canMoveUp ? (
                   <button
                     type="button"
                     className="dropdown-item"
                     role="menuitem"
-                    aria-label={`上移 ${module.name}`}
-                    onClick={() => runMenuAction(() => onReorder("up"))}
+                    aria-label={`${PARAMETER_ADMIN_UI.moduleAttributionMoveUp} ${module.name}`}
+                    onClick={() => runMenuAction(() => onReorder!("up"))}
                   >
-                    上移
+                    {PARAMETER_ADMIN_UI.moduleAttributionMoveUp}
                   </button>
-                ) : disabledItem("上移", "已在同级最前。", `上移 ${module.name}`)}
+                ) : (
+                  disabledMenuItem(
+                    PARAMETER_ADMIN_UI.moduleAttributionMoveUp,
+                    "已在同级最前。",
+                    `${PARAMETER_ADMIN_UI.moduleAttributionMoveUp} ${module.name}`
+                  )
+                )}
                 {canMoveDown ? (
                   <button
                     type="button"
                     className="dropdown-item"
                     role="menuitem"
-                    aria-label={`下移 ${module.name}`}
-                    onClick={() => runMenuAction(() => onReorder("down"))}
+                    aria-label={`${PARAMETER_ADMIN_UI.moduleAttributionMoveDown} ${module.name}`}
+                    onClick={() => runMenuAction(() => onReorder!("down"))}
                   >
-                    下移
+                    {PARAMETER_ADMIN_UI.moduleAttributionMoveDown}
                   </button>
-                ) : disabledItem("下移", "已在同级最后。", `下移 ${module.name}`)}
+                ) : (
+                  disabledMenuItem(
+                    PARAMETER_ADMIN_UI.moduleAttributionMoveDown,
+                    "已在同级最后。",
+                    `${PARAMETER_ADMIN_UI.moduleAttributionMoveDown} ${module.name}`
+                  )
+                )}
               </>
             ) : null}
-            {addChildDecision.allowed ? (
-              <button
-                type="button"
-                className="dropdown-item"
-                role="menuitem"
-                aria-label={`添加子模块到 ${module.name}`}
-                onClick={() => runMenuAction(onAddChild)}
-              >
-                添加子模块
-              </button>
-            ) : disabledItem("添加子模块", addChildDecision.reason, `添加子模块到 ${module.name}`)}
-            {moveDecision.allowed ? (
-              <button
-                type="button"
-                className="dropdown-item"
-                role="menuitem"
-                aria-label={`移动模块 ${module.name}`}
-                onClick={() => runMenuAction(onMove)}
-              >
-                移动
-              </button>
-            ) : disabledItem("移动", moveDecision.reason, `移动模块 ${module.name}`)}
-            {deleteDecision.allowed ? (
-              <button
-                type="button"
-                className="dropdown-item dropdown-item--danger"
-                role="menuitem"
-                aria-label={`${deleteActionLabel(module)} ${module.name}`}
-                onClick={() => runMenuAction(onDelete)}
-              >
-                {module.kind === "driver-group" ? "解散" : "删除"}
-              </button>
-            ) : disabledItem(
-              module.kind === "driver-group" ? "解散" : "删除",
-              deleteDecision.reason,
-              `${deleteActionLabel(module)} ${module.name}`,
-              true
-            )}
+            {showAddChild ? (
+              addChildDecision.allowed ? (
+                <button
+                  type="button"
+                  className="dropdown-item"
+                  role="menuitem"
+                  aria-label={`添加子模块到 ${module.name}`}
+                  onClick={() => runMenuAction(onAddChild)}
+                >
+                  添加子模块
+                </button>
+              ) : (
+                disabledMenuItem(
+                  "添加子模块",
+                  addChildDecision.reason,
+                  `添加子模块到 ${module.name}`
+                )
+              )
+            ) : null}
+            {showMove ? (
+              moveDecision.allowed ? (
+                <button
+                  type="button"
+                  className="dropdown-item"
+                  role="menuitem"
+                  aria-label={`移动模块 ${module.name}`}
+                  onClick={() => runMenuAction(onMove)}
+                >
+                  移动
+                </button>
+              ) : (
+                disabledMenuItem("移动", moveDecision.reason, `移动模块 ${module.name}`)
+              )
+            ) : null}
+            {showDelete ? (
+              deleteDecision.allowed ? (
+                <button
+                  type="button"
+                  className="dropdown-item dropdown-item--danger"
+                  role="menuitem"
+                  aria-label={`${deleteActionLabel(module)} ${module.name}`}
+                  onClick={() => runMenuAction(onDelete)}
+                >
+                  {module.kind === "driver-group" ? "解散" : "删除"}
+                </button>
+              ) : (
+                disabledMenuItem(
+                  module.kind === "driver-group" ? "解散" : "删除",
+                  deleteDecision.reason,
+                  `${deleteActionLabel(module)} ${module.name}`,
+                  true
+                )
+              )
+            ) : null}
           </div>,
           document.body
         )

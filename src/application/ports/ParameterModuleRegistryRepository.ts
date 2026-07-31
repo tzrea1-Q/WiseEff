@@ -197,6 +197,11 @@ export type ActivateOrganizationDriverSchemaResult = {
   resolvedReviewTaskIds: string[];
 };
 
+export type UpdateOrganizationDriverSchemaInput = {
+  displayName?: string;
+  notes?: string;
+};
+
 /**
  * Admin-maintained business-module registry (phase 1, additive).
  * Read path feeds the workbench grouping; write path is admin-only governance.
@@ -226,7 +231,11 @@ export interface ParameterModuleRegistryRepository {
   createOrganizationDriverSchema(
     input: CreateOrganizationDriverSchemaInput
   ): Promise<OrganizationDriverSchema>;
-  listOrganizationDriverSchemas?(): Promise<OrganizationDriverSchema[]>;
+  listOrganizationDriverSchemas(): Promise<OrganizationDriverSchema[]>;
+  updateOrganizationDriverSchema(
+    schemaId: string,
+    input: UpdateOrganizationDriverSchemaInput
+  ): Promise<OrganizationDriverSchema>;
   activateOrganizationDriverSchema(
     schemaId: string
   ): Promise<ActivateOrganizationDriverSchemaResult>;

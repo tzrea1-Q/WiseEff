@@ -13,7 +13,8 @@ import type {
   RegisterOrClaimDriverInput,
   RegisterOrClaimDriverResult,
   RecomputeBindingModulesResult,
-  UpdateParameterModuleInput
+  UpdateParameterModuleInput,
+  UpdateOrganizationDriverSchemaInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type {
   ModuleImportance,
@@ -269,6 +270,17 @@ export function createHttpParameterModuleRegistryRepository(
         ORG_DRIVER_SCHEMAS_BASE
       );
       return response.items;
+    },
+
+    async updateOrganizationDriverSchema(
+      schemaId: string,
+      input: UpdateOrganizationDriverSchemaInput
+    ) {
+      const response = await apiClient.patch<OrganizationDriverSchemaEnvelope>(
+        `${ORG_DRIVER_SCHEMAS_BASE}/${encodeURIComponent(schemaId)}`,
+        input
+      );
+      return response.item;
     },
 
     async activateOrganizationDriverSchema(schemaId: string) {

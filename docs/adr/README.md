@@ -20,5 +20,7 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0008](0008-platform-authored-parsing-is-an-org-scoped-overlay.md) | Platform-authored parsing is an org-scoped overlay |
 | [0009](0009-overlay-parsing-knowledge-promotes-into-a-platform-tier.md) | Overlay parsing knowledge promotes into a platform tier |
 | [0010](0010-attribution-tree-is-taxonomy-not-topology.md) | Attribution tree is taxonomy, not topology |
+| [0011](0011-spec-deprecation-is-soft-retirement.md) | Spec deprecation is soft retirement |
+| [0012](0012-releasing-happens-at-the-file-layer.md) | Releasing happens at the file layer |
 | [0013](0013-attribution-subjects-are-stable-catalog-entities.md) | Attribution subjects are stable catalog entities |
 | [0014](0014-parameter-definitions-are-versioned-subjects.md) | Parameter definitions are versioned subjects with soft retirement |

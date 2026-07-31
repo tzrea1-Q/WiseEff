@@ -126,7 +126,9 @@ export function OrganizationModuleGovernancePanel({
       },
       createOrganizationDriverSchema: (input: CreateOrganizationDriverSchemaInput) =>
         base.createOrganizationDriverSchema(input),
-      listOrganizationDriverSchemas: () => base.listOrganizationDriverSchemas?.() ?? Promise.resolve([]),
+      listOrganizationDriverSchemas: () => base.listOrganizationDriverSchemas(),
+      updateOrganizationDriverSchema: (schemaId, input) =>
+        base.updateOrganizationDriverSchema(schemaId, input),
       activateOrganizationDriverSchema: async (schemaId) => {
         const result = await base.activateOrganizationDriverSchema(schemaId);
         pushModuleAudit(
@@ -139,9 +141,18 @@ export function OrganizationModuleGovernancePanel({
       previewOrganizationDriverSchemaDeprecation: (schemaId) =>
         base.previewOrganizationDriverSchemaDeprecation?.(schemaId) ??
         Promise.reject(new Error("Overlay deprecation preview is unavailable.")),
-      deprecateOrganizationDriverSchema: (schemaId, input) =>
-        base.deprecateOrganizationDriverSchema?.(schemaId, input) ??
-        Promise.reject(new Error("Overlay deprecation is unavailable."))
+      deprecateOrganizationDriverSchema: async (schemaId, input) => {
+        if (!base.deprecateOrganizationDriverSchema) {
+          throw new Error("Overlay deprecation is unavailable.");
+        }
+        const schema = await base.deprecateOrganizationDriverSchema(schemaId, input);
+        pushModuleAudit(
+          dispatch,
+          "module-mapping-deleted",
+          `已停用解析「${schema.displayName}」（${schema.compatible}）`
+        );
+        return schema;
+      }
     };
   }, [application, dispatch]);
 

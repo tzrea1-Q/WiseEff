@@ -399,11 +399,22 @@ function createModuleRegistry(
       version: 1,
       properties: input.properties.map((property, index) => ({
         id: `ods-prop-${index}`,
-        propertyKey: property.propertyKey,
-        valueShape: property.valueShape,
-        units: property.units ?? null,
-        documentation: property.documentation ?? ""
+        parameterSpecId: `pspec-${index}`,
+        propertyKey: "parameterSpecId" in property ? (property.propertyKey ?? `linked-${index}`) : property.propertyKey,
+        valueShape: "valueShape" in property ? property.valueShape : { kind: "unknown" },
+        units: "units" in property ? (property.units ?? null) : null,
+        documentation: "documentation" in property ? (property.documentation ?? "") : ""
       }))
+    })),
+    listOrganizationDriverSchemas: vi.fn(async () => []),
+    updateOrganizationDriverSchema: vi.fn(async (schemaId, input) => ({
+      id: schemaId,
+      compatible: "vendor,sc8562",
+      displayName: input.displayName ?? "SC8562",
+      notes: input.notes ?? "",
+      lifecycle: "draft",
+      version: 1,
+      properties: []
     })),
     activateOrganizationDriverSchema: vi.fn(async (schemaId) => ({
       schema: {
@@ -417,6 +428,15 @@ function createModuleRegistry(
       },
       upgradedSpecIds: [],
       resolvedReviewTaskIds: []
+    })),
+    deprecateOrganizationDriverSchema: vi.fn(async (schemaId) => ({
+      id: schemaId,
+      compatible: "vendor,sc8562",
+      displayName: "SC8562",
+      notes: "",
+      lifecycle: "deprecated",
+      version: 1,
+      properties: []
     }))
   };
 

@@ -318,11 +318,25 @@ export function isUnclassifiedRoot(module: ParameterModule): boolean {
 
 export type ModuleActionDecision = { allowed: true } | { allowed: false; reason: string };
 
+export function renameModuleDecision(module: ParameterModule): ModuleActionDecision {
+  if (isUnclassifiedRoot(module)) {
+    return { allowed: false, reason: "未分类根为只读，不可重命名。" };
+  }
+  return { allowed: true };
+}
+
+export function editModuleDetailsDecision(module: ParameterModule): ModuleActionDecision {
+  return renameModuleDecision(module);
+}
+
 export function addChildModuleDecision(module: ParameterModule): ModuleActionDecision {
-  if (module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type") {
+  if (module.kind === "business" || module.kind === "driver-group") {
     return { allowed: true };
   }
-  return { allowed: false, reason: "未分类根不可添加子模块。" };
+  if (module.kind === "node-type") {
+    return { allowed: false, reason: "节点类型下不可再添加子模块。" };
+  }
+  return { allowed: false, reason: "该模块类型不可添加子模块。" };
 }
 
 export function moveModuleDecision(module: ParameterModule): ModuleActionDecision {
@@ -339,16 +353,19 @@ export function deleteModuleDecision(module: ParameterModule): ModuleActionDecis
   if (module.kind === "unclassified") {
     return { allowed: false, reason: "未分类根不可删除。" };
   }
-  return { allowed: true };
+  if (module.kind === "business" || module.kind === "driver-group") {
+    return { allowed: true };
+  }
+  return { allowed: false, reason: "该模块不可删除。" };
 }
 
 export function canRenameModule(module: ParameterModule): boolean {
-  return !isUnclassifiedRoot(module);
+  return renameModuleDecision(module).allowed;
 }
 
 /** Same gate as rename: edit name / description / scope via the module dialog. */
 export function canEditModuleDetails(module: ParameterModule): boolean {
-  return canRenameModule(module);
+  return editModuleDetailsDecision(module).allowed;
 }
 
 /** Unclassified root has no mutations; expose a view entry so Admins can inspect / open the queue. */
@@ -383,8 +400,9 @@ export function sortOrderSwapUpdates(
 ): Array<{ id: string; sortOrder: number }> | null {
   const siblings = siblingModules(modules, module);
   const index = siblings.findIndex((candidate) => candidate.id === module.id);
+  if (index < 0) return null;
   const swapIndex = direction === "up" ? index - 1 : index + 1;
-  if (index < 0 || swapIndex < 0 || swapIndex >= siblings.length) return null;
+  if (swapIndex < 0 || swapIndex >= siblings.length) return null;
   const peer = siblings[swapIndex]!;
   return [
     { id: module.id, sortOrder: peer.sortOrder },

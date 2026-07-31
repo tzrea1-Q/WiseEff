@@ -285,6 +285,13 @@ describe.skipIf(!databaseAvailable)("identity continuity across revisons", () =>
     expect(CONTINUITY_BASELINE_STATUSES).not.toContain("needs_mapping");
     expect(CONTINUITY_BASELINE_STATUSES).not.toContain("invalid");
     expect(CONTINUITY_BASELINE_STATUSES).not.toContain("resolving");
+    expect(CONTINUITY_BASELINE_STATUSES).not.toContain("published");
+    expect(CONTINUITY_BASELINE_STATUSES).toEqual([
+      "resolved",
+      "validated",
+      "compiled",
+      "pending_approval",
+    ]);
 
     const stableId = randomUUID();
     const blockedId = randomUUID();

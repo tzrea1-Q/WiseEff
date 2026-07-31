@@ -271,10 +271,17 @@ export function ParameterModuleMappingPanel({
 
   const dismissCompatible = async (compatible: string) => {
     if (!canAdmin) return;
+    const dismissedHint = unmappedCompatibles.find((hint) => hint.compatible === compatible);
     setBusy(true);
     setError(null);
     try {
       const hints = await client.dismissCompatible({ compatible });
+      if (dismissedHint) {
+        setDismissedCompatibles((current) => {
+          if (current.some((hint) => hint.compatible === compatible)) return current;
+          return [...current, dismissedHint];
+        });
+      }
       setObservedCompatibles(
         hints.compatibles.map((hint) =>
           toUnmappedCompatibleHint({
@@ -587,7 +594,9 @@ export function ParameterModuleMappingPanel({
             onClick={() => goToSubView("queue")}
           >
             {PARAMETER_ADMIN_UI.moduleDiscoveryCompatible}
-            <span className="parameter-module-mapping-panel__subnav-count">{queueCount}</span>
+            <span className="parameter-module-mapping-panel__subnav-count">
+              {queueCount > 0 ? queueCount : dismissedCompatibles.length}
+            </span>
           </button>
         </nav>
       ) : null}
@@ -609,7 +618,9 @@ export function ParameterModuleMappingPanel({
           <p>
             <strong>{PARAMETER_ADMIN_UI.moduleQueueBanner}</strong>
             <span>
-              共 {queueCount} 项。主界面继续维护归属树；点上方「未登记驱动」或右侧按钮去处理。
+              {queueCount > 0
+                ? `共 ${queueCount} 项待归类。主界面继续维护归属树；点上方「未登记驱动」或右侧按钮去处理。`
+                : `有 ${dismissedCompatibles.length} 项已忽略可恢复。点上方「未登记驱动」打开队列。`}
             </span>
           </p>
           <button type="button" className="button" onClick={() => goToSubView("queue")}>
@@ -653,24 +664,24 @@ export function ParameterModuleMappingPanel({
             organizationDriverSchemas={organizationDriverSchemas}
             onPreviewOverlayDeprecation={(schemaId) =>
               client.previewOrganizationDriverSchemaDeprecation?.(schemaId) ??
-              Promise.reject(new Error("当前环境未接线覆盖废弃预览。"))
+              Promise.reject(new Error("当前环境未接线覆盖停用预览。"))
             }
             onDeprecateOverlaySchema={async (schemaId, input) => {
               setBusy(true);
               setError(null);
               try {
                 if (!client.deprecateOrganizationDriverSchema) {
-                  throw new Error("当前环境未接线覆盖废弃能力。");
+                  throw new Error("当前环境未接线覆盖停用能力。");
                 }
                 await client.deprecateOrganizationDriverSchema(schemaId, input);
                 await Promise.all([
                   refreshOrganizationDriverSchemas(),
                   refreshDriverRegistry()
                 ]);
-                setRecomputeNotice("已废弃");
+                setRecomputeNotice("已停用解析");
               } catch (deprecateError) {
                 setError(
-                  deprecateError instanceof Error ? deprecateError.message : "废弃解析失败。"
+                  deprecateError instanceof Error ? deprecateError.message : "停用解析失败。"
                 );
               } finally {
                 setBusy(false);
