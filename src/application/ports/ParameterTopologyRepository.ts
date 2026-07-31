@@ -134,14 +134,22 @@ export type UpdateParameterSpecInput = {
   policyTarget?: unknown;
 };
 
+export type DeprecateParameterSpecInput = {
+  reason: string;
+};
+
+export type RestoreParameterSpecInput = {
+  reason: string;
+};
+
 export interface ParameterTopologyRepository {
   listSpecs(query: SpecQuery): Promise<ParameterSpecSummary[]>;
   getSpec(specId: string): Promise<ParameterSpecDetail>;
   createParameterSpec(input: CreateParameterSpecInput): Promise<ParameterSpecDetail>;
   activateParameterSpec(specId: string, input: ActivateParameterSpecInput): Promise<ParameterSpecDetail>;
   updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
-  deprecateParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
-  restoreParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
+  deprecateParameterSpec(specId: string, input: DeprecateParameterSpecInput): Promise<ParameterSpecDetail>;
+  restoreParameterSpec(specId: string, input: RestoreParameterSpecInput): Promise<ParameterSpecDetail>;
   getSpecVersionCutoverImpact(specId: string): Promise<ParameterSpecCutoverSummary>;
   prepareSpecVersionCutover(
     specId: string,

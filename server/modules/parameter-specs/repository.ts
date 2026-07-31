@@ -908,6 +908,7 @@ export type ParameterSpecListRow = {
   compatiblePatterns: string[] | null;
   attributionModules: SpecAttributionModuleRow[];
   attributionSubjectId: string | null;
+  referenceCount: number;
 };
 
 export type ParameterSpecDetailRow = ParameterSpecListRow & {
@@ -941,6 +942,7 @@ function toListRow(row: SpecListRow): ParameterSpecListRow {
       : null,
     attributionModules: [],
     attributionSubjectId: row.attribution_subject_id ?? null,
+    referenceCount: 0,
   };
 }
 
@@ -1044,9 +1046,14 @@ export async function listParameterSpecRows(
     organizationId: input.organizationId,
     specIds: rows.map((row) => row.id),
   });
+  const referenceCountBySpec = await loadReferenceCountsBySpecIds(db, {
+    organizationId: input.organizationId,
+    specIds: rows.map((row) => row.id),
+  });
   return rows.map((row) => ({
     ...row,
     attributionModules: attributionBySpec.get(row.id) ?? [],
+    referenceCount: referenceCountBySpec.get(row.id) ?? 0,
   }));
 }
 
@@ -1057,6 +1064,29 @@ type AttributionModuleQueryRow = {
   kind: SpecAttributionModuleRow["kind"];
   path_names: string[] | null;
 };
+
+/** Organization-scoped binding counts per parameter definition. */
+export async function loadReferenceCountsBySpecIds(
+  db: Queryable,
+  input: { organizationId: string; specIds: readonly string[] },
+): Promise<Map<string, number>> {
+  if (input.specIds.length === 0) {
+    return new Map();
+  }
+  const result = await db.query<{ parameter_spec_id: string; reference_count: string | number }>(
+    `
+    select parameter_spec_id, count(*)::int as reference_count
+    from project_parameter_bindings
+    where organization_id = $1
+      and parameter_spec_id = any($2::text[])
+    group by parameter_spec_id
+    `,
+    [input.organizationId, input.specIds],
+  );
+  return new Map(
+    result.rows.map((row) => [row.parameter_spec_id, Number(row.reference_count)]),
+  );
+}
 
 /** Distinct attribution units (driver-group / node-type) observed via project bindings. */
 export async function loadAttributionModulesBySpecIds(
@@ -1234,10 +1264,15 @@ export async function getParameterSpecRow(
     organizationId: input.organizationId,
     specIds: [row.id],
   });
+  const referenceCountBySpec = await loadReferenceCountsBySpecIds(db, {
+    organizationId: input.organizationId,
+    specIds: [row.id],
+  });
 
   return {
     ...toListRow(row),
     attributionModules: attributionBySpec.get(row.id) ?? [],
+    referenceCount: referenceCountBySpec.get(row.id) ?? 0,
     displayName: row.display_name,
     description: row.description,
     schemaDefault: row.schema_default ?? null,

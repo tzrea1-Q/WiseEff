@@ -113,12 +113,15 @@ export type OrganizationSpecGovernancePanelProps = {
   pathname?: string;
   /** Which organization sub-view to render; defaults to both for backward-compatible tests. */
   focus?: "library" | "review";
+  /** Platform super admin may deprecate/restore platform-global definitions. */
+  isPlatformSuperAdmin?: boolean;
 };
 
 export function OrganizationSpecGovernancePanel({
   search,
   pathname = "/parameter-admin",
-  focus
+  focus,
+  isPlatformSuperAdmin = false
 }: OrganizationSpecGovernancePanelProps) {
   const { application, dispatch, state } = useParameterAdmin();
   const { urlState, updateUrl } = useParameterAdminUrl(search, pathname);
@@ -163,6 +166,7 @@ export function OrganizationSpecGovernancePanel({
             compatiblePatterns: item.compatiblePatterns,
             valueShape: item.valueShape,
             attributionModules: item.attributionModules,
+            usageCount: item.referenceCount ?? 0
           })
         )
       );
@@ -233,7 +237,7 @@ export function OrganizationSpecGovernancePanel({
       .then((detail) => {
         if (!cancelled) {
           const libraryRow = specRows.find((row) => row.id === selectedId) ?? null;
-          setSpecDetail(toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow));
+          setSpecDetail(toSpecDetailView(detail, detail.referenceCount ?? libraryRow?.usageCount ?? 0, libraryRow));
         }
       })
       .catch(() => {
@@ -441,7 +445,8 @@ export function OrganizationSpecGovernancePanel({
       setActivatePendingSpecId(input.specId);
       try {
         await application.deprecateParameterSpec(input.specId, { reason: input.reason });
-        showToast("已废弃");
+        pushAudit("spec-deprecated", input.reason, `废弃定义 ${input.specId}`);
+        showToast("已废弃（仍参与解析，默认库视图已隐藏）");
         await reloadSpecs();
         updateUrl({ specId: null });
       } catch (error) {
@@ -450,7 +455,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, reloadSpecs, showToast, updateUrl]
+    [application, pushAudit, reloadSpecs, showToast, updateUrl]
   );
 
   const handleRestoreSpec = useCallback(
@@ -459,6 +464,7 @@ export function OrganizationSpecGovernancePanel({
       setActivatePendingSpecId(input.specId);
       try {
         await application.restoreParameterSpec(input.specId, { reason: input.reason });
+        pushAudit("spec-restored", input.reason, `恢复定义 ${input.specId}`);
         showToast("已恢复");
         await reloadSpecs();
         updateUrl({ specId: null });
@@ -468,7 +474,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, reloadSpecs, showToast, updateUrl]
+    [application, pushAudit, reloadSpecs, showToast, updateUrl]
   );
 
   const handlePrepareCutover = useCallback(
@@ -576,6 +582,7 @@ export function OrganizationSpecGovernancePanel({
           onRestoreSpec={handleRestoreSpec}
           onPrepareCutover={handlePrepareCutover}
           onFinalizeCutover={handleFinalizeCutover}
+          canDeprecateGlobal={isPlatformSuperAdmin}
           savePending={activatePendingSpecId === urlState.specId}
           saveError={reviewActionError}
           onCreateSpec={() => {

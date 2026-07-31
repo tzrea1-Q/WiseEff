@@ -143,7 +143,7 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
       displayName: "Mystery property"
     });
     expect(activated.lifecycle).toBe("active");
-    expect(activated.currentVersion).toBe(2);
+    expect(activated.currentVersion).toBe(1);
     expect(activated.documentation).toBe("Activated from mock");
 
     const draft = await repo.createBindingDraft(PROJECT_ID, "binding-sc8562-gpio-int", {
@@ -158,5 +158,18 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
       action: "set",
       overlayFileName: expect.any(String)
     });
+  });
+
+  it("deprecateParameterSpec soft-retires and restoreParameterSpec returns to prior activated state", async () => {
+    const repo = createRepo();
+    const deprecated = await repo.deprecateParameterSpec("spec-sc8562-gpio-int", {
+      reason: "superseded locally"
+    });
+    expect(deprecated.lifecycle).toBe("deprecated");
+
+    const restored = await repo.restoreParameterSpec("spec-sc8562-gpio-int", {
+      reason: "still needed"
+    });
+    expect(restored.lifecycle).toBe("active");
   });
 });

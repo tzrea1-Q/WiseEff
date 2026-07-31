@@ -82,6 +82,8 @@ export type ParameterSpecSummary = {
   attributionModules: SpecAttributionModule[];
   /** Stable attribution subject for mature catalog identity (ADR-0013). */
   attributionSubjectId?: string | null;
+  /** Organization-scoped binding count for governance impact display. */
+  referenceCount?: number;
 };
 
 export type ParameterSpecDetail = ParameterSpecSummary & {

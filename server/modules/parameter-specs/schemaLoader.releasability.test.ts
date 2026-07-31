@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { isReleasableDriver, isReleasableProperty } from "./schemaLoader";
 import type { DriverSchema, PropertySpec } from "./types";
 
-describe("schemaLoader soft-retirement releasability (ADR-0014)", () => {
+describe("schemaLoader soft-retirement releasability (ADR-0011 / ADR-0014)", () => {
   it("treats a deprecated property as releasable so parse coverage is preserved", () => {
     const property: PropertySpec = {
       id: "propspec:manual:volt:v1",
@@ -12,6 +12,7 @@ describe("schemaLoader soft-retirement releasability (ADR-0014)", () => {
       propertyKey: "volt",
       schemaNamespace: "manual",
       source: "manual",
+      scope: "organization",
       lifecycle: "deprecated",
       valueShape: { kind: "u32" },
       constraints: {},
@@ -27,6 +28,7 @@ describe("schemaLoader soft-retirement releasability (ADR-0014)", () => {
       propertyKey: "draft_prop",
       schemaNamespace: "manual",
       source: "manual",
+      scope: "organization",
       lifecycle: "draft",
       valueShape: { kind: "u32" },
       constraints: {},
@@ -41,6 +43,7 @@ describe("schemaLoader soft-retirement releasability (ADR-0014)", () => {
       compatiblePatterns: ["sc8562"],
       nodenamePatterns: [],
       source: "manual",
+      scope: "organization",
       schemaNamespace: "manual",
       version: 1,
       lifecycle: "deprecated",

@@ -23,12 +23,15 @@ export type ParameterSpecDetailDialogProps = {
   onFinalizeCutover?: (input: { reason: string }) => void | Promise<void>;
   pending?: boolean;
   error?: string | null;
+  /** Platform super admin may deprecate/restore platform-global definitions. */
+  canDeprecateGlobal?: boolean;
 };
 
 /**
  * Spec editor dialog — legacy parameter-admin shell
  * (`modal-backdrop` + `submission-dialog param-admin-editor-dialog`).
  * Org-owned drafts save via activate; org-owned active specs via update.
+ * Soft retirement: deprecate / restore with required reason.
  */
 export function ParameterSpecDetailDialog({
   detail,
@@ -39,13 +42,15 @@ export function ParameterSpecDetailDialog({
   onPrepareCutover,
   onFinalizeCutover,
   pending = false,
-  error = null
+  error = null,
+  canDeprecateGlobal = false
 }: ParameterSpecDetailDialogProps) {
   const editable = typeof onSave === "function";
   const isDraft = detail.reviewState === "draft" && detail.organizationId != null;
   const isDeprecated = detail.reviewState === "deprecated";
   const primaryLabel = formatSpecPrimaryLabel(detail);
   const cutover = detail.cutover;
+  const canGovernLifecycle = detail.organizationId != null || canDeprecateGlobal;
   const [draft, setDraft] = useState<SpecEditorDraft>(() => createSpecEditorDraft(detail));
   const [localError, setLocalError] = useState<string | null>(null);
   const [lifecycleKind, setLifecycleKind] = useState<"deprecate" | "restore" | null>(null);
@@ -142,6 +147,11 @@ export function ParameterSpecDetailDialog({
                     : "修改展示信息、约束与说明后保存；属性键等身份字段不可改。"
                 : "当前未接线保存能力，仅可查看。"}
             </p>
+            {typeof detail.usageCount === "number" ? (
+              <p className="form-hint">
+                {PARAMETER_ADMIN_UI.referenceCountLabel}：{detail.usageCount}
+              </p>
+            ) : null}
           </div>
           <button
             type="button"
@@ -212,7 +222,7 @@ export function ParameterSpecDetailDialog({
             detail={detail}
             draft={draft}
             onDraftChange={handleDraftChange}
-            editable={editable}
+            editable={editable && !isDeprecated}
           />
           {localError || error ? (
             <p className="form-error" role="alert">
@@ -227,7 +237,7 @@ export function ParameterSpecDetailDialog({
               取消
             </button>
           ) : null}
-          {!isDeprecated && onDeprecate ? (
+          {canGovernLifecycle && !isDeprecated && onDeprecate ? (
             <button
               type="button"
               className="button subtle"
@@ -240,7 +250,7 @@ export function ParameterSpecDetailDialog({
               废弃
             </button>
           ) : null}
-          {isDeprecated && onRestore ? (
+          {canGovernLifecycle && isDeprecated && onRestore ? (
             <button
               type="button"
               className="button subtle"
@@ -253,9 +263,15 @@ export function ParameterSpecDetailDialog({
               恢复
             </button>
           ) : null}
-          <button type="button" className="button primary" onClick={() => void handleSave()} disabled={pending}>
-            {saveLabel}
-          </button>
+          {editable && !isDeprecated ? (
+            <button type="button" className="button primary" onClick={() => void handleSave()} disabled={pending}>
+              {saveLabel}
+            </button>
+          ) : (
+            <button type="button" className="button primary" onClick={onClose} disabled={pending}>
+              完成
+            </button>
+          )}
         </div>
       </div>
       </div>

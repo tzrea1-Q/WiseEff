@@ -31,7 +31,8 @@ export const parameterSpecSummaryDtoSchema = z.object({
   valueShape: z.unknown().nullable(),
   compatiblePatterns: z.array(z.string()).nullable(),
   attributionModules: z.array(specAttributionModuleDtoSchema),
-  attributionSubjectId: z.string().nullable().optional()
+  attributionSubjectId: z.string().nullable().optional(),
+  referenceCount: z.number().int().nonnegative().optional()
 });
 
 export const parameterSpecDetailDtoSchema = parameterSpecSummaryDtoSchema.extend({
@@ -243,6 +244,7 @@ export type DeprecateParameterSpecBody = z.infer<typeof deprecateParameterSpecBo
 export type RestoreParameterSpecBody = z.infer<typeof restoreParameterSpecBodySchema>;
 export type PrepareParameterSpecCutoverBody = z.infer<typeof prepareParameterSpecCutoverBodySchema>;
 export type FinalizeParameterSpecCutoverBody = z.infer<typeof finalizeParameterSpecCutoverBodySchema>;
+
 export type ResolveSpecReviewTaskResultDto = z.infer<typeof resolveSpecReviewTaskResultSchema>;
 
 const propertyValueShapeSchema = z.union([

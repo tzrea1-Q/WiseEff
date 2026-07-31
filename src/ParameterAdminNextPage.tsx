@@ -13,6 +13,7 @@ import {
 } from "@/application/parameters/parameterAdminOrganizationPath";
 import { resolveParameterModuleRegistryRepository } from "@/application/parameters/parameterModuleRegistryResolve";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
+import { migrateLegacyRoleId } from "@/domain/users/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterRecord, Project, PrototypeState } from "@/mockData";
 import { OrganizationBulkImportPanel } from "@/components/parameter-admin-next/OrganizationBulkImportPanel";
@@ -118,6 +119,7 @@ export function ParameterAdminNextPage({
       ? null
       : parsedOrganizationView ??
         (isParameterAdminOrganizationEntryPath(pathname) ? "specs" : null);
+  const isPlatformSuperAdmin = migrateLegacyRoleId(state?.activeRoleId ?? "") === "platform-admin";
 
   useEffect(() => {
     if (area !== "organization") {
@@ -173,6 +175,7 @@ export function ParameterAdminNextPage({
                 search={search}
                 pathname={pathname}
                 focus="library"
+                isPlatformSuperAdmin={isPlatformSuperAdmin}
               />
             ) : null}
             {organizationView === "spec-review" ? (

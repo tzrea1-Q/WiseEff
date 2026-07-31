@@ -181,7 +181,7 @@ stateDiagram-v2
 | Config Set manifest | 每个 revision 持久化 `entryFile`、`includeSearchPaths`、overlay 顺序与成员角色。历史行缺失时从钉住的 `dts_config_revision_members` 回填。`manifestState=needs_review` 对编辑、校验、发布、回写失败关闭，直至运维修复 manifest。 |
 | Matcher override 作用域 | 可复用 override 键为 `compatible` 指纹 + **节点 locator 指纹** + `propertyKey`。同一 compatible/属性在不同逻辑节点上不得串用，除非经审核显式决议。 |
 | 审核阻断作用域 | 规格审核与映射阻断携带 `blocker_scope`（`revision` \| `project` \| `platform`）。校验/发布门禁按作用域生效——revision 级阻断不得 org 级误伤无关项目。 |
-| 全局厂商规格 | `organization_id IS NULL` 的 `ParameterSpec` 为平台全局厂商定义。租户可**读取并绑定** active 全局规格；组织 Admin **不得**经标准 Admin API 激活/修改/删除全局 draft 或全局规格——仅本组织行（`organization_id === 调用者组织`）可变。平台全局规格通过 bootstrap/migration/独立平台治理维护。 |
+| 全局厂商规格 | `organization_id IS NULL` 的 `ParameterSpec` 为平台全局厂商定义。租户可**读取并绑定** active 全局规格；组织 Admin **不得**经标准 Admin API 激活/修改/删除全局 draft 或全局规格——仅本组织行（`organization_id === 调用者组织`）可变。平台全局规格通过 bootstrap/migration/独立平台治理（`platform-admin`）维护，包括对平台全局定义的废弃/恢复（ADR-0011 修订）。 |
 | 手工规格身份 | 手工/组织 draft ID 对原始语义键做**无损**规范哈希（`field:length:rawValue`）。展示用 sanitize 不得作为唯一性哈希输入。`vendor,limit` 与 `vendor-limit` 等合法 DTS 键必须生成不同 ID。遗留 sanitize 碰撞仅 fail-closed 审计，不得静默重写已引用 ID。 |
 | Review-task 作用域 | `parameter_spec_review_tasks` 的作用域 FK 仅由租户可证 evidence join 重算（迁移 `0058`），不得信任任务上已有 FK。无法证明或历史污染的作用域须清空，且 `resolved` 须重开，避免 finalize/cutover 误判为已解决。 |
 | 厂商 dt-schema | Linux-binding JSON schema 由属性规格确定性生成（非宽松 `additionalProperties: true` 占位）。黄金 DTB 须通过真实 `dt-validate`；负例 fixture 须按预期失败。 |
@@ -194,7 +194,7 @@ stateDiagram-v2
 | Fail-closed 回写依赖 | Cutover 后语义合入须注入 `objectStore`、项目范围变更请求、精确 write lock 与真实 DTC 工具链校验。跳过回写或缺依赖均失败关闭；生产路径无 `WISEEFF_WRITEBACK_SKIP_TOOLCHAIN`。 |
 | 迁移 phase 审计 | `stage-review` 与 `finalize` 各向 `parameter_identity_migration_phases` 追加不可变行（不覆盖既有 phase 载荷）。Cutover 仅接受带成功 `finalize` phase 行的运行。 |
 | 迁移运行任务关联 | `stage-review` 创建的 inferred 规格审核与身份映射任务携带 `migration_run_id`；`finalize` 要求该运行关联任务全部 resolved 后才写入 activity FK。 |
-| 手工规格生命周期 | 未匹配 `createSpec` 仅创建本组织 **draft** 规格（从 occurrence AST 推断类型）。Admin `activate` 将 draft→active 并补齐约束；仅 active+完整规格可 `resolve`。 |
+| 手工规格生命周期 | 未匹配 `createSpec` 仅创建本组织 **draft** 规格（从 occurrence AST 推断类型）。Admin `activate` 将 draft→active 并补齐约束；仅 active+完整规格可 `resolve`。软下线（`deprecate`）将 draft 或 active → **deprecated**（仍可参与解析；默认定义库视图隐藏；不可被审核任务选中）。`restore` 在有 `activated_at` 时回到 active，否则回到 draft（ADR-0011）。 |
 | 租户拥有校验 resolve | 规格审核 `resolve` 经租户级 join 校验 org/project/revision/occurrence/logical node；不得单独信任 raw evidence ID（0055 加固）。 |
 | 精确回写身份 | 合入/回写锁定 binding revision、occurrence、文件版本、checksum 与 CST span。共享 base revision 不可变；身份过期 → `409`。 |
 | 节点启用状态 / 可达性 | 按**逻辑节点实例**的一等概念（ADR-0003），仅由该节点自身 DTS `status` 派生——缺省、`ok` 或 `okay` 为自身启用，其余为自身禁用。可达性还要求祖先链全部启用；不可达节点报出阻断祖先。永不进入 `ParameterSpec`、binding 或规格审核队列。编辑走共享草稿/提交管线的 `editSubjectKind: node-enablement`。 |
