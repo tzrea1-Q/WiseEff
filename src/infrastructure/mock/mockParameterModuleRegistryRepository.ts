@@ -59,6 +59,13 @@ function cloneDiscovery(store: Store): ModuleDiscoveryHints {
   );
   return {
     compatibles: compatibles.map((hint) => ({ ...hint })),
+    dismissedCompatibles: store.discovery.compatibles
+      .filter((hint) => dismissed.has(hint.compatible.toLowerCase()))
+      .map((hint) => ({
+        ...hint,
+        reason: "",
+        dismissedAt: "2026-07-30T00:00:00.000Z"
+      })),
     total: compatibles.length
   };
 }
@@ -113,6 +120,7 @@ function createSeedStore(): Store {
           suggestedGroupName: "unmapped-ic"
         }
       ],
+      dismissedCompatibles: [],
       total: 1
     },
     dismissed: [],
@@ -128,6 +136,8 @@ function createSeedStore(): Store {
         parameterCount: 12,
         observed: true,
         notYetObserved: false,
+        driverNature: "physical-device",
+        instanceCardinality: "multiple",
         parseCoverages: [
           {
             compatible: "vendor,sc8562",
@@ -154,6 +164,7 @@ export function createMockParameterModuleRegistryRepository(
     discovery: seed.discovery
       ? {
           compatibles: seed.discovery.compatibles.map((hint) => ({ ...hint })),
+          dismissedCompatibles: seed.discovery.dismissedCompatibles.map((hint) => ({ ...hint })),
           total: seed.discovery.total
         }
       : base.discovery,
@@ -354,6 +365,8 @@ export function createMockParameterModuleRegistryRepository(
         parameterCount: existing?.parameterCount ?? 0,
         observed: (existing?.parameterCount ?? 0) > 0,
         notYetObserved: (existing?.parameterCount ?? 0) === 0,
+        driverNature: existing?.driverNature ?? "physical-device",
+        instanceCardinality: existing?.instanceCardinality ?? "multiple",
         parseCoverages: compatibles.map((compatible) => ({
           compatible,
           coverage: { covered: false }
@@ -435,6 +448,13 @@ export function createMockParameterModuleRegistryRepository(
       return schema;
     },
 
+    async listOrganizationDriverSchemas() {
+      return store.organizationDriverSchemas.map((schema) => ({
+        ...schema,
+        properties: schema.properties.map((property) => ({ ...property }))
+      }));
+    },
+
     async activateOrganizationDriverSchema(schemaId: string): Promise<ActivateOrganizationDriverSchemaResult> {
       const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
       if (!schema) {
@@ -461,6 +481,43 @@ export function createMockParameterModuleRegistryRepository(
         upgradedSpecIds: [],
         resolvedReviewTaskIds: []
       };
+    },
+
+    async previewOrganizationDriverSchemaDeprecation(schemaId: string) {
+      const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
+      if (!schema) throw new Error(`Organization driver schema not found: ${schemaId}`);
+      const successorSource = schema.supersededBySchemaId
+        ? {
+            scope: "platform" as const,
+            schemaId: schema.supersededBySchemaId,
+            displayName: schema.supersededBySchemaId
+          }
+        : null;
+      return {
+        schemaId,
+        compatible: schema.compatible,
+        coverageLoss: schema.lifecycle === "active" && successorSource === null,
+        definitionCount: schema.properties.length,
+        projectCount: 0,
+        successorSource
+      };
+    },
+
+    async deprecateOrganizationDriverSchema(
+      schemaId: string,
+      input: { confirmCoverageLoss?: boolean } = {}
+    ) {
+      const schema = store.organizationDriverSchemas.find((item) => item.id === schemaId);
+      if (!schema) throw new Error(`Organization driver schema not found: ${schemaId}`);
+      if (
+        schema.lifecycle === "active" &&
+        !schema.supersededBySchemaId &&
+        !input.confirmCoverageLoss
+      ) {
+        throw new Error("High-risk coverage loss confirmation is required.");
+      }
+      schema.lifecycle = "deprecated";
+      return { ...schema, properties: schema.properties.map((property) => ({ ...property })) };
     }
   };
 }

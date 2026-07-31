@@ -19,6 +19,11 @@ import {
   updateBaselineStatus
 } from "./baselineRepository";
 import { getConfigSetById } from "./configSetRepository";
+import {
+  countBlockingIdentityMappingTasksForRevision,
+  syncSingletonCardinalityBlockingTasks
+} from "../parameter-topology/bindingService";
+import { getLatestConfigRevision } from "../parameter-topology/repository";
 import { getFileVersionById, getProjectParameterFileById, insertFileVersion, setCurrentVersion } from "./repository";
 import type { ReleaseBaselineDto, ReleaseBaselineMemberDto } from "./types";
 import { runValidationGate, type ValidationGateDeps, type ValidationGateResult } from "./validationGate";
@@ -497,6 +502,46 @@ export async function releaseBaseline(
   const baseline = await getReleaseBaselineById(db, { organizationId: auth.organization.id, baselineId });
   if (!baseline) {
     throw new ApiError("NOT_FOUND", "Baseline not found.", 404, { baselineId });
+  }
+
+  const configSet = await getConfigSetById(db, {
+    organizationId: auth.organization.id,
+    configSetId: baseline.configSetId
+  });
+  if (!configSet) {
+    throw new ApiError("NOT_FOUND", "Config set not found.", 404, {
+      configSetId: baseline.configSetId
+    });
+  }
+  const revision = configSet.projectId
+    ? await getLatestConfigRevision(db, {
+        organizationId: auth.organization.id,
+        projectId: configSet.projectId,
+        configSetId: baseline.configSetId
+      })
+    : null;
+  if (revision) {
+    await syncSingletonCardinalityBlockingTasks(db, {
+      organizationId: auth.organization.id,
+      projectId: revision.projectId,
+      configRevisionId: revision.id
+    });
+    const blockingTaskCount = await countBlockingIdentityMappingTasksForRevision(db, {
+      organizationId: auth.organization.id,
+      configRevisionId: revision.id
+    });
+    if (blockingTaskCount > 0) {
+      throw new ApiError(
+        "CONFLICT",
+        "Release baseline is blocked by unresolved identity/cardinality tasks.",
+        409,
+        {
+          code: "revision-blocking-tasks",
+          configRevisionId: revision.id,
+          blockingTaskCount
+        }
+      );
+    }
   }
 
   const gate = await runValidationGate(

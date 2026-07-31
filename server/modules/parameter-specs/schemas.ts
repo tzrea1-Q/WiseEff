@@ -30,7 +30,8 @@ export const parameterSpecSummaryDtoSchema = z.object({
   currentVersion: z.number().int().nullable(),
   valueShape: z.unknown().nullable(),
   compatiblePatterns: z.array(z.string()).nullable(),
-  attributionModules: z.array(specAttributionModuleDtoSchema)
+  attributionModules: z.array(specAttributionModuleDtoSchema),
+  attributionSubjectId: z.string().nullable().optional()
 });
 
 export const parameterSpecDetailDtoSchema = parameterSpecSummaryDtoSchema.extend({
@@ -42,7 +43,40 @@ export const parameterSpecDetailDtoSchema = parameterSpecSummaryDtoSchema.extend
   units: z.string().nullable(),
   constraints: z.record(z.string(), z.unknown()).nullable(),
   documentation: z.string().nullable(),
-  policyTarget: z.unknown().nullable()
+  policyTarget: z.unknown().nullable(),
+  cutover: z
+    .object({
+      runId: nonEmptyString,
+      status: z.enum(["preparing", "ready"]),
+      fromVersionId: nonEmptyString,
+      toVersionId: nonEmptyString,
+      fromVersion: z.number().int(),
+      toVersion: z.number().int(),
+      impact: z.object({
+        pending: z.number().int(),
+        ready: z.number().int(),
+        incompatible: z.number().int(),
+        skipped: z.number().int(),
+        total: z.number().int(),
+      }),
+    })
+    .optional(),
+});
+
+export const parameterSpecCutoverSummaryDtoSchema = z.object({
+  runId: nonEmptyString,
+  status: z.enum(["preparing", "ready"]),
+  fromVersionId: nonEmptyString,
+  toVersionId: nonEmptyString,
+  fromVersion: z.number().int(),
+  toVersion: z.number().int(),
+  impact: z.object({
+    pending: z.number().int(),
+    ready: z.number().int(),
+    incompatible: z.number().int(),
+    skipped: z.number().int(),
+    total: z.number().int(),
+  }),
 });
 
 export const listParameterSpecsQuerySchema = z.object({
@@ -127,6 +161,35 @@ export const activateParameterSpecBodySchema = z.object({
   displayName: z.string().optional(),
   description: z.string().optional(),
   reason: nonEmptyString,
+  coverageClaim: z
+    .object({
+      kind: z.literal("overlay-property"),
+      overlayId: z.string().optional(),
+      overlayPropertyId: z.string().optional(),
+      upsertOverlay: z
+        .object({
+          compatible: nonEmptyString,
+          displayName: z.string().optional(),
+          createPropertyLink: z.literal(true),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
+export const createParameterSpecBodySchema = z.object({
+  attributionSubjectId: nonEmptyString,
+  propertyKey: nonEmptyString,
+  displayName: z.string().optional(),
+  description: z.string().optional(),
+  documentation: z.string().default(""),
+  valueShape: z.record(z.string(), z.unknown()).default({ kind: "unknown" }),
+  constraints: z.record(z.string(), z.unknown()).default({}),
+  units: z.string().nullable().optional(),
+  exampleValue: z.unknown().optional(),
+  /** Explicit confirmation when creating an org definition that overrides a platform one. */
+  overridePlatform: z.boolean().optional(),
+  reason: nonEmptyString,
 });
 
 export const updateParameterSpecBodySchema = z.object({
@@ -141,6 +204,22 @@ export const updateParameterSpecBodySchema = z.object({
   reason: nonEmptyString,
 });
 
+export const deprecateParameterSpecBodySchema = z.object({
+  reason: nonEmptyString,
+});
+
+export const restoreParameterSpecBodySchema = z.object({
+  reason: nonEmptyString,
+});
+
+export const prepareParameterSpecCutoverBodySchema = z.object({
+  reason: z.string().optional(),
+});
+
+export const finalizeParameterSpecCutoverBodySchema = z.object({
+  reason: nonEmptyString,
+});
+
 export const resolveSpecReviewTaskResultSchema = z.object({
   id: nonEmptyString,
   status: specReviewTaskStatusSchema,
@@ -152,12 +231,18 @@ export const resolveSpecReviewTaskResultSchema = z.object({
 
 export type ParameterSpecSummaryDto = z.infer<typeof parameterSpecSummaryDtoSchema>;
 export type ParameterSpecDetailDto = z.infer<typeof parameterSpecDetailDtoSchema>;
+export type ParameterSpecCutoverSummaryDto = z.infer<typeof parameterSpecCutoverSummaryDtoSchema>;
 export type ListParameterSpecsQuery = z.infer<typeof listParameterSpecsQuerySchema>;
 export type ListSpecReviewTasksQuery = z.infer<typeof listSpecReviewTasksQuerySchema>;
 export type ParameterSpecReviewTaskDto = z.infer<typeof parameterSpecReviewTaskDtoSchema>;
 export type ResolveSpecReviewTaskBody = z.infer<typeof resolveSpecReviewTaskBodySchema>;
 export type ActivateParameterSpecBody = z.infer<typeof activateParameterSpecBodySchema>;
+export type CreateParameterSpecBody = z.infer<typeof createParameterSpecBodySchema>;
 export type UpdateParameterSpecBody = z.infer<typeof updateParameterSpecBodySchema>;
+export type DeprecateParameterSpecBody = z.infer<typeof deprecateParameterSpecBodySchema>;
+export type RestoreParameterSpecBody = z.infer<typeof restoreParameterSpecBodySchema>;
+export type PrepareParameterSpecCutoverBody = z.infer<typeof prepareParameterSpecCutoverBodySchema>;
+export type FinalizeParameterSpecCutoverBody = z.infer<typeof finalizeParameterSpecCutoverBodySchema>;
 export type ResolveSpecReviewTaskResultDto = z.infer<typeof resolveSpecReviewTaskResultSchema>;
 
 const propertyValueShapeSchema = z.union([
@@ -203,6 +288,10 @@ export const updateOrganizationDriverSchemaBodySchema = z.object({
 
 export const organizationDriverSchemaParamsSchema = z.object({
   schemaId: nonEmptyString,
+});
+
+export const deprecateOrganizationDriverSchemaBodySchema = z.object({
+  confirmCoverageLoss: z.boolean().optional(),
 });
 
 export const promoteDriverSchemaOverlayBodySchema = z.object({

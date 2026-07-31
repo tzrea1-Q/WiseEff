@@ -70,7 +70,8 @@ export type IdentityMappingTask = {
   previousLogicalNodeId: string | null;
   candidateLogicalNodeIds: string[];
   evidence: Record<string, unknown>;
-  status: "open" | "resolved" | "dismissed";
+  taskKind: "identity-ambiguity" | "singleton-cardinality";
+  status: "open" | "resolved" | "dismissed" | "new_identity";
   reviewerUserId?: string;
   reason?: string;
   createdAt: string;
@@ -177,7 +178,8 @@ type IdentityMappingTaskRow = {
   previous_logical_node_id: string | null;
   candidate_logical_node_ids: unknown;
   evidence: unknown;
-  status: "open" | "resolved" | "dismissed";
+  task_kind: "identity-ambiguity" | "singleton-cardinality";
+  status: "open" | "resolved" | "dismissed" | "new_identity";
   reviewer_user_id: string | null;
   reason: string | null;
   created_at: string | Date;
@@ -242,6 +244,7 @@ function toMappingTask(row: IdentityMappingTaskRow): IdentityMappingTask {
         : typeof row.evidence === "string"
           ? (JSON.parse(row.evidence) as Record<string, unknown>)
           : {},
+    taskKind: row.task_kind,
     status: row.status,
     reviewerUserId: row.reviewer_user_id ?? undefined,
     reason: row.reason ?? undefined,
@@ -477,7 +480,7 @@ export async function listIdentityMappingTaskRows(
   input: {
     organizationId: string;
     projectId?: string;
-    status?: "open" | "resolved" | "dismissed";
+    status?: "open" | "resolved" | "dismissed" | "new_identity";
   },
 ): Promise<IdentityMappingTask[]> {
   const values: unknown[] = [input.organizationId];
@@ -534,6 +537,183 @@ export async function countOpenIdentityMappingTasksForRevision(
     [input.organizationId, input.configRevisionId],
   );
   return Number(result.rows[0]?.count ?? 0);
+}
+
+/**
+ * A mapping task blocks semantic release while it is untriaged/rejected. This
+ * includes persisted singleton-cardinality conflicts, which are represented by
+ * the same blocking-task queue and cannot be cleared by selecting one instance.
+ */
+export async function countBlockingIdentityMappingTasksForRevision(
+  db: Queryable,
+  input: { organizationId: string; configRevisionId: string },
+): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from identity_mapping_tasks
+    where organization_id = $1
+      and config_revision_id = $2
+      and status in ('open', 'dismissed')
+    `,
+    [input.organizationId, input.configRevisionId],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+type SingletonInstanceRow = {
+  attribution_subject_id: string;
+  display_name: string;
+  logical_node_id: string;
+  node_locator: string;
+  name: string;
+  unit_address: string | null;
+  compatible: string | null;
+};
+
+/**
+ * Reconcile persisted singleton-per-project conflicts for one revision. The
+ * source instances are never collapsed: the task records all candidates and
+ * release gates fail closed until the registration/topology is corrected.
+ */
+export async function syncSingletonCardinalityBlockingTasks(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; configRevisionId: string },
+): Promise<number> {
+  const result = await db.query<SingletonInstanceRow>(
+    `
+    select
+      pm.attribution_subject_id,
+      subject.display_name,
+      lnr.logical_node_id,
+      lnr.node_locator,
+      lnr.name,
+      lnr.unit_address,
+      lnr.compatible
+    from dts_logical_node_revisions lnr
+    inner join dts_config_revisions cr
+      on cr.id = lnr.config_revision_id
+     and cr.organization_id = $1
+     and cr.project_id = $2
+    inner join parameter_module_mappings mapping
+      on mapping.organization_id = $1
+     and mapping.match_kind = 'compatible'
+     and lower(trim(both '"' from trim(both '''' from trim(mapping.match_value))))
+       = lower(trim(both '"' from trim(both '''' from trim(coalesce(lnr.compatible, '')))))
+    inner join parameter_modules pm
+      on pm.id = mapping.parameter_module_id
+     and pm.organization_id = $1
+     and pm.attribution_subject_id is not null
+    inner join attribution_subjects subject
+      on subject.id = pm.attribution_subject_id
+    inner join driver_registrations registration
+      on registration.attribution_subject_id = subject.id
+     and registration.instance_cardinality = 'singleton-per-project'
+    where lnr.config_revision_id = $3
+    order by pm.attribution_subject_id, lnr.node_locator, lnr.logical_node_id
+    `,
+    [input.organizationId, input.projectId, input.configRevisionId],
+  );
+
+  const bySubject = new Map<string, SingletonInstanceRow[]>();
+  for (const row of result.rows) {
+    const instances = bySubject.get(row.attribution_subject_id) ?? [];
+    if (!instances.some((instance) => instance.logical_node_id === row.logical_node_id)) {
+      instances.push(row);
+    }
+    bySubject.set(row.attribution_subject_id, instances);
+  }
+  const conflicts = [...bySubject.entries()].filter(([, instances]) => instances.length > 1);
+  const conflictSubjectIds = conflicts.map(([subjectId]) => subjectId);
+
+  await db.query(
+    `
+    update identity_mapping_tasks
+    set status = 'resolved',
+        reason = 'singleton cardinality conflict cleared',
+        resolved_at = now()
+    where organization_id = $1
+      and project_id = $2
+      and config_revision_id = $3
+      and task_kind = 'singleton-cardinality'
+      and status in ('open', 'dismissed')
+      and (
+        cardinality($4::text[]) = 0
+        or coalesce(evidence->>'attributionSubjectId', '') <> all($4::text[])
+      )
+    `,
+    [input.organizationId, input.projectId, input.configRevisionId, conflictSubjectIds],
+  );
+
+  for (const [subjectId, instances] of conflicts) {
+    const evidence = {
+      blockerKind: "singleton-cardinality",
+      attributionSubjectId: subjectId,
+      displayName: instances[0]?.display_name ?? subjectId,
+      instanceCardinality: "singleton-per-project",
+      instanceCount: instances.length,
+      candidates: instances.map((instance) => ({
+        logicalNodeId: instance.logical_node_id,
+        nodeLocator: instance.node_locator,
+        name: instance.name,
+        unitAddress: instance.unit_address,
+        compatible: instance.compatible,
+      })),
+    };
+    const existing = await db.query<{ id: string }>(
+      `
+      select id
+      from identity_mapping_tasks
+      where organization_id = $1
+        and config_revision_id = $2
+        and task_kind = 'singleton-cardinality'
+        and evidence->>'attributionSubjectId' = $3
+      limit 1
+      `,
+      [input.organizationId, input.configRevisionId, subjectId],
+    );
+    if (existing.rows[0]) {
+      await db.query(
+        `
+        update identity_mapping_tasks
+        set candidate_logical_node_ids = $2::jsonb,
+            evidence = $3::jsonb,
+            status = 'open',
+            reviewer_user_id = null,
+            reason = 'singleton-per-project registration has multiple instances',
+            resolved_at = null
+        where id = $1
+        `,
+        [
+          existing.rows[0].id,
+          JSON.stringify(instances.map((instance) => instance.logical_node_id)),
+          JSON.stringify(evidence),
+        ],
+      );
+    } else {
+      await db.query(
+        `
+        insert into identity_mapping_tasks (
+          id, organization_id, project_id, config_revision_id,
+          previous_logical_node_id, candidate_logical_node_ids, evidence,
+          task_kind, status, reason
+        ) values ($1, $2, $3, $4, null, $5::jsonb, $6::jsonb,
+          'singleton-cardinality', 'open',
+          'singleton-per-project registration has multiple instances')
+        `,
+        [
+          randomUUID(),
+          input.organizationId,
+          input.projectId,
+          input.configRevisionId,
+          JSON.stringify(instances.map((instance) => instance.logical_node_id)),
+          JSON.stringify(evidence),
+        ],
+      );
+    }
+  }
+
+  return conflicts.length;
 }
 
 /**
@@ -675,6 +855,86 @@ export async function applyReviewedIdentityMapping(
   }
 }
 
+export async function reResolveReviewedIdentityMapping(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    configRevisionId: string;
+    previousLogicalNodeId: string;
+    priorSelectedLogicalNodeId: string;
+    nextSelectedLogicalNodeId: string;
+  },
+): Promise<void> {
+  await applyReviewedIdentityMapping(db, {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    configRevisionId: input.configRevisionId,
+    previousLogicalNodeId: input.priorSelectedLogicalNodeId,
+    selectedLogicalNodeId: input.previousLogicalNodeId,
+  });
+  await applyReviewedIdentityMapping(db, {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    configRevisionId: input.configRevisionId,
+    previousLogicalNodeId: input.previousLogicalNodeId,
+    selectedLogicalNodeId: input.nextSelectedLogicalNodeId,
+  });
+}
+
+export type IdentityMappingDownstreamUsage = {
+  drafts: number;
+  submissions: number;
+  operations: number;
+};
+
+export async function countIdentityMappingDownstreamUsage(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    logicalNodeIds: string[];
+  },
+): Promise<IdentityMappingDownstreamUsage> {
+  const result = await db.query<{
+    drafts: string;
+    submissions: string;
+    operations: string;
+  }>(
+    `
+    with affected_bindings as (
+      select id
+      from project_parameter_bindings
+      where organization_id = $1
+        and project_id = $2
+        and logical_node_id = any($3::text[])
+    )
+    select
+      (
+        select count(*)::text
+        from parameter_drafts
+        where project_parameter_binding_id in (select id from affected_bindings)
+      ) as drafts,
+      (
+        select count(*)::text
+        from parameter_submission_items
+        where project_parameter_binding_id in (select id from affected_bindings)
+      ) as submissions,
+      (
+        select count(*)::text
+        from node_operations
+        where project_parameter_binding_id in (select id from affected_bindings)
+      ) as operations
+    `,
+    [input.organizationId, input.projectId, input.logicalNodeIds],
+  );
+  return {
+    drafts: Number(result.rows[0]?.drafts ?? 0),
+    submissions: Number(result.rows[0]?.submissions ?? 0),
+    operations: Number(result.rows[0]?.operations ?? 0),
+  };
+}
+
 /** Fingerprint of a human-selected candidate for reuse on later revisons. */
 export type ContinuityReuseEvidence = {
   selectedLogicalNodeId: string;
@@ -742,7 +1002,7 @@ export async function listReviewedContinuityDecisions(
     [
       input.configSetId,
       input.previousLogicalNodeIds,
-      ["resolved", "validated", "compiled", "pending_approval", "published"],
+      ["resolved", "validated", "compiled", "pending_approval"],
     ],
   );
 
@@ -812,7 +1072,7 @@ export async function resolveIdentityMappingTaskRow(
   input: {
     taskId: string;
     organizationId: string;
-    status: "resolved" | "dismissed";
+    status: "resolved" | "dismissed" | "new_identity";
     selectedLogicalNodeId?: string | null;
     reviewerUserId: string;
     reason: string;
@@ -854,6 +1114,78 @@ export async function resolveIdentityMappingTaskRow(
       input.reason,
       evidencePatch,
     ],
+  );
+  const row = result.rows[0];
+  return row ? toMappingTask(row) : null;
+}
+
+export async function updateResolvedIdentityMappingTaskRow(
+  db: Queryable,
+  input: {
+    taskId: string;
+    organizationId: string;
+    selectedLogicalNodeId: string;
+    reviewerUserId: string;
+    reason: string;
+    continuityReuse: ContinuityReuseEvidence;
+  },
+): Promise<IdentityMappingTask | null> {
+  const evidencePatch = JSON.stringify({
+    selectedLogicalNodeId: input.continuityReuse.selectedLogicalNodeId,
+    selectedNodeLocator: input.continuityReuse.selectedNodeLocator ?? null,
+    selectedName: input.continuityReuse.selectedName ?? null,
+    selectedUnitAddress: input.continuityReuse.selectedUnitAddress ?? null,
+    continuityReusable: true,
+  });
+  const result = await db.query<IdentityMappingTaskRow>(
+    `
+    update identity_mapping_tasks
+    set reviewer_user_id = $3,
+        reason = $4,
+        resolved_at = now(),
+        evidence = coalesce(evidence, '{}'::jsonb) || $5::jsonb
+    where id = $1
+      and organization_id = $2
+      and task_kind = 'identity-ambiguity'
+      and status = 'resolved'
+    returning *
+    `,
+    [
+      input.taskId,
+      input.organizationId,
+      input.reviewerUserId,
+      input.reason,
+      evidencePatch,
+    ],
+  );
+  const row = result.rows[0];
+  return row ? toMappingTask(row) : null;
+}
+
+export async function reopenIdentityMappingTaskRow(
+  db: Queryable,
+  input: { taskId: string; organizationId: string; reason: string },
+): Promise<IdentityMappingTask | null> {
+  const result = await db.query<IdentityMappingTaskRow>(
+    `
+    update identity_mapping_tasks
+    set status = 'open',
+        reviewer_user_id = null,
+        reason = $3,
+        resolved_at = null,
+        evidence = coalesce(evidence, '{}'::jsonb)
+          - 'selectedLogicalNodeId'
+          - 'selectedNodeLocator'
+          - 'selectedName'
+          - 'selectedUnitAddress'
+          - 'continuityReusable'
+    where id = $1
+      and organization_id = $2
+      and task_kind = 'identity-ambiguity'
+      and status in ('dismissed', 'new_identity')
+    returning *
+    `,
+    [input.taskId, input.organizationId, input.reason],
   );
   const row = result.rows[0];
   return row ? toMappingTask(row) : null;

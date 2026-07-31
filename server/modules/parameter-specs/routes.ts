@@ -8,6 +8,10 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   activateParameterSpecBodySchema,
   createOrganizationDriverSchemaBodySchema,
+  createParameterSpecBodySchema,
+  deprecateOrganizationDriverSchemaBodySchema,
+  deprecateParameterSpecBodySchema,
+  finalizeParameterSpecCutoverBodySchema,
   listParameterSpecsQuerySchema,
   listSpecReviewTasksQuerySchema,
   driverSchemaPromotionParamsSchema,
@@ -15,16 +19,24 @@ import {
   promoteDriverSchemaOverlayBodySchema,
   parameterSpecParamsSchema,
   parameterSpecReviewTaskParamsSchema,
+  prepareParameterSpecCutoverBodySchema,
   resolveSpecReviewTaskBodySchema,
+  restoreParameterSpecBodySchema,
   updateOrganizationDriverSchemaBodySchema,
   updateParameterSpecBodySchema
 } from "./schemas";
 import {
   activateParameterSpec,
+  createParameterSpec,
+  deprecateParameterSpec,
+  finalizeParameterSpecVersionCutoverForSpec,
   getParameterSpec,
+  getParameterSpecVersionCutoverImpact,
   listParameterSpecs,
   listSpecReviewTasks,
+  prepareParameterSpecVersionCutover,
   resolveSpecReviewTask,
+  restoreParameterSpec,
   updateParameterSpec,
 } from "./service";
 import {
@@ -33,6 +45,7 @@ import {
   deprecateOrganizationDriverSchemaForAuth,
   getOrganizationDriverSchemaForAuth,
   listOrganizationDriverSchemasForAuth,
+  previewOrganizationDriverSchemaDeprecationForAuth,
   updateOrganizationDriverSchemaForAuth,
 } from "./driverSchemaOverlayService";
 import {
@@ -88,6 +101,25 @@ export function registerParameterSpecRoutes(
     return { status: 200, body: result };
   });
 
+  router.post("/api/v2/parameter-specs", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const body = parseWithSchema(createParameterSpecBodySchema, request.body ?? {});
+    const result = await createParameterSpec(
+      db,
+      auth,
+      {
+        ...body,
+        constraints: body.constraints ?? {},
+        valueShape: body.valueShape ?? { kind: "unknown" },
+        documentation: body.documentation ?? "",
+      },
+      { requestId: request.requestId },
+    );
+    return { status: 201, body: result };
+  });
+
   router.get("/api/v2/parameter-specs/:specId", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -135,6 +167,75 @@ export function registerParameterSpecRoutes(
         constraints: body.constraints ?? {},
         specId: params.specId,
       },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.get("/api/v2/parameter-specs/:specId/cutover", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const result = await getParameterSpecVersionCutoverImpact(db, auth, params.specId);
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/cutover/prepare", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(prepareParameterSpecCutoverBodySchema, request.body ?? {});
+    const result = await prepareParameterSpecVersionCutover(
+      db,
+      auth,
+      { ...body, specId: params.specId },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/cutover/finalize", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(finalizeParameterSpecCutoverBodySchema, request.body ?? {});
+    const result = await finalizeParameterSpecVersionCutoverForSpec(
+      db,
+      auth,
+      { ...body, specId: params.specId },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/deprecate", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(deprecateParameterSpecBodySchema, request.body ?? {});
+    const result = await deprecateParameterSpec(
+      db,
+      auth,
+      { ...body, specId: params.specId },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/restore", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(restoreParameterSpecBodySchema, request.body ?? {});
+    const result = await restoreParameterSpec(
+      db,
+      auth,
+      { ...body, specId: params.specId },
       { requestId: request.requestId },
     );
     return { status: 200, body: result };
@@ -203,7 +304,16 @@ export function registerParameterSpecRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(organizationDriverSchemaParamsSchema, request.params);
-    const item = await deprecateOrganizationDriverSchemaForAuth(db, auth, params.schemaId);
+    const body = parseWithSchema(deprecateOrganizationDriverSchemaBodySchema, request.body ?? {});
+    const item = await deprecateOrganizationDriverSchemaForAuth(db, auth, params.schemaId, body);
+    return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v2/organization-driver-schemas/:schemaId/deprecation-impact", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(organizationDriverSchemaParamsSchema, request.params);
+    const item = await previewOrganizationDriverSchemaDeprecationForAuth(db, auth, params.schemaId);
     return { status: 200, body: { item } };
   });
 

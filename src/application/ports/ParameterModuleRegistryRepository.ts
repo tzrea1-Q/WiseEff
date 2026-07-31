@@ -63,10 +63,19 @@ export type ModuleDiscoveryHint = {
   suggestedGroupName: string;
 };
 
+export type DismissedCompatibleHint = ModuleDiscoveryHint & {
+  reason: string;
+  dismissedAt: string;
+};
+
 export type ModuleDiscoveryHints = {
   compatibles: ModuleDiscoveryHint[];
+  dismissedCompatibles: DismissedCompatibleHint[];
   total: number;
 };
+
+export type DriverNature = "physical-device" | "logical-service";
+export type InstanceCardinality = "multiple" | "singleton-per-project";
 
 export type DriverRegistryParseCoverage =
   | { covered: false }
@@ -95,6 +104,9 @@ export type DriverRegistryEntry = {
   parameterCount: number;
   observed: boolean;
   notYetObserved: boolean;
+  /** Read-only registration attributes when linked to a driver subject. */
+  driverNature: DriverNature | null;
+  instanceCardinality: InstanceCardinality | null;
   parseCoverages: Array<{ compatible: string; coverage: DriverRegistryParseCoverage }>;
 };
 
@@ -156,6 +168,7 @@ export type OrganizationDriverSchema = {
   notes: string;
   lifecycle: string;
   version: number;
+  supersededBySchemaId?: string | null;
   properties: Array<{
     id: string;
     parameterSpecId: string;
@@ -164,6 +177,18 @@ export type OrganizationDriverSchema = {
     units: string | null;
     documentation: string;
   }>;
+};
+
+export type OrganizationDriverSchemaDeprecationImpact = {
+  schemaId: string;
+  compatible: string;
+  coverageLoss: boolean;
+  definitionCount: number;
+  projectCount: number;
+  successorSource:
+    | { scope: "platform"; schemaId: string; displayName: string }
+    | { scope: "pinned"; driverId: string; pattern: string; source: string }
+    | null;
 };
 
 export type ActivateOrganizationDriverSchemaResult = {
@@ -201,7 +226,15 @@ export interface ParameterModuleRegistryRepository {
   createOrganizationDriverSchema(
     input: CreateOrganizationDriverSchemaInput
   ): Promise<OrganizationDriverSchema>;
+  listOrganizationDriverSchemas?(): Promise<OrganizationDriverSchema[]>;
   activateOrganizationDriverSchema(
     schemaId: string
   ): Promise<ActivateOrganizationDriverSchemaResult>;
+  previewOrganizationDriverSchemaDeprecation?(
+    schemaId: string
+  ): Promise<OrganizationDriverSchemaDeprecationImpact>;
+  deprecateOrganizationDriverSchema?(
+    schemaId: string,
+    input?: { confirmCoverageLoss?: boolean }
+  ): Promise<OrganizationDriverSchema>;
 }

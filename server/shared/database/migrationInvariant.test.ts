@@ -129,6 +129,21 @@ describe("node enablement change request migration invariants", () => {
   });
 });
 
+describe("PPV nullability for enablement / pre-cutover drafts", () => {
+  it("relaxes project_parameter_value_id NOT NULL when the pre-cutover column still exists", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0087_relax_ppv_null_for_enablement_drafts.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("project_parameter_value_id");
+    expect(migration).toContain("parameter_drafts");
+    expect(migration).toContain("parameter_change_requests");
+    expect(migration).toContain("parameter_submission_items");
+    expect(migration).toContain("drop not null");
+    expect(migration).toContain("information_schema.columns");
+  });
+});
+
 describe("module kind/origin migration invariants", () => {
   it("adds kind, origin, source_key and retires driver match kind", () => {
     const migration = readFileSync(
@@ -259,5 +274,110 @@ describe("attribution taxonomy migration invariants (ADR-0010)", () => {
     expect(migration).toMatch(/kind in \('logical', 'instance'\)/);
     expect(migration).toMatch(/delete from parameter_modules/i);
     expect(migration).toMatch(/delete from parameter_module_mappings/i);
+  });
+});
+
+describe("structural parameter cleanup migration invariants (ADR-0003)", () => {
+  it("removes structural definitions after full FK preflight and prevents re-entry", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0081_remove_structural_parameter_specs.sql"),
+      "utf8"
+    );
+
+    expect(migration).toContain("structural_parameter_specs");
+    expect(migration).toContain("delete from project_parameter_bindings");
+    expect(migration).toContain("delete from parameter_specs");
+    expect(migration).toContain("dts_property_specs_non_structural_key_check");
+    expect(migration).toContain("'status'");
+    expect(migration).toContain("'compatible'");
+    expect(migration).toContain("trim(property_key) not like '#%'");
+    expect(migration).toContain("refuse destructive cleanup");
+    // Direct FK preflight — not only via project_parameter_bindings.
+    expect(migration).toContain("parameter_change_requests");
+    expect(migration).toContain("parameter_history_entries");
+    expect(migration).toContain("debugging_parameters");
+    expect(migration).toContain("node_operations");
+    expect(migration).toContain("legacy_parameter_migration_evidence");
+    expect(migration).toContain("parameter_file_sync_conflicts");
+  });
+});
+
+describe("attribution subjects migration invariants (ADR-0013)", () => {
+  it("introduces stable subjects and links driver-group/node-type modules", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0082_attribution_subjects.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("create table if not exists attribution_subjects");
+    expect(migration).toContain("create table if not exists driver_registrations");
+    expect(migration).toContain("create table if not exists node_type_definitions");
+    expect(migration).toContain("physical-device");
+    expect(migration).toContain("logical-service");
+    expect(migration).toContain("singleton-per-project");
+    expect(migration).toContain("attribution_subject_id");
+    expect(migration).toContain("parameter_modules_subject_kind_check");
+  });
+});
+
+describe("parameter spec versioning migration invariants (ADR-0014)", () => {
+  it("separates definition lifecycle from version status and copies content onto versions", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0083_parameter_spec_versioning.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("definition_lifecycle");
+    expect(migration).toContain("version_status");
+    expect(migration).toContain("attribution_subject_id");
+    expect(migration).toContain("activated_at");
+    expect(migration).toContain("'superseded'");
+    expect(migration).toContain("draft");
+    expect(migration).toContain("active");
+    expect(migration).toContain("deprecated");
+    expect(migration).toContain("reference_rules");
+    expect(migration).toContain("dts_property_specs");
+    expect(migration).toMatch(/parameter_specs_definition_lifecycle_check|definition_lifecycle in/);
+    expect(migration).toMatch(/parameter_spec_versions_version_status_check|version_status in/);
+  });
+});
+
+describe("parameter spec version cutover migration invariants (ADR-0014)", () => {
+  it("introduces staged cutover run and item tables", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0084_parameter_spec_version_cutover.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("parameter_spec_version_cutover_runs");
+    expect(migration).toContain("parameter_spec_version_cutover_items");
+    expect(migration).toContain("preparing");
+    expect(migration).toContain("finalized");
+    expect(migration).toContain("incompatible");
+    expect(migration).toContain("from_version_id");
+    expect(migration).toContain("to_version_id");
+  });
+});
+
+describe("identity mapping singleton blockers migration invariants", () => {
+  it("extends mapping outcomes and singleton task kind", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0085_identity_mapping_and_singleton_blockers.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("new_identity");
+    expect(migration).toContain("task_kind");
+    expect(migration).toContain("singleton-cardinality");
+    expect(migration).toContain("identity_mapping_singleton_blocker_idx");
+  });
+});
+
+describe("config revision lifecycle migration invariants", () => {
+  it("retires published because release happens at the file baseline layer", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0086_retire_config_revision_published.sql"),
+      "utf8",
+    );
+
+    expect(migration).toContain("where status = 'published'");
+    expect(migration).toContain("refuse to narrow");
+    expect(migration).not.toMatch(/check \(status in \([^)]*'published'/s);
   });
 });

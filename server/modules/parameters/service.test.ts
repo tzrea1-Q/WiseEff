@@ -1424,6 +1424,12 @@ describe("parameter service", () => {
       null,
       "set",
       null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
       null
     ]);
     expect(calls[2].text).toContain("user_id = $2");

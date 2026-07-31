@@ -265,11 +265,38 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ActivateOrganizationDriverSchemaResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterSpecs.previewOrganizationDriverSchemaDeprecation": {
+    summary: "Preview coverage and usage impact before overlay retirement",
+    tags: ["parameters"],
+    responseBody: "OrganizationDriverSchemaDeprecationImpactResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameterSpecs.deprecateOrganizationDriverSchema": {
     summary: "Deprecate an organization driver schema overlay",
     tags: ["parameters"],
+    requestBody: "DeprecateOrganizationDriverSchemaRequest",
     responseBody: "OrganizationDriverSchemaResponse",
-    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterSpecs.listPromotionCandidates": {
+    summary: "List platform driver-schema promotion candidates by compatible",
+    tags: ["parameters"],
+    responseBody: "DriverSchemaPromotionCandidateListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameterSpecs.promoteDriverSchemaOverlay": {
+    summary: "Promote organization driver schema overlays into a platform-tier schema",
+    tags: ["parameters"],
+    requestBody: "PromoteDriverSchemaOverlayRequest",
+    responseBody: "PromoteDriverSchemaOverlayResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterSpecs.revertDriverSchemaPromotion": {
+    summary: "Revert a platform driver-schema promotion and restore contributor overlays",
+    tags: ["parameters"],
+    responseBody: "RevertDriverSchemaPromotionResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
 
   "parameters.admin.listProjects": {
@@ -379,11 +406,39 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ParameterSpecListResponse",
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "parameterSpecs.create": {
+    summary: "Create a draft parameter definition bound to an attribution subject",
+    tags: ["parameters"],
+    requestBody: "CreateParameterSpecRequest",
+    responseBody: "ParameterSpecDetailResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameterSpecs.get": {
     summary: "Get a parameter specification detail",
     tags: ["parameters"],
     responseBody: "ParameterSpecDetailResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterSpecs.getCutover": {
+    summary: "Get open parameter spec version cutover impact",
+    tags: ["parameters"],
+    responseBody: "ParameterSpecCutoverImpactResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterSpecs.prepareCutover": {
+    summary: "Prepare binding items for parameter spec version cutover",
+    tags: ["parameters"],
+    requestBody: "PrepareParameterSpecCutoverRequest",
+    responseBody: "ParameterSpecDetailResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterSpecs.finalizeCutover": {
+    summary: "Finalize parameter spec version cutover after prepare",
+    tags: ["parameters"],
+    requestBody: "FinalizeParameterSpecCutoverRequest",
+    responseBody: "ParameterSpecDetailResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterSpecs.listReviewTasks": {
     summary: "List organization-scoped parameter specification review tasks",
@@ -396,6 +451,20 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["parameters"],
     requestBody: "ResolveParameterSpecReviewTaskRequest",
     responseBody: "ParameterSpecReviewTaskResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterSpecs.deprecate": {
+    summary: "Soft-deprecate a parameter definition (definition lifecycle)",
+    tags: ["parameters"],
+    requestBody: "DeprecateParameterSpecRequest",
+    responseBody: "ParameterSpecDetailResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterSpecs.restore": {
+    summary: "Restore a soft-deprecated parameter definition",
+    tags: ["parameters"],
+    requestBody: "RestoreParameterSpecRequest",
+    responseBody: "ParameterSpecDetailResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "parameterTopology.getTopology": {
@@ -432,6 +501,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "Resolve an identity mapping task",
     tags: ["parameters"],
     requestBody: "ResolveIdentityMappingTaskRequest",
+    responseBody: "IdentityMappingTaskResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameterTopology.reopenIdentityMappingTask": {
+    summary: "Reopen a non-destructive identity mapping outcome",
+    tags: ["parameters"],
+    requestBody: "ReopenIdentityMappingTaskRequest",
     responseBody: "IdentityMappingTaskResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },

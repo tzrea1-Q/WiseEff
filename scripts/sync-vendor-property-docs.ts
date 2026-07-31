@@ -4,14 +4,21 @@ import { pathToFileURL } from "node:url";
 import type { Database } from "../server/shared/database/client";
 import { loadSchemaRegistry } from "../server/modules/parameter-specs/schemaLoader";
 import { upsertMatchedPropertySpec } from "../server/modules/parameter-specs/repository";
+import type { PropertySpec } from "../server/modules/parameter-specs/types";
+import { isStructuralPropertyKey } from "../src/domain/parameter-topology/parameterSurface";
 
 type Queryable = Pick<Database, "query"> | pg.Pool;
+
+export function isSyncableVendorProperty(property: Pick<PropertySpec, "propertyKey">): boolean {
+  return !isStructuralPropertyKey(property.propertyKey);
+}
 
 /** Refresh parameter_spec_versions / dts_property_specs from vendor YAML catalog. */
 export async function syncVendorPropertyDocs(db: Queryable): Promise<number> {
   const registry = loadSchemaRegistry("schemas/dts");
   let updated = 0;
   for (const property of registry.properties) {
+    if (!isSyncableVendorProperty(property)) continue;
     await upsertMatchedPropertySpec(db, property);
     updated += 1;
   }

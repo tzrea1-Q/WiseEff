@@ -3,6 +3,7 @@ import { expect, test, type Page } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence } from "./helpers/operationEvidence";
 import { withPgClient } from "./helpers/database";
+import { prepareInteractionSurface } from "./helpers/interactionSurface";
 
 useBrowserDiagnostics(test);
 
@@ -166,10 +167,12 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     const workflowStartedAt = new Date();
     await page.goto("/parameter-admin");
     await dismissXiaozeHint(page);
+    await prepareInteractionSurface(page);
 
-    await expect(page.getByRole("region", { name: "批量参数导入" })).toBeVisible();
-
-    await page.getByRole("button", { name: "打开批量参数导入" }).click();
+    // Bulk import lives in the TopBar action slot (no standalone region when TopBar is mounted).
+    const openImport = page.getByRole("button", { name: "打开批量参数导入" });
+    await expect(openImport).toBeVisible({ timeout: 30_000 });
+    await openImport.click();
     const wizard = page.getByRole("dialog", { name: "批量参数导入向导" });
     await expect(wizard).toBeVisible();
 

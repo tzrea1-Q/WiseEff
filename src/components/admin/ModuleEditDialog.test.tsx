@@ -6,6 +6,28 @@ import { ModuleEditDialog } from "./ModuleEditDialog";
 afterEach(() => cleanup());
 
 describe("ModuleEditDialog", () => {
+  it("shows read-only driver nature and instance cardinality for driver groups", () => {
+    render(
+      <ModuleEditDialog
+        module={{
+          name: "SC8562",
+          description: "",
+          scope: "",
+          kind: "driver-group",
+        }}
+        existingNames={[]}
+        driverNature="physical-device"
+        instanceCardinality="singleton-per-project"
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    expect(within(dialog).getByLabelText("驱动性质")).toHaveValue("物理设备");
+    expect(within(dialog).getByLabelText("实例基数")).toHaveValue("单例/项目");
+  });
+
   it("shows overlay coverage label and author button for uncovered compatible rows", () => {
     const onAuthorOverlaySchema = vi.fn();
     render(
@@ -106,5 +128,67 @@ describe("ModuleEditDialog", () => {
         importance: "medium"
       })
     );
+  });
+
+  it("previews overlay retirement impact and gates no-successor coverage loss", async () => {
+    const onDeprecateOverlaySchema = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ModuleEditDialog
+        module={{ name: "SC8562", description: "", scope: "", kind: "driver-group" }}
+        existingNames={[]}
+        canAdmin
+        overlaySchemas={[
+          {
+            id: "overlay-1",
+            compatible: "vendor,sc8562",
+            displayName: "SC8562 组织解析",
+            notes: "",
+            lifecycle: "active",
+            version: 1,
+            properties: []
+          },
+          {
+            id: "overlay-old",
+            compatible: "vendor,sc8562",
+            displayName: "旧组织解析",
+            notes: "",
+            lifecycle: "superseded",
+            supersededBySchemaId: "platform-overlay-1",
+            version: 1,
+            properties: []
+          }
+        ]}
+        onPreviewOverlayDeprecation={vi.fn().mockResolvedValue({
+          schemaId: "overlay-1",
+          compatible: "vendor,sc8562",
+          coverageLoss: true,
+          definitionCount: 2,
+          projectCount: 3,
+          successorSource: null
+        })}
+        onDeprecateOverlaySchema={onDeprecateOverlaySchema}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    const editor = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    expect(within(editor).getByText("已提升至平台层")).toBeInTheDocument();
+    expect(within(editor).getByText(/后继来源：平台层解析 platform-overlay-1/)).toBeInTheDocument();
+    fireEvent.click(within(editor).getByRole("button", { name: "废弃 SC8562 组织解析" }));
+
+    const impactDialog = await screen.findByRole("dialog", { name: "废弃解析影响预览" });
+    expect(within(impactDialog).getByText("解析覆盖将丢失")).toBeInTheDocument();
+    expect(within(impactDialog).getByText("定义 2 项")).toBeInTheDocument();
+    expect(within(impactDialog).getByText("项目 3 个")).toBeInTheDocument();
+    const confirm = within(impactDialog).getByRole("button", { name: "确认废弃" });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(
+      within(impactDialog).getByRole("checkbox", { name: "我确认该 compatible 将失去解析覆盖" })
+    );
+    fireEvent.click(confirm);
+    expect(onDeprecateOverlaySchema).toHaveBeenCalledWith("overlay-1", {
+      confirmCoverageLoss: true
+    });
   });
 });

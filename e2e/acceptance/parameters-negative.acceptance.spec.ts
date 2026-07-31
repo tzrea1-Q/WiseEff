@@ -192,7 +192,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     // API mode /parameters mounts topology workspace; blank-reason UX is enforced on
     // draft-spec activation (and identity mapping) rather than the legacy parameters table.
     await page.goto("/parameter-admin");
-    const library = page.getByRole("region", { name: "参数库" });
+    const library = page.getByRole("region", { name: "参数定义库" });
     await expect(library).toBeVisible({ timeout: 30_000 });
 
     const draftFilter = library.getByRole("button", { name: /draft/i }).first();
@@ -203,7 +203,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     const draftRow = library.getByRole("row").filter({ hasText: /draft/i }).first();
     if (await draftRow.isVisible().catch(() => false)) {
       await draftRow.click();
-      const activate = page.getByRole("region", { name: "激活草稿规格" });
+      const activate = page.getByRole("region", { name: "激活草稿定义" });
       if (await activate.isVisible().catch(() => false)) {
         await activate.getByLabel(/激活原因|reason/i).fill("   ");
         await expect(activate.getByRole("button", { name: /激活/ })).toBeDisabled();

@@ -2448,9 +2448,14 @@ export async function upsertDraft(
     insert into parameter_drafts (
       id, organization_id, project_id, project_parameter_value_id, user_id,
       target_value, reason, origin, origin_file_version_id,
-      action, project_parameter_binding_id, candidate_config_revision_id
+      action, project_parameter_binding_id, candidate_config_revision_id,
+      base_config_revision_id, binding_revision_id, property_occurrence_id,
+      source_file_version_id, expected_checksum, occurrence_span
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    values (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+      $13, $14, $15, $16, $17, $18::jsonb
+    )
     on conflict (project_id, project_parameter_value_id, user_id)
     do update set
       target_value = excluded.target_value,
@@ -2465,6 +2470,30 @@ export async function upsertDraft(
       candidate_config_revision_id = coalesce(
         excluded.candidate_config_revision_id,
         parameter_drafts.candidate_config_revision_id
+      ),
+      base_config_revision_id = coalesce(
+        excluded.base_config_revision_id,
+        parameter_drafts.base_config_revision_id
+      ),
+      binding_revision_id = coalesce(
+        excluded.binding_revision_id,
+        parameter_drafts.binding_revision_id
+      ),
+      property_occurrence_id = coalesce(
+        excluded.property_occurrence_id,
+        parameter_drafts.property_occurrence_id
+      ),
+      source_file_version_id = coalesce(
+        excluded.source_file_version_id,
+        parameter_drafts.source_file_version_id
+      ),
+      expected_checksum = coalesce(
+        excluded.expected_checksum,
+        parameter_drafts.expected_checksum
+      ),
+      occurrence_span = coalesce(
+        excluded.occurrence_span,
+        parameter_drafts.occurrence_span
       ),
       updated_at = now()
     returning id, project_id, project_parameter_value_id, target_value, action, reason, updated_at
@@ -2481,7 +2510,13 @@ export async function upsertDraft(
       input.originFileVersionId ?? null,
       input.action ?? "set",
       input.projectParameterBindingId ?? null,
-      input.candidateConfigRevisionId ?? null
+      input.candidateConfigRevisionId ?? null,
+      input.writeLock?.baseConfigRevisionId ?? null,
+      input.writeLock?.bindingRevisionId ?? null,
+      input.writeLock?.propertyOccurrenceId ?? null,
+      input.writeLock?.sourceFileVersionId ?? null,
+      input.writeLock?.expectedChecksum ?? null,
+      input.writeLock?.occurrenceSpan ? JSON.stringify(input.writeLock.occurrenceSpan) : null
     ]
   );
 

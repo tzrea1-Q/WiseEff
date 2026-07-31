@@ -883,6 +883,7 @@ type SpecListRow = {
   current_version: number | string | null;
   value_shape: unknown;
   compatible_patterns: unknown;
+  attribution_subject_id: string | null;
 };
 
 export type SpecAttributionModuleRow = {
@@ -906,6 +907,7 @@ export type ParameterSpecListRow = {
   valueShape: unknown | null;
   compatiblePatterns: string[] | null;
   attributionModules: SpecAttributionModuleRow[];
+  attributionSubjectId: string | null;
 };
 
 export type ParameterSpecDetailRow = ParameterSpecListRow & {
@@ -918,6 +920,8 @@ export type ParameterSpecDetailRow = ParameterSpecListRow & {
   constraints: Record<string, unknown> | null;
   documentation: string | null;
   policyTarget: unknown | null;
+  /** Current version row status (ADR-0014). */
+  versionStatus: "draft" | "active" | "superseded" | null;
 };
 
 function toListRow(row: SpecListRow): ParameterSpecListRow {
@@ -936,6 +940,7 @@ function toListRow(row: SpecListRow): ParameterSpecListRow {
       ? row.compatible_patterns.map(String)
       : null,
     attributionModules: [],
+    attributionSubjectId: row.attribution_subject_id ?? null,
   };
 }
 
@@ -959,7 +964,7 @@ export async function listParameterSpecRows(
   }
   if (input.lifecycle) {
     values.push(input.lifecycle);
-    conditions.push(`psv.lifecycle = $${values.length}`);
+    conditions.push(`ps.definition_lifecycle = $${values.length}`);
   }
   if (input.driverModule) {
     values.push(input.driverModule);
@@ -1007,7 +1012,8 @@ export async function listParameterSpecRows(
         end,
         ''
       ) as driver_module,
-      psv.lifecycle,
+      ps.definition_lifecycle as lifecycle,
+      ps.attribution_subject_id,
       psv.id as current_version_id,
       psv.version as current_version,
       psv.value_shape,
@@ -1017,7 +1023,13 @@ export async function listParameterSpecRows(
       select *
       from parameter_spec_versions
       where parameter_spec_id = ps.id
-      order by version desc
+      order by
+        case version_status
+          when 'active' then 0
+          when 'superseded' then 1
+          else 2
+        end,
+        version desc
       limit 1
     ) psv on true
     left join driver_schema_versions dsv on dsv.parameter_spec_version_id = psv.id
@@ -1134,6 +1146,7 @@ type SpecDetailRow = SpecListRow & {
   documentation: string | null;
   compatible_patterns: unknown;
   policy_target: unknown;
+  version_status: "draft" | "active" | "superseded" | null;
 };
 
 export async function getParameterSpecRow(
@@ -1162,18 +1175,20 @@ export async function getParameterSpecRow(
         end,
         ''
       ) as driver_module,
-      psv.lifecycle,
+      ps.definition_lifecycle as lifecycle,
+      ps.attribution_subject_id,
       psv.id as current_version_id,
       psv.version as current_version,
+      psv.version_status,
       psv.display_name,
       psv.description,
       psv.value_shape,
       psv.schema_default,
       psv.example_value,
       dps.schema_namespace,
-      dps.units,
-      dps.constraints,
-      dps.documentation,
+      coalesce(psv.units, dps.units) as units,
+      coalesce(nullif(psv.constraints, '{}'::jsonb), dps.constraints) as constraints,
+      coalesce(psv.documentation, dps.documentation) as documentation,
       dsv.compatible_patterns,
       ppt.target_value as policy_target
     from parameter_specs ps
@@ -1181,7 +1196,13 @@ export async function getParameterSpecRow(
       select *
       from parameter_spec_versions
       where parameter_spec_id = ps.id
-      order by version desc
+      order by
+        case version_status
+          when 'active' then 0
+          when 'superseded' then 1
+          else 2
+        end,
+        version desc
       limit 1
     ) psv on true
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
@@ -1229,6 +1250,7 @@ export async function getParameterSpecRow(
         : null,
     documentation: row.documentation,
     policyTarget: row.policy_target ?? null,
+    versionStatus: row.version_status ?? null,
   };
 }
 
@@ -1272,8 +1294,8 @@ export async function upsertMatchedPropertySpec(
 
   await db.query(
     `
-    insert into parameter_specs (id, organization_id, source_kind, specification_key)
-    values ($1, $2, $3, $4)
+    insert into parameter_specs (id, organization_id, source_kind, specification_key, definition_lifecycle)
+    values ($1, $2, $3, $4, $5)
     on conflict (id) do nothing
     `,
     [
@@ -1281,21 +1303,27 @@ export async function upsertMatchedPropertySpec(
       overlayOrgId,
       overlayOrgId ? "manual" : "dts",
       manualIds?.specificationKey ?? `${property.schemaNamespace}/${property.propertyKey}`,
+      property.lifecycle === "deprecated" ? "deprecated" : property.lifecycle === "active" ? "active" : "draft",
     ],
   );
   await db.query(
     `
     insert into parameter_spec_versions (
       id, parameter_spec_id, version, display_name, description, value_shape,
-      schema_default, example_value, lifecycle
-    ) values ($1, $2, 1, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8)
+      schema_default, example_value, lifecycle, version_status,
+      units, constraints, documentation
+    ) values ($1, $2, 1, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9, $10, $11::jsonb, $12)
     on conflict (id) do update set
       display_name = excluded.display_name,
       description = excluded.description,
       value_shape = excluded.value_shape,
       schema_default = excluded.schema_default,
       example_value = excluded.example_value,
-      lifecycle = excluded.lifecycle
+      lifecycle = excluded.lifecycle,
+      version_status = excluded.version_status,
+      units = excluded.units,
+      constraints = excluded.constraints,
+      documentation = excluded.documentation
     `,
     [
       property.id,
@@ -1306,6 +1334,10 @@ export async function upsertMatchedPropertySpec(
       property.schemaDefault === undefined ? null : JSON.stringify(property.schemaDefault),
       property.exampleValue === undefined ? null : JSON.stringify(property.exampleValue),
       property.lifecycle,
+      property.lifecycle === "deprecated" ? "superseded" : property.lifecycle,
+      property.units ?? null,
+      JSON.stringify(property.constraints ?? {}),
+      property.documentation ?? null,
     ],
   );
 

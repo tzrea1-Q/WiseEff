@@ -88,7 +88,8 @@ describe("parameterModuleRepository", () => {
         importance: "medium",
         kind: "business",
         origin: "curated",
-        sourceKey: null
+        sourceKey: null,
+        attributionSubjectId: null
       },
       {
         id: "pm-b",
@@ -102,7 +103,8 @@ describe("parameterModuleRepository", () => {
         importance: "medium",
         kind: "business",
         origin: "curated",
-        sourceKey: null
+        sourceKey: null,
+        attributionSubjectId: null
       }
     ]);
   });

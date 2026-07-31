@@ -10,8 +10,7 @@ export type ConfigRevisionStatus =
   | "validated"
   | "validation_failed"
   | "compiled"
-  | "pending_approval"
-  | "published";
+  | "pending_approval";
 
 export type ConfigRevisionManifestState = "complete" | "needs_review";
 

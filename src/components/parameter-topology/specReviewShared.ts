@@ -1,4 +1,5 @@
 import { PARAMETER_ADMIN_UI, type SpecReviewMatchStatusUi } from "@/application/parameters/parameterAdminUiCopy";
+import { isSpecSelectableForReview } from "./ParameterSpecLibrary";
 
 export type SpecReviewCandidate = {
   id: string;
@@ -51,5 +52,16 @@ export function selectedSpec(
   return (
     task.candidates.find((candidate) => candidate.id === schemaId) ??
     librarySpecs.find((candidate) => candidate.id === schemaId)
+  );
+}
+
+export function filterLibrarySpecsForReviewSelection<
+  T extends { id: string; reviewState: string; organizationId?: string | null }
+>(rows: readonly T[]): T[] {
+  return rows.filter((row) =>
+    isSpecSelectableForReview({
+      reviewState: row.reviewState,
+      organizationId: row.organizationId ?? null,
+    })
   );
 }

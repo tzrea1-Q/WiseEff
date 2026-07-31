@@ -171,6 +171,7 @@ export function specSummaryFromDto(dto: ParameterSpecSummaryDto): ParameterSpecS
     valueShape: dto.valueShape ?? null,
     compatiblePatterns: dto.compatiblePatterns ?? null,
     attributionModules: dto.attributionModules ?? [],
+    attributionSubjectId: dto.attributionSubjectId ?? null,
   };
 }
 
@@ -186,7 +187,8 @@ export function specDetailFromDto(dto: ParameterSpecDetailDto): ParameterSpecDet
     units: dto.units,
     constraints: dto.constraints,
     documentation: dto.documentation,
-    policyTarget: dto.policyTarget
+    policyTarget: dto.policyTarget,
+    cutover: dto.cutover,
   };
 }
 
@@ -215,6 +217,7 @@ function mappingTaskFromDto(dto: IdentityMappingTask): IdentityMappingTask {
     previousLogicalNodeId: dto.previousLogicalNodeId,
     candidateLogicalNodeIds: dto.candidateLogicalNodeIds,
     ...(dto.evidence != null ? { evidence: dto.evidence } : {}),
+    ...(dto.taskKind != null ? { taskKind: dto.taskKind } : {}),
     status: dto.status,
     reason: dto.reason,
     createdAt: dto.createdAt,
@@ -366,6 +369,13 @@ export function createHttpParameterTopologyRepository(
       );
       return specDetailFromDto(response.item);
     },
+    async createParameterSpec(input) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        "/api/v2/parameter-specs",
+        input
+      );
+      return specDetailFromDto(response.item);
+    },
     async listSpecReviewTasks(query = {}) {
       const response = await apiClient.get<{ items: SpecReviewTaskDto[]; nextCursor: string | null }>(
         buildSpecReviewTasksPath(query)
@@ -391,6 +401,40 @@ export function createHttpParameterTopologyRepository(
     async updateParameterSpec(specId, input) {
       const response = await apiClient.patch<ItemEnvelope<ParameterSpecDetailDto>>(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}`,
+        input
+      );
+      return specDetailFromDto(response.item);
+    },
+    async deprecateParameterSpec(specId, input) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/deprecate`,
+        input
+      );
+      return specDetailFromDto(response.item);
+    },
+    async restoreParameterSpec(specId, input) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/restore`,
+        input
+      );
+      return specDetailFromDto(response.item);
+    },
+    async getSpecVersionCutoverImpact(specId) {
+      const response = await apiClient.get<ItemEnvelope<NonNullable<ParameterSpecDetailDto["cutover"]>>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover`
+      );
+      return response.item;
+    },
+    async prepareSpecVersionCutover(specId, input = {}) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover/prepare`,
+        input
+      );
+      return specDetailFromDto(response.item);
+    },
+    async finalizeSpecVersionCutover(specId, input) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover/finalize`,
         input
       );
       return specDetailFromDto(response.item);

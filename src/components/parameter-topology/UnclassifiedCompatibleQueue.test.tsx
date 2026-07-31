@@ -50,4 +50,34 @@ describe("UnclassifiedCompatibleQueue", () => {
     fireEvent.click(within(region).getAllByRole("button", { name: "忽略" })[0]!);
     expect(onDismiss).toHaveBeenCalledWith("vendor,alpha");
   });
+
+  it("renders server-persisted dismissed compatibles and restores one", () => {
+    const onRestore = vi.fn();
+
+    render(
+      <UnclassifiedCompatibleQueue
+        canAdmin
+        hints={[]}
+        dismissedHints={[
+          {
+            compatible: "vendor,dismissed",
+            bindingCount: 4,
+            projectCount: 2,
+            suggestedGroupName: "dismissed"
+          }
+        ]}
+        selectedCompatibles={[]}
+        onSelectionChange={vi.fn()}
+        onClassify={vi.fn()}
+        onDismiss={vi.fn()}
+        onRestore={onRestore}
+      />
+    );
+
+    const dismissed = screen.getByRole("region", { name: "已忽略" });
+    expect(within(dismissed).getByText("vendor,dismissed")).toBeInTheDocument();
+    expect(within(dismissed).getByText("4 参数 · 2 项目")).toBeInTheDocument();
+    fireEvent.click(within(dismissed).getByRole("button", { name: "恢复忽略" }));
+    expect(onRestore).toHaveBeenCalledWith("vendor,dismissed");
+  });
 });

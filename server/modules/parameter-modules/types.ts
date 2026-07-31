@@ -17,6 +17,8 @@ export type ParameterModuleDto = {
   kind: ModuleKind;
   origin: ModuleOrigin;
   sourceKey: string | null;
+  /** Present for driver-group / node-type modules after attribution cutover. */
+  attributionSubjectId: string | null;
   effectiveImportance: ModuleImportance;
   parameterCount: number;
 };
@@ -45,6 +47,7 @@ export type ParameterModuleRow = {
   kind: ModuleKind;
   origin: ModuleOrigin;
   source_key: string | null;
+  attribution_subject_id: string | null;
   path: string;
   parameter_count: string | number | null;
 };

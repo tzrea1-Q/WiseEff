@@ -43,6 +43,7 @@ import {
   applyReviewedContinuityToSnapshots,
   listReviewedContinuityDecisions,
   resolveLogicalContinuity,
+  syncSingletonCardinalityBlockingTasks,
   upsertBindingRevisionValues,
   type ContinuityAmbiguous,
 } from "./bindingService";
@@ -977,7 +978,13 @@ async function ingestConfigRevisionTx(
     });
   }
 
-  if (continuity.ambiguous.length > 0) {
+  const singletonConflicts = await syncSingletonCardinalityBlockingTasks(tx, {
+    organizationId: manifest.organizationId,
+    projectId: manifest.projectId,
+    configRevisionId: revision.id,
+  });
+
+  if (continuity.ambiguous.length > 0 || singletonConflicts > 0) {
     revision = await updateConfigRevisionStatus(tx, {
       id: revision.id,
       status: "needs_mapping",

@@ -5,10 +5,8 @@ import {
   formatParameterSpecLifecycle,
   PARAMETER_ADMIN_UI
 } from "@/application/parameters/parameterAdminUiCopy";
-import {
-  isStructuralPropertyKey,
-  paginateItems
-} from "@/domain/parameter-topology/moduleProvenance";
+import { paginateItems } from "@/domain/parameter-topology/moduleProvenance";
+import { isStructuralPropertyKey } from "@/domain/parameter-topology/parameterSurface";
 import type { SpecAttributionModule } from "@/domain/parameter-topology/types";
 import type { ParameterSpecDetailView } from "./ParameterSpecDetail";
 import type { SpecEditorSavePayload } from "./ParameterSpecDetail";
@@ -123,6 +121,45 @@ export function formatSpecAttributionLabel(spec: ParameterSpecLibraryRow): strin
   return "未归类";
 }
 
+/**
+ * Primary library/detail label for the 参数定义 column: the property key only.
+ * Module taxonomy paths belong in {@link formatSpecDriverModuleLabel}.
+ */
+export function formatSpecPrimaryLabel(
+  spec: Pick<ParameterSpecLibraryRow, "propertyKey" | "attributionModules" | "driverModule">
+): string {
+  return spec.propertyKey.trim() || "—";
+}
+
+/**
+ * 驱动模块 column: taxonomy placement path from attribution modules when observed;
+ * otherwise the legacy driverModule string (or 未归类).
+ */
+export function formatSpecDriverModuleLabel(
+  spec: Pick<ParameterSpecLibraryRow, "attributionModules" | "driverModule">
+): string {
+  if (spec.attributionModules && spec.attributionModules.length > 0) {
+    return spec.attributionModules
+      .map((module) =>
+        module.path && module.path.length > 0 ? module.path.join(" / ") : module.name
+      )
+      .join("、");
+  }
+  if (spec.driverModule?.trim()) {
+    return `${spec.driverModule.trim()}（未实测）`;
+  }
+  return "未归类";
+}
+
+/** Review binding may pick active specs or org-owned activatable drafts — never deprecated. */
+export function isSpecSelectableForReview(
+  spec: Pick<ParameterSpecLibraryRow, "reviewState" | "organizationId">
+): boolean {
+  if (spec.reviewState === "deprecated") return false;
+  if (spec.reviewState === "active") return true;
+  return spec.reviewState === "draft" && spec.organizationId != null;
+}
+
 /** Small semantic mock for demos — property-key identity, not path names. */
 export const SEMANTIC_MOCK_PARAMETER_SPECS: ParameterSpecLibraryRow[] = [
   mapParameterSpecToLibraryRow({
@@ -223,6 +260,12 @@ export function filterParameterSpecLibrary(
     if (!matchesSelected(filters.compatibles, spec.compatible)) return false;
     if (!matchesSelected(filters.businessCategories, spec.businessCategory)) return false;
     if (!matchesSelected(filters.schemaSources, spec.schemaSource)) return false;
+    if (
+      filters.lifecycles.length === 0 &&
+      spec.reviewState === "deprecated"
+    ) {
+      return false;
+    }
     if (!matchesSelected(filters.lifecycles, spec.reviewState)) return false;
     if (
       filters.moduleNames.length > 0 &&
@@ -248,8 +291,13 @@ export type ParameterSpecLibraryProps = {
   onSelectSpec: (specId: string) => void;
   onCloseSpec?: () => void;
   onSaveSpec?: (payload: SpecEditorSavePayload) => void | Promise<void>;
+  onDeprecateSpec?: (input: { specId: string; reason: string }) => void | Promise<void>;
+  onRestoreSpec?: (input: { specId: string; reason: string }) => void | Promise<void>;
+  onPrepareCutover?: (specId: string) => void | Promise<void>;
+  onFinalizeCutover?: (input: { specId: string; reason: string }) => void | Promise<void>;
   savePending?: boolean;
   saveError?: string | null;
+  onCreateSpec?: () => void;
   /** @deprecated Prefer onSaveSpec; kept for activate-only callers. */
   onActivateDraftSpec?: (input: ActivateDraftSpecInput) => void;
   activatePending?: boolean;
@@ -267,8 +315,13 @@ export function ParameterSpecLibrary({
   onSelectSpec,
   onCloseSpec,
   onSaveSpec,
+  onDeprecateSpec,
+  onRestoreSpec,
+  onPrepareCutover,
+  onFinalizeCutover,
   savePending = false,
   saveError = null,
+  onCreateSpec,
   onActivateDraftSpec,
   activatePending = false
 }: ParameterSpecLibraryProps) {
@@ -347,6 +400,18 @@ export function ParameterSpecLibrary({
               <h2>{PARAMETER_ADMIN_UI.specLibrary}</h2>
               <p>{PARAMETER_ADMIN_UI.specLibraryBlurb}</p>
             </div>
+            {onCreateSpec ? (
+              <div className="param-admin-library-heading-actions">
+                <button
+                  type="button"
+                  className="button primary"
+                  disabled={loading}
+                  onClick={onCreateSpec}
+                >
+                  新建定义
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -387,10 +452,9 @@ export function ParameterSpecLibrary({
             <thead>
               <tr>
                 <th scope="col">#</th>
-                <th scope="col">参数名</th>
                 <th scope="col">
                   <span className="param-admin-library-head-cell">
-                    <span>{PARAMETER_ADMIN_UI.specAttributionModule}</span>
+                    <span>参数定义</span>
                     <ColumnFilter
                       label={PARAMETER_ADMIN_UI.specAttributionModule}
                       groupLabel="归属模块筛选"
@@ -401,6 +465,7 @@ export function ParameterSpecLibrary({
                     />
                   </span>
                 </th>
+                <th scope="col">{PARAMETER_ADMIN_UI.specDriverModule}</th>
                 <th scope="col">值类型</th>
                 <th scope="col">
                   <span className="param-admin-library-head-cell">
@@ -443,11 +508,11 @@ export function ParameterSpecLibrary({
                   <td data-label="#">
                     {(pagination.page - 1) * pagination.pageSize + index + 1}
                   </td>
-                  <td data-label="参数名">
-                    <strong>{spec.propertyKey}</strong>
+                  <td data-label="参数定义">
+                    <strong>{formatSpecPrimaryLabel(spec)}</strong>
                   </td>
-                  <td data-label={PARAMETER_ADMIN_UI.specAttributionModule}>
-                    {formatSpecAttributionLabel(spec)}
+                  <td data-label={PARAMETER_ADMIN_UI.specDriverModule}>
+                    {formatSpecDriverModuleLabel(spec)}
                   </td>
                   <td data-label="值类型">{spec.valueType}</td>
                   <td data-label="审核状态">{formatParameterSpecLifecycle(spec.reviewState)}</td>
@@ -549,6 +614,24 @@ export function ParameterSpecLibrary({
           onClose={() => onCloseSpec?.()}
           pending={savePending || activatePending}
           error={saveError}
+          onDeprecate={
+            onDeprecateSpec
+              ? ({ reason }) => onDeprecateSpec({ specId: detail.id, reason })
+              : undefined
+          }
+          onRestore={
+            onRestoreSpec
+              ? ({ reason }) => onRestoreSpec({ specId: detail.id, reason })
+              : undefined
+          }
+          onPrepareCutover={
+            onPrepareCutover ? () => onPrepareCutover(detail.id) : undefined
+          }
+          onFinalizeCutover={
+            onFinalizeCutover
+              ? ({ reason }) => onFinalizeCutover({ specId: detail.id, reason })
+              : undefined
+          }
           onSave={
             onSaveSpec ??
             (onActivateDraftSpec

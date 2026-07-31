@@ -4,7 +4,9 @@ import { canAdminParameters, canViewParameters } from "../parameters/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { writeGovernanceAudit } from "../parameter-topology/governanceAudit";
-import { countOpenIdentityMappingTasksForRevision } from "../parameter-topology/bindingService";
+import { countBlockingIdentityMappingTasksForRevision } from "../parameter-topology/bindingService";
+import { stableSemanticId } from "../parameter-topology/migration";
+import { randomUUID } from "node:crypto";
 import {
   applyDismissedSpecReview,
   applyResolvedSpecReview,
@@ -18,6 +20,10 @@ import {
 } from "./reviewApply";
 import { assertSpecActivatable, assertSpecResolvable } from "./specCompleteness";
 import {
+  ensureExplicitOverlayCoverageClaim,
+  findExistingCoverageClaim,
+} from "./coverageClaim";
+import {
   countOpenSpecReviewTasksForRevision,
   getParameterSpecRow,
   getSpecReviewTaskById,
@@ -25,21 +31,34 @@ import {
   listSpecReviewTaskRows,
   lockOpenSpecReviewTask,
   resolveSpecReviewTaskRow,
+  type ParameterSpecDetailRow,
   type PersistedSpecReviewTask,
   type SpecReviewTaskListCursor,
   validateSpecReviewTenantEvidence,
 } from "./repository";
+import { canonicalIdentityPart } from "./specIdentity";
+import { buildSubjectScopedManualSpecIds } from "./specIdentity";
+import { assertNonStructuralPropertyKey } from "./structuralPropertyGuard";
 import type {
   ActivateParameterSpecBody,
+  CreateParameterSpecBody,
+  DeprecateParameterSpecBody,
   ListParameterSpecsQuery,
   ListSpecReviewTasksQuery,
   ParameterSpecDetailDto,
+  ParameterSpecCutoverSummaryDto,
   ParameterSpecReviewTaskDto,
   ParameterSpecSummaryDto,
   ResolveSpecReviewTaskBody,
+  RestoreParameterSpecBody,
+  PrepareParameterSpecCutoverBody,
+  FinalizeParameterSpecCutoverBody,
   UpdateParameterSpecBody,
 } from "./schemas";
 
+function isPlatformSuperAdmin(auth: AuthContext) {
+  return auth.roles.some((binding) => binding.roleId === "platform-admin");
+}
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
@@ -173,6 +192,7 @@ export async function listParameterSpecs(
       valueShape: row.valueShape,
       compatiblePatterns: row.compatiblePatterns,
       attributionModules: row.attributionModules,
+      attributionSubjectId: row.attributionSubjectId,
     })),
   };
 }
@@ -190,31 +210,8 @@ export async function getParameterSpec(
   if (!row) {
     throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId });
   }
-  return {
-    item: {
-      id: row.id,
-      organizationId: row.organizationId,
-      sourceKind: row.sourceKind,
-      specificationKey: row.specificationKey,
-      propertyKey: row.propertyKey,
-      driverModule: row.driverModule,
-      lifecycle: row.lifecycle,
-      currentVersionId: row.currentVersionId,
-      currentVersion: row.currentVersion,
-      displayName: row.displayName,
-      description: row.description,
-      valueShape: row.valueShape,
-      schemaDefault: row.schemaDefault,
-      exampleValue: row.exampleValue,
-      schemaNamespace: row.schemaNamespace,
-      units: row.units,
-      constraints: row.constraints,
-      documentation: row.documentation,
-      compatiblePatterns: row.compatiblePatterns,
-      policyTarget: row.policyTarget,
-      attributionModules: row.attributionModules,
-    },
-  };
+  const cutover = await loadOpenCutoverSummaryForSpec(db, auth.organization.id, specId);
+  return { item: toParameterSpecDetailDto(row, cutover) };
 }
 
 export async function listSpecReviewTasks(
@@ -510,7 +507,7 @@ export async function resolveSpecReviewTask(
       projectId: applied.projectId,
       configRevisionId: applied.configRevisionId,
     });
-    const openMappingsRemaining = await countOpenIdentityMappingTasksForRevision(tx, {
+    const openMappingsRemaining = await countBlockingIdentityMappingTasksForRevision(tx, {
       organizationId: auth.organization.id,
       configRevisionId: applied.configRevisionId,
     });
@@ -539,6 +536,351 @@ function hashReason(reason: string) {
   return `r${hash.toString(16)}`;
 }
 
+function toParameterSpecDetailDto(
+  refreshed: ParameterSpecDetailRow,
+  cutover?: ParameterSpecCutoverSummaryDto | null,
+): ParameterSpecDetailDto {
+  return {
+    id: refreshed.id,
+    organizationId: refreshed.organizationId,
+    sourceKind: refreshed.sourceKind,
+    specificationKey: refreshed.specificationKey,
+    propertyKey: refreshed.propertyKey,
+    driverModule: refreshed.driverModule,
+    lifecycle: refreshed.lifecycle,
+    currentVersionId: refreshed.currentVersionId,
+    currentVersion: refreshed.currentVersion,
+    displayName: refreshed.displayName,
+    description: refreshed.description,
+    valueShape: refreshed.valueShape,
+    schemaDefault: refreshed.schemaDefault,
+    exampleValue: refreshed.exampleValue,
+    schemaNamespace: refreshed.schemaNamespace,
+    units: refreshed.units,
+    constraints: refreshed.constraints,
+    documentation: refreshed.documentation,
+    compatiblePatterns: refreshed.compatiblePatterns,
+    policyTarget: refreshed.policyTarget,
+    attributionModules: refreshed.attributionModules,
+    attributionSubjectId: refreshed.attributionSubjectId,
+    ...(cutover ? { cutover } : {}),
+  };
+}
+
+type CutoverImpactCounts = ParameterSpecCutoverSummaryDto["impact"];
+
+function emptyCutoverImpact(): CutoverImpactCounts {
+  return { pending: 0, ready: 0, incompatible: 0, skipped: 0, total: 0 };
+}
+
+async function loadCutoverImpactCounts(tx: Queryable, runId: string): Promise<CutoverImpactCounts> {
+  const counts = await tx.query<{ status: string; count: string }>(
+    `
+    select status, count(*)::text as count
+    from parameter_spec_version_cutover_items
+    where run_id = $1
+    group by status
+    `,
+    [runId],
+  );
+  const impact = emptyCutoverImpact();
+  for (const row of counts.rows) {
+    const count = Number(row.count ?? 0);
+    impact.total += count;
+    if (row.status === "pending") impact.pending = count;
+    else if (row.status === "ready") impact.ready = count;
+    else if (row.status === "incompatible") impact.incompatible = count;
+    else if (row.status === "skipped") impact.skipped = count;
+  }
+  return impact;
+}
+
+async function loadOpenCutoverSummaryForSpec(
+  tx: Queryable,
+  organizationId: string,
+  specId: string,
+): Promise<ParameterSpecCutoverSummaryDto | null> {
+  const run = await tx.query<{
+    id: string;
+    status: string;
+    from_version_id: string;
+    to_version_id: string;
+    from_version: number;
+    to_version: number;
+  }>(
+    `
+    select
+      r.id,
+      r.status,
+      r.from_version_id,
+      r.to_version_id,
+      fv.version as from_version,
+      tv.version as to_version
+    from parameter_spec_version_cutover_runs r
+    inner join parameter_spec_versions fv on fv.id = r.from_version_id
+    inner join parameter_spec_versions tv on tv.id = r.to_version_id
+    where r.organization_id = $1
+      and r.parameter_spec_id = $2
+      and r.status in ('preparing', 'ready')
+    limit 1
+    `,
+    [organizationId, specId],
+  );
+  const hit = run.rows[0];
+  if (!hit) return null;
+  const impact = await loadCutoverImpactCounts(tx, hit.id);
+  return {
+    runId: hit.id,
+    status: hit.status as "preparing" | "ready",
+    fromVersionId: hit.from_version_id,
+    toVersionId: hit.to_version_id,
+    fromVersion: hit.from_version,
+    toVersion: hit.to_version,
+    impact,
+  };
+}
+
+async function resolveOpenCutoverRunId(
+  tx: Queryable,
+  organizationId: string,
+  specId: string,
+): Promise<string | null> {
+  const run = await tx.query<{ id: string }>(
+    `
+    select id
+    from parameter_spec_version_cutover_runs
+    where organization_id = $1
+      and parameter_spec_id = $2
+      and status in ('preparing', 'ready')
+    limit 1
+    for update
+    `,
+    [organizationId, specId],
+  );
+  return run.rows[0]?.id ?? null;
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(value ?? null);
+}
+
+function activationContentChanged(
+  spec: ParameterSpecDetailRow,
+  input: ActivateParameterSpecBody,
+  nextConstraints: Record<string, unknown>,
+): boolean {
+  if (stableJson(spec.valueShape) !== stableJson(input.valueShape)) return true;
+  if (stableJson(spec.constraints ?? {}) !== stableJson(nextConstraints)) return true;
+  if ((spec.documentation ?? "").trim() !== input.documentation.trim()) return true;
+  if (input.displayName != null && input.displayName !== (spec.displayName ?? null)) return true;
+  if (input.description != null && input.description !== (spec.description ?? null)) return true;
+  return false;
+}
+
+function nextSpecVersionId(parameterSpecId: string, version: number): string {
+  return stableSemanticId("parameter_spec_version", [
+    canonicalIdentityPart("parameterSpecId", parameterSpecId),
+    canonicalIdentityPart("version", String(version)),
+  ]);
+}
+
+export async function createParameterSpec(
+  db: Database,
+  auth: AuthContext,
+  input: CreateParameterSpecBody,
+  context: AuditCorrelationContext = {},
+): Promise<{ item: ParameterSpecDetailDto }> {
+  requireCanAdmin(auth);
+
+  const propertyKey = input.propertyKey.trim();
+  if (!propertyKey) {
+    throw new ApiError("VALIDATION_FAILED", "propertyKey is required.", 400);
+  }
+  assertNonStructuralPropertyKey(propertyKey);
+
+  if (typeof input.attributionSubjectId !== "string" || !input.attributionSubjectId.trim()) {
+    throw new ApiError("VALIDATION_FAILED", "attributionSubjectId is required.", 400);
+  }
+  const attributionSubjectId = input.attributionSubjectId.trim();
+
+  return db.transaction(async (tx) => {
+    const subject = await tx.query<{
+      id: string;
+      organization_id: string | null;
+      subject_kind: string;
+    }>(
+      `
+      select id, organization_id, subject_kind
+      from attribution_subjects
+      where id = $1
+        and (organization_id = $2 or organization_id is null)
+      limit 1
+      `,
+      [attributionSubjectId, auth.organization.id],
+    );
+    const subjectRow = subject.rows[0];
+    if (!subjectRow) {
+      throw new ApiError("NOT_FOUND", "Attribution subject was not found.", 404, {
+        attributionSubjectId,
+      });
+    }
+    if (
+      subjectRow.subject_kind !== "driver-registration" &&
+      subjectRow.subject_kind !== "node-type-definition"
+    ) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Parameter definitions must bind to a driver registration or node-type definition.",
+        400,
+        { subjectKind: subjectRow.subject_kind },
+      );
+    }
+
+    const duplicate = await tx.query<{ id: string }>(
+      `
+      select ps.id
+      from parameter_specs ps
+      inner join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      where ps.organization_id = $1
+        and ps.attribution_subject_id = $2
+        and dps.property_key = $3
+      limit 1
+      `,
+      [auth.organization.id, attributionSubjectId, propertyKey],
+    );
+    if (duplicate.rows[0]) {
+      throw new ApiError(
+        "CONFLICT",
+        "A parameter definition already exists for this subject and property key.",
+        409,
+        {
+          parameterSpecId: duplicate.rows[0].id,
+          attributionSubjectId,
+          propertyKey,
+        },
+      );
+    }
+
+    const platformTwin = await tx.query<{ id: string }>(
+      `
+      select ps.id
+      from parameter_specs ps
+      inner join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      where ps.organization_id is null
+        and ps.attribution_subject_id = $1
+        and dps.property_key = $2
+      limit 1
+      `,
+      [attributionSubjectId, propertyKey],
+    );
+    if (platformTwin.rows[0] && !input.overridePlatform) {
+      throw new ApiError(
+        "CONFLICT",
+        "An organization definition would override a platform definition; set overridePlatform to confirm.",
+        409,
+        {
+          platformParameterSpecId: platformTwin.rows[0].id,
+          attributionSubjectId,
+          propertyKey,
+          confirmRequired: true,
+        },
+      );
+    }
+
+    const ids = buildSubjectScopedManualSpecIds({
+      organizationId: auth.organization.id,
+      attributionSubjectId,
+      propertyKey,
+    });
+    const displayName = input.displayName?.trim() || propertyKey;
+    const description = input.description?.trim() || displayName;
+    const documentation = input.documentation ?? "";
+    const valueShape = input.valueShape ?? { kind: "unknown" };
+    const constraints = input.constraints ?? {};
+
+    await tx.query(
+      `
+      insert into parameter_specs (
+        id, organization_id, source_kind, specification_key,
+        definition_lifecycle, attribution_subject_id
+      ) values ($1, $2, 'manual', $3, 'draft', $4)
+      `,
+      [ids.parameterSpecId, auth.organization.id, ids.specificationKey, attributionSubjectId],
+    );
+    await tx.query(
+      `
+      insert into parameter_spec_versions (
+        id, parameter_spec_id, version, display_name, description, value_shape,
+        schema_default, example_value, lifecycle, version_status,
+        units, constraints, documentation
+      ) values (
+        $1, $2, 1, $3, $4, $5::jsonb,
+        null, $6::jsonb, 'draft', 'draft',
+        $7, $8::jsonb, $9
+      )
+      `,
+      [
+        ids.parameterSpecVersionId,
+        ids.parameterSpecId,
+        displayName,
+        description,
+        JSON.stringify(valueShape),
+        input.exampleValue === undefined ? null : JSON.stringify(input.exampleValue),
+        input.units ?? null,
+        JSON.stringify(constraints),
+        documentation || null,
+      ],
+    );
+    await tx.query(
+      `
+      insert into dts_property_specs (
+        id, parameter_spec_id, driver_schema_id, property_key, schema_namespace,
+        units, constraints, documentation
+      ) values ($1, $2, null, $3, $4, $5, $6::jsonb, $7)
+      `,
+      [
+        ids.dtsPropertySpecId,
+        ids.parameterSpecId,
+        propertyKey,
+        ids.schemaNamespace,
+        input.units ?? null,
+        JSON.stringify(constraints),
+        documentation || null,
+      ],
+    );
+
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: "spec-draft-created",
+        targetType: "parameter-spec",
+        targetId: ids.parameterSpecId,
+        metadata: {
+          parameterSpecId: ids.parameterSpecId,
+          attributionSubjectId,
+          propertyKey,
+          overridePlatform: Boolean(input.overridePlatform),
+          platformParameterSpecId: platformTwin.rows[0]?.id ?? null,
+          reasonHash: hashReason(input.reason),
+        },
+      },
+      context,
+    );
+
+    const refreshed = await getParameterSpecRow(tx, {
+      organizationId: auth.organization.id,
+      specId: ids.parameterSpecId,
+    });
+    if (!refreshed) {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found after create.", 404, {
+        specId: ids.parameterSpecId,
+      });
+    }
+    return { item: toParameterSpecDetailDto(refreshed) };
+  });
+}
+
 export async function activateParameterSpec(
   db: Database,
   auth: AuthContext,
@@ -552,10 +894,21 @@ export async function activateParameterSpec(
       organizationId: auth.organization.id,
       parameterSpecId: input.specId,
     });
-    if (spec.lifecycle !== "draft") {
-      throw new ApiError("CONFLICT", "Only draft parameter specs can be activated.", 409, {
+    if (spec.lifecycle === "deprecated") {
+      throw new ApiError("CONFLICT", "Deprecated parameter specs cannot be activated.", 409, {
         parameterSpecId: input.specId,
         lifecycle: spec.lifecycle,
+      });
+    }
+    if (spec.lifecycle !== "draft" && spec.lifecycle !== "active") {
+      throw new ApiError("CONFLICT", "Only draft or active parameter specs can be activated.", 409, {
+        parameterSpecId: input.specId,
+        lifecycle: spec.lifecycle,
+      });
+    }
+    if (!spec.currentVersionId) {
+      throw new ApiError("VALIDATION_FAILED", "Parameter spec has no version to activate.", 400, {
+        parameterSpecId: input.specId,
       });
     }
 
@@ -568,27 +921,210 @@ export async function activateParameterSpec(
       valueShape: input.valueShape,
       constraints: nextConstraints,
       documentation: input.documentation,
-      storedValueShape: spec.valueShape,
+      storedValueShape: spec.lifecycle === "draft" ? spec.valueShape : undefined,
     });
+
+    // Mature create path (subject-bound definitions) requires an explicit coverage claim.
+    if (spec.attributionSubjectId && spec.lifecycle === "draft") {
+      const propertyKey = (spec.propertyKey ?? "").trim();
+      if (!propertyKey) {
+        throw new ApiError(
+          "VALIDATION_FAILED",
+          "Subject-bound definitions require a property key before activation.",
+          400,
+          { parameterSpecId: input.specId },
+        );
+      }
+      const existingClaim = await findExistingCoverageClaim(tx, {
+        organizationId: auth.organization.id,
+        parameterSpecId: input.specId,
+        propertyKey,
+      });
+      if (!existingClaim && !input.coverageClaim) {
+        throw new ApiError(
+          "VALIDATION_FAILED",
+          "Activation requires an explicit coverage claim linking this definition to schema/overlay coverage.",
+          400,
+          { parameterSpecId: input.specId, attributionSubjectId: spec.attributionSubjectId },
+        );
+      }
+      if (input.coverageClaim) {
+        await ensureExplicitOverlayCoverageClaim(tx, {
+          organizationId: auth.organization.id,
+          parameterSpecId: input.specId,
+          propertyKey,
+          claim: input.coverageClaim,
+          createdByUserId: auth.user.id,
+        });
+      }
+    }
+
+    const displayName = input.displayName ?? spec.displayName ?? spec.propertyKey ?? input.specId;
+    const description = input.description ?? spec.description ?? displayName;
+    const contentChanged = activationContentChanged(spec, input, nextConstraints);
+    const createSuccessor = spec.lifecycle === "active" && contentChanged;
+    let activatedVersionId = spec.currentVersionId;
+    let activatedVersion = spec.currentVersion ?? 1;
+
+    if (createSuccessor) {
+      const nextVersion = (spec.currentVersion ?? 1) + 1;
+      const nextVersionId = nextSpecVersionId(input.specId, nextVersion);
+
+      // Insert draft successor; v1 stays active until cutover finalize (ADR-0014).
+      await tx.query(
+        `
+        insert into parameter_spec_versions (
+          id, parameter_spec_id, version, display_name, description, value_shape,
+          schema_default, example_value, lifecycle, version_status, activated_at,
+          units, constraints, documentation, reference_rules
+        ) values (
+          $1, $2, $3, $4, $5, $6::jsonb,
+          $7::jsonb, $8::jsonb, 'draft', 'draft', null,
+          $9, $10::jsonb, $11, coalesce($12::jsonb, '{}'::jsonb)
+        )
+        `,
+        [
+          nextVersionId,
+          input.specId,
+          nextVersion,
+          displayName,
+          description,
+          JSON.stringify(input.valueShape),
+          spec.schemaDefault === undefined || spec.schemaDefault === null
+            ? null
+            : JSON.stringify(spec.schemaDefault),
+          spec.exampleValue === undefined || spec.exampleValue === null
+            ? null
+            : JSON.stringify(spec.exampleValue),
+          spec.units ?? null,
+          JSON.stringify(nextConstraints),
+          input.documentation,
+          null,
+        ],
+      );
+
+      const tipBindings = await tx.query<{ binding_id: string; project_id: string | null; revision_id: string }>(
+        `
+        select distinct on (b.id)
+          b.id as binding_id,
+          b.project_id,
+          br.id as revision_id
+        from project_parameter_bindings b
+        inner join project_parameter_binding_revisions br
+          on br.binding_id = b.id
+         and br.parameter_spec_version_id = $1
+        where b.organization_id = $2
+          and b.parameter_spec_id = $3
+        order by b.id, br.created_at desc
+        `,
+        [spec.currentVersionId, auth.organization.id, input.specId],
+      );
+
+      const runId = randomUUID();
+      const canAutoFinalize = tipBindings.rows.length === 0;
+      await tx.query(
+        `
+        insert into parameter_spec_version_cutover_runs (
+          id, organization_id, parameter_spec_id, from_version_id, to_version_id,
+          status, created_by_user_id, finalized_at, metadata
+        ) values (
+          $1, $2, $3, $4, $5,
+          $6, $7, $8, $9::jsonb
+        )
+        `,
+        [
+          runId,
+          auth.organization.id,
+          input.specId,
+          spec.currentVersionId,
+          nextVersionId,
+          canAutoFinalize ? "finalized" : "preparing",
+          auth.user.id,
+          canAutoFinalize ? new Date().toISOString() : null,
+          JSON.stringify({
+            reasonHash: hashReason(input.reason),
+            autoFinalized: canAutoFinalize,
+            tipBindingCount: tipBindings.rows.length,
+          }),
+        ],
+      );
+
+      for (const tip of tipBindings.rows) {
+        await tx.query(
+          `
+          insert into parameter_spec_version_cutover_items (
+            id, run_id, binding_id, project_id, status, base_revision_id, details
+          ) values ($1, $2, $3, $4, 'pending', $5, '{}'::jsonb)
+          `,
+          [randomUUID(), runId, tip.binding_id, tip.project_id, tip.revision_id],
+        );
+      }
+
+      if (canAutoFinalize) {
+        await tx.query(
+          `
+          update parameter_spec_versions
+          set version_status = 'superseded', lifecycle = 'deprecated'
+          where id = $1 and parameter_spec_id = $2
+          `,
+          [spec.currentVersionId, input.specId],
+        );
+        await tx.query(
+          `
+          update parameter_spec_versions
+          set
+            version_status = 'active',
+            lifecycle = 'active',
+            activated_at = now()
+          where id = $1 and parameter_spec_id = $2
+          `,
+          [nextVersionId, input.specId],
+        );
+        activatedVersionId = nextVersionId;
+        activatedVersion = nextVersion;
+      } else {
+        // Keep v1 active; draft v2 waits for finalize.
+        activatedVersionId = spec.currentVersionId;
+        activatedVersion = spec.currentVersion ?? 1;
+      }
+    } else {
+      await tx.query(
+        `
+        update parameter_spec_versions
+        set
+          display_name = $3,
+          description = $4,
+          value_shape = $5::jsonb,
+          lifecycle = 'active',
+          version_status = 'active',
+          activated_at = coalesce(activated_at, now()),
+          units = coalesce($6, units),
+          constraints = $7::jsonb,
+          documentation = $8
+        where id = $1 and parameter_spec_id = $2
+        `,
+        [
+          spec.currentVersionId,
+          input.specId,
+          displayName,
+          description,
+          JSON.stringify(input.valueShape),
+          spec.units ?? null,
+          JSON.stringify(nextConstraints),
+          input.documentation,
+        ],
+      );
+    }
 
     await tx.query(
       `
-      update parameter_spec_versions
-      set
-        display_name = coalesce($3, display_name),
-        description = coalesce($4, description),
-        value_shape = $5::jsonb,
-        lifecycle = 'active'
-      where id = $1 and parameter_spec_id = $2
+      update parameter_specs
+      set definition_lifecycle = 'active'
+      where id = $1
       `,
-      [
-        spec.currentVersionId,
-        input.specId,
-        input.displayName ?? spec.displayName,
-        input.description ?? spec.description,
-        JSON.stringify(input.valueShape),
-      ],
+      [input.specId],
     );
+
     await tx.query(
       `
       update dts_property_specs
@@ -607,7 +1143,9 @@ export async function activateParameterSpec(
         targetId: input.specId,
         metadata: {
           parameterSpecId: input.specId,
-          parameterSpecVersionId: spec.currentVersionId,
+          parameterSpecVersionId: activatedVersionId,
+          version: activatedVersion,
+          successorCreated: createSuccessor,
           valueShapeKind:
             input.valueShape && typeof input.valueShape === "object" && "kind" in input.valueShape
               ? String((input.valueShape as { kind: unknown }).kind)
@@ -626,31 +1164,7 @@ export async function activateParameterSpec(
     if (!refreshed) {
       throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
     }
-    return {
-      item: {
-        id: refreshed.id,
-        organizationId: refreshed.organizationId,
-        sourceKind: refreshed.sourceKind,
-        specificationKey: refreshed.specificationKey,
-        propertyKey: refreshed.propertyKey,
-        driverModule: refreshed.driverModule,
-        lifecycle: refreshed.lifecycle,
-        currentVersionId: refreshed.currentVersionId,
-        currentVersion: refreshed.currentVersion,
-        displayName: refreshed.displayName,
-        description: refreshed.description,
-        valueShape: refreshed.valueShape,
-        schemaDefault: refreshed.schemaDefault,
-        exampleValue: refreshed.exampleValue,
-        schemaNamespace: refreshed.schemaNamespace,
-        units: refreshed.units,
-        constraints: refreshed.constraints,
-        documentation: refreshed.documentation,
-        compatiblePatterns: refreshed.compatiblePatterns,
-        policyTarget: refreshed.policyTarget,
-        attributionModules: refreshed.attributionModules,
-      },
-    };
+    return { item: toParameterSpecDetailDto(refreshed) };
   });
 }
 
@@ -691,7 +1205,10 @@ export async function updateParameterSpec(
         display_name = coalesce($3, display_name),
         description = coalesce($4, description),
         value_shape = $5::jsonb,
-        example_value = coalesce($6::jsonb, example_value)
+        example_value = coalesce($6::jsonb, example_value),
+        units = coalesce($7, units),
+        constraints = $8::jsonb,
+        documentation = $9
       where id = $1 and parameter_spec_id = $2
       `,
       [
@@ -701,6 +1218,9 @@ export async function updateParameterSpec(
         input.description ?? spec.description,
         JSON.stringify(nextValueShape),
         input.exampleValue === undefined ? null : JSON.stringify(input.exampleValue),
+        input.units === undefined ? null : input.units,
+        JSON.stringify(nextConstraints),
+        input.documentation,
       ],
     );
     await tx.query(
@@ -744,30 +1264,498 @@ export async function updateParameterSpec(
     if (!refreshed) {
       throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
     }
-    return {
-      item: {
-        id: refreshed.id,
-        organizationId: refreshed.organizationId,
-        sourceKind: refreshed.sourceKind,
-        specificationKey: refreshed.specificationKey,
-        propertyKey: refreshed.propertyKey,
-        driverModule: refreshed.driverModule,
-        lifecycle: refreshed.lifecycle,
-        currentVersionId: refreshed.currentVersionId,
-        currentVersion: refreshed.currentVersion,
-        displayName: refreshed.displayName,
-        description: refreshed.description,
-        valueShape: refreshed.valueShape,
-        schemaDefault: refreshed.schemaDefault,
-        exampleValue: refreshed.exampleValue,
-        schemaNamespace: refreshed.schemaNamespace,
-        units: refreshed.units,
-        constraints: refreshed.constraints,
-        documentation: refreshed.documentation,
-        compatiblePatterns: refreshed.compatiblePatterns,
-        policyTarget: refreshed.policyTarget,
-        attributionModules: refreshed.attributionModules,
+    return { item: toParameterSpecDetailDto(refreshed) };
+  });
+}
+
+export async function deprecateParameterSpec(
+  db: Database,
+  auth: AuthContext,
+  input: DeprecateParameterSpecBody & { specId: string },
+  context: AuditCorrelationContext = {},
+): Promise<{ item: ParameterSpecDetailDto }> {
+  requireCanAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    const spec = isPlatformSuperAdmin(auth)
+      ? await requireOrgOrGlobalSpec(tx, {
+          organizationId: auth.organization.id,
+          parameterSpecId: input.specId,
+        })
+      : await requireOrgOwnedSpec(tx, {
+          organizationId: auth.organization.id,
+          parameterSpecId: input.specId,
+        });
+    if (spec.lifecycle !== "draft" && spec.lifecycle !== "active") {
+      throw new ApiError("CONFLICT", "Only draft or active parameter specs can be deprecated.", 409, {
+        parameterSpecId: input.specId,
+        lifecycle: spec.lifecycle,
+      });
+    }
+
+    await tx.query(
+      `
+      update parameter_specs
+      set definition_lifecycle = 'deprecated'
+      where id = $1
+      `,
+      [input.specId],
+    );
+
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: "spec-deprecated",
+        targetType: "parameter-spec",
+        targetId: input.specId,
+        metadata: {
+          parameterSpecId: input.specId,
+          parameterSpecVersionId: spec.currentVersionId,
+          reasonHash: hashReason(input.reason),
+          previousLifecycle: spec.lifecycle,
+        },
       },
-    };
+      context,
+    );
+
+    const refreshed = await getParameterSpecRow(tx, {
+      organizationId: auth.organization.id,
+      specId: input.specId,
+    });
+    if (!refreshed) {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+    }
+    return { item: toParameterSpecDetailDto(refreshed) };
+  });
+}
+
+export async function restoreParameterSpec(
+  db: Database,
+  auth: AuthContext,
+  input: RestoreParameterSpecBody & { specId: string },
+  context: AuditCorrelationContext = {},
+): Promise<{ item: ParameterSpecDetailDto }> {
+  requireCanAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    const spec = isPlatformSuperAdmin(auth)
+      ? await requireOrgOrGlobalSpec(tx, {
+          organizationId: auth.organization.id,
+          parameterSpecId: input.specId,
+        })
+      : await requireOrgOwnedSpec(tx, {
+          organizationId: auth.organization.id,
+          parameterSpecId: input.specId,
+        });
+    if (spec.lifecycle !== "deprecated") {
+      throw new ApiError("CONFLICT", "Only deprecated parameter specs can be restored.", 409, {
+        parameterSpecId: input.specId,
+        lifecycle: spec.lifecycle,
+      });
+    }
+
+    const activated = await tx.query<{ activated_at: string | null }>(
+      `
+      select activated_at::text as activated_at
+      from parameter_spec_versions
+      where parameter_spec_id = $1
+        and activated_at is not null
+      order by version desc
+      limit 1
+      `,
+      [input.specId],
+    );
+    const nextLifecycle = activated.rows[0]?.activated_at ? "active" : "draft";
+
+    await tx.query(
+      `
+      update parameter_specs
+      set definition_lifecycle = $2
+      where id = $1
+      `,
+      [input.specId, nextLifecycle],
+    );
+
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: "spec-restored",
+        targetType: "parameter-spec",
+        targetId: input.specId,
+        metadata: {
+          parameterSpecId: input.specId,
+          parameterSpecVersionId: spec.currentVersionId,
+          reasonHash: hashReason(input.reason),
+          previousLifecycle: spec.lifecycle,
+          nextLifecycle,
+        },
+      },
+      context,
+    );
+
+    const refreshed = await getParameterSpecRow(tx, {
+      organizationId: auth.organization.id,
+      specId: input.specId,
+    });
+    if (!refreshed) {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+    }
+    return { item: toParameterSpecDetailDto(refreshed) };
+  });
+}
+
+export async function getParameterSpecVersionCutoverImpact(
+  db: Database,
+  auth: AuthContext,
+  specId: string,
+): Promise<{ item: ParameterSpecCutoverSummaryDto }> {
+  requireCanView(auth);
+  await requireOrgOwnedSpec(db, {
+    organizationId: auth.organization.id,
+    parameterSpecId: specId,
+  });
+  const cutover = await loadOpenCutoverSummaryForSpec(db, auth.organization.id, specId);
+  if (!cutover) {
+    throw new ApiError("NOT_FOUND", "No open version cutover run for this spec.", 404, { specId });
+  }
+  return { item: cutover };
+}
+
+export async function prepareParameterSpecVersionCutover(
+  db: Database,
+  auth: AuthContext,
+  input: PrepareParameterSpecCutoverBody & { specId: string },
+  context: AuditCorrelationContext = {},
+): Promise<{ item: ParameterSpecDetailDto }> {
+  requireCanAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    await requireOrgOwnedSpec(tx, {
+      organizationId: auth.organization.id,
+      parameterSpecId: input.specId,
+    });
+
+    const runId = await resolveOpenCutoverRunId(tx, auth.organization.id, input.specId);
+    if (!runId) {
+      throw new ApiError("NOT_FOUND", "No open version cutover run for this spec.", 404, {
+        specId: input.specId,
+      });
+    }
+
+    const run = await tx.query<{ id: string; status: string; parameter_spec_id: string }>(
+      `
+      select id, status, parameter_spec_id
+      from parameter_spec_version_cutover_runs
+      where id = $1
+        and organization_id = $2
+      limit 1
+      for update
+      `,
+      [runId, auth.organization.id],
+    );
+    const hit = run.rows[0];
+    if (!hit) {
+      throw new ApiError("NOT_FOUND", "Version cutover run was not found.", 404, { runId });
+    }
+
+    if (hit.status === "ready") {
+      const refreshed = await getParameterSpecRow(tx, {
+        organizationId: auth.organization.id,
+        specId: input.specId,
+      });
+      if (!refreshed) {
+        throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+      }
+      const cutover = await loadOpenCutoverSummaryForSpec(tx, auth.organization.id, input.specId);
+      return { item: toParameterSpecDetailDto(refreshed, cutover) };
+    }
+
+    if (hit.status !== "preparing") {
+      throw new ApiError("CONFLICT", "Cutover run cannot be prepared from its current status.", 409, {
+        runId,
+        status: hit.status,
+      });
+    }
+
+    const pendingItems = await tx.query<{ id: string; base_revision_id: string | null }>(
+      `
+      select id, base_revision_id
+      from parameter_spec_version_cutover_items
+      where run_id = $1
+        and status = 'pending'
+      `,
+      [runId],
+    );
+
+    for (const item of pendingItems.rows) {
+      if (!item.base_revision_id) {
+        await tx.query(
+          `
+          update parameter_spec_version_cutover_items
+          set status = 'incompatible', incompatibility_code = 'base-revision-missing'
+          where id = $1
+          `,
+          [item.id],
+        );
+        continue;
+      }
+
+      const revision = await tx.query<{ id: string }>(
+        `
+        select id
+        from project_parameter_binding_revisions
+        where id = $1
+        limit 1
+        `,
+        [item.base_revision_id],
+      );
+      if (!revision.rows[0]) {
+        await tx.query(
+          `
+          update parameter_spec_version_cutover_items
+          set status = 'incompatible', incompatibility_code = 'base-revision-missing'
+          where id = $1
+          `,
+          [item.id],
+        );
+      } else {
+        await tx.query(
+          `
+          update parameter_spec_version_cutover_items
+          set status = 'ready', successor_revision_id = $2
+          where id = $1
+          `,
+          [item.id, item.base_revision_id],
+        );
+      }
+    }
+
+    const impact = await loadCutoverImpactCounts(tx, runId);
+    const nextStatus =
+      impact.pending > 0 || impact.incompatible > 0 ? "preparing" : "ready";
+    await tx.query(
+      `
+      update parameter_spec_version_cutover_runs
+      set status = $2
+      where id = $1
+      `,
+      [runId, nextStatus],
+    );
+
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: "spec-version-cutover-prepared",
+        targetType: "parameter-spec",
+        targetId: input.specId,
+        metadata: {
+          parameterSpecId: input.specId,
+          runId,
+          nextStatus,
+          reasonHash: input.reason ? hashReason(input.reason) : null,
+          impact,
+        },
+      },
+      context,
+    );
+
+    const refreshed = await getParameterSpecRow(tx, {
+      organizationId: auth.organization.id,
+      specId: input.specId,
+    });
+    if (!refreshed) {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+    }
+    const cutover = await loadOpenCutoverSummaryForSpec(tx, auth.organization.id, input.specId);
+    return { item: toParameterSpecDetailDto(refreshed, cutover) };
+  });
+}
+
+export async function finalizeParameterSpecVersionCutoverForSpec(
+  db: Database,
+  auth: AuthContext,
+  input: FinalizeParameterSpecCutoverBody & { specId: string },
+  context: AuditCorrelationContext = {},
+): Promise<{ item: ParameterSpecDetailDto }> {
+  requireCanAdmin(auth);
+
+  const runId = await db.query<{ id: string }>(
+    `
+    select id
+    from parameter_spec_version_cutover_runs
+    where organization_id = $1
+      and parameter_spec_id = $2
+      and status in ('preparing', 'ready')
+    limit 1
+    `,
+    [auth.organization.id, input.specId],
+  );
+  const hit = runId.rows[0];
+  if (!hit) {
+    throw new ApiError("NOT_FOUND", "No open version cutover run for this spec.", 404, {
+      specId: input.specId,
+    });
+  }
+  return finalizeParameterSpecVersionCutover(db, auth, { runId: hit.id, reason: input.reason }, context);
+}
+
+export async function finalizeParameterSpecVersionCutover(
+  db: Database,
+  auth: AuthContext,
+  input: { runId: string; reason: string },
+  context: AuditCorrelationContext = {},
+): Promise<{ item: ParameterSpecDetailDto }> {
+  requireCanAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    const run = await tx.query<{
+      id: string;
+      organization_id: string;
+      parameter_spec_id: string;
+      from_version_id: string;
+      to_version_id: string;
+      status: string;
+    }>(
+      `
+      select id, organization_id, parameter_spec_id, from_version_id, to_version_id, status
+      from parameter_spec_version_cutover_runs
+      where id = $1
+        and organization_id = $2
+      limit 1
+      for update
+      `,
+      [input.runId, auth.organization.id],
+    );
+    const hit = run.rows[0];
+    if (!hit) {
+      throw new ApiError("NOT_FOUND", "Version cutover run was not found.", 404, { runId: input.runId });
+    }
+
+    if (hit.status === "finalized") {
+      const refreshed = await getParameterSpecRow(tx, {
+        organizationId: auth.organization.id,
+        specId: hit.parameter_spec_id,
+      });
+      if (!refreshed) {
+        throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, {
+          specId: hit.parameter_spec_id,
+        });
+      }
+      return { item: toParameterSpecDetailDto(refreshed) };
+    }
+
+    if (hit.status !== "preparing" && hit.status !== "ready") {
+      throw new ApiError("CONFLICT", "Cutover run cannot be finalized from its current status.", 409, {
+        runId: input.runId,
+        status: hit.status,
+      });
+    }
+
+    const blockers = await tx.query<{ count: string }>(
+      `
+      select count(*)::text as count
+      from parameter_spec_version_cutover_items
+      where run_id = $1
+        and status in ('pending', 'incompatible')
+      `,
+      [input.runId],
+    );
+    if (Number(blockers.rows[0]?.count ?? 0) > 0) {
+      throw new ApiError(
+        "CONFLICT",
+        "Cutover cannot finalize while binding items remain pending or incompatible.",
+        409,
+        { runId: input.runId, blockingItems: Number(blockers.rows[0]?.count ?? 0) },
+      );
+    }
+
+    await tx.query(
+      `
+      update project_parameter_binding_revisions br
+      set parameter_spec_version_id = $1
+      from parameter_spec_version_cutover_items ci
+      where ci.run_id = $2
+        and ci.status = 'ready'
+        and br.id = ci.successor_revision_id
+      `,
+      [hit.to_version_id, input.runId],
+    );
+
+    await tx.query(
+      `
+      update parameter_spec_versions
+      set version_status = 'superseded', lifecycle = 'deprecated'
+      where id = $1 and parameter_spec_id = $2
+      `,
+      [hit.from_version_id, hit.parameter_spec_id],
+    );
+    await tx.query(
+      `
+      update parameter_spec_versions
+      set
+        version_status = 'active',
+        lifecycle = 'active',
+        activated_at = coalesce(activated_at, now())
+      where id = $1 and parameter_spec_id = $2
+      `,
+      [hit.to_version_id, hit.parameter_spec_id],
+    );
+    await tx.query(
+      `
+      update parameter_specs
+      set definition_lifecycle = 'active'
+      where id = $1
+      `,
+      [hit.parameter_spec_id],
+    );
+    await tx.query(
+      `
+      update parameter_spec_version_cutover_items
+      set status = 'applied'
+      where run_id = $1
+        and status = 'ready'
+      `,
+      [input.runId],
+    );
+    await tx.query(
+      `
+      update parameter_spec_version_cutover_runs
+      set status = 'finalized', finalized_at = now()
+      where id = $1
+      `,
+      [input.runId],
+    );
+
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: "spec-version-cutover-finalized",
+        targetType: "parameter-spec",
+        targetId: hit.parameter_spec_id,
+        metadata: {
+          parameterSpecId: hit.parameter_spec_id,
+          runId: hit.id,
+          fromVersionId: hit.from_version_id,
+          toVersionId: hit.to_version_id,
+          reasonHash: hashReason(input.reason),
+        },
+      },
+      context,
+    );
+
+    const refreshed = await getParameterSpecRow(tx, {
+      organizationId: auth.organization.id,
+      specId: hit.parameter_spec_id,
+    });
+    if (!refreshed) {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, {
+        specId: hit.parameter_spec_id,
+      });
+    }
+    return { item: toParameterSpecDetailDto(refreshed) };
   });
 }

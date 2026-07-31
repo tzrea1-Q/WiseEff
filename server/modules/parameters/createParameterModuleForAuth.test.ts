@@ -365,14 +365,15 @@ describe("createParameterModuleForAuth", () => {
       })
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED" } satisfies Partial<ApiError>);
 
-    await expect(
-      createParameterModuleForAuth(db, makeAuth(), {
-        name: "bad-node-type",
-        kind: "node-type",
-        parentId: "dg-sc8562",
-        sourceKey: "nodetype:usb0"
-      })
-    ).rejects.toMatchObject({ code: "VALIDATION_FAILED" } satisfies Partial<ApiError>);
+    // node-type may nest under driver-group (ADR-0010 / ADR-0013).
+    const nested = await createParameterModuleForAuth(db, makeAuth(), {
+      name: "nested-under-driver",
+      kind: "node-type",
+      parentId: "dg-sc8562",
+      sourceKey: "nodetype:usb0"
+    });
+    expect(nested.parentId).toBe("dg-sc8562");
+    expect(nested.kind).toBe("node-type");
 
     await expect(
       createParameterModuleForAuth(db, makeAuth(), {

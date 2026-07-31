@@ -29,6 +29,13 @@ const migration0077 = "0077_organization_driver_schema_properties_link_specs.sql
 const migration0078 = "0078_platform_admin_role.sql";
 const migration0079 = "0079_driver_schema_platform_tier.sql";
 const migration0080 = "0080_attribution_taxonomy.sql";
+const migration0081 = "0081_remove_structural_parameter_specs.sql";
+const migration0082 = "0082_attribution_subjects.sql";
+const migration0083 = "0083_parameter_spec_versioning.sql";
+const migration0084 = "0084_parameter_spec_version_cutover.sql";
+const migration0085 = "0085_identity_mapping_and_singleton_blockers.sql";
+const migration0086 = "0086_retire_config_revision_published.sql";
+const migration0087 = "0087_relax_ppv_null_for_enablement_drafts.sql";
 
 const enablementMigrations = [
   migration0068,
@@ -44,6 +51,13 @@ const enablementMigrations = [
   migration0078,
   migration0079,
   migration0080,
+  migration0081,
+  migration0082,
+  migration0083,
+  migration0084,
+  migration0085,
+  migration0086,
+  migration0087,
 ] as const;
 const REQUIRED_TABLES = [
   "parameter_specs",

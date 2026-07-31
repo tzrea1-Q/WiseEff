@@ -121,6 +121,47 @@ describe("ModuleAttributionTree", () => {
     confirmSpy.mockRestore();
   });
 
+  it("reorders siblings and keeps forbidden actions visible with reasons", async () => {
+    const onUpdateModule = vi.fn().mockResolvedValue(undefined);
+    const sibling: ParameterModule = {
+      ...modules[1]!,
+      id: "mod-group-2",
+      name: "SC8571",
+      sortOrder: 10
+    };
+
+    render(
+      <ModuleAttributionTree
+        canAdmin
+        modules={[...modules, sibling]}
+        mappings={mappings}
+        onUpdateModule={onUpdateModule}
+        onMove={vi.fn()}
+        onDelete={vi.fn()}
+        onRemoveMapping={vi.fn()}
+        onCreateModule={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "SC8562 更多操作" }));
+    expect(screen.getByRole("menuitem", { name: "上移 SC8562" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "上移 SC8562" })).toHaveAttribute(
+      "title",
+      "已在同级最前。"
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "下移 SC8562" }));
+    expect(onUpdateModule).toHaveBeenNthCalledWith(1, "mod-group", { sortOrder: 10 });
+    expect(onUpdateModule).toHaveBeenNthCalledWith(2, "mod-group-2", { sortOrder: 0 });
+
+    fireEvent.click(screen.getByRole("button", { name: "展开 SC8562 子模块" }));
+    fireEvent.click(screen.getByRole("button", { name: "sc8562 更多操作" }));
+    expect(screen.getByRole("menuitem", { name: "删除模块 sc8562" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "删除模块 sc8562" })).toHaveAttribute(
+      "title",
+      "节点类型不可删除，请改挂到其它父级或联系运维。"
+    );
+  });
+
   it("edits importance inside the module dialog, not on the tree row", () => {
     const onUpdateModule = vi.fn();
 

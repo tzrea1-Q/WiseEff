@@ -3,8 +3,10 @@ import type {
   IdentityMappingCandidate,
   IdentityMappingEvidence,
   IdentityMappingTask,
+  IdentityMappingTaskKind,
   ResolveMappingInput
 } from "@/domain/parameter-topology/types";
+import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 
 export type IdentityMappingReviewProps = {
   tasks: IdentityMappingTask[];
@@ -16,6 +18,19 @@ function asEvidence(value: IdentityMappingTask["evidence"]): IdentityMappingEvid
     return {};
   }
   return value as IdentityMappingEvidence;
+}
+
+function resolveTaskKind(task: IdentityMappingTask): IdentityMappingTaskKind {
+  return task.taskKind ?? "identity-ambiguity";
+}
+
+function resolveTaskKindLabel(taskKind: IdentityMappingTaskKind): string {
+  switch (taskKind) {
+    case "singleton-cardinality":
+      return PARAMETER_ADMIN_UI.identityMappingTaskKindSingleton;
+    default:
+      return PARAMETER_ADMIN_UI.identityMappingTaskKindAmbiguity;
+  }
 }
 
 function resolveCandidates(task: IdentityMappingTask): IdentityMappingCandidate[] {
@@ -53,6 +68,13 @@ function resolveRisk(task: IdentityMappingTask, candidateCount: number): string 
 type Draft = {
   selectedLogicalNodeId: string;
   reason: string;
+  confirmAllCandidates: boolean;
+};
+
+const EMPTY_DRAFT: Draft = {
+  selectedLogicalNodeId: "",
+  reason: "",
+  confirmAllCandidates: false
 };
 
 export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingReviewProps) {
@@ -65,22 +87,45 @@ export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingRevie
   }
 
   return (
-    <section className="identity-mapping-review" aria-label="节点对应审核">
-      <h3>节点对应审核</h3>
+    <section className="identity-mapping-review" aria-label={PARAMETER_ADMIN_UI.identityMappingReview}>
+      <h3>{PARAMETER_ADMIN_UI.identityMappingReview}</h3>
       <ul className="identity-mapping-review__list">
         {openTasks.map((task) => {
+          const taskKind = resolveTaskKind(task);
+          const isSingleton = taskKind === "singleton-cardinality";
           const candidates = resolveCandidates(task);
           const evidenceLines = resolveEvidenceLines(task);
           const risk = resolveRisk(task, candidates.length);
           const evidence = asEvidence(task.evidence);
-          const draft = drafts[task.id] ?? { selectedLogicalNodeId: "", reason: "" };
+          const draft = drafts[task.id] ?? EMPTY_DRAFT;
           const canConfirm = Boolean(draft.selectedLogicalNodeId.trim() && draft.reason.trim());
+          const canDeclareNewIdentity =
+            draft.reason.trim().length > 0 &&
+            (candidates.length <= 1 || draft.confirmAllCandidates);
           const busy = busyTaskId === task.id;
+
+          const updateDraft = (patch: Partial<Draft>) => {
+            setDrafts((current) => ({
+              ...current,
+              [task.id]: { ...draft, ...patch }
+            }));
+          };
+
+          const submitResolve = (input: ResolveMappingInput) => {
+            if (!onResolve) {
+              return;
+            }
+            setBusyTaskId(task.id);
+            void Promise.resolve(onResolve(task.id, input)).finally(() => setBusyTaskId(null));
+          };
 
           return (
             <li key={task.id} className="identity-mapping-review__item">
               <header>
                 <strong>{evidence.previousNodeLocator ?? task.previousLogicalNodeId ?? task.id}</strong>
+                <span className={`identity-mapping-review__task-kind identity-mapping-review__task-kind--${taskKind}`}>
+                  {resolveTaskKindLabel(taskKind)}
+                </span>
                 <span className="risk-badge high">{risk}</span>
               </header>
 
@@ -96,7 +141,7 @@ export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingRevie
               ) : null}
 
               <div>
-                <h4>候选拓扑节点</h4>
+                <h4>{PARAMETER_ADMIN_UI.identityMappingCandidates}</h4>
                 <ul aria-label="对应候选">
                   {candidates.map((candidate) => (
                     <li key={candidate.logicalNodeId}>
@@ -109,20 +154,25 @@ export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingRevie
                 </ul>
               </div>
 
-              {onResolve ? (
+              {isSingleton ? (
+                <p
+                  className="identity-mapping-review__singleton-guidance form-hint"
+                  role="status"
+                  aria-label={PARAMETER_ADMIN_UI.identityMappingSingletonGuidanceLabel}
+                >
+                  {PARAMETER_ADMIN_UI.identityMappingSingletonGuidance}
+                </p>
+              ) : null}
+
+              {!isSingleton && onResolve ? (
                 <div className="identity-mapping-review__form">
                   <label>
-                    选择对应节点
+                    {PARAMETER_ADMIN_UI.selectIdentityCandidate}
                     <select
-                      aria-label="选择对应节点"
+                      aria-label={PARAMETER_ADMIN_UI.selectIdentityCandidate}
                       value={draft.selectedLogicalNodeId}
                       disabled={busy}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [task.id]: { ...draft, selectedLogicalNodeId: event.target.value }
-                        }))
-                      }
+                      onChange={(event) => updateDraft({ selectedLogicalNodeId: event.target.value })}
                     >
                       <option value="">请选择拓扑节点…</option>
                       {candidates.map((candidate) => (
@@ -134,52 +184,67 @@ export function IdentityMappingReview({ tasks, onResolve }: IdentityMappingRevie
                     </select>
                   </label>
                   <label>
-                    确认原因
+                    {PARAMETER_ADMIN_UI.identityConfirmReason}
                     <textarea
-                      aria-label="确认原因"
+                      aria-label={PARAMETER_ADMIN_UI.identityConfirmReason}
                       value={draft.reason}
                       disabled={busy}
                       rows={2}
-                      placeholder="说明为何选择该节点"
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [task.id]: { ...draft, reason: event.target.value }
-                        }))
-                      }
+                      placeholder={PARAMETER_ADMIN_UI.identityConfirmReasonPlaceholder}
+                      onChange={(event) => updateDraft({ reason: event.target.value })}
                     />
                   </label>
+                  {candidates.length > 1 ? (
+                    <label className="identity-mapping-review__confirm-all">
+                      <input
+                        type="checkbox"
+                        aria-label={PARAMETER_ADMIN_UI.identityMappingConfirmAllCandidates}
+                        checked={draft.confirmAllCandidates}
+                        disabled={busy}
+                        onChange={(event) => updateDraft({ confirmAllCandidates: event.target.checked })}
+                      />
+                      {PARAMETER_ADMIN_UI.identityMappingConfirmAllCandidates}
+                    </label>
+                  ) : null}
                   <div className="param-admin-row-actions">
                     <button
                       type="button"
                       className="button primary"
                       disabled={!canConfirm || busy}
-                      onClick={() => {
-                        setBusyTaskId(task.id);
-                        void Promise.resolve(
-                          onResolve(task.id, {
-                            decision: "resolved",
-                            selectedLogicalNodeId: draft.selectedLogicalNodeId,
-                            reason: draft.reason.trim()
-                          })
-                        ).finally(() => setBusyTaskId(null));
-                      }}
+                      onClick={() =>
+                        submitResolve({
+                          decision: "resolved",
+                          selectedLogicalNodeId: draft.selectedLogicalNodeId,
+                          reason: draft.reason.trim()
+                        })
+                      }
                     >
-                      {busy ? "提交中…" : "确认对应"}
+                      {busy ? "提交中…" : PARAMETER_ADMIN_UI.confirmIdentityMapping}
+                    </button>
+                    <button
+                      type="button"
+                      className="button subtle"
+                      disabled={!canDeclareNewIdentity || busy}
+                      onClick={() =>
+                        submitResolve({
+                          decision: "new-identity",
+                          reason: draft.reason.trim(),
+                          ...(candidates.length > 1 ? { confirmAllCandidates: true } : {})
+                        })
+                      }
+                    >
+                      {PARAMETER_ADMIN_UI.declareNewIdentity}
                     </button>
                     <button
                       type="button"
                       className="button subtle"
                       disabled={!draft.reason.trim() || busy}
-                      onClick={() => {
-                        setBusyTaskId(task.id);
-                        void Promise.resolve(
-                          onResolve(task.id, {
-                            decision: "dismissed",
-                            reason: draft.reason.trim()
-                          })
-                        ).finally(() => setBusyTaskId(null));
-                      }}
+                      onClick={() =>
+                        submitResolve({
+                          decision: "dismissed",
+                          reason: draft.reason.trim()
+                        })
+                      }
                     >
                       驳回
                     </button>

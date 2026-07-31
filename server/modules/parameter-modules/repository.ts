@@ -27,6 +27,7 @@ function moduleFromRow(
     kind: row.kind ?? "business",
     origin: row.origin ?? "curated",
     sourceKey: row.source_key ?? null,
+    attributionSubjectId: row.attribution_subject_id ?? null,
     effectiveImportance,
     parameterCount: Number(row.parameter_count ?? 0),
   };
@@ -117,6 +118,7 @@ export async function readRegistry(
        coalesce(pm.kind, 'business') as kind,
        coalesce(pm.origin, 'curated') as origin,
        pm.source_key,
+       pm.attribution_subject_id,
        pm.path,
        (
          select count(*)::text
@@ -474,6 +476,66 @@ export async function listObservedCompatiblesForDiscovery(
     items: filtered.slice(0, limit),
     total: filtered.length,
   };
+}
+
+export async function listDismissedCompatiblesForDiscovery(
+  db: Queryable,
+  input: { organizationId: string; limit?: number },
+): Promise<Array<{
+  compatible: string;
+  bindingCount: number;
+  projectCount: number;
+  suggestedGroupName: string;
+  reason: string;
+  dismissedAt: string;
+}>> {
+  const limit = Math.max(1, Math.min(input.limit ?? 200, 500));
+  const result = await db.query<{
+    compatible: string;
+    reason: string;
+    dismissed_at: string;
+    binding_count: string;
+    project_count: string;
+  }>(
+    `
+    select
+      dc.compatible,
+      dc.reason,
+      dc.dismissed_at::text,
+      coalesce(impact.binding_count, 0)::text as binding_count,
+      coalesce(impact.project_count, 0)::text as project_count
+    from parameter_module_dismissed_compatibles dc
+    left join lateral (
+      select
+        count(b.id)::integer as binding_count,
+        count(distinct b.project_id)::integer as project_count
+      from project_parameter_bindings b
+      left join lateral (
+        select compatible
+        from dts_logical_node_revisions
+        where logical_node_id = b.logical_node_id
+        order by config_revision_id desc
+        limit 1
+      ) lnr on true
+      where b.organization_id = dc.organization_id
+        and lower(trim(both '"' from trim(both '''' from trim(both from lnr.compatible))))
+          = lower(trim(both '"' from trim(both '''' from trim(both from dc.compatible))))
+    ) impact on true
+    where dc.organization_id = $1
+    order by dc.dismissed_at desc, dc.compatible asc
+    limit $2
+    `,
+    [input.organizationId, limit],
+  );
+
+  return result.rows.map((row) => ({
+    compatible: row.compatible,
+    bindingCount: Number(row.binding_count),
+    projectCount: Number(row.project_count),
+    suggestedGroupName: driverGroupDisplayNameFromCompatible(row.compatible),
+    reason: row.reason,
+    dismissedAt: row.dismissed_at,
+  }));
 }
 
 export async function insertDismissedCompatible(

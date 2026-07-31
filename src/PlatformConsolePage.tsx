@@ -81,6 +81,7 @@ export function PlatformConsolePage() {
 
   return (
     <section className="platform-console-page" aria-label="平台控制台">
+      <h1 className="platform-console-page__title">平台控制台</h1>
       {error ? <p className="platform-console-page__error" role="alert">{error}</p> : null}
       {notice ? <p className="platform-console-page__notice">{notice}</p> : null}
 

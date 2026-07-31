@@ -1,10 +1,10 @@
 import "dotenv/config";
 import { expect, test } from "playwright/test";
-import { signInBrowserAsRoleLabel } from "./helpers/bearerAuth";
+import { signInBrowserAsRoleLabel, signInBrowserAsUser } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
-import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
+import { acceptanceAdminOnlyUser, seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 
 useBrowserDiagnostics(test);
@@ -22,6 +22,17 @@ const visibleRoleExpectations = [
 ] as const;
 
 async function setPrototypeRole(page: import("playwright/test").Page, roleName: string) {
+  // seed-m0 binds platform-admin on u-xu-yun; matrix Admin must stay org-admin-only.
+  if (roleName === "Admin") {
+    await signInBrowserAsUser(
+      page,
+      acceptanceAdminOnlyUser.userId,
+      acceptanceAdminOnlyUser.email,
+      acceptanceAdminOnlyUser.name,
+      "/parameter-home"
+    );
+    return;
+  }
   await signInBrowserAsRoleLabel(page, roleName, "/parameter-home");
 }
 
@@ -104,6 +115,8 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
         await expect(page.getByRole("heading", { name: /Permission denied/i })).toHaveCount(0);
         await expect(page.getByRole("heading", { name: "平台控制台" })).toBeVisible();
       } else {
+        // Org Admin must not inherit Platform Super Admin via dual role bindings on u-xu-yun.
+        await expect(page.getByRole("heading", { name: "平台控制台" })).toHaveCount(0);
         await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
         await expect(page.getByText(`Current role: ${expectation.role}`)).toBeVisible();
       }

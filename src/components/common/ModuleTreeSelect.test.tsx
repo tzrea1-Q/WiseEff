@@ -74,4 +74,24 @@ describe("ModuleTreeSelect", () => {
     expect(screen.getByText("电源 / 电池 / 电池健康")).toBeInTheDocument();
     expect(within(screen.getByRole("tree")).queryByText("电源 / 电池 / 电池健康")).not.toBeInTheDocument();
   });
+
+  it("only allows selecting ids listed in selectableIds", () => {
+    const onChange = vi.fn();
+    render(
+      <ModuleTreeSelect
+        mode="single"
+        label="模块"
+        nodes={[...nodes]}
+        value=""
+        selectableIds={new Set(["pm-b"])}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /模块/ }));
+    const tree = screen.getByRole("tree");
+    expect(within(tree).queryByRole("button", { name: "电源" })).not.toBeInTheDocument();
+    expect(within(tree).getByText("电源")).toBeInTheDocument();
+    fireEvent.click(within(tree).getByRole("button", { name: "电池" }));
+    expect(onChange).toHaveBeenCalledWith("pm-b");
+  });
 });

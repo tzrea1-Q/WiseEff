@@ -520,6 +520,39 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       return cloneDetail(detail);
     },
 
+    async createParameterSpec(input) {
+      const id = `pspec:mock:${input.attributionSubjectId}:${input.propertyKey}`;
+      if (store.specs.has(id)) {
+        throw new Error(`ParameterSpec already exists: ${id}`);
+      }
+      const created: SpecFixture = {
+        id,
+        organizationId: "org-mock",
+        sourceKind: "manual",
+        specificationKey: `manual/${input.propertyKey}`,
+        propertyKey: input.propertyKey,
+        driverModule: null,
+        lifecycle: "draft",
+        currentVersionId: `${id}:v1`,
+        currentVersion: 1,
+        valueShape: input.valueShape ?? { kind: "unknown" },
+        compatiblePatterns: null,
+        attributionModules: [],
+        attributionSubjectId: input.attributionSubjectId,
+        displayName: input.displayName ?? input.propertyKey,
+        description: input.description ?? input.propertyKey,
+        schemaDefault: null,
+        exampleValue: input.exampleValue ?? null,
+        schemaNamespace: "manual",
+        units: input.units ?? null,
+        constraints: input.constraints ?? {},
+        documentation: input.documentation ?? "",
+        policyTarget: null,
+      };
+      store.specs.set(id, created);
+      return cloneDetail(created);
+    },
+
     async activateParameterSpec(specId, input: ActivateParameterSpecInput) {
       const existing = store.specs.get(specId);
       if (!existing) {
@@ -562,6 +595,38 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       };
       store.specs.set(specId, updated);
       return cloneDetail(updated);
+    },
+
+    async deprecateParameterSpec(specId) {
+      const existing = store.specs.get(specId);
+      if (!existing) throw new Error(`ParameterSpec not found: ${specId}`);
+      const updated: SpecFixture = { ...existing, lifecycle: "deprecated" };
+      store.specs.set(specId, updated);
+      return cloneDetail(updated);
+    },
+
+    async restoreParameterSpec(specId) {
+      const existing = store.specs.get(specId);
+      if (!existing) throw new Error(`ParameterSpec not found: ${specId}`);
+      const updated: SpecFixture = { ...existing, lifecycle: "active" };
+      store.specs.set(specId, updated);
+      return cloneDetail(updated);
+    },
+
+    async getSpecVersionCutoverImpact(specId) {
+      const existing = store.specs.get(specId);
+      if (!existing?.cutover) {
+        throw new Error(`No open cutover for spec: ${specId}`);
+      }
+      return existing.cutover;
+    },
+
+    async prepareSpecVersionCutover(specId) {
+      throw new Error(`Cutover prepare is unavailable in mock mode (${specId}).`);
+    },
+
+    async finalizeSpecVersionCutover(specId) {
+      throw new Error(`Cutover finalize is unavailable in mock mode (${specId}).`);
     },
 
     async listSpecReviewTasks(query = {}) {
@@ -677,7 +742,7 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       if (!task) {
         throw new Error(`Identity mapping task not found: ${taskId}`);
       }
-      task.status = input.decision;
+      task.status = input.decision === "new-identity" ? "new_identity" : input.decision;
       task.reason = input.reason;
       task.resolvedAt = MOCK_NOW;
     },

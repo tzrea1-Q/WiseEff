@@ -18,6 +18,7 @@ type ParameterModuleRow = {
   kind: "business" | "driver-group" | "node-type" | "unclassified" | null;
   origin: "curated" | "auto" | null;
   source_key: string | null;
+  attribution_subject_id: string | null;
 };
 
 function toParameterModuleDto(row: ParameterModuleRow): ParameterModuleDto {
@@ -33,7 +34,8 @@ function toParameterModuleDto(row: ParameterModuleRow): ParameterModuleDto {
     importance: row.importance ?? "medium",
     kind: row.kind ?? "business",
     origin: row.origin ?? "curated",
-    sourceKey: row.source_key ?? null
+    sourceKey: row.source_key ?? null,
+    attributionSubjectId: row.attribution_subject_id ?? null
   };
 }
 
@@ -50,7 +52,8 @@ const parameterModuleColumns = `
   importance,
   kind,
   origin,
-  source_key
+  source_key,
+  attribution_subject_id
 `;
 
 export async function listParameterModules(db: Queryable, query: { organizationId: string }) {
@@ -235,6 +238,9 @@ export async function createParameterModule(
   }
 ) {
   const id = randomUUID();
+  const kind = input.kind ?? "business";
+  const origin = input.origin ?? "curated";
+  const name = input.name.trim();
   let parentPath: string | null = null;
   if (input.parentId) {
     const parent = await getParameterModuleById(db, {
@@ -250,29 +256,46 @@ export async function createParameterModule(
   const path = buildPath(parentPath, id);
   const depth = depthOf(path);
 
+  let attributionSubjectId: string | null = null;
+  if (kind === "driver-group" || kind === "node-type") {
+    const { insertAttributionSubjectForNewModule } = await import(
+      "../parameter-modules/attributionSubjectRepository"
+    );
+    attributionSubjectId = await insertAttributionSubjectForNewModule(db, {
+      moduleId: id,
+      organizationId: input.organizationId,
+      kind,
+      displayName: name,
+      origin,
+      sourceKey: input.sourceKey ?? null,
+      notes: input.description ?? "",
+    });
+  }
+
   const result = await db.query<ParameterModuleRow>(
     `
     insert into parameter_modules (
       id, organization_id, parent_id, name, path, depth, sort_order, description, scope,
-      importance, kind, origin, source_key
+      importance, kind, origin, source_key, attribution_subject_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     returning ${parameterModuleColumns}
     `,
     [
       id,
       input.organizationId,
       input.parentId ?? null,
-      input.name.trim(),
+      name,
       path,
       depth,
       input.sortOrder ?? 0,
       input.description ?? "",
       input.scope ?? "",
       input.importance ?? "medium",
-      input.kind ?? "business",
-      input.origin ?? "curated",
-      input.sourceKey ?? null
+      kind,
+      origin,
+      input.sourceKey ?? null,
+      attributionSubjectId
     ]
   );
 

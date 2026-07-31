@@ -48,6 +48,22 @@ export type SpecAttributionModule = {
   path?: string[];
 };
 
+export type ParameterSpecCutoverSummary = {
+  runId: string;
+  status: "preparing" | "ready";
+  fromVersionId: string;
+  toVersionId: string;
+  fromVersion: number;
+  toVersion: number;
+  impact: {
+    pending: number;
+    ready: number;
+    incompatible: number;
+    skipped: number;
+    total: number;
+  };
+};
+
 export type ParameterSpecSummary = {
   id: string;
   /** Null for platform-global specs (readable/bindable; not org-admin mutable). */
@@ -64,6 +80,8 @@ export type ParameterSpecSummary = {
   compatiblePatterns: string[] | null;
   /** Distinct attribution units observed via project bindings; empty = not yet observed. */
   attributionModules: SpecAttributionModule[];
+  /** Stable attribution subject for mature catalog identity (ADR-0013). */
+  attributionSubjectId?: string | null;
 };
 
 export type ParameterSpecDetail = ParameterSpecSummary & {
@@ -79,6 +97,8 @@ export type ParameterSpecDetail = ParameterSpecSummary & {
   documentation: string | null;
   /** Organization/product policy target — may participate in compliance. */
   policyTarget: unknown | null;
+  /** Present when an open version cutover run exists (ADR-0014). */
+  cutover?: ParameterSpecCutoverSummary;
 };
 
 export type BindingSchemaState = "valid" | "invalid" | "unreviewed";
@@ -221,7 +241,9 @@ export type TopologyTree =
       nodes: EffectiveTopologyNode[];
     };
 
-export type IdentityMappingTaskStatus = "open" | "resolved" | "dismissed";
+export type IdentityMappingTaskKind = "identity-ambiguity" | "singleton-cardinality";
+
+export type IdentityMappingTaskStatus = "open" | "resolved" | "dismissed" | "new_identity";
 
 export type IdentityMappingCandidate = {
   logicalNodeId: string;
@@ -249,6 +271,7 @@ export type IdentityMappingTask = {
   previousLogicalNodeId: string | null;
   candidateLogicalNodeIds: string[];
   evidence?: IdentityMappingEvidence | Record<string, unknown> | null;
+  taskKind?: IdentityMappingTaskKind;
   status: IdentityMappingTaskStatus;
   reason?: string | null;
   createdAt: string;
@@ -299,9 +322,10 @@ export type ResolveSpecReviewInput = {
 };
 
 export type ResolveMappingInput = {
-  decision: "resolved" | "dismissed";
+  decision: "resolved" | "dismissed" | "new-identity";
   selectedLogicalNodeId?: string;
   reason: string;
+  confirmAllCandidates?: boolean;
 };
 
 export type ValidationRunStatus = "passed" | "failed" | "running";

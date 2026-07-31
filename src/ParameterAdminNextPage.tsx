@@ -19,7 +19,6 @@ import { OrganizationBulkImportPanel } from "@/components/parameter-admin-next/O
 import { OrganizationIdentityMappingPanel } from "@/components/parameter-admin-next/OrganizationIdentityMappingPanel";
 import { OrganizationModuleGovernancePanel } from "@/components/parameter-admin-next/OrganizationModuleGovernancePanel";
 import { OrganizationSpecGovernancePanel } from "@/components/parameter-admin-next/OrganizationSpecGovernancePanel";
-import { ParameterAdminAuditBanner } from "@/components/parameter-admin-next/ParameterAdminAuditBanner";
 import { ParameterAdminNextScopeNav } from "@/components/parameter-admin-next/ParameterAdminNextScopeNav";
 import { ParameterAdminOrganizationSubNav } from "@/components/parameter-admin-next/ParameterAdminOrganizationSubNav";
 import { ParameterAdminProvider } from "@/components/parameter-admin-next/ParameterAdminProvider";
@@ -169,7 +168,6 @@ export function ParameterAdminNextPage({
               parameterActions={parameterActions}
               runtimeMode={runtimeMode}
             />
-            <ParameterAdminAuditBanner />
             {organizationView === "specs" ? (
               <OrganizationSpecGovernancePanel
                 search={search}

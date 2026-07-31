@@ -32,7 +32,9 @@ export const PARAMETER_DASHBOARD_FIXTURE = {
 } as const;
 
 function daysAgo(days: number) {
-  const date = new Date("2026-07-07T12:00:00.000Z");
+  // Relative to "now" so 30d/7d window assertions stay stable as calendar time moves.
+  const date = new Date();
+  date.setUTCHours(12, 0, 0, 0);
   date.setUTCDate(date.getUTCDate() - days);
   return date.toISOString();
 }

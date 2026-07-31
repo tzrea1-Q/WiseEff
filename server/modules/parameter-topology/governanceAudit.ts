@@ -11,13 +11,18 @@ export type GovernanceAuditAction =
   | "spec-draft-created"
   | "spec-activated"
   | "spec-updated"
+  | "spec-deprecated"
+  | "spec-restored"
+  | "spec-version-cutover-prepared"
+  | "spec-version-cutover-finalized"
   | "identity-mapping-resolved"
   | "identity-mapping-dismissed"
+  | "identity-mapping-new-identity"
+  | "identity-mapping-reopened"
   | "config-revision-validated"
   | "binding-edited"
   | "enablement-changed"
   | "baseline-mutated"
-  | "config-revision-published"
   | "identity-migrated";
 
 /**

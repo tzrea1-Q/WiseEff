@@ -101,6 +101,61 @@ export function buildManualSpecIds(input: {
 }
 
 /**
+ * Mature catalog identity: owner scope + AttributionSubject + property_key (ADR-0013/0014).
+ * organizationId null → platform-global definition.
+ */
+export function buildSubjectScopedManualSpecIds(input: {
+  organizationId: string | null;
+  attributionSubjectId: string;
+  propertyKey: string;
+}): {
+  schemaNamespace: string;
+  specificationKey: string;
+  parameterSpecId: string;
+  parameterSpecVersionId: string;
+  dtsPropertySpecId: string;
+} {
+  const propertySegment = sanitizeSpecSegment(input.propertyKey);
+  const ownerPart =
+    input.organizationId == null
+      ? canonicalIdentityPart("scope", "platform")
+      : canonicalIdentityPart("organizationId", input.organizationId);
+  const digest = createHash("sha256")
+    .update(
+      [
+        ownerPart,
+        canonicalIdentityPart("attributionSubjectId", input.attributionSubjectId),
+        canonicalIdentityPart("propertyKey", input.propertyKey),
+      ].join("\u001f"),
+    )
+    .digest("hex")
+    .slice(0, 24);
+  const schemaNamespace = sanitizeSpecSegment(input.attributionSubjectId);
+  const specificationKey = `${schemaNamespace}/${propertySegment}-${digest}`;
+  const parameterSpecId = stableSemanticId("parameter_spec", [
+    ownerPart,
+    "manual",
+    canonicalIdentityPart("attributionSubjectId", input.attributionSubjectId),
+    canonicalIdentityPart("propertyKey", input.propertyKey),
+  ]);
+  const parameterSpecVersionId = stableSemanticId("parameter_spec_version", [
+    canonicalIdentityPart("parameterSpecId", parameterSpecId),
+    canonicalIdentityPart("version", "1"),
+  ]);
+  const dtsPropertySpecId = stableSemanticId("dts_property_spec", [
+    canonicalIdentityPart("parameterSpecId", parameterSpecId),
+    canonicalIdentityPart("propertyKey", input.propertyKey),
+  ]);
+  return {
+    schemaNamespace,
+    specificationKey,
+    parameterSpecId,
+    parameterSpecVersionId,
+    dtsPropertySpecId,
+  };
+}
+
+/**
  * Platform manual specs omit organizationId from identity (ADR-0009).
  * Must not reuse buildManualSpecIds — that bakes in tenant scope.
  */

@@ -8,6 +8,7 @@ import type {
   MappingMutationResult,
   ModuleDiscoveryHints,
   OrganizationDriverSchema,
+  OrganizationDriverSchemaDeprecationImpact,
   ParameterModuleRegistryRepository,
   RegisterOrClaimDriverInput,
   RegisterOrClaimDriverResult,
@@ -39,6 +40,7 @@ type ModuleDto = {
   sourceKey?: string | null;
   effectiveImportance?: ModuleImportance;
   parameterCount?: number;
+  attributionSubjectId?: string | null;
 };
 
 type MappingDto = {
@@ -61,6 +63,10 @@ type DiscoveryEnvelope = { item: ModuleDiscoveryHints };
 type DriverRegistryListResponse = { items: DriverRegistryEntry[]; total: number };
 type RegisterOrClaimDriverResponse = RegisterOrClaimDriverResult;
 type OrganizationDriverSchemaEnvelope = { item: OrganizationDriverSchema };
+type OrganizationDriverSchemaListResponse = { items: OrganizationDriverSchema[]; total: number };
+type OrganizationDriverSchemaDeprecationImpactEnvelope = {
+  item: OrganizationDriverSchemaDeprecationImpact;
+};
 
 const REGISTRY_BASE = "/api/v2/parameter-modules";
 const V1_MODULES = "/api/v1/parameter-modules";
@@ -80,7 +86,8 @@ function mapModule(module: ModuleDto): ParameterModule {
     origin: module.origin ?? "curated",
     sourceKey: module.sourceKey ?? null,
     effectiveImportance: module.effectiveImportance ?? importance,
-    parameterCount: module.parameterCount ?? 0
+    parameterCount: module.parameterCount ?? 0,
+    attributionSubjectId: module.attributionSubjectId ?? null
   };
 }
 
@@ -108,6 +115,26 @@ function emptyPreview(toModuleId: string | null = null): MappingApplyPreview {
   };
 }
 
+function mapDiscoveryHints(item: ModuleDiscoveryHints): ModuleDiscoveryHints {
+  return {
+    compatibles: item.compatibles.map((hint) => ({
+      compatible: hint.compatible,
+      bindingCount: hint.bindingCount,
+      projectCount: hint.projectCount ?? 0,
+      suggestedGroupName: hint.suggestedGroupName ?? hint.compatible
+    })),
+    dismissedCompatibles: (item.dismissedCompatibles ?? []).map((hint) => ({
+      compatible: hint.compatible,
+      bindingCount: hint.bindingCount,
+      projectCount: hint.projectCount ?? 0,
+      suggestedGroupName: hint.suggestedGroupName ?? hint.compatible,
+      reason: hint.reason ?? "",
+      dismissedAt: hint.dismissedAt
+    })),
+    total: item.total ?? item.compatibles.length
+  };
+}
+
 /**
  * Module CRUD goes through v1 `/api/v1/parameter-modules` (shared taxonomy tree).
  * Registry read + mappings CRUD stay on additive v2 endpoints.
@@ -125,15 +152,7 @@ export function createHttpParameterModuleRegistryRepository(
 
     async getDiscoveryHints() {
       const response = await apiClient.get<DiscoveryEnvelope>(`${REGISTRY_BASE}/discovery-hints`);
-      return {
-        compatibles: response.item.compatibles.map((hint) => ({
-          compatible: hint.compatible,
-          bindingCount: hint.bindingCount,
-          projectCount: hint.projectCount ?? 0,
-          suggestedGroupName: hint.suggestedGroupName ?? hint.compatible
-        })),
-        total: response.item.total ?? response.item.compatibles.length
-      };
+      return mapDiscoveryHints(response.item);
     },
 
     async dismissCompatible(input) {
@@ -141,30 +160,14 @@ export function createHttpParameterModuleRegistryRepository(
         `${REGISTRY_BASE}/discovery-hints/dismissals`,
         input
       );
-      return {
-        compatibles: response.item.compatibles.map((hint) => ({
-          compatible: hint.compatible,
-          bindingCount: hint.bindingCount,
-          projectCount: hint.projectCount ?? 0,
-          suggestedGroupName: hint.suggestedGroupName ?? hint.compatible
-        })),
-        total: response.item.total ?? response.item.compatibles.length
-      };
+      return mapDiscoveryHints(response.item);
     },
 
     async restoreDismissedCompatible(compatible: string) {
       const response = await apiClient.delete<DiscoveryEnvelope>(
         `${REGISTRY_BASE}/discovery-hints/dismissals/${encodeURIComponent(compatible)}`
       );
-      return {
-        compatibles: response.item.compatibles.map((hint) => ({
-          compatible: hint.compatible,
-          bindingCount: hint.bindingCount,
-          projectCount: hint.projectCount ?? 0,
-          suggestedGroupName: hint.suggestedGroupName ?? hint.compatible
-        })),
-        total: response.item.total ?? response.item.compatibles.length
-      };
+      return mapDiscoveryHints(response.item);
     },
 
     async createModule(input: CreateParameterModuleInput) {
@@ -261,11 +264,36 @@ export function createHttpParameterModuleRegistryRepository(
       return response.item;
     },
 
+    async listOrganizationDriverSchemas() {
+      const response = await apiClient.get<OrganizationDriverSchemaListResponse>(
+        ORG_DRIVER_SCHEMAS_BASE
+      );
+      return response.items;
+    },
+
     async activateOrganizationDriverSchema(schemaId: string) {
       return apiClient.post<ActivateOrganizationDriverSchemaResult>(
         `${ORG_DRIVER_SCHEMAS_BASE}/${encodeURIComponent(schemaId)}/activate`,
         {}
       );
+    },
+
+    async previewOrganizationDriverSchemaDeprecation(schemaId: string) {
+      const response = await apiClient.get<OrganizationDriverSchemaDeprecationImpactEnvelope>(
+        `${ORG_DRIVER_SCHEMAS_BASE}/${encodeURIComponent(schemaId)}/deprecation-impact`
+      );
+      return response.item;
+    },
+
+    async deprecateOrganizationDriverSchema(
+      schemaId: string,
+      input: { confirmCoverageLoss?: boolean } = {}
+    ) {
+      const response = await apiClient.post<OrganizationDriverSchemaEnvelope>(
+        `${ORG_DRIVER_SCHEMAS_BASE}/${encodeURIComponent(schemaId)}/deprecate`,
+        input
+      );
+      return response.item;
     }
   };
 }

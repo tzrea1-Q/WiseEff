@@ -1,5 +1,6 @@
 import type {
   ActivateParameterSpecInput,
+  CreateParameterSpecInput,
   ParameterTopologyRepository,
   ResolveMappingInput,
   ResolveSpecReviewInput,
@@ -32,6 +33,7 @@ import type {
   IdentityMappingTask,
   ParameterSpecDetail,
   ParameterSpecSummary,
+  ParameterSpecCutoverSummary,
   SpecQuery,
   SpecReviewTaskListResult,
   SpecReviewTaskQuery,
@@ -55,10 +57,19 @@ export type ParameterAdminImportActions = {
 export type ParameterAdminApplication = {
   listSpecs(query?: SpecQuery): Promise<ParameterSpecSummary[]>;
   getSpec(specId: string): Promise<ParameterSpecDetail>;
+  createParameterSpec(input: CreateParameterSpecInput): Promise<ParameterSpecDetail>;
   listSpecReviewTasks(query?: SpecReviewTaskQuery): Promise<SpecReviewTaskListResult>;
   resolveSpecReviewTask(taskId: string, input: ResolveSpecReviewInput): Promise<void>;
   activateParameterSpec(specId: string, input: ActivateParameterSpecInput): Promise<ParameterSpecDetail>;
   updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
+  deprecateParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
+  restoreParameterSpec(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
+  getSpecVersionCutoverImpact(specId: string): Promise<ParameterSpecCutoverSummary>;
+  prepareSpecVersionCutover(
+    specId: string,
+    input?: { reason?: string }
+  ): Promise<ParameterSpecDetail>;
+  finalizeSpecVersionCutover(specId: string, input: { reason: string }): Promise<ParameterSpecDetail>;
 
   getModuleRegistry(): Promise<ParameterModuleRegistry>;
   getModuleDiscoveryHints(): Promise<ModuleDiscoveryHints>;
@@ -119,8 +130,15 @@ export function createParameterAdminApplication({
     listDriverRegistry: () => moduleRegistry.listDriverRegistry(),
     registerOrClaimDriver: (input) => moduleRegistry.registerOrClaimDriver(input),
     createOrganizationDriverSchema: (input) => moduleRegistry.createOrganizationDriverSchema(input),
+    listOrganizationDriverSchemas: () => moduleRegistry.listOrganizationDriverSchemas?.() ?? Promise.resolve([]),
     activateOrganizationDriverSchema: (schemaId) =>
-      moduleRegistry.activateOrganizationDriverSchema(schemaId)
+      moduleRegistry.activateOrganizationDriverSchema(schemaId),
+    previewOrganizationDriverSchemaDeprecation: (schemaId) =>
+      moduleRegistry.previewOrganizationDriverSchemaDeprecation?.(schemaId) ??
+      Promise.reject(new Error("Overlay deprecation preview is unavailable.")),
+    deprecateOrganizationDriverSchema: (schemaId, input) =>
+      moduleRegistry.deprecateOrganizationDriverSchema?.(schemaId, input) ??
+      Promise.reject(new Error("Overlay deprecation is unavailable."))
   });
 
   return {
@@ -129,6 +147,9 @@ export function createParameterAdminApplication({
     },
     getSpec(specId) {
       return topology.getSpec(specId);
+    },
+    createParameterSpec(input) {
+      return topology.createParameterSpec(input);
     },
     listSpecReviewTasks(query = {}) {
       return topology.listSpecReviewTasks(query);
@@ -141,6 +162,21 @@ export function createParameterAdminApplication({
     },
     updateParameterSpec(specId, input) {
       return topology.updateParameterSpec(specId, input);
+    },
+    deprecateParameterSpec(specId, input) {
+      return topology.deprecateParameterSpec(specId, input);
+    },
+    restoreParameterSpec(specId, input) {
+      return topology.restoreParameterSpec(specId, input);
+    },
+    getSpecVersionCutoverImpact(specId) {
+      return topology.getSpecVersionCutoverImpact(specId);
+    },
+    prepareSpecVersionCutover(specId, input = {}) {
+      return topology.prepareSpecVersionCutover(specId, input);
+    },
+    finalizeSpecVersionCutover(specId, input) {
+      return topology.finalizeSpecVersionCutover(specId, input);
     },
 
     getModuleRegistry() {

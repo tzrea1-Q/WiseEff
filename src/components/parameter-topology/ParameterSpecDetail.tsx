@@ -1,5 +1,8 @@
+import type { ParameterSpecCutoverSummary } from "@/domain/parameter-topology/types";
 import type { ParameterSpecLibraryRow } from "./ParameterSpecLibrary";
-import { formatSpecAttributionLabel } from "./ParameterSpecLibrary";
+import {
+  formatSpecAttributionLabel,
+} from "./ParameterSpecLibrary";
 import { formatParameterSpecLifecycle } from "@/application/parameters/parameterAdminUiCopy";
 
 export type SpecUsageEntry = {
@@ -27,6 +30,7 @@ export type ParameterSpecDetailView = ParameterSpecLibraryRow & {
   policyTarget?: unknown;
   usage?: SpecUsageEntry[];
   schemaHistory?: SpecSchemaHistoryEntry[];
+  cutover?: ParameterSpecCutoverSummary;
 };
 
 /** Editable slice of a spec detail (maps to activate / update payloads). */
@@ -260,6 +264,13 @@ export function ParameterSpecDetail({ detail, draft, onDraftChange, editable }: 
           <legend>DTS 身份</legend>
           <div className="def-group-fields">
             <ReadOnlyField label="属性键" value={detail.propertyKey} mono />
+            {detail.driverModule?.trim() ? (
+              <ReadOnlyField
+                label="驱动模块"
+                value={detail.driverModule.trim()}
+                mono
+              />
+            ) : null}
             {editable ? (
               <EditableField
                 label="展示名"

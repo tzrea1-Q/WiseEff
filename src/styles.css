@@ -15541,6 +15541,87 @@ body.xiaoze-popup-resize-active {
   background: #fff;
 }
 
+.spec-create-dialog.param-admin-module-edit-dialog {
+  max-width: 640px;
+  /* Extra clearance for the Xiaoze FAB on short viewports. */
+  max-height: min(760px, calc(100dvh - 120px));
+}
+
+.spec-create-dialog .param-admin-module-edit-body {
+  padding-bottom: 20px;
+  gap: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.spec-create-dialog__check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text, #1f2a37);
+}
+
+.spec-create-dialog__check-field input[type="checkbox"] {
+  width: 1rem;
+  min-width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: initial;
+  border-radius: 0;
+  flex: 0 0 auto;
+  align-self: center;
+  accent-color: var(--app-primary);
+}
+
+.spec-create-dialog__subject-field {
+  position: relative;
+  z-index: 3;
+}
+
+.spec-create-dialog .module-tree-trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid #cfd9e6;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  text-align: left;
+}
+
+.spec-create-dialog .module-tree-trigger:focus-visible {
+  outline: 0;
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
+}
+
+.spec-create-dialog .module-tree-menu {
+  z-index: 40;
+  width: 100%;
+  max-width: none;
+  background: #fff;
+  border: 1px solid #cfd9e6;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(16, 28, 45, 0.18);
+}
+
+.module-tree-label--structural {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.module-tree-option-row.is-structural .module-tree-label-text {
+  font-weight: 600;
+}
+
 .param-module-def-form {
   display: grid;
   gap: 12px;
@@ -19821,6 +19902,40 @@ body.xiaoze-popup-resize-active {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.identity-mapping-review__task-kind {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.identity-mapping-review__task-kind--identity-ambiguity {
+  color: #7c2d12;
+  background: #ffedd5;
+}
+
+.identity-mapping-review__task-kind--singleton-cardinality {
+  color: #7f1d1d;
+  background: #fee2e2;
+}
+
+.identity-mapping-review__singleton-guidance {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--outline, #d6dde8) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-muted, #f4f4f5) 90%, transparent);
+}
+
+.identity-mapping-review__confirm-all {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .identity-mapping-review__form {
@@ -24163,6 +24278,27 @@ button.dts-topology-navigator__disclosure:focus-visible {
   }
 }
 
+@media (max-width: 640px) {
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid colgroup {
+    display: none;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid tbody td:nth-child(n) {
+    display: grid;
+    width: auto;
+    min-width: 0;
+  }
+
+  .param-admin-shell .param-admin-library-table .parameter-spec-library-grid tbody td:first-child {
+    display: flex;
+  }
+}
+
 .project-primary-dts-viewer {
   display: grid;
   gap: 10px;
@@ -24235,6 +24371,13 @@ button.dts-topology-navigator__disclosure:focus-visible {
   margin: 0;
   padding: 8px 4px 48px;
   box-sizing: border-box;
+}
+
+.platform-console-page__title {
+  margin: 0 0 12px;
+  font-size: 1.35rem;
+  font-weight: 650;
+  color: var(--text);
 }
 
 .platform-console-page__error {

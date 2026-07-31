@@ -127,6 +127,7 @@ export const PARAMETER_ADMIN_UI = {
   queueColSuggested: "建议驱动组",
   queueColActions: "操作",
   specAttributionModule: "归属模块",
+  specDriverModule: "驱动模块",
 
   identityMapping: "节点对应确认",
   identityMappingGovernance: "节点对应确认",
@@ -139,6 +140,13 @@ export const PARAMETER_ADMIN_UI = {
   identityMappingCandidates: "候选拓扑节点",
   selectIdentityCandidate: "选择对应节点",
   confirmIdentityMapping: "确认对应",
+  declareNewIdentity: "声明新身份",
+  identityMappingTaskKindAmbiguity: "身份歧义",
+  identityMappingTaskKindSingleton: "单例冲突",
+  identityMappingConfirmAllCandidates: "确认保留全部候选为新身份",
+  identityMappingSingletonGuidanceLabel: "单例冲突修复指引",
+  identityMappingSingletonGuidance:
+    "该任务为单例冲突：驱动登记要求每个项目仅保留一个实例。请在驱动登记或项目拓扑中移除多余实例或更正 instanceCardinality，无法通过节点对应决议消除。开放任务仍会阻断发布校验。",
   identityConfirmReason: "确认原因",
   identityConfirmReasonPlaceholder: "说明为何选择该节点",
 

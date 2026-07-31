@@ -117,6 +117,7 @@ export const routeManifest = [
   { id: "parameterSpecs.createOrganizationDriverSchema", method: "POST", path: "/api/v2/organization-driver-schemas", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.updateOrganizationDriverSchema", method: "PATCH", path: "/api/v2/organization-driver-schemas/:schemaId", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.activateOrganizationDriverSchema", method: "POST", path: "/api/v2/organization-driver-schemas/:schemaId/activate", module: "parameters", stability: "mvp" },
+  { id: "parameterSpecs.previewOrganizationDriverSchemaDeprecation", method: "GET", path: "/api/v2/organization-driver-schemas/:schemaId/deprecation-impact", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.deprecateOrganizationDriverSchema", method: "POST", path: "/api/v2/organization-driver-schemas/:schemaId/deprecate", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.listPromotionCandidates", method: "GET", path: "/api/v2/platform/driver-schemas/promotion-candidates", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.promoteDriverSchemaOverlay", method: "POST", path: "/api/v2/platform/driver-schemas/promotions", module: "parameters", stability: "mvp" },
@@ -197,9 +198,37 @@ export const routeManifest = [
 
   { id: "parameterSpecs.list", method: "GET", path: "/api/v2/parameter-specs", module: "parameters", stability: "mvp" },
   {
+    id: "parameterSpecs.create",
+    method: "POST",
+    path: "/api/v2/parameter-specs",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterSpecs.get",
     method: "GET",
     path: "/api/v2/parameter-specs/:specId",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.getCutover",
+    method: "GET",
+    path: "/api/v2/parameter-specs/:specId/cutover",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.prepareCutover",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/cutover/prepare",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.finalizeCutover",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/cutover/finalize",
     module: "parameters",
     stability: "mvp"
   },
@@ -214,6 +243,20 @@ export const routeManifest = [
     id: "parameterSpecs.resolveReviewTask",
     method: "POST",
     path: "/api/v2/parameter-spec-review-tasks/:taskId/resolve",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.deprecate",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/deprecate",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.restore",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/restore",
     module: "parameters",
     stability: "mvp"
   },
@@ -256,6 +299,13 @@ export const routeManifest = [
     id: "parameterTopology.resolveIdentityMappingTask",
     method: "POST",
     path: "/api/v2/identity-mapping-tasks/:taskId/resolve",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.reopenIdentityMappingTask",
+    method: "POST",
+    path: "/api/v2/identity-mapping-tasks/:taskId/reopen",
     module: "parameters",
     stability: "mvp"
   },

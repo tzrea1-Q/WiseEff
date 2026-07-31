@@ -4,16 +4,18 @@ import { createPortal } from "react-dom";
 
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import {
-  canAddChildModule,
-  canDeleteModule,
+  addChildModuleDecision,
   canEditModuleDetails,
-  canMoveModule,
   canViewUnclassifiedRoot,
-  deleteActionLabel
+  deleteActionLabel,
+  deleteModuleDecision,
+  moveModuleDecision,
+  sortOrderSwapUpdates
 } from "./moduleAttributionTreeUtils";
 
 export type ModuleAttributionRowActionsProps = {
   module: ParameterModule;
+  modules: readonly ParameterModule[];
   busy?: boolean;
   canAdmin?: boolean;
   onView?: () => void;
@@ -21,6 +23,7 @@ export type ModuleAttributionRowActionsProps = {
   onAddChild: () => void;
   onMove: () => void;
   onDelete: () => void;
+  onReorder?: (direction: "up" | "down") => void;
 };
 
 type MenuPosition = {
@@ -34,13 +37,15 @@ type MenuPosition = {
  */
 export function ModuleAttributionRowActions({
   module,
+  modules,
   busy = false,
   canAdmin = false,
   onView,
   onEdit,
   onAddChild,
   onMove,
-  onDelete
+  onDelete,
+  onReorder
 }: ModuleAttributionRowActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
@@ -49,22 +54,32 @@ export function ModuleAttributionRowActions({
 
   const showView = canViewUnclassifiedRoot(module) && Boolean(onView);
   const showEdit = canAdmin && canEditModuleDetails(module);
-  const showAddChild = canAdmin && canAddChildModule(module);
-  const showMove = canAdmin && canMoveModule(module);
-  const showDelete = canAdmin && canDeleteModule(module);
-  const hasMore = showAddChild || showMove || showDelete;
+  const addChildDecision = addChildModuleDecision(module);
+  const moveDecision = moveModuleDecision(module);
+  const deleteDecision = deleteModuleDecision(module);
+  const canMoveUp = Boolean(
+    onReorder && module.kind !== "unclassified" && sortOrderSwapUpdates(module, "up", modules)
+  );
+  const canMoveDown = Boolean(
+    onReorder && module.kind !== "unclassified" && sortOrderSwapUpdates(module, "down", modules)
+  );
+  const hasMore = canAdmin;
 
   const updateMenuPosition = () => {
     const trigger = triggerRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
     const menuWidth = 160;
+    const menuHeight = onReorder ? 184 : 112;
     const gutter = 8;
     const left = Math.min(
       Math.max(gutter, rect.right - menuWidth),
       window.innerWidth - menuWidth - gutter
     );
-    const top = Math.min(rect.bottom + 4, window.innerHeight - gutter);
+    const top =
+      rect.bottom + 4 + menuHeight <= window.innerHeight - gutter
+        ? rect.bottom + 4
+        : Math.max(gutter, rect.top - menuHeight - 4);
     setMenuPosition({ top, left });
   };
 
@@ -122,6 +137,20 @@ export function ModuleAttributionRowActions({
     setMenuOpen(false);
   };
 
+  const disabledItem = (label: string, reason: string, ariaLabel: string, danger = false) => (
+    <button
+      type="button"
+      className={`dropdown-item${danger ? " dropdown-item--danger" : ""}`}
+      role="menuitem"
+      disabled
+      aria-disabled="true"
+      aria-label={ariaLabel}
+      title={reason}
+    >
+      {label}
+    </button>
+  );
+
   const menu =
     menuOpen && menuPosition
       ? createPortal(
@@ -131,7 +160,33 @@ export function ModuleAttributionRowActions({
             role="menu"
             style={{ top: menuPosition.top, left: menuPosition.left }}
           >
-            {showAddChild ? (
+            {onReorder ? (
+              <>
+                {canMoveUp ? (
+                  <button
+                    type="button"
+                    className="dropdown-item"
+                    role="menuitem"
+                    aria-label={`上移 ${module.name}`}
+                    onClick={() => runMenuAction(() => onReorder("up"))}
+                  >
+                    上移
+                  </button>
+                ) : disabledItem("上移", "已在同级最前。", `上移 ${module.name}`)}
+                {canMoveDown ? (
+                  <button
+                    type="button"
+                    className="dropdown-item"
+                    role="menuitem"
+                    aria-label={`下移 ${module.name}`}
+                    onClick={() => runMenuAction(() => onReorder("down"))}
+                  >
+                    下移
+                  </button>
+                ) : disabledItem("下移", "已在同级最后。", `下移 ${module.name}`)}
+              </>
+            ) : null}
+            {addChildDecision.allowed ? (
               <button
                 type="button"
                 className="dropdown-item"
@@ -141,8 +196,8 @@ export function ModuleAttributionRowActions({
               >
                 添加子模块
               </button>
-            ) : null}
-            {showMove ? (
+            ) : disabledItem("添加子模块", addChildDecision.reason, `添加子模块到 ${module.name}`)}
+            {moveDecision.allowed ? (
               <button
                 type="button"
                 className="dropdown-item"
@@ -152,8 +207,8 @@ export function ModuleAttributionRowActions({
               >
                 移动
               </button>
-            ) : null}
-            {showDelete ? (
+            ) : disabledItem("移动", moveDecision.reason, `移动模块 ${module.name}`)}
+            {deleteDecision.allowed ? (
               <button
                 type="button"
                 className="dropdown-item dropdown-item--danger"
@@ -163,7 +218,12 @@ export function ModuleAttributionRowActions({
               >
                 {module.kind === "driver-group" ? "解散" : "删除"}
               </button>
-            ) : null}
+            ) : disabledItem(
+              module.kind === "driver-group" ? "解散" : "删除",
+              deleteDecision.reason,
+              `${deleteActionLabel(module)} ${module.name}`,
+              true
+            )}
           </div>,
           document.body
         )

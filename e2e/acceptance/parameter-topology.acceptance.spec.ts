@@ -490,9 +490,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
     await dismissXiaozeHint(page);
-    const specLibrary = page.getByRole("region", { name: "参数库" });
+    const specLibrary = page.getByRole("region", { name: "参数定义库" });
     await expect(specLibrary).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("searchbox", { name: "搜索规格" }).fill("gpio_int");
+    await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("gpio_int");
     await expect(specLibrary.getByRole("cell", { name: "gpio_int" }).first()).toBeVisible({
       timeout: 20_000
     });
@@ -501,8 +501,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect
       .poll(async () => gpioRows.count(), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(2);
-    await gpioRows.first().getByRole("button", { name: /查看 gpio_int/ }).click();
-    await expect(page.getByRole("region", { name: "规格详情" })).toBeVisible({ timeout: 15_000 });
+    await gpioRows.first().getByRole("button", { name: /编辑 gpio_int/ }).click();
+    await expect(page.getByRole("dialog", { name: /参数定义详情/ })).toBeVisible({ timeout: 15_000 });
 
     await recordOperationEvidence({
       operationId: "PARAM-SPEC-GOVERN-001",
@@ -627,9 +627,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // Same-compatible sibling nodes keep independent specs/bindings (sc8562 vs mt5788 gpio_int).
     expect(scBinding!.driverModule).not.toBe(mtBinding!.driverModule);
 
-    // Module-first navigator has no device leaves (groupByDevice off); provisional buckets are
-    //「未分类 · <driver>」, not instance paths like sc8562@6E.
-    const sc8562TreeItem = workspace.getByRole("treeitem", { name: /未分类 · sc8562/ });
+    // ADR-0010: taxonomy tree has no provisional「未分类 · {driver}」buckets. Workbench uses
+    // groupByDevice (module → device leaf). Expand ancestors, then scope via sc8562@6E device.
+    const expandTreeitemIfCollapsed = async (name: RegExp) => {
+      const item = workspace.getByRole("treeitem", { name }).first();
+      if (!(await item.isVisible().catch(() => false))) {
+        return;
+      }
+      if ((await item.getAttribute("aria-expanded")) === "false") {
+        await item.getByRole("button", { name: /展开/ }).click({ timeout: 10_000 });
+      }
+    };
+    await expandTreeitemIfCollapsed(/未分类/);
+    await expandTreeitemIfCollapsed(/(?<!@)sc8562(?!@)/);
+    const sc8562TreeItem = workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first();
     await expect(sc8562TreeItem).toBeVisible({ timeout: 20_000 });
     await sc8562TreeItem.click({ timeout: 20_000 });
     const scopedSc8562Row = bindingRowById(workspace, scBinding!.id);
@@ -869,7 +880,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect((await nebulaCurrentResponse).status()).toBe(200);
     await expect(editWorkspace).toHaveAttribute("data-project-id", "nebula");
     await expect(editWorkspace).toHaveAttribute("data-revision-id", nebulaTopology.revisionId);
-    await expect(page.getByRole("region", { name: "绑定变更提交" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "参数修改提交" })).toHaveCount(0);
     await expect(page.getByText(/尚未生成语义配置修订/)).toHaveCount(0);
 
     const auroraCurrentResponse = page.waitForResponse((response) =>
@@ -903,8 +914,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
     expect(openCrBefore).toBe(0);
 
-    const submissionPanel = page.getByRole("region", { name: "绑定变更提交" });
-    await expect(submissionPanel).toBeVisible();
+    const submissionPanel = page.getByRole("region", { name: "参数修改提交" });
+    await expect(submissionPanel).toBeVisible({ timeout: 20_000 });
     const hardwareAssignee = submissionPanel.getByLabel("硬件 MDE");
     const softwareCommitterAssignee = submissionPanel.getByLabel("软件 MDE");
     const softwareUserAssignee = submissionPanel.getByLabel("软件开发");
@@ -991,7 +1002,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(submitBody.item.status).toBe("hardware_review");
     expect(submitBody.item.items[0]?.candidateConfigRevisionId).toBe(draftBody.item.candidateRevisionId);
     await expect(submissionPanel.getByText(/已提交正式审核/)).toBeVisible();
-    await submissionPanel.getByRole("button", { name: "查看审核队列" }).click();
+    await submissionPanel.getByRole("button", { name: "查看变更审阅" }).click();
 
     const advanceReviewInUi = async (
       role: "hardware-committer" | "software-committer" | "software-user",
@@ -2071,35 +2082,38 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         "left sibling node"
       );
 
-      await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
+      await signInBrowserAsRole(
+        page,
+        "admin",
+        `${disposableRuntime.frontendUrl}/parameter-admin/identity-mapping`
+      );
       await dismissXiaozeHint(page);
 
-      const governance = page.getByRole("region", { name: "身份映射治理" });
+      const governance = page.getByRole("region", { name: "节点对应确认" });
       await expect(governance).toBeVisible({ timeout: 30_000 });
-      const review = page.getByRole("region", { name: "映射审核" });
+      const review = page.getByRole("region", { name: "节点对应审核" });
       await expect(review).toBeVisible({ timeout: 30_000 });
-      await expect(review.getByLabel("映射证据")).toBeVisible();
-      await review.getByRole("combobox", { name: "选择映射候选" }).selectOption(leftCandidate.logicalNodeId);
-      await review.getByLabel("映射确认原因").fill(`${descriptionPrefix} admin UI resolve ${runSuffix}`);
-      await review.getByRole("button", { name: "确认映射" }).click();
+      await expect(review.getByLabel("对应依据")).toBeVisible();
+      await review.getByRole("combobox", { name: "选择对应节点" }).selectOption(leftCandidate.logicalNodeId);
+      await review.getByLabel("确认原因").fill(`${descriptionPrefix} admin UI resolve ${runSuffix}`);
+      await review.getByRole("button", { name: "确认对应" }).click();
 
-      await expect(page.getByRole("status", { name: "治理审计" })).toContainText(/identity-mapping-resolved/, {
-        timeout: 30_000
-      });
-
-      const resolvedDb = await withPgClient(async (client) => {
-        const result = await client.query<{ status: string }>(
-          `select status from identity_mapping_tasks where id = $1`,
-          [openMapTask.id]
-        );
-        return {
-          table: "identity_mapping_tasks",
-          predicate: `id=${openMapTask.id}`,
-          observed: result.rows[0] ? `status=${result.rows[0].status}` : "missing",
-          rowCount: result.rowCount ?? result.rows.length
-        };
-      });
-      expect(resolvedDb.observed).toContain("resolved");
+      let resolvedDbStatus = "missing";
+      await expect
+        .poll(
+          async () => {
+            resolvedDbStatus = await withPgClient(async (client) => {
+              const result = await client.query<{ status: string }>(
+                `select status from identity_mapping_tasks where id = $1`,
+                [openMapTask.id]
+              );
+              return result.rows[0]?.status ?? "missing";
+            });
+            return resolvedDbStatus;
+          },
+          { timeout: 30_000 }
+        )
+        .toBe("resolved");
 
       const auditResponse = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
         headers: adminHeaders()
@@ -2131,7 +2145,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
             responseSummary: `openTask=${openMapTask.id}`
           })
         ],
-        db: [resolvedDb],
+        db: [
+          {
+            table: "identity_mapping_tasks",
+            predicate: `id=${openMapTask.id}`,
+            observed: `status=${resolvedDbStatus}`,
+            rowCount: 1
+          }
+        ],
         audit: [
           {
             id: mappingAuditItem?.id,

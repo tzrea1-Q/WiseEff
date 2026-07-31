@@ -3,6 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParameterSpecLibrary } from "./ParameterSpecLibrary";
 import type { ParameterSpecLibraryRow } from "./ParameterSpecLibrary";
+import {
+  filterParameterSpecLibrary,
+  formatSpecPrimaryLabel,
+  isSpecSelectableForReview,
+} from "./ParameterSpecLibrary";
 import { SpecReviewQueue } from "./SpecReviewQueue";
 import type { SpecReviewTaskView } from "./SpecReviewQueue";
 
@@ -44,6 +49,13 @@ const gpioIntMt5788: ParameterSpecLibraryRow = {
   usageCount: 1
 };
 
+const gpioIntDeprecated: ParameterSpecLibraryRow = {
+  ...gpioIntSc8562,
+  id: "spec-deprecated-gpio-int",
+  propertyKey: "gpio_int_legacy",
+  reviewState: "deprecated",
+};
+
 const pathLikeLegacy: ParameterSpecLibraryRow = {
   id: "spec-status",
   organizationId: "org-chargelab",
@@ -62,6 +74,25 @@ const pathLikeLegacy: ParameterSpecLibraryRow = {
 };
 
 describe("ParameterSpecLibrary", () => {
+  it("places create-spec as a primary button in the library heading", () => {
+    const onCreateSpec = vi.fn();
+    render(
+      <ParameterSpecLibrary
+        specs={[gpioIntSc8562]}
+        onSelectSpec={vi.fn()}
+        onCreateSpec={onCreateSpec}
+      />
+    );
+
+    const library = screen.getByRole("region", { name: "参数定义库" });
+    const create = within(library).getByRole("button", { name: "新建定义" });
+    expect(create).toHaveClass("button", "primary");
+    expect(create.closest(".param-admin-library-heading-actions")).toBeTruthy();
+    expect(create.closest(".parameters-table-filters")).toBeNull();
+    fireEvent.click(create);
+    expect(onCreateSpec).toHaveBeenCalledTimes(1);
+  });
+
   it("renders semantic columns without path identity or recommended/default labels", () => {
     render(
       <ParameterSpecLibrary
@@ -73,10 +104,11 @@ describe("ParameterSpecLibrary", () => {
     const library = screen.getByRole("region", { name: "参数定义库" });
     const table = within(library).getByRole("table");
 
-    for (const header of ["参数名", "归属模块", "值类型", "审核状态", "操作"]) {
+    for (const header of ["参数定义", "驱动模块", "值类型", "审核状态", "操作"]) {
       expect(within(table).getByRole("columnheader", { name: new RegExp(header) })).toBeInTheDocument();
     }
-    expect(within(table).queryByRole("columnheader", { name: /^驱动模块$/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: /^参数名$/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: /^归属模块$/ })).not.toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: /compatible/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选compatible" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "筛选归属模块" })).toBeInTheDocument();
@@ -89,14 +121,23 @@ describe("ParameterSpecLibrary", () => {
     const nameCells = within(table).getAllByRole("cell", { name: /gpio_int/ });
     expect(nameCells.length).toBe(2);
     for (const cell of nameCells) {
+      expect(cell.textContent).toMatch(/gpio_int/);
       expect(cell.textContent).not.toMatch(/amba|i2c@|FDF5E000/);
     }
 
+    expect(within(table).getAllByText("gpio_int")).toHaveLength(2);
     expect(within(table).getByText("充电策略")).toBeInTheDocument();
     expect(within(table).getByText("mt5788（未实测）")).toBeInTheDocument();
     expect(within(table).queryByText("（预测）")).not.toBeInTheDocument();
     expect(within(table).queryByText("vendor,sc8562")).not.toBeInTheDocument();
     expect(within(table).getAllByText("phandle-list").length).toBeGreaterThan(0);
+
+    // Hierarchy lives in 驱动模块, not concatenated into 参数定义.
+    const definitionCells = within(table).getAllByRole("cell", { name: /^gpio_int$/ });
+    expect(definitionCells.length).toBe(2);
+    for (const cell of definitionCells) {
+      expect(cell.textContent).toBe("gpio_int");
+    }
 
     expect(library.textContent).not.toMatch(/推荐值|默认值/);
   });
@@ -116,8 +157,52 @@ describe("ParameterSpecLibrary", () => {
     const rows = within(library).getAllByRole("row");
     expect(rows.some((row) => row.textContent?.includes("充电策略") && row.textContent?.includes("gpio_int"))).toBe(true);
     expect(rows.some((row) => row.textContent?.includes("mt5788（未实测）") && row.textContent?.includes("gpio_int"))).toBe(true);
+    expect(rows.some((row) => row.textContent?.includes("mt5788") && row.textContent?.includes("gpio_int"))).toBe(true);
     expect(within(library).queryByText("status")).not.toBeInTheDocument();
+    // Structural keys (status) are excluded from the library scope.
+    expect(within(library).getByText(/2 \/ 2 项/)).toBeInTheDocument();
+  });
+
+  it("hides deprecated specs by default and allows explicit lifecycle filter", async () => {
+    const user = userEvent.setup();
+    render(
+      <ParameterSpecLibrary
+        specs={[gpioIntSc8562, gpioIntMt5788, gpioIntDeprecated]}
+        onSelectSpec={vi.fn()}
+      />
+    );
+
+    const library = screen.getByRole("region", { name: "参数定义库" });
     expect(within(library).getByText(/2 \/ 3 项/)).toBeInTheDocument();
+    expect(within(library).queryByText(formatSpecPrimaryLabel(gpioIntDeprecated))).not.toBeInTheDocument();
+    expect(within(library).queryByText("gpio_int_legacy")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "筛选审核状态" }));
+    await user.click(screen.getByRole("checkbox", { name: "deprecated" }));
+    expect(within(library).getByText(formatSpecPrimaryLabel(gpioIntDeprecated))).toBeInTheDocument();
+  });
+
+  it("exposes review selection helpers for active and org drafts only", () => {
+    expect(isSpecSelectableForReview(gpioIntSc8562)).toBe(true);
+    expect(isSpecSelectableForReview(gpioIntMt5788)).toBe(true);
+    expect(isSpecSelectableForReview(gpioIntDeprecated)).toBe(false);
+    expect(
+      isSpecSelectableForReview({
+        ...gpioIntMt5788,
+        organizationId: null,
+      })
+    ).toBe(false);
+    expect(
+      filterParameterSpecLibrary([gpioIntSc8562, gpioIntDeprecated], {
+        q: "",
+        driverModules: [],
+        compatibles: [],
+        businessCategories: [],
+        schemaSources: [],
+        lifecycles: [],
+        moduleNames: [],
+      })
+    ).toEqual([gpioIntSc8562]);
   });
 
   it("filters by attribution module and lifecycle via ColumnFilter multi-select", async () => {
@@ -171,6 +256,7 @@ describe("ParameterSpecLibrary", () => {
       .filter((row) => row.querySelector("td"));
     expect(pageTwoRows).toHaveLength(5);
     expect(within(library).getByText("prop_050")).toBeInTheDocument();
+    expect(within(library).getAllByText("充电策略").length).toBeGreaterThan(0);
   });
 
   it("lets the operator switch page size among typical values", () => {
@@ -231,8 +317,8 @@ describe("ParameterSpecLibrary", () => {
       />
     );
 
-    const detail = screen.getByRole("dialog", { name: /参数定义详情 gpio_int/ });
-    expect(within(detail).queryByLabelText("驱动模块")).not.toBeInTheDocument();
+    const detail = screen.getByRole("dialog", { name: /参数定义详情.*gpio_int/ });
+    expect(within(detail).getByLabelText("驱动模块")).toHaveValue("sc8562");
     expect(within(detail).queryByLabelText("compatible")).not.toBeInTheDocument();
     expect(within(detail).getByLabelText("所属模块")).toHaveValue(
       "Power / Direct Charging / direct_charge_comp"
@@ -249,6 +335,58 @@ describe("ParameterSpecLibrary", () => {
 
     fireEvent.click(within(detail).getByRole("button", { name: "取消" }));
     expect(onCloseSpec).toHaveBeenCalled();
+  });
+
+  it("deprecates and restores definitions through reason-gated lifecycle dialogs", () => {
+    const onDeprecateSpec = vi.fn();
+    const onRestoreSpec = vi.fn();
+    const { rerender } = render(
+      <ParameterSpecLibrary
+        specs={[gpioIntSc8562]}
+        detail={{ ...gpioIntSc8562, usage: [], schemaHistory: [] }}
+        selectedSpecId={gpioIntSc8562.id}
+        onSelectSpec={vi.fn()}
+        onDeprecateSpec={onDeprecateSpec}
+        onRestoreSpec={onRestoreSpec}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "废弃" }));
+    const deprecateDialog = screen.getByRole("dialog", { name: "废弃参数定义" });
+    fireEvent.change(within(deprecateDialog).getByLabelText("废弃原因"), {
+      target: { value: "由新版定义替代" }
+    });
+    fireEvent.click(within(deprecateDialog).getByRole("button", { name: "确认废弃" }));
+    expect(onDeprecateSpec).toHaveBeenCalledWith({
+      specId: gpioIntSc8562.id,
+      reason: "由新版定义替代"
+    });
+
+    rerender(
+      <ParameterSpecLibrary
+        specs={[{ ...gpioIntSc8562, reviewState: "deprecated" }]}
+        detail={{
+          ...gpioIntSc8562,
+          reviewState: "deprecated",
+          usage: [],
+          schemaHistory: []
+        }}
+        selectedSpecId={gpioIntSc8562.id}
+        onSelectSpec={vi.fn()}
+        onDeprecateSpec={onDeprecateSpec}
+        onRestoreSpec={onRestoreSpec}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "恢复" }));
+    const restoreDialog = screen.getByRole("dialog", { name: "恢复参数定义" });
+    fireEvent.change(within(restoreDialog).getByLabelText("恢复原因"), {
+      target: { value: "重新投入使用" }
+    });
+    fireEvent.click(within(restoreDialog).getByRole("button", { name: "确认恢复" }));
+    expect(onRestoreSpec).toHaveBeenCalledWith({
+      specId: gpioIntSc8562.id,
+      reason: "重新投入使用"
+    });
   });
 });
 

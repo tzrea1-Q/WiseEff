@@ -194,6 +194,7 @@ export function allowedCreateKindsForParent(
   if (parentKind == null) return ["business"];
   if (parentKind === "business") return ["business", "driver-group", "node-type"];
   if (parentKind === "driver-group") return ["node-type"];
+  if (parentKind === "node-type") return ["node-type"];
   return [];
 }
 
@@ -216,7 +217,10 @@ export function parentCandidatesForCreateKind(
   }
   if (kind === "node-type") {
     return modules
-      .filter((module) => module.kind === "business" || module.kind === "driver-group")
+      .filter(
+        (module) =>
+          module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type"
+      )
       .map((module) => ({ id: module.id, name: module.name }));
   }
   return [];
@@ -229,7 +233,10 @@ export function parentFlatNodesForCreateKind(
 ): FlatModuleNode[] {
   if (kind === "node-type") {
     return toAttributionFlatNodes(
-      modules.filter((module) => module.kind === "business" || module.kind === "driver-group")
+      modules.filter(
+        (module) =>
+          module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type"
+      )
     );
   }
   return toBusinessFlatNodes(modules);
@@ -247,7 +254,14 @@ export function isValidCreateParent(
   if (kind === "driver-group") {
     return Boolean(parentId) && modules.some((module) => module.id === parentId && module.kind === "business");
   }
-  return Boolean(parentId) && modules.some((module) => module.id === parentId && (module.kind === "business" || module.kind === "driver-group"));
+  return (
+    Boolean(parentId) &&
+    modules.some(
+      (module) =>
+        module.id === parentId &&
+        (module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type")
+    )
+  );
 }
 
 /**
@@ -302,6 +316,32 @@ export function isUnclassifiedRoot(module: ParameterModule): boolean {
   return module.kind === "unclassified" && module.parentId === null;
 }
 
+export type ModuleActionDecision = { allowed: true } | { allowed: false; reason: string };
+
+export function addChildModuleDecision(module: ParameterModule): ModuleActionDecision {
+  if (module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type") {
+    return { allowed: true };
+  }
+  return { allowed: false, reason: "未分类根不可添加子模块。" };
+}
+
+export function moveModuleDecision(module: ParameterModule): ModuleActionDecision {
+  if (module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type") {
+    return { allowed: true };
+  }
+  return { allowed: false, reason: "未分类根不可移动。" };
+}
+
+export function deleteModuleDecision(module: ParameterModule): ModuleActionDecision {
+  if (module.kind === "node-type") {
+    return { allowed: false, reason: "节点类型不可删除，请改挂到其它父级或联系运维。" };
+  }
+  if (module.kind === "unclassified") {
+    return { allowed: false, reason: "未分类根不可删除。" };
+  }
+  return { allowed: true };
+}
+
 export function canRenameModule(module: ParameterModule): boolean {
   return !isUnclassifiedRoot(module);
 }
@@ -317,11 +357,39 @@ export function canViewUnclassifiedRoot(module: ParameterModule): boolean {
 }
 
 export function canAddChildModule(module: ParameterModule): boolean {
-  return module.kind === "business" || module.kind === "driver-group";
+  return addChildModuleDecision(module).allowed;
 }
 
 export function canMoveModule(module: ParameterModule): boolean {
-  return module.kind === "business" || module.kind === "driver-group" || module.kind === "node-type";
+  return moveModuleDecision(module).allowed;
+}
+
+export function siblingModules(
+  modules: readonly ParameterModule[],
+  module: ParameterModule
+): ParameterModule[] {
+  return modules
+    .filter((candidate) => candidate.parentId === module.parentId)
+    .sort(
+      (left, right) =>
+        left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, "zh-CN")
+    );
+}
+
+export function sortOrderSwapUpdates(
+  module: ParameterModule,
+  direction: "up" | "down",
+  modules: readonly ParameterModule[]
+): Array<{ id: string; sortOrder: number }> | null {
+  const siblings = siblingModules(modules, module);
+  const index = siblings.findIndex((candidate) => candidate.id === module.id);
+  const swapIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || swapIndex < 0 || swapIndex >= siblings.length) return null;
+  const peer = siblings[swapIndex]!;
+  return [
+    { id: module.id, sortOrder: peer.sortOrder },
+    { id: peer.id, sortOrder: module.sortOrder }
+  ];
 }
 
 export function siblingModuleNames(
@@ -375,9 +443,7 @@ export function aggregateSubtreeParameterCounts(
 }
 
 export function canDeleteModule(module: ParameterModule): boolean {
-  if (module.kind === "node-type") return false;
-  if (module.kind === "unclassified") return false;
-  return module.kind === "business" || module.kind === "driver-group";
+  return deleteModuleDecision(module).allowed;
 }
 
 export function canEditImportance(module: ParameterModule): boolean {

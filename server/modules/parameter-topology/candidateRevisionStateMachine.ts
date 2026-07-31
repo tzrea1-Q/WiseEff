@@ -49,7 +49,7 @@ export type CandidateGateResult =
   | {
       ok: false;
       reason: CandidateGateFailureReason;
-      /** Diagnosable status to retain — never draft / validated / published. */
+      /** Diagnosable status to retain — never draft / validated. */
       keepStatus: CandidateFailureKeepStatus;
     };
 
@@ -85,7 +85,6 @@ export const CANDIDATE_TRANSITION_TABLE: readonly TransitionRow[] = [
   { from: "invalid", to: "resolved", event: "promote-after-gates", allowed: false },
   { from: "draft", to: "validated", event: "release-validate", allowed: true },
   { from: "validated", to: "draft", event: "promote-after-gates", allowed: false },
-  { from: "published", to: "draft", event: "promote-after-gates", allowed: false },
 ] as const;
 
 export function isCandidateTransitionAllowed(

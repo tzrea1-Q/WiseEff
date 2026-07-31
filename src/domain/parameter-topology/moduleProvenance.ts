@@ -2,13 +2,6 @@
  * Presentation helpers for parameter governance queues and libraries.
  */
 
-const STRUCTURAL_PROPERTY_PATTERN = /^#/;
-
-export function isStructuralPropertyKey(propertyKey: string | null | undefined): boolean {
-  if (!propertyKey) return false;
-  return STRUCTURAL_PROPERTY_PATTERN.test(propertyKey.trim());
-}
-
 export function paginateItems<T>(items: readonly T[], page: number, pageSize: number): {
   pageItems: T[];
   page: number;

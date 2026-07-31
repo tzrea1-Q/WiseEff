@@ -6,6 +6,12 @@ import { ModuleCreateDialog, type ModuleCreateSaveDraft } from "@/components/adm
 import { ModuleEditDialog, type ModuleEditSavePatch } from "@/components/admin/ModuleEditDialog";
 import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
 import type {
+  DriverNature,
+  InstanceCardinality,
+  OrganizationDriverSchema,
+  OrganizationDriverSchemaDeprecationImpact
+} from "@/application/ports/ParameterModuleRegistryRepository";
+import type {
   ModuleImportance,
   ParameterModule,
   ParameterModuleMapping
@@ -27,6 +33,7 @@ import {
   isUnclassifiedRoot,
   mappingsForModule,
   siblingModuleNames,
+  sortOrderSwapUpdates,
   type AttributionFilters,
   type DriverCoverageSummary
 } from "./moduleAttributionTreeUtils";
@@ -43,6 +50,10 @@ export type ModuleAttributionTreeProps = {
     string,
     readonly { compatible: string; covered: boolean; pattern?: string }[]
   >;
+  driverRegistrationByModuleId?: ReadonlyMap<
+    string,
+    { driverNature: DriverNature | null; instanceCardinality: InstanceCardinality | null }
+  >;
   /** When set, 「查看」on the unclassified root prefers opening the queue. */
   hasUnclassifiedQueue?: boolean;
   onOpenUnclassifiedQueue?: () => void;
@@ -54,6 +65,7 @@ export type ModuleAttributionTreeProps = {
       scope?: string;
       importance?: ModuleImportance;
       kind?: "business" | "node-type";
+      sortOrder?: number;
     }
   ) => void | Promise<void>;
   onMove: (moduleId: string, parentId: string | null) => void | Promise<void>;
@@ -74,6 +86,14 @@ export type ModuleAttributionTreeProps = {
     sourceKey?: string | null;
   }) => void | Promise<void>;
   onAuthorOverlaySchema?: (compatible: string) => void;
+  organizationDriverSchemas?: readonly OrganizationDriverSchema[];
+  onPreviewOverlayDeprecation?: (
+    schemaId: string
+  ) => Promise<OrganizationDriverSchemaDeprecationImpact>;
+  onDeprecateOverlaySchema?: (
+    schemaId: string,
+    input: { confirmCoverageLoss?: boolean }
+  ) => void | Promise<void>;
 };
 
 const KIND_FILTER_OPTIONS = (Object.keys(MODULE_KIND_LABEL) as Array<ParameterModule["kind"]>).map(
@@ -111,6 +131,7 @@ type RowProps = {
   onAddChild: (id: string) => void;
   onStartMove: (id: string) => void;
   onDelete: (id: string) => void;
+  onReorder: (id: string, direction: "up" | "down") => void;
 };
 
 function formatCoverageChip(summary: DriverCoverageSummary): {
@@ -161,7 +182,8 @@ function ModuleAttributionTreeRow({
   onEdit,
   onAddChild,
   onStartMove,
-  onDelete
+  onDelete,
+  onReorder
 }: RowProps) {
   const module = modulesById.get(node.id);
   if (!module) return null;
@@ -246,6 +268,7 @@ function ModuleAttributionTreeRow({
         {canAdmin || canViewUnclassifiedRoot(module) ? (
           <ModuleAttributionRowActions
             module={module}
+            modules={modules}
             busy={busy}
             canAdmin={canAdmin}
             onView={canViewUnclassifiedRoot(module) ? () => onView(module.id) : undefined}
@@ -253,6 +276,7 @@ function ModuleAttributionTreeRow({
             onAddChild={() => onAddChild(module.id)}
             onMove={() => onStartMove(module.id)}
             onDelete={() => onDelete(module.id)}
+            onReorder={(direction) => onReorder(module.id, direction)}
           />
         ) : (
           <span className="module-attribution-tree__actions is-spacer" aria-hidden="true" />
@@ -279,6 +303,7 @@ function ModuleAttributionTreeRow({
               onAddChild={onAddChild}
               onStartMove={onStartMove}
               onDelete={onDelete}
+              onReorder={onReorder}
             />
           ))}
         </ul>
@@ -297,6 +322,7 @@ export function ModuleAttributionTree({
   busy = false,
   driverCoverage,
   driverCoverageDetails,
+  driverRegistrationByModuleId,
   hasUnclassifiedQueue = false,
   onOpenUnclassifiedQueue,
   onUpdateModule,
@@ -305,7 +331,10 @@ export function ModuleAttributionTree({
   onRemoveMapping,
   onAddCompatibleMapping,
   onCreateModule,
-  onAuthorOverlaySchema
+  onAuthorOverlaySchema,
+  organizationDriverSchemas = [],
+  onPreviewOverlayDeprecation,
+  onDeprecateOverlaySchema
 }: ModuleAttributionTreeProps) {
   const [filters, setFilters] = useState<AttributionFilters>(DEFAULT_ATTRIBUTION_FILTERS);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() =>
@@ -347,6 +376,25 @@ export function ModuleAttributionTree({
   const editingCompatibleCoverages =
     editingModule?.kind === "driver-group"
       ? (driverCoverageDetails?.get(editingModule.id) ?? undefined)
+      : undefined;
+  const editingCompatibleValues = useMemo(() => {
+    if (!editingModule || editingModule.kind !== "driver-group") return new Set<string>();
+    return new Set(
+      mappingsForModule(mappings, editingModule.id)
+        .filter((mapping) => mapping.matchKind === "compatible")
+        .map((mapping) => mapping.matchValue)
+    );
+  }, [editingModule, mappings]);
+  const editingOverlaySchemas = useMemo(
+    () =>
+      organizationDriverSchemas.filter((schema) =>
+        editingCompatibleValues.has(schema.compatible)
+      ),
+    [editingCompatibleValues, organizationDriverSchemas]
+  );
+  const editingDriverRegistration =
+    editingModule?.kind === "driver-group"
+      ? driverRegistrationByModuleId?.get(editingModule.id)
       : undefined;
 
   const toggleExpanded = (moduleId: string) => {
@@ -400,6 +448,16 @@ export function ModuleAttributionTree({
     if (!moveModuleId) return;
     void onMove(moveModuleId, parentId);
     setMoveModuleId(null);
+  };
+
+  const handleReorder = (moduleId: string, direction: "up" | "down") => {
+    const module = modulesById.get(moduleId);
+    if (!module) return;
+    const updates = sortOrderSwapUpdates(module, direction, modules);
+    if (!updates) return;
+    void Promise.all(
+      updates.map((update) => onUpdateModule(update.id, { sortOrder: update.sortOrder }))
+    );
   };
 
   return (
@@ -496,6 +554,7 @@ export function ModuleAttributionTree({
               onAddChild={(id) => setCreateParentId(id)}
               onStartMove={(id) => setMoveModuleId(id)}
               onDelete={(id) => void onDelete(id)}
+              onReorder={handleReorder}
             />
           ))}
         </ul>
@@ -529,8 +588,13 @@ export function ModuleAttributionTree({
               : undefined
           }
           compatibleCoverages={editingCompatibleCoverages}
+          overlaySchemas={editingOverlaySchemas}
+          onPreviewOverlayDeprecation={onPreviewOverlayDeprecation}
+          onDeprecateOverlaySchema={onDeprecateOverlaySchema}
           onCancel={() => setEditingModuleId(null)}
           onSave={handleSaveEdit}
+          driverNature={editingDriverRegistration?.driverNature ?? null}
+          instanceCardinality={editingDriverRegistration?.instanceCardinality ?? null}
           onRemoveCompatibleMapping={
             editingModule.kind === "driver-group"
               ? (mappingId) => void onRemoveMapping(mappingId)

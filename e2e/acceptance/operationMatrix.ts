@@ -764,9 +764,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameters",
     roles: ["Admin"],
     action: "Structural properties do not create spec review tasks or block candidate promotion or migration finalize.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["PARAM-ENABLE-GATE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["api", "db"]
   },
   {
@@ -776,9 +777,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameters",
     roles: ["Admin", "Hardware User"],
     action: "Browse topology enablement badges and workbench no-effect notices for disabled nodes.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["PARAM-ENABLE-VISIBLE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
@@ -788,9 +790,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameters",
     roles: ["Software User", "Admin"],
     action: "Disable a node with reason and confirmation; submit enablement draft in the same round as a binding edit.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["PARAM-ENABLE-TOGGLE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api", "db", "audit"]
   },
   {
@@ -800,9 +803,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameters",
     roles: ["Admin"],
     action: "Non-standard status values stay read-only until an explicit acknowledgement override.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["PARAM-ENABLE-GUARD-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui"]
   },
   {
@@ -813,9 +817,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Browse the unclassified compatible queue with parameter/project counts; dismiss and restore entries with audit.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["MOD-ATTR-QUEUE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api", "audit"]
   },
   {
@@ -826,9 +831,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Classify one compatible with impact preview, confirm scoped apply, and collect emptied unclassified buckets.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["MOD-ATTR-CLASSIFY-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api", "audit"]
   },
   {
@@ -838,9 +844,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin",
     roles: ["Admin"],
     action: "Bulk-select compatibles and file them into one business category in a single confirm.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["MOD-ATTR-BULK-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api", "audit"]
   },
   {
@@ -851,9 +858,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Exercise kind-scoped tree actions: no delete on node-type or driver-group nodes, move allowed on node-type, rename adopts auto modules, adopted names survive re-ingest.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["MOD-ATTR-TREE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
@@ -864,9 +872,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Reclassify a node-type module to business via the edit dialog; verify kind badge/filters and that re-ingest keeps the curated kind.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["MOD-ATTR-RECLASSIFY-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
@@ -877,9 +886,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Set importance on a business category and confirm inheritance on driver groups/node-type units and the workbench filter.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["MOD-ATTR-IMPORTANCE-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
@@ -890,9 +900,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Register a driver before any upload and confirm it appears as a not-yet-observed curated driver group with a parse-coverage chip in the tree.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["DRV-REG-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
@@ -903,9 +914,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Claim an observed-but-unregistered driver from the queue or module tree and confirm origin becomes curated.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["DRV-REG-002"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
@@ -916,9 +928,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Upload a DTS and confirm the one-shot ingest summary reports matched registered drivers and new unregistered compatibles.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["DRV-REG-003"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
@@ -929,9 +942,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Author and activate an organization overlay schema from an uncovered driver group; confirm the coverage chip shows organization coverage.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["DRV-SCHEMA-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
@@ -942,9 +956,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Upload a DTS claimed only by an active organization overlay and confirm typed bindings without unmatched review tasks for defined properties.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["DRV-SCHEMA-002"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
@@ -955,9 +970,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Attempt to activate an overlay for a compatible already covered by a pinned schema and confirm a clear rejection.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["DRV-SCHEMA-003"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
@@ -968,9 +984,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Activate an overlay for an already-uploaded device and confirm provisional specs upgrade in place without re-upload.",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["DRV-SCHEMA-004"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
@@ -981,9 +998,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     roles: ["Admin"],
     action:
       "Create empty business or driver-group modules from the attribution tree with parent-kind rules and required driver-group compatibles; confirm empty curated nodes show not-yet-observed (node-type is ingest-only).",
-    coverage: "automated",
+    coverage: "future",
     acceptanceIds: ["MOD-ATTR-CREATE-KIND-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason: "Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.",
     assertions: ["ui", "api"]
   },
   {
@@ -996,6 +1014,8 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "manual",
     acceptanceIds: ["PLAT-ROLE-001"],
     specFiles: [],
+    deferralReason:
+      "Platform console sidebar entry remains a manual pilot check; route denial/access is covered by PERM-MATRIX-001.",
     assertions: ["ui"]
   },
   {
@@ -1008,6 +1028,8 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "manual",
     acceptanceIds: ["DRV-PROMOTE-005"],
     specFiles: [],
+    deferralReason:
+      "Compatible promote/revert blast-radius confirmation still needs a dedicated platform-console Playwright path.",
     assertions: ["ui", "api"]
   }
 ];

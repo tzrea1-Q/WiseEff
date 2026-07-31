@@ -11,6 +11,7 @@ import type {
   CreateOrganizationDriverSchemaInput,
   DriverRegistryEntry,
   MappingApplyPreview,
+  OrganizationDriverSchema,
   ParameterModuleRegistryRepository,
   RegisterOrClaimDriverInput,
   RecomputeBindingModulesResult
@@ -68,6 +69,7 @@ export function ParameterModuleMappingPanel({
   const [registry, setRegistry] = useState<ParameterModuleRegistry>(EMPTY_PARAMETER_MODULE_REGISTRY);
   const [driverRegistry, setDriverRegistry] = useState<DriverRegistryEntry[]>([]);
   const [observedCompatibles, setObservedCompatibles] = useState<UnmappedCompatibleHint[]>([]);
+  const [dismissedCompatibles, setDismissedCompatibles] = useState<UnmappedCompatibleHint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -88,6 +90,9 @@ export function ParameterModuleMappingPanel({
   const [overlayPickerOpen, setOverlayPickerOpen] = useState(false);
   const [overlayLibrarySpecs, setOverlayLibrarySpecs] = useState<ParameterSpecLibraryRow[]>([]);
   const [overlayLibraryLoading, setOverlayLibraryLoading] = useState(false);
+  const [organizationDriverSchemas, setOrganizationDriverSchemas] = useState<
+    OrganizationDriverSchema[]
+  >([]);
 
   const refreshDiscoveryHints = async () => {
     const hints = await client.getDiscoveryHints();
@@ -101,19 +106,49 @@ export function ParameterModuleMappingPanel({
         })
       )
     );
+    setDismissedCompatibles(
+      hints.dismissedCompatibles.map((hint) =>
+        toUnmappedCompatibleHint({
+          compatible: hint.compatible,
+          bindingCount: hint.bindingCount,
+          projectCount: hint.projectCount,
+          suggestedGroupName: hint.suggestedGroupName
+        })
+      )
+    );
+  };
+
+  const refreshOrganizationDriverSchemas = async () => {
+    setOrganizationDriverSchemas(await (client.listOrganizationDriverSchemas?.() ?? Promise.resolve([])));
   };
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([client.getRegistry(), client.getDiscoveryHints(), client.listDriverRegistry()])
-      .then(([nextRegistry, hints, driverList]) => {
+    Promise.all([
+      client.getRegistry(),
+      client.getDiscoveryHints(),
+      client.listDriverRegistry(),
+      client.listOrganizationDriverSchemas?.() ?? Promise.resolve([])
+    ])
+      .then(([nextRegistry, hints, driverList, schemas]) => {
         if (cancelled) return;
         setRegistry(nextRegistry);
         setDriverRegistry(driverList.items);
+        setOrganizationDriverSchemas(schemas);
         setObservedCompatibles(
           hints.compatibles.map((hint) =>
+            toUnmappedCompatibleHint({
+              compatible: hint.compatible,
+              bindingCount: hint.bindingCount,
+              projectCount: hint.projectCount,
+              suggestedGroupName: hint.suggestedGroupName
+            })
+          )
+        );
+        setDismissedCompatibles(
+          hints.dismissedCompatibles.map((hint) =>
             toUnmappedCompatibleHint({
               compatible: hint.compatible,
               bindingCount: hint.bindingCount,
@@ -128,7 +163,9 @@ export function ParameterModuleMappingPanel({
         setError(loadError instanceof Error ? loadError.message : "无法加载模块注册表。");
         setRegistry(EMPTY_PARAMETER_MODULE_REGISTRY);
         setDriverRegistry([]);
+        setOrganizationDriverSchemas([]);
         setObservedCompatibles([]);
+        setDismissedCompatibles([]);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -143,7 +180,7 @@ export function ParameterModuleMappingPanel({
     [observedCompatibles, registry.mappings]
   );
   const queueCount = unmappedCompatibles.length;
-  const hasQueue = queueCount > 0;
+  const hasQueue = queueCount > 0 || dismissedCompatibles.length > 0;
   const requestedSubView: ParameterAdminModulesSubView =
     parseParameterAdminModulesSubView(pathname) ?? "tree";
   const activeSubView: ParameterAdminModulesSubView =
@@ -184,6 +221,22 @@ export function ParameterModuleMappingPanel({
           promoted: coverage.covered ? coverage.promoted : undefined
         }))
       );
+    }
+    return map;
+  }, [driverRegistry]);
+  const driverRegistrationByModuleId = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        driverNature: DriverRegistryEntry["driverNature"];
+        instanceCardinality: DriverRegistryEntry["instanceCardinality"];
+      }
+    >();
+    for (const entry of driverRegistry) {
+      map.set(entry.moduleId, {
+        driverNature: entry.driverNature ?? null,
+        instanceCardinality: entry.instanceCardinality ?? null,
+      });
     }
     return map;
   }, [driverRegistry]);
@@ -233,8 +286,51 @@ export function ParameterModuleMappingPanel({
         )
       );
       setSelectedCompatibles((current) => current.filter((value) => value !== compatible));
+      setDismissedCompatibles(
+        hints.dismissedCompatibles.map((hint) =>
+          toUnmappedCompatibleHint({
+            compatible: hint.compatible,
+            bindingCount: hint.bindingCount,
+            projectCount: hint.projectCount,
+            suggestedGroupName: hint.suggestedGroupName
+          })
+        )
+      );
     } catch (dismissError) {
       setError(dismissError instanceof Error ? dismissError.message : "忽略 compatible 失败。");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restoreDismissedCompatible = async (compatible: string) => {
+    if (!canAdmin) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const hints = await client.restoreDismissedCompatible(compatible);
+      setObservedCompatibles(
+        hints.compatibles.map((hint) =>
+          toUnmappedCompatibleHint({
+            compatible: hint.compatible,
+            bindingCount: hint.bindingCount,
+            projectCount: hint.projectCount,
+            suggestedGroupName: hint.suggestedGroupName
+          })
+        )
+      );
+      setDismissedCompatibles(
+        hints.dismissedCompatibles.map((hint) =>
+          toUnmappedCompatibleHint({
+            compatible: hint.compatible,
+            bindingCount: hint.bindingCount,
+            projectCount: hint.projectCount,
+            suggestedGroupName: hint.suggestedGroupName
+          })
+        )
+      );
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : "恢复 compatible 失败。");
     } finally {
       setBusy(false);
     }
@@ -368,6 +464,7 @@ export function ParameterModuleMappingPanel({
       const created = await client.createOrganizationDriverSchema(input);
       const result = await client.activateOrganizationDriverSchema(created.id);
       await refreshDriverRegistry();
+      await refreshOrganizationDriverSchemas();
       setOverlaySchemaDraft(null);
       setOverlayLinkedSpecs([]);
       setOverlayPickerOpen(false);
@@ -525,6 +622,7 @@ export function ParameterModuleMappingPanel({
         {activeSubView === "queue" ? (
             <UnclassifiedCompatibleQueue
               hints={unmappedCompatibles}
+              dismissedHints={dismissedCompatibles}
               canAdmin={canAdmin}
               busy={busy}
               selectedCompatibles={selectedCompatibles}
@@ -538,6 +636,7 @@ export function ParameterModuleMappingPanel({
                 setRegisterDialogOpen(true);
               }}
               onDismiss={(compatible) => void dismissCompatible(compatible)}
+              onRestore={(compatible) => void restoreDismissedCompatible(compatible)}
             />
         ) : (
           <ModuleAttributionTree
@@ -545,11 +644,38 @@ export function ParameterModuleMappingPanel({
             mappings={registry.mappings}
             driverCoverage={driverCoverage}
             driverCoverageDetails={driverCoverageDetails}
+            driverRegistrationByModuleId={driverRegistrationByModuleId}
             canAdmin={canAdmin}
             busy={busy}
             hasUnclassifiedQueue={hasQueue}
             onOpenUnclassifiedQueue={() => goToSubView("queue")}
             onAuthorOverlaySchema={(compatible) => openOverlaySchemaDraft({ compatible })}
+            organizationDriverSchemas={organizationDriverSchemas}
+            onPreviewOverlayDeprecation={(schemaId) =>
+              client.previewOrganizationDriverSchemaDeprecation?.(schemaId) ??
+              Promise.reject(new Error("当前环境未接线覆盖废弃预览。"))
+            }
+            onDeprecateOverlaySchema={async (schemaId, input) => {
+              setBusy(true);
+              setError(null);
+              try {
+                if (!client.deprecateOrganizationDriverSchema) {
+                  throw new Error("当前环境未接线覆盖废弃能力。");
+                }
+                await client.deprecateOrganizationDriverSchema(schemaId, input);
+                await Promise.all([
+                  refreshOrganizationDriverSchemas(),
+                  refreshDriverRegistry()
+                ]);
+                setRecomputeNotice("已废弃");
+              } catch (deprecateError) {
+                setError(
+                  deprecateError instanceof Error ? deprecateError.message : "废弃解析失败。"
+                );
+              } finally {
+                setBusy(false);
+              }
+            }}
             onUpdateModule={async (moduleId, patch) => {
               setBusy(true);
               setError(null);
