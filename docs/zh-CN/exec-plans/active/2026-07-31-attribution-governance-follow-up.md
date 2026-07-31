@@ -1,7 +1,7 @@
 # 归属治理 follow-up（版本切换、身份映射 UI、诚实收口）
 
 > 英文：[English](../../../exec-plans/active/2026-07-31-attribution-governance-follow-up.md)  
-> 状态：规划中  
+> 状态：PR7–PR9 已在分支落地；待讨论项仍开放  
 > 续作：[`2026-07-30-attribution-subjects-and-versioned-specs.md`](../../../exec-plans/active/2026-07-30-attribution-subjects-and-versioned-specs.md)（PR0–PR6 已落地）  
 > 待讨论：[`docs/zh-CN/design-docs/2026-07-31-attribution-governance-deferred-questions.md`](../../design-docs/2026-07-31-attribution-governance-deferred-questions.md)
 

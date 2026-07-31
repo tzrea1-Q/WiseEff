@@ -1,6 +1,6 @@
 # Attribution governance follow-up (cutover, identity UI, honesty)
 
-> Status: active planning  
+> Status: PR7–PR9 implemented on branch; deferred questions remain open  
 > Branch: continue on `feat/attribution-subject-versioned-specs` (or a fresh `feat/attribution-governance-follow-up` from `main` after that branch merges)  
 > Date: 2026-07-31  
 > Continues: [`2026-07-30-attribution-subjects-and-versioned-specs.md`](2026-07-30-attribution-subjects-and-versioned-specs.md) (PR0–PR6 landed)  
