@@ -18,7 +18,7 @@ Implementation agents commit on the feature branch only; parent opens/merges Git
 | Batch | Commit theme | Status |
 | --- | --- | --- |
 | PR7 | Spec version cutover finalize HTTP + Admin confirm flow | done |
-| PR8 | Identity-mapping UI for `new_identity` / singleton guidance | planned |
+| PR8 | Identity-mapping UI for `new_identity` / singleton guidance | done |
 | PR9 | Honesty & UX polish (toast, deprecate defaults, overlay-only claim, subject-primary display, nature/cardinality read-only) | planned |
 
 ## Locked decisions (this grilling)
@@ -53,8 +53,8 @@ Carried from ADR-0013/0014 and the parent plan unless noted:
 
 ### PR8 — Identity mapping UI
 
-- [ ] `IdentityMappingReview` (or successor): `taskKind` badges; `new_identity` + `confirmAllCandidates`; singleton guidance (no false resolve).
-- [ ] Port/client types for existing resolve decisions.
+- [x] `IdentityMappingReview` (or successor): `taskKind` badges; `new_identity` + `confirmAllCandidates`; singleton guidance (no false resolve).
+- [x] Port/client types for existing resolve decisions.
 - [ ] Browser check `/parameter-admin/identity-mapping` at 1440/768/390.
 
 ### PR9 — Honesty & polish

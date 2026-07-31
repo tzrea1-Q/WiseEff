@@ -228,6 +228,7 @@ describe("createHttpParameterTopologyRepository", () => {
               configRevisionId: "rev-1",
               previousLogicalNodeId: null,
               candidateLogicalNodeIds: ["ln-a", "ln-b"],
+              taskKind: "identity-ambiguity",
               status: "open",
               reason: null,
               createdAt: "2026-07-16T00:00:00.000Z",
@@ -244,6 +245,7 @@ describe("createHttpParameterTopologyRepository", () => {
 
     const tasks = await repository.listMappingTasks("project-1");
     expect(tasks[0]?.id).toBe("map-1");
+    expect(tasks[0]?.taskKind).toBe("identity-ambiguity");
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/v2/identity-mapping-tasks?projectId=project-1");
 
     await repository.resolveMapping("map-1", {

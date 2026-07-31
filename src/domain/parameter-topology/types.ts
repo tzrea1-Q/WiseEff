@@ -241,7 +241,9 @@ export type TopologyTree =
       nodes: EffectiveTopologyNode[];
     };
 
-export type IdentityMappingTaskStatus = "open" | "resolved" | "dismissed";
+export type IdentityMappingTaskKind = "identity-ambiguity" | "singleton-cardinality";
+
+export type IdentityMappingTaskStatus = "open" | "resolved" | "dismissed" | "new_identity";
 
 export type IdentityMappingCandidate = {
   logicalNodeId: string;
@@ -269,6 +271,7 @@ export type IdentityMappingTask = {
   previousLogicalNodeId: string | null;
   candidateLogicalNodeIds: string[];
   evidence?: IdentityMappingEvidence | Record<string, unknown> | null;
+  taskKind?: IdentityMappingTaskKind;
   status: IdentityMappingTaskStatus;
   reason?: string | null;
   createdAt: string;
@@ -319,9 +322,10 @@ export type ResolveSpecReviewInput = {
 };
 
 export type ResolveMappingInput = {
-  decision: "resolved" | "dismissed";
+  decision: "resolved" | "dismissed" | "new-identity";
   selectedLogicalNodeId?: string;
   reason: string;
+  confirmAllCandidates?: boolean;
 };
 
 export type ValidationRunStatus = "passed" | "failed" | "running";

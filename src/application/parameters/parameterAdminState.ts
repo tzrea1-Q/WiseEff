@@ -17,6 +17,7 @@ export type ParameterAdminAuditHint = {
     | "import-batch-applied"
     | "identity-mapping-resolved"
     | "identity-mapping-dismissed"
+    | "identity-mapping-new-identity"
     | "project-updated"
     | "project-deleted"
     | "baseline-compared"
@@ -144,6 +145,8 @@ export function auditKindLabel(kind: ParameterAdminAuditHint["kind"]): string {
       return "节点对应确认";
     case "identity-mapping-dismissed":
       return "节点对应驳回";
+    case "identity-mapping-new-identity":
+      return "声明新身份";
     case "project-updated":
       return "更新项目";
     case "project-deleted":

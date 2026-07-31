@@ -19823,6 +19823,40 @@ body.xiaoze-popup-resize-active {
   align-items: center;
 }
 
+.identity-mapping-review__task-kind {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.identity-mapping-review__task-kind--identity-ambiguity {
+  color: #7c2d12;
+  background: #ffedd5;
+}
+
+.identity-mapping-review__task-kind--singleton-cardinality {
+  color: #7f1d1d;
+  background: #fee2e2;
+}
+
+.identity-mapping-review__singleton-guidance {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--outline, #d6dde8) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-muted, #f4f4f5) 90%, transparent);
+}
+
+.identity-mapping-review__confirm-all {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .identity-mapping-review__form {
   display: grid;
   gap: 8px;

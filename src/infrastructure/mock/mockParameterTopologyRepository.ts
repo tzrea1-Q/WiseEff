@@ -742,7 +742,7 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       if (!task) {
         throw new Error(`Identity mapping task not found: ${taskId}`);
       }
-      task.status = input.decision;
+      task.status = input.decision === "new-identity" ? "new_identity" : input.decision;
       task.reason = input.reason;
       task.resolvedAt = MOCK_NOW;
     },

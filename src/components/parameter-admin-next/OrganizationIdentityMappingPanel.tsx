@@ -45,11 +45,15 @@ export function OrganizationIdentityMappingPanel() {
             kind:
               input.decision === "dismissed"
                 ? "identity-mapping-dismissed"
-                : "identity-mapping-resolved",
+                : input.decision === "new-identity"
+                  ? "identity-mapping-new-identity"
+                  : "identity-mapping-resolved",
             summary:
               input.decision === "dismissed"
                 ? `已驳回节点对应任务 ${taskId}`
-                : `已确认节点对应 ${input.selectedLogicalNodeId ?? taskId}`,
+                : input.decision === "new-identity"
+                  ? `已声明新身份（任务 ${taskId}）`
+                  : `已确认节点对应 ${input.selectedLogicalNodeId ?? taskId}`,
             reason: input.reason,
             recordedAt: new Date().toISOString()
           }

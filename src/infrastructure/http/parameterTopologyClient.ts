@@ -217,6 +217,7 @@ function mappingTaskFromDto(dto: IdentityMappingTask): IdentityMappingTask {
     previousLogicalNodeId: dto.previousLogicalNodeId,
     candidateLogicalNodeIds: dto.candidateLogicalNodeIds,
     ...(dto.evidence != null ? { evidence: dto.evidence } : {}),
+    ...(dto.taskKind != null ? { taskKind: dto.taskKind } : {}),
     status: dto.status,
     reason: dto.reason,
     createdAt: dto.createdAt,
