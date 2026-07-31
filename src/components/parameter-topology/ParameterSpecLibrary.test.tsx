@@ -74,6 +74,25 @@ const pathLikeLegacy: ParameterSpecLibraryRow = {
 };
 
 describe("ParameterSpecLibrary", () => {
+  it("places create-spec as a primary button in the library heading", () => {
+    const onCreateSpec = vi.fn();
+    render(
+      <ParameterSpecLibrary
+        specs={[gpioIntSc8562]}
+        onSelectSpec={vi.fn()}
+        onCreateSpec={onCreateSpec}
+      />
+    );
+
+    const library = screen.getByRole("region", { name: "参数定义库" });
+    const create = within(library).getByRole("button", { name: "新建定义" });
+    expect(create).toHaveClass("button", "primary");
+    expect(create.closest(".param-admin-library-heading-actions")).toBeTruthy();
+    expect(create.closest(".parameters-table-filters")).toBeNull();
+    fireEvent.click(create);
+    expect(onCreateSpec).toHaveBeenCalledTimes(1);
+  });
+
   it("renders semantic columns without path identity or recommended/default labels", () => {
     render(
       <ParameterSpecLibrary

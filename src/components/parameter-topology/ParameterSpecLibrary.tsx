@@ -400,6 +400,18 @@ export function ParameterSpecLibrary({
               <h2>{PARAMETER_ADMIN_UI.specLibrary}</h2>
               <p>{PARAMETER_ADMIN_UI.specLibraryBlurb}</p>
             </div>
+            {onCreateSpec ? (
+              <div className="param-admin-library-heading-actions">
+                <button
+                  type="button"
+                  className="button primary"
+                  disabled={loading}
+                  onClick={onCreateSpec}
+                >
+                  新建定义
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -416,11 +428,6 @@ export function ParameterSpecLibrary({
             />
           </label>
           <div className="parameters-table-filters param-admin-library-filters">
-            {onCreateSpec ? (
-              <button type="button" className="primary-button" disabled={loading} onClick={onCreateSpec}>
-                新建定义
-              </button>
-            ) : null}
             {filtersActive ? (
               <button aria-label="清除筛选" className="clear-filters" type="button" onClick={clearFilters}>
                 清除筛选
