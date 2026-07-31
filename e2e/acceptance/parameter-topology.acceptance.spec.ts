@@ -490,9 +490,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
     await dismissXiaozeHint(page);
-    const specLibrary = page.getByRole("region", { name: "参数库" });
+    const specLibrary = page.getByRole("region", { name: "参数定义库" });
     await expect(specLibrary).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("searchbox", { name: "搜索规格" }).fill("gpio_int");
+    await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("gpio_int");
     await expect(specLibrary.getByRole("cell", { name: "gpio_int" }).first()).toBeVisible({
       timeout: 20_000
     });
@@ -501,8 +501,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect
       .poll(async () => gpioRows.count(), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(2);
-    await gpioRows.first().getByRole("button", { name: /查看 gpio_int/ }).click();
-    await expect(page.getByRole("region", { name: "规格详情" })).toBeVisible({ timeout: 15_000 });
+    await gpioRows.first().getByRole("button", { name: /编辑 gpio_int/ }).click();
+    await expect(page.getByRole("dialog", { name: /参数定义详情/ })).toBeVisible({ timeout: 15_000 });
 
     await recordOperationEvidence({
       operationId: "PARAM-SPEC-GOVERN-001",
@@ -2071,17 +2071,21 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         "left sibling node"
       );
 
-      await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
+      await signInBrowserAsRole(
+        page,
+        "admin",
+        `${disposableRuntime.frontendUrl}/parameter-admin/identity-mapping`
+      );
       await dismissXiaozeHint(page);
 
-      const governance = page.getByRole("region", { name: "身份映射治理" });
+      const governance = page.getByRole("region", { name: "节点对应确认" });
       await expect(governance).toBeVisible({ timeout: 30_000 });
-      const review = page.getByRole("region", { name: "映射审核" });
+      const review = page.getByRole("region", { name: "节点对应审核" });
       await expect(review).toBeVisible({ timeout: 30_000 });
-      await expect(review.getByLabel("映射证据")).toBeVisible();
-      await review.getByRole("combobox", { name: "选择映射候选" }).selectOption(leftCandidate.logicalNodeId);
-      await review.getByLabel("映射确认原因").fill(`${descriptionPrefix} admin UI resolve ${runSuffix}`);
-      await review.getByRole("button", { name: "确认映射" }).click();
+      await expect(review.getByLabel("对应依据")).toBeVisible();
+      await review.getByRole("combobox", { name: "选择对应节点" }).selectOption(leftCandidate.logicalNodeId);
+      await review.getByLabel("确认原因").fill(`${descriptionPrefix} admin UI resolve ${runSuffix}`);
+      await review.getByRole("button", { name: "确认对应" }).click();
 
       await expect
         .poll(
