@@ -5,7 +5,8 @@ import { createParameterTopologyRuntime } from "@/application/parameters/paramet
 import { createMockParameterTopologyRepository } from "@/infrastructure/mock/mockParameterTopologyRepository";
 import {
   mapParameterSpecToLibraryRow,
-  ParameterSpecLibrary
+  ParameterSpecLibrary,
+  formatSpecPrimaryLabel,
 } from "@/components/parameter-topology/ParameterSpecLibrary";
 
 describe("mock runtime semantic parameter model (seam)", () => {
@@ -49,8 +50,12 @@ describe("mock runtime semantic parameter model (seam)", () => {
 
     const library = screen.getByRole("region", { name: "参数定义库" });
     expect(library).toBeInTheDocument();
-    expect(screen.getAllByText("gpio_int").length).toBeGreaterThan(0);
-    expect(screen.getByRole("columnheader", { name: "归属模块" })).toBeInTheDocument();
+    expect(screen.getAllByText(/gpio_int/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("columnheader", { name: "参数定义" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "驱动模块" })).toBeInTheDocument();
+    if (rows[0]) {
+      expect(screen.getByText(formatSpecPrimaryLabel(rows[0]))).toBeInTheDocument();
+    }
     // Spec identity is not rendered as a path-derived flat key
     expect(screen.queryByText(/amba\/i2c/)).not.toBeInTheDocument();
   });

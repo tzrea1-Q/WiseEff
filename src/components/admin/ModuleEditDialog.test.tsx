@@ -6,6 +6,28 @@ import { ModuleEditDialog } from "./ModuleEditDialog";
 afterEach(() => cleanup());
 
 describe("ModuleEditDialog", () => {
+  it("shows read-only driver nature and instance cardinality for driver groups", () => {
+    render(
+      <ModuleEditDialog
+        module={{
+          name: "SC8562",
+          description: "",
+          scope: "",
+          kind: "driver-group",
+        }}
+        existingNames={[]}
+        driverNature="physical-device"
+        instanceCardinality="singleton-per-project"
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    expect(within(dialog).getByLabelText("驱动性质")).toHaveValue("物理设备");
+    expect(within(dialog).getByLabelText("实例基数")).toHaveValue("单例/项目");
+  });
+
   it("shows overlay coverage label and author button for uncovered compatible rows", () => {
     const onAuthorOverlaySchema = vi.fn();
     render(

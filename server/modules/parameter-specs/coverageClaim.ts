@@ -4,7 +4,7 @@ import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 
 export type CoverageClaimInput = {
-  kind: "overlay-property" | "pinned-schema-property";
+  kind: "overlay-property";
   overlayId?: string;
   overlayPropertyId?: string;
   upsertOverlay?: {

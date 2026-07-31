@@ -3,6 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParameterSpecLibrary } from "./ParameterSpecLibrary";
 import type { ParameterSpecLibraryRow } from "./ParameterSpecLibrary";
+import {
+  filterParameterSpecLibrary,
+  formatSpecPrimaryLabel,
+  isSpecSelectableForReview,
+} from "./ParameterSpecLibrary";
 import { SpecReviewQueue } from "./SpecReviewQueue";
 import type { SpecReviewTaskView } from "./SpecReviewQueue";
 
@@ -44,6 +49,13 @@ const gpioIntMt5788: ParameterSpecLibraryRow = {
   usageCount: 1
 };
 
+const gpioIntDeprecated: ParameterSpecLibraryRow = {
+  ...gpioIntSc8562,
+  id: "spec-deprecated-gpio-int",
+  propertyKey: "gpio_int_legacy",
+  reviewState: "deprecated",
+};
+
 const pathLikeLegacy: ParameterSpecLibraryRow = {
   id: "spec-status",
   organizationId: "org-chargelab",
@@ -73,10 +85,11 @@ describe("ParameterSpecLibrary", () => {
     const library = screen.getByRole("region", { name: "参数定义库" });
     const table = within(library).getByRole("table");
 
-    for (const header of ["参数名", "归属模块", "值类型", "审核状态", "操作"]) {
+    for (const header of ["参数定义", "驱动模块", "值类型", "审核状态", "操作"]) {
       expect(within(table).getByRole("columnheader", { name: new RegExp(header) })).toBeInTheDocument();
     }
-    expect(within(table).queryByRole("columnheader", { name: /^驱动模块$/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: /^参数名$/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: /^归属模块$/ })).not.toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: /compatible/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选compatible" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "筛选归属模块" })).toBeInTheDocument();
@@ -89,11 +102,14 @@ describe("ParameterSpecLibrary", () => {
     const nameCells = within(table).getAllByRole("cell", { name: /gpio_int/ });
     expect(nameCells.length).toBe(2);
     for (const cell of nameCells) {
+      expect(cell.textContent).toMatch(/gpio_int/);
       expect(cell.textContent).not.toMatch(/amba|i2c@|FDF5E000/);
     }
 
-    expect(within(table).getByText("充电策略")).toBeInTheDocument();
-    expect(within(table).getByText("mt5788（未实测）")).toBeInTheDocument();
+    expect(within(table).getByText(formatSpecPrimaryLabel(gpioIntSc8562))).toBeInTheDocument();
+    expect(within(table).getByText("sc8562")).toBeInTheDocument();
+    expect(within(table).getByText(formatSpecPrimaryLabel(gpioIntMt5788))).toBeInTheDocument();
+    expect(within(table).getByText("mt5788")).toBeInTheDocument();
     expect(within(table).queryByText("（预测）")).not.toBeInTheDocument();
     expect(within(table).queryByText("vendor,sc8562")).not.toBeInTheDocument();
     expect(within(table).getAllByText("phandle-list").length).toBeGreaterThan(0);
@@ -115,10 +131,53 @@ describe("ParameterSpecLibrary", () => {
     const library = screen.getByRole("region", { name: "参数定义库" });
     const rows = within(library).getAllByRole("row");
     expect(rows.some((row) => row.textContent?.includes("充电策略") && row.textContent?.includes("gpio_int"))).toBe(true);
-    expect(rows.some((row) => row.textContent?.includes("mt5788（未实测）") && row.textContent?.includes("gpio_int"))).toBe(true);
+    expect(rows.some((row) => row.textContent?.includes("未归类") && row.textContent?.includes("gpio_int"))).toBe(true);
+    expect(rows.some((row) => row.textContent?.includes("mt5788") && row.textContent?.includes("gpio_int"))).toBe(true);
     expect(within(library).queryByText("status")).not.toBeInTheDocument();
     // Structural keys (status) are excluded from the library scope.
     expect(within(library).getByText(/2 \/ 2 项/)).toBeInTheDocument();
+  });
+
+  it("hides deprecated specs by default and allows explicit lifecycle filter", async () => {
+    const user = userEvent.setup();
+    render(
+      <ParameterSpecLibrary
+        specs={[gpioIntSc8562, gpioIntMt5788, gpioIntDeprecated]}
+        onSelectSpec={vi.fn()}
+      />
+    );
+
+    const library = screen.getByRole("region", { name: "参数定义库" });
+    expect(within(library).getByText(/2 \/ 3 项/)).toBeInTheDocument();
+    expect(within(library).queryByText(formatSpecPrimaryLabel(gpioIntDeprecated))).not.toBeInTheDocument();
+    expect(within(library).queryByText("gpio_int_legacy")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "筛选审核状态" }));
+    await user.click(screen.getByRole("checkbox", { name: "deprecated" }));
+    expect(within(library).getByText(formatSpecPrimaryLabel(gpioIntDeprecated))).toBeInTheDocument();
+  });
+
+  it("exposes review selection helpers for active and org drafts only", () => {
+    expect(isSpecSelectableForReview(gpioIntSc8562)).toBe(true);
+    expect(isSpecSelectableForReview(gpioIntMt5788)).toBe(true);
+    expect(isSpecSelectableForReview(gpioIntDeprecated)).toBe(false);
+    expect(
+      isSpecSelectableForReview({
+        ...gpioIntMt5788,
+        organizationId: null,
+      })
+    ).toBe(false);
+    expect(
+      filterParameterSpecLibrary([gpioIntSc8562, gpioIntDeprecated], {
+        q: "",
+        driverModules: [],
+        compatibles: [],
+        businessCategories: [],
+        schemaSources: [],
+        lifecycles: [],
+        moduleNames: [],
+      })
+    ).toEqual([gpioIntSc8562]);
   });
 
   it("filters by attribution module and lifecycle via ColumnFilter multi-select", async () => {
@@ -162,8 +221,8 @@ describe("ParameterSpecLibrary", () => {
       .getAllByRole("row")
       .filter((row) => row.querySelector("td"));
     expect(pageOneRows).toHaveLength(50);
-    expect(within(library).getByText("prop_000")).toBeInTheDocument();
-    expect(within(library).queryByText("prop_050")).not.toBeInTheDocument();
+    expect(within(library).getByText(/充电策略 · prop_000/)).toBeInTheDocument();
+    expect(within(library).queryByText(/充电策略 · prop_050/)).not.toBeInTheDocument();
 
     fireEvent.click(within(library).getByRole("button", { name: "下一页" }));
     expect(within(library).getByText(/55 \/ 55 项 · 第 2 \/ 2 页/)).toBeInTheDocument();
@@ -171,7 +230,7 @@ describe("ParameterSpecLibrary", () => {
       .getAllByRole("row")
       .filter((row) => row.querySelector("td"));
     expect(pageTwoRows).toHaveLength(5);
-    expect(within(library).getByText("prop_050")).toBeInTheDocument();
+    expect(within(library).getByText(/充电策略 · prop_050/)).toBeInTheDocument();
   });
 
   it("lets the operator switch page size among typical values", () => {
@@ -191,8 +250,8 @@ describe("ParameterSpecLibrary", () => {
       .getAllByRole("row")
       .filter((row) => row.querySelector("td"));
     expect(rows).toHaveLength(20);
-    expect(within(library).getByText("prop_000")).toBeInTheDocument();
-    expect(within(library).queryByText("prop_020")).not.toBeInTheDocument();
+    expect(within(library).getByText(/充电策略 · prop_000/)).toBeInTheDocument();
+    expect(within(library).queryByText(/充电策略 · prop_020/)).not.toBeInTheDocument();
 
     fireEvent.change(within(library).getByLabelText("每页条数"), { target: { value: "100" } });
     expect(within(library).getByText(/55 \/ 55 项 · 第 1 \/ 1 页/)).toBeInTheDocument();
@@ -232,8 +291,8 @@ describe("ParameterSpecLibrary", () => {
       />
     );
 
-    const detail = screen.getByRole("dialog", { name: /参数定义详情 gpio_int/ });
-    expect(within(detail).queryByLabelText("驱动模块")).not.toBeInTheDocument();
+    const detail = screen.getByRole("dialog", { name: /参数定义详情.*gpio_int/ });
+    expect(within(detail).getByLabelText("驱动模块")).toHaveValue("sc8562");
     expect(within(detail).queryByLabelText("compatible")).not.toBeInTheDocument();
     expect(within(detail).getByLabelText("所属模块")).toHaveValue(
       "Power / Direct Charging / direct_charge_comp"

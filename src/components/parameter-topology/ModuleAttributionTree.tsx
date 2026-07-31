@@ -6,6 +6,8 @@ import { ModuleCreateDialog, type ModuleCreateSaveDraft } from "@/components/adm
 import { ModuleEditDialog, type ModuleEditSavePatch } from "@/components/admin/ModuleEditDialog";
 import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
 import type {
+  DriverNature,
+  InstanceCardinality,
   OrganizationDriverSchema,
   OrganizationDriverSchemaDeprecationImpact
 } from "@/application/ports/ParameterModuleRegistryRepository";
@@ -47,6 +49,10 @@ export type ModuleAttributionTreeProps = {
   driverCoverageDetails?: ReadonlyMap<
     string,
     readonly { compatible: string; covered: boolean; pattern?: string }[]
+  >;
+  driverRegistrationByModuleId?: ReadonlyMap<
+    string,
+    { driverNature: DriverNature | null; instanceCardinality: InstanceCardinality | null }
   >;
   /** When set, 「查看」on the unclassified root prefers opening the queue. */
   hasUnclassifiedQueue?: boolean;
@@ -316,6 +322,7 @@ export function ModuleAttributionTree({
   busy = false,
   driverCoverage,
   driverCoverageDetails,
+  driverRegistrationByModuleId,
   hasUnclassifiedQueue = false,
   onOpenUnclassifiedQueue,
   onUpdateModule,
@@ -385,6 +392,10 @@ export function ModuleAttributionTree({
       ),
     [editingCompatibleValues, organizationDriverSchemas]
   );
+  const editingDriverRegistration =
+    editingModule?.kind === "driver-group"
+      ? driverRegistrationByModuleId?.get(editingModule.id)
+      : undefined;
 
   const toggleExpanded = (moduleId: string) => {
     setExpandedIds((current) => {
@@ -582,6 +593,8 @@ export function ModuleAttributionTree({
           onDeprecateOverlaySchema={onDeprecateOverlaySchema}
           onCancel={() => setEditingModuleId(null)}
           onSave={handleSaveEdit}
+          driverNature={editingDriverRegistration?.driverNature ?? null}
+          instanceCardinality={editingDriverRegistration?.instanceCardinality ?? null}
           onRemoveCompatibleMapping={
             editingModule.kind === "driver-group"
               ? (mappingId) => void onRemoveMapping(mappingId)

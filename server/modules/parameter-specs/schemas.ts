@@ -163,7 +163,7 @@ export const activateParameterSpecBodySchema = z.object({
   reason: nonEmptyString,
   coverageClaim: z
     .object({
-      kind: z.enum(["overlay-property", "pinned-schema-property"]),
+      kind: z.literal("overlay-property"),
       overlayId: z.string().optional(),
       overlayPropertyId: z.string().optional(),
       upsertOverlay: z

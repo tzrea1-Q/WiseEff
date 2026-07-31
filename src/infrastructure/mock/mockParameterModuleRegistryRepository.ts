@@ -136,6 +136,8 @@ function createSeedStore(): Store {
         parameterCount: 12,
         observed: true,
         notYetObserved: false,
+        driverNature: "physical-device",
+        instanceCardinality: "multiple",
         parseCoverages: [
           {
             compatible: "vendor,sc8562",
@@ -363,6 +365,8 @@ export function createMockParameterModuleRegistryRepository(
         parameterCount: existing?.parameterCount ?? 0,
         observed: (existing?.parameterCount ?? 0) > 0,
         notYetObserved: (existing?.parameterCount ?? 0) === 0,
+        driverNature: existing?.driverNature ?? "physical-device",
+        instanceCardinality: existing?.instanceCardinality ?? "multiple",
         parseCoverages: compatibles.map((compatible) => ({
           compatible,
           coverage: { covered: false }

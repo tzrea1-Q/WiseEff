@@ -19,7 +19,7 @@ Implementation agents commit on the feature branch only; parent opens/merges Git
 | --- | --- | --- |
 | PR7 | Spec version cutover finalize HTTP + Admin confirm flow | done |
 | PR8 | Identity-mapping UI for `new_identity` / singleton guidance | done |
-| PR9 | Honesty & UX polish (toast, deprecate defaults, overlay-only claim, subject-primary display, nature/cardinality read-only) | planned |
+| PR9 | Honesty & UX polish (toast, deprecate defaults, overlay-only claim, subject-primary display, nature/cardinality read-only) | done |
 
 ## Locked decisions (this grilling)
 
@@ -59,11 +59,11 @@ Carried from ADR-0013/0014 and the parent plan unless noted:
 
 ### PR9 — Honesty & polish
 
-- [ ] Toast for governance success paths listed above.
-- [ ] Default library + review selection filters per ADR-0014.
-- [ ] Schema/UI/docs: overlay-only coverage claim.
-- [ ] Spec library/detail: subject-primary display.
-- [ ] Read-only `driverNature` / `instanceCardinality` on driver registry / module governance surfaces (API DTO exposure if missing).
+- [x] Toast for governance success paths listed above.
+- [x] Default library + review selection filters per ADR-0014.
+- [x] Schema/UI/docs: overlay-only coverage claim.
+- [x] Spec library/detail: subject-primary display.
+- [x] Read-only `driverNature` / `instanceCardinality` on driver registry / module governance surfaces (API DTO exposure if missing).
 
 ## Documentation Impact Matrix
 

@@ -43,6 +43,7 @@ import type { ModuleMatchKind, ModuleOrigin, ParameterModuleRegistryDto } from "
 import { getCachedOrganizationSchemaRegistry } from "../parameter-specs/schemaRegistryCache";
 import { listOrganizationDriverSchemas } from "../parameter-specs/driverSchemaOverlayRepository";
 import { lookupParseCoverage, type ParseCoverage } from "../parameter-specs/parseCoverage";
+import type { DriverNature, InstanceCardinality } from "./attributionSubjects";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -858,6 +859,8 @@ export type DriverRegistryEntry = {
   parameterCount: number;
   observed: boolean;
   notYetObserved: boolean;
+  driverNature: DriverNature | null;
+  instanceCardinality: InstanceCardinality | null;
   parseCoverages: Array<{ compatible: string; coverage: ParseCoverage }>;
 };
 
@@ -880,6 +883,31 @@ export async function listDriverRegistry(
       .filter((overlay) => Boolean(overlay.supersededBySchemaId))
       .map((overlay) => overlay.compatible.toLowerCase()),
   );
+  const registrationByModuleId = new Map<
+    string,
+    { driverNature: DriverNature; instanceCardinality: InstanceCardinality }
+  >();
+  const registrationRows = await db.query<{
+    module_id: string;
+    driver_nature: DriverNature;
+    instance_cardinality: InstanceCardinality;
+  }>(
+    `
+    select pm.id as module_id, dr.driver_nature, dr.instance_cardinality
+    from parameter_modules pm
+    inner join driver_registrations dr on dr.attribution_subject_id = pm.attribution_subject_id
+    where pm.organization_id = $1
+      and pm.kind = 'driver-group'
+      and pm.attribution_subject_id is not null
+    `,
+    [auth.organization.id],
+  );
+  for (const row of registrationRows.rows) {
+    registrationByModuleId.set(row.module_id, {
+      driverNature: row.driver_nature,
+      instanceCardinality: row.instance_cardinality,
+    });
+  }
   const byId = new Map(registry.modules.map((module) => [module.id, module]));
   const mappingsByModule = new Map<string, string[]>();
   for (const mapping of registry.mappings) {
@@ -902,6 +930,7 @@ export async function listDriverRegistry(
     }
     const parent = module.parentId ? byId.get(module.parentId) : null;
     const observed = module.parameterCount > 0;
+    const registration = registrationByModuleId.get(module.id);
     items.push({
       moduleId: module.id,
       name: module.name,
@@ -912,6 +941,8 @@ export async function listDriverRegistry(
       parameterCount: module.parameterCount,
       observed,
       notYetObserved: module.origin === "curated" && !observed,
+      driverNature: registration?.driverNature ?? null,
+      instanceCardinality: registration?.instanceCardinality ?? null,
       parseCoverages: compatibles.map((compatible) => {
         const coverage = lookupParseCoverage(compatible, schemaRegistry);
         if (

@@ -121,6 +121,37 @@ export function formatSpecAttributionLabel(spec: ParameterSpecLibraryRow): strin
   return "未归类";
 }
 
+/** Primary library/detail label: attribution subject + property key. */
+export function formatSpecPrimaryLabel(
+  spec: Pick<ParameterSpecLibraryRow, "propertyKey" | "attributionModules" | "driverModule">
+): string {
+  const subject =
+    spec.attributionModules.length > 0
+      ? spec.attributionModules
+          .map((module) =>
+            module.path && module.path.length > 0 ? module.path.join(" / ") : module.name
+          )
+          .join("、")
+      : "未归类";
+  return `${subject} · ${spec.propertyKey}`;
+}
+
+/** Secondary driver-module label for library scan (compat hint only). */
+export function formatSpecDriverModuleLabel(
+  spec: Pick<ParameterSpecLibraryRow, "driverModule">
+): string {
+  return spec.driverModule?.trim() || "—";
+}
+
+/** Review binding may pick active specs or org-owned activatable drafts — never deprecated. */
+export function isSpecSelectableForReview(
+  spec: Pick<ParameterSpecLibraryRow, "reviewState" | "organizationId">
+): boolean {
+  if (spec.reviewState === "deprecated") return false;
+  if (spec.reviewState === "active") return true;
+  return spec.reviewState === "draft" && spec.organizationId != null;
+}
+
 /** Small semantic mock for demos — property-key identity, not path names. */
 export const SEMANTIC_MOCK_PARAMETER_SPECS: ParameterSpecLibraryRow[] = [
   mapParameterSpecToLibraryRow({
@@ -221,6 +252,12 @@ export function filterParameterSpecLibrary(
     if (!matchesSelected(filters.compatibles, spec.compatible)) return false;
     if (!matchesSelected(filters.businessCategories, spec.businessCategory)) return false;
     if (!matchesSelected(filters.schemaSources, spec.schemaSource)) return false;
+    if (
+      filters.lifecycles.length === 0 &&
+      spec.reviewState === "deprecated"
+    ) {
+      return false;
+    }
     if (!matchesSelected(filters.lifecycles, spec.reviewState)) return false;
     if (
       filters.moduleNames.length > 0 &&
@@ -400,10 +437,9 @@ export function ParameterSpecLibrary({
             <thead>
               <tr>
                 <th scope="col">#</th>
-                <th scope="col">参数名</th>
                 <th scope="col">
                   <span className="param-admin-library-head-cell">
-                    <span>{PARAMETER_ADMIN_UI.specAttributionModule}</span>
+                    <span>参数定义</span>
                     <ColumnFilter
                       label={PARAMETER_ADMIN_UI.specAttributionModule}
                       groupLabel="归属模块筛选"
@@ -414,6 +450,7 @@ export function ParameterSpecLibrary({
                     />
                   </span>
                 </th>
+                <th scope="col">{PARAMETER_ADMIN_UI.specDriverModule}</th>
                 <th scope="col">值类型</th>
                 <th scope="col">
                   <span className="param-admin-library-head-cell">
@@ -456,11 +493,11 @@ export function ParameterSpecLibrary({
                   <td data-label="#">
                     {(pagination.page - 1) * pagination.pageSize + index + 1}
                   </td>
-                  <td data-label="参数名">
-                    <strong>{spec.propertyKey}</strong>
+                  <td data-label="参数定义">
+                    <strong>{formatSpecPrimaryLabel(spec)}</strong>
                   </td>
-                  <td data-label={PARAMETER_ADMIN_UI.specAttributionModule}>
-                    {formatSpecAttributionLabel(spec)}
+                  <td data-label={PARAMETER_ADMIN_UI.specDriverModule}>
+                    {formatSpecDriverModuleLabel(spec)}
                   </td>
                   <td data-label="值类型">{spec.valueType}</td>
                   <td data-label="审核状态">{formatParameterSpecLifecycle(spec.reviewState)}</td>

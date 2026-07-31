@@ -11,6 +11,7 @@ import {
   type SpecEditorDraft,
   type SpecEditorSavePayload
 } from "./ParameterSpecDetail";
+import { formatSpecPrimaryLabel } from "./ParameterSpecLibrary";
 
 export type ParameterSpecDetailDialogProps = {
   detail: ParameterSpecDetailView;
@@ -43,6 +44,7 @@ export function ParameterSpecDetailDialog({
   const editable = typeof onSave === "function";
   const isDraft = detail.reviewState === "draft" && detail.organizationId != null;
   const isDeprecated = detail.reviewState === "deprecated";
+  const primaryLabel = formatSpecPrimaryLabel(detail);
   const cutover = detail.cutover;
   const [draft, setDraft] = useState<SpecEditorDraft>(() => createSpecEditorDraft(detail));
   const [localError, setLocalError] = useState<string | null>(null);
@@ -117,7 +119,7 @@ export function ParameterSpecDetailDialog({
       className="modal-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label={`${PARAMETER_ADMIN_UI.specDetail} ${detail.propertyKey}`}
+      aria-label={`${PARAMETER_ADMIN_UI.specDetail} ${primaryLabel}`}
       onClick={pending ? undefined : onClose}
     >
       <div
@@ -127,7 +129,7 @@ export function ParameterSpecDetailDialog({
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">{editable ? PARAMETER_ADMIN_UI.specDetailEyebrowEditable : PARAMETER_ADMIN_UI.specDetailEyebrowReadonly}</span>
-            <h2 id="parameter-spec-detail-dialog-title">{detail.propertyKey}</h2>
+            <h2 id="parameter-spec-detail-dialog-title">{primaryLabel}</h2>
             <p>
               {editable
                 ? isDraft

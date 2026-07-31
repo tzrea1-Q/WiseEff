@@ -97,7 +97,7 @@ export type ActivateParameterSpecInput = {
   displayName?: string;
   description?: string;
   coverageClaim?: {
-    kind: "overlay-property" | "pinned-schema-property";
+    kind: "overlay-property";
     overlayId?: string;
     overlayPropertyId?: string;
     upsertOverlay?: {

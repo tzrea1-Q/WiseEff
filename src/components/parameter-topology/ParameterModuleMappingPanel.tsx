@@ -224,6 +224,22 @@ export function ParameterModuleMappingPanel({
     }
     return map;
   }, [driverRegistry]);
+  const driverRegistrationByModuleId = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        driverNature: DriverRegistryEntry["driverNature"];
+        instanceCardinality: DriverRegistryEntry["instanceCardinality"];
+      }
+    >();
+    for (const entry of driverRegistry) {
+      map.set(entry.moduleId, {
+        driverNature: entry.driverNature ?? null,
+        instanceCardinality: entry.instanceCardinality ?? null,
+      });
+    }
+    return map;
+  }, [driverRegistry]);
 
   useEffect(() => {
     if (!onNavigate) return;
@@ -628,6 +644,7 @@ export function ParameterModuleMappingPanel({
             mappings={registry.mappings}
             driverCoverage={driverCoverage}
             driverCoverageDetails={driverCoverageDetails}
+            driverRegistrationByModuleId={driverRegistrationByModuleId}
             canAdmin={canAdmin}
             busy={busy}
             hasUnclassifiedQueue={hasQueue}

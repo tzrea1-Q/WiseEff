@@ -1,6 +1,9 @@
 import type { ParameterSpecCutoverSummary } from "@/domain/parameter-topology/types";
 import type { ParameterSpecLibraryRow } from "./ParameterSpecLibrary";
-import { formatSpecAttributionLabel } from "./ParameterSpecLibrary";
+import {
+  formatSpecAttributionLabel,
+  formatSpecDriverModuleLabel,
+} from "./ParameterSpecLibrary";
 import { formatParameterSpecLifecycle } from "@/application/parameters/parameterAdminUiCopy";
 
 export type SpecUsageEntry = {
@@ -262,6 +265,13 @@ export function ParameterSpecDetail({ detail, draft, onDraftChange, editable }: 
           <legend>DTS 身份</legend>
           <div className="def-group-fields">
             <ReadOnlyField label="属性键" value={detail.propertyKey} mono />
+            {detail.driverModule?.trim() ? (
+              <ReadOnlyField
+                label="驱动模块"
+                value={formatSpecDriverModuleLabel(detail)}
+                mono
+              />
+            ) : null}
             {editable ? (
               <EditableField
                 label="展示名"

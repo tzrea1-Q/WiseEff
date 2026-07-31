@@ -20,6 +20,8 @@ afterEach(() => {
   window.history.replaceState(null, "", "/parameter-admin");
 });
 
+const SPEC_PRIMARY_LABEL = "充电策略 · gpio_int";
+
 const SPEC_SUMMARY: ParameterSpecSummary = {
   id: "spec-sc8562-gpio-int",
   organizationId: "org-teaching",
@@ -326,6 +328,8 @@ function createModuleRegistry(
           parameterCount: 8,
           observed: true,
           notYetObserved: false,
+          driverNature: "physical-device" as const,
+          instanceCardinality: "multiple" as const,
           parseCoverages: [
             {
               compatible: "vendor,sc8562",
@@ -614,8 +618,8 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
       path: "/parameter-admin/specs?spec=spec-sc8562-gpio-int"
     });
 
-    const detail = await screen.findByRole("dialog", { name: /参数定义详情 gpio_int/ });
-    expect(within(detail).getByRole("heading", { name: "gpio_int" })).toBeInTheDocument();
+    const detail = await screen.findByRole("dialog", { name: new RegExp(`参数定义详情 ${SPEC_PRIMARY_LABEL}`) });
+    expect(within(detail).getByRole("heading", { name: SPEC_PRIMARY_LABEL })).toBeInTheDocument();
     expect(within(detail).getByLabelText("属性键")).toHaveValue("gpio_int");
     expect(within(detail).getByLabelText("展示名")).toHaveValue("SC8562 GPIO interrupt");
     expect((within(detail).getByLabelText("参数说明") as HTMLTextAreaElement).value).toMatch(
@@ -644,7 +648,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
       path: "/parameter-admin/specs?spec=spec-sc8562-gpio-int"
     });
 
-    const detail = await screen.findByRole("dialog", { name: /参数定义详情 gpio_int/ });
+    const detail = await screen.findByRole("dialog", { name: new RegExp(`参数定义详情 ${SPEC_PRIMARY_LABEL}`) });
     fireEvent.click(within(detail).getByRole("button", { name: "废弃" }));
     const lifecycleDialog = screen.getByRole("dialog", { name: "废弃参数定义" });
     fireEvent.change(within(lifecycleDialog).getByLabelText("废弃原因"), {
@@ -657,7 +661,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
         reason: "由平台定义接管"
       })
     );
-    expect(await screen.findByText("已废弃")).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("已废弃");
   });
 
   it("restores a deprecated spec and shows concise success feedback", async () => {
@@ -673,7 +677,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
       path: "/parameter-admin/specs?spec=spec-sc8562-gpio-int"
     });
 
-    const detail = await screen.findByRole("dialog", { name: /参数定义详情 gpio_int/ });
+    const detail = await screen.findByRole("dialog", { name: new RegExp(`参数定义详情 ${SPEC_PRIMARY_LABEL}`) });
     fireEvent.click(within(detail).getByRole("button", { name: "恢复" }));
     const lifecycleDialog = screen.getByRole("dialog", { name: "恢复参数定义" });
     fireEvent.change(within(lifecycleDialog).getByLabelText("恢复原因"), {
@@ -686,7 +690,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
         reason: "重新纳入治理"
       })
     );
-    expect(await screen.findByText("已恢复")).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("已恢复");
   });
 
   it("resolves a spec review task and surfaces a governance audit record", async () => {

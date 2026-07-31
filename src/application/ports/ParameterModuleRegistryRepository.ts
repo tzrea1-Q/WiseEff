@@ -74,6 +74,9 @@ export type ModuleDiscoveryHints = {
   total: number;
 };
 
+export type DriverNature = "physical-device" | "logical-service";
+export type InstanceCardinality = "multiple" | "singleton-per-project";
+
 export type DriverRegistryParseCoverage =
   | { covered: false }
   | {
@@ -101,6 +104,9 @@ export type DriverRegistryEntry = {
   parameterCount: number;
   observed: boolean;
   notYetObserved: boolean;
+  /** Read-only registration attributes when linked to a driver subject. */
+  driverNature: DriverNature | null;
+  instanceCardinality: InstanceCardinality | null;
   parseCoverages: Array<{ compatible: string; coverage: DriverRegistryParseCoverage }>;
 };
 

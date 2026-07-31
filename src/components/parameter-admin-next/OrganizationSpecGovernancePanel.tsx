@@ -13,7 +13,9 @@ import {
   mapParameterSpecToLibraryRow,
   ParameterSpecLibrary,
   type ParameterSpecLibraryFilters,
-  type ParameterSpecLibraryRow
+  type ParameterSpecLibraryRow,
+  formatSpecPrimaryLabel,
+  isSpecSelectableForReview,
 } from "@/components/parameter-topology/ParameterSpecLibrary";
 import type { ParameterSpecDetailView } from "@/components/parameter-topology/ParameterSpecDetail";
 import { SpecReviewQueue, type SpecReviewTaskView } from "@/components/parameter-topology/SpecReviewQueue";
@@ -23,6 +25,7 @@ import {
 } from "@/components/parameter-topology/SpecCreateDialog";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 import { useParameterAdminUrl } from "./useParameterAdminUrl";
+import { GovernanceToast, useGovernanceToast } from "./useGovernanceToast";
 
 function toSpecDetailView(
   detail: ParameterSpecDetail,
@@ -129,7 +132,6 @@ export function OrganizationSpecGovernancePanel({
   const [reviewNextCursor, setReviewNextCursor] = useState<string | null>(null);
   const [reviewLoadingMore, setReviewLoadingMore] = useState(false);
   const [reviewActionError, setReviewActionError] = useState<string | null>(null);
-  const [reviewActionSuccess, setReviewActionSuccess] = useState<string | null>(null);
   const [reviewPendingTaskId, setReviewPendingTaskId] = useState<string | null>(null);
   const [reviewPendingAction, setReviewPendingAction] = useState<"approve" | "dismiss" | "create" | null>(
     null
@@ -139,6 +141,7 @@ export function OrganizationSpecGovernancePanel({
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSubjects, setCreateSubjects] = useState<ReturnType<typeof subjectsFromModules>>([]);
+  const { message: toastMessage, showToast } = useGovernanceToast();
 
   const reloadSpecs = useCallback(async () => {
     setSpecLoading(true);
@@ -298,7 +301,6 @@ export function OrganizationSpecGovernancePanel({
       confirmPropertyMismatch?: boolean;
     }) => {
       setReviewActionError(null);
-      setReviewActionSuccess(null);
       setReviewPendingTaskId(input.taskId);
       setReviewPendingAction("approve");
       try {
@@ -309,7 +311,6 @@ export function OrganizationSpecGovernancePanel({
           confirmPropertyMismatch: input.confirmPropertyMismatch
         });
         pushAudit(auditKindForResolveDecision("resolved"), input.reason, "定义匹配审核已批准");
-        setReviewActionSuccess("定义匹配审核已批准。");
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
@@ -324,7 +325,6 @@ export function OrganizationSpecGovernancePanel({
   const handleDismissReview = useCallback(
     async (input: { taskId: string; reason: string }) => {
       setReviewActionError(null);
-      setReviewActionSuccess(null);
       setReviewPendingTaskId(input.taskId);
       setReviewPendingAction("dismiss");
       try {
@@ -333,7 +333,6 @@ export function OrganizationSpecGovernancePanel({
           reason: input.reason
         });
         pushAudit(auditKindForResolveDecision("dismissed"), input.reason, "定义匹配审核已驳回");
-        setReviewActionSuccess("定义匹配审核已驳回。");
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
@@ -353,7 +352,6 @@ export function OrganizationSpecGovernancePanel({
       reason: string;
     }) => {
       setReviewActionError(null);
-      setReviewActionSuccess(null);
       setReviewPendingTaskId(input.taskId);
       setReviewPendingAction("create");
       try {
@@ -366,9 +364,6 @@ export function OrganizationSpecGovernancePanel({
           auditKindForResolveDecision("resolved", true),
           input.reason,
           `草稿规格「${input.propertyKey}」已创建`
-        );
-        setReviewActionSuccess(
-          `草稿规格「${input.propertyKey}」已创建；请补齐类型/约束并激活后再批准绑定。`
         );
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
       } catch (error) {
@@ -396,7 +391,6 @@ export function OrganizationSpecGovernancePanel({
       reason: string;
     }) => {
       setReviewActionError(null);
-      setReviewActionSuccess(null);
       setActivatePendingSpecId(payload.specId);
       try {
         if (payload.mode === "activate") {
@@ -408,7 +402,7 @@ export function OrganizationSpecGovernancePanel({
             description: payload.description,
             reason: payload.reason
           });
-          setReviewActionSuccess(`规格「${payload.displayName || payload.specId}」已激活，可在审核队列中批准绑定。`);
+          showToast("已激活");
         } else {
           await application.updateParameterSpec(payload.specId, {
             valueShape: payload.valueShape,
@@ -421,7 +415,6 @@ export function OrganizationSpecGovernancePanel({
             policyTarget: payload.policyTarget,
             reason: payload.reason
           });
-          setReviewActionSuccess(`规格「${payload.displayName || payload.specId}」已保存。`);
         }
         pushAudit(
           payload.mode === "activate" ? "spec-activated" : "spec-updated",
@@ -438,7 +431,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, pushAudit, reloadSpecs, updateUrl]
+    [application, pushAudit, reloadSpecs, showToast, updateUrl]
   );
 
   const handleDeprecateSpec = useCallback(
@@ -447,7 +440,7 @@ export function OrganizationSpecGovernancePanel({
       setActivatePendingSpecId(input.specId);
       try {
         await application.deprecateParameterSpec(input.specId, { reason: input.reason });
-        setReviewActionSuccess("已废弃");
+        showToast("已废弃");
         await reloadSpecs();
         updateUrl({ specId: null });
       } catch (error) {
@@ -456,7 +449,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, reloadSpecs, updateUrl]
+    [application, reloadSpecs, showToast, updateUrl]
   );
 
   const handleRestoreSpec = useCallback(
@@ -465,7 +458,7 @@ export function OrganizationSpecGovernancePanel({
       setActivatePendingSpecId(input.specId);
       try {
         await application.restoreParameterSpec(input.specId, { reason: input.reason });
-        setReviewActionSuccess("已恢复");
+        showToast("已恢复");
         await reloadSpecs();
         updateUrl({ specId: null });
       } catch (error) {
@@ -474,7 +467,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, reloadSpecs, updateUrl]
+    [application, reloadSpecs, showToast, updateUrl]
   );
 
   const handlePrepareCutover = useCallback(
@@ -487,7 +480,6 @@ export function OrganizationSpecGovernancePanel({
         });
         const libraryRow = specRows.find((row) => row.id === specId) ?? null;
         setSpecDetail(toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow));
-        setReviewActionSuccess("已准备版本切换，可确认完成切换。");
         await reloadSpecs();
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
@@ -504,7 +496,7 @@ export function OrganizationSpecGovernancePanel({
       setActivatePendingSpecId(input.specId);
       try {
         await application.finalizeSpecVersionCutover(input.specId, { reason: input.reason });
-        setReviewActionSuccess("版本切换已完成。");
+        showToast("版本切换已完成");
         await reloadSpecs();
         updateUrl({ specId: null });
       } catch (error) {
@@ -513,11 +505,24 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, reloadSpecs, updateUrl]
+    [application, reloadSpecs, showToast, updateUrl]
   );
 
   const showLibrary = focus !== "review";
   const showReview = focus !== "library";
+
+  const reviewLibrarySpecs = useMemo(
+    () =>
+      specRows
+        .filter((row) => isSpecSelectableForReview(row))
+        .map((row) => ({
+          id: row.id,
+          label: formatSpecPrimaryLabel(row),
+          propertyKey: row.propertyKey,
+          driverModule: row.driverModule,
+        })),
+    [specRows],
+  );
 
   const reviewQueue = (
     <div>
@@ -526,12 +531,7 @@ export function OrganizationSpecGovernancePanel({
       ) : null}
       <SpecReviewQueue
         tasks={reviewTasks}
-        librarySpecs={specRows.map((row) => ({
-          id: row.id,
-          label: `${row.driverModule ?? "—"} / ${row.propertyKey}`,
-          propertyKey: row.propertyKey,
-          driverModule: row.driverModule
-        }))}
+        librarySpecs={reviewLibrarySpecs}
         onApprove={handleApproveReview}
         onDismiss={handleDismissReview}
         onCreateSpec={handleCreateSpecReview}
@@ -552,11 +552,8 @@ export function OrganizationSpecGovernancePanel({
         </span>
       </div>
 
-      {reviewActionSuccess ? (
-        <p className="form-hint" role="status">
-          {reviewActionSuccess}
-        </p>
-      ) : null}
+      <GovernanceToast message={toastMessage} />
+
       {reviewActionError ? (
         <p className="form-error" role="alert">
           {reviewActionError}
@@ -631,7 +628,7 @@ export function OrganizationSpecGovernancePanel({
                 });
               }
               setCreateOpen(false);
-              setReviewActionSuccess(coverageCompatible ? "已创建并激活" : "已保存草稿");
+              showToast(coverageCompatible ? "已创建并激活" : "已保存草稿");
               await reloadSpecs();
               updateUrl({ specId: created.id });
             } catch (error) {

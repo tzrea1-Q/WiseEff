@@ -11,6 +11,14 @@ import type {
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
+import {
+  formatDriverNatureLabel,
+  formatInstanceCardinalityLabel,
+} from "@/application/parameters/driverRegistrationLabels";
+import type {
+  DriverNature,
+  InstanceCardinality,
+} from "@/application/ports/ParameterModuleRegistryRepository";
 import { canSubmitModuleDraft, ModuleDefinitionForm } from "./ModuleDefinitionForm";
 
 export type ModuleEditSavePatch = ParameterModuleDraft & {
@@ -63,7 +71,9 @@ export function ModuleEditDialog({
   overlaySchemas,
   onPreviewOverlayDeprecation,
   onDeprecateOverlaySchema,
-  canAdmin = false
+  canAdmin = false,
+  driverNature = null,
+  instanceCardinality = null,
 }: {
   module: EditableModule;
   existingNames: readonly string[];
@@ -88,6 +98,8 @@ export function ModuleEditDialog({
     input: { confirmCoverageLoss?: boolean }
   ) => void | Promise<void>;
   canAdmin?: boolean;
+  driverNature?: DriverNature | null;
+  instanceCardinality?: InstanceCardinality | null;
 }) {
   const addFieldId = useId();
   const [draft, setDraft] = useState<ParameterModuleDraft>({
@@ -190,6 +202,29 @@ export function ModuleEditDialog({
         </div>
 
         <div className="param-admin-module-edit-body">
+          {module.kind === "driver-group" &&
+          (driverNature != null || instanceCardinality != null) ? (
+            <div className="organization-driver-schema-dialog__field-grid">
+              <label>
+                驱动性质
+                <input
+                  aria-label="驱动性质"
+                  value={formatDriverNatureLabel(driverNature)}
+                  readOnly
+                  aria-readonly="true"
+                />
+              </label>
+              <label>
+                实例基数
+                <input
+                  aria-label="实例基数"
+                  value={formatInstanceCardinalityLabel(instanceCardinality)}
+                  readOnly
+                  aria-readonly="true"
+                />
+              </label>
+            </div>
+          ) : null}
           <ModuleDefinitionForm
             currentName={module.name}
             existingNames={existingNames}
