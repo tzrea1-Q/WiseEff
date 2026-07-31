@@ -445,7 +445,8 @@ export function OrganizationSpecGovernancePanel({
       setActivatePendingSpecId(input.specId);
       try {
         await application.deprecateParameterSpec(input.specId, { reason: input.reason });
-        showToast("已废弃");
+        pushAudit("spec-deprecated", input.reason, `废弃定义 ${input.specId}`);
+        showToast("已废弃（仍参与解析，默认库视图已隐藏）");
         await reloadSpecs();
         updateUrl({ specId: null });
       } catch (error) {
@@ -454,7 +455,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, reloadSpecs, showToast, updateUrl]
+    [application, pushAudit, reloadSpecs, showToast, updateUrl]
   );
 
   const handleRestoreSpec = useCallback(
@@ -463,6 +464,7 @@ export function OrganizationSpecGovernancePanel({
       setActivatePendingSpecId(input.specId);
       try {
         await application.restoreParameterSpec(input.specId, { reason: input.reason });
+        pushAudit("spec-restored", input.reason, `恢复定义 ${input.specId}`);
         showToast("已恢复");
         await reloadSpecs();
         updateUrl({ specId: null });
@@ -472,7 +474,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, reloadSpecs, showToast, updateUrl]
+    [application, pushAudit, reloadSpecs, showToast, updateUrl]
   );
 
   const handlePrepareCutover = useCallback(
@@ -511,46 +513,6 @@ export function OrganizationSpecGovernancePanel({
       }
     },
     [application, reloadSpecs, showToast, updateUrl]
-  );
-
-  const handleDeprecateSpec = useCallback(
-    async (input: { specId: string; reason: string }) => {
-      setReviewActionError(null);
-      setReviewActionSuccess(null);
-      setActivatePendingSpecId(input.specId);
-      try {
-        await application.deprecateParameterSpec(input.specId, { reason: input.reason });
-        pushAudit("spec-deprecated", input.reason, `废弃定义 ${input.specId}`);
-        setReviewActionSuccess("定义已废弃（仍参与解析，默认库视图已隐藏）。");
-        await reloadSpecs();
-        updateUrl({ specId: null });
-      } catch (error) {
-        setReviewActionError(formatReviewActionError(error));
-      } finally {
-        setActivatePendingSpecId(null);
-      }
-    },
-    [application, pushAudit, reloadSpecs, updateUrl]
-  );
-
-  const handleRestoreSpec = useCallback(
-    async (input: { specId: string; reason: string }) => {
-      setReviewActionError(null);
-      setReviewActionSuccess(null);
-      setActivatePendingSpecId(input.specId);
-      try {
-        await application.restoreParameterSpec(input.specId, { reason: input.reason });
-        pushAudit("spec-restored", input.reason, `恢复定义 ${input.specId}`);
-        setReviewActionSuccess("定义已恢复。");
-        await reloadSpecs();
-        updateUrl({ specId: null });
-      } catch (error) {
-        setReviewActionError(formatReviewActionError(error));
-      } finally {
-        setActivatePendingSpecId(null);
-      }
-    },
-    [application, pushAudit, reloadSpecs, updateUrl]
   );
 
   const showLibrary = focus !== "review";
