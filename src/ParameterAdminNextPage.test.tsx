@@ -20,7 +20,7 @@ afterEach(() => {
   window.history.replaceState(null, "", "/parameter-admin");
 });
 
-const SPEC_PRIMARY_LABEL = "充电策略 · gpio_int";
+const SPEC_PRIMARY_LABEL = "gpio_int";
 
 const SPEC_SUMMARY: ParameterSpecSummary = {
   id: "spec-sc8562-gpio-int",
@@ -872,7 +872,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     });
   });
 
-  it("shows predicted modules under 预测模块 column", async () => {
+  it("shows driver-module taxonomy under 驱动模块 column", async () => {
     const repository = createRepository({
       listSpecs: vi.fn().mockResolvedValue([
         {
@@ -898,7 +898,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     const library = await screen.findByRole("region", { name: "参数定义库" });
     const table = within(library).getByRole("table");
-    expect(within(library).getByRole("columnheader", { name: "归属模块" })).toBeInTheDocument();
+    expect(within(library).getByRole("columnheader", { name: "驱动模块" })).toBeInTheDocument();
     expect(within(table).getByText("充电策略")).toBeInTheDocument();
     expect(within(table).getByText("unknown-ic（未实测）")).toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: "所属模块" })).not.toBeInTheDocument();
