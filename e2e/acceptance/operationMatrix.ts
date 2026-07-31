@@ -1014,6 +1014,8 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "manual",
     acceptanceIds: ["PLAT-ROLE-001"],
     specFiles: [],
+    deferralReason:
+      "Platform console sidebar entry remains a manual pilot check; route denial/access is covered by PERM-MATRIX-001.",
     assertions: ["ui"]
   },
   {
@@ -1026,6 +1028,8 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "manual",
     acceptanceIds: ["DRV-PROMOTE-005"],
     specFiles: [],
+    deferralReason:
+      "Compatible promote/revert blast-radius confirmation still needs a dedicated platform-console Playwright path.",
     assertions: ["ui", "api"]
   }
 ];
