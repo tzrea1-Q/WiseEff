@@ -475,6 +475,12 @@ export function createHttpParameterTopologyRepository(
         input
       );
     },
+    async reopenMapping(taskId, input) {
+      await apiClient.post<ItemEnvelope<{ id: string; status: string }>>(
+        `/api/v2/identity-mapping-tasks/${encodeURIComponent(taskId)}/reopen`,
+        input
+      );
+    },
     async validateRevision(projectId, revisionId) {
       const response = await apiClient.post<ItemEnvelope<ValidationRun>>(
         `/api/v2/projects/${encodeURIComponent(projectId)}/config-revisions/${encodeURIComponent(revisionId)}/validate`,

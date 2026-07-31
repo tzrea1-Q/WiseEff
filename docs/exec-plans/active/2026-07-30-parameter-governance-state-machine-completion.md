@@ -1,6 +1,6 @@
 # Parameter governance state machines — completion
 
-> Status: **PR1 implementation in progress on `feat/spec-lifecycle-closure`.** Decisions: ADR-0011 (spec deprecation is soft retirement), ADR-0012 (releasing happens at the file layer — planned for PR3). Branches: `feat/spec-lifecycle-closure`, `feat/identity-mapping-decision-split`, `feat/parameter-governance-convergence`. Migrations `0081` / `0082` / `0083`. Deferred questions live in `docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md`.
+> Status: **PR2 implementation in progress on `feat/identity-mapping-decision-split` (stacked on PR1).** PR1 soft deprecation shipped on `feat/spec-lifecycle-closure`. Decisions: ADR-0011 (spec deprecation is soft retirement), ADR-0012 (releasing happens at the file layer — planned for PR3). Branches: `feat/spec-lifecycle-closure`, `feat/identity-mapping-decision-split`, `feat/parameter-governance-convergence`. Migrations `0081` / `0082` / `0083`. Deferred questions live in `docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md`.
 
 ## Goal
 
@@ -162,12 +162,12 @@ The `deprecated` backfill deserves attention: rows deprecated by migration `0068
 
 `src/infrastructure/mock/mockParameterTopologyRepository.ts` gains deprecate/restore, an `activated_at` equivalent, and at least one seeded `deprecated` definition — the fixture set currently has none. The pre-existing divergences must be closed in the same batch or explicitly recorded: mock sets the review task to the decision value after `createSpec` where the API keeps it `open` (`mockParameterTopologyRepository.ts:585-617`), and mock bumps `version` on activate where the API does not (`:528-533`).
 
-### PR 2 — `feat/identity-mapping-decision-split` (migration `0082`)
+### PR 2 — `feat/identity-mapping-decision-split` (status widen landed in `0085`)
 
 **Batch 2.1 — migration**
 
-- `server/migrations/0082_identity_mapping_new_identity.sql`: widen `identity_mapping_tasks.status` to `open | resolved | dismissed | new_identity` (`server/migrations/0048_parameter_topology_schema_shadow.sql:233`).
-- `migrationInvariant.test.ts`: assert the widened check.
+- `server/migrations/0085_identity_mapping_and_singleton_blockers.sql` (main / #212) already widens `identity_mapping_tasks.status` to `open | resolved | dismissed | new_identity` and adds `task_kind`. Do **not** add a colliding `0082_identity_mapping_new_identity.sql` — that slot is taken by `0082_attribution_subjects.sql`.
+- `migrationInvariant.test.ts`: assert `new_identity` via the existing 0085 invariant (no separate 0082 identity migration).
 
 **Batch 2.2 — server**
 

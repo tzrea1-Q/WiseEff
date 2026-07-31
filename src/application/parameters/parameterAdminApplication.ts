@@ -3,6 +3,7 @@ import type {
   CreateParameterSpecInput,
   DeprecateParameterSpecInput,
   ParameterTopologyRepository,
+  ReopenMappingInput,
   ResolveMappingInput,
   ResolveSpecReviewInput,
   RestoreParameterSpecInput,
@@ -91,6 +92,7 @@ export type ParameterAdminApplication = {
 
   listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;
   resolveMapping(taskId: string, input: ResolveMappingInput): Promise<void>;
+  reopenMapping(taskId: string, input: ReopenMappingInput): Promise<void>;
   validateRevision(projectId: string, revisionId: string): Promise<ValidationRun>;
 
   asDtsStructuredRepository(): DtsStructuredRepository | null;
@@ -231,6 +233,12 @@ export function createParameterAdminApplication({
     },
     resolveMapping(taskId, input) {
       return topology.resolveMapping(taskId, input);
+    },
+    reopenMapping(taskId, input) {
+      if (!topology.reopenMapping) {
+        throw new Error("Identity mapping reopen is unavailable in this runtime.");
+      }
+      return topology.reopenMapping(taskId, input);
     },
     validateRevision(projectId, revisionId) {
       return topology.validateRevision(projectId, revisionId);

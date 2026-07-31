@@ -1306,9 +1306,12 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
     });
     fireEvent.click(within(review).getByRole("button", { name: "确认对应" }));
 
+    // Resolved tasks move to history (not the empty-queue hint).
     await waitFor(() =>
-      expect(screen.getByText("当前没有待处理的节点对应任务。")).toBeInTheDocument()
+      expect(screen.getByRole("heading", { name: "历史决议" })).toBeInTheDocument()
     );
+    expect(screen.queryByRole("button", { name: "确认对应" })).not.toBeInTheDocument();
+    expect(screen.getByText("已对应")).toBeInTheDocument();
   });
 });
 

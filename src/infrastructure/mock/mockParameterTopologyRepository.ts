@@ -793,9 +793,28 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       if (!task) {
         throw new Error(`Identity mapping task not found: ${taskId}`);
       }
+      if (task.status !== "open") {
+        throw new Error(`Identity mapping task is not open: ${taskId}`);
+      }
       task.status = input.decision === "new-identity" ? "new_identity" : input.decision;
       task.reason = input.reason;
       task.resolvedAt = MOCK_NOW;
+    },
+
+    async reopenMapping(taskId, input) {
+      const task = store.mappingTasks.find((item) => item.id === taskId);
+      if (!task) {
+        throw new Error(`Identity mapping task not found: ${taskId}`);
+      }
+      if (task.status === "resolved") {
+        throw new Error(`Resolved identity mapping tasks cannot be reopened: ${taskId}`);
+      }
+      if (task.status === "open") {
+        throw new Error(`Identity mapping task is already open: ${taskId}`);
+      }
+      task.status = "open";
+      task.reason = input.reason;
+      task.resolvedAt = null;
     },
 
     async validateRevision(projectId, revisionId) {
