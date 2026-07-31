@@ -1030,6 +1030,830 @@
         }
       }
     },
+    "/api/v2/parameter-modules": {
+      "get": {
+        "operationId": "parameterModules.getRegistry",
+        "summary": "Get parameter module registry with mappings",
+        "tags": [
+          "parameter-modules"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterModuleRegistryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-modules/discovery-hints": {
+      "get": {
+        "operationId": "parameterModules.discoveryHints",
+        "summary": "List unclassified compatible discovery hints",
+        "tags": [
+          "parameter-modules"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterModuleDiscoveryHintsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-modules/discovery-hints/dismissals": {
+      "post": {
+        "operationId": "parameterModules.dismissCompatible",
+        "summary": "Dismiss a compatible from the unclassified queue",
+        "tags": [
+          "parameter-modules"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DismissCompatibleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterModuleDiscoveryHintsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-modules/discovery-hints/dismissals/{compatible}": {
+      "delete": {
+        "operationId": "parameterModules.restoreCompatible",
+        "summary": "Restore a dismissed compatible to the unclassified queue",
+        "tags": [
+          "parameter-modules"
+        ],
+        "parameters": [
+          {
+            "name": "compatible",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterModuleDiscoveryHintsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-modules/mappings/preview": {
+      "post": {
+        "operationId": "parameterModules.previewMapping",
+        "summary": "Preview scoped impact of creating a module mapping",
+        "tags": [
+          "parameter-modules"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateModuleMappingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleMappingPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-modules/mappings": {
+      "post": {
+        "operationId": "parameterModules.createMapping",
+        "summary": "Create a module mapping and apply scoped recompute",
+        "tags": [
+          "parameter-modules"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateModuleMappingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleMappingMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-modules/mappings/{mappingId}": {
+      "delete": {
+        "operationId": "parameterModules.deleteMapping",
+        "summary": "Delete a module mapping and apply scoped recompute",
+        "tags": [
+          "parameter-modules"
+        ],
+        "parameters": [
+          {
+            "name": "mappingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleMappingMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-modules/recompute-bindings": {
+      "post": {
+        "operationId": "parameterModules.recomputeBindings",
+        "summary": "Recompute binding module assignments (operations tool)",
+        "tags": [
+          "parameter-modules"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecomputeBindingModulesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecomputeBindingModulesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-modules/driver-registry": {
+      "get": {
+        "operationId": "parameterModules.listDriverRegistry",
+        "summary": "List curated driver-group registry entries with parse coverage",
+        "tags": [
+          "parameter-modules"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverRegistryListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "parameterModules.registerDriver",
+        "summary": "Register or claim a driver group with exact compatible mappings",
+        "tags": [
+          "parameter-modules"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterOrClaimDriverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterOrClaimDriverResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/organization-driver-schemas": {
+      "get": {
+        "operationId": "parameterSpecs.listOrganizationDriverSchemas",
+        "summary": "List organization-owned manual driver schema overlays",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDriverSchemaListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "parameterSpecs.createOrganizationDriverSchema",
+        "summary": "Create a draft organization driver schema overlay",
+        "tags": [
+          "parameters"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrganizationDriverSchemaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDriverSchemaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/organization-driver-schemas/{schemaId}": {
+      "get": {
+        "operationId": "parameterSpecs.getOrganizationDriverSchema",
+        "summary": "Get one organization driver schema overlay",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "schemaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDriverSchemaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "parameterSpecs.updateOrganizationDriverSchema",
+        "summary": "Update a draft organization driver schema overlay",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "schemaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrganizationDriverSchemaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDriverSchemaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/organization-driver-schemas/{schemaId}/activate": {
+      "post": {
+        "operationId": "parameterSpecs.activateOrganizationDriverSchema",
+        "summary": "Activate an organization driver schema overlay and upgrade provisional specs",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "schemaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivateOrganizationDriverSchemaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/organization-driver-schemas/{schemaId}/deprecation-impact": {
+      "get": {
+        "operationId": "parameterSpecs.previewOrganizationDriverSchemaDeprecation",
+        "summary": "Preview coverage and usage impact before overlay retirement",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "schemaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDriverSchemaDeprecationImpactResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/organization-driver-schemas/{schemaId}/deprecate": {
+      "post": {
+        "operationId": "parameterSpecs.deprecateOrganizationDriverSchema",
+        "summary": "Deprecate an organization driver schema overlay",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "schemaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeprecateOrganizationDriverSchemaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationDriverSchemaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/platform/driver-schemas/promotion-candidates": {
+      "get": {
+        "operationId": "parameterSpecs.listPromotionCandidates",
+        "summary": "List platform driver-schema promotion candidates by compatible",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverSchemaPromotionCandidateListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/platform/driver-schemas/promotions": {
+      "post": {
+        "operationId": "parameterSpecs.promoteDriverSchemaOverlay",
+        "summary": "Promote organization driver schema overlays into a platform-tier schema",
+        "tags": [
+          "parameters"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteDriverSchemaOverlayRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromoteDriverSchemaOverlayResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/platform/driver-schemas/promotions/{promotionId}/revert": {
+      "post": {
+        "operationId": "parameterSpecs.revertDriverSchemaPromotion",
+        "summary": "Revert a platform driver-schema promotion and restore contributor overlays",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "promotionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevertDriverSchemaPromotionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/parameters/admin/projects": {
       "get": {
         "operationId": "parameters.admin.listProjects",
@@ -1721,6 +2545,47 @@
             "$ref": "#/components/responses/ErrorResponse"
           }
         }
+      },
+      "post": {
+        "operationId": "parameterSpecs.create",
+        "summary": "Create a draft parameter definition bound to an attribution subject",
+        "tags": [
+          "parameters"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateParameterSpecRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSpecDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
       }
     },
     "/api/v2/parameter-specs/{specId}": {
@@ -1758,6 +2623,161 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-specs/{specId}/cutover": {
+      "get": {
+        "operationId": "parameterSpecs.getCutover",
+        "summary": "Get open parameter spec version cutover impact",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSpecCutoverImpactResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-specs/{specId}/cutover/prepare": {
+      "post": {
+        "operationId": "parameterSpecs.prepareCutover",
+        "summary": "Prepare binding items for parameter spec version cutover",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareParameterSpecCutoverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSpecDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-specs/{specId}/cutover/finalize": {
+      "post": {
+        "operationId": "parameterSpecs.finalizeCutover",
+        "summary": "Finalize parameter spec version cutover after prepare",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizeParameterSpecCutoverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSpecDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -1830,6 +2850,118 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ParameterSpecReviewTaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-specs/{specId}/deprecate": {
+      "post": {
+        "operationId": "parameterSpecs.deprecate",
+        "summary": "Soft-deprecate a parameter definition (definition lifecycle)",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeprecateParameterSpecRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSpecDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-specs/{specId}/restore": {
+      "post": {
+        "operationId": "parameterSpecs.restore",
+        "summary": "Restore a soft-deprecated parameter definition",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreParameterSpecRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSpecDetailResponse"
                 }
               }
             }
@@ -2139,6 +3271,62 @@
         }
       }
     },
+    "/api/v2/identity-mapping-tasks/{taskId}/reopen": {
+      "post": {
+        "operationId": "parameterTopology.reopenIdentityMappingTask",
+        "summary": "Reopen a non-destructive identity mapping outcome",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReopenIdentityMappingTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityMappingTaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/projects/{projectId}/config-revisions/{revisionId}/validate": {
       "post": {
         "operationId": "parameterTopology.validateConfigRevision",
@@ -2242,6 +3430,62 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BindingDraftResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/node-enablement-drafts": {
+      "post": {
+        "operationId": "parameterTopology.createNodeEnablementDraft",
+        "summary": "Create a node enablement draft that shares the binding draft tip pipeline",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateNodeEnablementDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeEnablementDraftResponse"
                 }
               }
             }
@@ -4802,6 +6046,94 @@
         "type": "object",
         "x-wiseeff-schema": "DeleteResponse"
       },
+      "ParameterModuleRegistryResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterModuleRegistryResponse"
+      },
+      "ParameterModuleDiscoveryHintsResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterModuleDiscoveryHintsResponse"
+      },
+      "DismissCompatibleRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DismissCompatibleRequest"
+      },
+      "CreateModuleMappingRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateModuleMappingRequest"
+      },
+      "ModuleMappingPreviewResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ModuleMappingPreviewResponse"
+      },
+      "ModuleMappingMutationResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ModuleMappingMutationResponse"
+      },
+      "RecomputeBindingModulesRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "RecomputeBindingModulesRequest"
+      },
+      "RecomputeBindingModulesResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "RecomputeBindingModulesResponse"
+      },
+      "DriverRegistryListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DriverRegistryListResponse"
+      },
+      "RegisterOrClaimDriverRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "RegisterOrClaimDriverRequest"
+      },
+      "RegisterOrClaimDriverResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "RegisterOrClaimDriverResponse"
+      },
+      "OrganizationDriverSchemaListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "OrganizationDriverSchemaListResponse"
+      },
+      "OrganizationDriverSchemaResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "OrganizationDriverSchemaResponse"
+      },
+      "CreateOrganizationDriverSchemaRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateOrganizationDriverSchemaRequest"
+      },
+      "UpdateOrganizationDriverSchemaRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "UpdateOrganizationDriverSchemaRequest"
+      },
+      "ActivateOrganizationDriverSchemaResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ActivateOrganizationDriverSchemaResponse"
+      },
+      "OrganizationDriverSchemaDeprecationImpactResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "OrganizationDriverSchemaDeprecationImpactResponse"
+      },
+      "DeprecateOrganizationDriverSchemaRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DeprecateOrganizationDriverSchemaRequest"
+      },
+      "DriverSchemaPromotionCandidateListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DriverSchemaPromotionCandidateListResponse"
+      },
+      "PromoteDriverSchemaOverlayRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "PromoteDriverSchemaOverlayRequest"
+      },
+      "PromoteDriverSchemaOverlayResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "PromoteDriverSchemaOverlayResponse"
+      },
+      "RevertDriverSchemaPromotionResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "RevertDriverSchemaPromotionResponse"
+      },
       "ProjectAdminListResponse": {
         "type": "object",
         "x-wiseeff-schema": "ProjectAdminListResponse"
@@ -4894,9 +6226,25 @@
         "type": "object",
         "x-wiseeff-schema": "ParameterSpecListResponse"
       },
+      "CreateParameterSpecRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateParameterSpecRequest"
+      },
       "ParameterSpecDetailResponse": {
         "type": "object",
         "x-wiseeff-schema": "ParameterSpecDetailResponse"
+      },
+      "ParameterSpecCutoverImpactResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterSpecCutoverImpactResponse"
+      },
+      "PrepareParameterSpecCutoverRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "PrepareParameterSpecCutoverRequest"
+      },
+      "FinalizeParameterSpecCutoverRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "FinalizeParameterSpecCutoverRequest"
       },
       "ParameterSpecReviewTaskListResponse": {
         "type": "object",
@@ -4909,6 +6257,14 @@
       "ParameterSpecReviewTaskResponse": {
         "type": "object",
         "x-wiseeff-schema": "ParameterSpecReviewTaskResponse"
+      },
+      "DeprecateParameterSpecRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DeprecateParameterSpecRequest"
+      },
+      "RestoreParameterSpecRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "RestoreParameterSpecRequest"
       },
       "ParameterTopologyResponse": {
         "type": "object",
@@ -4938,6 +6294,10 @@
         "type": "object",
         "x-wiseeff-schema": "IdentityMappingTaskResponse"
       },
+      "ReopenIdentityMappingTaskRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ReopenIdentityMappingTaskRequest"
+      },
       "ValidateConfigRevisionRequest": {
         "type": "object",
         "x-wiseeff-schema": "ValidateConfigRevisionRequest"
@@ -4953,6 +6313,14 @@
       "BindingDraftResponse": {
         "type": "object",
         "x-wiseeff-schema": "BindingDraftResponse"
+      },
+      "CreateNodeEnablementDraftRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateNodeEnablementDraftRequest"
+      },
+      "NodeEnablementDraftResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "NodeEnablementDraftResponse"
       },
       "LogFileUploadRequest": {
         "type": "object",

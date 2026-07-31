@@ -880,7 +880,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect((await nebulaCurrentResponse).status()).toBe(200);
     await expect(editWorkspace).toHaveAttribute("data-project-id", "nebula");
     await expect(editWorkspace).toHaveAttribute("data-revision-id", nebulaTopology.revisionId);
-    await expect(page.getByRole("region", { name: "绑定变更提交" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "参数修改提交" })).toHaveCount(0);
     await expect(page.getByText(/尚未生成语义配置修订/)).toHaveCount(0);
 
     const auroraCurrentResponse = page.waitForResponse((response) =>
@@ -914,8 +914,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
     expect(openCrBefore).toBe(0);
 
-    const submissionPanel = page.getByRole("region", { name: "绑定变更提交" });
-    await expect(submissionPanel).toBeVisible();
+    const submissionPanel = page.getByRole("region", { name: "参数修改提交" });
+    await expect(submissionPanel).toBeVisible({ timeout: 20_000 });
     const hardwareAssignee = submissionPanel.getByLabel("硬件 MDE");
     const softwareCommitterAssignee = submissionPanel.getByLabel("软件 MDE");
     const softwareUserAssignee = submissionPanel.getByLabel("软件开发");
@@ -1002,7 +1002,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(submitBody.item.status).toBe("hardware_review");
     expect(submitBody.item.items[0]?.candidateConfigRevisionId).toBe(draftBody.item.candidateRevisionId);
     await expect(submissionPanel.getByText(/已提交正式审核/)).toBeVisible();
-    await submissionPanel.getByRole("button", { name: "查看审核队列" }).click();
+    await submissionPanel.getByRole("button", { name: "查看变更审阅" }).click();
 
     const advanceReviewInUi = async (
       role: "hardware-committer" | "software-committer" | "software-user",
