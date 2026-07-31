@@ -20,9 +20,9 @@ import {
 import type { ParameterSpecDetailView } from "@/components/parameter-topology/ParameterSpecDetail";
 import { SpecReviewQueue, type SpecReviewTaskView } from "@/components/parameter-topology/SpecReviewQueue";
 import {
-  SpecCreateDialog,
-  subjectsFromModules
+  SpecCreateDialog
 } from "@/components/parameter-topology/SpecCreateDialog";
+import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 import { useParameterAdminUrl } from "./useParameterAdminUrl";
 import { GovernanceToast, useGovernanceToast } from "./useGovernanceToast";
@@ -140,7 +140,8 @@ export function OrganizationSpecGovernancePanel({
   const [createOpen, setCreateOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [createSubjects, setCreateSubjects] = useState<ReturnType<typeof subjectsFromModules>>([]);
+  const [createModules, setCreateModules] = useState<ParameterModule[]>([]);
+  const [createSubjectsLoading, setCreateSubjectsLoading] = useState(false);
   const { message: toastMessage, showToast } = useGovernanceToast();
 
   const reloadSpecs = useCallback(async () => {
@@ -579,10 +580,21 @@ export function OrganizationSpecGovernancePanel({
           saveError={reviewActionError}
           onCreateSpec={() => {
             setCreateError(null);
+            setCreateModules([]);
+            setCreateSubjectsLoading(true);
             setCreateOpen(true);
-            void application.getModuleRegistry().then((registry) => {
-              setCreateSubjects(subjectsFromModules(registry.modules));
-            });
+            void application
+              .getModuleRegistry()
+              .then((registry) => {
+                setCreateModules(registry.modules);
+              })
+              .catch(() => {
+                setCreateModules([]);
+                setCreateError("无法加载归属主体列表，请重试。");
+              })
+              .finally(() => {
+                setCreateSubjectsLoading(false);
+              });
           }}
           reviewQueueSlot={showReview ? reviewQueue : undefined}
         />
@@ -592,13 +604,15 @@ export function OrganizationSpecGovernancePanel({
 
       {createOpen ? (
         <SpecCreateDialog
-          subjects={createSubjects}
+          modules={createModules}
+          subjectsLoading={createSubjectsLoading}
           busy={createBusy}
           error={createError}
           onCancel={() => {
             if (createBusy) return;
             setCreateOpen(false);
             setCreateError(null);
+            setCreateSubjectsLoading(false);
           }}
           onConfirm={async (input) => {
             setCreateBusy(true);

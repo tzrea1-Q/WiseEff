@@ -22,6 +22,8 @@ type ModuleTreeSelectProps = {
   onChange: (next: string | string[]) => void;
   placeholder?: string;
   disabled?: boolean;
+  /** When set, only these node ids can be chosen (ancestors remain visible for tree context). */
+  selectableIds?: ReadonlySet<string>;
 };
 
 function treeHasBranches(nodes: readonly ModuleTreeNode[]): boolean {
@@ -34,6 +36,7 @@ function TreeOption({
   mode,
   expanded,
   selectedIds,
+  selectableIds,
   showExpandColumn,
   onToggleExpand,
   onSelect
@@ -43,6 +46,7 @@ function TreeOption({
   mode: ModuleTreeSelectMode;
   expanded: Set<string>;
   selectedIds: Set<string>;
+  selectableIds?: ReadonlySet<string>;
   showExpandColumn: boolean;
   onToggleExpand: (id: string) => void;
   onSelect: (id: string) => void;
@@ -50,6 +54,7 @@ function TreeOption({
   const hasChildren = node.children.length > 0;
   const isExpanded = expanded.has(node.id);
   const isSelected = selectedIds.has(node.id);
+  const isSelectable = selectableIds == null || selectableIds.has(node.id);
 
   return (
     <div className="module-tree-option" data-depth={depth}>
@@ -57,7 +62,8 @@ function TreeOption({
         className={[
           "module-tree-option-row",
           depth > 0 ? "is-child" : "",
-          isSelected ? "is-selected" : ""
+          isSelected ? "is-selected" : "",
+          !isSelectable ? "is-structural" : ""
         ]
           .filter(Boolean)
           .join(" ")}
@@ -82,12 +88,16 @@ function TreeOption({
           )
         ) : null}
         {mode === "multi-filter" ? (
-          <label className="module-tree-label">
+          <label className={`module-tree-label${!isSelectable ? " is-disabled" : ""}`}>
             <input
               aria-label={node.name}
               checked={isSelected}
+              disabled={!isSelectable}
               type="checkbox"
-              onChange={() => onSelect(node.id)}
+              onChange={() => {
+                if (!isSelectable) return;
+                onSelect(node.id);
+              }}
             />
             <span className="module-tree-label-stack">
               <span className="module-tree-label-text" title={node.name}>
@@ -95,7 +105,7 @@ function TreeOption({
               </span>
             </span>
           </label>
-        ) : (
+        ) : isSelectable ? (
           <button
             aria-current={isSelected ? "true" : undefined}
             aria-pressed={isSelected}
@@ -109,6 +119,10 @@ function TreeOption({
           >
             <span className={depth > 0 ? "module-tree-label-text is-child-name" : "module-tree-label-text"}>{node.name}</span>
           </button>
+        ) : (
+          <span className="module-tree-label module-tree-label--structural" title={node.name}>
+            <span className={depth > 0 ? "module-tree-label-text is-child-name" : "module-tree-label-text"}>{node.name}</span>
+          </span>
         )}
       </div>
       {hasChildren && isExpanded
@@ -120,6 +134,7 @@ function TreeOption({
               mode={mode}
               node={child}
               selectedIds={selectedIds}
+              selectableIds={selectableIds}
               showExpandColumn={showExpandColumn}
               onToggleExpand={onToggleExpand}
               onSelect={onSelect}
@@ -130,7 +145,17 @@ function TreeOption({
   );
 }
 
-export function ModuleTreeSelect({ mode, label, labelledBy, nodes, value, onChange, placeholder, disabled = false }: ModuleTreeSelectProps) {
+export function ModuleTreeSelect({
+  mode,
+  label,
+  labelledBy,
+  nodes,
+  value,
+  onChange,
+  placeholder,
+  disabled = false,
+  selectableIds
+}: ModuleTreeSelectProps) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const rootRef = useRef<HTMLDivElement>(null);
@@ -188,6 +213,9 @@ export function ModuleTreeSelect({ mode, label, labelledBy, nodes, value, onChan
   };
 
   const handleSelect = (id: string) => {
+    if (selectableIds && !selectableIds.has(id)) {
+      return;
+    }
     if (mode === "single") {
       onChange(id);
       setOpen(false);
@@ -198,7 +226,11 @@ export function ModuleTreeSelect({ mode, label, labelledBy, nodes, value, onChan
     const subtreeIds = collectSubtreeModuleIds(nodes, [id]);
     const selecting = !current.includes(id);
     if (selecting) {
-      onChange(Array.from(new Set([...current, ...subtreeIds])));
+      const nextIds =
+        selectableIds == null
+          ? Array.from(subtreeIds)
+          : Array.from(subtreeIds).filter((item) => selectableIds.has(item));
+      onChange(Array.from(new Set([...current, ...nextIds])));
       return;
     }
     onChange(current.filter((item) => !subtreeIds.has(item)));
@@ -247,6 +279,7 @@ export function ModuleTreeSelect({ mode, label, labelledBy, nodes, value, onChan
               mode={mode}
               node={node}
               selectedIds={selectedIds}
+              selectableIds={selectableIds}
               showExpandColumn={showExpandColumn}
               onToggleExpand={toggleExpand}
               onSelect={handleSelect}

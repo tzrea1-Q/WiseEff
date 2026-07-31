@@ -27,6 +27,7 @@ function moduleFromRow(
     kind: row.kind ?? "business",
     origin: row.origin ?? "curated",
     sourceKey: row.source_key ?? null,
+    attributionSubjectId: row.attribution_subject_id ?? null,
     effectiveImportance,
     parameterCount: Number(row.parameter_count ?? 0),
   };
@@ -117,6 +118,7 @@ export async function readRegistry(
        coalesce(pm.kind, 'business') as kind,
        coalesce(pm.origin, 'curated') as origin,
        pm.source_key,
+       pm.attribution_subject_id,
        pm.path,
        (
          select count(*)::text
