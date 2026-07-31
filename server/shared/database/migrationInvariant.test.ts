@@ -129,6 +129,21 @@ describe("node enablement change request migration invariants", () => {
   });
 });
 
+describe("PPV nullability for enablement / pre-cutover drafts", () => {
+  it("relaxes project_parameter_value_id NOT NULL when the pre-cutover column still exists", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0087_relax_ppv_null_for_enablement_drafts.sql"),
+      "utf8"
+    );
+    expect(migration).toContain("project_parameter_value_id");
+    expect(migration).toContain("parameter_drafts");
+    expect(migration).toContain("parameter_change_requests");
+    expect(migration).toContain("parameter_submission_items");
+    expect(migration).toContain("drop not null");
+    expect(migration).toContain("information_schema.columns");
+  });
+});
+
 describe("module kind/origin migration invariants", () => {
   it("adds kind, origin, source_key and retires driver match kind", () => {
     const migration = readFileSync(

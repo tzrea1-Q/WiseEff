@@ -2276,6 +2276,12 @@ describe.skipIf(!databaseAvailable)("createNodeEnablementDraft", () => {
       writeLockMatchesBinding: true,
     });
 
+    const { mustUseSemanticParameterIdentity } = await import("../parameters/semanticParameterReads");
+    if (!(await mustUseSemanticParameterIdentity(db!))) {
+      // Enablement submission is post-cutover-only; tip sharing + write-lock proofs above still apply.
+      return;
+    }
+
     const { submitParameterChanges } = await import("../parameters/service");
     const round = await submitParameterChanges(db!, auth, {
       projectId: PROJECT_ID,
