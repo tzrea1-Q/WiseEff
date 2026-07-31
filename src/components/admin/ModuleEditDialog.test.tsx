@@ -175,13 +175,13 @@ describe("ModuleEditDialog", () => {
     const editor = screen.getByRole("dialog", { name: "修改模块 SC8562" });
     expect(within(editor).getByText("已提升至平台层")).toBeInTheDocument();
     expect(within(editor).getByText(/后继来源：平台层解析 platform-overlay-1/)).toBeInTheDocument();
-    fireEvent.click(within(editor).getByRole("button", { name: "废弃 SC8562 组织解析" }));
+    fireEvent.click(within(editor).getByRole("button", { name: "停用解析 SC8562 组织解析" }));
 
-    const impactDialog = await screen.findByRole("dialog", { name: "废弃解析影响预览" });
+    const impactDialog = await screen.findByRole("dialog", { name: "停用解析影响预览" });
     expect(within(impactDialog).getByText("解析覆盖将丢失")).toBeInTheDocument();
     expect(within(impactDialog).getByText("定义 2 项")).toBeInTheDocument();
     expect(within(impactDialog).getByText("项目 3 个")).toBeInTheDocument();
-    const confirm = within(impactDialog).getByRole("button", { name: "确认废弃" });
+    const confirm = within(impactDialog).getByRole("button", { name: "确认停用解析" });
     expect(confirm).toBeDisabled();
     fireEvent.click(
       within(impactDialog).getByRole("checkbox", { name: "我确认该 compatible 将失去解析覆盖" })

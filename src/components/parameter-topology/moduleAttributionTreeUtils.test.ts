@@ -161,7 +161,7 @@ describe("moduleAttributionTreeUtils", () => {
     expect(allowedCreateKindsForParent("node-type")).toEqual(["node-type"]);
     expect(canAddChildModule(modules[0]!)).toBe(true);
     expect(canAddChildModule(modules[1]!)).toBe(true);
-    expect(canAddChildModule(modules[2]!)).toBe(true);
+    expect(canAddChildModule(modules[2]!)).toBe(false);
   });
 
   it("returns disabled reasons and swaps only sibling sort orders", () => {
@@ -186,7 +186,7 @@ describe("moduleAttributionTreeUtils", () => {
     });
     expect(addChildModuleDecision(unclassified)).toEqual({
       allowed: false,
-      reason: "未分类根不可添加子模块。"
+      reason: "该模块类型不可添加子模块。"
     });
     expect(sortOrderSwapUpdates(modules[1]!, "down", [...modules, sibling])).toEqual([
       { id: "g", sortOrder: 10 },
