@@ -2,6 +2,7 @@ import "dotenv/config";
 import { expect, test, type Page } from "playwright/test";
 import { authHeadersForRole } from "./helpers/bearerAuth";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { prepareInteractionSurface } from "./helpers/interactionSurface";
 import {
   recordOperationEvidence,
   summarizeApiResponse,
@@ -66,7 +67,11 @@ test.describe("PARAM-IMPORT-DTS-FULL / REVIEW-META parameter import DTS alignmen
 
     await page.goto("/parameter-admin");
     await dismissXiaozeHint(page);
-    await page.getByRole("button", { name: "打开批量参数导入" }).click();
+    await prepareInteractionSurface(page);
+    // Bulk import lives in the TopBar action slot; clear cpk-web-inspector first.
+    const openImport = page.getByRole("button", { name: "打开批量参数导入" });
+    await expect(openImport).toBeVisible({ timeout: 30_000 });
+    await openImport.click();
     const wizard = page.getByRole("dialog", { name: "批量参数导入向导" });
     await expect(wizard).toBeVisible();
     await wizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();

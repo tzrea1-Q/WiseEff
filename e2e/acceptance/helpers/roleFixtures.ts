@@ -2,13 +2,24 @@ import { withPgClient } from "./database";
 
 const organizationId = "org-chargelab";
 
+/** Org-Admin-only actor for PERM-MATRIX (seed-m0 also binds platform-admin on u-xu-yun). */
+export const acceptanceAdminOnlyUser = {
+  userId: "acceptance-role-admin",
+  name: "Acceptance Admin",
+  email: "acceptance.admin@chargelab.cn"
+} as const;
+
 const acceptanceRoleBindings = [
   { bindingId: "acceptance-role-guest-binding", userId: "acceptance-role-guest", roleId: "guest" },
   { bindingId: "acceptance-role-hardware-user-binding", userId: "u-zhao-heng", roleId: "hardware-user" },
   { bindingId: "acceptance-role-software-user-binding", userId: "u-liu-min", roleId: "software-user" },
   { bindingId: "acceptance-role-hardware-committer-binding", userId: "u-wang-jie", roleId: "hardware-committer" },
   { bindingId: "acceptance-role-software-committer-binding", userId: "u-sun-mei", roleId: "software-committer" },
-  { bindingId: "acceptance-role-admin-binding", userId: "u-xu-yun", roleId: "admin" },
+  {
+    bindingId: "acceptance-role-admin-binding",
+    userId: acceptanceAdminOnlyUser.userId,
+    roleId: "admin"
+  },
   { bindingId: "acceptance-role-platform-admin-binding", userId: "u-platform-admin", roleId: "platform-admin" }
 ] as const;
 
@@ -31,6 +42,25 @@ export async function seedAcceptanceRoleMatrix() {
     await client.query(
       `
       insert into users (id, organization_id, name, email, title, is_active)
+      values ($1, $2, $3, $4, 'Org Admin', true)
+      on conflict (id) do update set
+        organization_id = excluded.organization_id,
+        name = excluded.name,
+        email = excluded.email,
+        title = excluded.title,
+        is_active = excluded.is_active
+      `,
+      [
+        acceptanceAdminOnlyUser.userId,
+        organizationId,
+        acceptanceAdminOnlyUser.name,
+        acceptanceAdminOnlyUser.email
+      ]
+    );
+
+    await client.query(
+      `
+      insert into users (id, organization_id, name, email, title, is_active)
       values ($1, $2, 'Platform Operator', 'platform@chargelab.cn', 'Platform Super Admin', true)
       on conflict (id) do update set
         organization_id = excluded.organization_id,
@@ -43,6 +73,17 @@ export async function seedAcceptanceRoleMatrix() {
     );
 
     for (const binding of acceptanceRoleBindings) {
+      // Keep exactly one org-level role so pickPrimaryPlatformRoleId cannot elevate.
+      await client.query(
+        `
+        delete from user_role_bindings
+        where user_id = $1
+          and organization_id = $2
+          and project_id is null
+          and role_id <> $3
+        `,
+        [binding.userId, organizationId, binding.roleId]
+      );
       await client.query(
         `
         insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)

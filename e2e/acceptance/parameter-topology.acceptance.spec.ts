@@ -627,13 +627,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // Same-compatible sibling nodes keep independent specs/bindings (sc8562 vs mt5788 gpio_int).
     expect(scBinding!.driverModule).not.toBe(mtBinding!.driverModule);
 
-    // Module-first navigator has no device leaves (groupByDevice off); provisional buckets are
-    //「未分类 · <driver>」or a「未分类」root with driver children after taxonomy placement.
-    const unclassifiedRoot = workspace.getByRole("treeitem", { name: /^未分类$/ });
-    if (await unclassifiedRoot.isVisible().catch(() => false)) {
-      await unclassifiedRoot.click({ timeout: 10_000 });
-    }
-    const sc8562TreeItem = workspace.getByRole("treeitem", { name: /未分类 · sc8562|^sc8562$/ }).first();
+    // ADR-0010: taxonomy tree has no provisional「未分类 · {driver}」buckets. Workbench uses
+    // groupByDevice (module → device leaf). Expand ancestors, then scope via sc8562@6E device.
+    const expandTreeitemIfCollapsed = async (name: RegExp) => {
+      const item = workspace.getByRole("treeitem", { name }).first();
+      if (!(await item.isVisible().catch(() => false))) {
+        return;
+      }
+      if ((await item.getAttribute("aria-expanded")) === "false") {
+        await item.getByRole("button", { name: /展开/ }).click({ timeout: 10_000 });
+      }
+    };
+    await expandTreeitemIfCollapsed(/未分类/);
+    await expandTreeitemIfCollapsed(/(?<!@)sc8562(?!@)/);
+    const sc8562TreeItem = workspace.getByRole("treeitem", { name: /sc8562@6E/ }).first();
     await expect(sc8562TreeItem).toBeVisible({ timeout: 20_000 });
     await sc8562TreeItem.click({ timeout: 20_000 });
     const scopedSc8562Row = bindingRowById(workspace, scBinding!.id);
