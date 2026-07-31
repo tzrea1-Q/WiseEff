@@ -30,7 +30,7 @@ Carried from ADR-0013/0014 and the parent plan unless noted:
 3. **PR9 — success feedback (D7):** Short toast for create / activate / deprecate / restore success; failures stay in-form. Audit banner prose stays gone.
 4. **PR9 — soft deprecate defaults (ADR-0014):** Default spec library excludes `deprecated`; open review selection allows `active` (and activatable `draft` if already allowed), never `deprecated`. Detail remains open for restore.
 5. **PR9 — coverage claim honesty:** Public contract and UI expose **only** `overlay-property`. Remove or mark `pinned-schema-property` as unsupported in this release.
-6. **PR9 — library display:** Primary label is attribution subject (+ `property_key`); `driverModule` is secondary/compat only.
+6. **PR9 — library display:** **参数定义** = `property_key`; **驱动模块** = attribution taxonomy path (fallback `driverModule` / 未归类). Compat `driverModule` string remains on detail as a secondary field.
 7. **PR9 — driver nature / cardinality:** **Read-only** display on registration/module governance + singleton task copy. Editing authority and post-edit remediation stay deferred.
 
 ## Out of scope (this plan)

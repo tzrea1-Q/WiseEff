@@ -54,7 +54,7 @@ describe("mock runtime semantic parameter model (seam)", () => {
     expect(screen.getByRole("columnheader", { name: "参数定义" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "驱动模块" })).toBeInTheDocument();
     if (rows[0]) {
-      expect(screen.getByText(formatSpecPrimaryLabel(rows[0]))).toBeInTheDocument();
+      expect(screen.getAllByText(formatSpecPrimaryLabel(rows[0])).length).toBeGreaterThan(0);
     }
     // Spec identity is not rendered as a path-derived flat key
     expect(screen.queryByText(/amba\/i2c/)).not.toBeInTheDocument();

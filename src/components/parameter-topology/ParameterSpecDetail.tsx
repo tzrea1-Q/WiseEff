@@ -2,7 +2,6 @@ import type { ParameterSpecCutoverSummary } from "@/domain/parameter-topology/ty
 import type { ParameterSpecLibraryRow } from "./ParameterSpecLibrary";
 import {
   formatSpecAttributionLabel,
-  formatSpecDriverModuleLabel,
 } from "./ParameterSpecLibrary";
 import { formatParameterSpecLifecycle } from "@/application/parameters/parameterAdminUiCopy";
 
@@ -268,7 +267,7 @@ export function ParameterSpecDetail({ detail, draft, onDraftChange, editable }: 
             {detail.driverModule?.trim() ? (
               <ReadOnlyField
                 label="驱动模块"
-                value={formatSpecDriverModuleLabel(detail)}
+                value={detail.driverModule.trim()}
                 mono
               />
             ) : null}

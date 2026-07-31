@@ -121,26 +121,34 @@ export function formatSpecAttributionLabel(spec: ParameterSpecLibraryRow): strin
   return "未归类";
 }
 
-/** Primary library/detail label: attribution subject + property key. */
+/**
+ * Primary library/detail label for the 参数定义 column: the property key only.
+ * Module taxonomy paths belong in {@link formatSpecDriverModuleLabel}.
+ */
 export function formatSpecPrimaryLabel(
   spec: Pick<ParameterSpecLibraryRow, "propertyKey" | "attributionModules" | "driverModule">
 ): string {
-  const subject =
-    spec.attributionModules.length > 0
-      ? spec.attributionModules
-          .map((module) =>
-            module.path && module.path.length > 0 ? module.path.join(" / ") : module.name
-          )
-          .join("、")
-      : "未归类";
-  return `${subject} · ${spec.propertyKey}`;
+  return spec.propertyKey.trim() || "—";
 }
 
-/** Secondary driver-module label for library scan (compat hint only). */
+/**
+ * 驱动模块 column: taxonomy placement path from attribution modules when observed;
+ * otherwise the legacy driverModule string (or 未归类).
+ */
 export function formatSpecDriverModuleLabel(
-  spec: Pick<ParameterSpecLibraryRow, "driverModule">
+  spec: Pick<ParameterSpecLibraryRow, "attributionModules" | "driverModule">
 ): string {
-  return spec.driverModule?.trim() || "—";
+  if (spec.attributionModules && spec.attributionModules.length > 0) {
+    return spec.attributionModules
+      .map((module) =>
+        module.path && module.path.length > 0 ? module.path.join(" / ") : module.name
+      )
+      .join("、");
+  }
+  if (spec.driverModule?.trim()) {
+    return `${spec.driverModule.trim()}（未实测）`;
+  }
+  return "未归类";
 }
 
 /** Review binding may pick active specs or org-owned activatable drafts — never deprecated. */

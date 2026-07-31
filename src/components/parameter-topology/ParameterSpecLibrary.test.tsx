@@ -106,13 +106,19 @@ describe("ParameterSpecLibrary", () => {
       expect(cell.textContent).not.toMatch(/amba|i2c@|FDF5E000/);
     }
 
-    expect(within(table).getByText(formatSpecPrimaryLabel(gpioIntSc8562))).toBeInTheDocument();
-    expect(within(table).getByText("sc8562")).toBeInTheDocument();
-    expect(within(table).getByText(formatSpecPrimaryLabel(gpioIntMt5788))).toBeInTheDocument();
-    expect(within(table).getByText("mt5788")).toBeInTheDocument();
+    expect(within(table).getAllByText("gpio_int")).toHaveLength(2);
+    expect(within(table).getByText("充电策略")).toBeInTheDocument();
+    expect(within(table).getByText("mt5788（未实测）")).toBeInTheDocument();
     expect(within(table).queryByText("（预测）")).not.toBeInTheDocument();
     expect(within(table).queryByText("vendor,sc8562")).not.toBeInTheDocument();
     expect(within(table).getAllByText("phandle-list").length).toBeGreaterThan(0);
+
+    // Hierarchy lives in 驱动模块, not concatenated into 参数定义.
+    const definitionCells = within(table).getAllByRole("cell", { name: /^gpio_int$/ });
+    expect(definitionCells.length).toBe(2);
+    for (const cell of definitionCells) {
+      expect(cell.textContent).toBe("gpio_int");
+    }
 
     expect(library.textContent).not.toMatch(/推荐值|默认值/);
   });
@@ -131,7 +137,7 @@ describe("ParameterSpecLibrary", () => {
     const library = screen.getByRole("region", { name: "参数定义库" });
     const rows = within(library).getAllByRole("row");
     expect(rows.some((row) => row.textContent?.includes("充电策略") && row.textContent?.includes("gpio_int"))).toBe(true);
-    expect(rows.some((row) => row.textContent?.includes("未归类") && row.textContent?.includes("gpio_int"))).toBe(true);
+    expect(rows.some((row) => row.textContent?.includes("mt5788（未实测）") && row.textContent?.includes("gpio_int"))).toBe(true);
     expect(rows.some((row) => row.textContent?.includes("mt5788") && row.textContent?.includes("gpio_int"))).toBe(true);
     expect(within(library).queryByText("status")).not.toBeInTheDocument();
     // Structural keys (status) are excluded from the library scope.
@@ -221,8 +227,8 @@ describe("ParameterSpecLibrary", () => {
       .getAllByRole("row")
       .filter((row) => row.querySelector("td"));
     expect(pageOneRows).toHaveLength(50);
-    expect(within(library).getByText(/充电策略 · prop_000/)).toBeInTheDocument();
-    expect(within(library).queryByText(/充电策略 · prop_050/)).not.toBeInTheDocument();
+    expect(within(library).getByText("prop_000")).toBeInTheDocument();
+    expect(within(library).queryByText("prop_050")).not.toBeInTheDocument();
 
     fireEvent.click(within(library).getByRole("button", { name: "下一页" }));
     expect(within(library).getByText(/55 \/ 55 项 · 第 2 \/ 2 页/)).toBeInTheDocument();
@@ -230,7 +236,8 @@ describe("ParameterSpecLibrary", () => {
       .getAllByRole("row")
       .filter((row) => row.querySelector("td"));
     expect(pageTwoRows).toHaveLength(5);
-    expect(within(library).getByText(/充电策略 · prop_050/)).toBeInTheDocument();
+    expect(within(library).getByText("prop_050")).toBeInTheDocument();
+    expect(within(library).getAllByText("充电策略").length).toBeGreaterThan(0);
   });
 
   it("lets the operator switch page size among typical values", () => {
@@ -250,8 +257,8 @@ describe("ParameterSpecLibrary", () => {
       .getAllByRole("row")
       .filter((row) => row.querySelector("td"));
     expect(rows).toHaveLength(20);
-    expect(within(library).getByText(/充电策略 · prop_000/)).toBeInTheDocument();
-    expect(within(library).queryByText(/充电策略 · prop_020/)).not.toBeInTheDocument();
+    expect(within(library).getByText("prop_000")).toBeInTheDocument();
+    expect(within(library).queryByText("prop_020")).not.toBeInTheDocument();
 
     fireEvent.change(within(library).getByLabelText("每页条数"), { target: { value: "100" } });
     expect(within(library).getByText(/55 \/ 55 项 · 第 1 \/ 1 页/)).toBeInTheDocument();
