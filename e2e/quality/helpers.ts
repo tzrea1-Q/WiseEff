@@ -145,15 +145,7 @@ export async function expectVisibleFormControlAffordances(page: Page) {
       return [] as string[];
     }
 
-    const failures: string[] = [];
-    const controls = main.querySelectorAll("input:not([type='hidden']), select, textarea");
-
-    for (const control of controls) {
-      const element = control as HTMLElement;
-      if (!element.offsetParent && element.getAttribute("type") !== "hidden") {
-        continue;
-      }
-
+    const hasOwnAffordance = (element: Element) => {
       const style = window.getComputedStyle(element);
       const borderVisible =
         style.borderTopStyle !== "none" &&
@@ -170,8 +162,37 @@ export async function expectVisibleFormControlAffordances(page: Page) {
         background !== "rgba(0, 0, 0, 0)" &&
         background !== "";
       const hasShadow = style.boxShadow !== "none";
+      return borderVisible || hasBackground || hasShadow;
+    };
 
-      if (!borderVisible && !hasBackground && !hasShadow) {
+    /** Nested search fields put chrome on the wrapper (e.g. `.parameters-table-search`). */
+    const hasAncestorAffordance = (element: Element) => {
+      let current = element.parentElement;
+      let depth = 0;
+      while (current && current !== main && depth < 4) {
+        if (hasOwnAffordance(current)) return true;
+        current = current.parentElement;
+        depth += 1;
+      }
+      return false;
+    };
+
+    const failures: string[] = [];
+    const controls = main.querySelectorAll("input:not([type='hidden']), select, textarea");
+
+    for (const control of controls) {
+      const element = control as HTMLInputElement;
+      if (!element.offsetParent) {
+        continue;
+      }
+
+      const inputType = (element.getAttribute("type") ?? "text").toLowerCase();
+      // Native checkbox/radio already have platform chrome; do not require CSS borders.
+      if (inputType === "checkbox" || inputType === "radio") {
+        continue;
+      }
+
+      if (!hasOwnAffordance(element) && !hasAncestorAffordance(element)) {
         failures.push(
           element.getAttribute("aria-label") ??
             element.getAttribute("name") ??

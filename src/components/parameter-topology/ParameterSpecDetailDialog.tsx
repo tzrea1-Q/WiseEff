@@ -55,10 +55,13 @@ export function ParameterSpecDetailDialog({
   useEffect(() => {
     setDraft(createSpecEditorDraft(detail));
     setLocalError(null);
-    setLifecycleKind(null);
-    setLifecycleReason("");
     setCutoverFinalizeReason("");
   }, [detail.id, detail.reviewState, detail.organizationId, detail.cutover?.status]);
+
+  useEffect(() => {
+    setLifecycleKind(null);
+    setLifecycleReason("");
+  }, [detail.id]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

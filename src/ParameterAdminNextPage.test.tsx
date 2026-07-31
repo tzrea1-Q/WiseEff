@@ -650,7 +650,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     const detail = await screen.findByRole("dialog", { name: new RegExp(`参数定义详情 ${SPEC_PRIMARY_LABEL}`) });
     fireEvent.click(within(detail).getByRole("button", { name: "废弃" }));
-    const lifecycleDialog = screen.getByRole("dialog", { name: "废弃参数定义" });
+    const lifecycleDialog = await screen.findByRole("dialog", { name: "废弃参数定义" });
     fireEvent.change(within(lifecycleDialog).getByLabelText("废弃原因"), {
       target: { value: "由平台定义接管" }
     });
@@ -679,7 +679,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
 
     const detail = await screen.findByRole("dialog", { name: new RegExp(`参数定义详情 ${SPEC_PRIMARY_LABEL}`) });
     fireEvent.click(within(detail).getByRole("button", { name: "恢复" }));
-    const lifecycleDialog = screen.getByRole("dialog", { name: "恢复参数定义" });
+    const lifecycleDialog = await screen.findByRole("dialog", { name: "恢复参数定义" });
     fireEvent.change(within(lifecycleDialog).getByLabelText("恢复原因"), {
       target: { value: "重新纳入治理" }
     });
