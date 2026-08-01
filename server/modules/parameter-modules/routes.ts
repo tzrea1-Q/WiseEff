@@ -139,17 +139,22 @@ export function registerParameterModuleRoutes(
     return { status: 201, body: result };
   });
 
-  router.patch("/api/v2/parameter-modules/driver-registry/:moduleId", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    const params = parseWithSchema(driverRegistryModuleParamsSchema, request.params);
-    const body = parseWithSchema(updateDriverRegistrationDefaultBodySchema, request.body ?? {});
-    const result = await updateDriverRegistrationDefaultBusinessCategory(db, auth, {
-      moduleId: params.moduleId,
-      defaultBusinessCategoryId: body.defaultBusinessCategoryId,
-    });
-    return { status: 200, body: result };
-  });
+  // Dedicated path so it does not collide with nature/cardinality PATCH on
+  // `/driver-registry/:moduleId` (D-AG-01 / PR1).
+  router.patch(
+    "/api/v2/parameter-modules/driver-registry/:moduleId/default-business-category",
+    async (request) => {
+      const db = requireDb(options.db);
+      const auth = await options.getCurrentAuthContext(request);
+      const params = parseWithSchema(driverRegistryModuleParamsSchema, request.params);
+      const body = parseWithSchema(updateDriverRegistrationDefaultBodySchema, request.body ?? {});
+      const result = await updateDriverRegistrationDefaultBusinessCategory(db, auth, {
+        moduleId: params.moduleId,
+        defaultBusinessCategoryId: body.defaultBusinessCategoryId,
+      });
+      return { status: 200, body: result };
+    },
+  );
 
   router.post(
     "/api/v2/parameter-modules/driver-registry/:moduleId/replay-placement",

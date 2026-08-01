@@ -265,7 +265,7 @@ export function createHttpParameterModuleRegistryRepository(
       input: UpdateDriverRegistrationDefaultInput
     ) {
       return apiClient.patch<UpdateDriverRegistrationDefaultResult>(
-        `${REGISTRY_BASE}/driver-registry/${encodeURIComponent(moduleId)}`,
+        `${REGISTRY_BASE}/driver-registry/${encodeURIComponent(moduleId)}/default-business-category`,
         input
       );
     },

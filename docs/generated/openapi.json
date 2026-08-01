@@ -1425,7 +1425,7 @@
         }
       }
     },
-    "/api/v2/parameter-modules/driver-registry/{moduleId}": {
+    "/api/v2/parameter-modules/driver-registry/{moduleId}/default-business-category": {
       "patch": {
         "operationId": "parameterModules.updateDriverRegistrationDefault",
         "summary": "Update driver registration default business category and replay auto placements",
