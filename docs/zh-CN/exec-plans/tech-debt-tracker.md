@@ -25,8 +25,8 @@
 - **TD-040（DTS 配置集/门禁后续）：** (1)(2)(3)(4) 状态见英文版；生产失败关闭 Schema/工具链校验由拓扑计划 Task 8/10/17 承接。
 - **TD-042（参数身份 cutover）：** Phase 7、第四轮与第五轮已完成既有语义迁移、状态门禁、不可变 base/candidate 和 fail-closed writeback。**第六轮**补齐 0058 scope、无损手工身份、global authz、完整 valueShape、真实角色 UI/merge、租户 cleanup/test 隔离、跨 origin candidate-less draft 失效和持久 `set|delete`；新增 0063，使 submission 锁定并推进 exact candidate、在 item/request 上持久化其 ID，merge 再次锁定复核。带 marker 的可丢弃库已覆盖实现链路，但它仍是空 legacy 合成库，不是生产近似快照或恢复演练。**缺少合法干净非客户快照与维护窗口**，尚未执行 apply→cutover→整库恢复→旧 API smoke，因此 TD-042 继续为 BLOCKER，不得宣称生产 cutover 就绪。
 - **TD-044（节点启停 e2e）：** `PARAM-ENABLE-GATE-001` / `VISIBLE-001` / `TOGGLE-001` / `GUARD-001` 已登记为 skipped stub；产品行为与单测/集成已在 `2026-07-27-dts-node-enablement` 落地。待补齐 Playwright 验收与 operation evidence。详见英文版 Open 表。
-- **TD-046（归属放置启发式）：** `modulePlacement.ts` 中 `businessCategoryForNodePath` 为演示级关键词路由。**待讨论 D-AG-04**，见 `docs/design-docs/2026-07-31-attribution-governance-deferred-questions.md`（中文对照同目录 zh-CN）；**不排进** `2026-07-31-attribution-governance-follow-up`。ADR-0010 记为非权威启发式。
-- **TD-047（规格 driverModule 身份分裂）：** `parameter_specs.driverModule` 可与节点证据不一致。Follow-up PR9 仅做 UI 主体主展示；存储和解 / 不一致阻断为 **待讨论 D-AG-03**（同上 deferred 文档）。
+- **TD-046（归属放置启发式）：** `modulePlacement.ts` 中 `businessCategoryForNodePath` 为演示级关键词路由。**已锁定 D-AG-04（2026-08-01）**：按注册默认业务分类放置；curated 冻结、auto 回放。实现与关闭见 `docs/exec-plans/active/2026-08-01-attribution-deferred-implementation.md` PR3。
+- **TD-047（规格 driverModule 身份分裂）：** `parameter_specs.driverModule` 可与节点证据不一致。PR9 已做 UI 主体主展示。**已锁定 D-AG-03（2026-08-01）**：删列（迁移 fail-closed；subject-only）。实现与关闭见同上计划 PR2。
 - **TD-048（参数定义多版本模型未启用）：** `version` 列唯一且 binding 指向版本行，但激活是就地 UPDATE，实际每个定义只有一行 version=1；mock 却在激活时递增版本，与 API 语义不一致。下一轮决策见 `docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md` D1/D2。
 - **TD-049（生命周期排序把 deprecated 与 draft 同等降权）：** 八处排序查询使用 `case when lifecycle = 'active' then 0 else 1 end`，但只有 `draft` 不可发布，软下线后该排序可能让草稿盖过绑定实际使用的已废弃定义。见 D6。
 - **TD-050（结构性属性借用了「废弃」）：** 迁移 `0068` 批量废弃 `status` 属性以将节点启停移出定义库（ADR-0003），但「废弃」意为不再推荐、而非「不是定义」。见 D7。
@@ -36,7 +36,7 @@
 
 ## 近期关闭项
 
-- **TD-054（openapi listPromotionCandidates）：** 已于 2026-08-01 在 `feat/governance-platform-closeout` 关闭。`schemaRegistry` 已登记 `parameterSpecs.listPromotionCandidates`；`openapi.test.ts` 10/10 通过。平台验收证据继续由收口计划跟踪。
+- **TD-054（openapi listPromotionCandidates）：** 已于 2026-08-01 经 #216 关闭。`schemaRegistry` 已登记 `parameterSpecs.listPromotionCandidates`；`openapi.test.ts` 10/10 通过。收口计划已归档至 `docs/exec-plans/completed/2026-08-01-governance-platform-closeout.md`。
 - **TD-035（参数批导完整 DTS / reviewMetadata）：** 已于 2026-07-15 关闭。计划归档：`docs/exec-plans/completed/2026-07-15-parameter-import-wizard-td035.md`。
 - **TD-041（结构化编辑回路）：** 已于 2026-07-15 在 P3.1 关闭。编辑→变更集→`submitStructuredEdits`→既有 CR 审阅合入→CST 回写已打通；回写载荷用 `rawText`。计划归档：`docs/exec-plans/completed/2026-07-14-dts-p31-structured-edit-loop.md`。
 - **TD-037（多层级模块）：** 已于 2026-07-09 在 `feat/hierarchical-modules` 分支关闭。参数域与调试域独立模块树、`module_id` 外键、子树筛选、`ModuleTreeSelect` UI 与 MOD-TREE 验收已交付。计划归档：`docs/exec-plans/completed/2026-07-09-wiseeff-hierarchical-modules.md`。

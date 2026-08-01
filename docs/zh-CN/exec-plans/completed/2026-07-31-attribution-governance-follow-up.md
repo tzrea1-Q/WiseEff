@@ -1,9 +1,9 @@
 # 归属治理 follow-up（版本切换、身份映射 UI、诚实收口）
 
 > 英文：[English](../../../exec-plans/completed/2026-07-31-attribution-governance-follow-up.md)  
-> 状态：**已完成（实现已合入）**。PR7–PR9 经 #215 合入。待讨论 D-AG-01–04 仍开放。残留收口见 [`2026-08-01-governance-platform-closeout.md`](../active/2026-08-01-governance-platform-closeout.md)。  
+> 状态：**已完成（实现已合入）**。PR7–PR9 经 #215 合入。D-AG-01–04 **已于 2026-08-01 锁定**，实现见 [`2026-08-01-attribution-deferred-implementation.md`](../active/2026-08-01-attribution-deferred-implementation.md)。残留收口见 [`2026-08-01-governance-platform-closeout.md`](./2026-08-01-governance-platform-closeout.md)（#216）。  
 > 续作：[`2026-07-30-attribution-subjects-and-versioned-specs.md`](../../../exec-plans/active/2026-07-30-attribution-subjects-and-versioned-specs.md)（PR0–PR6）  
-> 待讨论：[`docs/zh-CN/design-docs/2026-07-31-attribution-governance-deferred-questions.md`](../../design-docs/2026-07-31-attribution-governance-deferred-questions.md)
+> 待讨论（已锁定）：[`docs/zh-CN/design-docs/2026-07-31-attribution-governance-deferred-questions.md`](../../design-docs/2026-07-31-attribution-governance-deferred-questions.md)
 
 ## 目标
 

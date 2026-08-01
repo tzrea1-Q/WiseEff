@@ -1,8 +1,8 @@
 # Governance + Platform closeout (archive, evidence, acceptance surface)
 
-> Status: **Active** — implementation on `feat/governance-platform-closeout`  
+> Status: **Completed (implementation merged).** #216 (`feat/governance-platform-closeout`). Attribution deferred D-AG-01–04 locked and owned by [`2026-08-01-attribution-deferred-implementation.md`](../active/2026-08-01-attribution-deferred-implementation.md).  
 > Date: 2026-08-01  
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-01-governance-platform-closeout.md`](../../zh-CN/exec-plans/active/2026-08-01-governance-platform-closeout.md)  
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-01-governance-platform-closeout.md`](../../zh-CN/exec-plans/completed/2026-08-01-governance-platform-closeout.md)  
 > Supersedes residual closeout work from:
 > - [`2026-07-30-parameter-governance-state-machine-completion.md`](../completed/2026-07-30-parameter-governance-state-machine-completion.md) (PR1–PR3 merged #212–#214)
 > - [`2026-07-31-attribution-governance-follow-up.md`](../completed/2026-07-31-attribution-governance-follow-up.md) (PR7–PR9 merged via #215)
@@ -100,7 +100,7 @@ Tasks:
 
 1. Documentation Impact Matrix rows below updated or marked unchanged with evidence.
 2. Run verification commands; archive screenshots under `work/ui-checks/governance-closeout-*`.
-3. Move **this** plan to `completed/` only after Batch A–C success criteria are checked.
+3. Move **this** plan to `completed/` only after Batch A–C success criteria are checked. **Done** — archived after #216.
 
 ## Documentation Impact Matrix
 
