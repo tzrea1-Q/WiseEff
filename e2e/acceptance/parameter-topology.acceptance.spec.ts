@@ -624,8 +624,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(mtBinding).toBeTruthy();
     expect(scBinding!.id).not.toBe(mtBinding!.id);
     expect(scBinding!.parameterSpecId).toBeTruthy();
+    expect(mtBinding!.parameterSpecId).toBeTruthy();
     // Same-compatible sibling nodes keep independent specs/bindings (sc8562 vs mt5788 gpio_int).
-    expect(scBinding!.driverModule).not.toBe(mtBinding!.driverModule);
+    // driverModule is display-only from AttributionSubject / module name (D-AG-03); do not use it
+    // as identity — both may show taxonomy labels like「未分类」when parked there.
+    expect(scBinding!.parameterSpecId).not.toBe(mtBinding!.parameterSpecId);
 
     // ADR-0010: taxonomy tree has no provisional「未分类 · {driver}」buckets. Workbench uses
     // groupByDevice (module → device leaf). Expand ancestors, then scope via sc8562@6E device.
