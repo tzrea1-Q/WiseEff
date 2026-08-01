@@ -1,6 +1,6 @@
 # Parameter governance state machines — completion
 
-> Status: **Completed (implementation merged).** PR1 #212 (`feat/spec-lifecycle-closure`), PR2 #213 (`feat/identity-mapping-decision-split`), PR3 #214 (`feat/parameter-governance-convergence`). ADR-0011 / ADR-0012. Deferred D1–D8 remain in `docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md`. **Residuals** (acceptance IDs, browser evidence, plan archive hygiene) owned by [`2026-08-01-governance-platform-closeout.md`](../active/2026-08-01-governance-platform-closeout.md).
+> Status: **Completed (implementation merged).** PR1 #212 (`feat/spec-lifecycle-closure`), PR2 #213 (`feat/identity-mapping-decision-split`), PR3 #214 (`feat/parameter-governance-convergence`). ADR-0011 / ADR-0012. Deferred D1–D8 remain in `docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md`. **Residuals** (acceptance IDs, browser evidence, plan archive hygiene) owned by [`2026-08-01-governance-platform-closeout.md`](./2026-08-01-governance-platform-closeout.md) (#216).
 
 ## Goal
 

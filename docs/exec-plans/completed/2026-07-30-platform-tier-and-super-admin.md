@@ -10,7 +10,7 @@ Give overlay parsing knowledge a way out of the organization that authored it, a
 
 ## Status
 
-**Completed (implementation merged).** Batches 1–9 landed via #209 / #210 on `feat/org-driver-schema-overlay`. **Residuals** (`PLAT-ROLE-*` / `DRV-PROMOTE-*` browser evidence and acceptance automation) owned by [`2026-08-01-governance-platform-closeout.md`](../active/2026-08-01-governance-platform-closeout.md).
+**Completed (implementation merged).** Batches 1–9 landed via #209 / #210 on `feat/org-driver-schema-overlay`. **Residuals** (`PLAT-ROLE-*` / `DRV-PROMOTE-*` browser evidence and acceptance automation) completed in [`2026-08-01-governance-platform-closeout.md`](./2026-08-01-governance-platform-closeout.md) (#216).
 
 ## Prerequisite and sequencing
 
