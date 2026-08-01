@@ -4,7 +4,7 @@
 > Branch: `feat/attribution-subject-versioned-specs`  
 > Date: 2026-07-30  
 > Supersedes merge intent of open PRs #212–#214 (reusable commits only; not merged as-is)  
-> Follow-up (decided work): [`2026-07-31-attribution-governance-follow-up.md`](2026-07-31-attribution-governance-follow-up.md)  
+> Follow-up (decided work): [`../completed/2026-07-31-attribution-governance-follow-up.md`](../completed/2026-07-31-attribution-governance-follow-up.md)  
 > Deferred discussion: [`docs/design-docs/2026-07-31-attribution-governance-deferred-questions.md`](../../design-docs/2026-07-31-attribution-governance-deferred-questions.md)
 
 ## Goal

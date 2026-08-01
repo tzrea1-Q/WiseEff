@@ -59,14 +59,23 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `DRV-SCHEMA-003` | C | Yes | Activating an overlay for a compatible a pinned schema already covers is rejected with an explanation. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-SCHEMA-004` | C | Yes | Activating an overlay for an already-uploaded device upgrades existing provisional specs in place without a re-upload and closes related review tasks. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `MOD-ATTR-CREATE-KIND-001` | C | Yes | Admin creates empty business, driver-group, instance, or logical modules from the attribution tree with parent-kind rules, required compatibles for driver groups, and not-yet-observed markers on empty curated nodes. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PLAT-ROLE-001` | C | No | Platform admin sees `/platform-console` in the sidebar; other roles get permission-denied on direct navigation. | — |
-| `PLAT-ROLE-002` | C | No | Organization Admin cannot grant `platform-admin` and the control is not rendered. | — |
-| `PLAT-ROLE-003` | C | No | Platform admin access to another organization's parameters, logs, and users remains denied. | — |
-| `DRV-PROMOTE-001` | C | No | Overlay shadowed by pinned or platform schema names the replacing tier. | — |
-| `DRV-PROMOTE-002` | C | No | Promoted overlay reads as promoted and links the platform row. | — |
-| `DRV-PROMOTE-003` | C | No | Authoring overlay when platform row covers compatible is refused with reason. | — |
-| `DRV-PROMOTE-004` | C | No | After promotion, org without overlay sees platform-covered compatible on attribution tree. | — |
-| `DRV-PROMOTE-005` | C | No | Console promotion shows cross-tenant blast radius; revert restores contributors. | — |
+| `PLAT-ROLE-001` | C | Yes | Platform admin sees `/platform-console`; other roles get permission-denied on direct navigation. | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
+| `PLAT-ROLE-002` | C | Yes | Organization Admin cannot grant `platform-admin` and the control is not rendered. | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` (+ `server/modules/users/service.test.ts`) |
+| `PLAT-ROLE-003` | C | Yes | Platform admin users listing and org-scoped APIs stay bounded to the home organization. | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` (+ `server/modules/users/service.test.ts`) |
+| `DRV-PROMOTE-001` | C | No | Overlay shadowed by pinned or platform schema names the replacing tier. | Supplemental: `work/ui-checks/governance-closeout-*` (see closeout plan) |
+| `DRV-PROMOTE-002` | C | No | Promoted overlay reads as promoted and links the platform row. | Supplemental: `work/ui-checks/governance-closeout-*` |
+| `DRV-PROMOTE-003` | C | No | Authoring overlay when platform row covers compatible is refused with reason. | Supplemental / future when multi-org promote seed exists |
+| `DRV-PROMOTE-004` | C | No | After promotion, org without overlay sees platform-covered compatible on attribution tree. | Supplemental / future |
+| `DRV-PROMOTE-005` | C | No | Console promotion shows cross-tenant blast radius; revert restores contributors. | Supplemental: `work/ui-checks/governance-closeout-*` |
+| `SPEC-DEPRECATE-001` | C | No | Admin soft-deprecates a definition with reason; row leaves default library; reference count shown. | Unit: `ParameterSpecLibrary.test.tsx` / `ParameterAdminNextPage.test.tsx`; browser smoke in closeout |
+| `SPEC-RESTORE-001` | C | No | Admin restores deprecated definition to `activated_at`-implied state. | Unit + browser smoke in closeout |
+| `SPEC-EDIT-DIFF-001` | C | No | Active definition save shows value_shape/constraints diff before confirm. | Unit + browser smoke in closeout |
+| `IDMAP-NEWID-001` | C | No | Confirm-as-new-identity releases revision; remaining rejection does not. | Unit: `IdentityMappingReview.test.tsx`; browser smoke |
+| `IDMAP-HISTORY-001` | C | No | History view lists non-open mapping outcomes. | Browser smoke in closeout |
+| `IDMAP-REOPEN-001` | C | No | Reopen offered on non-destructive outcomes; refused on `resolved`. | Unit/server; browser smoke |
+| `MOD-QUEUE-RESTORE-001` | C | No | Unclassified dismissed queue shows restore entry. | Browser smoke in closeout |
+| `OVERLAY-RETIRE-001` | C | No | Overlay retirement shows parse-coverage impact before confirm. | Browser smoke in closeout |
+| `MOD-ATTR-SORT-001` | C | No | Module tree up/down reorder uses existing sortOrder PATCH. | Browser smoke in closeout |
 | `PARAM-FILE-ADMIN-001` | C | Yes | Admin uploads a project parameter file, lists versions, manual sync creates a `file_sync` draft, and the project files panel renders in `/parameter-admin/projects`. | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
 | `PARAM-FILE-CONFLICT-001` | C | Yes | Admin resolves an open file/UI draft conflict by keeping the file or UI value. | `e2e/acceptance/parameter-files.acceptance.spec.ts` |
 | `PARAM-SPEC-GOVERN-001` | C | Yes | Admin searches ingested parameter specs (distinct sc8562/mt5788 `gpio_int`), opens detail, and resolves a spec review task with governance audit. | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |

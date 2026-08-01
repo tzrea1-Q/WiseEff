@@ -67,32 +67,37 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-IDENTITY-MAP-001` | P1 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-IDENTITY-MAP-ADMIN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-CONFIG-PUBLISH-GATE-001` | P0 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PARAM-ENABLE-GATE-001` | P1 | parameters | automated | `/parameters` | Admin | api, db | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PARAM-ENABLE-VISIBLE-001` | P0 | parameters | automated | `/parameters` | Admin, Hardware User | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PARAM-ENABLE-TOGGLE-001` | P0 | parameters | automated | `/parameters` | Software User, Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PARAM-ENABLE-GUARD-001` | P1 | parameters | automated | `/parameters` | Admin | ui | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `MOD-ATTR-QUEUE-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `MOD-ATTR-CLASSIFY-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `MOD-ATTR-BULK-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `MOD-ATTR-TREE-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `MOD-ATTR-RECLASSIFY-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `MOD-ATTR-IMPORTANCE-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `DRV-REG-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `DRV-REG-002` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `DRV-REG-003` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `DRV-SCHEMA-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `DRV-SCHEMA-002` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `DRV-SCHEMA-003` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `DRV-SCHEMA-004` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `MOD-ATTR-CREATE-KIND-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
-| `PLAT-ROLE-001` | P1 | platform | manual | `/platform-console` | Platform Admin | ui | — |
-| `PLAT-ROLE-002` | P1 | platform | manual | `/user-permissions` | Admin | ui | — |
-| `PLAT-ROLE-003` | P1 | platform | manual | `/parameters` | Platform Admin | api | — |
-| `DRV-PROMOTE-001` | P1 | parameters | manual | `/parameter-admin` | Admin | ui | — |
-| `DRV-PROMOTE-002` | P1 | parameters | manual | `/parameter-admin` | Admin | ui | — |
-| `DRV-PROMOTE-003` | P1 | parameters | manual | `/parameter-admin` | Admin | ui, api | — |
-| `DRV-PROMOTE-004` | P1 | parameters | manual | `/parameter-admin` | Admin | ui | — |
-| `DRV-PROMOTE-005` | P1 | platform | manual | `/platform-console` | Platform Admin | ui, api | — |
+| `PARAM-ENABLE-GATE-001` | P1 | parameters | future | `/parameters` | Admin | api, db | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-VISIBLE-001` | P0 | parameters | future | `/parameters` | Admin, Hardware User | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-TOGGLE-001` | P0 | parameters | future | `/parameters` | Software User, Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ENABLE-GUARD-001` | P1 | parameters | future | `/parameters` | Admin | ui | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `MOD-ATTR-QUEUE-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `MOD-ATTR-CLASSIFY-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `MOD-ATTR-BULK-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `MOD-ATTR-TREE-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `MOD-ATTR-RECLASSIFY-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `MOD-ATTR-IMPORTANCE-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `DRV-REG-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `DRV-REG-002` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `DRV-REG-003` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `DRV-SCHEMA-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `DRV-SCHEMA-002` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `DRV-SCHEMA-003` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `DRV-SCHEMA-004` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `MOD-ATTR-CREATE-KIND-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PLAT-ROLE-001` | P1 | platform | automated | `/platform-console` | Platform Admin | ui | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
+| `PLAT-ROLE-002` | P1 | platform | automated | `/user-permissions` | Admin | ui, api | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
+| `PLAT-ROLE-003` | P1 | platform | automated | `/api/v1/users` | Platform Admin | api | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
+| `DRV-PROMOTE-005` | P1 | platform | manual | `/platform-console` | Platform Admin | ui, api |  |
+| `SPEC-DEPRECATE-001` | P1 | parameters | future | `/parameter-admin/specs` | Admin | ui, api |  |
+| `SPEC-RESTORE-001` | P1 | parameters | future | `/parameter-admin/specs` | Admin | ui, api |  |
+| `SPEC-EDIT-DIFF-001` | P2 | parameters | future | `/parameter-admin/specs` | Admin | ui |  |
+| `IDMAP-NEWID-001` | P1 | parameters | future | `/parameter-admin/identity-mapping` | Admin | ui, api |  |
+| `IDMAP-HISTORY-001` | P2 | parameters | future | `/parameter-admin/identity-mapping` | Admin | ui |  |
+| `IDMAP-REOPEN-001` | P2 | parameters | future | `/parameter-admin/identity-mapping` | Admin | ui, api |  |
+| `MOD-QUEUE-RESTORE-001` | P2 | parameters | future | `/parameter-admin/modules` | Admin | ui, api |  |
+| `OVERLAY-RETIRE-001` | P1 | parameters | future | `/parameter-admin/modules` | Admin | ui, api |  |
+| `MOD-ATTR-SORT-001` | P2 | parameters | future | `/parameter-admin/modules` | Admin | ui, api |  |
 
 ## Deferred Or Conditional Operations
 
@@ -100,3 +105,31 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `BRIDGE-HDC-001`: Requires a pre-paired bridge process, hdc on PATH, USB device, and DEVICE_BRIDGE_HDC_AVAILABLE=true.
 - `HDC-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true with hardware attached.
 - `ADB-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=adb, ADB_DEVICE_LAB_AVAILABLE=true, exactly one ready ADB device, one ADB inventory row, and one shared default ADB smoke binding.
+- `PARAM-ENABLE-GATE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `PARAM-ENABLE-VISIBLE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `PARAM-ENABLE-TOGGLE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `PARAM-ENABLE-GUARD-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `MOD-ATTR-QUEUE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `MOD-ATTR-CLASSIFY-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `MOD-ATTR-BULK-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `MOD-ATTR-TREE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `MOD-ATTR-RECLASSIFY-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `MOD-ATTR-IMPORTANCE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `DRV-REG-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `DRV-REG-002`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `DRV-REG-003`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `DRV-SCHEMA-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `DRV-SCHEMA-002`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `DRV-SCHEMA-003`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `DRV-SCHEMA-004`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `MOD-ATTR-CREATE-KIND-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `DRV-PROMOTE-005`: Multi-org promote fixtures are not in local seed; blast-radius UI smoke archived under work/ui-checks/governance-closeout-* per 2026-08-01 closeout plan.
+- `SPEC-DEPRECATE-001`: Covered by unit tests today; Playwright path deferred to a follow-up after closeout browser smoke.
+- `SPEC-RESTORE-001`: Unit-covered; Playwright deferred after closeout smoke.
+- `SPEC-EDIT-DIFF-001`: Unit-covered; Playwright deferred after closeout smoke.
+- `IDMAP-NEWID-001`: Unit/server covered; dedicated Playwright marker deferred.
+- `IDMAP-HISTORY-001`: Browser smoke in closeout; automated marker deferred.
+- `IDMAP-REOPEN-001`: Server unit covered; Playwright deferred.
+- `MOD-QUEUE-RESTORE-001`: Browser smoke in closeout; automated marker deferred.
+- `OVERLAY-RETIRE-001`: Browser smoke in closeout; automated marker deferred.
+- `MOD-ATTR-SORT-001`: Browser smoke in closeout; automated marker deferred.

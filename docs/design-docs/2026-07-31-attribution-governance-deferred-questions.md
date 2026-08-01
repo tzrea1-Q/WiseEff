@@ -2,7 +2,7 @@
 
 > Date: 2026-07-31  
 > Status: open for later grilling  
-> Companion plan (decided work): [`docs/exec-plans/active/2026-07-31-attribution-governance-follow-up.md`](../exec-plans/active/2026-07-31-attribution-governance-follow-up.md)  
+> Companion plan (decided work): [`docs/exec-plans/completed/2026-07-31-attribution-governance-follow-up.md`](../exec-plans/completed/2026-07-31-attribution-governance-follow-up.md)  
 > Chinese: [`docs/zh-CN/design-docs/2026-07-31-attribution-governance-deferred-questions.md`](../zh-CN/design-docs/2026-07-31-attribution-governance-deferred-questions.md)
 
 These items were reviewed in the 2026-07-31 grill-with-docs session. They are **not** scheduled in the follow-up implementation batches until a later grilling locks answers.

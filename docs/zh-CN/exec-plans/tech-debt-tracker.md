@@ -33,10 +33,10 @@
 - **TD-051（已 resolved 的节点对应任务无反向回滚）：** `applyReviewedIdentityMapping` 已重写绑定身份且无逆操作，选错逻辑节点只能靠重新上传 DTS 补救。见 D3。
 - **TD-052（定义数与实测处数未拆分）：** `aggregateSubtreeParameterCounts` 只上卷单一 `parameterCount`；驱动组直接持有定义后两个事实已分岔，废弃引用数又引入第三个计数。见 D4（承接 ADR-0010 的 out of scope）。
 - **TD-053（overlay 停用无接班约束、superseded 无组织侧呈现）：** 停用会直接撤走解析覆盖；被平台晋升后置为 `superseded` 的组织行在其自身治理界面没有定义好的呈现方式。见 D5、D8。
-- **TD-054（openapi 缺 listPromotionCandidates）：** 平台层晋升端点没有 OpenAPI schema 条目，导致完整 `npm run test:server` 失败。
 
 ## 近期关闭项
 
+- **TD-054（openapi listPromotionCandidates）：** 已于 2026-08-01 在 `feat/governance-platform-closeout` 关闭。`schemaRegistry` 已登记 `parameterSpecs.listPromotionCandidates`；`openapi.test.ts` 10/10 通过。平台验收证据继续由收口计划跟踪。
 - **TD-035（参数批导完整 DTS / reviewMetadata）：** 已于 2026-07-15 关闭。计划归档：`docs/exec-plans/completed/2026-07-15-parameter-import-wizard-td035.md`。
 - **TD-041（结构化编辑回路）：** 已于 2026-07-15 在 P3.1 关闭。编辑→变更集→`submitStructuredEdits`→既有 CR 审阅合入→CST 回写已打通；回写载荷用 `rawText`。计划归档：`docs/exec-plans/completed/2026-07-14-dts-p31-structured-edit-loop.md`。
 - **TD-037（多层级模块）：** 已于 2026-07-09 在 `feat/hierarchical-modules` 分支关闭。参数域与调试域独立模块树、`module_id` 外键、子树筛选、`ModuleTreeSelect` UI 与 MOD-TREE 验收已交付。计划归档：`docs/exec-plans/completed/2026-07-09-wiseeff-hierarchical-modules.md`。

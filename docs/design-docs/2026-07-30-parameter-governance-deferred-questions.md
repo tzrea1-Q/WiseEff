@@ -1,6 +1,6 @@
 # Parameter governance — deferred questions for the next round
 
-> Planning input, not a plan. Written 2026-07-30 alongside `docs/exec-plans/active/2026-07-30-parameter-governance-state-machine-completion.md`.
+> Planning input, not a plan. Written 2026-07-30 alongside `docs/exec-plans/completed/2026-07-30-parameter-governance-state-machine-completion.md`.
 
 This document exists because auditing the six governance state machines behind `/parameter-admin` surfaced more open questions than one round should absorb. Each item below was found with evidence, deliberately left out of the current plan, and is recorded here with its fact base so the next round starts from a decision rather than from another investigation.
 
@@ -95,7 +95,7 @@ What a decision needs to settle: whether an organization sees "your overlay was 
 
 ### D9 — `openapi.test.ts` missing `listPromotionCandidates`
 
-Pre-existing and unrelated to this round, but recorded because it will keep failing `npm run test:server` in full: the OpenAPI check has no schema entry for the `listPromotionCandidates` endpoint added by the platform-tier work.
+**Closed 2026-08-01** as TD-054: `parameterSpecs.listPromotionCandidates` is in `schemaRegistry.ts` and `openapi.test.ts` passes. Kept here only as historical note from the governance audit.
 
 ## Explicitly out of the domain — do not re-open without new evidence
 

@@ -2,7 +2,7 @@
 
 - Status: Accepted (amended 2026-07-30)
 - Date: 2026-07-30
-- Plan: `docs/exec-plans/active/2026-07-30-parameter-governance-state-machine-completion.md`
+- Plan: `docs/exec-plans/completed/2026-07-30-parameter-governance-state-machine-completion.md`
 
 ## Context
 
