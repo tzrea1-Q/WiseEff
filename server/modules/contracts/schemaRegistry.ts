@@ -232,6 +232,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterModules.updateDriverRegistration": {
+    summary: "Update driver registration nature and/or instance cardinality",
+    tags: ["parameter-modules"],
+    requestBody: "UpdateDriverRegistrationRequest",
+    responseBody: "UpdateDriverRegistrationResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameterSpecs.listOrganizationDriverSchemas": {
     summary: "List organization-owned manual driver schema overlays",
     tags: ["parameters"],

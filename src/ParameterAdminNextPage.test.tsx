@@ -390,6 +390,12 @@ function createModuleRegistry(
         }
       };
     }),
+    updateDriverRegistration: vi.fn(async (moduleId, input) => ({
+      moduleId,
+      driverNature: input.driverNature ?? "physical-device",
+      instanceCardinality: input.instanceCardinality ?? "multiple",
+      attributionSubjectId: `asub:driver-registration:${moduleId}`
+    })),
     createOrganizationDriverSchema: vi.fn(async (input) => ({
       id: "ods-test-1",
       compatible: input.compatible,

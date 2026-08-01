@@ -24,6 +24,8 @@ import { canSubmitModuleDraft, ModuleDefinitionForm } from "./ModuleDefinitionFo
 export type ModuleEditSavePatch = ParameterModuleDraft & {
   importance?: ModuleImportance;
   kind?: "business" | "node-type";
+  driverNature?: DriverNature;
+  instanceCardinality?: InstanceCardinality;
 };
 
 type EditableModule = {
@@ -112,6 +114,10 @@ export function ModuleEditDialog({
     module.kind === "node-type" ? module.kind : "business"
   );
   const [newCompatible, setNewCompatible] = useState("");
+  const [natureDraft, setNatureDraft] = useState<DriverNature | null>(driverNature);
+  const [cardinalityDraft, setCardinalityDraft] = useState<InstanceCardinality | null>(
+    instanceCardinality
+  );
   const [deprecatingSchema, setDeprecatingSchema] = useState<OrganizationDriverSchema | null>(
     null
   );
@@ -130,6 +136,11 @@ export function ModuleEditDialog({
     setKind(module.kind === "node-type" ? module.kind : "business");
     setNewCompatible("");
   }, [module]);
+
+  useEffect(() => {
+    setNatureDraft(driverNature);
+    setCardinalityDraft(instanceCardinality);
+  }, [driverNature, instanceCardinality]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -207,22 +218,61 @@ export function ModuleEditDialog({
             <div className="organization-driver-schema-dialog__field-grid">
               <label>
                 驱动性质
-                <input
-                  aria-label="驱动性质"
-                  value={formatDriverNatureLabel(driverNature)}
-                  readOnly
-                  aria-readonly="true"
-                />
+                {canAdmin ? (
+                  <select
+                    aria-label="驱动性质"
+                    value={natureDraft ?? ""}
+                    disabled={busy}
+                    onChange={(event) =>
+                      setNatureDraft(event.target.value as DriverNature)
+                    }
+                  >
+                    <option value="physical-device">
+                      {formatDriverNatureLabel("physical-device")}
+                    </option>
+                    <option value="logical-service">
+                      {formatDriverNatureLabel("logical-service")}
+                    </option>
+                  </select>
+                ) : (
+                  <input
+                    aria-label="驱动性质"
+                    value={formatDriverNatureLabel(driverNature)}
+                    readOnly
+                    aria-readonly="true"
+                  />
+                )}
               </label>
               <label>
                 实例基数
-                <input
-                  aria-label="实例基数"
-                  value={formatInstanceCardinalityLabel(instanceCardinality)}
-                  readOnly
-                  aria-readonly="true"
-                />
+                {canAdmin ? (
+                  <select
+                    aria-label="实例基数"
+                    value={cardinalityDraft ?? ""}
+                    disabled={busy}
+                    onChange={(event) =>
+                      setCardinalityDraft(event.target.value as InstanceCardinality)
+                    }
+                  >
+                    <option value="multiple">
+                      {formatInstanceCardinalityLabel("multiple")}
+                    </option>
+                    <option value="singleton-per-project">
+                      {formatInstanceCardinalityLabel("singleton-per-project")}
+                    </option>
+                  </select>
+                ) : (
+                  <input
+                    aria-label="实例基数"
+                    value={formatInstanceCardinalityLabel(instanceCardinality)}
+                    readOnly
+                    aria-readonly="true"
+                  />
+                )}
               </label>
+              <p className="muted" style={{ gridColumn: "1 / -1" }}>
+                驱动性质描述设备/服务本体，与分类树中的节点类型（node-type）不是同一概念。
+              </p>
             </div>
           ) : null}
           <ModuleDefinitionForm
@@ -437,7 +487,11 @@ export function ModuleEditDialog({
                 description: draft.description.trim(),
                 scope: draft.scope.trim(),
                 ...(showKind ? { kind } : {}),
-                ...(importanceVisible ? { importance } : {})
+                ...(importanceVisible ? { importance } : {}),
+                ...(canAdmin && natureDraft != null ? { driverNature: natureDraft } : {}),
+                ...(canAdmin && cardinalityDraft != null
+                  ? { instanceCardinality: cardinalityDraft }
+                  : {})
               });
             }}
           >

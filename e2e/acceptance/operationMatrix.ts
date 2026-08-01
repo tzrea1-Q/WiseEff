@@ -935,6 +935,21 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api"]
   },
   {
+    id: "DRV-REG-004",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin", "Platform Admin"],
+    action:
+      "Edit driverNature / instanceCardinality on an org registration; confirm platform-admin edits appear in org audit, Org Admin cannot edit platform-tier subjects, and singleton-per-project only opens/refreshes publish blockers.",
+    coverage: "future",
+    acceptanceIds: ["DRV-REG-004"],
+    specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],
+    deferralReason:
+      "Unit/server coverage lands with PR1; browser e2e pending disposable-DB / Playwright evidence before gating CI.",
+    assertions: ["ui", "api", "audit"]
+  },
+  {
     id: "DRV-SCHEMA-001",
     priority: "P1",
     area: "parameters",
