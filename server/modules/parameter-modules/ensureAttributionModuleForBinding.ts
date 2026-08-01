@@ -121,6 +121,59 @@ async function findModuleIdByNameAnyParent(
 }
 
 /**
+ * When an existing auto-discovered module lacks attribution_subject_id, ensure a
+ * catalog subject (compatible-like for driver-groups) and link it. Avoids returning
+ * subject-less modules that break provisional surface writes after migration 0088.
+ */
+async function ensureLinkedAttributionSubjectForExistingModule(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    moduleId: string;
+    kind: ModuleKind;
+    name: string;
+    sourceKey: string;
+    description?: string;
+  },
+): Promise<void> {
+  if (input.kind !== "driver-group" && input.kind !== "node-type") return;
+
+  let subjectId: string | null = null;
+  if (input.kind === "driver-group") {
+    const { ensureAttributionSubjectForCompatible } = await import("./resolveAttributionSubject");
+    const compatibleToken = input.sourceKey.startsWith("compatible:")
+      ? input.sourceKey.slice("compatible:".length)
+      : input.name;
+    subjectId = await ensureAttributionSubjectForCompatible(db, {
+      organizationId: input.organizationId,
+      compatible: compatibleToken,
+      displayName: input.name,
+    });
+  } else {
+    const { insertAttributionSubjectForNewModule } = await import("./attributionSubjectRepository");
+    subjectId = await insertAttributionSubjectForNewModule(db, {
+      moduleId: input.moduleId,
+      organizationId: input.organizationId,
+      kind: "node-type",
+      displayName: input.name,
+      origin: "auto",
+      sourceKey: input.sourceKey,
+      notes: input.description ?? "",
+    });
+  }
+
+  await db.query(
+    `
+    update parameter_modules
+    set attribution_subject_id = coalesce(attribution_subject_id, $2),
+        updated_at = now()
+    where id = $1
+    `,
+    [input.moduleId, subjectId],
+  );
+}
+
+/**
  * Resolve or create a module by stable source_key, with a one-time name fallback
  * that adopts unkeyed rows. Never renames or moves curated modules.
  * Existing keyed modules are returned as-is (no silent reparent on ingest).
@@ -150,6 +203,16 @@ async function ensureNamedModule(
         kind: input.kind,
       });
     }
+    if (!byKey.attributionSubjectId) {
+      await ensureLinkedAttributionSubjectForExistingModule(db, {
+        organizationId: input.organizationId,
+        moduleId: byKey.id,
+        kind: input.kind,
+        name: input.name,
+        sourceKey: input.sourceKey,
+        description: input.description,
+      });
+    }
     return byKey.id;
   }
 
@@ -170,6 +233,16 @@ async function ensureNamedModule(
         sourceKey: input.sourceKey,
         kind: input.kind,
         origin: existing.origin === "curated" ? "curated" : "auto",
+      });
+    }
+    if (existing && !existing.attributionSubjectId) {
+      await ensureLinkedAttributionSubjectForExistingModule(db, {
+        organizationId: input.organizationId,
+        moduleId: existingId,
+        kind: input.kind,
+        name: input.name,
+        sourceKey: input.sourceKey,
+        description: input.description,
       });
     }
     return existingId;

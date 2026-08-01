@@ -36,7 +36,7 @@ export type SpecQuery = {
   q?: string;
   sourceKind?: ParameterSourceKind;
   lifecycle?: SpecLifecycle;
-  driverModule?: string;
+  attributionSubjectId?: string;
   propertyKey?: string;
 };
 

@@ -151,7 +151,7 @@ describe("driver registration default business category (D-AG-04 / TD-046)", () 
         root,
         "server",
         "migrations",
-        "0088_driver_registration_default_business_category.sql",
+        "0089_driver_registration_default_business_category.sql",
       ),
       "utf8",
     );
@@ -413,5 +413,21 @@ describe("spec lifecycle closure migration invariants (ADR-0011)", () => {
     expect(migration).toContain("activated_at timestamptz");
     expect(migration).toContain("lifecycle = 'active'");
     expect(migration).toContain("activated_at is null");
+  });
+});
+
+describe("parameter spec subject-required migration invariants (D-AG-03 / TD-047)", () => {
+  it("backfills attribution_subject_id and fail-closes unresolved identity-bearing rows", () => {
+    const migration = readFileSync(
+      path.join(root, "server", "migrations", "0088_parameter_spec_subject_required.sql"),
+      "utf8",
+    );
+    expect(migration).toContain("attribution_subject_id");
+    expect(migration).toContain("compatible:");
+    expect(migration).toContain("project_parameter_bindings");
+    expect(migration).toContain("driver_schema_overlay_properties");
+    expect(migration).toContain("refuse to proceed");
+    expect(migration).toContain("identity-bearing parameter_specs still lack attribution_subject_id");
+    expect(migration).toMatch(/raise exception/i);
   });
 });

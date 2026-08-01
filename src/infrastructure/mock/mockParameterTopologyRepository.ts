@@ -540,8 +540,8 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       if (query.lifecycle) {
         items = items.filter((item) => item.lifecycle === query.lifecycle);
       }
-      if (query.driverModule) {
-        items = items.filter((item) => item.driverModule === query.driverModule);
+      if (query.attributionSubjectId) {
+        items = items.filter((item) => item.attributionSubjectId === query.attributionSubjectId);
       }
       if (query.propertyKey) {
         items = items.filter((item) => item.propertyKey === query.propertyKey);

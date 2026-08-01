@@ -2,8 +2,7 @@
 -- authoritative auto-placement parent (real business leaf C). Keyword
 -- businessCategoryForNodePath is seed/bootstrap-only after this migration.
 --
--- Note: open PR #219 may also introduce an 0088_* migration for subjects; if
--- both merge, one file renames to 0089. This branch uses 0088 intentionally.
+-- Numbered 0089 after PR #219 landed 0088_parameter_spec_subject_required.
 
 alter table driver_registrations
   add column if not exists default_business_category_module_id text

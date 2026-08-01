@@ -346,7 +346,10 @@ describe("createHttpParameterTopologyRepository", () => {
       createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
     );
 
-    const specs = await repository.listSpecs({ propertyKey: "gpio_int", driverModule: "sc8562" });
+    const specs = await repository.listSpecs({
+      propertyKey: "gpio_int",
+      attributionSubjectId: "asub:driver-registration:sc8562",
+    });
     expect(specs[0]).toMatchObject({
       propertyKey: "gpio_int",
       driverModule: "sc8562",
@@ -356,7 +359,9 @@ describe("createHttpParameterTopologyRepository", () => {
     expect(specs[0]).not.toHaveProperty("path");
     expect(specs[0]).not.toHaveProperty("recommendedValue");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("propertyKey=gpio_int");
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("driverModule=sc8562");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "attributionSubjectId=asub%3Adriver-registration%3Asc8562",
+    );
 
     const detail = await repository.getSpec("spec-1");
     expect(detail.exampleValue).toEqual(specDetailDto.exampleValue);

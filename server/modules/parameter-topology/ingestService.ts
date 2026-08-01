@@ -34,9 +34,13 @@ import type { MatchableNode, SchemaRegistry, SpecReviewTaskDraft } from "../para
 import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
 import { BOARD_INSTANCE_MODULE_NAME } from "../parameter-modules/modulePlacement";
 import { isParameterSurfaceRow, isStructuralPropertyKey } from "./parameterSurface";
+import { ApiError } from "../../shared/http/errors";
+import {
+  ensureAttributionSubjectForCompatible,
+  getModuleAttributionSubjectId,
+} from "../parameter-modules/resolveAttributionSubject";
 import { upsertProvisionalSurfacePropertySpec } from "./provisionalSurfaceBinding";
 import type { Database, Queryable } from "../../shared/database/client";
-import { ApiError } from "../../shared/http/errors";
 import {
   createOrReuseBinding,
   persistAmbiguousIdentityMapping,
@@ -690,16 +694,6 @@ async function matchBindAndQueueReviews(
         const driverModule =
           driverModuleFromSchemaNamespace(matchable.compatible[0]?.split(",").pop() ?? null) ??
           matchable.name;
-        const { parameterSpecId, parameterSpecVersionId } = await upsertProvisionalSurfacePropertySpec(
-          tx,
-          {
-            organizationId: input.organizationId,
-            propertyKey,
-            driverModule,
-            occurrenceAstJson: property.value ?? { kind: "raw", rawText: property.rawText },
-            occurrenceRawText: property.rawText,
-          },
-        );
         const surfaceModuleId = await resolveAttributionModuleForBinding(tx, {
           organizationId: input.organizationId,
           driverModule,
@@ -707,6 +701,52 @@ async function matchBindAndQueueReviews(
           instanceName: instanceNameFor(matchable),
           nodeLocator: matchable.nodeLocator,
         });
+        let attributionSubjectId = await getModuleAttributionSubjectId(tx, surfaceModuleId);
+        if (!attributionSubjectId) {
+          const compatibleToken = matchable.compatible[0]?.trim() || null;
+          const ensureToken = compatibleToken || driverModule?.trim() || null;
+          if (ensureToken) {
+            attributionSubjectId = await ensureAttributionSubjectForCompatible(tx, {
+              organizationId: input.organizationId,
+              compatible: ensureToken,
+            });
+            // business/unclassified modules must keep attribution_subject_id null
+            // (parameter_modules_subject_kind_check); only catalog kinds may link.
+            await tx.query(
+              `
+              update parameter_modules
+              set attribution_subject_id = coalesce(attribution_subject_id, $2),
+                  updated_at = now()
+              where id = $1
+                and kind in ('driver-group', 'node-type')
+              `,
+              [surfaceModuleId, attributionSubjectId],
+            );
+          }
+        }
+        if (!attributionSubjectId) {
+          throw new ApiError(
+            "CONFLICT",
+            "Cannot resolve attribution subject for provisional surface binding.",
+            409,
+            {
+              organizationId: input.organizationId,
+              moduleId: surfaceModuleId,
+              propertyKey,
+              compatible: matchable.compatible[0] ?? null,
+            },
+          );
+        }
+        const { parameterSpecId, parameterSpecVersionId } = await upsertProvisionalSurfacePropertySpec(
+          tx,
+          {
+            organizationId: input.organizationId,
+            propertyKey,
+            attributionSubjectId,
+            occurrenceAstJson: property.value ?? { kind: "raw", rawText: property.rawText },
+            occurrenceRawText: property.rawText,
+          },
+        );
         const binding = await createOrReuseBinding(tx, {
           organizationId: input.organizationId,
           key: {

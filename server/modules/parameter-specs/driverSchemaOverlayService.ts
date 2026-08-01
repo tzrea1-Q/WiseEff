@@ -8,9 +8,6 @@ import { canAdminParameters, canViewParameters } from "../parameters/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { lookupParseCoverage } from "./parseCoverage";
-import {
-  driverModuleFromOverlayCompatible,
-} from "./driverSchemaOverlayMaterialize";
 import { assertNonStructuralPropertyKey } from "./structuralPropertyGuard";
 import {
   findActiveOrganizationDriverSchemaByCompatible,
@@ -25,8 +22,9 @@ import {
   type OrganizationDriverSchemaRecord,
 } from "./driverSchemaOverlayRepository";
 import { getCachedSchemaRegistry, invalidateOrganizationSchemaRegistryCache } from "./schemaRegistryCache";
-import { buildManualSpecIds } from "./specIdentity";
+import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 import type { PropertyValueShape, SpecLifecycle } from "./types";
+import { ensureAttributionSubjectForCompatible } from "../parameter-modules/resolveAttributionSubject";
 
 const schemasRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../schemas/dts");
 
@@ -83,7 +81,7 @@ export type OverlayPropertyInput =
     };
 
 /**
- * Ensure the canonical org manual ParameterSpec (buildManualSpecIds) exists and
+ * Ensure the canonical org manual ParameterSpec (subject-scoped identity) exists and
  * carries the authored shape. Linking a library row copies its definition into
  * this identity so overlay matching and provisional upgrade share one row.
  */
@@ -105,11 +103,14 @@ async function ensureCanonicalOverlayParameterSpec(
     throw new ApiError("VALIDATION_FAILED", "propertyKey is required.", 400);
   }
   assertNonStructuralPropertyKey(propertyKey);
-  const driverModule = driverModuleFromOverlayCompatible(input.compatible);
-  const ids = buildManualSpecIds({
+  const attributionSubjectId = await ensureAttributionSubjectForCompatible(db, {
     organizationId: input.organizationId,
+    compatible: input.compatible,
+  });
+  const ids = buildSubjectScopedManualSpecIds({
+    organizationId: input.organizationId,
+    attributionSubjectId,
     propertyKey,
-    driverModule,
   });
   const valueShape = JSON.stringify(input.valueShape);
   const constraints = JSON.stringify(input.constraints ?? {});
@@ -119,11 +120,14 @@ async function ensureCanonicalOverlayParameterSpec(
 
   await db.query(
     `
-    insert into parameter_specs (id, organization_id, source_kind, specification_key)
-    values ($1, $2, 'manual', $3)
-    on conflict (id) do nothing
+    insert into parameter_specs (
+      id, organization_id, source_kind, specification_key, attribution_subject_id
+    )
+    values ($1, $2, 'manual', $3, $4)
+    on conflict (id) do update set
+      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id)
     `,
-    [ids.parameterSpecId, input.organizationId, ids.specificationKey],
+    [ids.parameterSpecId, input.organizationId, ids.specificationKey, attributionSubjectId],
   );
   await db.query(
     `

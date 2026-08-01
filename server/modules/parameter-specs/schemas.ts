@@ -24,6 +24,7 @@ export const parameterSpecSummaryDtoSchema = z.object({
   sourceKind: parameterSourceKindSchema,
   specificationKey: nonEmptyString,
   propertyKey: z.string().nullable(),
+  /** Display-only label from attribution subject; not write identity. */
   driverModule: z.string().nullable(),
   lifecycle: specLifecycleSchema,
   currentVersionId: z.string().nullable(),
@@ -84,7 +85,7 @@ export const listParameterSpecsQuerySchema = z.object({
   q: z.string().optional(),
   sourceKind: parameterSourceKindSchema.optional(),
   lifecycle: specLifecycleSchema.optional(),
-  driverModule: z.string().optional(),
+  attributionSubjectId: z.string().optional(),
   propertyKey: z.string().optional()
 });
 

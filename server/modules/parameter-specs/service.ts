@@ -6,6 +6,7 @@ import { ApiError } from "../../shared/http/errors";
 import { writeGovernanceAudit } from "../parameter-topology/governanceAudit";
 import { countBlockingIdentityMappingTasksForRevision } from "../parameter-topology/bindingService";
 import { stableSemanticId } from "../parameter-topology/migration";
+import { ensureAttributionSubjectForCompatible } from "../parameter-modules/resolveAttributionSubject";
 import { randomUUID } from "node:crypto";
 import {
   applyDismissedSpecReview,
@@ -369,9 +370,27 @@ export async function resolveSpecReviewTask(
           { taskId: input.taskId },
         );
       }
-      const driverModule =
-        asString(asRecord(locked.sourceEvidence).driverModule) ??
-        asString(asRecord(locked.candidateSchemas[0] ?? {}).schemaNamespace);
+      const compatible =
+        asString(asRecord(locked.sourceEvidence).compatible) ??
+        (Array.isArray(asRecord(locked.sourceEvidence).compatible)
+          ? asString((asRecord(locked.sourceEvidence).compatible as unknown[])[0])
+          : null);
+      const compatibleList = asStringArray(asRecord(locked.sourceEvidence).compatible);
+      const resolveCompatible = compatible ?? compatibleList[0] ?? null;
+      let attributionSubjectId: string | null = null;
+      if (resolveCompatible) {
+        attributionSubjectId = await ensureAttributionSubjectForCompatible(tx, {
+          organizationId: auth.organization.id,
+          compatible: resolveCompatible,
+        });
+      } else {
+        throw new ApiError(
+          "CONFLICT",
+          "Cannot create a manual spec without resolvable attribution subject evidence (compatible).",
+          409,
+          { taskId: input.taskId },
+        );
+      }
       const occurrence = await loadOccurrenceForDraft(tx, {
         propertyOccurrenceId: locate.propertyOccurrenceId,
         configRevisionId: locate.configRevisionId,
@@ -379,7 +398,7 @@ export async function resolveSpecReviewTask(
       const created = await createOrgManualParameterSpec(tx, {
         organizationId: auth.organization.id,
         propertyKey: taskPropertyKey,
-        driverModule,
+        attributionSubjectId,
         sourceReviewTaskId: locked.id,
         propertyOccurrenceId: locate.propertyOccurrenceId,
         configRevisionId: locate.configRevisionId,

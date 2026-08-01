@@ -36,7 +36,8 @@ const migration0084 = "0084_parameter_spec_version_cutover.sql";
 const migration0085 = "0085_identity_mapping_and_singleton_blockers.sql";
 const migration0086 = "0086_retire_config_revision_published.sql";
 const migration0087 = "0087_relax_ppv_null_for_enablement_drafts.sql";
-const migration0088 = "0088_driver_registration_default_business_category.sql";
+const migration0088 = "0088_parameter_spec_subject_required.sql";
+const migration0089 = "0089_driver_registration_default_business_category.sql";
 
 const enablementMigrations = [
   migration0068,
@@ -60,6 +61,7 @@ const enablementMigrations = [
   migration0086,
   migration0087,
   migration0088,
+  migration0089,
 ] as const;
 const REQUIRED_TABLES = [
   "parameter_specs",
@@ -357,9 +359,11 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
            '<&gpio13 29 0>', '', 'user-0060'
          )`
       );
+      // Use a resolvable driver token so 0088 can backfill attribution_subject_id
+      // (prefix "manual" is excluded from token subject creation).
       await db.query(
         `insert into parameter_specs (id, organization_id, source_kind, specification_key)
-         values ('spec-0060', 'org-0060', 'manual', 'manual/gpio-int-0060')`
+         values ('spec-0060', 'org-0060', 'manual', 'sc8562/gpio-int-0060')`
       );
       await db.query(
         `insert into project_parameter_bindings (
@@ -462,9 +466,11 @@ describe.skipIf(!databaseAvailable)("0048 parameter topology schema shadow", () 
            '<&gpio13 29 0>', '', 'user-0061-manual'
          )`
       );
+      // Use a resolvable driver token so 0088 can backfill attribution_subject_id
+      // (prefix "manual" is excluded from token subject creation).
       await db.query(
         `insert into parameter_specs (id, organization_id, source_kind, specification_key)
-         values ('spec-0061', 'org-0061', 'manual', 'manual/gpio-int-0061')`
+         values ('spec-0061', 'org-0061', 'manual', 'sc8562/gpio-int-0061')`
       );
       await db.query(
         `insert into project_parameter_bindings (

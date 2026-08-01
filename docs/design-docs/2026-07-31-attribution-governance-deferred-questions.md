@@ -53,7 +53,7 @@ These items were reviewed in the 2026-07-31 grill-with-docs session and **locked
 2. Migration is **fail-closed**: if a row cannot resolve to a subject, abort the migration (no silent keep-both).
 3. Overlay authoring, seeds, and legacy imports become **subject-only**; do not reintroduce string driverModule as a write path.
 
-**Track:** Close [TD-047](../exec-plans/tech-debt-tracker.md) when PR2 merges.
+**Track:** Close [TD-047](../exec-plans/tech-debt-tracker.md) when PR2 merges. **Implemented in PR2** (`feat/drop-parameter-spec-driver-module`, migration `0088`): no physical column; subject-only writes; fail-closed backfill.
 
 ## D-AG-04 — Business-category placement heuristic (TD-046)
 

@@ -1,16 +1,25 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { driverModuleFromOverlayCompatible } from "./driverSchemaOverlayMaterialize";
+import { compatibleSourceKey } from "../parameter-modules/ensureAttributionModuleForBinding";
 import {
   activateOrganizationDriverSchemaForAuth,
   createOrganizationDriverSchemaForAuth,
   deprecateOrganizationDriverSchemaForAuth,
   previewOrganizationDriverSchemaDeprecationForAuth,
 } from "./driverSchemaOverlayService";
-import { buildManualSpecIds } from "./specIdentity";
+import { buildSubjectScopedManualSpecIds } from "./specIdentity";
+
+function subjectIdForCompatible(organizationId: string, compatible: string): string {
+  const digest = createHash("sha256")
+    .update(`${organizationId}\u001f${compatibleSourceKey(compatible)}`)
+    .digest("hex")
+    .slice(0, 24);
+  return `asub:driver-registration:compatible:${digest}`;
+}
 
 function makeAuth(): AuthContext {
   return {
@@ -194,6 +203,18 @@ function createServiceDb(seed?: { schemas?: SchemaRow[]; provisionalSpecIds?: st
       audits.push({ action: String(values[7]), metadata: {} });
       return { rows: [], rowCount: 1 };
     }
+    if (sql.includes("from attribution_subjects") && sql.includes("source_key")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("from parameter_modules") && sql.includes("source_key")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("insert into attribution_subjects")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("insert into driver_registrations")) {
+      return { rows: [], rowCount: 1 };
+    }
     if (sql.includes("from driver_schema_overlays") && sql.includes("organization_id = $1")) {
       return { rows: [], rowCount: 0 };
     }
@@ -227,10 +248,11 @@ describe("organizationDriverSchemaService", () => {
       displayName: "Only Overlay",
       properties: [{ propertyKey: "vout_ovp_mv", valueShape: { kind: "u32-array" }, units: "mV" }],
     });
-    const expected = buildManualSpecIds({
+    const subjectId = subjectIdForCompatible("org-1", "vendor,only-overlay-chip");
+    const expected = buildSubjectScopedManualSpecIds({
       organizationId: "org-1",
+      attributionSubjectId: subjectId,
       propertyKey: "vout_ovp_mv",
-      driverModule: driverModuleFromOverlayCompatible("vendor,only-overlay-chip"),
     });
     expect(ensuredSpecs.has(expected.parameterSpecId)).toBe(true);
     expect(created.properties[0]?.parameterSpecId).toBe(expected.parameterSpecId);
@@ -240,10 +262,11 @@ describe("organizationDriverSchemaService", () => {
   it("activates an overlay and marks linked ParameterSpecs active", async () => {
     const compatible = "vendor,only-overlay-chip";
     const propertyKey = "vout_ovp_mv";
-    const ids = buildManualSpecIds({
+    const subjectId = subjectIdForCompatible("org-1", compatible);
+    const ids = buildSubjectScopedManualSpecIds({
       organizationId: "org-1",
+      attributionSubjectId: subjectId,
       propertyKey,
-      driverModule: driverModuleFromOverlayCompatible(compatible),
     });
     const { db, upgradedVersions, resolvedTasks } = createServiceDb({
       schemas: [
