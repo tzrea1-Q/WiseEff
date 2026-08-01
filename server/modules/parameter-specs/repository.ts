@@ -2,11 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import {
-  driverModuleFromOverlayCompatible,
-} from "./driverSchemaOverlayMaterialize";
-import { buildManualSpecIds } from "./specIdentity";
+import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 import type { DriverSchema, PropertySpec, SpecReviewTaskDraft } from "./types";
+import { ensureAttributionSubjectForCompatible } from "../parameter-modules/resolveAttributionSubject";
 
 type ReviewTaskRow = {
   id: string;
@@ -953,7 +951,7 @@ export async function listParameterSpecRows(
     q?: string;
     sourceKind?: "dts" | "json" | "manual";
     lifecycle?: "draft" | "active" | "deprecated";
-    driverModule?: string;
+    attributionSubjectId?: string;
     propertyKey?: string;
   },
 ): Promise<ParameterSpecListRow[]> {
@@ -968,15 +966,9 @@ export async function listParameterSpecRows(
     values.push(input.lifecycle);
     conditions.push(`ps.definition_lifecycle = $${values.length}`);
   }
-  if (input.driverModule) {
-    values.push(input.driverModule);
-    conditions.push(`(
-      case
-        when cardinality(string_to_array(ps.specification_key, '/')) >= 3
-          then (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/')) - 1]
-        else split_part(ps.specification_key, '/', 1)
-      end
-    ) = $${values.length}`);
+  if (input.attributionSubjectId) {
+    values.push(input.attributionSubjectId);
+    conditions.push(`ps.attribution_subject_id = $${values.length}`);
   }
   if (input.propertyKey) {
     values.push(input.propertyKey);
@@ -988,7 +980,7 @@ export async function listParameterSpecRows(
   if (input.q) {
     values.push(`%${input.q}%`);
     conditions.push(
-      `(ps.specification_key ilike $${values.length} or coalesce(dps.property_key, '') ilike $${values.length} or coalesce(psv.display_name, '') ilike $${values.length})`,
+      `(ps.specification_key ilike $${values.length} or coalesce(dps.property_key, '') ilike $${values.length} or coalesce(psv.display_name, '') ilike $${values.length} or coalesce(asub.display_name, '') ilike $${values.length})`,
     );
   }
 
@@ -1006,14 +998,7 @@ export async function listParameterSpecRows(
           ''
         )
       ) as property_key,
-      nullif(
-        case
-          when cardinality(string_to_array(ps.specification_key, '/')) >= 3
-            then (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/')) - 1]
-          else split_part(ps.specification_key, '/', 1)
-        end,
-        ''
-      ) as driver_module,
+      asub.display_name as driver_module,
       ps.definition_lifecycle as lifecycle,
       ps.attribution_subject_id,
       psv.id as current_version_id,
@@ -1021,6 +1006,7 @@ export async function listParameterSpecRows(
       psv.value_shape,
       dsv.compatible_patterns
     from parameter_specs ps
+    left join attribution_subjects asub on asub.id = ps.attribution_subject_id
     left join lateral (
       select *
       from parameter_spec_versions
@@ -1197,14 +1183,7 @@ export async function getParameterSpecRow(
           ''
         )
       ) as property_key,
-      nullif(
-        case
-          when cardinality(string_to_array(ps.specification_key, '/')) >= 3
-            then (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/')) - 1]
-          else split_part(ps.specification_key, '/', 1)
-        end,
-        ''
-      ) as driver_module,
+      asub.display_name as driver_module,
       ps.definition_lifecycle as lifecycle,
       ps.attribution_subject_id,
       psv.id as current_version_id,
@@ -1222,6 +1201,7 @@ export async function getParameterSpecRow(
       dsv.compatible_patterns,
       ppt.target_value as policy_target
     from parameter_specs ps
+    left join attribution_subjects asub on asub.id = ps.attribution_subject_id
     left join lateral (
       select *
       from parameter_spec_versions
@@ -1318,27 +1298,40 @@ export async function upsertMatchedPropertySpec(
   const overlayCompatible = overlayOrgId
     ? compatibleFromOverlayNamespace(property.schemaNamespace)
     : null;
-  const manualIds =
-    overlayOrgId && overlayCompatible
-      ? buildManualSpecIds({
-          organizationId: overlayOrgId,
-          propertyKey: property.propertyKey,
-          driverModule: driverModuleFromOverlayCompatible(overlayCompatible),
-        })
-      : null;
+
+  let attributionSubjectId: string | null = null;
+  let manualIds: ReturnType<typeof buildSubjectScopedManualSpecIds> | null = null;
+  if (overlayOrgId && overlayCompatible) {
+    attributionSubjectId = await ensureAttributionSubjectForCompatible(db, {
+      organizationId: overlayOrgId,
+      compatible: overlayCompatible,
+    });
+    manualIds = buildSubjectScopedManualSpecIds({
+      organizationId: overlayOrgId,
+      attributionSubjectId,
+      propertyKey: property.propertyKey,
+    });
+  }
+
+  const parameterSpecId = manualIds?.parameterSpecId ?? property.parameterSpecId;
+  const parameterSpecVersionId = property.id;
 
   await db.query(
     `
-    insert into parameter_specs (id, organization_id, source_kind, specification_key, definition_lifecycle)
-    values ($1, $2, $3, $4, $5)
-    on conflict (id) do nothing
+    insert into parameter_specs (
+      id, organization_id, source_kind, specification_key, definition_lifecycle, attribution_subject_id
+    )
+    values ($1, $2, $3, $4, $5, $6)
+    on conflict (id) do update set
+      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id)
     `,
     [
-      property.parameterSpecId,
+      parameterSpecId,
       overlayOrgId,
       overlayOrgId ? "manual" : "dts",
       manualIds?.specificationKey ?? `${property.schemaNamespace}/${property.propertyKey}`,
       property.lifecycle === "deprecated" ? "deprecated" : property.lifecycle === "active" ? "active" : "draft",
+      attributionSubjectId,
     ],
   );
   await db.query(
@@ -1361,8 +1354,8 @@ export async function upsertMatchedPropertySpec(
       documentation = excluded.documentation
     `,
     [
-      property.id,
-      property.parameterSpecId,
+      parameterSpecVersionId,
+      parameterSpecId,
       property.propertyKey,
       property.documentation ?? property.propertyKey,
       JSON.stringify(property.valueShape),
@@ -1390,8 +1383,8 @@ export async function upsertMatchedPropertySpec(
       documentation = excluded.documentation
     `,
     [
-      manualIds?.dtsPropertySpecId ?? `dps:${property.parameterSpecId}`,
-      property.parameterSpecId,
+      manualIds?.dtsPropertySpecId ?? `dps:${parameterSpecId}`,
+      parameterSpecId,
       // Prefer null here; callers upsert drivers first and may patch later.
       // Avoid FK failures when driver_schemas row is not yet present.
       null,
@@ -1404,8 +1397,8 @@ export async function upsertMatchedPropertySpec(
   );
 
   return {
-    parameterSpecId: property.parameterSpecId,
-    parameterSpecVersionId: property.id,
+    parameterSpecId,
+    parameterSpecVersionId,
   };
 }
 

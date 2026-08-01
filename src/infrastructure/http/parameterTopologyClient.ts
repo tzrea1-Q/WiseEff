@@ -93,7 +93,7 @@ function buildSpecsPath(query: SpecQuery = {}) {
   if (query.q) params.set("q", query.q);
   if (query.sourceKind) params.set("sourceKind", query.sourceKind);
   if (query.lifecycle) params.set("lifecycle", query.lifecycle);
-  if (query.driverModule) params.set("driverModule", query.driverModule);
+  if (query.attributionSubjectId) params.set("attributionSubjectId", query.attributionSubjectId);
   if (query.propertyKey) params.set("propertyKey", query.propertyKey);
   return appendQuery("/api/v2/parameter-specs", params);
 }

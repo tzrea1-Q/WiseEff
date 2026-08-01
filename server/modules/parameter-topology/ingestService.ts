@@ -34,9 +34,10 @@ import type { MatchableNode, SchemaRegistry, SpecReviewTaskDraft } from "../para
 import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureAttributionModuleForBinding";
 import { BOARD_INSTANCE_MODULE_NAME } from "../parameter-modules/modulePlacement";
 import { isParameterSurfaceRow, isStructuralPropertyKey } from "./parameterSurface";
+import { ApiError } from "../../shared/http/errors";
+import { getModuleAttributionSubjectId } from "../parameter-modules/resolveAttributionSubject";
 import { upsertProvisionalSurfacePropertySpec } from "./provisionalSurfaceBinding";
 import type { Database, Queryable } from "../../shared/database/client";
-import { ApiError } from "../../shared/http/errors";
 import {
   createOrReuseBinding,
   persistAmbiguousIdentityMapping,
@@ -690,16 +691,6 @@ async function matchBindAndQueueReviews(
         const driverModule =
           driverModuleFromSchemaNamespace(matchable.compatible[0]?.split(",").pop() ?? null) ??
           matchable.name;
-        const { parameterSpecId, parameterSpecVersionId } = await upsertProvisionalSurfacePropertySpec(
-          tx,
-          {
-            organizationId: input.organizationId,
-            propertyKey,
-            driverModule,
-            occurrenceAstJson: property.value ?? { kind: "raw", rawText: property.rawText },
-            occurrenceRawText: property.rawText,
-          },
-        );
         const surfaceModuleId = await resolveAttributionModuleForBinding(tx, {
           organizationId: input.organizationId,
           driverModule,
@@ -707,6 +698,30 @@ async function matchBindAndQueueReviews(
           instanceName: instanceNameFor(matchable),
           nodeLocator: matchable.nodeLocator,
         });
+        const attributionSubjectId = await getModuleAttributionSubjectId(tx, surfaceModuleId);
+        if (!attributionSubjectId) {
+          throw new ApiError(
+            "CONFLICT",
+            "Cannot resolve attribution subject for provisional surface binding.",
+            409,
+            {
+              organizationId: input.organizationId,
+              moduleId: surfaceModuleId,
+              propertyKey,
+              compatible: matchable.compatible[0] ?? null,
+            },
+          );
+        }
+        const { parameterSpecId, parameterSpecVersionId } = await upsertProvisionalSurfacePropertySpec(
+          tx,
+          {
+            organizationId: input.organizationId,
+            propertyKey,
+            attributionSubjectId,
+            occurrenceAstJson: property.value ?? { kind: "raw", rawText: property.rawText },
+            occurrenceRawText: property.rawText,
+          },
+        );
         const binding = await createOrReuseBinding(tx, {
           organizationId: input.organizationId,
           key: {

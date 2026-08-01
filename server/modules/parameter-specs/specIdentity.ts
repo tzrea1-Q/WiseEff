@@ -59,6 +59,10 @@ export function buildLegacyManualSpecIds(input: {
   };
 }
 
+/**
+ * @deprecated Legacy collision-audit / historical identity only.
+ * Product writes must use {@link buildSubjectScopedManualSpecIds}.
+ */
 export function buildManualSpecIds(input: {
   organizationId: string;
   propertyKey: string;
@@ -156,8 +160,8 @@ export function buildSubjectScopedManualSpecIds(input: {
 }
 
 /**
- * Platform manual specs omit organizationId from identity (ADR-0009).
- * Must not reuse buildManualSpecIds — that bakes in tenant scope.
+ * @deprecated Legacy platform identity that baked driverModule into the hash.
+ * Prefer {@link buildSubjectScopedManualSpecIds} with organizationId null.
  */
 export function buildPlatformManualSpecIds(input: {
   propertyKey: string;

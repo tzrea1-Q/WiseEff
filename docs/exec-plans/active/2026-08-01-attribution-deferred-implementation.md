@@ -42,7 +42,7 @@ This plan intentionally uses **three sequential branches/PRs** (exception to one
 - [ ] Locked decision table remains the source of truth; no silent semantic drift in PRs.
 - [ ] PR1: Org Admin cannot edit platform registrations; platform-admin can edit org registrations and those edits appear in org audit; singleton→publish blocked via tasks; save is one transaction; nature UI stays distinct from `node-type`.
 - [ ] PR1: Public contract/docs no longer advertise `pinned-schema-property` as a supported claim kind.
-- [ ] PR2: `driverModule` column and identity write paths gone; migration fails closed on unresolvable subjects; TD-047 closed.
+- [x] PR2: `driverModule` column and identity write paths gone; migration fails closed on unresolvable subjects; TD-047 closed.
 - [ ] PR3: Auto placement uses registration default business category; curated frozen; auto replay + explicit replay op; TD-046 closed; keyword heuristic retired or demoted to non-product path.
 - [ ] Acceptance IDs registered/updated; focused tests + `npm run build` green per PR; `npm run docs:check` green before marking this plan complete.
 - [ ] Frontend-visible PR1/PR3: playwright-cli evidence at 1440×900 / 768×1024 / 390×844 with 0 console errors.
@@ -60,9 +60,9 @@ This plan intentionally uses **three sequential branches/PRs** (exception to one
 
 ### PR2 — Drop `driverModule` (TD-047)
 
-1. Migration drops `driverModule` (and any derived identity use). **Fail closed** if subject cannot be resolved for a row that still needs identity.
-2. API/OpenAPI/types/seeds/overlay/import: subject-only; no string `driverModule` write path.
-3. Update tests; close TD-047 in EN/ZH tech-debt trackers when merged.
+1. [x] Migration `0088_parameter_spec_subject_required.sql` backfills `attribution_subject_id` and **fail-closes** if identity-bearing rows cannot resolve a unique subject (no physical `driver_module` column to drop).
+2. [x] API/OpenAPI/types/seeds/overlay/import: subject-only; no string `driverModule` write path (`buildSubjectScopedManualSpecIds`).
+3. [x] Update tests; close TD-047 in EN/ZH tech-debt trackers.
 
 ### PR3 — Registration default placement (TD-046)
 

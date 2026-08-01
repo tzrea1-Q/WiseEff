@@ -23,6 +23,12 @@ import {
 import { listSpecReviewTasks, resolveCandidateSpecId, resolveSpecReviewTask, toReviewTaskDto } from "./service";
 import { assertSpecResolvable } from "./specCompleteness";
 
+vi.mock("../parameter-modules/resolveAttributionSubject", () => ({
+  ensureAttributionSubjectForCompatible: vi.fn(async () => "asub:driver-registration:test"),
+  requireAttributionSubjectIdForCompatible: vi.fn(async () => "asub:driver-registration:test"),
+  resolveAttributionSubjectIdForCompatible: vi.fn(async () => "asub:driver-registration:test"),
+}));
+
 vi.mock("./repository", () => ({
   getParameterSpecRow: vi.fn(),
   getSpecReviewTaskById: vi.fn(),
@@ -511,6 +517,7 @@ describe("parameter spec review service", () => {
       sourceEvidence: {
         ...openTask.sourceEvidence,
         propertyKey: "mystery_prop",
+        compatible: ["vendor,mystery-chip"],
       },
     };
     vi.mocked(lockOpenSpecReviewTask).mockResolvedValue(unmatchedTask);
@@ -545,6 +552,7 @@ describe("parameter spec review service", () => {
       expect.objectContaining({
         organizationId: "org-1",
         propertyKey: "mystery_prop",
+        attributionSubjectId: "asub:driver-registration:test",
         sourceReviewTaskId: "task-1",
       }),
     );

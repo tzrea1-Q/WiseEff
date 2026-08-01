@@ -1300,20 +1300,14 @@ export async function listBindingCompareRows(
       p.name as project_name,
       latest.raw_value,
       pm.name as module_name,
-      nullif(
-        case
-          when cardinality(string_to_array(ps.specification_key, '/')) >= 3
-            then (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/')) - 1]
-          else split_part(ps.specification_key, '/', 1)
-        end,
-        ''
-      ) as driver_module
+      coalesce(asub.display_name, pm.name) as driver_module
     from project_parameter_bindings b
     inner join source s
       on s.parameter_spec_id = b.parameter_spec_id
      and s.module_id = b.module_id
     inner join projects p on p.id = b.project_id
     inner join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join attribution_subjects asub on asub.id = ps.attribution_subject_id
     left join parameter_modules pm on pm.id = b.module_id
     left join lateral (
       select raw_value
@@ -1406,14 +1400,7 @@ export async function listProjectBindingRows(
         ),
         ''
       ) as property_key,
-      nullif(
-        case
-          when cardinality(string_to_array(ps.specification_key, '/')) >= 3
-            then (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/')) - 1]
-          else split_part(ps.specification_key, '/', 1)
-        end,
-        ''
-      ) as driver_module,
+      coalesce(asub.display_name, pm.name) as driver_module,
       b.logical_node_id,
       case
         when lnr.unit_address is not null then lnr.name || '@' || lnr.unit_address
@@ -1427,6 +1414,8 @@ export async function listProjectBindingRows(
       b.module_id
     from project_parameter_bindings b
     join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join attribution_subjects asub on asub.id = ps.attribution_subject_id
+    left join parameter_modules pm on pm.id = b.module_id
     left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
     ${revisionJoin}
     left join lateral (
