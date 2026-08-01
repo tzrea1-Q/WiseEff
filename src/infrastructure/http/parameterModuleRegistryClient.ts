@@ -13,6 +13,9 @@ import type {
   RegisterOrClaimDriverInput,
   RegisterOrClaimDriverResult,
   RecomputeBindingModulesResult,
+  ReplayDriverPlacementResult,
+  UpdateDriverRegistrationDefaultInput,
+  UpdateDriverRegistrationDefaultResult,
   UpdateParameterModuleInput,
   UpdateOrganizationDriverSchemaInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
@@ -255,6 +258,23 @@ export function createHttpParameterModuleRegistryRepository(
 
     async registerOrClaimDriver(input: RegisterOrClaimDriverInput) {
       return apiClient.post<RegisterOrClaimDriverResponse>(`${REGISTRY_BASE}/driver-registry`, input);
+    },
+
+    async updateDriverRegistrationDefault(
+      moduleId: string,
+      input: UpdateDriverRegistrationDefaultInput
+    ) {
+      return apiClient.patch<UpdateDriverRegistrationDefaultResult>(
+        `${REGISTRY_BASE}/driver-registry/${encodeURIComponent(moduleId)}`,
+        input
+      );
+    },
+
+    async replayDriverPlacement(moduleId: string) {
+      return apiClient.post<ReplayDriverPlacementResult>(
+        `${REGISTRY_BASE}/driver-registry/${encodeURIComponent(moduleId)}/replay-placement`,
+        {}
+      );
     },
 
     async createOrganizationDriverSchema(input: CreateOrganizationDriverSchemaInput) {

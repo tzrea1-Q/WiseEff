@@ -33,7 +33,7 @@
 
 - PR1：权限/审计/同事务/仅阻断发布；去掉 pinned claim 宣传  
 - PR2：删列 + fail-closed；关 TD-047  
-- PR3：注册默认分类；curated 冻结、auto 回放；关 TD-046  
+- [x] PR3：注册默认分类；curated 冻结、auto 回放；关 TD-046  
 - 每 PR：聚焦测试 + `build`；收口前 `docs:check`；UI 变更需 playwright-cli 三视口证据
 
 完整任务、文档影响矩阵与验证命令以英文计划为准。

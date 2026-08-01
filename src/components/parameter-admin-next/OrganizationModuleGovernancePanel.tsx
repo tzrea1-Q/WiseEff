@@ -124,6 +124,24 @@ export function OrganizationModuleGovernancePanel({
         );
         return result;
       },
+      async updateDriverRegistrationDefault(moduleId, input) {
+        const result = await base.updateDriverRegistrationDefault(moduleId, input);
+        pushModuleAudit(
+          dispatch,
+          "module-moved",
+          `已更新驱动默认业务分类，回放移动 ${result.replay.moved}`
+        );
+        return result;
+      },
+      async replayDriverPlacement(moduleId) {
+        const result = await base.replayDriverPlacement(moduleId);
+        pushModuleAudit(
+          dispatch,
+          "module-moved",
+          `已回放驱动放置：移动 ${result.moved}，跳过 curated ${result.skippedCurated}`
+        );
+        return result;
+      },
       createOrganizationDriverSchema: (input: CreateOrganizationDriverSchemaInput) =>
         base.createOrganizationDriverSchema(input),
       listOrganizationDriverSchemas: () => base.listOrganizationDriverSchemas(),

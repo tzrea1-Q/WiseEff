@@ -1425,6 +1425,102 @@
         }
       }
     },
+    "/api/v2/parameter-modules/driver-registry/{moduleId}": {
+      "patch": {
+        "operationId": "parameterModules.updateDriverRegistrationDefault",
+        "summary": "Update driver registration default business category and replay auto placements",
+        "tags": [
+          "parameter-modules"
+        ],
+        "parameters": [
+          {
+            "name": "moduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDriverRegistrationDefaultRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateDriverRegistrationDefaultResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-modules/driver-registry/{moduleId}/replay-placement": {
+      "post": {
+        "operationId": "parameterModules.replayDriverPlacement",
+        "summary": "Replay auto driver-group placement from registration default business category",
+        "tags": [
+          "parameter-modules"
+        ],
+        "parameters": [
+          {
+            "name": "moduleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayDriverPlacementResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/organization-driver-schemas": {
       "get": {
         "operationId": "parameterSpecs.listOrganizationDriverSchemas",
@@ -6089,6 +6185,18 @@
       "RegisterOrClaimDriverResponse": {
         "type": "object",
         "x-wiseeff-schema": "RegisterOrClaimDriverResponse"
+      },
+      "UpdateDriverRegistrationDefaultRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "UpdateDriverRegistrationDefaultRequest"
+      },
+      "UpdateDriverRegistrationDefaultResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "UpdateDriverRegistrationDefaultResponse"
+      },
+      "ReplayDriverPlacementResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ReplayDriverPlacementResponse"
       },
       "OrganizationDriverSchemaListResponse": {
         "type": "object",

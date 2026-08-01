@@ -324,6 +324,7 @@ function createModuleRegistry(
           origin: "curated" as const,
           businessCategoryId: "mod-charging",
           businessCategoryName: "充电策略",
+          defaultBusinessCategoryId: "mod-charging",
           compatibles: ["vendor,sc8562"],
           parameterCount: 8,
           observed: true,
@@ -390,6 +391,23 @@ function createModuleRegistry(
         }
       };
     }),
+    updateDriverRegistrationDefault: vi.fn(async (moduleId, input) => ({
+      item: {
+        id: moduleId,
+        name: "SC8562",
+        parentId: input.defaultBusinessCategoryId,
+        kind: "driver-group" as const,
+        origin: "curated" as const
+      },
+      defaultBusinessCategoryId: input.defaultBusinessCategoryId,
+      replay: { moved: 0, skippedCurated: 1, skippedMissingDefault: 0 }
+    })),
+    replayDriverPlacement: vi.fn(async (moduleId) => ({
+      moduleId,
+      moved: 0,
+      skippedCurated: 1,
+      skippedMissingDefault: 0
+    })),
     createOrganizationDriverSchema: vi.fn(async (input) => ({
       id: "ods-test-1",
       compatible: input.compatible,

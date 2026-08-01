@@ -177,7 +177,14 @@ export function parentNodePath(nodePath: string): string | null {
   return parts.slice(0, -1).join("/");
 }
 
-/** Demo seed business-leaf routing shared by seed generation and ingest placement. */
+/** Demo / seed / bootstrap-once business-leaf routing.
+ *
+ * Product auto placement (D-AG-04 / TD-046) uses the driver registration's
+ * `default_business_category_module_id`, not this heuristic. Call sites that
+ * still invoke this function must be seed scripts or a one-time bootstrap when
+ * a registration exists without a default — never the steady-state ingest path
+ * once a default is set.
+ */
 export function businessCategoryForNodePath(nodePath: string, propertyName = ""): string {
   const path = `${nodePath}/${propertyName}`.toLowerCase();
   if (!nodePath || propertyName === "board_id") return "Board Identity";

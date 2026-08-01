@@ -3,9 +3,11 @@ import { useEffect, useId, useMemo, useState } from "react";
 import type {
   ModuleImportance,
   ModuleKind,
+  ParameterModule,
   ParameterModuleMapping
 } from "@/domain/parameter-topology/moduleRegistry";
 import type {
+  DriverPlacementReplayCounts,
   OrganizationDriverSchema,
   OrganizationDriverSchemaDeprecationImpact
 } from "@/application/ports/ParameterModuleRegistryRepository";
@@ -20,6 +22,8 @@ import type {
   InstanceCardinality,
 } from "@/application/ports/ParameterModuleRegistryRepository";
 import { canSubmitModuleDraft, ModuleDefinitionForm } from "./ModuleDefinitionForm";
+import { ModuleTreeSelect } from "@/components/common/ModuleTreeSelect";
+import { toBusinessFlatNodes } from "@/components/parameter-topology/moduleAttributionTreeUtils";
 
 export type ModuleEditSavePatch = ParameterModuleDraft & {
   importance?: ModuleImportance;
@@ -74,6 +78,10 @@ export function ModuleEditDialog({
   canAdmin = false,
   driverNature = null,
   instanceCardinality = null,
+  modules = [],
+  defaultBusinessCategoryId = null,
+  onUpdateDefaultBusinessCategory,
+  onReplayPlacement,
 }: {
   module: EditableModule;
   existingNames: readonly string[];
@@ -100,8 +108,14 @@ export function ModuleEditDialog({
   canAdmin?: boolean;
   driverNature?: DriverNature | null;
   instanceCardinality?: InstanceCardinality | null;
+  /** Full module tree for business-category picker (driver-group Admin). */
+  modules?: readonly ParameterModule[];
+  defaultBusinessCategoryId?: string | null;
+  onUpdateDefaultBusinessCategory?: (defaultBusinessCategoryId: string) => void | Promise<void>;
+  onReplayPlacement?: () => void | Promise<DriverPlacementReplayCounts>;
 }) {
   const addFieldId = useId();
+  const defaultCategoryLabelId = useId();
   const [draft, setDraft] = useState<ParameterModuleDraft>({
     name: module.name,
     description: module.description ?? "",
@@ -112,6 +126,8 @@ export function ModuleEditDialog({
     module.kind === "node-type" ? module.kind : "business"
   );
   const [newCompatible, setNewCompatible] = useState("");
+  const [defaultCategoryId, setDefaultCategoryId] = useState(defaultBusinessCategoryId ?? "");
+  const [replayMessage, setReplayMessage] = useState<string | null>(null);
   const [deprecatingSchema, setDeprecatingSchema] = useState<OrganizationDriverSchema | null>(
     null
   );
@@ -119,6 +135,16 @@ export function ModuleEditDialog({
     useState<OrganizationDriverSchemaDeprecationImpact | null>(null);
   const [impactError, setImpactError] = useState<string | null>(null);
   const [coverageLossConfirmed, setCoverageLossConfirmed] = useState(false);
+
+  const businessNodes = useMemo(() => toBusinessFlatNodes(modules), [modules]);
+  const businessSelectableIds = useMemo(
+    () => new Set(businessNodes.map((node) => node.id)),
+    [businessNodes]
+  );
+  const showPlacementControls =
+    module.kind === "driver-group" &&
+    canAdmin &&
+    (onUpdateDefaultBusinessCategory !== undefined || onReplayPlacement !== undefined);
 
   useEffect(() => {
     setDraft({
@@ -129,7 +155,9 @@ export function ModuleEditDialog({
     setImportance(module.importance ?? "medium");
     setKind(module.kind === "node-type" ? module.kind : "business");
     setNewCompatible("");
-  }, [module]);
+    setDefaultCategoryId(defaultBusinessCategoryId ?? "");
+    setReplayMessage(null);
+  }, [module, defaultBusinessCategoryId]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -225,6 +253,66 @@ export function ModuleEditDialog({
               </label>
             </div>
           ) : null}
+
+          {showPlacementControls ? (
+            <section
+              className="module-edit-placement-controls"
+              aria-label={PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategory}
+            >
+              <div className="module-edit-compatible-rules__head">
+                <h3>{PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategory}</h3>
+                <p className="muted">{PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategoryHint}</p>
+              </div>
+              {onUpdateDefaultBusinessCategory ? (
+                <div className="form-stack">
+                  <span id={defaultCategoryLabelId}>
+                    {PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategory}
+                  </span>
+                  <ModuleTreeSelect
+                    mode="single"
+                    label={PARAMETER_ADMIN_UI.driverRegistryDefaultBusinessCategory}
+                    labelledBy={defaultCategoryLabelId}
+                    nodes={businessNodes}
+                    selectableIds={businessSelectableIds}
+                    value={defaultCategoryId}
+                    disabled={busy}
+                    onChange={(next) => {
+                      const nextId = typeof next === "string" ? next : next[0] ?? "";
+                      setDefaultCategoryId(nextId);
+                      if (nextId) {
+                        void onUpdateDefaultBusinessCategory(nextId);
+                      }
+                    }}
+                  />
+                </div>
+              ) : null}
+              {onReplayPlacement ? (
+                <div className="dialog-actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="button subtle"
+                    disabled={busy}
+                    aria-label={PARAMETER_ADMIN_UI.driverRegistryReplayPlacement}
+                    onClick={() => {
+                      void (async () => {
+                        setReplayMessage(null);
+                        const counts = await onReplayPlacement();
+                        if (!counts) return;
+                        setReplayMessage(
+                          `${PARAMETER_ADMIN_UI.driverRegistryReplayPlacementDone}：移动 ${counts.moved}，跳过 curated ${counts.skippedCurated}，缺默认 ${counts.skippedMissingDefault}`
+                        );
+                      })();
+                    }}
+                  >
+                    {PARAMETER_ADMIN_UI.driverRegistryReplayPlacement}
+                  </button>
+                </div>
+              ) : null}
+              <p className="muted">{PARAMETER_ADMIN_UI.driverRegistryReplayPlacementHint}</p>
+              {replayMessage ? <p role="status">{replayMessage}</p> : null}
+            </section>
+          ) : null}
+
           <ModuleDefinitionForm
             currentName={module.name}
             existingNames={existingNames}

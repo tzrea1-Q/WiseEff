@@ -10,6 +10,7 @@ import type {
   ParameterModuleRegistryRepository,
   RegisterOrClaimDriverInput,
   RecomputeBindingModulesResult,
+  UpdateDriverRegistrationDefaultInput,
   UpdateParameterModuleInput,
   UpdateOrganizationDriverSchemaInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
@@ -133,6 +134,7 @@ function createSeedStore(): Store {
         origin: "curated",
         businessCategoryId: "mod-charging",
         businessCategoryName: "充电策略",
+        defaultBusinessCategoryId: "mod-charging",
         compatibles: ["vendor,sc8562"],
         parameterCount: 12,
         observed: true,
@@ -381,6 +383,7 @@ export function createMockParameterModuleRegistryRepository(
         origin: "curated",
         businessCategoryId: input.businessCategoryId,
         businessCategoryName: business?.name ?? null,
+        defaultBusinessCategoryId: input.businessCategoryId,
         compatibles,
         parameterCount: existing?.parameterCount ?? 0,
         observed: (existing?.parameterCount ?? 0) > 0,
@@ -432,6 +435,79 @@ export function createMockParameterModuleRegistryRepository(
           origin: "curated" as const,
           description: input.notes
         }
+      };
+    },
+
+    async updateDriverRegistrationDefault(
+      moduleId: string,
+      input: UpdateDriverRegistrationDefaultInput
+    ) {
+      const entry = store.driverRegistry.find((row) => row.moduleId === moduleId);
+      if (!entry) {
+        throw new Error("Driver registry entry not found");
+      }
+      const business = store.modules.find((module) => module.id === input.defaultBusinessCategoryId);
+      const moved =
+        entry.origin === "auto" && entry.businessCategoryId !== input.defaultBusinessCategoryId ? 1 : 0;
+      const skippedCurated = entry.origin === "curated" ? 1 : 0;
+      entry.defaultBusinessCategoryId = input.defaultBusinessCategoryId;
+      if (entry.origin === "auto") {
+        entry.businessCategoryId = input.defaultBusinessCategoryId;
+        entry.businessCategoryName = business?.name ?? null;
+        const module = store.modules.find((row) => row.id === moduleId);
+        if (module) module.parentId = input.defaultBusinessCategoryId;
+      }
+      return {
+        item: {
+          id: moduleId,
+          name: entry.name,
+          parentId: entry.businessCategoryId,
+          kind: "driver-group" as const,
+          origin: entry.origin
+        },
+        defaultBusinessCategoryId: input.defaultBusinessCategoryId,
+        replay: {
+          moved,
+          skippedCurated,
+          skippedMissingDefault: 0
+        }
+      };
+    },
+
+    async replayDriverPlacement(moduleId: string) {
+      const entry = store.driverRegistry.find((row) => row.moduleId === moduleId);
+      if (!entry) {
+        throw new Error("Driver registry entry not found");
+      }
+      if (!entry.defaultBusinessCategoryId) {
+        return {
+          moduleId,
+          moved: 0,
+          skippedCurated: 0,
+          skippedMissingDefault: 1
+        };
+      }
+      if (entry.origin !== "auto") {
+        return {
+          moduleId,
+          moved: 0,
+          skippedCurated: 1,
+          skippedMissingDefault: 0
+        };
+      }
+      const business = store.modules.find(
+        (module) => module.id === entry.defaultBusinessCategoryId
+      );
+      const moved = entry.businessCategoryId !== entry.defaultBusinessCategoryId ? 1 : 0;
+      entry.businessCategoryId = entry.defaultBusinessCategoryId;
+      entry.businessCategoryName = business?.name ?? null;
+      const module = store.modules.find((row) => row.id === moduleId);
+      if (module) module.parentId = entry.defaultBusinessCategoryId;
+      return {
+        moduleId,
+        moved,
+        skippedCurated: 0,
+        skippedMissingDefault: 0
       };
     },
 

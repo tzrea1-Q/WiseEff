@@ -232,6 +232,19 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterModules.updateDriverRegistrationDefault": {
+    summary: "Update driver registration default business category and replay auto placements",
+    tags: ["parameter-modules"],
+    requestBody: "UpdateDriverRegistrationDefaultRequest",
+    responseBody: "UpdateDriverRegistrationDefaultResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameterModules.replayDriverPlacement": {
+    summary: "Replay auto driver-group placement from registration default business category",
+    tags: ["parameter-modules"],
+    responseBody: "ReplayDriverPlacementResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameterSpecs.listOrganizationDriverSchemas": {
     summary: "List organization-owned manual driver schema overlays",
     tags: ["parameters"],

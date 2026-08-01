@@ -36,7 +36,19 @@ export const registerOrClaimDriverBodySchema = z.object({
   notes: z.string().trim().max(500).optional()
 });
 
+export const updateDriverRegistrationDefaultBodySchema = z.object({
+  defaultBusinessCategoryId: z.string().trim().min(1),
+});
+
+export const driverRegistryModuleParamsSchema = z.object({
+  moduleId: z.string().trim().min(1),
+});
+
 export type CreateModuleMappingBody = z.infer<typeof createModuleMappingBodySchema>;
 export type RegisterOrClaimDriverBody = z.infer<typeof registerOrClaimDriverBodySchema>;
+export type UpdateDriverRegistrationDefaultBody = z.infer<
+  typeof updateDriverRegistrationDefaultBodySchema
+>;
+export type DriverRegistryModuleParams = z.infer<typeof driverRegistryModuleParamsSchema>;
 export type RecomputeBindingsBody = z.infer<typeof recomputeBindingsBodySchema>;
 export type DismissCompatibleBody = z.infer<typeof dismissCompatibleBodySchema>;

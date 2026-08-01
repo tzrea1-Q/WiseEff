@@ -114,7 +114,12 @@ function createFakeDb(input: {
         const [organizationId, name, parentId] = values as [string, string, string | null];
         if (text.includes("order by depth asc")) {
           const hit = [...modules.values()]
-            .filter((module) => module.organizationId === organizationId && module.name === name)
+            .filter(
+              (module) =>
+                module.organizationId === organizationId &&
+                module.name === name &&
+                (!text.includes("kind = 'business'") || module.kind === "business"),
+            )
             .sort((left, right) => left.depth - right.depth || left.sortOrder - right.sortOrder || left.id.localeCompare(right.id))[0];
           return { rows: hit ? [{ id: hit.id }] : [], rowCount: hit ? 1 : 0 };
         }
@@ -125,6 +130,21 @@ function createFakeDb(input: {
             (module.parentId ?? null) === (parentId ?? null),
         );
         return { rows: hit ? [{ id: hit.id }] : [], rowCount: hit ? 1 : 0 };
+      }
+      if (text.includes("from attribution_subjects")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (
+        text.includes("insert into attribution_subjects") ||
+        text.includes("insert into driver_registrations") ||
+        text.includes("insert into node_type_definitions") ||
+        text.includes("update driver_registrations")
+      ) {
+        inserts.push({ table: "attribution", values });
+        return { rows: [{ id: values[0], default_business_category_module_id: values[1] ?? null }], rowCount: 1 };
+      }
+      if (text.includes("from driver_registrations")) {
+        return { rows: [], rowCount: 0 };
       }
       if (text.includes("insert into parameter_modules")) {
         const [
@@ -451,5 +471,186 @@ describe("resolveAttributionModuleForBinding", () => {
     });
 
     expect(moduleId).toBe("mod-board");
+  });
+
+  it("places a new auto driver-group under registration default when set (not heuristic)", async () => {
+    const { db, modules, inserts } = createFakeDb({
+      modules: [
+        baseModule({
+          id: "biz-wireless",
+          organizationId: "org-1",
+          name: "Wireless Charging",
+          kind: "business",
+          origin: "curated",
+        }),
+        baseModule({
+          id: "biz-board",
+          organizationId: "org-1",
+          name: "Board Identity",
+          kind: "business",
+          origin: "curated",
+        }),
+      ],
+      mappings: [],
+    });
+
+    // Seed registration default via fake query interception.
+    (db.query as ReturnType<typeof vi.fn>).mockImplementation(async (text: string, values: unknown[] = []) => {
+      if (text.includes("from attribution_subjects") && text.includes("source_key = $2")) {
+        return { rows: [{ id: "subj-sc8562" }], rowCount: 1 };
+      }
+      if (text.includes("from driver_registrations") && text.includes("default_business_category_module_id")) {
+        return { rows: [{ default_business_category_module_id: "biz-wireless" }], rowCount: 1 };
+      }
+      if (
+        text.includes("insert into attribution_subjects") ||
+        text.includes("insert into driver_registrations") ||
+        text.includes("insert into node_type_definitions") ||
+        text.includes("update driver_registrations")
+      ) {
+        inserts.push({ table: "attribution", values });
+        return { rows: [{ id: values[0], default_business_category_module_id: values[1] ?? null }], rowCount: 1 };
+      }
+      if (text.includes("and source_key = $2") && text.includes("from parameter_modules")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes("from parameter_modules") && text.includes("and id = $2")) {
+        const [organizationId, moduleId] = values as [string, string];
+        const hit = [...modules.values()].find(
+          (module) => module.organizationId === organizationId && module.id === moduleId,
+        );
+        return { rows: hit ? [toDbRow(hit)] : [], rowCount: hit ? 1 : 0 };
+      }
+      if (text.includes("from parameter_modules") && text.includes("and name = $2")) {
+        const [organizationId, name, parentId] = values as [string, string, string | null];
+        if (text.includes("order by depth asc")) {
+          const hit = [...modules.values()]
+            .filter(
+              (module) =>
+                module.organizationId === organizationId &&
+                module.name === name &&
+                (!text.includes("kind = 'business'") || module.kind === "business"),
+            )
+            .sort((left, right) => left.depth - right.depth || left.id.localeCompare(right.id))[0];
+          return { rows: hit ? [{ id: hit.id }] : [], rowCount: hit ? 1 : 0 };
+        }
+        const hit = [...modules.values()].find(
+          (module) =>
+            module.organizationId === organizationId &&
+            module.name === name &&
+            (module.parentId ?? null) === (parentId ?? null),
+        );
+        return { rows: hit ? [{ id: hit.id }] : [], rowCount: hit ? 1 : 0 };
+      }
+      if (text.includes("insert into parameter_modules")) {
+        const [
+          id,
+          organizationId,
+          parentId,
+          name,
+          path,
+          depth,
+          sortOrder,
+          description,
+          scope,
+          _importance,
+          kind,
+          origin,
+          sourceKey,
+        ] = values as [
+          string,
+          string,
+          string | null,
+          string,
+          string,
+          number,
+          number,
+          string,
+          string,
+          string?,
+          string?,
+          string?,
+          string | null?,
+        ];
+        const row: ModuleRow = {
+          id,
+          organizationId,
+          name,
+          parentId,
+          path,
+          depth,
+          sortOrder,
+          description,
+          scope,
+          importance: "medium",
+          kind: (kind as ModuleRow["kind"]) ?? "business",
+          origin: (origin as ModuleRow["origin"]) ?? "curated",
+          sourceKey: sourceKey ?? null,
+        };
+        modules.set(id, row);
+        inserts.push({ table: "parameter_modules", values });
+        return { rows: [toDbRow(row)], rowCount: 1 };
+      }
+      if (text.includes("from parameter_module_mappings")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await resolveAttributionModuleForBinding(db, {
+      organizationId: "org-1",
+      driverModule: "sc8562",
+      compatible: "vendor,sc8562",
+      instanceName: "sc8562@1",
+      // Heuristic would pick Charge Pump IC / Board Identity — default must win.
+      nodeLocator: "/board",
+    });
+
+    const created = [...modules.values()].find((module) => module.kind === "driver-group");
+    expect(created?.parentId).toBe("biz-wireless");
+    expect(created?.origin).toBe("auto");
+  });
+
+  it("does not reparent an existing auto driver-group on re-ingest", async () => {
+    const { db, modules } = createFakeDb({
+      modules: [
+        baseModule({
+          id: "biz-old",
+          organizationId: "org-1",
+          name: "Old Cat",
+          kind: "business",
+        }),
+        baseModule({
+          id: "drv-auto",
+          organizationId: "org-1",
+          name: "sc8562",
+          parentId: "biz-old",
+          path: "biz-old/drv-auto",
+          depth: 2,
+          kind: "driver-group",
+          origin: "auto",
+          sourceKey: "compatible:vendor,sc8562",
+        }),
+      ],
+      mappings: [
+        {
+          organizationId: "org-1",
+          matchKind: "compatible",
+          matchValue: "vendor,sc8562",
+          moduleId: "drv-auto",
+          priority: 300,
+        },
+      ],
+    });
+
+    await resolveAttributionModuleForBinding(db, {
+      organizationId: "org-1",
+      driverModule: "sc8562",
+      compatible: "vendor,sc8562",
+      instanceName: "sc8562@1",
+      nodeLocator: "/wireless/sc8562@1",
+    });
+
+    expect(modules.get("drv-auto")?.parentId).toBe("biz-old");
   });
 });

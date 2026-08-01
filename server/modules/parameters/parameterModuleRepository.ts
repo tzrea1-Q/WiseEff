@@ -235,6 +235,8 @@ export async function createParameterModule(
     kind?: ParameterModuleDto["kind"];
     origin?: ParameterModuleDto["origin"];
     sourceKey?: string | null;
+    /** When creating a driver-group, seed registration default placement (D-AG-04). */
+    defaultBusinessCategoryModuleId?: string | null;
   }
 ) {
   const id = randomUUID();
@@ -269,6 +271,10 @@ export async function createParameterModule(
       origin,
       sourceKey: input.sourceKey ?? null,
       notes: input.description ?? "",
+      defaultBusinessCategoryModuleId:
+        kind === "driver-group"
+          ? (input.defaultBusinessCategoryModuleId ?? input.parentId ?? null)
+          : null,
     });
   }
 
@@ -394,6 +400,67 @@ export async function moveParameterModule(
   db: Queryable,
   input: { organizationId: string; moduleId: string; parentId: string | null }
 ) {
+  return reparentParameterModule(db, {
+    ...input,
+    promoteAutoToCurated: true,
+  });
+}
+
+/**
+ * Reparent an auto-origin module without promoting it to curated.
+ * Curated modules are skipped (returns `{ skipped: 'curated' }`).
+ * Used by registration-default placement replay (D-AG-04 / TD-046).
+ */
+export async function reparentAutoParameterModule(
+  db: Queryable,
+  input: { organizationId: string; moduleId: string; parentId: string | null }
+): Promise<
+  | { status: "moved"; module: ParameterModuleDto }
+  | { status: "skipped"; reason: "missing" | "curated" | "noop" }
+  | { status: "error"; message: string }
+> {
+  const node = await getParameterModuleById(db, {
+    organizationId: input.organizationId,
+    moduleId: input.moduleId,
+  });
+  if (!node) {
+    return { status: "skipped", reason: "missing" };
+  }
+  if (node.origin !== "auto") {
+    return { status: "skipped", reason: "curated" };
+  }
+  if ((node.parentId ?? null) === (input.parentId ?? null)) {
+    return { status: "skipped", reason: "noop" };
+  }
+
+  try {
+    const moved = await reparentParameterModule(db, {
+      organizationId: input.organizationId,
+      moduleId: input.moduleId,
+      parentId: input.parentId,
+      promoteAutoToCurated: false,
+    });
+    if (!moved) {
+      return { status: "skipped", reason: "missing" };
+    }
+    return { status: "moved", module: moved };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Failed to reparent auto module",
+    };
+  }
+}
+
+async function reparentParameterModule(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    moduleId: string;
+    parentId: string | null;
+    promoteAutoToCurated: boolean;
+  }
+) {
   const node = await getParameterModuleById(db, {
     organizationId: input.organizationId,
     moduleId: input.moduleId
@@ -432,12 +499,23 @@ export async function moveParameterModule(
         else $4 || substring(path from length($5) + 1)
       end,
       depth = depth + $6,
-      origin = case when id = $2 and origin = 'auto' then 'curated' else origin end,
+      origin = case
+        when $7::boolean and id = $2 and origin = 'auto' then 'curated'
+        else origin
+      end,
       updated_at = now()
     where organization_id = $1
       and (id = $2 or path like $5 || '/%')
     `,
-    [input.organizationId, input.moduleId, input.parentId, newPath, oldPath, depthDelta]
+    [
+      input.organizationId,
+      input.moduleId,
+      input.parentId,
+      newPath,
+      oldPath,
+      depthDelta,
+      input.promoteAutoToCurated,
+    ]
   );
 
   return getParameterModuleById(db, {
