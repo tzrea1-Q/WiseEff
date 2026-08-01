@@ -6,7 +6,7 @@ import {
   materializePlatformDriverSchemaOverlay,
 } from "./driverSchemaOverlayMaterialize";
 import type { DriverSchemaOverlayRecord } from "./driverSchemaOverlayRepository";
-import { buildPlatformManualSpecIds } from "./specIdentity";
+import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 
 function samplePlatformOverlay(): DriverSchemaOverlayRecord {
   return {
@@ -50,14 +50,18 @@ describe("platform overlay materialization", () => {
   });
 
   it("emits scope platform and does not bake organizationId into fallback spec ids", () => {
-    const { driver, properties } = materializePlatformDriverSchemaOverlay(samplePlatformOverlay());
+    const subjectId = "asub:driver-registration:platform-chip";
+    const { driver, properties } = materializePlatformDriverSchemaOverlay(samplePlatformOverlay(), {
+      attributionSubjectId: subjectId,
+    });
     expect(driver.scope).toBe("platform");
     expect(driver.id).toBe("driver:platform/vendor,chip:v2");
     expect(properties[0].scope).toBe("platform");
 
-    const fallback = buildPlatformManualSpecIds({
+    const fallback = buildSubjectScopedManualSpecIds({
+      organizationId: null,
+      attributionSubjectId: subjectId,
       propertyKey: "other",
-      driverModule: "chip",
     });
     expect(fallback.parameterSpecId).not.toContain("org-");
   });

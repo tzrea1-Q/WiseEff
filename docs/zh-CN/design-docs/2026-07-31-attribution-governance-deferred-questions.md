@@ -42,7 +42,7 @@
 
 **背景：** PR9 仅 UI 主体主展示，未和解存储。
 
-**锁定：** 删列；无法解析主体则迁移失败；种子/overlay/导入 subject-only。PR2 合入后关 TD-047。
+**锁定：** 删列；无法解析主体则迁移失败；种子/overlay/导入 subject-only。PR2 合入后关 TD-047。**已在 PR2 实现**（`feat/drop-parameter-spec-driver-module`，迁移 `0088`）：无物理列；subject-only 写入；fail-closed 回填。
 
 ## D-AG-04 — 业务分类启发式（TD-046）
 

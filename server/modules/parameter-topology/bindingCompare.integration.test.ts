@@ -151,7 +151,8 @@ describe.skipIf(!databaseAvailable)("listBindingCompareRows", () => {
       projectName: "Aurora",
       rawValue: "<1>",
       moduleName: "充电策略",
-      driverModule: "sc8562@6E"
+      // Display comes from AttributionSubject / module name, not specification_key parse.
+      driverModule: "充电策略"
     });
   });
 });

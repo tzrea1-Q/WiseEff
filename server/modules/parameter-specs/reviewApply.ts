@@ -8,7 +8,7 @@ import {
 } from "../parameter-topology/bindingService";
 import { updateConfigRevisionStatus } from "../parameter-topology/repository";
 import { DRAFT_PROVENANCE_KEY } from "./specCompleteness";
-import { buildManualSpecIds } from "./specIdentity";
+import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 import { assertNonStructuralPropertyKey } from "./structuralPropertyGuard";
 import {
   draftValueShapeToJson,
@@ -201,7 +201,7 @@ export async function applyResolvedSpecReview(
   });
   const moduleId = await resolveModuleIdForBinding(db, {
     organizationId: input.organizationId,
-    driverModule: spec?.driverModule ?? null,
+    driverModule: null,
     compatible: evidence.compatible[0] ?? null,
     nodeType: nodeTypeFromNodeLocator(evidence.nodeLocator),
   });
@@ -463,7 +463,7 @@ export async function createOrgManualParameterSpec(
   input: {
     organizationId: string;
     propertyKey: string;
-    driverModule: string | null;
+    attributionSubjectId: string;
     sourceReviewTaskId: string;
     propertyOccurrenceId: string;
     configRevisionId: string;
@@ -473,10 +473,17 @@ export async function createOrgManualParameterSpec(
   },
 ): Promise<{ parameterSpecId: string; parameterSpecVersionId: string; created: boolean; valueShape: Record<string, unknown> }> {
   assertNonStructuralPropertyKey(input.propertyKey);
-  const ids = buildManualSpecIds({
+  if (!input.attributionSubjectId.trim()) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "attributionSubjectId is required to create a manual parameter spec.",
+      400,
+    );
+  }
+  const ids = buildSubjectScopedManualSpecIds({
     organizationId: input.organizationId,
+    attributionSubjectId: input.attributionSubjectId,
     propertyKey: input.propertyKey,
-    driverModule: input.driverModule,
   });
   const inferredShape = inferDraftValueShapeFromOccurrence({
     propertyKey: input.propertyKey,
@@ -505,7 +512,7 @@ export async function createOrgManualParameterSpec(
     };
   }
 
-  // Idempotency across hash-formula changes: reuse org-owned manual row with same property key.
+  // Idempotency across hash-formula changes: reuse org-owned manual row with same subject + property key.
   const byProperty = await db.query<{ id: string; version_id: string }>(
     `
     select ps.id, psv.id as version_id
@@ -520,10 +527,11 @@ export async function createOrgManualParameterSpec(
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
     where ps.organization_id = $1
       and ps.source_kind = 'manual'
-      and coalesce(dps.property_key, '') = $2
+      and ps.attribution_subject_id = $2
+      and coalesce(dps.property_key, '') = $3
     limit 1
     `,
-    [input.organizationId, input.propertyKey],
+    [input.organizationId, input.attributionSubjectId, input.propertyKey],
   );
   if (byProperty.rows[0]) {
     return {
@@ -536,11 +544,14 @@ export async function createOrgManualParameterSpec(
 
   await db.query(
     `
-    insert into parameter_specs (id, organization_id, source_kind, specification_key)
-    values ($1, $2, 'manual', $3)
-    on conflict (id) do nothing
+    insert into parameter_specs (
+      id, organization_id, source_kind, specification_key, attribution_subject_id
+    )
+    values ($1, $2, 'manual', $3, $4)
+    on conflict (id) do update set
+      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id)
     `,
-    [ids.parameterSpecId, input.organizationId, ids.specificationKey],
+    [ids.parameterSpecId, input.organizationId, ids.specificationKey, input.attributionSubjectId],
   );
   await db.query(
     `

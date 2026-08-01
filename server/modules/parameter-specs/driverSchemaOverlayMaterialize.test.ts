@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { matchDriver, matchProperty } from "./matcher";
 import {
-  driverModuleFromOverlayCompatible,
+  displayDriverLabelFromOverlayCompatible,
   materializeOrganizationDriverSchema,
   mergePinnedRegistryWithOverlay,
 } from "./driverSchemaOverlayMaterialize";
 import type { OrganizationDriverSchemaRecord } from "./driverSchemaOverlayRepository";
-import { buildManualSpecIds } from "./specIdentity";
+import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 import type { SchemaRegistry } from "./types";
+
+const OVERLAY_SUBJECT = "asub:driver-registration:overlay-chip";
 
 function pinnedVendorRegistry(): SchemaRegistry {
   const driver = {
@@ -86,17 +88,19 @@ function overlayRecord(
 }
 
 describe("organizationDriverSchemaMaterialize", () => {
-  it("uses buildManualSpecIds so overlay matches share provisional identity", () => {
+  it("uses subject-scoped ids so overlay matches share provisional identity", () => {
     const schema = overlayRecord();
-    const { properties } = materializeOrganizationDriverSchema(schema);
-    const expected = buildManualSpecIds({
+    const { properties } = materializeOrganizationDriverSchema(schema, {
+      attributionSubjectId: OVERLAY_SUBJECT,
+    });
+    const expected = buildSubjectScopedManualSpecIds({
       organizationId: "org-1",
+      attributionSubjectId: OVERLAY_SUBJECT,
       propertyKey: "vout_ovp_mv",
-      driverModule: driverModuleFromOverlayCompatible("vendor,overlay-chip"),
     });
     expect(properties[0]?.parameterSpecId).toBe(expected.parameterSpecId);
     expect(properties[0]?.id).toBe(expected.parameterSpecVersionId);
-    expect(driverModuleFromOverlayCompatible("vendor,overlay-chip")).toBe("overlay-chip");
+    expect(displayDriverLabelFromOverlayCompatible("vendor,overlay-chip")).toBe("overlay-chip");
   });
 
   it("never lets an active overlay shadow a vendor driver for the same compatible", () => {
@@ -119,7 +123,9 @@ describe("organizationDriverSchemaMaterialize", () => {
         },
       ],
     });
-    const merged = mergePinnedRegistryWithOverlay(pinned, [overlay]);
+    const merged = mergePinnedRegistryWithOverlay(pinned, [overlay], {
+      attributionSubjectIdByOverlayId: new Map([[overlay.id, OVERLAY_SUBJECT]]),
+    });
     const decision = matchDriver(
       {
         nodeLocator: "/soc/sc8562@6e",
@@ -158,7 +164,14 @@ describe("organizationDriverSchemaMaterialize", () => {
       compatible: "vendor,only-overlay",
     });
 
-    const draftMerged = mergePinnedRegistryWithOverlay(pinned, [draft]);
+    const subjectByOverlay = new Map([
+      [draft.id, OVERLAY_SUBJECT],
+      [active.id, OVERLAY_SUBJECT],
+    ]);
+
+    const draftMerged = mergePinnedRegistryWithOverlay(pinned, [draft], {
+      attributionSubjectIdByOverlayId: subjectByOverlay,
+    });
     expect(
       matchDriver(
         {
@@ -171,7 +184,9 @@ describe("organizationDriverSchemaMaterialize", () => {
       ).kind,
     ).toBe("unmatched");
 
-    const activeMerged = mergePinnedRegistryWithOverlay(pinned, [active]);
+    const activeMerged = mergePinnedRegistryWithOverlay(pinned, [active], {
+      attributionSubjectIdByOverlayId: subjectByOverlay,
+    });
     const decision = matchDriver(
       {
         nodeLocator: "/soc/chip@0",

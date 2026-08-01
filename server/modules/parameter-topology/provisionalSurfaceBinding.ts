@@ -1,5 +1,5 @@
 import type { Queryable } from "../../shared/database/client";
-import { buildManualSpecIds } from "../parameter-specs/specIdentity";
+import { buildSubjectScopedManualSpecIds } from "../parameter-specs/specIdentity";
 import {
   draftValueShapeToJson,
   inferDraftValueShapeFromOccurrence,
@@ -7,21 +7,22 @@ import {
 
 /**
  * Org-owned draft spec for unmatched surface properties so bindings appear in the workbench.
+ * Identity is owner scope + AttributionSubject + property_key (ADR-0013); no driverModule signal.
  */
 export async function upsertProvisionalSurfacePropertySpec(
   db: Queryable,
   input: {
     organizationId: string;
     propertyKey: string;
-    driverModule: string | null;
+    attributionSubjectId: string;
     occurrenceAstJson: unknown;
     occurrenceRawText: string | null;
   },
 ): Promise<{ parameterSpecId: string; parameterSpecVersionId: string }> {
-  const ids = buildManualSpecIds({
+  const ids = buildSubjectScopedManualSpecIds({
     organizationId: input.organizationId,
+    attributionSubjectId: input.attributionSubjectId,
     propertyKey: input.propertyKey,
-    driverModule: input.driverModule,
   });
   const inferredShape = inferDraftValueShapeFromOccurrence({
     propertyKey: input.propertyKey,
@@ -32,11 +33,14 @@ export async function upsertProvisionalSurfacePropertySpec(
 
   await db.query(
     `
-    insert into parameter_specs (id, organization_id, source_kind, specification_key)
-    values ($1, $2, 'manual', $3)
-    on conflict (id) do nothing
+    insert into parameter_specs (
+      id, organization_id, source_kind, specification_key, attribution_subject_id
+    )
+    values ($1, $2, 'manual', $3, $4)
+    on conflict (id) do update set
+      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id)
     `,
-    [ids.parameterSpecId, input.organizationId, ids.specificationKey],
+    [ids.parameterSpecId, input.organizationId, ids.specificationKey, input.attributionSubjectId],
   );
   await db.query(
     `

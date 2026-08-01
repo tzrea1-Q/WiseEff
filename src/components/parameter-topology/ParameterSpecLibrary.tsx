@@ -133,7 +133,8 @@ export function formatSpecPrimaryLabel(
 
 /**
  * 驱动模块 column: taxonomy placement path from attribution modules when observed;
- * otherwise the legacy driverModule string (or 未归类).
+ * otherwise the subject display label (API `driverModule`, display-only) or 未归类.
+ * Never treat the string as ParameterSpec write identity.
  */
 export function formatSpecDriverModuleLabel(
   spec: Pick<ParameterSpecLibraryRow, "attributionModules" | "driverModule">
