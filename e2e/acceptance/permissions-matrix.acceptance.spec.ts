@@ -153,7 +153,18 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
     await setPrototypeRole(page, "Admin");
     await navigateWithinApp(page, "/user-permissions");
     await expect(page.getByRole("heading", { name: /Permission denied/i })).toHaveCount(0);
-    await expect(page.getByText("平台超级管理员")).toHaveCount(0);
+
+    // Existing platform-admin users may still be *labeled* 平台超级管理员 in the table/filter.
+    // The grant surface is create-user + role assignment for non-platform-admin users.
+    await page.getByRole("button", { name: "添加用户" }).click();
+    const addUserDialog = page.getByRole("dialog", { name: "添加用户" });
+    await expect(addUserDialog).toBeVisible();
+    await expect(addUserDialog.getByRole("option", { name: "平台超级管理员" })).toHaveCount(0);
+    await addUserDialog.getByRole("button", { name: "取消" }).click();
+
+    const assignableSelect = page.getByLabel("调整 Zhao Heng 的角色");
+    await expect(assignableSelect).toBeVisible();
+    await expect(assignableSelect.getByRole("option", { name: "平台超级管理员" })).toHaveCount(0);
 
     const grantResponse = await page.request.put(apiRoute(`/api/v1/users/${acceptanceAdminOnlyUser.userId}/roles`), {
       headers: authHeadersForUser(
@@ -165,7 +176,7 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
         roles: [{ projectId: null, roleId: "platform-admin" }]
       }
     });
-    expect(grantResponse.status()).toBeGreaterThanOrEqual(400);
+    expect(grantResponse.status()).toBe(403);
 
     await recordOperationEvidence({
       operationId: "PLAT-ROLE-002",
@@ -177,10 +188,11 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
         summarizeApiResponse(grantResponse, {
           method: "PUT",
           path: `/api/v1/users/${acceptanceAdminOnlyUser.userId}/roles`,
-          responseSummary: "org Admin self-grant of platform-admin rejected"
+          responseSummary: "org Admin self-grant of platform-admin rejected with 403"
         })
       ],
-      notes: "User-permissions UI hides 平台超级管理员 for org Admin; replaceUserRoles API rejects the grant."
+      notes:
+        "Create-user and non-platform-admin role selects omit 平台超级管理员 for org Admin; replaceUserRoles API returns 403."
     });
   });
 
