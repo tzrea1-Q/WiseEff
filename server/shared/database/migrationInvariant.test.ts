@@ -144,6 +144,25 @@ describe("PPV nullability for enablement / pre-cutover drafts", () => {
   });
 });
 
+describe("driver registration default business category (D-AG-04 / TD-046)", () => {
+  it("adds default_business_category_module_id and backfills from business parents", () => {
+    const migration = readFileSync(
+      path.join(
+        root,
+        "server",
+        "migrations",
+        "0089_driver_registration_default_business_category.sql",
+      ),
+      "utf8",
+    );
+    expect(migration).toContain("default_business_category_module_id");
+    expect(migration).toContain("references parameter_modules(id)");
+    expect(migration).toContain("driver_registrations_default_business_category_idx");
+    expect(migration).toContain("parent.kind = 'business'");
+    expect(migration).toContain("attribution_subject_id");
+  });
+});
+
 describe("module kind/origin migration invariants", () => {
   it("adds kind, origin, source_key and retires driver match kind", () => {
     const migration = readFileSync(

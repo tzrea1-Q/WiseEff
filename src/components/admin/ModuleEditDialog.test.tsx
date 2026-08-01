@@ -172,6 +172,68 @@ describe("ModuleEditDialog", () => {
     );
   });
 
+  it("shows default business category picker and replay button for admin driver groups", async () => {
+    const onUpdateDefaultBusinessCategory = vi.fn().mockResolvedValue(undefined);
+    const onReplayPlacement = vi.fn().mockResolvedValue({
+      moved: 1,
+      skippedCurated: 0,
+      skippedMissingDefault: 0
+    });
+    render(
+      <ModuleEditDialog
+        module={{
+          name: "SC8562",
+          description: "",
+          scope: "",
+          kind: "driver-group"
+        }}
+        existingNames={[]}
+        canAdmin
+        modules={[
+          {
+            id: "biz-1",
+            name: "充电策略",
+            parentId: null,
+            sortOrder: 0,
+            description: "",
+            scope: "",
+            importance: "medium",
+            kind: "business",
+            origin: "curated",
+            sourceKey: null,
+            effectiveImportance: "medium",
+            parameterCount: 0
+          },
+          {
+            id: "biz-2",
+            name: "无线充电",
+            parentId: null,
+            sortOrder: 1,
+            description: "",
+            scope: "",
+            importance: "medium",
+            kind: "business",
+            origin: "curated",
+            sourceKey: null,
+            effectiveImportance: "medium",
+            parameterCount: 0
+          }
+        ]}
+        defaultBusinessCategoryId="biz-1"
+        onUpdateDefaultBusinessCategory={onUpdateDefaultBusinessCategory}
+        onReplayPlacement={onReplayPlacement}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    expect(within(dialog).getByText(/自动发现的驱动组跟随此默认分类/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "从注册回放放置" }));
+    expect(onReplayPlacement).toHaveBeenCalled();
+    expect(await within(dialog).findByText(/回放完成：移动 1/)).toBeInTheDocument();
+  });
+
   it("previews overlay retirement impact and gates no-successor coverage loss", async () => {
     const onDeprecateOverlaySchema = vi.fn().mockResolvedValue(undefined);
     render(

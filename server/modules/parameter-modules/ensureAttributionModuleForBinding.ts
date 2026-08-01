@@ -4,6 +4,11 @@
  *
  * Stable identity is `source_key` (ADR-0004). Name is display-only once a module
  * is curated — ingest must never rename or move curated modules.
+ *
+ * Placement (D-AG-04 / TD-046): auto driver-groups land under the driver
+ * registration's default business category. Existing modules found by
+ * source_key are not silently reparented on every ingest — movement happens
+ * when the registration default changes or via explicit Admin replay.
  */
 
 import {
@@ -26,6 +31,11 @@ import {
 import type { ModuleKind } from "../parameters/types";
 import type { Queryable } from "../../shared/database/client";
 import { resolveModuleIdForBinding } from "./resolveModuleForBinding";
+import {
+  bootstrapDriverRegistrationDefaultIfNull,
+  findAttributionSubjectIdBySourceKey,
+  getDriverRegistrationDefaultBusinessCategoryId,
+} from "./driverPlacement";
 
 export function compatibleSourceKey(compatible: string): string {
   return `compatible:${normalizeMatchToken(compatible) ?? compatible.trim().toLowerCase()}`;
@@ -69,6 +79,25 @@ async function findModuleIdByName(
     limit 1
     `,
     [input.organizationId, input.name, parentId],
+  );
+  return result.rows[0]?.id ?? null;
+}
+
+async function findBusinessModuleIdByName(
+  db: Queryable,
+  input: { organizationId: string; name: string },
+): Promise<string | null> {
+  const result = await db.query<{ id: string }>(
+    `
+    select id
+    from parameter_modules
+    where organization_id = $1
+      and name = $2
+      and kind = 'business'
+    order by depth asc, sort_order asc, id asc
+    limit 1
+    `,
+    [input.organizationId, input.name],
   );
   return result.rows[0]?.id ?? null;
 }
@@ -147,6 +176,7 @@ async function ensureLinkedAttributionSubjectForExistingModule(
 /**
  * Resolve or create a module by stable source_key, with a one-time name fallback
  * that adopts unkeyed rows. Never renames or moves curated modules.
+ * Existing keyed modules are returned as-is (no silent reparent on ingest).
  */
 async function ensureNamedModule(
   db: Queryable,
@@ -158,6 +188,7 @@ async function ensureNamedModule(
     sourceKey: string;
     description?: string;
     scope?: string;
+    defaultBusinessCategoryModuleId?: string | null;
   },
 ): Promise<string> {
   const byKey = await getParameterModuleBySourceKey(db, {
@@ -226,25 +257,116 @@ async function ensureNamedModule(
     kind: input.kind,
     origin: "auto",
     sourceKey: input.sourceKey,
+    defaultBusinessCategoryModuleId: input.defaultBusinessCategoryModuleId ?? null,
   });
   return created.id;
 }
 
+/**
+ * Ensure a real business-category leaf exists (never park under unclassified).
+ * Seed/bootstrap path only — product placement prefers an existing registration default.
+ */
 async function ensureBusinessLeafModuleId(
   db: Queryable,
   input: { organizationId: string; businessCategory: string },
 ): Promise<string> {
-  const existing = await findModuleIdByNameAnyParent(db, {
+  const existing = await findBusinessModuleIdByName(db, {
     organizationId: input.organizationId,
     name: input.businessCategory,
   });
   if (existing) return existing;
-  return resolveModuleIdForBinding(db, {
+
+  // Root name may already be taken by a non-business module (legacy seed fixtures
+  // sometimes reuse heuristic category labels as driver-group names). Never collide.
+  const rootNameTaken = await findModuleIdByName(db, {
     organizationId: input.organizationId,
-    driverModule: null,
-    compatible: null,
-    nodeType: null,
+    name: input.businessCategory,
+    parentId: null,
   });
+  if (rootNameTaken) {
+    return resolveModuleIdForBinding(db, {
+      organizationId: input.organizationId,
+      driverModule: null,
+      compatible: null,
+      nodeType: null,
+    });
+  }
+
+  try {
+    const created = await createParameterModule(db, {
+      organizationId: input.organizationId,
+      name: input.businessCategory,
+      parentId: null,
+      kind: "business",
+      origin: "auto",
+      description: `Bootstrap business category (${input.businessCategory}).`,
+      scope: "registration-default-bootstrap",
+    });
+    return created.id;
+  } catch {
+    // Concurrent bootstrap or residual unique race — prefer existing business, else unclassified.
+    const raced = await findBusinessModuleIdByName(db, {
+      organizationId: input.organizationId,
+      name: input.businessCategory,
+    });
+    if (raced) return raced;
+    return resolveModuleIdForBinding(db, {
+      organizationId: input.organizationId,
+      driverModule: null,
+      compatible: null,
+      nodeType: null,
+    });
+  }
+}
+
+/**
+ * Resolve the authoritative business parent for a driver-group source_key.
+ * Uses registration default when set; otherwise bootstraps once from the
+ * demoted keyword heuristic and persists that default onto the registration.
+ */
+async function resolveDriverGroupBusinessParentId(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    sourceKey: string;
+    nodePath: string;
+  },
+): Promise<string> {
+  const subjectId = await findAttributionSubjectIdBySourceKey(db, {
+    organizationId: input.organizationId,
+    sourceKey: input.sourceKey,
+  });
+
+  if (subjectId) {
+    const existingDefault = await getDriverRegistrationDefaultBusinessCategoryId(db, {
+      attributionSubjectId: subjectId,
+    });
+    if (existingDefault) {
+      const parent = await getParameterModuleById(db, {
+        organizationId: input.organizationId,
+        moduleId: existingDefault,
+      });
+      if (parent?.kind === "business") {
+        return parent.id;
+      }
+    }
+  }
+
+  // Seed / bootstrap-once only — not the steady-state product placement rule.
+  const businessCategory = businessCategoryForNodePath(input.nodePath);
+  const parentId = await ensureBusinessLeafModuleId(db, {
+    organizationId: input.organizationId,
+    businessCategory,
+  });
+
+  if (subjectId) {
+    await bootstrapDriverRegistrationDefaultIfNull(db, {
+      attributionSubjectId: subjectId,
+      defaultBusinessCategoryModuleId: parentId,
+    });
+  }
+
+  return parentId;
 }
 
 async function ensureDriverGroupModuleForAutoDiscovery(
@@ -257,19 +379,38 @@ async function ensureDriverGroupModuleForAutoDiscovery(
 ): Promise<void> {
   const compatibleKey = normalizeMatchToken(input.compatible) ?? input.compatible.trim().toLowerCase();
   const groupName = driverGroupDisplayNameFromCompatible(compatibleKey);
-  const businessCategory = businessCategoryForNodePath(input.nodePath);
-  const parentId = await ensureBusinessLeafModuleId(db, {
+  const sourceKey = compatibleSourceKey(compatibleKey);
+
+  // Existing keyed modules stay put — movement is default-change / explicit replay only.
+  const existing = await getParameterModuleBySourceKey(db, {
     organizationId: input.organizationId,
-    businessCategory,
+    sourceKey,
+  });
+  if (existing) {
+    if (existing.origin === "auto" && existing.kind !== "driver-group") {
+      await reassertAutoParameterModuleKind(db, {
+        organizationId: input.organizationId,
+        moduleId: existing.id,
+        kind: "driver-group",
+      });
+    }
+    return;
+  }
+
+  const parentId = await resolveDriverGroupBusinessParentId(db, {
+    organizationId: input.organizationId,
+    sourceKey,
+    nodePath: input.nodePath,
   });
   await ensureNamedModule(db, {
     organizationId: input.organizationId,
     name: groupName,
     parentId,
     kind: "driver-group",
-    sourceKey: compatibleSourceKey(compatibleKey),
+    sourceKey,
     description: `${groupName} 驱动组（compatible: ${compatibleKey}）。`,
     scope: `共享 compatible ${compatibleKey} 的节点类型分组`,
+    defaultBusinessCategoryModuleId: parentId,
   });
 }
 
@@ -282,11 +423,26 @@ async function ensureNodeTypeModuleForAutoDiscovery(
     compatible: string | null;
   },
 ): Promise<void> {
-  const businessCategory = businessCategoryForNodePath(input.nodePath);
-  let parentId = await ensureBusinessLeafModuleId(db, {
+  const sourceKey = nodeTypeSourceKey(input.nodeType);
+  const existing = await getParameterModuleBySourceKey(db, {
     organizationId: input.organizationId,
-    businessCategory,
+    sourceKey,
   });
+  if (existing) {
+    if (existing.origin === "auto" && existing.kind !== "node-type") {
+      await reassertAutoParameterModuleKind(db, {
+        organizationId: input.organizationId,
+        moduleId: existing.id,
+        kind: "node-type",
+      });
+    }
+    return;
+  }
+
+  // Prefer nesting under an existing driver-group for the compatible.
+  // Standalone node-types (no mapped group) bootstrap a real business leaf
+  // via the demoted heuristic — not a temporary staging category.
+  let parentId: string | null = null;
 
   const normalizedCompatible = normalizeMatchToken(input.compatible);
   if (normalizedCompatible) {
@@ -298,12 +454,20 @@ async function ensureNodeTypeModuleForAutoDiscovery(
     if (groupId) parentId = groupId;
   }
 
+  if (!parentId) {
+    const businessCategory = businessCategoryForNodePath(input.nodePath);
+    parentId = await ensureBusinessLeafModuleId(db, {
+      organizationId: input.organizationId,
+      businessCategory,
+    });
+  }
+
   await ensureNamedModule(db, {
     organizationId: input.organizationId,
     name: input.nodeType,
     parentId,
     kind: "node-type",
-    sourceKey: nodeTypeSourceKey(input.nodeType),
+    sourceKey,
     description: `${input.nodeType} DTS 节点类型模块。`,
     scope: `节点类型 ${input.nodeType}`,
   });

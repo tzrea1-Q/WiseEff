@@ -36,6 +36,6 @@ ADR-0005 retired `driver` because it was **inert**: every binding write path con
 
 ## Follow-up
 
-- `businessCategoryForNodePath` remains a demo-grade keyword router for auto node-type placement — filed as tech debt, not replaced here.
-- Spec `driverModule` string can disagree with node evidence on the same property; attribution from bindings sidesteps that split but does not reconcile it — filed as tech debt.
+- **Placement (D-AG-04 / TD-046, 2026-08-01):** Auto driver-group placement follows the driver registration’s `default_business_category_module_id` (a real business category). Curated placements stay frozen; auto placements replay when the default changes or via explicit Admin “replay from registration”. Keyword `businessCategoryForNodePath` is seed/bootstrap-once only — not the steady-state product path.
+- Spec `driverModule` string can disagree with node evidence on the same property; attribution from bindings sidesteps that split but does not reconcile it — filed as tech debt (TD-047 / D-AG-03).
 - Removing `module_id` from the binding unique key is separable cleanup; simulation shows it is currently redundant rather than harmful.

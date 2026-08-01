@@ -15,6 +15,8 @@ export async function insertAttributionSubjectForNewModule(
     origin: "curated" | "auto";
     sourceKey: string | null;
     notes?: string;
+    /** Authoritative auto-placement parent (D-AG-04). */
+    defaultBusinessCategoryModuleId?: string | null;
   },
 ): Promise<string> {
   const subjectKind: AttributionSubjectKind =
@@ -55,8 +57,12 @@ export async function insertAttributionSubjectForNewModule(
     await db.query(
       `
       insert into driver_registrations (
-        attribution_subject_id, driver_nature, instance_cardinality, notes
-      ) values ($1, $2, $3, $4)
+        attribution_subject_id,
+        driver_nature,
+        instance_cardinality,
+        notes,
+        default_business_category_module_id
+      ) values ($1, $2, $3, $4, $5)
       on conflict (attribution_subject_id) do nothing
       `,
       [
@@ -64,8 +70,22 @@ export async function insertAttributionSubjectForNewModule(
         defaults.driverNature,
         defaults.instanceCardinality,
         input.notes ?? "",
+        input.defaultBusinessCategoryModuleId ?? null,
       ],
     );
+    if (input.defaultBusinessCategoryModuleId) {
+      await db.query(
+        `
+        update driver_registrations
+        set default_business_category_module_id = coalesce(
+          default_business_category_module_id,
+          $2
+        )
+        where attribution_subject_id = $1
+        `,
+        [subjectId, input.defaultBusinessCategoryModuleId],
+      );
+    }
   } else {
     const bareNodeName = sourceKey.startsWith("nodetype:")
       ? sourceKey.slice("nodetype:".length)

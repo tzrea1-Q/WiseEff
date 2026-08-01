@@ -85,6 +85,13 @@ export const PARAMETER_ADMIN_UI = {
   driverRegistryCoveragePromoted: "官方解析覆盖",
   driverRegistryCoveragePlatform: "平台级解析覆盖",
   driverRegistryCoverageUncovered: "解析未覆盖",
+  driverRegistryDefaultBusinessCategory: "默认业务分类",
+  driverRegistryDefaultBusinessCategoryHint:
+    "自动发现的驱动组跟随此默认分类；人工 curated 放置保持冻结，不会随默认变更移动。",
+  driverRegistryReplayPlacement: "从注册回放放置",
+  driverRegistryReplayPlacementHint:
+    "仅移动 origin=auto 的驱动组到注册默认业务分类；curated 跳过。",
+  driverRegistryReplayPlacementDone: "回放完成",
   moduleAttributionHideNotYetObserved: "隐藏未实测",
   moduleAttributionOnlyUncoveredParse: "仅显示解析未覆盖",
   moduleAttributionCoveragePartial: "解析覆盖 {covered}/{total}",

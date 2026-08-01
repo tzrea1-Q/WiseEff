@@ -45,6 +45,11 @@ import { getCachedOrganizationSchemaRegistry } from "../parameter-specs/schemaRe
 import { listOrganizationDriverSchemas } from "../parameter-specs/driverSchemaOverlayRepository";
 import { lookupParseCoverage, type ParseCoverage } from "../parameter-specs/parseCoverage";
 import type { DriverNature, InstanceCardinality } from "./attributionSubjects";
+import {
+  replayAutoDriverGroupToRegistrationDefault,
+  setDriverRegistrationDefaultBusinessCategoryId,
+  type DriverPlacementReplayCounts,
+} from "./driverPlacement";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -841,6 +846,18 @@ export async function registerOrClaimDriver(
       });
     }
 
+    // Persist registration default business category (authoritative placement).
+    const fresh = await getParameterModuleById(tx, {
+      organizationId: auth.organization.id,
+      moduleId: module.id,
+    });
+    if (fresh?.attributionSubjectId) {
+      await setDriverRegistrationDefaultBusinessCategoryId(tx, {
+        attributionSubjectId: fresh.attributionSubjectId,
+        defaultBusinessCategoryModuleId: input.businessCategoryId,
+      });
+    }
+
     await writeModuleAttributionAudit(tx, auth, {
       kind: "parameter-module-driver-registered",
       action: mode === "claimed" ? "claim" : "register",
@@ -849,6 +866,7 @@ export async function registerOrClaimDriver(
         mode,
         displayName,
         businessCategoryId: input.businessCategoryId,
+        defaultBusinessCategoryId: input.businessCategoryId,
         compatibles,
         notes,
       },
@@ -858,12 +876,136 @@ export async function registerOrClaimDriver(
   });
 }
 
+export type UpdateDriverRegistrationDefaultInput = {
+  moduleId: string;
+  defaultBusinessCategoryId: string;
+};
+
+export type UpdateDriverRegistrationDefaultResult = {
+  item: ParameterModuleDto;
+  defaultBusinessCategoryId: string;
+  replay: DriverPlacementReplayCounts;
+};
+
+/**
+ * Update registration default business category and replay auto placements
+ * for that subject in the same transaction (D-AG-04).
+ */
+export async function updateDriverRegistrationDefaultBusinessCategory(
+  db: Database,
+  auth: AuthContext,
+  input: UpdateDriverRegistrationDefaultInput,
+): Promise<UpdateDriverRegistrationDefaultResult> {
+  requireCanAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    const module = await getParameterModuleById(tx, {
+      organizationId: auth.organization.id,
+      moduleId: input.moduleId,
+    });
+    if (!module || module.kind !== "driver-group") {
+      throw new ApiError("NOT_FOUND", "Driver-group module not found.", 404);
+    }
+    if (!module.attributionSubjectId) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Driver-group module has no attribution subject / registration.",
+        400,
+      );
+    }
+
+    const business = await getParameterModuleById(tx, {
+      organizationId: auth.organization.id,
+      moduleId: input.defaultBusinessCategoryId,
+    });
+    if (!business || business.kind !== "business") {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Target must be an existing business-category module.",
+        400,
+      );
+    }
+
+    await setDriverRegistrationDefaultBusinessCategoryId(tx, {
+      attributionSubjectId: module.attributionSubjectId,
+      defaultBusinessCategoryModuleId: input.defaultBusinessCategoryId,
+    });
+
+    const replay = await replayAutoDriverGroupToRegistrationDefault(tx, {
+      organizationId: auth.organization.id,
+      moduleId: module.id,
+    });
+
+    await writeModuleAttributionAudit(tx, auth, {
+      kind: "parameter-module-driver-default-business-category-updated",
+      action: "update-default-business-category",
+      targetId: module.id,
+      metadata: {
+        defaultBusinessCategoryId: input.defaultBusinessCategoryId,
+        replay,
+      },
+    });
+
+    const refreshed = await getParameterModuleById(tx, {
+      organizationId: auth.organization.id,
+      moduleId: module.id,
+    });
+
+    return {
+      item: refreshed ?? module,
+      defaultBusinessCategoryId: input.defaultBusinessCategoryId,
+      replay,
+    };
+  });
+}
+
+export type ReplayDriverPlacementResult = DriverPlacementReplayCounts & {
+  moduleId: string;
+};
+
+/**
+ * Explicit Admin operator action: reparent auto driver-group to registration default.
+ */
+export async function replayDriverPlacementFromRegistration(
+  db: Database,
+  auth: AuthContext,
+  input: { moduleId: string },
+): Promise<ReplayDriverPlacementResult> {
+  requireCanAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    const module = await getParameterModuleById(tx, {
+      organizationId: auth.organization.id,
+      moduleId: input.moduleId,
+    });
+    if (!module || module.kind !== "driver-group") {
+      throw new ApiError("NOT_FOUND", "Driver-group module not found.", 404);
+    }
+
+    const counts = await replayAutoDriverGroupToRegistrationDefault(tx, {
+      organizationId: auth.organization.id,
+      moduleId: module.id,
+    });
+
+    await writeModuleAttributionAudit(tx, auth, {
+      kind: "parameter-module-driver-placement-replayed",
+      action: "replay-placement",
+      targetId: module.id,
+      metadata: { ...counts },
+    });
+
+    return { moduleId: module.id, ...counts };
+  });
+}
+
 export type DriverRegistryEntry = {
   moduleId: string;
   name: string;
   origin: ModuleOrigin;
   businessCategoryId: string | null;
   businessCategoryName: string | null;
+  /** Authoritative registration default (may differ from current tree parent). */
+  defaultBusinessCategoryId: string | null;
   compatibles: string[];
   parameterCount: number;
   observed: boolean;
@@ -894,15 +1036,24 @@ export async function listDriverRegistry(
   );
   const registrationByModuleId = new Map<
     string,
-    { driverNature: DriverNature; instanceCardinality: InstanceCardinality }
+    {
+      driverNature: DriverNature;
+      instanceCardinality: InstanceCardinality;
+      defaultBusinessCategoryId: string | null;
+    }
   >();
   const registrationRows = await db.query<{
     module_id: string;
     driver_nature: DriverNature;
     instance_cardinality: InstanceCardinality;
+    default_business_category_module_id: string | null;
   }>(
     `
-    select pm.id as module_id, dr.driver_nature, dr.instance_cardinality
+    select
+      pm.id as module_id,
+      dr.driver_nature,
+      dr.instance_cardinality,
+      dr.default_business_category_module_id
     from parameter_modules pm
     inner join driver_registrations dr on dr.attribution_subject_id = pm.attribution_subject_id
     where pm.organization_id = $1
@@ -915,6 +1066,7 @@ export async function listDriverRegistry(
     registrationByModuleId.set(row.module_id, {
       driverNature: row.driver_nature,
       instanceCardinality: row.instance_cardinality,
+      defaultBusinessCategoryId: row.default_business_category_module_id,
     });
   }
   const byId = new Map(registry.modules.map((module) => [module.id, module]));
@@ -946,6 +1098,7 @@ export async function listDriverRegistry(
       origin: module.origin,
       businessCategoryId: parent?.kind === "business" ? parent.id : module.parentId,
       businessCategoryName: parent?.kind === "business" ? parent.name : parent?.name ?? null,
+      defaultBusinessCategoryId: registration?.defaultBusinessCategoryId ?? null,
       compatibles,
       parameterCount: module.parameterCount,
       observed,

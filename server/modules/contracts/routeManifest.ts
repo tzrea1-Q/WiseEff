@@ -113,6 +113,8 @@ export const routeManifest = [
   { id: "parameterModules.listDriverRegistry", method: "GET", path: "/api/v2/parameter-modules/driver-registry", module: "parameter-modules", stability: "mvp" },
   { id: "parameterModules.registerDriver", method: "POST", path: "/api/v2/parameter-modules/driver-registry", module: "parameter-modules", stability: "mvp" },
   { id: "parameterModules.updateDriverRegistration", method: "PATCH", path: "/api/v2/parameter-modules/driver-registry/:moduleId", module: "parameter-modules", stability: "mvp" },
+  { id: "parameterModules.updateDriverRegistrationDefault", method: "PATCH", path: "/api/v2/parameter-modules/driver-registry/:moduleId/default-business-category", module: "parameter-modules", stability: "mvp" },
+  { id: "parameterModules.replayDriverPlacement", method: "POST", path: "/api/v2/parameter-modules/driver-registry/:moduleId/replay-placement", module: "parameter-modules", stability: "mvp" },
   { id: "parameterSpecs.listOrganizationDriverSchemas", method: "GET", path: "/api/v2/organization-driver-schemas", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.getOrganizationDriverSchema", method: "GET", path: "/api/v2/organization-driver-schemas/:schemaId", module: "parameters", stability: "mvp" },
   { id: "parameterSpecs.createOrganizationDriverSchema", method: "POST", path: "/api/v2/organization-driver-schemas", module: "parameters", stability: "mvp" },

@@ -4,7 +4,8 @@ import { listParameters } from "./repository";
 import {
   createParameterModule,
   listParameterModules,
-  moveParameterModule
+  moveParameterModule,
+  reparentAutoParameterModule
 } from "./parameterModuleRepository";
 
 type QueryCall = {
@@ -221,6 +222,88 @@ describe("parameterModuleRepository", () => {
     expect(calls.some((call) => call.text.includes("path like $5 || '/%'"))).toBe(true);
     expect(moved?.parentId).toBe("pm-x");
     expect(moved?.path).toBe("pm-x/pm-b");
+  });
+
+  it("reparentAutoParameterModule does not promote auto to curated", async () => {
+    const modules = [
+      {
+        id: "pm-a",
+        organization_id: "org-1",
+        parent_id: null,
+        name: "Power",
+        path: "pm-a",
+        depth: 1,
+        sort_order: 0,
+        description: "",
+        scope: "",
+        kind: "business",
+        origin: "curated",
+        source_key: null,
+        attribution_subject_id: null
+      },
+      {
+        id: "pm-x",
+        organization_id: "org-1",
+        parent_id: null,
+        name: "Charging",
+        path: "pm-x",
+        depth: 1,
+        sort_order: 1,
+        description: "",
+        scope: "",
+        kind: "business",
+        origin: "curated",
+        source_key: null,
+        attribution_subject_id: null
+      },
+      {
+        id: "pm-auto",
+        organization_id: "org-1",
+        parent_id: "pm-a",
+        name: "AutoGroup",
+        path: "pm-a/pm-auto",
+        depth: 2,
+        sort_order: 0,
+        description: "",
+        scope: "",
+        kind: "driver-group",
+        origin: "auto",
+        source_key: "compatible:x",
+        attribution_subject_id: "subj-1"
+      }
+    ];
+
+    const { db, calls } = createFakeDb([
+      (call: QueryCall) => {
+        if (call.text.includes("from parameter_modules")) {
+          if (call.text.includes("and id = $2")) {
+            const moduleId = call.values[1];
+            const row = modules.find((item) => item.id === moduleId);
+            if (!row) return [];
+            const moved = calls.some((item) => item.text.includes("update parameter_modules"));
+            if (moved && moduleId === "pm-auto") {
+              return [{ ...row, parent_id: "pm-x", path: "pm-x/pm-auto", depth: 2, origin: "auto" }];
+            }
+            return [row];
+          }
+          return modules;
+        }
+        return [];
+      }
+    ]);
+
+    const result = await reparentAutoParameterModule(db, {
+      organizationId: "org-1",
+      moduleId: "pm-auto",
+      parentId: "pm-x"
+    });
+
+    expect(result.status).toBe("moved");
+    const update = calls.find((call) => call.text.includes("update parameter_modules"));
+    expect(update?.values[6]).toBe(false);
+    if (result.status === "moved") {
+      expect(result.module.origin).toBe("auto");
+    }
   });
 });
 

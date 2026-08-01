@@ -230,12 +230,14 @@ export function ParameterModuleMappingPanel({
       {
         driverNature: DriverRegistryEntry["driverNature"];
         instanceCardinality: DriverRegistryEntry["instanceCardinality"];
+        defaultBusinessCategoryId: string | null;
       }
     >();
     for (const entry of driverRegistry) {
       map.set(entry.moduleId, {
         driverNature: entry.driverNature ?? null,
         instanceCardinality: entry.instanceCardinality ?? null,
+        defaultBusinessCategoryId: entry.defaultBusinessCategoryId ?? null,
       });
     }
     return map;
@@ -709,6 +711,50 @@ export function ParameterModuleMappingPanel({
                 setError(
                   updateError instanceof Error ? updateError.message : "更新驱动登记失败。"
                 );
+              } finally {
+                setBusy(false);
+              }
+            }}
+            onUpdateDriverRegistrationDefault={async (moduleId, defaultBusinessCategoryId) => {
+              setBusy(true);
+              setError(null);
+              try {
+                await client.updateDriverRegistrationDefault(moduleId, {
+                  defaultBusinessCategoryId
+                });
+                const [nextRegistry, nextDrivers] = await Promise.all([
+                  client.getRegistry(),
+                  client.listDriverRegistry()
+                ]);
+                setRegistry(nextRegistry);
+                setDriverRegistry(nextDrivers.items);
+              } catch (updateError) {
+                setError(
+                  updateError instanceof Error
+                    ? updateError.message
+                    : "更新默认业务分类失败。"
+                );
+              } finally {
+                setBusy(false);
+              }
+            }}
+            onReplayDriverPlacement={async (moduleId) => {
+              setBusy(true);
+              setError(null);
+              try {
+                const counts = await client.replayDriverPlacement(moduleId);
+                const [nextRegistry, nextDrivers] = await Promise.all([
+                  client.getRegistry(),
+                  client.listDriverRegistry()
+                ]);
+                setRegistry(nextRegistry);
+                setDriverRegistry(nextDrivers.items);
+                return counts;
+              } catch (replayError) {
+                setError(
+                  replayError instanceof Error ? replayError.message : "回放放置失败。"
+                );
+                return { moved: 0, skippedCurated: 0, skippedMissingDefault: 0 };
               } finally {
                 setBusy(false);
               }

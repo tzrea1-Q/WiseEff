@@ -52,7 +52,11 @@ export type ModuleAttributionTreeProps = {
   >;
   driverRegistrationByModuleId?: ReadonlyMap<
     string,
-    { driverNature: DriverNature | null; instanceCardinality: InstanceCardinality | null }
+    {
+      driverNature: DriverNature | null;
+      instanceCardinality: InstanceCardinality | null;
+      defaultBusinessCategoryId: string | null;
+    }
   >;
   /** When set, 「查看」on the unclassified root prefers opening the queue. */
   hasUnclassifiedQueue?: boolean;
@@ -75,6 +79,17 @@ export type ModuleAttributionTreeProps = {
       instanceCardinality?: InstanceCardinality;
     }
   ) => void | Promise<void>;
+  onUpdateDriverRegistrationDefault?: (
+    moduleId: string,
+    defaultBusinessCategoryId: string
+  ) => void | Promise<void>;
+  onReplayDriverPlacement?: (
+    moduleId: string
+  ) => void | Promise<{
+    moved: number;
+    skippedCurated: number;
+    skippedMissingDefault: number;
+  }>;
   onMove: (moduleId: string, parentId: string | null) => void | Promise<void>;
   onDelete: (moduleId: string) => void | Promise<void>;
   onRemoveMapping: (mappingId: string) => void | Promise<void>;
@@ -336,6 +351,8 @@ export function ModuleAttributionTree({
   onOpenUnclassifiedQueue,
   onUpdateModule,
   onUpdateDriverRegistration,
+  onUpdateDriverRegistrationDefault,
+  onReplayDriverPlacement,
   onMove,
   onDelete,
   onRemoveMapping,
@@ -618,6 +635,24 @@ export function ModuleAttributionTree({
           onSave={handleSaveEdit}
           driverNature={editingDriverRegistration?.driverNature ?? null}
           instanceCardinality={editingDriverRegistration?.instanceCardinality ?? null}
+          modules={modules}
+          defaultBusinessCategoryId={
+            editingDriverRegistration?.defaultBusinessCategoryId ?? null
+          }
+          onUpdateDefaultBusinessCategory={
+            editingModule.kind === "driver-group" && onUpdateDriverRegistrationDefault
+              ? (defaultBusinessCategoryId) =>
+                  void onUpdateDriverRegistrationDefault(
+                    editingModule.id,
+                    defaultBusinessCategoryId
+                  )
+              : undefined
+          }
+          onReplayPlacement={
+            editingModule.kind === "driver-group" && onReplayDriverPlacement
+              ? () => onReplayDriverPlacement(editingModule.id)
+              : undefined
+          }
           onRemoveCompatibleMapping={
             editingModule.kind === "driver-group"
               ? (mappingId) => void onRemoveMapping(mappingId)

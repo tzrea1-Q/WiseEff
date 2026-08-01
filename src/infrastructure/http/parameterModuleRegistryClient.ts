@@ -13,6 +13,9 @@ import type {
   RegisterOrClaimDriverInput,
   RegisterOrClaimDriverResult,
   RecomputeBindingModulesResult,
+  ReplayDriverPlacementResult,
+  UpdateDriverRegistrationDefaultInput,
+  UpdateDriverRegistrationDefaultResult,
   UpdateDriverRegistrationInput,
   UpdateDriverRegistrationResult,
   UpdateParameterModuleInput,
@@ -264,6 +267,23 @@ export function createHttpParameterModuleRegistryRepository(
       return apiClient.patch<UpdateDriverRegistrationResponse>(
         `${REGISTRY_BASE}/driver-registry/${encodeURIComponent(moduleId)}`,
         input
+      );
+    },
+
+    async updateDriverRegistrationDefault(
+      moduleId: string,
+      input: UpdateDriverRegistrationDefaultInput
+    ) {
+      return apiClient.patch<UpdateDriverRegistrationDefaultResult>(
+        `${REGISTRY_BASE}/driver-registry/${encodeURIComponent(moduleId)}/default-business-category`,
+        input
+      );
+    },
+
+    async replayDriverPlacement(moduleId: string) {
+      return apiClient.post<ReplayDriverPlacementResult>(
+        `${REGISTRY_BASE}/driver-registry/${encodeURIComponent(moduleId)}/replay-placement`,
+        {}
       );
     },
 

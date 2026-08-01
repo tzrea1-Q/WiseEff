@@ -100,6 +100,8 @@ export type DriverRegistryEntry = {
   origin: ModuleOrigin;
   businessCategoryId: string | null;
   businessCategoryName: string | null;
+  /** Authoritative registration default (D-AG-04); may differ from current tree parent. */
+  defaultBusinessCategoryId: string | null;
   compatibles: string[];
   parameterCount: number;
   observed: boolean;
@@ -139,6 +141,32 @@ export type UpdateDriverRegistrationResult = {
   driverNature: DriverNature;
   instanceCardinality: InstanceCardinality;
   attributionSubjectId: string;
+};
+
+export type DriverPlacementReplayCounts = {
+  moved: number;
+  skippedCurated: number;
+  skippedMissingDefault: number;
+};
+
+export type UpdateDriverRegistrationDefaultInput = {
+  defaultBusinessCategoryId: string;
+};
+
+export type UpdateDriverRegistrationDefaultResult = {
+  item: {
+    id: string;
+    name: string;
+    parentId: string | null;
+    kind: "business" | "driver-group" | "node-type" | "unclassified";
+    origin: ModuleOrigin;
+  };
+  defaultBusinessCategoryId: string;
+  replay: DriverPlacementReplayCounts;
+};
+
+export type ReplayDriverPlacementResult = DriverPlacementReplayCounts & {
+  moduleId: string;
 };
 
 export type OrganizationDriverSchemaValueShapeKind =
@@ -244,6 +272,11 @@ export interface ParameterModuleRegistryRepository {
     moduleId: string,
     input: UpdateDriverRegistrationInput
   ): Promise<UpdateDriverRegistrationResult>;
+  updateDriverRegistrationDefault(
+    moduleId: string,
+    input: UpdateDriverRegistrationDefaultInput
+  ): Promise<UpdateDriverRegistrationDefaultResult>;
+  replayDriverPlacement(moduleId: string): Promise<ReplayDriverPlacementResult>;
   createOrganizationDriverSchema(
     input: CreateOrganizationDriverSchemaInput
   ): Promise<OrganizationDriverSchema>;
