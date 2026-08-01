@@ -203,16 +203,47 @@ async function ensureBusinessLeafModuleId(
   });
   if (existing) return existing;
 
-  const created = await createParameterModule(db, {
+  // Root name may already be taken by a non-business module (legacy seed fixtures
+  // sometimes reuse heuristic category labels as driver-group names). Never collide.
+  const rootNameTaken = await findModuleIdByName(db, {
     organizationId: input.organizationId,
     name: input.businessCategory,
     parentId: null,
-    kind: "business",
-    origin: "auto",
-    description: `Bootstrap business category (${input.businessCategory}).`,
-    scope: "registration-default-bootstrap",
   });
-  return created.id;
+  if (rootNameTaken) {
+    return resolveModuleIdForBinding(db, {
+      organizationId: input.organizationId,
+      driverModule: null,
+      compatible: null,
+      nodeType: null,
+    });
+  }
+
+  try {
+    const created = await createParameterModule(db, {
+      organizationId: input.organizationId,
+      name: input.businessCategory,
+      parentId: null,
+      kind: "business",
+      origin: "auto",
+      description: `Bootstrap business category (${input.businessCategory}).`,
+      scope: "registration-default-bootstrap",
+    });
+    return created.id;
+  } catch {
+    // Concurrent bootstrap or residual unique race — prefer existing business, else unclassified.
+    const raced = await findBusinessModuleIdByName(db, {
+      organizationId: input.organizationId,
+      name: input.businessCategory,
+    });
+    if (raced) return raced;
+    return resolveModuleIdForBinding(db, {
+      organizationId: input.organizationId,
+      driverModule: null,
+      compatible: null,
+      nodeType: null,
+    });
+  }
 }
 
 /**

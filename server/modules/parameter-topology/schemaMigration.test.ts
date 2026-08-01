@@ -36,6 +36,7 @@ const migration0084 = "0084_parameter_spec_version_cutover.sql";
 const migration0085 = "0085_identity_mapping_and_singleton_blockers.sql";
 const migration0086 = "0086_retire_config_revision_published.sql";
 const migration0087 = "0087_relax_ppv_null_for_enablement_drafts.sql";
+const migration0088 = "0088_driver_registration_default_business_category.sql";
 
 const enablementMigrations = [
   migration0068,
@@ -58,6 +59,7 @@ const enablementMigrations = [
   migration0085,
   migration0086,
   migration0087,
+  migration0088,
 ] as const;
 const REQUIRED_TABLES = [
   "parameter_specs",
