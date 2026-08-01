@@ -16,6 +16,8 @@ import type {
   ReplayDriverPlacementResult,
   UpdateDriverRegistrationDefaultInput,
   UpdateDriverRegistrationDefaultResult,
+  UpdateDriverRegistrationInput,
+  UpdateDriverRegistrationResult,
   UpdateParameterModuleInput,
   UpdateOrganizationDriverSchemaInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
@@ -66,6 +68,7 @@ type PreviewEnvelope = { item: MappingApplyPreview };
 type DiscoveryEnvelope = { item: ModuleDiscoveryHints };
 type DriverRegistryListResponse = { items: DriverRegistryEntry[]; total: number };
 type RegisterOrClaimDriverResponse = RegisterOrClaimDriverResult;
+type UpdateDriverRegistrationResponse = UpdateDriverRegistrationResult;
 type OrganizationDriverSchemaEnvelope = { item: OrganizationDriverSchema };
 type OrganizationDriverSchemaListResponse = { items: OrganizationDriverSchema[]; total: number };
 type OrganizationDriverSchemaDeprecationImpactEnvelope = {
@@ -258,6 +261,13 @@ export function createHttpParameterModuleRegistryRepository(
 
     async registerOrClaimDriver(input: RegisterOrClaimDriverInput) {
       return apiClient.post<RegisterOrClaimDriverResponse>(`${REGISTRY_BASE}/driver-registry`, input);
+    },
+
+    async updateDriverRegistration(moduleId: string, input: UpdateDriverRegistrationInput) {
+      return apiClient.patch<UpdateDriverRegistrationResponse>(
+        `${REGISTRY_BASE}/driver-registry/${encodeURIComponent(moduleId)}`,
+        input
+      );
     },
 
     async updateDriverRegistrationDefault(

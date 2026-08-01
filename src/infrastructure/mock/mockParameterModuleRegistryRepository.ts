@@ -11,6 +11,7 @@ import type {
   RegisterOrClaimDriverInput,
   RecomputeBindingModulesResult,
   UpdateDriverRegistrationDefaultInput,
+  UpdateDriverRegistrationInput,
   UpdateParameterModuleInput,
   UpdateOrganizationDriverSchemaInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
@@ -435,6 +436,26 @@ export function createMockParameterModuleRegistryRepository(
           origin: "curated" as const,
           description: input.notes
         }
+      };
+    },
+
+    async updateDriverRegistration(moduleId: string, input: UpdateDriverRegistrationInput) {
+      const index = store.driverRegistry.findIndex((entry) => entry.moduleId === moduleId);
+      if (index < 0) {
+        throw new Error(`Driver registry entry not found: ${moduleId}`);
+      }
+      const existing = store.driverRegistry[index];
+      const next = {
+        ...existing,
+        driverNature: input.driverNature ?? existing.driverNature,
+        instanceCardinality: input.instanceCardinality ?? existing.instanceCardinality
+      };
+      store.driverRegistry[index] = next;
+      return {
+        moduleId,
+        driverNature: next.driverNature ?? "physical-device",
+        instanceCardinality: next.instanceCardinality ?? "multiple",
+        attributionSubjectId: `asub:driver-registration:${moduleId}`
       };
     },
 

@@ -36,6 +36,19 @@ export const registerOrClaimDriverBodySchema = z.object({
   notes: z.string().trim().max(500).optional()
 });
 
+export const driverNatureSchema = z.enum(["physical-device", "logical-service"]);
+export const instanceCardinalitySchema = z.enum(["multiple", "singleton-per-project"]);
+
+export const updateDriverRegistrationBodySchema = z
+  .object({
+    driverNature: driverNatureSchema.optional(),
+    instanceCardinality: instanceCardinalitySchema.optional(),
+  })
+  .refine(
+    (body) => body.driverNature !== undefined || body.instanceCardinality !== undefined,
+    { message: "At least one of driverNature or instanceCardinality is required." },
+  );
+
 export const updateDriverRegistrationDefaultBodySchema = z.object({
   defaultBusinessCategoryId: z.string().trim().min(1),
 });
@@ -46,6 +59,7 @@ export const driverRegistryModuleParamsSchema = z.object({
 
 export type CreateModuleMappingBody = z.infer<typeof createModuleMappingBodySchema>;
 export type RegisterOrClaimDriverBody = z.infer<typeof registerOrClaimDriverBodySchema>;
+export type UpdateDriverRegistrationBody = z.infer<typeof updateDriverRegistrationBodySchema>;
 export type UpdateDriverRegistrationDefaultBody = z.infer<
   typeof updateDriverRegistrationDefaultBodySchema
 >;

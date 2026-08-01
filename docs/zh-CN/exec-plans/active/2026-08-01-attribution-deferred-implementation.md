@@ -31,7 +31,7 @@
 
 ## 成功标准（摘要）
 
-- PR1：权限/审计/同事务/仅阻断发布；去掉 pinned claim 宣传  
+- PR1（进行中/本分支）：权限/审计/同事务/仅阻断发布；去掉 pinned claim 宣传；验收 ID `DRV-REG-004` 已登记（e2e 仍为 future）
 - PR2：删列 + fail-closed；关 TD-047  
 - [x] PR3：注册默认分类；curated 冻结、auto 回放；关 TD-046  
 - 每 PR：聚焦测试 + `build`；收口前 `docs:check`；UI 变更需 playwright-cli 三视口证据

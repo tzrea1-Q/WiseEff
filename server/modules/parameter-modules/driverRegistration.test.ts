@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { registerOrClaimDriver } from "./service";
+import { registerOrClaimDriver, updateDriverRegistration } from "./service";
 
 type ModuleRow = {
   id: string;
@@ -19,6 +19,7 @@ type ModuleRow = {
   kind: "business" | "driver-group" | "instance" | "logical" | "unclassified";
   origin: "curated" | "auto";
   sourceKey: string | null;
+  attributionSubjectId?: string | null;
 };
 
 type MappingRow = {
@@ -28,6 +29,26 @@ type MappingRow = {
   matchKind: "compatible" | "instance";
   matchValue: string;
   priority: number;
+};
+
+type SubjectRow = {
+  id: string;
+  organizationId: string | null;
+};
+
+type RegistrationRow = {
+  attributionSubjectId: string;
+  driverNature: "physical-device" | "logical-service";
+  instanceCardinality: "multiple" | "singleton-per-project";
+};
+
+type TipRevisionRow = {
+  id: string;
+  projectId: string;
+  configSetId: string;
+  organizationId: string;
+  revisionNumber: number;
+  status: string;
 };
 
 function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
@@ -61,15 +82,120 @@ function toDbRow(module: ModuleRow) {
     kind: module.kind,
     origin: module.origin,
     source_key: module.sourceKey,
+    attribution_subject_id: module.attributionSubjectId ?? null,
   };
 }
 
-function createStatefulDb(seed: { modules?: ModuleRow[]; mappings?: MappingRow[] }) {
+function createStatefulDb(seed: {
+  modules?: ModuleRow[];
+  mappings?: MappingRow[];
+  subjects?: SubjectRow[];
+  registrations?: RegistrationRow[];
+  tipRevisions?: TipRevisionRow[];
+}) {
   const modules = new Map((seed.modules ?? []).map((module) => [module.id, { ...module }]));
   const mappings = [...(seed.mappings ?? [])];
-  const audits: Array<{ kind: string; metadata: Record<string, unknown> }> = [];
+  const subjects = new Map((seed.subjects ?? []).map((subject) => [subject.id, { ...subject }]));
+  const registrations = new Map(
+    (seed.registrations ?? []).map((registration) => [
+      registration.attributionSubjectId,
+      { ...registration },
+    ]),
+  );
+  const tipRevisions = [...(seed.tipRevisions ?? [])];
+  const audits: Array<{
+    kind: string;
+    organizationId: string | null;
+    metadata: Record<string, unknown>;
+  }> = [];
+  const syncCalls: Array<{ organizationId: string; projectId: string; configRevisionId: string }> =
+    [];
 
   const query = vi.fn(async (text: string, values: unknown[] = []) => {
+    if (
+      text.includes("from parameter_modules pm") &&
+      text.includes("inner join attribution_subjects subject") &&
+      text.includes("inner join driver_registrations dr") &&
+      text.includes("pm.kind = 'driver-group'")
+    ) {
+      const [organizationId, moduleId] = values as [string, string];
+      const hit = modules.get(moduleId);
+      if (!hit || hit.organizationId !== organizationId || !hit.attributionSubjectId) {
+        return { rows: [], rowCount: 0 };
+      }
+      const subject = subjects.get(hit.attributionSubjectId);
+      const registration = registrations.get(hit.attributionSubjectId);
+      if (!subject || !registration) return { rows: [], rowCount: 0 };
+      return {
+        rows: [
+          {
+            module_id: hit.id,
+            attribution_subject_id: hit.attributionSubjectId,
+            subject_organization_id: subject.organizationId,
+            driver_nature: registration.driverNature,
+            instance_cardinality: registration.instanceCardinality,
+          },
+        ],
+        rowCount: 1,
+      };
+    }
+    if (
+      text.includes("update driver_registrations") &&
+      text.includes("driver_nature = $2") &&
+      text.includes("instance_cardinality = $3")
+    ) {
+      const [subjectId, driverNature, instanceCardinality] = values as [
+        string,
+        RegistrationRow["driverNature"],
+        RegistrationRow["instanceCardinality"],
+      ];
+      const hit = registrations.get(subjectId);
+      if (!hit) return { rows: [], rowCount: 0 };
+      hit.driverNature = driverNature;
+      hit.instanceCardinality = instanceCardinality;
+      return { rows: [], rowCount: 1 };
+    }
+    if (
+      text.includes("from dts_config_revisions") &&
+      text.includes("distinct on (project_id, config_set_id)") &&
+      text.includes("status <> 'resolving'")
+    ) {
+      const [organizationId] = values as [string];
+      const sorted = tipRevisions
+        .filter((revision) => revision.organizationId === organizationId)
+        .sort((left, right) => {
+          if (left.projectId !== right.projectId) {
+            return left.projectId.localeCompare(right.projectId);
+          }
+          if (left.configSetId !== right.configSetId) {
+            return left.configSetId.localeCompare(right.configSetId);
+          }
+          return right.revisionNumber - left.revisionNumber;
+        });
+      const seen = new Set<string>();
+      const rows = [];
+      for (const revision of sorted) {
+        const key = `${revision.projectId}:${revision.configSetId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        rows.push({ id: revision.id, project_id: revision.projectId });
+      }
+      return { rows, rowCount: rows.length };
+    }
+    if (
+      text.includes("from dts_logical_node_revisions lnr") &&
+      text.includes("instance_cardinality = 'singleton-per-project'")
+    ) {
+      const [organizationId, projectId, configRevisionId] = values as [string, string, string];
+      syncCalls.push({ organizationId, projectId, configRevisionId });
+      return { rows: [], rowCount: 0 };
+    }
+    if (
+      text.includes("update identity_mapping_tasks") &&
+      text.includes("task_kind = 'singleton-cardinality'")
+    ) {
+      return { rows: [], rowCount: 0 };
+    }
     if (
       text.includes("from parameter_modules") &&
       text.includes("organization_id = $1") &&
@@ -241,13 +367,14 @@ function createStatefulDb(seed: { modules?: ModuleRow[]; mappings?: MappingRow[]
       return { rows, rowCount: rows.length };
     }
     if (text.includes("into audit_events") || text.includes("insert into audit_events")) {
+      const organizationId = (values[1] as string | null) ?? null;
       const kind = String(values[6] ?? "");
       const rawMetadata = values[11];
       const metadata =
         typeof rawMetadata === "string"
           ? (JSON.parse(rawMetadata) as Record<string, unknown>)
           : ((rawMetadata as Record<string, unknown>) ?? {});
-      audits.push({ kind, metadata });
+      audits.push({ kind, organizationId, metadata });
       return { rows: [], rowCount: 1 };
     }
     return { rows: [], rowCount: 0 };
@@ -258,7 +385,7 @@ function createStatefulDb(seed: { modules?: ModuleRow[]; mappings?: MappingRow[]
     transaction: vi.fn(async (fn: (tx: Queryable) => Promise<unknown>) => fn({ query } as Queryable)),
   } as unknown as Database;
 
-  return { db, modules, mappings, audits };
+  return { db, modules, mappings, audits, registrations, syncCalls, query };
 }
 
 describe("registerOrClaimDriver", () => {
@@ -413,5 +540,170 @@ describe("registerOrClaimDriver", () => {
     expect(modules.get("auto-group")?.origin).toBe("curated");
     expect(modules.get("auto-group")?.parentId).toBe("biz-power");
     expect(audits.some((entry) => entry.metadata?.mode === "claimed")).toBe(true);
+  });
+});
+
+describe("updateDriverRegistration", () => {
+  const orgDriverSeed = {
+    modules: [
+      {
+        id: "driver-1",
+        organizationId: "org-1",
+        name: "hl7603",
+        parentId: "biz-power",
+        path: "biz-power/driver-1",
+        depth: 2,
+        sortOrder: 0,
+        description: "",
+        scope: "",
+        importance: "medium" as const,
+        kind: "driver-group" as const,
+        origin: "curated" as const,
+        sourceKey: "compatible:hl7603",
+        attributionSubjectId: "asub-org-1",
+      },
+    ],
+    subjects: [{ id: "asub-org-1", organizationId: "org-1" as string | null }],
+    registrations: [
+      {
+        attributionSubjectId: "asub-org-1",
+        driverNature: "physical-device" as const,
+        instanceCardinality: "multiple" as const,
+      },
+    ],
+  };
+
+  it("updates nature/cardinality and writes org-scoped audit metadata", async () => {
+    const { db, audits, registrations } = createStatefulDb(orgDriverSeed);
+
+    const result = await updateDriverRegistration(db, makeAuth(), {
+      moduleId: "driver-1",
+      driverNature: "logical-service",
+      instanceCardinality: "singleton-per-project",
+    });
+
+    expect(result).toEqual({
+      moduleId: "driver-1",
+      driverNature: "logical-service",
+      instanceCardinality: "singleton-per-project",
+      attributionSubjectId: "asub-org-1",
+    });
+    expect(registrations.get("asub-org-1")).toMatchObject({
+      driverNature: "logical-service",
+      instanceCardinality: "singleton-per-project",
+    });
+
+    const audit = audits.find(
+      (entry) => entry.kind === "parameter-module-driver-registration-updated",
+    );
+    expect(audit?.organizationId).toBe("org-1");
+    expect(audit?.metadata).toMatchObject({
+      moduleId: "driver-1",
+      attributionSubjectId: "asub-org-1",
+      actorRoles: ["admin"],
+      before: {
+        driverNature: "physical-device",
+        instanceCardinality: "multiple",
+      },
+      after: {
+        driverNature: "logical-service",
+        instanceCardinality: "singleton-per-project",
+      },
+    });
+  });
+
+  it("rejects org admin updates to platform-tier subjects", async () => {
+    const { db } = createStatefulDb({
+      modules: [
+        {
+          ...orgDriverSeed.modules[0],
+          attributionSubjectId: "asub-platform",
+        },
+      ],
+      subjects: [{ id: "asub-platform", organizationId: null }],
+      registrations: [
+        {
+          attributionSubjectId: "asub-platform",
+          driverNature: "physical-device",
+          instanceCardinality: "multiple",
+        },
+      ],
+    });
+
+    await expect(
+      updateDriverRegistration(db, makeAuth(), {
+        moduleId: "driver-1",
+        driverNature: "logical-service",
+      }),
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+    });
+  });
+
+  it("allows platform-admin to update org subjects and audits under the subject org id", async () => {
+    const { db, audits } = createStatefulDb(orgDriverSeed);
+    const platformAuth = makeAuth({
+      roles: [{ projectId: null, roleId: "platform-admin" }],
+    });
+
+    await updateDriverRegistration(db, platformAuth, {
+      moduleId: "driver-1",
+      instanceCardinality: "singleton-per-project",
+    });
+
+    const audit = audits.find(
+      (entry) => entry.kind === "parameter-module-driver-registration-updated",
+    );
+    expect(audit?.organizationId).toBe("org-1");
+    expect(audit?.metadata).toMatchObject({
+      actorRoles: ["platform-admin"],
+      after: { instanceCardinality: "singleton-per-project" },
+    });
+  });
+
+  it("re-syncs singleton-cardinality tasks for tip revisions when cardinality changes", async () => {
+    const { db, syncCalls, query } = createStatefulDb({
+      ...orgDriverSeed,
+      tipRevisions: [
+        {
+          id: "rev-tip",
+          projectId: "proj-1",
+          configSetId: "cs-1",
+          organizationId: "org-1",
+          revisionNumber: 3,
+          status: "resolved",
+        },
+        {
+          id: "rev-old",
+          projectId: "proj-1",
+          configSetId: "cs-1",
+          organizationId: "org-1",
+          revisionNumber: 2,
+          status: "resolved",
+        },
+      ],
+    });
+
+    await updateDriverRegistration(db, makeAuth(), {
+      moduleId: "driver-1",
+      instanceCardinality: "singleton-per-project",
+    });
+
+    expect(
+      query.mock.calls.some(
+        ([text]) =>
+          typeof text === "string" &&
+          text.includes("distinct on (project_id, config_set_id)") &&
+          text.includes("from dts_config_revisions"),
+      ),
+    ).toBe(true);
+    expect(syncCalls).toEqual([
+      {
+        organizationId: "org-1",
+        projectId: "proj-1",
+        configRevisionId: "rev-tip",
+      },
+    ]);
   });
 });

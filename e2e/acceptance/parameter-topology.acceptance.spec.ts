@@ -2292,6 +2292,18 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       );
       void page;
     });
+
+    test("DRV-REG-004: editable nature/cardinality with authz and singleton publish gate", async ({
+      page
+    }) => {
+      // @acceptance DRV-REG-004
+      // @operation DRV-REG-004
+      test.skip(
+        true,
+        "Pending: playwright coverage for editing driverNature/instanceCardinality, platform-subject 403 for Org Admin, org-audit for platform-admin, and singleton publish blockers."
+      );
+      void page;
+    });
   });
 
   test.describe("Organization driver schema overlay — pending browser automation", () => {

@@ -391,6 +391,12 @@ function createModuleRegistry(
         }
       };
     }),
+    updateDriverRegistration: vi.fn(async (moduleId, input) => ({
+      moduleId,
+      driverNature: input.driverNature ?? "physical-device",
+      instanceCardinality: input.instanceCardinality ?? "multiple",
+      attributionSubjectId: `asub:driver-registration:${moduleId}`
+    })),
     updateDriverRegistrationDefault: vi.fn(async (moduleId, input) => ({
       item: {
         id: moduleId,

@@ -133,6 +133,8 @@ export function createParameterAdminApplication({
     recomputeBindings: (input) => moduleRegistry.recomputeBindings(input),
     listDriverRegistry: () => moduleRegistry.listDriverRegistry(),
     registerOrClaimDriver: (input) => moduleRegistry.registerOrClaimDriver(input),
+    updateDriverRegistration: (moduleId, input) =>
+      moduleRegistry.updateDriverRegistration(moduleId, input),
     updateDriverRegistrationDefault: (moduleId, input) =>
       moduleRegistry.updateDriverRegistrationDefault(moduleId, input),
     replayDriverPlacement: (moduleId) => moduleRegistry.replayDriverPlacement(moduleId),

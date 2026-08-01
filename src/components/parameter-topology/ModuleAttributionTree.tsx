@@ -72,6 +72,13 @@ export type ModuleAttributionTreeProps = {
       sortOrder?: number;
     }
   ) => void | Promise<void>;
+  onUpdateDriverRegistration?: (
+    moduleId: string,
+    input: {
+      driverNature?: DriverNature;
+      instanceCardinality?: InstanceCardinality;
+    }
+  ) => void | Promise<void>;
   onUpdateDriverRegistrationDefault?: (
     moduleId: string,
     defaultBusinessCategoryId: string
@@ -343,6 +350,7 @@ export function ModuleAttributionTree({
   hasUnclassifiedQueue = false,
   onOpenUnclassifiedQueue,
   onUpdateModule,
+  onUpdateDriverRegistration,
   onUpdateDriverRegistrationDefault,
   onReplayDriverPlacement,
   onMove,
@@ -452,13 +460,27 @@ export function ModuleAttributionTree({
 
   const handleSaveEdit = (patch: ModuleEditSavePatch) => {
     if (!editingModuleId) return;
-    void onUpdateModule(editingModuleId, {
-      name: patch.name,
-      description: patch.description,
-      scope: patch.scope,
-      ...(patch.importance !== undefined ? { importance: patch.importance } : {}),
-      ...(patch.kind !== undefined ? { kind: patch.kind } : {})
-    });
+    const moduleId = editingModuleId;
+    void (async () => {
+      await onUpdateModule(moduleId, {
+        name: patch.name,
+        description: patch.description,
+        scope: patch.scope,
+        ...(patch.importance !== undefined ? { importance: patch.importance } : {}),
+        ...(patch.kind !== undefined ? { kind: patch.kind } : {})
+      });
+      if (
+        onUpdateDriverRegistration &&
+        (patch.driverNature !== undefined || patch.instanceCardinality !== undefined)
+      ) {
+        await onUpdateDriverRegistration(moduleId, {
+          ...(patch.driverNature !== undefined ? { driverNature: patch.driverNature } : {}),
+          ...(patch.instanceCardinality !== undefined
+            ? { instanceCardinality: patch.instanceCardinality }
+            : {})
+        });
+      }
+    })();
     setEditingModuleId(null);
   };
 

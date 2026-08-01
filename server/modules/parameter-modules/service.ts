@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import type { AuthContext } from "../auth/types";
-import { createAuditEvent } from "../audit/repository";
+import { createAuditEvent, writePlatformAuditEvent } from "../audit/repository";
 import { canAdminParameters, canViewParameters } from "../parameters/policy";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { syncSingletonCardinalityBlockingTasks } from "../parameter-topology/bindingService";
 import {
   bindingModuleConflictExists,
   collectEmptyUnclassifiedBuckets,
@@ -64,6 +65,14 @@ function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
   }
+}
+
+function isPlatformSuperAdmin(auth: AuthContext) {
+  return auth.roles.some((binding) => binding.roleId === "platform-admin");
+}
+
+function actorRoleIds(auth: AuthContext): string[] {
+  return [...new Set(auth.roles.map((binding) => binding.roleId))];
 }
 
 async function writeModuleAttributionAudit(
@@ -1112,6 +1121,181 @@ export async function listDriverRegistry(
 
   items.sort((left, right) => left.name.localeCompare(right.name));
   return { items, total: items.length };
+}
+
+export type UpdateDriverRegistrationInput = {
+  moduleId: string;
+  driverNature?: DriverNature;
+  instanceCardinality?: InstanceCardinality;
+};
+
+export type UpdateDriverRegistrationResult = {
+  moduleId: string;
+  driverNature: DriverNature;
+  instanceCardinality: InstanceCardinality;
+  attributionSubjectId: string;
+};
+
+export async function updateDriverRegistration(
+  db: Database,
+  auth: AuthContext,
+  input: UpdateDriverRegistrationInput,
+): Promise<UpdateDriverRegistrationResult> {
+  requireCanAdmin(auth);
+
+  if (input.driverNature === undefined && input.instanceCardinality === undefined) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "At least one of driverNature or instanceCardinality is required.",
+      400,
+    );
+  }
+
+  const loaded = await db.query<{
+    module_id: string;
+    attribution_subject_id: string;
+    subject_organization_id: string | null;
+    driver_nature: DriverNature;
+    instance_cardinality: InstanceCardinality;
+  }>(
+    `
+    select
+      pm.id as module_id,
+      pm.attribution_subject_id,
+      subject.organization_id as subject_organization_id,
+      dr.driver_nature,
+      dr.instance_cardinality
+    from parameter_modules pm
+    inner join attribution_subjects subject
+      on subject.id = pm.attribution_subject_id
+    inner join driver_registrations dr
+      on dr.attribution_subject_id = subject.id
+    where pm.organization_id = $1
+      and pm.id = $2
+      and pm.kind = 'driver-group'
+      and pm.attribution_subject_id is not null
+    limit 1
+    `,
+    [auth.organization.id, input.moduleId],
+  );
+
+  const row = loaded.rows[0];
+  if (!row) {
+    throw new ApiError("NOT_FOUND", "Driver registration module not found.", 404, {
+      moduleId: input.moduleId,
+    });
+  }
+
+  const subjectOrganizationId = row.subject_organization_id;
+  if (subjectOrganizationId == null) {
+    if (!isPlatformSuperAdmin(auth)) {
+      throw new ApiError(
+        "FORBIDDEN",
+        "Only platform-admin may edit platform-tier driver registrations.",
+        403,
+      );
+    }
+  } else if (subjectOrganizationId !== auth.organization.id) {
+    throw new ApiError("NOT_FOUND", "Driver registration module not found.", 404, {
+      moduleId: input.moduleId,
+    });
+  }
+
+  const beforeNature = row.driver_nature;
+  const beforeCardinality = row.instance_cardinality;
+  const nextNature = input.driverNature ?? beforeNature;
+  const nextCardinality = input.instanceCardinality ?? beforeCardinality;
+
+  return db.transaction(async (tx) => {
+    await tx.query(
+      `
+      update driver_registrations
+      set driver_nature = $2,
+          instance_cardinality = $3
+      where attribution_subject_id = $1
+      `,
+      [row.attribution_subject_id, nextNature, nextCardinality],
+    );
+
+    const auditMetadata = {
+      moduleId: row.module_id,
+      attributionSubjectId: row.attribution_subject_id,
+      actorRoles: actorRoleIds(auth),
+      before: {
+        driverNature: beforeNature,
+        instanceCardinality: beforeCardinality,
+      },
+      after: {
+        driverNature: nextNature,
+        instanceCardinality: nextCardinality,
+      },
+    };
+
+    if (subjectOrganizationId == null) {
+      await writePlatformAuditEvent(tx, {
+        projectId: null,
+        actorUserId: auth.user.id,
+        actorType: "user",
+        app: "parameter-management",
+        kind: "parameter-module-driver-registration-updated",
+        action: "update",
+        severity: "Low",
+        targetType: "driver-registration",
+        targetId: row.attribution_subject_id,
+        metadata: auditMetadata,
+        traceId: randomUUID(),
+        affectedOrganizationIds: [auth.organization.id],
+      });
+    } else {
+      await createAuditEvent(tx, {
+        id: randomUUID(),
+        organizationId: subjectOrganizationId,
+        projectId: null,
+        actorUserId: auth.user.id,
+        actorType: "user",
+        app: "parameter-management",
+        kind: "parameter-module-driver-registration-updated",
+        action: "update",
+        severity: "Low",
+        targetType: "driver-registration",
+        targetId: row.attribution_subject_id,
+        metadata: auditMetadata,
+        traceId: randomUUID(),
+      });
+    }
+
+    // Re-sync singleton-cardinality tasks for tip revisions; never rewrite topology.
+    const tipRevisions = await tx.query<{
+      id: string;
+      project_id: string;
+    }>(
+      `
+      select distinct on (project_id, config_set_id)
+        id,
+        project_id
+      from dts_config_revisions
+      where organization_id = $1
+        and status <> 'resolving'
+      order by project_id, config_set_id, revision_number desc
+      `,
+      [auth.organization.id],
+    );
+
+    for (const revision of tipRevisions.rows) {
+      await syncSingletonCardinalityBlockingTasks(tx, {
+        organizationId: auth.organization.id,
+        projectId: revision.project_id,
+        configRevisionId: revision.id,
+      });
+    }
+
+    return {
+      moduleId: row.module_id,
+      driverNature: nextNature,
+      instanceCardinality: nextCardinality,
+      attributionSubjectId: row.attribution_subject_id,
+    };
+  });
 }
 
 
