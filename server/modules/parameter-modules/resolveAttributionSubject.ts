@@ -120,7 +120,7 @@ export async function ensureAttributionSubjectForCompatible(
     insert into attribution_subjects (
       id, organization_id, subject_kind, display_name, origin, source_key
     ) values ($1, $2, 'driver-registration', $3, 'auto', $4)
-    on conflict (id) do nothing
+    on conflict (organization_id, source_key) do nothing
     `,
     [subjectId, input.organizationId, displayName, sourceKey],
   );

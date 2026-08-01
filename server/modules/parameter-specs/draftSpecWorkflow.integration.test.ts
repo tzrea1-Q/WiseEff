@@ -1,24 +1,43 @@
 /**
  * P1-3: manual spec draft → activate → resolve workflow.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import { ApiError } from "../../shared/http/errors";
+import { compatibleSourceKey } from "../parameter-modules/ensureAttributionModuleForBinding";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
-import { buildManualSpecIds } from "./specIdentity";
+import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 import { activateParameterSpec, resolveSpecReviewTask } from "./service";
 
 const ORG_ID = "org-draft-spec-flow";
 const PROJECT_ID = "project-draft-spec-flow";
 const USER_ID = "user-draft-spec-flow";
 const CONFIG_SET_ID = "dcs-draft-spec-flow";
+/** Matches `dtsForProperty` scaffolding compatible used for review-task createSpec. */
+const GHOST_COMPATIBLE = "wiseeff,ghost-device";
 
 const databaseAvailable = await isTestDatabaseAvailable();
+
+function subjectIdForCompatible(organizationId: string, compatible: string): string {
+  const digest = createHash("sha256")
+    .update(`${organizationId}\u001f${compatibleSourceKey(compatible)}`)
+    .digest("hex")
+    .slice(0, 24);
+  return `asub:driver-registration:compatible:${digest}`;
+}
+
+function expectedManualIds(propertyKey: string) {
+  return buildSubjectScopedManualSpecIds({
+    organizationId: ORG_ID,
+    attributionSubjectId: subjectIdForCompatible(ORG_ID, GHOST_COMPATIBLE),
+    propertyKey,
+  });
+}
 
 function makeAuth(): AuthContext {
   return {
@@ -43,7 +62,7 @@ function dtsForProperty(propertyKey: string, rawValue: string) {
 
 / {
 	amba {
-		compatible = "wiseeff,ghost-device";
+		compatible = "${GHOST_COMPATIBLE}";
 		${propertyKey} = ${rawValue};
 	};
 };
@@ -157,7 +176,7 @@ describe.skipIf(!databaseAvailable)("draft spec workflow integration", () => {
 
   it("createSpec leaves task open, creates draft with inferred shape, and writes audit", async () => {
     const { task } = await ingestAndFindTask(db!, "cell_prop", "<1>");
-    const ids = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "cell_prop", driverModule: null });
+    const ids = expectedManualIds("cell_prop");
 
     const created = await resolveSpecReviewTask(db!, makeAuth(), {
       taskId: task.id,
@@ -234,7 +253,7 @@ describe.skipIf(!databaseAvailable)("draft spec workflow integration", () => {
 
   it("rejects resolve/release with draft spec and activates before binding", async () => {
     const { task, revision } = await ingestAndFindTask(db!, "gpio_int", "<2>");
-    const ids = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "gpio_int", driverModule: null });
+    const ids = expectedManualIds("gpio_int");
 
     const draft = await resolveSpecReviewTask(db!, makeAuth(), {
       taskId: task.id,
@@ -266,6 +285,14 @@ describe.skipIf(!databaseAvailable)("draft spec workflow integration", () => {
         constraints: { cells: 1.5 },
         documentation: "Invalid fractional cell shape",
         reason: "Must fail closed",
+        coverageClaim: {
+          kind: "overlay-property",
+          upsertOverlay: {
+            compatible: GHOST_COMPATIBLE,
+            displayName: "Ghost device",
+            createPropertyLink: true,
+          },
+        },
       }),
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 } satisfies Partial<ApiError>);
     const rejectedActivation = await db!.query<{ lifecycle: string }>(
@@ -291,6 +318,14 @@ describe.skipIf(!databaseAvailable)("draft spec workflow integration", () => {
       constraints: { cells: 1 },
       documentation: "GPIO interrupt cells property",
       reason: "Reviewed and activated",
+      coverageClaim: {
+        kind: "overlay-property",
+        upsertOverlay: {
+          compatible: GHOST_COMPATIBLE,
+          displayName: "Ghost device",
+          createPropertyLink: true,
+        },
+      },
     });
 
     const resolved = await resolveSpecReviewTask(db!, makeAuth(), {
@@ -322,11 +357,7 @@ describe.skipIf(!databaseAvailable)("draft spec workflow integration", () => {
 
   it("infers string-list and boolean shapes; unknown cannot activate", async () => {
     const stringList = await ingestAndFindTask(db!, "compat_list", '"a", "b"');
-    const stringIds = buildManualSpecIds({
-      organizationId: ORG_ID,
-      propertyKey: "compat_list",
-      driverModule: null,
-    });
+    const stringIds = expectedManualIds("compat_list");
     await resolveSpecReviewTask(db!, makeAuth(), {
       taskId: stringList.task.id,
       decision: "resolved",
@@ -340,7 +371,7 @@ describe.skipIf(!databaseAvailable)("draft spec workflow integration", () => {
     expect(stringShape.rows[0]?.value_shape).toEqual({ kind: "string-list" });
 
     const boolTask = await ingestAndFindTask(db!, "feature_on", "");
-    const boolIds = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "feature_on", driverModule: null });
+    const boolIds = expectedManualIds("feature_on");
     await resolveSpecReviewTask(db!, makeAuth(), {
       taskId: boolTask.task.id,
       decision: "resolved",
@@ -358,11 +389,7 @@ describe.skipIf(!databaseAvailable)("draft spec workflow integration", () => {
       `update dts_property_occurrences set raw_text = '???', ast_json = '{}'::jsonb where id = $1`,
       [broken.task.source_evidence.propertyOccurrenceId],
     );
-    const unknownIds = buildManualSpecIds({
-      organizationId: ORG_ID,
-      propertyKey: "broken_shape",
-      driverModule: null,
-    });
+    const unknownIds = expectedManualIds("broken_shape");
     await resolveSpecReviewTask(db!, makeAuth(), {
       taskId: broken.task.id,
       decision: "resolved",
@@ -381,17 +408,42 @@ describe.skipIf(!databaseAvailable)("draft spec workflow integration", () => {
         constraints: {},
         documentation: "still unknown",
         reason: "should fail",
+        coverageClaim: {
+          kind: "overlay-property",
+          upsertOverlay: {
+            compatible: GHOST_COMPATIBLE,
+            displayName: "Ghost device",
+            createPropertyLink: true,
+          },
+        },
       }),
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400 } satisfies Partial<ApiError>);
   });
 
   it("idempotent createSpec and special-character IDs do not collide", async () => {
-    const colon = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "foo:bar", driverModule: null });
-    const slash = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "foo/bar", driverModule: null });
+    const subjectId = subjectIdForCompatible(ORG_ID, GHOST_COMPATIBLE);
+    const colon = buildSubjectScopedManualSpecIds({
+      organizationId: ORG_ID,
+      attributionSubjectId: subjectId,
+      propertyKey: "foo:bar",
+    });
+    const slash = buildSubjectScopedManualSpecIds({
+      organizationId: ORG_ID,
+      attributionSubjectId: subjectId,
+      propertyKey: "foo/bar",
+    });
     expect(colon.parameterSpecId).not.toBe(slash.parameterSpecId);
 
-    const comma = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "vendor,limit", driverModule: null });
-    const hyphen = buildManualSpecIds({ organizationId: ORG_ID, propertyKey: "vendor-limit", driverModule: null });
+    const comma = buildSubjectScopedManualSpecIds({
+      organizationId: ORG_ID,
+      attributionSubjectId: subjectId,
+      propertyKey: "vendor,limit",
+    });
+    const hyphen = buildSubjectScopedManualSpecIds({
+      organizationId: ORG_ID,
+      attributionSubjectId: subjectId,
+      propertyKey: "vendor-limit",
+    });
     expect(comma.parameterSpecId).not.toBe(hyphen.parameterSpecId);
 
     const { task } = await ingestAndFindTask(db!, "idempotent_prop", "<3>");

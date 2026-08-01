@@ -481,20 +481,39 @@ describe.skipIf(!databaseAvailable)("validateConfigRevision fail-closed", () => 
     const revision = await seedRevision(db!, auth);
     await clearOpenReviews(db!);
     await db!.query(`update dts_config_revisions set status = 'resolved' where id = $1`, [revision.id]);
-    await db!.query(
+    // Ingest may already have auto-created a subject for compatible:wiseeff,test
+    // (provisional surface / ensure paths). Reuse it so curated singleton cardinality applies.
+    const existingSubject = await db!.query<{ id: string }>(
       `
-      insert into attribution_subjects (
-        id, organization_id, subject_kind, display_name, origin, source_key
-      ) values ('subject-singleton', $1, 'driver-registration', 'Singleton service', 'curated', 'compatible:wiseeff,test')
+      select id
+      from attribution_subjects
+      where organization_id = $1 and source_key = 'compatible:wiseeff,test'
+      limit 1
       `,
       [ORG_ID],
     );
+    const subjectId = existingSubject.rows[0]?.id ?? "subject-singleton";
+    if (!existingSubject.rows[0]) {
+      await db!.query(
+        `
+        insert into attribution_subjects (
+          id, organization_id, subject_kind, display_name, origin, source_key
+        ) values ($1, $2, 'driver-registration', 'Singleton service', 'curated', 'compatible:wiseeff,test')
+        `,
+        [subjectId, ORG_ID],
+      );
+    }
     await db!.query(
       `
       insert into driver_registrations (
         attribution_subject_id, driver_nature, instance_cardinality, notes
-      ) values ('subject-singleton', 'logical-service', 'singleton-per-project', '')
+      ) values ($1, 'logical-service', 'singleton-per-project', '')
+      on conflict (attribution_subject_id) do update
+        set driver_nature = excluded.driver_nature,
+            instance_cardinality = excluded.instance_cardinality,
+            notes = excluded.notes
       `,
+      [subjectId],
     );
     await db!.query(
       `
@@ -504,10 +523,14 @@ describe.skipIf(!databaseAvailable)("validateConfigRevision fail-closed", () => 
       ) values (
         'module-singleton', $1, 'pmod-' || $1 || '-' || md5('未分类'),
         'Singleton service', 'singleton/service', 2, 0, '', '',
-        'driver-group', 'curated', 'subject-singleton'
+        'driver-group', 'curated', $2
       )
+      on conflict (id) do update
+        set attribution_subject_id = excluded.attribution_subject_id,
+            kind = excluded.kind,
+            origin = excluded.origin
       `,
-      [ORG_ID],
+      [ORG_ID, subjectId],
     );
     await db!.query(
       `
@@ -516,6 +539,7 @@ describe.skipIf(!databaseAvailable)("validateConfigRevision fail-closed", () => 
       ) values
         ('mapping-singleton-root', $1, 'module-singleton', 'compatible', 'wiseeff,test', 0),
         ('mapping-singleton-amba', $1, 'module-singleton', 'compatible', 'wiseeff,amba', 0)
+      on conflict (id) do nothing
       `,
       [ORG_ID],
     );
@@ -543,7 +567,7 @@ describe.skipIf(!databaseAvailable)("validateConfigRevision fail-closed", () => 
     );
     expect(blocker.rows).toHaveLength(1);
     expect(blocker.rows[0]?.evidence).toMatchObject({
-      attributionSubjectId: "subject-singleton",
+      attributionSubjectId: subjectId,
       instanceCount: 2,
     });
     expect(blocker.rows[0]?.candidate_logical_node_ids).toHaveLength(2);

@@ -35,7 +35,10 @@ import { resolveAttributionModuleForBinding } from "../parameter-modules/ensureA
 import { BOARD_INSTANCE_MODULE_NAME } from "../parameter-modules/modulePlacement";
 import { isParameterSurfaceRow, isStructuralPropertyKey } from "./parameterSurface";
 import { ApiError } from "../../shared/http/errors";
-import { getModuleAttributionSubjectId } from "../parameter-modules/resolveAttributionSubject";
+import {
+  ensureAttributionSubjectForCompatible,
+  getModuleAttributionSubjectId,
+} from "../parameter-modules/resolveAttributionSubject";
 import { upsertProvisionalSurfacePropertySpec } from "./provisionalSurfaceBinding";
 import type { Database, Queryable } from "../../shared/database/client";
 import {
@@ -698,7 +701,29 @@ async function matchBindAndQueueReviews(
           instanceName: instanceNameFor(matchable),
           nodeLocator: matchable.nodeLocator,
         });
-        const attributionSubjectId = await getModuleAttributionSubjectId(tx, surfaceModuleId);
+        let attributionSubjectId = await getModuleAttributionSubjectId(tx, surfaceModuleId);
+        if (!attributionSubjectId) {
+          const compatibleToken = matchable.compatible[0]?.trim() || null;
+          const ensureToken = compatibleToken || driverModule?.trim() || null;
+          if (ensureToken) {
+            attributionSubjectId = await ensureAttributionSubjectForCompatible(tx, {
+              organizationId: input.organizationId,
+              compatible: ensureToken,
+            });
+            // business/unclassified modules must keep attribution_subject_id null
+            // (parameter_modules_subject_kind_check); only catalog kinds may link.
+            await tx.query(
+              `
+              update parameter_modules
+              set attribution_subject_id = coalesce(attribution_subject_id, $2),
+                  updated_at = now()
+              where id = $1
+                and kind in ('driver-group', 'node-type')
+              `,
+              [surfaceModuleId, attributionSubjectId],
+            );
+          }
+        }
         if (!attributionSubjectId) {
           throw new ApiError(
             "CONFLICT",
