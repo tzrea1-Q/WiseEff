@@ -1,11 +1,9 @@
 # Attribution governance follow-up (cutover, identity UI, honesty)
 
-> Status: PR7–PR9 implemented on branch; deferred questions remain open  
-> Branch: continue on `feat/attribution-subject-versioned-specs` (or a fresh `feat/attribution-governance-follow-up` from `main` after that branch merges)  
+> Status: **Completed (implementation merged).** PR7–PR9 landed via #215 (`feat/attribution-subject-versioned-specs`). Deferred D-AG-01–04 remain in `docs/design-docs/2026-07-31-attribution-governance-deferred-questions.md`. **Residuals** (identity-mapping viewport evidence, acceptance surface) owned by [`2026-08-01-governance-platform-closeout.md`](../active/2026-08-01-governance-platform-closeout.md).  
 > Date: 2026-07-31  
-> Continues: [`2026-07-30-attribution-subjects-and-versioned-specs.md`](2026-07-30-attribution-subjects-and-versioned-specs.md) (PR0–PR6 landed)  
-> Deferred discussion: [`docs/design-docs/2026-07-31-attribution-governance-deferred-questions.md`](../../design-docs/2026-07-31-attribution-governance-deferred-questions.md)  
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-07-31-attribution-governance-follow-up.md`](../../zh-CN/exec-plans/active/2026-07-31-attribution-governance-follow-up.md)
+> Continues: [`2026-07-30-attribution-subjects-and-versioned-specs.md`](../active/2026-07-30-attribution-subjects-and-versioned-specs.md) (PR0–PR6)  
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-07-31-attribution-governance-follow-up.md`](../../zh-CN/exec-plans/completed/2026-07-31-attribution-governance-follow-up.md)
 
 ## Goal
 
@@ -55,7 +53,7 @@ Carried from ADR-0013/0014 and the parent plan unless noted:
 
 - [x] `IdentityMappingReview` (or successor): `taskKind` badges; `new_identity` + `confirmAllCandidates`; singleton guidance (no false resolve).
 - [x] Port/client types for existing resolve decisions.
-- [ ] Browser check `/parameter-admin/identity-mapping` at 1440/768/390.
+- [x] Browser check `/parameter-admin/identity-mapping` at 1440/768/390. **Done in closeout:** `work/ui-checks/governance-closeout-param-identity-{desktop,tablet,mobile}.png` (0 console errors).
 
 ### PR9 — Honesty & polish
 

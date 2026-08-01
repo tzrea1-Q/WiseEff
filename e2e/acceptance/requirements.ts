@@ -494,19 +494,19 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PLAT-ROLE-001",
     workflow: "C",
     title: "Platform admin sees platform console; other roles are denied on direct navigation.",
-    required: false
+    required: true
   },
   {
     id: "PLAT-ROLE-002",
     workflow: "C",
     title: "Organization Admin cannot grant platform-admin and the control is hidden.",
-    required: false
+    required: true
   },
   {
     id: "PLAT-ROLE-003",
     workflow: "C",
     title: "Platform admin cannot access another organization's parameters, logs, or users.",
-    required: false
+    required: true
   },
   {
     id: "DRV-PROMOTE-001",
@@ -536,6 +536,60 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "DRV-PROMOTE-005",
     workflow: "C",
     title: "Console promotion confirms cross-tenant blast radius; revert restores contributors.",
+    required: false
+  },
+  {
+    id: "SPEC-DEPRECATE-001",
+    workflow: "C",
+    title: "Admin soft-deprecates a definition with reason; default library excludes it; reference count reported.",
+    required: false
+  },
+  {
+    id: "SPEC-RESTORE-001",
+    workflow: "C",
+    title: "Admin restores a deprecated definition to the state activated_at implies.",
+    required: false
+  },
+  {
+    id: "SPEC-EDIT-DIFF-001",
+    workflow: "C",
+    title: "Saving an active definition shows value_shape/constraints diff before confirm.",
+    required: false
+  },
+  {
+    id: "IDMAP-NEWID-001",
+    workflow: "C",
+    title: "Confirm-as-new-identity releases the revision while a remaining rejection does not.",
+    required: false
+  },
+  {
+    id: "IDMAP-HISTORY-001",
+    workflow: "C",
+    title: "Identity mapping history lists resolved, dismissed, and new_identity outcomes.",
+    required: false
+  },
+  {
+    id: "IDMAP-REOPEN-001",
+    workflow: "C",
+    title: "Reopen is offered on non-destructive outcomes and refused on resolved.",
+    required: false
+  },
+  {
+    id: "MOD-QUEUE-RESTORE-001",
+    workflow: "C",
+    title: "Dismissed unclassified queue entries can be restored from Admin.",
+    required: false
+  },
+  {
+    id: "OVERLAY-RETIRE-001",
+    workflow: "C",
+    title: "Overlay retirement shows parse-coverage impact before confirm.",
+    required: false
+  },
+  {
+    id: "MOD-ATTR-SORT-001",
+    workflow: "C",
+    title: "Module tree up/down reorder persists via sortOrder PATCH.",
     required: false
   }
 ];

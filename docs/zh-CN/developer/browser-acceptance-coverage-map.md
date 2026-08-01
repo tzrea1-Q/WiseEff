@@ -46,8 +46,11 @@
 - `MOD-ATTR-TREE-001`：树操作按 kind 分级；实例不可删；重命名自动模块即纳入（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `MOD-ATTR-IMPORTANCE-001`：业务分类重要性被驱动组/实例继承并驱动工作台筛选（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `MOD-ATTR-CREATE-KIND-001`：归属树按类型新建空业务/驱动组/实例/逻辑节点（父级规则、驱动组必填 compatible、空 curated 未实测）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PLAT-ROLE-001`～`003`：平台超级管理员控制台与跨租户访问边界（待登记自动化）。
-- `DRV-PROMOTE-001`～`005`：overlay 晋升/遮蔽/拒绝编写与控制台晋升撤销（待登记自动化）。
+- `PLAT-ROLE-001`～`003`：平台超级管理员控制台与跨租户访问边界（`e2e/acceptance/permissions-matrix.acceptance.spec.ts` 自动化）。
+- `DRV-PROMOTE-001`～`005`：overlay 晋升/遮蔽/拒绝编写与控制台晋升撤销（手工/补充证据，见 `2026-08-01-governance-platform-closeout`）。
+- `SPEC-DEPRECATE-001` / `SPEC-RESTORE-001` / `SPEC-EDIT-DIFF-001`：定义软废弃/恢复/活性编辑 diff（已登记；Playwright 待跟进）。
+- `IDMAP-NEWID-001` / `IDMAP-HISTORY-001` / `IDMAP-REOPEN-001`：身份映射新身份/历史/重开（已登记）。
+- `MOD-QUEUE-RESTORE-001` / `OVERLAY-RETIRE-001` / `MOD-ATTR-SORT-001`：未归类恢复、overlay 停用影响、模块排序（已登记）。
 - `DRV-REG-001`：上传前登记驱动；树上出现带解析覆盖徽标的未实测 curated 驱动组（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-REG-002`：从队列或模块树认领已观测未登记驱动，origin 变为 curated（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `DRV-REG-003`：DTS 上传后一次性摘要报告已登记匹配与新观测未登记 compatible（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。

@@ -3,7 +3,7 @@
 > 英文：[English](../../design-docs/2026-07-31-attribution-governance-deferred-questions.md)  
 > 日期：2026-07-31  
 > 状态：开放，待后续 grilling  
-> 已锁定工作见：[follow-up 计划](../exec-plans/active/2026-07-31-attribution-governance-follow-up.md)
+> 已锁定工作见：[follow-up 计划](../../exec-plans/completed/2026-07-31-attribution-governance-follow-up.md)
 
 2026-07-31 grill-with-docs 已审阅下列项；**在再次 grilling 锁死答案前，不排进 follow-up 实现批次**。
 

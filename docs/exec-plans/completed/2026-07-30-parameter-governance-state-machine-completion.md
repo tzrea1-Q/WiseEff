@@ -1,6 +1,6 @@
 # Parameter governance state machines — completion
 
-> Status: **PR3 implementation in progress on `feat/parameter-governance-convergence` (stacked on PR2).** PR1 soft deprecation shipped on `feat/spec-lifecycle-closure`. PR2 identity mapping shipped on `feat/identity-mapping-decision-split`. Decisions: ADR-0011 (spec deprecation is soft retirement), ADR-0012 (releasing happens at the file layer). Branches: `feat/spec-lifecycle-closure`, `feat/identity-mapping-decision-split`, `feat/parameter-governance-convergence`. Migrations `0081` / `0082` / `0083`. Deferred questions live in `docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md`.
+> Status: **Completed (implementation merged).** PR1 #212 (`feat/spec-lifecycle-closure`), PR2 #213 (`feat/identity-mapping-decision-split`), PR3 #214 (`feat/parameter-governance-convergence`). ADR-0011 / ADR-0012. Deferred D1–D8 remain in `docs/design-docs/2026-07-30-parameter-governance-deferred-questions.md`. **Residuals** (acceptance IDs, browser evidence, plan archive hygiene) owned by [`2026-08-01-governance-platform-closeout.md`](../active/2026-08-01-governance-platform-closeout.md).
 
 ## Goal
 
