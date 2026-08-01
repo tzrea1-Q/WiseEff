@@ -40,8 +40,8 @@ This plan intentionally uses **three sequential branches/PRs** (exception to one
 ## Success criteria
 
 - [ ] Locked decision table remains the source of truth; no silent semantic drift in PRs.
-- [ ] PR1: Org Admin cannot edit platform registrations; platform-admin can edit org registrations and those edits appear in org audit; singleton→publish blocked via tasks; save is one transaction; nature UI stays distinct from `node-type`.
-- [ ] PR1: Public contract/docs no longer advertise `pinned-schema-property` as a supported claim kind.
+- [x] PR1: Org Admin cannot edit platform registrations; platform-admin can edit org registrations and those edits appear in org audit; singleton→publish blocked via tasks; save is one transaction; nature UI stays distinct from `node-type`.
+- [x] PR1: Public contract/docs no longer advertise `pinned-schema-property` as a supported claim kind.
 - [x] PR2: `driverModule` column and identity write paths gone; migration fails closed on unresolvable subjects; TD-047 closed.
 - [ ] PR3: Auto placement uses registration default business category; curated frozen; auto replay + explicit replay op; TD-046 closed; keyword heuristic retired or demoted to non-product path.
 - [ ] Acceptance IDs registered/updated; focused tests + `npm run build` green per PR; `npm run docs:check` green before marking this plan complete.
@@ -51,12 +51,12 @@ This plan intentionally uses **three sequential branches/PRs** (exception to one
 
 ### PR1 — Editable nature/cardinality + D-AG-02 honesty
 
-1. Mutate API + authz: org Admin → org registrations; platform-admin → platform **and** org; audit org history for platform-admin edits.
-2. On change to `singleton-per-project`, open/refresh singleton-cardinality tasks; **do not** force topology rewrite; publish remains blocked while tasks open.
-3. Persist update + audit + task re-sync in **one** transaction.
-4. Admin UI: replace read-only display with edit controls; copy keeps nature orthogonal to `node-type`.
-5. D-AG-02: remove/mark unsupported `pinned-schema-property` in schema/docs/examples; runtime stays overlay-only.
-6. Register/extend acceptance IDs for edit authz, audit visibility, and singleton publish gate.
+1. [x] Mutate API + authz: org Admin → org registrations; platform-admin → platform **and** org; audit org history for platform-admin edits.
+2. [x] On change to `singleton-per-project`, open/refresh singleton-cardinality tasks; **do not** force topology rewrite; publish remains blocked while tasks open.
+3. [x] Persist update + audit + task re-sync in **one** transaction.
+4. [x] Admin UI: replace read-only display with edit controls; copy keeps nature orthogonal to `node-type`.
+5. [x] D-AG-02: remove/mark unsupported `pinned-schema-property` in schema/docs/examples; runtime stays overlay-only.
+6. [x] Register/extend acceptance IDs for edit authz, audit visibility, and singleton publish gate.
 
 ### PR2 — Drop `driverModule` (TD-047)
 

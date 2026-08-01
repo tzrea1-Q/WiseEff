@@ -80,6 +80,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `DRV-REG-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-REG-002` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-REG-003` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `DRV-REG-004` | P1 | parameters | future | `/parameter-admin` | Admin, Platform Admin | ui, api, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-SCHEMA-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-SCHEMA-002` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `DRV-SCHEMA-003` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
@@ -118,6 +119,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `DRV-REG-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-REG-002`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-REG-003`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
+- `DRV-REG-004`: Unit/server coverage lands with attribution PR1; browser automation placeholder until disposable-DB / Playwright evidence gates CI.
 - `DRV-SCHEMA-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-SCHEMA-002`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `DRV-SCHEMA-003`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.

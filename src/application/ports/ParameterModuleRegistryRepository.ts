@@ -104,7 +104,7 @@ export type DriverRegistryEntry = {
   parameterCount: number;
   observed: boolean;
   notYetObserved: boolean;
-  /** Read-only registration attributes when linked to a driver subject. */
+  /** Read-only registration attributes when linked to a driver subject; editable via updateDriverRegistration. */
   driverNature: DriverNature | null;
   instanceCardinality: InstanceCardinality | null;
   parseCoverages: Array<{ compatible: string; coverage: DriverRegistryParseCoverage }>;
@@ -127,6 +127,18 @@ export type RegisterOrClaimDriverResult = {
     origin: ModuleOrigin;
     description?: string;
   };
+};
+
+export type UpdateDriverRegistrationInput = {
+  driverNature?: DriverNature;
+  instanceCardinality?: InstanceCardinality;
+};
+
+export type UpdateDriverRegistrationResult = {
+  moduleId: string;
+  driverNature: DriverNature;
+  instanceCardinality: InstanceCardinality;
+  attributionSubjectId: string;
 };
 
 export type OrganizationDriverSchemaValueShapeKind =
@@ -228,6 +240,10 @@ export interface ParameterModuleRegistryRepository {
   }): Promise<RecomputeBindingModulesResult>;
   listDriverRegistry(): Promise<{ items: DriverRegistryEntry[]; total: number }>;
   registerOrClaimDriver(input: RegisterOrClaimDriverInput): Promise<RegisterOrClaimDriverResult>;
+  updateDriverRegistration(
+    moduleId: string,
+    input: UpdateDriverRegistrationInput
+  ): Promise<UpdateDriverRegistrationResult>;
   createOrganizationDriverSchema(
     input: CreateOrganizationDriverSchemaInput
   ): Promise<OrganizationDriverSchema>;
