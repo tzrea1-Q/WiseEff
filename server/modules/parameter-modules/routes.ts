@@ -8,9 +8,11 @@ import {
   createModuleMappingBodySchema,
   dismissCompatibleBodySchema,
   dismissedCompatibleParamsSchema,
+  driverRegistryModuleParamsSchema,
   moduleMappingParamsSchema,
   registerOrClaimDriverBodySchema,
-  recomputeBindingsBodySchema
+  recomputeBindingsBodySchema,
+  updateDriverRegistrationBodySchema
 } from "./schemas";
 import {
   createModuleMapping,
@@ -22,7 +24,8 @@ import {
   previewModuleMapping,
   recomputeBindingModules,
   registerOrClaimDriver,
-  restoreDismissedCompatible
+  restoreDismissedCompatible,
+  updateDriverRegistration
 } from "./service";
 
 function requireDb(db: Database | undefined) {
@@ -133,5 +136,18 @@ export function registerParameterModuleRoutes(
     const body = parseWithSchema(registerOrClaimDriverBodySchema, request.body ?? {});
     const result = await registerOrClaimDriver(db, auth, body);
     return { status: 201, body: result };
+  });
+
+  router.patch("/api/v2/parameter-modules/driver-registry/:moduleId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(driverRegistryModuleParamsSchema, request.params);
+    const body = parseWithSchema(updateDriverRegistrationBodySchema, request.body ?? {});
+    const result = await updateDriverRegistration(db, auth, {
+      moduleId: params.moduleId,
+      driverNature: body.driverNature,
+      instanceCardinality: body.instanceCardinality,
+    });
+    return { status: 200, body: result };
   });
 }

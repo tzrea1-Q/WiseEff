@@ -456,6 +456,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "DRV-REG-004",
+    workflow: "C",
+    title:
+      "Admin edits driverNature / instanceCardinality on an org registration; platform-admin edits appear in org audit; Org Admin cannot edit platform-tier registrations; changing to singleton-per-project opens/refreshes singleton-cardinality publish blockers without rewriting topology.",
+    required: true
+  },
+  {
     id: "DRV-SCHEMA-001",
     workflow: "C",
     title:

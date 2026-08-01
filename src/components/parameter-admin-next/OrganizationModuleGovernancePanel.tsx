@@ -124,6 +124,15 @@ export function OrganizationModuleGovernancePanel({
         );
         return result;
       },
+      async updateDriverRegistration(moduleId, input) {
+        const result = await base.updateDriverRegistration(moduleId, input);
+        pushModuleAudit(
+          dispatch,
+          "module-renamed",
+          `已更新驱动登记 ${moduleId}`
+        );
+        return result;
+      },
       createOrganizationDriverSchema: (input: CreateOrganizationDriverSchemaInput) =>
         base.createOrganizationDriverSchema(input),
       listOrganizationDriverSchemas: () => base.listOrganizationDriverSchemas(),

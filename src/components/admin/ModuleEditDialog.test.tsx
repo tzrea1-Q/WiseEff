@@ -6,7 +6,48 @@ import { ModuleEditDialog } from "./ModuleEditDialog";
 afterEach(() => cleanup());
 
 describe("ModuleEditDialog", () => {
-  it("shows read-only driver nature and instance cardinality for driver groups", () => {
+  it("shows editable driver nature and cardinality selects for admins", () => {
+    const onSave = vi.fn();
+    render(
+      <ModuleEditDialog
+        module={{
+          name: "SC8562",
+          description: "",
+          scope: "",
+          kind: "driver-group",
+        }}
+        existingNames={[]}
+        canAdmin
+        driverNature="physical-device"
+        instanceCardinality="singleton-per-project"
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
+    const nature = within(dialog).getByLabelText("驱动性质");
+    const cardinality = within(dialog).getByLabelText("实例基数");
+    expect(nature.tagName).toBe("SELECT");
+    expect(cardinality.tagName).toBe("SELECT");
+    expect(nature).toHaveValue("physical-device");
+    expect(cardinality).toHaveValue("singleton-per-project");
+    expect(
+      within(dialog).getByText(/与分类树中的节点类型（node-type）不是同一概念/)
+    ).toBeInTheDocument();
+
+    fireEvent.change(nature, { target: { value: "logical-service" } });
+    fireEvent.change(cardinality, { target: { value: "multiple" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        driverNature: "logical-service",
+        instanceCardinality: "multiple",
+      })
+    );
+  });
+
+  it("keeps driver nature and cardinality read-only without admin", () => {
     render(
       <ModuleEditDialog
         module={{
@@ -26,6 +67,7 @@ describe("ModuleEditDialog", () => {
     const dialog = screen.getByRole("dialog", { name: "修改模块 SC8562" });
     expect(within(dialog).getByLabelText("驱动性质")).toHaveValue("物理设备");
     expect(within(dialog).getByLabelText("实例基数")).toHaveValue("单例/项目");
+    expect(within(dialog).getByLabelText("驱动性质").tagName).toBe("INPUT");
   });
 
   it("shows overlay coverage label and author button for uncovered compatible rows", () => {

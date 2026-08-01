@@ -698,6 +698,21 @@ export function ParameterModuleMappingPanel({
                 setBusy(false);
               }
             }}
+            onUpdateDriverRegistration={async (moduleId, input) => {
+              setBusy(true);
+              setError(null);
+              try {
+                await client.updateDriverRegistration(moduleId, input);
+                await refreshDriverRegistry();
+                setRegistry(await client.getRegistry());
+              } catch (updateError) {
+                setError(
+                  updateError instanceof Error ? updateError.message : "更新驱动登记失败。"
+                );
+              } finally {
+                setBusy(false);
+              }
+            }}
             onMove={async (moduleId, parentId) => {
               setBusy(true);
               setError(null);
