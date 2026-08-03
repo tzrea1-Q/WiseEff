@@ -374,10 +374,10 @@ test.describe("DTS structured product browser acceptance", () => {
       await expect(page.getByRole("region", { name: "项目参数文件" })).toBeVisible({
         timeout: 30_000
       });
-      await expect(page.getByRole("tablist", { name: "项目运营视图" })).toBeVisible();
-      await expect(page.getByRole("tab", { name: "参数文件" })).toHaveAttribute("aria-selected", "true");
-      await expect(page.getByRole("tab", { name: "配置集 / 基线" })).toBeVisible();
-      await expect(page.getByRole("tab", { name: "结构浏览" })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "项目运营视图" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "参数文件" })).toHaveAttribute("aria-current", "page");
+      await expect(page.getByRole("button", { name: "配置集 / 基线" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "结构浏览" })).toBeVisible();
       await expect(page.getByRole("region", { name: "DTS 结构化检索" })).toBeVisible({ timeout: 20_000 });
       await page.getByLabel("检索关键词").fill("chip@6E");
       await page.getByRole("button", { name: "检索" }).click();
