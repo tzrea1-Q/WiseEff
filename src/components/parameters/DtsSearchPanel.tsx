@@ -47,7 +47,9 @@ export function DtsSearchPanel({ projectId, repository, onSelectHit }: DtsSearch
     <section className="dts-search-panel" aria-label="DTS 结构化检索">
       <div className="dts-search-panel__head">
         <h3>结构化检索</h3>
-        <p>按路径、@地址、标签、compatible 或属性值检索当前版本的 dts_* 节点。</p>
+        <p>
+          在已解析的参数文件中按路径、@地址、标签、compatible 或属性值定位节点。树形展开与属性编辑请改用「结构浏览」页签。
+        </p>
       </div>
       <form
         className="dts-search-panel__form"

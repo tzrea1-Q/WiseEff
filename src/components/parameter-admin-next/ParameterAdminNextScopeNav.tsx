@@ -12,10 +12,10 @@ export type ParameterAdminNextScopeNavProps = {
  */
 export function ParameterAdminNextScopeNav({ active, onNavigate }: ParameterAdminNextScopeNavProps) {
   return (
-    <nav className="parameter-admin-subnav" aria-label={PARAMETER_ADMIN_UI.scopeNavAria}>
+    <nav className="parameter-admin-scope-nav" aria-label={PARAMETER_ADMIN_UI.scopeNavAria}>
       <button
         type="button"
-        className={`parameter-admin-subnav__tab${active === "organization" ? " is-active" : ""}`}
+        className={`parameter-admin-scope-nav__tab${active === "organization" ? " is-active" : ""}`}
         aria-current={active === "organization" ? "page" : undefined}
         onClick={() => onNavigate("/parameter-admin")}
       >
@@ -24,7 +24,7 @@ export function ParameterAdminNextScopeNav({ active, onNavigate }: ParameterAdmi
       </button>
       <button
         type="button"
-        className={`parameter-admin-subnav__tab${active === "projects" ? " is-active" : ""}`}
+        className={`parameter-admin-scope-nav__tab${active === "projects" ? " is-active" : ""}`}
         aria-current={active === "projects" ? "page" : undefined}
         onClick={() => onNavigate("/parameter-admin/projects")}
       >

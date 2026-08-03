@@ -454,8 +454,12 @@ export function ParameterModuleMappingPanel({
       await refreshDiscoveryHints();
       setRegisterDialogOpen(false);
       setRegisterDraft(null);
+      const verb = result.mode === "claimed" ? "已认领" : "已登记";
+      const affected = result.apply?.affectedBindings ?? 0;
       setRecomputeNotice(
-        result.mode === "claimed" ? `已认领驱动组「${result.item.name}」。` : `已登记驱动组「${result.item.name}」。`
+        affected > 0
+          ? `${verb}驱动组「${result.item.name}」，已按范围更新 ${affected} 条绑定。`
+          : `${verb}驱动组「${result.item.name}」。`
       );
       goToSubView("tree");
     } catch (registerError) {
@@ -558,7 +562,7 @@ export function ParameterModuleMappingPanel({
               className="button subtle"
               disabled={busy || recomputing}
               onClick={() => void recomputeBindings()}
-              title="全量重算是运维工具；日常归类走队列预览与按范围应用。"
+              title="仅用于历史 drift、seed 纠偏或身份连续性后的对齐；日常归类与驱动登记已按范围自动重算。"
             >
               <RefreshCw
                 className={recomputing ? "dts-status-icon dts-status-icon--spin" : undefined}
@@ -566,7 +570,7 @@ export function ParameterModuleMappingPanel({
                 strokeWidth={2}
                 aria-hidden="true"
               />
-              运维：全量重算
+              全量重算
             </button>
           </div>
         ) : null}

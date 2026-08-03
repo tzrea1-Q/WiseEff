@@ -14,6 +14,7 @@ import {
   type SpecReviewTaskView
 } from "./specReviewShared";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
+import { ParamAdminEmptyState } from "@/components/parameter-admin-next/ParamAdminEmptyState";
 
 export type {
   SpecReviewApproveInput,
@@ -352,14 +353,18 @@ export function SpecReviewQueue({
         ) : null}
 
         {filtered.length === 0 ? (
-          <div className="parameters-table-empty">
-            <p>{tasks.length === 0 ? PARAMETER_ADMIN_UI.specReviewEmpty : PARAMETER_ADMIN_UI.specReviewNoFilterMatch}</p>
-            {filtersActive ? (
-              <button type="button" className="button subtle" onClick={clearFilters}>
-                清除筛选条件
-              </button>
-            ) : null}
-          </div>
+          tasks.length === 0 ? (
+            <ParamAdminEmptyState message={PARAMETER_ADMIN_UI.specReviewEmpty} />
+          ) : (
+            <div className="parameters-table-empty">
+              <p>{PARAMETER_ADMIN_UI.specReviewNoFilterMatch}</p>
+              {filtersActive ? (
+                <button type="button" className="button subtle" onClick={clearFilters}>
+                  清除筛选条件
+                </button>
+              ) : null}
+            </div>
+          )
         ) : null}
       </section>
 

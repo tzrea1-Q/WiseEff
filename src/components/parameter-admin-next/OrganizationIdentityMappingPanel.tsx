@@ -5,6 +5,7 @@ import type {
   ResolveMappingInput
 } from "@/domain/parameter-topology/types";
 import { IdentityMappingReview } from "@/components/parameter-topology/IdentityMappingReview";
+import { ParamAdminEmptyState } from "./ParamAdminEmptyState";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 
 /**
@@ -112,9 +113,9 @@ export function OrganizationIdentityMappingPanel() {
         </p>
       ) : null}
       {!loading && openTasks.length === 0 && historyTasks.length === 0 ? (
-        <p className="form-hint" role="status">
-          当前没有待处理的节点对应任务。
-        </p>
+        <ParamAdminEmptyState message="当前没有待处理的节点对应任务。">
+          <p>导入或同步项目 DTS 后，未能自动对齐的节点会出现在这里。</p>
+        </ParamAdminEmptyState>
       ) : (
         <IdentityMappingReview tasks={tasks} onResolve={handleResolve} onReopen={handleReopen} />
       )}

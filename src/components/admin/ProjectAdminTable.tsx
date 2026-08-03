@@ -80,7 +80,7 @@ export function ProjectAdminTable({
       <div className="parameters-table-heading">
         <div>
           <h2>项目清单</h2>
-          <p>维护项目基础信息与初始化状态，通过操作列编辑或删除项目。</p>
+          <p>维护项目基础信息与初始化状态；冲突与基线列标出需要治理关注的项目。</p>
         </div>
         <div className="param-admin-library-heading-actions">
           <button type="button" className="button primary" onClick={onCreateProject}>
@@ -149,6 +149,8 @@ export function ProjectAdminTable({
                   />
                 </span>
               </th>
+              <th scope="col">冲突</th>
+              <th scope="col">基线</th>
               <th scope="col">模块</th>
               <th scope="col">参数</th>
               <th scope="col">最近更新</th>
@@ -167,6 +169,26 @@ export function ProjectAdminTable({
                 </td>
                 <td data-label="状态">
                   <span className={`project-admin-status project-admin-status--${row.status}`}>{row.statusLabel}</span>
+                </td>
+                <td data-label="冲突" className="project-admin-col-numeric">
+                  {row.openConflictCount > 0 ? (
+                    <span className="project-admin-attention project-admin-attention--conflict">
+                      {row.openConflictCount}
+                    </span>
+                  ) : (
+                    <span className="project-admin-attention-muted">0</span>
+                  )}
+                </td>
+                <td data-label="基线">
+                  <span
+                    className={
+                      row.releasedBaselineCount > 0
+                        ? "project-admin-attention project-admin-attention--baseline"
+                        : "project-admin-attention-muted"
+                    }
+                  >
+                    {row.baselineLabel}
+                  </span>
                 </td>
                 <td data-label="模块" className="project-admin-col-numeric">
                   {row.moduleCount}

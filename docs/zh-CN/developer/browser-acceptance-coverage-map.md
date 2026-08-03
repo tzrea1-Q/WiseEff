@@ -30,6 +30,7 @@
 - `BRIDGE-WIN-001`：`/node-debugging` 的 Windows 优先本地 Bridge 面板可覆盖缺失安装、未配对、未启动、在线无设备与在线目标状态，并展示同源 Windows 下载入口。
 - `BRIDGE-TOOLS-001`：Bridge 已连接但 `tools.adb.available: false` 时，Step ③ 显示缺少 ADB 与 **安装调试工具** CTA（非「Bridge 未安装」）。覆盖：`src/NodeDebuggingPage.test.tsx`。
 - `PARAM-HOME-001`：`/parameter-home` 通过 `ParameterDashboardRepository` 加载 summary/hotspots API 数据，并支持页面内时间窗口与热榜维度切换（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
+- `PARAM-ADMIN-003`：Admin 在 `/parameter-admin/projects` 的项目清单在 ≤960px 卡片布局下仍完整显示状态、模块/参数数、最近更新、治理信号（冲突/基线）与行操作（CSS 已修；playwright-cli 证据见 `work/ui-checks/param-admin-ux-polish-batch{1,3}/`；专用 e2e 待后续）。
 - `PARAM-ASSIGNEE-001/002`：binding-centric 提交面板的三类可见处理人下拉框默认选择项目作用域内的活跃合格用户，并精确排除 inactive、guest、仅 Admin 与角色不匹配用户（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-HAPPY-001`：在融合后的成熟 `/parameters` 工作台中检索语义 binding、查看本轮修改区、创建 typed draft、选择可见处理人并 submit，按真实角色 review 后执行 semantic merge/writeback、reload、持久化和审计闭环（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `XIAOZE-PERCEPTION-001`：小泽 P0 感知验收——基于页面上下文与只读感知工具回答有权限范围内的项目问题。

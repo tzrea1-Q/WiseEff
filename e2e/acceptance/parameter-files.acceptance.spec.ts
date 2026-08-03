@@ -257,8 +257,8 @@ test.describe("project parameter files browser acceptance", () => {
       await page.goto(`/parameter-admin/projects/${projectId}/files`);
       await dismissXiaozeHint(page);
       await expect(page.getByRole("region", { name: "项目参数文件" })).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByRole("tablist", { name: "项目运营视图" })).toBeVisible();
-      await expect(page.getByRole("tab", { name: "参数文件" })).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("navigation", { name: "项目运营视图" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "参数文件" })).toHaveAttribute("aria-current", "page");
       await expect(page.locator('input[type="file"].project-parameter-files__input')).toBeAttached();
 
       await recordOperationEvidence({

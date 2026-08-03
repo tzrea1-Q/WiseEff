@@ -690,6 +690,8 @@ describe("parameter routes", () => {
       status: "initialized",
       moduleCount: 3,
       parameterCount: 12,
+      openConflictCount: 1,
+      releasedBaselineCount: 2,
       updatedAt: "2026-07-02T00:00:00.000Z"
     };
     vi.mocked(repository.listProjectAdminSummaries).mockResolvedValue([item]);
@@ -712,6 +714,8 @@ describe("parameter routes", () => {
       status: "initialized",
       moduleCount: 0,
       parameterCount: 0,
+      openConflictCount: 0,
+      releasedBaselineCount: 0,
       updatedAt: "2026-07-02T00:00:00.000Z"
     };
     vi.mocked(projectService.createProjectForAuth).mockResolvedValue(item);

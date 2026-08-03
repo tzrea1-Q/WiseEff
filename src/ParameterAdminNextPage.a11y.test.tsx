@@ -125,6 +125,7 @@ describe("ParameterAdminNextPage · a11y", () => {
         search=""
         pathname="/parameter-admin/projects"
         parameterTopologyRepository={createRepository()}
+        dispatch={() => undefined}
         state={
           {
             configDraft: { projects: [{ id: "aurora", name: "Aurora", code: "AUR" }] },
@@ -139,6 +140,6 @@ describe("ParameterAdminNextPage · a11y", () => {
 
     expect(screen.getByRole("navigation", { name: "参数管理后台配置范围" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目运营" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "项目运营" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
   });
 });

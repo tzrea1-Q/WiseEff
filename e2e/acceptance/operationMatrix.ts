@@ -198,6 +198,20 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "audit"]
   },
   {
+    id: "PARAM-ADMIN-003",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects",
+    roles: ["Admin"],
+    action: "Open the project list and confirm status, counts, last-updated, and row actions remain visible in the ≤960px card layout.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-ADMIN-003"],
+    specFiles: ["src/components/admin/ProjectAdminTable.tsx"],
+    assertions: ["ui", "screenshot"],
+    deferralReason:
+      "Batch 1 ships CSS fix + playwright-cli three-viewport evidence under work/ui-checks/param-admin-ux-polish-batch1/; dedicated e2e viewport assertion follows in a later batch."
+  },
+  {
     id: "PARAM-IMPORT-DTS-FULL-001",
     priority: "P1",
     area: "parameters",

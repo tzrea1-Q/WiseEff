@@ -24,6 +24,7 @@
 
 ## 当前操作重点
 
+- `PARAM-ADMIN-003`：Admin 在 `/parameter-admin/projects` 确认项目清单在 ≤960px 卡片布局下状态、计数、最近更新、治理信号（冲突/基线）与行操作可见；Batch 1–3 以 CSS + playwright-cli 证据先行，专用 e2e 待后续。
 - `PARAM-ASSIGNEE-001/002`：Software User 在 `/parameters` 的 binding-centric 提交面板中看到三类项目作用域候选人；默认值非空，候选集合精确排除 inactive、guest、仅 Admin 与角色不匹配用户。自动化归属 `e2e/acceptance/parameter-topology.acceptance.spec.ts`。
 - `PFB-SUBMIT-001`：Admin 在 `/parameters` 通过侧边栏提交产品反馈，断言覆盖 UI、API、DB、audit 和截图证据（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `PFB-ADMIN-001`：Admin 在 `/feedback-admin` 查看反馈列表与详情，推进状态并保存备注，断言覆盖 UI、API、DB、audit 和截图证据。

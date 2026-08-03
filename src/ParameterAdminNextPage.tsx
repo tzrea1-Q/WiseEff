@@ -146,18 +146,26 @@ export function ParameterAdminNextPage({
       <div className="param-admin-shell">
         <ParameterAdminNextScopeNav active={area} onNavigate={onNavigate} />
         {area === "projects" ? (
-          <ProjectsOperationsPanel
-            pathname={pathname}
-            search={search}
-            onNavigate={onNavigate}
-            state={state ?? ({ configDraft: { projects }, parameters, activeProjectId, activeRoleId: "admin" } as PrototypeState)}
-            dispatch={dispatch ?? (() => undefined)}
-            parameterActions={parameterActions}
-            runtimeMode={runtimeMode}
-            onNewProject={onNewProject}
-            parameterFileRepository={parameterFileRepository}
-            dtsStructuredRepository={dtsStructuredRepository}
-          />
+          state && dispatch ? (
+            <ProjectsOperationsPanel
+              pathname={pathname}
+              search={search}
+              onNavigate={onNavigate}
+              state={state}
+              dispatch={dispatch}
+              parameterActions={parameterActions}
+              runtimeMode={runtimeMode}
+              onNewProject={onNewProject}
+              parameterFileRepository={parameterFileRepository}
+              dtsStructuredRepository={dtsStructuredRepository}
+            />
+          ) : (
+            <section className="param-admin-main" aria-label="项目运营">
+              <p className="project-admin-error" role="alert">
+                项目运营需要完整的应用状态。请从主导航进入参数后台。
+              </p>
+            </section>
+          )
         ) : organizationView ? (
           <>
             <ParameterAdminOrganizationSubNav active={organizationView} onNavigate={onNavigate} />

@@ -617,6 +617,8 @@ type ProjectRow = {
   updated_at?: string | Date;
   module_count?: number | string;
   parameter_count?: number | string;
+  open_conflict_count?: number | string;
+  released_baseline_count?: number | string;
 };
 
 type ProjectModuleRow = {
@@ -1059,6 +1061,8 @@ function toProjectAdminSummaryDto(row: ProjectRow): ProjectAdminSummaryDto {
     status: row.status ?? "initialized",
     moduleCount: Number(row.module_count ?? 0),
     parameterCount: Number(row.parameter_count ?? 0),
+    openConflictCount: Number(row.open_conflict_count ?? 0),
+    releasedBaselineCount: Number(row.released_baseline_count ?? 0),
     updatedAt: row.updated_at ? dateTimeToIso(row.updated_at) : new Date(0).toISOString()
   };
 }
@@ -1499,7 +1503,9 @@ export async function listProjectAdminSummaries(db: Queryable, query: { organiza
       p.status,
       p.updated_at,
       coalesce(module_counts.module_count, 0) as module_count,
-      coalesce(param_counts.parameter_count, 0) as parameter_count
+      coalesce(param_counts.parameter_count, 0) as parameter_count,
+      coalesce(conflict_counts.open_conflict_count, 0) as open_conflict_count,
+      coalesce(baseline_counts.released_baseline_count, 0) as released_baseline_count
     from projects p
     left join (
       select project_id, count(*)::int as module_count
@@ -1510,6 +1516,21 @@ export async function listProjectAdminSummaries(db: Queryable, query: { organiza
     left join (
       ${parameterCountSql}
     ) param_counts on param_counts.project_id = p.id
+    left join (
+      select project_id, count(*)::int as open_conflict_count
+      from parameter_file_sync_conflicts
+      where organization_id = $1
+        and status = 'open'
+      group by project_id
+    ) conflict_counts on conflict_counts.project_id = p.id
+    left join (
+      select cs.project_id, count(*)::int as released_baseline_count
+      from dts_release_baseline b
+      inner join dts_config_set cs on cs.id = b.config_set_id
+      where b.organization_id = $1
+        and b.status = 'released'
+      group by cs.project_id
+    ) baseline_counts on baseline_counts.project_id = p.id
     where p.organization_id = $1
     order by p.name asc
     `,
@@ -1551,7 +1572,13 @@ export async function createProject(
     throw new Error("Failed to create project.");
   }
 
-  return toProjectAdminSummaryDto({ ...row, module_count: 0, parameter_count: 0 });
+  return toProjectAdminSummaryDto({
+    ...row,
+    module_count: 0,
+    parameter_count: 0,
+    open_conflict_count: 0,
+    released_baseline_count: 0
+  });
 }
 
 export async function updateProject(

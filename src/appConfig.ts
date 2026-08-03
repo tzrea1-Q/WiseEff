@@ -216,10 +216,22 @@ export function getPageByPath(path: string): PageConfig {
   // Project-scoped views share the single sidebar entry; keep deep-link path for in-page area switching.
   if (path === "/parameter-admin/projects" || path.startsWith("/parameter-admin/projects/")) {
     const adminNav = navigationItems.find((item) => item.key === "parameter-admin");
+    const viewMatch = path.match(
+      /^\/parameter-admin\/projects\/[^/]+(?:\/(files|config-sets|structure|conflicts))?\/?$/
+    );
+    const projectViewLabels: Record<string, string> = {
+      files: "参数文件",
+      "config-sets": "配置集 / 基线",
+      structure: "结构浏览",
+      conflicts: "冲突裁决"
+    };
+    const subtitle = viewMatch
+      ? projectViewLabels[viewMatch[1] ?? "files"] ?? "参数文件"
+      : "项目清单";
     return {
       ...(adminNav as PageConfig),
       path,
-      subtitle: "项目运营"
+      subtitle
     };
   }
 
