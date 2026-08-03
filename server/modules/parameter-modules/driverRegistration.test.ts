@@ -26,7 +26,7 @@ type MappingRow = {
   id: string;
   organizationId: string;
   moduleId: string;
-  matchKind: "compatible" | "instance";
+  matchKind: "compatible" | "instance" | "node-type";
   matchValue: string;
   priority: number;
 };
@@ -86,15 +86,29 @@ function toDbRow(module: ModuleRow) {
   };
 }
 
+type BindingRow = {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  logicalNodeId: string;
+  parameterSpecId: string;
+  moduleId: string;
+  driverModule: string | null;
+  compatible: string | null;
+  instanceName: string | null;
+};
+
 function createStatefulDb(seed: {
   modules?: ModuleRow[];
   mappings?: MappingRow[];
   subjects?: SubjectRow[];
   registrations?: RegistrationRow[];
   tipRevisions?: TipRevisionRow[];
+  bindings?: BindingRow[];
 }) {
   const modules = new Map((seed.modules ?? []).map((module) => [module.id, { ...module }]));
   const mappings = [...(seed.mappings ?? [])];
+  const bindings = [...(seed.bindings ?? [])];
   const subjects = new Map((seed.subjects ?? []).map((subject) => [subject.id, { ...subject }]));
   const registrations = new Map(
     (seed.registrations ?? []).map((registration) => [
@@ -196,6 +210,13 @@ function createStatefulDb(seed: {
     ) {
       return { rows: [], rowCount: 0 };
     }
+    if (text.includes("from parameter_modules") && text.includes("source_key = $2")) {
+      const [organizationId, sourceKey] = values as [string, string];
+      const hit = [...modules.values()].find(
+        (module) => module.organizationId === organizationId && module.sourceKey === sourceKey,
+      );
+      return hit ? { rows: [toDbRow(hit)], rowCount: 1 } : { rows: [], rowCount: 0 };
+    }
     if (
       text.includes("from parameter_modules") &&
       text.includes("organization_id = $1") &&
@@ -283,6 +304,22 @@ function createStatefulDb(seed: {
         rowCount: hit ? 1 : 0,
       };
     }
+    if (
+      text.includes("from parameter_module_mappings mm") &&
+      text.includes("inner join parameter_modules pm")
+    ) {
+      const [organizationId, matchKind, matchValue] = values as [string, string, string];
+      const hit = mappings.find(
+        (row) =>
+          row.organizationId === organizationId &&
+          row.matchKind === matchKind &&
+          row.matchValue === matchValue,
+      );
+      return {
+        rows: hit ? [{ parameter_module_id: hit.moduleId }] : [],
+        rowCount: hit ? 1 : 0,
+      };
+    }
     if (text.includes("insert into parameter_module_mappings")) {
       const [id, organizationId, moduleId, matchKind, matchValue, priority] = values as [
         string,
@@ -308,6 +345,49 @@ function createStatefulDb(seed: {
         mappings.push({ id, organizationId, moduleId, matchKind, matchValue, priority });
       }
       return { rows: [], rowCount: 1 };
+    }
+    if (text.includes("from project_parameter_bindings") && text.includes("driver_module")) {
+      const [organizationId, projectId] = values as [string, string | null];
+      const rows = bindings
+        .filter(
+          (binding) =>
+            binding.organizationId === organizationId &&
+            (projectId == null || binding.projectId === projectId),
+        )
+        .map((binding) => ({
+          id: binding.id,
+          project_id: binding.projectId,
+          logical_node_id: binding.logicalNodeId,
+          parameter_spec_id: binding.parameterSpecId,
+          module_id: binding.moduleId,
+          driver_module: binding.driverModule,
+          compatible: binding.compatible,
+          instance_name: binding.instanceName,
+          node_locator: null,
+        }));
+      return { rows, rowCount: rows.length };
+    }
+    if (text.includes("from project_parameter_bindings") && text.includes("id <>")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (text.includes("update project_parameter_bindings") && text.includes("module_id = $1")) {
+      const [moduleId, bindingId, organizationId] = values as [string, string, string];
+      const hit = bindings.find(
+        (binding) => binding.id === bindingId && binding.organizationId === organizationId,
+      );
+      if (hit) hit.moduleId = moduleId;
+      return { rows: [], rowCount: hit ? 1 : 0 };
+    }
+    if (text.includes("id = any($2::text[])")) {
+      const [organizationId, moduleIds] = values as [string, string[]];
+      const rows = moduleIds
+        .map((moduleId) => modules.get(moduleId))
+        .filter((module): module is ModuleRow => Boolean(module && module.organizationId === organizationId))
+        .map((module) => ({ id: module.id, name: module.name }));
+      return { rows, rowCount: rows.length };
+    }
+    if (text.includes("delete from parameter_modules pm") && text.includes("未分类 · %")) {
+      return { rows: [], rowCount: 0 };
     }
     if (text.includes("update parameter_modules") && text.includes("name = $3")) {
       const [
@@ -385,7 +465,7 @@ function createStatefulDb(seed: {
     transaction: vi.fn(async (fn: (tx: Queryable) => Promise<unknown>) => fn({ query } as Queryable)),
   } as unknown as Database;
 
-  return { db, modules, mappings, audits, registrations, syncCalls, query };
+  return { db, modules, mappings, bindings, audits, registrations, syncCalls, query };
 }
 
 describe("registerOrClaimDriver", () => {
@@ -432,6 +512,69 @@ describe("registerOrClaimDriver", () => {
       "huawei,hl7603",
     ]);
     expect(audits.some((entry) => entry.kind === "parameter-module-driver-registered")).toBe(true);
+    expect(result.apply.affectedBindings).toBe(0);
+  });
+
+  it("applies scoped binding recompute for registered compatibles without a full-org pass", async () => {
+    const { db, bindings, audits } = createStatefulDb({
+      modules: [
+        {
+          id: "biz-power",
+          organizationId: "org-1",
+          name: "Power",
+          parentId: null,
+          path: "biz-power",
+          depth: 1,
+          sortOrder: 0,
+          description: "",
+          scope: "",
+          importance: "high",
+          kind: "business",
+          origin: "curated",
+          sourceKey: null,
+        },
+        {
+          id: "mod-unclassified",
+          organizationId: "org-1",
+          name: "未分类",
+          parentId: null,
+          path: "mod-unclassified",
+          depth: 1,
+          sortOrder: 999,
+          description: "",
+          scope: "",
+          importance: "medium",
+          kind: "unclassified",
+          origin: "auto",
+          sourceKey: null,
+        },
+      ],
+      bindings: [
+        {
+          id: "bind-1",
+          organizationId: "org-1",
+          projectId: "proj-1",
+          logicalNodeId: "ln-1",
+          parameterSpecId: "spec-1",
+          moduleId: "mod-unclassified",
+          driverModule: "hl7603",
+          compatible: "huawei,hl7603",
+          instanceName: "hl7603@0",
+        },
+      ],
+    });
+
+    const result = await registerOrClaimDriver(db, makeAuth(), {
+      displayName: "hl7603",
+      businessCategoryId: "biz-power",
+      compatibles: ["huawei,hl7603"],
+    });
+
+    expect(result.mode).toBe("registered");
+    expect(result.apply.affectedBindings).toBe(1);
+    expect(result.apply.toModuleId).toBe(result.item.id);
+    expect(bindings[0]?.moduleId).toBe(result.item.id);
+    expect(audits.some((entry) => entry.metadata?.affectedBindings === 1)).toBe(true);
   });
 
   it("rejects a non-business target category", async () => {

@@ -131,9 +131,16 @@ describe("ParameterSpecLibrary", () => {
     expect(within(table).queryByRole("columnheader", { name: /^归属模块$/ })).not.toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: /compatible/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选compatible" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "筛选归属模块" })).toBeInTheDocument();
+    const driverHeader = within(table).getByRole("columnheader", { name: /驱动模块/ });
+    expect(within(driverHeader).getByRole("button", { name: "筛选归属模块" })).toBeInTheDocument();
+    expect(
+      within(within(table).getByRole("columnheader", { name: /^参数定义$/ })).queryByRole("button", {
+        name: "筛选归属模块"
+      })
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选驱动模块" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "筛选审核状态" })).toBeInTheDocument();
+    expect(within(library).getByRole("table", { name: "参数定义库列表" })).toBeInTheDocument();
 
     expect(within(table).queryByRole("columnheader", { name: /推荐值|默认值|使用量|示例值/ })).not.toBeInTheDocument();
     expect(within(table).queryByText(/amba\.i2c@|\/amba\//)).not.toBeInTheDocument();

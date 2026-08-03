@@ -69,11 +69,35 @@ function buildListSearch(patch: Partial<ParamAdminProjectsSearch>, current: Para
   return params.toString();
 }
 
-const PROJECT_VIEW_LABELS: Record<ParameterAdminNextProjectView, string> = {
-  files: "参数文件",
-  "config-sets": "配置集 / 基线",
-  structure: "结构浏览",
-  conflicts: "冲突裁决"
+const PROJECT_VIEW_META: Record<
+  ParameterAdminNextProjectView,
+  { label: string; titlePrefix: string; subtitle: string; regionLabel: string }
+> = {
+  files: {
+    label: "参数文件",
+    titlePrefix: "参数文件",
+    subtitle:
+      "先维护参数文件与版本，再按需做结构化检索。树形浏览请用「结构浏览」；本页检索跨已解析文件快速定位节点。",
+    regionLabel: "项目参数文件"
+  },
+  "config-sets": {
+    label: "配置集 / 基线",
+    titlePrefix: "配置集 / 基线",
+    subtitle: "调整配置集成员、校验修订门禁，并完成基线对比 / 回滚 / 发布。页面可通过 URL 深链与刷新保持。",
+    regionLabel: "项目配置集与基线"
+  },
+  structure: {
+    label: "结构浏览",
+    titlePrefix: "结构浏览",
+    subtitle: "浏览项目源 DTS 结构树。页面可通过 URL 深链与刷新保持。",
+    regionLabel: "项目源结构"
+  },
+  conflicts: {
+    label: "冲突裁决",
+    titlePrefix: "冲突裁决",
+    subtitle: "裁决文件值与界面草稿冲突。页面可通过 URL 深链与刷新保持。",
+    regionLabel: "项目文件冲突"
+  }
 };
 
 export type ProjectsOperationsPanelProps = {
@@ -303,33 +327,12 @@ export function ProjectsOperationsPanel({
     : "/parameter-admin/projects";
 
   if (projectId && view) {
-    const title =
-      view === "config-sets"
-        ? `配置集 / 基线 · ${selectedProject?.name ?? projectId}`
-        : view === "structure"
-          ? `结构浏览 · ${selectedProject?.name ?? projectId}`
-          : view === "conflicts"
-            ? `冲突裁决 · ${selectedProject?.name ?? projectId}`
-            : `参数文件 · ${selectedProject?.name ?? projectId}`;
-    const subtitle =
-      view === "config-sets"
-        ? "调整配置集成员、校验修订门禁，并完成基线对比 / 回滚 / 发布。页面可通过 URL 深链与刷新保持。"
-        : view === "structure"
-          ? "浏览项目源 DTS 结构树。页面可通过 URL 深链与刷新保持。"
-          : view === "conflicts"
-            ? "裁决文件值与界面草稿冲突。页面可通过 URL 深链与刷新保持。"
-            : "上传文件、浏览不可变版本历史，并触发手动同步。页面可通过 URL 深链与刷新保持。";
-    const regionLabel =
-      view === "config-sets"
-        ? "项目配置集与基线"
-        : view === "structure"
-          ? "项目源结构"
-          : view === "conflicts"
-            ? "项目文件冲突"
-            : "项目参数文件";
+    const viewMeta = PROJECT_VIEW_META[view];
+    const projectName = selectedProject?.name ?? projectId;
+    const title = `${viewMeta.titlePrefix} · ${projectName}`;
 
     return (
-      <section className="param-admin-main" aria-label={regionLabel}>
+      <section className="param-admin-main" aria-label={viewMeta.regionLabel}>
         <div className="parameters-table-heading">
           <div>
             <button
@@ -340,7 +343,7 @@ export function ProjectsOperationsPanel({
               ← 返回项目列表
             </button>
             <h2>{title}</h2>
-            <p>{subtitle}</p>
+            <p>{viewMeta.subtitle}</p>
           </div>
         </div>
         {latestAudit ? (
@@ -349,24 +352,25 @@ export function ProjectsOperationsPanel({
             <span className="sr-only"> {latestAudit.kind}</span>
           </p>
         ) : null}
-        <div className="project-parameter-files-tabs" role="tablist" aria-label="项目运营视图">
-          {(Object.keys(PROJECT_VIEW_LABELS) as ParameterAdminNextProjectView[]).map((item) => (
+        <nav className="project-parameter-files-tabs" aria-label="项目运营视图">
+          {(Object.keys(PROJECT_VIEW_META) as ParameterAdminNextProjectView[]).map((item) => (
             <button
               key={item}
               type="button"
-              role="tab"
-              aria-selected={view === item}
               className={`project-parameter-files-tab${view === item ? " is-active" : ""}`}
+              aria-current={view === item ? "page" : undefined}
               onClick={() => onNavigate(`${projectBase}/${item}`)}
             >
-              {PROJECT_VIEW_LABELS[item]}
+              {PROJECT_VIEW_META[item].label}
             </button>
           ))}
-        </div>
+        </nav>
         {view === "files" ? (
           <>
-            <DtsSearchPanel projectId={projectId} repository={dtsRepo} />
             <ProjectParameterFilesPanel projectId={projectId} repository={fileRepository} />
+            <div className="param-admin-panel">
+              <DtsSearchPanel projectId={projectId} repository={dtsRepo} />
+            </div>
           </>
         ) : null}
         {view === "config-sets" ? (
@@ -424,12 +428,6 @@ export function ProjectsOperationsPanel({
 
   return (
     <section className="param-admin-main project-admin-layout" aria-label="项目运营">
-      <div className="parameters-table-heading">
-        <div>
-          <h2>项目运营</h2>
-          <p>项目清单与参数文件入口。打开某项目后，文件与配置集视图可通过 URL 分享与刷新保持。</p>
-        </div>
-      </div>
       {latestAudit ? (
         <p className="form-hint" role="status" aria-label="治理审计">
           治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}

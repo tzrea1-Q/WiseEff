@@ -11,6 +11,8 @@ export type ProjectAdminSummaryDto = {
   status: string;
   moduleCount: number;
   parameterCount: number;
+  openConflictCount: number;
+  releasedBaselineCount: number;
   updatedAt: string;
 };
 

@@ -6,6 +6,7 @@ import type {
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
 import { DriverUploadSummaryDialog } from "@/components/admin/DriverUploadSummaryDialog";
+import { ParamAdminEmptyState } from "@/components/parameter-admin-next/ParamAdminEmptyState";
 
 type ProjectParameterFilesPanelProps = {
   projectId: string;
@@ -184,7 +185,7 @@ export function ProjectParameterFilesPanel({
   };
 
   return (
-    <section className="project-parameter-files">
+    <section className="project-parameter-files param-admin-panel" aria-label="参数文件">
       <header className="project-parameter-files__header">
         <div>
           <h3>参数文件</h3>
@@ -229,9 +230,7 @@ export function ProjectParameterFilesPanel({
       ) : null}
 
       {!loading && !error && files.length === 0 ? (
-        <div className="project-parameter-files__empty">
-          <p>当前项目还没有参数文件，先上传一个 `.json`、`.dts` 或 `.dtsi` 文件。</p>
-        </div>
+        <ParamAdminEmptyState message="当前项目还没有参数文件，先上传一个 `.json`、`.dts` 或 `.dtsi` 文件。" />
       ) : null}
 
       {!loading && !error && files.length > 0 ? (

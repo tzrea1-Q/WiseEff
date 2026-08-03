@@ -115,12 +115,14 @@ export function OrganizationModuleGovernancePanel({
       listDriverRegistry: () => base.listDriverRegistry(),
       async registerOrClaimDriver(input) {
         const result = await base.registerOrClaimDriver(input);
+        const affected = result.apply?.affectedBindings ?? 0;
+        const verb = result.mode === "claimed" ? "已认领" : "已登记";
         pushModuleAudit(
           dispatch,
           "module-created",
-          result.mode === "claimed"
-            ? `已认领驱动组「${result.item.name}」`
-            : `已登记驱动组「${result.item.name}」`
+          affected > 0
+            ? `${verb}驱动组「${result.item.name}」，已按范围更新 ${affected} 条绑定`
+            : `${verb}驱动组「${result.item.name}」`
         );
         return result;
       },

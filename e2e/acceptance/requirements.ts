@@ -99,6 +99,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PARAM-ADMIN-003",
+    workflow: "C",
+    title: "Admin project list renders status, counts, last-updated, and row actions at mobile width without clipped cells.",
+    required: false
+  },
+  {
     id: "PARAM-IMPORT-DTS-FULL-001",
     workflow: "C",
     title: "Admin full .dts import uses server parse-dts with distinct @address module paths; /include/ is rejected.",

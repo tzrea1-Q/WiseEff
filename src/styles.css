@@ -14347,35 +14347,107 @@ body.xiaoze-popup-resize-active {
   align-items: start;
 }
 
-.param-admin-main {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
+.parameter-admin-scope-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.parameter-admin-scope-nav__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+}
+
+.parameter-admin-scope-nav__tab.is-active {
+  color: #fff;
+  background: var(--app-primary);
+  border-color: var(--app-primary);
 }
 
 .parameter-admin-subnav {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  padding-left: 2px;
 }
 
 .parameter-admin-subnav__tab {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
+  padding: 6px 12px;
   border: 1px solid var(--outline);
   border-radius: 999px;
   background: var(--surface);
-  color: var(--app-muted);
+  color: var(--text);
   font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.parameter-admin-subnav__tab:hover {
+  color: var(--app-primary);
+  border-color: rgba(0, 82, 204, 0.35);
+  background: #f8fbff;
 }
 
 .parameter-admin-subnav__tab.is-active {
   color: var(--app-primary);
   background: #eef5ff;
   border-color: rgba(0, 82, 204, 0.28);
+}
+
+.parameter-admin-subnav__tab.is-active:hover {
+  background: #eef5ff;
+  border-color: rgba(0, 82, 204, 0.28);
+}
+
+.param-admin-panel {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+}
+
+.param-admin-panel__section {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.param-admin-panel__section h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.param-admin-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.param-admin-queue-summary {
+  margin: 0 0 0.75rem;
+  color: var(--app-muted);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .project-admin-layout {
@@ -14418,49 +14490,29 @@ body.xiaoze-popup-resize-active {
   color: #b91c1c;
 }
 
+.project-admin-attention {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.project-admin-attention--conflict {
+  color: #c2410c;
+}
+
+.project-admin-attention--baseline {
+  color: #047857;
+}
+
+.project-admin-attention-muted {
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
 .project-admin-library-grid {
   width: 100%;
   table-layout: auto;
-}
-
-/* Neutralize the sticky/fixed column rules inherited from the shared
-   parameters grid so this table can size columns by content. */
-.project-admin-library-grid th,
-.project-admin-library-grid td {
-  position: static;
-  width: auto;
-  min-width: 0;
-  max-width: none;
-  box-shadow: none;
-  white-space: nowrap;
-}
-
-/* Index */
-.project-admin-library-grid th:first-child,
-.project-admin-library-grid td:first-child {
-  width: 44px;
-  text-align: center;
-}
-
-/* Project name absorbs all remaining horizontal space. */
-.project-admin-library-grid th:nth-child(2),
-.project-admin-library-grid td:nth-child(2) {
-  width: 100%;
-  white-space: normal;
-}
-
-.project-admin-library-grid td:nth-child(2) strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Numeric columns (module / parameter counts) centered. */
-.project-admin-library-grid th:nth-child(5),
-.project-admin-library-grid th:nth-child(6),
-.project-admin-library-grid .project-admin-col-numeric {
-  text-align: center;
 }
 
 .project-admin-library-grid .project-admin-col-numeric,
@@ -14468,20 +14520,93 @@ body.xiaoze-popup-resize-active {
   font-variant-numeric: tabular-nums;
 }
 
-/* Actions column fits edit + delete icon buttons in one row. */
-.project-admin-library-grid th:last-child,
-.project-admin-library-grid td:last-child {
-  width: 80px;
-  min-width: 80px;
-  text-align: center;
-}
-
 .project-admin-library-grid .project-admin-row-actions {
   display: inline-flex;
-  flex-flow: row nowrap;
+  flex-flow: row wrap;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
+}
+
+/* Global `.parameters-table-scroll > table { min-width: 720px }` wins over the
+   shared ≤960px card layout and forces 720px-wide cards. Reset it for the
+   project list so status / counts / actions stay in the mobile viewport. */
+@media (max-width: 960px) {
+  .param-admin-shell .project-admin-library-table .parameters-table-scroll {
+    overflow: visible;
+    max-height: none;
+  }
+
+  .param-admin-shell .project-admin-library-table .parameters-table-scroll > table,
+  .param-admin-shell .project-admin-library-grid {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .param-admin-shell .project-admin-library-grid .project-admin-row-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* Desktop-only column sizing. Must stay outside the ≤960px card layout or
+   white-space:nowrap and a fixed actions width leak into mobile and clip cells. */
+@media (min-width: 961px) {
+  .project-admin-library-table .parameters-table-scroll {
+    max-height: none;
+  }
+
+  .project-admin-library-grid th,
+  .project-admin-library-grid td {
+    position: static;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    box-shadow: none;
+    white-space: nowrap;
+    padding-block: 8px;
+  }
+
+  .project-admin-library-grid th:first-child,
+  .project-admin-library-grid td:first-child {
+    width: 44px;
+    text-align: center;
+  }
+
+  .project-admin-library-grid th:nth-child(2),
+  .project-admin-library-grid td:nth-child(2) {
+    width: 100%;
+    white-space: normal;
+  }
+
+  .project-admin-library-grid td:nth-child(2) strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .project-admin-library-grid th:nth-child(5),
+  .project-admin-library-grid th:nth-child(6),
+  .project-admin-library-grid th:nth-child(7),
+  .project-admin-library-grid th:nth-child(8),
+  .project-admin-library-grid .project-admin-col-numeric {
+    text-align: center;
+  }
+
+  .project-admin-library-grid th:last-child,
+  .project-admin-library-grid td:last-child {
+    width: 1%;
+    min-width: 0;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  .project-admin-library-grid .project-admin-row-actions {
+    flex-flow: row nowrap;
+    justify-content: center;
+  }
 }
 
 .project-admin-row-edit {
@@ -14588,9 +14713,29 @@ body.xiaoze-popup-resize-active {
 
 .project-parameter-files-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  margin: 0 20px 12px;
+  margin: 0 0 12px;
   border-bottom: 1px solid var(--outline);
+}
+
+.project-parameter-files-dialog .project-parameter-files-tabs {
+  margin: 0 20px 12px;
+}
+
+.param-admin-main .project-parameter-files-tabs {
+  margin: 0 0 16px;
+  border-bottom: 0;
+}
+
+.param-admin-main .project-parameter-files-tab {
+  margin-bottom: 0;
+  border-radius: 999px;
+  border: 1px solid var(--outline);
+}
+
+.param-admin-main .project-parameter-files-tab.is-active {
+  border-color: rgba(0, 82, 204, 0.28);
 }
 
 .project-parameter-files-tab {
@@ -14690,10 +14835,11 @@ body.xiaoze-popup-resize-active {
 .dts-structure-browser-panel {
   display: grid;
   gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--outline);
-  border-radius: 8px;
-  background: #fff;
+}
+
+.dts-structure-browser-panel.param-admin-panel {
+  /* Outer chrome from .param-admin-panel; keep inner spacing. */
+  gap: 12px;
 }
 
 .dts-structure-browser-panel__head {
@@ -14715,7 +14861,7 @@ body.xiaoze-popup-resize-active {
 .dts-structure-browser-panel__preview-note,
 .dts-structure-browser-panel__risk-note {
   margin: 0;
-  color: var(--muted);
+  color: var(--app-muted);
   font-size: 0.875rem;
 }
 
@@ -14723,6 +14869,8 @@ body.xiaoze-popup-resize-active {
   display: grid;
   grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.4fr);
   gap: 12px;
+  align-items: start;
+  isolation: isolate;
 }
 
 @media (max-width: 900px) {
@@ -14785,6 +14933,12 @@ body.xiaoze-popup-resize-active {
   display: grid;
   gap: 10px;
   min-width: 0;
+  position: relative;
+  z-index: 1;
+  padding: 10px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: #fff;
 }
 
 .dts-structure-browser-panel__detail h4 {
@@ -14820,7 +14974,7 @@ body.xiaoze-popup-resize-active {
 }
 
 .dts-structure-browser-panel__property span {
-  color: var(--muted);
+  color: var(--app-muted);
   font-size: 0.8125rem;
 }
 
@@ -14839,8 +14993,12 @@ body.xiaoze-popup-resize-active {
 }
 
 .config-set-baseline-panel {
-  display: grid;
+  /* Panel chrome comes from .param-admin-panel when composed together. */
   gap: 16px;
+}
+
+.config-set-baseline-panel.param-admin-panel {
+  display: grid;
 }
 
 .config-set-baseline-panel__section {
@@ -14991,6 +15149,10 @@ body.xiaoze-popup-resize-active {
 
 .project-parameter-files {
   display: grid;
+  gap: 12px;
+}
+
+.project-parameter-files.param-admin-panel {
   gap: 12px;
 }
 
@@ -15149,6 +15311,15 @@ body.xiaoze-popup-resize-active {
   gap: 14px;
 }
 
+.parameter-file-conflict-panel--embedded {
+  width: auto;
+  max-height: none;
+}
+
+.parameter-file-conflict-panel--embedded.param-admin-panel {
+  width: auto;
+}
+
 .parameter-file-conflict-panel__header {
   display: flex;
   align-items: flex-start;
@@ -15268,6 +15439,17 @@ body.xiaoze-popup-resize-active {
 .param-admin-empty p {
   margin: 0;
   font-size: 14px;
+}
+
+.param-admin-empty > p:first-child {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.param-admin-empty > p:not(:first-child) {
+  max-width: 36rem;
+  color: var(--app-muted);
+  font-size: 13px;
 }
 
 .param-admin-empty-actions {
@@ -16191,6 +16373,23 @@ body.xiaoze-popup-resize-active {
 
 .param-admin-shell .parameter-spec-library-grid .parameter-spec-library-grid__col-state {
   width: 14%;
+  min-width: 7.5rem;
+}
+
+.param-admin-shell .param-admin-library-table .parameter-spec-library-grid th {
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .topbar-actions .button {
+    padding-inline: 10px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .topbar-actions .button svg {
+    flex-shrink: 0;
+  }
 }
 
 .param-admin-shell .parameter-spec-library-grid .parameter-spec-library-grid__col-actions {

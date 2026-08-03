@@ -725,6 +725,7 @@ export type RegisterOrClaimDriverInput = {
 export type RegisterOrClaimDriverResult = {
   mode: "registered" | "claimed";
   item: ParameterModuleDto;
+  apply: MappingApplyPreview;
 };
 
 export async function registerOrClaimDriver(
@@ -835,6 +836,7 @@ export async function registerOrClaimDriver(
       });
     }
 
+    const appliedMoves: PlannedMove[] = [];
     for (const compatible of compatibles) {
       await insertMapping(tx, {
         id: randomUUID(),
@@ -844,7 +846,28 @@ export async function registerOrClaimDriver(
         matchValue: compatible,
         priority: 0,
       });
+
+      // Same scoped apply as createModuleMapping — register/claim must not leave
+      // existing bindings on unclassified/auto groups until a full-org recompute.
+      const { moves, conflicts } = await planScopedMoves(tx, {
+        organizationId: auth.organization.id,
+        matchKind: "compatible",
+        matchValue: compatible,
+      });
+      if (conflicts.length > 0) {
+        throw new ApiError(
+          "CONFLICT",
+          "Applying this driver registration would collide with existing bindings under the module unique key.",
+          409,
+          { conflicts },
+        );
+      }
+      await applyPlannedMoves(tx, auth.organization.id, moves);
+      appliedMoves.push(...moves);
     }
+
+    const emptiedModules = await collectEmptyUnclassifiedBuckets(tx, auth.organization.id);
+    const apply = await summarizeMoves(tx, auth.organization.id, appliedMoves, [], emptiedModules);
 
     // Persist registration default business category (authoritative placement).
     const fresh = await getParameterModuleById(tx, {
@@ -869,10 +892,12 @@ export async function registerOrClaimDriver(
         defaultBusinessCategoryId: input.businessCategoryId,
         compatibles,
         notes,
+        affectedBindings: apply.affectedBindings,
+        emptiedModules,
       },
     });
 
-    return { mode, item: module };
+    return { mode, item: module, apply };
   });
 }
 

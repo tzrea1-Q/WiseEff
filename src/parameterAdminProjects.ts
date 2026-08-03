@@ -10,9 +10,16 @@ export type ParameterAdminProjectRow = {
   statusLabel: string;
   moduleCount: number;
   parameterCount: number;
+  openConflictCount: number;
+  releasedBaselineCount: number;
+  baselineLabel: string;
   updatedAt: string;
   updatedAtLabel: string;
 };
+
+function baselineLabelFor(releasedBaselineCount: number) {
+  return releasedBaselineCount > 0 ? "已发布" : "无已发布";
+}
 
 const statusLabels: Record<string, string> = {
   initialized: "在研",
@@ -68,6 +75,8 @@ export function buildParameterAdminProjectsFromState(state: PrototypeState): Par
   return state.configDraft.projects.map((project) => {
     const status = resolveProjectStatus(project.id, state.projectInitializationStatuses);
     const updatedAt = findLatestProjectActivity(state, project.id);
+    const openConflictCount = 0;
+    const releasedBaselineCount = 0;
     return {
       id: project.id,
       name: project.name,
@@ -76,6 +85,9 @@ export function buildParameterAdminProjectsFromState(state: PrototypeState): Par
       statusLabel: statusLabels[status] ?? status,
       moduleCount: moduleCountByProject.get(project.id)?.size ?? 0,
       parameterCount: parameterCountByProject.get(project.id) ?? 0,
+      openConflictCount,
+      releasedBaselineCount,
+      baselineLabel: baselineLabelFor(releasedBaselineCount),
       updatedAt,
       updatedAtLabel: formatUpdatedAt(updatedAt)
     };
@@ -83,6 +95,8 @@ export function buildParameterAdminProjectsFromState(state: PrototypeState): Par
 }
 
 export function mapProjectAdminSummaryDto(item: ProjectAdminSummaryDto): ParameterAdminProjectRow {
+  const openConflictCount = item.openConflictCount ?? 0;
+  const releasedBaselineCount = item.releasedBaselineCount ?? 0;
   return {
     id: item.id,
     name: item.name,
@@ -91,6 +105,9 @@ export function mapProjectAdminSummaryDto(item: ProjectAdminSummaryDto): Paramet
     statusLabel: statusLabels[item.status] ?? item.status,
     moduleCount: item.moduleCount,
     parameterCount: item.parameterCount,
+    openConflictCount,
+    releasedBaselineCount,
+    baselineLabel: baselineLabelFor(releasedBaselineCount),
     updatedAt: item.updatedAt,
     updatedAtLabel: formatUpdatedAt(item.updatedAt)
   };
@@ -111,6 +128,8 @@ export function summarizeParameterAdminProjects(rows: ParameterAdminProjectRow[]
     total: rows.length,
     initialized: rows.filter((row) => row.status === "initialized").length,
     pendingReview: rows.filter((row) => row.status === "initialization_pending_review").length,
+    openConflicts: rows.reduce((sum, row) => sum + row.openConflictCount, 0),
+    withoutReleasedBaseline: rows.filter((row) => row.releasedBaselineCount === 0).length,
     moduleTotal: rows.reduce((sum, row) => sum + row.moduleCount, 0)
   };
 }

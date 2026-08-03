@@ -129,6 +129,7 @@ export type RegisterOrClaimDriverResult = {
     origin: ModuleOrigin;
     description?: string;
   };
+  apply: MappingApplyPreview;
 };
 
 export type UpdateDriverRegistrationInput = {

@@ -373,7 +373,7 @@ export function ConfigSetBaselinePanel({
   };
 
   return (
-    <section className="config-set-baseline-panel" aria-label="配置集 / 基线">
+    <section className="config-set-baseline-panel param-admin-panel" aria-label="配置集 / 基线">
       {error ? (
         <p className="config-set-baseline-panel__error" role="alert">
           {error}
@@ -392,7 +392,7 @@ export function ConfigSetBaselinePanel({
         </p>
       ) : null}
 
-      <div className="config-set-baseline-panel__section">
+      <div className="config-set-baseline-panel__section param-admin-panel__section">
         <h3>配置集</h3>
         {canAdmin ? (
           <div className="config-set-baseline-panel__row">
@@ -434,7 +434,7 @@ export function ConfigSetBaselinePanel({
 
       {selectedConfigSet ? (
         <>
-          <div className="config-set-baseline-panel__section">
+          <div className="config-set-baseline-panel__section param-admin-panel__section">
             <h3>成员 · {selectedConfigSet.name}</h3>
             {canAdmin ? (
               <div className="config-set-baseline-panel__row">
@@ -494,7 +494,7 @@ export function ConfigSetBaselinePanel({
             </ul>
           </div>
 
-          <div className="config-set-baseline-panel__section">
+          <div className="config-set-baseline-panel__section param-admin-panel__section">
             <h3>基线</h3>
             {canAdmin ? (
               <div className="config-set-baseline-panel__row">

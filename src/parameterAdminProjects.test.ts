@@ -11,7 +11,10 @@ describe("parameterAdminProjects", () => {
       name: expect.any(String),
       code: expect.any(String),
       moduleCount: expect.any(Number),
-      parameterCount: expect.any(Number)
+      parameterCount: expect.any(Number),
+      openConflictCount: expect.any(Number),
+      releasedBaselineCount: expect.any(Number),
+      baselineLabel: expect.any(String)
     });
   });
 
@@ -20,5 +23,7 @@ describe("parameterAdminProjects", () => {
     const summary = summarizeParameterAdminProjects(rows);
     expect(summary.total).toBe(rows.length);
     expect(summary.moduleTotal).toBeGreaterThanOrEqual(0);
+    expect(summary.openConflicts).toBeGreaterThanOrEqual(0);
+    expect(summary.withoutReleasedBaseline).toBeGreaterThanOrEqual(0);
   });
 });

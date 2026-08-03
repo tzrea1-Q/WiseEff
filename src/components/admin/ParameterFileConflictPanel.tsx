@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ParameterFileRepository, ParameterFileSyncConflict } from "@/application/ports/ParameterFileRepository";
+import { ParamAdminEmptyState } from "@/components/parameter-admin-next/ParamAdminEmptyState";
 
 type ParameterFileConflictPanelProps = {
   open: boolean;
@@ -101,7 +102,7 @@ export function ParameterFileConflictPanel({
     <section
       className={
         variant === "embedded"
-          ? "parameter-file-conflict-panel parameter-file-conflict-panel--embedded"
+          ? "parameter-file-conflict-panel parameter-file-conflict-panel--embedded param-admin-panel"
           : "submission-dialog parameter-file-conflict-panel"
       }
       aria-label="参数文件冲突处理"
@@ -125,7 +126,13 @@ export function ParameterFileConflictPanel({
         </p>
       ) : null}
       {!loading && openConflicts.length === 0 ? (
-        <p className="parameter-file-conflict-panel__empty">当前项目没有待处理冲突。</p>
+        <ParamAdminEmptyState
+          message="当前项目没有待处理冲突。"
+          actionLabel={variant === "embedded" ? "前往参数文件" : undefined}
+          onAction={variant === "embedded" ? onClose : undefined}
+        >
+          <p>文件同步与界面草稿不一致时会出现在这里。</p>
+        </ParamAdminEmptyState>
       ) : null}
       {openConflicts.length > 0 ? (
         <ul className="parameter-file-conflict-panel__list" aria-label="参数文件冲突列表">

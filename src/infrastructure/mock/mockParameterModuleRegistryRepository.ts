@@ -435,6 +435,14 @@ export function createMockParameterModuleRegistryRepository(
           kind: "driver-group" as const,
           origin: "curated" as const,
           description: input.notes
+        },
+        apply: {
+          affectedBindings: 0,
+          byProject: [],
+          fromModules: [],
+          toModuleId: targetId,
+          emptiedModules: [],
+          conflicts: []
         }
       };
     },

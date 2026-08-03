@@ -388,6 +388,14 @@ function createModuleRegistry(
           parentId: input.businessCategoryId,
           kind: "driver-group" as const,
           origin: "curated" as const
+        },
+        apply: {
+          affectedBindings: 0,
+          byProject: [],
+          fromModules: [],
+          toModuleId: id,
+          emptiedModules: [],
+          conflicts: []
         }
       };
     }),
@@ -1098,7 +1106,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     fireEvent.click(within(moduleSubnav).getByRole("button", { name: /未登记驱动/ }));
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/modules/queue");
 
-    fireEvent.click(within(panel).getByRole("button", { name: "运维：全量重算" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "全量重算" }));
     await waitFor(() => expect(moduleRegistry.recomputeBindings).toHaveBeenCalled());
     const resultDialog = await screen.findByRole("dialog", { name: "全量重算结果" });
     expect(within(resultDialog).getByText("更新的项目参数")).toBeInTheDocument();

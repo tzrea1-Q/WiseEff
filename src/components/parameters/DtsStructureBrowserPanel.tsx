@@ -213,7 +213,7 @@ export function DtsStructureBrowserPanel({
     : null;
 
   return (
-    <section className="dts-structure-browser-panel" aria-label="结构浏览">
+    <section className="dts-structure-browser-panel param-admin-panel" aria-label="结构浏览">
       <div className="dts-structure-browser-panel__head">
         <div>
           <h3>结构浏览</h3>

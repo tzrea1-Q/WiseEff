@@ -553,11 +553,9 @@ export function OrganizationSpecGovernancePanel({
 
   return (
     <div className="param-admin-main">
-      <div className="parameters-table-toolbar" style={{ marginBottom: "0.75rem" }}>
-        <span className="parameters-table-count" aria-live="polite">
-          待审核 {state.queueCounts.specReview}
-        </span>
-      </div>
+      <p className="param-admin-queue-summary" aria-live="polite">
+        待审核 {state.queueCounts.specReview}
+      </p>
 
       <GovernanceToast message={toastMessage} />
 

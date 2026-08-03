@@ -443,7 +443,10 @@ export function ParameterSpecLibrary({
         </div>
 
         <div className="parameters-table-scroll">
-          <table className="parameters-table-grid param-admin-library-grid parameter-spec-library-grid">
+          <table
+            aria-label="参数定义库列表"
+            className="parameters-table-grid param-admin-library-grid parameter-spec-library-grid"
+          >
             <colgroup>
               <col className="parameter-spec-library-grid__col-index" />
               <col className="parameter-spec-library-grid__col-key" />
@@ -455,9 +458,10 @@ export function ParameterSpecLibrary({
             <thead>
               <tr>
                 <th scope="col">#</th>
+                <th scope="col">参数定义</th>
                 <th scope="col">
                   <span className="param-admin-library-head-cell">
-                    <span>参数定义</span>
+                    <span>{PARAMETER_ADMIN_UI.specDriverModule}</span>
                     <ColumnFilter
                       label={PARAMETER_ADMIN_UI.specAttributionModule}
                       groupLabel="归属模块筛选"
@@ -468,7 +472,6 @@ export function ParameterSpecLibrary({
                     />
                   </span>
                 </th>
-                <th scope="col">{PARAMETER_ADMIN_UI.specDriverModule}</th>
                 <th scope="col">值类型</th>
                 <th scope="col">
                   <span className="param-admin-library-head-cell">
