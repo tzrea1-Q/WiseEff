@@ -9,6 +9,8 @@ export const PARAMETER_ADMIN_UI = {
   orgSubnavAria: "组织配置子视图",
   scopeNavAria: "参数管理后台配置范围",
 
+  /** Organization peer nav label (ADR-0015). In-page library title stays `specLibrary`. */
+  specDefinitionManagement: "参数定义管理",
   specLibrary: "参数定义库",
   specLibrarySearch: "搜索参数定义",
   specLibraryEmpty: "没有匹配的参数定义。",
@@ -35,6 +37,7 @@ export const PARAMETER_ADMIN_UI = {
   specReviewEvidence: "匹配依据",
   specReviewCandidates: "系统推荐定义",
   specReviewDecision: "审核决定",
+  specReviewQueueToggle: "定义匹配审核队列",
   searchSpecLibrary: "搜索参数定义库",
   selectSpec: "选择参数定义",
   selectSpecPlaceholder: "请选择参数定义…",
@@ -49,6 +52,8 @@ export const PARAMETER_ADMIN_UI = {
   matchAmbiguous: "匹配冲突",
   matchHasCandidates: "有多项匹配",
 
+  /** Organization peer nav label (ADR-0015). In-page tree title stays `moduleMappingManage`. */
+  moduleManagement: "模块管理",
   moduleMapping: "模块归属",
   moduleMappingManage: "模块归属",
   moduleMappingBlurb: "业务分类 → 驱动组 / 节点类型。在树里维护已归属模块；器件实例由工作台器件层浏览。",
@@ -56,9 +61,12 @@ export const PARAMETER_ADMIN_UI = {
   moduleTreeSubnav: "归属树",
   moduleDiscoveryCompatible: "未登记驱动",
   moduleDiscoveryCompatibleEmpty: "当前没有未登记的驱动。",
-  moduleQueueSubnavAria: "模块归属子视图",
+  moduleQueueSubnavAria: "模块管理子视图",
   moduleQueueBanner: "有未登记的驱动",
   moduleQueueBannerAction: "去处理未登记驱动",
+  specsSubnavAria: "参数定义管理子视图",
+  specsLibrarySubnav: "定义库",
+  identityMappingCountError: "节点对应任务计数加载失败",
   classifyCompatible: "归类",
   classifyCompatibleBulk: "批量归类",
   dismissCompatible: "忽略",
@@ -168,12 +176,12 @@ export const PARAMETER_ADMIN_UI = {
 
   changeReview: "变更审阅",
   adminSubtitle:
-    "组织配置与项目运营；子路由涵盖参数定义库、定义匹配审核、模块归属、节点对应与批量导入",
+    "组织配置与项目运营；子路由涵盖参数定义管理、模块管理与批量导入",
 
   xiaozeSpecReview: "正在关注定义匹配审核队列与类型定义确认。",
   xiaozeIdentityMapping: "正在关注迁移期节点对应任务与无损确认。",
   xiaozeOrgDefault:
-    "正在关注组织级参数定义库、定义匹配审核、模块归属、批量导入与节点对应确认。",
+    "正在关注组织级参数定义管理、模块管理、批量导入与节点对应确认。",
 
   lifecycleDraft: "草稿",
   lifecycleActive: "已启用",

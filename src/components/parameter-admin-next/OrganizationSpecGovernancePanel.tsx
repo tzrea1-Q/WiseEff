@@ -9,6 +9,7 @@ import {
   auditKindForResolveDecision
 } from "@/application/parameters/parameterAdminState";
 import type { ParameterAdminAuditHint } from "@/application/parameters/parameterAdminState";
+import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import {
   mapParameterSpecToLibraryRow,
   ParameterSpecLibrary,
@@ -111,17 +112,21 @@ function toReviewTaskView(task: {
 export type OrganizationSpecGovernancePanelProps = {
   search: string;
   pathname?: string;
-  /** Which organization sub-view to render; defaults to both for backward-compatible tests. */
-  focus?: "library" | "review";
   /** Platform super admin may deprecate/restore platform-global definitions. */
   isPlatformSuperAdmin?: boolean;
+  /** Optional deep-link into nested identity mapping when open tasks exist (ADR-0015). */
+  onOpenIdentityMapping?: () => void;
+  identityMappingOpenCount?: number;
+  identityMappingCountError?: string | null;
 };
 
 export function OrganizationSpecGovernancePanel({
   search,
   pathname = "/parameter-admin",
-  focus,
-  isPlatformSuperAdmin = false
+  isPlatformSuperAdmin = false,
+  onOpenIdentityMapping,
+  identityMappingOpenCount,
+  identityMappingCountError = null
 }: OrganizationSpecGovernancePanelProps) {
   const { application, dispatch, state } = useParameterAdmin();
   const { urlState, updateUrl } = useParameterAdminUrl(search, pathname);
@@ -515,9 +520,6 @@ export function OrganizationSpecGovernancePanel({
     [application, reloadSpecs, showToast, updateUrl]
   );
 
-  const showLibrary = focus !== "review";
-  const showReview = focus !== "library";
-
   const reviewLibrarySpecs = useMemo(
     () =>
       specRows
@@ -531,32 +533,37 @@ export function OrganizationSpecGovernancePanel({
     [specRows],
   );
 
+  const reviewCount = state.queueCounts.specReview;
   const reviewQueue = (
-    <div>
-      {reviewLoading && reviewTasks.length === 0 ? (
-        <p className="form-hint">正在加载审核队列…</p>
-      ) : null}
-      <SpecReviewQueue
-        tasks={reviewTasks}
-        librarySpecs={reviewLibrarySpecs}
-        onApprove={handleApproveReview}
-        onDismiss={handleDismissReview}
-        onCreateSpec={handleCreateSpecReview}
-        pendingTaskId={reviewPendingTaskId}
-        pendingAction={reviewPendingAction}
-        nextCursor={reviewNextCursor}
-        onLoadMore={() => void loadMoreReviewTasks()}
-        loadingMore={reviewLoadingMore}
-      />
-    </div>
+    <details className="param-admin-review-queue" open={reviewCount > 0 && reviewCount <= 5}>
+      <summary className="param-admin-review-queue__summary">
+        {PARAMETER_ADMIN_UI.specReviewQueueToggle}
+        <span className="param-admin-review-queue__count" aria-live="polite">
+          待审核 {reviewCount}
+        </span>
+      </summary>
+      <div className="param-admin-review-queue__body">
+        {reviewLoading && reviewTasks.length === 0 ? (
+          <p className="form-hint">正在加载审核队列…</p>
+        ) : null}
+        <SpecReviewQueue
+          tasks={reviewTasks}
+          librarySpecs={reviewLibrarySpecs}
+          onApprove={handleApproveReview}
+          onDismiss={handleDismissReview}
+          onCreateSpec={handleCreateSpecReview}
+          pendingTaskId={reviewPendingTaskId}
+          pendingAction={reviewPendingAction}
+          nextCursor={reviewNextCursor}
+          onLoadMore={() => void loadMoreReviewTasks()}
+          loadingMore={reviewLoadingMore}
+        />
+      </div>
+    </details>
   );
 
   return (
     <div className="param-admin-main">
-      <p className="param-admin-queue-summary" aria-live="polite">
-        待审核 {state.queueCounts.specReview}
-      </p>
-
       <GovernanceToast message={toastMessage} />
 
       {reviewActionError ? (
@@ -565,47 +572,61 @@ export function OrganizationSpecGovernancePanel({
         </p>
       ) : null}
 
-      {showLibrary ? (
-        <ParameterSpecLibrary
-          specs={sortedRows}
-          selectedSpecId={urlState.specId}
-          detail={specDetail}
-          loading={specLoading}
-          filters={filters}
-          onFiltersChange={handleFiltersChange}
-          onSelectSpec={handleSelectSpec}
-          onCloseSpec={handleCloseSpec}
-          onSaveSpec={handleSaveSpec}
-          onDeprecateSpec={handleDeprecateSpec}
-          onRestoreSpec={handleRestoreSpec}
-          onPrepareCutover={handlePrepareCutover}
-          onFinalizeCutover={handleFinalizeCutover}
-          canDeprecateGlobal={isPlatformSuperAdmin}
-          savePending={activatePendingSpecId === urlState.specId}
-          saveError={reviewActionError}
-          onCreateSpec={() => {
-            setCreateError(null);
-            setCreateModules([]);
-            setCreateSubjectsLoading(true);
-            setCreateOpen(true);
-            void application
-              .getModuleRegistry()
-              .then((registry) => {
-                setCreateModules(registry.modules);
-              })
-              .catch(() => {
-                setCreateModules([]);
-                setCreateError("无法加载归属主体列表，请重试。");
-              })
-              .finally(() => {
-                setCreateSubjectsLoading(false);
-              });
-          }}
-          reviewQueueSlot={showReview ? reviewQueue : undefined}
-        />
-      ) : (
-        reviewQueue
-      )}
+      {identityMappingCountError ? (
+        <p className="form-error" role="alert">
+          {identityMappingCountError}
+        </p>
+      ) : null}
+
+      {onOpenIdentityMapping && (identityMappingOpenCount ?? 0) > 0 ? (
+        <div className="param-admin-queue-banner" role="status">
+          <p>
+            <strong>{PARAMETER_ADMIN_UI.identityMapping}</strong>
+            <span>待处理 {identityMappingOpenCount} 项。可在上方子导航或此处进入。</span>
+          </p>
+          <button type="button" className="button" onClick={onOpenIdentityMapping}>
+            {PARAMETER_ADMIN_UI.identityMapping}
+          </button>
+        </div>
+      ) : null}
+
+      <ParameterSpecLibrary
+        specs={sortedRows}
+        selectedSpecId={urlState.specId}
+        detail={specDetail}
+        loading={specLoading}
+        filters={filters}
+        onFiltersChange={handleFiltersChange}
+        onSelectSpec={handleSelectSpec}
+        onCloseSpec={handleCloseSpec}
+        onSaveSpec={handleSaveSpec}
+        onDeprecateSpec={handleDeprecateSpec}
+        onRestoreSpec={handleRestoreSpec}
+        onPrepareCutover={handlePrepareCutover}
+        onFinalizeCutover={handleFinalizeCutover}
+        canDeprecateGlobal={isPlatformSuperAdmin}
+        savePending={activatePendingSpecId === urlState.specId}
+        saveError={reviewActionError}
+        onCreateSpec={() => {
+          setCreateError(null);
+          setCreateModules([]);
+          setCreateSubjectsLoading(true);
+          setCreateOpen(true);
+          void application
+            .getModuleRegistry()
+            .then((registry) => {
+              setCreateModules(registry.modules);
+            })
+            .catch(() => {
+              setCreateModules([]);
+              setCreateError("无法加载归属主体列表，请重试。");
+            })
+            .finally(() => {
+              setCreateSubjectsLoading(false);
+            });
+        }}
+        reviewQueueSlot={reviewQueue}
+      />
 
       {createOpen ? (
         <SpecCreateDialog

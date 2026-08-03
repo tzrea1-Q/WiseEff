@@ -34,7 +34,7 @@ describe("normalized workspace headers", () => {
     const topbar = document.querySelector(".topbar") as HTMLElement;
 
     expect(topbar.querySelector(".topbar-title")).toHaveTextContent("项目参数管理后台");
-    expect(topbar.querySelector(".topbar-subtitle")).toHaveTextContent("参数定义库");
+    expect(topbar.querySelector(".topbar-subtitle")).toHaveTextContent("参数定义管理");
     expect(within(topbar).getByRole("button", { name: "打开批量参数导入" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "批量参数导入" })).not.toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();

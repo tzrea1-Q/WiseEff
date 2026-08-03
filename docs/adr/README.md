@@ -24,3 +24,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0012](0012-releasing-happens-at-the-file-layer.md) | Releasing happens at the file layer |
 | [0013](0013-attribution-subjects-are-stable-catalog-entities.md) | Attribution subjects are stable catalog entities |
 | [0014](0014-parameter-definitions-are-versioned-subjects.md) | Parameter definitions are versioned subjects with soft retirement |
+| [0015](0015-governance-queues-live-with-the-object-they-govern.md) | Governance queues live with the object they govern |

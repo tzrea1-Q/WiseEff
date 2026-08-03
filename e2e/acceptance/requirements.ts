@@ -105,6 +105,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PARAM-ADMIN-IA-001",
+    workflow: "C",
+    title: "Organization admin offers definition management and module management peers; review embeds under specs; identity mapping nests with legacy redirects.",
+    required: false
+  },
+  {
     id: "PARAM-IMPORT-DTS-FULL-001",
     workflow: "C",
     title: "Admin full .dts import uses server parse-dts with distinct @address module paths; /include/ is rejected.",

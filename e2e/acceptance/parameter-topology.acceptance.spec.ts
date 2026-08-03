@@ -2088,7 +2088,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await signInBrowserAsRole(
         page,
         "admin",
-        `${disposableRuntime.frontendUrl}/parameter-admin/identity-mapping`
+        `${disposableRuntime.frontendUrl}/parameter-admin/specs/identity-mapping`
       );
       await dismissXiaozeHint(page);
 

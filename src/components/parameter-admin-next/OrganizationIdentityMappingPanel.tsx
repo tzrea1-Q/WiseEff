@@ -5,14 +5,22 @@ import type {
   ResolveMappingInput
 } from "@/domain/parameter-topology/types";
 import { IdentityMappingReview } from "@/components/parameter-topology/IdentityMappingReview";
+import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { ParamAdminEmptyState } from "./ParamAdminEmptyState";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 
+export type OrganizationIdentityMappingPanelProps = {
+  /** Sync open/history counts into the parent specs shell after each successful load. */
+  onTasksLoaded?: (counts: { openCount: number; historyCount: number }) => void;
+};
+
 /**
  * Organization-scoped identity mapping task governance.
- * Composes IdentityMappingReview for organization-scoped governance in `/parameter-admin`.
+ * Nested under `/parameter-admin/specs/identity-mapping` (ADR-0015).
  */
-export function OrganizationIdentityMappingPanel() {
+export function OrganizationIdentityMappingPanel({
+  onTasksLoaded
+}: OrganizationIdentityMappingPanelProps = {}) {
   const { application, dispatch, state } = useParameterAdmin();
   const [tasks, setTasks] = useState<IdentityMappingTask[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,15 +33,19 @@ export function OrganizationIdentityMappingPanel() {
       const next = await application.listMappingTasks();
       setTasks(next);
       const openCount = next.filter((task) => task.status === "open").length;
+      const historyCount = next.filter((task) => task.status !== "open").length;
       dispatch({ type: "SET_QUEUE_COUNTS", counts: { identityMapping: openCount } });
+      onTasksLoaded?.({ openCount, historyCount });
     } catch (loadError) {
       setTasks([]);
-      dispatch({ type: "SET_QUEUE_COUNTS", counts: { identityMapping: 0 } });
-      setError(loadError instanceof Error ? loadError.message : "无法加载节点对应任务。");
+      // IA-R2: do not overwrite a known open count with zero on transient failure.
+      setError(
+        loadError instanceof Error ? loadError.message : PARAMETER_ADMIN_UI.identityMappingLoadError
+      );
     } finally {
       setLoading(false);
     }
-  }, [application, dispatch]);
+  }, [application, dispatch, onTasksLoaded]);
 
   useEffect(() => {
     void reload();
@@ -65,7 +77,11 @@ export function OrganizationIdentityMappingPanel() {
         });
         await reload();
       } catch (resolveError) {
-        setError(resolveError instanceof Error ? resolveError.message : "节点对应确认失败。");
+        setError(
+          resolveError instanceof Error
+            ? resolveError.message
+            : PARAMETER_ADMIN_UI.identityMappingResolveError
+        );
       }
     },
     [application, dispatch, reload]
@@ -100,12 +116,14 @@ export function OrganizationIdentityMappingPanel() {
     <section className="param-admin-main param-admin-governance-card" aria-label="节点对应确认">
       <div className="parameters-table-heading">
         <div>
-          <h2>节点对应确认</h2>
-          <p>确认迁移期未能自动对齐的参数节点对应关系。待处理 {state.queueCounts.identityMapping}。</p>
+          <h2>{PARAMETER_ADMIN_UI.identityMapping}</h2>
+          <p>
+            {PARAMETER_ADMIN_UI.identityMappingBlurb} 待处理 {state.queueCounts.identityMapping}。
+          </p>
         </div>
       </div>
       {loading && openTasks.length === 0 && historyTasks.length === 0 ? (
-        <p className="form-hint">正在加载节点对应任务…</p>
+        <p className="form-hint">{PARAMETER_ADMIN_UI.identityMappingLoading}</p>
       ) : null}
       {error ? (
         <p className="form-error" role="alert">
@@ -113,7 +131,7 @@ export function OrganizationIdentityMappingPanel() {
         </p>
       ) : null}
       {!loading && openTasks.length === 0 && historyTasks.length === 0 ? (
-        <ParamAdminEmptyState message="当前没有待处理的节点对应任务。">
+        <ParamAdminEmptyState message={PARAMETER_ADMIN_UI.identityMappingEmpty}>
           <p>导入或同步项目 DTS 后，未能自动对齐的节点会出现在这里。</p>
         </ParamAdminEmptyState>
       ) : (

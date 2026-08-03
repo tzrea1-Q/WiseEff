@@ -599,32 +599,47 @@ describe("ParameterAdminNextPage · organization sub-routes", () => {
     );
   });
 
-  it("renders only the spec library on /parameter-admin/specs", async () => {
+  it("renders the spec library with an embedded review queue on /parameter-admin/specs", async () => {
     renderPage({ path: "/parameter-admin/specs" });
 
     expect(await screen.findByRole("region", { name: "参数定义库" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "定义匹配审核队列" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "定义匹配审核队列" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "模块归属" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "节点对应确认" })).not.toBeInTheDocument();
   });
 
-  it("renders only the spec review queue on /parameter-admin/spec-review", async () => {
-    renderPage({ path: "/parameter-admin/spec-review" });
+  it("redirects legacy /spec-review to /specs while preserving query", () => {
+    const { onNavigate } = renderPage({
+      path: "/parameter-admin/spec-review?q=gpio&lifecycle=active"
+    });
 
-    expect(await screen.findByRole("region", { name: "定义匹配审核队列" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "参数定义库" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "模块归属" })).not.toBeInTheDocument();
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/specs?q=gpio&lifecycle=active");
+  });
+
+  it("redirects legacy /identity-mapping to /specs/identity-mapping while preserving query", () => {
+    const { onNavigate } = renderPage({
+      path: "/parameter-admin/identity-mapping?status=open"
+    });
+
+    expect(onNavigate).toHaveBeenCalledWith(
+      "/parameter-admin/specs/identity-mapping?status=open"
+    );
   });
 
   it("marks the active organization sub-view and navigates between peers", async () => {
     const { onNavigate } = renderPage({ path: "/parameter-admin/modules" });
 
     const orgNav = await screen.findByRole("navigation", { name: "组织配置子视图" });
-    expect(within(orgNav).getByRole("button", { name: "模块归属" })).toHaveAttribute("aria-current", "page");
-    expect(within(orgNav).getByRole("button", { name: "参数定义库" })).not.toHaveAttribute("aria-current");
+    expect(within(orgNav).getByRole("button", { name: /模块管理/ })).toHaveAttribute(
+      "aria-current",
+      "page"
+    );
+    expect(within(orgNav).getByRole("button", { name: /参数定义管理/ })).not.toHaveAttribute(
+      "aria-current"
+    );
 
-    fireEvent.click(within(orgNav).getByRole("button", { name: "定义匹配审核" }));
-    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/spec-review");
+    fireEvent.click(within(orgNav).getByRole("button", { name: /参数定义管理/ }));
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/specs");
   });
 });
 
@@ -653,7 +668,11 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const lifecycleTrigger = screen.getByRole("button", { name: "筛选审核状态" });
     fireEvent.click(lifecycleTrigger);
     fireEvent.click(screen.getByRole("checkbox", { name: "active" }));
-    fireEvent.click(screen.getByRole("button", { name: "编辑 gpio_int" }));
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "参数定义库" })).getByRole("button", {
+        name: "编辑 gpio_int"
+      })
+    );
 
     await waitFor(() => {
       const params = new URL(window.location.href).searchParams;
@@ -750,7 +769,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const resolveSpecReviewTask = vi.fn().mockResolvedValue(undefined);
     const repository = createRepository({ listSpecReviewTasks, resolveSpecReviewTask });
 
-    renderPage({ repository, path: "/parameter-admin/spec-review" });
+    renderPage({ repository, path: "/parameter-admin/specs" });
 
     const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     expect(within(queue).getByText("gpio_int")).toBeInTheDocument();
@@ -785,7 +804,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const resolveSpecReviewTask = vi.fn().mockResolvedValue(undefined);
     const repository = createRepository({ listSpecReviewTasks, resolveSpecReviewTask });
 
-    renderPage({ repository, path: "/parameter-admin/spec-review" });
+    renderPage({ repository, path: "/parameter-admin/specs" });
 
     const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
@@ -821,7 +840,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     const resolveSpecReviewTask = vi.fn().mockResolvedValue(undefined);
     const repository = createRepository({ listSpecReviewTasks, resolveSpecReviewTask });
 
-    renderPage({ repository, path: "/parameter-admin/spec-review" });
+    renderPage({ repository, path: "/parameter-admin/specs" });
 
     const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 mystery_prop" }));
@@ -863,7 +882,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
       .mockResolvedValueOnce(pageTwo);
     const repository = createRepository({ listSpecReviewTasks });
 
-    renderPage({ repository, path: "/parameter-admin/spec-review" });
+    renderPage({ repository, path: "/parameter-admin/specs" });
 
     const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     expect(listSpecReviewTasks).toHaveBeenCalledWith(
@@ -967,7 +986,7 @@ describe("ParameterAdminNextPage · organization spec governance", () => {
     expect(within(library).getAllByRole("button", { name: "编辑 gpio_int" }).length).toBeGreaterThan(0);
 
     cleanup();
-    renderPage({ repository, path: "/parameter-admin/spec-review" });
+    renderPage({ repository, path: "/parameter-admin/specs" });
 
     const queue = await screen.findByRole("region", { name: "定义匹配审核队列" });
     fireEvent.click(within(queue).getByRole("button", { name: "编辑 gpio_int" }));
@@ -1096,7 +1115,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     expect(within(panel).queryByRole("region", { name: "未登记驱动" })).not.toBeInTheDocument();
     expect(within(panel).getByText("有未登记的驱动")).toBeInTheDocument();
 
-    const moduleSubnav = within(panel).getByRole("navigation", { name: "模块归属子视图" });
+    const moduleSubnav = within(panel).getByRole("navigation", { name: "模块管理子视图" });
     expect(within(moduleSubnav).getByRole("button", { name: "归属树" })).toHaveAttribute(
       "aria-current",
       "page"
@@ -1136,7 +1155,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
     renderPage({ moduleRegistry, path: "/parameter-admin/modules" });
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
-    expect(within(panel).queryByRole("navigation", { name: "模块归属子视图" })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("navigation", { name: "模块管理子视图" })).not.toBeInTheDocument();
     expect(within(panel).queryByRole("region", { name: "未登记驱动" })).not.toBeInTheDocument();
     expect(within(panel).getByRole("tree", { name: "模块归属树" })).toBeInTheDocument();
   });
@@ -1302,7 +1321,7 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
     const listMappingTasks = vi.fn().mockResolvedValue([OPEN_MAPPING_TASK]);
     renderPage({
       repository: createRepository({ listMappingTasks }),
-      path: "/parameter-admin/identity-mapping"
+      path: "/parameter-admin/specs/identity-mapping"
     });
 
     const region = await screen.findByRole("region", { name: "节点对应确认" });
@@ -1312,14 +1331,13 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
   });
 
   it("resolves a mapping task via the lossless candidate identity path with audit", async () => {
-    const listMappingTasks = vi
-      .fn()
-      .mockResolvedValueOnce([OPEN_MAPPING_TASK])
-      .mockResolvedValueOnce([]);
-    const resolveMapping = vi.fn().mockResolvedValue(undefined);
-    renderPage({
+    const listMappingTasks = vi.fn().mockResolvedValue([OPEN_MAPPING_TASK]);
+    const resolveMapping = vi.fn().mockImplementation(async () => {
+      listMappingTasks.mockResolvedValue([]);
+    });
+    const { onNavigate } = renderPage({
       repository: createRepository({ listMappingTasks, resolveMapping }),
-      path: "/parameter-admin/identity-mapping"
+      path: "/parameter-admin/specs/identity-mapping"
     });
 
     const review = await screen.findByRole("region", { name: "节点对应审核" });
@@ -1339,14 +1357,14 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
       })
     );
     await waitFor(() =>
-      expect(screen.getByText("当前没有待处理的节点对应任务。")).toBeInTheDocument()
+      expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/specs")
     );
   });
 
   it("behaves identically when backed by the mock topology adapter", async () => {
     renderPage({
       repository: createMockParameterTopologyRepository(),
-      path: "/parameter-admin/identity-mapping"
+      path: "/parameter-admin/specs/identity-mapping"
     });
 
     const review = await screen.findByRole("region", { name: "节点对应审核" });
