@@ -28,6 +28,7 @@
 - `exec-plans/active/2026-07-30-attribution-subjects-and-versioned-specs.md`：归属主体 + 版本化参数定义 —— PR0–PR6 已落地（ADR-0013/0014）；follow-up 与治理 PR 经 #212–#215 合入；收口 #216 已完成；D-AG-* 实现见 `2026-08-01-attribution-deferred-implementation.md`。
 - `exec-plans/active/2026-08-01-attribution-deferred-implementation.md`：交付已锁定的 D-AG-01–04 —— PR1 可编辑 nature/cardinality + overlay-only claim；PR2 删除 `driverModule`（TD-047）；PR3 按注册默认分类放置 + auto 回放（TD-046）；中文摘要同路径 zh-CN。
 - `exec-plans/active/2026-08-02-parameter-admin-ux-polish.md`：参数管理后台 UX 打磨 —— 修复桌面列宽规则泄漏导致的移动端项目清单破损、把归属筛选移到它所筛选的列、修结构浏览层叠故障、补齐 tab 与表格 ARIA，随后统一四个项目 tab 的容器与空态语言并给项目清单加治理信号（分支 `feat/parameter-admin-ux-polish`；不越出 ADR-0001）；中文摘要同路径 zh-CN。
+- `exec-plans/active/2026-08-03-parameter-admin-org-ia-consolidation.md`：组织配置收敛为两入口 —— 参数定义管理（库内嵌定义匹配审核；节点对应确认嵌套且条件出现）与模块管理（不变）；仅规划；分支 `feat/parameter-admin-org-ia`；ADR-0015；中文摘要同路径 zh-CN。
 - `exec-plans/completed/2026-08-01-governance-platform-closeout.md`：治理/平台收口已合入（#216）—— 归档三份源计划、关闭 TD-054、Platform 证据、治理 Admin 验收 ID。
 - `exec-plans/completed/2026-07-30-parameter-governance-state-machine-completion.md`：参数管理后台状态机收口已合入（#212–#214；ADR-0011/0012）。残留 → 收口 #216；D1–D8 仍在 design-docs。
 - `exec-plans/completed/2026-07-31-attribution-governance-follow-up.md`：归属 follow-up PR7–PR9 已合入（#215）。残留 → 收口 #216；D-AG-01–04 已锁定 → `2026-08-01-attribution-deferred-implementation.md`（中文对照 `docs/zh-CN/exec-plans/completed/2026-07-31-attribution-governance-follow-up.md`）。

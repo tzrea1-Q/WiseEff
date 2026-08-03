@@ -9,6 +9,7 @@ import {
   buildParameterAdminOrganizationPath,
   isParameterAdminOrganizationEntryPath,
   parseParameterAdminOrganizationPath,
+  resolveParameterAdminOrganizationRedirect,
   type ParameterAdminOrganizationView
 } from "@/application/parameters/parameterAdminOrganizationPath";
 import { resolveParameterModuleRegistryRepository } from "@/application/parameters/parameterModuleRegistryResolve";
@@ -17,9 +18,8 @@ import { migrateLegacyRoleId } from "@/domain/users/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterRecord, Project, PrototypeState } from "@/mockData";
 import { OrganizationBulkImportPanel } from "@/components/parameter-admin-next/OrganizationBulkImportPanel";
-import { OrganizationIdentityMappingPanel } from "@/components/parameter-admin-next/OrganizationIdentityMappingPanel";
 import { OrganizationModuleGovernancePanel } from "@/components/parameter-admin-next/OrganizationModuleGovernancePanel";
-import { OrganizationSpecGovernancePanel } from "@/components/parameter-admin-next/OrganizationSpecGovernancePanel";
+import { OrganizationSpecsArea } from "@/components/parameter-admin-next/OrganizationSpecsArea";
 import { ParameterAdminNextScopeNav } from "@/components/parameter-admin-next/ParameterAdminNextScopeNav";
 import { ParameterAdminOrganizationSubNav } from "@/components/parameter-admin-next/ParameterAdminOrganizationSubNav";
 import { ParameterAdminProvider } from "@/components/parameter-admin-next/ParameterAdminProvider";
@@ -60,7 +60,7 @@ export type ParameterAdminNextPageProps = {
 
 /**
  * Redesigned parameter admin organized by governance scope (ADR-0001).
- * Organization sub-routes: specs, spec-review, modules, identity-mapping.
+ * Organization peers (ADR-0015): specs (definition management) and modules.
  * Project routes: `/parameter-admin/projects` and deep views.
  */
 export function ParameterAdminNextPage({
@@ -130,6 +130,11 @@ export function ParameterAdminNextPage({
       onNavigate(buildParameterAuditCenterPath(activeProjectId));
       return;
     }
+    const legacyRedirect = resolveParameterAdminOrganizationRedirect(pathname, raw);
+    if (legacyRedirect) {
+      onNavigate(legacyRedirect);
+      return;
+    }
     if (isParameterAdminOrganizationEntryPath(pathname)) {
       onNavigate(buildParameterAdminOrganizationPath("specs", raw));
     }
@@ -179,18 +184,11 @@ export function ParameterAdminNextPage({
               runtimeMode={runtimeMode}
             />
             {organizationView === "specs" ? (
-              <OrganizationSpecGovernancePanel
-                search={search}
+              <OrganizationSpecsArea
                 pathname={pathname}
-                focus="library"
+                search={search}
+                onNavigate={onNavigate}
                 isPlatformSuperAdmin={isPlatformSuperAdmin}
-              />
-            ) : null}
-            {organizationView === "spec-review" ? (
-              <OrganizationSpecGovernancePanel
-                search={search}
-                pathname={pathname}
-                focus="review"
               />
             ) : null}
             {organizationView === "modules" ? (
@@ -200,7 +198,6 @@ export function ParameterAdminNextPage({
                 onNavigate={onNavigate}
               />
             ) : null}
-            {organizationView === "identity-mapping" ? <OrganizationIdentityMappingPanel /> : null}
           </>
         ) : null}
       </div>

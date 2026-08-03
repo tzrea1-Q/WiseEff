@@ -63,6 +63,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-DTS-IMPACT-001` | P1 | parameters | automated | `/api/v1/parameter-change-requests` | Admin, Hardware Committer | api | `e2e/acceptance/dts-structured.acceptance.spec.ts` |
 | `PARAM-DTS-RBAC-001` | P0 | parameters | automated | `/api/v1/parameter-submission-rounds` | Hardware User, Admin | api, db | `e2e/acceptance/dts-structured.acceptance.spec.ts` |
 | `PARAM-SPEC-GOVERN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api, db | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
+| `PARAM-ADMIN-IA-001` | P1 | parameters | future | `/parameter-admin/specs` | Admin | ui |  |
 | `PARAM-TOPOLOGY-BROWSE-001` | P0 | parameters | automated | `/parameters` | Admin, Hardware User | ui, api | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-TOPOLOGY-EDIT-001` | P0 | parameters | automated | `/parameters` | Software User, Hardware Committer, Software Committer, Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
 | `PARAM-IDENTITY-MAP-001` | P1 | parameters | automated | `/parameters` | Admin | ui, api, db, audit | `e2e/acceptance/parameter-topology.acceptance.spec.ts` |
@@ -94,9 +95,9 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `SPEC-DEPRECATE-001` | P1 | parameters | future | `/parameter-admin/specs` | Admin | ui, api |  |
 | `SPEC-RESTORE-001` | P1 | parameters | future | `/parameter-admin/specs` | Admin | ui, api |  |
 | `SPEC-EDIT-DIFF-001` | P2 | parameters | future | `/parameter-admin/specs` | Admin | ui |  |
-| `IDMAP-NEWID-001` | P1 | parameters | future | `/parameter-admin/identity-mapping` | Admin | ui, api |  |
-| `IDMAP-HISTORY-001` | P2 | parameters | future | `/parameter-admin/identity-mapping` | Admin | ui |  |
-| `IDMAP-REOPEN-001` | P2 | parameters | future | `/parameter-admin/identity-mapping` | Admin | ui, api |  |
+| `IDMAP-NEWID-001` | P1 | parameters | future | `/parameter-admin/specs/identity-mapping` | Admin | ui, api |  |
+| `IDMAP-HISTORY-001` | P2 | parameters | future | `/parameter-admin/specs/identity-mapping` | Admin | ui |  |
+| `IDMAP-REOPEN-001` | P2 | parameters | future | `/parameter-admin/specs/identity-mapping` | Admin | ui, api |  |
 | `MOD-QUEUE-RESTORE-001` | P2 | parameters | future | `/parameter-admin/modules` | Admin | ui, api |  |
 | `OVERLAY-RETIRE-001` | P1 | parameters | future | `/parameter-admin/modules` | Admin | ui, api |  |
 | `MOD-ATTR-SORT-001` | P2 | parameters | future | `/parameter-admin/modules` | Admin | ui, api |  |
@@ -108,6 +109,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `BRIDGE-HDC-001`: Requires a pre-paired bridge process, hdc on PATH, USB device, and DEVICE_BRIDGE_HDC_AVAILABLE=true.
 - `HDC-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true with hardware attached.
 - `ADB-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=adb, ADB_DEVICE_LAB_AVAILABLE=true, exactly one ready ADB device, one ADB inventory row, and one shared default ADB smoke binding.
+- `PARAM-ADMIN-IA-001`: Unit-covered in ParameterAdminNextPage and organization path tests; dedicated Playwright marker deferred.
 - `PARAM-ENABLE-GATE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `PARAM-ENABLE-VISIBLE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.
 - `PARAM-ENABLE-TOGGLE-001`: Browser automation placeholder only; pending disposable-DB / Playwright coverage before gating CI.

@@ -19,6 +19,7 @@ import {
   isParameterAdminOrganizationEntryPath,
   parseParameterAdminModulesSubView,
   parseParameterAdminOrganizationPath,
+  parseParameterAdminSpecsSubView,
   PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS
 } from "@/application/parameters/parameterAdminOrganizationPath";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
@@ -96,7 +97,7 @@ export const navigationItems: PageConfig[] = [
     group: "参数管理",
     icon: Database,
     title: "项目参数管理后台",
-    subtitle: "组织配置与项目运营；子路由涵盖参数定义库、定义匹配审核、驱动归属、节点对应与批量导入"
+    subtitle: PARAMETER_ADMIN_UI.adminSubtitle
   },
   {
     key: "node-debugging",
@@ -249,12 +250,19 @@ export function getPageByPath(path: string): PageConfig {
     const adminNav = navigationItems.find((item) => item.key === "parameter-admin");
     const view = parseParameterAdminOrganizationPath(path);
     const modulesSub = parseParameterAdminModulesSubView(path);
+    const specsSub = parseParameterAdminSpecsSubView(path);
     const subtitle =
       modulesSub === "queue"
         ? PARAMETER_ADMIN_UI.moduleDiscoveryCompatible
-        : view
-          ? PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS[view]
-          : (adminNav?.subtitle ?? PARAMETER_ADMIN_UI.specLibrary);
+        : specsSub === "identity-mapping"
+          ? PARAMETER_ADMIN_UI.identityMapping
+          : view
+            ? PARAMETER_ADMIN_ORGANIZATION_VIEW_LABELS[view]
+            : path.includes("identity-mapping")
+              ? PARAMETER_ADMIN_UI.identityMapping
+              : path.includes("spec-review")
+                ? PARAMETER_ADMIN_UI.specDefinitionManagement
+                : (adminNav?.subtitle ?? PARAMETER_ADMIN_UI.specDefinitionManagement);
     return {
       ...(adminNav as PageConfig),
       path,

@@ -28,9 +28,8 @@ const routes = [
 const parameterAdminRoutes = [
   { path: "/parameter-admin", heading: "项目参数管理后台" },
   { path: "/parameter-admin/specs", heading: "项目参数管理后台" },
-  { path: "/parameter-admin/spec-review", heading: "项目参数管理后台" },
   { path: "/parameter-admin/modules", heading: "项目参数管理后台" },
-  { path: "/parameter-admin/identity-mapping", heading: "项目参数管理后台" }
+  { path: "/parameter-admin/specs/identity-mapping", heading: "项目参数管理后台" }
 ] as const;
 
 test.describe("M5.11 responsive quality gate", () => {
