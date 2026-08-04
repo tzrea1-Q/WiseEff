@@ -10,6 +10,11 @@ import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
 import { ParameterFileConflictPanel } from "@/components/admin/ParameterFileConflictPanel";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
+import {
+  ProjectOperationsDialog,
+  type ParameterAdminNextProjectView,
+  type ProjectOperationsDialogViewMeta
+} from "@/components/admin/ProjectOperationsDialog";
 import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterFilesPanel";
 import { DtsSearchPanel } from "@/components/parameters/DtsSearchPanel";
 import { DtsStructureBrowserPanel } from "@/components/parameters/DtsStructureBrowserPanel";
@@ -34,7 +39,7 @@ import {
 } from "@/application/parameters/parameterAdminState";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 
-export type ParameterAdminNextProjectView = "files" | "config-sets" | "structure" | "conflicts";
+export type { ParameterAdminNextProjectView } from "@/components/admin/ProjectOperationsDialog";
 
 export function parseParameterAdminNextProjectPath(pathname: string): {
   projectId: string | null;
@@ -69,10 +74,7 @@ function buildListSearch(patch: Partial<ParamAdminProjectsSearch>, current: Para
   return params.toString();
 }
 
-const PROJECT_VIEW_META: Record<
-  ParameterAdminNextProjectView,
-  { label: string; titlePrefix: string; subtitle: string; regionLabel: string }
-> = {
+const PROJECT_VIEW_META: Record<ParameterAdminNextProjectView, ProjectOperationsDialogViewMeta> = {
   files: {
     label: "参数文件",
     titlePrefix: "参数文件",
@@ -114,8 +116,8 @@ export type ProjectsOperationsPanelProps = {
 };
 
 /**
- * Project-scoped list + routed project operations (files, config sets, structure, conflicts).
- * Replaces the modal manage-files pattern with deep-linkable project views.
+ * Project list plus deep-linkable project operations (files, config sets, structure,
+ * conflicts) presented as a modal over the list so the URL remains shareable.
  */
 export function ProjectsOperationsPanel({
   pathname,
@@ -325,110 +327,34 @@ export function ProjectsOperationsPanel({
   const projectBase = projectId
     ? `/parameter-admin/projects/${encodeURIComponent(projectId)}`
     : "/parameter-admin/projects";
+  const operationsOpen = Boolean(projectId && view);
+  const viewMeta = view ? PROJECT_VIEW_META[view] : null;
+  const projectName = selectedProject?.name ?? projectId ?? "";
 
-  if (projectId && view) {
-    const viewMeta = PROJECT_VIEW_META[view];
-    const projectName = selectedProject?.name ?? projectId;
-    const title = `${viewMeta.titlePrefix} · ${projectName}`;
+  const closeOperations = useCallback(() => {
+    onNavigate("/parameter-admin/projects");
+  }, [onNavigate]);
 
-    return (
-      <section className="param-admin-main" aria-label={viewMeta.regionLabel}>
-        <div className="parameters-table-heading">
-          <div>
-            <button
-              type="button"
-              className="button subtle"
-              onClick={() => onNavigate("/parameter-admin/projects")}
-            >
-              ← 返回项目列表
-            </button>
-            <h2>{title}</h2>
-            <p>{viewMeta.subtitle}</p>
-          </div>
-        </div>
-        {latestAudit ? (
-          <p className="form-hint" role="status" aria-label="治理审计">
-            治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}
-            <span className="sr-only"> {latestAudit.kind}</span>
-          </p>
-        ) : null}
-        <nav className="project-parameter-files-tabs" aria-label="项目运营视图">
-          {(Object.keys(PROJECT_VIEW_META) as ParameterAdminNextProjectView[]).map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={`project-parameter-files-tab${view === item ? " is-active" : ""}`}
-              aria-current={view === item ? "page" : undefined}
-              onClick={() => onNavigate(`${projectBase}/${item}`)}
-            >
-              {PROJECT_VIEW_META[item].label}
-            </button>
-          ))}
-        </nav>
-        {view === "files" ? (
-          <>
-            <ProjectParameterFilesPanel projectId={projectId} repository={fileRepository} />
-            <div className="param-admin-panel">
-              <DtsSearchPanel projectId={projectId} repository={dtsRepo} />
-            </div>
-          </>
-        ) : null}
-        {view === "config-sets" ? (
-          <ConfigSetBaselinePanel
-            projectId={projectId}
-            repository={dtsRepo}
-            canAdmin
-            availableFiles={availableFiles}
-            revisionId={adminState.selectedConfigRevisionId ?? "revision-teaching-1"}
-            validateRevision={(pid, revision) => application.validateRevision(pid, revision)}
-            onAudit={(event) => pushAudit(event.kind, event.summary)}
-          />
-        ) : null}
-        {view === "structure" ? (
-          !projectFilesReady ? (
-            <p className="form-hint" role="status">
-              正在加载项目文件…
-            </p>
-          ) : structureFile ? (
-            <DtsStructureBrowserPanel
-              projectId={projectId}
-              repository={dtsRepo}
-              fileId={structureFile.id}
-              versionId={structureFile.currentVersionId}
-              canEdit
-              canEditCritical
-            />
-          ) : (
-            <p className="form-hint" role="status">
-              当前项目没有可浏览的结构化 DTS 文件。请先在「参数文件」中上传带当前版本的 DTS。
-            </p>
-          )
-        ) : null}
-        {view === "conflicts" ? (
-          <ParameterFileConflictPanel
-            open
-            variant="embedded"
-            projectId={projectId}
-            repository={fileRepository}
-            onClose={() => onNavigate(`${projectBase}/files`)}
-            onOpenConflictCountChange={(count) =>
-              adminDispatch({ type: "SET_QUEUE_COUNTS", counts: { fileConflicts: count } })
-            }
-            onResolved={({ parameterName, resolution }) =>
-              pushAudit(
-                "file-conflict-resolved",
-                `已裁决「${parameterName}」为${resolution === "file" ? "文件值" : "界面值"}`
-              )
-            }
-          />
-        ) : null}
-      </section>
-    );
-  }
+  const handleOpenConflictCountChange = useCallback(
+    (count: number) => {
+      adminDispatch({ type: "SET_QUEUE_COUNTS", counts: { fileConflicts: count } });
+    },
+    [adminDispatch]
+  );
+
+  const handleConflictResolved = useCallback(
+    ({ parameterName, resolution }: { parameterName: string; resolution: "file" | "ui" }) => {
+      pushAudit(
+        "file-conflict-resolved",
+        `已裁决「${parameterName}」为${resolution === "file" ? "文件值" : "界面值"}`
+      );
+    },
+    [pushAudit]
+  );
 
   return (
     <section className="param-admin-main project-admin-layout" aria-label="项目运营">
-      {latestAudit ? (
+      {!operationsOpen && latestAudit ? (
         <p className="form-hint" role="status" aria-label="治理审计">
           治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}
           <span className="sr-only"> {latestAudit.kind}</span>
@@ -462,6 +388,79 @@ export function ProjectsOperationsPanel({
           onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/files`)
         }
       />
+
+      {operationsOpen && projectId && view && viewMeta ? (
+        <ProjectOperationsDialog
+          open
+          projectId={projectId}
+          projectName={projectName}
+          view={view}
+          viewMeta={viewMeta}
+          viewMetaByView={PROJECT_VIEW_META}
+          projectBase={projectBase}
+          onNavigate={onNavigate}
+          onClose={closeOperations}
+          latestAuditHint={
+            latestAudit ? (
+              <p className="form-hint project-parameter-files-dialog-audit" role="status" aria-label="治理审计">
+                治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}
+                <span className="sr-only"> {latestAudit.kind}</span>
+              </p>
+            ) : null
+          }
+        >
+          {view === "files" ? (
+            <>
+              <ProjectParameterFilesPanel projectId={projectId} repository={fileRepository} />
+              <div className="param-admin-panel">
+                <DtsSearchPanel projectId={projectId} repository={dtsRepo} />
+              </div>
+            </>
+          ) : null}
+          {view === "config-sets" ? (
+            <ConfigSetBaselinePanel
+              projectId={projectId}
+              repository={dtsRepo}
+              canAdmin
+              availableFiles={availableFiles}
+              revisionId={adminState.selectedConfigRevisionId ?? "revision-teaching-1"}
+              validateRevision={(pid, revision) => application.validateRevision(pid, revision)}
+              onAudit={(event) => pushAudit(event.kind, event.summary)}
+            />
+          ) : null}
+          {view === "structure" ? (
+            !projectFilesReady ? (
+              <p className="form-hint" role="status">
+                正在加载项目文件…
+              </p>
+            ) : structureFile ? (
+              <DtsStructureBrowserPanel
+                projectId={projectId}
+                repository={dtsRepo}
+                fileId={structureFile.id}
+                versionId={structureFile.currentVersionId}
+                canEdit
+                canEditCritical
+              />
+            ) : (
+              <p className="form-hint" role="status">
+                当前项目没有可浏览的结构化 DTS 文件。请先在「参数文件」中上传带当前版本的 DTS。
+              </p>
+            )
+          ) : null}
+          {view === "conflicts" ? (
+            <ParameterFileConflictPanel
+              open
+              variant="embedded"
+              projectId={projectId}
+              repository={fileRepository}
+              onClose={() => onNavigate(`${projectBase}/files`)}
+              onOpenConflictCountChange={handleOpenConflictCountChange}
+              onResolved={handleConflictResolved}
+            />
+          ) : null}
+        </ProjectOperationsDialog>
+      ) : null}
 
       <ProjectAdminFormDialog
         open={editingProjectId !== null}

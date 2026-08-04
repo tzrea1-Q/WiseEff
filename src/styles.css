@@ -11552,10 +11552,12 @@ td small {
 }
 
 @media (max-width: 1180px) {
-  .parameters-table-grid th:nth-child(3),
-  .parameters-table-grid td:nth-child(3),
-  .parameters-table-grid th:nth-child(6),
-  .parameters-table-grid td:nth-child(6) {
+  /* ParametersTable density only — project list has a different column map
+     (代号 / 基线 live in these slots) and must keep every column. */
+  .parameters-table-grid:not(.project-admin-library-grid) th:nth-child(3),
+  .parameters-table-grid:not(.project-admin-library-grid) td:nth-child(3),
+  .parameters-table-grid:not(.project-admin-library-grid) th:nth-child(6),
+  .parameters-table-grid:not(.project-admin-library-grid) td:nth-child(6) {
     display: none;
   }
 
@@ -14640,10 +14642,10 @@ body.xiaoze-popup-resize-active {
   gap: 6px;
 }
 
-/* Global `.parameters-table-scroll > table { min-width: 720px }` wins over the
-   shared ≤960px card layout and forces 720px-wide cards. Reset it for the
-   project list so status / counts / actions stay in the mobile viewport. */
-@media (max-width: 960px) {
+/* True mobile card stack only. Mid widths (641–960) keep a dense scrollable
+   table via `.param-admin-library-table` rules; do not force min-width:0 there
+   or columns crush with no horizontal scroll. */
+@media (max-width: 640px) {
   .param-admin-shell .project-admin-library-table .parameters-table-scroll {
     overflow: visible;
     max-height: none;
@@ -14660,20 +14662,87 @@ body.xiaoze-popup-resize-active {
     width: 100%;
     justify-content: flex-start;
   }
+
+  .project-admin-library-table .project-admin-h-rail {
+    display: none;
+  }
 }
 
-/* Desktop-only column sizing. Must stay outside the ≤960px card layout or
-   white-space:nowrap and a fixed actions width leak into mobile and clip cells. */
-@media (min-width: 961px) {
-  .project-admin-library-table .parameters-table-scroll {
+/* Table column sizing for any non-card shell (≥641). Must stay outside the
+   ≤640px card layout or white-space:nowrap leaks into cards and clips cells.
+   Table min-width keeps nowrap columns from being crushed. Native overlay
+   scrollbars stay hidden; `.project-admin-h-rail` is the always-visible drag
+   handle (same pattern as `.dts-workbench-list__h-rail`). */
+@media (min-width: 641px) {
+  .param-admin-shell .project-admin-library-table .parameters-table-scroll {
     max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .param-admin-shell .project-admin-library-table .parameters-table-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .param-admin-shell .project-admin-library-table .parameters-table-scroll > table,
+  .param-admin-shell .project-admin-library-table .project-admin-library-grid {
+    width: max-content;
+    min-width: 1080px;
+    max-width: none;
+    table-layout: auto;
+  }
+
+  .project-admin-library-table .project-admin-table-scroll-shell {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 0;
+  }
+
+  .project-admin-library-table .project-admin-h-rail {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    height: 16px;
+    overflow: hidden;
+    background: #d7e0ec;
+    border: 1px solid var(--outline);
+    border-top: 0;
+    border-radius: 0 0 8px 8px;
+    cursor: pointer;
+  }
+
+  .project-admin-library-table .project-admin-h-rail-thumb {
+    position: absolute;
+    top: 3px;
+    left: 0;
+    height: 10px;
+    min-width: 40px;
+    border-radius: 999px;
+    background: #5b6f8a;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .project-admin-library-table .project-admin-h-rail-thumb:active {
+    cursor: grabbing;
+    background: #3f536c;
+  }
+
+  .project-admin-library-table .parameters-table-scroll {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
   }
 
   .project-admin-library-grid th,
   .project-admin-library-grid td {
     position: static;
+    display: table-cell;
     width: auto;
-    min-width: 0;
+    min-width: max-content;
     max-width: none;
     box-shadow: none;
     white-space: nowrap;
@@ -14683,12 +14752,15 @@ body.xiaoze-popup-resize-active {
   .project-admin-library-grid th:first-child,
   .project-admin-library-grid td:first-child {
     width: 44px;
+    min-width: 44px;
     text-align: center;
   }
 
   .project-admin-library-grid th:nth-child(2),
   .project-admin-library-grid td:nth-child(2) {
-    width: 100%;
+    width: auto;
+    min-width: 140px;
+    max-width: 240px;
     white-space: normal;
   }
 
@@ -14699,10 +14771,36 @@ body.xiaoze-popup-resize-active {
     white-space: nowrap;
   }
 
+  /* 状态: keep the badge + filter compact and centered (global ParametersTable
+     nth-child(4) is 16%/120px and left-aligned for a different column map). */
+  .project-admin-library-grid th:nth-child(4),
+  .project-admin-library-grid td:nth-child(4) {
+    width: 1%;
+    min-width: 88px;
+    max-width: 104px;
+    text-align: center;
+    padding-inline: 6px;
+  }
+
+  .project-admin-library-grid th:nth-child(4) .param-admin-library-head-cell {
+    justify-content: center;
+    width: 100%;
+  }
+
+  /* 冲突: short numeric attention column — override global 16%/112px slot. */
   .project-admin-library-grid th:nth-child(5),
+  .project-admin-library-grid td:nth-child(5) {
+    width: 1%;
+    min-width: 56px;
+    max-width: 72px;
+    text-align: center;
+    padding-inline: 6px;
+  }
+
   .project-admin-library-grid th:nth-child(6),
   .project-admin-library-grid th:nth-child(7),
   .project-admin-library-grid th:nth-child(8),
+  .project-admin-library-grid td:nth-child(6),
   .project-admin-library-grid .project-admin-col-numeric {
     text-align: center;
   }
@@ -14710,7 +14808,7 @@ body.xiaoze-popup-resize-active {
   .project-admin-library-grid th:last-child,
   .project-admin-library-grid td:last-child {
     width: 1%;
-    min-width: 0;
+    min-width: max-content;
     white-space: nowrap;
     text-align: center;
   }
@@ -14719,6 +14817,10 @@ body.xiaoze-popup-resize-active {
     flex-flow: row nowrap;
     justify-content: center;
   }
+}
+
+.project-admin-h-rail {
+  display: none;
 }
 
 .project-admin-row-edit {
@@ -14821,6 +14923,10 @@ body.xiaoze-popup-resize-active {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.project-parameter-files-dialog-audit {
+  margin: 0 20px 8px;
 }
 
 .project-parameter-files-tabs {
@@ -24848,7 +24954,9 @@ button.dts-topology-navigator__disclosure:focus-visible {
 /* Keep the org admin library as a dense scrollable table in mid widths;
    the global ≤960px card stack is too sparse for 200+ specs. */
 @media (max-width: 960px) and (min-width: 641px) {
-  .param-admin-shell .param-admin-library-table .parameters-table-scroll {
+  /* Project list keeps its own visible horizontal scrollbar chrome
+     (see `.project-admin-library-table` rules); do not reset overflow here. */
+  .param-admin-shell .param-admin-library-table:not(.project-admin-library-table) .parameters-table-scroll {
     overflow: auto;
     border: 1px solid var(--outline);
     background: #fff;
@@ -24859,6 +24967,25 @@ button.dts-topology-navigator__disclosure:focus-visible {
     display: table;
     width: 100%;
     min-width: 560px;
+  }
+
+  .param-admin-shell .project-admin-library-table .project-admin-library-grid {
+    width: max-content;
+    min-width: 1080px;
+    max-width: none;
+  }
+
+  .param-admin-shell .project-admin-library-table .parameters-table-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-height: none;
+    border: 1px solid var(--outline);
+    background: #fff;
+    scrollbar-width: none;
+  }
+
+  .param-admin-shell .project-admin-library-table .parameters-table-scroll::-webkit-scrollbar {
+    display: none;
   }
 
   .param-admin-shell .param-admin-library-table .parameters-table-grid thead {
@@ -24914,13 +25041,14 @@ button.dts-topology-navigator__disclosure:focus-visible {
   }
 
   /* Freeze columns only for horizontally scrollable library grids.
-     Spec library fills the viewport — sticky-right opens a blank gap. */
-  .param-admin-shell .param-admin-library-table .parameters-table-grid:not(.parameter-spec-library-grid) th:first-child,
-  .param-admin-shell .param-admin-library-table .parameters-table-grid:not(.parameter-spec-library-grid) td:first-child,
-  .param-admin-shell .param-admin-library-table .parameters-table-grid:not(.parameter-spec-library-grid) th:nth-child(2),
-  .param-admin-shell .param-admin-library-table .parameters-table-grid:not(.parameter-spec-library-grid) td:nth-child(2),
-  .param-admin-shell .param-admin-library-table .parameters-table-grid:not(.parameter-spec-library-grid) th:last-child,
-  .param-admin-shell .param-admin-library-table .parameters-table-grid:not(.parameter-spec-library-grid) td:last-child {
+     Spec library fills the viewport — sticky-right opens a blank gap.
+     Project list uses its own static column sizing. */
+  .param-admin-shell .param-admin-library-table:not(.project-admin-library-table) .parameters-table-grid:not(.parameter-spec-library-grid) th:first-child,
+  .param-admin-shell .param-admin-library-table:not(.project-admin-library-table) .parameters-table-grid:not(.parameter-spec-library-grid) td:first-child,
+  .param-admin-shell .param-admin-library-table:not(.project-admin-library-table) .parameters-table-grid:not(.parameter-spec-library-grid) th:nth-child(2),
+  .param-admin-shell .param-admin-library-table:not(.project-admin-library-table) .parameters-table-grid:not(.parameter-spec-library-grid) td:nth-child(2),
+  .param-admin-shell .param-admin-library-table:not(.project-admin-library-table) .parameters-table-grid:not(.parameter-spec-library-grid) th:last-child,
+  .param-admin-shell .param-admin-library-table:not(.project-admin-library-table) .parameters-table-grid:not(.parameter-spec-library-grid) td:last-child {
     position: sticky;
   }
 

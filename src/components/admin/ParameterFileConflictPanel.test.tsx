@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
+import type { ParameterFileRepository, ParameterFileSyncConflict } from "@/application/ports/ParameterFileRepository";
 import { ParameterFileConflictPanel } from "./ParameterFileConflictPanel";
 
 const createParameterFileClient = vi.fn();
@@ -25,6 +25,72 @@ function createStubRepository(overrides: Partial<ParameterFileRepository> = {}):
 }
 
 describe("ParameterFileConflictPanel", () => {
+  it("does not refetch when an unstable onOpenConflictCountChange identity changes", async () => {
+    const listConflicts = vi.fn().mockResolvedValue([]);
+    const repository = createStubRepository({ listConflicts });
+    const onOpenConflictCountChange = vi.fn();
+
+    const { rerender } = render(
+      <ParameterFileConflictPanel
+        open
+        variant="embedded"
+        projectId="atlas"
+        repository={repository}
+        onClose={vi.fn()}
+        onOpenConflictCountChange={onOpenConflictCountChange}
+      />
+    );
+
+    expect(await screen.findByText("当前项目没有待处理冲突。")).toBeInTheDocument();
+    expect(listConflicts).toHaveBeenCalledTimes(1);
+    expect(onOpenConflictCountChange).toHaveBeenCalledWith(0);
+
+    rerender(
+      <ParameterFileConflictPanel
+        open
+        variant="embedded"
+        projectId="atlas"
+        repository={repository}
+        onClose={vi.fn()}
+        onOpenConflictCountChange={() => onOpenConflictCountChange(0)}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("当前项目没有待处理冲突。")).toBeInTheDocument();
+    });
+    expect(listConflicts).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("冲突列表加载中…")).not.toBeInTheDocument();
+  });
+
+  it("shows loading before empty state while conflicts are still fetching", async () => {
+    let resolveList: (value: ParameterFileSyncConflict[]) => void = () => undefined;
+    const listConflicts = vi.fn(
+      () =>
+        new Promise<ParameterFileSyncConflict[]>((resolve) => {
+          resolveList = resolve;
+        })
+    );
+    const repository = createStubRepository({ listConflicts });
+
+    render(
+      <ParameterFileConflictPanel
+        open
+        variant="embedded"
+        projectId="atlas"
+        repository={repository}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("冲突列表加载中…")).toBeInTheDocument();
+    expect(screen.queryByText("当前项目没有待处理冲突。")).not.toBeInTheDocument();
+
+    resolveList([]);
+    expect(await screen.findByText("当前项目没有待处理冲突。")).toBeInTheDocument();
+    expect(screen.queryByText("冲突列表加载中…")).not.toBeInTheDocument();
+  });
+
   it("renders open conflicts from the injected repository without HTTP client", async () => {
     const repository = createStubRepository({
       listConflicts: vi.fn().mockResolvedValue([
