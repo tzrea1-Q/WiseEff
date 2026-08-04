@@ -419,6 +419,20 @@ export function createHttpParameterTopologyRepository(
       );
       return specDetailFromDto(response.item);
     },
+    async reattributeParameterSpec(specId, input) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/reattribute`,
+        input
+      );
+      return specDetailFromDto(response.item);
+    },
+    async renameParameterSpecPropertyKey(specId, input) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSpecDetailDto>>(
+        `/api/v2/parameter-specs/${encodeURIComponent(specId)}/rename-property-key`,
+        input
+      );
+      return specDetailFromDto(response.item);
+    },
     async getSpecVersionCutoverImpact(specId) {
       const response = await apiClient.get<ItemEnvelope<NonNullable<ParameterSpecDetailDto["cutover"]>>>(
         `/api/v2/parameter-specs/${encodeURIComponent(specId)}/cutover`

@@ -973,6 +973,7 @@ export async function listParameterSpecRows(
   if (input.propertyKey) {
     values.push(input.propertyKey);
     conditions.push(`coalesce(
+      ps.property_key,
       dps.property_key,
       (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))]
     ) = $${values.length}`);
@@ -980,7 +981,7 @@ export async function listParameterSpecRows(
   if (input.q) {
     values.push(`%${input.q}%`);
     conditions.push(
-      `(ps.specification_key ilike $${values.length} or coalesce(dps.property_key, '') ilike $${values.length} or coalesce(psv.display_name, '') ilike $${values.length} or coalesce(asub.display_name, '') ilike $${values.length})`,
+      `(ps.specification_key ilike $${values.length} or coalesce(ps.property_key, dps.property_key, '') ilike $${values.length} or coalesce(psv.display_name, '') ilike $${values.length} or coalesce(asub.display_name, '') ilike $${values.length})`,
     );
   }
 
@@ -992,6 +993,7 @@ export async function listParameterSpecRows(
       ps.source_kind,
       ps.specification_key,
       coalesce(
+        ps.property_key,
         dps.property_key,
         nullif(
           (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))],
@@ -1165,6 +1167,53 @@ type SpecDetailRow = SpecListRow & {
   version_status: "draft" | "active" | "superseded" | null;
 };
 
+/**
+ * Locate a definition by its business identity triple (ADR-0017).
+ * Does not re-derive `parameter_specs.id` from the triple — historical ids are surrogates.
+ */
+export async function findParameterSpecByIdentity(
+  db: Queryable,
+  input: {
+    organizationId: string | null;
+    attributionSubjectId: string;
+    propertyKey: string;
+  },
+): Promise<{ parameterSpecId: string; parameterSpecVersionId: string | null } | null> {
+  const result = await db.query<{ id: string; version_id: string | null }>(
+    `
+    select ps.id, psv.id as version_id
+    from parameter_specs ps
+    left join lateral (
+      select id
+      from parameter_spec_versions
+      where parameter_spec_id = ps.id
+      order by
+        case version_status
+          when 'active' then 0
+          when 'superseded' then 1
+          else 2
+        end,
+        version desc
+      limit 1
+    ) psv on true
+    where ps.attribution_subject_id = $2
+      and coalesce(ps.property_key, '') = $3
+      and (
+        ($1::text is null and ps.organization_id is null)
+        or ps.organization_id = $1
+      )
+    limit 1
+    `,
+    [input.organizationId, input.attributionSubjectId, input.propertyKey],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    parameterSpecId: row.id,
+    parameterSpecVersionId: row.version_id,
+  };
+}
+
 export async function getParameterSpecRow(
   db: Queryable,
   input: { organizationId: string; specId: string },
@@ -1177,6 +1226,7 @@ export async function getParameterSpecRow(
       ps.source_kind,
       ps.specification_key,
       coalesce(
+        ps.property_key,
         dps.property_key,
         nullif(
           (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))],
@@ -1301,29 +1351,40 @@ export async function upsertMatchedPropertySpec(
 
   let attributionSubjectId: string | null = null;
   let manualIds: ReturnType<typeof buildSubjectScopedManualSpecIds> | null = null;
+  let parameterSpecId = property.parameterSpecId;
   if (overlayOrgId && overlayCompatible) {
     attributionSubjectId = await ensureAttributionSubjectForCompatible(db, {
       organizationId: overlayOrgId,
       compatible: overlayCompatible,
     });
-    manualIds = buildSubjectScopedManualSpecIds({
+    const existing = await findParameterSpecByIdentity(db, {
       organizationId: overlayOrgId,
       attributionSubjectId,
       propertyKey: property.propertyKey,
     });
+    if (existing) {
+      parameterSpecId = existing.parameterSpecId;
+    } else {
+      manualIds = buildSubjectScopedManualSpecIds({
+        organizationId: overlayOrgId,
+        attributionSubjectId,
+        propertyKey: property.propertyKey,
+      });
+      parameterSpecId = manualIds.parameterSpecId;
+    }
   }
 
-  const parameterSpecId = manualIds?.parameterSpecId ?? property.parameterSpecId;
   const parameterSpecVersionId = property.id;
 
   await db.query(
     `
     insert into parameter_specs (
-      id, organization_id, source_kind, specification_key, definition_lifecycle, attribution_subject_id
+      id, organization_id, source_kind, specification_key, definition_lifecycle, attribution_subject_id, property_key
     )
-    values ($1, $2, $3, $4, $5, $6)
+    values ($1, $2, $3, $4, $5, $6, $7)
     on conflict (id) do update set
-      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id)
+      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id),
+      property_key = coalesce(parameter_specs.property_key, excluded.property_key)
     `,
     [
       parameterSpecId,
@@ -1332,6 +1393,7 @@ export async function upsertMatchedPropertySpec(
       manualIds?.specificationKey ?? `${property.schemaNamespace}/${property.propertyKey}`,
       property.lifecycle === "deprecated" ? "deprecated" : property.lifecycle === "active" ? "active" : "draft",
       attributionSubjectId,
+      property.propertyKey,
     ],
   );
   await db.query(

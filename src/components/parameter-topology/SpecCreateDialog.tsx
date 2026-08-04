@@ -9,7 +9,14 @@ import {
 } from "@/components/parameter-topology/moduleAttributionTreeUtils";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
-
+import { SPEC_EDITOR_FIELD_HELP } from "./specEditorFieldHelp";
+import { ValueShapeFields } from "./ValueShapeFields";
+import {
+  defaultConstraintsForShape,
+  parseOptionalJson,
+  shapeStateForNewKind,
+  valueFromShapeState,
+} from "./valueShapeEditor";
 export type SpecCreateSubjectOption = {
   moduleId: string;
   attributionSubjectId: string;
@@ -28,83 +35,6 @@ export type SpecCreateDialogProps = {
   onCancel: () => void;
   onConfirm: (input: CreateParameterSpecInput & { coverageCompatible?: string }) => void;
 };
-
-type ValueShapeKind =
-  | "unknown"
-  | "bool"
-  | "empty"
-  | "string"
-  | "string-list"
-  | "cells"
-  | "phandle-list"
-  | "u32-array"
-  | "bytes"
-  | "mixed";
-
-const VALUE_SHAPE_OPTIONS: Array<{ value: ValueShapeKind; label: string }> = [
-  { value: "unknown", label: "unknown（草稿可后补）" },
-  { value: "bool", label: "bool" },
-  { value: "empty", label: "empty" },
-  { value: "string", label: "string" },
-  { value: "string-list", label: "string-list" },
-  { value: "cells", label: "cells" },
-  { value: "phandle-list", label: "phandle-list" },
-  { value: "u32-array", label: "u32-array" },
-  { value: "bytes", label: "bytes" },
-  { value: "mixed", label: "mixed" },
-];
-
-function needsCellFields(kind: ValueShapeKind): boolean {
-  return kind === "cells" || kind === "phandle-list" || kind === "u32-array";
-}
-
-function buildValueShape(
-  kind: ValueShapeKind,
-  bits: number,
-  groups: number,
-  cellsPerGroup: number,
-  bytesLength: number,
-): Record<string, unknown> {
-  if (needsCellFields(kind)) {
-    return {
-      kind,
-      bits: kind === "u32-array" ? 32 : bits,
-      groups,
-      cellsPerGroup,
-    };
-  }
-  if (kind === "bytes") {
-    return { kind, length: bytesLength };
-  }
-  return { kind };
-}
-
-function defaultConstraintsForShape(shape: Record<string, unknown>): Record<string, unknown> {
-  const kind = String(shape.kind ?? "");
-  if (kind === "cells" || kind === "u32-array" || kind === "phandle-list") {
-    const cells =
-      typeof shape.cellsPerGroup === "number" && Number.isInteger(shape.cellsPerGroup)
-        ? shape.cellsPerGroup
-        : typeof shape.cells === "number" && Number.isInteger(shape.cells)
-          ? shape.cells
-          : null;
-    return cells == null ? {} : { cells };
-  }
-  if (kind === "bytes" && typeof shape.length === "number" && Number.isFinite(shape.length)) {
-    return { minLength: shape.length, maxLength: shape.length };
-  }
-  return {};
-}
-
-function parseOptionalJson(raw: string, label: string): { ok: true; value: unknown } | { ok: false; error: string } {
-  const trimmed = raw.trim();
-  if (!trimmed) return { ok: true, value: undefined };
-  try {
-    return { ok: true, value: JSON.parse(trimmed) as unknown };
-  } catch {
-    return { ok: false, error: `${label} 不是合法 JSON。` };
-  }
-}
 
 export function subjectsFromModules(modules: ParameterModule[]): SpecCreateSubjectOption[] {
   return modules
@@ -174,13 +104,7 @@ export function SpecCreateDialog({
   const displayNameId = useId();
   const descriptionId = useId();
   const documentationId = useId();
-  const valueShapeId = useId();
-  const bitsId = useId();
-  const groupsId = useId();
-  const cellsPerGroupId = useId();
-  const bytesLengthId = useId();
   const constraintsId = useId();
-  const unitsId = useId();
   const exampleValueId = useId();
   const reasonId = useId();
   const overridePlatformId = useId();
@@ -198,15 +122,14 @@ export function SpecCreateDialog({
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [documentation, setDocumentation] = useState("");
-  const [valueShapeKind, setValueShapeKind] = useState<ValueShapeKind>("unknown");
-  const [bits, setBits] = useState(32);
-  const [groups, setGroups] = useState(1);
-  const [cellsPerGroup, setCellsPerGroup] = useState(1);
-  const [bytesLength, setBytesLength] = useState(1);
+  const [valueShape, setValueShape] = useState<Record<string, unknown>>(() =>
+    valueFromShapeState(shapeStateForNewKind("unknown"), "create"),
+  );
   const [constraintsText, setConstraintsText] = useState("");
   const [units, setUnits] = useState("");
   const [exampleValueText, setExampleValueText] = useState("");
-  const [reason, setReason] = useState("library create");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [reason, setReason] = useState("");
   const [overridePlatform, setOverridePlatform] = useState(false);
   const [coverageCompatible, setCoverageCompatible] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -225,12 +148,17 @@ export function SpecCreateDialog({
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopImmediatePropagation();
-        if (!busy) onCancel();
+        if (busy) return;
+        if (confirmOpen) {
+          setConfirmOpen(false);
+          return;
+        }
+        onCancel();
       }
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [busy, onCancel]);
+  }, [busy, onCancel, confirmOpen]);
 
   const selected = useMemo(
     () => subjects.find((subject) => subject.moduleId === selectedModuleId) ?? null,
@@ -238,27 +166,25 @@ export function SpecCreateDialog({
   );
   const attributionSubjectId = selected?.attributionSubjectId ?? "";
 
-  const canConfirm =
+  const canOpenConfirm =
     !busy &&
     !subjectsLoading &&
     attributionSubjectId.trim().length > 0 &&
-    propertyKey.trim().length > 0 &&
-    reason.trim().length > 0;
+    propertyKey.trim().length > 0;
 
-  const handleConfirm = () => {
-    if (!canConfirm) return;
+  const buildCreateInput = (auditReason: string) => {
     setLocalError(null);
 
-    const valueShape = buildValueShape(valueShapeKind, bits, groups, cellsPerGroup, bytesLength);
     const constraintsParsed = parseOptionalJson(constraintsText, "约束 constraints");
     if (!constraintsParsed.ok) {
       setLocalError(constraintsParsed.error);
-      return;
+      return null;
     }
-    const exampleParsed = parseOptionalJson(exampleValueText, "示例值");
-    if (!exampleParsed.ok) {
-      setLocalError(exampleParsed.error);
-      return;
+    const exampleTrimmed = exampleValueText.trim();
+    let exampleValue: unknown = undefined;
+    if (exampleTrimmed) {
+      const exampleParsed = parseOptionalJson(exampleTrimmed, "示例值");
+      exampleValue = exampleParsed.ok ? exampleParsed.value : exampleTrimmed;
     }
 
     const constraints =
@@ -273,35 +199,56 @@ export function SpecCreateDialog({
         Array.isArray(constraintsParsed.value))
     ) {
       setLocalError("约束 constraints 必须是 JSON 对象。");
-      return;
+      return null;
     }
 
-    onConfirm({
+    if (!auditReason.trim()) {
+      setLocalError("请填写变更原因。");
+      return null;
+    }
+
+    return {
       attributionSubjectId,
       propertyKey: propertyKey.trim(),
-      reason: reason.trim(),
+      reason: auditReason.trim(),
       ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
       ...(description.trim() ? { description: description.trim() } : {}),
       documentation: documentation.trim(),
       valueShape,
       constraints,
       ...(units.trim() ? { units: units.trim() } : { units: null }),
-      ...(exampleParsed.value !== undefined ? { exampleValue: exampleParsed.value } : {}),
+      ...(exampleValue !== undefined ? { exampleValue } : {}),
       ...(overridePlatform ? { overridePlatform: true } : {}),
       coverageCompatible: coverageCompatible.trim() || undefined,
-    });
+    } satisfies CreateParameterSpecInput & { coverageCompatible?: string };
   };
 
-  const displayError = localError ?? error;
+  const handleOpenConfirm = () => {
+    if (!canOpenConfirm) return;
+    // Validate content fields before asking for audit reason.
+    const preview = buildCreateInput("__preview__");
+    if (!preview) return;
+    setReason("");
+    setConfirmOpen(true);
+  };
+
+  const handleConfirm = () => {
+    const input = buildCreateInput(reason);
+    if (!input) return;
+    onConfirm(input);
+  };
+
+  const displayError = confirmOpen ? null : (localError ?? error);
 
   return (
+    <>
     <div
       className="modal-backdrop param-admin-module-edit-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label="新建参数定义"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !busy) onCancel();
+        if (event.target === event.currentTarget && !busy && !confirmOpen) onCancel();
       }}
     >
       <div
@@ -407,75 +354,37 @@ export function SpecCreateDialog({
           </div>
 
           <div className="organization-driver-schema-dialog__field">
-            <label htmlFor={valueShapeId}>值形状 valueShape</label>
-            <select
-              id={valueShapeId}
-              value={valueShapeKind}
+            <label htmlFor={exampleValueId}>示例值（JSON 或原文，可空）</label>
+            <textarea
+              id={exampleValueId}
+              value={exampleValueText}
               disabled={busy}
-              onChange={(event) => setValueShapeKind(event.target.value as ValueShapeKind)}
-            >
-              {VALUE_SHAPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              rows={2}
+              placeholder="仅作示例；改 cell 类形态时会推断 bits / cellsPerGroup"
+              className="parameter-admin-code-editor"
+              onChange={(event) => setExampleValueText(event.target.value)}
+            />
           </div>
 
-          {needsCellFields(valueShapeKind) ? (
-            <>
-              <div className="organization-driver-schema-dialog__field">
-                <label htmlFor={bitsId}>bits</label>
-                <input
-                  id={bitsId}
-                  type="number"
-                  min={8}
-                  step={8}
-                  value={bits}
-                  disabled={busy || valueShapeKind === "u32-array"}
-                  onChange={(event) => setBits(Number(event.target.value) || 32)}
-                />
-              </div>
-              <div className="organization-driver-schema-dialog__field">
-                <label htmlFor={groupsId}>groups</label>
-                <input
-                  id={groupsId}
-                  type="number"
-                  min={1}
-                  value={groups}
-                  disabled={busy}
-                  onChange={(event) => setGroups(Math.max(1, Number(event.target.value) || 1))}
-                />
-              </div>
-              <div className="organization-driver-schema-dialog__field">
-                <label htmlFor={cellsPerGroupId}>cellsPerGroup</label>
-                <input
-                  id={cellsPerGroupId}
-                  type="number"
-                  min={1}
-                  value={cellsPerGroup}
-                  disabled={busy}
-                  onChange={(event) =>
-                    setCellsPerGroup(Math.max(1, Number(event.target.value) || 1))
-                  }
-                />
-              </div>
-            </>
-          ) : null}
-
-          {valueShapeKind === "bytes" ? (
-            <div className="organization-driver-schema-dialog__field">
-              <label htmlFor={bytesLengthId}>bytes.length</label>
-              <input
-                id={bytesLengthId}
-                type="number"
-                min={0}
-                value={bytesLength}
-                disabled={busy}
-                onChange={(event) => setBytesLength(Math.max(0, Number(event.target.value) || 0))}
-              />
-            </div>
-          ) : null}
+          <ValueShapeFields
+            value={valueShape}
+            onChange={setValueShape}
+            mode="create"
+            disabled={busy}
+            exampleValueText={exampleValueText}
+            propertyKey={propertyKey.trim() || "property"}
+            units={{
+              value: units,
+              onChange: setUnits,
+            }}
+            descriptions={{
+              valueShape: SPEC_EDITOR_FIELD_HELP.valueShape,
+              bits: SPEC_EDITOR_FIELD_HELP.bits,
+              cellsPerGroup: SPEC_EDITOR_FIELD_HELP.cellsPerGroup,
+              bytesLength: SPEC_EDITOR_FIELD_HELP.bytesLength,
+              units: SPEC_EDITOR_FIELD_HELP.units,
+            }}
+          />
 
           <div className="organization-driver-schema-dialog__field">
             <label htmlFor={constraintsId}>约束 constraints（JSON，可空）</label>
@@ -487,41 +396,6 @@ export function SpecCreateDialog({
               placeholder='留空则按 valueShape 推导；例如 {"cells":1}'
               className="parameter-admin-code-editor"
               onChange={(event) => setConstraintsText(event.target.value)}
-            />
-          </div>
-
-          <div className="organization-driver-schema-dialog__field">
-            <label htmlFor={unitsId}>单位</label>
-            <input
-              id={unitsId}
-              value={units}
-              disabled={busy}
-              placeholder="例如 uV、mA"
-              onChange={(event) => setUnits(event.target.value)}
-            />
-          </div>
-
-          <div className="organization-driver-schema-dialog__field">
-            <label htmlFor={exampleValueId}>示例值（JSON，可空）</label>
-            <textarea
-              id={exampleValueId}
-              value={exampleValueText}
-              disabled={busy}
-              rows={2}
-              placeholder='仅作示例，不参与校验；例如 "<&gpio13 29 0>" 或 [1,2]'
-              className="parameter-admin-code-editor"
-              onChange={(event) => setExampleValueText(event.target.value)}
-            />
-          </div>
-
-          <div className="organization-driver-schema-dialog__field">
-            <label htmlFor={reasonId}>变更原因</label>
-            <input
-              id={reasonId}
-              value={reason}
-              disabled={busy}
-              placeholder="写入审计"
-              onChange={(event) => setReason(event.target.value)}
             />
           </div>
 
@@ -565,11 +439,96 @@ export function SpecCreateDialog({
           <button type="button" className="button subtle" onClick={onCancel} disabled={busy}>
             取消
           </button>
-          <button type="button" className="button primary" disabled={!canConfirm} onClick={handleConfirm}>
+          <button
+            type="button"
+            className="button primary"
+            disabled={!canOpenConfirm}
+            onClick={handleOpenConfirm}
+          >
             {busy ? "保存中…" : "保存草稿"}
           </button>
         </div>
       </div>
     </div>
+      {confirmOpen ? (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="确认新建参数定义"
+        >
+          <div
+            className="submission-dialog param-admin-confirm-dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="submission-dialog-head param-admin-editor-dialog-head">
+              <div className="param-admin-editor-dialog-head-text">
+                <span className="eyebrow">参数定义库</span>
+                <h2>确认新建</h2>
+                <p>
+                  将创建属性键「{propertyKey.trim() || "—"}」的草稿定义；请填写变更原因以便审计留痕。
+                </p>
+              </div>
+              <button
+                type="button"
+                className="audit-dialog-close-icon"
+                onClick={() => {
+                  setConfirmOpen(false);
+                  setReason("");
+                }}
+                aria-label="关闭"
+                disabled={busy}
+              >
+                <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="param-admin-confirm-dialog-body">
+              <label className="param-admin-confirm-field" htmlFor={reasonId}>
+                <span>变更原因</span>
+                <textarea
+                  id={reasonId}
+                  aria-label="变更原因"
+                  value={reason}
+                  rows={4}
+                  placeholder="必填，写入审计"
+                  disabled={busy}
+                  autoFocus
+                  onChange={(event) => {
+                    setReason(event.target.value);
+                    setLocalError(null);
+                  }}
+                />
+              </label>
+              {localError ? (
+                <p className="form-error" role="alert">
+                  {localError}
+                </p>
+              ) : null}
+            </div>
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="button subtle"
+                disabled={busy}
+                onClick={() => {
+                  setConfirmOpen(false);
+                  setReason("");
+                }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="button primary"
+                disabled={busy}
+                onClick={handleConfirm}
+              >
+                {busy ? "保存中…" : "确认创建"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

@@ -96,8 +96,10 @@ export type ActivateParameterSpecInput = {
   constraints: Record<string, unknown>;
   documentation: string;
   reason: string;
-  displayName?: string;
-  description?: string;
+  displayName?: string | null;
+  description?: string | null;
+  units?: string | null;
+  exampleValue?: unknown;
   coverageClaim?: {
     kind: "overlay-property";
     overlayId?: string;
@@ -129,11 +131,10 @@ export type UpdateParameterSpecInput = {
   constraints: Record<string, unknown>;
   documentation: string;
   reason: string;
-  displayName?: string;
-  description?: string;
+  displayName?: string | null;
+  description?: string | null;
   units?: string | null;
   exampleValue?: unknown;
-  policyTarget?: unknown;
 };
 
 export type DeprecateParameterSpecInput = {
@@ -141,6 +142,16 @@ export type DeprecateParameterSpecInput = {
 };
 
 export type RestoreParameterSpecInput = {
+  reason: string;
+};
+
+export type ReattributeParameterSpecInput = {
+  attributionSubjectId: string;
+  reason: string;
+};
+
+export type RenameParameterSpecPropertyKeyInput = {
+  propertyKey: string;
   reason: string;
 };
 
@@ -152,6 +163,11 @@ export interface ParameterTopologyRepository {
   updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
   deprecateParameterSpec(specId: string, input: DeprecateParameterSpecInput): Promise<ParameterSpecDetail>;
   restoreParameterSpec(specId: string, input: RestoreParameterSpecInput): Promise<ParameterSpecDetail>;
+  reattributeParameterSpec(specId: string, input: ReattributeParameterSpecInput): Promise<ParameterSpecDetail>;
+  renameParameterSpecPropertyKey(
+    specId: string,
+    input: RenameParameterSpecPropertyKeyInput,
+  ): Promise<ParameterSpecDetail>;
   getSpecVersionCutoverImpact(specId: string): Promise<ParameterSpecCutoverSummary>;
   prepareSpecVersionCutover(
     specId: string,

@@ -26,10 +26,12 @@ import {
 } from "./coverageClaim";
 import {
   countOpenSpecReviewTasksForRevision,
+  findParameterSpecByIdentity,
   getParameterSpecRow,
   getSpecReviewTaskById,
   listParameterSpecRows,
   listSpecReviewTaskRows,
+  loadReferenceCountsBySpecIds,
   lockOpenSpecReviewTask,
   resolveSpecReviewTaskRow,
   type ParameterSpecDetailRow,
@@ -52,6 +54,8 @@ import type {
   ParameterSpecSummaryDto,
   ResolveSpecReviewTaskBody,
   RestoreParameterSpecBody,
+  ReattributeParameterSpecBody,
+  RenameParameterSpecPropertyKeyBody,
   PrepareParameterSpecCutoverBody,
   FinalizeParameterSpecCutoverBody,
   UpdateParameterSpecBody,
@@ -693,8 +697,15 @@ function activationContentChanged(
   if (stableJson(spec.valueShape) !== stableJson(input.valueShape)) return true;
   if (stableJson(spec.constraints ?? {}) !== stableJson(nextConstraints)) return true;
   if ((spec.documentation ?? "").trim() !== input.documentation.trim()) return true;
-  if (input.displayName != null && input.displayName !== (spec.displayName ?? null)) return true;
-  if (input.description != null && input.description !== (spec.description ?? null)) return true;
+  if (input.displayName !== undefined && input.displayName !== (spec.displayName ?? null)) return true;
+  if (input.description !== undefined && input.description !== (spec.description ?? null)) return true;
+  if (input.units !== undefined && input.units !== (spec.units ?? null)) return true;
+  if (
+    input.exampleValue !== undefined &&
+    stableJson(input.exampleValue) !== stableJson(spec.exampleValue ?? null)
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -823,10 +834,10 @@ export async function createParameterSpec(
       `
       insert into parameter_specs (
         id, organization_id, source_kind, specification_key,
-        definition_lifecycle, attribution_subject_id
-      ) values ($1, $2, 'manual', $3, 'draft', $4)
+        definition_lifecycle, attribution_subject_id, property_key
+      ) values ($1, $2, 'manual', $3, 'draft', $4, $5)
       `,
-      [ids.parameterSpecId, auth.organization.id, ids.specificationKey, attributionSubjectId],
+      [ids.parameterSpecId, auth.organization.id, ids.specificationKey, attributionSubjectId, propertyKey],
     );
     await tx.query(
       `
@@ -980,8 +991,17 @@ export async function activateParameterSpec(
       }
     }
 
-    const displayName = input.displayName ?? spec.displayName ?? spec.propertyKey ?? input.specId;
-    const description = input.description ?? spec.description ?? displayName;
+    const displayName =
+      input.displayName === undefined
+        ? (spec.displayName ?? spec.propertyKey ?? input.specId)
+        : (input.displayName?.trim() || spec.propertyKey || input.specId);
+    const description =
+      input.description === undefined
+        ? (spec.description ?? displayName)
+        : (input.description?.trim() || displayName);
+    const nextUnits = input.units === undefined ? (spec.units ?? null) : input.units;
+    const nextExampleValue =
+      input.exampleValue === undefined ? (spec.exampleValue ?? null) : input.exampleValue;
     const contentChanged = activationContentChanged(spec, input, nextConstraints);
     const createSuccessor = spec.lifecycle === "active" && contentChanged;
     let activatedVersionId = spec.currentVersionId;
@@ -1014,10 +1034,10 @@ export async function activateParameterSpec(
           spec.schemaDefault === undefined || spec.schemaDefault === null
             ? null
             : JSON.stringify(spec.schemaDefault),
-          spec.exampleValue === undefined || spec.exampleValue === null
+          nextExampleValue === undefined || nextExampleValue === null
             ? null
-            : JSON.stringify(spec.exampleValue),
-          spec.units ?? null,
+            : JSON.stringify(nextExampleValue),
+          nextUnits,
           JSON.stringify(nextConstraints),
           input.documentation,
           null,
@@ -1119,7 +1139,8 @@ export async function activateParameterSpec(
           lifecycle = 'active',
           version_status = 'active',
           activated_at = coalesce(activated_at, now()),
-          units = coalesce($6, units),
+          units = case when $9::boolean then $6 else units end,
+          example_value = case when $10::boolean then $11::jsonb else example_value end,
           constraints = $7::jsonb,
           documentation = $8
         where id = $1 and parameter_spec_id = $2
@@ -1130,9 +1151,12 @@ export async function activateParameterSpec(
           displayName,
           description,
           JSON.stringify(input.valueShape),
-          spec.units ?? null,
+          nextUnits,
           JSON.stringify(nextConstraints),
           input.documentation,
+          input.units !== undefined,
+          input.exampleValue !== undefined,
+          input.exampleValue === undefined ? null : JSON.stringify(input.exampleValue),
         ],
       );
     }
@@ -1149,10 +1173,19 @@ export async function activateParameterSpec(
     await tx.query(
       `
       update dts_property_specs
-      set constraints = $2::jsonb, documentation = $3
+      set
+        constraints = $2::jsonb,
+        documentation = $3,
+        units = case when $5::boolean then $4 else units end
       where parameter_spec_id = $1
       `,
-      [input.specId, JSON.stringify(nextConstraints), input.documentation],
+      [
+        input.specId,
+        JSON.stringify(nextConstraints),
+        input.documentation,
+        nextUnits,
+        input.units !== undefined,
+      ],
     );
 
     await writeGovernanceAudit(
@@ -1223,11 +1256,11 @@ export async function updateParameterSpec(
       `
       update parameter_spec_versions
       set
-        display_name = coalesce($3, display_name),
-        description = coalesce($4, description),
+        display_name = case when $10::boolean then $3 else display_name end,
+        description = case when $11::boolean then $4 else description end,
         value_shape = $5::jsonb,
-        example_value = coalesce($6::jsonb, example_value),
-        units = coalesce($7, units),
+        example_value = case when $12::boolean then $6::jsonb else example_value end,
+        units = case when $13::boolean then $7 else units end,
         constraints = $8::jsonb,
         documentation = $9
       where id = $1 and parameter_spec_id = $2
@@ -1235,13 +1268,17 @@ export async function updateParameterSpec(
       [
         spec.currentVersionId,
         input.specId,
-        input.displayName ?? spec.displayName,
-        input.description ?? spec.description,
+        input.displayName === undefined ? null : input.displayName,
+        input.description === undefined ? null : input.description,
         JSON.stringify(nextValueShape),
         input.exampleValue === undefined ? null : JSON.stringify(input.exampleValue),
         input.units === undefined ? null : input.units,
         JSON.stringify(nextConstraints),
         input.documentation,
+        input.displayName !== undefined,
+        input.description !== undefined,
+        input.exampleValue !== undefined,
+        input.units !== undefined,
       ],
     );
     await tx.query(
@@ -1250,7 +1287,7 @@ export async function updateParameterSpec(
       set
         constraints = $2::jsonb,
         documentation = $3,
-        units = coalesce($4, units)
+        units = case when $5::boolean then $4 else units end
       where parameter_spec_id = $1
       `,
       [
@@ -1258,6 +1295,7 @@ export async function updateParameterSpec(
         JSON.stringify(nextConstraints),
         input.documentation,
         input.units === undefined ? null : input.units,
+        input.units !== undefined,
       ],
     );
 
@@ -1416,6 +1454,302 @@ export async function restoreParameterSpec(
           reasonHash: hashReason(input.reason),
           previousLifecycle: spec.lifecycle,
           nextLifecycle,
+        },
+      },
+      context,
+    );
+
+    const refreshed = await getParameterSpecRow(tx, {
+      organizationId: auth.organization.id,
+      specId: input.specId,
+    });
+    if (!refreshed) {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+    }
+    return { item: toParameterSpecDetailDto(refreshed) };
+  });
+}
+
+async function requireGovernableSpec(
+  tx: Queryable,
+  auth: AuthContext,
+  specId: string,
+): Promise<ParameterSpecDetailRow> {
+  return isPlatformSuperAdmin(auth)
+    ? requireOrgOrGlobalSpec(tx, {
+        organizationId: auth.organization.id,
+        parameterSpecId: specId,
+      })
+    : requireOrgOwnedSpec(tx, {
+        organizationId: auth.organization.id,
+        parameterSpecId: specId,
+      });
+}
+
+async function assertAttributionSubjectUsable(
+  tx: Queryable,
+  input: { organizationId: string | null; attributionSubjectId: string },
+) {
+  const subject = await tx.query<{ subject_kind: string; organization_id: string | null }>(
+    `
+    select subject_kind, organization_id
+    from attribution_subjects
+    where id = $1
+      and (
+        ($2::text is null and organization_id is null)
+        or organization_id = $2
+        or organization_id is null
+      )
+    limit 1
+    `,
+    [input.attributionSubjectId, input.organizationId],
+  );
+  const subjectRow = subject.rows[0];
+  if (!subjectRow) {
+    throw new ApiError("NOT_FOUND", "Attribution subject was not found.", 404, {
+      attributionSubjectId: input.attributionSubjectId,
+    });
+  }
+  if (
+    subjectRow.subject_kind !== "driver-registration" &&
+    subjectRow.subject_kind !== "node-type-definition"
+  ) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Parameter definitions must bind to a driver registration or node-type definition.",
+      400,
+      { subjectKind: subjectRow.subject_kind },
+    );
+  }
+}
+
+async function assertIdentityTripleAvailable(
+  tx: Queryable,
+  input: {
+    organizationId: string | null;
+    attributionSubjectId: string;
+    propertyKey: string;
+    excludeSpecId: string;
+  },
+) {
+  const conflict = await findParameterSpecByIdentity(tx, {
+    organizationId: input.organizationId,
+    attributionSubjectId: input.attributionSubjectId,
+    propertyKey: input.propertyKey,
+  });
+  if (conflict && conflict.parameterSpecId !== input.excludeSpecId) {
+    const blocker = await getParameterSpecRow(tx, {
+      organizationId: input.organizationId ?? "",
+      specId: conflict.parameterSpecId,
+    });
+    throw new ApiError(
+      "CONFLICT",
+      "A parameter definition already exists for this subject and property key.",
+      409,
+      {
+        parameterSpecId: conflict.parameterSpecId,
+        lifecycle: blocker?.lifecycle ?? null,
+        attributionSubjectId: input.attributionSubjectId,
+        propertyKey: input.propertyKey,
+      },
+    );
+  }
+}
+
+/**
+ * Correct a mis-authored attribution subject in place (ADR-0017).
+ * Allowed in any lifecycle; does not rewrite `parameter_specs.id`.
+ */
+export async function reattributeParameterSpec(
+  db: Database,
+  auth: AuthContext,
+  input: ReattributeParameterSpecBody & { specId: string },
+  context: AuditCorrelationContext = {},
+): Promise<{ item: ParameterSpecDetailDto }> {
+  requireCanAdmin(auth);
+  const nextSubjectId = input.attributionSubjectId.trim();
+
+  return db.transaction(async (tx) => {
+    const spec = await requireGovernableSpec(tx, auth, input.specId);
+    const previousSubjectId = spec.attributionSubjectId;
+    const propertyKey = spec.propertyKey?.trim();
+    if (!propertyKey) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Parameter definition is missing property_key; cannot reattribute.",
+        400,
+        { parameterSpecId: input.specId },
+      );
+    }
+    if (previousSubjectId === nextSubjectId) {
+      return { item: toParameterSpecDetailDto(spec) };
+    }
+
+    await assertAttributionSubjectUsable(tx, {
+      organizationId: spec.organizationId,
+      attributionSubjectId: nextSubjectId,
+    });
+    await assertIdentityTripleAvailable(tx, {
+      organizationId: spec.organizationId,
+      attributionSubjectId: nextSubjectId,
+      propertyKey,
+      excludeSpecId: input.specId,
+    });
+
+    const derived = buildSubjectScopedManualSpecIds({
+      organizationId: spec.organizationId,
+      attributionSubjectId: nextSubjectId,
+      propertyKey,
+    });
+
+    await tx.query(
+      `
+      update parameter_specs
+      set attribution_subject_id = $2,
+          property_key = $3,
+          specification_key = $4
+      where id = $1
+      `,
+      [input.specId, nextSubjectId, propertyKey, derived.specificationKey],
+    );
+    await tx.query(
+      `
+      update dts_property_specs
+      set schema_namespace = $2,
+          property_key = $3
+      where parameter_spec_id = $1
+      `,
+      [input.specId, derived.schemaNamespace, propertyKey],
+    );
+
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: "spec-reattributed",
+        targetType: "parameter-spec",
+        targetId: input.specId,
+        metadata: {
+          parameterSpecId: input.specId,
+          parameterSpecVersionId: spec.currentVersionId,
+          reasonHash: hashReason(input.reason),
+          previousAttributionSubjectId: previousSubjectId,
+          nextAttributionSubjectId: nextSubjectId,
+          propertyKey,
+          previousSpecificationKey: spec.specificationKey,
+          nextSpecificationKey: derived.specificationKey,
+        },
+      },
+      context,
+    );
+
+    const refreshed = await getParameterSpecRow(tx, {
+      organizationId: auth.organization.id,
+      specId: input.specId,
+    });
+    if (!refreshed) {
+      throw new ApiError("NOT_FOUND", "Parameter spec was not found.", 404, { specId: input.specId });
+    }
+    return { item: toParameterSpecDetailDto(refreshed) };
+  });
+}
+
+/**
+ * Correct a mis-authored property key in place (ADR-0017).
+ * Refused while any project binding references the definition.
+ */
+export async function renameParameterSpecPropertyKey(
+  db: Database,
+  auth: AuthContext,
+  input: RenameParameterSpecPropertyKeyBody & { specId: string },
+  context: AuditCorrelationContext = {},
+): Promise<{ item: ParameterSpecDetailDto }> {
+  requireCanAdmin(auth);
+  const nextPropertyKey = input.propertyKey.trim();
+  assertNonStructuralPropertyKey(nextPropertyKey);
+
+  return db.transaction(async (tx) => {
+    const spec = await requireGovernableSpec(tx, auth, input.specId);
+    const previousPropertyKey = spec.propertyKey?.trim() ?? "";
+    const attributionSubjectId = spec.attributionSubjectId;
+    if (!attributionSubjectId) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Parameter definition is missing attribution_subject_id; cannot rename.",
+        400,
+        { parameterSpecId: input.specId },
+      );
+    }
+    if (previousPropertyKey === nextPropertyKey) {
+      return { item: toParameterSpecDetailDto(spec) };
+    }
+
+    const referenceCounts = await loadReferenceCountsBySpecIds(tx, {
+      organizationId: auth.organization.id,
+      specIds: [input.specId],
+    });
+    const referenceCount = referenceCounts.get(input.specId) ?? 0;
+    if (referenceCount > 0) {
+      throw new ApiError(
+        "CONFLICT",
+        `Cannot rename property_key while ${referenceCount} project binding(s) reference this definition.`,
+        409,
+        {
+          parameterSpecId: input.specId,
+          referenceCount,
+          propertyKey: previousPropertyKey,
+        },
+      );
+    }
+
+    await assertIdentityTripleAvailable(tx, {
+      organizationId: spec.organizationId,
+      attributionSubjectId,
+      propertyKey: nextPropertyKey,
+      excludeSpecId: input.specId,
+    });
+
+    const derived = buildSubjectScopedManualSpecIds({
+      organizationId: spec.organizationId,
+      attributionSubjectId,
+      propertyKey: nextPropertyKey,
+    });
+
+    await tx.query(
+      `
+      update parameter_specs
+      set property_key = $2,
+          specification_key = $3
+      where id = $1
+      `,
+      [input.specId, nextPropertyKey, derived.specificationKey],
+    );
+    await tx.query(
+      `
+      update dts_property_specs
+      set property_key = $2,
+          schema_namespace = $3
+      where parameter_spec_id = $1
+      `,
+      [input.specId, nextPropertyKey, derived.schemaNamespace],
+    );
+
+    await writeGovernanceAudit(
+      tx,
+      auth,
+      {
+        action: "spec-property-key-changed",
+        targetType: "parameter-spec",
+        targetId: input.specId,
+        metadata: {
+          parameterSpecId: input.specId,
+          parameterSpecVersionId: spec.currentVersionId,
+          reasonHash: hashReason(input.reason),
+          attributionSubjectId,
+          previousPropertyKey,
+          nextPropertyKey,
+          previousSpecificationKey: spec.specificationKey,
+          nextSpecificationKey: derived.specificationKey,
         },
       },
       context,

@@ -1,3 +1,4 @@
+import { CircleX } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import type { ParameterSpecDetailView } from "./ParameterSpecDetail";
@@ -113,7 +114,9 @@ function valueShapeFromDetail(detail: ParameterSpecDetailView): {
 
 export function DraftSpecActivatePanel({ detail, onActivate, pending = false }: DraftSpecActivatePanelProps) {
   const [documentation, setDocumentation] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [reason, setReason] = useState("");
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const inferred = useMemo(() => valueShapeFromDetail(detail), [detail]);
   const shapeSignature = JSON.stringify(detail.valueShape ?? null);
   const valueShape = inferred.shape;
@@ -123,7 +126,9 @@ export function DraftSpecActivatePanel({ detail, onActivate, pending = false }: 
   useEffect(() => {
     setCells(cellCount != null ? String(cellCount) : "");
     setDocumentation("");
+    setConfirmOpen(false);
     setReason("");
+    setConfirmError(null);
   }, [cellCount, detail.id, shapeSignature]);
 
   const needsCells =
@@ -135,96 +140,179 @@ export function DraftSpecActivatePanel({ detail, onActivate, pending = false }: 
     return null;
   }
 
-  const canSubmit =
-    Boolean(documentation.trim() && reason.trim()) &&
+  const canOpenConfirm =
+    Boolean(documentation.trim()) &&
     !unsupported &&
     valueShape != null &&
     (!needsCells || (Number.isInteger(Number(cells)) && Number(cells) > 0)) &&
     !pending;
 
+  const submitActivate = () => {
+    if (!valueShape) return;
+    const trimmed = reason.trim();
+    if (!trimmed) {
+      setConfirmError("请填写激活原因。");
+      return;
+    }
+    const nextShape = { ...valueShape };
+    const nextConstraints = {
+      ...defaultConstraintsForShape(valueShape),
+      ...(needsCells ? { cells: Number(cells) } : {}),
+    };
+    onActivate({
+      specId: detail.id,
+      valueShape: nextShape,
+      constraints: nextConstraints,
+      documentation: documentation.trim(),
+      reason: trimmed,
+    });
+    setConfirmOpen(false);
+    setReason("");
+    setConfirmError(null);
+  };
+
   return (
-    <section className="shared-definition-panel draft-spec-activate-panel" aria-label="激活草稿定义">
-      <form className="param-def-form" onSubmit={(event) => event.preventDefault()}>
-        <fieldset className="def-group">
-          <legend>激活草稿定义</legend>
-          <div className="def-group-fields def-group-fields--stack">
-            <p className="form-hint">
-              补齐约束与说明后激活；仅已启用且约束完整的定义可用于审核批准。
-            </p>
-            {valueShape ? (
-              <p className="form-hint" aria-label="自动识别的取值形态摘要">
-                自动识别的取值形态：{String(valueShape.kind)}
-                {typeof valueShape.bits === "number" ? ` · bits=${valueShape.bits}` : ""}
-                {typeof valueShape.groups === "number" ? ` · groups=${valueShape.groups}` : ""}
-                {cellCount != null ? ` · cellsPerGroup=${cellCount}` : ""}
-                {typeof valueShape.length === "number" ? ` · length=${valueShape.length}` : ""}
+    <>
+      <section className="shared-definition-panel draft-spec-activate-panel" aria-label="激活草稿定义">
+        <form className="param-def-form" onSubmit={(event) => event.preventDefault()}>
+          <fieldset className="def-group">
+            <legend>激活草稿定义</legend>
+            <div className="def-group-fields def-group-fields--stack">
+              <p className="form-hint">
+                补齐约束与说明后激活；仅已启用且约束完整的定义可用于审核批准。
               </p>
-            ) : null}
-            {unsupported ? (
-              <p className="form-error" role="alert">
-                {inferred.blockReason}
-              </p>
-            ) : null}
-            {needsCells ? (
+              {valueShape ? (
+                <p className="form-hint" aria-label="自动识别的取值形态摘要">
+                  自动识别的取值形态：{String(valueShape.kind)}
+                  {typeof valueShape.bits === "number" ? ` · bits=${valueShape.bits}` : ""}
+                  {typeof valueShape.groups === "number" ? ` · groups=${valueShape.groups}` : ""}
+                  {cellCount != null ? ` · cellsPerGroup=${cellCount}` : ""}
+                  {typeof valueShape.length === "number" ? ` · length=${valueShape.length}` : ""}
+                </p>
+              ) : null}
+              {unsupported ? (
+                <p className="form-error" role="alert">
+                  {inferred.blockReason}
+                </p>
+              ) : null}
+              {needsCells ? (
+                <label>
+                  单元格数量约束
+                  <input
+                    aria-label="单元格数量约束"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={cells}
+                    onChange={(event) => setCells(event.target.value)}
+                  />
+                </label>
+              ) : null}
               <label>
-                单元格数量约束
-                <input
-                  aria-label="单元格数量约束"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={cells}
-                  onChange={(event) => setCells(event.target.value)}
+                参数说明
+                <textarea
+                  aria-label="参数说明"
+                  rows={2}
+                  value={documentation}
+                  onChange={(event) => setDocumentation(event.target.value)}
+                  placeholder="描述属性语义、取值范围与使用注意"
                 />
               </label>
-            ) : null}
-            <label>
-              参数说明
-              <textarea
-                aria-label="参数说明"
-                rows={2}
-                value={documentation}
-                onChange={(event) => setDocumentation(event.target.value)}
-                placeholder="描述属性语义、取值范围与使用注意"
-              />
-            </label>
-            <label>
-              激活原因
-              <textarea
-                aria-label="激活原因"
-                rows={2}
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-                placeholder="说明审核依据"
-              />
-            </label>
-            <div className="dialog-actions" style={{ padding: 0, border: 0, justifyContent: "flex-start" }}>
+              <div className="dialog-actions" style={{ padding: 0, border: 0, justifyContent: "flex-start" }}>
+                <button
+                  type="button"
+                  className="button primary"
+                  disabled={!canOpenConfirm}
+                  onClick={() => {
+                    setReason("");
+                    setConfirmError(null);
+                    setConfirmOpen(true);
+                  }}
+                >
+                  {pending ? "激活中…" : "激活定义"}
+                </button>
+              </div>
+            </div>
+          </fieldset>
+        </form>
+      </section>
+      {confirmOpen ? (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="确认激活草稿定义"
+        >
+          <div
+            className="submission-dialog param-admin-confirm-dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="submission-dialog-head param-admin-editor-dialog-head">
+              <div className="param-admin-editor-dialog-head-text">
+                <span className="eyebrow">参数定义库</span>
+                <h2>确认激活</h2>
+                <p>将激活「{detail.propertyKey}」；请填写激活原因以便审计留痕。</p>
+              </div>
+              <button
+                type="button"
+                className="audit-dialog-close-icon"
+                aria-label="关闭"
+                disabled={pending}
+                onClick={() => {
+                  setConfirmOpen(false);
+                  setReason("");
+                  setConfirmError(null);
+                }}
+              >
+                <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="param-admin-confirm-dialog-body">
+              <label className="param-admin-confirm-field">
+                <span>激活原因</span>
+                <textarea
+                  aria-label="激活原因"
+                  value={reason}
+                  rows={4}
+                  placeholder="必填，写入审计"
+                  autoFocus
+                  onChange={(event) => {
+                    setReason(event.target.value);
+                    setConfirmError(null);
+                  }}
+                />
+              </label>
+              {confirmError ? (
+                <p className="form-error" role="alert">
+                  {confirmError}
+                </p>
+              ) : null}
+            </div>
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="button subtle"
+                disabled={pending}
+                onClick={() => {
+                  setConfirmOpen(false);
+                  setReason("");
+                  setConfirmError(null);
+                }}
+              >
+                取消
+              </button>
               <button
                 type="button"
                 className="button primary"
-                disabled={!canSubmit}
-                onClick={() => {
-                  if (!valueShape) return;
-                  const nextShape = { ...valueShape };
-                  const nextConstraints = {
-                    ...defaultConstraintsForShape(valueShape),
-                    ...(needsCells ? { cells: Number(cells) } : {})
-                  };
-                  onActivate({
-                    specId: detail.id,
-                    valueShape: nextShape,
-                    constraints: nextConstraints,
-                    documentation: documentation.trim(),
-                    reason: reason.trim()
-                  });
-                }}
+                disabled={pending}
+                onClick={submitActivate}
               >
-                {pending ? "激活中…" : "激活定义"}
+                {pending ? "激活中…" : "确认激活"}
               </button>
             </div>
           </div>
-        </fieldset>
-      </form>
-    </section>
+        </div>
+      ) : null}
+    </>
   );
 }

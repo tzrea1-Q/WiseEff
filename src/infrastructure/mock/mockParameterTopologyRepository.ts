@@ -6,6 +6,8 @@ import type {
   DeprecateParameterSpecInput,
   NodeEnablementDraftResult,
   ParameterTopologyRepository,
+  ReattributeParameterSpecInput,
+  RenameParameterSpecPropertyKeyInput,
   RestoreParameterSpecInput
 } from "@/application/ports/ParameterTopologyRepository";
 import type {
@@ -628,8 +630,7 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
         displayName: input.displayName ?? existing.displayName,
         description: input.description ?? existing.description,
         units: input.units === undefined ? existing.units : input.units,
-        exampleValue: input.exampleValue === undefined ? existing.exampleValue : input.exampleValue,
-        policyTarget: input.policyTarget === undefined ? existing.policyTarget : input.policyTarget
+        exampleValue: input.exampleValue === undefined ? existing.exampleValue : input.exampleValue
       };
       store.specs.set(specId, updated);
       return cloneDetail(updated);
@@ -659,6 +660,76 @@ export function createMockParameterTopologyRepository(): ParameterTopologyReposi
       const updated: SpecFixture = {
         ...existing,
         lifecycle: existing.activatedAt ? "active" : "draft"
+      };
+      store.specs.set(specId, updated);
+      return cloneDetail(updated);
+    },
+
+    async reattributeParameterSpec(specId, input: ReattributeParameterSpecInput) {
+      const existing = store.specs.get(specId);
+      if (!existing) {
+        throw new Error(`ParameterSpec not found: ${specId}`);
+      }
+      const nextSubjectId = input.attributionSubjectId.trim();
+      const propertyKey = existing.propertyKey;
+      for (const [otherId, other] of store.specs) {
+        if (
+          otherId !== specId &&
+          other.attributionSubjectId === nextSubjectId &&
+          other.propertyKey === propertyKey
+        ) {
+          throw Object.assign(new Error("A parameter definition already exists for this subject and property key."), {
+            code: "CONFLICT",
+            status: 409,
+            details: { parameterSpecId: otherId, lifecycle: other.lifecycle },
+          });
+        }
+      }
+      const updated: SpecFixture = {
+        ...existing,
+        attributionSubjectId: nextSubjectId,
+        driverModule: nextSubjectId,
+      };
+      store.specs.set(specId, updated);
+      return cloneDetail(updated);
+    },
+
+    async renameParameterSpecPropertyKey(specId, input: RenameParameterSpecPropertyKeyInput) {
+      const existing = store.specs.get(specId);
+      if (!existing) {
+        throw new Error(`ParameterSpec not found: ${specId}`);
+      }
+      const referenceCount = existing.referenceCount ?? 0;
+      if (referenceCount > 0) {
+        throw Object.assign(
+          new Error(
+            `Cannot rename property_key while ${referenceCount} project binding(s) reference this definition.`,
+          ),
+          {
+            code: "CONFLICT",
+            status: 409,
+            details: { parameterSpecId: specId, referenceCount },
+          },
+        );
+      }
+      const nextPropertyKey = input.propertyKey.trim();
+      for (const [otherId, other] of store.specs) {
+        if (
+          otherId !== specId &&
+          other.attributionSubjectId === existing.attributionSubjectId &&
+          other.propertyKey === nextPropertyKey
+        ) {
+          throw Object.assign(new Error("A parameter definition already exists for this subject and property key."), {
+            code: "CONFLICT",
+            status: 409,
+            details: { parameterSpecId: otherId, lifecycle: other.lifecycle },
+          });
+        }
+      }
+      const updated: SpecFixture = {
+        ...existing,
+        propertyKey: nextPropertyKey,
+        specificationKey: `manual/${nextPropertyKey}`,
       };
       store.specs.set(specId, updated);
       return cloneDetail(updated);

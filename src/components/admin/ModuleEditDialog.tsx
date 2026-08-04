@@ -181,8 +181,17 @@ export function ModuleEditDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onCancel]);
 
-  const canSave = canSubmitModuleDraft(draft, existingNames, module.name);
+  const canSubmit = canSubmitModuleDraft(draft, existingNames, module.name);
   const importanceVisible = showImportance && (!showKind || kind === "business");
+  const isDirty =
+    draft.name.trim() !== module.name ||
+    draft.description.trim() !== (module.description ?? "").trim() ||
+    draft.scope.trim() !== (module.scope ?? "").trim() ||
+    (importanceVisible && importance !== (module.importance ?? "medium")) ||
+    (showKind && kind !== (module.kind === "node-type" ? "node-type" : "business")) ||
+    (canAdmin && natureDraft != null && natureDraft !== driverNature) ||
+    (canAdmin && cardinalityDraft != null && cardinalityDraft !== instanceCardinality);
+  const canSave = canSubmit && isDirty;
   const showCompatibleRules =
     module.kind === "driver-group" &&
     (compatibleMappings !== undefined || onAddCompatibleMapping !== undefined);
@@ -558,34 +567,40 @@ export function ModuleEditDialog({
           ) : null}
         </div>
 
-        <div className="dialog-actions">
-          <button className="button subtle" type="button" onClick={onCancel} disabled={busy}>
-            取消
-          </button>
-          <button
-            className="button primary"
-            type="button"
-            disabled={!canSave || busy}
-            onClick={() => {
-              if (!canSave) {
-                return;
-              }
-              onSave({
-                name: draft.name.trim(),
-                description: draft.description.trim(),
-                scope: draft.scope.trim(),
-                ...(showKind ? { kind } : {}),
-                ...(importanceVisible ? { importance } : {}),
-                ...(canAdmin && natureDraft != null ? { driverNature: natureDraft } : {}),
-                ...(canAdmin && cardinalityDraft != null
-                  ? { instanceCardinality: cardinalityDraft }
-                  : {})
-              });
-            }}
-          >
-            保存
-          </button>
-        </div>
+          <div className="dialog-actions">
+            <button className="button subtle" type="button" onClick={onCancel} disabled={busy}>
+              取消
+            </button>
+            {isDirty ? (
+              <button
+                className="button primary"
+                type="button"
+                disabled={!canSave || busy}
+                onClick={() => {
+                  if (!canSave) {
+                    return;
+                  }
+                  onSave({
+                    name: draft.name.trim(),
+                    description: draft.description.trim(),
+                    scope: draft.scope.trim(),
+                    ...(showKind ? { kind } : {}),
+                    ...(importanceVisible ? { importance } : {}),
+                    ...(canAdmin && natureDraft != null ? { driverNature: natureDraft } : {}),
+                    ...(canAdmin && cardinalityDraft != null
+                      ? { instanceCardinality: cardinalityDraft }
+                      : {})
+                  });
+                }}
+              >
+                保存
+              </button>
+            ) : (
+              <button className="button primary" type="button" onClick={onCancel} disabled={busy}>
+                完成
+              </button>
+            )}
+          </div>
       </div>
       </div>
       {deprecatingSchema && deprecationImpact ? (

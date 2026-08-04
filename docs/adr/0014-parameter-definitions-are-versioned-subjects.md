@@ -28,3 +28,7 @@ We decided:
 - Staged atomic version cutover jobs.
 - Mature library create entry requiring coverage claims before activate.
 - Lifecycle ranking audit of the eight historical SQL sites.
+
+## Supersession (ADR-0017)
+
+Partially superseded by [ADR-0017](0017-definition-identity-is-correctable.md). Decision 1 stands as to *what* the business key is, but the row id is no longer derived from it at lookup time: `parameter_specs.id` is a surrogate, definitions are located by the triple, and a wrongly authored triple is correctable in place. This ADR's rejection of "mint a new identity on every semantic change" — because identity churn breaks reference counts and continuity — is the same argument that makes in-place correction preferable to deprecate-and-recreate.

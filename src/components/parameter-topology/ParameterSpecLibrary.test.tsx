@@ -19,6 +19,7 @@ const gpioIntSc8562: ParameterSpecLibraryRow = {
   id: "spec-sc8562-gpio-int",
   organizationId: "org-chargelab",
   propertyKey: "gpio_int",
+  attributionSubjectId: "asub:driver-registration:sc8562",
   attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }],
   driverModule: "sc8562",
   compatible: "vendor,sc8562",
@@ -36,6 +37,7 @@ const gpioIntMt5788: ParameterSpecLibraryRow = {
   id: "spec-mt5788-gpio-int",
   organizationId: "org-chargelab",
   propertyKey: "gpio_int",
+  attributionSubjectId: "asub:driver-registration:mt5788",
   attributionModules: [],
   driverModule: "mt5788",
   compatible: "mediatek,mt5788",
@@ -60,6 +62,7 @@ const pathLikeLegacy: ParameterSpecLibraryRow = {
   id: "spec-status",
   organizationId: "org-chargelab",
   propertyKey: "status",
+  attributionSubjectId: "asub:driver-registration:sc8562",
   attributionModules: [{ id: "mod-charge", name: "充电策略", kind: "driver-group" }],
   driverModule: "sc8562",
   compatible: "vendor,sc8562",
@@ -315,7 +318,7 @@ describe("ParameterSpecLibrary", () => {
     ).toHaveLength(55);
   });
 
-  it("opens detail with separated schema default, example, policy, usage, and history", () => {
+  it("opens detail with separated schema default, example, usage, and history", () => {
     const onSelectSpec = vi.fn();
     const onCloseSpec = vi.fn();
     const onSaveSpec = vi.fn();
@@ -345,20 +348,23 @@ describe("ParameterSpecLibrary", () => {
     );
 
     const detail = screen.getByRole("dialog", { name: /参数定义详情.*gpio_int/ });
-    expect(within(detail).getByLabelText("驱动模块")).toHaveValue("sc8562");
+    expect(within(detail).getByLabelText("归属主体")).toHaveValue("sc8562");
     expect(within(detail).queryByLabelText("compatible")).not.toBeInTheDocument();
     expect(within(detail).getByLabelText("所属模块")).toHaveValue(
       "Power / Direct Charging / direct_charge_comp"
     );
     expect(within(detail).getByLabelText("Schema 默认值")).toHaveValue("<0>");
     expect(within(detail).getByLabelText("示例值")).toHaveValue("<&gpio13 29 0>");
-    expect(within(detail).getByText(/仅作示例，不参与校验或初始化/)).toBeInTheDocument();
-    expect(within(detail).getByLabelText("策略目标")).toHaveValue("<&gpio_policy 1 0>");
+    expect(within(detail).getByLabelText("示例值帮助")).toBeInTheDocument();
+    expect(within(detail).getByLabelText("值形状 valueShape")).toBeInTheDocument();
+    expect(within(detail).queryByLabelText("值类型")).not.toBeInTheDocument();
+    expect(within(detail).queryByLabelText("策略目标")).not.toBeInTheDocument();
     expect(within(detail).getByLabelText("使用情况")).toHaveValue("P-AURORA · sc8562@6E");
     expect((within(detail).getByLabelText("Schema 历史") as HTMLTextAreaElement).value).toMatch(/narrowed phandle/);
     expect(detail.textContent).not.toMatch(/推荐值/);
     expect(within(detail).getByText("参数定义库 · 可编辑")).toBeInTheDocument();
-    expect(within(detail).getByRole("button", { name: "保存" })).toBeInTheDocument();
+    expect(within(detail).getByRole("button", { name: "完成" })).toBeInTheDocument();
+    expect(within(detail).queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
 
     fireEvent.click(within(detail).getByRole("button", { name: "取消" }));
     expect(onCloseSpec).toHaveBeenCalled();

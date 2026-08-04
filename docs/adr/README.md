@@ -25,3 +25,5 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0013](0013-attribution-subjects-are-stable-catalog-entities.md) | Attribution subjects are stable catalog entities |
 | [0014](0014-parameter-definitions-are-versioned-subjects.md) | Parameter definitions are versioned subjects with soft retirement |
 | [0015](0015-governance-queues-live-with-the-object-they-govern.md) | Governance queues live with the object they govern |
+| [0016](0016-cell-arrays-are-governed-by-column-width-only.md) | Cell arrays are governed by column width only; row count is not a governed fact |
+| [0017](0017-definition-identity-is-correctable.md) | Definition identity is correctable and `parameter_specs.id` is a surrogate |

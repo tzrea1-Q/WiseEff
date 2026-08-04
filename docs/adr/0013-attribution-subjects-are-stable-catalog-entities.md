@@ -39,3 +39,7 @@ We decided that **attribution subjects are first-class catalog entities**, and t
 - Versioned `ParameterSpec` content and staged binding cutover (next ADR / plan batches).
 - Config-revision validation that enforces `singleton-per-project` as a semantic gate.
 - Promoting organization registrations into the platform catalog (parallel to overlay promotion).
+
+## Supersession (ADR-0017)
+
+Partially superseded by [ADR-0017](0017-definition-identity-is-correctable.md). "Stable" identity is clarified to mean **stable against placement changes**, not established-once-and-unchangeable: a mis-authored `attribution_subject_id` or `property_key` is correctable as an audited governance act. Everything this ADR states about subjects being first-class catalog entities, the module tree merely placing them, and `(owner scope, attribution_subject_id, property_key)` being the definition's business key remains in force.

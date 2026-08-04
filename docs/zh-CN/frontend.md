@@ -99,7 +99,7 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 - **工作台以 `binding.moduleId` 为准。** `/api/v2/projects/:projectId/parameter-bindings` DTO 暴露 `moduleId: string`；`buildDtsWorkbenchRows` 直接读取 `binding.moduleId`，再从注册表（`GET /api/v2/parameter-modules`）取名称/重要性/排序。当 binding 已带 `moduleId` 时**不再**重新派生模块；`deriveModuleAssignment` 仅保留给重算工具与测试。
 - **显式重算（管理员，运维）。** `POST /api/v2/parameter-modules/recompute-bindings`（可选 `{ projectId, dryRun }`）为现有 binding 重新解析 `module_id`。`dryRun: true` 仅预览不写库。面板将其作为历史 drift、seed 纠偏或身份连续性后对齐的全量回填工具；日常归类与驱动登记/认领已在写事务内按范围应用，无需再跑全量重算。
 - **真实详情历史 + 跨项目对比。** 详情弹窗打开时，`ApiProjectTopologyWorkspace` 加载 `GET /api/v2/projects/:projectId/bindings/:bindingId/history`（由 revision 推导的 `from -> to` 条目）与 `GET /api/v2/projects/:projectId/bindings/:bindingId/compare`（同组织内共享 `parameter_spec_id` + `module_id` 的其他项目，排除源项目）。历史仅来自 `project_parameter_binding_revisions`——绝不使用遗留扁平 `parameter_history_entries`。历史 API 会折叠相邻 config revision tip 中 raw 值未变的快照（存储层仍按 config revision 保留 tip）；初始 tip 保留且 `fromRawValue` 为 null。由于绑定 revision 表没有 per-revision 的 actor / 原因列，历史不暴露 actor/原因。对比对端按 `projectId` 去重。查看弹窗仅保留精简入口（覆盖率摘要 + **打开跨项目对比**）；成熟对比面（目标选择、文本差异、`+/-` raw diff、项目概览、**使用该项目配置加入草稿**）放在次级 `DtsBindingCompareDialog`。对端作草稿写入本地草稿袋并打开 `DtsBindingDraftDialog`。空态显示「暂无历史记录。」/「暂无其他项目的对比数据。」，不再出现阶段一占位文案。
-- **查看弹窗规格含义。** 只读详情还会加载 `GET /api/v2/parameter-specs/:specId`，展示显示名、documentation/description、示意性 `exampleValue`（绝不作为推荐值）、单位、约束，以及可选的 schemaDefault/policyTarget。
+- **查看弹窗规格含义。** 定义编辑器会加载 `GET /api/v2/parameter-specs/:specId`，展示显示名、documentation/description、示意性 `exampleValue`（绝不作为推荐值）、单位、约束，以及可选的 `schemaDefault`。定义弹窗不再编辑 `policyTarget`（SE-D1 / TD-055）；GET 仍可能从 `parameter_policy_targets` 返回产品作用域行。
 
 ### 模块归属管理（`/parameter-admin/modules`，页签 **模块归属**）
 

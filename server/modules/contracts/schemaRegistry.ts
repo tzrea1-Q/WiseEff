@@ -487,6 +487,28 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ParameterSpecDetailResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "parameterSpecs.reattribute": {
+    summary: "Correct a parameter definition attribution subject in place",
+    tags: ["parameters"],
+    requestBody: "ReattributeParameterSpecRequest",
+    responseBody: "ParameterSpecDetailResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
+  "parameterSpecs.renamePropertyKey": {
+    summary: "Rename a zero-reference parameter definition property key in place",
+    tags: ["parameters"],
+    requestBody: "RenameParameterSpecPropertyKeyRequest",
+    responseBody: "ParameterSpecDetailResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
   "parameterTopology.getTopology": {
     summary: "Get source or effective DTS topology for a config revision",
     tags: ["parameters"],

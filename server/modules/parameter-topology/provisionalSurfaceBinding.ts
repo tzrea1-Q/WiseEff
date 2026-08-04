@@ -1,4 +1,5 @@
 import type { Queryable } from "../../shared/database/client";
+import { findParameterSpecByIdentity } from "../parameter-specs/repository";
 import { buildSubjectScopedManualSpecIds } from "../parameter-specs/specIdentity";
 import {
   draftValueShapeToJson,
@@ -7,7 +8,7 @@ import {
 
 /**
  * Org-owned draft spec for unmatched surface properties so bindings appear in the workbench.
- * Identity is owner scope + AttributionSubject + property_key (ADR-0013); no driverModule signal.
+ * Identity is owner scope + AttributionSubject + property_key (ADR-0013/0017); id is a surrogate.
  */
 export async function upsertProvisionalSurfacePropertySpec(
   db: Queryable,
@@ -19,6 +20,18 @@ export async function upsertProvisionalSurfacePropertySpec(
     occurrenceRawText: string | null;
   },
 ): Promise<{ parameterSpecId: string; parameterSpecVersionId: string }> {
+  const existing = await findParameterSpecByIdentity(db, {
+    organizationId: input.organizationId,
+    attributionSubjectId: input.attributionSubjectId,
+    propertyKey: input.propertyKey,
+  });
+  if (existing?.parameterSpecVersionId) {
+    return {
+      parameterSpecId: existing.parameterSpecId,
+      parameterSpecVersionId: existing.parameterSpecVersionId,
+    };
+  }
+
   const ids = buildSubjectScopedManualSpecIds({
     organizationId: input.organizationId,
     attributionSubjectId: input.attributionSubjectId,
@@ -34,13 +47,20 @@ export async function upsertProvisionalSurfacePropertySpec(
   await db.query(
     `
     insert into parameter_specs (
-      id, organization_id, source_kind, specification_key, attribution_subject_id
+      id, organization_id, source_kind, specification_key, attribution_subject_id, property_key
     )
-    values ($1, $2, 'manual', $3, $4)
+    values ($1, $2, 'manual', $3, $4, $5)
     on conflict (id) do update set
-      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id)
+      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id),
+      property_key = coalesce(parameter_specs.property_key, excluded.property_key)
     `,
-    [ids.parameterSpecId, input.organizationId, ids.specificationKey, input.attributionSubjectId],
+    [
+      ids.parameterSpecId,
+      input.organizationId,
+      ids.specificationKey,
+      input.attributionSubjectId,
+      input.propertyKey,
+    ],
   );
   await db.query(
     `

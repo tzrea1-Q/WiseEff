@@ -22,6 +22,7 @@ import {
   type OrganizationDriverSchemaRecord,
 } from "./driverSchemaOverlayRepository";
 import { getCachedSchemaRegistry, invalidateOrganizationSchemaRegistryCache } from "./schemaRegistryCache";
+import { findParameterSpecByIdentity } from "./repository";
 import { buildSubjectScopedManualSpecIds } from "./specIdentity";
 import type { PropertyValueShape, SpecLifecycle } from "./types";
 import { ensureAttributionSubjectForCompatible } from "../parameter-modules/resolveAttributionSubject";
@@ -107,27 +108,78 @@ async function ensureCanonicalOverlayParameterSpec(
     organizationId: input.organizationId,
     compatible: input.compatible,
   });
-  const ids = buildSubjectScopedManualSpecIds({
-    organizationId: input.organizationId,
-    attributionSubjectId,
-    propertyKey,
-  });
   const valueShape = JSON.stringify(input.valueShape);
   const constraints = JSON.stringify(input.constraints ?? {});
   const exampleValue =
     input.exampleValue == null ? null : JSON.stringify(input.exampleValue);
   const documentation = input.documentation ?? "";
+  const displayName = propertyKey;
+  const description = documentation || `Organization overlay property ${propertyKey}`;
+
+  const existing = await findParameterSpecByIdentity(db, {
+    organizationId: input.organizationId,
+    attributionSubjectId,
+    propertyKey,
+  });
+  if (existing?.parameterSpecVersionId) {
+    await db.query(
+      `
+      update parameter_specs
+      set attribution_subject_id = coalesce(attribution_subject_id, $2),
+          property_key = coalesce(property_key, $3)
+      where id = $1
+      `,
+      [existing.parameterSpecId, attributionSubjectId, propertyKey],
+    );
+    await db.query(
+      `
+      update parameter_spec_versions
+      set display_name = $2,
+          description = $3,
+          value_shape = $4::jsonb,
+          example_value = $5::jsonb,
+          lifecycle = 'active'
+      where id = $1
+      `,
+      [
+        existing.parameterSpecVersionId,
+        displayName,
+        description,
+        valueShape,
+        exampleValue,
+      ],
+    );
+    await db.query(
+      `
+      update dts_property_specs
+      set units = $2,
+          constraints = $3::jsonb,
+          documentation = $4,
+          property_key = $5
+      where parameter_spec_id = $1
+      `,
+      [existing.parameterSpecId, input.units ?? null, constraints, documentation || null, propertyKey],
+    );
+    return { parameterSpecId: existing.parameterSpecId, propertyKey };
+  }
+
+  const ids = buildSubjectScopedManualSpecIds({
+    organizationId: input.organizationId,
+    attributionSubjectId,
+    propertyKey,
+  });
 
   await db.query(
     `
     insert into parameter_specs (
-      id, organization_id, source_kind, specification_key, attribution_subject_id
+      id, organization_id, source_kind, specification_key, attribution_subject_id, property_key
     )
-    values ($1, $2, 'manual', $3, $4)
+    values ($1, $2, 'manual', $3, $4, $5)
     on conflict (id) do update set
-      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id)
+      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id),
+      property_key = coalesce(parameter_specs.property_key, excluded.property_key)
     `,
-    [ids.parameterSpecId, input.organizationId, ids.specificationKey, attributionSubjectId],
+    [ids.parameterSpecId, input.organizationId, ids.specificationKey, attributionSubjectId, propertyKey],
   );
   await db.query(
     `
@@ -145,8 +197,8 @@ async function ensureCanonicalOverlayParameterSpec(
     [
       ids.parameterSpecVersionId,
       ids.parameterSpecId,
-      propertyKey,
-      documentation || `Organization overlay property ${propertyKey}`,
+      displayName,
+      description,
       valueShape,
       exampleValue,
     ],
