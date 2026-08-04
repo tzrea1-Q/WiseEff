@@ -3133,6 +3133,118 @@
         }
       }
     },
+    "/api/v2/parameter-specs/{specId}/reattribute": {
+      "post": {
+        "operationId": "parameterSpecs.reattribute",
+        "summary": "Correct a parameter definition attribution subject in place",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReattributeParameterSpecRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSpecDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/parameter-specs/{specId}/rename-property-key": {
+      "post": {
+        "operationId": "parameterSpecs.renamePropertyKey",
+        "summary": "Rename a zero-reference parameter definition property key in place",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "specId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameParameterSpecPropertyKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSpecDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/projects/{projectId}/config-sets/{configSetId}/revisions/{revisionId}/topology": {
       "get": {
         "operationId": "parameterTopology.getTopology",
@@ -6434,6 +6546,14 @@
       "RestoreParameterSpecRequest": {
         "type": "object",
         "x-wiseeff-schema": "RestoreParameterSpecRequest"
+      },
+      "ReattributeParameterSpecRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ReattributeParameterSpecRequest"
+      },
+      "RenameParameterSpecPropertyKeyRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "RenameParameterSpecPropertyKeyRequest"
       },
       "ParameterTopologyResponse": {
         "type": "object",
