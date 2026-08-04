@@ -16429,6 +16429,58 @@ body.xiaoze-popup-resize-active {
   cursor: default;
 }
 
+.param-admin-editor-dialog .param-admin-identity-control {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: var(--surface-low, #f8fafc);
+  overflow: hidden;
+}
+
+.param-admin-editor-dialog .param-admin-identity-control input[readonly] {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.param-admin-editor-dialog .param-admin-identity-edit {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  margin: 0;
+  padding: 0;
+  color: #566070;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--outline);
+  cursor: pointer;
+}
+
+.param-admin-editor-dialog .param-admin-identity-edit:hover:not(:disabled) {
+  color: var(--app-ink, #1f2937);
+  background: color-mix(in srgb, var(--outline) 35%, transparent);
+}
+
+.param-admin-editor-dialog .param-admin-identity-edit:focus-visible {
+  outline: 2px solid var(--focus, #2563eb);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.param-admin-editor-dialog .param-admin-identity-edit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .parameter-spec-library-grid {
   table-layout: fixed;
   width: 100%;
@@ -16668,6 +16720,192 @@ body.xiaoze-popup-resize-active {
 .param-admin-editor-dialog {
   width: min(720px, calc(100vw - 48px));
   max-height: min(88vh, 920px);
+}
+
+.param-admin-confirm-dialog {
+  width: min(480px, calc(100vw - 48px));
+  max-height: min(88vh, 640px);
+  gap: 14px;
+  padding: 18px 20px 16px;
+  /* Keep ModuleTreeSelect menu visible above the dialog chrome. */
+  overflow: visible;
+}
+
+.param-admin-confirm-dialog .submission-dialog-head h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.param-admin-confirm-dialog .param-admin-editor-dialog-head-text > p {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.param-admin-confirm-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow: visible;
+  padding: 2px 0;
+}
+
+.param-admin-confirm-summary {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  color: var(--app-ink, #1f2937);
+  background: var(--surface-low, #f8fafc);
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.param-admin-confirm-summary p {
+  margin: 0;
+  color: inherit;
+}
+
+.param-admin-confirm-summary .muted {
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.param-admin-confirm-summary code {
+  margin-left: 4px;
+  padding: 1px 6px;
+  color: var(--app-ink, #1f2937);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.param-admin-confirm-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.param-admin-confirm-field--subject {
+  position: relative;
+  z-index: 3;
+}
+
+.param-admin-confirm-dialog .module-tree-trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text);
+  text-align: left;
+}
+
+.param-admin-confirm-dialog .module-tree-trigger:focus-visible {
+  outline: 0;
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
+}
+
+.param-admin-confirm-dialog .module-tree-menu {
+  z-index: 40;
+  width: 100%;
+  max-width: none;
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(16, 28, 45, 0.18);
+}
+
+.param-admin-confirm-field input,
+.param-admin-confirm-field textarea,
+.param-admin-confirm-field select {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  outline: 0;
+}
+
+.param-admin-confirm-field textarea {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.param-admin-confirm-field input:focus,
+.param-admin-confirm-field textarea:focus,
+.param-admin-confirm-field select:focus {
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
+}
+
+.param-admin-confirm-dialog .dialog-actions {
+  margin-top: 2px;
+}
+
+/* Secondary confirm / cutover reason stacks nested in editor dialogs. */
+.submission-dialog .form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  min-height: 0;
+}
+
+.submission-dialog label.field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.submission-dialog label.field input,
+.submission-dialog label.field textarea,
+.submission-dialog label.field select {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  outline: 0;
+}
+
+.submission-dialog label.field textarea {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.55;
 }
 
 .param-admin-editor-dialog.submission-dialog--wide {
@@ -17941,6 +18179,118 @@ body.xiaoze-popup-resize-active {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 850;
+}
+
+.param-admin-field-info-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--app-muted);
+  cursor: help;
+  border-radius: 999px;
+  line-height: 1;
+  outline: none;
+}
+
+.param-admin-field-info-tip:hover,
+.param-admin-field-info-tip:focus-visible {
+  color: var(--app-primary);
+}
+
+.param-admin-field-info-tip:focus-visible {
+  box-shadow: 0 0 0 2px rgba(0, 82, 204, 0.22);
+}
+
+.param-admin-field-info-tip__content {
+  max-width: min(20rem, calc(100vw - 32px));
+}
+
+.def-group-fields > .param-admin-example-value-field {
+  grid-column: 1 / -1;
+}
+
+.param-admin-value-shape-field {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  align-content: start;
+  min-width: 0;
+}
+
+.param-admin-value-shape-field .def-field-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.param-admin-value-shape-field .def-field-label-row > label {
+  display: inline;
+  margin: 0;
+}
+
+.param-admin-value-shape-field input,
+.param-admin-value-shape-field select {
+  height: auto;
+  min-height: 36px;
+  align-self: stretch;
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  outline: 0;
+}
+
+.param-admin-value-shape-layout {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+.param-admin-value-shape-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+  width: 100%;
+}
+
+.param-admin-value-shape-row > :only-child {
+  grid-column: 1 / -1;
+}
+
+.param-admin-value-shape-infer-error {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .param-admin-value-shape-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.param-admin-value-shape-cell-fields {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .param-admin-value-shape-cell-fields {
+    grid-template-columns: 1fr;
+  }
 }
 
 .field-error {

@@ -159,7 +159,7 @@ Call `assertSpecActivatable` from `updateParameterSpec` only when the incoming `
 ### Batch 1 — writes that silently do nothing
 
 1. [x] Settle SE-D1 through SE-D6 and record each in this plan.
-2. [ ] Close SE-1: remove `policyTarget` from the dialog, `updateParameterSpecBodySchema`, `UpdateParameterSpecInput`, and the mock; file TD-055 for the product-scoped surface.
+2. [x] Close SE-1: remove `policyTarget` from the dialog, `updateParameterSpecBodySchema`, `UpdateParameterSpecInput`, and the mock; file TD-055 for the product-scoped surface.
 3. [ ] Close SE-2: constraints replace on both `updateParameterSpec` and `activateParameterSpec`.
 4. [ ] Close SE-3 and SE-5 together: `case when $flag` in place of `coalesce` for `units` / `displayName` / `description` / `exampleValue`; `displayName` and `description` become nullable; drop the frontend `propertyKey` fallback.
 5. [ ] Close SE-4: `activateParameterSpecBodySchema` gains `units` and `exampleValue`; the activate branch sends them.

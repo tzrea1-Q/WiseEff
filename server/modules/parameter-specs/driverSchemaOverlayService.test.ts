@@ -209,6 +209,13 @@ function createServiceDb(seed?: { schemas?: SchemaRow[]; provisionalSpecIds?: st
     if (sql.includes("from parameter_modules") && sql.includes("source_key")) {
       return { rows: [], rowCount: 0 };
     }
+    if (
+      sql.includes("from parameter_specs ps") &&
+      sql.includes("ps.attribution_subject_id = $2") &&
+      sql.includes("coalesce(ps.property_key, '') = $3")
+    ) {
+      return { rows: [], rowCount: 0 };
+    }
     if (sql.includes("insert into attribution_subjects")) {
       return { rows: [], rowCount: 1 };
     }

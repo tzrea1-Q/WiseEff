@@ -9,6 +9,8 @@ export type ParameterAdminAuditHint = {
     | "spec-updated"
     | "spec-deprecated"
     | "spec-restored"
+    | "spec-reattributed"
+    | "spec-property-key-changed"
     | "module-created"
     | "module-renamed"
     | "module-moved"
@@ -132,6 +134,10 @@ export function auditKindLabel(kind: ParameterAdminAuditHint["kind"]): string {
       return "废弃参数定义";
     case "spec-restored":
       return "恢复参数定义";
+    case "spec-reattributed":
+      return "修正归属主体";
+    case "spec-property-key-changed":
+      return "修正属性键";
     case "module-created":
       return "创建业务模块";
     case "module-renamed":

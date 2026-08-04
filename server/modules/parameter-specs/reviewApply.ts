@@ -17,6 +17,7 @@ import {
 import {
   assertBindingBelongsToTenant,
   compatibleFingerprint,
+  findParameterSpecByIdentity,
   getParameterSpecRow,
   upsertOccurrenceSpecDecision,
   upsertMatcherOverride,
@@ -480,11 +481,6 @@ export async function createOrgManualParameterSpec(
       400,
     );
   }
-  const ids = buildSubjectScopedManualSpecIds({
-    organizationId: input.organizationId,
-    attributionSubjectId: input.attributionSubjectId,
-    propertyKey: input.propertyKey,
-  });
   const inferredShape = inferDraftValueShapeFromOccurrence({
     propertyKey: input.propertyKey,
     astJson: input.occurrenceAstJson,
@@ -499,59 +495,44 @@ export async function createOrgManualParameterSpec(
     createdAt: new Date().toISOString(),
   };
 
-  const existing = await getParameterSpecRow(db, {
+  // ADR-0017: resolve by identity columns first; id is only minted on insert.
+  const byIdentity = await findParameterSpecByIdentity(db, {
     organizationId: input.organizationId,
-    specId: ids.parameterSpecId,
+    attributionSubjectId: input.attributionSubjectId,
+    propertyKey: input.propertyKey,
   });
-  if (existing?.currentVersionId && existing.organizationId === input.organizationId) {
+  if (byIdentity?.parameterSpecVersionId) {
     return {
-      parameterSpecId: ids.parameterSpecId,
-      parameterSpecVersionId: existing.currentVersionId,
+      parameterSpecId: byIdentity.parameterSpecId,
+      parameterSpecVersionId: byIdentity.parameterSpecVersionId,
       created: false,
       valueShape,
     };
   }
 
-  // Idempotency across hash-formula changes: reuse org-owned manual row with same subject + property key.
-  const byProperty = await db.query<{ id: string; version_id: string }>(
-    `
-    select ps.id, psv.id as version_id
-    from parameter_specs ps
-    inner join lateral (
-      select id
-      from parameter_spec_versions
-      where parameter_spec_id = ps.id
-      order by version desc
-      limit 1
-    ) psv on true
-    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
-    where ps.organization_id = $1
-      and ps.source_kind = 'manual'
-      and ps.attribution_subject_id = $2
-      and coalesce(dps.property_key, '') = $3
-    limit 1
-    `,
-    [input.organizationId, input.attributionSubjectId, input.propertyKey],
-  );
-  if (byProperty.rows[0]) {
-    return {
-      parameterSpecId: byProperty.rows[0].id,
-      parameterSpecVersionId: byProperty.rows[0].version_id,
-      created: false,
-      valueShape,
-    };
-  }
+  const ids = buildSubjectScopedManualSpecIds({
+    organizationId: input.organizationId,
+    attributionSubjectId: input.attributionSubjectId,
+    propertyKey: input.propertyKey,
+  });
 
   await db.query(
     `
     insert into parameter_specs (
-      id, organization_id, source_kind, specification_key, attribution_subject_id
+      id, organization_id, source_kind, specification_key, attribution_subject_id, property_key
     )
-    values ($1, $2, 'manual', $3, $4)
+    values ($1, $2, 'manual', $3, $4, $5)
     on conflict (id) do update set
-      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id)
+      attribution_subject_id = coalesce(parameter_specs.attribution_subject_id, excluded.attribution_subject_id),
+      property_key = coalesce(parameter_specs.property_key, excluded.property_key)
     `,
-    [ids.parameterSpecId, input.organizationId, ids.specificationKey, input.attributionSubjectId],
+    [
+      ids.parameterSpecId,
+      input.organizationId,
+      ids.specificationKey,
+      input.attributionSubjectId,
+      input.propertyKey,
+    ],
   );
   await db.query(
     `

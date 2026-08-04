@@ -48,6 +48,7 @@ function toSpecDetailView(
       schemaNamespace: detail.schemaNamespace,
       usageCount,
       attributionModules: libraryRow?.attributionModules ?? detail.attributionModules ?? [],
+      attributionSubjectId: detail.attributionSubjectId ?? libraryRow?.attributionSubjectId ?? null,
       businessCategory: libraryRow?.businessCategory
     }),
     displayName: detail.displayName,
@@ -171,6 +172,7 @@ export function OrganizationSpecGovernancePanel({
             compatiblePatterns: item.compatiblePatterns,
             valueShape: item.valueShape,
             attributionModules: item.attributionModules,
+            attributionSubjectId: item.attributionSubjectId ?? null,
             usageCount: item.referenceCount ?? 0
           })
         )
@@ -252,10 +254,21 @@ export function OrganizationSpecGovernancePanel({
         }
       });
 
+    if (createModules.length === 0) {
+      void application
+        .getModuleRegistry()
+        .then((registry) => {
+          if (!cancelled) setCreateModules(registry.modules);
+        })
+        .catch(() => {
+          /* picker stays empty; create dialog still can retry */
+        });
+    }
+
     return () => {
       cancelled = true;
     };
-  }, [application, specRows, urlState.specId]);
+  }, [application, createModules.length, specRows, urlState.specId]);
 
   const sortedRows = useMemo(
     () => sortParameterSpecRows(specRows, urlState.sort),
@@ -397,7 +410,6 @@ export function OrganizationSpecGovernancePanel({
       description: string;
       units: string | null;
       exampleValue: unknown;
-      policyTarget: unknown;
       reason: string;
     }) => {
       setReviewActionError(null);
@@ -410,6 +422,8 @@ export function OrganizationSpecGovernancePanel({
             documentation: payload.documentation,
             displayName: payload.displayName,
             description: payload.description,
+            units: payload.units,
+            exampleValue: payload.exampleValue,
             reason: payload.reason
           });
           showToast("已激活");
@@ -422,7 +436,6 @@ export function OrganizationSpecGovernancePanel({
             description: payload.description,
             units: payload.units,
             exampleValue: payload.exampleValue,
-            policyTarget: payload.policyTarget,
             reason: payload.reason
           });
         }
@@ -480,6 +493,52 @@ export function OrganizationSpecGovernancePanel({
       }
     },
     [application, pushAudit, reloadSpecs, showToast, updateUrl]
+  );
+
+  const handleReattributeSpec = useCallback(
+    async (input: { specId: string; attributionSubjectId: string; reason: string }) => {
+      setReviewActionError(null);
+      setActivatePendingSpecId(input.specId);
+      try {
+        const detail = await application.reattributeParameterSpec(input.specId, {
+          attributionSubjectId: input.attributionSubjectId,
+          reason: input.reason,
+        });
+        pushAudit("spec-reattributed", input.reason, `修正归属 ${input.specId}`);
+        showToast("已修正归属主体");
+        const libraryRow = specRows.find((row) => row.id === input.specId) ?? null;
+        setSpecDetail(toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow));
+        await reloadSpecs();
+      } catch (error) {
+        setReviewActionError(formatReviewActionError(error));
+      } finally {
+        setActivatePendingSpecId(null);
+      }
+    },
+    [application, pushAudit, reloadSpecs, showToast, specRows]
+  );
+
+  const handleRenamePropertyKey = useCallback(
+    async (input: { specId: string; propertyKey: string; reason: string }) => {
+      setReviewActionError(null);
+      setActivatePendingSpecId(input.specId);
+      try {
+        const detail = await application.renameParameterSpecPropertyKey(input.specId, {
+          propertyKey: input.propertyKey,
+          reason: input.reason,
+        });
+        pushAudit("spec-property-key-changed", input.reason, `修正属性键 ${input.specId}`);
+        showToast("已修正属性键");
+        const libraryRow = specRows.find((row) => row.id === input.specId) ?? null;
+        setSpecDetail(toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow));
+        await reloadSpecs();
+      } catch (error) {
+        setReviewActionError(formatReviewActionError(error));
+      } finally {
+        setActivatePendingSpecId(null);
+      }
+    },
+    [application, pushAudit, reloadSpecs, showToast, specRows]
   );
 
   const handlePrepareCutover = useCallback(
@@ -602,6 +661,9 @@ export function OrganizationSpecGovernancePanel({
         onSaveSpec={handleSaveSpec}
         onDeprecateSpec={handleDeprecateSpec}
         onRestoreSpec={handleRestoreSpec}
+        onReattributeSpec={handleReattributeSpec}
+        onRenamePropertyKey={handleRenamePropertyKey}
+        identityModules={createModules}
         onPrepareCutover={handlePrepareCutover}
         onFinalizeCutover={handleFinalizeCutover}
         canDeprecateGlobal={isPlatformSuperAdmin}

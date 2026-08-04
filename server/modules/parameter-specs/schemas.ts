@@ -160,8 +160,10 @@ export const activateParameterSpecBodySchema = z.object({
   valueShape: z.record(z.string(), z.unknown()),
   constraints: z.record(z.string(), z.unknown()).default({}),
   documentation: nonEmptyString,
-  displayName: z.string().optional(),
-  description: z.string().optional(),
+  displayName: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  units: z.string().nullable().optional(),
+  exampleValue: z.unknown().optional(),
   reason: nonEmptyString,
   coverageClaim: z
     .object({
@@ -198,11 +200,10 @@ export const updateParameterSpecBodySchema = z.object({
   valueShape: z.record(z.string(), z.unknown()).optional(),
   constraints: z.record(z.string(), z.unknown()).default({}),
   documentation: nonEmptyString,
-  displayName: z.string().optional(),
-  description: z.string().optional(),
+  displayName: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
   units: z.string().nullable().optional(),
   exampleValue: z.unknown().optional(),
-  policyTarget: z.unknown().optional(),
   reason: nonEmptyString,
 });
 
@@ -211,6 +212,16 @@ export const deprecateParameterSpecBodySchema = z.object({
 });
 
 export const restoreParameterSpecBodySchema = z.object({
+  reason: nonEmptyString,
+});
+
+export const reattributeParameterSpecBodySchema = z.object({
+  attributionSubjectId: nonEmptyString,
+  reason: nonEmptyString,
+});
+
+export const renameParameterSpecPropertyKeyBodySchema = z.object({
+  propertyKey: nonEmptyString,
   reason: nonEmptyString,
 });
 
@@ -243,6 +254,8 @@ export type CreateParameterSpecBody = z.infer<typeof createParameterSpecBodySche
 export type UpdateParameterSpecBody = z.infer<typeof updateParameterSpecBodySchema>;
 export type DeprecateParameterSpecBody = z.infer<typeof deprecateParameterSpecBodySchema>;
 export type RestoreParameterSpecBody = z.infer<typeof restoreParameterSpecBodySchema>;
+export type ReattributeParameterSpecBody = z.infer<typeof reattributeParameterSpecBodySchema>;
+export type RenameParameterSpecPropertyKeyBody = z.infer<typeof renameParameterSpecPropertyKeyBodySchema>;
 export type PrepareParameterSpecCutoverBody = z.infer<typeof prepareParameterSpecCutoverBodySchema>;
 export type FinalizeParameterSpecCutoverBody = z.infer<typeof finalizeParameterSpecCutoverBodySchema>;
 

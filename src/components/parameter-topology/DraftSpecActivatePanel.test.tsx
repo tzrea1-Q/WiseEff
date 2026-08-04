@@ -39,10 +39,11 @@ describe("DraftSpecActivatePanel", () => {
     fireEvent.change(screen.getByLabelText("参数说明"), {
       target: { value: "GPIO interrupt cells for sc8562" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "激活定义" }));
     fireEvent.change(screen.getByLabelText("激活原因"), {
       target: { value: "Inferred three-cell phandle group from occurrence" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "激活定义" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认激活" }));
     expect(onActivate).toHaveBeenCalledTimes(1);
     expect(onActivate.mock.calls[0]?.[0]).toMatchObject({
       valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 3 },
@@ -89,7 +90,6 @@ describe("DraftSpecActivatePanel", () => {
     );
     fireEvent.change(screen.getByLabelText("单元格数量约束"), { target: { value: "2" } });
     fireEvent.change(screen.getByLabelText("参数说明"), { target: { value: "previous docs" } });
-    fireEvent.change(screen.getByLabelText("激活原因"), { target: { value: "previous reason" } });
 
     rerender(
       <DraftSpecActivatePanel
@@ -104,14 +104,13 @@ describe("DraftSpecActivatePanel", () => {
 
     expect((screen.getByLabelText("单元格数量约束") as HTMLInputElement).value).toBe("1");
     expect((screen.getByLabelText("参数说明") as HTMLTextAreaElement).value).toBe("");
-    expect((screen.getByLabelText("激活原因") as HTMLTextAreaElement).value).toBe("");
+    expect(screen.queryByLabelText("激活原因")).not.toBeInTheDocument();
   });
 
   it("rejects a fractional cell constraint", () => {
     render(<DraftSpecActivatePanel detail={draftDetail()} onActivate={() => undefined} />);
     fireEvent.change(screen.getByLabelText("单元格数量约束"), { target: { value: "1.5" } });
     fireEvent.change(screen.getByLabelText("参数说明"), { target: { value: "docs" } });
-    fireEvent.change(screen.getByLabelText("激活原因"), { target: { value: "reason" } });
 
     expect(screen.getByRole("button", { name: "激活定义" })).toBeDisabled();
   });

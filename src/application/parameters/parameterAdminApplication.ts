@@ -3,6 +3,8 @@ import type {
   CreateParameterSpecInput,
   DeprecateParameterSpecInput,
   ParameterTopologyRepository,
+  ReattributeParameterSpecInput,
+  RenameParameterSpecPropertyKeyInput,
   ReopenMappingInput,
   ResolveMappingInput,
   ResolveSpecReviewInput,
@@ -67,6 +69,11 @@ export type ParameterAdminApplication = {
   updateParameterSpec(specId: string, input: UpdateParameterSpecInput): Promise<ParameterSpecDetail>;
   deprecateParameterSpec(specId: string, input: DeprecateParameterSpecInput): Promise<ParameterSpecDetail>;
   restoreParameterSpec(specId: string, input: RestoreParameterSpecInput): Promise<ParameterSpecDetail>;
+  reattributeParameterSpec(specId: string, input: ReattributeParameterSpecInput): Promise<ParameterSpecDetail>;
+  renameParameterSpecPropertyKey(
+    specId: string,
+    input: RenameParameterSpecPropertyKeyInput,
+  ): Promise<ParameterSpecDetail>;
   getSpecVersionCutoverImpact(specId: string): Promise<ParameterSpecCutoverSummary>;
   prepareSpecVersionCutover(
     specId: string,
@@ -179,6 +186,12 @@ export function createParameterAdminApplication({
     },
     restoreParameterSpec(specId, input) {
       return topology.restoreParameterSpec(specId, input);
+    },
+    reattributeParameterSpec(specId, input) {
+      return topology.reattributeParameterSpec(specId, input);
+    },
+    renameParameterSpecPropertyKey(specId, input) {
+      return topology.renameParameterSpecPropertyKey(specId, input);
     },
     getSpecVersionCutoverImpact(specId) {
       return topology.getSpecVersionCutoverImpact(specId);

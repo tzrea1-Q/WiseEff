@@ -264,6 +264,20 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterSpecs.reattribute",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/reattribute",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterSpecs.renamePropertyKey",
+    method: "POST",
+    path: "/api/v2/parameter-specs/:specId/rename-property-key",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterTopology.getTopology",
     method: "GET",
     path: "/api/v2/projects/:projectId/config-sets/:configSetId/revisions/:revisionId/topology",

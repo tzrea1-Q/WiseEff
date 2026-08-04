@@ -20,6 +20,8 @@ import {
   parameterSpecParamsSchema,
   parameterSpecReviewTaskParamsSchema,
   prepareParameterSpecCutoverBodySchema,
+  reattributeParameterSpecBodySchema,
+  renameParameterSpecPropertyKeyBodySchema,
   resolveSpecReviewTaskBodySchema,
   restoreParameterSpecBodySchema,
   updateOrganizationDriverSchemaBodySchema,
@@ -35,6 +37,8 @@ import {
   listParameterSpecs,
   listSpecReviewTasks,
   prepareParameterSpecVersionCutover,
+  reattributeParameterSpec,
+  renameParameterSpecPropertyKey,
   resolveSpecReviewTask,
   restoreParameterSpec,
   updateParameterSpec,
@@ -233,6 +237,36 @@ export function registerParameterSpecRoutes(
     const params = parseWithSchema(parameterSpecParamsSchema, request.params);
     const body = parseWithSchema(restoreParameterSpecBodySchema, request.body ?? {});
     const result = await restoreParameterSpec(
+      db,
+      auth,
+      { ...body, specId: params.specId },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/reattribute", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(reattributeParameterSpecBodySchema, request.body ?? {});
+    const result = await reattributeParameterSpec(
+      db,
+      auth,
+      { ...body, specId: params.specId },
+      { requestId: request.requestId },
+    );
+    return { status: 200, body: result };
+  });
+
+  router.post("/api/v2/parameter-specs/:specId/rename-property-key", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(parameterSpecParamsSchema, request.params);
+    const body = parseWithSchema(renameParameterSpecPropertyKeyBodySchema, request.body ?? {});
+    const result = await renameParameterSpecPropertyKey(
       db,
       auth,
       { ...body, specId: params.specId },

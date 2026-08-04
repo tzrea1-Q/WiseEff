@@ -69,6 +69,12 @@ export function ProjectAdminFormDialog({
       ? "维护项目名称与代号，后续可在参数库中继续配置模块和参数。"
       : "修改项目名称、代号与状态。保存后项目详情与列表会同步更新。";
   const readOnlyStatusLabel = initialStatus ? PROJECT_ADMIN_STATUS_LABELS[initialStatus] ?? initialStatus : "";
+  const isDirty =
+    mode === "create" ||
+    name.trim() !== initialName.trim() ||
+    code.trim().toUpperCase() !== initialCode.trim().toUpperCase() ||
+    (statusEditable && status !== initialStatus);
+  const canSubmit = Boolean(name.trim() && code.trim()) && (mode === "create" || isDirty);
 
   return (
     <div
@@ -94,6 +100,7 @@ export function ProjectAdminFormDialog({
           className="project-admin-form-body project-admin-form-grid"
           onSubmit={(event) => {
             event.preventDefault();
+            if (!canSubmit) return;
             void onSubmit({
               name: name.trim(),
               code: code.trim().toUpperCase(),
@@ -146,9 +153,15 @@ export function ProjectAdminFormDialog({
             <button className="button subtle" type="button" onClick={onClose} disabled={loading}>
               取消
             </button>
-            <button className="button primary" type="submit" disabled={loading || !name.trim() || !code.trim()}>
-              {loading ? "保存中…" : mode === "create" ? "创建项目" : "保存修改"}
-            </button>
+            {mode === "edit" && !isDirty ? (
+              <button className="button primary" type="button" onClick={onClose} disabled={loading}>
+                完成
+              </button>
+            ) : (
+              <button className="button primary" type="submit" disabled={loading || !canSubmit}>
+                {loading ? "保存中…" : mode === "create" ? "创建项目" : "保存修改"}
+              </button>
+            )}
           </div>
         </form>
       </div>

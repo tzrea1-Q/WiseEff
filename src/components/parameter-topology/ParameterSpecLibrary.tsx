@@ -21,6 +21,8 @@ export type ParameterSpecLibraryRow = {
   /** Null means platform-global catalog; Admins may still update via PATCH. */
   organizationId: string | null;
   propertyKey: string;
+  /** Declared attribution subject (ADR-0013/0017); distinct from observed modules. */
+  attributionSubjectId: string | null;
   /** Distinct attribution units from project bindings; empty = not yet observed. */
   attributionModules: SpecAttributionModule[];
   driverModule: string | null;
@@ -54,6 +56,7 @@ export function mapParameterSpecToLibraryRow(input: {
   usageCount?: number | null;
   reviewState?: string | null;
   attributionModules?: SpecAttributionModule[] | null;
+  attributionSubjectId?: string | null;
 }): ParameterSpecLibraryRow {
   const propertyKey =
     input.propertyKey?.trim() ||
@@ -81,6 +84,7 @@ export function mapParameterSpecToLibraryRow(input: {
     id: input.id,
     organizationId: input.organizationId ?? null,
     propertyKey,
+    attributionSubjectId: input.attributionSubjectId ?? null,
     attributionModules: input.attributionModules ?? [],
     driverModule: input.driverModule ?? null,
     compatible: input.compatiblePatterns?.[0] ?? null,
@@ -293,6 +297,17 @@ export type ParameterSpecLibraryProps = {
   onSaveSpec?: (payload: SpecEditorSavePayload) => void | Promise<void>;
   onDeprecateSpec?: (input: { specId: string; reason: string }) => void | Promise<void>;
   onRestoreSpec?: (input: { specId: string; reason: string }) => void | Promise<void>;
+  onReattributeSpec?: (input: {
+    specId: string;
+    attributionSubjectId: string;
+    reason: string;
+  }) => void | Promise<void>;
+  onRenamePropertyKey?: (input: {
+    specId: string;
+    propertyKey: string;
+    reason: string;
+  }) => void | Promise<void>;
+  identityModules?: import("@/domain/parameter-topology/moduleRegistry").ParameterModule[];
   onPrepareCutover?: (specId: string) => void | Promise<void>;
   onFinalizeCutover?: (input: { specId: string; reason: string }) => void | Promise<void>;
   savePending?: boolean;
@@ -319,6 +334,9 @@ export function ParameterSpecLibrary({
   onSaveSpec,
   onDeprecateSpec,
   onRestoreSpec,
+  onReattributeSpec,
+  onRenamePropertyKey,
+  identityModules = [],
   onPrepareCutover,
   onFinalizeCutover,
   savePending = false,
@@ -635,6 +653,21 @@ export function ParameterSpecLibrary({
                 }
               : undefined
           }
+          onReattribute={
+            onReattributeSpec
+              ? async ({ attributionSubjectId, reason }) => {
+                  await onReattributeSpec({ specId: detail.id, attributionSubjectId, reason });
+                }
+              : undefined
+          }
+          onRenamePropertyKey={
+            onRenamePropertyKey
+              ? async ({ propertyKey, reason }) => {
+                  await onRenamePropertyKey({ specId: detail.id, propertyKey, reason });
+                }
+              : undefined
+          }
+          identityModules={identityModules}
           onPrepareCutover={
             onPrepareCutover ? () => onPrepareCutover(detail.id) : undefined
           }

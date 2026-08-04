@@ -159,7 +159,7 @@ D2 的审计那一半已经落地：`spec-updated` 元数据携带 `previousValu
 ### 批次 1 — 静默无效的写入
 
 1. [x] 决定 SE-D1 至 SE-D6，并把每条记入本计划。
-2. [ ] 关闭 SE-1：从弹窗、`updateParameterSpecBodySchema`、`UpdateParameterSpecInput` 与 mock 移除 `policyTarget`；为产品维度的编辑面登记 TD-055。
+2. [x] 关闭 SE-1：从弹窗、`updateParameterSpecBodySchema`、`UpdateParameterSpecInput` 与 mock 移除 `policyTarget`；为产品维度的编辑面登记 TD-055。
 3. [ ] 关闭 SE-2：约束在 `updateParameterSpec` 与 `activateParameterSpec` 上改为替换。
 4. [ ] 一并关闭 SE-3 与 SE-5：`units` / `displayName` / `description` / `exampleValue` 用 `case when $flag` 取代 `coalesce`；`displayName` 与 `description` 改为可空；去掉前端的 `propertyKey` 兜底。
 5. [ ] 关闭 SE-4：`activateParameterSpecBodySchema` 增加 `units` 与 `exampleValue`，activate 分支随之发送。
