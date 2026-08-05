@@ -34,11 +34,9 @@ import {
   formatCsvQueryParam,
   parseCsvQueryParam
 } from "@/application/parameters/parameterAdminUrl";
-import {
-  auditKindLabel,
-  type ParameterAdminAuditHint
-} from "@/application/parameters/parameterAdminState";
+import { auditKindLabel } from "@/application/parameters/parameterAdminState";
 import { useParameterAdmin } from "./ParameterAdminProvider";
+import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
 
 export type { ParameterAdminNextProjectView } from "@/components/admin/ProjectOperationsDialog";
 
@@ -140,7 +138,16 @@ export function ProjectsOperationsPanel({
   const { projectId, view } = parseParameterAdminNextProjectPath(pathname);
   const isApiMode = runtimeMode === "api";
   const adminClient = useMemo(() => createParameterAdminClient(), []);
-  const latestAudit = adminState.auditHints[0] ?? null;
+  const latestAudit = adminState.recentAuditEvents[0] ?? null;
+  const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
+
+  useEffect(() => {
+    if (!isApiMode) {
+      return;
+    }
+    void refreshRecentAudits(projectId ?? undefined);
+  }, [isApiMode, projectId, refreshRecentAudits]);
+
   const fileRepository = useMemo(
     () =>
       parameterFileRepository ??
@@ -277,20 +284,6 @@ export function ProjectsOperationsPanel({
     [listSearch, onNavigate]
   );
 
-  const pushAudit = useCallback(
-    (kind: ParameterAdminAuditHint["kind"], summary: string, reason = "") => {
-      adminDispatch({
-        type: "PUSH_AUDIT_HINT",
-        hint: {
-          kind,
-          summary,
-          reason,
-          recordedAt: new Date().toISOString()
-        }
-      });
-    },
-    [adminDispatch]
-  );
 
   const submitForm = async (input: { name: string; code: string; status?: string }) => {
     if (!editingProject) {
@@ -303,7 +296,7 @@ export function ProjectsOperationsPanel({
         await adminClient.updateProject(editingProject.id, input);
         await parameterActions?.refresh();
         await loadProjects();
-        pushAudit("project-updated", `已更新项目「${input.name}」`);
+        await refreshRecentAudits();
         setEditingProjectId(null);
       } catch (submitError) {
         setFormError(submitError instanceof Error ? submitError.message : "更新项目失败。");
@@ -323,7 +316,7 @@ export function ProjectsOperationsPanel({
           : {})
       }
     });
-    pushAudit("project-updated", `已更新项目「${input.name}」`);
+    void refreshRecentAudits();
     setEditingProjectId(null);
   };
 
@@ -338,7 +331,7 @@ export function ProjectsOperationsPanel({
         await adminClient.deleteProject(deleteTarget.id);
         await parameterActions?.refresh();
         await loadProjects();
-        pushAudit("project-deleted", `已删除项目「${deleteTarget.name}」`);
+        await refreshRecentAudits();
         setDeleteTargetId(null);
         if (projectId === deleteTarget.id) {
           onNavigate("/parameter-admin/projects");
@@ -351,7 +344,7 @@ export function ProjectsOperationsPanel({
       return;
     }
     dispatch({ type: "DELETE_PARAMETER_ADMIN_PROJECT", projectId: deleteTarget.id });
-    pushAudit("project-deleted", `已删除项目「${deleteTarget.name}」`);
+    void refreshRecentAudits();
     setDeleteTargetId(null);
     if (projectId === deleteTarget.id) {
       onNavigate("/parameter-admin/projects");
@@ -381,7 +374,7 @@ export function ProjectsOperationsPanel({
   }, [onNavigate, structureDirty]);
 
   const dismissAudit = useCallback(() => {
-    adminDispatch({ type: "CLEAR_AUDIT_HINTS" });
+    adminDispatch({ type: "CLEAR_RECENT_AUDIT_EVENTS" });
   }, [adminDispatch]);
 
   const auditNotice = latestAudit ? (
@@ -391,7 +384,7 @@ export function ProjectsOperationsPanel({
       aria-label="治理审计"
       data-audit-kind={latestAudit.kind}
     >
-      <p>治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}</p>
+      <p>治理审计已记录：{latestAudit.summary || auditKindLabel(latestAudit.kind)}</p>
       <div className="project-operations-audit__meta">
         <time dateTime={latestAudit.recordedAt}>{formatAuditTime(latestAudit.recordedAt)}</time>
         <button
@@ -424,24 +417,9 @@ export function ProjectsOperationsPanel({
     [onNavigate, projectBase]
   );
 
-  const handleConflictResolved = useCallback(
-    ({
-      parameterName,
-      resolution,
-      reason
-    }: {
-      parameterName: string;
-      resolution: "file" | "ui";
-      reason: string;
-    }) => {
-      pushAudit(
-        "file-conflict-resolved",
-        `已裁决「${parameterName}」为${resolution === "file" ? "文件值" : "界面值"}`,
-        reason
-      );
-    },
-    [pushAudit]
-  );
+  const handleConflictResolved = useCallback(() => {
+    void refreshRecentAudits(projectId ?? undefined);
+  }, [projectId, refreshRecentAudits]);
 
   return (
     <section className="param-admin-main project-admin-layout" aria-label="项目运营">
@@ -543,7 +521,7 @@ export function ProjectsOperationsPanel({
                     ? { revisionId: adminState.selectedConfigRevisionId }
                     : {})}
                   validateRevision={(pid, revision) => application.validateRevision(pid, revision)}
-                  onAudit={(event) => pushAudit(event.kind, event.summary)}
+                  onAudit={() => void refreshRecentAudits(projectId ?? undefined)}
                 />
               ) : null}
               {item === "structure" ? (

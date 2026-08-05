@@ -1,6 +1,6 @@
 # Parameter admin audit hints → audit projection (C3)
 
-> Status: **Active** — planning only until implementation starts
+> Status: **Implementation complete on branch** — awaiting parent PR/merge; **TD-061** closed in tech-debt tracker
 > Date: 2026-08-05
 > Parent: [`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)
 > Tracks: **TD-061** (opened with this program)
@@ -47,27 +47,27 @@ Branch: `feat/parameter-admin-audit-hints` from latest `main`.
 
 ### Batch 0 — Inventory
 
-- [ ] Enumerate every `PUSH_AUDIT_HINT` call site with: triggering mutation, whether server already audits, audit action name if any.
-- [ ] Produce a checklist table in the PR description (kinds → audit action → gap Y/N).
+- [x] Enumerate every `PUSH_AUDIT_HINT` call site with: triggering mutation, whether server already audits, audit action name if any.
+- [x] Produce a checklist table in the PR description (kinds → audit action → gap Y/N).
 
 ### Batch 1 — Server gaps
 
-- [ ] For each gap (mutation without audit), add `createAuditEvent` with stable `action`, resource ids, and non-sensitive summary.
-- [ ] Unit tests per module service asserting audit write on success and no write on authz failure.
+- [x] For each gap (mutation without audit), add `createAuditEvent` with stable `action`, resource ids, and non-sensitive summary.
+- [x] Unit tests per module service asserting audit write on success and no write on authz failure.
 
 ### Batch 2 — Admin recent-events projection
 
-- [ ] Add/reuse HTTP client method to list recent org-scoped audit events (existing list API + query filters).
-- [ ] Replace `auditHints: ParameterAdminAuditHint[]` with `recentAuditEvents` (or keep UI type as a view-model mapped from audit DTOs).
-- [ ] Remove `PUSH_AUDIT_HINT` reducer action once call sites are gone.
-- [ ] After successful admin mutations, invalidate/refetch recent events instead of pushing local hints.
-- [ ] Empty / error / loading states that do not look like “no activity forever” on fetch failure.
+- [x] Add/reuse HTTP client method to list recent org-scoped audit events (existing list API + query filters).
+- [x] Replace `auditHints: ParameterAdminAuditHint[]` with `recentAuditEvents` (or keep UI type as a view-model mapped from audit DTOs).
+- [x] Remove `PUSH_AUDIT_HINT` reducer action once call sites are gone.
+- [x] After successful admin mutations, invalidate/refetch recent events instead of pushing local hints.
+- [x] Empty / error / loading states that do not look like “no activity forever” on fetch failure.
 
 ### Batch 3 — Tests, acceptance, docs
 
-- [ ] Component tests: after mocked mutation success, recent list shows server event.
-- [ ] Review browser acceptance for parameter-admin audit affordances; add `PARAM-ADMIN-AUDIT-RECENT-001` if a visible strip/drawer is user-facing.
-- [ ] Update FRONTEND / admin docs; close TD-061.
+- [x] Component tests: after mocked mutation success, recent list shows server event.
+- [x] Review browser acceptance for parameter-admin audit affordances; add `PARAM-ADMIN-AUDIT-RECENT-001` if a visible strip/drawer is user-facing.
+- [x] Update FRONTEND / admin docs; close TD-061.
 - [ ] Tick parent program C3 after merge.
 
 ## UI interaction coverage
@@ -111,10 +111,10 @@ Frontend-visible: playwright-cli on `/parameter-admin` at 1440×900 / 768×1024 
 
 ## Documentation Update Gate
 
-- [ ] Zero `PUSH_AUDIT_HINT` in `src/`
-- [ ] Inventory gaps closed with server audit or explicit non-mutating UI-only explanation
-- [ ] TD-061 Completed
-- [ ] `npm run docs:check`
+- [x] Zero `PUSH_AUDIT_HINT` in `src/`
+- [x] Inventory gaps closed with server audit or explicit non-mutating UI-only explanation
+- [x] TD-061 Completed
+- [x] `npm run docs:check`
 - [ ] Parent program C3 ready to tick
 
 ## Success criteria
@@ -123,3 +123,15 @@ Frontend-visible: playwright-cli on `/parameter-admin` at 1440×900 / 768×1024 
 2. No local hint array as SSOT.
 3. Mutations that previously only hinted locally now audit server-side (or were already covered).
 4. TD-061 closed.
+
+## Batch 0 inventory (2026-08-05 implementation)
+
+| Call site / mutation | Server audit before C3 | Gap closed |
+| --- | --- | --- |
+| Module CRUD / mapping / recompute / driver registration | Yes (`parameter-modules` → `parameter-management`) | UI refetch only |
+| Spec review / activate / deprecate / restore / reattribute / rename key | Yes (`writeGovernanceAudit`, app `parameters`) | UI refetch; apps filter includes `parameters` |
+| Identity mapping resolve/reopen | Yes (governance audit) | UI refetch |
+| Import batch apply | Yes (`batch-import` in parameters service) | UI refetch |
+| Baseline / config-set / validation | Yes (`baseline` / config-set, app `parameters`) | UI refetch |
+| File conflict resolve | Yes (`parameter-files/conflictService`) | UI refetch |
+| Project update / delete | **No** | Added `updateProjectForAuth` / `deleteProjectForAuth` + `createAuditEvent` (`parameter-admin`, kinds `project-updated` / `project-deleted`) |

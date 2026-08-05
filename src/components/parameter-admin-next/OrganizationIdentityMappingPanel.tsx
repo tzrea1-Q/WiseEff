@@ -8,6 +8,7 @@ import { IdentityMappingReview } from "@/components/parameter-topology/IdentityM
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { ParamAdminEmptyState } from "./ParamAdminEmptyState";
 import { useParameterAdmin } from "./ParameterAdminProvider";
+import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
 
 export type OrganizationIdentityMappingPanelProps = {
   /** Sync open/history counts into the parent specs shell after each successful load. */
@@ -22,6 +23,7 @@ export function OrganizationIdentityMappingPanel({
   onTasksLoaded
 }: OrganizationIdentityMappingPanelProps = {}) {
   const { application, dispatch, state } = useParameterAdmin();
+  const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
   const [tasks, setTasks] = useState<IdentityMappingTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,25 +58,7 @@ export function OrganizationIdentityMappingPanel({
       setError(null);
       try {
         await application.resolveMapping(taskId, input);
-        dispatch({
-          type: "PUSH_AUDIT_HINT",
-          hint: {
-            kind:
-              input.decision === "dismissed"
-                ? "identity-mapping-dismissed"
-                : input.decision === "new-identity"
-                  ? "identity-mapping-new-identity"
-                  : "identity-mapping-resolved",
-            summary:
-              input.decision === "dismissed"
-                ? `已驳回节点对应任务 ${taskId}`
-                : input.decision === "new-identity"
-                  ? `已声明新身份（任务 ${taskId}）`
-                  : `已确认节点对应 ${input.selectedLogicalNodeId ?? taskId}`,
-            reason: input.reason,
-            recordedAt: new Date().toISOString()
-          }
-        });
+        await refreshRecentAudits();
         await reload();
       } catch (resolveError) {
         setError(
@@ -84,7 +68,7 @@ export function OrganizationIdentityMappingPanel({
         );
       }
     },
-    [application, dispatch, reload]
+    [application, refreshRecentAudits, reload]
   );
 
   const handleReopen = useCallback(
@@ -92,21 +76,13 @@ export function OrganizationIdentityMappingPanel({
       setError(null);
       try {
         await application.reopenMapping(taskId, input);
-        dispatch({
-          type: "PUSH_AUDIT_HINT",
-          hint: {
-            kind: "identity-mapping-reopened",
-            summary: `已重新打开节点对应任务 ${taskId}`,
-            reason: input.reason,
-            recordedAt: new Date().toISOString()
-          }
-        });
+        await refreshRecentAudits();
         await reload();
       } catch (reopenError) {
         setError(reopenError instanceof Error ? reopenError.message : "重新打开节点对应任务失败。");
       }
     },
-    [application, dispatch, reload]
+    [application, refreshRecentAudits, reload]
   );
 
   const openTasks = tasks.filter((task) => task.status === "open");
