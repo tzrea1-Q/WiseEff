@@ -129,6 +129,55 @@ export const routeManifest = [
   { id: "parameters.admin.getProject", method: "GET", path: "/api/v1/parameters/admin/projects/:projectId", module: "parameters", stability: "mvp" },
   { id: "parameters.admin.createProject", method: "POST", path: "/api/v1/parameters/admin/projects", module: "parameters", stability: "mvp" },
   { id: "parameters.admin.updateProject", method: "PATCH", path: "/api/v1/parameters/admin/projects/:projectId", module: "parameters", stability: "mvp" },
+  {
+    id: "parameters.initialization.get",
+    method: "GET",
+    path: "/api/v1/parameters/projects/:projectId/initialization",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.initialization.upsertDraft",
+    method: "PUT",
+    path: "/api/v1/parameters/projects/:projectId/initialization/draft",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.initialization.preview",
+    method: "POST",
+    path: "/api/v1/parameters/projects/:projectId/initialization/preview",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.initialization.submit",
+    method: "POST",
+    path: "/api/v1/parameters/projects/:projectId/initialization/submit",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.admin.listInitializationReviews",
+    method: "GET",
+    path: "/api/v1/parameters/admin/initialization-reviews",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.admin.approveInitializationReview",
+    method: "POST",
+    path: "/api/v1/parameters/admin/initialization-reviews/:reviewId/approve",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.admin.rejectInitializationReview",
+    method: "POST",
+    path: "/api/v1/parameters/admin/initialization-reviews/:reviewId/reject",
+    module: "parameters",
+    stability: "mvp"
+  },
   { id: "parameters.list", method: "GET", path: "/api/v1/parameters", module: "parameters", stability: "mvp" },
   { id: "parameters.get", method: "GET", path: "/api/v1/parameters/:parameterId", module: "parameters", stability: "mvp" },
   { id: "parameters.history", method: "GET", path: "/api/v1/parameters/:parameterId/history", module: "parameters", stability: "mvp" },

@@ -1,203 +1,174 @@
 ﻿# Project Parameter Initialization Design
 
+> Amended 2026-08-05 for post-cutover **semantic bindings** (C1 / TD-060).  
+> Chinese: [`docs/zh-CN/design-docs/2026-05-20-project-parameter-initialization-design.md`](../zh-CN/design-docs/2026-05-20-project-parameter-initialization-design.md)  
+> Plan: [`docs/exec-plans/active/2026-08-05-project-parameter-initialization.md`](../exec-plans/active/2026-08-05-project-parameter-initialization.md)
+
 ## Summary
 
-Add a parameter library initialization step to the new project creation wizard. When a new project starts, users can create a one-time snapshot from one or more existing projects, choose the subset of parameters to inherit, and submit the generated parameter library for initialization review.
+Add a parameter-library initialization step to the new-project wizard. Creators take a **one-time snapshot of selected source-project bindings** (semantic identities), submit an initialization review, and unlock the normal typed-binding workflow only after admin approval.
 
-The feature is intentionally a snapshot copy. It does not keep the new project linked to source projects after the initialization draft is generated.
+This is intentionally a snapshot. The new project is **not** kept linked to source projects after the draft is generated.
 
 ## Goals
 
-- Let project creators initialize a new project's parameter library from existing project experience.
-- Support flexible inheritance from one or more projects.
-- Let users select all or part of the source parameters by module, risk, and individual parameter.
-- Preserve auditability by generating an initialization draft and review record before the parameter library becomes active.
-- Avoid treating inherited current values as real measurements for the new project.
+- Let creators initialize a new project from existing project experience.
+- Support inheritance from one or more source projects with primary/supplement priority.
+- Select candidates by module, risk, and individual **bindings** (not flat shared `parameterId` rows).
+- Preserve auditability: draft + review before the target library becomes writable.
+- Never treat inherited source **device measurements** as already measured on the new project.
 
 ## Non-Goals
 
-- No ongoing synchronization with source projects after snapshot creation.
-- No full template management system in the first version.
-- No automatic conflict merging beyond the primary-source priority rule.
-- No direct device data collection for new project current values.
+- Ongoing synchronization with source projects after snapshot creation.
+- Full template / marketplace management in v1.
+- Automatic conflict merging beyond primary-source priority.
+- Direct device collection for new-project measured values.
+- Using flat `recommendedValue` / shared parameter-definition tables as the API write model (prototype-only legacy; see Deprecated below).
+
+## Deprecated (do not implement for API mode)
+
+The May 2026 draft described shared flat parameter definitions plus per-project `recommendedValue` / `currentValue` strings. After the topology cutover, that shape is **not** the product write model:
+
+| Deprecated concept | Replacement |
+| --- | --- |
+| `selectedParameterIds` / snapshot `parameterId` as SSOT | Source `projectParameterBindingId` (+ target materialize of a new binding) |
+| Snapshot `recommendedValue: string` as write payload | Snapshot of `parameterSpecId` / `parameterSpecVersionId` / `effectiveValue` (or `rawValue`) shape from the source binding |
+| “Activate shared definition values on approve” | Transactionally **materialize bindings** (and required module/topology support) on the **target** project |
+| Prototype reducer as SSOT | Port + HTTP + DB; mock adapter implements the same Port |
+
+Mock UI may still show legacy labels during transition, but API mode must not persist or submit flat recommended-value SSOT.
 
 ## Entry Point
 
-The feature lives inside the new project creation wizard. It appears after project basics and team owner details, before final summary and submission.
+Lives in the new-project creation wizard, after project basics and team/owner, before final summary.
 
 Recommended wizard steps:
 
-1. Project basics
-2. Team and owner
-3. Initialize parameter library
-4. Review summary
-5. Submit for approval
+1. Project basics  
+2. Team and owner  
+3. Initialize parameter library  
+4. Review summary  
+5. Submit for approval  
 
-The initialization step should provide a visible "start from empty" path, but users must choose that mode intentionally.
+The initialization step must offer an explicit **start from empty** path.
 
 ## Initialization Flow
 
-1. User creates a new project and enters the initialization step.
-2. User selects one or more source projects.
-3. User manually chooses the primary source project.
-4. User optionally chooses supplement source priority.
-5. User filters candidate parameters by module and risk.
-6. User fine-tunes individual parameters in the candidate list.
-7. User previews the generated snapshot.
-8. User submits the project and parameter initialization for review.
-9. The project is created with status `initialization_pending_review`.
-10. Admin reviews the initialization draft.
-11. On approval, the new project's parameter values become active and project status becomes `initialized`.
-12. On rejection, the draft keeps its selections and rejection reason so the creator can revise and resubmit.
+1. Creator starts a new project and reaches the initialization step.  
+2. Either chooses **start from empty**, or selects one or more source projects.  
+3. With sources: designate primary (required when ≥2 sources); optionally order supplement priority.  
+4. Filter candidate **bindings** by module and risk.  
+5. Fine-tune individual binding selection.  
+6. Preview the generated snapshot (server-resolved).  
+7. Submit project + initialization for review.  
+8. Project status becomes `initialization_pending_review`.  
+9. Admin reviews the initialization draft (separate from ordinary change-request review).  
+10. **Approve:** materialize target bindings; status → `initialized`.  
+11. **Reject:** status → `initialization_rejected`; draft + reason remain editable for resubmit.
 
 ## Project Initialization Status
 
-Use a project-level status to control what the parameter workspace allows.
+Persisted on `projects` (extend existing `status` or add `initialization_status` — prefer a dedicated column if `status` already encodes ops states such as `maintenance`):
 
-- `not_initialized`: project exists without an initialization choice.
-- `initialization_draft`: project creator has selected sources and parameters but has not submitted review.
-- `initialization_pending_review`: initialization has been submitted and is waiting for admin review.
-- `initialization_rejected`: admin rejected the initialization draft.
-- `initialized`: initialization is approved and the project can use the normal parameter workflow.
+- `not_initialized` — project exists without an initialization choice.  
+- `initialization_draft` — sources/bindings chosen but not submitted.  
+- `initialization_pending_review` — awaiting admin.  
+- `initialization_rejected` — rejected; draft editable.  
+- `initialized` — approved; normal typed binding submit allowed.
 
-Before `initialized`, project members can view parameters, compare inherited values, and add notes. They cannot submit normal parameter change requests.
+**Lock:** while status ∉ {`initialized`} (and not a separate ops-only `maintenance` state that already allows edits), block normal typed binding submit / change-request create for that project. Read-only topology/binding views remain available.
 
 ## Source Selection
 
-Users can select multiple source projects. If only one source is selected, it is automatically the primary source. If multiple sources are selected, the user must manually designate one primary source.
+- Multiple sources allowed.  
+- One source ⇒ automatically primary.  
+- Multiple sources ⇒ creator must designate primary.  
+- Primary is the baseline; supplements **only fill bindings missing from primary** (keyed by semantic identity — see Conflict).  
+- Supplement priority defaults to selection order; reorder before preview.
 
-The primary source is the baseline. Supplement sources only fill parameters missing from the primary source and never override primary-source parameters.
+## Binding Selection
 
-Supplement priority defaults to selection order. Users may reorder supplement sources before generating the preview.
+Three layers:
 
-## Parameter Selection
+1. Module selection (browse via durable `moduleId` / attribution tree).  
+2. Risk selection (from spec / policy metadata available on the binding view).  
+3. Individual binding selection.
 
-Selection happens in three layers:
+Candidate list shows:
 
-1. Module selection for broad scope control.
-2. Risk selection for quick filtering.
-3. Individual parameter selection for final cleanup.
+- Property key / display label.  
+- Module path.  
+- Risk (if available).  
+- Effective value preview (from source binding; not a device “current”).  
+- Source project + primary vs supplement.  
+- Whether alternative source bindings exist for the same semantic key.  
+- Whether the effective value needs an owner/admin note.
 
-The candidate parameter list shows:
-
-- Parameter name and key.
-- Module.
-- Risk.
-- Recommended value to inherit.
-- Source project.
-- Whether the parameter came from the primary source or was filled from a supplement.
-- Whether alternative source values exist.
-- Whether the value needs an owner or admin note.
-
-The page footer should summarize selected count, supplement-filled count, conflict/reference count, and parameters requiring notes.
+Footer: selected count, supplement-filled count, conflict/reference count, items needing notes.
 
 ## Conflict And Value Rules
 
-Conflict resolution follows primary-source priority:
+Semantic conflict key (v1): within an organization, treat two bindings as the “same parameter slot” when they share:
 
-- If the same parameter exists in the primary source and supplement sources, inherit the primary-source version.
-- Supplement versions are shown as references but do not override.
-- If the parameter is missing from the primary source and exists in supplement sources, inherit from the highest-priority supplement source.
-- If a selected parameter has no recommended value, include it only with a "recommended value needs confirmation" flag.
+- `parameter_spec_id`, and  
+- `module_id`  
 
-Inherited values:
+(aligned with existing cross-project compare peers). Optional tightening later: also require matching `logical_node_id` when both are non-null — **out of scope for v1** unless implementation discovers false merges; document in service if tightened.
 
-- Copy the source project's recommended value into the new project as the initial recommended value.
-- Do not copy the source project's current value.
-- Set the new project's current value state to `pending_project_confirmation`.
-- Show this state to users as "Pending project confirmation". Chinese localization should use the existing app i18n or label conventions during implementation.
+Priority:
+
+- Same semantic key in primary + supplements → inherit **primary** binding snapshot; supplements listed as references.  
+- Missing in primary, present in supplements → inherit highest-priority supplement.  
+- Selected binding with empty/invalid effective value → allowed only with `needsEffectiveValueConfirmation: true`.
+
+Inherited values on materialize:
+
+- Create a **new** `project_parameter_binding` (and supporting rows) on the **target** project from the snapshot’s spec version + value payload.  
+- Do **not** copy source device-measured “current” / live debug values as already confirmed on the target.  
+- Target measured/current confirmation state: `pending_project_confirmation` (product copy: “Pending project confirmation” / 待项目确认).  
+- Do not invent flat `recommendedValue` columns for API persistence.
+
+## Empty Path
+
+**Start from empty:**
+
+- No source projects; zero snapshot items.  
+- Submit still creates a review (or a short-circuit approve path for empty — prefer **same review flow** for audit symmetry).  
+- On approve: status → `initialized` with **zero** bindings.  
+- Creator cannot “accidentally” empty-init: UI requires an explicit affirmation control.
 
 ## Snapshot Preview
 
-Before submission, users can open a snapshot preview with three groups:
+Three groups before submit:
 
-- Parameters that will enter the new project.
-- Parameters excluded by filters or manual deselection.
-- Parameters with source conflicts or alternative reference values.
+- Bindings that will enter the target project.  
+- Bindings excluded by filters or deselection.  
+- Bindings with source conflicts / alternative references.
 
-The preview must make clear that this is a one-time snapshot. Later source project changes do not affect the draft.
+Preview must state: one-time snapshot; later source changes do not update the draft.
 
 ## Review Flow
 
-The system creates a `ProjectParameterInitializationReview` record when the user submits the wizard.
+Submitting creates `ProjectParameterInitializationReview`.
 
-The admin review page should show initialization reviews separately from ordinary parameter change requests, while reusing the existing review list and detail patterns where possible.
+Admin surface: initialization reviews separate from ordinary parameter change requests; reuse list/detail chrome where practical.
 
-Admin review details include:
+Review detail includes:
 
-- New project name, code, owner, and team.
-- Submitter.
-- Primary source and supplement sources.
-- Selected module and risk scope.
-- Final selected parameters.
-- Supplement-filled parameters.
-- Conflict/reference parameters.
-- Parameters whose recommended values need confirmation.
-- Parameters whose current values are `pending_project_confirmation`.
+- Target project name/code/owner/team.  
+- Submitter.  
+- Primary + supplement sources.  
+- Module/risk scope.  
+- Final selected binding snapshots.  
+- Supplement-filled and conflict/reference sets.  
+- Items needing effective-value confirmation.  
+- Items with `pending_project_confirmation` on target after approve.  
 - Creator notes.
 
-Admin actions:
+Actions: approve; reject with required reason.
 
-- Approve initialization.
-- Reject initialization with a required reason.
-
-Approval writes the selected parameter values to the new project and changes project status to `initialized`. Rejection changes status to `initialization_rejected` and keeps the draft editable.
-
-## Data Model
-
-Add a draft model:
-
-```ts
-type ProjectParameterInitializationDraft = {
-  id: string;
-  projectId: string;
-  projectName: string;
-  projectCode: string;
-  ownerUserId: string;
-  sourceProjectIds: string[];
-  primarySourceProjectId: string;
-  supplementSourceProjectIds: string[];
-  selectedModules: string[];
-  selectedRisks: Array<"High" | "Medium" | "Low">;
-  selectedParameterIds: string[];
-  parameterSnapshots: ProjectParameterInitializationSnapshotItem[];
-  notes: string;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type ProjectParameterInitializationSnapshotItem = {
-  parameterId: string;
-  sourceProjectId: string;
-  sourceRole: "primary" | "supplement";
-  module: string;
-  risk: "High" | "Medium" | "Low";
-  recommendedValue: string;
-  currentValueState: "pending_project_confirmation";
-  alternativeSourceProjectIds: string[];
-  needsRecommendedValueConfirmation: boolean;
-  notes?: string;
-};
-```
-
-Add a review model:
-
-```ts
-type ProjectParameterInitializationReview = {
-  id: string;
-  draftId: string;
-  projectId: string;
-  status: "pending" | "approved" | "rejected";
-  submittedBy: string;
-  submittedAt: string;
-  reviewedBy?: string;
-  reviewedAt?: string;
-  rejectionReason?: string;
-};
-```
-
-Add a project status:
+## Data Model (API / Port)
 
 ```ts
 type ProjectInitializationStatus =
@@ -206,62 +177,130 @@ type ProjectInitializationStatus =
   | "initialization_pending_review"
   | "initialization_rejected"
   | "initialized";
+
+type ProjectParameterInitializationDraft = {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  projectName: string;
+  projectCode: string;
+  ownerUserId: string;
+  sourceProjectIds: string[];
+  primarySourceProjectId: string | null; // null when start-from-empty
+  supplementSourceProjectIds: string[];
+  selectedModuleIds: string[];
+  selectedRisks: Array<"High" | "Medium" | "Low">;
+  /** Source binding ids the creator selected (pre-merge). */
+  selectedSourceBindingIds: string[];
+  /** Server-resolved snapshot after primary/supplement merge. */
+  bindingSnapshots: ProjectParameterInitializationSnapshotItem[];
+  emptyLibrary: boolean;
+  notes: string;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ProjectParameterInitializationSnapshotItem = {
+  /** Stable id within the draft (not the target binding id). */
+  id: string;
+  sourceProjectId: string;
+  sourceProjectParameterBindingId: string;
+  sourceRole: "primary" | "supplement";
+  parameterSpecId: string;
+  parameterSpecVersionId: string;
+  propertyKey: string;
+  moduleId: string;
+  risk: "High" | "Medium" | "Low" | null;
+  /** Serializable effective value copied from source binding at snapshot time. */
+  effectiveValue: unknown;
+  rawValue: string;
+  currentValueState: "pending_project_confirmation";
+  alternativeSourceBindingIds: string[];
+  needsEffectiveValueConfirmation: boolean;
+  notes?: string;
+};
+
+type ProjectParameterInitializationReview = {
+  id: string;
+  draftId: string;
+  organizationId: string;
+  projectId: string;
+  status: "pending" | "approved" | "rejected";
+  submittedByUserId: string;
+  submittedAt: string;
+  reviewedByUserId?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+};
 ```
 
-The current prototype uses shared parameter definitions with per-project values. This design should extend that shape instead of replacing it.
+Persistence sketch (migration **≥ 0091**):
+
+- `project_parameter_initialization_drafts` (+ JSONB or child table for snapshot items).  
+- `project_parameter_initialization_reviews`.  
+- `projects.initialization_status` (or mapped `projects.status` values — confirm against existing status enum in implementation).  
+- Indexes on `(organization_id, project_id)`, review `status`.
+
+Module placement: extend `server/modules/parameters/` unless routes grow large enough to warrant `parameter-initialization/`.
 
 ## Permissions
 
-Project creators can create and edit their own initialization drafts before submission.
+| Actor | Allowed |
+| --- | --- |
+| Project creator (owner) | Create/update own draft before submit; resubmit after reject |
+| Parameter admin (`admin:access` / parameter-admin) | List pending reviews; approve; reject |
+| Other members | Read-only views when authorized; no draft edit; no normal CR submit until initialized |
 
-Admins can approve or reject initialization reviews.
+## Audit Events
 
-While a project is not `initialized`, normal parameter change submission is disabled for that project. Read-only parameter views and comparison remain available.
+Write via `createAuditEvent` (`app`: `parameter-management` or `parameter-admin` as appropriate):
+
+| Event | `kind` (stable) | When |
+| --- | --- | --- |
+| Draft submitted | `project-initialization-submitted` | Submit for review |
+| Approved | `project-initialization-approved` | Approve + materialize success |
+| Rejected | `project-initialization-rejected` | Reject with reason |
+
+Metadata: `draftId`, `reviewId`, `projectId`, source project ids, selected binding counts — no full value dumps of sensitive payloads beyond what ordinary parameter audit already allows.
 
 ## Empty And Error States
 
-- No source selected: user can continue only if they explicitly choose "start from empty".
-- Multiple sources without primary source: cannot continue.
-- Filter result contains zero parameters: draft can be saved but cannot be submitted.
-- Recommended value missing: parameter can remain selected but is flagged for admin confirmation.
-- Review rejected: creator sees rejection reason and returns to the initialization step with previous selections intact.
-- Source project changes after draft creation: no automatic updates. The draft keeps its snapshot data.
+- No source and not empty-mode: cannot continue.  
+- Multiple sources without primary: cannot continue.  
+- Non-empty mode with zero selected bindings after filters: draft savable; **cannot submit**.  
+- Empty mode: submit allowed with zero snapshots.  
+- Effective value missing/invalid: selectable only with confirmation flag.  
+- Rejected: show reason; return to wizard with prior selections.  
+- Source project changes after draft: no auto-refresh; regenerate preview explicitly if product adds that later.
 
 ## UI Design
 
-The initialization step uses the approved low-fidelity structure:
+Low-fidelity structure unchanged in spirit:
 
-- Left step navigation for the project wizard.
-- Main header explaining one-time snapshot initialization.
-- Primary source panel.
-- Supplement source panel.
-- Module and risk filter column.
-- Candidate parameter table.
-- Sticky footer summary and actions.
+- Left wizard steps.  
+- Header: one-time **binding** snapshot.  
+- Primary / supplement panels.  
+- Module + risk filters.  
+- Candidate **binding** table.  
+- Sticky footer.
 
-Primary actions:
+Primary actions: Start from empty; Preview snapshot; Continue.
 
-- Start from empty.
-- Preview snapshot.
-- Continue.
+Summary/review must state pending-review status until approve.
 
-The summary and review pages must explicitly state that the new project will be created in initialization pending review state.
+## Testing (acceptance intent)
 
-## Testing
-
-Cover these cases:
-
-- Single source project creates an initialization review with selected parameters.
-- Multiple source projects use primary-source priority.
-- Supplement sources fill parameters missing from the primary source.
-- Module, risk, and individual parameter selections combine correctly.
-- Zero selected parameters cannot be submitted for review.
-- Missing recommended values are flagged.
-- Projects in pending or rejected initialization states cannot submit normal parameter change requests.
-- Review approval activates the new project's parameters.
-- Review rejection keeps the draft and reason available for revision.
-- Initialized project appears in parameter workspace, comparison, and admin views.
+- Single source → review with selected bindings.  
+- Multi-source primary priority + supplement fill.  
+- Module/risk/individual selection compose.  
+- Non-empty zero selection cannot submit; empty path can.  
+- Needs-confirmation flags surface in review.  
+- Pending/rejected lock normal CR submit (`PARAM-INIT-LOCK-001`).  
+- Approve materializes bindings and unlocks (`PARAM-INIT-REVIEW-001`).  
+- Reject keeps draft + reason (`PARAM-INIT-REJECT-001`).  
+- Wizard + empty path IDs: `PARAM-INIT-WIZARD-001`, `PARAM-INIT-EMPTY-001`.
 
 ## Open Decisions
 
-None. Template management and ongoing synchronization are intentionally out of scope for the first version.
+None for v1 product scope. Implementation may choose dedicated `initialization_status` column vs overloading `projects.status` after inspecting current status enum usage — record the choice in the migration PR description.

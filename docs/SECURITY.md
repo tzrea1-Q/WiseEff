@@ -23,7 +23,7 @@ WiseEff security centers on identity, authorization, audit, Agent tool governanc
 - Browser acceptance for workflow role boundaries runs the API in production auth mode with test-only HMAC tokens and switches the actual browser credential for every actor. Development `x-wiseeff-user` injection or one Admin token is not valid Hardware/Software Committer or Software User UI evidence.
 - Backend user governance lives under `/api/v1/users` and requires `users:manage`, durable role updates, self-lockout prevention, and audit evidence.
 - M0 audit boundary lives in `server/modules/audit/`.
-- M1 parameter write routes live in `server/modules/parameters/`; they validate payloads, enforce server-side permissions, and write audit evidence for submits, review decisions, merges, and imports.
+- M1 parameter write routes live in `server/modules/parameters/`; they validate payloads, enforce server-side permissions, and write audit evidence for submits, review decisions, merges, imports, and **project initialization** submit/approve/reject (`project-initialization-*` audit kinds).
 - Security governance design lives in `design-docs/security-governance.md`.
 
 ## Permission Model

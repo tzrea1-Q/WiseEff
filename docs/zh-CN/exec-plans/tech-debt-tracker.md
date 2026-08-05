@@ -37,11 +37,11 @@
 - **TD-059（其余弹窗尚未迁到共享原语）：** `ModalDialog` / `ConfirmDialog`（`src/components/common/`）已承载弹窗契约——焦点陷阱与归还、背景 `inert`、只有最上层响应 Escape、遮罩关闭成对判定、统一 z-index 刻度——但目前只有 `ProjectAdminFormDialog`、`DeleteProjectDialog` 与治理确认框接入，其他参数后台、工作台与调试弹窗仍各自处理 keydown 与遮罩点击。影响：POD-F1–F5 记录的焦点、层叠与关闭故障在未迁移的弹窗上依然存在，并且容易再长出一套偏离契约的实现。下一步：各自按计划迁移，先从 `ParameterSpecDetailDialog`（`2026-08-03-parameter-spec-editor-fidelity.md` 第 19–23 项）开始。
 - **TD-055（产品作用域策略目标面未建）：** 定义编辑器与 `PATCH /api/v2/parameter-specs/:specId` 已按 SE-D1 移除 `policyTarget` 写入；`parameter_policy_targets` 表与三处只读 join 仍在，但无生产写入。初始化仍优先 `policyTarget ?? schemaDefault`。后续要么建产品作用域治理面，要么用 ADR 正式退役表与读者。
 - **TD-015（节点调试快照回滚 UI）：** `/node-debugging` 写后快照未充分 hydrate 到回滚卡片；`/debugging` 已下线。下一步按 `docs/exec-plans/active/2026-08-05-node-debugging-ui-closure.md`（C2）落地回滚 UI、会话事件加载与高风险确认后关闭。详见英文版 Open 表。
-- **TD-060（项目参数初始化无后端）：** 初始化向导与审阅 Tab 仅 reducer 可达，无路由/表；五月设计仍偏扁平 recommendedValue。下一步按 `2026-08-05-project-parameter-initialization.md`（C1）修订为语义 binding 并落地 API。详见英文版。
-- **TD-061（Admin 本地 audit hints）：** `PUSH_AUDIT_HINT` 非审计中心真相源。下一步按 `2026-08-05-parameter-admin-audit-hints.md`（C3）改为审计投影并补齐 `createAuditEvent`。详见英文版。
 
 ## 近期关闭项
 
+- **TD-060（项目参数初始化）：** 已于 2026-08-05 在 `feat/project-parameter-initialization`（C1）关闭。迁移 `0091` + draft/review API；语义 binding 合并/物化；Port/HTTP/mock；API hydrate + 锁；设计修订告别扁平 `recommendedValue` SSOT。详见英文版 Completed 表。
+- **TD-061（参数后台审计提示）：** 已于 2026-08-05 在 `feat/parameter-admin-audit-hints`（C3）关闭。去掉 `PUSH_AUDIT_HINT`；后台最近审计条为 `listAuditEvents` 投影。详见英文版 Completed 表。
 - **TD-047（规格 driverModule 身份分裂）：** 已于 2026-08-01 PR2 / D-AG-03 关闭。无物理 `driver_module` 列；新写入一律 `buildSubjectScopedManualSpecIds`；迁移 `0088` 对无法解析主体的身份行 fail-closed；列表筛选改为 `attributionSubjectId`；API `driverModule` 仅作主体展示。
 - **TD-054（openapi listPromotionCandidates）：** 已于 2026-08-01 经 #216 关闭。`schemaRegistry` 已登记 `parameterSpecs.listPromotionCandidates`；`openapi.test.ts` 10/10 通过。收口计划已归档至 `docs/exec-plans/completed/2026-08-01-governance-platform-closeout.md`。
 - **TD-046（归属放置启发式）：** 已于 2026-08-01 在 `feat/attribution-registration-placement` 关闭（D-AG-04）。迁移 `0089` 增加注册默认业务分类；auto 放置/回放 API；关键词启发式降级为 seed/bootstrap-once。见 `docs/exec-plans/active/2026-08-01-attribution-deferred-implementation.md` PR3。

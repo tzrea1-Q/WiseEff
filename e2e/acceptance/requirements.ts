@@ -105,6 +105,36 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PARAM-INIT-WIZARD-001",
+    workflow: "C",
+    title: "Creator completes project parameter initialization with sources and selection and reaches pending review.",
+    required: false
+  },
+  {
+    id: "PARAM-INIT-EMPTY-001",
+    workflow: "C",
+    title: "Explicit empty-library initialization can be approved to initialized with zero bindings.",
+    required: false
+  },
+  {
+    id: "PARAM-INIT-REVIEW-001",
+    workflow: "C",
+    title: "Admin approves an initialization review; the project unlocks and bindings match the snapshot.",
+    required: false
+  },
+  {
+    id: "PARAM-INIT-REJECT-001",
+    workflow: "C",
+    title: "Admin rejects initialization with a reason; the creator can revise and resubmit.",
+    required: false
+  },
+  {
+    id: "PARAM-INIT-LOCK-001",
+    workflow: "C",
+    title: "Non-initialized projects cannot submit normal typed binding change rounds.",
+    required: false
+  },
+  {
     id: "PROJ-OPS-001",
     workflow: "C",
     title: "Every project operations deep link resolves to its view on load and after reload, and an unknown project id shows a not-found state.",

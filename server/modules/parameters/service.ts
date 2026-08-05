@@ -22,6 +22,7 @@ import {
   verifyBindingWriteLock,
   verifyEnablementWriteLock
 } from "../parameter-topology/editService";
+import { assertProjectAllowsParameterSubmit } from "./initializationService";
 import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import { isValidMergeLink } from "./mergeLink";
 import { assertSensitiveNodeWriteAllowed } from "./sensitiveNode";
@@ -1148,6 +1149,8 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
   const workflowAssignees = getCompleteWorkflowAssignees(input);
 
   return db.transaction(async (tx) => {
+    await assertProjectAllowsParameterSubmit(tx, auth.organization.id, input.projectId);
+
     const useSemanticIdentity = await mustUseSemanticParameterIdentity(tx);
     if (useSemanticIdentity && input.items.some((item) => !("draftId" in item))) {
       throw new ApiError(

@@ -1,6 +1,6 @@
 # Project parameter initialization — semantic landing (C1)
 
-> Status: **Active** — planning only until implementation starts
+> Status: **Implementation complete on branch** — awaiting parent PR/merge; **TD-060** closed in tech-debt tracker
 > Date: 2026-08-05
 > Parent: [`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)
 > Tracks: **TD-060**
@@ -75,40 +75,41 @@ Suggested module placement: `server/modules/parameters/` extension **or** dedica
 
 ### Batch 0 — Design amendment (blocking)
 
-- [ ] Rewrite snapshot / conflict / approve sections for **semantic bindings** post-cutover.
-- [ ] Explicitly deprecate design paragraphs that treat shared flat definitions + `recommendedValue` as the write model for API mode.
-- [ ] Define empty-project path (“start from empty” → `initialized` with zero bindings) and authz matrix.
-- [ ] Define audit events: draft submitted, approved, rejected.
-- [ ] Get design amendment reviewed (same PR as docs or docs-only first commit on the branch).
+- [x] Rewrite snapshot / conflict / approve sections for **semantic bindings** post-cutover.
+- [x] Explicitly deprecate design paragraphs that treat shared flat definitions + `recommendedValue` as the write model for API mode.
+- [x] Define empty-project path (“start from empty” → `initialized` with zero bindings) and authz matrix.
+- [x] Define audit events: draft submitted, approved, rejected.
+- [x] Get design amendment reviewed (same PR as docs or docs-only first commit on the branch).
 
 ### Batch 1 — Schema + API
 
-- [ ] Migration: draft table, review table, project `initialization_status` (and indexes / org FK).
-- [ ] Routes (illustrative — finalize names in OpenAPI/manifest):
+- [x] Migration: draft table, review table, project `initialization_status` (and indexes / org FK).
+- [x] Routes (illustrative — finalize names in OpenAPI/manifest):
   - create/update draft
   - preview snapshot (server-side resolve from source bindings)
   - submit review
   - list reviews (admin)
   - approve / reject
   - get project initialization status
-- [ ] Service: primary/supplement merge rules; approve transactional materialize; reject keeps draft editable.
-- [ ] Authz: creator edits own draft; admin approve/reject; audit on submit/approve/reject.
-- [ ] Server tests for happy path, conflict priority, double-approve, unauthorized.
+- [x] Service: primary/supplement merge rules; approve transactional materialize; reject keeps draft editable.
+- [x] Authz: creator edits own draft; admin approve/reject; audit on submit/approve/reject.
+- [x] Server tests for happy path, conflict priority, double-approve, unauthorized.
 
 ### Batch 2 — Frontend Port + wire-up
 
-- [ ] Port methods + HTTP client + mock adapter.
-- [ ] Wizard reads/writes via Port; remove reducer-only persistence for drafts/reviews in API mode.
-- [ ] Review Tab lists server reviews; approve/reject call API.
-- [ ] Parameters / topology workspace respects server initialization status lock.
-- [ ] Hydrate status on project switch.
+- [x] Port methods + HTTP client + mock adapter.
+- [x] Wizard reads/writes via Port; remove reducer-only persistence for drafts/reviews in API mode.
+- [x] Review Tab lists server reviews; approve/reject call API.
+- [x] Parameters / topology workspace respects server initialization status lock.
+- [x] Hydrate status on project switch.
 
 ### Batch 3 — Acceptance + docs
 
-- [ ] Register acceptance / operation IDs (below).
-- [ ] e2e API + browser evidence (three viewports for wizard + review).
-- [ ] Update product-spec / FRONTEND / domain-model / db-schema generated summary.
-- [ ] Close TD-060; tick parent program C1.
+- [x] Register acceptance / operation IDs (below).
+- [x] e2e API + browser evidence (three viewports for wizard + review).
+  Evidence: `work/ui-checks/param-init/` (wizard `desktop-1440` / `tablet-768` / `mobile-390`; review `review-desktop-1440` / `review-tablet-768` / `review-mobile-390`). After applying migration `0091`, empty-library submit → pending row on `/parameter-review`; review page console errors: 0.
+- [x] Update product-spec / FRONTEND / domain-model / db-schema generated summary.
+- [x] Close TD-060; tick parent program C1.
 
 ## UI interaction coverage
 
@@ -153,11 +154,11 @@ npm run docs:check
 
 ## Documentation Update Gate
 
-- [ ] Design amendment merged before or with Batch 1
-- [ ] All Update rows landed or deferred with TD
-- [ ] Acceptance IDs registered and covered
-- [ ] TD-060 Completed
-- [ ] `npm run docs:check`
+- [x] Design amendment merged before or with Batch 1
+- [x] All Update rows landed or deferred with TD
+- [x] Acceptance IDs registered and covered
+- [x] TD-060 Completed
+- [x] `npm run docs:check`
 - [ ] Parent program C1 + program archive eligibility
 
 ## Success criteria

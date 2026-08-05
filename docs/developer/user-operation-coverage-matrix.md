@@ -22,6 +22,11 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-ADMIN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, audit | `e2e/acceptance/parameters.acceptance.spec.ts` |
 | `PARAM-ADMIN-002` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, audit | `e2e/acceptance/parameter-import-wizard.acceptance.spec.ts` |
 | `PARAM-ADMIN-003` | P1 | parameters | future | `/parameter-admin/projects` | Admin | ui, screenshot | `src/components/admin/ProjectAdminTable.tsx` |
+| `PARAM-INIT-WIZARD-001` | P1 | parameters | future | `/parameter-admin` | Admin | ui, api, audit, screenshot | `src/ProjectParameterInitializationWizard.test.tsx`<br>`src/appReducer.parameterAdmin.test.ts`<br>`server/modules/parameters/initializationService.test.ts` |
+| `PARAM-INIT-EMPTY-001` | P1 | parameters | future | `/api/v1/parameters/projects/:projectId/initialization` | Admin | api, db, audit | `src/infrastructure/mock/mockParameterInitializationRepository.test.ts`<br>`server/modules/parameters/initializationService.test.ts` |
+| `PARAM-INIT-REVIEW-001` | P1 | parameters | future | `/parameter-review` | Admin | ui, api, db, audit | `src/App.tsx`<br>`server/modules/parameters/initializationService.test.ts` |
+| `PARAM-INIT-REJECT-001` | P1 | parameters | future | `/parameter-review` | Admin | ui, api, audit | `src/appReducer.parameterAdmin.test.ts`<br>`server/modules/parameters/initializationService.test.ts` |
+| `PARAM-INIT-LOCK-001` | P1 | parameters | future | `/parameters` | Software User, Admin | ui, api | `src/ParametersPage.test.tsx`<br>`server/modules/parameters/service.test.ts` |
 | `PROJ-OPS-001` | P1 | parameters | future | `/parameter-admin/projects/:projectId/:view` | Admin | ui, screenshot | `src/ParameterAdminNextPage.test.tsx` |
 | `PROJ-OPS-002` | P1 | parameters | future | `/parameter-admin/projects/:projectId/:view` | Admin | ui, screenshot | `src/ParameterAdminNextPage.test.tsx` |
 | `PROJ-OPS-003` | P1 | parameters | future | `/parameter-admin/projects/:projectId/config-sets` | Admin | ui, audit, screenshot | `src/components/admin/ConfigSetBaselinePanel.test.tsx`<br>`src/components/admin/ParameterFileConflictPanel.test.tsx` |
@@ -109,6 +114,11 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 ## Deferred Or Conditional Operations
 
 - `PARAM-ADMIN-003`: Batch 1 ships CSS fix + playwright-cli three-viewport evidence under work/ui-checks/param-admin-ux-polish-batch1/; dedicated e2e viewport assertion follows in a later batch.
+- `PARAM-INIT-WIZARD-001`: Unit/reducer/server cover submit→pending; playwright-cli evidence under work/ui-checks/param-init/; full browser e2e follows after semantic wizard binding picker lands.
+- `PARAM-INIT-EMPTY-001`: Server and mock Port tests cover empty approve; dedicated e2e API+UI path follows with wizard empty-mode CTA.
+- `PARAM-INIT-REVIEW-001`: API-mode App handlers call Port approve; server materialize + audit covered in initializationService tests; full browser evidence follows.
+- `PARAM-INIT-REJECT-001`: Reducer and server reject paths covered; dedicated browser reject/resubmit e2e follows.
+- `PARAM-INIT-LOCK-001`: UI lock + submitParameterChanges assertProjectAllowsParameterSubmit covered by unit tests; browser lock evidence follows.
 - `PROJ-OPS-001`: Route/view resolution and the not-found state are covered by component tests plus playwright-cli evidence under work/ui-checks/project-operations-dialog/final/; a dedicated e2e deep-link spec follows.
 - `PROJ-OPS-002`: Three-viewport evidence and runtime overflow measurements live under work/ui-checks/project-operations-dialog/final/; a dedicated e2e viewport assertion follows.
 - `PROJ-OPS-003`: Confirmation and audit behaviour is covered by panel and page tests plus playwright-cli evidence; the API-mode e2e governance spec follows with a seeded baseline.
