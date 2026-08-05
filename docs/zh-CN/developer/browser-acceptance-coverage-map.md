@@ -69,6 +69,7 @@
 - `PARAM-IMPORT-DTS-FULL-001`：完整 `.dts` 经 `parse-dts` 产出带 `@address` 的 module 路径；`/include/` 被拒绝；向导显示服务端解析提示（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。
 - `PARAM-IMPORT-REVIEW-META-001`：带 `reviewMetadata.skippedRows` 的导入预览写入 `batch-import` 审计 metadata（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。
 - `PARAM-ADMIN-IA-001`：组织子导航仅「参数定义管理」「模块管理」；定义管理内嵌匹配审核；节点对应嵌套于 specs 且在有任务时出现；旧 `/spec-review`、`/identity-mapping` 重定向并保留 query（单测 `parameterAdminOrganizationPath.test.ts`、`ParameterAdminNextPage.test.tsx`）。
+- `PARAM-ADMIN-AUDIT-RECENT-001`：服务端已审计的 Admin 变更后，项目运营最近条带来自 `listAuditEvents` 的投影，不依赖本地 `PUSH_AUDIT_HINT`（单测 `parameterAdminRecentAudits.test.tsx`、`refreshParameterAdminRecentAudits.test.ts`；playwright-cli 证据见 `work/ui-checks/param-admin-audit-recent/`）。
 - `PARAM-SPEC-GOVERN-001`：Admin 在 `/parameter-admin` 检索 ingest 后的规格（sc8562/mt5788 两个不同 `gpio_int`），打开详情并决议审核任务（含治理审计）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-TOPOLOGY-BROWSE-001`：在融合 DTS 工作台中切换真实源树/生效树，选择嵌套上下文（`amba` → `i2c@FDF5E000` → `sc8562@6E`），搜索两个 `gpio_int` 语义行，并在成熟详情弹窗查看完整路径、raw 值、shape 和 provenance；topology API 必须 200 且含预期节点（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-TOPOLOGY-EDIT-001`：类型化 drafts 返回 Schema cell-count 诊断、过期 revision 返回 409，并对临时 Config Set 走 fail-closed 编译/工具链校验（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。

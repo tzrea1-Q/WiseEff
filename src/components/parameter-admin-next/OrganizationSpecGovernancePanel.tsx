@@ -5,10 +5,6 @@ import {
   sortParameterSpecRows,
   toParameterAdminFilters
 } from "@/application/parameters/parameterAdminUrl";
-import {
-  auditKindForResolveDecision
-} from "@/application/parameters/parameterAdminState";
-import type { ParameterAdminAuditHint } from "@/application/parameters/parameterAdminState";
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import {
   mapParameterSpecToLibraryRow,
@@ -26,6 +22,7 @@ import {
 import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 import { useParameterAdminUrl } from "./useParameterAdminUrl";
+import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
 import { GovernanceToast, useGovernanceToast } from "./useGovernanceToast";
 
 function toSpecDetailView(
@@ -130,6 +127,7 @@ export function OrganizationSpecGovernancePanel({
   identityMappingCountError = null
 }: OrganizationSpecGovernancePanelProps) {
   const { application, dispatch, state } = useParameterAdmin();
+  const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
   const { urlState, updateUrl } = useParameterAdminUrl(search, pathname);
   const filters = useMemo(() => toParameterAdminFilters(urlState), [urlState]);
 
@@ -301,20 +299,6 @@ export function OrganizationSpecGovernancePanel({
     updateUrl({ specId: null });
   }, [updateUrl]);
 
-  const pushAudit = useCallback(
-    (kind: ParameterAdminAuditHint["kind"], reason: string, summary: string) => {
-      dispatch({
-        type: "PUSH_AUDIT_HINT",
-        hint: {
-          kind,
-          reason,
-          summary,
-          recordedAt: new Date().toISOString()
-        }
-      });
-    },
-    [dispatch]
-  );
 
   const handleApproveReview = useCallback(
     async (input: {
@@ -333,7 +317,7 @@ export function OrganizationSpecGovernancePanel({
           reason: input.reason,
           confirmPropertyMismatch: input.confirmPropertyMismatch
         });
-        pushAudit(auditKindForResolveDecision("resolved"), input.reason, "定义匹配审核已批准");
+        await refreshRecentAudits();
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
@@ -342,7 +326,7 @@ export function OrganizationSpecGovernancePanel({
         setReviewPendingAction(null);
       }
     },
-    [application, pushAudit, reloadReviewTasks, reloadSpecs]
+    [application, refreshRecentAudits, reloadReviewTasks, reloadSpecs]
   );
 
   const handleDismissReview = useCallback(
@@ -355,7 +339,7 @@ export function OrganizationSpecGovernancePanel({
           decision: "dismissed",
           reason: input.reason
         });
-        pushAudit(auditKindForResolveDecision("dismissed"), input.reason, "定义匹配审核已驳回");
+        await refreshRecentAudits();
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
@@ -364,7 +348,7 @@ export function OrganizationSpecGovernancePanel({
         setReviewPendingAction(null);
       }
     },
-    [application, pushAudit, reloadReviewTasks, reloadSpecs]
+    [application, refreshRecentAudits, reloadReviewTasks, reloadSpecs]
   );
 
   const handleCreateSpecReview = useCallback(
@@ -383,11 +367,7 @@ export function OrganizationSpecGovernancePanel({
           createSpec: true,
           reason: input.reason
         });
-        pushAudit(
-          auditKindForResolveDecision("resolved", true),
-          input.reason,
-          `草稿规格「${input.propertyKey}」已创建`
-        );
+        await refreshRecentAudits();
         await Promise.all([reloadReviewTasks(), reloadSpecs()]);
       } catch (error) {
         setReviewActionError(formatReviewActionError(error));
@@ -396,7 +376,7 @@ export function OrganizationSpecGovernancePanel({
         setReviewPendingAction(null);
       }
     },
-    [application, pushAudit, reloadReviewTasks, reloadSpecs]
+    [application, refreshRecentAudits, reloadReviewTasks, reloadSpecs]
   );
 
   const handleSaveSpec = useCallback(
@@ -439,13 +419,7 @@ export function OrganizationSpecGovernancePanel({
             reason: payload.reason
           });
         }
-        pushAudit(
-          payload.mode === "activate" ? "spec-activated" : "spec-updated",
-          payload.reason,
-          payload.mode === "activate"
-            ? `激活定义 ${payload.specId}`
-            : `更新规格 ${payload.specId}`
-        );
+        await refreshRecentAudits();
         await reloadSpecs();
         updateUrl({ specId: null });
       } catch (error) {
@@ -454,7 +428,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, pushAudit, reloadSpecs, showToast, updateUrl]
+    [application, refreshRecentAudits, reloadSpecs, showToast, updateUrl]
   );
 
   const handleDeprecateSpec = useCallback(
@@ -463,7 +437,7 @@ export function OrganizationSpecGovernancePanel({
       setActivatePendingSpecId(input.specId);
       try {
         await application.deprecateParameterSpec(input.specId, { reason: input.reason });
-        pushAudit("spec-deprecated", input.reason, `废弃定义 ${input.specId}`);
+        await refreshRecentAudits();
         showToast("已废弃（仍参与解析，默认库视图已隐藏）");
         await reloadSpecs();
         updateUrl({ specId: null });
@@ -473,7 +447,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, pushAudit, reloadSpecs, showToast, updateUrl]
+    [application, refreshRecentAudits, reloadSpecs, showToast, updateUrl]
   );
 
   const handleRestoreSpec = useCallback(
@@ -482,7 +456,7 @@ export function OrganizationSpecGovernancePanel({
       setActivatePendingSpecId(input.specId);
       try {
         await application.restoreParameterSpec(input.specId, { reason: input.reason });
-        pushAudit("spec-restored", input.reason, `恢复定义 ${input.specId}`);
+        await refreshRecentAudits();
         showToast("已恢复");
         await reloadSpecs();
         updateUrl({ specId: null });
@@ -492,7 +466,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, pushAudit, reloadSpecs, showToast, updateUrl]
+    [application, refreshRecentAudits, reloadSpecs, showToast, updateUrl]
   );
 
   const handleReattributeSpec = useCallback(
@@ -504,7 +478,7 @@ export function OrganizationSpecGovernancePanel({
           attributionSubjectId: input.attributionSubjectId,
           reason: input.reason,
         });
-        pushAudit("spec-reattributed", input.reason, `修正归属 ${input.specId}`);
+        await refreshRecentAudits();
         showToast("已修正归属主体");
         const libraryRow = specRows.find((row) => row.id === input.specId) ?? null;
         setSpecDetail(toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow));
@@ -515,7 +489,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, pushAudit, reloadSpecs, showToast, specRows]
+    [application, refreshRecentAudits, reloadSpecs, showToast, specRows]
   );
 
   const handleRenamePropertyKey = useCallback(
@@ -527,7 +501,7 @@ export function OrganizationSpecGovernancePanel({
           propertyKey: input.propertyKey,
           reason: input.reason,
         });
-        pushAudit("spec-property-key-changed", input.reason, `修正属性键 ${input.specId}`);
+        await refreshRecentAudits();
         showToast("已修正属性键");
         const libraryRow = specRows.find((row) => row.id === input.specId) ?? null;
         setSpecDetail(toSpecDetailView(detail, libraryRow?.usageCount ?? 0, libraryRow));
@@ -538,7 +512,7 @@ export function OrganizationSpecGovernancePanel({
         setActivatePendingSpecId(null);
       }
     },
-    [application, pushAudit, reloadSpecs, showToast, specRows]
+    [application, refreshRecentAudits, reloadSpecs, showToast, specRows]
   );
 
   const handlePrepareCutover = useCallback(
