@@ -6,27 +6,10 @@ import type {
   ParameterModuleRegistryRepository,
   UpdateParameterModuleInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
-import type { ParameterAdminAuditHint } from "@/application/parameters/parameterAdminState";
 import { mapParameterSpecToLibraryRow } from "@/components/parameter-topology/ParameterSpecLibrary";
 import { ParameterModuleMappingPanel } from "@/components/parameter-topology/ParameterModuleMappingPanel";
 import { useParameterAdmin } from "./ParameterAdminProvider";
-
-function pushModuleAudit(
-  dispatch: ReturnType<typeof useParameterAdmin>["dispatch"],
-  kind: ParameterAdminAuditHint["kind"],
-  summary: string,
-  reason = ""
-) {
-  dispatch({
-    type: "PUSH_AUDIT_HINT",
-    hint: {
-      kind,
-      summary,
-      reason,
-      recordedAt: new Date().toISOString()
-    }
-  });
-}
+import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
 
 /**
  * Organization-scoped module tree + driver mapping, composed over the admin facade.
@@ -40,7 +23,8 @@ export function OrganizationModuleGovernancePanel({
   search?: string;
   onNavigate?: (path: string) => void;
 }) {
-  const { application, dispatch } = useParameterAdmin();
+  const { application } = useParameterAdmin();
+  const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
 
   const repository = useMemo((): ParameterModuleRegistryRepository => {
     const base = application.asModuleRegistryRepository();
@@ -49,108 +33,72 @@ export function OrganizationModuleGovernancePanel({
       getDiscoveryHints: () => base.getDiscoveryHints(),
       dismissCompatible: async (input) => {
         const next = await base.dismissCompatible(input);
-        pushModuleAudit(dispatch, "module-mapping-deleted", `已忽略 compatible ${input.compatible}`);
+        await refreshRecentAudits();
         return next;
       },
       restoreDismissedCompatible: async (compatible) => {
         const next = await base.restoreDismissedCompatible(compatible);
-        pushModuleAudit(dispatch, "module-mapping-created", `已恢复 compatible ${compatible}`);
+        await refreshRecentAudits();
         return next;
       },
       async createModule(input: CreateParameterModuleInput) {
         const next = await base.createModule(input);
-        const kindLabel =
-          input.kind === "driver-group"
-            ? "驱动组"
-            : input.kind === "node-type"
-              ? "节点类型"
-              : "业务模块";
-        pushModuleAudit(dispatch, "module-created", `已创建${kindLabel}「${input.name}」`);
+        await refreshRecentAudits();
         return next;
       },
       async updateModule(moduleId: string, input: UpdateParameterModuleInput) {
         const next = await base.updateModule(moduleId, input);
-        if (input.name !== undefined) {
-          pushModuleAudit(dispatch, "module-renamed", `已更新业务模块「${input.name}」`);
-        } else if (input.parentId !== undefined) {
-          pushModuleAudit(dispatch, "module-moved", `已移动业务模块 ${moduleId}`);
-        } else if (
+        if (
+          input.name !== undefined ||
+          input.parentId !== undefined ||
           input.description !== undefined ||
           input.scope !== undefined ||
           input.importance !== undefined
         ) {
-          pushModuleAudit(dispatch, "module-renamed", `已更新业务模块 ${moduleId}`);
+          await refreshRecentAudits();
         }
         return next;
       },
       async deleteModule(moduleId: string) {
         const next = await base.deleteModule(moduleId);
-        pushModuleAudit(dispatch, "module-deleted", `已删除业务模块 ${moduleId}`);
+        await refreshRecentAudits();
         return next;
       },
       previewMapping: (input) => base.previewMapping(input),
       async createMapping(input: CreateModuleMappingInput) {
         const next = await base.createMapping(input);
-        pushModuleAudit(
-          dispatch,
-          "module-mapping-created",
-          `已创建映射 ${input.matchKind}:${input.matchValue}`
-        );
+        await refreshRecentAudits();
         return next;
       },
       async deleteMapping(mappingId: string) {
         const next = await base.deleteMapping(mappingId);
-        pushModuleAudit(dispatch, "module-mapping-deleted", `已删除映射 ${mappingId}`);
+        await refreshRecentAudits();
         return next;
       },
       async recomputeBindings(input) {
         const result = await base.recomputeBindings(input);
-        pushModuleAudit(
-          dispatch,
-          "module-bindings-recomputed",
-          `已重算模块归属，更新 ${result.updated} 个项目参数`
-        );
+        await refreshRecentAudits();
         return result;
       },
       listDriverRegistry: () => base.listDriverRegistry(),
       async registerOrClaimDriver(input) {
         const result = await base.registerOrClaimDriver(input);
-        const affected = result.apply?.affectedBindings ?? 0;
-        const verb = result.mode === "claimed" ? "已认领" : "已登记";
-        pushModuleAudit(
-          dispatch,
-          "module-created",
-          affected > 0
-            ? `${verb}驱动组「${result.item.name}」，已按范围更新 ${affected} 条绑定`
-            : `${verb}驱动组「${result.item.name}」`
-        );
+        await refreshRecentAudits();
         return result;
       },
       async updateDriverRegistration(moduleId, input) {
         const result = await base.updateDriverRegistration(moduleId, input);
-        pushModuleAudit(
-          dispatch,
-          "module-renamed",
-          `已更新驱动登记 ${moduleId}`
-        );
+        await refreshRecentAudits();
         return result;
       },
       async updateDriverRegistrationDefault(moduleId, input) {
         const result = await base.updateDriverRegistrationDefault(moduleId, input);
-        pushModuleAudit(
-          dispatch,
-          "module-moved",
-          `已更新驱动默认业务分类，回放移动 ${result.replay.moved}`
-        );
+        await refreshRecentAudits();
         return result;
       },
       async replayDriverPlacement(moduleId) {
         const result = await base.replayDriverPlacement(moduleId);
-        pushModuleAudit(
-          dispatch,
-          "module-moved",
-          `已回放驱动放置：移动 ${result.moved}，跳过 curated ${result.skippedCurated}`
-        );
+        await refreshRecentAudits();
         return result;
       },
       createOrganizationDriverSchema: (input: CreateOrganizationDriverSchemaInput) =>
@@ -160,11 +108,7 @@ export function OrganizationModuleGovernancePanel({
         base.updateOrganizationDriverSchema(schemaId, input),
       activateOrganizationDriverSchema: async (schemaId) => {
         const result = await base.activateOrganizationDriverSchema(schemaId);
-        pushModuleAudit(
-          dispatch,
-          "module-created",
-          `已激活组织解析 schema「${result.schema.displayName}」`
-        );
+        await refreshRecentAudits();
         return result;
       },
       previewOrganizationDriverSchemaDeprecation: (schemaId) =>
@@ -175,15 +119,11 @@ export function OrganizationModuleGovernancePanel({
           throw new Error("Overlay deprecation is unavailable.");
         }
         const schema = await base.deprecateOrganizationDriverSchema(schemaId, input);
-        pushModuleAudit(
-          dispatch,
-          "module-mapping-deleted",
-          `已停用解析「${schema.displayName}」（${schema.compatible}）`
-        );
+        await refreshRecentAudits();
         return schema;
       }
     };
-  }, [application, dispatch]);
+  }, [application, refreshRecentAudits]);
 
   return (
     <ParameterModuleMappingPanel

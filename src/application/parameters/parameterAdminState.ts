@@ -1,36 +1,51 @@
 export type ParameterAdminArea = "organization" | "projects";
 
+/** Local kind labels used only for UI presentation of projected audit events. */
+export type ParameterAdminAuditKind =
+  | "spec-review-resolved"
+  | "spec-review-dismissed"
+  | "spec-review-create-spec"
+  | "spec-activated"
+  | "spec-updated"
+  | "spec-deprecated"
+  | "spec-restored"
+  | "spec-reattributed"
+  | "spec-property-key-changed"
+  | "module-created"
+  | "module-renamed"
+  | "module-moved"
+  | "module-deleted"
+  | "module-mapping-created"
+  | "module-mapping-deleted"
+  | "module-bindings-recomputed"
+  | "import-batch-applied"
+  | "identity-mapping-resolved"
+  | "identity-mapping-dismissed"
+  | "identity-mapping-new-identity"
+  | "identity-mapping-reopened"
+  | "project-updated"
+  | "project-deleted"
+  | "baseline-compared"
+  | "baseline-rolled-back"
+  | "baseline-released"
+  | "config-set-exported"
+  | "revision-validated"
+  | "file-conflict-resolved";
+
+/**
+ * @deprecated Prefer ParameterAdminRecentAuditEvent — kept as a view-model alias for kind-typed panels.
+ */
 export type ParameterAdminAuditHint = {
-  kind:
-    | "spec-review-resolved"
-    | "spec-review-dismissed"
-    | "spec-review-create-spec"
-    | "spec-activated"
-    | "spec-updated"
-    | "spec-deprecated"
-    | "spec-restored"
-    | "spec-reattributed"
-    | "spec-property-key-changed"
-    | "module-created"
-    | "module-renamed"
-    | "module-moved"
-    | "module-deleted"
-    | "module-mapping-created"
-    | "module-mapping-deleted"
-    | "module-bindings-recomputed"
-    | "import-batch-applied"
-    | "identity-mapping-resolved"
-    | "identity-mapping-dismissed"
-    | "identity-mapping-new-identity"
-    | "identity-mapping-reopened"
-    | "project-updated"
-    | "project-deleted"
-    | "baseline-compared"
-    | "baseline-rolled-back"
-    | "baseline-released"
-    | "config-set-exported"
-    | "revision-validated"
-    | "file-conflict-resolved";
+  kind: ParameterAdminAuditKind;
+  summary: string;
+  reason: string;
+  recordedAt: string;
+};
+
+/** Projection of audit-center events shown in parameter-admin recent strip. */
+export type ParameterAdminRecentAuditEvent = {
+  id: string;
+  kind: string;
   summary: string;
   reason: string;
   recordedAt: string;
@@ -50,7 +65,7 @@ export type ParameterAdminState = {
     fileConflicts: number;
   };
   undoStack: ParameterAdminUndoEntry[];
-  auditHints: ParameterAdminAuditHint[];
+  recentAuditEvents: ParameterAdminRecentAuditEvent[];
 };
 
 export type ParameterAdminAction =
@@ -60,8 +75,9 @@ export type ParameterAdminAction =
       type: "SET_QUEUE_COUNTS";
       counts: Partial<ParameterAdminState["queueCounts"]>;
     }
-  | { type: "PUSH_AUDIT_HINT"; hint: ParameterAdminAuditHint }
-  | { type: "CLEAR_AUDIT_HINTS" }
+  | { type: "SET_RECENT_AUDIT_EVENTS"; events: ParameterAdminRecentAuditEvent[] }
+  | { type: "PREPEND_RECENT_AUDIT_EVENT"; event: ParameterAdminRecentAuditEvent }
+  | { type: "CLEAR_RECENT_AUDIT_EVENTS" }
   | { type: "PUSH_UNDO"; entry: ParameterAdminUndoEntry }
   | { type: "POP_UNDO" }
   | { type: "CLEAR_UNDO" };
@@ -75,7 +91,7 @@ export const initialParameterAdminState: ParameterAdminState = {
     fileConflicts: 0
   },
   undoStack: [],
-  auditHints: []
+  recentAuditEvents: []
 };
 
 export function parameterAdminReducer(
@@ -92,13 +108,15 @@ export function parameterAdminReducer(
         ...state,
         queueCounts: { ...state.queueCounts, ...action.counts }
       };
-    case "PUSH_AUDIT_HINT":
+    case "SET_RECENT_AUDIT_EVENTS":
+      return { ...state, recentAuditEvents: action.events.slice(0, 8) };
+    case "PREPEND_RECENT_AUDIT_EVENT":
       return {
         ...state,
-        auditHints: [action.hint, ...state.auditHints].slice(0, 8)
+        recentAuditEvents: [action.event, ...state.recentAuditEvents].slice(0, 8)
       };
-    case "CLEAR_AUDIT_HINTS":
-      return { ...state, auditHints: [] };
+    case "CLEAR_RECENT_AUDIT_EVENTS":
+      return { ...state, recentAuditEvents: [] };
     case "PUSH_UNDO":
       return { ...state, undoStack: [action.entry, ...state.undoStack].slice(0, 20) };
     case "POP_UNDO":
@@ -113,15 +131,15 @@ export function parameterAdminReducer(
 export function auditKindForResolveDecision(
   decision: "resolved" | "dismissed",
   createSpec?: boolean
-): ParameterAdminAuditHint["kind"] {
+): ParameterAdminAuditKind {
   if (createSpec) {
     return "spec-review-create-spec";
   }
   return decision === "dismissed" ? "spec-review-dismissed" : "spec-review-resolved";
 }
 
-export function auditKindLabel(kind: ParameterAdminAuditHint["kind"]): string {
-  switch (kind) {
+export function auditKindLabel(kind: string): string {
+  switch (kind as ParameterAdminAuditKind) {
     case "spec-review-dismissed":
       return "定义匹配审核驳回";
     case "spec-review-create-spec":
@@ -179,7 +197,8 @@ export function auditKindLabel(kind: ParameterAdminAuditHint["kind"]): string {
     case "file-conflict-resolved":
       return "文件冲突裁决";
     case "spec-review-resolved":
-    default:
       return "定义匹配审核批准";
+    default:
+      return kind || "治理审计";
   }
 }

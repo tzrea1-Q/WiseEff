@@ -363,6 +363,24 @@ GET   /api/v1/product-feedback/:id/attachments/:attachmentId/content
 
 `feedbackType` 可为 `experience`、`data`、`export_submit`、`feature`。`status` 可为 `open`、`in_progress`、`closed`，状态流转为 `open -> in_progress -> closed`；`closed` 后不允许继续更新。附件只接受 `image/png`、`image/jpeg`、`image/webp`，最多 5 张，单张 5 MB，总量 15 MB。
 
+## 项目参数初始化
+
+新建项目的一次性语义 binding 库初始化（`projects.initialization_status`）。创建者草稿/提交；Admin 批准/驳回。审计 kind：`project-initialization-submitted` / `approved` / `rejected`。
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/parameters/projects/:projectId/initialization` | 状态 + 可选草稿 |
+| `PUT` | `/api/v1/parameters/projects/:projectId/initialization/draft` | 写入草稿（语义快照或 `emptyLibrary`） |
+| `POST` | `/api/v1/parameters/projects/:projectId/initialization/preview` | 服务端主源/补充源合并预览 |
+| `POST` | `/api/v1/parameters/projects/:projectId/initialization/submit` | 提交待审阅 |
+| `GET` | `/api/v1/parameters/admin/initialization-reviews` | 待审列表（Admin） |
+| `POST` | `/api/v1/parameters/admin/initialization-reviews/:reviewId/approve` | 批准并物化 binding |
+| `POST` | `/api/v1/parameters/admin/initialization-reviews/:reviewId/reject` | 带原因驳回 |
+
+当 `initialization_status` ≠ `initialized` 时，`POST /api/v1/parameter-submission-rounds` 失败关闭。
+
+Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回运维态 `status`（`initialized` | `maintenance`）与 `initializationStatus`（`projects.initialization_status`）。项目清单状态列在 init 未完成时优先展示 init 状态。
+
 ## 项目参数文件
 
 每项目可托管多个 DTS/JSON 文件，字节存对象存储，元数据与 `parsed_index` 存 PostgreSQL。上传请求体为 JSON `contentBase64`（非 multipart）。P1 单文件上限 2 MB。参数列表/详情 DTO 对已绑定项目值暴露可选 `sourceFileName`、`sourceNodePath`。

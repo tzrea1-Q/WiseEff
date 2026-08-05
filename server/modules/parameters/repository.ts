@@ -614,6 +614,7 @@ type ProjectRow = {
   name: string;
   code: string;
   status?: string;
+  initialization_status?: string;
   updated_at?: string | Date;
   module_count?: number | string;
   parameter_count?: number | string;
@@ -1059,6 +1060,7 @@ function toProjectAdminSummaryDto(row: ProjectRow): ProjectAdminSummaryDto {
     name: row.name,
     code: row.code,
     status: row.status ?? "initialized",
+    initializationStatus: row.initialization_status ?? "initialized",
     moduleCount: Number(row.module_count ?? 0),
     parameterCount: Number(row.parameter_count ?? 0),
     openConflictCount: Number(row.open_conflict_count ?? 0),
@@ -1501,6 +1503,7 @@ export async function listProjectAdminSummaries(db: Queryable, query: { organiza
       p.name,
       p.code,
       p.status,
+      p.initialization_status,
       p.updated_at,
       coalesce(module_counts.module_count, 0) as module_count,
       coalesce(param_counts.parameter_count, 0) as parameter_count,
@@ -1560,9 +1563,9 @@ export async function createProject(
 ) {
   const result = await db.query<ProjectRow>(
     `
-    insert into projects (id, organization_id, name, code, status)
-    values ($1, $2, $3, $4, $5)
-    returning id, name, code, status, updated_at
+    insert into projects (id, organization_id, name, code, status, initialization_status)
+    values ($1, $2, $3, $4, $5, 'not_initialized')
+    returning id, name, code, status, initialization_status, updated_at
     `,
     [input.id, input.organizationId, input.name, input.code, input.status ?? "initialized"]
   );
@@ -1574,6 +1577,7 @@ export async function createProject(
 
   return toProjectAdminSummaryDto({
     ...row,
+    initialization_status: row.initialization_status ?? "not_initialized",
     module_count: 0,
     parameter_count: 0,
     open_conflict_count: 0,

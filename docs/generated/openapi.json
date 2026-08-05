@@ -2147,6 +2147,285 @@
         }
       }
     },
+    "/api/v1/parameters/projects/{projectId}/initialization": {
+      "get": {
+        "operationId": "parameters.initialization.get",
+        "summary": "Get project parameter initialization status and draft",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInitializationStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters/projects/{projectId}/initialization/draft": {
+      "put": {
+        "operationId": "parameters.initialization.upsertDraft",
+        "summary": "Upsert project parameter initialization draft",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertProjectInitializationDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInitializationDraftResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters/projects/{projectId}/initialization/preview": {
+      "post": {
+        "operationId": "parameters.initialization.preview",
+        "summary": "Preview merged initialization binding snapshots",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewProjectInitializationSnapshotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInitializationSnapshotPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters/projects/{projectId}/initialization/submit": {
+      "post": {
+        "operationId": "parameters.initialization.submit",
+        "summary": "Submit project parameter initialization for review",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInitializationReviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters/admin/initialization-reviews": {
+      "get": {
+        "operationId": "parameters.admin.listInitializationReviews",
+        "summary": "List pending project parameter initialization reviews",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInitializationReviewListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters/admin/initialization-reviews/{reviewId}/approve": {
+      "post": {
+        "operationId": "parameters.admin.approveInitializationReview",
+        "summary": "Approve project parameter initialization review",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "reviewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInitializationReviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters/admin/initialization-reviews/{reviewId}/reject": {
+      "post": {
+        "operationId": "parameters.admin.rejectInitializationReview",
+        "summary": "Reject project parameter initialization review",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "reviewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectProjectInitializationReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInitializationReviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/parameters": {
       "get": {
         "operationId": "parameters.list",
@@ -5416,112 +5695,6 @@
         }
       }
     },
-    "/api/v1/debugging/admin/reload-bindings": {
-      "get": {
-        "operationId": "debugging.admin.listReloadBindings",
-        "summary": "List parameter reload bindings",
-        "tags": [
-          "debugging"
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ParameterReloadBindingListResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/ErrorResponse"
-          },
-          "403": {
-            "$ref": "#/components/responses/ErrorResponse"
-          },
-          "500": {
-            "$ref": "#/components/responses/ErrorResponse"
-          }
-        }
-      },
-      "put": {
-        "operationId": "debugging.admin.upsertReloadBinding",
-        "summary": "Upsert parameter reload binding",
-        "tags": [
-          "debugging"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ParameterReloadBindingRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ParameterReloadBindingResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/ErrorResponse"
-          },
-          "403": {
-            "$ref": "#/components/responses/ErrorResponse"
-          },
-          "500": {
-            "$ref": "#/components/responses/ErrorResponse"
-          }
-        }
-      },
-      "patch": {
-        "operationId": "debugging.admin.patchReloadBinding",
-        "summary": "Patch parameter reload binding",
-        "tags": [
-          "debugging"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ParameterReloadBindingRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ParameterReloadBindingResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/ErrorResponse"
-          },
-          "403": {
-            "$ref": "#/components/responses/ErrorResponse"
-          },
-          "500": {
-            "$ref": "#/components/responses/ErrorResponse"
-          }
-        }
-      }
-    },
     "/api/v1/debugging/reload-targets": {
       "get": {
         "operationId": "debugging.listReloadTargets",
@@ -6435,6 +6608,38 @@
         "type": "object",
         "x-wiseeff-schema": "UpdateProjectRequest"
       },
+      "ProjectInitializationStatusResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProjectInitializationStatusResponse"
+      },
+      "UpsertProjectInitializationDraftRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "UpsertProjectInitializationDraftRequest"
+      },
+      "ProjectInitializationDraftResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProjectInitializationDraftResponse"
+      },
+      "PreviewProjectInitializationSnapshotRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "PreviewProjectInitializationSnapshotRequest"
+      },
+      "ProjectInitializationSnapshotPreviewResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProjectInitializationSnapshotPreviewResponse"
+      },
+      "ProjectInitializationReviewResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProjectInitializationReviewResponse"
+      },
+      "ProjectInitializationReviewListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProjectInitializationReviewListResponse"
+      },
+      "RejectProjectInitializationReviewRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "RejectProjectInitializationReviewRequest"
+      },
       "ParameterListResponse": {
         "type": "object",
         "x-wiseeff-schema": "ParameterListResponse"
@@ -6763,18 +6968,6 @@
       "MoveDebugNodeModuleRequest": {
         "type": "object",
         "x-wiseeff-schema": "MoveDebugNodeModuleRequest"
-      },
-      "ParameterReloadBindingListResponse": {
-        "type": "object",
-        "x-wiseeff-schema": "ParameterReloadBindingListResponse"
-      },
-      "ParameterReloadBindingRequest": {
-        "type": "object",
-        "x-wiseeff-schema": "ParameterReloadBindingRequest"
-      },
-      "ParameterReloadBindingResponse": {
-        "type": "object",
-        "x-wiseeff-schema": "ParameterReloadBindingResponse"
       },
       "ParameterReloadTargetListResponse": {
         "type": "object",

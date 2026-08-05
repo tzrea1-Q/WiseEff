@@ -59,6 +59,7 @@
 
 | 实体 | 说明 |
 | --- | --- |
+| `ProjectParameterInitializationDraft` / `Review` | Durable one-time semantic binding snapshot + admin review (`initialization_status` on `projects`; migration `0091`) |
 | `ParameterDefinition` | 参数定义，包含名称、说明、格式、模块、默认范围和风险；通过 `parameter_module_id` 挂到组织级 `parameter_modules` 树 |
 | `ProjectParameterValue` | 某项目下某参数的当前值、推荐值、范围和单位 |
 | `ParameterHistoryEntry` | 参数值历史版本 |

@@ -263,6 +263,61 @@ export const updateProjectBodySchema = z
     message: "At least one field is required."
   });
 
+const initializationRiskSchema = z.enum(["High", "Medium", "Low"]);
+
+export const initializationSnapshotItemSchema = z.object({
+  id: nonEmptyString,
+  sourceProjectId: nonEmptyString,
+  sourceProjectParameterBindingId: nonEmptyString,
+  sourceRole: z.enum(["primary", "supplement"]),
+  parameterSpecId: nonEmptyString,
+  parameterSpecVersionId: nonEmptyString,
+  propertyKey: z.string(),
+  moduleId: nonEmptyString,
+  risk: initializationRiskSchema.nullable(),
+  effectiveValue: z.unknown(),
+  rawValue: z.string(),
+  currentValueState: z.literal("pending_project_confirmation"),
+  alternativeSourceBindingIds: z.array(nonEmptyString),
+  needsEffectiveValueConfirmation: z.boolean(),
+  notes: z.string().optional()
+});
+
+export const upsertInitializationDraftBodySchema = z.object({
+  projectName: nonEmptyString,
+  projectCode: nonEmptyString.max(16),
+  ownerUserId: nonEmptyString,
+  sourceProjectIds: z.array(nonEmptyString),
+  primarySourceProjectId: nonEmptyString.nullable(),
+  supplementSourceProjectIds: z.array(nonEmptyString),
+  selectedModuleIds: z.array(nonEmptyString),
+  selectedRisks: z.array(initializationRiskSchema),
+  selectedSourceBindingIds: z.array(nonEmptyString),
+  bindingSnapshots: z.array(initializationSnapshotItemSchema),
+  emptyLibrary: z.boolean(),
+  notes: z.string()
+});
+
+export const previewInitializationSnapshotBodySchema = z.object({
+  primarySourceProjectId: nonEmptyString.nullable(),
+  supplementSourceProjectIds: z.array(nonEmptyString).default([]),
+  selectedSourceBindingIds: z.array(nonEmptyString).optional(),
+  selectedModuleIds: z.array(nonEmptyString).optional(),
+  selectedRisks: z.array(initializationRiskSchema).optional()
+});
+
+export const rejectInitializationReviewBodySchema = z.object({
+  reason: nonEmptyString
+});
+
+export const paramsWithInitializationReviewIdSchema = z.object({
+  reviewId: nonEmptyString
+});
+
+export type UpsertInitializationDraftBody = z.infer<typeof upsertInitializationDraftBodySchema>;
+export type PreviewInitializationSnapshotBody = z.infer<typeof previewInitializationSnapshotBodySchema>;
+export type RejectInitializationReviewBody = z.infer<typeof rejectInitializationReviewBodySchema>;
+
 export type ListParametersQuery = {
   projectId?: string;
   module?: string;

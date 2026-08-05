@@ -4,17 +4,29 @@ import type { ObjectStore } from "../logs/objectStore";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
-import { createProjectForAuth } from "./projectService";
 import {
-  deleteProject,
+  approveReview,
+  getProjectInitializationStatus,
+  listPendingReviews,
+  previewSnapshot,
+  rejectReview,
+  submitDraft,
+  upsertDraft
+} from "./initializationService";
+import { getDraftByProject } from "./initializationRepository";
+import {
+  createProjectForAuth,
+  deleteProjectForAuth,
+  updateProjectForAuth
+} from "./projectService";
+import {
   getParameterById,
   getProjectAdminDetail,
   listParameterHistory,
   listParameters,
   listProjectAdminSummaries,
   listProjectModules,
-  listProjects,
-  updateProject
+  listProjects
 } from "./repository";
 import {
   applyImportBatch,
@@ -44,10 +56,14 @@ import {
   listParametersQuerySchema,
   moveParameterModuleBodySchema,
   parameterModuleParamsSchema,
+  paramsWithInitializationReviewIdSchema,
   paramsWithRoundIdSchema,
   parseDtsImportBodySchema,
+  previewInitializationSnapshotBodySchema,
+  rejectInitializationReviewBodySchema,
   reviewChangeBodySchema,
   saveDraftBodySchema,
+  upsertInitializationDraftBodySchema,
   submitRoundBodySchema,
   updateParameterModuleBodySchema,
   updateProjectBodySchema
@@ -245,13 +261,17 @@ export function registerParameterRoutes(
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const body = parseWithSchema(updateProjectBodySchema, request.body, "Invalid project update payload.");
-    const item = await updateProject(db, {
-      organizationId: auth.organization.id,
-      projectId: params.projectId,
-      name: body.name?.trim(),
-      code: body.code?.trim().toUpperCase(),
-      status: body.status?.trim()
-    });
+    const item = await updateProjectForAuth(
+      db,
+      auth,
+      {
+        projectId: params.projectId,
+        name: body.name?.trim(),
+        code: body.code?.trim().toUpperCase(),
+        status: body.status?.trim()
+      },
+      { requestId: request.requestId }
+    );
 
     if (!item) {
       throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId: params.projectId });
@@ -265,10 +285,20 @@ export function registerParameterRoutes(
     const auth = await options.getCurrentAuthContext(request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
-    const result = await deleteProject(db, {
+    const existing = await getProjectAdminDetail(db, {
       organizationId: auth.organization.id,
       projectId: params.projectId
     });
+    if (!existing) {
+      throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId: params.projectId });
+    }
+
+    const result = await deleteProjectForAuth(
+      db,
+      auth,
+      { projectId: params.projectId, projectName: existing.name },
+      { requestId: request.requestId }
+    );
 
     if (!result.deleted) {
       throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId: params.projectId });
@@ -497,5 +527,103 @@ export function registerParameterRoutes(
     const result = parseDtsImportForAuth(auth, body);
 
     return { status: 200, body: result };
+  });
+
+  router.get("/api/v1/parameters/projects/:projectId/initialization", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const status = await getProjectInitializationStatus(db, auth, params.projectId);
+    const draft = await getDraftByProject(db, {
+      organizationId: auth.organization.id,
+      projectId: params.projectId
+    });
+    return { status: 200, body: { status, draft } };
+  });
+
+  router.put("/api/v1/parameters/projects/:projectId/initialization/draft", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const body = parseWithSchema(
+      upsertInitializationDraftBodySchema,
+      request.body,
+      "Invalid initialization draft payload."
+    );
+    const item = await upsertDraft(
+      db,
+      auth,
+      {
+        projectId: params.projectId,
+        ...body,
+        bindingSnapshots: body.bindingSnapshots.map((snapshot) => ({
+          ...snapshot,
+          effectiveValue: snapshot.effectiveValue as unknown
+        }))
+      },
+      { requestId: request.requestId }
+    );
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/parameters/projects/:projectId/initialization/preview", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const body = parseWithSchema(
+      previewInitializationSnapshotBodySchema,
+      request.body,
+      "Invalid initialization preview payload."
+    );
+    const items = await previewSnapshot(db, auth, {
+      projectId: params.projectId,
+      primarySourceProjectId: body.primarySourceProjectId,
+      supplementSourceProjectIds: body.supplementSourceProjectIds ?? [],
+      selectedSourceBindingIds: body.selectedSourceBindingIds,
+      selectedModuleIds: body.selectedModuleIds,
+      selectedRisks: body.selectedRisks
+    });
+    return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v1/parameters/projects/:projectId/initialization/submit", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const item = await submitDraft(db, auth, { projectId: params.projectId }, { requestId: request.requestId });
+    return { status: 201, body: { item } };
+  });
+
+  router.get("/api/v1/parameters/admin/initialization-reviews", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const items = await listPendingReviews(db, auth);
+    return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v1/parameters/admin/initialization-reviews/:reviewId/approve", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithInitializationReviewIdSchema, request.params);
+    const item = await approveReview(db, auth, { reviewId: params.reviewId }, { requestId: request.requestId });
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/parameters/admin/initialization-reviews/:reviewId/reject", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithInitializationReviewIdSchema, request.params);
+    const body = parseWithSchema(
+      rejectInitializationReviewBodySchema,
+      request.body,
+      "Invalid initialization reject payload."
+    );
+    const item = await rejectReview(
+      db,
+      auth,
+      { reviewId: params.reviewId, reason: body.reason },
+      { requestId: request.requestId }
+    );
+    return { status: 200, body: { item } };
   });
 }

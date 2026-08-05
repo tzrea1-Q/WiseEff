@@ -71,7 +71,7 @@ P3 / P3.1 新表面（均走 `DtsStructuredRepository`，勿在新面板里直�
 
 **项目 tab 视觉约定：** 深链视图共用 `.param-admin-panel` 外框与 `.param-admin-panel__section` 分组（配置集/基线）；空队列用 `ParamAdminEmptyState`（`.param-admin-empty`）承载短状态、可选说明与下一步动作。作用域导航（`.parameter-admin-scope-nav`）视觉权重大于组织子导航（`.parameter-admin-subnav`），以表达包含关系：作用域用更大、实心主色选中 pill 并带轻阴影；子导航为更小的描边 pill，且每个对等项（含未选中）都有边框，避免被读成静态文案。项目列表页只保留权威标题「项目清单」；TopBar 副标题对应清单或深链视图名，不再重复「项目运营」。清单行展示治理信号（「冲突」开放数、「基线」已发布/无已发布），数据来自 `GET /api/v1/parameters/admin/projects`。参数文件页先文件列表、后结构化检索，检索文案指向「结构浏览」做树形编辑。
 
-**项目运营是盖在清单上的深链弹窗（ADR-0001）：** `ProjectOperationsDialog` 在项目清单之上呈现四个视图，URL 仍为 `/parameter-admin/projects/:projectId/:view`。它接入共享的 `ModalDialog` 契约（portal、焦点陷阱、背景 `inert`、仅最顶层 Escape、遮罩关闭成对判定）。外壳是一个权威 `<h2>`（项目名）、共享视图导航（`.project-operations-nav`，`aria-current="page"`，支持左右/Home/End 移动焦点）、带时间戳与「知道了」的最近治理审计提示，以及可滚动的正文区。卡片固定高度（`min(88vh, 920px)`），只让正文滚动；≤768px 时变为全视口 sheet。四个面板统一使用 `<h3>`。访问过的视图保持挂载，因此筛选、选中节点与结构浏览的未提交草稿在视图间切换时不丢；关闭弹窗（或 Escape）且有未提交草稿时会先弹确认。未知项目 ID 在清单页渲染 not-found，不再把原始 ID 当弹窗标题。结构化检索命中会跳到结构浏览并选中该节点；若节点在别的文件，会明确说明。
+**项目运营是盖在清单上的深链弹窗（ADR-0001）：** `ProjectOperationsDialog` 在项目清单之上呈现四个视图，URL 仍为 `/parameter-admin/projects/:projectId/:view`。它接入共享的 `ModalDialog` 契约（portal、焦点陷阱、背景 `inert`、仅最顶层 Escape、遮罩关闭成对判定）。外壳是一个权威 `<h2>`（项目名）、共享视图导航（`.project-operations-nav`，`aria-current="page"`，支持左右/Home/End 移动焦点）、来自审计中心的最近事件投影（`recentAuditEvents` ← `listAuditEvents`，治理变更后刷新，不再使用本地 `PUSH_AUDIT_HINT`），以及可滚动的正文区。卡片固定高度（`min(88vh, 920px)`），只让正文滚动；≤768px 时变为全视口 sheet。四个面板统一使用 `<h3>`。访问过的视图保持挂载，因此筛选、选中节点与结构浏览的未提交草稿在视图间切换时不丢；关闭弹窗（或 Escape）且有未提交草稿时会先弹确认。未知项目 ID 在清单页渲染 not-found，不再把原始 ID 当弹窗标题。结构化检索命中会跳到结构浏览并选中该节点；若节点在别的文件，会明确说明。
 
 **共享弹窗契约：** 弹窗统一使用 `ModalDialog`（`src/components/common/ModalDialog.tsx`），它 portal 到 `document.body`，并负责卡片上的 `role="dialog"` + `aria-modal`、自动生成的 `aria-labelledby` / `aria-describedby`、初始焦点、Tab 焦点陷阱、关闭后焦点归还触发元素、应用根节点 `inert`、只有最上层响应 Escape，以及 pointerdown/pointerup 成对判定的遮罩关闭（在卡片内按下、卡片外松开的文本选择不会关闭弹窗）。`ConfirmDialog` 在其之上承载不可撤销的治理操作（发布/回滚基线、移除配置集成员、冲突裁决），支持门禁返回 `requiresConfirmation` 时的确认勾选，以及可选的裁决原因并写入审计提示。由于 portal 把卡片移出了 `.param-admin-shell`，参数后台弹窗样式同时按遮罩类名生效（`.param-admin-modal-backdrop .button`、`… .dialog-actions`），由 `ModalDialog.styles.test.ts` 守住这对选择器。层级只用 `:root` 里声明的一套刻度（`--z-xiaoze-fab: 1100`、`--z-modal-backdrop: 1150`、`--z-modal-backdrop-nested: 1160`、`--z-xiaoze-popup: 1200`），不要再加临时 z-index 数字。
 
@@ -129,6 +129,14 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 - `/parameters`：API 模式只保留真实源树/生效树、binding 详情、类型化草稿与 binding 提交面板；mock 模式才保留旧扁平参数表。提交面板通过 `GET /api/v1/projects/:projectId/parameter-workflow-assignees` 加载三类候选人；任一角色无 eligible candidate 时失败关闭，提交时服务端再次校验所选 ID。
 - `/parameter-review`：查看待审请求、推进或拒绝流程。
 - `/parameter-admin`：mock mode 下保留直接管理体验；API mode 下写入应走 import/review 流程。批量导入向导（`ParameterImportWizard`）对完整 `.dts` / `.dtsi` 通过 `ParameterRepository.parseDtsImport` → `POST /api/v1/parameter-import/parse-dts`（或 mock CST 派生）解析，**不再**对 `dts-full` 静默回退 `parseDtsFragment`；含 `/include/` 时展示可读错误。跳过行汇总为 `reviewMetadata` 挂到 create preview / apply。大于 2MB 的 DTS 提示「将使用服务端解析」。
+
+### 项目参数初始化
+
+新建项目默认 `initialization_status = not_initialized`。创建者通过 `ProjectParameterInitializationWizard` 做一次性**语义 binding** 快照（或显式空库），提交初始化审阅；Admin 在 `/parameter-review` 的初始化 Tab 批准/驳回。
+
+- Port：`ParameterInitializationRepository`；API 模式走 HTTP + 项目切换 hydrate；mock 实现同一 Port。
+- 未 `initialized` 时 `ParametersPage` 锁定常规编辑；服务端 `submitParameterChanges` 经 `assertProjectAllowsParameterSubmit` 失败关闭。
+- 设计见 `docs/zh-CN/design-docs/2026-05-20-project-parameter-initialization-design.md`；验收 ID：`PARAM-INIT-*`。
 
 ## 多层级模块树
 

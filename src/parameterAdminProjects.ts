@@ -97,12 +97,17 @@ export function buildParameterAdminProjectsFromState(state: PrototypeState): Par
 export function mapProjectAdminSummaryDto(item: ProjectAdminSummaryDto): ParameterAdminProjectRow {
   const openConflictCount = item.openConflictCount ?? 0;
   const releasedBaselineCount = item.releasedBaselineCount ?? 0;
+  const initializationStatus = item.initializationStatus ?? "initialized";
+  // Admin table status column merges init workflow + ops lifecycle: unfinished init wins.
+  const status = (
+    initializationStatus !== "initialized" ? initializationStatus : item.status
+  ) as ParameterAdminProjectRow["status"];
   return {
     id: item.id,
     name: item.name,
     code: item.code,
-    status: (item.status as ParameterAdminProjectRow["status"]) ?? "initialized",
-    statusLabel: statusLabels[item.status] ?? item.status,
+    status: status ?? "initialized",
+    statusLabel: statusLabels[status] ?? status,
     moduleCount: item.moduleCount,
     parameterCount: item.parameterCount,
     openConflictCount,

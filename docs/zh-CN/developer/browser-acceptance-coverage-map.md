@@ -31,6 +31,11 @@
 - `BRIDGE-TOOLS-001`：Bridge 已连接但 `tools.adb.available: false` 时，Step ③ 显示缺少 ADB 与 **安装调试工具** CTA（非「Bridge 未安装」）。覆盖：`src/NodeDebuggingPage.test.tsx`。
 - `PARAM-HOME-001`：`/parameter-home` 通过 `ParameterDashboardRepository` 加载 summary/hotspots API 数据，并支持页面内时间窗口与热榜维度切换（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
 - `PARAM-ADMIN-003`：Admin 在 `/parameter-admin/projects` 的项目清单在 ≤960px 卡片布局下仍完整显示状态、模块/参数数、最近更新、治理信号（冲突/基线）与行操作（CSS 已修；playwright-cli 证据见 `work/ui-checks/param-admin-ux-polish-batch{1,3}/`；专用 e2e 待后续）。
+- `PARAM-INIT-WIZARD-001`：创建者完成项目参数初始化（选源 + 勾选）并进入待审阅（单测 wizard/reducer；服务端 `initializationService`；playwright-cli 见 `work/ui-checks/param-init/`）。
+- `PARAM-INIT-EMPTY-001`：显式空库初始化可批准为 `initialized` 且零 binding（mock Port + 服务端单测）。
+- `PARAM-INIT-REVIEW-001`：Admin 批准初始化后解锁项目并按快照物化 binding（服务端物化/审计；App Port 接线；playwright-cli 审阅页见 `work/ui-checks/param-init/review-*`）。
+- `PARAM-INIT-REJECT-001`：Admin 带原因驳回后创建者可修订再提交（reducer + 服务端）。
+- `PARAM-INIT-LOCK-001`：未 `initialized` 的项目不能提交常规 typed binding 变更轮次（`ParametersPage` 锁 + `assertProjectAllowsParameterSubmit`）。
 - `PROJ-OPS-001`：`/parameter-admin/projects/:id/:view` 四个视图（files、config-sets、structure、conflicts）的深链在首次加载与刷新后都能落到对应视图；未知项目 ID 显示 not-found 状态而不是把原始 ID 当项目名；视图间前进/后退可用（`src/ParameterAdminNextPage.test.tsx`；playwright-cli 证据见 `work/ui-checks/project-operations-dialog/final/`）。
 - `PROJ-OPS-002`：四个项目视图在 1440×900 / 768×1024 / 390×844 下都没有内容截断或横向溢出，视图导航条位置在切换视图时不移动（playwright-cli 证据见 `work/ui-checks/project-operations-dialog/final/`，实测 `documentElement.scrollWidth == clientWidth`，节点树 `scrollWidth == clientWidth`）。
 - `PROJ-OPS-003`：发布基线、回滚基线、移除配置集成员与两个冲突裁决动作都必须经过显式确认并写入治理审计；门禁返回 `requiresConfirmation` 时，发布在用户勾选确认前被拦截（`src/components/admin/ConfigSetBaselinePanel.test.tsx`、`src/components/admin/ParameterFileConflictPanel.test.tsx`、`src/ParameterAdminNextPage.test.tsx`；证据 `desktop-baseline-release-confirm.png`、`desktop-conflict-confirm.png`）。
@@ -69,6 +74,7 @@
 - `PARAM-IMPORT-DTS-FULL-001`：完整 `.dts` 经 `parse-dts` 产出带 `@address` 的 module 路径；`/include/` 被拒绝；向导显示服务端解析提示（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。
 - `PARAM-IMPORT-REVIEW-META-001`：带 `reviewMetadata.skippedRows` 的导入预览写入 `batch-import` 审计 metadata（`e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts`）。
 - `PARAM-ADMIN-IA-001`：组织子导航仅「参数定义管理」「模块管理」；定义管理内嵌匹配审核；节点对应嵌套于 specs 且在有任务时出现；旧 `/spec-review`、`/identity-mapping` 重定向并保留 query（单测 `parameterAdminOrganizationPath.test.ts`、`ParameterAdminNextPage.test.tsx`）。
+- `PARAM-ADMIN-AUDIT-RECENT-001`：服务端已审计的 Admin 变更后，项目运营最近条带来自 `listAuditEvents` 的投影，不依赖本地 `PUSH_AUDIT_HINT`（单测 `parameterAdminRecentAudits.test.tsx`、`refreshParameterAdminRecentAudits.test.ts`；playwright-cli 证据见 `work/ui-checks/param-admin-audit-recent/`）。
 - `PARAM-SPEC-GOVERN-001`：Admin 在 `/parameter-admin` 检索 ingest 后的规格（sc8562/mt5788 两个不同 `gpio_int`），打开详情并决议审核任务（含治理审计）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-TOPOLOGY-BROWSE-001`：在融合 DTS 工作台中切换真实源树/生效树，选择嵌套上下文（`amba` → `i2c@FDF5E000` → `sc8562@6E`），搜索两个 `gpio_int` 语义行，并在成熟详情弹窗查看完整路径、raw 值、shape 和 provenance；topology API 必须 200 且含预期节点（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-TOPOLOGY-EDIT-001`：类型化 drafts 返回 Schema cell-count 诊断、过期 revision 返回 409，并对临时 Config Set 走 fail-closed 编译/工具链校验（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。

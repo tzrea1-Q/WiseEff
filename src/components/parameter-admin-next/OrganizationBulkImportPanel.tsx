@@ -6,7 +6,7 @@ import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterRecord, Project } from "@/mockData";
 import { ParameterImportWizard } from "@/components/ParameterImportWizard/ParameterImportWizard";
 import { TopBarActionsContext, useTopBarActions } from "@/components/layout";
-import { useParameterAdmin } from "./ParameterAdminProvider";
+import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
 
 export type OrganizationBulkImportPanelProps = {
   projects: Project[];
@@ -30,7 +30,7 @@ export function OrganizationBulkImportPanel({
   parameterActions,
   runtimeMode = "mock"
 }: OrganizationBulkImportPanelProps) {
-  const { dispatch: adminDispatch } = useParameterAdmin();
+  const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
   const topBarContext = useContext(TopBarActionsContext);
   const [open, setOpen] = useState(false);
 
@@ -42,19 +42,11 @@ export function OrganizationBulkImportPanel({
       ...parameterActions,
       async applyImportBatch(input) {
         const result = await parameterActions.applyImportBatch(input);
-        adminDispatch({
-          type: "PUSH_AUDIT_HINT",
-          hint: {
-            kind: "import-batch-applied",
-            summary: `已应用导入批次 ${input.batchId}`,
-            reason: input.reviewMetadata?.notes ?? "",
-            recordedAt: new Date().toISOString()
-          }
-        });
+        await refreshRecentAudits(activeProjectId);
         return result;
       }
     };
-  }, [adminDispatch, parameterActions]);
+  }, [activeProjectId, parameterActions, refreshRecentAudits]);
 
   const importButton = (
     <button

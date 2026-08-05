@@ -10,6 +10,12 @@ import * as projectService from "./projectService";
 import { registerParameterRoutes } from "./routes";
 import * as service from "./service";
 
+vi.mock("./projectService", () => ({
+  createProjectForAuth: vi.fn(),
+  updateProjectForAuth: vi.fn(),
+  deleteProjectForAuth: vi.fn()
+}));
+
 vi.mock("./repository", () => ({
   createProject: vi.fn(),
   deleteProject: vi.fn(),
@@ -21,10 +27,6 @@ vi.mock("./repository", () => ({
   listProjectModules: vi.fn(),
   listProjects: vi.fn(),
   updateProject: vi.fn()
-}));
-
-vi.mock("./projectService", () => ({
-  createProjectForAuth: vi.fn()
 }));
 
 vi.mock("./service", () => ({
@@ -688,6 +690,7 @@ describe("parameter routes", () => {
       name: "Aurora",
       code: "AUR",
       status: "initialized",
+      initializationStatus: "initialized",
       moduleCount: 3,
       parameterCount: 12,
       openConflictCount: 1,
@@ -712,6 +715,7 @@ describe("parameter routes", () => {
       name: "Nova",
       code: "NOVA",
       status: "initialized",
+      initializationStatus: "not_initialized",
       moduleCount: 0,
       parameterCount: 0,
       openConflictCount: 0,
@@ -745,7 +749,18 @@ describe("parameter routes", () => {
 
   it("DELETE /api/v1/parameters/admin/projects/:projectId deletes an empty project", async () => {
     const db = makeDb();
-    vi.mocked(repository.deleteProject).mockResolvedValue({ deleted: true });
+    vi.mocked(repository.getProjectAdminDetail).mockResolvedValue({
+      id: "nova",
+      name: "Nova",
+      code: "NOVA",
+      status: "initialized",
+      moduleCount: 0,
+      parameterCount: 0,
+      openConflictCount: 0,
+      releasedBaselineCount: 0,
+      updatedAt: "2026-07-02T00:00:00.000Z"
+    });
+    vi.mocked(projectService.deleteProjectForAuth).mockResolvedValue({ deleted: true });
 
     const response = await requestJson<{ ok: true }>(
       makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
@@ -755,15 +770,17 @@ describe("parameter routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ok: true });
-    expect(repository.deleteProject).toHaveBeenCalledWith(db, {
-      organizationId: "org-1",
-      projectId: "nova"
-    });
+    expect(projectService.deleteProjectForAuth).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ organization: { id: "org-1", name: "ChargeLab" } }),
+      { projectId: "nova", projectName: "Nova" },
+      expect.objectContaining({ requestId: expect.any(String) })
+    );
   });
 
   it("DELETE /api/v1/parameters/admin/projects/:projectId returns 404 when project is missing", async () => {
     const db = makeDb();
-    vi.mocked(repository.deleteProject).mockResolvedValue({ deleted: false, reason: "not_found" });
+    vi.mocked(repository.getProjectAdminDetail).mockResolvedValue(null);
 
     const response = await requestJson<{ error: { code: string } }>(
       makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
@@ -773,6 +790,7 @@ describe("parameter routes", () => {
 
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe("NOT_FOUND");
+    expect(projectService.deleteProjectForAuth).not.toHaveBeenCalled();
   });
 
   it("GET /api/v1/parameter-modules returns tree items for viewers", async () => {

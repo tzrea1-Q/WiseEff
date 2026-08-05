@@ -212,6 +212,83 @@ export const acceptanceOperations: AcceptanceOperation[] = [
       "Batch 1 ships CSS fix + playwright-cli three-viewport evidence under work/ui-checks/param-admin-ux-polish-batch1/; dedicated e2e viewport assertion follows in a later batch."
   },
   {
+    id: "PARAM-INIT-WIZARD-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action: "Complete the project parameter initialization wizard with sources and selection into pending review.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-INIT-WIZARD-001"],
+    specFiles: [
+      "src/ProjectParameterInitializationWizard.test.tsx",
+      "src/appReducer.parameterAdmin.test.ts",
+      "server/modules/parameters/initializationService.test.ts"
+    ],
+    assertions: ["ui", "api", "audit", "screenshot"],
+    deferralReason:
+      "Unit/reducer/server cover submit→pending; playwright-cli evidence under work/ui-checks/param-init/; full browser e2e follows after semantic wizard binding picker lands."
+  },
+  {
+    id: "PARAM-INIT-EMPTY-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/api/v1/parameters/projects/:projectId/initialization",
+    roles: ["Admin"],
+    action: "Submit and approve an explicit empty-library initialization to initialized with zero bindings.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-INIT-EMPTY-001"],
+    specFiles: [
+      "src/infrastructure/mock/mockParameterInitializationRepository.test.ts",
+      "server/modules/parameters/initializationService.test.ts"
+    ],
+    assertions: ["api", "db", "audit"],
+    deferralReason:
+      "Server and mock Port tests cover empty approve; dedicated e2e API+UI path follows with wizard empty-mode CTA."
+  },
+  {
+    id: "PARAM-INIT-REVIEW-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-review",
+    roles: ["Admin"],
+    action: "Approve a pending initialization review and unlock the project with materialized bindings.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-INIT-REVIEW-001"],
+    specFiles: ["src/App.tsx", "server/modules/parameters/initializationService.test.ts"],
+    assertions: ["ui", "api", "db", "audit"],
+    deferralReason:
+      "API-mode App handlers call Port approve; server materialize + audit covered in initializationService tests; full browser evidence follows."
+  },
+  {
+    id: "PARAM-INIT-REJECT-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-review",
+    roles: ["Admin"],
+    action: "Reject initialization with a required reason and allow creator revision.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-INIT-REJECT-001"],
+    specFiles: ["src/appReducer.parameterAdmin.test.ts", "server/modules/parameters/initializationService.test.ts"],
+    assertions: ["ui", "api", "audit"],
+    deferralReason:
+      "Reducer and server reject paths covered; dedicated browser reject/resubmit e2e follows."
+  },
+  {
+    id: "PARAM-INIT-LOCK-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Software User", "Admin"],
+    action: "Confirm non-initialized projects cannot submit normal typed binding change rounds.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-INIT-LOCK-001"],
+    specFiles: ["src/ParametersPage.test.tsx", "server/modules/parameters/service.test.ts"],
+    assertions: ["ui", "api"],
+    deferralReason:
+      "UI lock + submitParameterChanges assertProjectAllowsParameterSubmit covered by unit tests; browser lock evidence follows."
+  },
+  {
     id: "PROJ-OPS-001",
     priority: "P1",
     area: "parameters",

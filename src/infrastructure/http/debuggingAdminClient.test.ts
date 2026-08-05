@@ -221,4 +221,10 @@ describe("debugging admin client", () => {
       {}
     );
   });
+
+  it("does not expose admin reload-bindings client methods", () => {
+    const client = createDebuggingAdminClient(createApiClientMock() as never);
+    expect(client).not.toHaveProperty("listReloadBindings");
+    expect(client).not.toHaveProperty("upsertReloadBinding");
+  });
 });

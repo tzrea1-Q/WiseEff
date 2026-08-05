@@ -18,7 +18,10 @@ export type ProjectAdminSummaryDto = {
   id: string;
   name: string;
   code: string;
+  /** Ops lifecycle: typically `initialized` | `maintenance`. */
   status: string;
+  /** Init workflow status; distinct from ops `status` (migration 0091). */
+  initializationStatus: string;
   moduleCount: number;
   parameterCount: number;
   openConflictCount: number;

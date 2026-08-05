@@ -25,6 +25,11 @@
 ## 当前操作重点
 
 - `PARAM-ADMIN-003`：Admin 在 `/parameter-admin/projects` 确认项目清单在 ≤960px 卡片布局下状态、计数、最近更新、治理信号（冲突/基线）与行操作可见；Batch 1–3 以 CSS + playwright-cli 证据先行，专用 e2e 待后续。
+- `PARAM-INIT-WIZARD-001`：创建者完成项目参数初始化（选源 + 勾选）并进入待审阅；单测/服务端已覆盖；playwright-cli 证据见 `work/ui-checks/param-init/`；完整浏览器 e2e 待语义 binding 选择器落地后补。
+- `PARAM-INIT-EMPTY-001`：显式空库初始化可批准为 `initialized` 且零 binding（mock Port + 服务端）；专用 e2e 待补。
+- `PARAM-INIT-REVIEW-001`：Admin 在 `/parameter-review` 批准初始化后解锁并物化 binding；服务端 + App Port；playwright-cli 审阅页证据见 `work/ui-checks/param-init/review-*`。
+- `PARAM-INIT-REJECT-001`：Admin 带原因驳回后创建者可修订再提交（reducer + 服务端）；专用浏览器 e2e 待补。
+- `PARAM-INIT-LOCK-001`：未 `initialized` 项目不能提交常规 typed binding 变更轮次（`ParametersPage` 锁 + `assertProjectAllowsParameterSubmit`）。
 - `PROJ-OPS-001`：Admin 用深链打开 `/parameter-admin/projects/:projectId/:view` 的四个视图、刷新、在视图间前进后退，并打开一个不存在的项目 ID；当前以组件测试加 playwright-cli 证据先行，专用 e2e 深链 spec 待后续。
 - `PROJ-OPS-002`：Admin 在 1440×900 / 768×1024 / 390×844 三档视口走完四个项目视图，确认没有内容截断、没有横向溢出、视图导航条位置稳定；证据见 `work/ui-checks/project-operations-dialog/final/`。
 - `PROJ-OPS-003`：Admin 发布并回滚基线、移除配置集成员、裁决文件冲突，每个动作都经过确认框；面板与页面测试加 playwright-cli 证据先行，API mode 的治理 e2e 待补基线种子数据。

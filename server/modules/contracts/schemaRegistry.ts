@@ -342,6 +342,45 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "UpdateProjectRequest",
     responseBody: "ProjectAdminDetailResponse"
   },
+  "parameters.initialization.get": {
+    summary: "Get project parameter initialization status and draft",
+    tags: ["parameters"],
+    responseBody: "ProjectInitializationStatusResponse"
+  },
+  "parameters.initialization.upsertDraft": {
+    summary: "Upsert project parameter initialization draft",
+    tags: ["parameters"],
+    requestBody: "UpsertProjectInitializationDraftRequest",
+    responseBody: "ProjectInitializationDraftResponse"
+  },
+  "parameters.initialization.preview": {
+    summary: "Preview merged initialization binding snapshots",
+    tags: ["parameters"],
+    requestBody: "PreviewProjectInitializationSnapshotRequest",
+    responseBody: "ProjectInitializationSnapshotPreviewResponse"
+  },
+  "parameters.initialization.submit": {
+    summary: "Submit project parameter initialization for review",
+    tags: ["parameters"],
+    responseBody: "ProjectInitializationReviewResponse",
+    successStatus: 201
+  },
+  "parameters.admin.listInitializationReviews": {
+    summary: "List pending project parameter initialization reviews",
+    tags: ["parameters"],
+    responseBody: "ProjectInitializationReviewListResponse"
+  },
+  "parameters.admin.approveInitializationReview": {
+    summary: "Approve project parameter initialization review",
+    tags: ["parameters"],
+    responseBody: "ProjectInitializationReviewResponse"
+  },
+  "parameters.admin.rejectInitializationReview": {
+    summary: "Reject project parameter initialization review",
+    tags: ["parameters"],
+    requestBody: "RejectProjectInitializationReviewRequest",
+    responseBody: "ProjectInitializationReviewResponse"
+  },
   "parameters.list": { summary: "List parameters", tags: ["parameters"], responseBody: "ParameterListResponse" },
   "parameters.get": { summary: "Get parameter", tags: ["parameters"], responseBody: "ParameterResponse" },
   "parameters.history": {
@@ -800,26 +839,6 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["debugging"],
     responseBody: "DeleteResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
-  },
-  "debugging.admin.listReloadBindings": {
-    summary: "List parameter reload bindings",
-    tags: ["debugging"],
-    responseBody: "ParameterReloadBindingListResponse",
-    additionalResponses: { "403": "ErrorResponse" }
-  },
-  "debugging.admin.upsertReloadBinding": {
-    summary: "Upsert parameter reload binding",
-    tags: ["debugging"],
-    requestBody: "ParameterReloadBindingRequest",
-    responseBody: "ParameterReloadBindingResponse",
-    additionalResponses: { "403": "ErrorResponse" }
-  },
-  "debugging.admin.patchReloadBinding": {
-    summary: "Patch parameter reload binding",
-    tags: ["debugging"],
-    requestBody: "ParameterReloadBindingRequest",
-    responseBody: "ParameterReloadBindingResponse",
-    additionalResponses: { "403": "ErrorResponse" }
   },
   "debugging.listReloadTargets": {
     summary: "List managed parameters with reload bindings for a project",

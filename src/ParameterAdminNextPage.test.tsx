@@ -1089,10 +1089,14 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
       })
     );
 
-    fireEvent.click(within(panel).getByRole("button", { name: "电源路径组 更多操作" }));
-    await waitFor(() =>
-      expect(screen.getByRole("menuitem", { name: "删除模块 电源路径组" })).toBeInTheDocument()
-    );
+    // After move + audit refresh, the overflow menu can remount mid-open under load.
+    // Retry open until the delete item is stable, then click it.
+    await waitFor(() => {
+      const more = within(panel).getByRole("button", { name: "电源路径组 更多操作" });
+      expect(more).not.toBeDisabled();
+      fireEvent.click(more);
+      expect(screen.getByRole("menuitem", { name: "删除模块 电源路径组" })).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole("menuitem", { name: "删除模块 电源路径组" }));
     await waitFor(() => expect(moduleRegistry.deleteModule).toHaveBeenCalledWith("mod-new-1"));
     await waitFor(() =>
