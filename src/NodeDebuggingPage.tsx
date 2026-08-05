@@ -1,11 +1,13 @@
-import { Eye, Pencil, RotateCw, Search, Send } from "lucide-react";
+import { Eye, Pencil, RotateCcw, RotateCw, Search, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
 import { ColumnFilter } from "./components/ColumnFilter";
+import { ConfirmDialog } from "./components/common/ConfirmDialog";
 import { LocalDeviceBridgeWizard, type BridgePanelStatus } from "./components/LocalDeviceBridgeWizard";
 import { deriveBridgePanelStatus, countActiveBridgesForPlatform, formatDetectFailureMessage, isBridgeOnlinePanelStatus, isLocalBridgeAuthFailure, isLocalBridgePairingStale, isLocalBridgeTokenExpired, shouldFetchBridgePairingCode } from "./components/bridgePanelStatus";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
+import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
 import {
@@ -829,6 +831,8 @@ export function NodeDebuggingPage({
   const [activeTargetId, setActiveTargetId] = useState<string | undefined>();
   const [bridgeTargetCandidates, setBridgeTargetCandidates] = useState<DeviceTarget[]>([]);
   const [selectingBridgeTargetId, setSelectingBridgeTargetId] = useState<string | null>(null);
+  const [pendingHighRiskWrite, setPendingHighRiskWrite] = useState<RuntimeRow | null>(null);
+  const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false);
   const autoReadSignatureRef = useRef("");
   const protocolRef = useRef(protocol);
   const detectRequestSeqRef = useRef(0);
@@ -843,6 +847,19 @@ export function NodeDebuggingPage({
       ...current,
       { ...event, id: `node-event-${current.length + 1}`, at: event.at ?? new Date().toISOString() }
     ]);
+  };
+
+  const replaceEventsFromOperations = (operations: NodeOperationSnapshot[]) => {
+    setEvents(
+      operations.map((operation, index) => {
+        const base = eventFromOperation(operation, rowsRef.current);
+        return {
+          ...base,
+          id: operation.id || `node-event-session-${index + 1}`,
+          at: operation.createdAt ?? new Date().toISOString()
+        };
+      })
+    );
   };
 
   const nextRowOperationSeq = (rowId: string) => {
@@ -1141,7 +1158,9 @@ export function NodeDebuggingPage({
         }
         const { session, target: detectedTarget } = result;
         applyDetectedSession(session, detectedTarget);
-        if (result.operation) {
+        if ("operations" in result && result.operations) {
+          replaceEventsFromOperations(result.operations);
+        } else if (result.operation) {
           appendEvent(eventFromOperation(result.operation, rowsRef.current));
         }
         return;
@@ -1220,7 +1239,9 @@ export function NodeDebuggingPage({
         return;
       }
       applyDetectedSession(result.session, result.target);
-      if (result.operation) {
+      if ("operations" in result && result.operations) {
+        replaceEventsFromOperations(result.operations);
+      } else if (result.operation) {
         appendEvent(eventFromOperation(result.operation, rowsRef.current));
       }
     } catch {
@@ -1235,8 +1256,12 @@ export function NodeDebuggingPage({
     void detect();
   }, [protocol, runtimeReady]);
 
-  const writeRow = async (row: RuntimeRow) => {
+  const writeRow = async (row: RuntimeRow, confirmationToken?: string) => {
     if ((!target && !activeSessionId) || !canWrite(row)) return;
+    if (debuggingActions && row.risk === "High" && !confirmationToken) {
+      setPendingHighRiskWrite(row);
+      return;
+    }
     const readBack = row.accessMode === "RW";
     const requestProtocol = protocolRef.current;
     const generation = rowOperationGenerationRef.current;
@@ -1251,7 +1276,8 @@ export function NodeDebuggingPage({
             nodePath: row.nodePath,
             value: row.draftValue,
             readBack,
-            risk: row.risk
+            risk: row.risk,
+            ...(confirmationToken ? { confirmationToken } : {})
           })
         : await writeNodeValue({ target: target ?? "", nodePath: row.nodePath, value: row.draftValue, readBack });
 
@@ -1548,6 +1574,16 @@ export function NodeDebuggingPage({
             </div>
             <div className="debugging-action-buttons">
               <button
+                className="button subtle"
+                type="button"
+                disabled={!connected || !state.lastDebugSnapshot}
+                title={state.lastDebugSnapshot ? "回滚到上次写前快照" : "尚无快照，写入成功后自动生成"}
+                onClick={() => setRollbackDialogOpen(true)}
+              >
+                <RotateCcw size={16} aria-hidden="true" />
+                回滚快照
+              </button>
+              <button
                 className="submit-round-button debugging-deploy-button"
                 type="button"
                 disabled={!connected || batchTargetRows.length === 0}
@@ -1667,6 +1703,45 @@ export function NodeDebuggingPage({
           </div>
         </WorkbenchSheet>
         </div>
+      ) : null}
+
+      <ConfirmDialog
+        open={pendingHighRiskWrite !== null}
+        title="确认高风险节点写入"
+        description={
+          pendingHighRiskWrite
+            ? `节点「${pendingHighRiskWrite.name}」风险为高。确认后才会带 confirmation token 写入设备。`
+            : null
+        }
+        confirmLabel="确认写入"
+        tone="danger"
+        onCancel={() => setPendingHighRiskWrite(null)}
+        onConfirm={() => {
+          const row = pendingHighRiskWrite;
+          setPendingHighRiskWrite(null);
+          if (row) {
+            void writeRow(row, "confirm-high-risk-write");
+          }
+        }}
+      />
+
+      {rollbackDialogOpen && state.lastDebugSnapshot ? (
+        <RollbackConfirmDialog
+          snapshot={state.lastDebugSnapshot}
+          parameters={state.debugParameters}
+          onCancel={() => setRollbackDialogOpen(false)}
+          onConfirm={() => {
+            const snapshot = state.lastDebugSnapshot;
+            if (!snapshot) return;
+            if (debuggingActions) {
+              void debuggingActions.rollbackSnapshot({
+                snapshotId: snapshot.id,
+                confirmationToken: "confirm-rollback"
+              });
+            }
+            setRollbackDialogOpen(false);
+          }}
+        />
       ) : null}
     </div>
   );

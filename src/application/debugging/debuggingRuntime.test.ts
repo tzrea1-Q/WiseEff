@@ -212,8 +212,10 @@ describe("createDebuggingRuntimeActions", () => {
       protocol: "hdc",
       sessionKind: "node"
     });
-    expect(result).toEqual({ session: apiSession, target: apiTarget });
+    expect(gateway.listSessionEvents).toHaveBeenCalledWith(apiSession.id);
+    expect(result).toEqual({ session: apiSession, target: apiTarget, operations: [readOperation] });
     expect(dispatch).toHaveBeenCalledWith({ type: "SET_DEBUG_ACTIVE_SESSION", session: apiSession, target: apiTarget });
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_DEBUG_NODE_OPERATION", operation: readOperation });
   });
 
   it("passes bridgeId through target detection when provided", async () => {
@@ -252,7 +254,7 @@ describe("createDebuggingRuntimeActions", () => {
       protocol: "adb",
       sessionKind: "node"
     });
-    expect(result).toEqual({ session: adbSession, target: adbTarget });
+    expect(result).toEqual({ session: adbSession, target: adbTarget, operations: [readOperation] });
   });
 
   it("selects the device matching the requested debug protocol", async () => {
@@ -400,7 +402,7 @@ describe("createDebuggingRuntimeActions", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_DEBUG_NODE_OPERATION", operation: readOperation });
   });
 
-  it("writes high-risk API nodes with confirmation and dispatches operation and snapshot results", async () => {
+  it("does not silently inject high-risk confirmation tokens on API writes", async () => {
     const dispatch = vi.fn();
     const gateway = createGateway();
     const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch, getState: () => initialState });
@@ -420,12 +422,32 @@ describe("createDebuggingRuntimeActions", () => {
       parameterId: apiParameter.id,
       nodePath: apiParameter.nodePath,
       value: "15",
-      readBack: true,
-      confirmationToken: "confirm-high-risk-write"
+      readBack: true
     });
+    expect(gateway.writeNode).toHaveBeenCalledWith(expect.not.objectContaining({ confirmationToken: "confirm-high-risk-write" }));
     expect(result).toEqual({ ok: true, value: "15", verified: true, operation: writeOperation, snapshot: apiSnapshot });
     expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_DEBUG_NODE_OPERATION", operation: writeOperation });
     expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_DEBUG_SNAPSHOT", snapshot: apiSnapshot });
+  });
+
+  it("forwards an explicit high-risk confirmation token on API writes", async () => {
+    const dispatch = vi.fn();
+    const gateway = createGateway();
+    const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch, getState: () => initialState });
+
+    await actions.writeNode({
+      sessionId: apiSession.id,
+      parameterId: apiParameter.id,
+      nodePath: apiParameter.nodePath,
+      value: "15",
+      readBack: true,
+      risk: "High",
+      confirmationToken: "confirm-high-risk-write"
+    });
+
+    expect(gateway.writeNode).toHaveBeenCalledWith(
+      expect.objectContaining({ confirmationToken: "confirm-high-risk-write" })
+    );
   });
 
   it("keeps caller approval ids when writing high-risk API nodes", async () => {
