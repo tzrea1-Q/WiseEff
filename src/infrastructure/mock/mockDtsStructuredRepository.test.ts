@@ -84,6 +84,26 @@ describe("createMockDtsStructuredRepository (DtsStructuredRepository contract)",
     );
   });
 
+  it("browse and search describe the same nodes for any project id", async () => {
+    const repo = createRepo();
+    const otherProject = "project-not-the-fixture-owner";
+
+    const { nodes } = await repo.getStructure(otherProject, FILE_ID, VERSION_ID);
+    expect(nodes.length).toBeGreaterThan(0);
+
+    for (const node of nodes) {
+      const found = await repo.search(otherProject, { q: node.nodePath, by: "path" });
+      expect(found.hits.map((hit) => hit.nodePath)).toContain(node.nodePath);
+    }
+
+    const byLabel = await repo.search(otherProject, { q: "demo_regulator", by: "label" });
+    expect(byLabel.hits.length).toBeGreaterThan(0);
+    const browsedPaths = new Set(nodes.map((node) => node.nodePath));
+    for (const hit of byLabel.hits) {
+      expect(browsedPaths.has(hit.nodePath)).toBe(true);
+    }
+  });
+
   it("supports interactive config-set membership CRUD", async () => {
     const repo = createRepo();
 

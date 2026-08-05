@@ -51,6 +51,27 @@ function chooseLatestVersion(versions: ProjectParameterFileVersion[]) {
   return [...versions].sort((left, right) => right.versionNumber - left.versionNumber)[0];
 }
 
+const VERSION_ORIGIN_LABELS: Record<string, string> = {
+  upload: "手动上传",
+  writeback: "参数回写"
+};
+
+function formatVersionTime(createdAt: string): string {
+  const parsed = new Date(createdAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return createdAt;
+  }
+  return parsed.toLocaleString("zh-CN", { hour12: false });
+}
+
+function formatVersionSize(sizeBytes: number): string {
+  const bytes = Math.max(sizeBytes, 0);
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
 export function ProjectParameterFilesPanel({
   projectId,
   repository,
@@ -144,6 +165,21 @@ export function ProjectParameterFilesPanel({
     }
   };
 
+  const saveVersionToDisk = async (fileId: string, versionId: string, fallbackName: string) => {
+    const result = await repository.downloadVersion(projectId, fileId, versionId);
+    const blob = new Blob([Uint8Array.from(result.bytes)], {
+      type: result.contentType || "application/octet-stream"
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = result.fileName || fallbackName;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const downloadLatest = async (fileId: string, fallbackName: string, currentVersionId?: string) => {
     setActionError("");
     try {
@@ -156,19 +192,22 @@ export function ProjectParameterFilesPanel({
         throw new Error("该文件暂无可下载版本。");
       }
 
-      const result = await repository.downloadVersion(projectId, fileId, targetVersionId);
-      const blob = new Blob([Uint8Array.from(result.bytes)], {
-        type: result.contentType || "application/octet-stream"
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = result.fileName || fallbackName;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      await saveVersionToDisk(fileId, targetVersionId, fallbackName);
       setSummaryText(`已下载最新版本：${fallbackName}`);
+    } catch (downloadError) {
+      setActionError(downloadError instanceof Error ? downloadError.message : "下载参数文件失败。");
+    }
+  };
+
+  const downloadVersion = async (
+    fileId: string,
+    fileName: string,
+    version: ProjectParameterFileVersion
+  ) => {
+    setActionError("");
+    try {
+      await saveVersionToDisk(fileId, version.id, `${fileName}.v${version.versionNumber}`);
+      setSummaryText(`已下载 ${fileName} 的版本 ${version.versionNumber}`);
     } catch (downloadError) {
       setActionError(downloadError instanceof Error ? downloadError.message : "下载参数文件失败。");
     }
@@ -282,8 +321,29 @@ export function ProjectParameterFilesPanel({
                   <ul className="project-parameter-files__versions" aria-label={`${item.fileName} 版本列表`}>
                     {versions.length === 0 ? <li>暂无版本记录。</li> : null}
                     {versions.map((version) => (
-                      <li key={version.id}>
-                        版本 {version.versionNumber} · {version.origin} · {Math.max(version.sizeBytes, 0)} bytes
+                      <li key={version.id} className="project-parameter-files__version">
+                        <div className="project-parameter-files__version-main">
+                          <strong>版本 {version.versionNumber}</strong>
+                          {version.id === item.currentVersionId ? (
+                            <span className="project-parameter-files__version-current">当前版本</span>
+                          ) : null}
+                          <span>{VERSION_ORIGIN_LABELS[version.origin] ?? version.origin}</span>
+                        </div>
+                        <div className="project-parameter-files__version-meta">
+                          <time dateTime={version.createdAt}>{formatVersionTime(version.createdAt)}</time>
+                          <span>操作人：{version.createdByUserId ?? "未记录"}</span>
+                          <span>{formatVersionSize(version.sizeBytes)}</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="button subtle"
+                          aria-label={`下载 ${item.fileName} 版本 ${version.versionNumber}`}
+                          onClick={() => {
+                            void downloadVersion(item.id, item.fileName, version);
+                          }}
+                        >
+                          下载
+                        </button>
                       </li>
                     ))}
                   </ul>

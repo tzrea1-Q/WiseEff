@@ -31,6 +31,8 @@
 - **TD-051（已 resolved 的节点对应任务无反向回滚）：** `applyReviewedIdentityMapping` 已重写绑定身份且无逆操作，选错逻辑节点只能靠重新上传 DTS 补救。见 D3。
 - **TD-052（定义数与实测处数未拆分）：** `aggregateSubtreeParameterCounts` 只上卷单一 `parameterCount`；驱动组直接持有定义后两个事实已分岔，废弃引用数又引入第三个计数。见 D4（承接 ADR-0010 的 out of scope）。
 - **TD-053（overlay 停用无接班约束、superseded 无组织侧呈现）：** 停用会直接撤走解析覆盖；被平台晋升后置为 `superseded` 的组织行在其自身治理界面没有定义好的呈现方式。见 D5、D8。
+- **TD-056（参数文件版本无法回滚、操作人只有 ID）：** 版本历史已补齐版本号、来源、时间、操作人与逐版本下载（POD-C6），但没有「回滚到该版本」：`ParameterFileRepository` 缺少把某版本设为当前版本的操作；操作人展示的是原始用户 ID，因为端口只带 `createdByUserId`。下一步：在参数文件 API 与端口上补 promote/rollback 版本操作，并把用户 ID 解析成显示名，同轮扩展版本列表。
+- **TD-057（项目运营页缺少真实配置修订来源）：** 为落实 POD-C1，`ConfigSetBaselinePanel` 不再校验凭空构造的 `revision-teaching-1`，因此项目运营页暂不提供「校验修订」：该页没有任何地方选择配置修订，mock `getTopology` 也只是回显传入的 revision key。影响：修订门禁（含发布前 `requiresConfirmation` 拦截）只能在参数工作台触发，而不是在真正发布基线的界面。下一步：通过拓扑接缝给配置集视图接入真实修订列表/选择，再按该 ID 恢复门禁入口。
 - **TD-055（产品作用域策略目标面未建）：** 定义编辑器与 `PATCH /api/v2/parameter-specs/:specId` 已按 SE-D1 移除 `policyTarget` 写入；`parameter_policy_targets` 表与三处只读 join 仍在，但无生产写入。初始化仍优先 `policyTarget ?? schemaDefault`。后续要么建产品作用域治理面，要么用 ADR 正式退役表与读者。
 
 ## 近期关闭项

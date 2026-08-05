@@ -274,6 +274,7 @@ describe("ConfigSetBaselinePanel", () => {
 
   it("blocks a release behind an explicit acknowledgement when the gate requires confirmation", async () => {
     const repository = createRepository();
+    const onAudit = vi.fn();
     render(
       <ConfigSetBaselinePanel
         projectId={PROJECT_ID}
@@ -281,11 +282,15 @@ describe("ConfigSetBaselinePanel", () => {
         canAdmin
         availableFiles={[{ id: "file-1", fileName: "engine.dts" }]}
         revisionId="revision-7"
+        onAudit={onAudit}
         validateRevision={vi.fn().mockResolvedValue({
           id: "run-1",
           status: "failed",
-          stage: "dtc",
-          diagnostics: [{ path: "board.dts", startLine: 12, severity: "error", message: "语法错误" }]
+          stage: "toolchain",
+          diagnostics: [
+            { path: "board.dts", startLine: 12, severity: "error", message: "overlay overlap" },
+            { severity: "warning", message: "unused label power" }
+          ]
         })}
       />
     );
@@ -294,6 +299,12 @@ describe("ConfigSetBaselinePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "校验修订" }));
     const gateRegion = await screen.findByRole("status", { name: "校验门禁结果" });
     expect(within(gateRegion).getByText(/需要人工确认风险/)).toBeInTheDocument();
+    expect(within(gateRegion).getByText("overlay overlap")).toBeInTheDocument();
+    expect(within(gateRegion).getByText("board.dts:12")).toBeInTheDocument();
+    expect(within(gateRegion).getByText("unused label power")).toBeInTheDocument();
+    expect(onAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "revision-validated", summary: expect.stringContaining("revision-7") })
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "选择 board-a" }));
     fireEvent.click(await screen.findByRole("button", { name: "发布 v1-draft" }));

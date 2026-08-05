@@ -17,15 +17,13 @@ import {
   type StructuredValueChange
 } from "@/components/parameters/StructuredValueEditor";
 
-/** Teaching mock file/version ids used when no selection is provided. */
-export const DTS_TEACHING_FILE_ID = "file-teaching-dts";
-export const DTS_TEACHING_VERSION_ID = "version-teaching-1";
-
 export type DtsStructureBrowserPanelProps = {
   projectId: string;
   repository: DtsStructuredRepository;
   fileId?: string;
   versionId?: string;
+  /** Display name of the browsed file; falls back to the file id when unknown. */
+  fileName?: string;
   /** When false, the value editor and submit entry are disabled. */
   canEdit?: boolean;
   /** When false, critical nodes (regulator/thermal path) disable the value editor. */
@@ -34,6 +32,11 @@ export type DtsStructureBrowserPanelProps = {
   parameterSources?: ParameterSourceLookup[];
   /** Reports whether unsubmitted local edits exist, so callers can guard navigation. */
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * A node the caller wants brought into view, typically a search hit. `token` makes
+   * repeated requests for the same node distinguishable.
+   */
+  focusRequest?: { nodePath: string; propertyName?: string; token: number };
 };
 
 type LocalPropertyDraft = {
@@ -56,10 +59,12 @@ export function DtsStructureBrowserPanel({
   repository,
   fileId,
   versionId,
+  fileName,
   canEdit = true,
   canEditCritical = true,
   parameterSources = [],
-  onDirtyChange
+  onDirtyChange,
+  focusRequest
 }: DtsStructureBrowserPanelProps) {
   const [nodes, setNodes] = useState<DtsStructuralNode[]>([]);
   const [selectedNodePath, setSelectedNodePath] = useState<string | undefined>();
@@ -70,6 +75,7 @@ export function DtsStructureBrowserPanel({
   const [error, setError] = useState("");
   const [submitResult, setSubmitResult] = useState<DtsStructuredSubmissionRound | null>(null);
   const [loadedWith, setLoadedWith] = useState<{ fileId: string; versionId: string } | null>(null);
+  const [focusMiss, setFocusMiss] = useState("");
 
   const loadStructure = useCallback(
     async (nextFileId: string, nextVersionId: string) => {
@@ -99,9 +105,12 @@ export function DtsStructureBrowserPanel({
   );
 
   useEffect(() => {
-    const initialFileId = fileId ?? DTS_TEACHING_FILE_ID;
-    const initialVersionId = versionId ?? DTS_TEACHING_VERSION_ID;
-    void loadStructure(initialFileId, initialVersionId);
+    if (!fileId || !versionId) {
+      setNodes([]);
+      setLoadedWith(null);
+      return;
+    }
+    void loadStructure(fileId, versionId);
   }, [fileId, loadStructure, versionId]);
 
   const dirty = Object.keys(drafts).length > 0;
@@ -113,6 +122,29 @@ export function DtsStructureBrowserPanel({
   }, [dirty]);
 
   useEffect(() => () => onDirtyChangeRef.current?.(false), []);
+
+  const focusNodePath = focusRequest?.nodePath;
+  const focusPropertyName = focusRequest?.propertyName;
+  // token distinguishes repeat requests for the same node.
+  const focusToken = focusRequest?.token;
+
+  useEffect(() => {
+    if (!focusNodePath || nodes.length === 0) {
+      return;
+    }
+    const match = nodes.find((item) => item.nodePath === focusNodePath);
+    if (!match) {
+      setFocusMiss(focusNodePath);
+      return;
+    }
+    setFocusMiss("");
+    setSelectedNodePath(match.nodePath);
+    setSelectedPropertyName(
+      focusPropertyName && match.properties.some((property) => property.name === focusPropertyName)
+        ? focusPropertyName
+        : undefined
+    );
+  }, [focusNodePath, focusPropertyName, focusToken, nodes]);
 
   const selectedNode = useMemo(
     () => nodes.find((item) => item.nodePath === selectedNodePath) ?? null,
@@ -185,11 +217,11 @@ export function DtsStructureBrowserPanel({
     }
     return aggregateLocalStructuredEdits({
       fileId: loadedWith.fileId,
-      fileName: loadedWith.fileId === DTS_TEACHING_FILE_ID ? "teaching-sample.dts" : loadedWith.fileId,
+      fileName: fileName ?? loadedWith.fileId,
       drafts: draftRows,
       parameters: parameterSources
     });
-  }, [drafts, loadedWith, nodes, parameterSources]);
+  }, [drafts, fileName, loadedWith, nodes, parameterSources]);
 
   const submitChangeRequest = async () => {
     if (!localAggregate || localAggregate.edits.length === 0 || !canEdit) {
@@ -217,8 +249,7 @@ export function DtsStructureBrowserPanel({
         members: [
           {
             fileId: loadedWith?.fileId ?? "local",
-            fileName:
-              loadedWith?.fileId === DTS_TEACHING_FILE_ID ? "teaching-sample.dts" : loadedWith?.fileId,
+            fileName: fileName ?? loadedWith?.fileId,
             status: "version_changed" as const,
             structuralDiff: localAggregate.changeSet.changes.map((entry) => entry.change)
           }
@@ -231,16 +262,13 @@ export function DtsStructureBrowserPanel({
       <div className="dts-structure-browser-panel__head">
         <div>
           <h3>结构浏览</h3>
-          <p>浏览节点树、编辑结构化属性值，聚成变更集后提交为变更请求（回写载荷使用 rawText）。</p>
+          <p>浏览节点树并修改属性取值，改动会先聚成变更集，再一次性提交为变更请求。</p>
         </div>
-        <button
-          type="button"
-          className="button subtle"
-          disabled={loading}
-          onClick={() => void loadStructure(DTS_TEACHING_FILE_ID, DTS_TEACHING_VERSION_ID)}
-        >
-          加载教学结构
-        </button>
+        {fileName || fileId ? (
+          <p className="dts-structure-browser-panel__source">
+            当前文件：<code>{fileName ?? fileId}</code>
+          </p>
+        ) : null}
       </div>
 
       {loading ? <p className="dts-structure-browser-panel__status">结构加载中…</p> : null}
@@ -249,10 +277,16 @@ export function DtsStructureBrowserPanel({
           {error}
         </p>
       ) : null}
+      {focusMiss ? (
+        <p className="dts-structure-browser-panel__status" role="status">
+          检索命中的节点 <code>{focusMiss}</code> 不在当前浏览的文件里，请先在「参数文件」中切换到对应文件。
+        </p>
+      ) : null}
       {!loading && !error && nodes.length === 0 ? (
         <p className="dts-structure-browser-panel__empty">
-          暂无结构节点。可点击「加载教学结构」拉取 mock 教学样例
-          {loadedWith ? `（上次：${loadedWith.fileId} / ${loadedWith.versionId}）` : ""}。
+          {!fileId || !versionId
+            ? "还没有指定要浏览的结构文件。请在「参数文件」中上传一个已展开的 DTS 文件。"
+            : "这个文件版本没有解析出结构节点。请确认 DTS 已展开 /include/，或上传新版本后重试。"}
         </p>
       ) : null}
 
@@ -335,7 +369,8 @@ export function DtsStructureBrowserPanel({
                   onChange={onEditorChange}
                 />
                 <p className="dts-structure-browser-panel__preview-note">
-                  本地预览规范化值：<code>{editorNormalized}</code>
+                  改动后取值：<code>{editorNormalized}</code>
+                  <span>（本地预览，提交后由服务端复核）</span>
                 </p>
               </div>
             ) : null}

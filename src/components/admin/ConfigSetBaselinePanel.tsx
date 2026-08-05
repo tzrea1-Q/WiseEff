@@ -34,7 +34,10 @@ export type ConfigSetBaselinePanelProps = {
   availableFiles?: { id: string; fileName: string }[];
   /** Source bindings used to map baseline structural diffs onto real parameters (no unmapped). */
   parameterSources?: ParameterSourceLookup[];
-  /** Config revision validated through the topology port (toolchain gate). */
+  /**
+   * Config revision validated through the topology port (toolchain gate). Without a real
+   * revision there is nothing to validate, so the gate entry is not offered.
+   */
   revisionId?: string;
   validateRevision?: (projectId: string, revisionId: string) => Promise<ValidationRun>;
   /** When omitted, the first listed config set is treated as the project default. */
@@ -118,7 +121,7 @@ export function ConfigSetBaselinePanel({
   canAdmin = true,
   availableFiles = [],
   parameterSources = [],
-  revisionId = "revision-teaching-1",
+  revisionId,
   validateRevision,
   defaultConfigSetId,
   onAudit
@@ -397,7 +400,7 @@ export function ConfigSetBaselinePanel({
   };
 
   const runValidateRevision = async () => {
-    if (!canAdmin || !validateRevision) {
+    if (!canAdmin || !validateRevision || !revisionId) {
       return;
     }
     setError("");
@@ -552,7 +555,7 @@ export function ConfigSetBaselinePanel({
             >
               {pendingAction === "create-config-set" ? "创建中…" : "创建配置集"}
             </button>
-            {validateRevision ? (
+            {validateRevision && revisionId ? (
               <button
                 type="button"
                 className="button subtle"
@@ -568,6 +571,11 @@ export function ConfigSetBaselinePanel({
               </p>
             ) : null}
           </div>
+        ) : null}
+        {canAdmin && validateRevision && !revisionId ? (
+          <p className="config-set-baseline-panel__hint" role="note">
+            本页暂不提供修订校验：需要先在参数工作台选定一个配置修订。
+          </p>
         ) : null}
         {/* Surfaced next to 校验修订 rather than at the bottom of the page. */}
         {gateResult ? <ValidationGateResult gate={gateResult} /> : null}

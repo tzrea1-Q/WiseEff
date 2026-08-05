@@ -14,7 +14,6 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
-const DEFAULT_PROJECT_ID = "project-teaching";
 const DEFAULT_FILE_ID = "file-teaching-dts";
 const DEFAULT_FILE_NAME = "teaching-sample.dts";
 const DEFAULT_VERSION_ID = "version-teaching-1";
@@ -227,12 +226,10 @@ function createInitialState(nodes: DtsStructuralNode[]): MockDtsStructuredState 
 export function createMockDtsStructuredRepository(
   options: {
     nodes?: DtsStructuralNode[];
-    projectId?: string;
     fileId?: string;
     versionId?: string;
   } = {}
 ): DtsStructuredRepository {
-  const projectId = options.projectId ?? DEFAULT_PROJECT_ID;
   const fileId = options.fileId ?? DEFAULT_FILE_ID;
   const versionId = options.versionId ?? DEFAULT_VERSION_ID;
   const state = createInitialState(options.nodes ?? createTeachingStructureNodes());
@@ -259,16 +256,16 @@ export function createMockDtsStructuredRepository(
   }
 
   return {
+    /**
+     * The mock owns a single fixture dataset and serves it for any project, so browse and
+     * search always describe the same tree. Scoping one of them by project id (as `search`
+     * used to) made the two views of the same data contradict each other.
+     */
     async getStructure(_requestedProjectId, _requestedFileId, _requestedVersionId) {
-      // Teaching convenience: return the fixture-derived structure for any / default ids
-      // so structure browse can open from unrelated project manage-files dialogs.
       return { nodes: cloneNodes(state.nodes) };
     },
 
-    async search(requestedProjectId, query) {
-      if (requestedProjectId !== projectId) {
-        return { hits: [] };
-      }
+    async search(_requestedProjectId, query) {
       const by = query.by ?? "path";
       return {
         hits: searchNodes(state.nodes, query.q, by, {

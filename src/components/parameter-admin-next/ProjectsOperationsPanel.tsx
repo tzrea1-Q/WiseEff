@@ -171,6 +171,13 @@ export function ProjectsOperationsPanel({
   const [projectFilesReady, setProjectFilesReady] = useState(false);
   const [structureDirty, setStructureDirty] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
+  /** A search hit the user asked to open in the structure browser. */
+  const [structureFocus, setStructureFocus] = useState<{
+    nodePath: string;
+    propertyName?: string;
+    token: number;
+  } | null>(null);
   /**
    * Views the user has opened for the current project. Keeping them mounted is what
    * makes per-view state survive switching; resetting on project change stops one
@@ -198,6 +205,7 @@ export function ProjectsOperationsPanel({
       setError(loadError instanceof Error ? loadError.message : "项目列表加载失败。");
     } finally {
       setLoading(false);
+      setProjectsLoaded(true);
     }
   }, [adminClient, isApiMode]);
 
@@ -212,6 +220,7 @@ export function ProjectsOperationsPanel({
   useEffect(() => {
     setVisitedViews([]);
     setStructureDirty(false);
+    setStructureFocus(null);
   }, [projectId]);
 
   useEffect(() => {
@@ -354,7 +363,14 @@ export function ProjectsOperationsPanel({
     : "/parameter-admin/projects";
   const operationsOpen = Boolean(projectId && view);
   const viewMeta = view ? PROJECT_VIEW_META[view] : null;
-  const projectName = selectedProject?.name ?? projectId ?? "";
+  // Never title the page with a raw project id; POD-C7 treats that as a missing state.
+  const projectName = selectedProject?.name ?? "项目详情";
+  /**
+   * Only mock rows are available synchronously; in API mode the list has to come back
+   * before an unknown id can be called unknown.
+   */
+  const projectsReady = !isApiMode || projectsLoaded;
+  const projectMissing = operationsOpen && projectsReady && !selectedProject;
 
   const closeOperations = useCallback(() => {
     if (structureDirty) {
@@ -394,6 +410,18 @@ export function ProjectsOperationsPanel({
     [adminDispatch]
   );
 
+  const handleSelectSearchHit = useCallback(
+    (hit: { nodePath: string; propertyName?: string }) => {
+      setStructureFocus((current) => ({
+        nodePath: hit.nodePath,
+        ...(hit.propertyName ? { propertyName: hit.propertyName } : {}),
+        token: (current?.token ?? 0) + 1
+      }));
+      onNavigate(`${projectBase}/structure`);
+    },
+    [onNavigate, projectBase]
+  );
+
   const handleConflictResolved = useCallback(
     ({
       parameterName,
@@ -426,6 +454,22 @@ export function ProjectsOperationsPanel({
         </p>
       ) : null}
 
+      {projectMissing ? (
+        <section className="project-operations-not-found param-admin-panel" aria-label="项目不存在">
+          <h2>找不到这个项目</h2>
+          <p>
+            项目 <code>{projectId}</code> 不存在，或者已经被删除。也可能是链接里的项目编号被改过。
+          </p>
+          <button
+            type="button"
+            className="button primary"
+            onClick={() => onNavigate("/parameter-admin/projects")}
+          >
+            返回项目清单
+          </button>
+        </section>
+      ) : null}
+
       {!operationsOpen ? (
         <>
           {auditNotice}
@@ -450,7 +494,7 @@ export function ProjectsOperationsPanel({
         </>
       ) : null}
 
-      {operationsOpen && projectId && view && viewMeta ? (
+      {operationsOpen && !projectMissing && projectId && view && viewMeta ? (
         <ProjectOperationsView
           projectId={projectId}
           projectName={projectName}
@@ -478,7 +522,11 @@ export function ProjectsOperationsPanel({
                 <>
                   <ProjectParameterFilesPanel projectId={projectId} repository={fileRepository} />
                   <div className="param-admin-panel">
-                    <DtsSearchPanel projectId={projectId} repository={dtsRepo} />
+                    <DtsSearchPanel
+                      projectId={projectId}
+                      repository={dtsRepo}
+                      onSelectHit={handleSelectSearchHit}
+                    />
                   </div>
                 </>
               ) : null}
@@ -488,7 +536,9 @@ export function ProjectsOperationsPanel({
                   repository={dtsRepo}
                   canAdmin
                   availableFiles={availableFiles}
-                  revisionId={adminState.selectedConfigRevisionId ?? "revision-teaching-1"}
+                  {...(adminState.selectedConfigRevisionId
+                    ? { revisionId: adminState.selectedConfigRevisionId }
+                    : {})}
                   validateRevision={(pid, revision) => application.validateRevision(pid, revision)}
                   onAudit={(event) => pushAudit(event.kind, event.summary)}
                 />
@@ -504,9 +554,11 @@ export function ProjectsOperationsPanel({
                     repository={dtsRepo}
                     fileId={structureFile.id}
                     versionId={structureFile.currentVersionId}
+                    fileName={structureFile.fileName}
                     canEdit
                     canEditCritical
                     onDirtyChange={setStructureDirty}
+                    {...(structureFocus ? { focusRequest: structureFocus } : {})}
                   />
                 ) : (
                   <p className="form-hint" role="status">
