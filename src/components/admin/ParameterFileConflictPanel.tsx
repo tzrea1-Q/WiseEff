@@ -105,6 +105,10 @@ export function ParameterFileConflictPanel({
     return null;
   }
 
+  // Embedded in a project view the page already owns the h2, so this panel sits a level down.
+  const PanelHeading = variant === "embedded" ? "h3" : "h2";
+  const ValueHeading = variant === "embedded" ? "h4" : "h3";
+
   const body = (
     <section
       className={
@@ -117,7 +121,7 @@ export function ParameterFileConflictPanel({
     >
       <header className="parameter-file-conflict-panel__header">
         <div>
-          <h2>参数文件冲突</h2>
+          <PanelHeading>参数文件冲突</PanelHeading>
           <p>处理文件同步与界面草稿并发修改产生的冲突。</p>
         </div>
         {variant === "modal" ? (
@@ -153,11 +157,11 @@ export function ParameterFileConflictPanel({
                 </div>
                 <div className="parameter-file-conflict-panel__values">
                   <article>
-                    <h3>文件值</h3>
+                    <ValueHeading>文件值</ValueHeading>
                     <pre>{conflict.fileValue || "(空值)"}</pre>
                   </article>
                   <article>
-                    <h3>界面值</h3>
+                    <ValueHeading>界面值</ValueHeading>
                     <pre>{conflict.uiDraftValue || "(空值)"}</pre>
                   </article>
                 </div>

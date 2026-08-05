@@ -11,10 +11,10 @@ import { ParameterFileConflictPanel } from "@/components/admin/ParameterFileConf
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
 import {
-  ProjectOperationsDialog,
+  ProjectOperationsView,
   type ParameterAdminNextProjectView,
-  type ProjectOperationsDialogViewMeta
-} from "@/components/admin/ProjectOperationsDialog";
+  type ProjectOperationsViewMeta
+} from "@/components/admin/ProjectOperationsView";
 import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterFilesPanel";
 import { DtsSearchPanel } from "@/components/parameters/DtsSearchPanel";
 import { DtsStructureBrowserPanel } from "@/components/parameters/DtsStructureBrowserPanel";
@@ -39,7 +39,7 @@ import {
 } from "@/application/parameters/parameterAdminState";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 
-export type { ParameterAdminNextProjectView } from "@/components/admin/ProjectOperationsDialog";
+export type { ParameterAdminNextProjectView } from "@/components/admin/ProjectOperationsView";
 
 export function parseParameterAdminNextProjectPath(pathname: string): {
   projectId: string | null;
@@ -53,6 +53,14 @@ export function parseParameterAdminNextProjectPath(pathname: string): {
   }
   const view = (match[2] as ParameterAdminNextProjectView | undefined) ?? "files";
   return { projectId: decodeURIComponent(match[1]!), view };
+}
+
+function formatAuditTime(recordedAt: string): string {
+  const parsed = new Date(recordedAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return recordedAt;
+  }
+  return parsed.toLocaleString("zh-CN", { hour12: false });
 }
 
 function parseListSearch(search: string): ParamAdminProjectsSearch {
@@ -74,30 +82,25 @@ function buildListSearch(patch: Partial<ParamAdminProjectsSearch>, current: Para
   return params.toString();
 }
 
-const PROJECT_VIEW_META: Record<ParameterAdminNextProjectView, ProjectOperationsDialogViewMeta> = {
+const PROJECT_VIEW_META: Record<ParameterAdminNextProjectView, ProjectOperationsViewMeta> = {
   files: {
     label: "参数文件",
-    titlePrefix: "参数文件",
-    subtitle:
-      "先维护参数文件与版本，再按需做结构化检索。树形浏览请用「结构浏览」；本页检索跨已解析文件快速定位节点。",
+    subtitle: "维护参数文件与版本，并在已解析的文件中检索节点。树形浏览请用「结构浏览」。",
     regionLabel: "项目参数文件"
   },
   "config-sets": {
     label: "配置集 / 基线",
-    titlePrefix: "配置集 / 基线",
-    subtitle: "调整配置集成员、校验修订门禁，并完成基线对比 / 回滚 / 发布。页面可通过 URL 深链与刷新保持。",
+    subtitle: "调整配置集成员，校验修订门禁，并完成基线对比、回滚与发布。",
     regionLabel: "项目配置集与基线"
   },
   structure: {
     label: "结构浏览",
-    titlePrefix: "结构浏览",
-    subtitle: "浏览项目源 DTS 结构树。页面可通过 URL 深链与刷新保持。",
+    subtitle: "浏览项目源 DTS 结构树，查看并编辑节点属性。",
     regionLabel: "项目源结构"
   },
   conflicts: {
     label: "冲突裁决",
-    titlePrefix: "冲突裁决",
-    subtitle: "裁决文件值与界面草稿冲突。页面可通过 URL 深链与刷新保持。",
+    subtitle: "裁决参数文件值与界面草稿之间的冲突。",
     regionLabel: "项目文件冲突"
   }
 };
@@ -116,8 +119,9 @@ export type ProjectsOperationsPanelProps = {
 };
 
 /**
- * Project list plus deep-linkable project operations (files, config sets, structure,
- * conflicts) presented as a modal over the list so the URL remains shareable.
+ * Project list and the route-addressable project operations views (files, config sets,
+ * structure, conflicts). Per ADR-0001 the views are pages, not a modal over the list:
+ * one project context occupies the surface at a time.
  */
 export function ProjectsOperationsPanel({
   pathname,
@@ -335,6 +339,29 @@ export function ProjectsOperationsPanel({
     onNavigate("/parameter-admin/projects");
   }, [onNavigate]);
 
+  const dismissAudit = useCallback(() => {
+    adminDispatch({ type: "CLEAR_AUDIT_HINTS" });
+  }, [adminDispatch]);
+
+  const auditNotice = latestAudit ? (
+    <div className="project-operations-audit" role="status" aria-label="治理审计">
+      <p>
+        治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}
+        <span className="sr-only"> {latestAudit.kind}</span>
+      </p>
+      <div className="project-operations-audit__meta">
+        <time dateTime={latestAudit.recordedAt}>{formatAuditTime(latestAudit.recordedAt)}</time>
+        <button
+          type="button"
+          className="button subtle project-operations-audit__dismiss"
+          onClick={dismissAudit}
+        >
+          知道了
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   const handleOpenConflictCountChange = useCallback(
     (count: number) => {
       adminDispatch({ type: "SET_QUEUE_COUNTS", counts: { fileConflicts: count } });
@@ -354,12 +381,6 @@ export function ProjectsOperationsPanel({
 
   return (
     <section className="param-admin-main project-admin-layout" aria-label="项目运营">
-      {!operationsOpen && latestAudit ? (
-        <p className="form-hint" role="status" aria-label="治理审计">
-          治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}
-          <span className="sr-only"> {latestAudit.kind}</span>
-        </p>
-      ) : null}
       {error ? (
         <p className="project-admin-error" role="alert">
           {error}
@@ -370,28 +391,33 @@ export function ProjectsOperationsPanel({
           {deleteError}
         </p>
       ) : null}
-      {loading && isApiMode ? <p className="project-admin-loading">项目列表加载中…</p> : null}
-      <ProjectAdminTable
-        rows={rows}
-        search={listSearch}
-        onUpdateSearch={updateListSearch}
-        onCreateProject={() => onNewProject?.()}
-        onEditProject={(id) => {
-          setFormError("");
-          setEditingProjectId(id);
-        }}
-        onDeleteProject={(id) => {
-          setDeleteError("");
-          setDeleteTargetId(id);
-        }}
-        onManageFiles={(id) =>
-          onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/files`)
-        }
-      />
+
+      {!operationsOpen ? (
+        <>
+          {auditNotice}
+          {loading && isApiMode ? <p className="project-admin-loading">项目列表加载中…</p> : null}
+          <ProjectAdminTable
+            rows={rows}
+            search={listSearch}
+            onUpdateSearch={updateListSearch}
+            onCreateProject={() => onNewProject?.()}
+            onEditProject={(id) => {
+              setFormError("");
+              setEditingProjectId(id);
+            }}
+            onDeleteProject={(id) => {
+              setDeleteError("");
+              setDeleteTargetId(id);
+            }}
+            onManageFiles={(id) =>
+              onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/files`)
+            }
+          />
+        </>
+      ) : null}
 
       {operationsOpen && projectId && view && viewMeta ? (
-        <ProjectOperationsDialog
-          open
+        <ProjectOperationsView
           projectId={projectId}
           projectName={projectName}
           view={view}
@@ -399,15 +425,8 @@ export function ProjectsOperationsPanel({
           viewMetaByView={PROJECT_VIEW_META}
           projectBase={projectBase}
           onNavigate={onNavigate}
-          onClose={closeOperations}
-          latestAuditHint={
-            latestAudit ? (
-              <p className="form-hint project-parameter-files-dialog-audit" role="status" aria-label="治理审计">
-                治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}
-                <span className="sr-only"> {latestAudit.kind}</span>
-              </p>
-            ) : null
-          }
+          onBack={closeOperations}
+          auditNotice={auditNotice}
         >
           {view === "files" ? (
             <>
@@ -459,7 +478,7 @@ export function ProjectsOperationsPanel({
               onResolved={handleConflictResolved}
             />
           ) : null}
-        </ProjectOperationsDialog>
+        </ProjectOperationsView>
       ) : null}
 
       <ProjectAdminFormDialog

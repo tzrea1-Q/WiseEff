@@ -14920,70 +14920,113 @@ body.xiaoze-popup-resize-active {
   font-size: 12px;
 }
 
-.project-parameter-files-dialog {
-  width: min(980px, calc(100vw - 48px));
-  max-height: min(88vh, 920px);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.project-operations-view {
+  display: grid;
+  gap: 16px;
+  align-content: start;
 }
 
-.project-parameter-files-dialog-audit {
-  margin: 0 20px 8px;
+.project-operations-head {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
 }
 
-.project-parameter-files-tabs {
+.project-operations-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.project-operations-head-text h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.project-operations-head-text p {
+  margin: 4px 0 0;
+  max-width: 72ch;
+  font-size: 0.9rem;
+  color: var(--app-muted);
+}
+
+/*
+ * One tab language: a pill row. The previous rules layered an underline tab base
+ * under a pill override and zeroed the container border, leaving the strip floating.
+ */
+.project-operations-nav {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 0 0 12px;
-  border-bottom: 1px solid var(--outline);
 }
 
-.project-parameter-files-dialog .project-parameter-files-tabs {
-  margin: 0 20px 12px;
-}
-
-.param-admin-main .project-parameter-files-tabs {
-  margin: 0 0 16px;
-  border-bottom: 0;
-}
-
-.param-admin-main .project-parameter-files-tab {
-  margin-bottom: 0;
-  border-radius: 999px;
+.project-operations-nav-link {
+  padding: 8px 14px;
   border: 1px solid var(--outline);
-}
-
-.param-admin-main .project-parameter-files-tab.is-active {
-  border-color: rgba(0, 82, 204, 0.28);
-}
-
-.project-parameter-files-tab {
-  margin-bottom: -1px;
-  padding: 8px 12px;
-  border: 1px solid transparent;
-  border-bottom-color: transparent;
-  border-radius: 8px 8px 0 0;
+  border-radius: 999px;
   color: var(--app-muted);
   background: transparent;
   font: inherit;
+  cursor: pointer;
 }
 
-.project-parameter-files-tab.is-active {
+.project-operations-nav-link:hover {
+  background: var(--surface-low);
+}
+
+.project-operations-nav-link.is-active {
   color: var(--app-primary);
   background: #f8fbff;
-  border-color: var(--outline);
+  border-color: rgba(0, 82, 204, 0.28);
 }
 
-.project-parameter-files-dialog-body {
-  padding: 0 20px 20px;
-  overflow: auto;
+.project-operations-audit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(0, 82, 204, 0.18);
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.project-operations-audit p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.project-operations-audit__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.8125rem;
+  color: var(--app-muted);
+}
+
+.project-operations-audit__dismiss {
+  min-height: 28px;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.project-operations-body {
+  display: grid;
+  gap: 16px;
+  align-content: start;
 }
 
 .dts-search-panel {
   display: grid;
   gap: 12px;
+}
+
+/* Only separate the search panel when something follows it. */
+.dts-search-panel:not(:last-child) {
   margin-bottom: 16px;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--outline);
