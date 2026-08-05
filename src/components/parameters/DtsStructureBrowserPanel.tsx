@@ -1,3 +1,4 @@
+import { Lock, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   DtsStructuralNode,
@@ -261,7 +262,8 @@ export function DtsStructureBrowserPanel({
                 </h4>
                 {isCriticalDtsNodePath(selectedNode.nodePath) ? (
                   <p className="dts-structure-browser-panel__risk-note" role="note">
-                    安全关键节点（regulator / thermal）
+                    <TriangleAlert size={16} strokeWidth={2} aria-hidden="true" />
+                    <span>安全关键节点：改动电源或温控取值可能损坏硬件，提交前请确认取值来源。</span>
                   </p>
                 ) : null}
                 <ul className="dts-structure-browser-panel__properties">
@@ -300,14 +302,14 @@ export function DtsStructureBrowserPanel({
             {selectedProperty ? (
               <div className="dts-structure-browser-panel__editor" aria-label="属性值编辑">
                 <h4>编辑 · {selectedProperty.name}</h4>
-                {!canEdit ? (
-                  <p className="field-error" role="alert">
-                    需要 parameter:edit 权限才能编辑结构化属性。
-                  </p>
-                ) : null}
-                {criticalLocked ? (
-                  <p className="field-error" role="alert">
-                    需要 parameter:edit-critical 权限才能编辑安全关键节点。
+                {editorLocked ? (
+                  <p className="dts-structure-browser-panel__locked" role="note">
+                    <Lock size={16} strokeWidth={2} aria-hidden="true" />
+                    <span>
+                      {criticalLocked
+                        ? "这是安全关键节点，你的角色没有修改它的权限。当前取值可以查看，但不能编辑或提交。"
+                        : "你的角色没有修改参数的权限。当前取值可以查看，但不能编辑或提交。"}
+                    </span>
                   </p>
                 ) : null}
                 <StructuredValueEditor
@@ -331,18 +333,20 @@ export function DtsStructureBrowserPanel({
       {canEdit && localAggregate && localAggregate.edits.length > 0 && compareResultForDiff ? (
         <div className="dts-structure-browser-panel__changeset">
           <StructuredDiffView result={compareResultForDiff} changeSet={localAggregate.changeSet} />
-          <p>
-            待提交 {localAggregate.edits.length} 项 · 已映射 {localAggregate.changeSet.items.length} 项 ·
-            未映射 {localAggregate.changeSet.unmapped.length} 项
-          </p>
-          <button
-            type="button"
-            className="button"
-            disabled={submitting}
-            onClick={() => void submitChangeRequest()}
-          >
-            提交变更请求
-          </button>
+          <div className="dts-structure-browser-panel__changeset-actions">
+            {/* Mapped/unmapped counts belong to StructuredDiffView above; don't restate them. */}
+            <p className="dts-structure-browser-panel__changeset-counts">
+              待提交 <strong>{localAggregate.edits.length}</strong> 项
+            </p>
+            <button
+              type="button"
+              className="button primary"
+              disabled={submitting}
+              onClick={() => void submitChangeRequest()}
+            >
+              {submitting ? "提交中…" : `提交变更请求（${localAggregate.edits.length} 项）`}
+            </button>
+          </div>
         </div>
       ) : null}
 

@@ -15122,11 +15122,52 @@ body.xiaoze-popup-resize-active {
 .dts-structure-browser-panel__head p,
 .dts-structure-browser-panel__status,
 .dts-structure-browser-panel__empty,
-.dts-structure-browser-panel__preview-note,
-.dts-structure-browser-panel__risk-note {
+.dts-structure-browser-panel__preview-note {
   margin: 0;
   color: var(--app-muted);
   font-size: 0.875rem;
+}
+
+/*
+ * regulator/thermal writes can damage hardware, so this reads as a warning rather
+ * than as grey supporting text next to the value being changed.
+ */
+.dts-structure-browser-panel__risk-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #f0c47c;
+  border-left: 3px solid #d68910;
+  border-radius: 8px;
+  background: #fdf6e8;
+  color: #7a4f01;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.dts-structure-browser-panel__risk-note svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.dts-structure-browser-panel__locked {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: var(--surface-low);
+  color: var(--app-muted);
+  font-size: 0.875rem;
+}
+
+.dts-structure-browser-panel__locked svg {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .dts-structure-browser-panel__body {
@@ -15162,24 +15203,32 @@ body.xiaoze-popup-resize-active {
   border-radius: 6px;
 }
 
+/*
+ * The list grows with the page instead of scrolling inside a fixed 360px window.
+ * On a route there is no outer scroll container to nest inside, so a viewport-relative
+ * ceiling only engages for genuinely long trees.
+ */
 .dts-node-tree-view__list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   gap: 4px;
-  max-height: 360px;
-  overflow: auto;
+  max-height: max(360px, calc(100vh - 320px));
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .dts-node-tree-view__item {
   width: 100%;
+  min-width: 0;
   text-align: left;
   padding: 6px 8px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .dts-node-tree-view__item:hover,
@@ -15191,6 +15240,7 @@ body.xiaoze-popup-resize-active {
 .dts-node-tree-view__item code,
 .dts-structure-browser-panel__detail h4 code {
   font-size: 0.8125rem;
+  overflow-wrap: anywhere;
 }
 
 .dts-structure-browser-panel__detail {
@@ -15247,6 +15297,200 @@ body.xiaoze-popup-resize-active {
   gap: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--outline);
+}
+
+/*
+ * Structured value editor.
+ *
+ * Every class below is emitted by StructuredValueEditor and had no rule anywhere in
+ * the repository, so the highest-risk write path in the parameter admin rendered as
+ * unstyled HTML: borderless inputs and bare-text buttons.
+ */
+.structured-value-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.structured-value-editor input:not([type="checkbox"]),
+.structured-value-editor textarea {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.structured-value-editor input[aria-invalid="true"] {
+  border-color: #b42318;
+  background: #fef3f2;
+}
+
+.structured-value-editor input:disabled,
+.structured-value-editor textarea:disabled {
+  background: var(--surface-low);
+  color: var(--app-muted);
+  cursor: not-allowed;
+}
+
+.structured-value-editor button {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.structured-value-editor button:hover:not(:disabled) {
+  border-color: var(--app-primary);
+  color: var(--app-primary);
+}
+
+.structured-value-editor button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.structured-value-u32-matrix,
+.structured-value-bytes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.structured-value-u32-matrix .structured-value-cell,
+.structured-value-bytes > label {
+  display: grid;
+  gap: 3px;
+  font-size: 0.75rem;
+  color: var(--app-muted);
+}
+
+.structured-value-u32-matrix .structured-value-cell input,
+.structured-value-bytes > label input {
+  width: 7.5ch;
+  font-variant-numeric: tabular-nums;
+}
+
+.structured-value-bytes > label:first-child input {
+  width: 6ch;
+}
+
+.structured-value-string-list {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.structured-value-string-row {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  max-width: 46ch;
+}
+
+.structured-value-string-row input {
+  flex: 1 1 auto;
+}
+
+.structured-value-phandle-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.structured-value-phandle-list > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.structured-value-phandle-list > label:has(input:checked) {
+  border-color: rgba(0, 82, 204, 0.32);
+  background: #f8fbff;
+  color: var(--app-primary);
+}
+
+.structured-value-bool {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+}
+
+.structured-value-mixed {
+  display: grid;
+  gap: 4px;
+}
+
+.structured-value-mixed textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.structured-value-empty-note {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px dashed var(--outline);
+  border-radius: 6px;
+  color: var(--app-muted);
+  font-size: 0.8125rem;
+}
+
+.structured-value-normalized-preview {
+  padding: 6px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: var(--surface-low);
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.structured-value-editor .field-error {
+  color: #b42318;
+  font-size: 0.75rem;
+}
+
+/* Change-set action bar: the submit is the primary action, not trailing prose. */
+.dts-structure-browser-panel__changeset {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(0, 82, 204, 0.18);
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.dts-structure-browser-panel__changeset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.dts-structure-browser-panel__changeset-counts {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--app-muted);
+}
+
+.dts-structure-browser-panel__changeset-counts strong {
+  font-size: 0.9375rem;
+  color: var(--text);
 }
 
 .dts-search-panel__meta,

@@ -142,9 +142,9 @@ describe("DtsStructureBrowserPanel", () => {
       within(panel).getByRole("button", { name: /编辑属性 regulator-min-microvolt/ })
     );
 
-    expect(
-      within(panel).getByText(/需要 parameter:edit-critical 权限才能编辑安全关键节点/)
-    ).toBeInTheDocument();
+    // One authoritative locked state in product language, not a permission slug.
+    expect(within(panel).getByText(/安全关键节点，你的角色没有修改它的权限/)).toBeInTheDocument();
+    expect(within(panel).queryByText(/parameter:edit-critical/)).not.toBeInTheDocument();
     expect(within(panel).getByLabelText("cell 1")).toBeDisabled();
   });
 
@@ -240,9 +240,11 @@ describe("DtsStructureBrowserPanel", () => {
 
     const changeSet = await within(panel).findByRole("region", { name: "变更集" });
     expect(within(changeSet).getByText(/已映射|待提交/)).toBeInTheDocument();
-    expect(within(changeSet).queryByText(/未映射 0 项|未映射变更/)).toBeTruthy();
 
-    fireEvent.click(within(panel).getByRole("button", { name: "提交变更请求" }));
+    const submit = within(panel).getByRole("button", { name: /提交变更请求/ });
+    expect(submit).toHaveClass("primary");
+    expect(submit).toHaveAccessibleName("提交变更请求（1 项）");
+    fireEvent.click(submit);
 
     await waitFor(() => {
       expect(submitStructuredEdits).toHaveBeenCalledWith(
