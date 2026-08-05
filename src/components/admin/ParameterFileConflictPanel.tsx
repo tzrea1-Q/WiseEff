@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ParameterFileRepository, ParameterFileSyncConflict } from "@/application/ports/ParameterFileRepository";
 import { ParamAdminEmptyState } from "@/components/parameter-admin-next/ParamAdminEmptyState";
 
@@ -33,11 +33,17 @@ export function ParameterFileConflictPanel({
   variant = "modal",
   onResolved
 }: ParameterFileConflictPanelProps) {
-  const [loading, setLoading] = useState(false);
+  // Start true so the first paint after mount/open does not flash the empty state
+  // before the fetch effect runs.
+  const [loading, setLoading] = useState(true);
   const [resolvingConflictId, setResolvingConflictId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [conflicts, setConflicts] = useState<ParameterFileSyncConflict[]>([]);
   const openConflicts = useMemo(() => conflicts.filter((item) => item.status === "open"), [conflicts]);
+  // Keep the count callback out of effect deps — parents often pass an inline
+  // function that would otherwise re-trigger fetch → dispatch → re-render loops.
+  const onOpenConflictCountChangeRef = useRef(onOpenConflictCountChange);
+  onOpenConflictCountChangeRef.current = onOpenConflictCountChange;
 
   useEffect(() => {
     if (!open) {
@@ -47,6 +53,7 @@ export function ParameterFileConflictPanel({
     let cancelled = false;
     setLoading(true);
     setError("");
+    setConflicts([]);
     repository
       .listConflicts(projectId)
       .then((items) => {
@@ -54,7 +61,7 @@ export function ParameterFileConflictPanel({
           return;
         }
         setConflicts(items);
-        onOpenConflictCountChange?.(items.filter((item) => item.status === "open").length);
+        onOpenConflictCountChangeRef.current?.(items.filter((item) => item.status === "open").length);
       })
       .catch((loadError) => {
         if (!cancelled) {
@@ -70,7 +77,7 @@ export function ParameterFileConflictPanel({
     return () => {
       cancelled = true;
     };
-  }, [onOpenConflictCountChange, open, projectId, repository]);
+  }, [open, projectId, repository]);
 
   const resolveConflict = async (conflictId: string, resolution: "file" | "ui") => {
     setResolvingConflictId(conflictId);
@@ -79,7 +86,7 @@ export function ParameterFileConflictPanel({
       const resolved = await repository.resolveConflict(projectId, conflictId, resolution);
       setConflicts((current) => {
         const next = current.map((item) => (item.id === conflictId ? resolved : item));
-        onOpenConflictCountChange?.(next.filter((item) => item.status === "open").length);
+        onOpenConflictCountChangeRef.current?.(next.filter((item) => item.status === "open").length);
         return next;
       });
       onResolved?.({
@@ -125,7 +132,7 @@ export function ParameterFileConflictPanel({
           {error}
         </p>
       ) : null}
-      {!loading && openConflicts.length === 0 ? (
+      {!loading && !error && openConflicts.length === 0 ? (
         <ParamAdminEmptyState
           message="当前项目没有待处理冲突。"
           actionLabel={variant === "embedded" ? "前往参数文件" : undefined}
@@ -134,7 +141,7 @@ export function ParameterFileConflictPanel({
           <p>文件同步与界面草稿不一致时会出现在这里。</p>
         </ParamAdminEmptyState>
       ) : null}
-      {openConflicts.length > 0 ? (
+      {!loading && openConflicts.length > 0 ? (
         <ul className="parameter-file-conflict-panel__list" aria-label="参数文件冲突列表">
           {openConflicts.map((conflict) => {
             const isResolving = resolvingConflictId === conflict.id;
