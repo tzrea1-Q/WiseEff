@@ -14942,42 +14942,71 @@ body.xiaoze-popup-resize-active {
   font-size: 12px;
 }
 
-.project-operations-view {
+/*
+ * Project operations dialog budget: fixed card height, sticky chrome, one scroll
+ * region on the body. Portal styles are keyed off `.param-admin-modal-backdrop`
+ * because ModalDialog mounts outside `.param-admin-shell`.
+ */
+.param-admin-modal-backdrop .project-parameter-files-dialog.project-operations-dialog,
+.project-parameter-files-dialog.project-operations-dialog {
+  width: min(980px, calc(100vw - 48px));
+  height: min(88vh, 920px);
+  max-height: min(88vh, 920px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 0 0;
+  overflow: hidden;
+}
+
+.param-admin-modal-backdrop .project-operations-dialog > .submission-dialog-head,
+.project-operations-dialog > .submission-dialog-head,
+.param-admin-modal-backdrop .project-operations-dialog > .project-operations-audit,
+.project-operations-dialog > .project-operations-audit,
+.param-admin-modal-backdrop .project-operations-dialog > .project-operations-nav,
+.project-operations-dialog > .project-operations-nav {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.param-admin-modal-backdrop .project-operations-dialog > .submission-dialog-head,
+.project-operations-dialog > .submission-dialog-head {
+  padding: 0 20px;
+}
+
+.param-admin-modal-backdrop .project-operations-dialog > .project-operations-audit,
+.project-operations-dialog > .project-operations-audit {
+  margin: 0 20px;
+}
+
+.param-admin-modal-backdrop .project-operations-dialog > .project-operations-nav,
+.project-operations-dialog > .project-operations-nav {
+  margin: 0 20px;
+}
+
+.param-admin-modal-backdrop .project-parameter-files-dialog-body,
+.project-parameter-files-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 20px 20px;
+  overflow: auto;
   display: grid;
   gap: 16px;
   align-content: start;
 }
 
-.project-operations-head {
-  display: grid;
-  gap: 10px;
-  justify-items: start;
-}
-
-.project-operations-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 4px 10px;
-  font-size: 13px;
-}
-
-.project-operations-head-text h2 {
-  margin: 0;
-  font-size: 1.35rem;
-}
-
-.project-operations-head-text p {
-  margin: 4px 0 0;
-  max-width: 72ch;
-  font-size: 0.9rem;
-  color: var(--app-muted);
+@media (max-width: 768px) {
+  .param-admin-modal-backdrop .project-parameter-files-dialog.project-operations-dialog,
+  .project-parameter-files-dialog.project-operations-dialog {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
 }
 
 /*
- * One tab language: a pill row. The previous rules layered an underline tab base
- * under a pill override and zeroed the container border, leaving the strip floating.
+ * One tab language: a pill row. Shared by the project-operations dialog nav.
  */
 .project-operations-nav {
   display: flex;
@@ -15052,12 +15081,6 @@ body.xiaoze-popup-resize-active {
   margin: 0;
   color: var(--app-muted);
   font-size: 0.9375rem;
-}
-
-.project-operations-body {
-  display: grid;
-  gap: 16px;
-  align-content: start;
 }
 
 .project-operations-view-slot {

@@ -1460,17 +1460,17 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
       }
     });
 
-    // The project view is a page, not a modal over the list (ADR-0001).
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "项目清单" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: projectName })).toBeInTheDocument();
-    const filesRegion = await screen.findByRole("region", { name: "项目参数文件" });
+    // Deep link opens the operations dialog over the project list.
+    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: projectName });
+    expect(within(dialog).getByRole("heading", { name: projectName })).toBeInTheDocument();
+    const filesRegion = within(dialog).getByRole("region", { name: "项目参数文件" });
     expect(await within(filesRegion).findByText("board.dts")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "DTS 结构化检索" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "DTS 结构化检索" })).toBeInTheDocument();
     expect(listFiles).toHaveBeenCalledWith(projectId);
   });
 
-  it("returns from a project operations view to the project list route", async () => {
+  it("closes the project operations dialog back to the project list route", async () => {
     const projectId = initialState.configDraft.projects[0]!.id;
     const { onNavigate } = renderPage({
       path: `/parameter-admin/projects/${projectId}/files`,
@@ -1502,9 +1502,8 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
       }
     });
 
-    const nav = await screen.findByRole("navigation", { name: "项目运营视图" });
-    expect(nav).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "项目清单" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "关闭项目运营" }));
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects");
   });
 
@@ -1827,12 +1826,12 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
       parameterFileRepository: createFileRepo()
     });
 
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: projectName() })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "项目配置集与基线" })).toBeInTheDocument();
-    expect(await screen.findByRole("region", { name: "配置集 / 基线" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: projectName() });
+    expect(within(dialog).getByRole("heading", { name: projectName() })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "项目配置集与基线" })).toBeInTheDocument();
+    expect(await within(dialog).findByRole("region", { name: "配置集 / 基线" })).toBeInTheDocument();
     expect(dts.listConfigSets).toHaveBeenCalledWith(projectId());
-    expect(screen.queryByRole("heading", { name: "项目清单" })).not.toBeInTheDocument();
   });
 
   it("adjusts config-set membership and shows the default config set", async () => {
@@ -2050,15 +2049,15 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
       parameterFileRepository: createFileRepo()
     });
 
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: projectName() })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "项目源结构" })).toBeInTheDocument();
-    expect(await screen.findByRole("region", { name: "结构浏览" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: projectName() });
+    expect(within(dialog).getByRole("heading", { name: projectName() })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "项目源结构" })).toBeInTheDocument();
+    expect(await within(dialog).findByRole("region", { name: "结构浏览" })).toBeInTheDocument();
     await waitFor(() =>
       expect(dts.getStructure).toHaveBeenCalledWith(projectId(), "file-dts-1", "ver-dts-1")
     );
-    expect(await screen.findByRole("treeitem", { name: /gpio/ })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "项目清单" })).not.toBeInTheDocument();
+    expect(await within(dialog).findByRole("treeitem", { name: /gpio/ })).toBeInTheDocument();
   });
 
   it("confirms before leaving a project that has unsubmitted structured edits", async () => {
@@ -2069,12 +2068,13 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
       parameterFileRepository: createFileRepo()
     });
 
-    const panel = await screen.findByRole("region", { name: "结构浏览" });
+    const dialog = await screen.findByRole("dialog", { name: projectName() });
+    const panel = await within(dialog).findByRole("region", { name: "结构浏览" });
     fireEvent.click(await within(panel).findByRole("treeitem", { name: /gpio/ }));
     fireEvent.click(within(panel).getByRole("button", { name: /编辑属性 gpio_int/ }));
     fireEvent.change(within(panel).getByLabelText("cell 1"), { target: { value: "7" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "项目清单" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "关闭项目运营" }));
     const leaveDialog = await screen.findByRole("dialog", { name: "离开项目" });
     expect(onNavigate).not.toHaveBeenCalledWith("/parameter-admin/projects");
 
@@ -2084,7 +2084,7 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
     );
     expect(onNavigate).not.toHaveBeenCalledWith("/parameter-admin/projects");
 
-    fireEvent.click(screen.getByRole("button", { name: "项目清单" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "关闭项目运营" }));
     fireEvent.click(
       within(await screen.findByRole("dialog", { name: "离开项目" })).getByRole("button", {
         name: "丢弃并离开"
@@ -2101,8 +2101,9 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
       parameterFileRepository: createFileRepo()
     });
 
-    await screen.findByRole("region", { name: "结构浏览" });
-    fireEvent.click(screen.getByRole("button", { name: "项目清单" }));
+    const dialog = await screen.findByRole("dialog", { name: projectName() });
+    await within(dialog).findByRole("region", { name: "结构浏览" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "关闭项目运营" }));
 
     expect(screen.queryByRole("dialog", { name: "离开项目" })).not.toBeInTheDocument();
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects");
@@ -2226,16 +2227,16 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
       dtsStructuredRepository: createDtsRepo()
     });
 
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: projectName() })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "项目文件冲突" })).toBeInTheDocument();
-    expect(await screen.findByText("fast_charge_current_limit_ma")).toBeInTheDocument();
-    expect(screen.getByText("Charging Policy")).toBeInTheDocument();
-    expect(screen.getByText("3200")).toBeInTheDocument();
-    expect(screen.getByText("3400")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "项目清单" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: projectName() });
+    expect(within(dialog).getByRole("heading", { name: projectName() })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "项目文件冲突" })).toBeInTheDocument();
+    expect(await within(dialog).findByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(within(dialog).getByText("Charging Policy")).toBeInTheDocument();
+    expect(within(dialog).getByText("3200")).toBeInTheDocument();
+    expect(within(dialog).getByText("3400")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "保留文件值" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "保留文件值" }));
     fireEvent.click(
       within(await screen.findByRole("dialog", { name: "保留文件值" })).getByRole("button", {
         name: "确认裁决"

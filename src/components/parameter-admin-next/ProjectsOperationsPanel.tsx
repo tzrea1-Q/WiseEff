@@ -12,10 +12,10 @@ import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialo
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
-  ProjectOperationsView,
+  ProjectOperationsDialog,
   type ParameterAdminNextProjectView,
   type ProjectOperationsViewMeta
-} from "@/components/admin/ProjectOperationsView";
+} from "@/components/admin/ProjectOperationsDialog";
 import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterFilesPanel";
 import { DtsSearchPanel } from "@/components/parameters/DtsSearchPanel";
 import { DtsStructureBrowserPanel } from "@/components/parameters/DtsStructureBrowserPanel";
@@ -40,7 +40,7 @@ import {
 } from "@/application/parameters/parameterAdminState";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 
-export type { ParameterAdminNextProjectView } from "@/components/admin/ProjectOperationsView";
+export type { ParameterAdminNextProjectView } from "@/components/admin/ProjectOperationsDialog";
 
 export function parseParameterAdminNextProjectPath(pathname: string): {
   projectId: string | null;
@@ -120,9 +120,9 @@ export type ProjectsOperationsPanelProps = {
 };
 
 /**
- * Project list and the route-addressable project operations views (files, config sets,
- * structure, conflicts). Per ADR-0001 the views are pages, not a modal over the list:
- * one project context occupies the surface at a time.
+ * Project list and the deep-linked project operations dialog (files, config sets,
+ * structure, conflicts). Routes own the address; the dialog owns the presentation over
+ * the list. Leaving with unsubmitted structure drafts asks for confirmation first.
  */
 export function ProjectsOperationsPanel({
   pathname,
@@ -472,9 +472,9 @@ export function ProjectsOperationsPanel({
         </section>
       ) : null}
 
-      {!operationsOpen ? (
+      {!projectMissing ? (
         <>
-          {auditNotice}
+          {!operationsOpen ? auditNotice : null}
           {loading && isApiMode ? <p className="project-admin-loading">项目列表加载中…</p> : null}
           <ProjectAdminTable
             rows={rows}
@@ -497,7 +497,8 @@ export function ProjectsOperationsPanel({
       ) : null}
 
       {operationsOpen && !projectMissing && projectId && view && viewMeta ? (
-        <ProjectOperationsView
+        <ProjectOperationsDialog
+          open
           projectId={projectId}
           projectName={projectName}
           view={view}
@@ -505,7 +506,7 @@ export function ProjectsOperationsPanel({
           viewMetaByView={PROJECT_VIEW_META}
           projectBase={projectBase}
           onNavigate={onNavigate}
-          onBack={closeOperations}
+          onClose={closeOperations}
           auditNotice={auditNotice}
         >
           {/*
@@ -581,7 +582,7 @@ export function ProjectsOperationsPanel({
               ) : null}
             </div>
           ))}
-        </ProjectOperationsView>
+        </ProjectOperationsDialog>
       ) : null}
 
       <ConfirmDialog
