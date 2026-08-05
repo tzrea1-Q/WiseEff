@@ -59,7 +59,7 @@ export type DebuggingRuntimeActions = {
   detectAndStartSession(
     options?: { protocol?: DebugConnectionProtocol; targetId?: string; bridgeId?: string; sessionKind?: "node" | "parameter_reload" }
   ): Promise<
-    | { session: DebugSessionSnapshot; target: DeviceTarget }
+    | { session: DebugSessionSnapshot; target: DeviceTarget; operations?: NodeOperationSnapshot[] }
     | { candidates: DeviceTarget[] }
   >;
   readNode(input: ReadNodeInput): Promise<NodeReadResult>;
@@ -328,7 +328,11 @@ export function createDebuggingRuntimeActions({
           sessionKind: options?.sessionKind ?? "node"
         });
         dispatch({ type: "SET_DEBUG_ACTIVE_SESSION", session, target });
-        return { session, target };
+        const operations = api.listSessionEvents ? await api.listSessionEvents(session.id) : [];
+        for (const operation of operations) {
+          dispatchOperation(dispatch, operation);
+        }
+        return { session, target, operations };
       });
     },
     async readNode(input) {
@@ -349,12 +353,8 @@ export function createDebuggingRuntimeActions({
       }
 
       return runApi(dispatch, async () => {
-        const { risk, ...writeInput } = input;
-        const request: WriteNodeInput =
-          risk === "High" && !writeInput.approvalId && !writeInput.confirmationToken
-            ? { ...writeInput, confirmationToken: "confirm-high-risk-write" }
-            : writeInput;
-        const result = (await requireGateway(gateway).writeNode(request)) as DebuggingGatewayWriteResult;
+        const { risk: _risk, ...writeInput } = input;
+        const result = (await requireGateway(gateway).writeNode(writeInput)) as DebuggingGatewayWriteResult;
         dispatchOperation(dispatch, result.operation);
         dispatchSnapshot(dispatch, result.snapshot);
         return result;
@@ -382,8 +382,7 @@ export function createDebuggingRuntimeActions({
             sessionId,
             nodeId: parameter.id,
             value: parameter.targetValue,
-            readBack: true,
-            ...(parameter.risk === "High" ? { confirmationToken: "confirm-high-risk-write" as const } : {})
+            readBack: true
           };
           const result = (await requireGateway(gateway).writeNode(writeInput)) as DebuggingGatewayWriteResult;
           dispatchOperation(dispatch, result.operation);

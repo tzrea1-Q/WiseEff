@@ -23,6 +23,15 @@ const apiSession = {
 };
 const apiTarget = { id: "api-target-1", deviceId: "api-device-1", protocol: "hdc" as const, label: "API Gateway Target" };
 
+async function confirmHighRiskWriteIfPrompted() {
+  try {
+    const confirm = await screen.findByRole("button", { name: /^确认写入$/ }, { timeout: 300 });
+    fireEvent.click(confirm);
+  } catch {
+    // Medium/Low risk writes skip the confirmation dialog.
+  }
+}
+
 const complexJsonAutoRead = {
   ok: true,
   value: '{"inputLimitMa": 3600',
@@ -583,14 +592,32 @@ describe("/node-debugging", () => {
     const dialog = screen.getByRole("dialog", { name: /节点详情/ });
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+    await confirmHighRiskWriteIfPrompted();
 
     await waitFor(() => expect(debuggingActions.writeNode).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: apiSession.id,
       nodeId: "dbg-charge-input-current",
       nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
       value: "3700",
-      readBack: true
+      readBack: true,
+      confirmationToken: "confirm-high-risk-write"
     })));
+  });
+
+  it("does not write a high-risk node when the confirmation dialog is cancelled", async () => {
+    const debuggingActions = createDebuggingActions();
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
+    await screen.findByText(/已连接：API Gateway Target/);
+
+    const row = findRowByText("charger.input_current_limit_ma");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+    const confirmDialog = await screen.findByRole("dialog", { name: /确认高风险节点写入/ });
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: /^取消$/ }));
+
+    expect(debuggingActions.writeNode).not.toHaveBeenCalled();
   });
 
   it("shows write failure instead of staying on reading when API write rejects", async () => {
@@ -605,6 +632,7 @@ describe("/node-debugging", () => {
     const dialog = screen.getByRole("dialog", { name: /节点详情/ });
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+    await confirmHighRiskWriteIfPrompted();
 
     await within(row).findByText(/^写入失败$/);
     expect(currentValueCell(row)).toHaveTextContent("该节点不支持");
@@ -628,6 +656,7 @@ describe("/node-debugging", () => {
     const dialog = screen.getByRole("dialog", { name: /节点详情/ });
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+    await confirmHighRiskWriteIfPrompted();
 
     await within(row).findByText(/^写入失败$/);
     expect(currentValueCell(row)).toHaveTextContent("该节点不支持");
@@ -667,6 +696,7 @@ describe("/node-debugging", () => {
     const dialog = screen.getByRole("dialog", { name: /节点详情/ });
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+    await confirmHighRiskWriteIfPrompted();
 
     await within(row).findByText(/^失败$/);
     expect(row).toHaveTextContent("readback mismatch: expected 3700, got 3600");
@@ -717,6 +747,7 @@ describe("/node-debugging", () => {
     const dialog = screen.getByRole("dialog", { name: /节点详情/ });
     fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getAllByRole("button").at(-1) as HTMLElement);
+    await confirmHighRiskWriteIfPrompted();
 
     await within(row).findByText(/^失败$/);
     expect(row).toHaveTextContent("readback mismatch: expected 3700, got 3600");
@@ -1083,6 +1114,7 @@ describe("/node-debugging", () => {
     const dialog = screen.getByRole("dialog", { name: /节点详情/ });
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+    await confirmHighRiskWriteIfPrompted();
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/hdc/targets"));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/hdc/read-node", expect.objectContaining({ method: "POST" })));
@@ -1320,6 +1352,7 @@ describe("/node-debugging", () => {
     const dialog = screen.getByRole("dialog", { name: /节点详情/ });
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+    await confirmHighRiskWriteIfPrompted();
 
     expect(screen.queryByRole("dialog", { name: /确认写入节点/ })).not.toBeInTheDocument();
     await within(row).findByText(/^成功$/);
@@ -1517,6 +1550,7 @@ describe("/node-debugging", () => {
     const row = findRowByText("charger.policy_overlay_json");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
     fireEvent.click(within(screen.getByRole("dialog", { name: /节点详情/ })).getByRole("button", { name: /写入并回读/ }));
+    await confirmHighRiskWriteIfPrompted();
 
     await waitFor(() => expect(debuggingActions.writeNode).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: /节点操作记录/ }));
@@ -1554,6 +1588,7 @@ describe("/node-debugging", () => {
     const dialog = screen.getByRole("dialog", { name: /节点详情/ });
     fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
     fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+    await confirmHighRiskWriteIfPrompted();
 
     await within(row).findByText(/^失败$/);
   });
