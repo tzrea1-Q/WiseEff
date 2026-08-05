@@ -2147,7 +2147,8 @@ function AppShell({
         statuses
       });
     } catch {
-      dispatch({ type: "ADD_NOTIFICATION", message: "无法刷新参数初始化审阅列表" });
+      // Background hydrate must not toast — API-mode unit tests and non-review
+      // pages would otherwise accumulate spurious "无法刷新…" notifications.
     }
   }, [parameterInitializationRepositoryClient, runtimeMode]);
 

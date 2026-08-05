@@ -88,7 +88,7 @@ describe("refreshParameterAdminRecentAudits", () => {
     expect(next.recentAuditEvents).toHaveLength(2);
   });
 
-  it("clears recent events when the audit list fails", async () => {
+  it("leaves recent events unchanged when the audit list fails", async () => {
     const listAuditEvents = vi.fn(async () => {
       throw new Error("network");
     });
@@ -101,6 +101,6 @@ describe("refreshParameterAdminRecentAudits", () => {
       listAuditEvents
     });
 
-    expect(dispatched).toEqual([{ type: "CLEAR_RECENT_AUDIT_EVENTS" }]);
+    expect(dispatched).toEqual([]);
   });
 });

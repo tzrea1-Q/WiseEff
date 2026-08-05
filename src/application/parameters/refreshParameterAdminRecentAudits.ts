@@ -30,7 +30,8 @@ export type RefreshParameterAdminRecentAuditsDeps = {
 
 /**
  * Loads recent audit-center events into parameter-admin state.
- * Fail-closed: on error, clears the projection so UI does not show stale local fiction.
+ * On fetch failure, leaves the current projection unchanged (avoid toast/flicker
+ * and keep mock demos / open menus stable when the audit API is unavailable).
  */
 export async function refreshParameterAdminRecentAudits(
   deps: RefreshParameterAdminRecentAuditsDeps
@@ -47,6 +48,6 @@ export async function refreshParameterAdminRecentAudits(
       events: response.items.map(mapAuditDtoToRecentEvent)
     });
   } catch {
-    dispatch({ type: "CLEAR_RECENT_AUDIT_EVENTS" });
+    // Keep existing recentAuditEvents; callers may still record mock-local events.
   }
 }

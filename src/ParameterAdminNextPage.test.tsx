@@ -1089,6 +1089,9 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
       })
     );
 
+    await waitFor(() =>
+      expect(within(panel).getByRole("button", { name: "电源路径组 更多操作" })).toBeInTheDocument()
+    );
     fireEvent.click(within(panel).getByRole("button", { name: "电源路径组 更多操作" }));
     await waitFor(() =>
       expect(screen.getByRole("menuitem", { name: "删除模块 电源路径组" })).toBeInTheDocument()
