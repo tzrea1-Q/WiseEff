@@ -8,7 +8,7 @@ const PROJECT_ID = "project-atlas";
 function hit(overrides: Partial<DtsSearchHit> = {}): DtsSearchHit {
   return {
     fileId: "file-1",
-    fileName: "teaching-sample.dts",
+    fileName: "atlas-board.dts",
     versionId: "ver-1",
     nodePath: "amba/i2c@XXXX0000/chip@6E",
     snippet: "amba/i2c@XXXX0000/chip@6E",

@@ -185,6 +185,8 @@ D2 的审计那一半已经落地：`spec-updated` 元数据携带 `previousValu
 
 ### 批次 4 — 弹窗外壳
 
+> **SE-17 – SE-21 是共享弹窗缺陷，不是本弹窗独有的。** 共享原语已经存在：`src/components/common/` 下的 `ModalDialog` 与 `ConfirmDialog` 随 [`2026-08-05-project-operations-dialog-hardening.md`](../completed/2026-08-05-project-operations-dialog-hardening.md)（POD-D4，2026-08-05 完成）交付，负责 z-index 刻度、焦点陷阱与归还、背景 `inert`、卡片级 `role="dialog"` + `aria-labelledby`、仅最顶层响应 Escape、遮罩关闭成对判定。因此下面第 19–23 项应作为**接入原语**一次性交付，而不是五处独立修复；迁移债见 TD-059。注意原语会 portal 到 `document.body`，任何写成页面级类后代的弹窗样式都需要补一份按遮罩类名的选择器。只有第 23 项里「取消在 pending 时禁用」和第 24 项仍是本弹窗特有。
+
 19. [ ] 修复遮罩层叠，使弹窗动作永不被遮挡（SE-17、SE-R5）。
 20. [ ] 给滚动边界加分隔线或阴影，并避免拦腰截断字段（SE-18）。
 21. [ ] 加入焦点陷阱、初始焦点与焦点归还（SE-19、SE-R6）。

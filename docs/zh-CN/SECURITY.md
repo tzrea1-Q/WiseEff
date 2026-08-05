@@ -50,6 +50,8 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 
 产品反馈以 `organization_id` 做隔离，`product_feedback` 与 `product_feedback_attachments` 的读写都必须按认证组织过滤。附件只允许 `image/png`、`image/jpeg`、`image/webp`，最多 5 张，单张 5 MB，总量 15 MB；数据库只保存 metadata 和对象存储 key，不在行内保存图片 bytes。该反馈属于 Internal Beta 产品反馈，不能混用日志分析的 `logs:feedback` 权限和数据模型。
 
+项目参数治理（`/parameter-admin/projects/:projectId/*`）的不可撤销动作必须先经过显式人工确认才发请求：发布基线、回滚基线、移除配置集成员，以及文件冲突的两侧裁决。每个确认框都要说明影响范围，裁决可填写操作原因并随审计提示一起记录。修订校验门禁返回 `requiresConfirmation` 时，发布在操作者勾选确认该风险之前保持拦截，门禁结论不得只当提示文案。修订校验只对调用方选定的真实配置修订开放，没有教学或兜底 revision id，避免合成 ID 进入审计记录。这些确认属于 UX 安全层而非授权边界：`/api/v1` 与 `/api/v2` 仍在服务端校验权限、项目范围与审计，并且必须拒绝客户端跳过确认的写入。
+
 Bridge-backed 调试会话还要求 bridge 属于当前用户、未撤销且在线；后端会持久化 `execution_mode=bridge` 与 `bridge_id`，保证审计、回滚和冲突检查与服务端执行路径一致。
 
 ## 审计要求

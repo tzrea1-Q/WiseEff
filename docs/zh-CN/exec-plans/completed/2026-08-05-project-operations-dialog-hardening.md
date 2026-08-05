@@ -1,11 +1,11 @@
 # 项目运营界面加固
 
-> 状态：**Active** —— 问题于 2026-08-05 记录；**POD-D1 已于 2026-08-05 定为方案 A（回到整页路由）**；尚未开始实施
+> 状态：**已于 2026-08-05 完成** —— 五个批次全部在 `feat/project-operations-dialog-hardening` 交付；**POD-D1 定为方案 A（回到整页路由）**；未交付范围转入 TD-056 – TD-059
 > 日期：2026-08-05
-> English: [`docs/exec-plans/active/2026-08-05-project-operations-dialog-hardening.md`](../../../exec-plans/active/2026-08-05-project-operations-dialog-hardening.md)
+> English: [`docs/exec-plans/completed/2026-08-05-project-operations-dialog-hardening.md`](../../../exec-plans/completed/2026-08-05-project-operations-dialog-hardening.md)
 > 信息架构：[ADR-0001](../../../adr/0001-parameter-admin-organized-by-governance-scope.md) —— **重申而非修订，见 POD-D1**
-> 与之共享模态缺陷：[`2026-08-03-parameter-spec-editor-fidelity.md`](2026-08-03-parameter-spec-editor-fidelity.md)（SE-17 – SE-21、SE-R5、SE-R6）
-> 前序计划：[`2026-08-02-parameter-admin-ux-polish.md`](2026-08-02-parameter-admin-ux-polish.md)（Batch 1–3 已随 `59f8d23c` 合入）
+> 与之共享模态缺陷：[`2026-08-03-parameter-spec-editor-fidelity.md`](../active/2026-08-03-parameter-spec-editor-fidelity.md)（SE-17 – SE-21、SE-R5、SE-R6）
+> 前序计划：[`2026-08-02-parameter-admin-ux-polish.md`](../active/2026-08-02-parameter-admin-ux-polish.md)（Batch 1–3 已随 `59f8d23c` 合入）
 
 ## 背景
 
@@ -152,52 +152,52 @@ Batch 1、3、4、5 在设计上就独立于本决策，保持不变。
 
 在 POD-D1 之下，本批次不再服务 `ProjectOperationsDialog`（Batch 2 会删掉它）。它定义的是那些确实应当存在的弹窗 —— 编辑项目、删除项目、Batch 4 的确认框 —— 以及 `2026-08-03-parameter-spec-editor-fidelity.md` 所要消费的契约。
 
-1. [ ] 抽出共享弹窗原语（组件 + hook），由它负责：卡片上的 `role="dialog"` + `aria-modal`、生成式 `aria-labelledby` / `aria-describedby` id、初始焦点、焦点陷阱、关闭后焦点归还触发元素、背景 `inert`、仅最顶层响应 Escape、遮罩关闭要求 pointer-down 与 pointer-up 成对（POD-F1、F2、F3、F4、F5）。
-2. [ ] 用一套声明式阶梯取代随手写的 z-index，使参数后台弹窗高于 `.xiaoze-chat-toggle-anchor`（1100）、低于 `.xiaoze-popup-layer`（1200）；修正 `.param-admin-shell > .modal-backdrop` 的后代选择器，并删除 `styles.css:12361-12370` 的重复块（POD-F6、SE-R5）。
-3. [ ] 在 `ProjectAdminFormDialog` 与 `DeleteProjectDialog` 中启用该原语 —— 这是本界面上在 Batch 2 后仍存活的两个弹窗。
-4. [ ] 测试：打开时焦点进入、关闭时归还触发元素；Tab 无法离开弹窗；Escape 只关最顶层；内按外松不关闭。POD-F4 的双弹窗叠加场景作为回归测试。
+1. [x] 抽出共享弹窗原语（组件 + hook），由它负责：卡片上的 `role="dialog"` + `aria-modal`、生成式 `aria-labelledby` / `aria-describedby` id、初始焦点、焦点陷阱、关闭后焦点归还触发元素、背景 `inert`、仅最顶层响应 Escape、遮罩关闭要求 pointer-down 与 pointer-up 成对（POD-F1、F2、F3、F4、F5）。
+2. [x] 用一套声明式阶梯取代随手写的 z-index，使参数后台弹窗高于 `.xiaoze-chat-toggle-anchor`（1100）、低于 `.xiaoze-popup-layer`（1200）；修正 `.param-admin-shell > .modal-backdrop` 的后代选择器，并删除 `styles.css:12361-12370` 的重复块（POD-F6、SE-R5）。
+3. [x] 在 `ProjectAdminFormDialog` 与 `DeleteProjectDialog` 中启用该原语 —— 这是本界面上在 Batch 2 后仍存活的两个弹窗。
+4. [x] 测试：打开时焦点进入、关闭时归还触发元素；Tab 无法离开弹窗；Escape 只关最顶层；内按外松不关闭。POD-F4 的双弹窗叠加场景作为回归测试。
 5. [x] 在 `2026-08-03-parameter-spec-editor-fidelity.md` 中记录其第 19–23 项改为"启用共享原语"（POD-D4）—— 已于 2026-08-05 完成。
 
 ### Batch 2 —— 退掉弹窗（POD-D1 方案 A）
 
-6. [ ] 把四个视图还原为整页路由并删除 `ProjectOperationsDialog`，保证现有每一条深链原样可用。POD-L1、L4、F6、F7 由这一步解决，不再逐项修。
-7. [ ] 保留 PR #224 的项目清单横向滚动修复；先读 `3b18433e`，确认该修复与弹窗无关（POD-R3）。
-8. [ ] 把审计提示移出标题/导航流；补时间戳与关闭可供性（POD-L2）。
-9. [ ] 恢复 PA-A1：每个视图只有一个权威标题，四个面板统一标题层级（POD-L3）。
-10. [ ] 把视图导航收敛为单一设计语言，并按 POD-D2 补左右方向键遍历（POD-L5）。
-11. [ ] 收窄 `.dts-search-panel` 的尾随 `border-bottom`，使视图内最后一个元素不带悬空分隔线（POD-L8）。
-12. [ ] 在 1440×900 / 768×1024 / 390×844 重验四个视图，并确认共享导航不再随视图移动。
+6. [x] 把四个视图还原为整页路由并删除 `ProjectOperationsDialog`，保证现有每一条深链原样可用。POD-L1、L4、F6、F7 由这一步解决，不再逐项修。
+7. [x] 保留 PR #224 的项目清单横向滚动修复；先读 `3b18433e`，确认该修复与弹窗无关（POD-R3）。
+8. [x] 把审计提示移出标题/导航流；补时间戳与关闭可供性（POD-L2）。
+9. [x] 恢复 PA-A1：每个视图只有一个权威标题，四个面板统一标题层级（POD-L3）。
+10. [x] 把视图导航收敛为单一设计语言，并按 POD-D2 补左右方向键遍历（POD-L5）。
+11. [x] 收窄 `.dts-search-panel` 的尾随 `border-bottom`，使视图内最后一个元素不带悬空分隔线（POD-L8）。
+12. [x] 在 1440×900 / 768×1024 / 390×844 重验四个视图，并确认共享导航不再随视图移动。
 
 ### Batch 3 —— 结构化编辑器与结构浏览
 
-13. [ ] 为编辑器输出的每种值类型补样式：string-list、u32 矩阵、bytes、phandle-list、bool、mixed，以及规范化预览与空值说明（POD-E1）。
-14. [ ] 让「提交变更请求」获得主按钮权重并置于常驻操作位，待提交数量做成真正的计数器（POD-E2）。
-15. [ ] 用产品语言替换权限 slug，并渲染单一权威状态，而不是"报错 + 下方禁用编辑器"（POD-E3）。
-16. [ ] 把安全关键节点的呈现权重提到与写入风险相称（POD-E4）。
-17. [ ] 把节点树写死的 `max-height: 360px` 换成随页面伸展的高度，并去掉嵌套滚动容器。固定 360px 滚动容器在路由下同样是错的，因此 POD-L6 移到这里而非随弹窗消失。
-18. [ ] 验证移动端节点行不再溢出其容器，且单区域只有单条滚动轴（POD-L7）。
-19. [ ] 按值类型编写组件测试，覆盖禁用态与关键节点锁定态。
+13. [x] 为编辑器输出的每种值类型补样式：string-list、u32 矩阵、bytes、phandle-list、bool、mixed，以及规范化预览与空值说明（POD-E1）。
+14. [x] 让「提交变更请求」获得主按钮权重并置于常驻操作位，待提交数量做成真正的计数器（POD-E2）。
+15. [x] 用产品语言替换权限 slug，并渲染单一权威状态，而不是"报错 + 下方禁用编辑器"（POD-E3）。
+16. [x] 把安全关键节点的呈现权重提到与写入风险相称（POD-E4）。
+17. [x] 把节点树写死的 `max-height: 360px` 换成随页面伸展的高度，并去掉嵌套滚动容器。固定 360px 滚动容器在路由下同样是错的，因此 POD-L6 移到这里而非随弹窗消失。
+18. [x] 验证移动端节点行不再溢出其容器，且单区域只有单条滚动轴（POD-L7）。
+19. [x] 按值类型编写组件测试，覆盖禁用态与关键节点锁定态。
 
 ### Batch 4 —— 治理安全
 
-20. [ ] 为发布基线、回滚基线、移除成员和两个裁决动作补确认，基于 Batch 1 的原语并遵循 `DeleteProjectDialog` 范式，在每个确认中说明影响范围（POD-G1）。
-21. [ ] 让 `requiresConfirmation` 真正拦截它所描述的操作（POD-G2）。
-22. [ ] 把门禁结果改为产品语言并给出真实的严重度呈现，且在用户点击处附近可见（POD-G3）。
-23. [ ] 为每个写操作补 pending / disabled 态（POD-G4）。
-24. [ ] 校验配置集名称与基线名称并给出可见提示；不再静默无响应（POD-G5）。
-25. [ ] 重做冲突裁决：对称权重、出处（作者/时间/来源版本）、差异强调、可选理由写入审计提示、计数与批量处理（POD-G6）。
-26. [ ] 实施 POD-D3：各视图状态跨切换存活；带未提交草稿离开项目时确认（POD-G7）。
+20. [x] 为发布基线、回滚基线、移除成员和两个裁决动作补确认，基于 Batch 1 的原语并遵循 `DeleteProjectDialog` 范式，在每个确认中说明影响范围（POD-G1）。
+21. [x] 让 `requiresConfirmation` 真正拦截它所描述的操作（POD-G2）。
+22. [x] 把门禁结果改为产品语言并给出真实的严重度呈现，且在用户点击处附近可见（POD-G3）。
+23. [x] 为每个写操作补 pending / disabled 态（POD-G4）。
+24. [x] 校验配置集名称与基线名称并给出可见提示；不再静默无响应（POD-G5）。
+25. [x] 重做冲突裁决：对称权重、出处（作者/时间/来源版本）、差异强调、可选理由写入审计提示、计数与批量处理（POD-G6）。
+26. [x] 实施 POD-D3：各视图状态跨切换存活；带未提交草稿离开项目时确认（POD-G7）。
 
 ### Batch 5 —— 数据与文案诚实性
 
-27. [ ] 从产品面移除「加载教学结构」与教学 ID；空态改为指向真实下一步；移除 `"revision-teaching-1"` 兜底，使教学 ID 不可能进入审计记录（POD-C1）。
-28. [ ] 让 mock 仓储的 `getStructure` 与 `search` 在项目作用域上一致，并加一条"浏览与检索看到同一批节点"的一致性测试（POD-C2）。
-29. [ ] 接上 `onSelectHit`，使检索命中能在结构浏览中选中该节点（POD-C3）。
-30. [ ] 为成员角色与基线状态补展示文案（POD-C4）。
-31. [ ] 把副标题与编辑器说明重写为产品文案。在 POD-D1 之下，「页面可通过 URL 深链与刷新保持」这一句应直接删除 —— 它描述的实现属性现在就是路由的平常行为（POD-C5）。
-32. [ ] 版本历史补时间戳、作者、按版本下载与回滚到版本；若 API 无法提供则将缺口登记为技术债（POD-C6）。
-33. [ ] 为未知项目 ID 增加 not-found 态，不再用裸 ID 作页面标题（POD-C7）。
-34. [ ] 把 PA-V2 的空态范式套用到配置集列表、配置集成员与基线列表（POD-C8）。
+27. [x] 从产品面移除「加载教学结构」与教学 ID；空态改为指向真实下一步；移除 `"revision-teaching-1"` 兜底，使教学 ID 不可能进入审计记录（POD-C1）。
+28. [x] 让 mock 仓储的 `getStructure` 与 `search` 在项目作用域上一致，并加一条"浏览与检索看到同一批节点"的一致性测试（POD-C2）。
+29. [x] 接上 `onSelectHit`，使检索命中能在结构浏览中选中该节点（POD-C3）。
+30. [x] 为成员角色与基线状态补展示文案（POD-C4）。
+31. [x] 把副标题与编辑器说明重写为产品文案。在 POD-D1 之下，「页面可通过 URL 深链与刷新保持」这一句应直接删除 —— 它描述的实现属性现在就是路由的平常行为（POD-C5）。
+32. [x] 版本历史补时间戳、作者、按版本下载与回滚到版本；若 API 无法提供则将缺口登记为技术债（POD-C6）。
+33. [x] 为未知项目 ID 增加 not-found 态，不再用裸 ID 作页面标题（POD-C7）。
+34. [x] 把 PA-V2 的空态范式套用到配置集列表、配置集成员与基线列表（POD-C8）。
 
 ## 关键接缝（起点）
 
@@ -271,10 +271,26 @@ npm run docs:check
 # 覆盖 1440x900、768x1024、390x844 的四个视图，并检查控制台错误
 ```
 
+## 交付记录（2026-08-05）
+
+五个批次全部在 `feat/project-operations-dialog-hardening` 交付。
+
+| 批次 | 提交 | 说明 |
+| --- | --- | --- |
+| 1 —— 框架 | `e571ac74` | `src/components/common/` 下新增 `ModalDialog` 与 `ConfirmDialog`；z-index 收敛为 `:root` 一套刻度；在 `ProjectAdminFormDialog` 与 `DeleteProjectDialog` 启用。由于原语 portal 到 `document.body`，参数后台弹窗样式补上按遮罩类名的选择器，并由 `ModalDialog.styles.test.ts` 守住这对选择器。 |
+| 2 —— 退掉弹窗 | `c6744573` | 删除 `ProjectOperationsDialog`；`ProjectOperationsView` 在各自路由上渲染四个视图，支持方向键移动焦点、每视图一个权威标题、面板统一 `<h3>`、审计提示带时间戳且可关闭。PR #224 的项目清单滚动修复未被触碰。 |
+| 3 —— 结构化编辑器 | `4b2e96c1` | 所有 `structured-value-*` 类补齐样式；提交按钮为主操作并带真实计数，位于常驻动作条；权限与安全关键状态改为产品语言；节点树跟随页面高度，只保留一个滚动轴。 |
+| 4 —— 治理安全 | `85cfda67` | 发布/回滚基线、移除成员与两侧裁决都加确认；`requiresConfirmation` 以勾选拦截发布；门禁结论按严重度以产品语言呈现；所有写操作有 pending 态与名称校验；视图间状态保留，带草稿离开会提示。 |
+| 5 —— 数据与文案 | `b0511a32` | 移除教学资产与 `revision-teaching-1` 审计兜底；mock `getStructure` / `search` 口径一致；检索命中可定位节点；枚举改中文标签；版本历史补时间/操作人/大小/下载；未知项目 ID 走 not-found。 |
+| 收尾 | 本次变更 | 修复三个弹窗因 portal 丢失样式的回归；审计提示改用 `data-audit-kind` 暴露类型，不再给读屏播报裸 slug；变更集列表显示节点路径而不是临时 `pending:` 键；mock 展示文件名不再叫 `teaching-sample.dts`。 |
+
+验证：定向面板/页面测试、`npm test`（356 个文件）、`npm run build`、`npm run acceptance:operations`、`npm run docs:check`，以及 `work/ui-checks/project-operations-dialog/final/` 下四个视图在 1440×900 / 768×1024 / 390×844 的 playwright-cli 证据，控制台 0 错误，各视口 `documentElement.scrollWidth == clientWidth`。`npm run test:server` 在本机会因 `relation "project_parameter_values" does not exist` 失败，`main` 上同样失败——是本地数据库模板早于 TD-042 切换所致，与本次变更无关。
+
 ## 延后 / 技术债候选
 
-若未在本计划内交付，登记到 `exec-plans/tech-debt-tracker.md`：
+已登记到 `exec-plans/tech-debt-tracker.md`：
 
-- 版本历史元数据（POD-C6），若 API 无法按版本提供作者/时间戳。
-- 把其余参数后台弹窗迁移到 Batch 1 的原语上。
-- 冲突裁决的批量处理（POD-G6），若只交付单条处理。
+- **TD-056** —— 回滚到指定版本，以及把版本操作人解析成显示名（POD-C6 已交付版本号、来源、时间、操作人 ID、大小与逐版本下载）。
+- **TD-057** —— 给配置集视图接入真实配置修订来源，让修订门禁能在发布基线的界面上被触发。
+- **TD-058** —— 冲突裁决的批量处理，以及冲突来源版本的可读标识（POD-G6 只交付了单条处理）。
+- **TD-059** —— 把其余弹窗迁移到 Batch 1 的原语上，先从 `ParameterSpecDetailDialog` 开始。

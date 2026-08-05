@@ -55,7 +55,7 @@ describe("ProjectParameterFilesPanel", () => {
         {
           id: "file-mock",
           projectId: "atlas",
-          fileName: "teaching-sample.dts",
+          fileName: "atlas-board.dts",
           format: "dts",
           enabled: true,
           currentVersionNumber: 1,
@@ -66,7 +66,7 @@ describe("ProjectParameterFilesPanel", () => {
 
     render(<ProjectParameterFilesPanel projectId="atlas" repository={repository} />);
 
-    expect(await screen.findByText("teaching-sample.dts")).toBeInTheDocument();
+    expect(await screen.findByText("atlas-board.dts")).toBeInTheDocument();
     expect(screen.getByText("上传参数文件")).toBeInTheDocument();
     expect(createParameterFileClient).not.toHaveBeenCalled();
     expect(repository.listFiles).toHaveBeenCalledWith("atlas");

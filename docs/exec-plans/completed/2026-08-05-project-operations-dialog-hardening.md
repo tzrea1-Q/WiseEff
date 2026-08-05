@@ -1,11 +1,11 @@
 # Project operations surface hardening
 
-> Status: **Active** — findings recorded 2026-08-05; **POD-D1 settled 2026-08-05 as Option A (return to full-page routes)**; implementation not started
+> Status: **Completed 2026-08-05** — all five batches delivered on `feat/project-operations-dialog-hardening`; **POD-D1 settled as Option A (return to full-page routes)**; residual scope re-filed as TD-056 – TD-059
 > Date: 2026-08-05
-> Chinese: [`docs/zh-CN/exec-plans/active/2026-08-05-project-operations-dialog-hardening.md`](../../zh-CN/exec-plans/active/2026-08-05-project-operations-dialog-hardening.md)
+> Chinese: [`docs/zh-CN/exec-plans/completed/2026-08-05-project-operations-dialog-hardening.md`](../../zh-CN/exec-plans/completed/2026-08-05-project-operations-dialog-hardening.md)
 > Information architecture: [ADR-0001](../../adr/0001-parameter-admin-organized-by-governance-scope.md) — **reaffirmed, not amended; see POD-D1**
-> Shares modal faults with: [`2026-08-03-parameter-spec-editor-fidelity.md`](2026-08-03-parameter-spec-editor-fidelity.md) (SE-17 – SE-21, SE-R5, SE-R6)
-> Preceded by: [`2026-08-02-parameter-admin-ux-polish.md`](2026-08-02-parameter-admin-ux-polish.md) (Batches 1–3 merged as `59f8d23c`)
+> Shares modal faults with: [`2026-08-03-parameter-spec-editor-fidelity.md`](../active/2026-08-03-parameter-spec-editor-fidelity.md) (SE-17 – SE-21, SE-R5, SE-R6)
+> Preceded by: [`2026-08-02-parameter-admin-ux-polish.md`](../active/2026-08-02-parameter-admin-ux-polish.md) (Batches 1–3 merged as `59f8d23c`)
 
 ## Context
 
@@ -152,52 +152,52 @@ Recommendation: this plan builds it, `2026-08-03-parameter-spec-editor-fidelity.
 
 Under POD-D1 this batch no longer serves `ProjectOperationsDialog` (Batch 2 deletes it). It defines the contract for the dialogs that legitimately remain — project edit, project delete, and the Batch 4 confirmations — and for `2026-08-03-parameter-spec-editor-fidelity.md` to consume.
 
-1. [ ] Extract a shared dialog primitive (component plus hook) that owns: `role="dialog"` + `aria-modal` on the card, generated `aria-labelledby` / `aria-describedby` ids, initial focus, focus trap, focus restore to the trigger, background `inert`, top-most-only Escape, and paired pointer-down/pointer-up backdrop dismissal (POD-F1, F2, F3, F4, F5).
-2. [ ] Replace the ad-hoc z-index numbers with one declared scale that puts param-admin dialogs above `.xiaoze-chat-toggle-anchor` (1100) and below `.xiaoze-popup-layer` (1200); fix the `.param-admin-shell > .modal-backdrop` descendant selector and delete the duplicated block at `styles.css:12361-12370` (POD-F6, SE-R5).
-3. [ ] Adopt the primitive in `ProjectAdminFormDialog` and `DeleteProjectDialog`, which are the two dialogs on this surface that survive Batch 2.
-4. [ ] Tests: focus enters on open and returns to the trigger on close; Tab cannot leave the dialog; Escape closes only the top-most dialog; press-inside/release-outside does not dismiss. The stacked-dialog case from POD-F4 is the regression test.
+1. [x] Extract a shared dialog primitive (component plus hook) that owns: `role="dialog"` + `aria-modal` on the card, generated `aria-labelledby` / `aria-describedby` ids, initial focus, focus trap, focus restore to the trigger, background `inert`, top-most-only Escape, and paired pointer-down/pointer-up backdrop dismissal (POD-F1, F2, F3, F4, F5).
+2. [x] Replace the ad-hoc z-index numbers with one declared scale that puts param-admin dialogs above `.xiaoze-chat-toggle-anchor` (1100) and below `.xiaoze-popup-layer` (1200); fix the `.param-admin-shell > .modal-backdrop` descendant selector and delete the duplicated block at `styles.css:12361-12370` (POD-F6, SE-R5).
+3. [x] Adopt the primitive in `ProjectAdminFormDialog` and `DeleteProjectDialog`, which are the two dialogs on this surface that survive Batch 2.
+4. [x] Tests: focus enters on open and returns to the trigger on close; Tab cannot leave the dialog; Escape closes only the top-most dialog; press-inside/release-outside does not dismiss. The stacked-dialog case from POD-F4 is the regression test.
 5. [x] Record in `2026-08-03-parameter-spec-editor-fidelity.md` that its items 19–23 become "adopt the primitive" (POD-D4) — done 2026-08-05.
 
 ### Batch 2 — retire the modal (POD-D1 Option A)
 
-6. [ ] Return the four views to full-page routes and delete `ProjectOperationsDialog`, keeping every existing deep link working unchanged. POD-L1, POD-L4, POD-F6 and POD-F7 are resolved by this step rather than fixed individually.
-7. [ ] Preserve PR #224's project-list horizontal-scroll fix; read `3b18433e` first and confirm the fix is independent of the modal (POD-R3).
-8. [ ] Move the audit hint out of the title/navigation flow; add a timestamp and a dismiss affordance (POD-L2).
-9. [ ] Restore PA-A1: one authoritative title per view, and one heading level for all four panels (POD-L3).
-10. [ ] Resolve the view navigation into one design language, and add left/right arrow-key traversal per POD-D2 (POD-L5).
-11. [ ] Scope `.dts-search-panel`'s trailing `border-bottom` so the last element in a view has no dangling separator (POD-L8).
-12. [ ] Re-verify all four views at 1440×900 / 768×1024 / 390×844, including that the shared navigation no longer moves between views.
+6. [x] Return the four views to full-page routes and delete `ProjectOperationsDialog`, keeping every existing deep link working unchanged. POD-L1, POD-L4, POD-F6 and POD-F7 are resolved by this step rather than fixed individually.
+7. [x] Preserve PR #224's project-list horizontal-scroll fix; read `3b18433e` first and confirm the fix is independent of the modal (POD-R3).
+8. [x] Move the audit hint out of the title/navigation flow; add a timestamp and a dismiss affordance (POD-L2).
+9. [x] Restore PA-A1: one authoritative title per view, and one heading level for all four panels (POD-L3).
+10. [x] Resolve the view navigation into one design language, and add left/right arrow-key traversal per POD-D2 (POD-L5).
+11. [x] Scope `.dts-search-panel`'s trailing `border-bottom` so the last element in a view has no dangling separator (POD-L8).
+12. [x] Re-verify all four views at 1440×900 / 768×1024 / 390×844, including that the shared navigation no longer moves between views.
 
 ### Batch 3 — structured editor and structure browser
 
-13. [ ] Write the `structured-value-*` styles for every value type the editor emits: string-list, u32 matrix, bytes, phandle-list, bool, mixed, plus the normalized preview and empty note (POD-E1).
-14. [ ] Give 提交变更请求 primary emphasis in a persistent action position with the pending count as a real counter (POD-E2).
-15. [ ] Replace permission slugs with product language and render one authoritative state instead of an error above a disabled editor (POD-E3).
-16. [ ] Raise the safety-critical node treatment to match the risk of the write (POD-E4).
-17. [ ] Replace the node tree's hardcoded `max-height: 360px` with a height that follows the page, and remove the nested scroll container. A fixed 360px scroller is wrong on a route too, so POD-L6 moves here rather than dissolving with the modal.
-18. [ ] Verify the mobile node rows no longer overflow their container and that one region has one scroll axis (POD-L7).
-19. [ ] Component tests per value type, including the disabled and critical-locked states.
+13. [x] Write the `structured-value-*` styles for every value type the editor emits: string-list, u32 matrix, bytes, phandle-list, bool, mixed, plus the normalized preview and empty note (POD-E1).
+14. [x] Give 提交变更请求 primary emphasis in a persistent action position with the pending count as a real counter (POD-E2).
+15. [x] Replace permission slugs with product language and render one authoritative state instead of an error above a disabled editor (POD-E3).
+16. [x] Raise the safety-critical node treatment to match the risk of the write (POD-E4).
+17. [x] Replace the node tree's hardcoded `max-height: 360px` with a height that follows the page, and remove the nested scroll container. A fixed 360px scroller is wrong on a route too, so POD-L6 moves here rather than dissolving with the modal.
+18. [x] Verify the mobile node rows no longer overflow their container and that one region has one scroll axis (POD-L7).
+19. [x] Component tests per value type, including the disabled and critical-locked states.
 
 ### Batch 4 — governance safety
 
-20. [ ] Add confirmation to 发布基线, 回滚基线, 移除成员 and both arbitration actions, built on the Batch 1 primitive and following the `DeleteProjectDialog` pattern; state the blast radius in each (POD-G1).
-21. [ ] Make `requiresConfirmation` block the operation it describes (POD-G2).
-22. [ ] Render the gate result as product language with a real severity treatment, and surface it where the user clicked (POD-G3).
-23. [ ] Add pending/disabled states to every mutating action (POD-G4).
-24. [ ] Validate 配置集名称 and 基线名称 with a visible message; no silent no-ops (POD-G5).
-25. [ ] Rebuild conflict arbitration: symmetric emphasis, provenance (author, time, source version), diff emphasis, optional reason captured into the audit hint, count and bulk handling (POD-G6).
-26. [ ] Implement POD-D3: per-view state survives view switches; confirm when leaving the project with unsubmitted drafts (POD-G7).
+20. [x] Add confirmation to 发布基线, 回滚基线, 移除成员 and both arbitration actions, built on the Batch 1 primitive and following the `DeleteProjectDialog` pattern; state the blast radius in each (POD-G1).
+21. [x] Make `requiresConfirmation` block the operation it describes (POD-G2).
+22. [x] Render the gate result as product language with a real severity treatment, and surface it where the user clicked (POD-G3).
+23. [x] Add pending/disabled states to every mutating action (POD-G4).
+24. [x] Validate 配置集名称 and 基线名称 with a visible message; no silent no-ops (POD-G5).
+25. [x] Rebuild conflict arbitration: symmetric emphasis, provenance (author, time, source version), diff emphasis, optional reason captured into the audit hint, count and bulk handling (POD-G6).
+26. [x] Implement POD-D3: per-view state survives view switches; confirm when leaving the project with unsubmitted drafts (POD-G7).
 
 ### Batch 5 — data & copy honesty
 
-27. [ ] Remove 加载教学结构 and the teaching ids from the product surface; replace the empty state with one that names a real next action; remove the `"revision-teaching-1"` fallback so no teaching id can reach an audit record (POD-C1).
-28. [ ] Make `getStructure` and `search` agree on project scoping in the mock repository, and add a parity test that browse and search see the same nodes (POD-C2).
-29. [ ] Wire `onSelectHit` so a search hit selects that node in 结构浏览 (POD-C3).
-30. [ ] Add display labels for member roles and baseline statuses (POD-C4).
-31. [ ] Rewrite the subtitles and editor notes as product copy. Under POD-D1 the 「页面可通过 URL 深链与刷新保持」 line should simply be deleted — it described an implementation property that is now the plain behavior of a route (POD-C5).
-32. [ ] Extend version history with timestamp, author, per-version download, and rollback-to-version, or file the gap as debt if the API cannot supply it (POD-C6).
-33. [ ] Add a not-found state for unknown project ids instead of titling the page with the raw id (POD-C7).
-34. [ ] Apply the PA-V2 empty-state pattern to 配置集列表, 配置集成员 and 基线列表 (POD-C8).
+27. [x] Remove 加载教学结构 and the teaching ids from the product surface; replace the empty state with one that names a real next action; remove the `"revision-teaching-1"` fallback so no teaching id can reach an audit record (POD-C1).
+28. [x] Make `getStructure` and `search` agree on project scoping in the mock repository, and add a parity test that browse and search see the same nodes (POD-C2).
+29. [x] Wire `onSelectHit` so a search hit selects that node in 结构浏览 (POD-C3).
+30. [x] Add display labels for member roles and baseline statuses (POD-C4).
+31. [x] Rewrite the subtitles and editor notes as product copy. Under POD-D1 the 「页面可通过 URL 深链与刷新保持」 line should simply be deleted — it described an implementation property that is now the plain behavior of a route (POD-C5).
+32. [x] Extend version history with timestamp, author, per-version download, and rollback-to-version, or file the gap as debt if the API cannot supply it (POD-C6).
+33. [x] Add a not-found state for unknown project ids instead of titling the page with the raw id (POD-C7).
+34. [x] Apply the PA-V2 empty-state pattern to 配置集列表, 配置集成员 and 基线列表 (POD-C8).
 
 ## Key seams (starting points)
 
@@ -271,10 +271,26 @@ npm run docs:check
 # at 1440x900, 768x1024, 390x844 for all four views, with console error checks
 ```
 
+## Delivery record (2026-08-05)
+
+All five batches shipped on `feat/project-operations-dialog-hardening`.
+
+| Batch | Shipped as | Notes |
+| --- | --- | --- |
+| 1 — framework | `e571ac74` | `ModalDialog` + `ConfirmDialog` in `src/components/common/`; one z-index scale in `:root`; adopted in `ProjectAdminFormDialog` and `DeleteProjectDialog`. Because the primitive portals to `document.body`, param-admin dialog styling gained backdrop-scoped selectors and `ModalDialog.styles.test.ts` guards the pairing. |
+| 2 — retire the modal | `c6744573` | `ProjectOperationsDialog` deleted; `ProjectOperationsView` renders the four views on their routes with arrow-key traversal, one authoritative title per view, `<h3>` panels, and a dismissible timestamped audit notice. PR #224's project-list scroll fix is untouched. |
+| 3 — structured editor | `4b2e96c1` | Every `structured-value-*` class is styled; submit is primary with a real counter in a persistent action bar; permission and safety-critical states use product language; the node tree follows page height with a single scroll axis. |
+| 4 — governance safety | `85cfda67` | Confirmations on release / rollback / member removal / both arbitration sides; `requiresConfirmation` blocks release behind an acknowledgement; gate results render as product language with severity; pending states and name validation on every mutating action; per-view state survives view switches and leaving with drafts prompts. |
+| 5 — data & copy honesty | `b0511a32` | Teaching fixtures and the `revision-teaching-1` audit fallback removed; mock `getStructure` / `search` agree; search hits select their node; enum display labels; version history with time/author/size/download; not-found state for unknown project ids. |
+| Follow-ups | this change | Portal styling regression fixed for all three dialogs; the audit notice exposes its kind as `data-audit-kind` instead of reading a raw slug to screen readers; the change-set list shows the node path instead of the provisional `pending:` key; mock display file name is no longer `teaching-sample.dts`. |
+
+Verification run: targeted panel/page tests, `npm test` (356 files), `npm run build`, `npm run acceptance:operations`, `npm run docs:check`, plus playwright-cli evidence for all four views at 1440×900 / 768×1024 / 390×844 under `work/ui-checks/project-operations-dialog/final/` with 0 console errors and `documentElement.scrollWidth == clientWidth` at every viewport. `npm run test:server` fails on this machine with `relation "project_parameter_values" does not exist` on `main` as well — a local database template that predates the TD-042 cutover, not a regression from this change.
+
 ## Deferred / debt candidates
 
-File these in `exec-plans/tech-debt-tracker.md` if they are not delivered here:
+Filed in `exec-plans/tech-debt-tracker.md`:
 
-- Version history metadata (POD-C6) if the API cannot supply author/timestamp per version.
-- Migrating the remaining param-admin dialogs onto the Batch 1 primitive.
-- Bulk conflict arbitration (POD-G6) if only single-conflict handling ships.
+- **TD-056** — rollback-to-version and resolving the version author to a display name (POD-C6 partially shipped: number, origin, time, operator id, size, per-version download).
+- **TD-057** — a real configuration revision source for the config-set view, so the revision gate can be exercised where baselines are published.
+- **TD-058** — bulk conflict arbitration and a human version label on conflict provenance (POD-G6 shipped single-conflict handling).
+- **TD-059** — migrating the remaining dialogs onto the Batch 1 primitive, starting with `ParameterSpecDetailDialog`.

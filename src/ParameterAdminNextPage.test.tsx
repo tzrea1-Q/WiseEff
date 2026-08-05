@@ -1685,7 +1685,10 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     fireEvent.click(within(editDialog).getByRole("button", { name: "保存修改" }));
 
     await waitFor(() => expect(dispatch).toHaveBeenCalled());
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/project-updated/);
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveAttribute(
+      "data-audit-kind",
+      "project-updated"
+    );
   });
 });
 
@@ -1873,7 +1876,10 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
 
     fireEvent.click(screen.getByRole("button", { name: "对比 v1-draft" }));
     await waitFor(() => expect(dts.compareBaseline).toHaveBeenCalledWith(projectId(), "bl-1"));
-    expect(await screen.findByRole("status", { name: "治理审计" })).toHaveTextContent(/baseline-compared/);
+    expect(await screen.findByRole("status", { name: "治理审计" })).toHaveAttribute(
+      "data-audit-kind",
+      "baseline-compared"
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "回滚 v0-released" }));
     fireEvent.click(
@@ -1882,7 +1888,10 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
       })
     );
     await waitFor(() => expect(dts.rollbackBaseline).toHaveBeenCalledWith(projectId(), "bl-released"));
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/baseline-rolled-back/);
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveAttribute(
+      "data-audit-kind",
+      "baseline-rolled-back"
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "发布 v1-draft" }));
     fireEvent.click(
@@ -1891,7 +1900,10 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
       })
     );
     await waitFor(() => expect(dts.releaseBaseline).toHaveBeenCalledWith(projectId(), "bl-1"));
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/baseline-released/);
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveAttribute(
+      "data-audit-kind",
+      "baseline-released"
+    );
   });
 
   it("exports the selected config set", async () => {
@@ -1914,7 +1926,10 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
     expect(createObjectURL).toHaveBeenCalled();
     expect(clickSpy).toHaveBeenCalled();
     expect(revokeObjectURL).toHaveBeenCalled();
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/config-set-exported/);
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveAttribute(
+      "data-audit-kind",
+      "config-set-exported"
+    );
   });
 
   it("behaves identically when backed by the mock dts and topology adapters", async () => {
@@ -2134,7 +2149,7 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
         "true"
       )
     );
-    expect(within(structurePanel).getByLabelText("cell 1")).toBeInTheDocument();
+    expect(await within(structurePanel).findByLabelText("cell 1")).toBeInTheDocument();
   });
 
   it("reports an unknown project id as not found instead of titling the page with it", async () => {
@@ -2229,7 +2244,10 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
     await waitFor(() =>
       expect(resolveConflict).toHaveBeenCalledWith(projectId(), "conflict-1", "file")
     );
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/file-conflict-resolved/);
+    expect(screen.getByRole("status", { name: "治理审计" })).toHaveAttribute(
+      "data-audit-kind",
+      "file-conflict-resolved"
+    );
   });
 
   it("shows a clear empty state when there are no open conflicts", async () => {

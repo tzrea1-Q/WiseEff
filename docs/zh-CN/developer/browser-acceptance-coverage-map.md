@@ -31,6 +31,10 @@
 - `BRIDGE-TOOLS-001`：Bridge 已连接但 `tools.adb.available: false` 时，Step ③ 显示缺少 ADB 与 **安装调试工具** CTA（非「Bridge 未安装」）。覆盖：`src/NodeDebuggingPage.test.tsx`。
 - `PARAM-HOME-001`：`/parameter-home` 通过 `ParameterDashboardRepository` 加载 summary/hotspots API 数据，并支持页面内时间窗口与热榜维度切换（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
 - `PARAM-ADMIN-003`：Admin 在 `/parameter-admin/projects` 的项目清单在 ≤960px 卡片布局下仍完整显示状态、模块/参数数、最近更新、治理信号（冲突/基线）与行操作（CSS 已修；playwright-cli 证据见 `work/ui-checks/param-admin-ux-polish-batch{1,3}/`；专用 e2e 待后续）。
+- `PROJ-OPS-001`：`/parameter-admin/projects/:id/:view` 四个视图（files、config-sets、structure、conflicts）的深链在首次加载与刷新后都能落到对应视图；未知项目 ID 显示 not-found 状态而不是把原始 ID 当项目名；视图间前进/后退可用（`src/ParameterAdminNextPage.test.tsx`；playwright-cli 证据见 `work/ui-checks/project-operations-dialog/final/`）。
+- `PROJ-OPS-002`：四个项目视图在 1440×900 / 768×1024 / 390×844 下都没有内容截断或横向溢出，视图导航条位置在切换视图时不移动（playwright-cli 证据见 `work/ui-checks/project-operations-dialog/final/`，实测 `documentElement.scrollWidth == clientWidth`，节点树 `scrollWidth == clientWidth`）。
+- `PROJ-OPS-003`：发布基线、回滚基线、移除配置集成员与两个冲突裁决动作都必须经过显式确认并写入治理审计；门禁返回 `requiresConfirmation` 时，发布在用户勾选确认前被拦截（`src/components/admin/ConfigSetBaselinePanel.test.tsx`、`src/components/admin/ParameterFileConflictPanel.test.tsx`、`src/ParameterAdminNextPage.test.tsx`；证据 `desktop-baseline-release-confirm.png`、`desktop-conflict-confirm.png`）。
+- `PARAM-ADMIN-DIALOG-001`：参数后台弹窗（项目编辑、项目删除、治理确认框）打开时焦点进入弹窗、Tab 不会离开、Escape 只关闭最上层、关闭后焦点回到触发元素、按下在内松开在外不关闭，并且 portal 渲染后仍保留参数后台的按钮与动作条样式（`src/components/common/ModalDialog.test.tsx`、`src/components/common/ModalDialog.styles.test.ts`；证据 `desktop-project-edit.png`、`desktop-project-delete.png`）。
 - `PARAM-ASSIGNEE-001/002`：binding-centric 提交面板的三类可见处理人下拉框默认选择项目作用域内的活跃合格用户，并精确排除 inactive、guest、仅 Admin 与角色不匹配用户（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-HAPPY-001`：在融合后的成熟 `/parameters` 工作台中检索语义 binding、查看本轮修改区、创建 typed draft、选择可见处理人并 submit，按真实角色 review 后执行 semantic merge/writeback、reload、持久化和审计闭环（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `XIAOZE-PERCEPTION-001`：小泽 P0 感知验收——基于页面上下文与只读感知工具回答有权限范围内的项目问题。

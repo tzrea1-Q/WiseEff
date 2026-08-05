@@ -12371,12 +12371,22 @@ td small {
   border-radius: 12px;
 }
 
+/*
+ * Param-admin dialogs render through a portal on document.body, so every rule the
+ * dialogs need has to accept the backdrop as an ancestor as well as the shell.
+ */
 .param-admin-shell :focus-visible,
 .param-admin-shell button:focus-visible,
 .param-admin-shell input:focus-visible,
 .param-admin-shell select:focus-visible,
 .param-admin-shell textarea:focus-visible,
-.param-admin-shell [role="option"]:focus-visible {
+.param-admin-shell [role="option"]:focus-visible,
+.param-admin-modal-backdrop :focus-visible,
+.param-admin-modal-backdrop button:focus-visible,
+.param-admin-modal-backdrop input:focus-visible,
+.param-admin-modal-backdrop select:focus-visible,
+.param-admin-modal-backdrop textarea:focus-visible,
+.param-admin-modal-backdrop [role="option"]:focus-visible {
   outline: 2px solid var(--app-primary);
   outline-offset: 2px;
 }
@@ -12416,14 +12426,20 @@ td small {
 }
 
 .param-admin-header-actions,
-.param-admin-shell .dialog-actions {
+.param-admin-shell .dialog-actions,
+.param-admin-modal-backdrop .dialog-actions {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
 
-.param-admin-shell .button {
+.param-admin-modal-backdrop .dialog-actions {
+  justify-content: flex-end;
+}
+
+.param-admin-shell .button,
+.param-admin-modal-backdrop .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -12441,31 +12457,37 @@ td small {
   line-height: 1.2;
 }
 
-.param-admin-shell .button.primary {
+.param-admin-shell .button.primary,
+.param-admin-modal-backdrop .button.primary {
   color: #fff;
   background: var(--app-primary);
   border-color: var(--app-primary);
 }
 
 .param-admin-shell .button.subtle,
-.param-admin-shell .button.ghost {
+.param-admin-shell .button.ghost,
+.param-admin-modal-backdrop .button.subtle,
+.param-admin-modal-backdrop .button.ghost {
   color: #334155;
   background: #fff;
 }
 
-.param-admin-shell .button.ghost[aria-pressed="true"] {
+.param-admin-shell .button.ghost[aria-pressed="true"],
+.param-admin-modal-backdrop .button.ghost[aria-pressed="true"] {
   color: var(--app-primary);
   background: #eef5ff;
   border-color: rgba(0, 82, 204, 0.28);
 }
 
-.param-admin-shell .button.danger {
+.param-admin-shell .button.danger,
+.param-admin-modal-backdrop .button.danger {
   color: #fff;
   background: var(--danger);
   border-color: var(--danger);
 }
 
-.param-admin-shell .button:disabled {
+.param-admin-shell .button:disabled,
+.param-admin-modal-backdrop .button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -15684,13 +15706,38 @@ body.xiaoze-popup-resize-active {
   justify-items: start;
 }
 
-.governance-confirm-dialog {
+.governance-confirm-dialog,
+.delete-project-dialog {
+  display: grid;
+  gap: 14px;
   width: min(520px, calc(100vw - 48px));
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.governance-confirm-dialog h2,
+.delete-project-dialog h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.delete-project-dialog p {
+  margin: 0;
+  color: var(--app-muted);
 }
 
 .governance-confirm-dialog__body {
   display: grid;
   gap: 8px;
+  color: var(--app-muted);
+}
+
+.governance-confirm-dialog__body strong,
+.governance-confirm-dialog__body code {
+  color: var(--text);
 }
 
 .governance-confirm-dialog__body p {
@@ -15789,6 +15836,17 @@ body.xiaoze-popup-resize-active {
   display: grid;
   gap: 4px;
   font-size: 0.875rem;
+}
+
+.structured-diff-view__provisional {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  background: var(--surface-low);
+  color: var(--app-muted);
+  font-size: 0.75rem;
 }
 
 .project-parameter-files {

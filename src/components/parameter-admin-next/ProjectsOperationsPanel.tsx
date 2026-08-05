@@ -91,7 +91,7 @@ const PROJECT_VIEW_META: Record<ParameterAdminNextProjectView, ProjectOperations
   },
   "config-sets": {
     label: "配置集 / 基线",
-    subtitle: "调整配置集成员，校验修订门禁，并完成基线对比、回滚与发布。",
+    subtitle: "调整配置集成员，并完成基线对比、回滚与发布。",
     regionLabel: "项目配置集与基线"
   },
   structure: {
@@ -385,11 +385,13 @@ export function ProjectsOperationsPanel({
   }, [adminDispatch]);
 
   const auditNotice = latestAudit ? (
-    <div className="project-operations-audit" role="status" aria-label="治理审计">
-      <p>
-        治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}
-        <span className="sr-only"> {latestAudit.kind}</span>
-      </p>
+    <div
+      className="project-operations-audit"
+      role="status"
+      aria-label="治理审计"
+      data-audit-kind={latestAudit.kind}
+    >
+      <p>治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}</p>
       <div className="project-operations-audit__meta">
         <time dateTime={latestAudit.recordedAt}>{formatAuditTime(latestAudit.recordedAt)}</time>
         <button

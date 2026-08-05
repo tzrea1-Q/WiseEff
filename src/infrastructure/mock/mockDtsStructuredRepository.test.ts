@@ -56,7 +56,7 @@ describe("createMockDtsStructuredRepository (DtsStructuredRepository contract)",
       expect.arrayContaining([
         expect.objectContaining({
           fileId: FILE_ID,
-          fileName: "teaching-sample.dts",
+          fileName: "atlas-board.dts",
           versionId: VERSION_ID,
           nodePath: "amba/i2c@XXXX0000/chip@6E"
         })

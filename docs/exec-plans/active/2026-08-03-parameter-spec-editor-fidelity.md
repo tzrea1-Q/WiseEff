@@ -185,7 +185,7 @@ Call `assertSpecActivatable` from `updateParameterSpec` only when the incoming `
 
 ### Batch 4 — dialog chrome
 
-> **SE-17 – SE-21 are shared modal faults, not local ones.** `2026-08-05-project-operations-dialog-hardening.md` records the same five faults for `ProjectOperationsDialog` and owns the shared dialog primitive (POD-D4). Items 19–23 below should be delivered as **adopt the primitive** once its Batch 1 merges, rather than as five independent fixes here. Only item 23's 取消 `disabled={pending}` and item 24 remain specific to this dialog.
+> **SE-17 – SE-21 are shared modal faults, not local ones.** The primitive now exists: `ModalDialog` and `ConfirmDialog` in `src/components/common/` shipped with [`2026-08-05-project-operations-dialog-hardening.md`](../completed/2026-08-05-project-operations-dialog-hardening.md) (POD-D4, completed 2026-08-05) and own the z-index scale, focus trap and restore, background `inert`, card-level `role="dialog"` + `aria-labelledby`, top-most-only Escape, and paired backdrop dismissal. Items 19–23 below are therefore **adopt the primitive**, not five independent fixes; see also the migration debt entry TD-059. Note that the primitive portals to `document.body`, so any dialog styling written as a descendant of a page-level class needs a backdrop-scoped counterpart. Only item 23's 取消 `disabled={pending}` and item 24 remain specific to this dialog.
 
 19. [ ] Fix the backdrop stacking so dialog actions are never covered (SE-17, SE-R5) — via the shared z-index scale.
 20. [ ] Give the scroll boundary a separator or shadow and stop cutting mid-field (SE-18) — via the primitive.

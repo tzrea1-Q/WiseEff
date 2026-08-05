@@ -212,6 +212,69 @@ export const acceptanceOperations: AcceptanceOperation[] = [
       "Batch 1 ships CSS fix + playwright-cli three-viewport evidence under work/ui-checks/param-admin-ux-polish-batch1/; dedicated e2e viewport assertion follows in a later batch."
   },
   {
+    id: "PROJ-OPS-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/:view",
+    roles: ["Admin"],
+    action:
+      "Open each project view by deep link, reload it, navigate between views, and open an unknown project id.",
+    coverage: "future",
+    acceptanceIds: ["PROJ-OPS-001"],
+    specFiles: ["src/ParameterAdminNextPage.test.tsx"],
+    assertions: ["ui", "screenshot"],
+    deferralReason:
+      "Route/view resolution and the not-found state are covered by component tests plus playwright-cli evidence under work/ui-checks/project-operations-dialog/final/; a dedicated e2e deep-link spec follows."
+  },
+  {
+    id: "PROJ-OPS-002",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/:view",
+    roles: ["Admin"],
+    action:
+      "Walk all four project views at 1440x900, 768x1024, and 390x844 and confirm no clipping, no horizontal overflow, and a stable view navigation position.",
+    coverage: "future",
+    acceptanceIds: ["PROJ-OPS-002"],
+    specFiles: ["src/ParameterAdminNextPage.test.tsx"],
+    assertions: ["ui", "screenshot"],
+    deferralReason:
+      "Three-viewport evidence and runtime overflow measurements live under work/ui-checks/project-operations-dialog/final/; a dedicated e2e viewport assertion follows."
+  },
+  {
+    id: "PROJ-OPS-003",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/config-sets",
+    roles: ["Admin"],
+    action:
+      "Release and roll back a baseline, remove a config-set member, and arbitrate a file conflict, confirming each through its confirmation dialog.",
+    coverage: "future",
+    acceptanceIds: ["PROJ-OPS-003"],
+    specFiles: [
+      "src/components/admin/ConfigSetBaselinePanel.test.tsx",
+      "src/components/admin/ParameterFileConflictPanel.test.tsx"
+    ],
+    assertions: ["ui", "audit", "screenshot"],
+    deferralReason:
+      "Confirmation and audit behaviour is covered by panel and page tests plus playwright-cli evidence; the API-mode e2e governance spec follows with a seeded baseline."
+  },
+  {
+    id: "PARAM-ADMIN-DIALOG-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects",
+    roles: ["Admin"],
+    action:
+      "Open the project edit, project delete, and governance confirmation dialogs and exercise focus entry, Tab containment, Escape with stacked dialogs, focus restore, and press-inside/release-outside.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-ADMIN-DIALOG-001"],
+    specFiles: ["src/components/common/ModalDialog.test.tsx"],
+    assertions: ["ui", "screenshot"],
+    deferralReason:
+      "The modal contract is covered by unit tests on the shared primitive plus playwright-cli evidence; a keyboard-focused e2e spec follows."
+  },
+  {
     id: "PARAM-IMPORT-DTS-FULL-001",
     priority: "P1",
     area: "parameters",

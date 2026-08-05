@@ -13,3 +13,9 @@ The parameter admin surface accumulated its shape from a dozen consecutive execu
 - Project-scoped operations become deep-linkable and survive reload, which the previous full-screen modal could not do.
 - Identity mapping tasks move from the parameter workbench to the admin, resolving a standing contradiction with `docs/product-specs/prototype-functional-spec.md`.
 - The boundary is explicit about what the admin does **not** own: everyday binding edits, draft trays, and binding history stay on the parameter workbench.
+
+## Round trip through a modal (2026-08-05)
+
+PR #224 (`3b18433e`) moved the four project-scoped views back into a `ProjectOperationsDialog` modal while keeping the URL, which preserved deep links but contradicted the modal-versus-route clause above. Fitting a file manager, a baseline console, a two-pane structure browser and a conflict queue into a `min(980px, 100vw-48px)` box produced a shared navigation strip that jumped up to 170px between views, a node tree locked to a 360px nested scroller, and rows clipped at 390px width.
+
+`docs/exec-plans/completed/2026-08-05-project-operations-dialog-hardening.md` (POD-D1) reaffirmed this ADR rather than amending it and returned the views to full-page routes at `/parameter-admin/projects/:projectId/:view`. The decision stands as written: project-scoped work is addressable by route. Modals on this surface are reserved for confirmations and short forms — project create/edit, project delete, and governance confirmations — which all use the shared `ModalDialog` primitive described in `docs/FRONTEND.md`.

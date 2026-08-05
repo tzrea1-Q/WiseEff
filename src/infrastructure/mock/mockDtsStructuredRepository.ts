@@ -15,7 +15,7 @@ import type {
 
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
 const DEFAULT_FILE_ID = "file-teaching-dts";
-const DEFAULT_FILE_NAME = "teaching-sample.dts";
+const DEFAULT_FILE_NAME = "atlas-board.dts";
 const DEFAULT_VERSION_ID = "version-teaching-1";
 const DEFAULT_ORG_ID = "org-teaching";
 
@@ -343,7 +343,7 @@ export function createMockDtsStructuredRepository(
         .filter((membership) => membership.configSetId === baseline.configSetId)
         .map((membership) => ({
           fileId: membership.fileId,
-          fileName: membership.fileId === fileId ? "teaching-sample.dts" : membership.fileId,
+          fileName: membership.fileId === fileId ? "atlas-board.dts" : membership.fileId,
           status: "version_changed" as const,
           baselineVersionId: versionId,
           currentVersionId: `${versionId}-current`,
@@ -366,7 +366,7 @@ export function createMockDtsStructuredRepository(
             : [
                 {
                   fileId,
-                  fileName: "teaching-sample.dts",
+                  fileName: "atlas-board.dts",
                   status: "unchanged" as const,
                   baselineVersionId: versionId,
                   currentVersionId: versionId,
@@ -420,7 +420,7 @@ export function createMockDtsStructuredRepository(
           },
           members: members.map((member) => ({
             fileId: member.fileId,
-            fileName: member.fileId === fileId ? "teaching-sample.dts" : member.fileId,
+            fileName: member.fileId === fileId ? "atlas-board.dts" : member.fileId,
             role: member.role,
             sortOrder: member.sortOrder,
             versionNumber: 1,
@@ -428,9 +428,9 @@ export function createMockDtsStructuredRepository(
           }))
         },
         files: members.map((member) => ({
-          name: member.fileId === fileId ? "teaching-sample.dts" : member.fileId,
+          name: member.fileId === fileId ? "atlas-board.dts" : member.fileId,
           format: "dts" as const,
-          content: "/* mock export derived from teaching structure */\n/dts-v1/;\n"
+          content: "/* mock export derived from the fixture structure */\n/dts-v1/;\n"
         }))
       };
       return result;
