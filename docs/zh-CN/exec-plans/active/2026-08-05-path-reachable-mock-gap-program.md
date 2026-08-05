@@ -1,6 +1,6 @@
 # 路径可达 Mock/半通缺口纲领（A+1）
 
-> Status: **进行中** — 仅规划产物；实现由子计划推进
+> Status: **伞 PR 已合入四子计划** — 待合并 `main`
 > Date: 2026-08-05
 > English: [`docs/exec-plans/active/2026-08-05-path-reachable-mock-gap-program.md`](../../../exec-plans/active/2026-08-05-path-reachable-mock-gap-program.md)
 

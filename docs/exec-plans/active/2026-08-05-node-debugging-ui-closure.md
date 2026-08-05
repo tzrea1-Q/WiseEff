@@ -1,6 +1,6 @@
 # Node debugging UI closure (C2 / TD-015)
 
-> Status: **Active** — planning only until implementation starts
+> Status: **Implementation complete on branch** — included in umbrella PR; **TD-015** closed
 > Date: 2026-08-05
 > Parent: [`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)
 > Closes: **TD-015**

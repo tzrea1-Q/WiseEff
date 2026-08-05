@@ -1,6 +1,6 @@
 # Mock 诚实化与死残件清理（C4）
 
-> Status: **进行中** — 仅规划
+> Status: **实现完成（伞分支）**
 > Date: 2026-08-05
 > English: [`docs/exec-plans/active/2026-08-05-mock-honesty-and-dead-residual-cleanup.md`](../../../exec-plans/active/2026-08-05-mock-honesty-and-dead-residual-cleanup.md)
 > 上位：[`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)

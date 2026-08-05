@@ -1,6 +1,6 @@
 # Path-reachable mock / half-implemented gap program (A+1)
 
-> Status: **Active** — planning artifacts only; implementation proceeds via child plans
+> Status: **Umbrella PR ready** — C1–C4 landed on `feat/path-reachable-mock-gap-program`; awaiting merge to `main`
 > Date: 2026-08-05
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-05-path-reachable-mock-gap-program.md`](../../zh-CN/exec-plans/active/2026-08-05-path-reachable-mock-gap-program.md)
 > Origin: Mock vs backend gap audit for parameter management and debugging (2026-08-05)
@@ -58,10 +58,10 @@ This program file does **not** own a single mega-branch. Each child plan owns on
 
 ## Program checklist
 
-- [ ] C4 merged to `main`
-- [ ] C2 merged; TD-015 moved to Completed (or closed with evidence)
-- [ ] C3 merged
-- [ ] C1 merged; design doc amendment + product-spec touch landed (included in umbrella PR `feat/path-reachable-mock-gap-program`)
+- [x] C4 merged to umbrella PR (`feat/path-reachable-mock-gap-program`)
+- [x] C2 merged; TD-015 moved to Completed
+- [x] C3 merged to umbrella PR
+- [x] C1 merged; design doc amendment + product-spec touch landed (umbrella PR)
 - [ ] Program Documentation Update Gate satisfied; `npm run docs:check` green
 - [ ] Move this program to `docs/exec-plans/completed/` only after all four children complete
 

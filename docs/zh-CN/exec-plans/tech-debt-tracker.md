@@ -36,10 +36,10 @@
 - **TD-058（冲突裁决没有批量处理，来源版本仍是内部 ID）：** 冲突裁决按 POD-G6 补齐了对称权重、出现时间、来源文件版本、开放数量与可填原因，但仍是一条一条确认：面板没有多选，也没有「文件侧全部保留」这类动作，`ParameterFileRepository.resolveSyncConflict` 只支持单条；来源版本展示的是原始 `fileVersionId`，因为冲突载荷里没有版本号。影响：一次涉及多参数的文件同步要点很多次确认，来源版本读起来像内部 ID。下一步：在参数文件 API 与端口上补批量裁决操作，用一个确认框说明整体影响范围，并在冲突载荷里带上可读的版本标识。
 - **TD-059（其余弹窗尚未迁到共享原语）：** `ModalDialog` / `ConfirmDialog`（`src/components/common/`）已承载弹窗契约——焦点陷阱与归还、背景 `inert`、只有最上层响应 Escape、遮罩关闭成对判定、统一 z-index 刻度——但目前只有 `ProjectAdminFormDialog`、`DeleteProjectDialog` 与治理确认框接入，其他参数后台、工作台与调试弹窗仍各自处理 keydown 与遮罩点击。影响：POD-F1–F5 记录的焦点、层叠与关闭故障在未迁移的弹窗上依然存在，并且容易再长出一套偏离契约的实现。下一步：各自按计划迁移，先从 `ParameterSpecDetailDialog`（`2026-08-03-parameter-spec-editor-fidelity.md` 第 19–23 项）开始。
 - **TD-055（产品作用域策略目标面未建）：** 定义编辑器与 `PATCH /api/v2/parameter-specs/:specId` 已按 SE-D1 移除 `policyTarget` 写入；`parameter_policy_targets` 表与三处只读 join 仍在，但无生产写入。初始化仍优先 `policyTarget ?? schemaDefault`。后续要么建产品作用域治理面，要么用 ADR 正式退役表与读者。
-- **TD-015（节点调试快照回滚 UI）：** `/node-debugging` 写后快照未充分 hydrate 到回滚卡片；`/debugging` 已下线。下一步按 `docs/exec-plans/active/2026-08-05-node-debugging-ui-closure.md`（C2）落地回滚 UI、会话事件加载与高风险确认后关闭。详见英文版 Open 表。
 
 ## 近期关闭项
 
+- **TD-015（节点调试快照回滚 UI）：** 已于 2026-08-05 在 `feat/node-debugging-ui-closure`（C2）关闭。会话事件 hydrate、回滚 UI 与高风险写确认已落地。详见英文版 Completed 表。
 - **TD-060（项目参数初始化）：** 已于 2026-08-05 在 `feat/project-parameter-initialization`（C1）关闭。迁移 `0091` + draft/review API；语义 binding 合并/物化；Port/HTTP/mock；API hydrate + 锁；设计修订告别扁平 `recommendedValue` SSOT。详见英文版 Completed 表。
 - **TD-061（参数后台审计提示）：** 已于 2026-08-05 在 `feat/parameter-admin-audit-hints`（C3）关闭。去掉 `PUSH_AUDIT_HINT`；后台最近审计条为 `listAuditEvents` 投影。详见英文版 Completed 表。
 - **TD-047（规格 driverModule 身份分裂）：** 已于 2026-08-01 PR2 / D-AG-03 关闭。无物理 `driver_module` 列；新写入一律 `buildSubjectScopedManualSpecIds`；迁移 `0088` 对无法解析主体的身份行 fail-closed；列表筛选改为 `attributionSubjectId`；API `driverModule` 仅作主体展示。
