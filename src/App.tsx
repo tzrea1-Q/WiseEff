@@ -2123,6 +2123,12 @@ function AppShell({
     if (runtimeMode !== "api") {
       return;
     }
+    // Admin-only endpoint; non-admins must not probe it (browser diagnostics treat 403 as failure).
+    const canListInitReviews =
+      apiAuthPermissions.includes("admin:access") || canPerform(migrateLegacyRoleId(stateRef.current.activeRoleId), "admin.access");
+    if (!canListInitReviews) {
+      return;
+    }
     try {
       const pending = await parameterInitializationRepositoryClient.listPendingReviews();
       const drafts: ProjectParameterInitializationDraft[] = [];
@@ -2150,7 +2156,7 @@ function AppShell({
       // Background hydrate must not toast — API-mode unit tests and non-review
       // pages would otherwise accumulate spurious "无法刷新…" notifications.
     }
-  }, [parameterInitializationRepositoryClient, runtimeMode]);
+  }, [apiAuthPermissions, parameterInitializationRepositoryClient, runtimeMode]);
 
   const hydrateActiveProjectInitialization = useCallback(
     async (projectId: string) => {
