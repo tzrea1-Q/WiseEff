@@ -801,26 +801,6 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "DeleteResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
-  "debugging.admin.listReloadBindings": {
-    summary: "List parameter reload bindings",
-    tags: ["debugging"],
-    responseBody: "ParameterReloadBindingListResponse",
-    additionalResponses: { "403": "ErrorResponse" }
-  },
-  "debugging.admin.upsertReloadBinding": {
-    summary: "Upsert parameter reload binding",
-    tags: ["debugging"],
-    requestBody: "ParameterReloadBindingRequest",
-    responseBody: "ParameterReloadBindingResponse",
-    additionalResponses: { "403": "ErrorResponse" }
-  },
-  "debugging.admin.patchReloadBinding": {
-    summary: "Patch parameter reload binding",
-    tags: ["debugging"],
-    requestBody: "ParameterReloadBindingRequest",
-    responseBody: "ParameterReloadBindingResponse",
-    additionalResponses: { "403": "ErrorResponse" }
-  },
   "debugging.listReloadTargets": {
     summary: "List managed parameters with reload bindings for a project",
     tags: ["debugging"],

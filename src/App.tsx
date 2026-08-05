@@ -217,6 +217,8 @@ import {
   type UpdateCurrentUserProfileInput
 } from "@/infrastructure/http/authClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
+import { createMockParameterRepository } from "@/infrastructure/mock/mockParameterRepository";
+import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
 import { createHttpParameterDashboardRepository } from "@/infrastructure/http/parameterDashboardClient";
 import { createMockParameterDashboardRepository } from "@/infrastructure/mock/mockParameterDashboardRepository";
 import { createMockProductFeedbackRepository } from "@/infrastructure/mock/mockProductFeedbackRepository";
@@ -317,7 +319,6 @@ export type AppAction =
   | { type: "REJECT_REVIEW"; requestId: string; reason: string; fastTrack?: boolean }
   | { type: "TRANSFER_REVIEW"; requestId: string; to: string; note?: string }
   | { type: "UNDO_REVIEW_ACTION"; requestId: string; previousStatus: RequestStatus }
-  | { type: "AI_FEEDBACK"; requestId: string; feedback: "up" | "down"; note?: string }
   | { type: "ADVANCE_LOG"; logId: string }
   | { type: "SIMULATE_LOG_UPLOAD"; fileName: string; supported: boolean; question?: string }
   | { type: "UPSERT_LOG_RECORD"; log: LogRecord }
@@ -332,7 +333,6 @@ export type AppAction =
   | UpsertDebugNodeOperationAction
   | UpsertDebugSnapshotAction
   | { type: "CLEAR_PUSHED_DEBUG_IDS"; parameterIds: string[] }
-  | { type: "IMPORT_PARAMETERS" }
   | { type: "ADD_NOTIFICATION"; message: string }
   | { type: "SET_NOTIFICATION_INBOX"; items: import("@/domain/notifications/types").NotificationItem[] }
   | { type: "UPDATE_DEBUG_PARAMETER"; parameterId: string; patch: Partial<DebugParameterEditorDraft> }
@@ -1181,23 +1181,6 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         notifications: [`${target.title} 已撤销上一步操作`, ...state.notifications]
       };
     }
-    case "AI_FEEDBACK": {
-      const nextId = `AF-${state.aiFeedback.length + 1}`;
-
-      return {
-        ...state,
-        aiFeedback: [
-          ...state.aiFeedback,
-          {
-            id: nextId,
-            requestId: action.requestId,
-            feedback: action.feedback,
-            note: action.note,
-            recordedAt: new Date().toISOString()
-          }
-        ]
-      };
-    }
     case "ADVANCE_LOG": {
       if (!canPerform(activeRoleId, "logs.upload")) return state;
       const order: LogStageId[] = ["parse", "pattern", "rootcause", "report"];
@@ -1687,12 +1670,6 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         auditEvents: [event, ...state.auditEvents]
       };
     }
-    case "IMPORT_PARAMETERS":
-      if (!canPerform(activeRoleId, "admin.access")) return state;
-      return {
-        ...state,
-        notifications: ["批量参数导入完成：新增 24 项，冲突 2 项已进入审计队列", ...state.notifications]
-      };
     case "ADD_NOTIFICATION":
       return {
         ...state,
@@ -1995,8 +1972,18 @@ function AppShell({
     }),
     [path, page.key, usesProjectScope, state.activeProjectId, state.configDraft.projects, currentRoleId]
   );
+  const mockParameterRuntimeRef = useRef<MockRuntimeState | null>(null);
+  if (mockParameterRuntimeRef.current === null) {
+    mockParameterRuntimeRef.current = createMockRuntimeState(state);
+  } else {
+    mockParameterRuntimeRef.current.current = state;
+  }
   const parameterRepositoryClient = useMemo(
-    () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
+    () =>
+      parameterRepository ??
+      (runtimeMode === "api"
+        ? createHttpParameterRepository()
+        : createMockParameterRepository(mockParameterRuntimeRef.current!)),
     [parameterRepository, runtimeMode]
   );
   const parameterTopologyRepositoryClient = useMemo(
