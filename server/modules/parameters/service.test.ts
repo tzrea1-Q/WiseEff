@@ -36,6 +36,10 @@ function createFakeDb(
       // When cutover is complete, legacy flat tables are retired.
       return { rows: [{ c: semanticCutoverComplete ? "0" : "1" } as Row], rowCount: 1 };
     }
+    // C1 init lock: default unlocked so existing submit fixtures stay focused.
+    if (text.includes("initialization_status") && text.includes("from projects")) {
+      return { rows: [{ initialization_status: "initialized" } as Row], rowCount: 1 };
+    }
     target.push(call);
     if (!readConflictChecksFromQueue && text.includes("from parameter_file_sync_conflicts")) {
       return { rows: [] as Row[], rowCount: 0 };
