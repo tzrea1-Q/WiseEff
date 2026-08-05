@@ -539,7 +539,11 @@ export function registerParameterRoutes(
       auth,
       {
         projectId: params.projectId,
-        ...body
+        ...body,
+        bindingSnapshots: body.bindingSnapshots.map((snapshot) => ({
+          ...snapshot,
+          effectiveValue: snapshot.effectiveValue as unknown
+        }))
       },
       { requestId: request.requestId }
     );
@@ -557,7 +561,11 @@ export function registerParameterRoutes(
     );
     const items = await previewSnapshot(db, auth, {
       projectId: params.projectId,
-      ...body
+      primarySourceProjectId: body.primarySourceProjectId,
+      supplementSourceProjectIds: body.supplementSourceProjectIds ?? [],
+      selectedSourceBindingIds: body.selectedSourceBindingIds,
+      selectedModuleIds: body.selectedModuleIds,
+      selectedRisks: body.selectedRisks
     });
     return { status: 200, body: { items } };
   });

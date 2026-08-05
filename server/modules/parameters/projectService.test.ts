@@ -124,4 +124,18 @@ describe("createProjectForAuth", () => {
 
     expect(txCalls).toHaveLength(0);
   });
+
+  it("inserts new projects with initialization_status not_initialized", async () => {
+    const { db, txCalls } = createFakeDb([[projectRow()], [], [configSetRow()], []]);
+
+    await createProjectForAuth(db, adminAuth(), {
+      id: "nova",
+      name: "Nova",
+      code: "NOVA"
+    });
+
+    const projectInsert = txCalls.find((call) => call.text.includes("insert into projects"));
+    expect(projectInsert?.text).toMatch(/initialization_status/);
+    expect(projectInsert?.text).toMatch(/'not_initialized'/);
+  });
 });

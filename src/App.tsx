@@ -73,6 +73,13 @@ import {
 import { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
+import { resolveParameterInitializationRepository } from "@/application/parameters/parameterInitializationRuntime";
+import {
+  toLegacyInitializationDraft,
+  toLegacyInitializationReview
+} from "@/application/parameters/initializationUiMappers";
+import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import { canAccessPage, canPerform } from "@/app/permissions";
 import {
   applyInitializationDraftToConfig,
@@ -299,6 +306,17 @@ export type AppAction =
     }
   | { type: "APPROVE_PARAMETER_INITIALIZATION"; reviewId: string }
   | { type: "REJECT_PARAMETER_INITIALIZATION"; reviewId: string; reason: string }
+  | {
+      type: "HYDRATE_PROJECT_INITIALIZATION_STATUS";
+      projectId: string;
+      status: ProjectInitializationStatus;
+    }
+  | {
+      type: "HYDRATE_PARAMETER_INITIALIZATION";
+      drafts?: ProjectParameterInitializationDraft[];
+      reviews?: ProjectParameterInitializationReview[];
+      statuses?: Record<string, ProjectInitializationStatus>;
+    }
   | { type: "ADD_CHANGE_REQUEST"; parameterId: string; targetValue: string; reason: string }
   | {
       type: "ADD_PARAMETER_SUBMISSION_ROUND";
@@ -879,6 +897,30 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           [review.projectId]: "initialization_rejected"
         },
         notifications: [`参数初始化已驳回：${reason}`, ...state.notifications]
+      };
+    }
+    case "HYDRATE_PROJECT_INITIALIZATION_STATUS": {
+      return {
+        ...state,
+        projectInitializationStatuses: {
+          ...state.projectInitializationStatuses,
+          [action.projectId]: action.status
+        }
+      };
+    }
+    case "HYDRATE_PARAMETER_INITIALIZATION": {
+      return {
+        ...state,
+        ...(action.drafts ? { parameterInitializationDrafts: action.drafts } : {}),
+        ...(action.reviews ? { parameterInitializationReviews: action.reviews } : {}),
+        ...(action.statuses
+          ? {
+              projectInitializationStatuses: {
+                ...state.projectInitializationStatuses,
+                ...action.statuses
+              }
+            }
+          : {})
       };
     }
     case "ADD_CHANGE_REQUEST": {
@@ -1893,6 +1935,7 @@ type AppProps = {
   logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
   parameterTopologyRepository?: ParameterTopologyRepository;
+  parameterInitializationRepository?: ParameterInitializationRepository;
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
   runtimeMode?: WiseEffRuntimeMode;
@@ -1908,6 +1951,7 @@ function App({
   listParameterConfigSets,
   parameterRepository,
   parameterTopologyRepository,
+  parameterInitializationRepository,
   productFeedbackRepository,
   runtimeMode = wiseEffRuntimeMode,
   userGovernanceActions
@@ -1924,6 +1968,7 @@ function App({
         listParameterConfigSets={listParameterConfigSets}
         parameterRepository={parameterRepository}
         parameterTopologyRepository={parameterTopologyRepository}
+        parameterInitializationRepository={parameterInitializationRepository}
         productFeedbackRepository={productFeedbackRepository}
         runtimeMode={runtimeMode}
         userGovernanceActions={userGovernanceActions}
@@ -1941,6 +1986,7 @@ function AppShell({
   listParameterConfigSets,
   parameterRepository,
   parameterTopologyRepository,
+  parameterInitializationRepository,
   productFeedbackRepository,
   runtimeMode,
   userGovernanceActions
@@ -1953,6 +1999,7 @@ function AppShell({
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   parameterRepository?: ParameterRepository;
   parameterTopologyRepository?: ParameterTopologyRepository;
+  parameterInitializationRepository?: ParameterInitializationRepository;
   productFeedbackRepository?: ProductFeedbackRepository;
   runtimeMode: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
@@ -2023,6 +2070,10 @@ function AppShell({
     () => productFeedbackRepository ?? (runtimeMode === "api" ? createHttpProductFeedbackRepository() : createMockProductFeedbackRepository()),
     [productFeedbackRepository, runtimeMode]
   );
+  const parameterInitializationRepositoryClient = useMemo(
+    () => parameterInitializationRepository ?? resolveParameterInitializationRepository(runtimeMode),
+    [parameterInitializationRepository, runtimeMode]
+  );
   const debuggingGatewayClient = useMemo(
     () => debuggingGateway ?? (runtimeMode === "api" ? createHttpDebuggingGateway() : undefined),
     [debuggingGateway, runtimeMode]
@@ -2079,6 +2130,146 @@ function AppShell({
   const LogsPageWithRuntime = useCallback(
     (props: PageProps) => <LogsPage {...props} logActions={runtimeMode === "api" ? props.logActions : undefined} />,
     [runtimeMode]
+  );
+
+  const refreshParameterInitializationFromApi = useCallback(async () => {
+    if (runtimeMode !== "api") {
+      return;
+    }
+    try {
+      const pending = await parameterInitializationRepositoryClient.listPendingReviews();
+      const drafts: ProjectParameterInitializationDraft[] = [];
+      const statuses: Record<string, ProjectInitializationStatus> = {};
+      for (const review of pending) {
+        const stateDto = await parameterInitializationRepositoryClient.getInitialization(review.projectId);
+        statuses[review.projectId] = stateDto.status;
+        if (stateDto.draft) {
+          drafts.push(toLegacyInitializationDraft(stateDto.draft));
+        }
+      }
+      const existingDrafts = stateRef.current.parameterInitializationDrafts.filter(
+        (draft) => !drafts.some((item) => item.id === draft.id)
+      );
+      const existingReviews = stateRef.current.parameterInitializationReviews.filter(
+        (review) => !pending.some((item) => item.id === review.id)
+      );
+      dispatch({
+        type: "HYDRATE_PARAMETER_INITIALIZATION",
+        drafts: [...drafts, ...existingDrafts],
+        reviews: [...pending.map(toLegacyInitializationReview), ...existingReviews],
+        statuses
+      });
+    } catch {
+      dispatch({ type: "ADD_NOTIFICATION", message: "无法刷新参数初始化审阅列表" });
+    }
+  }, [parameterInitializationRepositoryClient, runtimeMode]);
+
+  const hydrateActiveProjectInitialization = useCallback(
+    async (projectId: string) => {
+      if (runtimeMode !== "api" || !projectId) {
+        return;
+      }
+      try {
+        const stateDto = await parameterInitializationRepositoryClient.getInitialization(projectId);
+        dispatch({
+          type: "HYDRATE_PROJECT_INITIALIZATION_STATUS",
+          projectId,
+          status: stateDto.status
+        });
+        if (stateDto.draft) {
+          const legacyDraft = toLegacyInitializationDraft(stateDto.draft);
+          const without = stateRef.current.parameterInitializationDrafts.filter(
+            (draft) => draft.projectId !== projectId
+          );
+          dispatch({
+            type: "HYDRATE_PARAMETER_INITIALIZATION",
+            drafts: [legacyDraft, ...without]
+          });
+        }
+      } catch {
+        // Keep local status when the project is unavailable or unauthorized.
+      }
+    },
+    [parameterInitializationRepositoryClient, runtimeMode]
+  );
+
+  const submitParameterInitializationViaApi = useCallback(
+    async (action: Extract<AppAction, { type: "SUBMIT_PARAMETER_INITIALIZATION" }>) => {
+      const projectCode = action.draft.projectCode.trim().toUpperCase();
+      const projectId = action.draft.projectCode
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      if (!projectId) {
+        return;
+      }
+      try {
+        const adminClient = createParameterAdminClient();
+        await adminClient.createProject({
+          id: projectId,
+          name: action.draft.projectName.trim(),
+          code: projectCode
+        });
+        const emptyLibrary =
+          !action.draft.primarySourceProjectId || action.draft.sourceProjectIds.length === 0;
+        let bindingSnapshots = [] as Awaited<
+          ReturnType<ParameterInitializationRepository["previewSnapshot"]>
+        >;
+        if (!emptyLibrary) {
+          bindingSnapshots = await parameterInitializationRepositoryClient.previewSnapshot({
+            projectId,
+            primarySourceProjectId: action.draft.primarySourceProjectId,
+            supplementSourceProjectIds: action.draft.supplementSourceProjectIds,
+            selectedModuleIds: action.draft.selectedModules,
+            selectedRisks: action.draft.selectedRisks
+          });
+        }
+        const draft = await parameterInitializationRepositoryClient.upsertDraft({
+          projectId,
+          projectName: action.draft.projectName.trim(),
+          projectCode,
+          ownerUserId: action.draft.ownerUserId,
+          sourceProjectIds: emptyLibrary ? [] : action.draft.sourceProjectIds,
+          primarySourceProjectId: emptyLibrary ? null : action.draft.primarySourceProjectId,
+          supplementSourceProjectIds: emptyLibrary ? [] : action.draft.supplementSourceProjectIds,
+          selectedModuleIds: action.draft.selectedModules,
+          selectedRisks: action.draft.selectedRisks,
+          selectedSourceBindingIds: bindingSnapshots.map((item) => item.sourceProjectParameterBindingId),
+          bindingSnapshots,
+          emptyLibrary,
+          notes: action.draft.notes
+        });
+        const review = await parameterInitializationRepositoryClient.submit(projectId);
+        dispatch({
+          type: "HYDRATE_PARAMETER_INITIALIZATION",
+          drafts: [toLegacyInitializationDraft(draft), ...stateRef.current.parameterInitializationDrafts],
+          reviews: [toLegacyInitializationReview(review), ...stateRef.current.parameterInitializationReviews],
+          statuses: { [projectId]: "initialization_pending_review" }
+        });
+        dispatch({
+          type: "ADD_PARAMETER_ADMIN_PROJECT",
+          project: { id: projectId, name: action.draft.projectName.trim(), code: projectCode }
+        });
+        dispatch({ type: "ADD_NOTIFICATION", message: `${draft.projectName} 参数初始化已提交审阅。` });
+        setProjectInitOpen(false);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "参数初始化提交失败";
+        dispatch({ type: "ADD_NOTIFICATION", message });
+      }
+    },
+    [parameterInitializationRepositoryClient]
+  );
+
+  const handleInitializationWizardDispatch = useCallback(
+    (action: AppAction) => {
+      if (runtimeMode === "api" && action.type === "SUBMIT_PARAMETER_INITIALIZATION") {
+        void submitParameterInitializationViaApi(action);
+        return;
+      }
+      dispatch(action);
+    },
+    [runtimeMode, submitParameterInitializationViaApi]
   );
 
   const hydrateAuthContext = useCallback((context: AuthContextDto) => {
@@ -2176,6 +2367,17 @@ function AppShell({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    void hydrateActiveProjectInitialization(state.activeProjectId);
+  }, [hydrateActiveProjectInitialization, state.activeProjectId]);
+
+  useEffect(() => {
+    if (runtimeMode !== "api" || apiAuthStatus !== "authenticated") {
+      return;
+    }
+    void refreshParameterInitializationFromApi();
+  }, [apiAuthStatus, refreshParameterInitializationFromApi, runtimeMode]);
 
   useEffect(() => {
     if (page.key !== "parameter-home") {
@@ -2440,6 +2642,7 @@ function AppShell({
                 parameterTopologyRepository={parameterTopologyRepositoryClient}
                 listParameterConfigSets={listParameterConfigSets}
                 productFeedbackRepository={productFeedbackRepositoryClient}
+                parameterInitializationRepository={parameterInitializationRepositoryClient}
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
                 search={search}
@@ -2480,6 +2683,7 @@ function AppShell({
                 parameterTopologyRepository={parameterTopologyRepositoryClient}
                 listParameterConfigSets={listParameterConfigSets}
                 productFeedbackRepository={productFeedbackRepositoryClient}
+                parameterInitializationRepository={parameterInitializationRepositoryClient}
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
                 search={search}
@@ -2518,7 +2722,7 @@ function AppShell({
         {projectInitOpen ? (
           <ProjectParameterInitializationWizard
             state={state}
-            dispatch={dispatch}
+            dispatch={handleInitializationWizardDispatch}
             onClose={() => setProjectInitOpen(false)}
           />
         ) : null}
@@ -3821,7 +4025,14 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate, parameterAction
 }
 
 
-function ParameterReviewPage({ state, dispatch, search, parameterActions }: PageProps) {
+function ParameterReviewPage({
+  state,
+  dispatch,
+  search,
+  parameterActions,
+  parameterInitializationRepository,
+  runtimeMode
+}: PageProps) {
   const [selectedId, setSelectedId] = useState(
     state.parameterInitializationReviews[0]?.id ?? state.changeRequests[0]?.id ?? ""
   );
@@ -4068,7 +4279,28 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
 
   const rejectSelected = async (reason: string) => {
     if (selectedInitialization) {
-      dispatch({ type: "REJECT_PARAMETER_INITIALIZATION", reviewId: selectedInitialization.review.id, reason });
+      if (runtimeMode === "api" && parameterInitializationRepository) {
+        try {
+          const review = await parameterInitializationRepository.reject(
+            selectedInitialization.review.id,
+            reason
+          );
+          dispatch({
+            type: "HYDRATE_PARAMETER_INITIALIZATION",
+            reviews: state.parameterInitializationReviews.map((item) =>
+              item.id === review.id ? toLegacyInitializationReview(review) : item
+            ),
+            statuses: { [review.projectId]: "initialization_rejected" }
+          });
+          dispatch({ type: "ADD_NOTIFICATION", message: `参数初始化已驳回：${reason}` });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "参数初始化驳回失败";
+          dispatch({ type: "ADD_NOTIFICATION", message });
+          return;
+        }
+      } else {
+        dispatch({ type: "REJECT_PARAMETER_INITIALIZATION", reviewId: selectedInitialization.review.id, reason });
+      }
       setRejectOpen(false);
       return;
     }
@@ -4418,7 +4650,37 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
                 <Button
                   className="full"
                   type="button"
-                  onClick={() => dispatch({ type: "APPROVE_PARAMETER_INITIALIZATION", reviewId: selectedInitialization.review.id })}
+                  onClick={() => {
+                    void (async () => {
+                      if (!selectedInitialization) {
+                        return;
+                      }
+                      if (runtimeMode === "api" && parameterInitializationRepository) {
+                        try {
+                          const review = await parameterInitializationRepository.approve(
+                            selectedInitialization.review.id
+                          );
+                          dispatch({
+                            type: "APPROVE_PARAMETER_INITIALIZATION",
+                            reviewId: review.id
+                          });
+                          dispatch({
+                            type: "HYDRATE_PROJECT_INITIALIZATION_STATUS",
+                            projectId: review.projectId,
+                            status: "initialized"
+                          });
+                        } catch (error) {
+                          const message = error instanceof Error ? error.message : "参数初始化通过失败";
+                          dispatch({ type: "ADD_NOTIFICATION", message });
+                        }
+                        return;
+                      }
+                      dispatch({
+                        type: "APPROVE_PARAMETER_INITIALIZATION",
+                        reviewId: selectedInitialization.review.id
+                      });
+                    })();
+                  }}
                 >
                   <CheckCircle2 size={17} />
                   通过初始化

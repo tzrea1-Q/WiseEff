@@ -24,6 +24,7 @@ import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
 import type { AppAction } from "@/App";
 import type { DashboardWindow, HotspotDimension, OverviewScope } from "@/domain/parameters/dashboardTypes";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
@@ -75,6 +76,7 @@ export type PageProps = {
   parameterTopologyRepository?: ParameterTopologyRepository;
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
+  parameterInitializationRepository?: ParameterInitializationRepository;
   userGovernanceActions?: UserGovernanceActions;
   runtimeMode?: WiseEffRuntimeMode;
   dashboardState?: DashboardState;
@@ -111,6 +113,7 @@ export function PageRouter({
   parameterTopologyRepository,
   listParameterConfigSets,
   productFeedbackRepository,
+  parameterInitializationRepository,
   userGovernanceActions,
   runtimeMode,
   dashboardState,
@@ -201,7 +204,17 @@ export function PageRouter({
         />
       );
     case "parameter-review":
-      return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
+      return (
+        <ParameterReviewPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          parameterActions={parameterActions}
+          parameterInitializationRepository={parameterInitializationRepository}
+          runtimeMode={runtimeMode}
+        />
+      );
     case "parameter-admin": {
       const isProjectsArea =
         page.path === "/parameter-admin/projects" || page.path.startsWith("/parameter-admin/projects/");

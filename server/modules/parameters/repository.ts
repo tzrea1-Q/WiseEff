@@ -1560,8 +1560,8 @@ export async function createProject(
 ) {
   const result = await db.query<ProjectRow>(
     `
-    insert into projects (id, organization_id, name, code, status)
-    values ($1, $2, $3, $4, $5)
+    insert into projects (id, organization_id, name, code, status, initialization_status)
+    values ($1, $2, $3, $4, $5, 'not_initialized')
     returning id, name, code, status, updated_at
     `,
     [input.id, input.organizationId, input.name, input.code, input.status ?? "initialized"]

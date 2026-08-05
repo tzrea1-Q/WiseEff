@@ -192,6 +192,10 @@ export type ProjectInitializationStatus =
 
 export type ParameterInitializationSourceRole = "primary" | "supplement" | "library";
 
+/**
+ * Legacy flat-library wizard snapshot (mock reducer / ProjectParameterInitializationWizard).
+ * API Port uses {@link SemanticInitializationSnapshotItem} instead.
+ */
 export type ProjectParameterInitializationSnapshotItem = {
   parameterId: string;
   sourceProjectId: string;
@@ -204,6 +208,13 @@ export type ProjectParameterInitializationSnapshotItem = {
   needsRecommendedValueConfirmation: boolean;
   notes?: string;
 };
+
+export type {
+  SemanticInitializationSnapshotItem,
+  InitializationDraftDto,
+  InitializationReviewDto,
+  ProjectInitializationStateDto
+} from "./initializationTypes";
 
 export type ProjectParameterInitializationDraft = {
   id: string;
