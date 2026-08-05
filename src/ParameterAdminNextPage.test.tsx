@@ -538,12 +538,12 @@ function renderPage(options: {
   const search = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
   const pathname = path.includes("?") ? path.slice(0, path.indexOf("?")) : path;
 
-  render(
+  const page = (nextPath: string) => (
     <ParameterAdminNextPage
       area={area}
       onNavigate={onNavigate}
-      search={search}
-      pathname={pathname}
+      search={nextPath.includes("?") ? nextPath.slice(nextPath.indexOf("?") + 1) : ""}
+      pathname={nextPath.includes("?") ? nextPath.slice(0, nextPath.indexOf("?")) : nextPath}
       runtimeMode={options.runtimeMode ?? "mock"}
       parameterTopologyRepository={repository}
       parameterModuleRegistryRepository={moduleRegistry}
@@ -558,7 +558,20 @@ function renderPage(options: {
     />
   );
 
-  return { onNavigate, repository, moduleRegistry, dispatch, parameterActions };
+  const { rerender: rerenderPage } = render(page(`${pathname}${search ? `?${search}` : ""}`));
+
+  return {
+    onNavigate,
+    repository,
+    moduleRegistry,
+    dispatch,
+    parameterActions,
+    /** Re-render at a new route, as the app router would on navigation. */
+    rerender: (nextPath: string) => {
+      window.history.replaceState(null, "", nextPath);
+      rerenderPage(page(nextPath));
+    }
+  };
 }
 
 describe("ParameterAdminNextPage · shell", () => {
@@ -1528,6 +1541,36 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     expect(document.activeElement).toBe(files);
   });
 
+  it("keeps a visited view's state when switching views and back", async () => {
+    const projectId = initialState.configDraft.projects[0]!.id;
+    const { rerender } = renderPage({
+      path: `/parameter-admin/projects/${projectId}/config-sets`,
+      area: "projects",
+      parameterFileRepository: {
+        listFiles: vi.fn().mockResolvedValue([]),
+        uploadFile: vi.fn(),
+        uploadVersion: vi.fn(),
+        listVersions: vi.fn().mockResolvedValue([]),
+        downloadVersion: vi.fn(),
+        syncFile: vi.fn(),
+        listConflicts: vi.fn().mockResolvedValue([]),
+        resolveConflict: vi.fn()
+      }
+    });
+
+    await screen.findByRole("region", { name: "项目配置集与基线" });
+    fireEvent.change(screen.getByLabelText("配置集名称"), { target: { value: "board-draft" } });
+
+    rerender(`/parameter-admin/projects/${projectId}/conflicts`);
+    await screen.findByRole("region", { name: "项目文件冲突" });
+    // The config-sets view is out of the accessibility tree but still mounted.
+    expect(screen.queryByRole("region", { name: "项目配置集与基线" })).not.toBeInTheDocument();
+
+    rerender(`/parameter-admin/projects/${projectId}/config-sets`);
+    await screen.findByRole("region", { name: "项目配置集与基线" });
+    expect(screen.getByLabelText("配置集名称")).toHaveValue("board-draft");
+  });
+
   it("uploads a file, lists versions, and triggers manual sync producing a file-sync draft", async () => {
     const projectId = initialState.configDraft.projects[0]!.id;
     const uploadFile = vi.fn().mockResolvedValue({
@@ -1861,10 +1904,20 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
     expect(await screen.findByRole("status", { name: "治理审计" })).toHaveTextContent(/baseline-compared/);
 
     fireEvent.click(screen.getByRole("button", { name: "回滚 v0-released" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "回滚基线" })).getByRole("button", {
+        name: "确认回滚"
+      })
+    );
     await waitFor(() => expect(dts.rollbackBaseline).toHaveBeenCalledWith(projectId(), "bl-released"));
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/baseline-rolled-back/);
 
     fireEvent.click(screen.getByRole("button", { name: "发布 v1-draft" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "发布基线" })).getByRole("button", {
+        name: "确认发布"
+      })
+    );
     await waitFor(() => expect(dts.releaseBaseline).toHaveBeenCalledWith(projectId(), "bl-1"));
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveTextContent(/baseline-released/);
   });
@@ -2012,6 +2065,53 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
     expect(screen.queryByRole("heading", { name: "项目清单" })).not.toBeInTheDocument();
   });
 
+  it("confirms before leaving a project that has unsubmitted structured edits", async () => {
+    const { onNavigate } = renderPage({
+      path: `/parameter-admin/projects/${projectId()}/structure`,
+      area: "projects",
+      dtsStructuredRepository: createDtsRepo(),
+      parameterFileRepository: createFileRepo()
+    });
+
+    const panel = await screen.findByRole("region", { name: "结构浏览" });
+    fireEvent.click(await within(panel).findByRole("treeitem", { name: /gpio/ }));
+    fireEvent.click(within(panel).getByRole("button", { name: /编辑属性 gpio_int/ }));
+    fireEvent.change(within(panel).getByLabelText("cell 1"), { target: { value: "7" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "项目清单" }));
+    const leaveDialog = await screen.findByRole("dialog", { name: "离开项目" });
+    expect(onNavigate).not.toHaveBeenCalledWith("/parameter-admin/projects");
+
+    fireEvent.click(within(leaveDialog).getByRole("button", { name: "留在本页" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "离开项目" })).not.toBeInTheDocument()
+    );
+    expect(onNavigate).not.toHaveBeenCalledWith("/parameter-admin/projects");
+
+    fireEvent.click(screen.getByRole("button", { name: "项目清单" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "离开项目" })).getByRole("button", {
+        name: "丢弃并离开"
+      })
+    );
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects");
+  });
+
+  it("leaves a project without a prompt when nothing is unsaved", async () => {
+    const { onNavigate } = renderPage({
+      path: `/parameter-admin/projects/${projectId()}/structure`,
+      area: "projects",
+      dtsStructuredRepository: createDtsRepo(),
+      parameterFileRepository: createFileRepo()
+    });
+
+    await screen.findByRole("region", { name: "结构浏览" });
+    fireEvent.click(screen.getByRole("button", { name: "项目清单" }));
+
+    expect(screen.queryByRole("dialog", { name: "离开项目" })).not.toBeInTheDocument();
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects");
+  });
+
   it("shows a clear empty state when the project has no structured DTS file", async () => {
     renderPage({
       path: `/parameter-admin/projects/${projectId()}/structure`,
@@ -2079,6 +2179,11 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
     expect(screen.queryByRole("heading", { name: "项目清单" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "保留文件值" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "保留文件值" })).getByRole("button", {
+        name: "确认裁决"
+      })
+    );
     await waitFor(() =>
       expect(resolveConflict).toHaveBeenCalledWith(projectId(), "conflict-1", "file")
     );

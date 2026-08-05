@@ -151,12 +151,71 @@ describe("ConfigSetBaselinePanel", () => {
     );
     const memberList = screen.getByRole("list", { name: "配置集成员" });
     expect(await within(memberList).findByText("engine.dts")).toBeInTheDocument();
-    expect(within(memberList).getByText("overlay")).toBeInTheDocument();
+    expect(within(memberList).getByText("覆盖层")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "移除 engine.dts" }));
 
+    const confirmDialog = await screen.findByRole("dialog", { name: "移除配置集成员" });
+    expect(repository.removeConfigSetFile).not.toHaveBeenCalled();
+    expect(confirmDialog).toHaveTextContent(/engine\.dts/);
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认移除" }));
+
     await waitFor(() => expect(repository.removeConfigSetFile).toHaveBeenCalledWith(PROJECT_ID, "cs-1", "file-1"));
     expect(within(memberList).queryByText("engine.dts")).not.toBeInTheDocument();
+  });
+
+  it("abandons a member removal when the confirmation is cancelled", async () => {
+    const repository = createRepository();
+    await renderPanel(repository);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择 board-a" }));
+    fireEvent.change(screen.getByLabelText("成员文件"), { target: { value: "file-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加成员" }));
+    const memberList = await screen.findByRole("list", { name: "配置集成员" });
+    await within(memberList).findByText("engine.dts");
+
+    fireEvent.click(screen.getByRole("button", { name: "移除 engine.dts" }));
+    const confirmDialog = await screen.findByRole("dialog", { name: "移除配置集成员" });
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "取消" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "移除配置集成员" })).not.toBeInTheDocument()
+    );
+    expect(repository.removeConfigSetFile).not.toHaveBeenCalled();
+    expect(within(memberList).getByText("engine.dts")).toBeInTheDocument();
+  });
+
+  it("reports an empty config set name instead of doing nothing", async () => {
+    const repository = createRepository();
+    await renderPanel(repository);
+
+    fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("请先填写配置集名称。");
+    expect(screen.getByLabelText("配置集名称")).toHaveAttribute("aria-invalid", "true");
+    expect(repository.createConfigSet).not.toHaveBeenCalled();
+  });
+
+  it("rejects a config set name that already exists", async () => {
+    const repository = createRepository();
+    await renderPanel(repository);
+
+    fireEvent.change(screen.getByLabelText("配置集名称"), { target: { value: "board-a" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("已存在名为「board-a」的配置集。");
+    expect(repository.createConfigSet).not.toHaveBeenCalled();
+  });
+
+  it("reports an empty baseline name instead of doing nothing", async () => {
+    const repository = createRepository();
+    await renderPanel(repository);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择 board-a" }));
+    fireEvent.click(await screen.findByRole("button", { name: "创建基线" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("请先填写基线名称。");
+    expect(repository.createBaseline).not.toHaveBeenCalled();
   });
 
   it("lists and creates baselines for the selected config set", async () => {
@@ -198,33 +257,74 @@ describe("ConfigSetBaselinePanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "发布 v1-draft" }));
 
+    const confirmDialog = await screen.findByRole("dialog", { name: "发布基线" });
+    expect(repository.releaseBaseline).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认发布" }));
+
     await waitFor(() => expect(repository.releaseBaseline).toHaveBeenCalledWith(PROJECT_ID, "bl-1"));
     const gateRegion = await screen.findByRole("status", { name: "校验门禁结果" });
-    expect(within(gateRegion).getByText(/mode:\s*block/i)).toBeInTheDocument();
-    expect(within(gateRegion).getByText(/requiresConfirmation:\s*false/i)).toBeInTheDocument();
+    expect(gateRegion).toHaveAttribute("data-ok", "false");
+    expect(within(gateRegion).getByText(/修订校验未通过/)).toBeInTheDocument();
+    expect(within(gateRegion).getByText(/门禁：阻断发布/)).toBeInTheDocument();
     expect(within(gateRegion).getByText("dtc failed")).toBeInTheDocument();
+    expect(within(gateRegion).getByText("错误")).toBeInTheDocument();
+    // The gate stopped leaking its own field names into the UI.
+    expect(within(gateRegion).queryByText(/requiresConfirmation/)).not.toBeInTheDocument();
   });
 
-  it("shows warn gate requiresConfirmation when release returns warn", async () => {
-    const repository = createRepository({
-      releaseBaseline: vi.fn().mockResolvedValue({
-        item: baseline({ status: "released" }),
-        gate: gate({
-          ok: true,
-          mode: "warn",
-          requiresConfirmation: true,
-          diagnostics: [{ severity: "warning", message: "dtc unavailable" }]
-        })
-      })
-    });
-    await renderPanel(repository);
+  it("blocks a release behind an explicit acknowledgement when the gate requires confirmation", async () => {
+    const repository = createRepository();
+    render(
+      <ConfigSetBaselinePanel
+        projectId={PROJECT_ID}
+        repository={repository}
+        canAdmin
+        availableFiles={[{ id: "file-1", fileName: "engine.dts" }]}
+        revisionId="revision-7"
+        validateRevision={vi.fn().mockResolvedValue({
+          id: "run-1",
+          status: "failed",
+          stage: "dtc",
+          diagnostics: [{ path: "board.dts", startLine: 12, severity: "error", message: "语法错误" }]
+        })}
+      />
+    );
+    await screen.findByRole("region", { name: "配置集 / 基线" });
+
+    fireEvent.click(screen.getByRole("button", { name: "校验修订" }));
+    const gateRegion = await screen.findByRole("status", { name: "校验门禁结果" });
+    expect(within(gateRegion).getByText(/需要人工确认风险/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "选择 board-a" }));
     fireEvent.click(await screen.findByRole("button", { name: "发布 v1-draft" }));
 
-    const gateRegion = await screen.findByRole("status", { name: "校验门禁结果" });
-    expect(within(gateRegion).getByText(/mode:\s*warn/i)).toBeInTheDocument();
-    expect(within(gateRegion).getByText(/requiresConfirmation:\s*true/i)).toBeInTheDocument();
+    const confirmDialog = await screen.findByRole("dialog", { name: "发布基线" });
+    const confirm = within(confirmDialog).getByRole("button", { name: "确认发布" });
+    expect(confirm).toBeDisabled();
+
+    fireEvent.click(within(confirmDialog).getByRole("checkbox"));
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(repository.releaseBaseline).toHaveBeenCalledWith(PROJECT_ID, "bl-1"));
+  });
+
+  it("confirms a rollback and states that it overwrites later changes", async () => {
+    const repository = createRepository({
+      listBaselines: vi.fn().mockResolvedValue([baseline({ status: "released" })]),
+      rollbackBaseline: vi.fn().mockResolvedValue({ restored: 4 })
+    });
+    await renderPanel(repository);
+
+    fireEvent.click(screen.getByRole("button", { name: "选择 board-a" }));
+    fireEvent.click(await screen.findByRole("button", { name: "回滚 v1-draft" }));
+
+    const confirmDialog = await screen.findByRole("dialog", { name: "回滚基线" });
+    expect(confirmDialog).toHaveTextContent(/不可撤销/);
+    expect(repository.rollbackBaseline).not.toHaveBeenCalled();
+
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认回滚" }));
+    await waitFor(() => expect(repository.rollbackBaseline).toHaveBeenCalledWith(PROJECT_ID, "bl-1"));
   });
 
   it("exposes an export download entry that calls exportConfigSet", async () => {

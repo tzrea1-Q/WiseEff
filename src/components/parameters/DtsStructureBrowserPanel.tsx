@@ -1,5 +1,5 @@
 import { Lock, TriangleAlert } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   DtsStructuralNode,
   DtsStructuralProperty,
@@ -32,6 +32,8 @@ export type DtsStructureBrowserPanelProps = {
   canEditCritical?: boolean;
   /** Optional source bindings so the local change-set can map to real parameter ids. */
   parameterSources?: ParameterSourceLookup[];
+  /** Reports whether unsubmitted local edits exist, so callers can guard navigation. */
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 type LocalPropertyDraft = {
@@ -56,7 +58,8 @@ export function DtsStructureBrowserPanel({
   versionId,
   canEdit = true,
   canEditCritical = true,
-  parameterSources = []
+  parameterSources = [],
+  onDirtyChange
 }: DtsStructureBrowserPanelProps) {
   const [nodes, setNodes] = useState<DtsStructuralNode[]>([]);
   const [selectedNodePath, setSelectedNodePath] = useState<string | undefined>();
@@ -100,6 +103,16 @@ export function DtsStructureBrowserPanel({
     const initialVersionId = versionId ?? DTS_TEACHING_VERSION_ID;
     void loadStructure(initialFileId, initialVersionId);
   }, [fileId, loadStructure, versionId]);
+
+  const dirty = Object.keys(drafts).length > 0;
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
+
+  useEffect(() => {
+    onDirtyChangeRef.current?.(dirty);
+  }, [dirty]);
+
+  useEffect(() => () => onDirtyChangeRef.current?.(false), []);
 
   const selectedNode = useMemo(
     () => nodes.find((item) => item.nodePath === selectedNodePath) ?? null,

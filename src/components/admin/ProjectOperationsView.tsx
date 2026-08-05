@@ -101,12 +101,7 @@ export function ProjectOperationsView({
 
       {auditNotice}
 
-      <div
-        className="project-operations-body"
-        role="region"
-        aria-label={viewMeta.regionLabel}
-        data-project-id={projectId}
-      >
+      <div className="project-operations-body" data-project-id={projectId}>
         {children}
       </div>
     </div>
