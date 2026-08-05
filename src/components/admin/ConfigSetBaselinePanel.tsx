@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type {
   ConfigSetRole,
   DtsCompareBaselineResult,
@@ -10,6 +10,8 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 import { aggregateStructuredChangeSet, type ParameterSourceLookup } from "@/application/parameters/structuredChangeSet";
 import type { ParameterAdminAuditHint } from "@/application/parameters/parameterAdminState";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { ParamAdminEmptyState } from "@/components/parameter-admin-next/ParamAdminEmptyState";
 import { StructuredDiffView } from "@/components/parameters/StructuredDiffView";
 import type { ValidationRun } from "@/domain/parameter-topology/types";
 
@@ -32,7 +34,10 @@ export type ConfigSetBaselinePanelProps = {
   availableFiles?: { id: string; fileName: string }[];
   /** Source bindings used to map baseline structural diffs onto real parameters (no unmapped). */
   parameterSources?: ParameterSourceLookup[];
-  /** Config revision validated through the topology port (toolchain gate). */
+  /**
+   * Config revision validated through the topology port (toolchain gate). Without a real
+   * revision there is nothing to validate, so the gate entry is not offered.
+   */
   revisionId?: string;
   validateRevision?: (projectId: string, revisionId: string) => Promise<ValidationRun>;
   /** When omitted, the first listed config set is treated as the project default. */
@@ -42,7 +47,44 @@ export type ConfigSetBaselinePanelProps = {
 
 const CONFIG_SET_ROLES: ConfigSetRole[] = ["base", "overlay", "charging", "thermal", "misc"];
 
+const CONFIG_SET_ROLE_LABELS: Record<ConfigSetRole, string> = {
+  base: "基础",
+  overlay: "覆盖层",
+  charging: "充电",
+  thermal: "温控",
+  misc: "其他"
+};
+
+const BASELINE_STATUS_LABELS: Record<string, string> = {
+  draft: "草稿",
+  released: "已发布",
+  rolled_back: "已回滚",
+  superseded: "已被替代"
+};
+
+const GATE_SEVERITY_LABELS: Record<string, string> = {
+  error: "错误",
+  warning: "警告",
+  info: "提示"
+};
+
+function baselineStatusLabel(status: string): string {
+  return BASELINE_STATUS_LABELS[status] ?? status;
+}
+
 type LocalMember = DtsConfigSetFile & { fileName: string };
+
+/** A mutating action awaiting explicit human confirmation. */
+type PendingConfirmation = {
+  key: string;
+  title: string;
+  description: ReactNode;
+  confirmLabel: string;
+  pendingLabel: string;
+  tone: "primary" | "danger";
+  acknowledgement?: ReactNode;
+  run: () => Promise<void>;
+};
 
 function downloadExportBundle(configSetName: string, files: Array<{ name: string; content: string }>) {
   const payload = files.map((file) => `// ${file.name}\n${file.content}`).join("\n\n");
@@ -79,7 +121,7 @@ export function ConfigSetBaselinePanel({
   canAdmin = true,
   availableFiles = [],
   parameterSources = [],
-  revisionId = "revision-teaching-1",
+  revisionId,
   validateRevision,
   defaultConfigSetId,
   onAudit
@@ -97,6 +139,25 @@ export function ConfigSetBaselinePanel({
   const [submitMessage, setSubmitMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
+  const [configSetNameError, setConfigSetNameError] = useState("");
+  const [baselineNameError, setBaselineNameError] = useState("");
+
+  const busy = pendingAction !== null;
+
+  /**
+   * Every mutating action runs through here so a second click cannot start a second
+   * request while the first is in flight.
+   */
+  const runAction = useCallback(async (key: string, action: () => Promise<void>) => {
+    setPendingAction(key);
+    try {
+      await action();
+    } finally {
+      setPendingAction(null);
+    }
+  }, []);
 
   const selectedConfigSet = configSets.find((item) => item.id === selectedConfigSetId) ?? null;
   const resolvedDefaultId = defaultConfigSetId ?? configSets[0]?.id ?? null;
@@ -156,8 +217,14 @@ export function ConfigSetBaselinePanel({
     }
     const name = newConfigSetName.trim();
     if (!name) {
+      setConfigSetNameError("请先填写配置集名称。");
       return;
     }
+    if (configSets.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
+      setConfigSetNameError(`已存在名为「${name}」的配置集。`);
+      return;
+    }
+    setConfigSetNameError("");
     setError("");
     try {
       const created = await repository.createConfigSet(projectId, { name });
@@ -173,7 +240,8 @@ export function ConfigSetBaselinePanel({
   const selectConfigSet = (configSetId: string) => {
     setSelectedConfigSetId(configSetId);
     setMembers([]);
-    setGateResult(null);
+    // The comparison is baseline-specific, but the revision gate is project-scoped:
+    // clearing it here used to silently drop the verdict that gates a release.
     setCompareResult(null);
   };
 
@@ -210,14 +278,83 @@ export function ConfigSetBaselinePanel({
     }
   };
 
+  const requestRemoveMember = (member: LocalMember) => {
+    setConfirmation({
+      key: `remove-member-${member.fileId}`,
+      title: "移除配置集成员",
+      description: (
+        <p>
+          将把 <code>{member.fileName}</code>（角色：
+          {CONFIG_SET_ROLE_LABELS[member.role as ConfigSetRole] ?? member.role}）从配置集「
+          {selectedConfigSet?.name}」中移除。该文件本身不会被删除，但基于此配置集的后续基线与导出将不再包含它。
+        </p>
+      ),
+      confirmLabel: "确认移除",
+      pendingLabel: "移除中…",
+      tone: "danger",
+      run: () => removeMember(member.fileId)
+    });
+  };
+
+  const requestReleaseBaseline = (baseline: DtsReleaseBaseline) => {
+    const gateBlocked = Boolean(gateResult && gateResult.requiresConfirmation);
+    setConfirmation({
+      key: `release-${baseline.id}`,
+      title: "发布基线",
+      description: (
+        <>
+          <p>
+            将把基线「{baseline.name}」发布为配置集「{selectedConfigSet?.name}」的当前生效版本。
+            发布后，依赖该配置集的下游取值将按此基线读取。
+          </p>
+          {gateBlocked ? (
+            <p className="governance-confirm-dialog__risk">
+              该项目最近一次修订校验未通过，门禁要求人工确认后才能发布。
+            </p>
+          ) : null}
+        </>
+      ),
+      confirmLabel: "确认发布",
+      pendingLabel: "发布中…",
+      tone: gateBlocked ? "danger" : "primary",
+      ...(gateBlocked
+        ? { acknowledgement: "我已了解校验未通过，并承担本次发布的风险。" }
+        : {}),
+      run: () => releaseBaseline(baseline.id)
+    });
+  };
+
+  const requestRollbackBaseline = (baseline: DtsReleaseBaseline) => {
+    setConfirmation({
+      key: `rollback-${baseline.id}`,
+      title: "回滚基线",
+      description: (
+        <p>
+          将把配置集「{selectedConfigSet?.name}」的参数取值恢复到基线「{baseline.name}」记录的状态。
+          该基线之后发生的参数改动会被覆盖，此操作不可撤销。
+        </p>
+      ),
+      confirmLabel: "确认回滚",
+      pendingLabel: "回滚中…",
+      tone: "danger",
+      run: () => rollbackBaseline(baseline)
+    });
+  };
+
   const createBaseline = async () => {
     if (!canAdmin || !selectedConfigSetId) {
       return;
     }
     const name = newBaselineName.trim();
     if (!name) {
+      setBaselineNameError("请先填写基线名称。");
       return;
     }
+    if (baselines.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
+      setBaselineNameError(`该配置集下已存在名为「${name}」的基线。`);
+      return;
+    }
+    setBaselineNameError("");
     setError("");
     try {
       const created = await repository.createBaseline(projectId, selectedConfigSetId, { name });
@@ -263,7 +400,7 @@ export function ConfigSetBaselinePanel({
   };
 
   const runValidateRevision = async () => {
-    if (!canAdmin || !validateRevision) {
+    if (!canAdmin || !validateRevision || !revisionId) {
       return;
     }
     setError("");
@@ -401,35 +538,70 @@ export function ConfigSetBaselinePanel({
               <input
                 type="text"
                 value={newConfigSetName}
-                onChange={(event) => setNewConfigSetName(event.target.value)}
+                aria-invalid={configSetNameError ? "true" : "false"}
+                aria-describedby={configSetNameError ? "config-set-name-error" : undefined}
+                onChange={(event) => {
+                  setNewConfigSetName(event.target.value);
+                  setConfigSetNameError("");
+                }}
                 placeholder="board-a"
               />
             </label>
-            <button type="button" className="button" onClick={() => void createConfigSet()}>
-              创建配置集
+            <button
+              type="button"
+              className="button"
+              disabled={busy}
+              onClick={() => void runAction("create-config-set", createConfigSet)}
+            >
+              {pendingAction === "create-config-set" ? "创建中…" : "创建配置集"}
             </button>
-            {validateRevision ? (
-              <button type="button" className="button subtle" onClick={() => void runValidateRevision()}>
-                校验修订
+            {validateRevision && revisionId ? (
+              <button
+                type="button"
+                className="button subtle"
+                disabled={busy}
+                onClick={() => void runAction("validate-revision", runValidateRevision)}
+              >
+                {pendingAction === "validate-revision" ? "校验中…" : "校验修订"}
               </button>
+            ) : null}
+            {configSetNameError ? (
+              <p className="field-error" id="config-set-name-error" role="alert">
+                {configSetNameError}
+              </p>
             ) : null}
           </div>
         ) : null}
-        <ul className="config-set-baseline-panel__list" aria-label="配置集列表">
-          {configSets.map((item) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                className={item.id === selectedConfigSetId ? "is-active" : undefined}
-                aria-label={`选择 ${item.name}`}
-                onClick={() => selectConfigSet(item.id)}
-              >
-                {item.name}
-                {item.id === resolvedDefaultId ? <span aria-label="默认配置集"> 默认</span> : null}
-              </button>
-            </li>
-          ))}
-        </ul>
+        {canAdmin && validateRevision && !revisionId ? (
+          <p className="config-set-baseline-panel__hint" role="note">
+            本页暂不提供修订校验：需要先在参数工作台选定一个配置修订。
+          </p>
+        ) : null}
+        {/* Surfaced next to 校验修订 rather than at the bottom of the page. */}
+        {gateResult ? <ValidationGateResult gate={gateResult} /> : null}
+        {!loading && configSets.length === 0 ? (
+          <ParamAdminEmptyState message="该项目还没有配置集。">
+            <p>配置集把参数文件组合成一份可发布的集合，是创建基线的前提。</p>
+          </ParamAdminEmptyState>
+        ) : null}
+        {configSets.length > 0 ? (
+          <ul className="config-set-baseline-panel__list" aria-label="配置集列表">
+            {configSets.map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className={item.id === selectedConfigSetId ? "is-active" : undefined}
+                  aria-label={`选择 ${item.name}`}
+                  aria-pressed={item.id === selectedConfigSetId}
+                  onClick={() => selectConfigSet(item.id)}
+                >
+                  {item.name}
+                  {item.id === resolvedDefaultId ? <span aria-label="默认配置集"> 默认</span> : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
 
       {selectedConfigSet ? (
@@ -461,37 +633,54 @@ export function ConfigSetBaselinePanel({
                   >
                     {CONFIG_SET_ROLES.map((role) => (
                       <option key={role} value={role}>
-                        {role}
+                        {CONFIG_SET_ROLE_LABELS[role]}
                       </option>
                     ))}
                   </select>
                 </label>
-                <button type="button" className="button" onClick={() => void addMember()} disabled={!memberFileId}>
-                  添加成员
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => void runAction("add-member", addMember)}
+                  disabled={!memberFileId || busy}
+                >
+                  {pendingAction === "add-member" ? "添加中…" : "添加成员"}
                 </button>
-                <button type="button" className="button subtle" onClick={() => void exportConfigSet()}>
-                  导出配置集
+                <button
+                  type="button"
+                  className="button subtle"
+                  disabled={busy}
+                  onClick={() => void runAction("export-config-set", exportConfigSet)}
+                >
+                  {pendingAction === "export-config-set" ? "导出中…" : "导出配置集"}
                 </button>
               </div>
             ) : null}
-            <ul className="config-set-baseline-panel__list" aria-label="配置集成员">
-              {members.map((member) => (
-                <li key={member.fileId}>
-                  <span>{member.fileName}</span>
-                  <span>{member.role}</span>
-                  {canAdmin ? (
-                    <button
-                      type="button"
-                      className="button subtle"
-                      aria-label={`移除 ${member.fileName}`}
-                      onClick={() => void removeMember(member.fileId)}
-                    >
-                      移除
-                    </button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
+            {members.length === 0 ? (
+              <ParamAdminEmptyState message="该配置集还没有成员文件。">
+                <p>先从上方选择一个参数文件并指定角色，再加入配置集。</p>
+              </ParamAdminEmptyState>
+            ) : (
+              <ul className="config-set-baseline-panel__list" aria-label="配置集成员">
+                {members.map((member) => (
+                  <li key={member.fileId}>
+                    <span>{member.fileName}</span>
+                    <span>{CONFIG_SET_ROLE_LABELS[member.role as ConfigSetRole] ?? member.role}</span>
+                    {canAdmin ? (
+                      <button
+                        type="button"
+                        className="button subtle"
+                        aria-label={`移除 ${member.fileName}`}
+                        disabled={busy}
+                        onClick={() => requestRemoveMember(member)}
+                      >
+                        移除
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div className="config-set-baseline-panel__section param-admin-panel__section">
@@ -503,53 +692,77 @@ export function ConfigSetBaselinePanel({
                   <input
                     type="text"
                     value={newBaselineName}
-                    onChange={(event) => setNewBaselineName(event.target.value)}
+                    aria-invalid={baselineNameError ? "true" : "false"}
+                    aria-describedby={baselineNameError ? "baseline-name-error" : undefined}
+                    onChange={(event) => {
+                      setNewBaselineName(event.target.value);
+                      setBaselineNameError("");
+                    }}
                     placeholder="v1-draft"
                   />
                 </label>
-                <button type="button" className="button" onClick={() => void createBaseline()}>
-                  创建基线
+                <button
+                  type="button"
+                  className="button"
+                  disabled={busy}
+                  onClick={() => void runAction("create-baseline", createBaseline)}
+                >
+                  {pendingAction === "create-baseline" ? "创建中…" : "创建基线"}
                 </button>
+                {baselineNameError ? (
+                  <p className="field-error" id="baseline-name-error" role="alert">
+                    {baselineNameError}
+                  </p>
+                ) : null}
               </div>
             ) : null}
-            <ul className="config-set-baseline-panel__list" aria-label="基线列表">
-              {baselines.map((item) => (
-                <li key={item.id}>
-                  <span>{item.name}</span>
-                  <span>{item.status}</span>
-                  {canAdmin ? (
-                    <button
-                      type="button"
-                      className="button subtle"
-                      aria-label={`对比 ${item.name}`}
-                      onClick={() => void compareBaseline(item)}
-                    >
-                      对比
-                    </button>
-                  ) : null}
-                  {canAdmin && item.status === "released" ? (
-                    <button
-                      type="button"
-                      className="button subtle"
-                      aria-label={`回滚 ${item.name}`}
-                      onClick={() => void rollbackBaseline(item)}
-                    >
-                      回滚
-                    </button>
-                  ) : null}
-                  {canAdmin && item.status === "draft" ? (
-                    <button
-                      type="button"
-                      className="button"
-                      aria-label={`发布 ${item.name}`}
-                      onClick={() => void releaseBaseline(item.id)}
-                    >
-                      发布
-                    </button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
+            {baselines.length === 0 ? (
+              <ParamAdminEmptyState message="该配置集还没有基线。">
+                <p>基线是一次可发布、可回滚、可对比的取值快照。</p>
+              </ParamAdminEmptyState>
+            ) : (
+              <ul className="config-set-baseline-panel__list" aria-label="基线列表">
+                {baselines.map((item) => (
+                  <li key={item.id}>
+                    <span>{item.name}</span>
+                    <span>{baselineStatusLabel(item.status)}</span>
+                    {canAdmin ? (
+                      <button
+                        type="button"
+                        className="button subtle"
+                        aria-label={`对比 ${item.name}`}
+                        disabled={busy}
+                        onClick={() => void runAction(`compare-${item.id}`, () => compareBaseline(item))}
+                      >
+                        {pendingAction === `compare-${item.id}` ? "对比中…" : "对比"}
+                      </button>
+                    ) : null}
+                    {canAdmin && item.status === "released" ? (
+                      <button
+                        type="button"
+                        className="button subtle"
+                        aria-label={`回滚 ${item.name}`}
+                        disabled={busy}
+                        onClick={() => requestRollbackBaseline(item)}
+                      >
+                        回滚
+                      </button>
+                    ) : null}
+                    {canAdmin && item.status === "draft" ? (
+                      <button
+                        type="button"
+                        className="button"
+                        aria-label={`发布 ${item.name}`}
+                        disabled={busy}
+                        onClick={() => requestReleaseBaseline(item)}
+                      >
+                        发布
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </>
       ) : null}
@@ -558,23 +771,87 @@ export function ConfigSetBaselinePanel({
         <div className="config-set-baseline-panel__compare">
           <StructuredDiffView result={compareResult} changeSet={changeSet} />
           {canAdmin && changeSet.items.length > 0 ? (
-            <button type="button" className="button" onClick={() => void submitMappedChangeSet()}>
-              提交变更请求
+            <button
+              type="button"
+              className="button primary"
+              disabled={busy}
+              onClick={() => void runAction("submit-change-set", submitMappedChangeSet)}
+            >
+              {pendingAction === "submit-change-set"
+                ? "提交中…"
+                : `提交变更请求（${changeSet.items.length} 项）`}
             </button>
           ) : null}
         </div>
       ) : null}
 
-      {gateResult ? (
-        <div className="config-set-baseline-panel__gate" role="status" aria-label="校验门禁结果">
-          <p>mode: {gateResult.mode}</p>
-          <p>requiresConfirmation: {String(gateResult.requiresConfirmation)}</p>
-          <p>ok: {String(gateResult.ok)}</p>
-          {gateResult.diagnostics.map((diagnostic, index) => (
-            <p key={`${diagnostic.message}-${index}`}>{diagnostic.message}</p>
-          ))}
-        </div>
-      ) : null}
+      <ConfirmDialog
+        open={confirmation !== null}
+        title={confirmation?.title ?? ""}
+        description={confirmation?.description ?? null}
+        confirmLabel={confirmation?.confirmLabel ?? "确认"}
+        pendingLabel={confirmation?.pendingLabel}
+        tone={confirmation?.tone ?? "primary"}
+        acknowledgement={confirmation?.acknowledgement}
+        pending={confirmation !== null && pendingAction === confirmation.key}
+        onCancel={() => {
+          if (!busy) {
+            setConfirmation(null);
+          }
+        }}
+        onConfirm={() => {
+          const request = confirmation;
+          if (!request) {
+            return;
+          }
+          void runAction(request.key, request.run).then(() => setConfirmation(null));
+        }}
+      />
     </section>
+  );
+}
+
+/**
+ * The gate used to print `mode`, `requiresConfirmation` and `ok` as three raw
+ * camelCase lines. The verdict is what the operator needs; the mode and compiler are
+ * supporting detail.
+ */
+function ValidationGateResult({ gate }: { gate: DtsValidationGateResult }) {
+  return (
+    <div
+      className="config-set-baseline-panel__gate"
+      role="status"
+      aria-label="校验门禁结果"
+      data-ok={gate.ok ? "true" : "false"}
+    >
+      <p className="config-set-baseline-panel__gate-verdict">
+        {gate.ok ? "修订校验通过。" : "修订校验未通过，发布前需要人工确认风险。"}
+      </p>
+      <p className="config-set-baseline-panel__gate-meta">
+        {gate.mode === "block" ? "门禁：阻断发布" : "门禁：仅告警"}
+        {" · "}
+        {gate.compiler === "dtc" ? "由 dtc 编译校验" : "编译器不可用，仅做静态检查"}
+      </p>
+      {gate.diagnostics.length > 0 ? (
+        <ul className="config-set-baseline-panel__gate-diagnostics">
+          {gate.diagnostics.map((diagnostic, index) => (
+            <li key={`${diagnostic.message}-${index}`} data-severity={diagnostic.severity}>
+              <span className="config-set-baseline-panel__gate-severity">
+                {GATE_SEVERITY_LABELS[diagnostic.severity] ?? diagnostic.severity}
+              </span>
+              <span>{diagnostic.message}</span>
+              {diagnostic.file ? (
+                <code>
+                  {diagnostic.file}
+                  {typeof diagnostic.line === "number" ? `:${diagnostic.line}` : ""}
+                </code>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="config-set-baseline-panel__gate-meta">没有诊断信息。</p>
+      )}
+    </div>
   );
 }

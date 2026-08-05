@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
@@ -55,7 +55,7 @@ describe("ProjectParameterFilesPanel", () => {
         {
           id: "file-mock",
           projectId: "atlas",
-          fileName: "teaching-sample.dts",
+          fileName: "atlas-board.dts",
           format: "dts",
           enabled: true,
           currentVersionNumber: 1,
@@ -66,9 +66,80 @@ describe("ProjectParameterFilesPanel", () => {
 
     render(<ProjectParameterFilesPanel projectId="atlas" repository={repository} />);
 
-    expect(await screen.findByText("teaching-sample.dts")).toBeInTheDocument();
+    expect(await screen.findByText("atlas-board.dts")).toBeInTheDocument();
     expect(screen.getByText("上传参数文件")).toBeInTheDocument();
     expect(createParameterFileClient).not.toHaveBeenCalled();
     expect(repository.listFiles).toHaveBeenCalledWith("atlas");
+  });
+
+  it("gives each version a time, an operator, and its own download", async () => {
+    const downloadVersion = vi.fn().mockResolvedValue({
+      contentType: "text/plain",
+      fileName: "engine.dts",
+      bytes: new Uint8Array([1, 2, 3])
+    });
+    const repository = createStubRepository({
+      listFiles: vi.fn().mockResolvedValue([
+        {
+          id: "file-1",
+          projectId: "atlas",
+          fileName: "engine.dts",
+          format: "dts",
+          enabled: true,
+          currentVersionId: "ver-2",
+          currentVersionNumber: 2,
+          updatedAt: "2026-07-11T10:00:00.000Z"
+        }
+      ]),
+      listVersions: vi.fn().mockResolvedValue([
+        {
+          id: "ver-2",
+          fileId: "file-1",
+          versionNumber: 2,
+          checksum: "sha-2",
+          sizeBytes: 2048,
+          parsedIndex: {},
+          origin: "writeback",
+          createdAt: "2026-07-11T10:00:00.000Z",
+          createdByUserId: "user-hw"
+        },
+        {
+          id: "ver-1",
+          fileId: "file-1",
+          versionNumber: 1,
+          checksum: "sha-1",
+          sizeBytes: 64,
+          parsedIndex: {},
+          origin: "upload",
+          createdAt: "2026-07-10T09:30:00.000Z"
+        }
+      ]),
+      downloadVersion
+    });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:version");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    render(<ProjectParameterFilesPanel projectId="atlas" repository={repository} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "查看版本" }));
+    const versions = await screen.findByRole("list", { name: "engine.dts 版本列表" });
+
+    expect(within(versions).getByText("参数回写")).toBeInTheDocument();
+    expect(within(versions).getByText("手动上传")).toBeInTheDocument();
+    expect(within(versions).getByText("当前版本")).toBeInTheDocument();
+    expect(within(versions).getByText("操作人：user-hw")).toBeInTheDocument();
+    expect(within(versions).getByText("操作人：未记录")).toBeInTheDocument();
+    expect(within(versions).getByText("2.0 KB")).toBeInTheDocument();
+    expect(within(versions).getByText("64 B")).toBeInTheDocument();
+    // Raw byte counts and untranslated origins were the whole of this list before.
+    expect(within(versions).queryByText(/bytes/)).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(versions).getByRole("button", { name: "下载 engine.dts 版本 1" })
+    );
+    await waitFor(() =>
+      expect(downloadVersion).toHaveBeenCalledWith("atlas", "file-1", "ver-1")
+    );
   });
 });

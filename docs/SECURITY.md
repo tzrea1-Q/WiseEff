@@ -61,6 +61,13 @@ For M1 parameter management:
 - Merge writes require the software-user workflow slot or admin privilege and re-check high-risk review evidence before updating the current value.
 - Parameter module tree CRUD (`/api/v1/parameter-modules*`) requires `admin:access` (`canAdminParameters`). Non-admin users may still list modules when they have `parameter:view`. Deletes return `409` when child modules or assigned parameters remain; moves reject cycles with `409`. **Kind-scoped write guards (ADR-0010):** `node-type` modules may be renamed/moved and deleted only when empty (no bindings, no children); the org `unclassified` root is read-only (no rename/move/delete); `driver-group` delete routes through **disband** (drops subtree mappings, re-parks bindings, removes empty auto descendants); reclassify whitelist is `{business, node-type}`. v2 module-attribution routes (`/api/v2/parameter-modules/*` except registry/discovery-hints GET) require the same admin gate.
 
+For project parameter governance (`/parameter-admin/projects/:projectId/*`):
+
+- Irreversible project governance actions require an explicit human confirmation step in the UI before the request is sent: baseline release, baseline rollback, config-set member removal, and both file-conflict arbitration sides. Each confirmation states the blast radius, and arbitration can record an operator reason that travels with the audit hint.
+- When the revision validation gate reports `requiresConfirmation`, release stays blocked until the operator acknowledges the named risk. A gate result is never treated as advisory text only.
+- Revision validation is offered only for a real configuration revision selected by the caller. There is no fixture or fallback revision id, so no synthetic id can reach an audit record.
+- These confirmations are UX safety, not the authorization boundary: `/api/v1` and `/api/v2` routes still enforce permissions, project scope, and audit server-side, and they must reject a write whose confirmation the client skipped.
+
 For M2 log analysis:
 
 - Log reads require `logs:view` and are project-scoped through the authenticated role bindings.

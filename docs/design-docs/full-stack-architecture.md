@@ -10,6 +10,8 @@ The frontend contains route/application shell code, domain types and pure rules,
 
 **Parameter admin vs workbench:** `/parameter-admin` owns governance queues (spec review, identity mapping, module/driver mappings, project files/config sets). `/parameters` keeps everyday binding edits and submission; it does not host identity-mapping resolution UI after #199 — open tasks surface as publish blockers while Admins resolve in the admin.
 
+**Project-scoped operations are deep-linked dialogs.** The four project views live at `/parameter-admin/projects/:projectId/{files|config-sets|structure|conflicts}` and present as a dialog over the project list, per ADR-0001. Routes own the address; `ProjectOperationsDialog` owns the presentation and rides the shared `ModalDialog` primitive. Short confirmations and forms also use that primitive; see `docs/FRONTEND.md` for the dialog, layout budget, and overlay-stacking contract.
+
 ## Backend
 
 The backend composes modules for auth, users, audit, parameters, logs, jobs, debugging, Agent, operations, observability, database, and HTTP foundations. Production writes follow authentication, authorization, validation, transaction, audit, and structured response/error rules.

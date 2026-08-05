@@ -12,7 +12,7 @@ import type {
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
 const DEFAULT_PROJECT_ID = "project-teaching";
 const DEFAULT_FILE_ID = "file-teaching-dts";
-const DEFAULT_FILE_NAME = "teaching-sample.dts";
+const DEFAULT_FILE_NAME = "atlas-board.dts";
 const DEFAULT_VERSION_ID = "version-teaching-1";
 const DEFAULT_ORG_ID = "org-teaching";
 const DEFAULT_CONFLICT_ID = "conflict-teaching-1";

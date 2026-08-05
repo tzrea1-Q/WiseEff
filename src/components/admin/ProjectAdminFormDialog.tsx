@@ -1,5 +1,6 @@
 import { CircleX } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import {
   EDITABLE_PROJECT_STATUSES,
   PROJECT_ADMIN_STATUS_LABELS,
@@ -44,25 +45,6 @@ export function ProjectAdminFormDialog({
     }
   }, [initialCode, initialName, initialStatus, open]);
 
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !loading) {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [loading, onClose, open]);
-
-  if (!open) {
-    return null;
-  }
-
   const title = mode === "create" ? "新建项目" : "编辑项目详情";
   const description =
     mode === "create"
@@ -77,19 +59,20 @@ export function ProjectAdminFormDialog({
   const canSubmit = Boolean(name.trim() && code.trim()) && (mode === "create" || isDirty);
 
   return (
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="project-admin-form-title"
-      onClick={loading ? undefined : onClose}
+    <ModalDialog
+      open={open}
+      onDismiss={loading ? undefined : onClose}
+      className="submission-dialog project-admin-form-dialog"
+      backdropClassName="param-admin-modal-backdrop"
+      describedBy
     >
-      <div className="submission-dialog project-admin-form-dialog" onClick={(event) => event.stopPropagation()}>
+      {({ titleId, descriptionId }) => (
+        <>
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">{mode === "create" ? "项目管理" : "项目详情"}</span>
-            <h2 id="project-admin-form-title">{title}</h2>
-            <p>{description}</p>
+            <h2 id={titleId}>{title}</h2>
+            <p id={descriptionId}>{description}</p>
           </div>
           <button type="button" className="audit-dialog-close-icon" onClick={onClose} aria-label="关闭" disabled={loading}>
             <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
@@ -164,7 +147,8 @@ export function ProjectAdminFormDialog({
             )}
           </div>
         </form>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

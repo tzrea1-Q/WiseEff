@@ -105,6 +105,30 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PROJ-OPS-001",
+    workflow: "C",
+    title: "Every project operations deep link resolves to its view on load and after reload, and an unknown project id shows a not-found state.",
+    required: false
+  },
+  {
+    id: "PROJ-OPS-002",
+    workflow: "C",
+    title: "All four project views render without clipped content or horizontal overflow at desktop, tablet, and mobile widths, and the view navigation keeps its position.",
+    required: false
+  },
+  {
+    id: "PROJ-OPS-003",
+    workflow: "C",
+    title: "Baseline release, baseline rollback, member removal, and conflict arbitration each require an explicit confirmation and produce a governance audit record.",
+    required: false
+  },
+  {
+    id: "PARAM-ADMIN-DIALOG-001",
+    workflow: "C",
+    title: "Param-admin dialogs trap focus, restore focus to the trigger, close only the top-most dialog on Escape, ignore press-inside/release-outside, and keep their styling through the portal.",
+    required: false
+  },
+  {
     id: "PARAM-ADMIN-IA-001",
     workflow: "C",
     title: "Organization admin offers definition management and module management peers; review embeds under specs; identity mapping nests with legacy redirects.",

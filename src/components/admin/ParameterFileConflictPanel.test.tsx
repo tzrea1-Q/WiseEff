@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ParameterFileRepository, ParameterFileSyncConflict } from "@/application/ports/ParameterFileRepository";
@@ -20,6 +20,28 @@ function createStubRepository(overrides: Partial<ParameterFileRepository> = {}):
     syncFile: vi.fn(),
     listConflicts: vi.fn().mockResolvedValue([]),
     resolveConflict: vi.fn(),
+    ...overrides
+  };
+}
+
+function openConflict(
+  overrides: Partial<ParameterFileSyncConflict> = {}
+): ParameterFileSyncConflict {
+  return {
+    id: "conflict-9",
+    organizationId: "org-1",
+    projectId: "atlas",
+    projectParameterValueId: "value-9",
+    parameterDefinitionId: "def-thermal-target",
+    parameterName: "thermal_target_c",
+    parameterModule: "Thermal",
+    fileVersionId: "version-9",
+    fileDraftId: "file-draft-9",
+    uiDraftId: "ui-draft-9",
+    fileValue: "44",
+    uiDraftValue: "46",
+    status: "open",
+    createdAt: "2026-07-11T11:05:00.000Z",
     ...overrides
   };
 }
@@ -180,9 +202,76 @@ describe("ParameterFileConflictPanel", () => {
     await screen.findByText("def-limit");
     fireEvent.click(screen.getByRole("button", { name: "保留文件值" }));
 
+    // Arbitration discards the other side irreversibly, so it goes through a confirmation.
+    const confirmDialog = await screen.findByRole("dialog", { name: "保留文件值" });
+    expect(repository.resolveConflict).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认裁决" }));
+
     await waitFor(() => {
       expect(repository.resolveConflict).toHaveBeenCalledWith("atlas", "conflict-3", "file");
     });
     expect(createParameterFileClient).not.toHaveBeenCalled();
+  });
+
+  it("gives both arbitration options equal emphasis", async () => {
+    const repository = createStubRepository({
+      listConflicts: vi.fn().mockResolvedValue([openConflict()])
+    });
+
+    render(
+      <ParameterFileConflictPanel open projectId="atlas" repository={repository} onClose={vi.fn()} />
+    );
+
+    const keepFile = await screen.findByRole("button", { name: "保留文件值" });
+    const keepUi = screen.getByRole("button", { name: "保留界面值" });
+
+    // Neither side is recommended; both discard the other irreversibly.
+    expect(keepFile.className).toBe(keepUi.className);
+    expect(keepUi).not.toHaveClass("primary");
+  });
+
+  it("shows when the conflict appeared and which file version it came from", async () => {
+    const repository = createStubRepository({
+      listConflicts: vi.fn().mockResolvedValue([openConflict()])
+    });
+
+    render(
+      <ParameterFileConflictPanel open projectId="atlas" repository={repository} onClose={vi.fn()} />
+    );
+
+    expect(await screen.findByText("出现时间")).toBeInTheDocument();
+    expect(screen.getByText("来源文件版本")).toBeInTheDocument();
+    expect(screen.getByText("version-9")).toBeInTheDocument();
+  });
+
+  it("captures an arbitration reason for the audit record", async () => {
+    const onResolved = vi.fn();
+    const repository = createStubRepository({
+      listConflicts: vi.fn().mockResolvedValue([openConflict()]),
+      resolveConflict: vi.fn().mockResolvedValue(openConflict({ status: "resolved_ui" }))
+    });
+
+    render(
+      <ParameterFileConflictPanel
+        open
+        projectId="atlas"
+        repository={repository}
+        onClose={vi.fn()}
+        onResolved={onResolved}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "保留界面值" }));
+    const confirmDialog = await screen.findByRole("dialog", { name: "保留界面值" });
+    fireEvent.change(within(confirmDialog).getByRole("textbox"), {
+      target: { value: "以硬件实测值为准" }
+    });
+    fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认裁决" }));
+
+    await waitFor(() =>
+      expect(onResolved).toHaveBeenCalledWith(
+        expect.objectContaining({ resolution: "ui", reason: "以硬件实测值为准" })
+      )
+    );
   });
 });

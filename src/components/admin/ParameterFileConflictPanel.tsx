@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ParameterFileRepository, ParameterFileSyncConflict } from "@/application/ports/ParameterFileRepository";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ParamAdminEmptyState } from "@/components/parameter-admin-next/ParamAdminEmptyState";
 
 type ParameterFileConflictPanelProps = {
@@ -14,6 +15,7 @@ type ParameterFileConflictPanelProps = {
     conflictId: string;
     resolution: "file" | "ui";
     parameterName: string;
+    reason: string;
   }) => void;
 };
 
@@ -22,6 +24,19 @@ function getParameterDisplayName(conflict: ParameterFileSyncConflict) {
     return conflict.parameterName;
   }
   return conflict.parameterDefinitionId;
+}
+
+const RESOLUTION_LABELS: Record<"file" | "ui", string> = {
+  file: "文件值",
+  ui: "界面值"
+};
+
+function formatConflictTime(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString("zh-CN", { hour12: false });
 }
 
 export function ParameterFileConflictPanel({
@@ -39,6 +54,11 @@ export function ParameterFileConflictPanel({
   const [resolvingConflictId, setResolvingConflictId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [conflicts, setConflicts] = useState<ParameterFileSyncConflict[]>([]);
+  const [arbitration, setArbitration] = useState<{
+    conflict: ParameterFileSyncConflict;
+    resolution: "file" | "ui";
+  } | null>(null);
+  const [reason, setReason] = useState("");
   const openConflicts = useMemo(() => conflicts.filter((item) => item.status === "open"), [conflicts]);
   // Keep the count callback out of effect deps — parents often pass an inline
   // function that would otherwise re-trigger fetch → dispatch → re-render loops.
@@ -79,7 +99,7 @@ export function ParameterFileConflictPanel({
     };
   }, [open, projectId, repository]);
 
-  const resolveConflict = async (conflictId: string, resolution: "file" | "ui") => {
+  const resolveConflict = async (conflictId: string, resolution: "file" | "ui", reason: string) => {
     setResolvingConflictId(conflictId);
     setError("");
     try {
@@ -92,8 +112,11 @@ export function ParameterFileConflictPanel({
       onResolved?.({
         conflictId,
         resolution,
-        parameterName: getParameterDisplayName(resolved)
+        parameterName: getParameterDisplayName(resolved),
+        reason
       });
+      setArbitration(null);
+      setReason("");
     } catch (resolveError) {
       setError(resolveError instanceof Error ? resolveError.message : "冲突处理失败。");
     } finally {
@@ -104,6 +127,10 @@ export function ParameterFileConflictPanel({
   if (!open) {
     return null;
   }
+
+  // Embedded in a project view the page already owns the h2, so this panel sits a level down.
+  const PanelHeading = variant === "embedded" ? "h3" : "h2";
+  const ValueHeading = variant === "embedded" ? "h4" : "h3";
 
   const body = (
     <section
@@ -117,8 +144,15 @@ export function ParameterFileConflictPanel({
     >
       <header className="parameter-file-conflict-panel__header">
         <div>
-          <h2>参数文件冲突</h2>
-          <p>处理文件同步与界面草稿并发修改产生的冲突。</p>
+          <PanelHeading>
+            参数文件冲突
+            {openConflicts.length > 0 ? (
+              <span className="parameter-file-conflict-panel__count">{openConflicts.length}</span>
+            ) : null}
+          </PanelHeading>
+          <p>
+            文件同步与界面草稿改了同一个参数。两个取值都保留不了，选中的一侧会覆盖另一侧。
+          </p>
         </div>
         {variant === "modal" ? (
           <button type="button" className="button subtle" onClick={onClose}>
@@ -151,33 +185,50 @@ export function ParameterFileConflictPanel({
                   <strong>{getParameterDisplayName(conflict)}</strong>
                   <span>{conflict.parameterModule ?? "未归属模块"}</span>
                 </div>
+                <dl className="parameter-file-conflict-panel__provenance">
+                  <div>
+                    <dt>出现时间</dt>
+                    <dd>
+                      <time dateTime={conflict.createdAt}>{formatConflictTime(conflict.createdAt)}</time>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>来源文件版本</dt>
+                    <dd>
+                      <code>{conflict.fileVersionId}</code>
+                    </dd>
+                  </div>
+                </dl>
                 <div className="parameter-file-conflict-panel__values">
-                  <article>
-                    <h3>文件值</h3>
+                  <article data-side="file">
+                    <ValueHeading>文件值</ValueHeading>
                     <pre>{conflict.fileValue || "(空值)"}</pre>
                   </article>
-                  <article>
-                    <h3>界面值</h3>
+                  <article data-side="ui">
+                    <ValueHeading>界面值</ValueHeading>
                     <pre>{conflict.uiDraftValue || "(空值)"}</pre>
                   </article>
                 </div>
+                {/* Symmetric emphasis: both options discard the other side irreversibly. */}
                 <div className="parameter-file-conflict-panel__actions">
                   <button
                     type="button"
-                    className="button subtle"
+                    className="button"
                     disabled={isResolving}
                     onClick={() => {
-                      void resolveConflict(conflict.id, "file");
+                      setReason("");
+                      setArbitration({ conflict, resolution: "file" });
                     }}
                   >
                     保留文件值
                   </button>
                   <button
                     type="button"
-                    className="button primary"
+                    className="button"
                     disabled={isResolving}
                     onClick={() => {
-                      void resolveConflict(conflict.id, "ui");
+                      setReason("");
+                      setArbitration({ conflict, resolution: "ui" });
                     }}
                   >
                     保留界面值
@@ -188,6 +239,57 @@ export function ParameterFileConflictPanel({
           })}
         </ul>
       ) : null}
+
+      <ConfirmDialog
+        open={arbitration !== null}
+        title={arbitration ? `保留${RESOLUTION_LABELS[arbitration.resolution]}` : ""}
+        description={
+          arbitration ? (
+            <>
+              <p>
+                参数「{getParameterDisplayName(arbitration.conflict)}」将采用
+                {RESOLUTION_LABELS[arbitration.resolution]}：
+              </p>
+              <pre className="parameter-file-conflict-panel__confirm-value">
+                {(arbitration.resolution === "file"
+                  ? arbitration.conflict.fileValue
+                  : arbitration.conflict.uiDraftValue) || "(空值)"}
+              </pre>
+              <p>
+                另一侧的
+                {RESOLUTION_LABELS[arbitration.resolution === "file" ? "ui" : "file"]}
+                会被丢弃，此操作不可撤销。
+              </p>
+            </>
+          ) : null
+        }
+        extra={
+          <label className="parameter-file-conflict-panel__reason">
+            <span>裁决原因（记入审计，可选）</span>
+            <textarea
+              rows={2}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="例如：以硬件实测值为准"
+            />
+          </label>
+        }
+        confirmLabel="确认裁决"
+        pendingLabel="裁决中…"
+        tone="danger"
+        pending={arbitration !== null && resolvingConflictId === arbitration.conflict.id}
+        onCancel={() => {
+          if (!resolvingConflictId) {
+            setArbitration(null);
+            setReason("");
+          }
+        }}
+        onConfirm={() => {
+          if (arbitration) {
+            void resolveConflict(arbitration.conflict.id, arbitration.resolution, reason.trim());
+          }
+        }}
+      />
     </section>
   );
 

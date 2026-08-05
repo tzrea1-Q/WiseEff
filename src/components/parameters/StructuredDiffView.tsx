@@ -24,6 +24,20 @@ function changeKey(fileId: string, change: DtsStructuralChange, index: number): 
   return `${fileId}:${change.kind}:${sourceNodePathForChange(change)}:${index}`;
 }
 
+/**
+ * Local edits carry a provisional `pending:<fileId>:<nodePath/prop>` id because the
+ * project parameter is created server-side on submit. That key is an implementation
+ * detail, so show the path it stands for and say the binding is still to be created.
+ */
+function itemLabel(parameterId: string): { text: string; provisional: boolean } {
+  if (!parameterId.startsWith("pending:")) {
+    return { text: parameterId, provisional: false };
+  }
+  const separator = parameterId.indexOf(":", "pending:".length);
+  const path = separator >= 0 ? parameterId.slice(separator + 1) : "";
+  return { text: path || parameterId, provisional: true };
+}
+
 function StructuralChangeRow({ change }: { change: DtsStructuralChange }) {
   const label = KIND_LABEL[change.kind];
   const path = sourceNodePathForChange(change);
@@ -90,13 +104,19 @@ export function StructuredDiffView({ result, changeSet }: StructuredDiffViewProp
           </p>
           {changeSet.items.length > 0 ? (
             <ul aria-label="已映射变更">
-              {changeSet.items.map((item) => (
-                <li key={item.parameterId}>
-                  <code>{item.parameterId}</code>
-                  <span> → </span>
-                  <code>{item.targetValue || "(删除)"}</code>
-                </li>
-              ))}
+              {changeSet.items.map((item) => {
+                const label = itemLabel(item.parameterId);
+                return (
+                  <li key={item.parameterId}>
+                    <code>{label.text}</code>
+                    {label.provisional ? (
+                      <span className="structured-diff-view__provisional">待建参数绑定</span>
+                    ) : null}
+                    <span> → </span>
+                    <code>{item.targetValue || "(删除)"}</code>
+                  </li>
+                );
+              })}
             </ul>
           ) : null}
           {changeSet.unmapped.length > 0 ? (

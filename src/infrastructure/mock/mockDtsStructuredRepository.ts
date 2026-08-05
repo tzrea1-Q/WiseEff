@@ -14,9 +14,8 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
-const DEFAULT_PROJECT_ID = "project-teaching";
 const DEFAULT_FILE_ID = "file-teaching-dts";
-const DEFAULT_FILE_NAME = "teaching-sample.dts";
+const DEFAULT_FILE_NAME = "atlas-board.dts";
 const DEFAULT_VERSION_ID = "version-teaching-1";
 const DEFAULT_ORG_ID = "org-teaching";
 
@@ -227,12 +226,10 @@ function createInitialState(nodes: DtsStructuralNode[]): MockDtsStructuredState 
 export function createMockDtsStructuredRepository(
   options: {
     nodes?: DtsStructuralNode[];
-    projectId?: string;
     fileId?: string;
     versionId?: string;
   } = {}
 ): DtsStructuredRepository {
-  const projectId = options.projectId ?? DEFAULT_PROJECT_ID;
   const fileId = options.fileId ?? DEFAULT_FILE_ID;
   const versionId = options.versionId ?? DEFAULT_VERSION_ID;
   const state = createInitialState(options.nodes ?? createTeachingStructureNodes());
@@ -259,16 +256,16 @@ export function createMockDtsStructuredRepository(
   }
 
   return {
+    /**
+     * The mock owns a single fixture dataset and serves it for any project, so browse and
+     * search always describe the same tree. Scoping one of them by project id (as `search`
+     * used to) made the two views of the same data contradict each other.
+     */
     async getStructure(_requestedProjectId, _requestedFileId, _requestedVersionId) {
-      // Teaching convenience: return the fixture-derived structure for any / default ids
-      // so structure browse can open from unrelated project manage-files dialogs.
       return { nodes: cloneNodes(state.nodes) };
     },
 
-    async search(requestedProjectId, query) {
-      if (requestedProjectId !== projectId) {
-        return { hits: [] };
-      }
+    async search(_requestedProjectId, query) {
       const by = query.by ?? "path";
       return {
         hits: searchNodes(state.nodes, query.q, by, {
@@ -346,7 +343,7 @@ export function createMockDtsStructuredRepository(
         .filter((membership) => membership.configSetId === baseline.configSetId)
         .map((membership) => ({
           fileId: membership.fileId,
-          fileName: membership.fileId === fileId ? "teaching-sample.dts" : membership.fileId,
+          fileName: membership.fileId === fileId ? "atlas-board.dts" : membership.fileId,
           status: "version_changed" as const,
           baselineVersionId: versionId,
           currentVersionId: `${versionId}-current`,
@@ -369,7 +366,7 @@ export function createMockDtsStructuredRepository(
             : [
                 {
                   fileId,
-                  fileName: "teaching-sample.dts",
+                  fileName: "atlas-board.dts",
                   status: "unchanged" as const,
                   baselineVersionId: versionId,
                   currentVersionId: versionId,
@@ -423,7 +420,7 @@ export function createMockDtsStructuredRepository(
           },
           members: members.map((member) => ({
             fileId: member.fileId,
-            fileName: member.fileId === fileId ? "teaching-sample.dts" : member.fileId,
+            fileName: member.fileId === fileId ? "atlas-board.dts" : member.fileId,
             role: member.role,
             sortOrder: member.sortOrder,
             versionNumber: 1,
@@ -431,9 +428,9 @@ export function createMockDtsStructuredRepository(
           }))
         },
         files: members.map((member) => ({
-          name: member.fileId === fileId ? "teaching-sample.dts" : member.fileId,
+          name: member.fileId === fileId ? "atlas-board.dts" : member.fileId,
           format: "dts" as const,
-          content: "/* mock export derived from teaching structure */\n/dts-v1/;\n"
+          content: "/* mock export derived from the fixture structure */\n/dts-v1/;\n"
         }))
       };
       return result;

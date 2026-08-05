@@ -7,8 +7,8 @@ import type {
 import { DtsStructureBrowserPanel } from "./DtsStructureBrowserPanel";
 
 const PROJECT_ID = "atlas";
-const TEACHING_FILE_ID = "file-teaching-dts";
-const TEACHING_VERSION_ID = "version-teaching-1";
+const FILE_ID = "file-board";
+const VERSION_ID = "version-board-3";
 
 function node(overrides: Partial<DtsStructuralNode> & { nodePath: string }): DtsStructuralNode {
   return {
@@ -95,19 +95,21 @@ afterEach(() => {
 });
 
 describe("DtsStructureBrowserPanel", () => {
-  it("auto-loads teaching structure and mounts StructuredValueEditor on property select", async () => {
+  it("loads the given file version and mounts StructuredValueEditor on property select", async () => {
     const repository = createRepository();
 
     render(
-      <DtsStructureBrowserPanel projectId={PROJECT_ID} repository={repository} canEditCritical />
+      <DtsStructureBrowserPanel
+        projectId={PROJECT_ID}
+        repository={repository}
+        fileId={FILE_ID}
+        versionId={VERSION_ID}
+        canEditCritical
+      />
     );
 
     await waitFor(() => {
-      expect(repository.getStructure).toHaveBeenCalledWith(
-        PROJECT_ID,
-        TEACHING_FILE_ID,
-        TEACHING_VERSION_ID
-      );
+      expect(repository.getStructure).toHaveBeenCalledWith(PROJECT_ID, FILE_ID, VERSION_ID);
     });
 
     const panel = await screen.findByRole("region", { name: "结构浏览" });
@@ -132,6 +134,8 @@ describe("DtsStructureBrowserPanel", () => {
       <DtsStructureBrowserPanel
         projectId={PROJECT_ID}
         repository={repository}
+        fileId={FILE_ID}
+        versionId={VERSION_ID}
         canEditCritical={false}
       />
     );
@@ -142,21 +146,18 @@ describe("DtsStructureBrowserPanel", () => {
       within(panel).getByRole("button", { name: /编辑属性 regulator-min-microvolt/ })
     );
 
-    expect(
-      within(panel).getByText(/需要 parameter:edit-critical 权限才能编辑安全关键节点/)
-    ).toBeInTheDocument();
+    // One authoritative locked state in product language, not a permission slug.
+    expect(within(panel).getByText(/安全关键节点，你的角色没有修改它的权限/)).toBeInTheDocument();
+    expect(within(panel).queryByText(/parameter:edit-critical/)).not.toBeInTheDocument();
     expect(within(panel).getByLabelText("cell 1")).toBeDisabled();
   });
 
-  it("allows loading teaching structure via explicit button when auto-load was skipped", async () => {
+  it("names a real next action instead of offering a teaching fixture when there is nothing to browse", async () => {
     const repository = createRepository({
-      getStructure: vi
-        .fn()
-        .mockResolvedValueOnce({ nodes: [] })
-        .mockResolvedValue({ nodes: TEACHING_NODES })
+      getStructure: vi.fn().mockResolvedValue({ nodes: [] })
     });
 
-    render(
+    const { unmount } = render(
       <DtsStructureBrowserPanel
         projectId={PROJECT_ID}
         repository={repository}
@@ -166,25 +167,66 @@ describe("DtsStructureBrowserPanel", () => {
       />
     );
 
-    await waitFor(() => {
-      expect(repository.getStructure).toHaveBeenCalledWith(
-        PROJECT_ID,
-        "file-empty",
-        "version-empty"
-      );
-    });
+    expect(await screen.findByText(/没有解析出结构节点/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /教学/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/file-teaching-dts|mock/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "加载教学结构" }));
+    unmount();
+    const idleRepository = createRepository();
+    render(<DtsStructureBrowserPanel projectId={PROJECT_ID} repository={idleRepository} />);
 
-    await waitFor(() => {
-      expect(repository.getStructure).toHaveBeenCalledWith(
-        PROJECT_ID,
-        TEACHING_FILE_ID,
-        TEACHING_VERSION_ID
-      );
-    });
+    expect(await screen.findByText(/还没有指定要浏览的结构文件/)).toBeInTheDocument();
+    expect(idleRepository.getStructure).not.toHaveBeenCalled();
+  });
 
-    expect(await screen.findByRole("treeitem", { name: "demo_bool" })).toBeInTheDocument();
+  it("selects the node a search hit asked for, and says so when it is in another file", async () => {
+    const repository = createRepository();
+
+    const { rerender } = render(
+      <DtsStructureBrowserPanel
+        projectId={PROJECT_ID}
+        repository={repository}
+        fileId={FILE_ID}
+        versionId={VERSION_ID}
+        focusRequest={{ nodePath: "demo_regulator", token: 1 }}
+      />
+    );
+
+    const panel = await screen.findByRole("region", { name: "结构浏览" });
+    await waitFor(() =>
+      expect(within(panel).getByRole("treeitem", { name: "demo_regulator" })).toHaveAttribute(
+        "aria-selected",
+        "true"
+      )
+    );
+
+    rerender(
+      <DtsStructureBrowserPanel
+        projectId={PROJECT_ID}
+        repository={repository}
+        fileId={FILE_ID}
+        versionId={VERSION_ID}
+        focusRequest={{
+          nodePath: "demo_bool",
+          propertyName: "weak_source_sleep_enabled",
+          token: 2
+        }}
+      />
+    );
+    expect(
+      await within(panel).findByRole("checkbox", { name: "布尔开关" })
+    ).toBeInTheDocument();
+
+    rerender(
+      <DtsStructureBrowserPanel
+        projectId={PROJECT_ID}
+        repository={repository}
+        fileId={FILE_ID}
+        versionId={VERSION_ID}
+        focusRequest={{ nodePath: "somewhere/else", token: 3 }}
+      />
+    );
+    expect(await within(panel).findByText(/不在当前浏览的文件里/)).toBeInTheDocument();
   });
 
   it("aggregates local edits into a change-set and submits via Port with rawText", async () => {
@@ -240,9 +282,11 @@ describe("DtsStructureBrowserPanel", () => {
 
     const changeSet = await within(panel).findByRole("region", { name: "变更集" });
     expect(within(changeSet).getByText(/已映射|待提交/)).toBeInTheDocument();
-    expect(within(changeSet).queryByText(/未映射 0 项|未映射变更/)).toBeTruthy();
 
-    fireEvent.click(within(panel).getByRole("button", { name: "提交变更请求" }));
+    const submit = within(panel).getByRole("button", { name: /提交变更请求/ });
+    expect(submit).toHaveClass("primary");
+    expect(submit).toHaveAccessibleName("提交变更请求（1 项）");
+    fireEvent.click(submit);
 
     await waitFor(() => {
       expect(submitStructuredEdits).toHaveBeenCalledWith(
@@ -271,6 +315,8 @@ describe("DtsStructureBrowserPanel", () => {
       <DtsStructureBrowserPanel
         projectId={PROJECT_ID}
         repository={repository}
+        fileId={FILE_ID}
+        versionId={VERSION_ID}
         canEdit={false}
         canEditCritical={false}
       />

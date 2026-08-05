@@ -11,6 +11,17 @@
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #f9f9ff;
   color: #101c2d;
+
+  /*
+   * Overlay stacking scale. Declared in one place so a new dialog does not need to
+   * invent another number and accidentally land under the Xiaoze launcher.
+   * Order: Xiaoze FAB < dialog < nested dialog < Xiaoze chat popup.
+   */
+  --z-xiaoze-fab: 1100;
+  --z-modal-backdrop: 1150;
+  --z-modal-backdrop-nested: 1160;
+  --z-xiaoze-popup: 1200;
+
   --background: oklch(1 0 0);
   --app-background: #f9f9ff;
   --surface: #ffffff;
@@ -9426,12 +9437,25 @@ td small {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-modal-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
   background: rgba(16, 28, 45, 0.4);
+}
+
+/*
+ * Parameter admin dialogs keep the blurred backdrop the surface was designed with.
+ * This used to be `.param-admin-shell > .modal-backdrop`, which never matched because
+ * the dialogs render inside a panel, and now cannot match at all because ModalDialog
+ * portals to `document.body`.
+ */
+.modal-backdrop.param-admin-modal-backdrop {
+  display: grid;
+  place-items: center;
+  background: rgba(16, 28, 45, 0.32);
+  backdrop-filter: blur(6px);
 }
 
 .parameter-detail-dialog {
@@ -12347,34 +12371,22 @@ td small {
   border-radius: 12px;
 }
 
-.param-admin-shell > .modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 120;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(16, 28, 45, 0.32);
-  backdrop-filter: blur(6px);
-}
-
-.param-admin-shell > .modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 120;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(16, 28, 45, 0.32);
-  backdrop-filter: blur(6px);
-}
-
+/*
+ * Param-admin dialogs render through a portal on document.body, so every rule the
+ * dialogs need has to accept the backdrop as an ancestor as well as the shell.
+ */
 .param-admin-shell :focus-visible,
 .param-admin-shell button:focus-visible,
 .param-admin-shell input:focus-visible,
 .param-admin-shell select:focus-visible,
 .param-admin-shell textarea:focus-visible,
-.param-admin-shell [role="option"]:focus-visible {
+.param-admin-shell [role="option"]:focus-visible,
+.param-admin-modal-backdrop :focus-visible,
+.param-admin-modal-backdrop button:focus-visible,
+.param-admin-modal-backdrop input:focus-visible,
+.param-admin-modal-backdrop select:focus-visible,
+.param-admin-modal-backdrop textarea:focus-visible,
+.param-admin-modal-backdrop [role="option"]:focus-visible {
   outline: 2px solid var(--app-primary);
   outline-offset: 2px;
 }
@@ -12414,14 +12426,20 @@ td small {
 }
 
 .param-admin-header-actions,
-.param-admin-shell .dialog-actions {
+.param-admin-shell .dialog-actions,
+.param-admin-modal-backdrop .dialog-actions {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
 
-.param-admin-shell .button {
+.param-admin-modal-backdrop .dialog-actions {
+  justify-content: flex-end;
+}
+
+.param-admin-shell .button,
+.param-admin-modal-backdrop .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -12439,31 +12457,37 @@ td small {
   line-height: 1.2;
 }
 
-.param-admin-shell .button.primary {
+.param-admin-shell .button.primary,
+.param-admin-modal-backdrop .button.primary {
   color: #fff;
   background: var(--app-primary);
   border-color: var(--app-primary);
 }
 
 .param-admin-shell .button.subtle,
-.param-admin-shell .button.ghost {
+.param-admin-shell .button.ghost,
+.param-admin-modal-backdrop .button.subtle,
+.param-admin-modal-backdrop .button.ghost {
   color: #334155;
   background: #fff;
 }
 
-.param-admin-shell .button.ghost[aria-pressed="true"] {
+.param-admin-shell .button.ghost[aria-pressed="true"],
+.param-admin-modal-backdrop .button.ghost[aria-pressed="true"] {
   color: var(--app-primary);
   background: #eef5ff;
   border-color: rgba(0, 82, 204, 0.28);
 }
 
-.param-admin-shell .button.danger {
+.param-admin-shell .button.danger,
+.param-admin-modal-backdrop .button.danger {
   color: #fff;
   background: var(--danger);
   border-color: var(--danger);
 }
 
-.param-admin-shell .button:disabled {
+.param-admin-shell .button:disabled,
+.param-admin-modal-backdrop .button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -12597,7 +12621,7 @@ td small {
 .xiaoze-popup-layer {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: var(--z-xiaoze-popup);
   display: flex;
   flex-direction: column;
   pointer-events: none;
@@ -12733,7 +12757,7 @@ td small {
   position: fixed;
   right: 1.5rem;
   bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
-  z-index: 1100;
+  z-index: var(--z-xiaoze-fab);
   width: 3.5rem;
   height: 3.5rem;
 }
@@ -14918,70 +14942,164 @@ body.xiaoze-popup-resize-active {
   font-size: 12px;
 }
 
-.project-parameter-files-dialog {
+/*
+ * Project operations dialog budget: fixed card height, sticky chrome, one scroll
+ * region on the body. Portal styles are keyed off `.param-admin-modal-backdrop`
+ * because ModalDialog mounts outside `.param-admin-shell`.
+ */
+.param-admin-modal-backdrop .project-parameter-files-dialog.project-operations-dialog,
+.project-parameter-files-dialog.project-operations-dialog {
   width: min(980px, calc(100vw - 48px));
+  height: min(88vh, 920px);
   max-height: min(88vh, 920px);
   display: flex;
   flex-direction: column;
+  gap: 12px;
+  padding: 20px 0 0;
   overflow: hidden;
 }
 
-.project-parameter-files-dialog-audit {
-  margin: 0 20px 8px;
+.param-admin-modal-backdrop .project-operations-dialog > .submission-dialog-head,
+.project-operations-dialog > .submission-dialog-head,
+.param-admin-modal-backdrop .project-operations-dialog > .project-operations-audit,
+.project-operations-dialog > .project-operations-audit,
+.param-admin-modal-backdrop .project-operations-dialog > .project-operations-nav,
+.project-operations-dialog > .project-operations-nav {
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
-.project-parameter-files-tabs {
+.param-admin-modal-backdrop .project-operations-dialog > .submission-dialog-head,
+.project-operations-dialog > .submission-dialog-head {
+  padding: 0 20px;
+}
+
+.param-admin-modal-backdrop .project-operations-dialog > .project-operations-audit,
+.project-operations-dialog > .project-operations-audit {
+  margin: 0 20px;
+}
+
+.param-admin-modal-backdrop .project-operations-dialog > .project-operations-nav,
+.project-operations-dialog > .project-operations-nav {
+  margin: 0 20px;
+}
+
+.param-admin-modal-backdrop .project-parameter-files-dialog-body,
+.project-parameter-files-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 20px 20px;
+  overflow: auto;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+@media (max-width: 768px) {
+  .param-admin-modal-backdrop .project-parameter-files-dialog.project-operations-dialog,
+  .project-parameter-files-dialog.project-operations-dialog {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+}
+
+/*
+ * One tab language: a pill row. Shared by the project-operations dialog nav.
+ */
+.project-operations-nav {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 0 0 12px;
-  border-bottom: 1px solid var(--outline);
 }
 
-.project-parameter-files-dialog .project-parameter-files-tabs {
-  margin: 0 20px 12px;
-}
-
-.param-admin-main .project-parameter-files-tabs {
-  margin: 0 0 16px;
-  border-bottom: 0;
-}
-
-.param-admin-main .project-parameter-files-tab {
-  margin-bottom: 0;
-  border-radius: 999px;
+.project-operations-nav-link {
+  padding: 8px 14px;
   border: 1px solid var(--outline);
-}
-
-.param-admin-main .project-parameter-files-tab.is-active {
-  border-color: rgba(0, 82, 204, 0.28);
-}
-
-.project-parameter-files-tab {
-  margin-bottom: -1px;
-  padding: 8px 12px;
-  border: 1px solid transparent;
-  border-bottom-color: transparent;
-  border-radius: 8px 8px 0 0;
+  border-radius: 999px;
   color: var(--app-muted);
   background: transparent;
   font: inherit;
+  cursor: pointer;
 }
 
-.project-parameter-files-tab.is-active {
+.project-operations-nav-link:hover {
+  background: var(--surface-low);
+}
+
+.project-operations-nav-link.is-active {
   color: var(--app-primary);
   background: #f8fbff;
-  border-color: var(--outline);
+  border-color: rgba(0, 82, 204, 0.28);
 }
 
-.project-parameter-files-dialog-body {
-  padding: 0 20px 20px;
-  overflow: auto;
+.project-operations-audit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(0, 82, 204, 0.18);
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.project-operations-audit p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.project-operations-audit__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.8125rem;
+  color: var(--app-muted);
+}
+
+.project-operations-audit__dismiss {
+  min-height: 28px;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.project-operations-not-found {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  max-width: 560px;
+}
+
+.project-operations-not-found h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.project-operations-not-found p {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 0.9375rem;
+}
+
+.project-operations-view-slot {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.project-operations-view-slot[hidden] {
+  display: none;
 }
 
 .dts-search-panel {
   display: grid;
   gap: 12px;
+}
+
+/* Only separate the search panel when something follows it. */
+.dts-search-panel:not(:last-child) {
   margin-bottom: 16px;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--outline);
@@ -15078,10 +15196,56 @@ body.xiaoze-popup-resize-active {
 .dts-structure-browser-panel__status,
 .dts-structure-browser-panel__empty,
 .dts-structure-browser-panel__preview-note,
-.dts-structure-browser-panel__risk-note {
+.dts-structure-browser-panel__source {
   margin: 0;
   color: var(--app-muted);
   font-size: 0.875rem;
+}
+
+.dts-structure-browser-panel__source code {
+  color: var(--app-text);
+}
+
+/*
+ * regulator/thermal writes can damage hardware, so this reads as a warning rather
+ * than as grey supporting text next to the value being changed.
+ */
+.dts-structure-browser-panel__risk-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #f0c47c;
+  border-left: 3px solid #d68910;
+  border-radius: 8px;
+  background: #fdf6e8;
+  color: #7a4f01;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.dts-structure-browser-panel__risk-note svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.dts-structure-browser-panel__locked {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: var(--surface-low);
+  color: var(--app-muted);
+  font-size: 0.875rem;
+}
+
+.dts-structure-browser-panel__locked svg {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .dts-structure-browser-panel__body {
@@ -15117,24 +15281,32 @@ body.xiaoze-popup-resize-active {
   border-radius: 6px;
 }
 
+/*
+ * The list grows with the page instead of scrolling inside a fixed 360px window.
+ * On a route there is no outer scroll container to nest inside, so a viewport-relative
+ * ceiling only engages for genuinely long trees.
+ */
 .dts-node-tree-view__list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   gap: 4px;
-  max-height: 360px;
-  overflow: auto;
+  max-height: max(360px, calc(100vh - 320px));
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .dts-node-tree-view__item {
   width: 100%;
+  min-width: 0;
   text-align: left;
   padding: 6px 8px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   cursor: pointer;
+  overflow-wrap: anywhere;
 }
 
 .dts-node-tree-view__item:hover,
@@ -15146,6 +15318,7 @@ body.xiaoze-popup-resize-active {
 .dts-node-tree-view__item code,
 .dts-structure-browser-panel__detail h4 code {
   font-size: 0.8125rem;
+  overflow-wrap: anywhere;
 }
 
 .dts-structure-browser-panel__detail {
@@ -15202,6 +15375,200 @@ body.xiaoze-popup-resize-active {
   gap: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--outline);
+}
+
+/*
+ * Structured value editor.
+ *
+ * Every class below is emitted by StructuredValueEditor and had no rule anywhere in
+ * the repository, so the highest-risk write path in the parameter admin rendered as
+ * unstyled HTML: borderless inputs and bare-text buttons.
+ */
+.structured-value-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.structured-value-editor input:not([type="checkbox"]),
+.structured-value-editor textarea {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.structured-value-editor input[aria-invalid="true"] {
+  border-color: #b42318;
+  background: #fef3f2;
+}
+
+.structured-value-editor input:disabled,
+.structured-value-editor textarea:disabled {
+  background: var(--surface-low);
+  color: var(--app-muted);
+  cursor: not-allowed;
+}
+
+.structured-value-editor button {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.structured-value-editor button:hover:not(:disabled) {
+  border-color: var(--app-primary);
+  color: var(--app-primary);
+}
+
+.structured-value-editor button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.structured-value-u32-matrix,
+.structured-value-bytes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.structured-value-u32-matrix .structured-value-cell,
+.structured-value-bytes > label {
+  display: grid;
+  gap: 3px;
+  font-size: 0.75rem;
+  color: var(--app-muted);
+}
+
+.structured-value-u32-matrix .structured-value-cell input,
+.structured-value-bytes > label input {
+  width: 7.5ch;
+  font-variant-numeric: tabular-nums;
+}
+
+.structured-value-bytes > label:first-child input {
+  width: 6ch;
+}
+
+.structured-value-string-list {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.structured-value-string-row {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  max-width: 46ch;
+}
+
+.structured-value-string-row input {
+  flex: 1 1 auto;
+}
+
+.structured-value-phandle-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.structured-value-phandle-list > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.structured-value-phandle-list > label:has(input:checked) {
+  border-color: rgba(0, 82, 204, 0.32);
+  background: #f8fbff;
+  color: var(--app-primary);
+}
+
+.structured-value-bool {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+}
+
+.structured-value-mixed {
+  display: grid;
+  gap: 4px;
+}
+
+.structured-value-mixed textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.structured-value-empty-note {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px dashed var(--outline);
+  border-radius: 6px;
+  color: var(--app-muted);
+  font-size: 0.8125rem;
+}
+
+.structured-value-normalized-preview {
+  padding: 6px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: var(--surface-low);
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.structured-value-editor .field-error {
+  color: #b42318;
+  font-size: 0.75rem;
+}
+
+/* Change-set action bar: the submit is the primary action, not trailing prose. */
+.dts-structure-browser-panel__changeset {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(0, 82, 204, 0.18);
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.dts-structure-browser-panel__changeset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.dts-structure-browser-panel__changeset-counts {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--app-muted);
+}
+
+.dts-structure-browser-panel__changeset-counts strong {
+  font-size: 0.9375rem;
+  color: var(--text);
 }
 
 .dts-search-panel__meta,
@@ -15291,17 +15658,145 @@ body.xiaoze-popup-resize-active {
 
 .config-set-baseline-panel__gate {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   padding: 10px 12px;
   border: 1px solid var(--outline);
+  border-left: 3px solid var(--app-muted);
   border-radius: 8px;
-  background: #fff8f0;
+  background: #fff;
   font-size: 0.875rem;
+}
+
+.config-set-baseline-panel__gate[data-ok="true"] {
+  border-left-color: #12805c;
+  background: #f2fbf7;
+}
+
+.config-set-baseline-panel__gate[data-ok="false"] {
+  border-left-color: #b42318;
+  background: #fef3f2;
+}
+
+.config-set-baseline-panel__gate-verdict {
+  margin: 0;
+  font-weight: 600;
+}
+
+.config-set-baseline-panel__gate-meta {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--app-muted);
+}
+
+.config-set-baseline-panel__gate-diagnostics {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.config-set-baseline-panel__gate-diagnostics li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.8125rem;
+}
+
+.config-set-baseline-panel__gate-severity {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-mid);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.config-set-baseline-panel__gate-diagnostics li[data-severity="error"] .config-set-baseline-panel__gate-severity {
+  background: #fee4e2;
+  color: #b42318;
+}
+
+.config-set-baseline-panel__gate-diagnostics li[data-severity="warning"] .config-set-baseline-panel__gate-severity {
+  background: #fdf6e8;
+  color: #7a4f01;
 }
 
 .config-set-baseline-panel__compare {
   display: grid;
   gap: 8px;
+  justify-items: start;
+}
+
+.governance-confirm-dialog,
+.delete-project-dialog {
+  display: grid;
+  gap: 14px;
+  width: min(520px, calc(100vw - 48px));
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.governance-confirm-dialog h2,
+.delete-project-dialog h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.delete-project-dialog p {
+  margin: 0;
+  color: var(--app-muted);
+}
+
+.governance-confirm-dialog__body {
+  display: grid;
+  gap: 8px;
+  color: var(--app-muted);
+}
+
+.governance-confirm-dialog__body strong,
+.governance-confirm-dialog__body code {
+  color: var(--text);
+}
+
+.governance-confirm-dialog__body p {
+  margin: 0;
+}
+
+.governance-confirm-dialog__risk {
+  padding: 8px 10px;
+  border: 1px solid #f0c47c;
+  border-left: 3px solid #d68910;
+  border-radius: 8px;
+  background: #fdf6e8;
+  color: #7a4f01;
+}
+
+.governance-confirm-dialog__acknowledge {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: var(--surface-low);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.governance-confirm-dialog__acknowledge input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.governance-confirm-dialog__error {
+  margin: 0;
+  color: #b42318;
+  font-size: 0.875rem;
 }
 
 .structured-diff-view {
@@ -15364,6 +15859,17 @@ body.xiaoze-popup-resize-active {
   display: grid;
   gap: 4px;
   font-size: 0.875rem;
+}
+
+.structured-diff-view__provisional {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  background: var(--surface-low);
+  color: var(--app-muted);
+  font-size: 0.75rem;
 }
 
 .project-parameter-files {
@@ -15480,9 +15986,49 @@ body.xiaoze-popup-resize-active {
 
 .project-parameter-files__versions {
   margin: 0;
-  padding-left: 20px;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
   color: var(--app-muted);
   font-size: 12px;
+}
+
+.project-parameter-files__version {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #fbfdff;
+}
+
+.project-parameter-files__version-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--app-text);
+}
+
+.project-parameter-files__version-current {
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: rgba(21, 128, 61, 0.12);
+  color: #15803d;
+  font-size: 11px;
+}
+
+.project-parameter-files__version-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.project-parameter-files__version .button {
+  margin-left: auto;
+  min-height: 32px;
 }
 
 .project-parameter-files--placeholder {
@@ -15546,14 +16092,77 @@ body.xiaoze-popup-resize-active {
   gap: 12px;
 }
 
-.parameter-file-conflict-panel__header h2 {
+.parameter-file-conflict-panel__header h2,
+.parameter-file-conflict-panel__header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
+}
+
+.parameter-file-conflict-panel__count {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fee4e2;
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
 }
 
 .parameter-file-conflict-panel__header p {
   margin: 6px 0 0;
   color: var(--app-muted);
   font-size: 13px;
+}
+
+.parameter-file-conflict-panel__provenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.parameter-file-conflict-panel__provenance div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.parameter-file-conflict-panel__provenance dt {
+  color: var(--app-muted);
+}
+
+.parameter-file-conflict-panel__provenance dd {
+  margin: 0;
+}
+
+.parameter-file-conflict-panel__reason {
+  display: grid;
+  gap: 4px;
+  font-size: 0.875rem;
+}
+
+.parameter-file-conflict-panel__reason textarea {
+  padding: 6px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.875rem;
+  resize: vertical;
+}
+
+.parameter-file-conflict-panel__confirm-value {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  background: var(--surface-low);
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .parameter-file-conflict-panel__loading,
@@ -20148,7 +20757,8 @@ body.xiaoze-popup-resize-active {
 }
 
 .parameter-import-paste-backdrop {
-  z-index: 1100;
+  /* Opened from inside the import wizard dialog. */
+  z-index: var(--z-modal-backdrop-nested);
 }
 
 .parameter-import-paste-dialog {
@@ -24126,12 +24736,12 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .organization-driver-schema-stack-backdrop {
-  /* Above Xiaoze FAB (1100) so dialog actions remain clickable. */
-  z-index: 1300;
+  /* Above the Xiaoze FAB so dialog actions remain clickable; see the scale in :root. */
+  z-index: var(--z-modal-backdrop);
 }
 
 .organization-driver-schema-stack-backdrop.organization-driver-schema-create-backdrop {
-  z-index: 1400;
+  z-index: var(--z-modal-backdrop-nested);
 }
 
 .modal-backdrop.is-suspended {

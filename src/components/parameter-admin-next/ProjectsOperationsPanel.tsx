@@ -10,10 +10,11 @@ import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
 import { ParameterFileConflictPanel } from "@/components/admin/ParameterFileConflictPanel";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
   ProjectOperationsDialog,
   type ParameterAdminNextProjectView,
-  type ProjectOperationsDialogViewMeta
+  type ProjectOperationsViewMeta
 } from "@/components/admin/ProjectOperationsDialog";
 import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterFilesPanel";
 import { DtsSearchPanel } from "@/components/parameters/DtsSearchPanel";
@@ -55,6 +56,14 @@ export function parseParameterAdminNextProjectPath(pathname: string): {
   return { projectId: decodeURIComponent(match[1]!), view };
 }
 
+function formatAuditTime(recordedAt: string): string {
+  const parsed = new Date(recordedAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return recordedAt;
+  }
+  return parsed.toLocaleString("zh-CN", { hour12: false });
+}
+
 function parseListSearch(search: string): ParamAdminProjectsSearch {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   return {
@@ -74,30 +83,25 @@ function buildListSearch(patch: Partial<ParamAdminProjectsSearch>, current: Para
   return params.toString();
 }
 
-const PROJECT_VIEW_META: Record<ParameterAdminNextProjectView, ProjectOperationsDialogViewMeta> = {
+const PROJECT_VIEW_META: Record<ParameterAdminNextProjectView, ProjectOperationsViewMeta> = {
   files: {
     label: "参数文件",
-    titlePrefix: "参数文件",
-    subtitle:
-      "先维护参数文件与版本，再按需做结构化检索。树形浏览请用「结构浏览」；本页检索跨已解析文件快速定位节点。",
+    subtitle: "维护参数文件与版本，并在已解析的文件中检索节点。树形浏览请用「结构浏览」。",
     regionLabel: "项目参数文件"
   },
   "config-sets": {
     label: "配置集 / 基线",
-    titlePrefix: "配置集 / 基线",
-    subtitle: "调整配置集成员、校验修订门禁，并完成基线对比 / 回滚 / 发布。页面可通过 URL 深链与刷新保持。",
+    subtitle: "调整配置集成员，并完成基线对比、回滚与发布。",
     regionLabel: "项目配置集与基线"
   },
   structure: {
     label: "结构浏览",
-    titlePrefix: "结构浏览",
-    subtitle: "浏览项目源 DTS 结构树。页面可通过 URL 深链与刷新保持。",
+    subtitle: "浏览项目源 DTS 结构树，查看并编辑节点属性。",
     regionLabel: "项目源结构"
   },
   conflicts: {
     label: "冲突裁决",
-    titlePrefix: "冲突裁决",
-    subtitle: "裁决文件值与界面草稿冲突。页面可通过 URL 深链与刷新保持。",
+    subtitle: "裁决参数文件值与界面草稿之间的冲突。",
     regionLabel: "项目文件冲突"
   }
 };
@@ -116,8 +120,9 @@ export type ProjectsOperationsPanelProps = {
 };
 
 /**
- * Project list plus deep-linkable project operations (files, config sets, structure,
- * conflicts) presented as a modal over the list so the URL remains shareable.
+ * Project list and the deep-linked project operations dialog (files, config sets,
+ * structure, conflicts). Routes own the address; the dialog owns the presentation over
+ * the list. Leaving with unsubmitted structure drafts asks for confirmation first.
  */
 export function ProjectsOperationsPanel({
   pathname,
@@ -164,6 +169,21 @@ export function ProjectsOperationsPanel({
     Array<{ id: string; fileName: string; format?: string; currentVersionId?: string }>
   >([]);
   const [projectFilesReady, setProjectFilesReady] = useState(false);
+  const [structureDirty, setStructureDirty] = useState(false);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
+  /** A search hit the user asked to open in the structure browser. */
+  const [structureFocus, setStructureFocus] = useState<{
+    nodePath: string;
+    propertyName?: string;
+    token: number;
+  } | null>(null);
+  /**
+   * Views the user has opened for the current project. Keeping them mounted is what
+   * makes per-view state survive switching; resetting on project change stops one
+   * project's drafts from being shown under another.
+   */
+  const [visitedViews, setVisitedViews] = useState<ParameterAdminNextProjectView[]>([]);
   const listSearch = useMemo(() => parseListSearch(search), [search]);
 
   const mockRows = useMemo(() => buildParameterAdminProjectsFromState(state), [state]);
@@ -185,6 +205,7 @@ export function ProjectsOperationsPanel({
       setError(loadError instanceof Error ? loadError.message : "项目列表加载失败。");
     } finally {
       setLoading(false);
+      setProjectsLoaded(true);
     }
   }, [adminClient, isApiMode]);
 
@@ -195,6 +216,19 @@ export function ProjectsOperationsPanel({
   useEffect(() => {
     adminDispatch({ type: "SET_SELECTED_PROJECT", projectId: projectId });
   }, [adminDispatch, projectId]);
+
+  useEffect(() => {
+    setVisitedViews([]);
+    setStructureDirty(false);
+    setStructureFocus(null);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!view) {
+      return;
+    }
+    setVisitedViews((current) => (current.includes(view) ? current : [...current, view]));
+  }, [view]);
 
   useEffect(() => {
     if (!projectId || (view !== "config-sets" && view !== "structure")) {
@@ -329,11 +363,47 @@ export function ProjectsOperationsPanel({
     : "/parameter-admin/projects";
   const operationsOpen = Boolean(projectId && view);
   const viewMeta = view ? PROJECT_VIEW_META[view] : null;
-  const projectName = selectedProject?.name ?? projectId ?? "";
+  // Never title the page with a raw project id; POD-C7 treats that as a missing state.
+  const projectName = selectedProject?.name ?? "项目详情";
+  /**
+   * Only mock rows are available synchronously; in API mode the list has to come back
+   * before an unknown id can be called unknown.
+   */
+  const projectsReady = !isApiMode || projectsLoaded;
+  const projectMissing = operationsOpen && projectsReady && !selectedProject;
 
   const closeOperations = useCallback(() => {
+    if (structureDirty) {
+      setLeaveConfirmOpen(true);
+      return;
+    }
     onNavigate("/parameter-admin/projects");
-  }, [onNavigate]);
+  }, [onNavigate, structureDirty]);
+
+  const dismissAudit = useCallback(() => {
+    adminDispatch({ type: "CLEAR_AUDIT_HINTS" });
+  }, [adminDispatch]);
+
+  const auditNotice = latestAudit ? (
+    <div
+      className="project-operations-audit"
+      role="status"
+      aria-label="治理审计"
+      data-audit-kind={latestAudit.kind}
+    >
+      <p>治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}</p>
+      <div className="project-operations-audit__meta">
+        <time dateTime={latestAudit.recordedAt}>{formatAuditTime(latestAudit.recordedAt)}</time>
+        <button
+          type="button"
+          className="button subtle project-operations-audit__dismiss"
+          onClick={dismissAudit}
+        >
+          知道了
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   const handleOpenConflictCountChange = useCallback(
     (count: number) => {
@@ -342,11 +412,32 @@ export function ProjectsOperationsPanel({
     [adminDispatch]
   );
 
+  const handleSelectSearchHit = useCallback(
+    (hit: { nodePath: string; propertyName?: string }) => {
+      setStructureFocus((current) => ({
+        nodePath: hit.nodePath,
+        ...(hit.propertyName ? { propertyName: hit.propertyName } : {}),
+        token: (current?.token ?? 0) + 1
+      }));
+      onNavigate(`${projectBase}/structure`);
+    },
+    [onNavigate, projectBase]
+  );
+
   const handleConflictResolved = useCallback(
-    ({ parameterName, resolution }: { parameterName: string; resolution: "file" | "ui" }) => {
+    ({
+      parameterName,
+      resolution,
+      reason
+    }: {
+      parameterName: string;
+      resolution: "file" | "ui";
+      reason: string;
+    }) => {
       pushAudit(
         "file-conflict-resolved",
-        `已裁决「${parameterName}」为${resolution === "file" ? "文件值" : "界面值"}`
+        `已裁决「${parameterName}」为${resolution === "file" ? "文件值" : "界面值"}`,
+        reason
       );
     },
     [pushAudit]
@@ -354,12 +445,6 @@ export function ProjectsOperationsPanel({
 
   return (
     <section className="param-admin-main project-admin-layout" aria-label="项目运营">
-      {!operationsOpen && latestAudit ? (
-        <p className="form-hint" role="status" aria-label="治理审计">
-          治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}
-          <span className="sr-only"> {latestAudit.kind}</span>
-        </p>
-      ) : null}
       {error ? (
         <p className="project-admin-error" role="alert">
           {error}
@@ -370,26 +455,48 @@ export function ProjectsOperationsPanel({
           {deleteError}
         </p>
       ) : null}
-      {loading && isApiMode ? <p className="project-admin-loading">项目列表加载中…</p> : null}
-      <ProjectAdminTable
-        rows={rows}
-        search={listSearch}
-        onUpdateSearch={updateListSearch}
-        onCreateProject={() => onNewProject?.()}
-        onEditProject={(id) => {
-          setFormError("");
-          setEditingProjectId(id);
-        }}
-        onDeleteProject={(id) => {
-          setDeleteError("");
-          setDeleteTargetId(id);
-        }}
-        onManageFiles={(id) =>
-          onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/files`)
-        }
-      />
 
-      {operationsOpen && projectId && view && viewMeta ? (
+      {projectMissing ? (
+        <section className="project-operations-not-found param-admin-panel" aria-label="项目不存在">
+          <h2>找不到这个项目</h2>
+          <p>
+            项目 <code>{projectId}</code> 不存在，或者已经被删除。也可能是链接里的项目编号被改过。
+          </p>
+          <button
+            type="button"
+            className="button primary"
+            onClick={() => onNavigate("/parameter-admin/projects")}
+          >
+            返回项目清单
+          </button>
+        </section>
+      ) : null}
+
+      {!projectMissing ? (
+        <>
+          {!operationsOpen ? auditNotice : null}
+          {loading && isApiMode ? <p className="project-admin-loading">项目列表加载中…</p> : null}
+          <ProjectAdminTable
+            rows={rows}
+            search={listSearch}
+            onUpdateSearch={updateListSearch}
+            onCreateProject={() => onNewProject?.()}
+            onEditProject={(id) => {
+              setFormError("");
+              setEditingProjectId(id);
+            }}
+            onDeleteProject={(id) => {
+              setDeleteError("");
+              setDeleteTargetId(id);
+            }}
+            onManageFiles={(id) =>
+              onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/files`)
+            }
+          />
+        </>
+      ) : null}
+
+      {operationsOpen && !projectMissing && projectId && view && viewMeta ? (
         <ProjectOperationsDialog
           open
           projectId={projectId}
@@ -400,67 +507,102 @@ export function ProjectsOperationsPanel({
           projectBase={projectBase}
           onNavigate={onNavigate}
           onClose={closeOperations}
-          latestAuditHint={
-            latestAudit ? (
-              <p className="form-hint project-parameter-files-dialog-audit" role="status" aria-label="治理审计">
-                治理审计已记录：{auditKindLabel(latestAudit.kind)} — {latestAudit.summary}
-                <span className="sr-only"> {latestAudit.kind}</span>
-              </p>
-            ) : null
-          }
+          auditNotice={auditNotice}
         >
-          {view === "files" ? (
-            <>
-              <ProjectParameterFilesPanel projectId={projectId} repository={fileRepository} />
-              <div className="param-admin-panel">
-                <DtsSearchPanel projectId={projectId} repository={dtsRepo} />
-              </div>
-            </>
-          ) : null}
-          {view === "config-sets" ? (
-            <ConfigSetBaselinePanel
-              projectId={projectId}
-              repository={dtsRepo}
-              canAdmin
-              availableFiles={availableFiles}
-              revisionId={adminState.selectedConfigRevisionId ?? "revision-teaching-1"}
-              validateRevision={(pid, revision) => application.validateRevision(pid, revision)}
-              onAudit={(event) => pushAudit(event.kind, event.summary)}
-            />
-          ) : null}
-          {view === "structure" ? (
-            !projectFilesReady ? (
-              <p className="form-hint" role="status">
-                正在加载项目文件…
-              </p>
-            ) : structureFile ? (
-              <DtsStructureBrowserPanel
-                projectId={projectId}
-                repository={dtsRepo}
-                fileId={structureFile.id}
-                versionId={structureFile.currentVersionId}
-                canEdit
-                canEditCritical
-              />
-            ) : (
-              <p className="form-hint" role="status">
-                当前项目没有可浏览的结构化 DTS 文件。请先在「参数文件」中上传带当前版本的 DTS。
-              </p>
-            )
-          ) : null}
-          {view === "conflicts" ? (
-            <ParameterFileConflictPanel
-              open
-              variant="embedded"
-              projectId={projectId}
-              repository={fileRepository}
-              onClose={() => onNavigate(`${projectBase}/files`)}
-              onOpenConflictCountChange={handleOpenConflictCountChange}
-              onResolved={handleConflictResolved}
-            />
-          ) : null}
+          {/*
+            Views stay mounted once visited so filters, drafts and selections survive
+            switching between them. Only the active one is in the accessibility tree.
+          */}
+          {visitedViews.map((item) => (
+            <div
+              key={item}
+              role="region"
+              aria-label={PROJECT_VIEW_META[item].regionLabel}
+              hidden={item !== view}
+              className="project-operations-view-slot"
+            >
+              {item === "files" ? (
+                <>
+                  <ProjectParameterFilesPanel projectId={projectId} repository={fileRepository} />
+                  <div className="param-admin-panel">
+                    <DtsSearchPanel
+                      projectId={projectId}
+                      repository={dtsRepo}
+                      onSelectHit={handleSelectSearchHit}
+                    />
+                  </div>
+                </>
+              ) : null}
+              {item === "config-sets" ? (
+                <ConfigSetBaselinePanel
+                  projectId={projectId}
+                  repository={dtsRepo}
+                  canAdmin
+                  availableFiles={availableFiles}
+                  {...(adminState.selectedConfigRevisionId
+                    ? { revisionId: adminState.selectedConfigRevisionId }
+                    : {})}
+                  validateRevision={(pid, revision) => application.validateRevision(pid, revision)}
+                  onAudit={(event) => pushAudit(event.kind, event.summary)}
+                />
+              ) : null}
+              {item === "structure" ? (
+                !projectFilesReady ? (
+                  <p className="form-hint" role="status">
+                    正在加载项目文件…
+                  </p>
+                ) : structureFile ? (
+                  <DtsStructureBrowserPanel
+                    projectId={projectId}
+                    repository={dtsRepo}
+                    fileId={structureFile.id}
+                    versionId={structureFile.currentVersionId}
+                    fileName={structureFile.fileName}
+                    canEdit
+                    canEditCritical
+                    onDirtyChange={setStructureDirty}
+                    {...(structureFocus ? { focusRequest: structureFocus } : {})}
+                  />
+                ) : (
+                  <p className="form-hint" role="status">
+                    当前项目没有可浏览的结构化 DTS 文件。请先在「参数文件」中上传带当前版本的 DTS。
+                  </p>
+                )
+              ) : null}
+              {item === "conflicts" ? (
+                <ParameterFileConflictPanel
+                  open
+                  variant="embedded"
+                  projectId={projectId}
+                  repository={fileRepository}
+                  onClose={() => onNavigate(`${projectBase}/files`)}
+                  onOpenConflictCountChange={handleOpenConflictCountChange}
+                  onResolved={handleConflictResolved}
+                />
+              ) : null}
+            </div>
+          ))}
         </ProjectOperationsDialog>
       ) : null}
+
+      <ConfirmDialog
+        open={leaveConfirmOpen}
+        title="离开项目"
+        description={
+          <p>
+            结构浏览里还有未提交的属性修改。离开该项目会丢弃这些改动，需要重新编辑。
+          </p>
+        }
+        confirmLabel="丢弃并离开"
+        cancelLabel="留在本页"
+        tone="danger"
+        onCancel={() => setLeaveConfirmOpen(false)}
+        onConfirm={() => {
+          setLeaveConfirmOpen(false);
+          setStructureDirty(false);
+          onNavigate("/parameter-admin/projects");
+        }}
+      />
 
       <ProjectAdminFormDialog
         open={editingProjectId !== null}

@@ -1,11 +1,11 @@
 import { CircleX } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import { ModalDialog } from "@/components/common/ModalDialog";
 
 export type ParameterAdminNextProjectView = "files" | "config-sets" | "structure" | "conflicts";
 
-export type ProjectOperationsDialogViewMeta = {
+export type ProjectOperationsViewMeta = {
   label: string;
-  titlePrefix: string;
   subtitle: string;
   regionLabel: string;
 };
@@ -15,17 +15,23 @@ export type ProjectOperationsDialogProps = {
   projectId: string;
   projectName: string;
   view: ParameterAdminNextProjectView;
-  viewMeta: ProjectOperationsDialogViewMeta;
-  viewMetaByView: Record<ParameterAdminNextProjectView, ProjectOperationsDialogViewMeta>;
+  viewMeta: ProjectOperationsViewMeta;
+  viewMetaByView: Record<ParameterAdminNextProjectView, ProjectOperationsViewMeta>;
   projectBase: string;
-  latestAuditHint?: ReactNode;
+  auditNotice?: ReactNode;
   onNavigate: (path: string) => void;
   onClose: () => void;
   children: ReactNode;
 };
 
+const ARROW_KEYS = new Set(["ArrowLeft", "ArrowRight", "Home", "End"]);
+
 /**
  * Deep-linkable project operations surface presented as a modal over the project list.
+ *
+ * Routes still own the address (`/parameter-admin/projects/:id/:view`); this dialog owns
+ * the presentation. It rides the shared `ModalDialog` contract so focus, Escape, and
+ * backdrop dismissal stay correct when stacked above confirmations.
  */
 export function ProjectOperationsDialog({
   open,
@@ -35,86 +41,90 @@ export function ProjectOperationsDialog({
   viewMeta,
   viewMetaByView,
   projectBase,
-  latestAuditHint,
+  auditNotice,
   onNavigate,
   onClose,
   children
 }: ProjectOperationsDialogProps) {
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, open]);
-
-  if (!open) {
-    return null;
-  }
-
-  const title = `${viewMeta.titlePrefix} · ${projectName}`;
+  const navRef = useRef<HTMLElement | null>(null);
   const views = Object.keys(viewMetaByView) as ParameterAdminNextProjectView[];
 
+  const handleNavKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (!ARROW_KEYS.has(event.key)) {
+      return;
+    }
+    const links = Array.from(navRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+    const currentIndex = links.findIndex((link) => link === document.activeElement);
+    if (links.length === 0 || currentIndex === -1) {
+      return;
+    }
+    event.preventDefault();
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? links.length - 1
+          : event.key === "ArrowRight"
+            ? (currentIndex + 1) % links.length
+            : (currentIndex - 1 + links.length) % links.length;
+    links[nextIndex]?.focus();
+  };
+
   return (
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="project-operations-dialog-title"
-      onClick={onClose}
+    <ModalDialog
+      open={open}
+      onDismiss={onClose}
+      className="submission-dialog project-parameter-files-dialog project-operations-dialog"
+      backdropClassName="param-admin-modal-backdrop"
+      describedBy
     >
-      <div
-        className="submission-dialog project-parameter-files-dialog"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="submission-dialog-head param-admin-editor-dialog-head">
-          <div className="param-admin-editor-dialog-head-text">
-            <span className="eyebrow">项目运营</span>
-            <h2 id="project-operations-dialog-title">{title}</h2>
-            <p>{viewMeta.subtitle}</p>
-          </div>
-          <button
-            type="button"
-            className="audit-dialog-close-icon"
-            onClick={onClose}
-            aria-label="关闭项目运营"
-          >
-            <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-        </div>
-
-        {latestAuditHint}
-
-        <nav className="project-parameter-files-tabs" aria-label="项目运营视图">
-          {views.map((item) => (
+      {({ titleId, descriptionId }) => (
+        <>
+          <div className="submission-dialog-head param-admin-editor-dialog-head">
+            <div className="param-admin-editor-dialog-head-text">
+              <span className="eyebrow">项目运营</span>
+              <h2 id={titleId}>{projectName}</h2>
+              <p id={descriptionId}>{viewMeta.subtitle}</p>
+            </div>
             <button
-              key={item}
               type="button"
-              className={`project-parameter-files-tab${view === item ? " is-active" : ""}`}
-              aria-current={view === item ? "page" : undefined}
-              onClick={() => onNavigate(`${projectBase}/${item}`)}
+              className="audit-dialog-close-icon"
+              onClick={onClose}
+              aria-label="关闭项目运营"
             >
-              {viewMetaByView[item].label}
+              <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
             </button>
-          ))}
-        </nav>
+          </div>
 
-        <div
-          className="project-parameter-files-dialog-body"
-          role="region"
-          aria-label={viewMeta.regionLabel}
-          data-project-id={projectId}
-        >
-          {children}
-        </div>
-      </div>
-    </div>
+          {auditNotice}
+
+          <nav
+            ref={navRef}
+            className="project-operations-nav"
+            aria-label="项目运营视图"
+            onKeyDown={handleNavKeyDown}
+          >
+            {views.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={`project-operations-nav-link${view === item ? " is-active" : ""}`}
+                aria-current={view === item ? "page" : undefined}
+                onClick={() => onNavigate(`${projectBase}/${item}`)}
+              >
+                {viewMetaByView[item].label}
+              </button>
+            ))}
+          </nav>
+
+          <div
+            className="project-parameter-files-dialog-body"
+            data-project-id={projectId}
+          >
+            {children}
+          </div>
+        </>
+      )}
+    </ModalDialog>
   );
 }

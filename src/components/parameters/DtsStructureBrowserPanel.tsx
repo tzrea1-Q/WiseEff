@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Lock, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   DtsStructuralNode,
   DtsStructuralProperty,
@@ -16,21 +17,26 @@ import {
   type StructuredValueChange
 } from "@/components/parameters/StructuredValueEditor";
 
-/** Teaching mock file/version ids used when no selection is provided. */
-export const DTS_TEACHING_FILE_ID = "file-teaching-dts";
-export const DTS_TEACHING_VERSION_ID = "version-teaching-1";
-
 export type DtsStructureBrowserPanelProps = {
   projectId: string;
   repository: DtsStructuredRepository;
   fileId?: string;
   versionId?: string;
+  /** Display name of the browsed file; falls back to the file id when unknown. */
+  fileName?: string;
   /** When false, the value editor and submit entry are disabled. */
   canEdit?: boolean;
   /** When false, critical nodes (regulator/thermal path) disable the value editor. */
   canEditCritical?: boolean;
   /** Optional source bindings so the local change-set can map to real parameter ids. */
   parameterSources?: ParameterSourceLookup[];
+  /** Reports whether unsubmitted local edits exist, so callers can guard navigation. */
+  onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * A node the caller wants brought into view, typically a search hit. `token` makes
+   * repeated requests for the same node distinguishable.
+   */
+  focusRequest?: { nodePath: string; propertyName?: string; token: number };
 };
 
 type LocalPropertyDraft = {
@@ -53,9 +59,12 @@ export function DtsStructureBrowserPanel({
   repository,
   fileId,
   versionId,
+  fileName,
   canEdit = true,
   canEditCritical = true,
-  parameterSources = []
+  parameterSources = [],
+  onDirtyChange,
+  focusRequest
 }: DtsStructureBrowserPanelProps) {
   const [nodes, setNodes] = useState<DtsStructuralNode[]>([]);
   const [selectedNodePath, setSelectedNodePath] = useState<string | undefined>();
@@ -66,6 +75,7 @@ export function DtsStructureBrowserPanel({
   const [error, setError] = useState("");
   const [submitResult, setSubmitResult] = useState<DtsStructuredSubmissionRound | null>(null);
   const [loadedWith, setLoadedWith] = useState<{ fileId: string; versionId: string } | null>(null);
+  const [focusMiss, setFocusMiss] = useState("");
 
   const loadStructure = useCallback(
     async (nextFileId: string, nextVersionId: string) => {
@@ -95,10 +105,46 @@ export function DtsStructureBrowserPanel({
   );
 
   useEffect(() => {
-    const initialFileId = fileId ?? DTS_TEACHING_FILE_ID;
-    const initialVersionId = versionId ?? DTS_TEACHING_VERSION_ID;
-    void loadStructure(initialFileId, initialVersionId);
+    if (!fileId || !versionId) {
+      setNodes([]);
+      setLoadedWith(null);
+      return;
+    }
+    void loadStructure(fileId, versionId);
   }, [fileId, loadStructure, versionId]);
+
+  const dirty = Object.keys(drafts).length > 0;
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
+
+  useEffect(() => {
+    onDirtyChangeRef.current?.(dirty);
+  }, [dirty]);
+
+  useEffect(() => () => onDirtyChangeRef.current?.(false), []);
+
+  const focusNodePath = focusRequest?.nodePath;
+  const focusPropertyName = focusRequest?.propertyName;
+  // token distinguishes repeat requests for the same node.
+  const focusToken = focusRequest?.token;
+
+  useEffect(() => {
+    if (!focusNodePath || nodes.length === 0) {
+      return;
+    }
+    const match = nodes.find((item) => item.nodePath === focusNodePath);
+    if (!match) {
+      setFocusMiss(focusNodePath);
+      return;
+    }
+    setFocusMiss("");
+    setSelectedNodePath(match.nodePath);
+    setSelectedPropertyName(
+      focusPropertyName && match.properties.some((property) => property.name === focusPropertyName)
+        ? focusPropertyName
+        : undefined
+    );
+  }, [focusNodePath, focusPropertyName, focusToken, nodes]);
 
   const selectedNode = useMemo(
     () => nodes.find((item) => item.nodePath === selectedNodePath) ?? null,
@@ -171,11 +217,11 @@ export function DtsStructureBrowserPanel({
     }
     return aggregateLocalStructuredEdits({
       fileId: loadedWith.fileId,
-      fileName: loadedWith.fileId === DTS_TEACHING_FILE_ID ? "teaching-sample.dts" : loadedWith.fileId,
+      fileName: fileName ?? loadedWith.fileId,
       drafts: draftRows,
       parameters: parameterSources
     });
-  }, [drafts, loadedWith, nodes, parameterSources]);
+  }, [drafts, fileName, loadedWith, nodes, parameterSources]);
 
   const submitChangeRequest = async () => {
     if (!localAggregate || localAggregate.edits.length === 0 || !canEdit) {
@@ -203,8 +249,7 @@ export function DtsStructureBrowserPanel({
         members: [
           {
             fileId: loadedWith?.fileId ?? "local",
-            fileName:
-              loadedWith?.fileId === DTS_TEACHING_FILE_ID ? "teaching-sample.dts" : loadedWith?.fileId,
+            fileName: fileName ?? loadedWith?.fileId,
             status: "version_changed" as const,
             structuralDiff: localAggregate.changeSet.changes.map((entry) => entry.change)
           }
@@ -217,16 +262,13 @@ export function DtsStructureBrowserPanel({
       <div className="dts-structure-browser-panel__head">
         <div>
           <h3>结构浏览</h3>
-          <p>浏览节点树、编辑结构化属性值，聚成变更集后提交为变更请求（回写载荷使用 rawText）。</p>
+          <p>浏览节点树并修改属性取值，改动会先聚成变更集，再一次性提交为变更请求。</p>
         </div>
-        <button
-          type="button"
-          className="button subtle"
-          disabled={loading}
-          onClick={() => void loadStructure(DTS_TEACHING_FILE_ID, DTS_TEACHING_VERSION_ID)}
-        >
-          加载教学结构
-        </button>
+        {fileName || fileId ? (
+          <p className="dts-structure-browser-panel__source">
+            当前文件：<code>{fileName ?? fileId}</code>
+          </p>
+        ) : null}
       </div>
 
       {loading ? <p className="dts-structure-browser-panel__status">结构加载中…</p> : null}
@@ -235,10 +277,16 @@ export function DtsStructureBrowserPanel({
           {error}
         </p>
       ) : null}
+      {focusMiss ? (
+        <p className="dts-structure-browser-panel__status" role="status">
+          检索命中的节点 <code>{focusMiss}</code> 不在当前浏览的文件里，请先在「参数文件」中切换到对应文件。
+        </p>
+      ) : null}
       {!loading && !error && nodes.length === 0 ? (
         <p className="dts-structure-browser-panel__empty">
-          暂无结构节点。可点击「加载教学结构」拉取 mock 教学样例
-          {loadedWith ? `（上次：${loadedWith.fileId} / ${loadedWith.versionId}）` : ""}。
+          {!fileId || !versionId
+            ? "还没有指定要浏览的结构文件。请在「参数文件」中上传一个已展开的 DTS 文件。"
+            : "这个文件版本没有解析出结构节点。请确认 DTS 已展开 /include/，或上传新版本后重试。"}
         </p>
       ) : null}
 
@@ -261,7 +309,8 @@ export function DtsStructureBrowserPanel({
                 </h4>
                 {isCriticalDtsNodePath(selectedNode.nodePath) ? (
                   <p className="dts-structure-browser-panel__risk-note" role="note">
-                    安全关键节点（regulator / thermal）
+                    <TriangleAlert size={16} strokeWidth={2} aria-hidden="true" />
+                    <span>安全关键节点：改动电源或温控取值可能损坏硬件，提交前请确认取值来源。</span>
                   </p>
                 ) : null}
                 <ul className="dts-structure-browser-panel__properties">
@@ -300,14 +349,14 @@ export function DtsStructureBrowserPanel({
             {selectedProperty ? (
               <div className="dts-structure-browser-panel__editor" aria-label="属性值编辑">
                 <h4>编辑 · {selectedProperty.name}</h4>
-                {!canEdit ? (
-                  <p className="field-error" role="alert">
-                    需要 parameter:edit 权限才能编辑结构化属性。
-                  </p>
-                ) : null}
-                {criticalLocked ? (
-                  <p className="field-error" role="alert">
-                    需要 parameter:edit-critical 权限才能编辑安全关键节点。
+                {editorLocked ? (
+                  <p className="dts-structure-browser-panel__locked" role="note">
+                    <Lock size={16} strokeWidth={2} aria-hidden="true" />
+                    <span>
+                      {criticalLocked
+                        ? "这是安全关键节点，你的角色没有修改它的权限。当前取值可以查看，但不能编辑或提交。"
+                        : "你的角色没有修改参数的权限。当前取值可以查看，但不能编辑或提交。"}
+                    </span>
                   </p>
                 ) : null}
                 <StructuredValueEditor
@@ -320,7 +369,8 @@ export function DtsStructureBrowserPanel({
                   onChange={onEditorChange}
                 />
                 <p className="dts-structure-browser-panel__preview-note">
-                  本地预览规范化值：<code>{editorNormalized}</code>
+                  改动后取值：<code>{editorNormalized}</code>
+                  <span>（本地预览，提交后由服务端复核）</span>
                 </p>
               </div>
             ) : null}
@@ -331,18 +381,20 @@ export function DtsStructureBrowserPanel({
       {canEdit && localAggregate && localAggregate.edits.length > 0 && compareResultForDiff ? (
         <div className="dts-structure-browser-panel__changeset">
           <StructuredDiffView result={compareResultForDiff} changeSet={localAggregate.changeSet} />
-          <p>
-            待提交 {localAggregate.edits.length} 项 · 已映射 {localAggregate.changeSet.items.length} 项 ·
-            未映射 {localAggregate.changeSet.unmapped.length} 项
-          </p>
-          <button
-            type="button"
-            className="button"
-            disabled={submitting}
-            onClick={() => void submitChangeRequest()}
-          >
-            提交变更请求
-          </button>
+          <div className="dts-structure-browser-panel__changeset-actions">
+            {/* Mapped/unmapped counts belong to StructuredDiffView above; don't restate them. */}
+            <p className="dts-structure-browser-panel__changeset-counts">
+              待提交 <strong>{localAggregate.edits.length}</strong> 项
+            </p>
+            <button
+              type="button"
+              className="button primary"
+              disabled={submitting}
+              onClick={() => void submitChangeRequest()}
+            >
+              {submitting ? "提交中…" : `提交变更请求（${localAggregate.edits.length} 项）`}
+            </button>
+          </div>
         </div>
       ) : null}
 

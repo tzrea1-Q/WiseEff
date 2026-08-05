@@ -22,6 +22,10 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-ADMIN-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, audit | `e2e/acceptance/parameters.acceptance.spec.ts` |
 | `PARAM-ADMIN-002` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, audit | `e2e/acceptance/parameter-import-wizard.acceptance.spec.ts` |
 | `PARAM-ADMIN-003` | P1 | parameters | future | `/parameter-admin/projects` | Admin | ui, screenshot | `src/components/admin/ProjectAdminTable.tsx` |
+| `PROJ-OPS-001` | P1 | parameters | future | `/parameter-admin/projects/:projectId/:view` | Admin | ui, screenshot | `src/ParameterAdminNextPage.test.tsx` |
+| `PROJ-OPS-002` | P1 | parameters | future | `/parameter-admin/projects/:projectId/:view` | Admin | ui, screenshot | `src/ParameterAdminNextPage.test.tsx` |
+| `PROJ-OPS-003` | P1 | parameters | future | `/parameter-admin/projects/:projectId/config-sets` | Admin | ui, audit, screenshot | `src/components/admin/ConfigSetBaselinePanel.test.tsx`<br>`src/components/admin/ParameterFileConflictPanel.test.tsx` |
+| `PARAM-ADMIN-DIALOG-001` | P1 | parameters | future | `/parameter-admin/projects` | Admin | ui, screenshot | `src/components/common/ModalDialog.test.tsx` |
 | `PARAM-IMPORT-DTS-FULL-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts` |
 | `PARAM-IMPORT-REVIEW-META-001` | P1 | parameters | automated | `/parameter-admin` | Admin | api, db, audit | `e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts` |
 | `PARAM-DRAFT-EDIT-001` | P1 | parameters | automated | `/parameters` | Hardware User | ui, api, db | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
@@ -105,6 +109,10 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 ## Deferred Or Conditional Operations
 
 - `PARAM-ADMIN-003`: Batch 1 ships CSS fix + playwright-cli three-viewport evidence under work/ui-checks/param-admin-ux-polish-batch1/; dedicated e2e viewport assertion follows in a later batch.
+- `PROJ-OPS-001`: Route/view resolution and the not-found state are covered by component tests plus playwright-cli evidence under work/ui-checks/project-operations-dialog/final/; a dedicated e2e deep-link spec follows.
+- `PROJ-OPS-002`: Three-viewport evidence and runtime overflow measurements live under work/ui-checks/project-operations-dialog/final/; a dedicated e2e viewport assertion follows.
+- `PROJ-OPS-003`: Confirmation and audit behaviour is covered by panel and page tests plus playwright-cli evidence; the API-mode e2e governance spec follows with a seeded baseline.
+- `PARAM-ADMIN-DIALOG-001`: The modal contract is covered by unit tests on the shared primitive plus playwright-cli evidence; a keyboard-focused e2e spec follows.
 - `BRIDGE-WIN-001`: Requires a real Windows bridge runtime and localhost health endpoint orchestration in acceptance.
 - `BRIDGE-HDC-001`: Requires a pre-paired bridge process, hdc on PATH, USB device, and DEVICE_BRIDGE_HDC_AVAILABLE=true.
 - `HDC-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true with hardware attached.

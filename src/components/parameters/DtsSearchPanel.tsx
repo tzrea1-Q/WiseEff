@@ -48,7 +48,7 @@ export function DtsSearchPanel({ projectId, repository, onSelectHit }: DtsSearch
       <div className="dts-search-panel__head">
         <h3>结构化检索</h3>
         <p>
-          在已解析的参数文件中按路径、@地址、标签、compatible 或属性值定位节点。树形展开与属性编辑请改用「结构浏览」页签。
+          在已解析的参数文件中按路径、@地址、标签、compatible 或属性值定位节点，点击结果会在「结构浏览」中打开该节点。
         </p>
       </div>
       <form
