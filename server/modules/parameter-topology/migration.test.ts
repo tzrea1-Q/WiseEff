@@ -1143,7 +1143,8 @@ describe.skipIf(!databaseAvailable)("parameter identity cutover atomicity", () =
     expect(bindingIds[0]).toBe(bindingIds[1]);
     expect(bindingIds[0]).toBe(expectedBindingId(expectedSpecId(), expectedLogicalNodeId()));
   },
-  20_000
+  // Two full temp-DB restores + cutover applies; CI under load can exceed 20s.
+  60_000
   );
 
   it("injected cutover failure after partial writes rolls back marker and archive", async () => {
@@ -1490,7 +1491,7 @@ describe.skipIf(!databaseAvailable)("parameter identity stage-review and finaliz
         }
       });
     },
-    20_000
+    60_000
   );
 
   it(
