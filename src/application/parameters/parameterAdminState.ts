@@ -76,6 +76,7 @@ export type ParameterAdminAction =
       counts: Partial<ParameterAdminState["queueCounts"]>;
     }
   | { type: "SET_RECENT_AUDIT_EVENTS"; events: ParameterAdminRecentAuditEvent[] }
+  | { type: "PREPEND_RECENT_AUDIT_EVENT"; event: ParameterAdminRecentAuditEvent }
   | { type: "CLEAR_RECENT_AUDIT_EVENTS" }
   | { type: "PUSH_UNDO"; entry: ParameterAdminUndoEntry }
   | { type: "POP_UNDO" }
@@ -109,6 +110,11 @@ export function parameterAdminReducer(
       };
     case "SET_RECENT_AUDIT_EVENTS":
       return { ...state, recentAuditEvents: action.events.slice(0, 8) };
+    case "PREPEND_RECENT_AUDIT_EVENT":
+      return {
+        ...state,
+        recentAuditEvents: [action.event, ...state.recentAuditEvents].slice(0, 8)
+      };
     case "CLEAR_RECENT_AUDIT_EVENTS":
       return { ...state, recentAuditEvents: [] };
     case "PUSH_UNDO":

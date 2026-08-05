@@ -141,6 +141,22 @@ export function ProjectsOperationsPanel({
   const latestAudit = adminState.recentAuditEvents[0] ?? null;
   const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
 
+  const recordMockAudit = useCallback(
+    (input: { kind: string; summary: string; reason?: string }) => {
+      adminDispatch({
+        type: "PREPEND_RECENT_AUDIT_EVENT",
+        event: {
+          id: `mock-audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          kind: input.kind,
+          summary: input.summary,
+          reason: input.reason ?? "",
+          recordedAt: new Date().toISOString()
+        }
+      });
+    },
+    [adminDispatch]
+  );
+
   useEffect(() => {
     if (!isApiMode) {
       return;
@@ -316,7 +332,10 @@ export function ProjectsOperationsPanel({
           : {})
       }
     });
-    void refreshRecentAudits();
+    recordMockAudit({
+      kind: "project-updated",
+      summary: `已更新项目 ${input.name}`
+    });
     setEditingProjectId(null);
   };
 
@@ -344,7 +363,10 @@ export function ProjectsOperationsPanel({
       return;
     }
     dispatch({ type: "DELETE_PARAMETER_ADMIN_PROJECT", projectId: deleteTarget.id });
-    void refreshRecentAudits();
+    recordMockAudit({
+      kind: "project-deleted",
+      summary: `已删除项目 ${deleteTarget.name}`
+    });
     setDeleteTargetId(null);
     if (projectId === deleteTarget.id) {
       onNavigate("/parameter-admin/projects");
@@ -417,9 +439,31 @@ export function ProjectsOperationsPanel({
     [onNavigate, projectBase]
   );
 
-  const handleConflictResolved = useCallback(() => {
-    void refreshRecentAudits(projectId ?? undefined);
-  }, [projectId, refreshRecentAudits]);
+  const handleConflictResolved = useCallback(
+    (input: { conflictId: string; resolution: "file" | "ui"; parameterName: string; reason: string }) => {
+      if (isApiMode) {
+        void refreshRecentAudits(projectId ?? undefined);
+        return;
+      }
+      recordMockAudit({
+        kind: "file-conflict-resolved",
+        summary: `已裁决冲突 ${input.parameterName}`,
+        reason: input.reason
+      });
+    },
+    [isApiMode, projectId, recordMockAudit, refreshRecentAudits]
+  );
+
+  const handleBaselineAudit = useCallback(
+    (event: { kind: string; summary: string }) => {
+      if (isApiMode) {
+        void refreshRecentAudits(projectId ?? undefined);
+        return;
+      }
+      recordMockAudit({ kind: event.kind, summary: event.summary });
+    },
+    [isApiMode, projectId, recordMockAudit, refreshRecentAudits]
+  );
 
   return (
     <section className="param-admin-main project-admin-layout" aria-label="项目运营">
@@ -521,7 +565,7 @@ export function ProjectsOperationsPanel({
                     ? { revisionId: adminState.selectedConfigRevisionId }
                     : {})}
                   validateRevision={(pid, revision) => application.validateRevision(pid, revision)}
-                  onAudit={() => void refreshRecentAudits(projectId ?? undefined)}
+                  onAudit={handleBaselineAudit}
                 />
               ) : null}
               {item === "structure" ? (
