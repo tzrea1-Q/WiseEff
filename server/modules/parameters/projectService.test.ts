@@ -138,4 +138,25 @@ describe("createProjectForAuth", () => {
     expect(projectInsert?.text).toMatch(/initialization_status/);
     expect(projectInsert?.text).toMatch(/'not_initialized'/);
   });
+
+  it("returns initializationStatus not_initialized on create even when ops status is initialized", async () => {
+    const { db } = createFakeDb([
+      [projectRow({ status: "initialized", initialization_status: "not_initialized" })],
+      [],
+      [configSetRow()],
+      []
+    ]);
+
+    const item = await createProjectForAuth(db, adminAuth(), {
+      id: "nova",
+      name: "Nova",
+      code: "NOVA"
+    });
+
+    expect(item).toMatchObject({
+      id: "nova",
+      status: "initialized",
+      initializationStatus: "not_initialized"
+    });
+  });
 });

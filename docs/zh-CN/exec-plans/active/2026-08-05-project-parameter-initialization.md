@@ -1,6 +1,6 @@
 # 项目参数初始化 · 语义落地（C1）
 
-> Status: **进行中** — 仅规划
+> Status: **实现完成（分支上）** — 待 parent PR/合并；**TD-060** 已关
 > Date: 2026-08-05
 > English: [`docs/exec-plans/active/2026-08-05-project-parameter-initialization.md`](../../../exec-plans/active/2026-08-05-project-parameter-initialization.md)
 > 上位：[`2026-08-05-path-reachable-mock-gap-program.md`](./2026-08-05-path-reachable-mock-gap-program.md)

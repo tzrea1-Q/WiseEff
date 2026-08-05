@@ -157,6 +157,16 @@ Phase 2 materializes module identity on `project_parameter_bindings` and drops t
 - **Upload driver summary:** DTS file upload responses may include `driverSummary` (`matchedRegistered` / `newUnregistered`) comparing file compatibles to registered mappings. `ProjectParameterFilesPanel` opens `DriverUploadSummaryDialog` after a successful upload.
 - **Ops recompute:** admin-only full `recompute-bindings` (optional `dryRun`) remains an ops/backfill tool. Mapping create/delete and `POST .../driver-registry` (register/claim) each apply scoped `planScopedMoves` in the same write transaction. `db:seed:m1` may still run `recomputeBindingModules` after ingest.
 
+## Project parameter initialization
+
+New projects are created with `initialization_status = not_initialized`. Creators use `ProjectParameterInitializationWizard` to take a one-time **semantic binding** snapshot (or explicit empty library), then submit an initialization review. Admin approve/reject lives on `/parameter-review` (initialization tab).
+
+- **Port:** `ParameterInitializationRepository` (`src/application/ports/ParameterInitializationRepository.ts`).
+- **API mode:** HTTP client + hydrate of `projectInitializationStatuses` on project switch; submit/approve/reject call the Port (not reducer-as-SSOT).
+- **Mock mode:** mock adapter implements the same Port honestly; legacy wizard reducer paths remain for component tests.
+- **Lock:** `ParametersPage` disables normal typed edits while status ≠ `initialized` (and ≠ `maintenance`); API `submitParameterChanges` also fail-closes via `assertProjectAllowsParameterSubmit`.
+- Design: [`docs/design-docs/2026-05-20-project-parameter-initialization-design.md`](design-docs/2026-05-20-project-parameter-initialization-design.md). Acceptance: `PARAM-INIT-*`.
+
 ## Parameter Import Wizard
 
 `ParameterImportWizard` on `/parameter-admin` supports spreadsheet / JSON / DTS fragment / full DTS sources.

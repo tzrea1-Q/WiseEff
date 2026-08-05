@@ -61,7 +61,7 @@ This program file does **not** own a single mega-branch. Each child plan owns on
 - [ ] C4 merged to `main`
 - [ ] C2 merged; TD-015 moved to Completed (or closed with evidence)
 - [ ] C3 merged
-- [ ] C1 merged; design doc amendment + product-spec touch landed
+- [ ] C1 merged; design doc amendment + product-spec touch landed (implementation complete on `feat/project-parameter-initialization`; awaiting parent PR)
 - [ ] Program Documentation Update Gate satisfied; `npm run docs:check` green
 - [ ] Move this program to `docs/exec-plans/completed/` only after all four children complete
 

@@ -130,6 +130,14 @@ Provenance、绑定详情与映射/审核队列必须来自 API 响应（`source
 - `/parameter-review`：查看待审请求、推进或拒绝流程。
 - `/parameter-admin`：mock mode 下保留直接管理体验；API mode 下写入应走 import/review 流程。批量导入向导（`ParameterImportWizard`）对完整 `.dts` / `.dtsi` 通过 `ParameterRepository.parseDtsImport` → `POST /api/v1/parameter-import/parse-dts`（或 mock CST 派生）解析，**不再**对 `dts-full` 静默回退 `parseDtsFragment`；含 `/include/` 时展示可读错误。跳过行汇总为 `reviewMetadata` 挂到 create preview / apply。大于 2MB 的 DTS 提示「将使用服务端解析」。
 
+### 项目参数初始化
+
+新建项目默认 `initialization_status = not_initialized`。创建者通过 `ProjectParameterInitializationWizard` 做一次性**语义 binding** 快照（或显式空库），提交初始化审阅；Admin 在 `/parameter-review` 的初始化 Tab 批准/驳回。
+
+- Port：`ParameterInitializationRepository`；API 模式走 HTTP + 项目切换 hydrate；mock 实现同一 Port。
+- 未 `initialized` 时 `ParametersPage` 锁定常规编辑；服务端 `submitParameterChanges` 经 `assertProjectAllowsParameterSubmit` 失败关闭。
+- 设计见 `docs/zh-CN/design-docs/2026-05-20-project-parameter-initialization-design.md`；验收 ID：`PARAM-INIT-*`。
+
 ## 多层级模块树
 
 参数域与调试域各自维护独立的组织级模块树。共享选择器：`src/components/common/ModuleTreeSelect.tsx`。

@@ -20,7 +20,7 @@ Rules:
 
 - Auth and users: `/me`, user listing, user creation, activation, role replacement.
 - Projects and modules: project metadata and module lookup.
-- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), per-project parameter file hosting with sync and conflict resolution (`/projects/:projectId/parameter-files*`), structured DTS read/search (`.../structure`, `/projects/:projectId/dts-search`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
+- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), **project parameter initialization** (`/parameters/projects/:projectId/initialization*`, `/parameters/admin/initialization-reviews*`), per-project parameter file hosting with sync and conflict resolution (`/projects/:projectId/parameter-files*`), structured DTS read/search (`.../structure`, `/projects/:projectId/dts-search`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
 - Semantic parameter topology (v2): parameter specs, spec review tasks, source/effective topology, project bindings, identity mapping tasks, and fail-closed config-revision validate under `/api/v2/*` (see below). Legacy flat parameter IDs are retired at cutover with `410 legacy-parameter-id-retired`.
 - Logs: upload/file records, analysis records, runs, rerun, archive, feedback.
 - Product feedback: Internal Beta sidebar feedback submission, admin triage, and attachment content.
@@ -178,6 +178,24 @@ Create body:
 ```
 
 `feedbackType` is one of `experience`, `data`, `export_submit`, or `feature`. `status` is `open`, `in_progress`, or `closed`; the service allows `open -> in_progress -> closed` and rejects updates after `closed`. Attachments accept `image/png`, `image/jpeg`, and `image/webp`, with up to 5 images, 5 MB per image, and 15 MB total.
+
+## Project Parameter Initialization
+
+One-time semantic binding library initialization for new projects (`projects.initialization_status`). Creator draft/submit; Admin approve/reject. Audit kinds: `project-initialization-submitted` / `approved` / `rejected`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/parameters/projects/:projectId/initialization` | Status + optional draft. |
+| `PUT` | `/api/v1/parameters/projects/:projectId/initialization/draft` | Upsert draft (semantic snapshots or `emptyLibrary`). |
+| `POST` | `/api/v1/parameters/projects/:projectId/initialization/preview` | Server-side primary/supplement merge preview. |
+| `POST` | `/api/v1/parameters/projects/:projectId/initialization/submit` | Submit pending review. |
+| `GET` | `/api/v1/parameters/admin/initialization-reviews` | List pending reviews (Admin). |
+| `POST` | `/api/v1/parameters/admin/initialization-reviews/:reviewId/approve` | Approve + materialize bindings. |
+| `POST` | `/api/v1/parameters/admin/initialization-reviews/:reviewId/reject` | Reject with required reason. |
+
+While `initialization_status` ≠ `initialized`, `POST /api/v1/parameter-submission-rounds` fail-closes.
+
+Admin project summaries (`GET/POST /api/v1/parameters/admin/projects`) return both ops `status` (`initialized` | `maintenance`) and `initializationStatus` (`projects.initialization_status`). The Admin projects table prefers a non-`initialized` init status for its status column.
 
 ## Project Parameter Files
 
