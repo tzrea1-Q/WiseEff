@@ -72,7 +72,6 @@ describe("createParameterRuntimeActions", () => {
     await actions.stashChanges([draftItem]);
     await actions.reviewChange({ requestId: "CR-1", decision: "advance", note: "Looks good" });
     await actions.reviewChange({ requestId: "CR-2", decision: "reject", note: "Needs data" });
-    await actions.applyImportBatch({ batchId: "batch-1" });
 
     expect(dispatch).toHaveBeenNthCalledWith(1, {
       type: "ADD_PARAMETER_SUBMISSION_ROUND",
@@ -83,7 +82,64 @@ describe("createParameterRuntimeActions", () => {
     expect(dispatch).toHaveBeenNthCalledWith(2, { type: "STASH_PARAMETER_SUBMISSION_ROUND", items: [draftItem] });
     expect(dispatch).toHaveBeenNthCalledWith(3, { type: "ADVANCE_REVIEW", requestId: "CR-1", note: "Looks good" });
     expect(dispatch).toHaveBeenNthCalledWith(4, { type: "REJECT_REVIEW", requestId: "CR-2", reason: "Needs data" });
-    expect(dispatch).toHaveBeenNthCalledWith(5, { type: "IMPORT_PARAMETERS" });
+  });
+
+  it("applies mock import batches through the parameter repository and hydrates runtime state", async () => {
+    const dispatch = vi.fn();
+    const appliedBatch = {
+      id: "batch-1",
+      projectId: "api-project",
+      sourceName: "import.csv",
+      status: "applied" as const,
+      createdAt: "2026-05-25T08:00:00.000Z",
+      appliedAt: "2026-05-25T08:01:00.000Z",
+      summary: { added: 2, updated: 1, unchanged: 0, conflict: 0, highRisk: 0 },
+      items: []
+    };
+    const importedParameter = {
+      ...apiParameter,
+      id: "api-project-imported-1",
+      name: "imported_parameter"
+    };
+    const repository = createRepository({
+      applyImportBatch: vi.fn().mockResolvedValue(appliedBatch),
+      listParameters: vi.fn().mockResolvedValue([apiParameter, importedParameter])
+    });
+    const actions = createParameterRuntimeActions({ runtimeMode: "mock", repository, dispatch });
+
+    await actions.applyImportBatch({ batchId: "batch-1" });
+
+    expect(repository.applyImportBatch).toHaveBeenCalledWith({ batchId: "batch-1" });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "IMPORT_PARAMETERS" });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "HYDRATE_PARAMETER_RUNTIME",
+      projects: apiProjects,
+      parameters: [apiParameter, importedParameter],
+      changeRequests: [apiChangeRequest],
+      parameterSubmissionRounds: [apiRound],
+      parameterDrafts: [apiDraft]
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "ADD_NOTIFICATION",
+      message: "批量参数导入完成：新增 2 项，更新 1 项，冲突 0 项"
+    });
+  });
+
+  it("fails mock import apply honestly when no parameter repository is wired", async () => {
+    const dispatch = vi.fn();
+    const actions = createParameterRuntimeActions({ runtimeMode: "mock", dispatch });
+
+    const result = await actions.applyImportBatch({ batchId: "batch-1" });
+
+    expect(result).toEqual({
+      notification: "参数导入未完成：mock 运行时未接入参数仓库。",
+      alreadyNotified: true
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "ADD_NOTIFICATION",
+      message: "参数导入未完成：mock 运行时未接入参数仓库。"
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "IMPORT_PARAMETERS" });
   });
 
   it("calls the repository and hydrates local parameter runtime after an api submit", async () => {
@@ -315,5 +371,30 @@ describe("createParameterRuntimeActions", () => {
       parameterSubmissionRounds: [apiRound],
       parameterDrafts: [apiDraft]
     });
+  });
+
+  it("creates mock import previews through the parameter repository when wired", async () => {
+    const dispatch = vi.fn();
+    const repository = createRepository();
+    const actions = createParameterRuntimeActions({ runtimeMode: "mock", repository, dispatch });
+    const input = {
+      projectId: "api-project",
+      sourceName: "import.csv",
+      items: [
+        {
+          name: "previewed_parameter",
+          module: "Charging Policy",
+          risk: "High" as const,
+          unit: "mA",
+          range: "0-5000"
+        }
+      ]
+    };
+
+    const result = await actions.createImportPreview(input);
+
+    expect(result).toEqual(apiPreviewBatch);
+    expect(repository.createImportPreview).toHaveBeenCalledWith(input);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });

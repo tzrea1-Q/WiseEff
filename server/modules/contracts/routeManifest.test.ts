@@ -45,4 +45,9 @@ describe("routeManifest", () => {
       ])
     );
   });
+
+  it("does not advertise dropped admin reload-bindings routes", () => {
+    expect(routeManifest.some((route) => route.path.includes("/reload-bindings"))).toBe(false);
+    expect(routeManifest.some((route) => route.id.includes("ReloadBinding"))).toBe(false);
+  });
 });

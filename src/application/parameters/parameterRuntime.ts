@@ -125,7 +125,6 @@ type ParameterRuntimeDispatchAction =
   | { type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND"; roundId: string }
   | { type: "ADVANCE_REVIEW"; requestId: string; note?: string }
   | { type: "REJECT_REVIEW"; requestId: string; reason: string }
-  | { type: "IMPORT_PARAMETERS" }
   | { type: "ADD_NOTIFICATION"; message: string };
 
 export type ParameterRuntimeActions = {
@@ -310,6 +309,13 @@ export function createParameterRuntimeActions({
     },
     async createImportPreview(input) {
       if (runtimeMode !== "api") {
+        if (repository) {
+          try {
+            return await repository.createImportPreview(input);
+          } catch (error) {
+            return notifyFailure(dispatch, {}, formatParameterRuntimeError(error));
+          }
+        }
         return {
           id: `mock-import-${Date.now()}`,
           projectId: input.projectId,
@@ -342,8 +348,34 @@ export function createParameterRuntimeActions({
     },
     async applyImportBatch(input) {
       if (runtimeMode !== "api") {
-        dispatch({ type: "IMPORT_PARAMETERS" });
-        return undefined;
+        if (!repository) {
+          return notifyFailure(dispatch, {}, "参数导入未完成：mock 运行时未接入参数仓库。");
+        }
+        try {
+          const applied = await repository.applyImportBatch(input);
+          const projects = await repository.listProjects();
+          const [parameterGroups, changeRequests, parameterSubmissionRounds, parameterDrafts] = await Promise.all([
+            Promise.all(projects.map((project) => repository.listParameters({ projectId: project.id, limit: 500 }))),
+            repository.listChangeRequests(),
+            repository.listSubmissionRounds(),
+            repository.listDrafts()
+          ]);
+          dispatch({
+            type: "HYDRATE_PARAMETER_RUNTIME",
+            projects,
+            parameters: parameterGroups.flat(),
+            changeRequests,
+            parameterSubmissionRounds,
+            parameterDrafts
+          });
+          dispatch({
+            type: "ADD_NOTIFICATION",
+            message: `批量参数导入完成：新增 ${applied.summary.added} 项，更新 ${applied.summary.updated} 项，冲突 ${applied.summary.conflict} 项`
+          });
+          return undefined;
+        } catch (error) {
+          return notifyFailure(dispatch, {}, formatParameterRuntimeError(error));
+        }
       }
 
       return runApiMutation((api) => api.applyImportBatch(input));

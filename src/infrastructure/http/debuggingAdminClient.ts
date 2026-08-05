@@ -8,7 +8,6 @@ import type {
 } from "@/domain/debugging/types";
 import { normalizeBindingNodePath } from "@/domain/debugging/bindingNodePath";
 import { createApiClient } from "./apiClient";
-import type { ParameterReloadTargetDto } from "./debuggingDtos";
 import {
   debugAdminBindingFromDto,
   debugAdminModuleFromDto,
@@ -16,16 +15,13 @@ import {
   debugAdminNodeFromDto,
   debugAdminParameterFromDto,
   debugAdminParameterToDto,
-  debugAdminReloadBindingFromDto,
   type DebugAdminBindingDto,
   type DebugAdminBindingWriteDto,
   type DebugAdminParameterBindingWriteDto,
   type DebugAdminParameterDto,
   type DebugAdminNodeDto,
   type DebugAdminNodeWriteDto,
-  type DebugAdminModuleDto,
-  type DebugAdminReloadBindingDto,
-  type DebugAdminReloadBindingWriteDto
+  type DebugAdminModuleDto
 } from "./debuggingAdminDtos";
 import { createDefaultApiClient } from "./defaultApiClient";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
@@ -133,12 +129,6 @@ function adminNodeBindingPath(nodeId: string, protocol: DebugConnectionProtocol)
 
 function adminModulePath(moduleId: string) {
   return `/api/v1/debugging/admin/modules/${encodeURIComponent(moduleId)}`;
-}
-
-function appendReloadTargetsQuery(path: string, query?: { protocol?: DebugConnectionProtocol }) {
-  const params = new URLSearchParams();
-  if (query?.protocol) params.set("protocol", query.protocol);
-  return appendQuery(path, params);
 }
 
 function parameterWriteBody(draftOrPatch: DebugAdminParameterDraft | DebugAdminParameterPatch) {
@@ -285,20 +275,6 @@ export function createDebuggingAdminClient(apiClient: ApiClient = createDefaultA
     },
     async deleteModule(moduleId: string) {
       await apiClient.delete(adminModulePath(moduleId));
-    },
-    async listReloadBindings() {
-      const response = await apiClient.get<ItemsEnvelope<DebugAdminReloadBindingDto>>("/api/v1/debugging/admin/reload-bindings");
-      return response.items.map(debugAdminReloadBindingFromDto);
-    },
-    async listReloadTargetCandidates(query?: { protocol?: DebugConnectionProtocol }): Promise<ParameterReloadTargetDto[]> {
-      const response = await apiClient.get<ItemsEnvelope<ParameterReloadTargetDto>>(
-        appendReloadTargetsQuery("/api/v1/debugging/reload-targets", query)
-      );
-      return response.items;
-    },
-    async upsertReloadBinding(input: DebugAdminReloadBindingWriteDto & { notes?: string | null }) {
-      const response = await apiClient.put<ItemEnvelope<DebugAdminReloadBindingDto>>("/api/v1/debugging/admin/reload-bindings", input);
-      return debugAdminReloadBindingFromDto(response.item);
     }
   };
 }

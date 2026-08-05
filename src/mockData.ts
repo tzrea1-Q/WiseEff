@@ -50,14 +50,6 @@ export type ImpactItem = {
   risk: RiskLevel;
 };
 
-export type AIFeedbackEntry = {
-  id: string;
-  requestId: string;
-  feedback: "up" | "down";
-  note?: string;
-  recordedAt: string;
-};
-
 export { REVIEW_MOCK_NOW };
 export type RequestStatus =
   | "硬件Committer检视"
@@ -360,7 +352,6 @@ export type PrototypeState = {
   parameters: ParameterRecord[];
   changeRequests: ChangeRequest[];
   parameterDrafts: ParameterDraftDto[];
-  aiFeedback: AIFeedbackEntry[];
   parameterSubmissionRounds: ParameterSubmissionRound[];
   parameterReviewDecisions: ParameterReviewDecisionRecord[];
   parameterInitializationDrafts: ProjectParameterInitializationDraft[];
@@ -870,7 +861,6 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     parameters: runtime.parameters,
     changeRequests: buildReviewMockRequests(),
     parameterDrafts: [],
-    aiFeedback: [],
     parameterInitializationDrafts: [],
     parameterInitializationReviews: [],
     projectInitializationStatuses: Object.fromEntries(

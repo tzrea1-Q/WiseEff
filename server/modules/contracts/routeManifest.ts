@@ -474,27 +474,6 @@ export const routeManifest = [
     module: "debugging",
     stability: "mvp"
   },
-  {
-    id: "debugging.admin.listReloadBindings",
-    method: "GET",
-    path: "/api/v1/debugging/admin/reload-bindings",
-    module: "debugging",
-    stability: "mvp"
-  },
-  {
-    id: "debugging.admin.upsertReloadBinding",
-    method: "PUT",
-    path: "/api/v1/debugging/admin/reload-bindings",
-    module: "debugging",
-    stability: "mvp"
-  },
-  {
-    id: "debugging.admin.patchReloadBinding",
-    method: "PATCH",
-    path: "/api/v1/debugging/admin/reload-bindings",
-    module: "debugging",
-    stability: "mvp"
-  },
   { id: "debugging.listReloadTargets", method: "GET", path: "/api/v1/debugging/reload-targets", module: "debugging", stability: "deprecated" },
   { id: "debugging.reloadParameter", method: "POST", path: "/api/v1/debugging/parameters/reload", module: "debugging", stability: "deprecated" },
   { id: "debugging.createSession", method: "POST", path: "/api/v1/debugging/sessions", module: "debugging", stability: "mvp" },

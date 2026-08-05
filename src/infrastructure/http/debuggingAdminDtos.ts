@@ -5,8 +5,7 @@ import type {
   DebugNodeRegistryEntry,
   DebugParameter,
   DebugParameterAccessMode,
-  DebugParameterNodeBinding,
-  ParameterReloadBinding
+  DebugParameterNodeBinding
 } from "@/domain/debugging/types";
 import { resolveDebugValueMetadata } from "@/debugValueKind";
 import type {
@@ -232,30 +231,6 @@ export function debugAdminModuleToDto(
   };
 }
 
-export type DebugAdminReloadBindingDto = {
-  id: string;
-  organizationId: string;
-  parameterDefinitionId: string;
-  protocol: DebugConnectionProtocol;
-  nodePath: string;
-  accessMode: DebugParameterAccessMode;
-  enabled: boolean;
-  parameterName?: string;
-  parameterKey?: string;
-  module?: string;
-  unit?: string;
-  risk?: RiskLevel;
-  notes?: string | null;
-};
-
-export type DebugAdminReloadBindingWriteDto = {
-  parameterDefinitionId: string;
-  protocol: DebugConnectionProtocol;
-  nodePath: string;
-  accessMode: DebugParameterAccessMode;
-  enabled: boolean;
-};
-
 export function debugAdminNodeBindingFromDto(dto: DebugAdminBindingDto): DebugNodeProtocolBinding {
   return {
     protocol: dto.protocol,
@@ -279,21 +254,5 @@ export function debugAdminNodeFromDto(dto: DebugAdminNodeDto): DebugNodeRegistry
     modulePath: dto.modulePath,
     enabled: dto.enabled,
     bindings: dto.bindings?.map(debugAdminNodeBindingFromDto) ?? []
-  };
-}
-
-export function debugAdminReloadBindingFromDto(dto: DebugAdminReloadBindingDto): ParameterReloadBinding {
-  return {
-    id: dto.id,
-    parameterDefinitionId: dto.parameterDefinitionId,
-    parameterName: dto.parameterName,
-    module: dto.module,
-    unit: dto.unit,
-    risk: dto.risk,
-    protocol: dto.protocol,
-    nodePath: dto.nodePath,
-    accessMode: dto.accessMode,
-    enabled: dto.enabled,
-    notes: dto.notes ?? undefined
   };
 }
