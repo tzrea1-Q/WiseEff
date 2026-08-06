@@ -523,6 +523,7 @@ function renderPage(options: {
   runtimeMode?: "mock" | "api";
   parameterFileRepository?: import("@/application/ports/ParameterFileRepository").ParameterFileRepository;
   dtsStructuredRepository?: import("@/application/ports/DtsStructuredRepository").DtsStructuredRepository;
+  configurationWorkbenchEnabled?: boolean;
   state?: typeof initialState;
 } = {}) {
   const path = options.path ?? "/parameter-admin/specs";
@@ -549,6 +550,7 @@ function renderPage(options: {
       parameterModuleRegistryRepository={moduleRegistry}
       parameterFileRepository={options.parameterFileRepository}
       dtsStructuredRepository={options.dtsStructuredRepository}
+      configurationWorkbenchEnabled={options.configurationWorkbenchEnabled}
       projects={(options.state ?? initialState).configDraft.projects}
       parameters={(options.state ?? initialState).parameters}
       activeProjectId={(options.state ?? initialState).activeProjectId}
@@ -1403,6 +1405,50 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
 });
 
 describe("ParameterAdminNextPage · project-scoped routes and parameter files", () => {
+  it("opens the flagged Configuration workbench from the project list", async () => {
+    const { onNavigate } = renderPage({
+      path: "/parameter-admin/projects",
+      area: "projects",
+      configurationWorkbenchEnabled: true
+    });
+
+    expect(await screen.findByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    const firstOpen = screen.getAllByRole("button", { name: /配置工作台/ })[0]!;
+    fireEvent.click(firstOpen);
+
+    expect(onNavigate).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/parameter-admin\/projects\/[^/]+\/configuration$/)
+    );
+  });
+
+  it("renders the canonical Configuration workbench through the real mock runtime ports", async () => {
+    const projectId = initialState.configDraft.projects[0]!.id;
+    renderPage({
+      path: `/parameter-admin/projects/${projectId}/configuration`,
+      area: "projects",
+      configurationWorkbenchEnabled: true
+    });
+
+    expect(await screen.findByRole("region", { name: "项目配置工作台" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "参数后台范围" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /\.dts$/ })).toBeInTheDocument();
+    expect(screen.getByRole("tree", { name: /成员文件/ })).toBeInTheDocument();
+  });
+
+  it("redirects the canonical route to the legacy files view when the flag is disabled", async () => {
+    const projectId = initialState.configDraft.projects[0]!.id;
+    const { onNavigate } = renderPage({
+      path: `/parameter-admin/projects/${projectId}/configuration`,
+      area: "projects",
+      configurationWorkbenchEnabled: false
+    });
+
+    await waitFor(() =>
+      expect(onNavigate).toHaveBeenCalledWith(`/parameter-admin/projects/${projectId}/files`)
+    );
+    expect(screen.queryByRole("region", { name: "项目配置工作台" })).not.toBeInTheDocument();
+  });
+
   it("lists projects and opens the files view by route", async () => {
     const { onNavigate } = renderPage({
       path: "/parameter-admin/projects",

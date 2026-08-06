@@ -96,6 +96,13 @@ export const routeManifest = [
   },
 
   { id: "parameters.listProjects", method: "GET", path: "/api/v1/projects", module: "parameters", stability: "mvp" },
+  {
+    id: "parameters.listConfigSetFiles",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/config-sets/:configSetId/files",
+    module: "parameters",
+    stability: "mvp"
+  },
   { id: "parameters.listProjectModules", method: "GET", path: "/api/v1/projects/:projectId/modules", module: "parameters", stability: "mvp" },
   { id: "parameters.listModules", method: "GET", path: "/api/v1/parameter-modules", module: "parameters", stability: "mvp" },
   { id: "parameters.createModule", method: "POST", path: "/api/v1/parameter-modules", module: "parameters", stability: "mvp" },

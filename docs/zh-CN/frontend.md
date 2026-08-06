@@ -27,6 +27,8 @@ VITE_WISEEFF_RUNTIME_MODE=api
 VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 ```
 
+Phase 1 配置工作台 tracer 在开发环境为**显式开启**（`VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED=true`；默认 `false`）。生产构建强制关闭。详见 `.env.example` 与 `docs/zh-CN/developer/environment-variables.md`。
+
 仅在纯前端演示或组件测试、且不需要调用后端时显式使用 mock：
 
 ```text
@@ -67,7 +69,11 @@ P3 / P3.1 新表面（均走 `DtsStructuredRepository`，勿在新面板里直�
 
 旧的 `ProjectParameterFilesPanel` / 冲突面板通过 `resolveParameterFileRepository(runtimeMode)` 注入 `ParameterFileRepository`（mock：`createMockParameterFileRepository`；API：`createParameterFileClient`），组件内禁止 `createParameterFileClient()`。mock 模式下可演示文件列表与冲突面板，不直连 `:8787`。
 
-正式参数管理后台在侧栏只有一个入口「参数后台」（`/parameter-admin`）。组织治理与项目运营通过范围切换；`/parameter-admin` 会重定向到 `/parameter-admin/specs`（保留查询串）。组织配置对等入口为 `/parameter-admin/specs`（参数定义管理：定义库 + 内嵌匹配审核；有节点对应任务时嵌套 `/parameter-admin/specs/identity-mapping`）与 `/parameter-admin/modules`（模块管理）。旧路径 `/parameter-admin/spec-review`、`/parameter-admin/identity-mapping` 永久重定向到新位置并保留 query（ADR-0015）。`/parameter-admin/projects`（及深链 `/parameter-admin/projects/:projectId/files`，另有 `config-sets` / `structure` / `conflicts`）仍可深链访问，并保持同一侧栏项高亮。面板只依赖 `createParameterAdminApplication` 门面（底层 `ParameterTopologyRepository`、`ParameterModuleRegistryRepository` 与导入 actions，mock/api 同源），跨面板状态在 `ParameterAdminProvider`，不读全局 `PrototypeState`。筛选/排序/选中以 URL 查询参数为唯一真相源。批量导入为组织子路由的 TopBar 操作；规格审核走 cursor 分页；参数库客户端分页（50/页）并默认隐藏 `#…` 结构属性。项目域含清单、参数文件、配置集/基线、结构浏览与冲突裁决。操作 ID `PARAM-IDENTITY-MAP-ADMIN-001` 跟踪后台侧身份映射覆盖（浏览器验收改挂见 #198）。`pageUsesProjectScope` 不含管理后台路由（ADR-0001：组织域与项目运营各自自有选择器，不挂 TopBar 项目选择器）。
+正式参数管理后台在侧栏只有一个入口「参数后台」（`/parameter-admin`）。组织治理与项目运营通过范围切换；`/parameter-admin` 会重定向到 `/parameter-admin/specs`（保留查询串）。组织配置对等入口为 `/parameter-admin/specs`（参数定义管理：定义库 + 内嵌匹配审核；有节点对应任务时嵌套 `/parameter-admin/specs/identity-mapping`）与 `/parameter-admin/modules`（模块管理）。旧路径 `/parameter-admin/spec-review`、`/parameter-admin/identity-mapping` 永久重定向到新位置并保留 query（ADR-0015）。`/parameter-admin/projects`（及深链 `/parameter-admin/projects/:projectId/files`，另有 `config-sets` / `structure` / `conflicts`；开发 flag 开启时另有 canonical 只读 tracer `/configuration`）仍可深链访问，并保持同一侧栏项高亮。面板只依赖 `createParameterAdminApplication` 门面（底层 `ParameterTopologyRepository`、`ParameterModuleRegistryRepository` 与导入 actions，mock/api 同源），跨面板状态在 `ParameterAdminProvider`，不读全局 `PrototypeState`。筛选/排序/选中以 URL 查询参数为唯一真相源。批量导入为组织子路由的 TopBar 操作；规格审核走 cursor 分页；参数库客户端分页（50/页）并默认隐藏 `#…` 结构属性。项目域含清单、参数文件、配置集/基线、结构浏览与冲突裁决。操作 ID `PARAM-IDENTITY-MAP-ADMIN-001` 跟踪后台侧身份映射覆盖（浏览器验收改挂见 #198）。`pageUsesProjectScope` 不含管理后台路由（ADR-0001：组织域与项目运营各自自有选择器，不挂 TopBar 项目选择器）。
+
+开发环境显式设置 `VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED=true` 后，项目清单入口会打开 `/parameter-admin/projects/:projectId/configuration`。该 Phase 1 路由是全屏只读 tracer：配置集/文件 query 选择 Working configuration；成员/未编组身份与 active source 在 mock/API 两种 runtime 中均经既有 `DtsStructuredRepository`、`ParameterFileRepository` 读取；候选与发布写操作保持禁用。生产构建强制关闭该 flag，flag 关闭时四视图旧弹窗仍可访问。
+
+只读工作台通过 `DtsStructuredRepository.listConfigSetFiles` 调用 `GET /api/v1/projects/:projectId/config-sets/:configSetId/files`，返回项目/组织范围内的成员角色、排序、格式与 active version 身份；页面不直接创建 HTTP client。
 
 **项目 tab 视觉约定：** 深链视图共用 `.param-admin-panel` 外框与 `.param-admin-panel__section` 分组（配置集/基线）；空队列用 `ParamAdminEmptyState`（`.param-admin-empty`）承载短状态、可选说明与下一步动作。作用域导航（`.parameter-admin-scope-nav`）视觉权重大于组织子导航（`.parameter-admin-subnav`），以表达包含关系：作用域用更大、实心主色选中 pill 并带轻阴影；子导航为更小的描边 pill，且每个对等项（含未选中）都有边框，避免被读成静态文案。项目列表页只保留权威标题「项目清单」；TopBar 副标题对应清单或深链视图名，不再重复「项目运营」。清单行展示治理信号（「冲突」开放数、「基线」已发布/无已发布），数据来自 `GET /api/v1/parameters/admin/projects`。参数文件页先文件列表、后结构化检索，检索文案指向「结构浏览」做树形编辑。
 

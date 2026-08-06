@@ -14,6 +14,7 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
+const DEFAULT_PROJECT_ID = "project-teaching";
 const DEFAULT_FILE_ID = "file-teaching-dts";
 const DEFAULT_FILE_NAME = "atlas-board.dts";
 const DEFAULT_VERSION_ID = "version-teaching-1";
@@ -239,6 +240,40 @@ export function createMockDtsStructuredRepository(
     return `${prefix}-${state.counter}`;
   }
 
+  function fileIdentityForProject(projectId: string) {
+    if (projectId === DEFAULT_PROJECT_ID) {
+      return { fileId, versionId };
+    }
+    return { fileId: `${fileId}-${projectId}`, versionId: `${versionId}-${projectId}` };
+  }
+
+  function ensureDefaultConfigSet(projectId: string) {
+    const existing = state.configSets.find(
+      (item) => item.projectId === projectId && item.name === "default"
+    );
+    if (existing) {
+      return existing;
+    }
+    const created: DtsConfigSet = {
+      id: `mock-cs-default-${projectId}`,
+      organizationId: DEFAULT_ORG_ID,
+      projectId,
+      name: "default",
+      description: "Default working configuration.",
+      createdAt: MOCK_NOW,
+      updatedAt: MOCK_NOW
+    };
+    const identity = fileIdentityForProject(projectId);
+    state.configSets.push(created);
+    state.memberships.push({
+      configSetId: created.id,
+      fileId: identity.fileId,
+      role: "base",
+      sortOrder: 0
+    });
+    return created;
+  }
+
   function requireConfigSet(configSetId: string) {
     const configSet = state.configSets.find((item) => item.id === configSetId);
     if (!configSet) {
@@ -277,7 +312,27 @@ export function createMockDtsStructuredRepository(
     },
 
     async listConfigSets(requestedProjectId) {
+      ensureDefaultConfigSet(requestedProjectId);
       return state.configSets.filter((item) => item.projectId === requestedProjectId).map((item) => ({ ...item }));
+    },
+
+    async listConfigSetFiles(requestedProjectId, configSetId) {
+      const configSet = requireConfigSet(configSetId);
+      if (configSet.projectId !== requestedProjectId) {
+        throw new Error(`Config set not found: ${configSetId}`);
+      }
+      const identity = fileIdentityForProject(requestedProjectId);
+      return state.memberships
+        .filter((item) => item.configSetId === configSetId)
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map((item) => ({
+          ...item,
+          fileName: item.fileId === identity.fileId ? DEFAULT_FILE_NAME : item.fileId,
+          format: item.fileId.endsWith(".json") ? ("json" as const) : ("dts" as const),
+          ...(item.fileId === identity.fileId
+            ? { currentVersionId: identity.versionId, currentVersionNumber: 1 }
+            : {})
+        }));
     },
 
     async createConfigSet(requestedProjectId, input: CreateConfigSetInput) {

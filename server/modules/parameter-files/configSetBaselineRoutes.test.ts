@@ -40,6 +40,7 @@ vi.mock("./conflictService", () => ({
 vi.mock("./configSetService", () => ({
   createConfigSet: vi.fn(),
   listConfigSets: vi.fn(),
+  listConfigSetFiles: vi.fn(),
   addConfigSetFile: vi.fn(),
   removeConfigSetFile: vi.fn(),
   updateConfigSet: vi.fn(),
@@ -196,6 +197,36 @@ describe("config set and baseline routes", () => {
       expect.objectContaining({ organization: expect.objectContaining({ id: "org-1" }) }),
       { configSetId: "cs-1", fileId: "file-1", role: "base", sortOrder: 0 },
       { requestId: "test-request" }
+    );
+  });
+
+  it("GET /api/v1/projects/:projectId/config-sets/:configSetId/files returns member identities", async () => {
+    const db = makeDb();
+    const members = [
+      {
+        configSetId: "cs-1",
+        fileId: "file-1",
+        fileName: "board.dts",
+        format: "dts" as const,
+        role: "base" as const,
+        sortOrder: 0,
+        currentVersionId: "fv-3",
+        currentVersionNumber: 3
+      }
+    ];
+    vi.mocked(configSetService.listConfigSetFiles).mockResolvedValue(members);
+
+    const response = await requestJson<{ items: typeof members }>(
+      makeServer({ db, auth: makeViewOnlyAuth() }),
+      "/api/v1/projects/project-1/config-sets/cs-1/files"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items).toEqual(members);
+    expect(configSetService.listConfigSetFiles).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ organization: expect.objectContaining({ id: "org-1" }) }),
+      { projectId: "project-1", configSetId: "cs-1" }
     );
   });
 

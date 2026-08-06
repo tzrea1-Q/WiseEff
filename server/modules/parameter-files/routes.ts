@@ -25,6 +25,7 @@ import {
 import {
   addConfigSetFile,
   createConfigSet,
+  listConfigSetFiles,
   listConfigSets,
   removeConfigSetFile
 } from "./configSetService";
@@ -441,6 +442,19 @@ export function registerParameterFileRoutes(
     );
 
     return { status: 201, body: { item } };
+  });
+
+  router.get("/api/v1/projects/:projectId/config-sets/:configSetId/files", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
+    const items = await listConfigSetFiles(db, auth, {
+      projectId: params.projectId,
+      configSetId: params.configSetId
+    });
+
+    return { status: 200, body: { items } };
   });
 
   router.post("/api/v1/projects/:projectId/config-sets/:configSetId/files", async (request) => {

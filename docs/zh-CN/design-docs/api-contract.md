@@ -440,6 +440,7 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/v1/projects/:projectId/config-sets` | 列出项目的配置集。 |
+| `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/files` | 读取项目范围内配置集成员、角色、格式、排序及当前 active version 身份。要求 `parameter:view`；配置集不属于项目/组织范围时返回 `404`。 |
 | `POST` | `/api/v1/projects/:projectId/config-sets` | 创建配置集。请求体：`{ name, description?, derivedFromId? }`。返回 `201 { item }`；同项目内 `name` 重复报 `409`。 |
 | `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/files` | 把参数文件加入配置集成员。请求体：`{ fileId, role, sortOrder? }`（`role` 为 `base`\|`overlay`\|`charging`\|`thermal`\|`misc`）。返回 `201 { item }`；文件已属于另一配置集报 `409`。 |
 | `DELETE` | `/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId` | 从配置集移除文件。返回 `200 {}`。 |

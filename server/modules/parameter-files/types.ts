@@ -147,8 +147,12 @@ export type InsertReleaseBaselineMemberInput = {
 };
 
 export type ConfigSetMemberFileDto = {
+  configSetId: string;
   fileId: string;
   fileName: string;
+  format: ParameterFileFormat;
+  role: ConfigSetRole;
+  sortOrder: number;
   currentVersionId?: string;
   currentVersionNumber?: number;
 };

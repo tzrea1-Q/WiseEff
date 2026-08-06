@@ -4,6 +4,7 @@ import type {
   CreateConfigSetInput,
   DtsCompareBaselineResult,
   DtsConfigSet,
+  DtsConfigSetMemberFile,
   DtsConfigSetFile,
   DtsExportConfigSetResult,
   DtsReleaseBaseline,
@@ -88,6 +89,12 @@ export function createDtsStructuredClient(client: ApiClient = createDefaultApiCl
     },
     async listConfigSets(projectId) {
       const response = await client.get<ItemsEnvelope<DtsConfigSet>>(routeConfigSets(projectId));
+      return response.items;
+    },
+    async listConfigSetFiles(projectId, configSetId) {
+      const response = await client.get<ItemsEnvelope<DtsConfigSetMemberFile>>(
+        routeConfigSetFiles(projectId, configSetId)
+      );
       return response.items;
     },
     async createConfigSet(projectId, input: CreateConfigSetInput) {

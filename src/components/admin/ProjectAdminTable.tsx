@@ -12,6 +12,7 @@ type ProjectAdminTableProps = {
   onEditProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
   onManageFiles: (projectId: string) => void;
+  primaryActionLabel?: string;
 };
 
 const STATUS_FILTER_OPTIONS = [
@@ -58,7 +59,8 @@ export function ProjectAdminTable({
   onCreateProject,
   onEditProject,
   onDeleteProject,
-  onManageFiles
+  onManageFiles,
+  primaryActionLabel = "管理文件"
 }: ProjectAdminTableProps) {
   const filteredRows = useMemo(() => sortRows(filterRows(rows, search), search.sort), [rows, search]);
   const selectedStatuses = search.statuses ?? [];
@@ -301,11 +303,11 @@ export function ProjectAdminTable({
                       <button
                         type="button"
                         className="button subtle project-admin-row-manage-files"
-                        aria-label={`管理文件 ${row.name}`}
-                        title={`管理文件 ${row.name}`}
+                        aria-label={`${primaryActionLabel} ${row.name}`}
+                        title={`${primaryActionLabel} ${row.name}`}
                         onClick={() => onManageFiles(row.id)}
                       >
-                        管理文件
+                        {primaryActionLabel}
                       </button>
                       <button
                         type="button"

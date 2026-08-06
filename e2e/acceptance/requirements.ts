@@ -153,6 +153,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PROJ-CONFIG-READ-001",
+    workflow: "C",
+    title: "The development-flagged canonical project configuration route resolves Config-set context and reads active member DTS source in source-dominant and responsive layouts.",
+    required: false
+  },
+  {
     id: "PARAM-ADMIN-DIALOG-001",
     workflow: "C",
     title: "Param-admin dialogs trap focus, restore focus to the trigger, close only the top-most dialog on Escape, ignore press-inside/release-outside, and keep their styling through the portal.",

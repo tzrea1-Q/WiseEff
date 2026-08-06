@@ -260,6 +260,7 @@ Board-level config sets aggregate a project's parameter files into one buildable
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/projects/:projectId/config-sets` | List config sets for a project. |
+| `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/files` | Read scoped Config-set members with role, format, sort order, and current active version identity. Requires `parameter:view`; an out-of-project or out-of-organization Config set returns `404`. |
 | `POST` | `/api/v1/projects/:projectId/config-sets` | Create a config set. Body: `{ name, description?, derivedFromId? }`. Returns `201 { item }`. Duplicate `name` in the same project is `409`. |
 | `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/files` | Add a parameter file as a config-set member. Body: `{ fileId, role, sortOrder? }` (`role` is `base`\|`overlay`\|`charging`\|`thermal`\|`misc`). Returns `201 { item }`. A file already owned by another config set is `409`. |
 | `DELETE` | `/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId` | Remove a file from the config set. Returns `200 {}`. |

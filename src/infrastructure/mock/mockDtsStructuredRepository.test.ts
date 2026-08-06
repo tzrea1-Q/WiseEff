@@ -107,6 +107,22 @@ describe("createMockDtsStructuredRepository (DtsStructuredRepository contract)",
   it("supports interactive config-set membership CRUD", async () => {
     const repo = createRepo();
 
+    const [defaultConfigSet] = await repo.listConfigSets(PROJECT_ID);
+    expect(defaultConfigSet?.name).toBe("default");
+    expect(await repo.listConfigSetFiles(PROJECT_ID, defaultConfigSet!.id)).toEqual([
+      expect.objectContaining({
+        configSetId: defaultConfigSet!.id,
+        fileId: FILE_ID,
+        fileName: "atlas-board.dts",
+        format: "dts",
+        role: "base",
+        currentVersionId: VERSION_ID,
+        currentVersionNumber: 1
+      })
+    ]);
+
+    await repo.removeConfigSetFile(PROJECT_ID, defaultConfigSet!.id, FILE_ID);
+
     const created = await repo.createConfigSet(PROJECT_ID, { name: "board-a", description: "A board" });
     expect(created.name).toBe("board-a");
     expect(created.projectId).toBe(PROJECT_ID);
@@ -120,6 +136,13 @@ describe("createMockDtsStructuredRepository (DtsStructuredRepository contract)",
       sortOrder: 1
     });
     expect(membership).toMatchObject({ configSetId: created.id, fileId: FILE_ID, role: "base", sortOrder: 1 });
+    expect(await repo.listConfigSetFiles(PROJECT_ID, created.id)).toEqual([
+      expect.objectContaining({
+        fileId: FILE_ID,
+        fileName: "atlas-board.dts",
+        currentVersionId: VERSION_ID
+      })
+    ]);
 
     await repo.removeConfigSetFile(PROJECT_ID, created.id, FILE_ID);
     const afterRemove = await repo.listConfigSets(PROJECT_ID);

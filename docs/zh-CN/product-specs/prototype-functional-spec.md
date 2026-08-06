@@ -28,6 +28,7 @@ Implementation note: the mock prototype remains available for demos and componen
 | `/parameters` | 项目参数用户工作台 | 面向硬件开发人员/项目开发人员，查看、筛选、对比和提交参数修改；拓扑树展示节点启用/禁用与不可达标记，禁用节点下参数行显示不生效提示，并可经节点启停对话框编辑（与 binding 草稿共享工作 tip） |
 | `/parameter-review` | 参数管理员工作台 | 面向参数管理员/软件人员，审阅参数变更并推进合入上库流程 |
 | `/parameter-admin` | 项目参数 Admin | 管理参数数据库、批量导入、应用指标、权限与审计 |
+| `/parameter-admin/projects/:projectId/configuration` | 项目配置工作台只读 tracer | 开发 flag 开启时查看 Working configuration 的成员、未编组文件与 active DTS source；不提供候选或发布写操作 |
 | `/logs` | 日志智能分析 | 上传日志、查看 AI 分析进度、阅读结果、追溯历史并与 Agent 对话 |
 | `/log-admin` | 日志分析 Admin | 查看日志分析应用使用指标、记录和权限配置 |
 | `/node-debugging` | 节点调试平台 | 连接调试样机、通过 HDC/ADB 读写设备节点、生成快照与操作历史（当前调试主入口） |

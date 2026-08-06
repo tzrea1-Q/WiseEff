@@ -16,7 +16,8 @@ import {
   setFileConfigSetMembership,
   updateConfigSetRow
 } from "./configSetRepository";
-import type { ConfigSetDto, ConfigSetFileDto, ConfigSetRole } from "./types";
+import { listConfigSetMemberFiles } from "./baselineRepository";
+import type { ConfigSetDto, ConfigSetFileDto, ConfigSetMemberFileDto, ConfigSetRole } from "./types";
 
 export const DEFAULT_CONFIG_SET_NAME = "default";
 
@@ -115,6 +116,24 @@ export async function createConfigSet(
 export async function listConfigSets(db: Queryable, auth: AuthContext, projectId: string): Promise<ConfigSetDto[]> {
   requireParameterFileView(auth);
   return listConfigSetsByProject(db, { organizationId: auth.organization.id, projectId });
+}
+
+export async function listConfigSetFiles(
+  db: Queryable,
+  auth: AuthContext,
+  input: { projectId: string; configSetId: string }
+): Promise<ConfigSetMemberFileDto[]> {
+  requireParameterFileView(auth);
+  const configSet = await getConfigSetById(db, {
+    organizationId: auth.organization.id,
+    configSetId: input.configSetId
+  });
+  if (!configSet || configSet.projectId !== input.projectId) {
+    throw new ApiError("NOT_FOUND", "Config set not found.", 404, {
+      configSetId: input.configSetId
+    });
+  }
+  return listConfigSetMemberFiles(db, input.configSetId);
 }
 
 /** Idempotent default config-set ensure for an open transaction / Queryable. */

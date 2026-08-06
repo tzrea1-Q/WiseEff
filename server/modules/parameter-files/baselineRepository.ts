@@ -27,8 +27,12 @@ type ReleaseBaselineMemberRow = {
 };
 
 type ConfigSetMemberFileRow = {
+  config_set_id: string;
   file_id: string;
   file_name: string;
+  format: "dts" | "json";
+  config_set_role: "base" | "overlay" | "charging" | "thermal" | "misc" | null;
+  config_set_sort_order: number | string;
   current_version_id: string | null;
   version_number: number | string | null;
 };
@@ -61,8 +65,15 @@ function toReleaseBaselineMemberDto(row: ReleaseBaselineMemberRow): ReleaseBasel
 
 function toConfigSetMemberFileDto(row: ConfigSetMemberFileRow): ConfigSetMemberFileDto {
   return {
+    configSetId: row.config_set_id,
     fileId: row.file_id,
     fileName: row.file_name,
+    format: row.format,
+    // Migration 0043 attached existing files to the default set before the
+    // role column existed. Keep those members visible with an explicit,
+    // non-semantic fallback instead of leaking a blank role to consumers.
+    role: row.config_set_role ?? "misc",
+    sortOrder: Number(row.config_set_sort_order),
     currentVersionId: row.current_version_id ?? undefined,
     currentVersionNumber: row.version_number === null || row.version_number === undefined
       ? undefined
@@ -185,8 +196,12 @@ export async function listConfigSetMemberFiles(
   const result = await db.query<ConfigSetMemberFileRow>(
     `
     select
+      ppf.config_set_id as config_set_id,
       ppf.id as file_id,
       ppf.file_name as file_name,
+      ppf.format as format,
+      ppf.config_set_role as config_set_role,
+      ppf.config_set_sort_order as config_set_sort_order,
       ppf.current_version_id as current_version_id,
       v.version_number as version_number
     from project_parameter_files ppf
