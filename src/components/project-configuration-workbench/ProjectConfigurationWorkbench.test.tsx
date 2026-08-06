@@ -274,7 +274,10 @@ describe("ProjectConfigurationWorkbench", () => {
 
     expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "配置集" })).toHaveValue("cs-first");
-    expect(downloadVersion).toHaveBeenCalledWith(PROJECT.id, "file-board", "version-board-12");
+    await waitFor(() =>
+      expect(downloadVersion).toHaveBeenCalledWith(PROJECT.id, "file-board", "version-board-12")
+    );
+    expect(await screen.findByText(/primary-source/)).toBeInTheDocument();
   });
 
   it("preserves the tree and retries only a failed source request", async () => {
