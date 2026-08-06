@@ -123,7 +123,8 @@ describe("acceptance preflight helpers", () => {
     expect(services[1].env).toMatchObject({
       VITE_WISEEFF_RUNTIME_MODE: "api",
       VITE_WISEEFF_API_BASE_URL: "http://127.0.0.1:8787",
-      VITE_WISEEFF_API_AUTHORIZATION: "Bearer smoke"
+      VITE_WISEEFF_API_AUTHORIZATION: "Bearer smoke",
+      VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED: "true"
     });
     expect(services[1].args).toEqual([
       "exec",

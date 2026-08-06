@@ -148,6 +148,7 @@ export function planRuntimeServices(options: PreflightOptions, env: RuntimeEnv):
         ...env,
         VITE_WISEEFF_RUNTIME_MODE: "api",
         VITE_WISEEFF_API_BASE_URL: apiBaseUrl,
+        VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED: "true",
         ...(apiAuthorization ? { VITE_WISEEFF_API_AUTHORIZATION: apiAuthorization } : {})
       }
     });
