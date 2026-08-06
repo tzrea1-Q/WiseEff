@@ -25,6 +25,7 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 | Current | [DTS Parameter Surface Boundary RFC](2026-07-21-dts-parameter-surface-boundary-rfc.md) | Product boundary: manageable parameter surface, module-centric UX, DTS text maintenance, optional L2 toolchain (revises 2026-07-14 locks). |
 | Current | [DTS Capability Cut Matrix](2026-07-21-dts-capability-cut-matrix.md) | Keep / demote / remove-from-hot-path matrix for topology, schema, toolchain, and UI capabilities. |
 | Current | [Project-Primary DTS Contract RFC](2026-07-21-project-primary-dts-contract-rfc.md) | Upload one project DTS; writeback always that final text; retire platform synthetic base; admin owns module↔driver only. |
+| Locked design | [Project Configuration Workbench](2026-08-06-project-configuration-workbench-design.md) | Replace the four-view project-operations dialog with one config-set/source-centered full-screen workbench; includes state and migration contracts. |
 | Current | [DTS Follow-up Scheme (Hardening + Import)](2026-07-15-dts-followup-scheme.md) | Post–P0–P3.1 follow-up scheme: hardening closeout (B) and import-wizard TD-035 alignment (C); Git publish deferred. |
 | Current | [Table Column Multi-Select Filter UX](ux-table-column-filter.md) | Standard header funnel + checkbox filter (`ColumnFilter`); reuse for all similar table column filters. |
 

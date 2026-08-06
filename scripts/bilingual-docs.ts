@@ -37,6 +37,7 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/design-docs/testing-strategy.md", zh: "docs/zh-CN/design-docs/testing-strategy.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/deployment-operations.md", zh: "docs/zh-CN/design-docs/deployment-operations.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/security-governance.md", zh: "docs/zh-CN/design-docs/security-governance.md", tier: "architecture", status: "required" },
+  { en: "docs/design-docs/2026-08-06-project-configuration-workbench-design.md", zh: "docs/zh-CN/design-docs/2026-08-06-project-configuration-workbench-design.md", tier: "architecture", status: "required" },
   { en: "docs/api/README.md", zh: "docs/zh-CN/api/README.md", tier: "api", status: "required" },
   { en: "docs/api/authentication.md", zh: "docs/zh-CN/api/authentication.md", tier: "api", status: "required" },
   { en: "docs/api/errors.md", zh: "docs/zh-CN/api/errors.md", tier: "api", status: "required" },
