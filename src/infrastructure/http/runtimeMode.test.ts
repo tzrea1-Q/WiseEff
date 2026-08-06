@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseRuntimeMode, parseStaticApiAuthorization, resolveWiseEffApiBaseUrl } from "./runtimeMode";
+import {
+  parseProjectConfigurationWorkbenchEnabled,
+  parseRuntimeMode,
+  parseStaticApiAuthorization,
+  resolveWiseEffApiBaseUrl
+} from "./runtimeMode";
 
 describe("resolveWiseEffApiBaseUrl", () => {
   afterEach(() => {
@@ -64,5 +69,15 @@ describe("parseRuntimeMode", () => {
     expect(() => parseStaticApiAuthorization("Bearer static-token", "production")).toThrow(
       "Static API authorization cannot be used in production builds"
     );
+  });
+});
+
+describe("parseProjectConfigurationWorkbenchEnabled", () => {
+  it("enables the tracer only when explicitly requested outside production", () => {
+    expect(parseProjectConfigurationWorkbenchEnabled("true", "development")).toBe(true);
+    expect(parseProjectConfigurationWorkbenchEnabled("TRUE", "test")).toBe(true);
+    expect(parseProjectConfigurationWorkbenchEnabled(undefined, "development")).toBe(false);
+    expect(parseProjectConfigurationWorkbenchEnabled("false", "development")).toBe(false);
+    expect(parseProjectConfigurationWorkbenchEnabled("true", "production")).toBe(false);
   });
 });

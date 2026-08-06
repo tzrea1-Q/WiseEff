@@ -22,6 +22,7 @@ describe("WiseEff prototype configuration", () => {
     const organization = getPageByPath("/parameter-admin");
     const projects = getPageByPath("/parameter-admin/projects");
     const projectFiles = getPageByPath("/parameter-admin/projects/aurora/files");
+    const projectConfiguration = getPageByPath("/parameter-admin/projects/aurora/configuration");
 
     expect(organization.key).toBe("parameter-admin");
     expect(organization.label).toBe("参数后台");
@@ -34,6 +35,9 @@ describe("WiseEff prototype configuration", () => {
 
     expect(projectFiles.key).toBe("parameter-admin");
     expect(projectFiles.path).toBe("/parameter-admin/projects/aurora/files");
+    expect(projectConfiguration.key).toBe("parameter-admin");
+    expect(projectConfiguration.path).toBe("/parameter-admin/projects/aurora/configuration");
+    expect(projectConfiguration.subtitle).toBe("配置工作台");
   });
 
   it("does not resolve the retired construction routes", () => {

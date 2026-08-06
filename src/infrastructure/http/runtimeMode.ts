@@ -20,7 +20,19 @@ export function parseStaticApiAuthorization(value: string | undefined, environme
   return value;
 }
 
+export function parseProjectConfigurationWorkbenchEnabled(
+  value: string | undefined,
+  environment: string
+): boolean {
+  return environment !== "production" && value?.trim().toLowerCase() === "true";
+}
+
 export const wiseEffRuntimeMode = parseRuntimeMode(import.meta.env.VITE_WISEEFF_RUNTIME_MODE, import.meta.env.MODE);
+export const projectConfigurationWorkbenchEnabled =
+  parseProjectConfigurationWorkbenchEnabled(
+    import.meta.env.VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED,
+    import.meta.env.MODE
+  );
 
 const defaultWiseEffApiBaseUrl = "http://127.0.0.1:8787";
 

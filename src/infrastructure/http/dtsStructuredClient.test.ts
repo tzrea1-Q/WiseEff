@@ -56,6 +56,20 @@ describe("createDtsStructuredClient", () => {
       .fn()
       .mockResolvedValueOnce({ items: [{ id: "cs-1" }] })
       .mockResolvedValueOnce({
+        items: [
+          {
+            configSetId: "cs/1",
+            fileId: "file/1",
+            fileName: "board.dts",
+            format: "dts",
+            role: "base",
+            sortOrder: 0,
+            currentVersionId: "version/3",
+            currentVersionNumber: 3
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
         manifest: { configSetId: "cs-1", name: "default", projectId: "project/1", exportedAt: "t", members: [] },
         files: []
       });
@@ -68,6 +82,16 @@ describe("createDtsStructuredClient", () => {
 
     const listed = await client.listConfigSets("project/1");
     expect(listed).toEqual([{ id: "cs-1" }]);
+
+    const members = await client.listConfigSetFiles("project/1", "cs/1");
+    expect(members).toEqual([
+      expect.objectContaining({
+        configSetId: "cs/1",
+        fileId: "file/1",
+        role: "base",
+        currentVersionId: "version/3"
+      })
+    ]);
 
     const created = await client.createConfigSet("project/1", { name: "board-a" });
     expect(created).toEqual({ id: "cs-new", name: "board-a" });
@@ -89,7 +113,8 @@ describe("createDtsStructuredClient", () => {
       { fileId: "file/1", role: "base" }
     );
     expect(del).toHaveBeenCalledWith("/api/v1/projects/project%2F1/config-sets/cs%2Fnew/files/file%2F1");
-    expect(get).toHaveBeenNthCalledWith(2, "/api/v1/projects/project%2F1/config-sets/cs%2Fnew/export");
+    expect(get).toHaveBeenNthCalledWith(2, "/api/v1/projects/project%2F1/config-sets/cs%2F1/files");
+    expect(get).toHaveBeenNthCalledWith(3, "/api/v1/projects/project%2F1/config-sets/cs%2Fnew/export");
   });
 
   it("maps baseline list/create/compare/rollback/release with envelopes", async () => {

@@ -337,6 +337,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
       "Confirmation and audit behaviour is covered by panel and page tests plus playwright-cli evidence; the API-mode e2e governance spec follows with a seeded baseline."
   },
   {
+    id: "PROJ-CONFIG-READ-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Enter from the project list, resolve URL/default Config-set context, distinguish member and ungrouped files, select an active DTS source, and exercise responsive tree/inspector/task sheets.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-READ-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
+  {
     id: "PARAM-ADMIN-DIALOG-001",
     priority: "P1",
     area: "parameters",

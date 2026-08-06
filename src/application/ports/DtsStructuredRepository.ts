@@ -81,6 +81,13 @@ export type DtsConfigSetFile = {
   sortOrder: number;
 };
 
+export type DtsConfigSetMemberFile = DtsConfigSetFile & {
+  fileName: string;
+  format: "dts" | "json";
+  currentVersionId?: string;
+  currentVersionNumber?: number;
+};
+
 export type AddConfigSetFileInput = {
   fileId: string;
   role: ConfigSetRole;
@@ -238,6 +245,7 @@ export interface DtsStructuredRepository {
   search(projectId: string, query: DtsSearchQuery): Promise<DtsSearchResult>;
 
   listConfigSets(projectId: string): Promise<DtsConfigSet[]>;
+  listConfigSetFiles(projectId: string, configSetId: string): Promise<DtsConfigSetMemberFile[]>;
   createConfigSet(projectId: string, input: CreateConfigSetInput): Promise<DtsConfigSet>;
   addConfigSetFile(projectId: string, configSetId: string, input: AddConfigSetFileInput): Promise<DtsConfigSetFile>;
   removeConfigSetFile(projectId: string, configSetId: string, fileId: string): Promise<void>;

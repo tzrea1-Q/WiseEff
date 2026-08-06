@@ -125,6 +125,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
 
   "parameters.listProjects": { summary: "List projects", tags: ["parameters"], responseBody: "ProjectListResponse" },
+  "parameters.listConfigSetFiles": {
+    summary: "List Config set member files with active version identity",
+    tags: ["parameters"],
+    responseBody: "ConfigSetMemberFileListResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameters.listProjectModules": {
     summary: "List project modules",
     tags: ["parameters"],

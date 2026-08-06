@@ -195,8 +195,8 @@ describe("baseline repository", () => {
   it("listConfigSetMemberFiles joins current version info for each member file", async () => {
     const { db, calls } = createFakeDb([
       [
-        { file_id: "file-1", file_name: "board-a.dts", current_version_id: "fv-1", version_number: 3 },
-        { file_id: "file-2", file_name: "board-a.overlay.dts", current_version_id: "fv-9", version_number: 1 }
+        { config_set_id: "dcs-1", file_id: "file-1", file_name: "board-a.dts", format: "dts", config_set_role: "base", config_set_sort_order: 0, current_version_id: "fv-1", version_number: 3 },
+        { config_set_id: "dcs-1", file_id: "file-2", file_name: "board-a.overlay.dts", format: "dts", config_set_role: "overlay", config_set_sort_order: 1, current_version_id: "fv-9", version_number: 1 }
       ]
     ]);
 
@@ -206,20 +206,30 @@ describe("baseline repository", () => {
     expect(calls[0].text).toContain("left join project_parameter_file_versions");
     expect(calls[0].values).toEqual(["dcs-1"]);
     expect(members).toEqual([
-      { fileId: "file-1", fileName: "board-a.dts", currentVersionId: "fv-1", currentVersionNumber: 3 },
-      { fileId: "file-2", fileName: "board-a.overlay.dts", currentVersionId: "fv-9", currentVersionNumber: 1 }
+      { configSetId: "dcs-1", fileId: "file-1", fileName: "board-a.dts", format: "dts", role: "base", sortOrder: 0, currentVersionId: "fv-1", currentVersionNumber: 3 },
+      { configSetId: "dcs-1", fileId: "file-2", fileName: "board-a.overlay.dts", format: "dts", role: "overlay", sortOrder: 1, currentVersionId: "fv-9", currentVersionNumber: 1 }
     ]);
   });
 
   it("listConfigSetMemberFiles reports members with no current version as undefined", async () => {
     const { db } = createFakeDb([
-      [{ file_id: "file-1", file_name: "board-a.dts", current_version_id: null, version_number: null }]
+      [{ config_set_id: "dcs-1", file_id: "file-1", file_name: "board-a.dts", format: "dts", config_set_role: "base", config_set_sort_order: 0, current_version_id: null, version_number: null }]
     ]);
 
     const members = await listConfigSetMemberFiles(db, "dcs-1");
 
     expect(members).toEqual([
-      { fileId: "file-1", fileName: "board-a.dts", currentVersionId: undefined, currentVersionNumber: undefined }
+      { configSetId: "dcs-1", fileId: "file-1", fileName: "board-a.dts", format: "dts", role: "base", sortOrder: 0, currentVersionId: undefined, currentVersionNumber: undefined }
+    ]);
+  });
+
+  it("normalizes legacy members with no stored role to misc", async () => {
+    const { db } = createFakeDb([
+      [{ config_set_id: "dcs-1", file_id: "file-legacy", file_name: "legacy.dts", format: "dts", config_set_role: null, config_set_sort_order: 0, current_version_id: "fv-1", version_number: 1 }]
+    ]);
+
+    await expect(listConfigSetMemberFiles(db, "dcs-1")).resolves.toEqual([
+      expect.objectContaining({ fileId: "file-legacy", role: "misc" })
     ]);
   });
 });

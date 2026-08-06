@@ -6,6 +6,7 @@ export type PlaywrightWebServerOptions = {
   reuseExistingServer: boolean;
   frontendCommand?: string;
   includeXiaozeProactive?: boolean;
+  projectConfigurationWorkbenchEnabled?: boolean;
   authMode?: "development" | "production";
 };
 
@@ -35,6 +36,7 @@ export function buildPlaywrightWebServers({
   reuseExistingServer,
   frontendCommand = `npx vite --host 127.0.0.1 --port ${portFromUrl(baseURL, "5173")} --strictPort`,
   includeXiaozeProactive = false,
+  projectConfigurationWorkbenchEnabled = false,
   authMode,
 }: PlaywrightWebServerOptions): NonNullable<PlaywrightTestConfig["webServer"]> {
   const apiAuthorization = resolveApiAuthorization();
@@ -71,6 +73,9 @@ export function buildPlaywrightWebServers({
       env: {
         VITE_WISEEFF_RUNTIME_MODE: "api",
         VITE_WISEEFF_API_BASE_URL: apiURL,
+        ...(projectConfigurationWorkbenchEnabled
+          ? { VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED: "true" }
+          : {}),
         ...(includeXiaozeProactive
           ? { VITE_XIAOZE_PROACTIVE_ENABLED: process.env.VITE_XIAOZE_PROACTIVE_ENABLED ?? "true" }
           : {}),

@@ -42,6 +42,23 @@ describe("M5 OpenAPI contract", () => {
     }
   });
 
+  it("publishes the read-only Config set member identity endpoint", () => {
+    expect(routeManifest).toContainEqual({
+      id: "parameters.listConfigSetFiles",
+      method: "GET",
+      path: "/api/v1/projects/:projectId/config-sets/:configSetId/files",
+      module: "parameters",
+      stability: "mvp"
+    });
+    expect(schemaRegistry["parameters.listConfigSetFiles"]).toMatchObject({
+      responseBody: "ConfigSetMemberFileListResponse",
+      additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    });
+    expect(buildOpenApiDocument().paths[
+      "/api/v1/projects/{projectId}/config-sets/{configSetId}/files"
+    ]?.get?.operationId).toBe("parameters.listConfigSetFiles");
+  });
+
   it("publishes user governance API routes as commercial-readiness contracts", () => {
     expect(routeManifest).toEqual(
       expect.arrayContaining([

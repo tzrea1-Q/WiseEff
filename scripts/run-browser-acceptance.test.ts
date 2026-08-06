@@ -187,7 +187,8 @@ describe("browser acceptance runner", () => {
     expect(command.env).toMatchObject({
       DEBUG_DEVICE_GATEWAY_MODE: "simulator",
       HDC_DEVICE_LAB_AVAILABLE: "false",
-      DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
+      DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
+      VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED: "true"
     });
 
     expect(buildBrowserAcceptanceCommand(parseBrowserAcceptanceArgs(["--headed"], {}))).toEqual({

@@ -15,7 +15,10 @@ import {
 import { resolveParameterModuleRegistryRepository } from "@/application/parameters/parameterModuleRegistryResolve";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import { migrateLegacyRoleId } from "@/domain/users/types";
-import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import {
+  projectConfigurationWorkbenchEnabled as defaultConfigurationWorkbenchEnabled,
+  type WiseEffRuntimeMode
+} from "@/infrastructure/http/runtimeMode";
 import type { ParameterRecord, Project, PrototypeState } from "@/mockData";
 import { OrganizationBulkImportPanel } from "@/components/parameter-admin-next/OrganizationBulkImportPanel";
 import { OrganizationModuleGovernancePanel } from "@/components/parameter-admin-next/OrganizationModuleGovernancePanel";
@@ -49,6 +52,7 @@ export type ParameterAdminNextPageProps = {
   parameterModuleRegistryRepository?: ParameterModuleRegistryRepository;
   parameterFileRepository?: ParameterFileRepository;
   dtsStructuredRepository?: DtsStructuredRepository;
+  configurationWorkbenchEnabled?: boolean;
   projects?: Project[];
   parameters?: ParameterRecord[];
   activeProjectId?: string;
@@ -73,6 +77,7 @@ export function ParameterAdminNextPage({
   parameterModuleRegistryRepository,
   parameterFileRepository,
   dtsStructuredRepository,
+  configurationWorkbenchEnabled = defaultConfigurationWorkbenchEnabled,
   projects = [],
   parameters = [],
   activeProjectId = "",
@@ -120,6 +125,10 @@ export function ParameterAdminNextPage({
       : parsedOrganizationView ??
         (isParameterAdminOrganizationEntryPath(pathname) ? "specs" : null);
   const isPlatformSuperAdmin = migrateLegacyRoleId(state?.activeRoleId ?? "") === "platform-admin";
+  const isConfigurationWorkbenchRoute =
+    area === "projects" &&
+    configurationWorkbenchEnabled &&
+    /^\/parameter-admin\/projects\/[^/]+\/configuration\/?$/.test(pathname);
 
   useEffect(() => {
     if (area !== "organization") {
@@ -148,8 +157,16 @@ export function ParameterAdminNextPage({
       dtsStructured={dtsRepository}
       parameterFiles={fileRepository}
     >
-      <div className="param-admin-shell">
-        <ParameterAdminNextScopeNav active={area} onNavigate={onNavigate} />
+      <div
+        className={
+          isConfigurationWorkbenchRoute
+            ? "param-admin-shell param-admin-shell--configuration-workbench"
+            : "param-admin-shell"
+        }
+      >
+        {!isConfigurationWorkbenchRoute ? (
+          <ParameterAdminNextScopeNav active={area} onNavigate={onNavigate} />
+        ) : null}
         {area === "projects" ? (
           state && dispatch ? (
             <ProjectsOperationsPanel
@@ -163,6 +180,7 @@ export function ParameterAdminNextPage({
               onNewProject={onNewProject}
               parameterFileRepository={parameterFileRepository}
               dtsStructuredRepository={dtsStructuredRepository}
+              configurationWorkbenchEnabled={configurationWorkbenchEnabled}
             />
           ) : (
             <section className="param-admin-main" aria-label="项目运营">

@@ -19,6 +19,7 @@ import {
 import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterFilesPanel";
 import { DtsSearchPanel } from "@/components/parameters/DtsSearchPanel";
 import { DtsStructureBrowserPanel } from "@/components/parameters/DtsStructureBrowserPanel";
+import { ProjectConfigurationWorkbench } from "@/components/project-configuration-workbench/ProjectConfigurationWorkbench";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import type { PrototypeState } from "@/mockData";
@@ -42,15 +43,15 @@ export type { ParameterAdminNextProjectView } from "@/components/admin/ProjectOp
 
 export function parseParameterAdminNextProjectPath(pathname: string): {
   projectId: string | null;
-  view: ParameterAdminNextProjectView | null;
+  view: ParameterAdminNextProjectView | "configuration" | null;
 } {
   const match = pathname.match(
-    /^\/parameter-admin\/projects\/([^/]+)(?:\/(files|config-sets|structure|conflicts))?\/?$/
+    /^\/parameter-admin\/projects\/([^/]+)(?:\/(files|config-sets|structure|conflicts|configuration))?\/?$/
   );
   if (!match) {
     return { projectId: null, view: null };
   }
-  const view = (match[2] as ParameterAdminNextProjectView | undefined) ?? "files";
+  const view = (match[2] as ParameterAdminNextProjectView | "configuration" | undefined) ?? "files";
   return { projectId: decodeURIComponent(match[1]!), view };
 }
 
@@ -115,6 +116,7 @@ export type ProjectsOperationsPanelProps = {
   onNewProject?: () => void;
   parameterFileRepository?: ParameterFileRepository;
   dtsStructuredRepository?: DtsStructuredRepository;
+  configurationWorkbenchEnabled?: boolean;
 };
 
 /**
@@ -132,10 +134,14 @@ export function ProjectsOperationsPanel({
   runtimeMode = "mock",
   onNewProject,
   parameterFileRepository,
-  dtsStructuredRepository
+  dtsStructuredRepository,
+  configurationWorkbenchEnabled = false
 }: ProjectsOperationsPanelProps) {
   const { dispatch: adminDispatch, state: adminState, application } = useParameterAdmin();
-  const { projectId, view } = parseParameterAdminNextProjectPath(pathname);
+  const { projectId, view: routeView } = parseParameterAdminNextProjectPath(pathname);
+  const configurationRoute = routeView === "configuration";
+  const configurationOpen = configurationRoute && configurationWorkbenchEnabled;
+  const view = routeView === "configuration" ? null : routeView;
   const isApiMode = runtimeMode === "api";
   const adminClient = useMemo(() => createParameterAdminClient(), []);
   const latestAudit = adminState.recentAuditEvents[0] ?? null;
@@ -235,6 +241,12 @@ export function ProjectsOperationsPanel({
   useEffect(() => {
     void loadProjects();
   }, [loadProjects]);
+
+  useEffect(() => {
+    if (configurationRoute && !configurationWorkbenchEnabled && projectId) {
+      onNavigate(`/parameter-admin/projects/${encodeURIComponent(projectId)}/files`);
+    }
+  }, [configurationRoute, configurationWorkbenchEnabled, onNavigate, projectId]);
 
   useEffect(() => {
     adminDispatch({ type: "SET_SELECTED_PROJECT", projectId: projectId });
@@ -385,7 +397,7 @@ export function ProjectsOperationsPanel({
    * before an unknown id can be called unknown.
    */
   const projectsReady = !isApiMode || projectsLoaded;
-  const projectMissing = operationsOpen && projectsReady && !selectedProject;
+  const projectMissing = (operationsOpen || configurationOpen) && projectsReady && !selectedProject;
 
   const closeOperations = useCallback(() => {
     if (structureDirty) {
@@ -466,7 +478,14 @@ export function ProjectsOperationsPanel({
   );
 
   return (
-    <section className="param-admin-main project-admin-layout" aria-label="项目运营">
+    <section
+      className={
+        configurationOpen
+          ? "param-admin-main project-admin-layout project-admin-layout--configuration-workbench"
+          : "param-admin-main project-admin-layout"
+      }
+      aria-label="项目运营"
+    >
       {error ? (
         <p className="project-admin-error" role="alert">
           {error}
@@ -494,7 +513,7 @@ export function ProjectsOperationsPanel({
         </section>
       ) : null}
 
-      {!projectMissing ? (
+      {!projectMissing && !configurationOpen ? (
         <>
           {!operationsOpen ? auditNotice : null}
           {loading && isApiMode ? <p className="project-admin-loading">项目列表加载中…</p> : null}
@@ -512,10 +531,30 @@ export function ProjectsOperationsPanel({
               setDeleteTargetId(id);
             }}
             onManageFiles={(id) =>
-              onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/files`)
+              onNavigate(
+                `/parameter-admin/projects/${encodeURIComponent(id)}/${
+                  configurationWorkbenchEnabled ? "configuration" : "files"
+                }`
+              )
             }
+            primaryActionLabel={configurationWorkbenchEnabled ? "配置工作台" : "管理文件"}
           />
         </>
+      ) : null}
+
+      {configurationOpen && !projectMissing && selectedProject && projectId ? (
+        <ProjectConfigurationWorkbench
+          project={{
+            id: selectedProject.id,
+            name: selectedProject.name,
+            code: selectedProject.code,
+            statusLabel: selectedProject.statusLabel
+          }}
+          search={search}
+          onNavigate={onNavigate}
+          dtsRepository={dtsRepo}
+          fileRepository={fileRepository}
+        />
       ) : null}
 
       {operationsOpen && !projectMissing && projectId && view && viewMeta ? (

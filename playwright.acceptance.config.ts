@@ -44,6 +44,7 @@ export default defineConfig({
         apiURL,
         reuseExistingServer,
         authMode: "production",
-        includeXiaozeProactive: true
+        includeXiaozeProactive: true,
+        projectConfigurationWorkbenchEnabled: true
       })
 });

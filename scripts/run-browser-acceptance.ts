@@ -308,6 +308,7 @@ export function buildPlaywrightEnv(
     env.DEBUG_DEVICE_GATEWAY_MODE = "simulator";
     env.HDC_DEVICE_LAB_AVAILABLE = "false";
     env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION = "true";
+    env.VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED = "true";
   }
 
   if (options.mode === "target-non-hdc" || !options.startRuntime || !options.skipPreflight) {

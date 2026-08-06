@@ -763,6 +763,57 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/config-sets/{configSetId}/files": {
+      "get": {
+        "operationId": "parameters.listConfigSetFiles",
+        "summary": "List Config set member files with active version identity",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigSetMemberFileListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/modules": {
       "get": {
         "operationId": "parameters.listProjectModules",
@@ -6451,6 +6502,10 @@
       "ProjectListResponse": {
         "type": "object",
         "x-wiseeff-schema": "ProjectListResponse"
+      },
+      "ConfigSetMemberFileListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ConfigSetMemberFileListResponse"
       },
       "ProjectModuleListResponse": {
         "type": "object",
