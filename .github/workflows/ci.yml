@@ -169,7 +169,6 @@ jobs:
             echo "WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
             echo "VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
             echo "VITE_WISEEFF_RUNTIME_MODE=api"
-            echo "VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED=true"
             echo "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true"
             echo "M5_CONTRACT_CHECK_PASSED=true"
             echo "WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1"
