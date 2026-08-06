@@ -1132,7 +1132,7 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
 
     const panel = await screen.findByRole("region", { name: "模块归属" });
     expect(within(panel).queryByRole("region", { name: "未登记驱动" })).not.toBeInTheDocument();
-    expect(within(panel).getByText("有未登记的驱动")).toBeInTheDocument();
+    expect(await within(panel).findByText("有未登记的驱动")).toBeInTheDocument();
 
     const moduleSubnav = within(panel).getByRole("navigation", { name: "模块管理子视图" });
     expect(within(moduleSubnav).getByRole("button", { name: "归属树" })).toHaveAttribute(
