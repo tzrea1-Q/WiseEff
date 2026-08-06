@@ -7,6 +7,8 @@
 > Table filter convention: [`docs/design-docs/ux-table-column-filter.md`](../../design-docs/ux-table-column-filter.md)
 > Prior redesign (merged): [`docs/exec-plans/completed/2026-07-25-parameter-admin-redesign.md`](../completed/2026-07-25-parameter-admin-redesign.md)
 
+> **2026-08-06 product direction:** the project-list and defect fixes in this plan remain valid, but the four-view/dialog presentation is no longer the target information architecture. The locked [project configuration workbench design](../../design-docs/2026-08-06-project-configuration-workbench-design.md) replaces it with one full-screen config-set/source-centered workspace. Do not treat Batches 2–3 as the future project-operations presentation contract.
+
 ## Context
 
 The governance-scope information architecture from ADR-0001 has landed: organization and project areas are peers, project work is deep-linkable, and admin state lives in `ParameterAdminProvider`. A 2026-08-02 walkthrough of all six views as Admin (`xu.yun`, API mode) at 1440×900 / 768×1024 / 390×844 found no console errors but did find one hard mobile layout failure, a column filter attached to the wrong column, a broken overlay on the structure browser, and four different visual languages across the four project tabs.

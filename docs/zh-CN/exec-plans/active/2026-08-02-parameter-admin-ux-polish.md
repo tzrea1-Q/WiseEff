@@ -6,6 +6,8 @@
 > 信息架构：[ADR-0001](../../../adr/0001-parameter-admin-organized-by-governance-scope.md)
 > 列筛选约定：[`docs/design-docs/ux-table-column-filter.md`](../../../design-docs/ux-table-column-filter.md)
 
+> **2026-08-06 产品方向：** 本计划中的项目清单和确凿缺陷修复继续有效，但四视图/弹窗不再是目标信息架构。已锁定的[项目配置工作台设计](../../../design-docs/2026-08-06-project-configuration-workbench-design.md)将其替换为一个以配置集与源码为中心的全屏工作区；第二、三批不能继续作为未来项目运营呈现合同。
+
 ## 背景
 
 ADR-0001 的治理作用域信息架构已经落地：组织配置与项目运营平级、项目视图可深链、后台状态收在 `ParameterAdminProvider`。2026-08-02 以 Admin（`xu.yun`，API 模式）在 1440×900 / 768×1024 / 390×844 走查全部六个视图，控制台无报错，但发现一处移动端硬性布局故障、一处列筛选挂错列、结构浏览页的层叠破损，以及四个项目 tab 各用一套视觉语言。
