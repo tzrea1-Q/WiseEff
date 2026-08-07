@@ -609,15 +609,17 @@ describe("ProjectConfigurationWorkbench", () => {
       canEditCritical: true
     });
     await screen.findByRole("heading", { name: "aurora-board.dts" });
+    // Wait for structure properties before interacting; full-suite CI can race the first expand.
+    await screen.findByRole("treeitem", { name: "属性 board/model" });
 
-    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
-    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    fireEvent.click(screen.getByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(screen.getByRole("treeitem", { name: "属性 board/model" }));
     let inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
       target: { value: "Aurora-X" }
     });
 
-    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/compatible" }));
+    fireEvent.click(screen.getByRole("treeitem", { name: "属性 board/compatible" }));
     inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
       target: { value: "wiseeff,aurora-v2" }
@@ -670,7 +672,9 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(submitStructuredEdits.mock.calls[0][1].edits).toHaveLength(1);
     await waitFor(() => expect(within(tasks).getAllByRole("checkbox")).toHaveLength(1));
     expect(within(tasks).getByRole("checkbox", { name: /board\/compatible/ })).toBeInTheDocument();
-    expect(within(tasks).getByRole("status")).toHaveTextContent(/已提交变更请求/);
+    await waitFor(() =>
+      expect(within(tasks).getByRole("status")).toHaveTextContent(/已提交变更请求/)
+    );
   });
 
   it("preserves session drafts when submitStructuredEdits fails", async () => {
