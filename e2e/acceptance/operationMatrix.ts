@@ -334,7 +334,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
       "PROJ-CONFIG-CONFLICT-001"
     ],
     specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
-    assertions: ["ui", "audit", "screenshot"],
+    assertions: ["ui", "api", "screenshot"]
   },
   {
     id: "PROJ-CONFIG-READ-001",
