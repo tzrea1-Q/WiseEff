@@ -572,6 +572,8 @@ abandonCandidate(projectId, candidateVersionId)
 
 ### Phase 6——切换与清理
 
+> 状态说明（2026-08-08）：Phase 6 已在 #240 落地（`PROJ-CONFIG-CUTOVER-001`）。
+
 - 四个旧路由保留一个兼容发布周期，重定向到规范上下文。
 - 验收证据通过后移除 `ProjectOperationsDialog` 与四视图导航。
 - 只有所有领域逻辑已有新归属且有定向测试时，才删除旧页面型面板。
