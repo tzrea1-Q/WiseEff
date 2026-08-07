@@ -1,12 +1,12 @@
 # Project configuration workbench file and Config set operations (#236)
 
-> Status: **Active**
+> Status: **Completed**
 > Date: 2026-08-07
 > Branch: `feat/project-configuration-workbench-file-config-ops`
 > Worktree: `/Users/tzrea1/Develop/_codex_worktrees/WiseEff-file-config-ops`
 > Issue: [#236](https://github.com/tzrea1-Q/WiseEff/issues/236), child of [#227](https://github.com/tzrea1-Q/WiseEff/issues/227)
 > Blocked by: [#230](https://github.com/tzrea1-Q/WiseEff/issues/230) (merged; inspector/history available)
-> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-07-project-configuration-workbench-file-config-ops.md)
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-08-07-project-configuration-workbench-file-config-ops.md)
 > Design: [Project configuration workbench](../../design-docs/2026-08-06-project-configuration-workbench-design.md)
 > Starts at: `4f1c25b9c41f6b52bac06fc16488b81e6f5d5b39`
 
@@ -141,16 +141,20 @@ Review gate: Standards vs Spec against `4f1c25b9c41f6b52bac06fc16488b81e6f5d5b39
 
 ## Outcomes
 
-- Spec-review fix: `ProjectsOperationsPanel` derives `canAdmin` from `canPerform(activeRoleId, "admin.access")` and passes it to the workbench + ConfigSetBaselinePanel (no hardcoded `true`).
+- Spec-review fix in `cae59213`: `ProjectsOperationsPanel` derives `canAdmin` from `canPerform(activeRoleId, "admin.access")` and passes it to the workbench + ConfigSetBaselinePanel (no hardcoded `true`).
 - Export download now prepends `result.manifest` JSON (members/roles/order/validation) before file contents.
 - `PROJ-CONFIG-OPS-001` e2e extended for empty Config set focused upload/assignment copy and non-admin mutation denial (API 403) while Admin read context remains visible.
-- Acceptance e2e green (5/5). Three-viewport evidence under `work/ui-checks/project-configuration-workbench-file-config-ops/`.
-- Plan remains **Active** pending Documentation Update Gate / move to `completed/` after final docs:check if needed.
+- Acceptance e2e green (**5/5**). Three-viewport UI evidence under `work/ui-checks/project-configuration-workbench-file-config-ops/` (gitignored: screenshots + viewport notes).
+- Plan moved to `exec-plans/completed/` after Documentation Update Gate.
 
 ## Documentation Update Gate
 
-- [ ] Every `Update` row is delivered in English and Chinese where applicable.
-- [ ] Every `Review` row is either updated or recorded here as unchanged with concrete evidence.
-- [ ] Acceptance requirement/operation coverage and evidence ownership are registered before completion.
-- [ ] `npm run docs:check` passes.
-- [ ] No deferred #236 acceptance remains; follow-ups belong to later child issues of #227.
+- [x] Every `Update` row is delivered in English and Chinese where applicable.
+- [x] Every `Review` row is either updated or recorded here as unchanged with concrete evidence.
+- [x] Acceptance requirement/operation coverage and evidence ownership are registered before completion.
+- [x] `npm run docs:check` passes.
+- [x] No deferred #236 acceptance remains; follow-ups belong to later child issues of #227.
+
+Review evidence for unchanged rows: API contract / OpenAPI / db-schema unchanged — create/configure, membership, sync, and export ports already existed; UI rehousing only. `AGENTS.md`, `ARCHITECTURE.md`, `CONTEXT.md`, ADR set, reliability/security maps unchanged beyond FRONTEND (+ ZH) and acceptance registration for `PROJ-CONFIG-OPS-001`. Environment docs unchanged beyond the existing workbench flag. Product/design docs already covered Phase 2 ops; no stale workflow rewrite required for #236 closeout.
+
+Browser evidence is retained locally under ignored `work/ui-checks/project-configuration-workbench-file-config-ops/` (`desktop-1440x900.png`, `tablet-768x1024.png`, `mobile-390x844.png`, `viewport-evidence.json`, `OUTCOMES.md`).

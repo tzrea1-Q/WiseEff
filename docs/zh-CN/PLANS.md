@@ -15,7 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- `exec-plans/active/2026-08-07-project-configuration-workbench-file-config-ops.md`：Issue #236 上下文检查器中的文件与配置集操作——创建/配置、成员角色/顺序、未编组、手动同步、导出、空集候选路径（分支 `feat/project-configuration-workbench-file-config-ops`）。
+- `exec-plans/completed/2026-08-07-project-configuration-workbench-file-config-ops.md`：Issue #236 上下文检查器中的文件与配置集操作——创建/配置、成员角色/顺序、未编组、手动同步、导出、空集候选路径（分支 `feat/project-configuration-workbench-file-config-ops`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-candidate-upload.md`：Issue #231 候选文件版本生命周期——上传、解析、影响审查与放弃，且不激活工作配置（分支 `feat/project-configuration-workbench-candidate-upload`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-inspector-history.md`：Issue #230 上下文检查器、不可变文件历史、源码历史/对比模式与 PCW-D15 叠层常驻规则（分支 `feat/project-configuration-workbench-inspector-history`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-source-nav.md`：Issue #229 源码定位 DTS 导航——结构 span、统一搜索、URL 深链与工作台源码同步（分支 `feat/project-configuration-workbench-source-nav`）。

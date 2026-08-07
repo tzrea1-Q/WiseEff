@@ -1,12 +1,12 @@
 # 项目配置工作台文件与配置集操作（#236）
 
-> 状态：**进行中**
+> 状态：**已完成**
 > 日期：2026-08-07
 > 分支：`feat/project-configuration-workbench-file-config-ops`
 > Worktree：`/Users/tzrea1/Develop/_codex_worktrees/WiseEff-file-config-ops`
 > Issue：[#236](https://github.com/tzrea1-Q/WiseEff/issues/236)，父议题 [#227](https://github.com/tzrea1-Q/WiseEff/issues/227)
 > 阻塞项：[#230](https://github.com/tzrea1-Q/WiseEff/issues/230)（已合入；检查器/历史可用）
-> English：[English](../../../exec-plans/active/2026-08-07-project-configuration-workbench-file-config-ops.md)
+> English：[English](../../../exec-plans/completed/2026-08-07-project-configuration-workbench-file-config-ops.md)
 > 设计：[项目配置工作台](../../../design-docs/2026-08-06-project-configuration-workbench-design.md)
 > 起点：`4f1c25b9c41f6b52bac06fc16488b81e6f5d5b39`
 
@@ -79,9 +79,13 @@
 
 ## 结果
 
-- Spec 评审修复：`canAdmin` 真实接线；导出包含 manifest；OPS-001 e2e 加强空态与非 Admin 拒绝；验收 5/5 通过；三视口证据已写入 `work/ui-checks/project-configuration-workbench-file-config-ops/`。
-- 计划仍为 **进行中**，待文档更新门禁收口后再移入 `completed/`。
+- Spec 评审修复（`cae59213`）：`canAdmin` 经 `canPerform` 真实接线；导出包含 manifest；OPS-001 e2e 加强空态与非 Admin 拒绝；验收 **5/5** 通过；三视口 UI 证据在 `work/ui-checks/project-configuration-workbench-file-config-ops/`（gitignore）。
+- 计划已移入 `exec-plans/completed/`。
 
 ## 文档影响矩阵 / 更新门禁
 
-与英文版 Documentation Impact Matrix 与 Documentation Update Gate 相同；完成前须 `npm run docs:check`。
+与英文版 Documentation Impact Matrix 与 Documentation Update Gate 相同，且门禁项均已勾选。
+
+审阅结论（未改行）：API 契约 / OpenAPI / db-schema 未变——ports 已覆盖创建/配置、成员、同步与导出，本变更为工作台接线；`AGENTS.md`、`ARCHITECTURE.md` 等仓库地图未因 #236 改变；FRONTEND（+ ZH）与验收地图已登记 `PROJ-CONFIG-OPS-001`。环境文档仍只用既有工作台开关。
+
+浏览器证据保留在本地忽略目录 `work/ui-checks/project-configuration-workbench-file-config-ops/`。
