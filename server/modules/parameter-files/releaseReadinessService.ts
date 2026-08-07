@@ -288,7 +288,7 @@ export async function evaluateReleaseReadiness(
         severity: "blocker",
         code: "pending-change-request",
         message: error instanceof Error ? error.message : "Failed to load pending changes.",
-        remediation: { kind: "resolve-pending-change", label: "Close or merge pending change requests" }
+        remediation: { kind: "complete-pending-change", label: "Close or merge pending change requests" }
       });
       pendingChangeCount = 0;
     }
