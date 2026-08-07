@@ -26224,6 +26224,66 @@ button.dts-topology-navigator__disclosure:focus-visible {
   color: var(--app-muted);
 }
 
+
+.configuration-workbench__search {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+.configuration-workbench__search label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+}
+.configuration-workbench__search input {
+  width: 100%;
+}
+.configuration-workbench__search-results {
+  max-height: 10rem;
+  overflow: auto;
+  padding: 0.4rem 0.7rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+.configuration-workbench__search-group {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.55rem;
+}
+.configuration-workbench__search-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+.configuration-workbench__search-group button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  display: grid;
+  gap: 0.1rem;
+}
+.configuration-workbench__member-block {
+  display: grid;
+  gap: 0.15rem;
+}
+.configuration-workbench__node-tree {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.15rem 0 0.35rem;
+}
+.configuration-workbench__node,
+.configuration-workbench__property {
+  width: 100%;
+  justify-content: flex-start;
+  font-size: 0.78rem;
+}
+.configuration-workbench__node.is-selected,
+.configuration-workbench__property.is-selected {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
 .configuration-workbench__member-tree {
   display: grid;
   gap: 2px;
