@@ -15,7 +15,7 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | smoke clients | Used by M5 smoke scripts. |
 | `VITE_WISEEFF_RUNTIME_MODE` | `api` (code default and `.env.example`) | frontend runtime | `npm run dev` / `npm run dev:all` also inject `api`. Use `mock` for frontend-only tests or demos. |
 | `VITE_WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | frontend API runtime | Must point at the API process. |
-| `VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED` | `false` (unset / commented in `.env.example`) | development-only Project configuration workbench tracer | Set `true` only for local Phase 1 read-only route acceptance. Production builds force this flag off; the legacy Manage files entry remains available when it is disabled. |
+| `VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED` | ignored (deprecated) | — | Retired in #240. The Project configuration workbench is always the canonical project-operations route; setting this env has no effect. |
 
 ## Auth
 

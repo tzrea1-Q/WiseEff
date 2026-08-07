@@ -15,7 +15,7 @@
 | `WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | smoke clients | M5/M6 smoke 脚本使用。 |
 | `VITE_WISEEFF_RUNTIME_MODE` | `api`（代码默认与 `.env.example`） | 前端 runtime | `npm run dev` / `npm run dev:all` 也会注入 `api`。前端-only demo/test 可设为 `mock`。 |
 | `VITE_WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | 前端 API runtime | 必须指向 API 进程。 |
-| `VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED` | `false`（未设置；`.env.example` 中注释） | 仅开发环境的项目配置工作台只读 tracer | 只在本地 Phase 1 只读路由验收时设为 `true`。生产构建会强制关闭此开关；关闭时仍保留旧“管理文件”入口。 |
+| `VITE_PROJECT_CONFIGURATION_WORKBENCH_ENABLED` | 已忽略（已废弃） | — | 在 #240 退役。项目配置工作台始终为规范项目运营路由；设置此环境变量无效。 |
 
 ## 认证
 
