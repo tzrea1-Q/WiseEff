@@ -26412,6 +26412,8 @@ button.dts-topology-navigator__disclosure:focus-visible {
 }
 
 .configuration-workbench__source-head {
+  position: relative;
+  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: space-between;

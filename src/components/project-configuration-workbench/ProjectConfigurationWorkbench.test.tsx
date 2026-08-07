@@ -927,4 +927,24 @@ describe("ProjectConfigurationWorkbench", () => {
     await waitFor(() => expect(inspector).toHaveAttribute("data-layout", "persistent"));
   });
 
+  it("clears history version identity when switching member files", async () => {
+    const { onNavigate } = renderWorkbench({
+      search: "?configSet=cs-default&file=file-board&sourceMode=history&version=version-board-11",
+      syncSearch: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(screen.getByRole("treeitem", { name: /charging-overlay\.dtsi/ }));
+    await waitFor(() => {
+      const urls = onNavigate.mock.calls.map((call) => String(call[0]));
+      expect(
+        urls.some(
+          (url) =>
+            url.includes("file=file-overlay") &&
+            !url.includes("sourceMode=history") &&
+            !url.includes("version=version-board-11")
+        )
+      ).toBe(true);
+    });
+  });
+
 });

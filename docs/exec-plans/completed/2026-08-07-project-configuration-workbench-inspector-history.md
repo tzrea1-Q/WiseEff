@@ -1,11 +1,11 @@
 # Project configuration workbench inspector and file history (#230)
 
-> Status: **Active**
+> Status: **Completed**
 > Date: 2026-08-07
 > Branch: `feat/project-configuration-workbench-inspector-history`
 > Issue: [#230](https://github.com/tzrea1-Q/WiseEff/issues/230), child of [#227](https://github.com/tzrea1-Q/WiseEff/issues/227)
 > Blocked by: [#229](https://github.com/tzrea1-Q/WiseEff/issues/229) (merged at `b12166b003094b31093675f1f65ab255c26d990f`)
-> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-07-project-configuration-workbench-inspector-history.md)
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-08-07-project-configuration-workbench-inspector-history.md)
 > Design: [Project configuration workbench](../../design-docs/2026-08-06-project-configuration-workbench-design.md)
 > Starts at: `b12166b003094b31093675f1f65ab255c26d990f`
 
@@ -66,35 +66,35 @@ The branch starts at `b12166b003094b31093675f1f65ab255c26d990f` (merge of PR #24
 
 ### A. Inspector levels + back stack
 
-- [ ] Red: selecting config set / file / node / property opens matching inspector content without unexpected source identity change.
-- [ ] Red: inspector back follows property → node → file → Config set and preserves source selection.
-- [ ] Green: extend workbench inspector beyond Phase-1 read-only note.
+- [x] Red: selecting config set / file / node / property opens matching inspector content without unexpected source identity change.
+- [x] Red: inspector back follows property → node → file → Config set and preserves source selection.
+- [x] Green: extend workbench inspector beyond Phase-1 read-only note.
 
 ### B. File history + download via ports
 
-- [ ] Red/Green: file inspector lists immutable versions (format, role, active version, origin, creator/time) and downloads via `ParameterFileRepository.listVersions` / `downloadVersion`.
-- [ ] Confirm mock + HTTP parity; no page-level HTTP.
+- [x] Red/Green: file inspector lists immutable versions (format, role, active version, origin, creator/time) and downloads via `ParameterFileRepository.listVersions` / `downloadVersion`.
+- [x] Confirm mock + HTTP parity; no page-level HTTP.
 
 ### C. Node/property inspection fields
 
-- [ ] Red/Green: show path/span, labels/compatible, typed raw/normalized, risk, provenance, read permission (honest read-only in this phase; no new public API fields unless required).
+- [x] Red/Green: show path/span, labels/compatible, typed raw/normalized, risk, provenance, read permission (honest read-only in this phase; no new public API fields unless required).
 
 ### D. Source modes + restore
 
-- [ ] Red/Green: working / history / unified-diff / side-by-side MVP; historical/released visibly read-only and labeled apart from Working.
-- [ ] Entering/leaving restores previous source target and scroll position.
-- [ ] Independently label file version, Working configuration, Candidate placeholder, Release baseline.
+- [x] Red/Green: working / history / unified-diff / side-by-side MVP; historical/released visibly read-only and labeled apart from Working.
+- [x] Entering/leaving restores previous source target and scroll position.
+- [x] Independently label file version, Working configuration, Candidate placeholder, Release baseline.
 
 ### E. Overlay vs persistent inspector (PCW-D15)
 
-- [ ] Red/Green: default desktop overlay; persistent only when measured workbench width leaves source ≥640px.
+- [x] Red/Green: default desktop overlay; persistent only when measured workbench width leaves source ≥640px.
 
 ### F. Acceptance + docs + completion
 
-- [ ] Register `PROJ-CONFIG-INSPECT-001` in EN/ZH coverage maps, `requirements.ts`, `operationMatrix.ts`, and e2e.
-- [ ] Update FRONTEND (and ZH); contracts only if new public fields.
-- [ ] Run verification matrix, three-viewport UI evidence under `work/ui-checks/project-configuration-workbench-inspector-history/`, Standards vs Spec review vs `b12166b0`, fix findings.
-- [ ] Move plans to `completed/` and flip checkboxes after gates pass.
+- [x] Register `PROJ-CONFIG-INSPECT-001` in EN/ZH coverage maps, `requirements.ts`, `operationMatrix.ts`, and e2e.
+- [x] Update FRONTEND (and ZH); contracts only if new public fields.
+- [x] Run verification matrix, three-viewport UI evidence under `work/ui-checks/project-configuration-workbench-inspector-history/`, Standards vs Spec review vs `b12166b0`, fix findings.
+- [x] Move plans to `completed/` and flip checkboxes after gates pass.
 
 ## Browser acceptance mapping
 
@@ -143,8 +143,14 @@ Review gate: two parallel reviews (Standards vs Spec) against fixed point `b1216
 
 ## Documentation Update Gate
 
-- [ ] Every `Update` row is delivered in English and Chinese where applicable.
-- [ ] Every `Review` row is either updated or recorded here as unchanged with concrete evidence.
-- [ ] Acceptance requirement/operation coverage and evidence ownership are registered before completion.
-- [ ] `npm run docs:check` passes.
-- [ ] No deferred #230 acceptance remains; follow-ups belong to later child issues of #227.
+- [x] Every `Update` row is delivered in English and Chinese where applicable.
+- [x] Every `Review` row is either updated or recorded here as unchanged with concrete evidence.
+- [x] Acceptance requirement/operation coverage and evidence ownership are registered before completion.
+- [x] `npm run docs:check` passes.
+- [x] No deferred #230 acceptance remains; follow-ups belong to later child issues of #227.
+
+Review evidence for unchanged rows: `AGENTS.md`, `ARCHITECTURE.md`, `CONTEXT.md`, ADR set, `docs/RELIABILITY.md`, and `docs/SECURITY.md` were checked against the delivered inspector/history boundary; no architecture/security/reliability map change was required beyond FRONTEND and acceptance maps. API contract / OpenAPI / db-schema were unchanged because no new public HTTP fields were introduced. Environment docs unchanged beyond the existing workbench flag.
+
+Browser evidence is retained under `work/ui-checks/project-configuration-workbench-inspector-history/` (`workbench-1440x900.png`, `workbench-768x1024.png`, `workbench-390x844.png`, matching snapshots, overflow JSON, and empty `console-errors.json`).
+
+Known follow-ups (not blocking #230): released-baseline canvas entry remains identity-labeled only until a later epic child adds baseline content compare; deeper scroll-position e2e assertions can extend `PROJ-CONFIG-INSPECT-001` once viewer exposes an observable scroll seam.

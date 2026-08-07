@@ -95,8 +95,8 @@ function formatWorkbenchPath(projectId: string, search: string, patch: Workbench
 }
 
 const ORIGIN_LABELS: Record<ProjectParameterFileVersion["origin"], string> = {
-  upload: "上传",
-  writeback: "回写"
+  upload: "手动上传",
+  writeback: "参数回写"
 };
 
 function decodeSourceBytes(bytes: Uint8Array) {
@@ -484,6 +484,15 @@ export function ProjectConfigurationWorkbench({
       setModeSourceLoading(false);
       return;
     }
+    if (!workingSnapshotRef.current) {
+      workingSnapshotRef.current = {
+        fileId: selectedMember.fileId,
+        nodePath: selectedNodePath,
+        propertyName: selectedPropertyName,
+        scrollLine: lastVisibleLine,
+        sourceMode: null
+      };
+    }
     let cancelled = false;
     setModeSourceLoading(true);
     setModeSourceError("");
@@ -836,18 +845,19 @@ export function ProjectConfigurationWorkbench({
       if (!selectedConfigSet) return;
       setInspectorLevelOverride("file");
       setInspectorOpen(true);
+      const switchingFile = selectedMember?.fileId !== fileId;
       onNavigate(
         formatWorkbenchPath(project.id, search, {
           configSet: selectedConfigSet.id,
           file: fileId,
           node: null,
           property: null,
-          sourceMode: canvasModeQueryValue(canvasMode),
-          version: canvasMode === "working" ? null : historyVersionId
+          sourceMode: switchingFile ? null : canvasModeQueryValue(canvasMode),
+          version: switchingFile || canvasMode === "working" ? null : historyVersionId
         })
       );
     },
-    [canvasMode, historyVersionId, onNavigate, project.id, search, selectedConfigSet]
+    [canvasMode, historyVersionId, onNavigate, project.id, search, selectedConfigSet, selectedMember?.fileId]
   );
 
   const handleInspectorBack = useCallback(() => {
@@ -888,7 +898,6 @@ export function ProjectConfigurationWorkbench({
       if (canvasMode === "working") {
         rememberWorkingSnapshot();
       }
-      setInspectorOpen(true);
       onNavigate(
         formatWorkbenchPath(project.id, search, {
           configSet: selectedConfigSet.id,
@@ -919,6 +928,7 @@ export function ProjectConfigurationWorkbench({
     const restoreLine = snapshot?.scrollLine ?? lastVisibleLine;
     setRestoredScrollLine(restoreLine);
     if (restoreLine != null) setFocusLineOverride(restoreLine);
+    setSuppressScrollSync(true);
     onNavigate(
       formatWorkbenchPath(project.id, search, {
         configSet: selectedConfigSet.id,
@@ -929,6 +939,11 @@ export function ProjectConfigurationWorkbench({
         version: null
       })
     );
+    window.setTimeout(() => {
+      if (restoreLine != null) setFocusLineOverride(restoreLine);
+      setSuppressScrollSync(false);
+      setRestoredScrollLine(null);
+    }, 300);
   }, [
     lastVisibleLine,
     onNavigate,
@@ -1441,7 +1456,7 @@ export function ProjectConfigurationWorkbench({
                 fileName={selectedMember.fileName}
                 versionNumber={selectedMember.currentVersionNumber ?? 0}
                 text={source}
-                focusSpan={focusSpan}
+                focusSpan={restoredScrollLine != null ? null : focusSpan}
                 focusLine={focusLineOverride ?? restoredScrollLine}
                 findQuery={findQuery}
                 findNextToken={findNextToken}

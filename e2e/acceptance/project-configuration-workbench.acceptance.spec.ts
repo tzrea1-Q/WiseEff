@@ -488,15 +488,15 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(v1Body.item.id)}`
       );
       await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
-      await expect(page.getByLabelText("配置身份")).toContainText("工作配置");
-      await expect(page.getByLabelText("配置身份")).toContainText("候选文件版本");
-      await expect(page.getByLabelText("配置身份")).toContainText("发布基线");
+      await expect(page.getByLabel("配置身份")).toContainText("工作配置");
+      await expect(page.getByLabel("配置身份")).toContainText("候选文件版本");
+      await expect(page.getByLabel("配置身份")).toContainText("发布基线");
 
       await page.getByRole("button", { name: "检查器" }).click();
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
       await expect(inspector).toBeVisible();
       await expect(inspector).toContainText("文件格式");
-      await expect(inspector.getByLabelText("不可变版本历史")).toBeVisible();
+      await expect(inspector.getByLabel("不可变版本历史")).toBeVisible();
       await expect(inspector).toContainText(`版本 ${v1Body.version.versionNumber}`);
 
       await page.getByRole("treeitem", { name: "节点 board" }).click();
@@ -519,7 +519,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         .getByRole("button", { name: `查看版本 ${historyVersion!.versionNumber} 历史源码` })
         .click();
       await expect(page).toHaveURL(/sourceMode=history/);
-      await expect(page.getByLabelText("历史只读源码模式")).toBeVisible();
+      await expect(page.getByLabel("历史只读源码模式")).toBeVisible();
       await expect(page.getByText(/model = "InspectV1"/)).toBeVisible();
 
       const downloadPromise = page.waitForEvent("download");
@@ -527,20 +527,29 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       const download = await downloadPromise;
       expect(download.suggestedFilename()).toContain(primaryFileName);
 
-      await page.getByRole("button", { name: "统一差异" }).click();
+      await page.getByRole("button", { name: `统一差异版本 ${historyVersion!.versionNumber}` }).click();
       await expect(page).toHaveURL(/sourceMode=unified-diff/);
-      await expect(page.getByLabelText("统一差异对比")).toBeVisible();
+      await expect(page.getByLabel("统一差异对比")).toBeVisible();
 
-      await page.getByRole("button", { name: "并排对比" }).click();
+      await page.getByRole("button", { name: "关闭检查器" }).click();
+      await page.getByRole("button", { name: "并排对比", exact: true }).click();
       await expect(page).toHaveURL(/sourceMode=side-by-side/);
-      await expect(page.getByLabelText("并排差异对比")).toBeVisible();
+      await expect(page.getByLabel("并排差异对比")).toBeVisible();
 
       await page.getByRole("button", { name: "退出对比" }).click();
       await expect(page).not.toHaveURL(/sourceMode=/);
       await expect(page.getByText(/model = "InspectV2"/)).toBeVisible();
 
+      await page.getByRole("button", { name: "检查器" }).click();
+      const openInspector = page.getByRole("complementary", { name: "配置检查器" });
       await page.setViewportSize({ width: 1440, height: 900 });
-      await expect(inspector).toHaveAttribute("data-layout", /overlay|persistent/);
+      await expect(openInspector).toBeVisible();
+      const layout = await openInspector.getAttribute("data-layout");
+      expect(layout === "overlay" || layout === "persistent").toBe(true);
+      if (layout === "persistent") {
+        const sourceWidth = await page.locator(".configuration-workbench__source").evaluate((el) => el.getBoundingClientRect().width);
+        expect(sourceWidth).toBeGreaterThanOrEqual(640);
+      }
 
       const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-inspect.json", {
         route: page.url(),

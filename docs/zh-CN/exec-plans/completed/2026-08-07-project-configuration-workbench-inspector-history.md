@@ -1,11 +1,11 @@
 # 项目配置工作台检查器与文件历史（#230）
 
-> 状态：**进行中**
+> 状态：**已完成**
 > 日期：2026-08-07
 > 分支：`feat/project-configuration-workbench-inspector-history`
 > Issue：[#230](https://github.com/tzrea1-Q/WiseEff/issues/230)，父议题 [#227](https://github.com/tzrea1-Q/WiseEff/issues/227)
 > 阻塞项：[#229](https://github.com/tzrea1-Q/WiseEff/issues/229)（已合入 `b12166b003094b31093675f1f65ab255c26d990f`）
-> English：[English](../../../exec-plans/active/2026-08-07-project-configuration-workbench-inspector-history.md)
+> English：[English](../../../exec-plans/completed/2026-08-07-project-configuration-workbench-inspector-history.md)
 > 设计：[项目配置工作台](../../../design-docs/2026-08-06-project-configuration-workbench-design.md)
 > 起点：`b12166b003094b31093675f1f65ab255c26d990f`
 
@@ -79,3 +79,6 @@
 ## 文档影响矩阵与更新门禁
 
 与英文计划相同的 Update/Review 行与门禁清单；中英文需同步交付 Update 行。
+
+
+收口说明见英文完成计划；浏览器证据目录 `work/ui-checks/project-configuration-workbench-inspector-history/`。发布基线源码进入路径仍为后续议题；本阶段以独立身份标注满足“不可误认为工作配置”。
