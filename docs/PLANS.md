@@ -12,6 +12,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Current Active Plan
 
+- `exec-plans/active/2026-08-07-project-configuration-workbench-candidate-upload.md`: Issue #231 Candidate file version lifecycle — upload, parse, impact review, and abandon without activating Working configuration (branch `feat/project-configuration-workbench-candidate-upload`).
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-inspector-history.md`: Issue #230 context inspector, immutable file history, source history/diff modes, and PCW-D15 overlay persistence (branch `feat/project-configuration-workbench-inspector-history`).
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-source-nav.md`: Issue #229 source-located DTS navigation — structural spans, unified search, URL deep links, and workbench source sync (branch `feat/project-configuration-workbench-source-nav`).
 - `exec-plans/active/development-roadmap.md`: M0-M5 productization sequence and post-M5 planning horizon.
