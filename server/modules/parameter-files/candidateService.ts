@@ -16,23 +16,35 @@ import {
   getParameterFileCandidateById,
   insertParameterFileCandidate,
   listParameterFileCandidates,
+  markParameterFileCandidateActive,
+  markParameterFileCandidateStale,
   updateParameterFileCandidateParseResult
 } from "./candidateRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import {
   getFileVersionById,
   getProjectParameterFileById,
-  getProjectParameterFileByName
+  getProjectParameterFileByName,
+  insertFileVersion,
+  insertProjectParameterFile,
+  setCurrentVersion
 } from "./repository";
-import { detectFormat, extractCompatiblesFromDtsSource, MAX_FILE_BYTES } from "./service";
+import { getConfigSetById, setFileConfigSetMembership } from "./configSetRepository";
+import { detectFormat, extractCompatiblesFromDtsSource, MAX_FILE_BYTES, maybeIngestSemanticConfigRevision } from "./service";
+import { ingestDtsFileVersion } from "./structuralIngest";
+import { isDtsStructuralIngestEnabled } from "./structuralFlag";
+import { syncFileVersion } from "./syncService";
 import { detectUnsupportedDtsConstructs } from "./unsupported";
 import type {
   CandidateBlocker,
   CandidateDiagnostic,
   CandidateImpact,
   CandidateStatus,
+  ConfigSetRole,
   ParameterFileFormat,
-  ProjectParameterFileCandidateDto
+  ProjectParameterFileCandidateDto,
+  ProjectParameterFileDto,
+  ProjectParameterFileVersionDto
 } from "./types";
 
 export type CandidateServiceContext = AuditCorrelationContext;
@@ -82,18 +94,19 @@ export function buildUnifiedTextDiff(before: string, after: string, beforeLabel:
   return out.join("\n");
 }
 
-async function writeCandidateAudit(
+function writeCandidateAudit(
   db: Queryable,
   auth: AuthContext,
   input: {
     projectId: string;
     candidate: ProjectParameterFileCandidateDto;
-    action: "create" | "abandon" | "recompute";
+    action: "create" | "abandon" | "recompute" | "activate" | "stale";
     kind: string;
+    metadata?: Record<string, unknown>;
   },
   context: CandidateServiceContext = {}
 ) {
-  await createAuditEvent(db, {
+  return createAuditEvent(db, {
     id: randomUUID(),
     organizationId: auth.organization.id,
     projectId: input.projectId,
@@ -109,7 +122,8 @@ async function writeCandidateAudit(
       fileName: input.candidate.fileName,
       fileId: input.candidate.fileId ?? null,
       status: input.candidate.status,
-      sizeBytes: input.candidate.sizeBytes ?? null
+      sizeBytes: input.candidate.sizeBytes ?? null,
+      ...(input.metadata ?? {})
     },
     traceId: context.requestId ?? randomUUID()
   });
@@ -502,8 +516,8 @@ export async function abandonCandidate(
       candidateId: input.candidateId
     });
   }
-  if (!["ready", "blocked", "failed"].includes(existing.status)) {
-    throw new ApiError("VALIDATION_FAILED", "Only ready, blocked, or failed candidates can be abandoned.", 400, {
+  if (!["ready", "blocked", "failed", "stale"].includes(existing.status)) {
+    throw new ApiError("VALIDATION_FAILED", "Only ready, blocked, failed, or stale candidates can be abandoned.", 400, {
       candidateId: existing.id,
       status: existing.status
     });
@@ -553,8 +567,8 @@ export async function recomputeCandidateImpact(
       candidateId: input.candidateId
     });
   }
-  if (!["ready", "blocked", "failed"].includes(existing.status)) {
-    throw new ApiError("VALIDATION_FAILED", "Only ready, blocked, or failed candidates can be recomputed.", 400, {
+  if (!["ready", "blocked", "failed", "stale"].includes(existing.status)) {
+    throw new ApiError("VALIDATION_FAILED", "Only ready, blocked, failed, or stale candidates can be recomputed.", 400, {
       status: existing.status
     });
   }
@@ -562,15 +576,29 @@ export async function recomputeCandidateImpact(
     throw new ApiError("VALIDATION_FAILED", "Candidate has no stored content to recompute.", 400);
   }
 
-  const candidateSource = (await objectStore.get(existing.storageKey)).toString("utf8");
+  let baseVersionId = existing.baseVersionId;
   let baseSource: string | null = null;
-  if (existing.baseVersionId) {
+
+  if (existing.fileId) {
+    const file = await getProjectParameterFileById(db, {
+      organizationId: auth.organization.id,
+      fileId: existing.fileId
+    });
+    if (file?.currentVersionId) {
+      baseVersionId = file.currentVersionId;
+      const baseVersion = await getFileVersionById(db, { versionId: file.currentVersionId });
+      if (baseVersion?.storageKey) {
+        baseSource = (await objectStore.get(baseVersion.storageKey)).toString("utf8");
+      }
+    }
+  } else if (existing.baseVersionId) {
     const baseVersion = await getFileVersionById(db, { versionId: existing.baseVersionId });
     if (baseVersion?.storageKey) {
       baseSource = (await objectStore.get(baseVersion.storageKey)).toString("utf8");
     }
   }
 
+  const candidateSource = (await objectStore.get(existing.storageKey)).toString("utf8");
   const registered =
     existing.format === "dts" ? await listRegisteredCompatibles(db, auth.organization.id) : [];
   const openConflicts =
@@ -580,14 +608,14 @@ export async function recomputeCandidateImpact(
             organizationId: auth.organization.id,
             projectId: input.projectId
           })
-        ).filter((conflict) => conflict.fileVersionId === existing.baseVersionId)
+        ).filter((conflict) => conflict.fileVersionId === baseVersionId)
       : [];
 
   const computed = await computeCandidateImpact({
     format: existing.format,
     candidateSource,
     baseSource,
-    baseLabel: existing.baseVersionId ? `active:${existing.baseVersionId}` : "/dev/null",
+    baseLabel: baseVersionId ? `active:${baseVersionId}` : "/dev/null",
     candidateLabel: `candidate:${existing.id}`,
     registeredCompatibles: registered,
     openConflicts: openConflicts.map((conflict) => ({
@@ -604,7 +632,8 @@ export async function recomputeCandidateImpact(
       status: computed.status,
       diagnostics: computed.diagnostics,
       impact: computed.impact,
-      blockers: computed.blockers
+      blockers: computed.blockers,
+      baseVersionId: baseVersionId ?? null
     });
     if (!updated) {
       throw new ApiError("INTERNAL_ERROR", "Failed to persist recomputed candidate impact.", 500);
@@ -621,5 +650,251 @@ export async function recomputeCandidateImpact(
       context
     );
     return updated;
+  });
+}
+
+export type ActivateCandidateInput = {
+  projectId: string;
+  candidateId: string;
+  /** Version identity the Admin reviewed; null/undefined for a new-file candidate with no base. */
+  expectedCurrentVersionId?: string | null;
+  configSetId?: string;
+  role?: ConfigSetRole;
+};
+
+export type ActivateCandidateResult = {
+  candidate: ProjectParameterFileCandidateDto;
+  file: ProjectParameterFileDto;
+  version: ProjectParameterFileVersionDto;
+};
+
+export async function activateCandidate(
+  db: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: ActivateCandidateInput,
+  context: CandidateServiceContext = {}
+): Promise<ActivateCandidateResult> {
+  requireCandidateAdmin(auth);
+
+  const existing = await getParameterFileCandidateById(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    candidateId: input.candidateId
+  });
+  if (!existing) {
+    throw new ApiError("NOT_FOUND", "Candidate file version was not found.", 404, {
+      candidateId: input.candidateId
+    });
+  }
+  if (existing.status !== "ready") {
+    throw new ApiError("VALIDATION_FAILED", "Only ready candidates can be activated.", 400, {
+      candidateId: existing.id,
+      status: existing.status
+    });
+  }
+  if ((existing.blockers?.length ?? 0) > 0) {
+    throw new ApiError("VALIDATION_FAILED", "Candidate has unresolved blockers and cannot be activated.", 400, {
+      candidateId: existing.id,
+      blockers: existing.blockers
+    });
+  }
+  if (!existing.storageKey || !existing.checksum || existing.sizeBytes == null) {
+    throw new ApiError("VALIDATION_FAILED", "Candidate has no stored content to activate.", 400, {
+      candidateId: existing.id
+    });
+  }
+
+  const isNewFile = !existing.fileId;
+  if (isNewFile) {
+    if (!input.configSetId || !input.role) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Activating a new file requires an explicit configSetId and member role.",
+        400,
+        { candidateId: existing.id }
+      );
+    }
+  }
+
+  const expectedCurrentVersionId =
+    input.expectedCurrentVersionId === undefined ? null : input.expectedCurrentVersionId;
+
+  return db.transaction(async (tx) => {
+    const locked = await getParameterFileCandidateById(tx, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      candidateId: input.candidateId
+    });
+    if (!locked || locked.status !== "ready") {
+      throw new ApiError("VALIDATION_FAILED", "Only ready candidates can be activated.", 400, {
+        candidateId: input.candidateId,
+        status: locked?.status
+      });
+    }
+
+    let file: ProjectParameterFileDto | null = null;
+    if (locked.fileId) {
+      file = await getProjectParameterFileById(tx, {
+        organizationId: auth.organization.id,
+        fileId: locked.fileId
+      });
+      if (!file || file.projectId !== input.projectId) {
+        throw new ApiError("NOT_FOUND", "Project parameter file was not found.", 404, {
+          fileId: locked.fileId
+        });
+      }
+    } else {
+      const raced = await getProjectParameterFileByName(tx, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        fileName: locked.fileName
+      });
+      if (raced) {
+        file = raced;
+      }
+    }
+
+    const actualCurrentVersionId = file?.currentVersionId ?? null;
+    const casMatches =
+      (actualCurrentVersionId ?? null) === (expectedCurrentVersionId ?? null) &&
+      (locked.baseVersionId ?? null) === (expectedCurrentVersionId ?? null);
+
+    if (!casMatches) {
+      const stale = await markParameterFileCandidateStale(tx, { candidateId: locked.id });
+      if (!stale) {
+        throw new ApiError("CONFLICT", "Candidate base changed and could not be marked stale.", 409, {
+          reason: "stale-base",
+          candidateId: locked.id,
+          expectedCurrentVersionId,
+          actualCurrentVersionId
+        });
+      }
+      await writeCandidateAudit(
+        tx,
+        auth,
+        {
+          projectId: input.projectId,
+          candidate: stale,
+          action: "stale",
+          kind: "parameter-file-candidate-stale",
+          metadata: {
+            expectedCurrentVersionId,
+            actualCurrentVersionId,
+            preservedWorkingConfiguration: true
+          }
+        },
+        context
+      );
+      throw new ApiError(
+        "CONFLICT",
+        "Candidate base is stale; Working configuration was preserved. Recompute impact before activating.",
+        409,
+        {
+          reason: "stale-base",
+          candidate: stale,
+          expectedCurrentVersionId,
+          actualCurrentVersionId
+        }
+      );
+    }
+
+    if (isNewFile) {
+      const configSet = await getConfigSetById(tx, {
+        organizationId: auth.organization.id,
+        configSetId: input.configSetId!
+      });
+      if (!configSet || configSet.projectId !== input.projectId) {
+        throw new ApiError("NOT_FOUND", "Config set not found.", 404, { configSetId: input.configSetId });
+      }
+    }
+
+    const source = (await objectStore.get(locked.storageKey!)).toString("utf8");
+
+    if (!file) {
+      file = await insertProjectParameterFile(tx, {
+        id: randomUUID(),
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        fileName: locked.fileName,
+        format: locked.format
+      });
+    }
+
+    const version = await insertFileVersion(tx, {
+      id: randomUUID(),
+      fileId: file.id,
+      versionNumber: (file.currentVersionNumber ?? 0) + 1,
+      storageKey: locked.storageKey!,
+      checksum: locked.checksum!,
+      sizeBytes: locked.sizeBytes!,
+      parsedIndex: locked.parsedIndex ?? {},
+      origin: "upload",
+      createdByUserId: auth.user.id
+    });
+
+    await setCurrentVersion(tx, { fileId: file.id, versionId: version.id });
+
+    if (isNewFile) {
+      await setFileConfigSetMembership(tx, {
+        fileId: file.id,
+        configSetId: input.configSetId!,
+        role: input.role!,
+        sortOrder: 0
+      });
+    }
+
+    if (locked.format === "dts" && isDtsStructuralIngestEnabled()) {
+      await ingestDtsFileVersion(tx, version.id, source);
+    }
+    if (locked.format === "dts") {
+      await maybeIngestSemanticConfigRevision(tx, objectStore, auth, {
+        fileId: file.id,
+        frozenVersionId: version.id,
+        frozenSource: source
+      });
+      await syncFileVersion(tx, auth, { fileId: file.id, versionId: version.id });
+    }
+
+    const activated = await markParameterFileCandidateActive(tx, {
+      candidateId: locked.id,
+      activatedByUserId: auth.user.id,
+      activatedVersionId: version.id,
+      fileId: file.id,
+      baseVersionId: expectedCurrentVersionId
+    });
+    if (!activated) {
+      throw new ApiError("CONFLICT", "Candidate could not be activated from its current status.", 409, {
+        candidateId: locked.id
+      });
+    }
+
+    await writeCandidateAudit(
+      tx,
+      auth,
+      {
+        projectId: input.projectId,
+        candidate: activated,
+        action: "activate",
+        kind: "parameter-file-candidate-activate",
+        metadata: {
+          activatedVersionId: version.id,
+          previousVersionId: expectedCurrentVersionId,
+          configSetId: input.configSetId ?? null,
+          role: input.role ?? null
+        }
+      },
+      context
+    );
+
+    return {
+      candidate: activated,
+      file: {
+        ...file,
+        currentVersionId: version.id,
+        currentVersionNumber: version.versionNumber
+      },
+      version
+    };
   });
 }

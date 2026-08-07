@@ -399,8 +399,9 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 | `GET` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId` | 读取单个候选生命周期 DTO。 |
 | `GET` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/impact` | 读取候选影响证据（textDiff、structuralDiff、诊断、覆盖、冲突、阻断）。 |
 | `GET` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content` | 下载候选字节。 |
-| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/abandon` | 放弃 ready/blocked/failed 候选，不改变工作配置。 |
-| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/recompute` | 在外部阻断变化时重算影响。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/abandon` | 放弃 ready/blocked/failed/stale 候选，不改变工作配置。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/recompute` | 重算 ready/blocked/failed/stale 候选影响；stale 会按当前活跃版本重定基。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/activate` | 以 `expectedCurrentVersionId` CAS 激活 ready 候选。新文件必须提供 `configSetId` + `role`。基过期返回 `409`（`reason: stale-base`），候选标为 `stale` 且保留工作配置。成功返回 `{ item, file, version }` 并审计。 |
 | `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/sync` | 对当前或指定版本与 DB diff 并 upsert `file_sync` 草稿。返回 `{ item: syncSummary }`。 |
 | `GET` | `/api/v1/projects/:projectId/parameter-file-conflicts` | 列出项目内 open 冲突。 |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve` | 裁决冲突。请求体：`{ "resolution": "file" \| "ui" }`。 |

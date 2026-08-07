@@ -98,4 +98,32 @@ describe("createMockParameterFileRepository (ParameterFileRepository contract)",
     const abandoned = await repo.abandonCandidate(PROJECT_ID, candidate.id);
     expect(abandoned.status).toBe("abandoned");
   });
+
+  it("activateCandidate promotes ready candidate and rejects non-ready", async () => {
+    const repo = createRepo();
+    const before = (await repo.listFiles(PROJECT_ID))[0];
+    const candidate = await repo.createCandidate(PROJECT_ID, {
+      fileName: before.fileName,
+      fileId: before.id,
+      contentBase64: btoa("/dts-v1/;\n/ { model = \"Act\"; };\n")
+    });
+    const activated = await repo.activateCandidate(PROJECT_ID, candidate.id, {
+      expectedCurrentVersionId: before.currentVersionId ?? null
+    });
+    expect(activated.item.status).toBe("active");
+    expect(activated.file.currentVersionId).toBe(activated.version.id);
+    expect(activated.version.id).not.toBe(before.currentVersionId);
+
+    const blocked = await repo.createCandidate(PROJECT_ID, {
+      fileName: before.fileName,
+      fileId: before.id,
+      contentBase64: btoa("/dts-v1/;\n/ { model = \"Block\"; };\n")
+    });
+    await repo.abandonCandidate(PROJECT_ID, blocked.id);
+    await expect(
+      repo.activateCandidate(PROJECT_ID, blocked.id, {
+        expectedCurrentVersionId: activated.version.id
+      })
+    ).rejects.toThrow(/Cannot activate/);
+  });
 });

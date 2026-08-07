@@ -1,4 +1,6 @@
 import type {
+  ActivateParameterFileCandidateInput,
+  ActivateParameterFileCandidateResult,
   CreateParameterFileCandidateInput,
   DownloadParameterFileCandidateResult,
   DownloadParameterFileVersionResult,
@@ -350,7 +352,7 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       const list = store.candidatesByProject.get(projectId) ?? [];
       const candidate = list.find((item) => item.id === candidateId);
       if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
-      if (!["ready", "blocked", "failed"].includes(candidate.status)) {
+      if (!["ready", "blocked", "failed", "stale"].includes(candidate.status)) {
         throw new Error(`Cannot abandon candidate in status ${candidate.status}`);
       }
       candidate.status = "abandoned";
@@ -363,14 +365,84 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       const list = store.candidatesByProject.get(projectId) ?? [];
       const candidate = list.find((item) => item.id === candidateId);
       if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
-      if (!["ready", "blocked", "failed"].includes(candidate.status)) {
+      if (!["ready", "blocked", "failed", "stale"].includes(candidate.status)) {
         throw new Error(`Cannot recompute candidate in status ${candidate.status}`);
       }
+      const files = ensureProjectFiles(store, projectId);
+      const file = candidate.fileId ? files.find((item) => item.id === candidate.fileId) : undefined;
+      if (file?.currentVersionId) {
+        candidate.baseVersionId = file.currentVersionId;
+      }
       candidate.updatedAt = MOCK_NOW;
-      if (candidate.status === "blocked" && (candidate.blockers?.length ?? 0) === 0) {
+      if (candidate.status === "stale" || (candidate.status === "blocked" && (candidate.blockers?.length ?? 0) === 0)) {
         candidate.status = "ready";
+        candidate.blockers = [];
       }
       return { ...candidate };
+    },
+
+    async activateCandidate(
+      projectId,
+      candidateId,
+      input: ActivateParameterFileCandidateInput
+    ): Promise<ActivateParameterFileCandidateResult> {
+      const list = store.candidatesByProject.get(projectId) ?? [];
+      const candidate = list.find((item) => item.id === candidateId);
+      if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+      if (candidate.status !== "ready") {
+        throw new Error(`Cannot activate candidate in status ${candidate.status}`);
+      }
+      const files = ensureProjectFiles(store, projectId);
+      let file = candidate.fileId ? files.find((item) => item.id === candidate.fileId) : undefined;
+      const expected = input.expectedCurrentVersionId ?? null;
+      const actual = file?.currentVersionId ?? null;
+      if (actual !== expected || (candidate.baseVersionId ?? null) !== expected) {
+        candidate.status = "stale";
+        candidate.updatedAt = MOCK_NOW;
+        throw new Error("Candidate base is stale");
+      }
+      if (!file) {
+        if (!input.configSetId || !input.role) {
+          throw new Error("New file activation requires configSetId and role");
+        }
+        uploadCounter += 1;
+        file = {
+          id: `file-mock-cand-${uploadCounter}`,
+          projectId,
+          fileName: candidate.fileName,
+          format: candidate.format,
+          enabled: true,
+          currentVersionId: undefined,
+          currentVersionNumber: 0,
+          updatedAt: MOCK_NOW
+        };
+        files.push(file);
+      }
+      uploadCounter += 1;
+      const version: ProjectParameterFileVersion = {
+        id: `version-mock-cand-${uploadCounter}`,
+        fileId: file.id,
+        versionNumber: (file.currentVersionNumber ?? 0) + 1,
+        checksum: candidate.checksum ?? `mock-act-${uploadCounter}`,
+        sizeBytes: candidate.sizeBytes ?? 0,
+        parsedIndex: {},
+        origin: "upload",
+        createdAt: MOCK_NOW
+      };
+      const versions = store.versionsByFile.get(file.id) ?? [];
+      versions.push(version);
+      store.versionsByFile.set(file.id, versions);
+      const bytes = store.contentByCandidate.get(candidateId) ?? new Uint8Array();
+      store.contentByVersion.set(version.id, new Uint8Array(bytes));
+      file.currentVersionId = version.id;
+      file.currentVersionNumber = version.versionNumber;
+      file.updatedAt = MOCK_NOW;
+      candidate.status = "active";
+      candidate.fileId = file.id;
+      candidate.activatedAt = MOCK_NOW;
+      candidate.activatedVersionId = version.id;
+      candidate.updatedAt = MOCK_NOW;
+      return { item: { ...candidate }, file: { ...file }, version: { ...version } };
     }
   };
 }

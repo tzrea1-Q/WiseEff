@@ -25,6 +25,7 @@ import {
   ProjectPrimaryDtsViewer,
   type DtsViewerFocusSpan
 } from "@/components/parameter-topology/ProjectPrimaryDtsViewer";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
   buildUnifiedDiff,
   canvasModeQueryValue,
@@ -273,6 +274,10 @@ export function ProjectConfigurationWorkbench({
   const [candidateError, setCandidateError] = useState("");
   const [candidateActionMessage, setCandidateActionMessage] = useState("");
   const [uploadingCandidate, setUploadingCandidate] = useState(false);
+  const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
+  const [activatingCandidate, setActivatingCandidate] = useState(false);
+  const [activateRole, setActivateRole] = useState<ConfigSetRole>("overlay");
+  const [activateError, setActivateError] = useState("");
   const candidateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [lastVisibleLine, setLastVisibleLine] = useState<number | null>(null);
   const [restoredScrollLine, setRestoredScrollLine] = useState<number | null>(null);
@@ -2173,7 +2178,7 @@ export function ProjectConfigurationWorkbench({
                       </div>
                     ) : null}
                     <div className="configuration-workbench__inspector-actions">
-                      {activeCandidate.status === "blocked" ? (
+                      {activeCandidate.status === "blocked" || activeCandidate.status === "stale" ? (
                         <button
                           className="button subtle"
                           type="button"
@@ -2185,7 +2190,11 @@ export function ProjectConfigurationWorkbench({
                                   activeCandidate.id
                                 );
                                 setActiveCandidate(updated);
-                                setCandidateActionMessage("已按当前阻断条件重算候选影响。");
+                                setCandidateActionMessage(
+                                  updated.status === "ready"
+                                    ? "已按当前基重算候选影响，可再次审查后激活。"
+                                    : "已按当前阻断条件重算候选影响。"
+                                );
                               } catch (error: unknown) {
                                 setCandidateError(
                                   error instanceof Error ? error.message : "候选重算失败。"
@@ -2197,7 +2206,21 @@ export function ProjectConfigurationWorkbench({
                           重算影响
                         </button>
                       ) : null}
-                      {["ready", "blocked", "failed"].includes(activeCandidate.status) ? (
+                      {activeCandidate.status === "ready" ? (
+                        <button
+                          className="button primary"
+                          type="button"
+                          data-testid="activate-candidate"
+                          onClick={() => {
+                            setActivateError("");
+                            setActivateRole("overlay");
+                            setActivateConfirmOpen(true);
+                          }}
+                        >
+                          激活候选
+                        </button>
+                      ) : null}
+                      {["ready", "blocked", "failed", "stale"].includes(activeCandidate.status) ? (
                         <button
                           className="button subtle"
                           type="button"
@@ -2523,12 +2546,126 @@ export function ProjectConfigurationWorkbench({
                 </section>
               ) : null}
               <p className="configuration-workbench__read-only-note">
-                画布模式：{canvasMode}。结构化编辑提交、候选激活与发布动作将在后续阶段接入；本阶段支持配置集创建/成员管理、手动同步与导出。
+                画布模式：{canvasMode}。候选激活需确认影响范围；本阶段同时支持配置集创建/成员管理、手动同步与导出；结构化编辑与发布动作将在后续阶段接入。
               </p>
             </aside>
           ) : null}
         </div>
       )}
+
+      <ConfirmDialog
+        open={activateConfirmOpen && activeCandidate?.status === "ready"}
+        title="确认激活候选"
+        description={
+          <div>
+            <p>
+              将把候选 <code>{activeCandidate?.fileName}</code> 晋升为工作配置的活跃版本。此操作会改变后续基线可发布内容。
+            </p>
+            <ul>
+              <li>
+                对照活跃版本：{" "}
+                <code className="mono">{activeCandidate?.baseVersionId ?? "新文件（无基）"}</code>
+              </li>
+              <li>结构差异：{(activeCandidate?.impact.structuralDiff?.length ?? 0) || 0} 项</li>
+              <li>
+                覆盖/映射：
+                {activeCandidate?.impact.coverage
+                  ? `已注册 ${activeCandidate.impact.coverage.matchedRegisteredCount} · 未注册 ${activeCandidate.impact.coverage.newUnregisteredCount}`
+                  : "不适用"}
+              </li>
+              <li>阻断：{(activeCandidate?.blockers?.length ?? 0) === 0 ? "无" : activeCandidate?.blockers.length}</li>
+            </ul>
+            {activeCandidate?.impact.textDiff ? (
+              <pre className="configuration-workbench__diff-view mono" tabIndex={0}>
+                {activeCandidate.impact.textDiff}
+              </pre>
+            ) : null}
+          </div>
+        }
+        confirmLabel="确认激活"
+        tone="primary"
+        pending={activatingCandidate}
+        pendingLabel="激活中…"
+        error={activateError}
+        acknowledgement="我已审查影响范围，并确认对照的是当前活跃基版本。"
+        extra={
+          !activeCandidate?.fileId ? (
+            <label className="configuration-workbench__activate-role">
+              <span>新文件成员角色</span>
+              <select
+                value={activateRole}
+                disabled={activatingCandidate}
+                onChange={(event) => setActivateRole(event.target.value as ConfigSetRole)}
+              >
+                {(Object.keys(ROLE_LABELS) as ConfigSetRole[]).map((role) => (
+                  <option key={role} value={role}>
+                    {ROLE_LABELS[role]}
+                  </option>
+                ))}
+              </select>
+              <small>将加入配置集 {selectedConfigSet?.name ?? "（未选择）"}，不会隐式创建其他成员关系。</small>
+            </label>
+          ) : null
+        }
+        onCancel={() => {
+          if (!activatingCandidate) {
+            setActivateConfirmOpen(false);
+            setActivateError("");
+          }
+        }}
+        onConfirm={() => {
+          if (!activeCandidate || activeCandidate.status !== "ready") return;
+          void (async () => {
+            setActivatingCandidate(true);
+            setActivateError("");
+            setCandidateError("");
+            try {
+              if (!activeCandidate.fileId && !selectedConfigSet) {
+                throw new Error("激活新文件需要已选择的配置集。");
+              }
+              const result = await fileRepository.activateCandidate(project.id, activeCandidate.id, {
+                expectedCurrentVersionId: activeCandidate.baseVersionId ?? null,
+                configSetId: activeCandidate.fileId ? undefined : selectedConfigSet?.id,
+                role: activeCandidate.fileId ? undefined : activateRole
+              });
+              setActiveCandidate(result.item);
+              setCandidateActionMessage("候选已激活；工作源码、成员与历史已刷新。");
+              setActivateConfirmOpen(false);
+              setFilesRetry((value) => value + 1);
+              setMembersRetry((value) => value + 1);
+              setSourceRetry((value) => value + 1);
+              setBaselinesRetry((value) => value + 1);
+              if (selectedConfigSet) {
+                onNavigate(
+                  formatWorkbenchPath(project.id, search, {
+                    configSet: selectedConfigSet.id,
+                    file: result.file.id,
+                    sourceMode: null,
+                    candidate: null,
+                    version: null
+                  })
+                );
+              }
+            } catch (error: unknown) {
+              const message = error instanceof Error ? error.message : "激活候选失败。";
+              setActivateError(message);
+              setCandidateError(message);
+              if (/stale/i.test(message)) {
+                try {
+                  const refreshed = await fileRepository.getCandidate(project.id, activeCandidate.id);
+                  setActiveCandidate(refreshed);
+                  setActivateConfirmOpen(false);
+                  setCandidateActionMessage("基版本已变更，候选已标为过期；请重算影响后再激活。");
+                } catch {
+                  // keep prior candidate state
+                }
+              }
+            } finally {
+              setActivatingCandidate(false);
+            }
+          })();
+        }}
+      />
 
       <footer className={tasksOpen ? "configuration-workbench__tasks is-open" : "configuration-workbench__tasks"}>
         <button className="button subtle configuration-workbench__task-toggle" type="button" aria-label="任务" aria-expanded={tasksOpen} onClick={() => setTasksOpen((open) => !open)}>
