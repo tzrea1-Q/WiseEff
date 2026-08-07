@@ -254,12 +254,10 @@ test.describe("project parameter files browser acceptance", () => {
         rowCount: draftRow ? 1 : 0
       };
 
-      await page.goto(`/parameter-admin/projects/${projectId}/files`);
+      await page.goto(`/parameter-admin/projects/${projectId}/configuration?inspector=file`);
       await dismissXiaozeHint(page);
-      await expect(page.getByRole("region", { name: "项目参数文件" })).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByRole("navigation", { name: "项目运营视图" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "参数文件" })).toHaveAttribute("aria-current", "page");
-      await expect(page.locator('input[type="file"].project-parameter-files__input')).toBeAttached();
+      await expect(page).toHaveURL(new RegExp(`/parameter-admin/projects/${projectId}/configuration`));
+      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
 
       await recordOperationEvidence({
         operationId: "PARAM-FILE-UPLOAD-001",

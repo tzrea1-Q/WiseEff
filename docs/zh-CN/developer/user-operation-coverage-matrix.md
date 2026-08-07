@@ -30,10 +30,10 @@
 - `PARAM-INIT-REVIEW-001`：Admin 在 `/parameter-review` 批准初始化后解锁并物化 binding；服务端 + App Port；playwright-cli 审阅页证据见 `work/ui-checks/param-init/review-*`。
 - `PARAM-INIT-REJECT-001`：Admin 带原因驳回后创建者可修订再提交（reducer + 服务端）；专用浏览器 e2e 待补。
 - `PARAM-INIT-LOCK-001`：未 `initialized` 项目不能提交常规 typed binding 变更轮次（`ParametersPage` 锁 + `assertProjectAllowsParameterSubmit`）。
-- `PROJ-OPS-001`：Admin 用深链打开 `/parameter-admin/projects/:projectId/:view` 的四个视图、刷新、在视图间前进后退，并打开一个不存在的项目 ID；当前以组件测试加 playwright-cli 证据先行，专用 e2e 深链 spec 待后续。
-- `PROJ-OPS-002`：Admin 在 1440×900 / 768×1024 / 390×844 三档视口走完四个项目视图，确认没有内容截断、没有横向溢出、视图导航条位置稳定；证据见 `work/ui-checks/project-operations-dialog/final/`。
-- `PROJ-OPS-003`：Admin 发布并回滚基线、移除配置集成员、裁决文件冲突，每个动作都经过确认框；面板与页面测试加 playwright-cli 证据先行，API mode 的治理 e2e 待补基线种子数据。
-- `PROJ-CONFIG-READ-001`：Admin 在开发开关启用的 API mode 中从项目清单进入 `/parameter-admin/projects/:projectId/configuration`，验证配置集解析、成员/未编组树、活跃 DTS 源码、发布身份、恢复状态和三视口布局；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
+- `PROJ-OPS-001`：已被 `PROJ-CONFIG-CUTOVER-001` 取代：旧深链重定向到配置工作台等价上下文；未知项目 ID 仍显示 not-found；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
+- `PROJ-OPS-002`：已被 `PROJ-CONFIG-READ-001` / `PROJ-CONFIG-CUTOVER-001` 取代：三视口工作台布局证据。
+- `PROJ-OPS-003`：已被 `PROJ-CONFIG-BASELINE-001` / `PROJ-CONFIG-OPS-001` / `PROJ-CONFIG-CONFLICT-001` 取代：基线/成员/冲突确认在工作台源码上下文。
+- `PROJ-CONFIG-READ-001`：Admin 在 API mode 从项目清单进入 `/parameter-admin/projects/:projectId/configuration`，验证配置集解析、成员/未编组树、活跃 DTS 源码、发布身份、恢复状态和三视口布局；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-SOURCE-001`：Admin 在同一规范路由验证结构 span 聚焦、按文件分组统一搜索、跨文件跳转保留配置集、`node`/`property`/`sourceMode` 深链恢复、树/源码独立重试与键盘导航；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-INSPECT-001`：Admin 在同一规范路由验证检查器层级与回退、不可变版本历史与下载、历史/对比源码模式恢复、身份标注与源码 ≥640px 常驻规则；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-CANDIDATE-001`：Admin 在同一规范路由验证候选上传、影响审查、解析失败诊断与放弃，且不改变活跃版本与配置集成员；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
@@ -45,6 +45,7 @@
 - `PROJ-CONFIG-CONFLICT-001`：Admin 在同一规范路由验证源码定位三方冲突裁决（两侧等权、确认+可选审计原因、队列前进）、合格批量预览/裁决、开放冲突阻断候选激活，以及空队列时冲突坞保持折叠；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-READINESS-001`：Admin 在同一规范路由验证服务端发布就绪摘要、Issues 坞 remediation、阻断/不可用/过期或本机会话脏时创建/发布失败关闭，以及前端不用客户端计数发明权限；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-BASELINE-001`：Admin 在同一规范路由验证基线创建/对比/警告确认/发布/恢复预览与原子恢复、已发布 tip 不变与就绪刷新；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
+- `PROJ-CONFIG-CUTOVER-001`：旧 `/files` `/config-sets` `/structure` `/conflicts` 深链重定向到等价工作台上下文并保留焦点；新链接只使用 `/configuration`；三视口证明能力不丢失；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；证据见 `work/ui-checks/project-configuration-workbench-cutover/`。
 - `PARAM-ADMIN-DIALOG-001`：Admin 打开项目编辑、项目删除与治理确认框，检查焦点进入、Tab 受限、叠层 Escape、焦点归还与按下在内松开在外；共享弹窗原语的单元测试加 playwright-cli 证据先行。
 - `PARAM-ASSIGNEE-001/002`：Software User 在 `/parameters` 的 binding-centric 提交面板中看到三类项目作用域候选人；默认值非空，候选集合精确排除 inactive、guest、仅 Admin 与角色不匹配用户。自动化归属 `e2e/acceptance/parameter-topology.acceptance.spec.ts`。
 - `PFB-SUBMIT-001`：Admin 在 `/parameters` 通过侧边栏提交产品反馈，断言覆盖 UI、API、DB、audit 和截图证据（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。

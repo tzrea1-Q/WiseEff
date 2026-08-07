@@ -2780,4 +2780,125 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       });
     }
   });
+
+  test("redirects legacy project-operation deep links into workbench contexts", async ({ page, request }, testInfo) => {
+    // @acceptance PROJ-CONFIG-CUTOVER-001
+    // @operation PROJ-CONFIG-CUTOVER-001
+    // @operation PROJ-OPS-001
+    // @operation PROJ-OPS-002
+    // @operation PROJ-OPS-003
+    const suffix = randomUUID();
+    const configSetName = `cutover-${suffix}`;
+    const primaryFileName = `acceptance-cutover-${suffix}.dts`;
+
+    try {
+      const primaryUpload = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: primaryFileName,
+          contentBase64: Buffer.from(sampleDts, "utf8").toString("base64")
+        }
+      });
+      expect(primaryUpload.ok()).toBe(true);
+      const primaryBody = (await primaryUpload.json()) as {
+        item: { id: string; fileName: string };
+        version: { id: string };
+      };
+
+      const createConfigSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(),
+        data: { name: configSetName, description: "Cutover acceptance" }
+      });
+      expect(createConfigSet.status()).toBe(201);
+      const configSetBody = (await createConfigSet.json()) as { item: { id: string } };
+      const configSetId = configSetBody.item.id;
+      const addMember = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
+        { headers: adminHeaders(), data: { fileId: primaryBody.item.id, role: "base", sortOrder: 0 } }
+      );
+      expect(addMember.ok()).toBe(true);
+
+      await signInBrowserAsRole(page, "admin", "/parameter-admin/projects");
+      await dismissXiaozeHint(page);
+
+      const redirects: Array<{ from: string; expectQuery: RegExp }> = [
+        {
+          from: `/parameter-admin/projects/${projectId}/files?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}`,
+          expectQuery: /inspector=file/
+        },
+        {
+          from: `/parameter-admin/projects/${projectId}/config-sets?configSet=${encodeURIComponent(configSetId)}`,
+          expectQuery: /inspector=config-set/
+        },
+        {
+          from: `/parameter-admin/projects/${projectId}/structure?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}&node=chosen`,
+          expectQuery: /sourceMode=working/
+        },
+        {
+          from: `/parameter-admin/projects/${projectId}/conflicts?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}`,
+          expectQuery: /tasks=conflicts/
+        }
+      ];
+
+      for (const item of redirects) {
+        await page.goto(item.from);
+        await dismissXiaozeHint(page);
+        await expect(page).toHaveURL(
+          new RegExp(`/parameter-admin/projects/${projectId}/configuration(?:\\?|$)`)
+        );
+        await expect(page).toHaveURL(item.expectQuery);
+        await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
+        await expect(page.getByRole("navigation", { name: "项目运营视图" })).toHaveCount(0);
+      }
+
+      for (const viewport of [
+        { width: 1440, height: 900 },
+        { width: 768, height: 1024 },
+        { width: 390, height: 844 }
+      ]) {
+        await page.setViewportSize(viewport);
+        await page.goto(
+          `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}`
+        );
+        await dismissXiaozeHint(page);
+        await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
+        const overflow = await page.evaluate(() => {
+          const doc = document.documentElement;
+          return {
+            scrollWidth: doc.scrollWidth,
+            clientWidth: doc.clientWidth
+          };
+        });
+        expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+      }
+
+      const evidencePath = await writeOperationJsonArtifact(
+        testInfo,
+        "project-configuration-workbench-cutover.json",
+        {
+          route: page.url(),
+          redirects: redirects.map((item) => item.from),
+          viewports: ["1440x900", "768x1024", "390x844"]
+        }
+      );
+      await recordOperationEvidence({
+        operationId: "PROJ-CONFIG-CUTOVER-001",
+        title: "legacy project-operation cutover to configuration workbench",
+        status: "passed",
+        role: "Admin",
+        route: `/parameter-admin/projects/${projectId}/configuration`,
+        page,
+        testInfo,
+        assertions: ["ui", "api", "screenshot"],
+        artifacts: [evidencePath]
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        configSetNames: [configSetName],
+        fileNames: [primaryFileName]
+      });
+    }
+  });
 });

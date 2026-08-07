@@ -137,25 +137,25 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PROJ-OPS-001",
     workflow: "C",
-    title: "Every project operations deep link resolves to its view on load and after reload, and an unknown project id shows a not-found state.",
+    title: "Superseded by PROJ-CONFIG-CUTOVER-001: legacy project-operation deep links redirect to equivalent configuration-workbench contexts; unknown project ids show not-found.",
     required: false
   },
   {
     id: "PROJ-OPS-002",
     workflow: "C",
-    title: "All four project views render without clipped content or horizontal overflow at desktop, tablet, and mobile widths, and the view navigation keeps its position.",
+    title: "Superseded by PROJ-CONFIG-READ-001 / PROJ-CONFIG-CUTOVER-001: three-viewport configuration workbench layout without clipping or page-level horizontal overflow.",
     required: false
   },
   {
     id: "PROJ-OPS-003",
     workflow: "C",
-    title: "Baseline release, baseline rollback, member removal, and conflict arbitration each require an explicit confirmation and produce a governance audit record.",
+    title: "Superseded by PROJ-CONFIG-BASELINE-001 / PROJ-CONFIG-OPS-001 / PROJ-CONFIG-CONFLICT-001: baseline, membership, and conflict confirmations in workbench source context.",
     required: false
   },
   {
     id: "PROJ-CONFIG-READ-001",
     workflow: "C",
-    title: "The development-flagged canonical project configuration route resolves Config-set context and reads active member DTS source in source-dominant and responsive layouts.",
+    title: "The canonical project configuration route resolves Config-set context and reads active member DTS source in source-dominant and responsive layouts.",
     required: false
   },
   {
@@ -223,6 +223,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PROJ-CONFIG-BASELINE-001",
     workflow: "C",
     title: "Release baseline create/compare/release/restore in source context: snapshot without mutating files, readiness-gated create/release, draft/released/historical identities, unified or side-by-side compare with Working position restore, warning acknowledgement, impact release with audit and drift refresh, restore preview and atomic apply leaving released tip unchanged.",
+    required: false
+  },
+  {
+    id: "PROJ-CONFIG-CUTOVER-001",
+    workflow: "C",
+    title: "Legacy project-operation routes redirect to canonical configuration-workbench contexts with preserved focus; new links use only /configuration; three viewports prove integrated cutover.",
     required: false
   },
 
