@@ -554,6 +554,9 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     );
   }, [search, selectedMembers]);
 
+  const selectedMemberFileId = selectedMember?.fileId ?? null;
+  const selectedMemberVersionId = selectedMember?.currentVersionId ?? null;
+
   const canvasMode: WorkbenchCanvasMode = parseCanvasMode(queryValue(search, "sourceMode"));
   const candidateId = queryValue(search, "candidate");
   const historyVersionId = queryValue(search, "version");
@@ -760,21 +763,21 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [configSetsLoading, onNavigate, project.id, search, selectedConfigSet]);
 
   useEffect(() => {
-    if (membersLoading || !selectedConfigSet || !selectedMember) return;
-    if (queryValue(search, "file") !== selectedMember.fileId) {
+    if (membersLoading || !selectedConfigSet || !selectedMemberFileId) return;
+    if (queryValue(search, "file") !== selectedMemberFileId) {
       onNavigate(
         formatWorkbenchPath(project.id, search, {
           configSet: selectedConfigSet.id,
-          file: selectedMember.fileId,
+          file: selectedMemberFileId,
           node: null,
           property: null
         })
       );
     }
-  }, [membersLoading, onNavigate, project.id, search, selectedConfigSet, selectedMember]);
+  }, [membersLoading, onNavigate, project.id, search, selectedConfigSet, selectedMemberFileId]);
 
   useEffect(() => {
-    if (!selectedMember?.currentVersionId) {
+    if (!selectedMemberFileId || !selectedMemberVersionId) {
       setSource("");
       setSourceError("");
       setSourceLoading(false);
@@ -784,7 +787,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     setSourceLoading(true);
     setSourceError("");
     void fileRepository
-      .downloadVersion(project.id, selectedMember.fileId, selectedMember.currentVersionId)
+      .downloadVersion(project.id, selectedMemberFileId, selectedMemberVersionId)
       .then((result) => {
         if (!cancelled) setSource(new TextDecoder().decode(result.bytes));
       })
@@ -800,10 +803,10 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     return () => {
       cancelled = true;
     };
-  }, [fileRepository, project.id, selectedMember, sourceRetry]);
+  }, [fileRepository, project.id, selectedMemberFileId, selectedMemberVersionId, sourceRetry]);
 
   useEffect(() => {
-    if (!selectedMember?.currentVersionId) {
+    if (!selectedMemberFileId || !selectedMemberVersionId) {
       setStructureNodes([]);
       setStructureError("");
       setStructureLoading(false);
@@ -813,7 +816,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     setStructureLoading(true);
     setStructureError("");
     void dtsRepository
-      .getStructure(project.id, selectedMember.fileId, selectedMember.currentVersionId)
+      .getStructure(project.id, selectedMemberFileId, selectedMemberVersionId)
       .then((result) => {
         if (!cancelled) setStructureNodes(result.nodes);
       })
@@ -829,7 +832,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     return () => {
       cancelled = true;
     };
-  }, [dtsRepository, project.id, selectedMember, structureRetry]);
+  }, [dtsRepository, project.id, selectedMemberFileId, selectedMemberVersionId, structureRetry]);
 
   useEffect(() => {
     const requestedNode = queryValue(search, "node");
