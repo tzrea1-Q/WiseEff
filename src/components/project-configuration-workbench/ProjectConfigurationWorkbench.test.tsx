@@ -1849,6 +1849,33 @@ describe("ProjectConfigurationWorkbench", () => {
     }
   });
 
+  it("opens file and config-set inspectors from cutover query params", async () => {
+    renderWorkbench({
+      search: "?configSet=cs-default&file=file-board&inspector=file"
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const fileInspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(within(fileInspector).getByText("aurora-board.dts")).toBeInTheDocument();
+
+    cleanup();
+    renderWorkbench({
+      search: "?configSet=cs-default&inspector=config-set"
+    });
+    const configInspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(configInspector).toHaveTextContent("default");
+    expect(screen.getByRole("button", { name: "检查器" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("opens the Conflicts task dock from tasks=conflicts cutover query", async () => {
+    renderWorkbench({
+      search: "?configSet=cs-default&file=file-board&tasks=conflicts"
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "任务" })).toHaveAttribute("aria-expanded", "true")
+    );
+  });
+
   it("opens Activity from the command bar without a permanent audit banner above source", async () => {
     const listAuditEvents = vi.fn(async () => ({
       items: [

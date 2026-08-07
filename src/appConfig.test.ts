@@ -31,10 +31,11 @@ describe("WiseEff prototype configuration", () => {
 
     expect(projects.key).toBe("parameter-admin");
     expect(projects.path).toBe("/parameter-admin/projects");
-    expect(getXiaozeContextSummary("/parameter-admin/projects")).toContain("参数文件");
+    expect(getXiaozeContextSummary("/parameter-admin/projects")).toContain("配置工作台");
 
     expect(projectFiles.key).toBe("parameter-admin");
     expect(projectFiles.path).toBe("/parameter-admin/projects/aurora/files");
+    expect(projectFiles.subtitle).toBe("配置工作台");
     expect(projectConfiguration.key).toBe("parameter-admin");
     expect(projectConfiguration.path).toBe("/parameter-admin/projects/aurora/configuration");
     expect(projectConfiguration.subtitle).toBe("配置工作台");

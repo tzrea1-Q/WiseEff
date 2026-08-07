@@ -6,20 +6,9 @@ import type { ParameterFileRepository } from "@/application/ports/ParameterFileR
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
-import { ConfigSetBaselinePanel } from "@/components/admin/ConfigSetBaselinePanel";
 import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
-import { ParameterFileConflictPanel } from "@/components/admin/ParameterFileConflictPanel";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
-import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import {
-  ProjectOperationsDialog,
-  type ParameterAdminNextProjectView,
-  type ProjectOperationsViewMeta
-} from "@/components/admin/ProjectOperationsDialog";
-import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterFilesPanel";
-import { DtsSearchPanel } from "@/components/parameters/DtsSearchPanel";
-import { DtsStructureBrowserPanel } from "@/components/parameters/DtsStructureBrowserPanel";
 import { ProjectConfigurationWorkbench } from "@/components/project-configuration-workbench/ProjectConfigurationWorkbench";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
@@ -37,11 +26,15 @@ import {
   formatCsvQueryParam,
   parseCsvQueryParam
 } from "@/application/parameters/parameterAdminUrl";
-import { auditKindLabel } from "@/application/parameters/parameterAdminState";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
+import {
+  buildCanonicalConfigurationPath,
+  isLegacyProjectOperationView,
+  type ParameterAdminNextProjectView
+} from "./projectOperationsCutover";
 
-export type { ParameterAdminNextProjectView } from "@/components/admin/ProjectOperationsDialog";
+export type { ParameterAdminNextProjectView } from "./projectOperationsCutover";
 
 export function parseParameterAdminNextProjectPath(pathname: string): {
   projectId: string | null;
@@ -55,14 +48,6 @@ export function parseParameterAdminNextProjectPath(pathname: string): {
   }
   const view = (match[2] as ParameterAdminNextProjectView | "configuration" | undefined) ?? "files";
   return { projectId: decodeURIComponent(match[1]!), view };
-}
-
-function formatAuditTime(recordedAt: string): string {
-  const parsed = new Date(recordedAt);
-  if (Number.isNaN(parsed.getTime())) {
-    return recordedAt;
-  }
-  return parsed.toLocaleString("zh-CN", { hour12: false });
 }
 
 function parseListSearch(search: string): ParamAdminProjectsSearch {
@@ -84,29 +69,6 @@ function buildListSearch(patch: Partial<ParamAdminProjectsSearch>, current: Para
   return params.toString();
 }
 
-const PROJECT_VIEW_META: Record<ParameterAdminNextProjectView, ProjectOperationsViewMeta> = {
-  files: {
-    label: "参数文件",
-    subtitle: "维护参数文件与版本，并在已解析的文件中检索节点。树形浏览请用「结构浏览」。",
-    regionLabel: "项目参数文件"
-  },
-  "config-sets": {
-    label: "配置集 / 基线",
-    subtitle: "调整配置集成员，并完成基线对比、回滚与发布。",
-    regionLabel: "项目配置集与基线"
-  },
-  structure: {
-    label: "结构浏览",
-    subtitle: "浏览项目源 DTS 结构树，查看并编辑节点属性。",
-    regionLabel: "项目源结构"
-  },
-  conflicts: {
-    label: "冲突裁决",
-    subtitle: "裁决参数文件值与界面草稿之间的冲突。",
-    regionLabel: "项目文件冲突"
-  }
-};
-
 export type ProjectsOperationsPanelProps = {
   pathname: string;
   search: string;
@@ -118,13 +80,13 @@ export type ProjectsOperationsPanelProps = {
   onNewProject?: () => void;
   parameterFileRepository?: ParameterFileRepository;
   dtsStructuredRepository?: DtsStructuredRepository;
+  /** @deprecated Flag retired; workbench is always on. Prop kept for call-site compat. */
   configurationWorkbenchEnabled?: boolean;
 };
 
 /**
- * Project list and the deep-linked project operations dialog (files, config sets,
- * structure, conflicts). Routes own the address; the dialog owns the presentation over
- * the list. Leaving with unsubmitted structure drafts asks for confirmation first.
+ * Project list and the canonical configuration workbench. Legacy four-view deep links
+ * redirect to equivalent workbench contexts for one compatibility release (#240).
  */
 export function ProjectsOperationsPanel({
   pathname,
@@ -136,42 +98,16 @@ export function ProjectsOperationsPanel({
   runtimeMode = "mock",
   onNewProject,
   parameterFileRepository,
-  dtsStructuredRepository,
-  configurationWorkbenchEnabled = false
+  dtsStructuredRepository
 }: ProjectsOperationsPanelProps) {
-  const { dispatch: adminDispatch, state: adminState, application } = useParameterAdmin();
+  const { dispatch: adminDispatch, application } = useParameterAdmin();
   const { projectId, view: routeView } = parseParameterAdminNextProjectPath(pathname);
   const configurationRoute = routeView === "configuration";
-  const configurationOpen = configurationRoute && configurationWorkbenchEnabled;
-  const view = routeView === "configuration" ? null : routeView;
+  const legacyView = isLegacyProjectOperationView(routeView) ? routeView : null;
   const isApiMode = runtimeMode === "api";
   const canAdmin = canPerform(migrateLegacyRoleId(state.activeRoleId), "admin.access");
   const adminClient = useMemo(() => createParameterAdminClient(), []);
-  const latestAudit = adminState.recentAuditEvents[0] ?? null;
   const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
-
-  const recordMockAudit = useCallback(
-    (input: { kind: string; summary: string; reason?: string }) => {
-      adminDispatch({
-        type: "PREPEND_RECENT_AUDIT_EVENT",
-        event: {
-          id: `mock-audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          kind: input.kind,
-          summary: input.summary,
-          reason: input.reason ?? "",
-          recordedAt: new Date().toISOString()
-        }
-      });
-    },
-    [adminDispatch]
-  );
-
-  useEffect(() => {
-    if (!isApiMode) {
-      return;
-    }
-    void refreshRecentAudits(projectId ?? undefined);
-  }, [isApiMode, projectId, refreshRecentAudits]);
 
   const fileRepository = useMemo(
     () =>
@@ -197,25 +133,7 @@ export function ProjectsOperationsPanel({
   const [deletePending, setDeletePending] = useState(false);
   const [formError, setFormError] = useState("");
   const [deleteError, setDeleteError] = useState("");
-  const [availableFiles, setAvailableFiles] = useState<
-    Array<{ id: string; fileName: string; format?: string; currentVersionId?: string }>
-  >([]);
-  const [projectFilesReady, setProjectFilesReady] = useState(false);
-  const [structureDirty, setStructureDirty] = useState(false);
-  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
-  /** A search hit the user asked to open in the structure browser. */
-  const [structureFocus, setStructureFocus] = useState<{
-    nodePath: string;
-    propertyName?: string;
-    token: number;
-  } | null>(null);
-  /**
-   * Views the user has opened for the current project. Keeping them mounted is what
-   * makes per-view state survive switching; resetting on project change stops one
-   * project's drafts from being shown under another.
-   */
-  const [visitedViews, setVisitedViews] = useState<ParameterAdminNextProjectView[]>([]);
   const listSearch = useMemo(() => parseListSearch(search), [search]);
 
   const mockRows = useMemo(() => buildParameterAdminProjectsFromState(state), [state]);
@@ -246,66 +164,15 @@ export function ProjectsOperationsPanel({
   }, [loadProjects]);
 
   useEffect(() => {
-    if (configurationRoute && !configurationWorkbenchEnabled && projectId) {
-      onNavigate(`/parameter-admin/projects/${encodeURIComponent(projectId)}/files`);
+    if (!projectId || !legacyView) {
+      return;
     }
-  }, [configurationRoute, configurationWorkbenchEnabled, onNavigate, projectId]);
+    onNavigate(buildCanonicalConfigurationPath(projectId, legacyView, search));
+  }, [legacyView, onNavigate, projectId, search]);
 
   useEffect(() => {
     adminDispatch({ type: "SET_SELECTED_PROJECT", projectId: projectId });
   }, [adminDispatch, projectId]);
-
-  useEffect(() => {
-    setVisitedViews([]);
-    setStructureDirty(false);
-    setStructureFocus(null);
-  }, [projectId]);
-
-  useEffect(() => {
-    if (!view) {
-      return;
-    }
-    setVisitedViews((current) => (current.includes(view) ? current : [...current, view]));
-  }, [view]);
-
-  useEffect(() => {
-    if (!projectId || (view !== "config-sets" && view !== "structure")) {
-      setAvailableFiles([]);
-      setProjectFilesReady(false);
-      return;
-    }
-    let cancelled = false;
-    setProjectFilesReady(false);
-    void (async () => {
-      try {
-        const items = await fileRepository.listFiles(projectId);
-        if (!cancelled) {
-          setAvailableFiles(
-            items.map((item) => ({
-              id: item.id,
-              fileName: item.fileName,
-              format: item.format,
-              currentVersionId: item.currentVersionId
-            }))
-          );
-        }
-      } catch {
-        if (!cancelled) {
-          setAvailableFiles([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setProjectFilesReady(true);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [fileRepository, projectId, view]);
-
-  const structureFile =
-    availableFiles.find((file) => file.format === "dts" && file.currentVersionId) ?? null;
 
   const updateListSearch = useCallback(
     (patch: Partial<ParamAdminProjectsSearch>) => {
@@ -314,7 +181,6 @@ export function ProjectsOperationsPanel({
     },
     [listSearch, onNavigate]
   );
-
 
   const submitForm = async (input: { name: string; code: string; status?: string }) => {
     if (!editingProject) {
@@ -347,9 +213,15 @@ export function ProjectsOperationsPanel({
           : {})
       }
     });
-    recordMockAudit({
-      kind: "project-updated",
-      summary: `已更新项目 ${input.name}`
+    adminDispatch({
+      type: "PREPEND_RECENT_AUDIT_EVENT",
+      event: {
+        id: `mock-audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        kind: "project-updated",
+        summary: `已更新项目 ${input.name}`,
+        reason: "",
+        recordedAt: new Date().toISOString()
+      }
     });
     setEditingProjectId(null);
   };
@@ -378,9 +250,15 @@ export function ProjectsOperationsPanel({
       return;
     }
     dispatch({ type: "DELETE_PARAMETER_ADMIN_PROJECT", projectId: deleteTarget.id });
-    recordMockAudit({
-      kind: "project-deleted",
-      summary: `已删除项目 ${deleteTarget.name}`
+    adminDispatch({
+      type: "PREPEND_RECENT_AUDIT_EVENT",
+      event: {
+        id: `mock-audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        kind: "project-deleted",
+        summary: `已删除项目 ${deleteTarget.name}`,
+        reason: "",
+        recordedAt: new Date().toISOString()
+      }
     });
     setDeleteTargetId(null);
     if (projectId === deleteTarget.id) {
@@ -388,97 +266,9 @@ export function ProjectsOperationsPanel({
     }
   };
 
-  const projectBase = projectId
-    ? `/parameter-admin/projects/${encodeURIComponent(projectId)}`
-    : "/parameter-admin/projects";
-  const operationsOpen = Boolean(projectId && view);
-  const viewMeta = view ? PROJECT_VIEW_META[view] : null;
-  // Never title the page with a raw project id; POD-C7 treats that as a missing state.
-  const projectName = selectedProject?.name ?? "项目详情";
-  /**
-   * Only mock rows are available synchronously; in API mode the list has to come back
-   * before an unknown id can be called unknown.
-   */
+  const configurationOpen = Boolean(projectId && configurationRoute && !legacyView);
   const projectsReady = !isApiMode || projectsLoaded;
-  const projectMissing = (operationsOpen || configurationOpen) && projectsReady && !selectedProject;
-
-  const closeOperations = useCallback(() => {
-    if (structureDirty) {
-      setLeaveConfirmOpen(true);
-      return;
-    }
-    onNavigate("/parameter-admin/projects");
-  }, [onNavigate, structureDirty]);
-
-  const dismissAudit = useCallback(() => {
-    adminDispatch({ type: "CLEAR_RECENT_AUDIT_EVENTS" });
-  }, [adminDispatch]);
-
-  const auditNotice = latestAudit ? (
-    <div
-      className="project-operations-audit"
-      role="status"
-      aria-label="治理审计"
-      data-audit-kind={latestAudit.kind}
-    >
-      <p>治理审计已记录：{latestAudit.summary || auditKindLabel(latestAudit.kind)}</p>
-      <div className="project-operations-audit__meta">
-        <time dateTime={latestAudit.recordedAt}>{formatAuditTime(latestAudit.recordedAt)}</time>
-        <button
-          type="button"
-          className="button subtle project-operations-audit__dismiss"
-          onClick={dismissAudit}
-        >
-          知道了
-        </button>
-      </div>
-    </div>
-  ) : null;
-
-  const handleOpenConflictCountChange = useCallback(
-    (count: number) => {
-      adminDispatch({ type: "SET_QUEUE_COUNTS", counts: { fileConflicts: count } });
-    },
-    [adminDispatch]
-  );
-
-  const handleSelectSearchHit = useCallback(
-    (hit: { nodePath: string; propertyName?: string }) => {
-      setStructureFocus((current) => ({
-        nodePath: hit.nodePath,
-        ...(hit.propertyName ? { propertyName: hit.propertyName } : {}),
-        token: (current?.token ?? 0) + 1
-      }));
-      onNavigate(`${projectBase}/structure`);
-    },
-    [onNavigate, projectBase]
-  );
-
-  const handleConflictResolved = useCallback(
-    (input: { conflictId: string; resolution: "file" | "ui"; parameterName: string; reason: string }) => {
-      if (isApiMode) {
-        void refreshRecentAudits(projectId ?? undefined);
-        return;
-      }
-      recordMockAudit({
-        kind: "file-conflict-resolved",
-        summary: `已裁决冲突 ${input.parameterName}`,
-        reason: input.reason
-      });
-    },
-    [isApiMode, projectId, recordMockAudit, refreshRecentAudits]
-  );
-
-  const handleBaselineAudit = useCallback(
-    (event: { kind: string; summary: string }) => {
-      if (isApiMode) {
-        void refreshRecentAudits(projectId ?? undefined);
-        return;
-      }
-      recordMockAudit({ kind: event.kind, summary: event.summary });
-    },
-    [isApiMode, projectId, recordMockAudit, refreshRecentAudits]
-  );
+  const projectMissing = Boolean(projectId) && (configurationOpen || Boolean(legacyView)) && projectsReady && !selectedProject;
 
   return (
     <section
@@ -516,9 +306,8 @@ export function ProjectsOperationsPanel({
         </section>
       ) : null}
 
-      {!projectMissing && !configurationOpen ? (
+      {!projectMissing && !configurationOpen && !legacyView ? (
         <>
-          {!operationsOpen ? auditNotice : null}
           {loading && isApiMode ? <p className="project-admin-loading">项目列表加载中…</p> : null}
           <ProjectAdminTable
             rows={rows}
@@ -534,13 +323,9 @@ export function ProjectsOperationsPanel({
               setDeleteTargetId(id);
             }}
             onManageFiles={(id) =>
-              onNavigate(
-                `/parameter-admin/projects/${encodeURIComponent(id)}/${
-                  configurationWorkbenchEnabled ? "configuration" : "files"
-                }`
-              )
+              onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/configuration`)
             }
-            primaryActionLabel={configurationWorkbenchEnabled ? "配置工作台" : "管理文件"}
+            primaryActionLabel="配置工作台"
           />
         </>
       ) : null}
@@ -563,114 +348,6 @@ export function ProjectsOperationsPanel({
           canAdmin={canAdmin}
         />
       ) : null}
-
-      {operationsOpen && !projectMissing && projectId && view && viewMeta ? (
-        <ProjectOperationsDialog
-          open
-          projectId={projectId}
-          projectName={projectName}
-          view={view}
-          viewMeta={viewMeta}
-          viewMetaByView={PROJECT_VIEW_META}
-          projectBase={projectBase}
-          onNavigate={onNavigate}
-          onClose={closeOperations}
-          auditNotice={auditNotice}
-        >
-          {/*
-            Views stay mounted once visited so filters, drafts and selections survive
-            switching between them. Only the active one is in the accessibility tree.
-          */}
-          {visitedViews.map((item) => (
-            <div
-              key={item}
-              role="region"
-              aria-label={PROJECT_VIEW_META[item].regionLabel}
-              hidden={item !== view}
-              className="project-operations-view-slot"
-            >
-              {item === "files" ? (
-                <>
-                  <ProjectParameterFilesPanel projectId={projectId} repository={fileRepository} />
-                  <div className="param-admin-panel">
-                    <DtsSearchPanel
-                      projectId={projectId}
-                      repository={dtsRepo}
-                      onSelectHit={handleSelectSearchHit}
-                    />
-                  </div>
-                </>
-              ) : null}
-              {item === "config-sets" ? (
-                <ConfigSetBaselinePanel
-                  projectId={projectId}
-                  repository={dtsRepo}
-                  canAdmin={canAdmin}
-                  availableFiles={availableFiles}
-                  {...(adminState.selectedConfigRevisionId
-                    ? { revisionId: adminState.selectedConfigRevisionId }
-                    : {})}
-                  validateRevision={(pid, revision) => application.validateRevision(pid, revision)}
-                  onAudit={handleBaselineAudit}
-                />
-              ) : null}
-              {item === "structure" ? (
-                !projectFilesReady ? (
-                  <p className="form-hint" role="status">
-                    正在加载项目文件…
-                  </p>
-                ) : structureFile ? (
-                  <DtsStructureBrowserPanel
-                    projectId={projectId}
-                    repository={dtsRepo}
-                    fileId={structureFile.id}
-                    versionId={structureFile.currentVersionId}
-                    fileName={structureFile.fileName}
-                    canEdit
-                    canEditCritical
-                    onDirtyChange={setStructureDirty}
-                    {...(structureFocus ? { focusRequest: structureFocus } : {})}
-                  />
-                ) : (
-                  <p className="form-hint" role="status">
-                    当前项目没有可浏览的结构化 DTS 文件。请先在「参数文件」中上传带当前版本的 DTS。
-                  </p>
-                )
-              ) : null}
-              {item === "conflicts" ? (
-                <ParameterFileConflictPanel
-                  open
-                  variant="embedded"
-                  projectId={projectId}
-                  repository={fileRepository}
-                  onClose={() => onNavigate(`${projectBase}/files`)}
-                  onOpenConflictCountChange={handleOpenConflictCountChange}
-                  onResolved={handleConflictResolved}
-                />
-              ) : null}
-            </div>
-          ))}
-        </ProjectOperationsDialog>
-      ) : null}
-
-      <ConfirmDialog
-        open={leaveConfirmOpen}
-        title="离开项目"
-        description={
-          <p>
-            结构浏览里还有未提交的属性修改。离开该项目会丢弃这些改动，需要重新编辑。
-          </p>
-        }
-        confirmLabel="丢弃并离开"
-        cancelLabel="留在本页"
-        tone="danger"
-        onCancel={() => setLeaveConfirmOpen(false)}
-        onConfirm={() => {
-          setLeaveConfirmOpen(false);
-          setStructureDirty(false);
-          onNavigate("/parameter-admin/projects");
-        }}
-      />
 
       <ProjectAdminFormDialog
         open={editingProjectId !== null}
