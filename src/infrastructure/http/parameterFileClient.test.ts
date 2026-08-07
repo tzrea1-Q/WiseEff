@@ -57,4 +57,33 @@ describe("createParameterFileClient", () => {
       { resolution: "file" }
     );
   });
+
+  it("maps candidate create/impact/abandon endpoints", async () => {
+    const get = vi.fn().mockResolvedValueOnce({ item: { id: "cand-1" }, impact: { textDiff: "x" } });
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({ item: { id: "cand-1", status: "ready" } })
+      .mockResolvedValueOnce({ item: { id: "cand-1", status: "abandoned" } });
+    const client = createParameterFileClient({ get, post } as never);
+
+    await client.createCandidate("project/1", {
+      fileName: "board.dts",
+      contentBase64: "YQ==",
+      fileId: "file/1"
+    });
+    await client.getCandidateImpact("project/1", "cand/1");
+    await client.abandonCandidate("project/1", "cand/1");
+
+    expect(post).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/projects/project%2F1/parameter-file-candidates",
+      { fileName: "board.dts", contentBase64: "YQ==", fileId: "file/1" }
+    );
+    expect(get).toHaveBeenCalledWith("/api/v1/projects/project%2F1/parameter-file-candidates/cand%2F1/impact");
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/projects/project%2F1/parameter-file-candidates/cand%2F1/abandon",
+      {}
+    );
+  });
 });

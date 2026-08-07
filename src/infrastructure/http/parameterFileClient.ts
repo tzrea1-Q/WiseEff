@@ -1,7 +1,11 @@
 import type {
+  CreateParameterFileCandidateInput,
+  DownloadParameterFileCandidateResult,
   DownloadParameterFileVersionResult,
   FileSyncSummary,
   IngestDriverSummary,
+  ParameterFileCandidate,
+  ParameterFileCandidateImpact,
   ParameterFileConflictResolution,
   ParameterFileRepository,
   ParameterFileSyncConflict,
@@ -58,6 +62,14 @@ function routeResolveConflict(projectId: string, conflictId: string) {
   return `${routeProjectConflicts(projectId)}/${encodeURIComponent(conflictId)}/resolve`;
 }
 
+function routeProjectCandidates(projectId: string) {
+  return `/api/v1/projects/${encodeURIComponent(projectId)}/parameter-file-candidates`;
+}
+
+function routeCandidate(projectId: string, candidateId: string) {
+  return `${routeProjectCandidates(projectId)}/${encodeURIComponent(candidateId)}`;
+}
+
 export function createParameterFileClient(client: ApiClient = createDefaultApiClient()): ParameterFileRepository {
   return {
     async listFiles(projectId: string) {
@@ -107,6 +119,55 @@ export function createParameterFileClient(client: ApiClient = createDefaultApiCl
     },
     async resolveConflict(projectId: string, conflictId: string, resolution: ParameterFileConflictResolution) {
       const response = await client.post<ItemEnvelope<ParameterFileSyncConflict>>(routeResolveConflict(projectId, conflictId), { resolution });
+      return response.item;
+    },
+    async listCandidates(projectId, options) {
+      const query = new URLSearchParams();
+      if (options?.fileId) query.set("fileId", options.fileId);
+      if (options?.includeAbandoned) query.set("includeAbandoned", "true");
+      const suffix = query.toString() ? `?${query.toString()}` : "";
+      const response = await client.get<ItemsEnvelope<ParameterFileCandidate>>(
+        `${routeProjectCandidates(projectId)}${suffix}`
+      );
+      return response.items;
+    },
+    async createCandidate(projectId, input: CreateParameterFileCandidateInput) {
+      const response = await client.post<ItemEnvelope<ParameterFileCandidate>>(routeProjectCandidates(projectId), input);
+      return response.item;
+    },
+    async getCandidate(projectId, candidateId) {
+      const response = await client.get<ItemEnvelope<ParameterFileCandidate>>(routeCandidate(projectId, candidateId));
+      return response.item;
+    },
+    async getCandidateImpact(projectId, candidateId) {
+      const response = await client.get<{ item: ParameterFileCandidate; impact: ParameterFileCandidateImpact }>(
+        `${routeCandidate(projectId, candidateId)}/impact`
+      );
+      return { item: response.item, impact: response.impact };
+    },
+    async downloadCandidate(projectId, candidateId): Promise<DownloadParameterFileCandidateResult> {
+      const response = await client.raw(`${routeCandidate(projectId, candidateId)}/content`, {
+        method: "GET",
+        headers: { Accept: "*/*" }
+      });
+      return {
+        contentType: response.headers.get("Content-Type") ?? "application/octet-stream",
+        fileName: contentDispositionFileName(response.headers.get("Content-Disposition")),
+        bytes: new Uint8Array(await response.arrayBuffer())
+      };
+    },
+    async abandonCandidate(projectId, candidateId) {
+      const response = await client.post<ItemEnvelope<ParameterFileCandidate>>(
+        `${routeCandidate(projectId, candidateId)}/abandon`,
+        {}
+      );
+      return response.item;
+    },
+    async recomputeCandidate(projectId, candidateId) {
+      const response = await client.post<ItemEnvelope<ParameterFileCandidate>>(
+        `${routeCandidate(projectId, candidateId)}/recompute`,
+        {}
+      );
       return response.item;
     }
   };
