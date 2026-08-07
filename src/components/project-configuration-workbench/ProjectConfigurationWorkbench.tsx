@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, FileCode2, FolderTree, Info, PanelRight, Rows3, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileCode2, FolderTree, Info, Lock, PanelRight, Rows3, Search, TriangleAlert } from "lucide-react";
 
 import type {
   ConfigSetRole,
@@ -22,6 +22,13 @@ import {
   type DtsViewerFocusSpan
 } from "@/components/parameter-topology/ProjectPrimaryDtsViewer";
 import {
+  isCriticalDtsNodePath
+} from "@/components/parameters/DtsStructureBrowserPanel";
+import {
+  StructuredValueEditor,
+  type StructuredValueChange
+} from "@/components/parameters/StructuredValueEditor";
+import {
   buildUnifiedDiff,
   canvasModeQueryValue,
   classifyNodeRisk,
@@ -33,6 +40,14 @@ import {
   type InspectorLevel,
   type WorkbenchCanvasMode
 } from "./workbenchInspectorModel";
+import {
+  aggregateSessionDraftSubset,
+  clearSubmittedDrafts,
+  listSessionDraftRows,
+  propertyIdentity,
+  sessionDraftKey,
+  type SessionPropertyDraft
+} from "./sessionDrafts";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
@@ -47,6 +62,10 @@ export type ProjectConfigurationWorkbenchProps = {
   onNavigate: (path: string) => void;
   dtsRepository: DtsStructuredRepository;
   fileRepository: ParameterFileRepository;
+  /** When false, typed editors stay readable but write/submit stay locked. Defaults to true for tests. */
+  canEdit?: boolean;
+  /** When false, regulator/thermal critical nodes stay readable but write stays locked. Defaults to true. */
+  canEditCritical?: boolean;
 };
 
 const ROLE_LABELS: Record<ConfigSetRole, string> = {
@@ -179,7 +198,9 @@ export function ProjectConfigurationWorkbench({
   search,
   onNavigate,
   dtsRepository,
-  fileRepository
+  fileRepository,
+  canEdit = true,
+  canEditCritical = true
 }: ProjectConfigurationWorkbenchProps) {
   const [configSets, setConfigSets] = useState<DtsConfigSet[]>([]);
   const [projectFiles, setProjectFiles] = useState<ProjectParameterFile[]>([]);
@@ -230,6 +251,13 @@ export function ProjectConfigurationWorkbench({
     sourceMode: string | null;
   } | null>(null);
   const [tasksOpen, setTasksOpen] = useState(false);
+  const [sessionDrafts, setSessionDrafts] = useState<Record<string, SessionPropertyDraft>>({});
+  const [selectedDraftKeys, setSelectedDraftKeys] = useState<Set<string>>(new Set());
+  const [submitReason, setSubmitReason] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [submitStatus, setSubmitStatus] = useState("");
+  const [validateStatus, setValidateStatus] = useState("");
+  const [submittingEdits, setSubmittingEdits] = useState(false);
   const [narrowViewport, setNarrowViewport] = useState(false);
   const [structureNodes, setStructureNodes] = useState<DtsStructuralNode[]>([]);
   const [structureLoading, setStructureLoading] = useState(false);
@@ -1032,6 +1060,190 @@ export function ProjectConfigurationWorkbench({
     return selectedStructureNode.properties.find((item) => item.name === selectedPropertyName) ?? null;
   }, [selectedPropertyName, selectedStructureNode]);
 
+  const sessionDraftRows = useMemo(() => {
+    if (!selectedMember) return [];
+    return listSessionDraftRows({
+      fileId: selectedMember.fileId,
+      nodes: structureNodes,
+      drafts: sessionDrafts
+    });
+  }, [selectedMember, sessionDrafts, structureNodes]);
+
+  useEffect(() => {
+    setSelectedDraftKeys((current) => {
+      const valid = new Set(sessionDraftRows.map((row) => row.key));
+      const next = new Set<string>();
+      for (const key of current) {
+        if (valid.has(key)) next.add(key);
+      }
+      return next;
+    });
+  }, [sessionDraftRows]);
+
+  const sessionChangeMarkers = useMemo(
+    () =>
+      sessionDraftRows
+        .filter((row) => row.startLine != null)
+        .map((row) => ({
+          propertyIdentity: row.identity,
+          startLine: row.startLine as number
+        })),
+    [sessionDraftRows]
+  );
+
+  const availableLabels = useMemo(() => {
+    const labels = new Set<string>();
+    for (const node of structureNodes) {
+      for (const label of node.labels) labels.add(label);
+    }
+    return Array.from(labels);
+  }, [structureNodes]);
+
+  const criticalLocked =
+    Boolean(selectedStructureNode) &&
+    !canEditCritical &&
+    isCriticalDtsNodePath(selectedStructureNode!.nodePath);
+  const editorLocked = !canEdit || criticalLocked;
+
+  const activePropertyDraftKey =
+    selectedMember && selectedStructureNode && selectedStructureProperty
+      ? sessionDraftKey({
+          fileId: selectedMember.fileId,
+          nodePath: selectedStructureNode.nodePath,
+          propertyName: selectedStructureProperty.name
+        })
+      : null;
+  const activePropertyDraft = activePropertyDraftKey
+    ? sessionDrafts[activePropertyDraftKey]
+    : undefined;
+
+  useEffect(() => {
+    setSessionDrafts({});
+    setSelectedDraftKeys(new Set());
+    setSubmitError("");
+    setSubmitStatus("");
+    setValidateStatus("");
+    setSubmitReason("");
+  }, [selectedMember?.fileId]);
+
+  const handleStructuredValueChange = useCallback(
+    (next: StructuredValueChange) => {
+      if (
+        !selectedMember ||
+        !selectedStructureNode ||
+        !selectedStructureProperty ||
+        editorLocked
+      ) {
+        return;
+      }
+      const key = sessionDraftKey({
+        fileId: selectedMember.fileId,
+        nodePath: selectedStructureNode.nodePath,
+        propertyName: selectedStructureProperty.name
+      });
+      setSessionDrafts((current) => ({
+        ...current,
+        [key]: {
+          rawText: next.rawText,
+          normalizedValue: next.normalizedValue,
+          valid: next.valid,
+          ...(next.error ? { error: next.error } : {}),
+          ...(typeof next.present === "boolean" ? { present: next.present } : {})
+        }
+      }));
+      setSelectedDraftKeys((current) => {
+        const nextKeys = new Set(current);
+        nextKeys.add(key);
+        return nextKeys;
+      });
+      setTasksOpen(true);
+      setSubmitError("");
+      setSubmitStatus("");
+      setValidateStatus("");
+    },
+    [
+      editorLocked,
+      selectedMember,
+      selectedStructureNode,
+      selectedStructureProperty
+    ]
+  );
+
+  const handleValidateSelected = useCallback(() => {
+    const selected = sessionDraftRows.filter((row) => selectedDraftKeys.has(row.key));
+    if (selected.length === 0) {
+      setValidateStatus("请先勾选要校验的会话变更。");
+      return;
+    }
+    const invalid = selected.filter((row) => row.valid === false);
+    if (invalid.length > 0) {
+      setValidateStatus(`校验未通过：${invalid.map((row) => `${row.nodePath}/${row.propertyName}`).join("、")}`);
+      return;
+    }
+    setValidateStatus(`校验通过：${selected.length} 项`);
+    setSubmitError("");
+  }, [selectedDraftKeys, sessionDraftRows]);
+
+  const handleSubmitSelected = useCallback(async () => {
+    if (!selectedMember || !canEdit || submittingEdits) return;
+    const reason = submitReason.trim();
+    if (!reason) {
+      setSubmitError("提交变更请求前请填写变更原因。");
+      return;
+    }
+    const selected = sessionDraftRows.filter((row) => selectedDraftKeys.has(row.key));
+    if (selected.length === 0) {
+      setSubmitError("请先勾选要提交的会话变更。");
+      return;
+    }
+    const invalid = selected.filter((row) => row.valid === false);
+    if (invalid.length > 0) {
+      setSubmitError(`仍有未通过校验的变更：${invalid.map((row) => `${row.nodePath}/${row.propertyName}`).join("、")}`);
+      return;
+    }
+    const aggregate = aggregateSessionDraftSubset({
+      fileId: selectedMember.fileId,
+      fileName: selectedMember.fileName,
+      rows: sessionDraftRows,
+      selectedKeys: selectedDraftKeys,
+      reason
+    });
+    if (aggregate.edits.length === 0) {
+      setSubmitError("没有可提交的变更。");
+      return;
+    }
+    setSubmittingEdits(true);
+    setSubmitError("");
+    setSubmitStatus("");
+    try {
+      const round = await dtsRepository.submitStructuredEdits(project.id, {
+        edits: aggregate.edits,
+        reason
+      });
+      const submittedKeys = selected.map((row) => row.key);
+      setSessionDrafts((current) => clearSubmittedDrafts(current, submittedKeys));
+      setSubmitStatus(`已提交变更请求 ${round.id}`);
+      setValidateStatus("");
+      setMembersRetry((value) => value + 1);
+      setStructureRetry((value) => value + 1);
+      setSourceRetry((value) => value + 1);
+      setFilesRetry((value) => value + 1);
+    } catch (error: unknown) {
+      setSubmitError(error instanceof Error ? error.message : "提交变更请求失败。");
+    } finally {
+      setSubmittingEdits(false);
+    }
+  }, [
+    canEdit,
+    dtsRepository,
+    project.id,
+    selectedDraftKeys,
+    selectedMember,
+    sessionDraftRows,
+    submitReason,
+    submittingEdits
+  ]);
+
   const unifiedDiffText = useMemo(() => {
     if (canvasMode !== "unified-diff" || !historySource) return "";
     return buildUnifiedDiff(
@@ -1377,6 +1589,15 @@ export function ProjectConfigurationWorkbench({
                                     {selectedNodePath === node.nodePath
                                       ? node.properties.map((property) => {
                                           const propertySelected = selectedPropertyName === property.name;
+                                          const identity = propertyIdentity(node.nodePath, property.name);
+                                          const draftKey = selectedMember
+                                            ? sessionDraftKey({
+                                                fileId: selectedMember.fileId,
+                                                nodePath: node.nodePath,
+                                                propertyName: property.name
+                                              })
+                                            : "";
+                                          const hasSessionChange = Boolean(draftKey && sessionDrafts[draftKey]);
                                           return (
                                             <button
                                               key={`${node.nodePath}/${property.name}`}
@@ -1384,7 +1605,9 @@ export function ProjectConfigurationWorkbench({
                                               role="treeitem"
                                               aria-selected={propertySelected}
                                               aria-label={`属性 ${node.nodePath}/${property.name}`}
-                                              className={`button subtle configuration-workbench__property${propertySelected ? " is-selected" : ""}`}
+                                              data-property-identity={identity}
+                                              data-session-change={hasSessionChange ? "true" : undefined}
+                                              className={`button subtle configuration-workbench__property${propertySelected ? " is-selected" : ""}${hasSessionChange ? " has-session-change" : ""}`}
                                               style={{ paddingInlineStart: `${24 + Math.max(node.depth, 0) * 12}px` }}
                                               onClick={() => selectStructureTarget(item.fileId, node.nodePath, property.name)}
                                             >
@@ -1615,6 +1838,7 @@ export function ProjectConfigurationWorkbench({
                 findQuery={findQuery}
                 findNextToken={findNextToken}
                 onVisibleLineChange={handleVisibleLineChange}
+                sessionChangeMarkers={sessionChangeMarkers}
               />
             ) : null}
             {!modeSourceLoading &&
@@ -1990,18 +2214,30 @@ export function ProjectConfigurationWorkbench({
                       <dd>{selectedStructureProperty.valueType}</dd>
                     </div>
                     <div>
+                      <dt>类型约束</dt>
+                      <dd>须符合 {selectedStructureProperty.valueType} 语法；提交前可在任务坞校验。</dd>
+                    </div>
+                    <div>
                       <dt>原始值</dt>
                       <dd>
-                        <code>{selectedStructureProperty.rawText}</code>
+                        <code>{activePropertyDraft?.rawText ?? selectedStructureProperty.rawText}</code>
                       </dd>
                     </div>
                     <div>
                       <dt>规范化值</dt>
-                      <dd>{selectedStructureProperty.normalizedValue}</dd>
+                      <dd>{activePropertyDraft?.normalizedValue ?? selectedStructureProperty.normalizedValue}</dd>
                     </div>
                     <div>
                       <dt>风险</dt>
-                      <dd>{classifyNodeRisk(selectedStructureNode.status)}</dd>
+                      <dd>
+                        {isCriticalDtsNodePath(selectedStructureNode.nodePath)
+                          ? "安全关键"
+                          : classifyNodeRisk(selectedStructureNode.status)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>变更原因</dt>
+                      <dd>提交变更请求时必须填写原因；原因会进入既有审核流程。</dd>
                     </div>
                     <div>
                       <dt>来源</dt>
@@ -2010,8 +2246,41 @@ export function ProjectConfigurationWorkbench({
                       </dd>
                     </div>
                     <div>
-                      <dt>读权限</dt>
-                      <dd>只读</dd>
+                      <dt>写权限</dt>
+                      <dd>
+                        {editorLocked
+                          ? criticalLocked
+                            ? "只读（无安全关键修改权限）"
+                            : "只读（无参数修改权限）"
+                          : "可编辑"}
+                      </dd>
+                    </div>
+                    {isCriticalDtsNodePath(selectedStructureNode.nodePath) ? (
+                      <p className="configuration-workbench__risk-note" role="note">
+                        <TriangleAlert size={16} strokeWidth={2} aria-hidden="true" />
+                        <span>安全关键节点：改动电源或温控取值可能损坏硬件，提交前请确认取值来源。</span>
+                      </p>
+                    ) : null}
+                    <div className="configuration-workbench__typed-editor" aria-label="属性值编辑">
+                      {editorLocked ? (
+                        <p className="configuration-workbench__locked" role="note">
+                          <Lock size={16} strokeWidth={2} aria-hidden="true" />
+                          <span>
+                            {criticalLocked
+                              ? "这是安全关键节点，你的角色没有修改它的权限。当前取值可以查看，但不能编辑或提交。"
+                              : "你的角色没有修改参数的权限。当前取值可以查看，但不能编辑或提交。"}
+                          </span>
+                        </p>
+                      ) : null}
+                      <StructuredValueEditor
+                        propertyName={selectedStructureProperty.name}
+                        valueType={selectedStructureProperty.valueType}
+                        rawText={activePropertyDraft?.rawText ?? selectedStructureProperty.rawText}
+                        present={activePropertyDraft?.present}
+                        availableLabels={availableLabels}
+                        disabled={editorLocked || selectedStructureProperty.valueType === "empty"}
+                        onChange={handleStructuredValueChange}
+                      />
                     </div>
                   </>
                 ) : null}
@@ -2077,7 +2346,11 @@ export function ProjectConfigurationWorkbench({
                 </section>
               ) : null}
               <p className="configuration-workbench__read-only-note">
-                当前检查器为只读上下文。画布模式：{canvasMode}。编辑、候选激活与发布动作将在后续阶段接入。
+                {canEdit
+                  ? "源码画布保持只读；整文件替换请走候选文件版本。属性改动在类型化检查器中编辑，并进入会话变更坞提交。"
+                  : "当前检查器为只读上下文。画布模式：" +
+                    canvasMode +
+                    "。缺少参数修改权限时仍可浏览结构与源码。"}
               </p>
             </aside>
           ) : null}
@@ -2086,15 +2359,88 @@ export function ProjectConfigurationWorkbench({
 
       <footer className={tasksOpen ? "configuration-workbench__tasks is-open" : "configuration-workbench__tasks"}>
         <button className="button subtle configuration-workbench__task-toggle" type="button" aria-label="任务" aria-expanded={tasksOpen} onClick={() => setTasksOpen((open) => !open)}>
-          <span>本轮更改 <strong>0</strong></span>
-          <span>校验问题 <strong>0</strong></span>
+          <span>本轮更改 <strong>{sessionDraftRows.length}</strong></span>
+          <span>校验问题 <strong>{sessionDraftRows.filter((row) => row.valid === false).length}</strong></span>
           <span>冲突 <strong>0</strong></span>
           <span>{tasksOpen ? "收起" : "展开任务"}</span>
         </button>
         {tasksOpen ? (
           <div role="region" aria-label="配置任务" className="configuration-workbench__task-panel">
-            <strong>本阶段为只读查看</strong>
-            <p>没有本轮更改、校验问题或冲突。任务证据工作流将在后续 tracer 中接入。</p>
+            <strong>会话变更</strong>
+            {sessionDraftRows.length === 0 ? (
+              <p>没有本轮更改。从结构树或源码定位选中属性后，用类型化编辑器写入本地会话变更。</p>
+            ) : (
+              <>
+                <ul className="configuration-workbench__session-changes" aria-label="会话变更列表">
+                  {sessionDraftRows.map((row) => {
+                    const checked = selectedDraftKeys.has(row.key);
+                    return (
+                      <li key={row.key}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            data-property-identity={row.identity}
+                            aria-label={`${row.nodePath}/${row.propertyName}`}
+                            onChange={() => {
+                              setSelectedDraftKeys((current) => {
+                                const next = new Set(current);
+                                if (next.has(row.key)) next.delete(row.key);
+                                else next.add(row.key);
+                                return next;
+                              });
+                            }}
+                          />
+                          <span>
+                            <code>{row.nodePath}/{row.propertyName}</code>
+                            <small>
+                              {row.beforeRawText} → {row.rawText}
+                            </small>
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <label className="configuration-workbench__reason">
+                  <span>变更原因</span>
+                  <textarea
+                    aria-label="变更原因"
+                    value={submitReason}
+                    onChange={(event) => setSubmitReason(event.target.value)}
+                    rows={2}
+                    disabled={!canEdit}
+                  />
+                </label>
+                <div className="configuration-workbench__task-actions">
+                  <button
+                    className="button subtle"
+                    type="button"
+                    onClick={handleValidateSelected}
+                    disabled={!canEdit || sessionDraftRows.length === 0}
+                  >
+                    校验所选
+                  </button>
+                  <button
+                    className="button primary"
+                    type="button"
+                    onClick={() => void handleSubmitSelected()}
+                    disabled={!canEdit || submittingEdits || selectedDraftKeys.size === 0}
+                  >
+                    {submittingEdits ? "提交中…" : `提交所选（${selectedDraftKeys.size}）`}
+                  </button>
+                </div>
+                {validateStatus ? (
+                  <p role="status">{validateStatus}</p>
+                ) : null}
+                {submitStatus ? (
+                  <p role="status">{submitStatus}</p>
+                ) : null}
+                {submitError ? (
+                  <p role="alert">{submitError}</p>
+                ) : null}
+              </>
+            )}
           </div>
         ) : null}
       </footer>

@@ -15,6 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
+- `exec-plans/active/2026-08-07-project-configuration-workbench-structured-edit.md`：Issue #233 源码上下文中的结构化 DTS 编辑会话——类型化检查器、会话变更坞、经既有变更请求提交流、权限锁定（分支 `feat/project-configuration-workbench-structured-edit`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-candidate-upload.md`：Issue #231 候选文件版本生命周期——上传、解析、影响审查与放弃，且不激活工作配置（分支 `feat/project-configuration-workbench-candidate-upload`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-inspector-history.md`：Issue #230 上下文检查器、不可变文件历史、源码历史/对比模式与 PCW-D15 叠层常驻规则（分支 `feat/project-configuration-workbench-inspector-history`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-source-nav.md`：Issue #229 源码定位 DTS 导航——结构 span、统一搜索、URL 深链与工作台源码同步（分支 `feat/project-configuration-workbench-source-nav`）。

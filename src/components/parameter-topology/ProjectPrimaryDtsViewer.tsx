@@ -7,6 +7,11 @@ export type DtsViewerFocusSpan = {
   endColumn?: number;
 };
 
+export type DtsViewerSessionChangeMarker = {
+  propertyIdentity: string;
+  startLine: number;
+};
+
 export type ProjectPrimaryDtsViewerProps = {
   fileName: string;
   versionNumber: number;
@@ -22,6 +27,8 @@ export type ProjectPrimaryDtsViewerProps = {
   onFindStatusChange?: (status: { matchCount: number; activeIndex: number }) => void;
   /** Fires with the nearest 1-based line when the source pane scrolls (does not steal focus) */
   onVisibleLineChange?: (line: number) => void;
+  /** Session-change gutter markers keyed by the same property identity as the task dock */
+  sessionChangeMarkers?: readonly DtsViewerSessionChangeMarker[];
   className?: string;
 };
 
@@ -105,6 +112,7 @@ export function ProjectPrimaryDtsViewer({
   findNextToken = 0,
   onFindStatusChange,
   onVisibleLineChange,
+  sessionChangeMarkers = [],
   className
 }: ProjectPrimaryDtsViewerProps) {
   const lines = useMemo(() => text.split("\n"), [text]);
@@ -114,6 +122,15 @@ export function ProjectPrimaryDtsViewer({
     () => collectFindMatches(lines, findQuery),
     [findQuery, lines]
   );
+  const markersByLine = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const marker of sessionChangeMarkers) {
+      if (marker.startLine >= 1 && !map.has(marker.startLine)) {
+        map.set(marker.startLine, marker.propertyIdentity);
+      }
+    }
+    return map;
+  }, [sessionChangeMarkers]);
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
 
   useEffect(() => {
@@ -200,9 +217,11 @@ export function ProjectPrimaryDtsViewer({
             effectiveFocusEnd != null &&
             lineNumber >= effectiveFocusStart &&
             lineNumber <= effectiveFocusEnd;
+          const sessionIdentity = markersByLine.get(lineNumber);
           const lineClassName = [
             "project-primary-dts-viewer__line",
-            isFocused ? "is-focused" : ""
+            isFocused ? "is-focused" : "",
+            sessionIdentity ? "has-session-change" : ""
           ]
             .filter(Boolean)
             .join(" ");
@@ -229,7 +248,16 @@ export function ProjectPrimaryDtsViewer({
               data-line={lineNumber}
               data-focused={isFocused ? "true" : undefined}
             >
-              <span className="project-primary-dts-viewer__line-number" aria-hidden="true">
+              <span
+                className="project-primary-dts-viewer__line-number"
+                aria-hidden="true"
+                data-line={String(lineNumber)}
+                {...(sessionIdentity
+                  ? {
+                      "data-session-gutter": sessionIdentity
+                    }
+                  : {})}
+              >
                 {lineNumber}
               </span>
               <code className="project-primary-dts-viewer__line-text">{renderedLine}</code>
