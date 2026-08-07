@@ -2526,6 +2526,27 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     let releasedTipId: string | undefined;
 
     try {
+      await withPgClient(async (client) => {
+        await client.query(
+          `
+          update parameter_change_requests
+          set status = 'withdrawn'
+          where project_id = $1
+            and status in ('submitted', 'hardware_review', 'software_review', 'software_merge')
+          `,
+          [projectId]
+        );
+        await client.query(
+          `
+          update parameter_file_sync_conflicts
+          set status = 'resolved'
+          where project_id = $1
+            and status = 'open'
+          `,
+          [projectId]
+        );
+      });
+
       const primaryUpload = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
         headers: adminHeaders(),
         data: {
@@ -2567,22 +2588,36 @@ test.describe("project configuration workbench read-only browser acceptance", ()
           gateToken: string;
           level: string;
           releasedBaselineId?: string;
+          blockers: Array<{ id: string; code: string; message?: string }>;
+          warnings: Array<{ id: string; acknowledgementRequired?: boolean }>;
         };
       };
 
-      test.skip(
-        !(readinessBody.item.available && readinessBody.item.canCreateBaseline),
-        `readiness gate does not allow baseline create (level=${readinessBody.item.level})`
-      );
+      const acknowledgedWarningIds = readinessBody.item.warnings
+        .filter((item) => item.acknowledgementRequired)
+        .map((item) => item.id);
 
       const createBaseline = await request.post(
         apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/baselines`),
         {
           headers: adminHeaders(),
-          data: { name: `draft-${suffix}`, gateToken: readinessBody.item.gateToken }
+          data: {
+            name: `draft-${suffix}`,
+            gateToken: readinessBody.item.gateToken,
+            acknowledgedWarningIds
+          }
         }
       );
-      expect(createBaseline.status()).toBe(201);
+
+      expect(
+        createBaseline.status(),
+        `baseline create should succeed when gate allows; readiness=${JSON.stringify({
+          available: readinessBody.item.available,
+          level: readinessBody.item.level,
+          canCreateBaseline: readinessBody.item.canCreateBaseline,
+          blockers: readinessBody.item.blockers
+        })}`
+      ).toBe(201);
       const createdBody = (await createBaseline.json()) as { item: { id: string; status: string } };
       draftBaselineId = createdBody.item.id;
       expect(createdBody.item.status).toBe("draft");

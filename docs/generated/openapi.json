@@ -865,6 +865,277 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/baselines/{baselineId}": {
+      "get": {
+        "operationId": "parameters.getReleaseBaseline",
+        "summary": "Read one release baseline with pinned member versions",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "baselineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseBaselineDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/baselines/{baselineId}/compare": {
+      "get": {
+        "operationId": "parameters.compareReleaseBaseline",
+        "summary": "Compare a release baseline against working or current released tip members",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "baselineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseBaselineCompareResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/baselines/{baselineId}/restore-preview": {
+      "get": {
+        "operationId": "parameters.previewRestoreReleaseBaseline",
+        "summary": "Preview member/version blast radius for restoring a baseline without applying it",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "baselineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseBaselineRestorePreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/baselines/{baselineId}/rollback": {
+      "post": {
+        "operationId": "parameters.rollbackReleaseBaseline",
+        "summary": "Atomically restore working member versions from a baseline without changing the released tip",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "baselineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseBaselineRollbackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/baselines/{baselineId}/release": {
+      "post": {
+        "operationId": "parameters.releaseReleaseBaseline",
+        "summary": "Release a draft baseline tip with readiness gate evidence and demote the previous tip to historical",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "baselineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseBaselineRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseBaselineReleaseResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/parameter-files/{fileId}/versions/{versionId}/structure": {
       "get": {
         "operationId": "parameters.getParameterFileStructure",
@@ -7004,6 +7275,30 @@
       "ConfigSetReleaseReadinessResponse": {
         "type": "object",
         "x-wiseeff-schema": "ConfigSetReleaseReadinessResponse"
+      },
+      "ReleaseBaselineDetailResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ReleaseBaselineDetailResponse"
+      },
+      "ReleaseBaselineCompareResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ReleaseBaselineCompareResponse"
+      },
+      "ReleaseBaselineRestorePreviewResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ReleaseBaselineRestorePreviewResponse"
+      },
+      "ReleaseBaselineRollbackResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ReleaseBaselineRollbackResponse"
+      },
+      "ReleaseBaselineRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ReleaseBaselineRequest"
+      },
+      "ReleaseBaselineReleaseResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ReleaseBaselineReleaseResponse"
       },
       "StructuralReadResponse": {
         "type": "object",
