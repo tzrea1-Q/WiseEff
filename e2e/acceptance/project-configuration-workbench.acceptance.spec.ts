@@ -2878,20 +2878,51 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         {
           route: page.url(),
           redirects: redirects.map((item) => item.from),
-          viewports: ["1440x900", "768x1024", "390x844"]
+          viewports: ["1440x900", "768x1024", "390x844"],
+          configSetId,
+          fileId: primaryBody.item.id
         }
       );
-      await recordOperationEvidence({
-        operationId: "PROJ-CONFIG-CUTOVER-001",
-        title: "legacy project-operation cutover to configuration workbench",
-        status: "passed",
-        role: "Admin",
-        route: `/parameter-admin/projects/${projectId}/configuration`,
-        page,
-        testInfo,
-        assertions: ["ui", "api", "screenshot"],
-        artifacts: [evidencePath]
-      });
+      const cutoverApi = [
+        summarizeApiResponse(primaryUpload, {
+          method: "POST",
+          path: `/api/v1/projects/${projectId}/parameter-files`,
+          responseSummary: `file=${primaryBody.item.id}`
+        }),
+        summarizeApiResponse(createConfigSet, {
+          method: "POST",
+          path: `/api/v1/projects/${projectId}/config-sets`,
+          responseSummary: `configSet=${configSetId}`
+        }),
+        summarizeApiResponse(addMember, {
+          method: "POST",
+          path: `/api/v1/projects/${projectId}/config-sets/${configSetId}/files`,
+          responseSummary: `member=${primaryBody.item.id}`
+        })
+      ];
+      for (const operationId of [
+        "PROJ-CONFIG-CUTOVER-001",
+        "PROJ-OPS-001",
+        "PROJ-OPS-002",
+        "PROJ-OPS-003"
+      ] as const) {
+        await recordOperationEvidence({
+          operationId,
+          title: "legacy project-operation cutover to configuration workbench",
+          status: "passed",
+          role: "Admin",
+          route: `/parameter-admin/projects/${projectId}/configuration`,
+          page,
+          testInfo,
+          assertions: ["ui", "api", "screenshot"],
+          artifacts: [evidencePath],
+          api: cutoverApi,
+          notes:
+            operationId === "PROJ-CONFIG-CUTOVER-001"
+              ? "Legacy deep links redirected to workbench contexts; three viewports had no page-level overflow."
+              : `Superseded operation ${operationId} covered by PROJ-CONFIG-CUTOVER-001 cutover evidence.`
+        });
+      }
     } finally {
       await cleanupSemanticAcceptanceArtifacts({
         organizationId,

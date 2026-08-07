@@ -378,13 +378,11 @@ test.describe("DTS structured product browser acceptance", () => {
       await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({
         timeout: 30_000
       });
-      const searchBox = page.getByRole("searchbox").or(page.getByLabel(/检索|搜索/));
-      await searchBox.first().fill("chip@6E");
-      const searchSubmit = page.getByRole("button", { name: /检索|搜索/ });
-      if (await searchSubmit.first().isVisible().catch(() => false)) {
-        await searchSubmit.first().click();
-      }
-      await expect(page.getByText(/chip@6E/).first()).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("combobox", { name: "配置集" })).toBeVisible({ timeout: 20_000 });
+      const searchForm = page.getByRole("form", { name: "统一结构搜索" });
+      await searchForm.getByRole("searchbox", { name: "统一搜索查询" }).fill("chip@6E");
+      await searchForm.getByRole("button", { name: "搜索" }).click();
+      await expect(page.getByLabel("搜索结果")).toContainText(/chip@6E/, { timeout: 20_000 });
 
       await recordOperationEvidence({
         operationId: "PARAM-DTS-SEARCH-001",
