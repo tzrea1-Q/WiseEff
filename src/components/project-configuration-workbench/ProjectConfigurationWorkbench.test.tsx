@@ -670,6 +670,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(submitStructuredEdits.mock.calls[0][1].edits).toHaveLength(1);
     await waitFor(() => expect(within(tasks).getAllByRole("checkbox")).toHaveLength(1));
     expect(within(tasks).getByRole("checkbox", { name: /board\/compatible/ })).toBeInTheDocument();
+    expect(within(tasks).getByRole("status")).toHaveTextContent(/已提交变更请求/);
   });
 
   it("preserves session drafts when submitStructuredEdits fails", async () => {

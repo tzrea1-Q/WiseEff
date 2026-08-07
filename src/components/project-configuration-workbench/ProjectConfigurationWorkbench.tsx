@@ -2430,17 +2430,17 @@ export function ProjectConfigurationWorkbench({
                     {submittingEdits ? "提交中…" : `提交所选（${selectedDraftKeys.size}）`}
                   </button>
                 </div>
-                {validateStatus ? (
-                  <p role="status">{validateStatus}</p>
-                ) : null}
-                {submitStatus ? (
-                  <p role="status">{submitStatus}</p>
-                ) : null}
-                {submitError ? (
-                  <p role="alert">{submitError}</p>
-                ) : null}
               </>
             )}
+            {validateStatus ? (
+              <p role="status">{validateStatus}</p>
+            ) : null}
+            {submitStatus ? (
+              <p role="status">{submitStatus}</p>
+            ) : null}
+            {submitError ? (
+              <p role="alert">{submitError}</p>
+            ) : null}
           </div>
         ) : null}
       </footer>
