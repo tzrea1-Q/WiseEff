@@ -253,6 +253,7 @@ export function ProjectConfigurationWorkbench({
   const [activityError, setActivityError] = useState("");
   const [activityMissingNotice, setActivityMissingNotice] = useState("");
   const [activityRefreshToken, setActivityRefreshToken] = useState(0);
+  const [knownCandidateIds, setKnownCandidateIds] = useState<string[]>([]);
   const candidateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [lastVisibleLine, setLastVisibleLine] = useState<number | null>(null);
   const [restoredScrollLine, setRestoredScrollLine] = useState<number | null>(null);
@@ -1005,14 +1006,18 @@ export function ProjectConfigurationWorkbench({
     setActivityLoading(true);
     setActivityError("");
     try {
-      const response = await listProjectActivity({
-        projectId: project.id,
-        apps: workbenchActivityApps(),
-        limit: 40
-      });
+      const [response, candidates] = await Promise.all([
+        listProjectActivity({
+          projectId: project.id,
+          apps: workbenchActivityApps(),
+          limit: 40
+        }),
+        fileRepository.listCandidates(project.id, { includeAbandoned: false }).catch(() => [])
+      ]);
       const views = response.items.map(mapApiAuditEventToView);
       setActivityEvents(views);
       setActivityRows(views.map(presentWorkbenchActivity));
+      setKnownCandidateIds(candidates.map((item) => item.id));
     } catch (error: unknown) {
       setActivityError(error instanceof Error ? error.message : "加载项目活动失败");
       setActivityEvents([]);
@@ -1020,7 +1025,7 @@ export function ProjectConfigurationWorkbench({
     } finally {
       setActivityLoading(false);
     }
-  }, [listProjectActivity, project.id]);
+  }, [fileRepository, listProjectActivity, project.id]);
 
   useEffect(() => {
     if (inspectorLevel !== "activity" || !inspectorOpen) return;
@@ -1066,7 +1071,11 @@ export function ProjectConfigurationWorkbench({
         configSetIds: new Set(configSets.map((item) => item.id)),
         fileIds: new Set(projectFiles.map((item) => item.id)),
         candidateIds: new Set(
-          [activeCandidate?.id, candidateId].filter((value): value is string => Boolean(value))
+          [
+            ...knownCandidateIds,
+            activeCandidate?.id,
+            candidateId
+          ].filter((value): value is string => Boolean(value))
         ),
         baselineIds: new Set(baselines.map((item) => item.id)),
         knownNodePathsByFileId: new Map([
@@ -1116,12 +1125,18 @@ export function ProjectConfigurationWorkbench({
       }
 
       if (resolved.kind === "baseline") {
-        setActivityMissingNotice("发布基线身份已记录；基线对比入口尚未接入，事件仍可作为只读证据。");
+        setActivityMissingNotice(
+          resolved.missing
+            ? resolved.missingReason ?? "发布基线已不存在；事件仍可作为只读证据。"
+            : "已定位到发布基线身份；基线对比入口尚未接入，事件仍可作为只读证据。"
+        );
         return;
       }
 
       if (resolved.kind === "conflict") {
-        setActivityMissingNotice("冲突证据已保留；冲突裁决面板尚未接入本工作台。");
+        setActivityMissingNotice(
+          "已定位到冲突证据；冲突裁决面板尚未接入本工作台（#236），事件仍可读。"
+        );
         return;
       }
 
@@ -1149,6 +1164,7 @@ export function ProjectConfigurationWorkbench({
       activityEvents,
       baselines,
       candidateId,
+      knownCandidateIds,
       configSets,
       onNavigate,
       project.id,
@@ -2199,7 +2215,7 @@ export function ProjectConfigurationWorkbench({
                                   <span className="configuration-workbench__activity-meta">
                                     {row.actor} · {row.targetLabel} · {row.outcome} · {row.timeLabel}
                                   </span>
-                                  <time dateTime={row.absoluteTime}>{row.absoluteTime}</time>
+                                  <time dateTime={row.createdAtIso || undefined}>{row.absoluteTime}</time>
                                 </button>
                               </li>
                             ))}

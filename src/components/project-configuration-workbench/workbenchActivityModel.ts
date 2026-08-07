@@ -17,6 +17,7 @@ export type WorkbenchActivityRow = {
   outcome: WorkbenchActivityOutcome;
   timeLabel: string;
   absoluteTime: string;
+  createdAtIso: string;
   targetType: string | null;
   targetId: string | null;
   metadata: Record<string, unknown>;
@@ -130,6 +131,9 @@ export function presentWorkbenchActivity(event: AuditEventView): WorkbenchActivi
     outcome: outcomeFromEvent(event),
     timeLabel: presentation.timestamp.relative,
     absoluteTime: presentation.timestamp.absolute,
+    createdAtIso: event.createdAt && Number.isFinite(new Date(event.createdAt).getTime())
+      ? new Date(event.createdAt).toISOString()
+      : "",
     targetType: event.targetType ?? null,
     targetId: event.targetId ?? null,
     metadata: event.metadata ?? {},

@@ -47,6 +47,7 @@ describe("workbenchActivityModel", () => {
     expect(row.outcome).toBe("成功");
     expect(row.timeLabel).toBeTruthy();
     expect(row.absoluteTime).toBeTruthy();
+    expect(row.createdAtIso).toBe("2026-08-07T04:00:00.000Z");
     expect(row.action).not.toMatch(/parameter-file-candidate-create/);
   });
 
