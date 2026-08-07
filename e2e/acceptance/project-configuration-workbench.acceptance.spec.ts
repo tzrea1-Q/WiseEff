@@ -776,6 +776,11 @@ test.describe("project configuration workbench read-only browser acceptance", ()
   }, testInfo) => {
     // @acceptance PROJ-CONFIG-EDIT-001
     // @operation PROJ-CONFIG-EDIT-001
+    // Live submit asserts against the shared acceptance/CI DB that keeps flat
+    // `project_parameter_values` (`WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1`,
+    // `WISEEFF_LOCAL_POST_CUTOVER=0`) — same host as PARAM-DTS-EDIT-002.
+    // Local post-cutover DBs retire that table; permission denial / submit-failure
+    // draft retention is covered by ProjectConfigurationWorkbench component tests.
     const suffix = randomUUID();
     const configSetName = `structured-edit-${suffix}`;
     const primaryFileName = `acceptance-structured-edit-${suffix}.dts`;
