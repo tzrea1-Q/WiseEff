@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
@@ -157,7 +158,7 @@ function createFileRepository(
     })),
     uploadFile: vi.fn(),
     uploadVersion: vi.fn(),
-    listVersions: vi.fn(),
+    listVersions: vi.fn(async () => []),
     syncFile: vi.fn(),
     listConflicts: vi.fn(async () => []),
     resolveConflict: vi.fn(),
@@ -170,8 +171,29 @@ function renderWorkbench(options: {
   onNavigate?: ReturnType<typeof vi.fn>;
   dtsRepository?: DtsStructuredRepository;
   fileRepository?: ParameterFileRepository;
+  syncSearch?: boolean;
 } = {}) {
   const onNavigate = options.onNavigate ?? vi.fn();
+  if (options.syncSearch) {
+    function Harness() {
+      const [search, setSearch] = useState(options.search ?? "");
+      return (
+        <ProjectConfigurationWorkbench
+          project={PROJECT}
+          search={search}
+          onNavigate={(path) => {
+            onNavigate(path);
+            const queryIndex = path.indexOf("?");
+            setSearch(queryIndex >= 0 ? path.slice(queryIndex) : "");
+          }}
+          dtsRepository={options.dtsRepository ?? createDtsRepository()}
+          fileRepository={options.fileRepository ?? createFileRepository()}
+        />
+      );
+    }
+    render(<Harness />);
+    return { onNavigate };
+  }
   render(
     <ProjectConfigurationWorkbench
       project={PROJECT}
@@ -547,8 +569,11 @@ describe("ProjectConfigurationWorkbench", () => {
     });
     const propertyItem = await screen.findByRole("treeitem", { name: "属性 board/model" });
     await waitFor(() => expect(propertyItem).toHaveAttribute("aria-selected", "true"));
-    fireEvent.click(screen.getByRole("button", { name: "检查器" }));
-    expect(screen.getByText(/源码模式：structured/)).toBeInTheDocument();
+    expect(await screen.findByRole("complementary", { name: "配置检查器" })).toBeInTheDocument();
+    expect(await screen.findByText("属性名")).toBeInTheDocument();
+    const inspector = screen.getByRole("complementary", { name: "配置检查器" });
+    expect(inspector).toHaveTextContent("model");
+    expect(inspector).toHaveTextContent("string-list");
   });
 
   it("retries only the structure tree when structure loading fails", async () => {
@@ -594,6 +619,332 @@ describe("ProjectConfigurationWorkbench", () => {
     // Next-match token is accepted without throwing; browser shortcuts remain untouched for ctrl/meta.
     fireEvent.keyDown(window, { key: "f", ctrlKey: true });
     expect(search).toHaveFocus();
+  });
+
+  it("opens inspector content for config set, file, node, and property without changing source identity unexpectedly", async () => {
+    const getStructure = vi.fn(async () => ({
+      nodes: [
+        {
+          nodePath: "board",
+          name: "board",
+          labels: ["board_label"],
+          compatible: "wiseeff,aurora",
+          status: "okay",
+          properties: [
+            {
+              name: "model",
+              valueType: "string-list" as const,
+              rawText: '"Aurora"',
+              normalizedValue: "Aurora",
+              source: {
+                startOffset: 20,
+                endOffset: 28,
+                startLine: 2,
+                startColumn: 3,
+                endLine: 2,
+                endColumn: 11
+              }
+            }
+          ],
+          phandleRefs: [],
+          source: {
+            startOffset: 10,
+            endOffset: 40,
+            startLine: 1,
+            startColumn: 1,
+            endLine: 3,
+            endColumn: 2
+          }
+        }
+      ]
+    }));
+    const listVersions = vi.fn(async () => [
+      {
+        id: "version-board-12",
+        fileId: "file-board",
+        versionNumber: 12,
+        checksum: "abc",
+        sizeBytes: 32,
+        parsedIndex: {},
+        origin: "upload" as const,
+        createdAt: "2026-08-06T08:00:00.000Z",
+        createdByUserId: "user-admin"
+      },
+      {
+        id: "version-board-11",
+        fileId: "file-board",
+        versionNumber: 11,
+        checksum: "def",
+        sizeBytes: 30,
+        parsedIndex: {},
+        origin: "writeback" as const,
+        createdAt: "2026-08-05T08:00:00.000Z",
+        createdByUserId: "user-ops"
+      }
+    ]);
+    const { onNavigate } = renderWorkbench({
+      dtsRepository: createDtsRepository({ getStructure }),
+      fileRepository: createFileRepository({ listVersions }),
+      syncSearch: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+
+    fireEvent.click(screen.getByRole("button", { name: "检查器" }));
+    const inspector = screen.getByRole("complementary", { name: "配置检查器" });
+    expect(inspector).toHaveTextContent("检查层级");
+    expect(inspector).toHaveTextContent("文件");
+    expect(inspector).toHaveTextContent("候选文件版本");
+    expect(inspector).toHaveTextContent("尚未上传");
+
+    fireEvent.click(screen.getByRole("button", { name: "检查器返回" }));
+    expect(await screen.findByText("成员数")).toBeInTheDocument();
+    expect(inspector).toHaveTextContent("配置集");
+
+    fireEvent.click(screen.getByRole("treeitem", { name: /aurora-board\.dts/ }));
+    expect(await screen.findByText("文件格式")).toBeInTheDocument();
+    expect(screen.getByText("dts")).toBeInTheDocument();
+    expect(await screen.findByLabelText("不可变版本历史")).toBeInTheDocument();
+    expect(screen.getByText(/版本 11/)).toBeInTheDocument();
+    expect(listVersions).toHaveBeenCalledWith(PROJECT.id, "file-board");
+
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    expect(await screen.findByText("节点路径")).toBeInTheDocument();
+    expect(screen.getByText("board_label")).toBeInTheDocument();
+    expect(screen.getByText("wiseeff,aurora")).toBeInTheDocument();
+    expect(screen.getByText("常规")).toBeInTheDocument();
+    expect(screen.getByText("只读")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("treeitem", { name: "属性 board/model" }));
+    expect(await screen.findByText("属性名")).toBeInTheDocument();
+    expect(screen.getByText("string-list")).toBeInTheDocument();
+    expect(screen.getByText('"Aurora"')).toBeInTheDocument();
+    expect(screen.getByText("Aurora")).toBeInTheDocument();
+    expect(screen.getByText(/L2:3/)).toBeInTheDocument();
+
+    const sourceHeading = screen.getByRole("heading", { name: "aurora-board.dts" });
+    expect(sourceHeading).toBeInTheDocument();
+    expect(onNavigate.mock.calls.at(-1)?.[0]).toContain("file=file-board");
+  });
+
+  it("walks inspector back from property to config set while preserving source selection", async () => {
+    const getStructure = vi.fn(async () => ({
+      nodes: [
+        {
+          nodePath: "board",
+          name: "board",
+          labels: [],
+          properties: [
+            {
+              name: "model",
+              valueType: "string-list" as const,
+              rawText: '"Aurora"',
+              normalizedValue: "Aurora",
+              source: {
+                startOffset: 20,
+                endOffset: 28,
+                startLine: 2,
+                startColumn: 3,
+                endLine: 2,
+                endColumn: 11
+              }
+            }
+          ],
+          phandleRefs: [],
+          source: {
+            startOffset: 10,
+            endOffset: 40,
+            startLine: 1,
+            startColumn: 1,
+            endLine: 3,
+            endColumn: 2
+          }
+        }
+      ]
+    }));
+    const { onNavigate } = renderWorkbench({
+      search: "?configSet=cs-default&file=file-board&node=board&property=model",
+      dtsRepository: createDtsRepository({ getStructure }),
+      syncSearch: true
+    });
+    await screen.findByRole("treeitem", { name: "属性 board/model" });
+    expect(await screen.findByText("属性名")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "检查器返回" }));
+    await waitFor(() => expect(screen.getByText("节点路径")).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "检查器返回" }));
+    await waitFor(() => expect(screen.getByText("文件格式")).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "检查器返回" }));
+    await waitFor(() => expect(screen.getByText("成员数")).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
+    const urls = onNavigate.mock.calls.map((call) => String(call[0]));
+    expect(urls.some((url) => url.includes("file=file-board") && !url.includes("node="))).toBe(true);
+  });
+
+  it("enters historical source mode, downloads a version, and restores working target on exit", async () => {
+    const downloadVersion = vi.fn(async (_projectId: string, _fileId: string, versionId: string) => ({
+      contentType: "text/plain",
+      fileName: "aurora-board.dts",
+      bytes: new TextEncoder().encode(
+        versionId === "version-board-11"
+          ? `/dts-v1/;\n/ { model = "Legacy"; /* ${versionId} */ };\n`
+          : `/dts-v1/;\n/ { model = "Aurora"; /* ${versionId} */ };\n`
+      )
+    }));
+    const listVersions = vi.fn(async () => [
+      {
+        id: "version-board-12",
+        fileId: "file-board",
+        versionNumber: 12,
+        checksum: "abc",
+        sizeBytes: 32,
+        parsedIndex: {},
+        origin: "upload" as const,
+        createdAt: "2026-08-06T08:00:00.000Z",
+        createdByUserId: "user-admin"
+      },
+      {
+        id: "version-board-11",
+        fileId: "file-board",
+        versionNumber: 11,
+        checksum: "def",
+        sizeBytes: 30,
+        parsedIndex: {},
+        origin: "writeback" as const,
+        createdAt: "2026-08-05T08:00:00.000Z",
+        createdByUserId: "user-ops"
+      }
+    ]);
+    const { onNavigate } = renderWorkbench({
+      fileRepository: createFileRepository({ downloadVersion, listVersions }),
+      syncSearch: true
+    });
+    await screen.findByText(/model = "Aurora"/);
+    fireEvent.click(screen.getByRole("button", { name: "检查器" }));
+    expect(await screen.findByLabelText("不可变版本历史")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看版本 11 历史源码" }));
+    await waitFor(() => {
+      const urls = onNavigate.mock.calls.map((call) => String(call[0]));
+      expect(urls.some((url) => url.includes("sourceMode=history") && url.includes("version=version-board-11"))).toBe(
+        true
+      );
+    });
+    expect(await screen.findByLabelText("历史只读源码模式")).toBeInTheDocument();
+    expect(await screen.findByText(/model = "Legacy"/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下载版本 11" }));
+    await waitFor(() =>
+      expect(downloadVersion).toHaveBeenCalledWith(PROJECT.id, "file-board", "version-board-11")
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "退出历史源码" }));
+    await waitFor(() => {
+      const urls = onNavigate.mock.calls.map((call) => String(call[0]));
+      expect(urls.some((url) => url.includes("file=file-board") && !url.includes("sourceMode=history"))).toBe(true);
+    });
+    expect(await screen.findByText(/model = "Aurora"/)).toBeInTheDocument();
+  });
+
+  it("supports unified and side-by-side diff modes and restores working source afterward", async () => {
+    const downloadVersion = vi.fn(async (_projectId: string, _fileId: string, versionId: string) => ({
+      contentType: "text/plain",
+      fileName: "aurora-board.dts",
+      bytes: new TextEncoder().encode(
+        versionId === "version-board-11"
+          ? `/dts-v1/;\n/ { model = "Legacy"; };\n`
+          : `/dts-v1/;\n/ { model = "Aurora"; };\n`
+      )
+    }));
+    const listVersions = vi.fn(async () => [
+      {
+        id: "version-board-12",
+        fileId: "file-board",
+        versionNumber: 12,
+        checksum: "abc",
+        sizeBytes: 32,
+        parsedIndex: {},
+        origin: "upload" as const,
+        createdAt: "2026-08-06T08:00:00.000Z"
+      },
+      {
+        id: "version-board-11",
+        fileId: "file-board",
+        versionNumber: 11,
+        checksum: "def",
+        sizeBytes: 30,
+        parsedIndex: {},
+        origin: "writeback" as const,
+        createdAt: "2026-08-05T08:00:00.000Z"
+      }
+    ]);
+    const { onNavigate } = renderWorkbench({
+      search: "?configSet=cs-default&file=file-board&sourceMode=unified-diff&version=version-board-11",
+      fileRepository: createFileRepository({ downloadVersion, listVersions }),
+      syncSearch: true
+    });
+    expect(await screen.findByLabelText("统一差异对比")).toBeInTheDocument();
+    expect(screen.getByLabelText("只读 DTS 源码")).toHaveTextContent("只读对比");
+    expect(screen.getByLabelText("统一差异对比")).toHaveTextContent("Legacy");
+
+    fireEvent.click(screen.getByRole("button", { name: "并排对比" }));
+    await waitFor(() =>
+      expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("sourceMode=side-by-side"))).toBe(true)
+    );
+    expect(await screen.findByLabelText("并排差异对比")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "退出对比" }));
+    await waitFor(() =>
+      expect(
+        onNavigate.mock.calls.some(
+          (call) => String(call[0]).includes("file=file-board") && !String(call[0]).includes("sourceMode=")
+        )
+      ).toBe(true)
+    );
+  });
+
+  it("keeps inspector overlay by default and becomes persistent only when source stays ≥640px", async () => {
+    renderWorkbench();
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(screen.getByRole("button", { name: "检查器" }));
+    const inspector = screen.getByRole("complementary", { name: "配置检查器" });
+    expect(inspector).toHaveAttribute("data-layout", "overlay");
+
+    const body = screen.getByLabelText("工作台主体");
+    Object.defineProperty(body, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ width: 1400, height: 800, top: 0, left: 0, bottom: 800, right: 1400, x: 0, y: 0, toJSON: () => ({}) })
+    });
+    const tree = screen.getByLabelText("源结构");
+    Object.defineProperty(tree, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ width: 260, height: 800, top: 0, left: 0, bottom: 800, right: 260, x: 0, y: 0, toJSON: () => ({}) })
+    });
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(inspector).toHaveAttribute("data-layout", "persistent"));
+  });
+
+  it("clears history version identity when switching member files", async () => {
+    const { onNavigate } = renderWorkbench({
+      search: "?configSet=cs-default&file=file-board&sourceMode=history&version=version-board-11",
+      syncSearch: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(screen.getByRole("treeitem", { name: /charging-overlay\.dtsi/ }));
+    await waitFor(() => {
+      const urls = onNavigate.mock.calls.map((call) => String(call[0]));
+      expect(
+        urls.some(
+          (url) =>
+            url.includes("file=file-overlay") &&
+            !url.includes("sourceMode=history") &&
+            !url.includes("version=version-board-11")
+        )
+      ).toBe(true);
+    });
   });
 
 });

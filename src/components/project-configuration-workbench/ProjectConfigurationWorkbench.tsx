@@ -13,12 +13,25 @@ import type {
 } from "@/application/ports/DtsStructuredRepository";
 import type {
   ParameterFileRepository,
-  ProjectParameterFile
+  ProjectParameterFile,
+  ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
 import {
   ProjectPrimaryDtsViewer,
   type DtsViewerFocusSpan
 } from "@/components/parameter-topology/ProjectPrimaryDtsViewer";
+import {
+  buildUnifiedDiff,
+  canvasModeQueryValue,
+  classifyNodeRisk,
+  formatSourceSpan,
+  inspectorBackTarget,
+  parseCanvasMode,
+  resolveInspectorLevel,
+  shouldPersistInspector,
+  type InspectorLevel,
+  type WorkbenchCanvasMode
+} from "./workbenchInspectorModel";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
@@ -62,6 +75,7 @@ type WorkbenchPathPatch = {
   node?: string | null;
   property?: string | null;
   sourceMode?: string | null;
+  version?: string | null;
 };
 
 function formatWorkbenchPath(projectId: string, search: string, patch: WorkbenchPathPatch) {
@@ -76,7 +90,38 @@ function formatWorkbenchPath(projectId: string, search: string, patch: Workbench
   setOrDelete("node", patch.node);
   setOrDelete("property", patch.property);
   setOrDelete("sourceMode", patch.sourceMode);
+  setOrDelete("version", patch.version);
   return `/parameter-admin/projects/${encodeURIComponent(projectId)}/configuration?${params.toString()}`;
+}
+
+const ORIGIN_LABELS: Record<ProjectParameterFileVersion["origin"], string> = {
+  upload: "手动上传",
+  writeback: "参数回写"
+};
+
+function decodeSourceBytes(bytes: Uint8Array) {
+  return new TextDecoder().decode(bytes);
+}
+
+async function triggerVersionDownload(
+  fileRepository: ParameterFileRepository,
+  projectId: string,
+  fileId: string,
+  version: ProjectParameterFileVersion,
+  fileName: string
+) {
+  const result = await fileRepository.downloadVersion(projectId, fileId, version.id);
+  const blob = new Blob([Uint8Array.from(result.bytes)], {
+    type: result.contentType || "application/octet-stream"
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = result.fileName || `${fileName}.v${version.versionNumber}`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function locatorToFocusSpan(source?: DtsSourceLocator): DtsViewerFocusSpan | null {
@@ -155,6 +200,25 @@ export function ProjectConfigurationWorkbench({
   const [sourceRetry, setSourceRetry] = useState(0);
   const [treeOpen, setTreeOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorPersistent, setInspectorPersistent] = useState(false);
+  const [inspectorLevelOverride, setInspectorLevelOverride] = useState<InspectorLevel | null>(null);
+  const [fileVersions, setFileVersions] = useState<ProjectParameterFileVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionsError, setVersionsError] = useState("");
+  const [historySource, setHistorySource] = useState("");
+  const [compareSource, setCompareSource] = useState("");
+  const [modeSourceLoading, setModeSourceLoading] = useState(false);
+  const [modeSourceError, setModeSourceError] = useState("");
+  const [downloadMessage, setDownloadMessage] = useState("");
+  const [lastVisibleLine, setLastVisibleLine] = useState<number | null>(null);
+  const [restoredScrollLine, setRestoredScrollLine] = useState<number | null>(null);
+  const workingSnapshotRef = useRef<{
+    fileId: string | null;
+    nodePath: string | null;
+    propertyName: string | null;
+    scrollLine: number | null;
+    sourceMode: string | null;
+  } | null>(null);
   const [tasksOpen, setTasksOpen] = useState(false);
   const [narrowViewport, setNarrowViewport] = useState(false);
   const [structureNodes, setStructureNodes] = useState<DtsStructuralNode[]>([]);
@@ -175,6 +239,7 @@ export function ProjectConfigurationWorkbench({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const treeRegionRef = useRef<HTMLElement | null>(null);
   const sourceRegionRef = useRef<HTMLElement | null>(null);
+  const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const scrollSyncTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -326,6 +391,152 @@ export function ProjectConfigurationWorkbench({
     );
   }, [search, selectedMembers]);
 
+  const canvasMode: WorkbenchCanvasMode = parseCanvasMode(queryValue(search, "sourceMode"));
+  const historyVersionId = queryValue(search, "version");
+
+  const derivedInspectorLevel = resolveInspectorLevel({
+    fileSelected: Boolean(selectedMember),
+    nodePath: selectedNodePath,
+    propertyName: selectedPropertyName
+  });
+  const inspectorLevel: InspectorLevel =
+    inspectorLevelOverride &&
+    // Allow temporary config-set focus while a file remains selected in the source canvas.
+    (inspectorLevelOverride === "config-set" ||
+      inspectorLevelOverride === derivedInspectorLevel ||
+      (inspectorLevelOverride === "file" && derivedInspectorLevel !== "config-set") ||
+      (inspectorLevelOverride === "node" &&
+        (derivedInspectorLevel === "node" || derivedInspectorLevel === "property")))
+      ? inspectorLevelOverride
+      : derivedInspectorLevel;
+
+  useEffect(() => {
+    setInspectorLevelOverride(null);
+  }, [selectedMember?.fileId, selectedNodePath, selectedPropertyName]);
+
+  useEffect(() => {
+    if (selectedNodePath || selectedPropertyName) {
+      setInspectorOpen(true);
+    }
+  }, [selectedNodePath, selectedPropertyName]);
+
+  useEffect(() => {
+    const measure = () => {
+      const body = workbenchBodyRef.current;
+      if (!body) return;
+      const treeWidth = treeOpen
+        ? treeRegionRef.current?.getBoundingClientRect().width || 260
+        : 34;
+      const workbenchWidth = body.getBoundingClientRect().width;
+      setInspectorPersistent(shouldPersistInspector({ workbenchWidth, treeWidth }));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const observer =
+      typeof ResizeObserver !== "undefined" && workbenchBodyRef.current
+        ? new ResizeObserver(measure)
+        : null;
+    if (workbenchBodyRef.current && observer) observer.observe(workbenchBodyRef.current);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [treeOpen, inspectorOpen, narrowViewport, selectedConfigSet?.id]);
+
+  useEffect(() => {
+    if (!selectedMember || !inspectorOpen) {
+      setFileVersions([]);
+      setVersionsError("");
+      setVersionsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setVersionsLoading(true);
+    setVersionsError("");
+    void fileRepository
+      .listVersions(project.id, selectedMember.fileId)
+      .then((items) => {
+        if (!cancelled) {
+          setFileVersions(
+            [...items].sort((left, right) => right.versionNumber - left.versionNumber)
+          );
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setFileVersions([]);
+          setVersionsError(error instanceof Error ? error.message : "版本历史加载失败。");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setVersionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fileRepository, inspectorOpen, project.id, selectedMember]);
+
+  useEffect(() => {
+    if (canvasMode === "working" || !selectedMember || !historyVersionId) {
+      setHistorySource("");
+      setCompareSource("");
+      setModeSourceError("");
+      setModeSourceLoading(false);
+      return;
+    }
+    if (!workingSnapshotRef.current) {
+      workingSnapshotRef.current = {
+        fileId: selectedMember.fileId,
+        nodePath: selectedNodePath,
+        propertyName: selectedPropertyName,
+        scrollLine: lastVisibleLine,
+        sourceMode: null
+      };
+    }
+    let cancelled = false;
+    setModeSourceLoading(true);
+    setModeSourceError("");
+    const load = async () => {
+      try {
+        const historical = await fileRepository.downloadVersion(
+          project.id,
+          selectedMember.fileId,
+          historyVersionId
+        );
+        if (cancelled) return;
+        const historicalText = decodeSourceBytes(historical.bytes);
+        setHistorySource(historicalText);
+        if (canvasMode === "unified-diff" || canvasMode === "side-by-side") {
+          if (selectedMember.currentVersionId) {
+            const working = await fileRepository.downloadVersion(
+              project.id,
+              selectedMember.fileId,
+              selectedMember.currentVersionId
+            );
+            if (cancelled) return;
+            setCompareSource(decodeSourceBytes(working.bytes));
+          } else {
+            setCompareSource(source);
+          }
+        } else {
+          setCompareSource("");
+        }
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setHistorySource("");
+          setCompareSource("");
+          setModeSourceError(error instanceof Error ? error.message : "历史源码加载失败。");
+        }
+      } finally {
+        if (!cancelled) setModeSourceLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [canvasMode, fileRepository, historyVersionId, project.id, selectedMember, source]);
+
   useEffect(() => {
     if (configSetsLoading || !selectedConfigSet) return;
     if (queryValue(search, "configSet") !== selectedConfigSet.id) {
@@ -459,7 +670,15 @@ export function ProjectConfigurationWorkbench({
     return locatorToFocusSpan(node.source);
   }, [selectedNodePath, selectedPropertyName, structureNodes]);
 
-  const sourceMode = queryValue(search, "sourceMode") === "raw" ? "raw" : "structured";
+  const rememberWorkingSnapshot = useCallback(() => {
+    workingSnapshotRef.current = {
+      fileId: selectedMember?.fileId ?? null,
+      nodePath: selectedNodePath,
+      propertyName: selectedPropertyName,
+      scrollLine: lastVisibleLine,
+      sourceMode: canvasModeQueryValue(canvasMode)
+    };
+  }, [canvasMode, lastVisibleLine, selectedMember?.fileId, selectedNodePath, selectedPropertyName]);
 
   const selectStructureTarget = useCallback(
     (fileId: string, nodePath: string | null, propertyName: string | null = null) => {
@@ -467,18 +686,21 @@ export function ProjectConfigurationWorkbench({
       setSuppressScrollSync(true);
       setSelectedNodePath(nodePath);
       setSelectedPropertyName(propertyName);
+      setInspectorLevelOverride(null);
+      setInspectorOpen(true);
       onNavigate(
         formatWorkbenchPath(project.id, search, {
           configSet: selectedConfigSet.id,
           file: fileId,
           node: nodePath,
           property: propertyName,
-          sourceMode: queryValue(search, "sourceMode")
+          sourceMode: canvasModeQueryValue(canvasMode),
+          version: historyVersionId
         })
       );
       window.setTimeout(() => setSuppressScrollSync(false), 250);
     },
-    [onNavigate, project.id, search, selectedConfigSet]
+    [canvasMode, historyVersionId, onNavigate, project.id, search, selectedConfigSet]
   );
 
   const runUnifiedSearch = useCallback(async () => {
@@ -506,13 +728,15 @@ export function ProjectConfigurationWorkbench({
     (hit: DtsSearchHit) => {
       if (!selectedConfigSet) return;
       setSuppressScrollSync(true);
+      setInspectorOpen(true);
       onNavigate(
         formatWorkbenchPath(project.id, search, {
           configSet: selectedConfigSet.id,
           file: hit.fileId,
           node: hit.nodePath,
           property: hit.propertyName ?? null,
-          sourceMode: queryValue(search, "sourceMode")
+          sourceMode: canvasModeQueryValue(canvasMode),
+          version: historyVersionId
         })
       );
       if (hit.source) {
@@ -520,12 +744,13 @@ export function ProjectConfigurationWorkbench({
       }
       window.setTimeout(() => setSuppressScrollSync(false), 250);
     },
-    [onNavigate, project.id, search, selectedConfigSet]
+    [canvasMode, historyVersionId, onNavigate, project.id, search, selectedConfigSet]
   );
 
   const handleVisibleLineChange = useCallback(
     (line: number) => {
-      if (suppressScrollSync || !selectedMember) return;
+      setLastVisibleLine(line);
+      if (suppressScrollSync || !selectedMember || canvasMode !== "working") return;
       if (scrollSyncTimerRef.current != null) {
         window.clearTimeout(scrollSyncTimerRef.current);
       }
@@ -537,7 +762,7 @@ export function ProjectConfigurationWorkbench({
         setSelectedPropertyName(null);
       }, 80);
     },
-    [selectedMember, selectedNodePath, structureNodes, suppressScrollSync]
+    [canvasMode, selectedMember, selectedNodePath, structureNodes, suppressScrollSync]
   );
 
   useEffect(() => {
@@ -599,13 +824,16 @@ export function ProjectConfigurationWorkbench({
 
   const selectConfigSet = useCallback(
     (configSetId: string) => {
+      setInspectorLevelOverride("config-set");
+      setInspectorOpen(true);
       onNavigate(
         formatWorkbenchPath(project.id, search, {
           configSet: configSetId,
           file: null,
           node: null,
           property: null,
-          sourceMode: null
+          sourceMode: null,
+          version: null
         })
       );
     },
@@ -615,18 +843,156 @@ export function ProjectConfigurationWorkbench({
   const selectMember = useCallback(
     (fileId: string) => {
       if (!selectedConfigSet) return;
+      setInspectorLevelOverride("file");
+      setInspectorOpen(true);
+      const switchingFile = selectedMember?.fileId !== fileId;
       onNavigate(
         formatWorkbenchPath(project.id, search, {
           configSet: selectedConfigSet.id,
           file: fileId,
           node: null,
           property: null,
-          sourceMode: queryValue(search, "sourceMode")
+          sourceMode: switchingFile ? null : canvasModeQueryValue(canvasMode),
+          version: switchingFile || canvasMode === "working" ? null : historyVersionId
         })
       );
     },
-    [onNavigate, project.id, search, selectedConfigSet]
+    [canvasMode, historyVersionId, onNavigate, project.id, search, selectedConfigSet, selectedMember?.fileId]
   );
+
+  const handleInspectorBack = useCallback(() => {
+    if (!selectedConfigSet) return;
+    const target = inspectorBackTarget(inspectorLevel);
+    setInspectorLevelOverride(target.level);
+    setInspectorOpen(true);
+    const nextNode = target.clearNode ? null : selectedNodePath;
+    const nextProperty = target.clearProperty ? null : selectedPropertyName;
+    if (target.clearNode) setSelectedNodePath(null);
+    if (target.clearProperty) setSelectedPropertyName(null);
+    onNavigate(
+      formatWorkbenchPath(project.id, search, {
+        configSet: selectedConfigSet.id,
+        file: selectedMember?.fileId ?? queryValue(search, "file"),
+        node: nextNode,
+        property: nextProperty,
+        sourceMode: canvasModeQueryValue(canvasMode),
+        version: historyVersionId
+      })
+    );
+  }, [
+    canvasMode,
+    historyVersionId,
+    inspectorLevel,
+    onNavigate,
+    project.id,
+    search,
+    selectedConfigSet,
+    selectedMember?.fileId,
+    selectedNodePath,
+    selectedPropertyName
+  ]);
+
+  const enterCanvasMode = useCallback(
+    (mode: WorkbenchCanvasMode, versionId: string | null) => {
+      if (!selectedConfigSet || !selectedMember) return;
+      if (canvasMode === "working") {
+        rememberWorkingSnapshot();
+      }
+      onNavigate(
+        formatWorkbenchPath(project.id, search, {
+          configSet: selectedConfigSet.id,
+          file: selectedMember.fileId,
+          node: selectedNodePath,
+          property: selectedPropertyName,
+          sourceMode: canvasModeQueryValue(mode),
+          version: versionId
+        })
+      );
+    },
+    [
+      canvasMode,
+      onNavigate,
+      project.id,
+      rememberWorkingSnapshot,
+      search,
+      selectedConfigSet,
+      selectedMember,
+      selectedNodePath,
+      selectedPropertyName
+    ]
+  );
+
+  const exitSpecialCanvasMode = useCallback(() => {
+    if (!selectedConfigSet) return;
+    const snapshot = workingSnapshotRef.current;
+    const restoreLine = snapshot?.scrollLine ?? lastVisibleLine;
+    setRestoredScrollLine(restoreLine);
+    if (restoreLine != null) setFocusLineOverride(restoreLine);
+    setSuppressScrollSync(true);
+    onNavigate(
+      formatWorkbenchPath(project.id, search, {
+        configSet: selectedConfigSet.id,
+        file: snapshot?.fileId ?? selectedMember?.fileId ?? null,
+        node: snapshot?.nodePath ?? selectedNodePath,
+        property: snapshot?.propertyName ?? selectedPropertyName,
+        sourceMode: null,
+        version: null
+      })
+    );
+    window.setTimeout(() => {
+      if (restoreLine != null) setFocusLineOverride(restoreLine);
+      setSuppressScrollSync(false);
+      setRestoredScrollLine(null);
+    }, 300);
+  }, [
+    lastVisibleLine,
+    onNavigate,
+    project.id,
+    search,
+    selectedConfigSet,
+    selectedMember?.fileId,
+    selectedNodePath,
+    selectedPropertyName
+  ]);
+
+  const handleDownloadVersion = useCallback(
+    async (version: ProjectParameterFileVersion) => {
+      if (!selectedMember) return;
+      setDownloadMessage("");
+      try {
+        await triggerVersionDownload(
+          fileRepository,
+          project.id,
+          selectedMember.fileId,
+          version,
+          selectedMember.fileName
+        );
+        setDownloadMessage(`已下载 ${selectedMember.fileName} 的版本 ${version.versionNumber}`);
+      } catch (error: unknown) {
+        setDownloadMessage(error instanceof Error ? error.message : "下载失败。");
+      }
+    },
+    [fileRepository, project.id, selectedMember]
+  );
+
+  const selectedStructureNode = useMemo(
+    () => structureNodes.find((item) => item.nodePath === selectedNodePath) ?? null,
+    [selectedNodePath, structureNodes]
+  );
+  const selectedStructureProperty = useMemo(() => {
+    if (!selectedStructureNode || !selectedPropertyName) return null;
+    return selectedStructureNode.properties.find((item) => item.name === selectedPropertyName) ?? null;
+  }, [selectedPropertyName, selectedStructureNode]);
+
+  const unifiedDiffText = useMemo(() => {
+    if (canvasMode !== "unified-diff" || !historySource) return "";
+    return buildUnifiedDiff(
+      compareSource || source,
+      historySource,
+      "working",
+      historyVersionId ?? "history"
+    );
+  }, [canvasMode, compareSource, historySource, historyVersionId, source]);
 
   return (
     <section className="configuration-workbench" aria-label="项目配置工作台">
@@ -661,7 +1027,16 @@ export function ProjectConfigurationWorkbench({
         </label>
         <div className="configuration-workbench__identities" aria-label="配置身份">
           <span className="configuration-workbench__working">工作配置</span>
-          <span>
+          <span className="configuration-workbench__identity-chip" data-identity="file-version">
+            文件版本：
+            {selectedMember?.currentVersionNumber
+              ? `v${selectedMember.currentVersionNumber}`
+              : selectedMember?.currentVersionId ?? "无"}
+          </span>
+          <span className="configuration-workbench__identity-chip" data-identity="candidate">
+            候选文件版本：尚未上传
+          </span>
+          <span className="configuration-workbench__identity-chip" data-identity="release-baseline">
             发布基线：{baselinesLoading ? "加载中…" : baselinesError ? "不可用" : releasedBaseline?.name ?? "尚未发布"}
           </span>
           {baselinesError ? (
@@ -730,7 +1105,7 @@ export function ProjectConfigurationWorkbench({
           </button>
         </div>
       ) : (
-        <div className="configuration-workbench__body">
+        <div className="configuration-workbench__body" ref={workbenchBodyRef} aria-label="工作台主体">
           {treeOpen ? (
             <aside className="configuration-workbench__tree" aria-label="源结构" tabIndex={-1} ref={treeRegionRef}>
               <div className="configuration-workbench__region-head">
@@ -951,39 +1326,116 @@ export function ProjectConfigurationWorkbench({
             {selectedMember ? (
               <header className="configuration-workbench__source-head">
                 <div>
-                  <span>{selectedConfigSet.name} / 工作配置</span>
+                  <span>
+                    {selectedConfigSet.name} /{" "}
+                    {canvasMode === "working"
+                      ? "工作配置"
+                      : canvasMode === "history"
+                        ? "历史只读源码"
+                        : "只读对比"}
+                  </span>
                   <h2>{selectedMember.fileName}</h2>
                 </div>
                 <div className="configuration-workbench__version-identity">
-                  <span>活跃文件版本</span>
-                  <strong className="mono">{selectedMember.currentVersionId ?? "缺失"}</strong>
+                  <span>{canvasMode === "working" ? "活跃文件版本" : "对照文件版本"}</span>
+                  <strong className="mono">
+                    {canvasMode === "working"
+                      ? selectedMember.currentVersionId ?? "缺失"
+                      : historyVersionId ?? "缺失"}
+                  </strong>
                 </div>
+                {canvasMode !== "working" ? (
+                  <div className="configuration-workbench__mode-actions">
+                    {canvasMode !== "side-by-side" ? (
+                      <button
+                        className="button subtle"
+                        type="button"
+                        onClick={() => enterCanvasMode("side-by-side", historyVersionId)}
+                      >
+                        并排对比
+                      </button>
+                    ) : null}
+                    {canvasMode !== "unified-diff" ? (
+                      <button
+                        className="button subtle"
+                        type="button"
+                        onClick={() => enterCanvasMode("unified-diff", historyVersionId)}
+                      >
+                        统一差异
+                      </button>
+                    ) : null}
+                    <button
+                      className="button subtle"
+                      type="button"
+                      onClick={exitSpecialCanvasMode}
+                      aria-label={canvasMode === "history" ? "退出历史源码" : "退出对比"}
+                    >
+                      {canvasMode === "history" ? "退出历史源码" : "退出对比"}
+                    </button>
+                  </div>
+                ) : null}
               </header>
             ) : null}
-            {sourceLoading ? <div className="configuration-workbench__source-state" role="status">正在加载活跃源码…</div> : null}
-            {!sourceLoading && sourceError ? (
+            {canvasMode !== "working" ? (
+              <p
+                className="configuration-workbench__mode-banner"
+                role="status"
+                aria-label={
+                  canvasMode === "history" ? "历史只读源码模式" : "只读对比模式"
+                }
+              >
+                当前为{canvasMode === "history" ? "历史只读源码" : "只读对比"}模式，不能编辑，也不会改变工作配置。
+              </p>
+            ) : null}
+            {sourceLoading || modeSourceLoading ? (
+              <div className="configuration-workbench__source-state" role="status">
+                {canvasMode === "working" ? "正在加载活跃源码…" : "正在加载对照源码…"}
+              </div>
+            ) : null}
+            {!sourceLoading && !modeSourceLoading && (sourceError || modeSourceError) ? (
               <div className="configuration-workbench__source-state" role="alert">
                 <Info size={20} aria-hidden="true" />
                 <strong>源码读取失败</strong>
-                <p>{sourceError}</p>
-                <button className="button subtle configuration-workbench__retry" type="button" onClick={() => setSourceRetry((value) => value + 1)}>
+                <p>{sourceError || modeSourceError}</p>
+                <button
+                  className="button subtle configuration-workbench__retry"
+                  type="button"
+                  onClick={() =>
+                    canvasMode === "working"
+                      ? setSourceRetry((value) => value + 1)
+                      : setModeSourceError("")
+                  }
+                >
                   重试源码
                 </button>
               </div>
             ) : null}
-            {!sourceLoading && !sourceError && !selectedMember ? (
+            {!sourceLoading && !modeSourceLoading && !sourceError && !modeSourceError && !selectedMember ? (
               <div className="configuration-workbench__source-state" role="status">
                 <strong>没有可读取的成员源码</strong>
                 <p>选择含成员文件的配置集后，活跃源码会显示在这里。</p>
               </div>
             ) : null}
-            {!sourceLoading && !sourceError && selectedMember && !selectedMember.currentVersionId ? (
+            {!sourceLoading &&
+            !modeSourceLoading &&
+            !sourceError &&
+            !modeSourceError &&
+            selectedMember &&
+            canvasMode === "working" &&
+            !selectedMember.currentVersionId ? (
               <div className="configuration-workbench__source-state" role="status">
                 <strong>成员文件没有活跃版本</strong>
                 <p>文件身份仍保留在树中；请在旧项目运营入口检查版本历史。</p>
               </div>
             ) : null}
-            {!sourceLoading && !sourceError && selectedMember && selectedMember.currentVersionId && !source ? (
+            {!sourceLoading &&
+            !modeSourceLoading &&
+            !sourceError &&
+            !modeSourceError &&
+            selectedMember &&
+            canvasMode === "working" &&
+            selectedMember.currentVersionId &&
+            !source ? (
               <div className="configuration-workbench__source-state" role="status">
                 <strong>源码内容为空</strong>
                 <p>当前活跃版本没有可显示的源码内容；可重试或回到旧项目运营入口检查版本历史。</p>
@@ -992,38 +1444,330 @@ export function ProjectConfigurationWorkbench({
                 </button>
               </div>
             ) : null}
-            {!sourceLoading && !sourceError && source && selectedMember ? (
+            {!sourceLoading &&
+            !modeSourceLoading &&
+            !sourceError &&
+            !modeSourceError &&
+            selectedMember &&
+            canvasMode === "working" &&
+            source ? (
               <ProjectPrimaryDtsViewer
                 className="configuration-workbench__code"
                 fileName={selectedMember.fileName}
                 versionNumber={selectedMember.currentVersionNumber ?? 0}
                 text={source}
-                focusSpan={focusSpan}
-                focusLine={focusLineOverride}
+                focusSpan={restoredScrollLine != null ? null : focusSpan}
+                focusLine={focusLineOverride ?? restoredScrollLine}
                 findQuery={findQuery}
                 findNextToken={findNextToken}
                 onVisibleLineChange={handleVisibleLineChange}
               />
             ) : null}
+            {!modeSourceLoading &&
+            !modeSourceError &&
+            selectedMember &&
+            canvasMode === "history" &&
+            historySource ? (
+              <ProjectPrimaryDtsViewer
+                className="configuration-workbench__code"
+                fileName={selectedMember.fileName}
+                versionNumber={
+                  fileVersions.find((item) => item.id === historyVersionId)?.versionNumber ?? 0
+                }
+                text={historySource}
+                focusLine={focusLineOverride}
+                onVisibleLineChange={handleVisibleLineChange}
+              />
+            ) : null}
+            {!modeSourceLoading &&
+            !modeSourceError &&
+            selectedMember &&
+            canvasMode === "unified-diff" &&
+            unifiedDiffText ? (
+              <pre className="configuration-workbench__diff" aria-label="统一差异对比">
+                {unifiedDiffText}
+              </pre>
+            ) : null}
+            {!modeSourceLoading &&
+            !modeSourceError &&
+            selectedMember &&
+            canvasMode === "side-by-side" &&
+            historySource ? (
+              <div className="configuration-workbench__side-by-side" aria-label="并排差异对比">
+                <ProjectPrimaryDtsViewer
+                  className="configuration-workbench__code"
+                  fileName={`${selectedMember.fileName} · 工作配置`}
+                  versionNumber={selectedMember.currentVersionNumber ?? 0}
+                  text={compareSource || source}
+                  onVisibleLineChange={handleVisibleLineChange}
+                />
+                <ProjectPrimaryDtsViewer
+                  className="configuration-workbench__code"
+                  fileName={`${selectedMember.fileName} · 历史`}
+                  versionNumber={
+                    fileVersions.find((item) => item.id === historyVersionId)?.versionNumber ?? 0
+                  }
+                  text={historySource}
+                />
+              </div>
+            ) : null}
           </main>
 
           {inspectorOpen ? (
-            <aside className="configuration-workbench__inspector" aria-label="配置检查器">
+            <aside
+              className={
+                inspectorPersistent && !narrowViewport
+                  ? "configuration-workbench__inspector is-persistent"
+                  : "configuration-workbench__inspector"
+              }
+              aria-label="配置检查器"
+              data-layout={inspectorPersistent && !narrowViewport ? "persistent" : "overlay"}
+            >
               <div className="configuration-workbench__region-head">
                 <div>
                   <span>检查器</span>
-                  <strong>{selectedMember?.fileName ?? selectedConfigSet.name}</strong>
+                  <strong>
+                    {inspectorLevel === "property"
+                      ? selectedPropertyName
+                      : inspectorLevel === "node"
+                        ? selectedNodePath
+                        : inspectorLevel === "file"
+                          ? selectedMember?.fileName
+                          : selectedConfigSet.name}
+                  </strong>
                 </div>
-                <button className="button subtle configuration-workbench__icon-button" type="button" aria-label="关闭检查器" onClick={() => setInspectorOpen(false)}>×</button>
+                <div className="configuration-workbench__inspector-actions">
+                  {inspectorLevel !== "config-set" ? (
+                    <button
+                      className="button subtle"
+                      type="button"
+                      aria-label="检查器返回"
+                      onClick={handleInspectorBack}
+                    >
+                      返回
+                    </button>
+                  ) : null}
+                  <button
+                    className="button subtle configuration-workbench__icon-button"
+                    type="button"
+                    aria-label="关闭检查器"
+                    onClick={() => setInspectorOpen(false)}
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
               <dl>
-                <div><dt>配置集</dt><dd>{selectedConfigSet.name}</dd></div>
-                <div><dt>身份</dt><dd>工作配置</dd></div>
-                <div><dt>成员角色</dt><dd>{selectedMember ? ROLE_LABELS[selectedMember.role] : "—"}</dd></div>
-                <div><dt>活跃文件版本</dt><dd className="mono">{selectedMember?.currentVersionId ?? "缺失"}</dd></div>
-                <div><dt>发布基线</dt><dd>{releasedBaseline?.name ?? "尚未发布"}</dd></div>
+                <div>
+                  <dt>检查层级</dt>
+                  <dd>
+                    {inspectorLevel === "config-set"
+                      ? "配置集"
+                      : inspectorLevel === "file"
+                        ? "文件"
+                        : inspectorLevel === "node"
+                          ? "节点"
+                          : "属性"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>工作配置</dt>
+                  <dd>工作配置</dd>
+                </div>
+                <div>
+                  <dt>发布基线</dt>
+                  <dd>{releasedBaseline?.name ?? "尚未发布"}</dd>
+                </div>
+                <div>
+                  <dt>候选文件版本</dt>
+                  <dd>尚未上传</dd>
+                </div>
+                {inspectorLevel === "config-set" ? (
+                  <>
+                    <div>
+                      <dt>配置集</dt>
+                      <dd>{selectedConfigSet.name}</dd>
+                    </div>
+                    <div>
+                      <dt>描述</dt>
+                      <dd>{selectedConfigSet.description || "无描述"}</dd>
+                    </div>
+                    <div>
+                      <dt>成员数</dt>
+                      <dd>{selectedMembers.length}</dd>
+                    </div>
+                  </>
+                ) : null}
+                {inspectorLevel === "file" && selectedMember ? (
+                  <>
+                    <div>
+                      <dt>文件格式</dt>
+                      <dd>{selectedMember.format}</dd>
+                    </div>
+                    <div>
+                      <dt>成员角色</dt>
+                      <dd>{ROLE_LABELS[selectedMember.role]}</dd>
+                    </div>
+                    <div>
+                      <dt>活跃文件版本</dt>
+                      <dd className="mono">{selectedMember.currentVersionId ?? "缺失"}</dd>
+                    </div>
+                  </>
+                ) : null}
+                {inspectorLevel === "node" && selectedStructureNode ? (
+                  <>
+                    <div>
+                      <dt>节点路径</dt>
+                      <dd>
+                        <code>{selectedStructureNode.nodePath || "/"}</code>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>源码位置</dt>
+                      <dd>{formatSourceSpan(selectedStructureNode.source)}</dd>
+                    </div>
+                    <div>
+                      <dt>labels</dt>
+                      <dd>
+                        {selectedStructureNode.labels.length
+                          ? selectedStructureNode.labels.join(", ")
+                          : "无"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>compatible</dt>
+                      <dd>{selectedStructureNode.compatible ?? "无"}</dd>
+                    </div>
+                    <div>
+                      <dt>风险</dt>
+                      <dd>{classifyNodeRisk(selectedStructureNode.status)}</dd>
+                    </div>
+                    <div>
+                      <dt>来源</dt>
+                      <dd>
+                        工作配置 · 文件版本 {selectedMember?.currentVersionId ?? "未知"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>读权限</dt>
+                      <dd>只读</dd>
+                    </div>
+                  </>
+                ) : null}
+                {inspectorLevel === "property" && selectedStructureProperty && selectedStructureNode ? (
+                  <>
+                    <div>
+                      <dt>属性名</dt>
+                      <dd>{selectedStructureProperty.name}</dd>
+                    </div>
+                    <div>
+                      <dt>节点路径</dt>
+                      <dd>
+                        <code>{selectedStructureNode.nodePath}</code>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>源码位置</dt>
+                      <dd>
+                        {formatSourceSpan(
+                          selectedStructureProperty.source ?? selectedStructureNode.source
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>类型</dt>
+                      <dd>{selectedStructureProperty.valueType}</dd>
+                    </div>
+                    <div>
+                      <dt>原始值</dt>
+                      <dd>
+                        <code>{selectedStructureProperty.rawText}</code>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>规范化值</dt>
+                      <dd>{selectedStructureProperty.normalizedValue}</dd>
+                    </div>
+                    <div>
+                      <dt>风险</dt>
+                      <dd>{classifyNodeRisk(selectedStructureNode.status)}</dd>
+                    </div>
+                    <div>
+                      <dt>来源</dt>
+                      <dd>
+                        工作配置 · 文件版本 {selectedMember?.currentVersionId ?? "未知"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>读权限</dt>
+                      <dd>只读</dd>
+                    </div>
+                  </>
+                ) : null}
               </dl>
-              <p className="configuration-workbench__read-only-note">当前 tracer 只读取既有工作配置（源码模式：{sourceMode}）；编辑、候选激活与发布动作将在后续阶段接入。</p>
+              {inspectorLevel === "file" && selectedMember ? (
+                <section className="configuration-workbench__version-history" aria-label="不可变版本历史">
+                  <strong>不可变版本历史</strong>
+                  {versionsLoading ? <p role="status">正在加载版本历史…</p> : null}
+                  {versionsError ? (
+                    <div role="alert">
+                      <p>{versionsError}</p>
+                    </div>
+                  ) : null}
+                  {!versionsLoading && !versionsError && fileVersions.length === 0 ? (
+                    <p>暂无版本记录。</p>
+                  ) : null}
+                  <ul>
+                    {fileVersions.map((version) => {
+                      const active = version.id === selectedMember.currentVersionId;
+                      return (
+                        <li key={version.id}>
+                          <div>
+                            <strong>
+                              版本 {version.versionNumber}
+                              {active ? " · 活跃" : ""}
+                            </strong>
+                            <small className="mono">{version.id}</small>
+                            <span>来源：{ORIGIN_LABELS[version.origin]}</span>
+                            <span>创建时间：{version.createdAt}</span>
+                            <span>操作人：{version.createdByUserId ?? "未记录"}</span>
+                          </div>
+                          <div className="configuration-workbench__version-actions">
+                            <button
+                              className="button subtle"
+                              type="button"
+                              aria-label={`查看版本 ${version.versionNumber} 历史源码`}
+                              onClick={() => enterCanvasMode("history", version.id)}
+                            >
+                              查看历史
+                            </button>
+                            <button
+                              className="button subtle"
+                              type="button"
+                              aria-label={`统一差异版本 ${version.versionNumber}`}
+                              onClick={() => enterCanvasMode("unified-diff", version.id)}
+                            >
+                              统一差异
+                            </button>
+                            <button
+                              className="button subtle"
+                              type="button"
+                              aria-label={`下载版本 ${version.versionNumber}`}
+                              onClick={() => void handleDownloadVersion(version)}
+                            >
+                              下载
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {downloadMessage ? <p role="status">{downloadMessage}</p> : null}
+                </section>
+              ) : null}
+              <p className="configuration-workbench__read-only-note">
+                当前检查器为只读上下文。画布模式：{canvasMode}。编辑、候选激活与发布动作将在后续阶段接入。
+              </p>
             </aside>
           ) : null}
         </div>

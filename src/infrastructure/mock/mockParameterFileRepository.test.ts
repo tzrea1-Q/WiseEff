@@ -42,6 +42,17 @@ describe("createMockParameterFileRepository (ParameterFileRepository contract)",
     expect(versions[0].id).toBe(uploaded.version.id);
   });
 
+  it("downloadVersion returns the uploaded bytes for a historical version", async () => {
+    const repo = createRepo();
+    const uploaded = await repo.uploadFile(PROJECT_ID, {
+      fileName: "history.dts",
+      contentBase64: Buffer.from('/dts-v1/;\n/ { model = "Hist"; };\n').toString("base64")
+    });
+    const downloaded = await repo.downloadVersion(PROJECT_ID, uploaded.item.id, uploaded.version.id);
+    expect(downloaded.fileName).toBe("history.dts");
+    expect(new TextDecoder().decode(downloaded.bytes)).toContain('model = "Hist"');
+  });
+
   it("syncFile returns a FileSyncSummary including identityFallbackUses", async () => {
     const repo = createRepo();
     const files = await repo.listFiles(PROJECT_ID);
