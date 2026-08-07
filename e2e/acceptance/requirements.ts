@@ -188,6 +188,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title: "Candidate activation with expected-current-version CAS, new-file Config set/role intent, stale-base safety, impact confirmation, and Working configuration promotion.",
     required: false
   },
+  {
+    id: "PROJ-CONFIG-OPS-001",
+    workflow: "C",
+    title: "Admin creates and configures Config sets, adds or removes members with role and order plus blast-radius confirmation, sees ungrouped files outside Working/Release, runs manual sync with task evidence, exports from the command context, and empty sets show a focused upload/assignment path without auto-activation; non-admin denial keeps read context.",
+    required: false
+  },
 
   {
     id: "PARAM-ADMIN-DIALOG-001",
