@@ -599,25 +599,9 @@ describe("ProjectConfigurationWorkbench", () => {
       status: "submitted",
       items: [{ parameterId: "ppv-model", targetValue: '"Aurora-X"', reason: "workbench" }]
     });
-    const getStructure = vi
-      .fn()
-      .mockResolvedValueOnce(BOARD_STRUCTURE)
-      .mockResolvedValueOnce({
-        nodes: [
-          {
-            ...BOARD_STRUCTURE.nodes[0],
-            properties: [
-              {
-                ...BOARD_STRUCTURE.nodes[0].properties[0],
-                rawText: '"Aurora-X"',
-                normalizedValue: "Aurora-X"
-              },
-              BOARD_STRUCTURE.nodes[0].properties[1]
-            ]
-          },
-          BOARD_STRUCTURE.nodes[1]
-        ]
-      });
+    // Persist across Strict Mode remounts and post-submit structure refresh.
+    let structureResult = BOARD_STRUCTURE;
+    const getStructure = vi.fn(async () => structureResult);
 
     renderWorkbench({
       dtsRepository: createDtsRepository({ getStructure, submitStructuredEdits }),
@@ -647,6 +631,23 @@ describe("ProjectConfigurationWorkbench", () => {
     });
     fireEvent.click(within(tasks).getByRole("button", { name: "校验所选" }));
     expect(within(tasks).getByRole("status")).toHaveTextContent(/校验通过/);
+
+    structureResult = {
+      nodes: [
+        {
+          ...BOARD_STRUCTURE.nodes[0],
+          properties: [
+            {
+              ...BOARD_STRUCTURE.nodes[0].properties[0],
+              rawText: '"Aurora-X"',
+              normalizedValue: "Aurora-X"
+            },
+            BOARD_STRUCTURE.nodes[0].properties[1]
+          ]
+        },
+        BOARD_STRUCTURE.nodes[1]
+      ]
+    };
     fireEvent.click(within(tasks).getByRole("button", { name: /提交所选/ }));
 
     await waitFor(() =>

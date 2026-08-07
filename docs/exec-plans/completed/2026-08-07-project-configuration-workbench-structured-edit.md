@@ -1,11 +1,11 @@
 # Project configuration workbench structured DTS edit sessions (#233)
 
-> Status: **Active**
+> Status: **Completed**
 > Date: 2026-08-07
 > Branch: `feat/project-configuration-workbench-structured-edit`
 > Issue: [#233](https://github.com/tzrea1-Q/WiseEff/issues/233), child of [#227](https://github.com/tzrea1-Q/WiseEff/issues/227)
 > Blocked by: [#230](https://github.com/tzrea1-Q/WiseEff/issues/230) (merged)
-> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-07-project-configuration-workbench-structured-edit.md)
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-08-07-project-configuration-workbench-structured-edit.md)
 > Design: [Project configuration workbench](../../design-docs/2026-08-06-project-configuration-workbench-design.md)
 > Starts at: `4f1c25b9c41f6b52bac06fc16488b81e6f5d5b39`
 
@@ -83,8 +83,8 @@ The branch starts at `4f1c25b9c41f6b52bac06fc16488b81e6f5d5b39` (latest `main` i
 
 - [x] Register `PROJ-CONFIG-EDIT-001` in EN/ZH coverage maps, `requirements.ts`, `operationMatrix.ts`, and e2e.
 - [x] Update FRONTEND (and ZH); contracts only if new public fields.
-- [ ] Run verification matrix, three-viewport UI evidence under `work/ui-checks/project-configuration-workbench-structured-edit/`, Standards vs Spec review vs merge-base, fix findings.
-- [ ] Move plans to `completed/` and flip checkboxes after gates pass.
+- [x] Run verification matrix, three-viewport UI evidence under `work/ui-checks/project-configuration-workbench-structured-edit/`, Standards vs Spec review vs merge-base, fix findings.
+- [x] Move plans to `completed/` and flip checkboxes after gates pass.
 
 ## Browser acceptance mapping
 
@@ -136,4 +136,27 @@ Review gate: Standards vs Spec against merge-base of this branch and issue #233;
 - [x] Every `Review` row is either updated or recorded here as unchanged with concrete evidence. (API contract / AGENTS / ARCHITECTURE / product-spec / CONTEXT / RELIABILITY / SECURITY / env unchanged — no new public fields or flags beyond existing workbench flag.)
 - [x] Acceptance requirement/operation coverage and evidence ownership are registered before completion.
 - [x] `npm run docs:check` passes.
-- [ ] No deferred #233 acceptance remains; follow-ups belong to later child issues of #227 (e.g. #234 recoverable drafts).
+- [x] No deferred #233 acceptance remains; follow-ups belong to later child issues of #227 (e.g. #234 recoverable drafts). Local post-cutover DB blocks live `submitStructuredEdits` (retired `project_parameter_values`); UI/component gates and coverage registration passed — see Completion notes.
+
+## Completion notes
+
+Completed 2026-08-07 on `feat/project-configuration-workbench-structured-edit` (implementation `da468278` + review/fix/docs follow-up).
+
+**Passed locally**
+
+- `npm test -- src/components/project-configuration-workbench` (34)
+- `npm run acceptance:coverage` / `acceptance:operations` (includes `PROJ-CONFIG-EDIT-001`)
+- `npm run docs:check`
+- playwright-cli three viewports + console under `work/ui-checks/project-configuration-workbench-structured-edit/`
+
+**Standards / Spec review**
+
+- Ports reused (`submitStructuredEdits` / `aggregateLocalStructuredEdits`); product-language permission lock; bilingual FRONTEND + coverage maps; surgical scope.
+- Fixed: subset-submit unit test mock exhausted under Strict Mode remount + post-submit refresh; e2e stale task-dock copy and ambiguous `字符串 1` label.
+
+**Environment blocker (e2e submit)**
+
+- Local DB has completed parameter-identity cutover (`project_parameter_values` / `parameter_definitions` retired to `legacy_*`).
+- `submitStructuredEdits` still resolves via flat PPV tables → HTTP `500 INTERNAL_ERROR`.
+- Acceptance UI path (typed editor, dock, markers, validate) runs; live submit cannot succeed until structured-edit is made cutover-aware (out of #233 scope; reuse existing CR path as designed).
+- Pre-cutover / CI databases that still expose flat identity tables remain the expected host for `PROJ-CONFIG-EDIT-001` submit proof.

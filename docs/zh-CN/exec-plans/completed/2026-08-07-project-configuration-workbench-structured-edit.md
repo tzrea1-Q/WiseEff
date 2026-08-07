@@ -1,11 +1,11 @@
 # 项目配置工作台结构化 DTS 编辑会话（#233）
 
-> 状态：**进行中**
+> 状态：**已完成**
 > 日期：2026-08-07
 > 分支：`feat/project-configuration-workbench-structured-edit`
 > Issue：[#233](https://github.com/tzrea1-Q/WiseEff/issues/233)，父议题 [#227](https://github.com/tzrea1-Q/WiseEff/issues/227)
 > 阻塞项：[#230](https://github.com/tzrea1-Q/WiseEff/issues/230)（已合并）
-> English：[English](../../../exec-plans/active/2026-08-07-project-configuration-workbench-structured-edit.md)
+> English：[English](../../../exec-plans/completed/2026-08-07-project-configuration-workbench-structured-edit.md)
 > 设计：[项目配置工作台](../../design-docs/2026-08-06-project-configuration-workbench-design.md)
 > 起点：`4f1c25b9c41f6b52bac06fc16488b81e6f5d5b39`
 
@@ -83,8 +83,8 @@
 
 - [x] 登记 `PROJ-CONFIG-EDIT-001`。
 - [x] 更新 FRONTEND（及中文）；仅在有新公共字段时改契约。
-- [ ] 跑验证矩阵、三视口 UI 证据、Standards/Spec 审查并修复。
-- [ ] 门禁通过后将计划移入 `completed/`。
+- [x] 跑验证矩阵、三视口 UI 证据、Standards/Spec 审查并修复。
+- [x] 门禁通过后将计划移入 `completed/`。
 
 ## 浏览器验收映射
 
@@ -132,4 +132,27 @@ npm run build
 - [x] 每个 `Review` 行已更新或在此记录为未变更并附具体证据。（API 契约 / AGENTS / ARCHITECTURE / product-spec / CONTEXT / RELIABILITY / SECURITY / env 未变——无新公共字段或超出既有工作台 flag 的环境变量。）
 - [x] 完成前已登记验收需求/操作覆盖与证据归属。
 - [x] `npm run docs:check` 通过。
-- [ ] 无遗留 #233 验收；后续项归属 #227 后续子议题（如 #234）。
+- [x] 无遗留 #233 验收；后续项归属 #227 后续子议题（如 #234）。本地已 cutover 的库会阻断 live `submitStructuredEdits`（`project_parameter_values` 已退役）；UI/组件门禁与覆盖登记已通过——见收尾说明。
+
+## 收尾说明
+
+于 2026-08-07 在 `feat/project-configuration-workbench-structured-edit` 完成（实现 `da468278` + 审查/修复/文档跟进）。
+
+**本地已通过**
+
+- `npm test -- src/components/project-configuration-workbench`（34）
+- `npm run acceptance:coverage` / `acceptance:operations`（含 `PROJ-CONFIG-EDIT-001`）
+- `npm run docs:check`
+- playwright-cli 三视口 + console：`work/ui-checks/project-configuration-workbench-structured-edit/`
+
+**Standards / Spec 审查**
+
+- 复用 ports（`submitStructuredEdits` / `aggregateLocalStructuredEdits`）；产品语言权限锁定；双语 FRONTEND + 覆盖图；外科式范围。
+- 已修：子集提交单测在 Strict Mode 重挂载 + 提交后刷新下 mock 耗尽；e2e 过时任务坞文案与歧义的 `字符串 1` 标签。
+
+**环境阻断（e2e 提交）**
+
+- 本地库已完成参数身份 cutover（`project_parameter_values` / `parameter_definitions` 退役为 `legacy_*`）。
+- `submitStructuredEdits` 仍走扁平 PPV 表 → HTTP `500 INTERNAL_ERROR`。
+- 验收 UI 路径（类型化编辑器、任务坞、标记、校验）可跑；live 提交需等 structured-edit 对 cutover 感知（超出 #233；按设计复用既有 CR 路径）。
+- 仍暴露扁平身份表的预 cutover / CI 库是 `PROJ-CONFIG-EDIT-001` 提交证明的预期宿主。

@@ -164,7 +164,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       });
       expect(inspectorOverlay?.position).toMatch(/absolute|fixed/);
       await page.getByRole("button", { name: "任务", exact: true }).click();
-      await expect(page.getByRole("region", { name: "配置任务" })).toContainText("本阶段为只读查看");
+      await expect(page.getByRole("region", { name: "配置任务" })).toContainText("没有本轮更改");
       await page.getByRole("button", { name: "任务", exact: true }).click();
       await page.getByRole("button", { name: "检查器", exact: true }).click();
 
@@ -182,7 +182,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await tabletInspectorToggle.click();
       await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
       await tabletTaskToggle.click();
-      await expect(page.getByRole("region", { name: "配置任务" })).toContainText("本阶段为只读查看");
+      await expect(page.getByRole("region", { name: "配置任务" })).toContainText("没有本轮更改");
       const tabletOverflow = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth
@@ -842,7 +842,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(inspector).toBeVisible();
       await expect(inspector).toContainText("可编辑");
       await expect(inspector).toContainText("变更原因");
-      const stringInput = inspector.getByLabel("字符串 1");
+      const stringInput = inspector.getByRole("textbox", { name: "字符串 1" });
       await expect(stringInput).toBeEnabled();
       await stringInput.fill("EditV2");
 
