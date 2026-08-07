@@ -394,6 +394,13 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 | `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | 上传下一版本。返回 `201 { item }`（版本 DTO）。 |
 | `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | 单文件版本历史。 |
 | `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/content` | 下载指定版本原始字节。 |
+| `GET` | `/api/v1/projects/:projectId/parameter-file-candidates` | 列出暂存候选（`?fileId=&includeAbandoned=`）。返回不含 storage key 的 `{ items }`。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates` | 创建暂存候选（`fileName`、`contentBase64`、可选 `fileId`）。不改变活跃版本或配置集成员。返回 `201 { item }`。 |
+| `GET` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId` | 读取单个候选生命周期 DTO。 |
+| `GET` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/impact` | 读取候选影响证据（textDiff、structuralDiff、诊断、覆盖、冲突、阻断）。 |
+| `GET` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content` | 下载候选字节。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/abandon` | 放弃 ready/blocked/failed 候选，不改变工作配置。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/recompute` | 在外部阻断变化时重算影响。 |
 | `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/sync` | 对当前或指定版本与 DB diff 并 upsert `file_sync` 草稿。返回 `{ item: syncSummary }`。 |
 | `GET` | `/api/v1/projects/:projectId/parameter-file-conflicts` | 列出项目内 open 冲突。 |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve` | 裁决冲突。请求体：`{ "resolution": "file" \| "ui" }`。 |
