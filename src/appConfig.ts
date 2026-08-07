@@ -221,14 +221,14 @@ export function getPageByPath(path: string): PageConfig {
       /^\/parameter-admin\/projects\/[^/]+(?:\/(files|config-sets|structure|conflicts|configuration))?\/?$/
     );
     const projectViewLabels: Record<string, string> = {
-      files: "参数文件",
-      "config-sets": "配置集 / 基线",
-      structure: "结构浏览",
-      conflicts: "冲突裁决",
+      files: "配置工作台",
+      "config-sets": "配置工作台",
+      structure: "配置工作台",
+      conflicts: "配置工作台",
       configuration: "配置工作台"
     };
     const subtitle = viewMatch
-      ? projectViewLabels[viewMatch[1] ?? "files"] ?? "参数文件"
+      ? projectViewLabels[viewMatch[1] ?? "configuration"] ?? "配置工作台"
       : "项目清单";
     return {
       ...(adminNav as PageConfig),
@@ -339,7 +339,7 @@ export function getXiaozeContextSummary(path: string): string {
       return "正在关注 HDC 连接状态、节点访问模式、待读写目标值和回读校验结果。";
     case "parameter-admin":
       if (path === "/parameter-admin/projects" || path.startsWith("/parameter-admin/projects/")) {
-        return "正在关注项目参数文件、配置集、发布基线、结构浏览与冲突裁决。";
+        return "正在关注项目配置工作台：配置集、源码、候选、冲突裁决与发布基线。";
       }
       if (path.includes("/spec-review")) {
         return PARAMETER_ADMIN_UI.xiaozeSpecReview;

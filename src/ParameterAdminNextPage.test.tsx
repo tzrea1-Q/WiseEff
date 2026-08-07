@@ -1405,11 +1405,10 @@ describe("ParameterAdminNextPage · organization identity mapping governance", (
 });
 
 describe("ParameterAdminNextPage · project-scoped routes and parameter files", () => {
-  it("opens the flagged Configuration workbench from the project list", async () => {
+  it("opens the Configuration workbench from the project list", async () => {
     const { onNavigate } = renderPage({
       path: "/parameter-admin/projects",
-      area: "projects",
-      configurationWorkbenchEnabled: true
+      area: "projects"
     });
 
     expect(await screen.findByRole("heading", { name: "项目清单" })).toBeInTheDocument();
@@ -1425,8 +1424,7 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     const projectId = initialState.configDraft.projects[0]!.id;
     renderPage({
       path: `/parameter-admin/projects/${projectId}/configuration`,
-      area: "projects",
-      configurationWorkbenchEnabled: true
+      area: "projects"
     });
 
     expect(await screen.findByRole("region", { name: "项目配置工作台" })).toBeInTheDocument();
@@ -1435,7 +1433,59 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     expect(screen.getByRole("tree", { name: /成员文件/ })).toBeInTheDocument();
   });
 
-  it("redirects the canonical route to the legacy files view when the flag is disabled", async () => {
+  it("redirects legacy /files deep links to the canonical workbench with file inspector context", async () => {
+    const projectId = initialState.configDraft.projects[0]!.id;
+    const { onNavigate } = renderPage({
+      path: `/parameter-admin/projects/${projectId}/files?file=file-1&node=soc/gpio&q=gpio`,
+      area: "projects"
+    });
+
+    await waitFor(() =>
+      expect(onNavigate).toHaveBeenCalledWith(
+        `/parameter-admin/projects/${projectId}/configuration?file=file-1&node=soc%2Fgpio&q=gpio&inspector=file`
+      )
+    );
+    expect(screen.queryByRole("navigation", { name: "项目运营视图" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("redirects legacy config-sets, structure, and conflicts routes to workbench contexts", async () => {
+    const projectId = initialState.configDraft.projects[0]!.id;
+
+    const configSets = renderPage({
+      path: `/parameter-admin/projects/${projectId}/config-sets?configSet=cs-default`,
+      area: "projects"
+    });
+    await waitFor(() =>
+      expect(configSets.onNavigate).toHaveBeenCalledWith(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=cs-default&inspector=config-set`
+      )
+    );
+    cleanup();
+
+    const structure = renderPage({
+      path: `/parameter-admin/projects/${projectId}/structure?file=f1&node=board&property=model`,
+      area: "projects"
+    });
+    await waitFor(() =>
+      expect(structure.onNavigate).toHaveBeenCalledWith(
+        `/parameter-admin/projects/${projectId}/configuration?file=f1&node=board&property=model&sourceMode=working`
+      )
+    );
+    cleanup();
+
+    const conflicts = renderPage({
+      path: `/parameter-admin/projects/${projectId}/conflicts`,
+      area: "projects"
+    });
+    await waitFor(() =>
+      expect(conflicts.onNavigate).toHaveBeenCalledWith(
+        `/parameter-admin/projects/${projectId}/configuration?tasks=conflicts`
+      )
+    );
+  });
+
+  it("keeps the workbench open even when the retired flag prop is false", async () => {
     const projectId = initialState.configDraft.projects[0]!.id;
     const { onNavigate } = renderPage({
       path: `/parameter-admin/projects/${projectId}/configuration`,
@@ -1443,285 +1493,11 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
       configurationWorkbenchEnabled: false
     });
 
-    await waitFor(() =>
-      expect(onNavigate).toHaveBeenCalledWith(`/parameter-admin/projects/${projectId}/files`)
-    );
-    expect(screen.queryByRole("region", { name: "项目配置工作台" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "项目配置工作台" })).toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalledWith(`/parameter-admin/projects/${projectId}/files`);
   });
 
-  it("lists projects and opens the files view by route", async () => {
-    const { onNavigate } = renderPage({
-      path: "/parameter-admin/projects",
-      area: "projects"
-    });
-
-    expect(await screen.findByRole("heading", { name: "项目清单" })).toBeInTheDocument();
-    const firstManage = screen.getAllByRole("button", { name: /管理文件/ })[0]!;
-    fireEvent.click(firstManage);
-
-    expect(onNavigate).toHaveBeenCalledWith(
-      expect.stringMatching(/^\/parameter-admin\/projects\/[^/]+\/files$/)
-    );
-  });
-
-  it("preserves the selected project file view from the URL without re-selection", async () => {
-    const projectId = initialState.configDraft.projects[0]!.id;
-    const projectName = initialState.configDraft.projects[0]!.name;
-    const listFiles = vi.fn().mockResolvedValue([
-      {
-        id: "file-1",
-        projectId,
-        fileName: "board.dts",
-        format: "dts",
-        enabled: true,
-        currentVersionId: "v1",
-        currentVersionNumber: 2,
-        updatedAt: "2026-07-14T10:00:00.000Z"
-      }
-    ]);
-
-    renderPage({
-      path: `/parameter-admin/projects/${projectId}/files`,
-      area: "projects",
-      parameterFileRepository: {
-        listFiles,
-        uploadFile: vi.fn(),
-        uploadVersion: vi.fn(),
-        listVersions: vi.fn().mockResolvedValue([]),
-        downloadVersion: vi.fn(),
-        syncFile: vi.fn(),
-        listConflicts: vi.fn().mockResolvedValue([]),
-        resolveConflict: vi.fn()
-      },
-      dtsStructuredRepository: {
-        listConfigSets: vi.fn().mockResolvedValue([]),
-        createConfigSet: vi.fn(),
-        addConfigSetFile: vi.fn(),
-        removeConfigSetFile: vi.fn(),
-        listBaselines: vi.fn().mockResolvedValue([]),
-        createBaseline: vi.fn(),
-        compareBaseline: vi.fn(),
-        rollbackBaseline: vi.fn(),
-        releaseBaseline: vi.fn(),
-        exportConfigSet: vi.fn(),
-        getStructure: vi.fn(),
-        search: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
-        submitStructuredEdits: vi.fn()
-      }
-    });
-
-    // Deep link opens the operations dialog over the project list.
-    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
-    const dialog = await screen.findByRole("dialog", { name: projectName });
-    expect(within(dialog).getByRole("heading", { name: projectName })).toBeInTheDocument();
-    const filesRegion = within(dialog).getByRole("region", { name: "项目参数文件" });
-    expect(await within(filesRegion).findByText("board.dts")).toBeInTheDocument();
-    expect(within(dialog).getByRole("region", { name: "DTS 结构化检索" })).toBeInTheDocument();
-    expect(listFiles).toHaveBeenCalledWith(projectId);
-  });
-
-  it("closes the project operations dialog back to the project list route", async () => {
-    const projectId = initialState.configDraft.projects[0]!.id;
-    const { onNavigate } = renderPage({
-      path: `/parameter-admin/projects/${projectId}/files`,
-      area: "projects",
-      parameterFileRepository: {
-        listFiles: vi.fn().mockResolvedValue([]),
-        uploadFile: vi.fn(),
-        uploadVersion: vi.fn(),
-        listVersions: vi.fn().mockResolvedValue([]),
-        downloadVersion: vi.fn(),
-        syncFile: vi.fn(),
-        listConflicts: vi.fn().mockResolvedValue([]),
-        resolveConflict: vi.fn()
-      },
-      dtsStructuredRepository: {
-        listConfigSets: vi.fn().mockResolvedValue([]),
-        createConfigSet: vi.fn(),
-        addConfigSetFile: vi.fn(),
-        removeConfigSetFile: vi.fn(),
-        listBaselines: vi.fn().mockResolvedValue([]),
-        createBaseline: vi.fn(),
-        compareBaseline: vi.fn(),
-        rollbackBaseline: vi.fn(),
-        releaseBaseline: vi.fn(),
-        exportConfigSet: vi.fn(),
-        getStructure: vi.fn(),
-        search: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
-        submitStructuredEdits: vi.fn()
-      }
-    });
-
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "关闭项目运营" }));
-    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects");
-  });
-
-  it("moves focus across project views with arrow keys", async () => {
-    const projectId = initialState.configDraft.projects[0]!.id;
-    renderPage({
-      path: `/parameter-admin/projects/${projectId}/files`,
-      area: "projects",
-      parameterFileRepository: {
-        listFiles: vi.fn().mockResolvedValue([]),
-        uploadFile: vi.fn(),
-        uploadVersion: vi.fn(),
-        listVersions: vi.fn().mockResolvedValue([]),
-        downloadVersion: vi.fn(),
-        syncFile: vi.fn(),
-        listConflicts: vi.fn().mockResolvedValue([]),
-        resolveConflict: vi.fn()
-      }
-    });
-
-    const nav = await screen.findByRole("navigation", { name: "项目运营视图" });
-    const files = within(nav).getByRole("button", { name: "参数文件" });
-    const configSets = within(nav).getByRole("button", { name: "配置集 / 基线" });
-    const conflicts = within(nav).getByRole("button", { name: "冲突裁决" });
-
-    files.focus();
-    fireEvent.keyDown(nav, { key: "ArrowRight" });
-    expect(document.activeElement).toBe(configSets);
-
-    fireEvent.keyDown(nav, { key: "End" });
-    expect(document.activeElement).toBe(conflicts);
-
-    fireEvent.keyDown(nav, { key: "ArrowRight" });
-    expect(document.activeElement).toBe(files);
-  });
-
-  it("keeps a visited view's state when switching views and back", async () => {
-    const projectId = initialState.configDraft.projects[0]!.id;
-    const { rerender } = renderPage({
-      path: `/parameter-admin/projects/${projectId}/config-sets`,
-      area: "projects",
-      parameterFileRepository: {
-        listFiles: vi.fn().mockResolvedValue([]),
-        uploadFile: vi.fn(),
-        uploadVersion: vi.fn(),
-        listVersions: vi.fn().mockResolvedValue([]),
-        downloadVersion: vi.fn(),
-        syncFile: vi.fn(),
-        listConflicts: vi.fn().mockResolvedValue([]),
-        resolveConflict: vi.fn()
-      }
-    });
-
-    await screen.findByRole("region", { name: "项目配置集与基线" });
-    fireEvent.change(screen.getByLabelText("配置集名称"), { target: { value: "board-draft" } });
-
-    rerender(`/parameter-admin/projects/${projectId}/conflicts`);
-    await screen.findByRole("region", { name: "项目文件冲突" });
-    // The config-sets view is out of the accessibility tree but still mounted.
-    expect(screen.queryByRole("region", { name: "项目配置集与基线" })).not.toBeInTheDocument();
-
-    rerender(`/parameter-admin/projects/${projectId}/config-sets`);
-    await screen.findByRole("region", { name: "项目配置集与基线" });
-    expect(screen.getByLabelText("配置集名称")).toHaveValue("board-draft");
-  });
-
-  it("uploads a file, lists versions, and triggers manual sync producing a file-sync draft", async () => {
-    const projectId = initialState.configDraft.projects[0]!.id;
-    const uploadFile = vi.fn().mockResolvedValue({
-      item: {
-        id: "file-new",
-        projectId,
-        fileName: "new-board.dts",
-        format: "dts",
-        enabled: true,
-        currentVersionId: "v-new",
-        currentVersionNumber: 1,
-        updatedAt: "2026-07-14T10:00:00.000Z"
-      },
-      version: {
-        id: "v-new",
-        fileId: "file-new",
-        versionNumber: 1,
-        checksum: "xyz",
-        sizeBytes: 8,
-        parsedIndex: {},
-        origin: "upload",
-        createdAt: "2026-07-14T10:00:00.000Z"
-      }
-    });
-    const listFiles = vi
-      .fn()
-      .mockResolvedValueOnce([])
-      .mockResolvedValue([
-        {
-          id: "file-new",
-          projectId,
-          fileName: "new-board.dts",
-          format: "dts",
-          enabled: true,
-          currentVersionId: "v-new",
-          currentVersionNumber: 1,
-          updatedAt: "2026-07-14T10:00:00.000Z"
-        }
-      ]);
-    const listVersions = vi.fn().mockResolvedValue([
-      {
-        id: "v-new",
-        fileId: "file-new",
-        versionNumber: 1,
-        checksum: "xyz",
-        sizeBytes: 8,
-        parsedIndex: {},
-        origin: "upload",
-        createdAt: "2026-07-14T10:00:00.000Z"
-      }
-    ]);
-    const syncFile = vi.fn().mockResolvedValue({ draftsCreated: 1, unchanged: 0, unmatched: 0, skipped: false });
-
-    renderPage({
-      path: `/parameter-admin/projects/${projectId}/files`,
-      area: "projects",
-      parameterFileRepository: {
-        listFiles,
-        uploadFile,
-        uploadVersion: vi.fn(),
-        listVersions,
-        downloadVersion: vi.fn(),
-        syncFile,
-        listConflicts: vi.fn().mockResolvedValue([]),
-        resolveConflict: vi.fn()
-      },
-      dtsStructuredRepository: {
-        listConfigSets: vi.fn().mockResolvedValue([]),
-        createConfigSet: vi.fn(),
-        addConfigSetFile: vi.fn(),
-        removeConfigSetFile: vi.fn(),
-        listBaselines: vi.fn().mockResolvedValue([]),
-        createBaseline: vi.fn(),
-        compareBaseline: vi.fn(),
-        rollbackBaseline: vi.fn(),
-        releaseBaseline: vi.fn(),
-        exportConfigSet: vi.fn(),
-        getStructure: vi.fn(),
-        search: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
-        submitStructuredEdits: vi.fn()
-      }
-    });
-
-    await screen.findByRole("region", { name: "项目参数文件" });
-
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(["/dts-v1/;"], "new-board.dts", { type: "text/plain" });
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
-    await waitFor(() => expect(uploadFile).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByText("new-board.dts")).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole("button", { name: "查看版本" }));
-    await waitFor(() => expect(listVersions).toHaveBeenCalled());
-    expect(await screen.findByText(/版本 1/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "手动同步" }));
-    await waitFor(() => expect(syncFile).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByText(/已创建 1 条草稿/)).toBeInTheDocument());
-  });
-
-  it("edits a project with governance audit", async () => {
+  it("edits a project from the list", async () => {
     const dispatch = vi.fn();
     renderPage({ path: "/parameter-admin/projects", area: "projects", dispatch });
 
@@ -1734,640 +1510,20 @@ describe("ParameterAdminNextPage · project-scoped routes and parameter files", 
     fireEvent.click(within(editDialog).getByRole("button", { name: "保存修改" }));
 
     await waitFor(() => expect(dispatch).toHaveBeenCalled());
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveAttribute(
-      "data-audit-kind",
-      "project-updated"
-    );
-  });
-});
-
-describe("ParameterAdminNextPage · project config sets, baselines, and validation", () => {
-  const projectId = () => initialState.configDraft.projects[0]!.id;
-  const projectName = () => initialState.configDraft.projects[0]!.name;
-
-  function createDtsRepo(
-    overrides: Partial<import("@/application/ports/DtsStructuredRepository").DtsStructuredRepository> = {}
-  ): import("@/application/ports/DtsStructuredRepository").DtsStructuredRepository {
-    return {
-      listConfigSets: vi.fn().mockResolvedValue([
-        {
-          id: "cs-default",
-          organizationId: "org-1",
-          projectId: projectId(),
-          name: "board-default",
-          createdAt: "2026-07-14T08:00:00.000Z",
-          updatedAt: "2026-07-14T08:00:00.000Z"
-        }
-      ]),
-      createConfigSet: vi.fn(),
-      addConfigSetFile: vi.fn().mockImplementation(async (_pid, configSetId, input) => ({
-        configSetId,
-        fileId: input.fileId,
-        role: input.role,
-        sortOrder: input.sortOrder ?? 0
-      })),
-      removeConfigSetFile: vi.fn().mockResolvedValue(undefined),
-      listBaselines: vi.fn().mockResolvedValue([
-        {
-          id: "bl-1",
-          organizationId: "org-1",
-          configSetId: "cs-default",
-          name: "v1-draft",
-          status: "draft",
-          createdAt: "2026-07-14T09:00:00.000Z"
-        },
-        {
-          id: "bl-released",
-          organizationId: "org-1",
-          configSetId: "cs-default",
-          name: "v0-released",
-          status: "released",
-          createdAt: "2026-07-14T08:30:00.000Z"
-        }
-      ]),
-      createBaseline: vi.fn(),
-      getReleaseReadiness: vi.fn().mockResolvedValue({
-        available: true,
-        level: "ready",
-        blockers: [],
-        warnings: [],
-        gateToken: "gate-token-admin",
-        evaluatedAt: "2026-08-07T00:00:00.000Z",
-        configSetId: "cs-default",
-        projectId: projectId(),
-        canCreateBaseline: true,
-        canRelease: true
-      }),
-      compareBaseline: vi.fn().mockResolvedValue({
-        baselineId: "bl-1",
-        members: [
-          {
-            fileId: "file-1",
-            fileName: "board.dts",
-            status: "version_changed",
-            structuralDiff: [
-              {
-                kind: "prop_changed",
-                nodePath: "demo",
-                prop: "value",
-                before: "<1>",
-                after: "<2>"
-              }
-            ]
-          }
-        ]
-      }),
-      rollbackBaseline: vi.fn().mockResolvedValue({ baselineId: "bl-released", restored: 2 }),
-      releaseBaseline: vi.fn().mockResolvedValue({
-        item: {
-          id: "bl-1",
-          organizationId: "org-1",
-          configSetId: "cs-default",
-          name: "v1-draft",
-          status: "released",
-          createdAt: "2026-07-14T09:00:00.000Z"
-        },
-        gate: {
-          ok: true,
-          mode: "block",
-          requiresConfirmation: false,
-          diagnostics: [],
-          compiler: "dtc"
-        }
-      }),
-      exportConfigSet: vi.fn().mockResolvedValue({
-        manifest: {
-          configSetId: "cs-default",
-          name: "board-default",
-          projectId: projectId(),
-          exportedAt: "2026-07-14T10:00:00.000Z",
-          members: []
-        },
-        files: [{ name: "board.dts", format: "dts", content: "/dts-v1/;\n" }]
-      }),
-      getStructure: vi.fn(),
-      search: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
-      submitStructuredEdits: vi.fn(),
-      ...overrides
-    };
-  }
-
-  function createFileRepo(
-    overrides: Partial<import("@/application/ports/ParameterFileRepository").ParameterFileRepository> = {}
-  ): import("@/application/ports/ParameterFileRepository").ParameterFileRepository {
-    return {
-      listFiles: vi.fn().mockResolvedValue([
-        {
-          id: "file-1",
-          projectId: projectId(),
-          fileName: "board.dts",
-          format: "dts",
-          enabled: true,
-          currentVersionId: "v1",
-          currentVersionNumber: 1,
-          updatedAt: "2026-07-14T10:00:00.000Z"
-        }
-      ]),
-      uploadFile: vi.fn(),
-      uploadVersion: vi.fn(),
-      listVersions: vi.fn().mockResolvedValue([]),
-      downloadVersion: vi.fn(),
-      syncFile: vi.fn(),
-      listConflicts: vi.fn().mockResolvedValue([]),
-      resolveConflict: vi.fn(),
-      previewBulkConflictResolution: vi.fn(),
-      resolveConflictsBulk: vi.fn(),
-      ...overrides
-    } as import("@/application/ports/ParameterFileRepository").ParameterFileRepository;
-  }
-
-  it("opens config sets by URL and keeps the project after reload-style remount", async () => {
-    const dts = createDtsRepo();
-    renderPage({
-      path: `/parameter-admin/projects/${projectId()}/config-sets`,
-      area: "projects",
-      dtsStructuredRepository: dts,
-      parameterFileRepository: createFileRepo()
-    });
-
-    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
-    const dialog = await screen.findByRole("dialog", { name: projectName() });
-    expect(within(dialog).getByRole("heading", { name: projectName() })).toBeInTheDocument();
-    expect(within(dialog).getByRole("region", { name: "项目配置集与基线" })).toBeInTheDocument();
-    expect(await within(dialog).findByRole("region", { name: "配置集 / 基线" })).toBeInTheDocument();
-    expect(dts.listConfigSets).toHaveBeenCalledWith(projectId());
-  });
-
-  it("adjusts config-set membership and shows the default config set", async () => {
-    const dts = createDtsRepo();
-    renderPage({
-      path: `/parameter-admin/projects/${projectId()}/config-sets`,
-      area: "projects",
-      dtsStructuredRepository: dts,
-      parameterFileRepository: createFileRepo()
-    });
-
-    await screen.findByRole("region", { name: "配置集 / 基线" });
-    expect(screen.getByText("默认")).toBeInTheDocument();
-    expect(screen.getByText("board-default")).toBeInTheDocument();
-    expect(await screen.findByRole("option", { name: "board.dts" })).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("成员文件"), { target: { value: "file-1" } });
-    fireEvent.change(screen.getByLabelText("成员角色"), { target: { value: "overlay" } });
-    fireEvent.click(screen.getByRole("button", { name: "添加成员" }));
-
-    await waitFor(() =>
-      expect(dts.addConfigSetFile).toHaveBeenCalledWith(projectId(), "cs-default", {
-        fileId: "file-1",
-        role: "overlay"
-      })
-    );
-    const memberList = screen.getByRole("list", { name: "配置集成员" });
-    expect(await within(memberList).findByText("board.dts")).toBeInTheDocument();
-  });
-
-  it("compare, rollback, and release each produce governance audit records", async () => {
-    const dts = createDtsRepo();
-    renderPage({
-      path: `/parameter-admin/projects/${projectId()}/config-sets`,
-      area: "projects",
-      dtsStructuredRepository: dts,
-      parameterFileRepository: createFileRepo()
-    });
-
-    await screen.findByText("v1-draft");
-
-    fireEvent.click(screen.getByRole("button", { name: "对比 v1-draft" }));
-    await waitFor(() => expect(dts.compareBaseline).toHaveBeenCalledWith(projectId(), "bl-1"));
-    expect(await screen.findByRole("status", { name: "治理审计" })).toHaveAttribute(
-      "data-audit-kind",
-      "baseline-compared"
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "回滚 v0-released" }));
-    fireEvent.click(
-      within(await screen.findByRole("dialog", { name: "回滚基线" })).getByRole("button", {
-        name: "确认回滚"
-      })
-    );
-    await waitFor(() => expect(dts.rollbackBaseline).toHaveBeenCalledWith(projectId(), "bl-released"));
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveAttribute(
-      "data-audit-kind",
-      "baseline-rolled-back"
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "发布 v1-draft" }));
-    fireEvent.click(
-      within(await screen.findByRole("dialog", { name: "发布基线" })).getByRole("button", {
-        name: "确认发布"
-      })
-    );
-    await waitFor(() =>
-      expect(dts.releaseBaseline).toHaveBeenCalledWith(projectId(), "bl-1", {
-        gateToken: "gate-token-admin"
-      })
-    );
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveAttribute(
-      "data-audit-kind",
-      "baseline-released"
-    );
-  });
-
-  it("exports the selected config set", async () => {
-    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:export");
-    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
-    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
-    const dts = createDtsRepo();
-
-    renderPage({
-      path: `/parameter-admin/projects/${projectId()}/config-sets`,
-      area: "projects",
-      dtsStructuredRepository: dts,
-      parameterFileRepository: createFileRepo()
-    });
-
-    await screen.findByRole("region", { name: "配置集 / 基线" });
-    fireEvent.click(screen.getByRole("button", { name: "导出配置集" }));
-
-    await waitFor(() => expect(dts.exportConfigSet).toHaveBeenCalledWith(projectId(), "cs-default"));
-    expect(createObjectURL).toHaveBeenCalled();
-    expect(clickSpy).toHaveBeenCalled();
-    expect(revokeObjectURL).toHaveBeenCalled();
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveAttribute(
-      "data-audit-kind",
-      "config-set-exported"
-    );
-  });
-
-  it("behaves identically when backed by the mock dts and topology adapters", async () => {
-    const { createMockDtsStructuredRepository } = await import(
-      "@/infrastructure/mock/mockDtsStructuredRepository"
-    );
-    const { createMockParameterFileRepository } = await import(
-      "@/infrastructure/mock/mockParameterFileRepository"
-    );
-    const { createMockParameterTopologyRepository } = await import(
-      "@/infrastructure/mock/mockParameterTopologyRepository"
-    );
-
-    renderPage({
-      path: `/parameter-admin/projects/${projectId()}/config-sets`,
-      area: "projects",
-      repository: createMockParameterTopologyRepository(),
-      dtsStructuredRepository: createMockDtsStructuredRepository(),
-      parameterFileRepository: createMockParameterFileRepository()
-    });
-
-    const panel = await screen.findByRole("region", { name: "配置集 / 基线" });
-    fireEvent.change(within(panel).getByLabelText("配置集名称"), { target: { value: "mock-board" } });
-    fireEvent.click(within(panel).getByRole("button", { name: "创建配置集" }));
-    expect(await within(panel).findByText("mock-board")).toBeInTheDocument();
-  });
-
-  it("withholds the revision gate instead of validating a teaching revision id", async () => {
-    renderPage({
-      path: `/parameter-admin/projects/${projectId()}/config-sets`,
-      area: "projects",
-      dtsStructuredRepository: createDtsRepo(),
-      parameterFileRepository: createFileRepo()
-    });
-
-    const panel = await screen.findByRole("region", { name: "配置集 / 基线" });
-    expect(within(panel).queryByRole("button", { name: "校验修订" })).not.toBeInTheDocument();
-    expect(within(panel).getByText(/需要先在参数工作台选定一个配置修订/)).toBeInTheDocument();
-    expect(screen.queryByText(/revision-teaching-1/)).not.toBeInTheDocument();
-  });
-});
-
-describe("ParameterAdminNextPage · project structure and conflict adjudication", () => {
-  const projectId = () => initialState.configDraft.projects[0]!.id;
-  const projectName = () => initialState.configDraft.projects[0]!.name;
-
-  function createDtsRepo(
-    overrides: Partial<import("@/application/ports/DtsStructuredRepository").DtsStructuredRepository> = {}
-  ): import("@/application/ports/DtsStructuredRepository").DtsStructuredRepository {
-    return {
-      listConfigSets: vi.fn().mockResolvedValue([]),
-      createConfigSet: vi.fn(),
-      addConfigSetFile: vi.fn(),
-      removeConfigSetFile: vi.fn(),
-      listBaselines: vi.fn().mockResolvedValue([]),
-      getReleaseReadiness: vi.fn().mockResolvedValue({
-        available: true,
-        level: "ready",
-        blockers: [],
-        warnings: [],
-        gateToken: "gate-token-structure",
-        evaluatedAt: "2026-08-07T00:00:00.000Z",
-        configSetId: "cs-default",
-        projectId: projectId(),
-        canCreateBaseline: true,
-        canRelease: true
-      }),
-      createBaseline: vi.fn(),
-      compareBaseline: vi.fn(),
-      rollbackBaseline: vi.fn(),
-      releaseBaseline: vi.fn(),
-      exportConfigSet: vi.fn(),
-      getStructure: vi.fn().mockResolvedValue({
-        nodes: [
-          {
-            nodePath: "soc/gpio",
-            name: "gpio",
-            labels: ["gpio_ctrl"],
-            properties: [
-              {
-                name: "gpio_int",
-                valueType: "u32-array",
-                rawText: "<1 2 3>",
-                normalizedValue: "1 2 3"
-              }
-            ],
-            phandleRefs: []
-          }
-        ]
-      }),
-      search: vi.fn().mockResolvedValue({ hits: [] }),
-      submitStructuredEdits: vi.fn(),
-      ...overrides
-    };
-  }
-
-  function createFileRepo(
-    overrides: Partial<import("@/application/ports/ParameterFileRepository").ParameterFileRepository> = {}
-  ): import("@/application/ports/ParameterFileRepository").ParameterFileRepository {
-    return {
-      listFiles: vi.fn().mockResolvedValue([
-        {
-          id: "file-dts-1",
-          projectId: projectId(),
-          fileName: "board.dts",
-          format: "dts",
-          enabled: true,
-          currentVersionId: "ver-dts-1",
-          currentVersionNumber: 1,
-          updatedAt: "2026-07-14T10:00:00.000Z"
-        }
-      ]),
-      uploadFile: vi.fn(),
-      uploadVersion: vi.fn(),
-      listVersions: vi.fn().mockResolvedValue([]),
-      downloadVersion: vi.fn(),
-      syncFile: vi.fn(),
-      listConflicts: vi.fn().mockResolvedValue([]),
-      resolveConflict: vi.fn(),
-      previewBulkConflictResolution: vi.fn(),
-      resolveConflictsBulk: vi.fn(),
-      ...overrides
-    } as import("@/application/ports/ParameterFileRepository").ParameterFileRepository;
-  }
-
-  it("browses the source DTS structure by project route", async () => {
-    const dts = createDtsRepo();
-    renderPage({
-      path: `/parameter-admin/projects/${projectId()}/structure`,
-      area: "projects",
-      dtsStructuredRepository: dts,
-      parameterFileRepository: createFileRepo()
-    });
-
-    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
-    const dialog = await screen.findByRole("dialog", { name: projectName() });
-    expect(within(dialog).getByRole("heading", { name: projectName() })).toBeInTheDocument();
-    expect(within(dialog).getByRole("region", { name: "项目源结构" })).toBeInTheDocument();
-    expect(await within(dialog).findByRole("region", { name: "结构浏览" })).toBeInTheDocument();
-    await waitFor(() =>
-      expect(dts.getStructure).toHaveBeenCalledWith(projectId(), "file-dts-1", "ver-dts-1")
-    );
-    expect(await within(dialog).findByRole("treeitem", { name: /gpio/ })).toBeInTheDocument();
-  });
-
-  it("confirms before leaving a project that has unsubmitted structured edits", async () => {
-    const { onNavigate } = renderPage({
-      path: `/parameter-admin/projects/${projectId()}/structure`,
-      area: "projects",
-      dtsStructuredRepository: createDtsRepo(),
-      parameterFileRepository: createFileRepo()
-    });
-
-    const dialog = await screen.findByRole("dialog", { name: projectName() });
-    const panel = await within(dialog).findByRole("region", { name: "结构浏览" });
-    fireEvent.click(await within(panel).findByRole("treeitem", { name: /gpio/ }));
-    fireEvent.click(within(panel).getByRole("button", { name: /编辑属性 gpio_int/ }));
-    fireEvent.change(within(panel).getByLabelText("cell 1"), { target: { value: "7" } });
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "关闭项目运营" }));
-    const leaveDialog = await screen.findByRole("dialog", { name: "离开项目" });
-    expect(onNavigate).not.toHaveBeenCalledWith("/parameter-admin/projects");
-
-    fireEvent.click(within(leaveDialog).getByRole("button", { name: "留在本页" }));
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "离开项目" })).not.toBeInTheDocument()
-    );
-    expect(onNavigate).not.toHaveBeenCalledWith("/parameter-admin/projects");
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "关闭项目运营" }));
-    fireEvent.click(
-      within(await screen.findByRole("dialog", { name: "离开项目" })).getByRole("button", {
-        name: "丢弃并离开"
-      })
-    );
-    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects");
-  });
-
-  it("leaves a project without a prompt when nothing is unsaved", async () => {
-    const { onNavigate } = renderPage({
-      path: `/parameter-admin/projects/${projectId()}/structure`,
-      area: "projects",
-      dtsStructuredRepository: createDtsRepo(),
-      parameterFileRepository: createFileRepo()
-    });
-
-    const dialog = await screen.findByRole("dialog", { name: projectName() });
-    await within(dialog).findByRole("region", { name: "结构浏览" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "关闭项目运营" }));
-
-    expect(screen.queryByRole("dialog", { name: "离开项目" })).not.toBeInTheDocument();
-    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects");
-  });
-
-  it("opens a search hit in the structure view with that node selected", async () => {
-    const dts = createDtsRepo({
-      search: vi.fn().mockResolvedValue({
-        hits: [
-          {
-            fileId: "file-dts-1",
-            fileName: "board.dts",
-            versionId: "ver-dts-1",
-            nodePath: "soc/gpio",
-            propertyName: "gpio_int",
-            snippet: "gpio_int=1 2 3"
-          }
-        ]
-      })
-    });
-    const { onNavigate, rerender } = renderPage({
-      path: `/parameter-admin/projects/${projectId()}/files`,
-      area: "projects",
-      dtsStructuredRepository: dts,
-      parameterFileRepository: createFileRepo()
-    });
-
-    const searchPanel = await screen.findByRole("region", { name: "DTS 结构化检索" });
-    fireEvent.change(within(searchPanel).getByLabelText("检索关键词"), {
-      target: { value: "gpio" }
-    });
-    fireEvent.click(within(searchPanel).getByRole("button", { name: "检索" }));
-    fireEvent.click(await within(searchPanel).findByRole("button", { name: /跳转到节点 soc\/gpio/ }));
-
-    expect(onNavigate).toHaveBeenCalledWith(
-      `/parameter-admin/projects/${projectId()}/structure`
-    );
-
-    rerender(`/parameter-admin/projects/${projectId()}/structure`);
-    const structurePanel = await screen.findByRole("region", { name: "结构浏览" });
-    await waitFor(() =>
-      expect(within(structurePanel).getByRole("treeitem", { name: /gpio/ })).toHaveAttribute(
-        "aria-selected",
-        "true"
-      )
-    );
-    expect(await within(structurePanel).findByLabelText("cell 1")).toBeInTheDocument();
   });
 
   it("reports an unknown project id as not found instead of titling the page with it", async () => {
     const { onNavigate } = renderPage({
-      path: "/parameter-admin/projects/does-not-exist-999/files",
-      area: "projects",
-      dtsStructuredRepository: createDtsRepo(),
-      parameterFileRepository: createFileRepo()
+      path: "/parameter-admin/projects/does-not-exist-999/configuration",
+      area: "projects"
     });
 
     const notFound = await screen.findByRole("region", { name: "项目不存在" });
     expect(within(notFound).getByText(/does-not-exist-999/)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "does-not-exist-999" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "项目参数文件" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "项目配置工作台" })).not.toBeInTheDocument();
 
     fireEvent.click(within(notFound).getByRole("button", { name: "返回项目清单" }));
     expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects");
-  });
-
-  it("shows a clear empty state when the project has no structured DTS file", async () => {
-    renderPage({
-      path: `/parameter-admin/projects/${projectId()}/structure`,
-      area: "projects",
-      dtsStructuredRepository: createDtsRepo(),
-      parameterFileRepository: createFileRepo({ listFiles: vi.fn().mockResolvedValue([]) })
-    });
-
-    expect(await screen.findByText(/当前项目没有可浏览的结构化 DTS 文件/)).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "结构浏览" })).not.toBeInTheDocument();
-  });
-
-  it("lists conflicts with both values and provenance, and resolves with audit", async () => {
-    const resolveConflict = vi.fn().mockResolvedValue({
-      id: "conflict-1",
-      organizationId: "org-1",
-      projectId: projectId(),
-      projectParameterValueId: "value-1",
-      parameterDefinitionId: "def-limit",
-      parameterName: "fast_charge_current_limit_ma",
-      parameterModule: "Charging Policy",
-      fileVersionId: "version-1",
-      fileDraftId: "file-draft-1",
-      uiDraftId: "ui-draft-1",
-      fileValue: "3200",
-      uiDraftValue: "3400",
-      status: "resolved_file",
-      createdAt: "2026-07-11T11:00:00.000Z"
-    });
-    const listConflicts = vi
-      .fn()
-      .mockResolvedValue([
-        {
-          id: "conflict-1",
-          organizationId: "org-1",
-          projectId: projectId(),
-          projectParameterValueId: "value-1",
-          parameterDefinitionId: "def-limit",
-          parameterName: "fast_charge_current_limit_ma",
-          parameterModule: "Charging Policy",
-          fileVersionId: "version-1",
-          fileDraftId: "file-draft-1",
-          uiDraftId: "ui-draft-1",
-          fileValue: "3200",
-          uiDraftValue: "3400",
-          status: "open",
-          createdAt: "2026-07-11T11:00:00.000Z"
-        }
-      ]);
-
-    renderPage({
-      path: `/parameter-admin/projects/${projectId()}/conflicts`,
-      area: "projects",
-      parameterFileRepository: createFileRepo({ listConflicts, resolveConflict }),
-      dtsStructuredRepository: createDtsRepo()
-    });
-
-    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
-    const dialog = await screen.findByRole("dialog", { name: projectName() });
-    expect(within(dialog).getByRole("heading", { name: projectName() })).toBeInTheDocument();
-    expect(within(dialog).getByRole("region", { name: "项目文件冲突" })).toBeInTheDocument();
-    expect(await within(dialog).findByText("fast_charge_current_limit_ma")).toBeInTheDocument();
-    expect(within(dialog).getByText("Charging Policy")).toBeInTheDocument();
-    expect(within(dialog).getByText("3200")).toBeInTheDocument();
-    expect(within(dialog).getByText("3400")).toBeInTheDocument();
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "保留文件值" }));
-    fireEvent.click(
-      within(await screen.findByRole("dialog", { name: "保留文件值" })).getByRole("button", {
-        name: "确认裁决"
-      })
-    );
-    await waitFor(() =>
-      expect(resolveConflict).toHaveBeenCalledWith(projectId(), "conflict-1", { resolution: "file" })
-    );
-    expect(screen.getByRole("status", { name: "治理审计" })).toHaveAttribute(
-      "data-audit-kind",
-      "file-conflict-resolved"
-    );
-  });
-
-  it("shows a clear empty state when there are no open conflicts", async () => {
-    renderPage({
-      path: `/parameter-admin/projects/${projectId()}/conflicts`,
-      area: "projects",
-      parameterFileRepository: createFileRepo({ listConflicts: vi.fn().mockResolvedValue([]) }),
-      dtsStructuredRepository: createDtsRepo()
-    });
-
-    expect(await screen.findByText("当前项目没有待处理冲突。")).toBeInTheDocument();
-  });
-
-  it("behaves identically with mock file and dts adapters for structure and conflicts", async () => {
-    const { createMockDtsStructuredRepository } = await import(
-      "@/infrastructure/mock/mockDtsStructuredRepository"
-    );
-    const { createMockParameterFileRepository } = await import(
-      "@/infrastructure/mock/mockParameterFileRepository"
-    );
-
-    renderPage({
-      path: `/parameter-admin/projects/${projectId()}/structure`,
-      area: "projects",
-      dtsStructuredRepository: createMockDtsStructuredRepository(),
-      parameterFileRepository: createMockParameterFileRepository()
-    });
-
-    expect(await screen.findByRole("region", { name: "结构浏览" })).toBeInTheDocument();
-
-    cleanup();
-    renderPage({
-      path: `/parameter-admin/projects/${projectId()}/conflicts`,
-      area: "projects",
-      dtsStructuredRepository: createMockDtsStructuredRepository(),
-      parameterFileRepository: createMockParameterFileRepository()
-    });
-    expect(await screen.findByRole("region", { name: "参数文件冲突处理" })).toBeInTheDocument();
   });
 });

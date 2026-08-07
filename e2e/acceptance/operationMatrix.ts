@@ -292,49 +292,49 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     id: "PROJ-OPS-001",
     priority: "P1",
     area: "parameters",
-    route: "/parameter-admin/projects/:projectId/:view",
+    route: "/parameter-admin/projects/:projectId/configuration",
     roles: ["Admin"],
     action:
-      "Open each project view by deep link, reload it, navigate between views, and open an unknown project id.",
-    coverage: "future",
-    acceptanceIds: ["PROJ-OPS-001"],
-    specFiles: ["src/ParameterAdminNextPage.test.tsx"],
+      "Superseded by PROJ-CONFIG-CUTOVER-001: legacy deep links redirect to equivalent workbench contexts; unknown project ids still show not-found.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-OPS-001", "PROJ-CONFIG-CUTOVER-001"],
+    specFiles: [
+      "e2e/acceptance/project-configuration-workbench.acceptance.spec.ts",
+      "src/ParameterAdminNextPage.test.tsx",
+      "src/components/parameter-admin-next/projectOperationsCutover.test.ts"
+    ],
     assertions: ["ui", "screenshot"],
-    deferralReason:
-      "Route/view resolution and the not-found state are covered by component tests plus playwright-cli evidence under work/ui-checks/project-operations-dialog/final/; a dedicated e2e deep-link spec follows."
   },
   {
     id: "PROJ-OPS-002",
     priority: "P1",
     area: "parameters",
-    route: "/parameter-admin/projects/:projectId/:view",
+    route: "/parameter-admin/projects/:projectId/configuration",
     roles: ["Admin"],
     action:
-      "Walk all four project views at 1440x900, 768x1024, and 390x844 and confirm no clipping, no horizontal overflow, and a stable view navigation position.",
-    coverage: "future",
-    acceptanceIds: ["PROJ-OPS-002"],
-    specFiles: ["src/ParameterAdminNextPage.test.tsx"],
+      "Superseded by PROJ-CONFIG-READ-001 / PROJ-CONFIG-CUTOVER-001: three-viewport workbench layout without clipping or page-level horizontal overflow.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-OPS-002", "PROJ-CONFIG-READ-001", "PROJ-CONFIG-CUTOVER-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
     assertions: ["ui", "screenshot"],
-    deferralReason:
-      "Three-viewport evidence and runtime overflow measurements live under work/ui-checks/project-operations-dialog/final/; a dedicated e2e viewport assertion follows."
   },
   {
     id: "PROJ-OPS-003",
     priority: "P1",
     area: "parameters",
-    route: "/parameter-admin/projects/:projectId/config-sets",
+    route: "/parameter-admin/projects/:projectId/configuration",
     roles: ["Admin"],
     action:
-      "Release and roll back a baseline, remove a config-set member, and arbitrate a file conflict, confirming each through its confirmation dialog.",
-    coverage: "future",
-    acceptanceIds: ["PROJ-OPS-003"],
-    specFiles: [
-      "src/components/admin/ConfigSetBaselinePanel.test.tsx",
-      "src/components/admin/ParameterFileConflictPanel.test.tsx"
+      "Superseded by PROJ-CONFIG-BASELINE-001 / PROJ-CONFIG-OPS-001 / PROJ-CONFIG-CONFLICT-001: baseline, membership, and conflict confirmations in workbench source context.",
+    coverage: "automated",
+    acceptanceIds: [
+      "PROJ-OPS-003",
+      "PROJ-CONFIG-BASELINE-001",
+      "PROJ-CONFIG-OPS-001",
+      "PROJ-CONFIG-CONFLICT-001"
     ],
-    assertions: ["ui", "audit", "screenshot"],
-    deferralReason:
-      "Confirmation and audit behaviour is covered by panel and page tests plus playwright-cli evidence; the API-mode e2e governance spec follows with a seeded baseline."
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
   },
   {
     id: "PROJ-CONFIG-READ-001",
@@ -492,6 +492,23 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["PROJ-CONFIG-BASELINE-001"],
     specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
     assertions: ["ui", "api", "screenshot"]
+  },
+  {
+    id: "PROJ-CONFIG-CUTOVER-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Legacy /files|/config-sets|/structure|/conflicts deep links redirect to equivalent workbench contexts preserving focus query params; new links use only /configuration; three viewports prove no lost capability.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-CUTOVER-001"],
+    specFiles: [
+      "e2e/acceptance/project-configuration-workbench.acceptance.spec.ts",
+      "src/ParameterAdminNextPage.test.tsx",
+      "src/components/parameter-admin-next/projectOperationsCutover.test.ts"
+    ],
+    assertions: ["ui", "screenshot", "api"]
   },
 
   {
@@ -942,7 +959,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameter-admin/projects",
     roles: ["Admin"],
-    action: "Create a config set and baseline via API and open the ConfigSetBaselinePanel on `/parameter-admin/projects/:id/config-sets`.",
+    action: "Create a config set and baseline via API and open the configuration workbench (`/parameter-admin/projects/:id/configuration?inspector=config-set`).",
     coverage: "automated",
     acceptanceIds: ["PARAM-DTS-CONFIGSET-001"],
     specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],
@@ -966,7 +983,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/api/v1/projects/:projectId/dts-search",
     roles: ["Admin"],
-    action: "Search structured DTS nodes by path and render DtsSearchPanel on `/parameter-admin/projects/:id/files`.",
+    action: "Search structured DTS nodes by path on the configuration workbench (`/parameter-admin/projects/:id/configuration`).",
     coverage: "automated",
     acceptanceIds: ["PARAM-DTS-SEARCH-001"],
     specFiles: ["e2e/acceptance/dts-structured.acceptance.spec.ts"],

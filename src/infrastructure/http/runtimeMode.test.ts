@@ -73,11 +73,11 @@ describe("parseRuntimeMode", () => {
 });
 
 describe("parseProjectConfigurationWorkbenchEnabled", () => {
-  it("enables the tracer only when explicitly requested outside production", () => {
+  it("always enables the canonical workbench (flag retired)", () => {
     expect(parseProjectConfigurationWorkbenchEnabled("true", "development")).toBe(true);
-    expect(parseProjectConfigurationWorkbenchEnabled("TRUE", "test")).toBe(true);
-    expect(parseProjectConfigurationWorkbenchEnabled(undefined, "development")).toBe(false);
-    expect(parseProjectConfigurationWorkbenchEnabled("false", "development")).toBe(false);
-    expect(parseProjectConfigurationWorkbenchEnabled("true", "production")).toBe(false);
+    expect(parseProjectConfigurationWorkbenchEnabled(undefined, "development")).toBe(true);
+    expect(parseProjectConfigurationWorkbenchEnabled("false", "development")).toBe(true);
+    expect(parseProjectConfigurationWorkbenchEnabled("true", "production")).toBe(true);
+    expect(parseProjectConfigurationWorkbenchEnabled(undefined, "production")).toBe(true);
   });
 });

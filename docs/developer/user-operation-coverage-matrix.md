@@ -27,9 +27,9 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PARAM-INIT-REVIEW-001` | P1 | parameters | future | `/parameter-review` | Admin | ui, api, db, audit | `src/App.tsx`<br>`server/modules/parameters/initializationService.test.ts` |
 | `PARAM-INIT-REJECT-001` | P1 | parameters | future | `/parameter-review` | Admin | ui, api, audit | `src/appReducer.parameterAdmin.test.ts`<br>`server/modules/parameters/initializationService.test.ts` |
 | `PARAM-INIT-LOCK-001` | P1 | parameters | future | `/parameters` | Software User, Admin | ui, api | `src/ParametersPage.test.tsx`<br>`server/modules/parameters/service.test.ts` |
-| `PROJ-OPS-001` | P1 | parameters | future | `/parameter-admin/projects/:projectId/:view` | Admin | ui, screenshot | `src/ParameterAdminNextPage.test.tsx` |
-| `PROJ-OPS-002` | P1 | parameters | future | `/parameter-admin/projects/:projectId/:view` | Admin | ui, screenshot | `src/ParameterAdminNextPage.test.tsx` |
-| `PROJ-OPS-003` | P1 | parameters | future | `/parameter-admin/projects/:projectId/config-sets` | Admin | ui, audit, screenshot | `src/components/admin/ConfigSetBaselinePanel.test.tsx`<br>`src/components/admin/ParameterFileConflictPanel.test.tsx` |
+| `PROJ-OPS-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`<br>`src/ParameterAdminNextPage.test.tsx`<br>`src/components/parameter-admin-next/projectOperationsCutover.test.ts` |
+| `PROJ-OPS-002` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
+| `PROJ-OPS-003` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, audit, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-READ-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-SOURCE-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-INSPECT-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
@@ -42,6 +42,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PROJ-CONFIG-CONFLICT-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-READINESS-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-BASELINE-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
+| `PROJ-CONFIG-CUTOVER-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, screenshot, api | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`<br>`src/ParameterAdminNextPage.test.tsx`<br>`src/components/parameter-admin-next/projectOperationsCutover.test.ts` |
 | `PARAM-ADMIN-DIALOG-001` | P1 | parameters | future | `/parameter-admin/projects` | Admin | ui, screenshot | `src/components/common/ModalDialog.test.tsx` |
 | `PARAM-IMPORT-DTS-FULL-001` | P1 | parameters | automated | `/parameter-admin` | Admin | ui, api | `e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts` |
 | `PARAM-IMPORT-REVIEW-META-001` | P1 | parameters | automated | `/parameter-admin` | Admin | api, db, audit | `e2e/acceptance/parameter-import-dts-td035.acceptance.spec.ts` |
@@ -131,9 +132,6 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 - `PARAM-INIT-REVIEW-001`: API-mode App handlers call Port approve; server materialize + audit covered in initializationService tests; full browser evidence follows.
 - `PARAM-INIT-REJECT-001`: Reducer and server reject paths covered; dedicated browser reject/resubmit e2e follows.
 - `PARAM-INIT-LOCK-001`: UI lock + submitParameterChanges assertProjectAllowsParameterSubmit covered by unit tests; browser lock evidence follows.
-- `PROJ-OPS-001`: Route/view resolution and the not-found state are covered by component tests plus playwright-cli evidence under work/ui-checks/project-operations-dialog/final/; a dedicated e2e deep-link spec follows.
-- `PROJ-OPS-002`: Three-viewport evidence and runtime overflow measurements live under work/ui-checks/project-operations-dialog/final/; a dedicated e2e viewport assertion follows.
-- `PROJ-OPS-003`: Confirmation and audit behaviour is covered by panel and page tests plus playwright-cli evidence; the API-mode e2e governance spec follows with a seeded baseline.
 - `PARAM-ADMIN-DIALOG-001`: The modal contract is covered by unit tests on the shared primitive plus playwright-cli evidence; a keyboard-focused e2e spec follows.
 - `BRIDGE-WIN-001`: Requires a real Windows bridge runtime and localhost health endpoint orchestration in acceptance.
 - `BRIDGE-HDC-001`: Requires a pre-paired bridge process, hdc on PATH, USB device, and DEVICE_BRIDGE_HDC_AVAILABLE=true.

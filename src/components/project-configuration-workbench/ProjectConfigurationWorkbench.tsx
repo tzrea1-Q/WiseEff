@@ -54,9 +54,7 @@ import {
   WorkbenchBaselineDock,
   formatRestorePreviewDescription
 } from "./WorkbenchBaselineDock";
-import {
-  isCriticalDtsNodePath
-} from "@/components/parameters/DtsStructureBrowserPanel";
+import { isCriticalDtsNodePath } from "@/components/parameters/dtsCriticalPath";
 import {
   StructuredValueEditor,
   type StructuredValueChange
@@ -212,10 +210,10 @@ function formatWorkbenchPath(projectId: string, search: string, patch: Workbench
   setOrDelete("version", patch.version);
   setOrDelete("candidate", patch.candidate);
   setOrDelete("baseline", patch.baseline);
-  if (patch.inspector === undefined) {
+  if (patch.inspector === null) {
     params.delete("inspector");
-  } else {
-    setOrDelete("inspector", patch.inspector);
+  } else if (patch.inspector !== undefined) {
+    params.set("inspector", patch.inspector);
   }
   return `/parameter-admin/projects/${encodeURIComponent(projectId)}/configuration?${params.toString()}`;
 }
@@ -676,9 +674,28 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [selectedMember?.fileId, selectedNodePath, selectedPropertyName]);
 
   useEffect(() => {
-    if (queryValue(search, "inspector") === "activity") {
+    const inspector = queryValue(search, "inspector");
+    if (inspector === "activity") {
       setInspectorLevelOverride("activity");
       setInspectorOpen(true);
+      return;
+    }
+    if (inspector === "file") {
+      setInspectorLevelOverride("file");
+      setInspectorOpen(true);
+      return;
+    }
+    if (inspector === "config-set") {
+      setInspectorLevelOverride("config-set");
+      setInspectorOpen(true);
+    }
+  }, [search]);
+
+  useEffect(() => {
+    const tasks = queryValue(search, "tasks");
+    const dock = queryValue(search, "dock");
+    if (tasks === "conflicts" || dock === "conflicts") {
+      setTasksOpen(true);
     }
   }, [search]);
 
@@ -2716,9 +2733,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
           ) : (
             <>
               <p>当前账号无法创建配置集。只读上下文仍可查看；请联系管理员完成初始化。</p>
-              <button className="button subtle" type="button" onClick={() => onNavigate(`/parameter-admin/projects/${encodeURIComponent(project.id)}/config-sets`)}>
-                打开旧配置集管理
-              </button>
             </>
           )}
         </div>

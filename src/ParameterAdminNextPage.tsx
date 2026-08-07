@@ -127,7 +127,6 @@ export function ParameterAdminNextPage({
   const isPlatformSuperAdmin = migrateLegacyRoleId(state?.activeRoleId ?? "") === "platform-admin";
   const isConfigurationWorkbenchRoute =
     area === "projects" &&
-    configurationWorkbenchEnabled &&
     /^\/parameter-admin\/projects\/[^/]+\/configuration\/?$/.test(pathname);
 
   useEffect(() => {

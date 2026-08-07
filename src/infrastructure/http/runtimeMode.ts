@@ -20,11 +20,15 @@ export function parseStaticApiAuthorization(value: string | undefined, environme
   return value;
 }
 
+/**
+ * @deprecated Flag retired in #240. The Project configuration workbench is always the
+ * canonical project-operations experience; the env value is ignored.
+ */
 export function parseProjectConfigurationWorkbenchEnabled(
-  value: string | undefined,
-  environment: string
+  _value?: string | undefined,
+  _environment?: string
 ): boolean {
-  return environment !== "production" && value?.trim().toLowerCase() === "true";
+  return true;
 }
 
 export const wiseEffRuntimeMode = parseRuntimeMode(import.meta.env.VITE_WISEEFF_RUNTIME_MODE, import.meta.env.MODE);

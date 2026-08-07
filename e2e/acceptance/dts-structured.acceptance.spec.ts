@@ -369,26 +369,24 @@ test.describe("DTS structured product browser acceptance", () => {
       const hits = searchBody.hits ?? searchBody.item?.hits ?? [];
       expect(hits.some((hit) => hit.nodePath.includes("chip@6E"))).toBe(true);
 
-      await signInBrowserAsRole(page, "admin", `/parameter-admin/projects/${projectId}/files`);
+      await signInBrowserAsRole(
+        page,
+        "admin",
+        `/parameter-admin/projects/${projectId}/configuration?inspector=file`
+      );
       await dismissXiaozeHint(page);
-      await expect(page.getByRole("region", { name: "项目参数文件" })).toBeVisible({
+      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({
         timeout: 30_000
       });
-      await expect(page.getByRole("navigation", { name: "项目运营视图" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "参数文件" })).toHaveAttribute("aria-current", "page");
-      await expect(page.getByRole("button", { name: "配置集 / 基线" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "结构浏览" })).toBeVisible();
-      await expect(page.getByRole("region", { name: "DTS 结构化检索" })).toBeVisible({ timeout: 20_000 });
-      await page.getByLabel("检索关键词").fill("chip@6E");
-      await page.getByRole("button", { name: "检索" }).click();
-      await expect(page.getByRole("button", { name: "检索" })).toBeEnabled({ timeout: 20_000 });
-      await expect(page.getByRole("button", { name: /跳转到节点 .*chip@6E/ }).first()).toBeVisible({
-        timeout: 20_000
-      });
+      await expect(page.getByRole("combobox", { name: "配置集" })).toBeVisible({ timeout: 20_000 });
+      const searchForm = page.getByRole("form", { name: "统一结构搜索" });
+      await searchForm.getByRole("searchbox", { name: "统一搜索查询" }).fill("chip@6E");
+      await searchForm.getByRole("button", { name: "搜索" }).click();
+      await expect(page.getByLabel("搜索结果")).toContainText(/chip@6E/, { timeout: 20_000 });
 
       await recordOperationEvidence({
         operationId: "PARAM-DTS-SEARCH-001",
-        title: "dts-search API and DtsSearchPanel",
+        title: "dts-search API and configuration workbench search",
         status: "passed",
         page,
         testInfo,
@@ -400,7 +398,7 @@ test.describe("DTS structured product browser acceptance", () => {
             responseSummary: `hits=${hits.length}`
           })
         ],
-        notes: "dts-search returned chip@6E hits and DtsSearchPanel mounted on the routed project files view."
+        notes: "dts-search returned chip@6E hits; configuration workbench search surface is visible."
       });
 
       const createCs = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
@@ -454,17 +452,17 @@ test.describe("DTS structured product browser acceptance", () => {
       const baselineBody = (await baselineResponse.json()) as { item: { id: string; name: string } };
       expect(baselineBody.item.name).toBe(baselineName);
 
-      await page.goto(`/parameter-admin/projects/${projectId}/config-sets`);
+      await page.goto(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&inspector=config-set`
+      );
       await dismissXiaozeHint(page);
-      await expect(page.getByRole("region", { name: "项目配置集与基线" })).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByRole("region", { name: "配置集 / 基线" })).toBeVisible({ timeout: 20_000 });
-      await expect(
-        page.getByRole("region", { name: "配置集 / 基线" }).getByRole("heading", { name: "配置集", exact: true })
-      ).toBeVisible();
+      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("combobox", { name: "配置集" })).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible({ timeout: 20_000 });
 
       await recordOperationEvidence({
         operationId: "PARAM-DTS-CONFIGSET-001",
-        title: "config-set and baseline + ConfigSetBaselinePanel",
+        title: "config-set and baseline + configuration workbench",
         status: "passed",
         page,
         testInfo,
@@ -482,7 +480,7 @@ test.describe("DTS structured product browser acceptance", () => {
             responseSummary: `baseline=${baselineBody.item.name}`
           })
         ],
-        notes: "Created config set + baseline via API; ConfigSetBaselinePanel visible on routed config-sets view."
+        notes: "Created config set + baseline via API; configuration workbench config-set inspector visible."
       });
 
       const nextVersionContent = sampleDts.replace("reg = <0x6e>;", "reg = <0x6f>;");
@@ -517,12 +515,10 @@ test.describe("DTS structured product browser acceptance", () => {
       expect(changedMember?.status).toBe("version_changed");
       expect((changedMember?.structuralDiff?.length ?? 0) > 0).toBe(true);
 
-      const configSetPanel = page.getByRole("region", { name: "配置集 / 基线" });
-      const compareButton = configSetPanel.getByRole("button", { name: new RegExp(`对比 ${baselineName}`) });
-      if (await compareButton.isVisible().catch(() => false)) {
-        await compareButton.click();
-        await expect(configSetPanel.getByRole("region", { name: "结构化差异" })).toBeVisible();
-      }
+      // Compare UX lives in the configuration workbench baseline dock (#238/#240).
+      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible();
+      await page.getByRole("button", { name: "检查器" }).click().catch(() => undefined);
+      await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible({ timeout: 20_000 });
 
       await recordOperationEvidence({
         operationId: "PARAM-DTS-DIFF-001",
@@ -538,7 +534,7 @@ test.describe("DTS structured product browser acceptance", () => {
             responseSummary: `diffCount=${changedMember?.structuralDiff?.length ?? 0}`
           })
         ],
-        notes: "Baseline compare returned structuralDiff for the drifted DTS member; StructuredDiffView mounts from ConfigSetBaselinePanel when compare is triggered."
+        notes: "Baseline compare returned structuralDiff for the drifted DTS member; workbench owns compare UI."
       });
     } finally {
       await cleanupDtsAcceptanceArtifacts([primaryFileName, peerFileName], {

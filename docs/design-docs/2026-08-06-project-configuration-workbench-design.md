@@ -584,6 +584,8 @@ Implementation requires a separate active execution plan and feature branch. Rec
 
 ### Phase 6 — cutover and cleanup
 
+> Status note (2026-08-08): Phase 6 implemented in #240 (`PROJ-CONFIG-CUTOVER-001`).
+
 - Redirect the four legacy routes to canonical contexts for one compatibility release.
 - Remove `ProjectOperationsDialog` and obsolete four-view navigation after acceptance evidence is green.
 - Delete page-shaped panels only after all domain logic has a new owner and targeted tests cover it.
