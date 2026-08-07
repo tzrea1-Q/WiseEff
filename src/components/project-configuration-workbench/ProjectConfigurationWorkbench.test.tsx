@@ -609,17 +609,16 @@ describe("ProjectConfigurationWorkbench", () => {
       canEditCritical: true
     });
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    // Wait for structure properties before interacting; full-suite CI can race the first expand.
-    await screen.findByRole("treeitem", { name: "属性 board/model" });
-
-    fireEvent.click(screen.getByRole("treeitem", { name: "节点 board" }));
-    fireEvent.click(screen.getByRole("treeitem", { name: "属性 board/model" }));
+    const boardNode = await screen.findByRole("treeitem", { name: "节点 board" });
+    fireEvent.click(boardNode);
+    const modelProperty = await screen.findByRole("treeitem", { name: "属性 board/model" });
+    fireEvent.click(modelProperty);
     let inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
       target: { value: "Aurora-X" }
     });
 
-    fireEvent.click(screen.getByRole("treeitem", { name: "属性 board/compatible" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/compatible" }));
     inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
       target: { value: "wiseeff,aurora-v2" }
