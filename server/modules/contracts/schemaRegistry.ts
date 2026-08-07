@@ -137,6 +137,37 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ConfigSetReleaseReadinessResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "parameters.getReleaseBaseline": {
+    summary: "Read one release baseline with pinned member versions",
+    tags: ["parameters"],
+    responseBody: "ReleaseBaselineDetailResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameters.compareReleaseBaseline": {
+    summary: "Compare a release baseline against working or current released tip members",
+    tags: ["parameters"],
+    responseBody: "ReleaseBaselineCompareResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "parameters.previewRestoreReleaseBaseline": {
+    summary: "Preview member/version blast radius for restoring a baseline without applying it",
+    tags: ["parameters"],
+    responseBody: "ReleaseBaselineRestorePreviewResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameters.rollbackReleaseBaseline": {
+    summary: "Atomically restore working member versions from a baseline without changing the released tip",
+    tags: ["parameters"],
+    responseBody: "ReleaseBaselineRollbackResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameters.releaseReleaseBaseline": {
+    summary: "Release a draft baseline tip with readiness gate evidence and demote the previous tip to historical",
+    tags: ["parameters"],
+    requestBody: "ReleaseBaselineRequest",
+    responseBody: "ReleaseBaselineReleaseResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "parameters.getParameterFileStructure": {
     summary: "Read structured DTS nodes/properties for a file version (includes source locators)",
     tags: ["parameters"],

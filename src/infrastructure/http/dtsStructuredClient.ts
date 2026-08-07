@@ -1,5 +1,6 @@
 import type {
   AddConfigSetFileInput,
+  CompareBaselineOptions,
   CreateBaselineInput,
   CreateConfigSetInput,
   DtsCompareBaselineResult,
@@ -10,6 +11,7 @@ import type {
   DtsReleaseBaseline,
   DtsReleaseBaselineResult,
   DtsReleaseReadiness,
+  DtsRestorePreviewResult,
   DtsRollbackBaselineResult,
   DtsSearchQuery,
   DtsSearchResult,
@@ -64,16 +66,24 @@ function routeReleaseReadiness(projectId: string, configSetId: string) {
   return `${routeConfigSets(projectId)}/${encodeURIComponent(configSetId)}/release-readiness`;
 }
 
+function routeBaseline(projectId: string, baselineId: string) {
+  return `${routeProject(projectId)}/baselines/${encodeURIComponent(baselineId)}`;
+}
+
 function routeBaselineCompare(projectId: string, baselineId: string) {
-  return `${routeProject(projectId)}/baselines/${encodeURIComponent(baselineId)}/compare`;
+  return `${routeBaseline(projectId, baselineId)}/compare`;
+}
+
+function routeBaselineRestorePreview(projectId: string, baselineId: string) {
+  return `${routeBaseline(projectId, baselineId)}/restore-preview`;
 }
 
 function routeBaselineRollback(projectId: string, baselineId: string) {
-  return `${routeProject(projectId)}/baselines/${encodeURIComponent(baselineId)}/rollback`;
+  return `${routeBaseline(projectId, baselineId)}/rollback`;
 }
 
 function routeBaselineRelease(projectId: string, baselineId: string) {
-  return `${routeProject(projectId)}/baselines/${encodeURIComponent(baselineId)}/release`;
+  return `${routeBaseline(projectId, baselineId)}/release`;
 }
 
 function routeExport(projectId: string, configSetId: string) {
@@ -118,6 +128,12 @@ export function createDtsStructuredClient(client: ApiClient = createDefaultApiCl
       const response = await client.get<ItemsEnvelope<DtsReleaseBaseline>>(routeBaselines(projectId, configSetId));
       return response.items;
     },
+    async getBaseline(projectId, baselineId) {
+      return client.get<{
+        item: DtsReleaseBaseline;
+        members: Array<{ baselineId: string; fileId: string; fileVersionId: string; versionNumber: number }>;
+      }>(routeBaseline(projectId, baselineId));
+    },
     async getReleaseReadiness(projectId, configSetId, options) {
       const query = new URLSearchParams();
       if (options?.acknowledgedWarningIds?.length) {
@@ -133,8 +149,21 @@ export function createDtsStructuredClient(client: ApiClient = createDefaultApiCl
       const response = await client.post<ItemEnvelope<DtsReleaseBaseline>>(routeBaselines(projectId, configSetId), input);
       return response.item;
     },
-    async compareBaseline(projectId, baselineId) {
-      const response = await client.get<ItemEnvelope<DtsCompareBaselineResult>>(routeBaselineCompare(projectId, baselineId));
+    async compareBaseline(projectId, baselineId, options?: CompareBaselineOptions) {
+      const query = new URLSearchParams();
+      if (options?.against) {
+        query.set("against", options.against);
+      }
+      const suffix = query.toString() ? `?${query.toString()}` : "";
+      const response = await client.get<ItemEnvelope<DtsCompareBaselineResult>>(
+        `${routeBaselineCompare(projectId, baselineId)}${suffix}`
+      );
+      return response.item;
+    },
+    async previewRestoreBaseline(projectId, baselineId) {
+      const response = await client.get<ItemEnvelope<DtsRestorePreviewResult>>(
+        routeBaselineRestorePreview(projectId, baselineId)
+      );
       return response.item;
     },
     async rollbackBaseline(projectId, baselineId) {

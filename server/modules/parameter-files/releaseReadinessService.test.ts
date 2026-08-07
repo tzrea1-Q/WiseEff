@@ -11,7 +11,12 @@ vi.mock("./configSetRepository", () => ({
 
 vi.mock("./baselineRepository", () => ({
   listConfigSetMemberFiles: vi.fn(),
-  listReleaseBaselinesByConfigSet: vi.fn()
+  listReleaseBaselinesByConfigSet: vi.fn(),
+  listReleaseBaselineMembers: vi.fn()
+}));
+
+vi.mock("./repository", () => ({
+  getFileVersionById: vi.fn()
 }));
 
 vi.mock("../parameters/repository", () => ({
@@ -32,7 +37,12 @@ vi.mock("./validationGate", () => ({
 }));
 
 import { getConfigSetById } from "./configSetRepository";
-import { listConfigSetMemberFiles, listReleaseBaselinesByConfigSet } from "./baselineRepository";
+import {
+  listConfigSetMemberFiles,
+  listReleaseBaselineMembers,
+  listReleaseBaselinesByConfigSet
+} from "./baselineRepository";
+import { getFileVersionById } from "./repository";
 import { listOpenConflicts } from "../parameters/repository";
 import { getLatestConfigRevision } from "../parameter-topology/repository";
 import {
@@ -43,6 +53,8 @@ import {
 const getConfigSetByIdMock = vi.mocked(getConfigSetById);
 const listMembersMock = vi.mocked(listConfigSetMemberFiles);
 const listBaselinesMock = vi.mocked(listReleaseBaselinesByConfigSet);
+const listBaselineMembersMock = vi.mocked(listReleaseBaselineMembers);
+const getFileVersionByIdMock = vi.mocked(getFileVersionById);
 const listConflictsMock = vi.mocked(listOpenConflicts);
 const getRevisionMock = vi.mocked(getLatestConfigRevision);
 const syncTasksMock = vi.mocked(syncSingletonCardinalityBlockingTasks);
@@ -97,6 +109,8 @@ describe("evaluateReleaseReadiness", () => {
       updatedAt: "2026-08-07T00:00:00.000Z"
     });
     listBaselinesMock.mockResolvedValue([]);
+    listBaselineMembersMock.mockResolvedValue([]);
+    getFileVersionByIdMock.mockResolvedValue(null);
     listConflictsMock.mockResolvedValue([]);
     getRevisionMock.mockResolvedValue(null);
     syncTasksMock.mockResolvedValue(undefined as never);
@@ -143,7 +157,7 @@ describe("evaluateReleaseReadiness", () => {
     expect(result.gateToken).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it("returns in-sync when released baseline exists and gate is clear", async () => {
+  it("returns in-sync when working members match the released tip", async () => {
     listBaselinesMock.mockResolvedValue([
       {
         id: "bl-released",
@@ -152,6 +166,14 @@ describe("evaluateReleaseReadiness", () => {
         name: "v1",
         status: "released",
         createdAt: "2026-08-07T00:00:00.000Z"
+      }
+    ]);
+    listBaselineMembersMock.mockResolvedValue([
+      {
+        baselineId: "bl-released",
+        fileId: "file-base",
+        fileVersionId: "ver-1",
+        versionNumber: 1
       }
     ]);
     const result = await evaluateReleaseReadiness(createFakeDb(), adminAuth(), { configSetId: "cs-1" }, {
@@ -166,6 +188,66 @@ describe("evaluateReleaseReadiness", () => {
       }
     });
     expect(result.level).toBe("in-sync");
+    expect(result.releasedBaselineId).toBe("bl-released");
+  });
+
+  it("stays ready (not in-sync) when a released tip exists but working has drifted", async () => {
+    listBaselinesMock.mockResolvedValue([
+      {
+        id: "bl-released",
+        organizationId: "org-1",
+        configSetId: "cs-1",
+        name: "v1",
+        status: "released",
+        createdAt: "2026-08-07T00:00:00.000Z"
+      }
+    ]);
+    listBaselineMembersMock.mockResolvedValue([
+      {
+        baselineId: "bl-released",
+        fileId: "file-base",
+        fileVersionId: "ver-old",
+        versionNumber: 1
+      }
+    ]);
+    getFileVersionByIdMock.mockImplementation(async (_db, input) => {
+      if (input.versionId === "ver-old") {
+        return {
+          id: "ver-old",
+          fileId: "file-base",
+          versionNumber: 1,
+          storageKey: "sk-old",
+          checksum: "a",
+          sizeBytes: 1,
+          parsedIndex: {},
+          origin: "upload",
+          createdAt: "2026-08-07T00:00:00.000Z"
+        };
+      }
+      return {
+        id: "ver-1",
+        fileId: "file-base",
+        versionNumber: 2,
+        storageKey: "sk-new",
+        checksum: "b",
+        sizeBytes: 2,
+        parsedIndex: {},
+        origin: "upload",
+        createdAt: "2026-08-07T01:00:00.000Z"
+      };
+    });
+    const result = await evaluateReleaseReadiness(createFakeDb(), adminAuth(), { configSetId: "cs-1" }, {
+      openConflicts: [],
+      pendingChangeCount: 0,
+      validationGate: {
+        ok: true,
+        mode: "block",
+        requiresConfirmation: false,
+        diagnostics: [],
+        compiler: "dtc"
+      }
+    });
+    expect(result.level).toBe("ready");
     expect(result.releasedBaselineId).toBe("bl-released");
   });
 

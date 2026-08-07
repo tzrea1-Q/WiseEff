@@ -44,6 +44,7 @@
 - `PROJ-CONFIG-OPS-001`：Admin 在同一规范路由验证配置集创建/配置、成员增删（角色/顺序/确认框）、未编组可见性与编入、手动同步任务证据、命令栏导出、空集上传/编入路径（不自动激活）以及非管理员只读保留；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-CONFLICT-001`：Admin 在同一规范路由验证源码定位三方冲突裁决（两侧等权、确认+可选审计原因、队列前进）、合格批量预览/裁决、开放冲突阻断候选激活，以及空队列时冲突坞保持折叠；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-READINESS-001`：Admin 在同一规范路由验证服务端发布就绪摘要、Issues 坞 remediation、阻断/不可用/过期或本机会话脏时创建/发布失败关闭，以及前端不用客户端计数发明权限；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
+- `PROJ-CONFIG-BASELINE-001`：Admin 在同一规范路由验证基线创建/对比/警告确认/发布/恢复预览与原子恢复、已发布 tip 不变与就绪刷新；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PARAM-ADMIN-DIALOG-001`：Admin 打开项目编辑、项目删除与治理确认框，检查焦点进入、Tab 受限、叠层 Escape、焦点归还与按下在内松开在外；共享弹窗原语的单元测试加 playwright-cli 证据先行。
 - `PARAM-ASSIGNEE-001/002`：Software User 在 `/parameters` 的 binding-centric 提交面板中看到三类项目作用域候选人；默认值非空，候选集合精确排除 inactive、guest、仅 Admin 与角色不匹配用户。自动化归属 `e2e/acceptance/parameter-topology.acceptance.spec.ts`。
 - `PFB-SUBMIT-001`：Admin 在 `/parameters` 通过侧边栏提交产品反馈，断言覆盖 UI、API、DB、audit 和截图证据（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。

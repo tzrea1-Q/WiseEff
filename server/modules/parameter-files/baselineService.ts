@@ -9,6 +9,7 @@ import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { diffResolvedDts, type StructuralChange } from "./baselineDiff";
 import {
+  demoteReleasedBaselinesExcept,
   getReleaseBaselineByConfigSetAndName,
   getReleaseBaselineById,
   insertReleaseBaseline,
@@ -44,6 +45,8 @@ export type BaselineMemberComparison = {
 
 export type CompareBaselineResult = {
   baselineId: string;
+  against: "working" | "released";
+  againstBaselineId?: string;
   members: BaselineMemberComparison[];
 };
 
@@ -51,9 +54,33 @@ export type CompareBaselineDeps = {
   objectStore?: ObjectStore;
 };
 
+export type CompareBaselineOptions = {
+  /** Compare pinned members against Working config (default) or the current released tip. */
+  against?: "working" | "released";
+};
+
 export type RollbackBaselineResult = {
   baselineId: string;
   restored: number;
+};
+
+export type RestorePreviewMember = {
+  fileId: string;
+  fileName?: string;
+  fromVersionId: string | null;
+  fromVersionNumber?: number;
+  toVersionId: string;
+  toVersionNumber: number;
+  action: "noop" | "rollback-pointer";
+};
+
+export type RestorePreviewResult = {
+  baselineId: string;
+  configSetId: string;
+  releasedBaselineId?: string;
+  releasedBaselineUnchanged: true;
+  members: RestorePreviewMember[];
+  driftedCount: number;
 };
 
 function requireParameterFileAdmin(auth: AuthContext) {
@@ -234,79 +261,120 @@ async function loadStructuralDiff(
  * When an objectStore is injected and the member is a dts file, version_changed
  * members also get a structural diff computed via resolveDts + normalizedValue,
  * so equivalent reorderings (hex case, multi-group flatten) never produce a false diff.
+ *
+ * `against=working` (default) compares the baseline to the config set's current members.
+ * `against=released` compares the baseline to the current released tip's pinned members.
  */
 export async function compareBaseline(
   db: Queryable,
   auth: AuthContext,
   baselineId: string,
-  deps: CompareBaselineDeps = {}
+  deps: CompareBaselineDeps = {},
+  options: CompareBaselineOptions = {}
 ): Promise<CompareBaselineResult> {
   requireParameterFileAdmin(auth);
 
+  const against = options.against ?? "working";
   const baseline = await getReleaseBaselineById(db, { organizationId: auth.organization.id, baselineId });
   if (!baseline) {
     throw new ApiError("NOT_FOUND", "Baseline not found.", 404, { baselineId });
   }
 
   const baselineMembers = await listReleaseBaselineMembers(db, { baselineId });
-  const currentMembers = await listConfigSetMemberFiles(db, baseline.configSetId);
-
   const baselineByFile = new Map(baselineMembers.map((member) => [member.fileId, member]));
-  const currentByFile = new Map(currentMembers.map((member) => [member.fileId, member]));
-  const fileIds = [...new Set([...baselineByFile.keys(), ...currentByFile.keys()])].sort();
 
+  let againstBaselineId: string | undefined;
+  let againstByFile = new Map<
+    string,
+    { fileId: string; fileName?: string; versionId?: string }
+  >();
+
+  if (against === "working") {
+    const currentMembers = await listConfigSetMemberFiles(db, baseline.configSetId);
+    againstByFile = new Map(
+      currentMembers.map((member) => [
+        member.fileId,
+        { fileId: member.fileId, fileName: member.fileName, versionId: member.currentVersionId }
+      ])
+    );
+  } else {
+    const baselines = await listReleaseBaselinesByConfigSet(db, { configSetId: baseline.configSetId });
+    const tip = baselines.find((item) => item.status === "released");
+    if (!tip) {
+      throw new ApiError("CONFLICT", "No released baseline exists to compare against.", 409, {
+        code: "released-baseline-missing",
+        configSetId: baseline.configSetId
+      });
+    }
+    againstBaselineId = tip.id;
+    const tipMembers = await listReleaseBaselineMembers(db, { baselineId: tip.id });
+    const tipMemberFiles = await listConfigSetMemberFiles(db, baseline.configSetId);
+    const nameByFile = new Map(tipMemberFiles.map((member) => [member.fileId, member.fileName]));
+    againstByFile = new Map(
+      tipMembers.map((member) => [
+        member.fileId,
+        {
+          fileId: member.fileId,
+          fileName: nameByFile.get(member.fileId),
+          versionId: member.fileVersionId
+        }
+      ])
+    );
+  }
+
+  const fileIds = [...new Set([...baselineByFile.keys(), ...againstByFile.keys()])].sort();
   const members: BaselineMemberComparison[] = [];
 
   for (const fileId of fileIds) {
     const baselineMember = baselineByFile.get(fileId);
-    const currentMember = currentByFile.get(fileId);
+    const againstMember = againstByFile.get(fileId);
 
-    if (baselineMember && !currentMember) {
+    if (baselineMember && !againstMember) {
       members.push({ fileId, status: "file_removed", baselineVersionId: baselineMember.fileVersionId });
       continue;
     }
 
-    if (!baselineMember && currentMember) {
+    if (!baselineMember && againstMember) {
       members.push({
         fileId,
-        fileName: currentMember.fileName,
+        fileName: againstMember.fileName,
         status: "file_added",
-        currentVersionId: currentMember.currentVersionId
+        currentVersionId: againstMember.versionId
       });
       continue;
     }
 
-    if (!baselineMember || !currentMember) {
+    if (!baselineMember || !againstMember) {
       continue;
     }
 
-    if (baselineMember.fileVersionId === currentMember.currentVersionId) {
+    if (baselineMember.fileVersionId === againstMember.versionId) {
       members.push({
         fileId,
-        fileName: currentMember.fileName,
+        fileName: againstMember.fileName,
         status: "unchanged",
         baselineVersionId: baselineMember.fileVersionId,
-        currentVersionId: currentMember.currentVersionId
+        currentVersionId: againstMember.versionId
       });
       continue;
     }
 
     // Decision C rollback pointers reuse the pinned blob storageKey under a new
     // version id. Treat that as unchanged so post-rollback compare is clean.
-    if (currentMember.currentVersionId) {
+    if (againstMember.versionId) {
       const baselineVersion = await getFileVersionById(db, { versionId: baselineMember.fileVersionId });
-      const currentVersion = await getFileVersionById(db, { versionId: currentMember.currentVersionId });
+      const againstVersion = await getFileVersionById(db, { versionId: againstMember.versionId });
       if (
         baselineVersion &&
-        currentVersion &&
-        baselineVersion.storageKey === currentVersion.storageKey
+        againstVersion &&
+        baselineVersion.storageKey === againstVersion.storageKey
       ) {
         members.push({
           fileId,
-          fileName: currentMember.fileName,
+          fileName: againstMember.fileName,
           status: "unchanged",
           baselineVersionId: baselineMember.fileVersionId,
-          currentVersionId: currentMember.currentVersionId
+          currentVersionId: againstMember.versionId
         });
         continue;
       }
@@ -314,17 +382,17 @@ export async function compareBaseline(
 
     const comparison: BaselineMemberComparison = {
       fileId,
-      fileName: currentMember.fileName,
+      fileName: againstMember.fileName,
       status: "version_changed",
       baselineVersionId: baselineMember.fileVersionId,
-      currentVersionId: currentMember.currentVersionId
+      currentVersionId: againstMember.versionId
     };
 
-    if (deps.objectStore && currentMember.currentVersionId) {
+    if (deps.objectStore && againstMember.versionId) {
       const structuralDiff = await loadStructuralDiff(db, deps.objectStore, auth, {
         fileId,
         baselineVersionId: baselineMember.fileVersionId,
-        currentVersionId: currentMember.currentVersionId
+        currentVersionId: againstMember.versionId
       });
       if (structuralDiff) {
         comparison.structuralDiff = structuralDiff;
@@ -334,7 +402,71 @@ export async function compareBaseline(
     members.push(comparison);
   }
 
-  return { baselineId, members };
+  return { baselineId, against, againstBaselineId, members };
+}
+
+/**
+ * Preview the exact member/version blast radius of restoring a baseline without applying it.
+ * Does not mutate files, baseline status, or the current released tip.
+ */
+export async function previewRestoreBaseline(
+  db: Queryable,
+  auth: AuthContext,
+  baselineId: string
+): Promise<RestorePreviewResult> {
+  requireParameterFileAdmin(auth);
+
+  const baseline = await getReleaseBaselineById(db, { organizationId: auth.organization.id, baselineId });
+  if (!baseline) {
+    throw new ApiError("NOT_FOUND", "Baseline not found.", 404, { baselineId });
+  }
+
+  const members = await listReleaseBaselineMembers(db, { baselineId });
+  const baselines = await listReleaseBaselinesByConfigSet(db, { configSetId: baseline.configSetId });
+  const tip = baselines.find((item) => item.status === "released");
+
+  const previewMembers: RestorePreviewMember[] = [];
+  for (const member of members) {
+    const file = await getProjectParameterFileById(db, {
+      organizationId: auth.organization.id,
+      fileId: member.fileId
+    });
+    if (!file) {
+      throw new ApiError("NOT_FOUND", "A baseline member file no longer exists; restore preview aborted.", 404, {
+        baselineId,
+        fileId: member.fileId
+      });
+    }
+
+    const targetVersion = await getFileVersionById(db, { versionId: member.fileVersionId });
+    if (!targetVersion) {
+      throw new ApiError("NOT_FOUND", "The baseline-pinned file version no longer exists; restore preview aborted.", 404, {
+        baselineId,
+        fileId: member.fileId,
+        versionId: member.fileVersionId
+      });
+    }
+
+    const alreadyPinned = file.currentVersionId === member.fileVersionId;
+    previewMembers.push({
+      fileId: member.fileId,
+      fileName: file.fileName,
+      fromVersionId: file.currentVersionId ?? null,
+      fromVersionNumber: file.currentVersionNumber,
+      toVersionId: member.fileVersionId,
+      toVersionNumber: member.versionNumber,
+      action: alreadyPinned ? "noop" : "rollback-pointer"
+    });
+  }
+
+  return {
+    baselineId,
+    configSetId: baseline.configSetId,
+    releasedBaselineId: tip?.id,
+    releasedBaselineUnchanged: true,
+    members: previewMembers,
+    driftedCount: previewMembers.filter((item) => item.action === "rollback-pointer").length
+  };
 }
 
 async function writeBaselineRolledBackAudit(
@@ -553,6 +685,11 @@ export async function releaseBaseline(
     const configSet = await getConfigSetById(tx, {
       organizationId: auth.organization.id,
       configSetId: baseline.configSetId
+    });
+
+    await demoteReleasedBaselinesExcept(tx, {
+      configSetId: baseline.configSetId,
+      keepBaselineId: baselineId
     });
 
     const updated = await updateBaselineStatus(tx, { baselineId, status: "released" });

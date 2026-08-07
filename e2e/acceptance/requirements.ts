@@ -219,6 +219,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title: "Server-owned release readiness for the selected Config set: command-bar summary, Issues task dock with ordered blockers/warnings and remediation locators, fail-closed baseline create/release when blocked/unavailable/stale or local session dirty, and no client-side reconstruction of release permission from unrelated counts.",
     required: false
   },
+  {
+    id: "PROJ-CONFIG-BASELINE-001",
+    workflow: "C",
+    title: "Release baseline create/compare/release/restore in source context: snapshot without mutating files, readiness-gated create/release, draft/released/historical identities, unified or side-by-side compare with Working position restore, warning acknowledgement, impact release with audit and drift refresh, restore preview and atomic apply leaving released tip unchanged.",
+    required: false
+  },
 
   {
     id: "PARAM-ADMIN-DIALOG-001",

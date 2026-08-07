@@ -480,6 +480,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
     assertions: ["ui", "api", "screenshot"]
   },
+  {
+    id: "PROJ-CONFIG-BASELINE-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Create, compare, acknowledge warnings, release, and restore baselines in the configuration workbench source context; preview restore blast radius; prove atomic restore leaves the released tip unchanged and refreshes readiness.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-BASELINE-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
 
   {
     id: "PARAM-ADMIN-DIALOG-001",

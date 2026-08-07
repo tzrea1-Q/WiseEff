@@ -6,8 +6,9 @@ import { canAdminParameters } from "../parameters/policy";
 import { listOpenConflicts } from "../parameters/repository";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { listConfigSetMemberFiles, listReleaseBaselinesByConfigSet } from "./baselineRepository";
+import { listConfigSetMemberFiles, listReleaseBaselineMembers, listReleaseBaselinesByConfigSet } from "./baselineRepository";
 import { getConfigSetById } from "./configSetRepository";
+import { getFileVersionById } from "./repository";
 import {
   countBlockingIdentityMappingTasksForRevision,
   syncSingletonCardinalityBlockingTasks
@@ -122,6 +123,46 @@ function sortIssues(issues: ReleaseReadinessIssue[]) {
     if (severity !== 0) return severity;
     return a.id.localeCompare(b.id);
   });
+}
+
+async function workingMatchesReleasedTip(
+  db: Queryable,
+  input: {
+    configSetId: string;
+    members: Awaited<ReturnType<typeof listConfigSetMemberFiles>>;
+    releasedBaselineId: string;
+  }
+): Promise<boolean> {
+  const tipMembers = await listReleaseBaselineMembers(db, { baselineId: input.releasedBaselineId });
+  const tipByFile = new Map(tipMembers.map((member) => [member.fileId, member]));
+  const workingByFile = new Map(input.members.map((member) => [member.fileId, member]));
+
+  if (tipByFile.size !== workingByFile.size) {
+    return false;
+  }
+
+  for (const [fileId, tipMember] of tipByFile) {
+    const working = workingByFile.get(fileId);
+    if (!working?.currentVersionId) {
+      return false;
+    }
+    if (working.currentVersionId === tipMember.fileVersionId) {
+      continue;
+    }
+    const tipVersion = await getFileVersionById(db, { versionId: tipMember.fileVersionId });
+    const workingVersion = await getFileVersionById(db, { versionId: working.currentVersionId });
+    if (!tipVersion || !workingVersion || tipVersion.storageKey !== workingVersion.storageKey) {
+      return false;
+    }
+  }
+
+  for (const fileId of workingByFile.keys()) {
+    if (!tipByFile.has(fileId)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function deriveLevel(input: {
@@ -433,21 +474,29 @@ export async function evaluateReleaseReadiness(
     }
   }
 
+  const sortedBlockers = sortIssues(blockers);
+  const sortedWarnings = sortIssues(warnings);
+
   let releasedBaselineId: string | undefined;
+  let inSync = false;
   try {
     const baselines = await listReleaseBaselinesByConfigSet(db, { configSetId: input.configSetId });
     releasedBaselineId = baselines.find((item) => item.status === "released")?.id;
+    if (releasedBaselineId && sortedBlockers.length === 0) {
+      inSync = await workingMatchesReleasedTip(db, {
+        configSetId: input.configSetId,
+        members,
+        releasedBaselineId
+      });
+    }
   } catch {
     // Released identity is optional for create; do not fail the whole gate.
   }
 
-  const sortedBlockers = sortIssues(blockers);
-  const sortedWarnings = sortIssues(warnings);
-  // Without a full baseline compare in this ticket, treat "ready + released + no issues" as in-sync.
   const resolvedLevel = deriveLevel({
     blockers: sortedBlockers,
     warnings: sortedWarnings,
-    inSync: Boolean(releasedBaselineId)
+    inSync
   });
 
   const gateToken = fingerprintPayload({

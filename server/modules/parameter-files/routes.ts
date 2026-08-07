@@ -18,7 +18,9 @@ import {
 import {
   compareBaseline,
   createBaseline,
+  getBaseline,
   listBaselines,
+  previewRestoreBaseline,
   releaseBaseline,
   rollbackToBaseline
 } from "./baselineService";
@@ -630,15 +632,39 @@ export function registerParameterFileRoutes(
     return { status: 201, body: { item } };
   });
 
+  router.get("/api/v1/projects/:projectId/baselines/:baselineId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
+    const item = await getBaseline(db, auth, params.baselineId);
+    return { status: 200, body: { item: item.baseline, members: item.members } };
+  });
+
   router.get("/api/v1/projects/:projectId/baselines/:baselineId/compare", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
-    const item = await compareBaseline(db, auth, params.baselineId, {
-      objectStore: requireObjectStore(options.objectStore)
-    });
+    const againstRaw = firstQueryValue(request.query.against);
+    const against = againstRaw === "released" ? "released" : "working";
+    const item = await compareBaseline(
+      db,
+      auth,
+      params.baselineId,
+      { objectStore: requireObjectStore(options.objectStore) },
+      { against }
+    );
 
+    return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/projects/:projectId/baselines/:baselineId/restore-preview", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
+    const item = await previewRestoreBaseline(db, auth, params.baselineId);
     return { status: 200, body: { item } };
   });
 

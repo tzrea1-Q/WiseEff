@@ -27189,3 +27189,40 @@ button.dts-topology-navigator__disclosure:focus-visible {
   }
 
 }
+
+.configuration-workbench__baseline-dock {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--border, #d0d7de) 80%, transparent);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--surface, #fff) 92%, #eef2f6);
+}
+
+.configuration-workbench__baseline-dock-header,
+.configuration-workbench__baseline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.configuration-workbench__baseline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.configuration-workbench__baseline-item {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.configuration-workbench__baseline-detail ul,
+.configuration-workbench__baseline-compare ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1rem;
+}

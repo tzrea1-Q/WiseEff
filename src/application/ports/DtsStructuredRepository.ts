@@ -106,7 +106,7 @@ export type AddConfigSetFileInput = {
   sortOrder?: number;
 };
 
-export type BaselineStatus = "draft" | "released";
+export type BaselineStatus = "draft" | "released" | "historical";
 
 export type DtsReleaseBaseline = {
   id: string;
@@ -203,12 +203,37 @@ export type DtsBaselineMemberComparison = {
 
 export type DtsCompareBaselineResult = {
   baselineId: string;
+  against?: "working" | "released";
+  againstBaselineId?: string;
   members: DtsBaselineMemberComparison[];
+};
+
+export type CompareBaselineOptions = {
+  against?: "working" | "released";
 };
 
 export type DtsRollbackBaselineResult = {
   baselineId: string;
   restored: number;
+};
+
+export type DtsRestorePreviewMember = {
+  fileId: string;
+  fileName?: string;
+  fromVersionId: string | null;
+  fromVersionNumber?: number;
+  toVersionId: string;
+  toVersionNumber: number;
+  action: "noop" | "rollback-pointer";
+};
+
+export type DtsRestorePreviewResult = {
+  baselineId: string;
+  configSetId: string;
+  releasedBaselineId?: string;
+  releasedBaselineUnchanged: true;
+  members: DtsRestorePreviewMember[];
+  driftedCount: number;
 };
 
 export type DtsValidationGateResult = {
@@ -319,13 +344,22 @@ export interface DtsStructuredRepository {
   removeConfigSetFile(projectId: string, configSetId: string, fileId: string): Promise<void>;
 
   listBaselines(projectId: string, configSetId: string): Promise<DtsReleaseBaseline[]>;
+  getBaseline(
+    projectId: string,
+    baselineId: string
+  ): Promise<{ item: DtsReleaseBaseline; members: Array<{ baselineId: string; fileId: string; fileVersionId: string; versionNumber: number }> }>;
   getReleaseReadiness(
     projectId: string,
     configSetId: string,
     options?: { acknowledgedWarningIds?: string[] }
   ): Promise<DtsReleaseReadiness>;
   createBaseline(projectId: string, configSetId: string, input: CreateBaselineInput): Promise<DtsReleaseBaseline>;
-  compareBaseline(projectId: string, baselineId: string): Promise<DtsCompareBaselineResult>;
+  compareBaseline(
+    projectId: string,
+    baselineId: string,
+    options?: CompareBaselineOptions
+  ): Promise<DtsCompareBaselineResult>;
+  previewRestoreBaseline(projectId: string, baselineId: string): Promise<DtsRestorePreviewResult>;
   rollbackBaseline(projectId: string, baselineId: string): Promise<DtsRollbackBaselineResult>;
   releaseBaseline(
     projectId: string,
