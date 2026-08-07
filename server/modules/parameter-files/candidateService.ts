@@ -362,7 +362,7 @@ export async function createCandidate(
         blockers: []
       });
       if (!failed) {
-        throw new ApiError("INTERNAL", "Failed to persist candidate parse failure.", 500);
+        throw new ApiError("INTERNAL_ERROR", "Failed to persist candidate parse failure.", 500);
       }
       await writeCandidateAudit(
         tx,
@@ -409,7 +409,7 @@ export async function createCandidate(
       blockers: computed.blockers
     });
     if (!updated) {
-      throw new ApiError("INTERNAL", "Failed to persist candidate impact.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Failed to persist candidate impact.", 500);
     }
 
     await writeCandidateAudit(
@@ -607,7 +607,7 @@ export async function recomputeCandidateImpact(
       blockers: computed.blockers
     });
     if (!updated) {
-      throw new ApiError("INTERNAL", "Failed to persist recomputed candidate impact.", 500);
+      throw new ApiError("INTERNAL_ERROR", "Failed to persist recomputed candidate impact.", 500);
     }
     await writeCandidateAudit(
       tx,
