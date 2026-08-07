@@ -41,6 +41,7 @@ const migration0089 = "0089_driver_registration_default_business_category.sql";
 const migration0090 = "0090_parameter_spec_identity_surrogate.sql";
 const migration0091 = "0091_project_parameter_initialization.sql";
 const migration0092 = "0092_dts_structural_spans.sql";
+const migration0093 = "0093_project_parameter_file_candidates.sql";
 
 const enablementMigrations = [
   migration0068,
@@ -68,6 +69,7 @@ const enablementMigrations = [
   migration0090,
   migration0091,
   migration0092,
+  migration0093,
 ] as const;
 const REQUIRED_TABLES = [
   "parameter_specs",
