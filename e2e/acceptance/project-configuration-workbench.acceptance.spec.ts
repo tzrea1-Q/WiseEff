@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "playwright/test";
 
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import {
   recordOperationEvidence,
@@ -32,6 +33,10 @@ async function dismissXiaozeHint(page: Page) {
 }
 
 test.describe("project configuration workbench read-only browser acceptance", () => {
+  test.beforeAll(async () => {
+    await seedAcceptanceRoleMatrix();
+  });
+
   test("enters from the project list and reads a scoped active DTS member in API mode", async ({ page, request }, testInfo) => {
     // @acceptance PROJ-CONFIG-READ-001
     // @operation PROJ-CONFIG-READ-001
@@ -775,6 +780,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     // @operation PROJ-CONFIG-OPS-001
     const suffix = randomUUID();
     const configSetName = `file-config-ops-${suffix}`;
+    const emptyConfigSetName = `file-config-ops-empty-${suffix}`;
     const primaryFileName = `acceptance-ops-primary-${suffix}.dts`;
     const looseFileName = `acceptance-ops-loose-${suffix}.json`;
 
@@ -881,18 +887,59 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page.getByRole("region", { name: "配置任务" })).toContainText(primaryFileName);
 
       await page.getByRole("button", { name: "导出配置集" }).click();
-      await expect(page.getByRole("status").filter({ hasText: "已导出配置集" })).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator(".configuration-workbench__ops-banner").filter({ hasText: "已导出配置集" })).toBeVisible({ timeout: 15_000 });
 
       await page.getByLabel("配置集名称").fill(configSetName);
       await page.getByRole("button", { name: "创建配置集" }).click();
       await expect(page.getByRole("alert").filter({ hasText: "已存在名为" })).toBeVisible();
 
+      const emptyCreate = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(),
+        data: { name: emptyConfigSetName, description: "Empty focused upload path" }
+      });
+      expect(emptyCreate.status()).toBe(201);
+      const emptyBody = (await emptyCreate.json()) as { item: { id: string; name: string } };
+
+      await page.goto(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(emptyBody.item.id)}`
+      );
+      await dismissXiaozeHint(page);
+      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText("当前配置集没有成员文件")).toBeVisible();
+      await expect(page.getByText(/上传候选不会自动激活工作配置/)).toBeVisible();
+      await expect(page.getByRole("button", { name: "上传候选" }).first()).toBeVisible();
+      await expect(page.getByRole("group", { name: "未编组项目文件" })).toBeVisible();
+      await expect(page.getByText(/已自动激活|自动成为工作配置/)).toHaveCount(0);
+
+      const deniedAdd = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
+        {
+          headers: authHeadersForRole("hardware-user"),
+          data: { fileId: looseBody.item.id, role: "misc", sortOrder: 1 }
+        }
+      );
+      expect(deniedAdd.status()).toBe(403);
+      const deniedExport = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/export`),
+        { headers: authHeadersForRole("hardware-user") }
+      );
+      expect(deniedExport.status()).toBe(403);
+
+      // Parameter-admin page requires Admin, so non-admin denial is asserted via API while
+      // the Admin browser session keeps the workbench read context visible.
+      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible();
+      await expect(page.getByText("当前配置集没有成员文件")).toBeVisible();
+      await expect(page.getByRole("group", { name: "未编组项目文件" })).toContainText(looseFileName);
+
       const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-file-config-ops.json", {
         route: page.url(),
         configSetId,
+        emptyConfigSetId: emptyBody.item.id,
         primaryFileId: primaryBody.item.id,
         looseFileId: looseBody.item.id,
-        exportMembers: exportBody.manifest.members.length
+        exportMembers: exportBody.manifest.members.length,
+        nonAdminDeniedAddStatus: deniedAdd.status(),
+        nonAdminDeniedExportStatus: deniedExport.status()
       });
       await recordOperationEvidence({
         operationId: "PROJ-CONFIG-OPS-001",
@@ -919,15 +966,20 @@ test.describe("project configuration workbench read-only browser acceptance", ()
             method: "POST",
             path: `/api/v1/projects/${projectId}/parameter-files/${primaryBody.item.id}/sync`,
             responseSummary: "sync ok"
+          }),
+          summarizeApiResponse(deniedAdd, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/config-sets/${configSetId}/files`,
+            responseSummary: "hardware-user denied 403"
           })
         ],
-        notes: "Workbench create validation, member assign/remove with confirmation, ungrouped visibility, manual sync evidence, and export were exercised through ports-backed UI."
+        notes: "Workbench create validation, member assign/remove with confirmation, ungrouped visibility, manual sync evidence, export, empty Config set focused upload/assignment copy (no auto-activation), and non-admin API denial with Admin read context retained."
       });
     } finally {
       await cleanupSemanticAcceptanceArtifacts({
         organizationId,
         projectId,
-        configSetNames: [configSetName],
+        configSetNames: [configSetName, emptyConfigSetName],
         fileNames: [primaryFileName, looseFileName]
       });
     }

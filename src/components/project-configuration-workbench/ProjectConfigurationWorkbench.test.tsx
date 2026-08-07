@@ -1228,6 +1228,7 @@ describe("ProjectConfigurationWorkbench", () => {
     const createObjectURL = vi.fn(() => "blob:export");
     const revokeObjectURL = vi.fn();
     const clickSpy = vi.fn();
+    const blobSpy = vi.spyOn(globalThis, "Blob");
     vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
     const originalCreateElement = document.createElement.bind(document);
     vi.spyOn(document, "createElement").mockImplementation((tagName: string) => {
@@ -1246,6 +1247,16 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "导出配置集" }));
     await waitFor(() => expect(exportConfigSet).toHaveBeenCalledWith(PROJECT.id, "cs-default"));
     expect(createObjectURL).toHaveBeenCalled();
+    expect(blobSpy).toHaveBeenCalled();
+    const blobParts = (blobSpy.mock.calls.at(-1)?.[0] ?? []) as BlobPart[];
+    const downloaded = blobParts.map((part) => (typeof part === "string" ? part : String(part))).join("");
+    expect(downloaded).toContain("wiseeff-config-set-export-manifest.json");
+    expect(downloaded).toContain('"role": "base"');
+    expect(downloaded).toContain('"sortOrder": 0');
+    expect(downloaded).toContain('"validation"');
+    expect(downloaded).toContain('"mode": "warn"');
+    expect(downloaded).toContain("aurora-board.dts");
+    expect(downloaded).toContain("wiseeff-config-set-export-files");
     expect(clickSpy).toHaveBeenCalled();
     expect(revokeObjectURL).toHaveBeenCalled();
     vi.unstubAllGlobals();

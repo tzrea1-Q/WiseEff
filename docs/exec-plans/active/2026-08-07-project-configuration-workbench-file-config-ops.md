@@ -59,40 +59,40 @@ Reuse validation/export helpers patterns from `ConfigSetBaselinePanel` without n
 
 ### 0. Register plan
 
-- [ ] Create bilingual active plans and add them to EN/ZH `PLANS.md` Current Active / 关键阅读点 lists.
-- [ ] Claim issue #236 (`gh issue edit 236 --add-assignee @me`).
-- [ ] Lock the TDD seams above.
+- [x] Create bilingual active plans and add them to EN/ZH `PLANS.md` Current Active / 关键阅读点 lists.
+- [x] Claim issue #236 (`gh issue edit 236 --add-assignee @me`).
+- [x] Lock the TDD seams above.
 
 ### A. Create / configure Config set
 
-- [ ] Red: empty name and duplicate-name validation visible in selector/inspector create path.
-- [ ] Green: `dtsRepository.createConfigSet`; refresh selector; select new set.
+- [x] Red: empty name and duplicate-name validation visible in selector/inspector create path.
+- [x] Green: `dtsRepository.createConfigSet`; refresh selector; select new set.
 
 ### B. Member add / remove / roles / order
 
-- [ ] Red/Green: add member with role + sortOrder via `addConfigSetFile`.
-- [ ] Red/Green: remove requires ConfirmDialog describing blast radius; then `removeConfigSetFile`.
-- [ ] Ungrouped files stay outside Working/Release until assigned; assignment path from ungrouped row or inspector.
+- [x] Red/Green: add member with role + sortOrder via `addConfigSetFile`.
+- [x] Red/Green: remove requires ConfirmDialog describing blast radius; then `removeConfigSetFile`.
+- [x] Ungrouped files stay outside Working/Release until assigned; assignment path from ungrouped row or inspector.
 
 ### C. Manual sync + task evidence
 
-- [ ] Red/Green: file inspector Manual sync → `fileRepository.syncFile`; summary in task dock evidence; refresh drafts/conflicts when applicable.
+- [x] Red/Green: file inspector Manual sync → `fileRepository.syncFile`; summary in task dock evidence; refresh drafts/conflicts when applicable.
 
 ### D. Export from command context
 
-- [ ] Red/Green: Export uses `exportConfigSet`; downloads/returns members, roles, ordering, validation metadata (manifest + files).
+- [x] Red/Green: Export uses `exportConfigSet`; downloads/returns members, roles, ordering, validation metadata (manifest + files).
 
 ### E. Empty Config set focused path
 
-- [ ] Red/Green: empty set shows Candidate upload/assignment path; copy explains upload does not activate; remove legacy-only “open old config-sets” as the primary empty path when create is available.
+- [x] Red/Green: empty set shows Candidate upload/assignment path; copy explains upload does not activate; remove legacy-only “open old config-sets” as the primary empty path when create is available.
 
 ### F. Authz + acceptance + docs
 
-- [ ] Admin gate for mutations; denial keeps read context.
-- [ ] Register `PROJ-CONFIG-OPS-001` in EN/ZH coverage maps, `requirements.ts`, `operationMatrix.ts`, e2e.
-- [ ] Update FRONTEND (+ ZH) for file/config-set ops in contextual inspectors.
-- [ ] Verification matrix + three-viewport evidence under `work/ui-checks/project-configuration-workbench-file-config-ops/`.
-- [ ] Standards vs Spec review vs `4f1c25b9`; fix; move plans to `completed/`.
+- [x] Admin gate for mutations; denial keeps read context.
+- [x] Register `PROJ-CONFIG-OPS-001` in EN/ZH coverage maps, `requirements.ts`, `operationMatrix.ts`, e2e.
+- [x] Update FRONTEND (+ ZH) for file/config-set ops in contextual inspectors.
+- [x] Verification matrix + three-viewport evidence under `work/ui-checks/project-configuration-workbench-file-config-ops/`.
+- [x] Standards vs Spec review vs `4f1c25b9`; fix; move plans to `completed/`.
 
 ## Browser acceptance mapping
 
@@ -138,6 +138,14 @@ Review gate: Standards vs Spec against `4f1c25b9c41f6b52bac06fc16488b81e6f5d5b39
 | Architecture / domain / ADR | Review | design doc already covers Phase 2 ops |
 | Reliability / security | Review | authz/audit already on server routes; UI Admin gate |
 | Environment | Review | existing workbench flag only |
+
+## Outcomes
+
+- Spec-review fix: `ProjectsOperationsPanel` derives `canAdmin` from `canPerform(activeRoleId, "admin.access")` and passes it to the workbench + ConfigSetBaselinePanel (no hardcoded `true`).
+- Export download now prepends `result.manifest` JSON (members/roles/order/validation) before file contents.
+- `PROJ-CONFIG-OPS-001` e2e extended for empty Config set focused upload/assignment copy and non-admin mutation denial (API 403) while Admin read context remains visible.
+- Acceptance e2e green (5/5). Three-viewport evidence under `work/ui-checks/project-configuration-workbench-file-config-ops/`.
+- Plan remains **Active** pending Documentation Update Gate / move to `completed/` after final docs:check if needed.
 
 ## Documentation Update Gate
 

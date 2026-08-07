@@ -5,7 +5,7 @@ import type {
   ConfigSetRole,
   DtsConfigSet,
   DtsConfigSetMemberFile,
-  DtsExportConfigSetFile,
+  DtsExportConfigSetResult,
   DtsReleaseBaseline,
   DtsSearchHit,
   DtsSourceLocator,
@@ -75,13 +75,23 @@ type PendingConfirmation = {
   run: () => Promise<void>;
 };
 
-function downloadExportBundle(configSetName: string, files: DtsExportConfigSetFile[]) {
-  const payload = files.map((file) => `// ${file.name}\n${file.content}`).join("\n\n");
+function downloadExportBundle(
+  configSetName: string,
+  result: Pick<DtsExportConfigSetResult, "manifest" | "files">
+) {
+  const filesPayload = result.files.map((file) => `// ${file.name}\n${file.content}`).join("\n\n");
+  const payload = [
+    "// wiseeff-config-set-export-manifest.json",
+    JSON.stringify(result.manifest, null, 2),
+    "",
+    "// wiseeff-config-set-export-files",
+    filesPayload
+  ].join("\n");
   const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${configSetName || "config-set"}-export.dts`;
+  link.download = `${configSetName || "config-set"}-export.txt`;
   document.body.append(link);
   link.click();
   link.remove();
@@ -1095,7 +1105,7 @@ export function ProjectConfigurationWorkbench({
     setOpsError("");
     try {
       const result = await dtsRepository.exportConfigSet(project.id, selectedConfigSet.id);
-      downloadExportBundle(selectedConfigSet.name, result.files);
+      downloadExportBundle(selectedConfigSet.name, result);
       const memberCount = result.manifest.members.length;
       const validation = result.manifest.validation
         ? `校验 ${result.manifest.validation.ok ? "通过" : "未通过"}（${result.manifest.validation.mode}）`

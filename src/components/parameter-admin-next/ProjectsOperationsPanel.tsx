@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch } from "react";
 import type { AppAction } from "@/App";
+import { canPerform } from "@/app/permissions";
 import type { ParameterPageActions } from "@/app/routes";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
@@ -20,6 +21,7 @@ import { ProjectParameterFilesPanel } from "@/components/admin/ProjectParameterF
 import { DtsSearchPanel } from "@/components/parameters/DtsSearchPanel";
 import { DtsStructureBrowserPanel } from "@/components/parameters/DtsStructureBrowserPanel";
 import { ProjectConfigurationWorkbench } from "@/components/project-configuration-workbench/ProjectConfigurationWorkbench";
+import { migrateLegacyRoleId } from "@/domain/users/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import type { PrototypeState } from "@/mockData";
@@ -143,6 +145,7 @@ export function ProjectsOperationsPanel({
   const configurationOpen = configurationRoute && configurationWorkbenchEnabled;
   const view = routeView === "configuration" ? null : routeView;
   const isApiMode = runtimeMode === "api";
+  const canAdmin = canPerform(migrateLegacyRoleId(state.activeRoleId), "admin.access");
   const adminClient = useMemo(() => createParameterAdminClient(), []);
   const latestAudit = adminState.recentAuditEvents[0] ?? null;
   const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
@@ -554,7 +557,7 @@ export function ProjectsOperationsPanel({
           onNavigate={onNavigate}
           dtsRepository={dtsRepo}
           fileRepository={fileRepository}
-          canAdmin
+          canAdmin={canAdmin}
         />
       ) : null}
 
@@ -599,7 +602,7 @@ export function ProjectsOperationsPanel({
                 <ConfigSetBaselinePanel
                   projectId={projectId}
                   repository={dtsRepo}
-                  canAdmin
+                  canAdmin={canAdmin}
                   availableFiles={availableFiles}
                   {...(adminState.selectedConfigRevisionId
                     ? { revisionId: adminState.selectedConfigRevisionId }

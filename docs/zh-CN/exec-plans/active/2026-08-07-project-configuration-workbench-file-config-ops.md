@@ -59,9 +59,9 @@
 
 ### 0. 注册计划
 
-- [ ] 创建双语 active plan，并写入 EN/ZH `PLANS.md`。
-- [ ] 认领 #236。
-- [ ] 锁定上述 TDD 接缝。
+- [x] 创建双语 active plan，并写入 EN/ZH `PLANS.md`。
+- [x] 认领 #236。
+- [x] 锁定上述 TDD 接缝。
 
 ### A–F
 
@@ -76,6 +76,11 @@
 ## 验证
 
 与英文版 Verification 命令相同。
+
+## 结果
+
+- Spec 评审修复：`canAdmin` 真实接线；导出包含 manifest；OPS-001 e2e 加强空态与非 Admin 拒绝；验收 5/5 通过；三视口证据已写入 `work/ui-checks/project-configuration-workbench-file-config-ops/`。
+- 计划仍为 **进行中**，待文档更新门禁收口后再移入 `completed/`。
 
 ## 文档影响矩阵 / 更新门禁
 
