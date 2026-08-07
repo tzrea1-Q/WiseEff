@@ -26839,6 +26839,69 @@ button.dts-topology-navigator__disclosure:focus-visible {
   border-radius: var(--radius-sm);
 }
 
+.configuration-workbench__typed-editor {
+  display: grid;
+  gap: 8px;
+  margin: 8px 12px 12px;
+  padding: 10px;
+  background: var(--surface-low);
+  border-radius: var(--radius-sm);
+}
+
+.configuration-workbench__locked,
+.configuration-workbench__risk-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0 12px 8px;
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.configuration-workbench__property.has-session-change,
+.project-primary-dts-viewer__line.has-session-change .project-primary-dts-viewer__line-number {
+  box-shadow: inset 3px 0 0 var(--accent, #0b6e4f);
+}
+
+.configuration-workbench__session-changes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.configuration-workbench__session-changes label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.configuration-workbench__session-changes small {
+  display: block;
+  color: var(--app-muted);
+}
+
+.configuration-workbench__reason {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.configuration-workbench__reason textarea {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+}
+
+.configuration-workbench__task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .configuration-workbench__tasks {
   display: grid;
   grid-template-rows: 44px;

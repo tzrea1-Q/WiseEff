@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
-import { ProjectConfigurationWorkbench } from "./ProjectConfigurationWorkbench";
+import {
+  ProjectConfigurationWorkbench,
+  type ProjectConfigurationWorkbenchProps
+} from "./ProjectConfigurationWorkbench";
 
 afterEach(() => {
   cleanup();
@@ -185,26 +188,32 @@ function renderWorkbench(options: {
   fileRepository?: ParameterFileRepository;
   listAuditEvents?: ProjectConfigurationWorkbenchProps["listAuditEvents"];
   syncSearch?: boolean;
+  canEdit?: boolean;
+  canEditCritical?: boolean;
   canAdmin?: boolean;
 } = {}) {
   const onNavigate = options.onNavigate ?? vi.fn();
-  const canAdmin = options.canAdmin;
+  const sharedProps = {
+    project: PROJECT,
+    dtsRepository: options.dtsRepository ?? createDtsRepository(),
+    fileRepository: options.fileRepository ?? createFileRepository(),
+    ...(options.canEdit === undefined ? {} : { canEdit: options.canEdit }),
+    ...(options.canEditCritical === undefined ? {} : { canEditCritical: options.canEditCritical }),
+    ...(options.canAdmin === undefined ? {} : { canAdmin: options.canAdmin }),
+    ...(options.listAuditEvents ? { listAuditEvents: options.listAuditEvents } : {})
+  };
   if (options.syncSearch) {
     function Harness() {
       const [search, setSearch] = useState(options.search ?? "");
       return (
         <ProjectConfigurationWorkbench
-          project={PROJECT}
+          {...sharedProps}
           search={search}
           onNavigate={(path) => {
             onNavigate(path);
             const queryIndex = path.indexOf("?");
             setSearch(queryIndex >= 0 ? path.slice(queryIndex) : "");
           }}
-          dtsRepository={options.dtsRepository ?? createDtsRepository()}
-          fileRepository={options.fileRepository ?? createFileRepository()}
-          {...(canAdmin === undefined ? {} : { canAdmin })}
-          {...(options.listAuditEvents ? { listAuditEvents: options.listAuditEvents } : {})}
         />
       );
     }
@@ -213,17 +222,94 @@ function renderWorkbench(options: {
   }
   render(
     <ProjectConfigurationWorkbench
-      project={PROJECT}
+      {...sharedProps}
       search={options.search ?? ""}
       onNavigate={onNavigate}
-      dtsRepository={options.dtsRepository ?? createDtsRepository()}
-      fileRepository={options.fileRepository ?? createFileRepository()}
-      {...(canAdmin === undefined ? {} : { canAdmin })}
-      {...(options.listAuditEvents ? { listAuditEvents: options.listAuditEvents } : {})}
     />
   );
   return { onNavigate };
 }
+
+const BOARD_STRUCTURE = {
+  nodes: [
+    {
+      nodePath: "board",
+      name: "board",
+      labels: ["board_label"],
+      compatible: "wiseeff,aurora",
+      status: "okay",
+      properties: [
+        {
+          name: "model",
+          valueType: "string-list" as const,
+          rawText: '"Aurora"',
+          normalizedValue: "Aurora",
+          source: {
+            startOffset: 20,
+            endOffset: 28,
+            startLine: 2,
+            startColumn: 3,
+            endLine: 2,
+            endColumn: 11
+          }
+        },
+        {
+          name: "compatible",
+          valueType: "string-list" as const,
+          rawText: '"wiseeff,aurora"',
+          normalizedValue: "wiseeff,aurora",
+          source: {
+            startOffset: 40,
+            endOffset: 58,
+            startLine: 3,
+            startColumn: 3,
+            endLine: 3,
+            endColumn: 21
+          }
+        }
+      ],
+      phandleRefs: [],
+      source: {
+        startOffset: 10,
+        endOffset: 70,
+        startLine: 1,
+        startColumn: 1,
+        endLine: 4,
+        endColumn: 2
+      }
+    },
+    {
+      nodePath: "regulator",
+      name: "regulator",
+      labels: [],
+      properties: [
+        {
+          name: "regulator-min-microvolt",
+          valueType: "u32-array" as const,
+          rawText: "<0x1000>",
+          normalizedValue: "4096",
+          source: {
+            startOffset: 80,
+            endOffset: 90,
+            startLine: 5,
+            startColumn: 3,
+            endLine: 5,
+            endColumn: 13
+          }
+        }
+      ],
+      phandleRefs: [],
+      source: {
+        startOffset: 70,
+        endOffset: 100,
+        startLine: 4,
+        startColumn: 1,
+        endLine: 6,
+        endColumn: 2
+      }
+    }
+  ]
+};
 
 describe("ProjectConfigurationWorkbench", () => {
   it("selects the deterministic default Config set and renders working source identities", async () => {
@@ -429,7 +515,207 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.click(inspectorToggle);
     expect(screen.getByRole("complementary", { name: "配置检查器" })).toBeInTheDocument();
     fireEvent.click(taskToggle);
-    expect(screen.getByRole("region", { name: "配置任务" })).toHaveTextContent("任务证据");
+    const tasksRegion = screen.getByRole("region", { name: "配置任务" });
+    expect(tasksRegion).toHaveTextContent("会话变更");
+    expect(tasksRegion).toHaveTextContent("任务证据");
+  });
+
+
+  it("opens a typed StructuredValueEditor for an editable property with context metadata", async () => {
+    renderWorkbench({
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }),
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(inspector).toHaveTextContent("string-list");
+    expect(inspector).toHaveTextContent('"Aurora"');
+    expect(inspector).toHaveTextContent("Aurora");
+    expect(inspector).toHaveTextContent(/L2:3/);
+    expect(inspector).toHaveTextContent("常规");
+    expect(inspector).toHaveTextContent(/变更原因/);
+    expect(inspector).toHaveTextContent("可编辑");
+    expect(within(inspector).getByRole("group", { name: "string-list" })).toBeInTheDocument();
+    expect(within(inspector).getByLabelText("字符串 1")).toBeEnabled();
+    expect(screen.getByLabelText("只读 DTS 源码").querySelector('[contenteditable="true"]')).toBeNull();
+  });
+
+  it("locks writes with product language when parameter edit capability is missing", async () => {
+    renderWorkbench({
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }),
+      canEdit: false,
+      canEditCritical: false
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(inspector).toHaveTextContent(/你的角色没有修改参数的权限/);
+    expect(inspector).not.toHaveTextContent(/parameter:edit/);
+    expect(within(inspector).getByLabelText("字符串 1")).toBeDisabled();
+    expect(inspector).toHaveTextContent('"Aurora"');
+  });
+
+  it("locks critical node edits with product language while keeping read context", async () => {
+    renderWorkbench({
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }),
+      canEdit: true,
+      canEditCritical: false
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 regulator" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 regulator/regulator-min-microvolt" }));
+
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(inspector).toHaveTextContent(/安全关键节点，你的角色没有修改它的权限/);
+    expect(inspector).not.toHaveTextContent(/parameter:edit-critical/);
+    expect(within(inspector).getByLabelText("cell 1")).toBeDisabled();
+  });
+
+  it("records typed edits in the session-changes dock with shared tree and gutter identity", async () => {
+    renderWorkbench({
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }),
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
+      target: { value: "Aurora-X" }
+    });
+
+    const tasks = await screen.findByRole("region", { name: "配置任务" });
+    expect(tasks).toHaveTextContent("会话变更");
+    expect(screen.getByRole("button", { name: "任务" })).toHaveTextContent("1");
+    const draftRow = within(tasks).getByRole("checkbox", { name: /board\/model/ });
+    expect(draftRow).toBeChecked();
+    expect(draftRow).toHaveAttribute("data-property-identity", "board::model");
+
+    const treeProperty = screen.getByRole("treeitem", { name: "属性 board/model" });
+    expect(treeProperty).toHaveAttribute("data-property-identity", "board::model");
+    expect(treeProperty).toHaveAttribute("data-session-change", "true");
+
+    const gutter = document.querySelector('[data-session-gutter="board::model"]');
+    expect(gutter).not.toBeNull();
+    expect(gutter).toHaveAttribute("data-line", "2");
+  });
+
+  it("validates and submits a selected subset via submitStructuredEdits with rawText fidelity", async () => {
+    const submitStructuredEdits = vi.fn().mockResolvedValue({
+      id: "round-1",
+      projectId: PROJECT.id,
+      status: "submitted",
+      items: [{ parameterId: "ppv-model", targetValue: '"Aurora-X"', reason: "workbench" }]
+    });
+    // Persist across Strict Mode remounts and post-submit structure refresh.
+    let structureResult = BOARD_STRUCTURE;
+    const getStructure = vi.fn(async () => structureResult);
+
+    renderWorkbench({
+      dtsRepository: createDtsRepository({ getStructure, submitStructuredEdits }),
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const boardNode = await screen.findByRole("treeitem", { name: "节点 board" });
+    fireEvent.click(boardNode);
+    const modelProperty = await screen.findByRole("treeitem", { name: "属性 board/model" });
+    fireEvent.click(modelProperty);
+    let inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
+      target: { value: "Aurora-X" }
+    });
+
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/compatible" }));
+    inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
+      target: { value: "wiseeff,aurora-v2" }
+    });
+
+    const tasks = await screen.findByRole("region", { name: "配置任务" });
+    expect(within(tasks).getAllByRole("checkbox")).toHaveLength(2);
+    fireEvent.click(within(tasks).getByRole("checkbox", { name: /board\/compatible/ }));
+    fireEvent.change(within(tasks).getByLabelText("变更原因"), {
+      target: { value: "board model bump" }
+    });
+    fireEvent.click(within(tasks).getByRole("button", { name: "校验所选" }));
+    expect(within(tasks).getByRole("status")).toHaveTextContent(/校验通过/);
+
+    structureResult = {
+      nodes: [
+        {
+          ...BOARD_STRUCTURE.nodes[0],
+          properties: [
+            {
+              ...BOARD_STRUCTURE.nodes[0].properties[0],
+              rawText: '"Aurora-X"',
+              normalizedValue: "Aurora-X"
+            },
+            BOARD_STRUCTURE.nodes[0].properties[1]
+          ]
+        },
+        BOARD_STRUCTURE.nodes[1]
+      ]
+    };
+    fireEvent.click(within(tasks).getByRole("button", { name: /提交所选/ }));
+
+    await waitFor(() =>
+      expect(submitStructuredEdits).toHaveBeenCalledWith(
+        PROJECT.id,
+        expect.objectContaining({
+          edits: [
+            expect.objectContaining({
+              fileId: "file-board",
+              nodePath: "board",
+              propertyName: "model",
+              rawText: expect.stringMatching(/Aurora-X/),
+              reason: "board model bump"
+            })
+          ],
+          reason: "board model bump"
+        })
+      )
+    );
+    expect(submitStructuredEdits.mock.calls[0][1].edits).toHaveLength(1);
+    await waitFor(() => expect(within(tasks).getAllByRole("checkbox")).toHaveLength(1));
+    expect(within(tasks).getByRole("checkbox", { name: /board\/compatible/ })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(tasks).getByRole("status")).toHaveTextContent(/已提交变更请求/)
+    );
+  });
+
+  it("preserves session drafts when submitStructuredEdits fails", async () => {
+    const submitStructuredEdits = vi.fn().mockRejectedValue(new Error("submit failed"));
+    renderWorkbench({
+      dtsRepository: createDtsRepository({
+        getStructure: vi.fn(async () => BOARD_STRUCTURE),
+        submitStructuredEdits
+      }),
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
+      target: { value: "Aurora-X" }
+    });
+    const tasks = await screen.findByRole("region", { name: "配置任务" });
+    fireEvent.change(within(tasks).getByLabelText("变更原因"), {
+      target: { value: "attempt" }
+    });
+    fireEvent.click(within(tasks).getByRole("button", { name: /提交所选/ }));
+    expect(await within(tasks).findByRole("alert")).toHaveTextContent("submit failed");
+    expect(within(tasks).getByRole("checkbox", { name: /board\/model/ })).toBeInTheDocument();
+    expect(within(inspector).getByLabelText("字符串 1")).toHaveValue("Aurora-X");
   });
   it("loads nested structure under the selected member and focuses source spans from tree selection", async () => {
     const getStructure = vi.fn(async () => ({
@@ -735,10 +1021,10 @@ describe("ProjectConfigurationWorkbench", () => {
 
     fireEvent.click(screen.getByRole("treeitem", { name: "属性 board/model" }));
     expect(await screen.findByText("属性名")).toBeInTheDocument();
-    expect(screen.getByText("string-list")).toBeInTheDocument();
-    expect(screen.getByText('"Aurora"')).toBeInTheDocument();
-    expect(screen.getByText("Aurora")).toBeInTheDocument();
-    expect(screen.getByText(/L2:3/)).toBeInTheDocument();
+    expect(within(inspector).getByText("string-list")).toBeInTheDocument();
+    expect(within(inspector).getAllByText('"Aurora"').length).toBeGreaterThanOrEqual(1);
+    expect(within(inspector).getByLabelText("字符串 1")).toHaveValue("Aurora");
+    expect(within(inspector).getByText(/L2:3/)).toBeInTheDocument();
 
     const sourceHeading = screen.getByRole("heading", { name: "aurora-board.dts" });
     expect(sourceHeading).toBeInTheDocument();

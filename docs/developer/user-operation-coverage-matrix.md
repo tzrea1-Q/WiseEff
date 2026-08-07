@@ -34,6 +34,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `PROJ-CONFIG-SOURCE-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-INSPECT-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-CANDIDATE-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
+| `PROJ-CONFIG-EDIT-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-ACTIVITY-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-ACTIVATE-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |
 | `PROJ-CONFIG-OPS-001` | P1 | parameters | automated | `/parameter-admin/projects/:projectId/configuration` | Admin | ui, api, screenshot | `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts` |

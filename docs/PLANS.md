@@ -12,6 +12,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Current Active Plan
 
+- `exec-plans/completed/2026-08-07-project-configuration-workbench-structured-edit.md`: Issue #233 Structured DTS edit sessions in source context — typed inspector, session-changes dock, subset submit via existing CR flow, permission lock (branch `feat/project-configuration-workbench-structured-edit`).
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-activity-timeline.md`: Issue #239 contextual project Activity timeline replacing permanent audit banner — command-bar entry, scoped server audit projection, target restore, toast + refresh, PCW-D11/D15 (branch `feat/project-configuration-workbench-activity-timeline`).
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-file-config-ops.md`: Issue #236 File and Config set operations in contextual inspectors — create/configure, members/roles/order, ungrouped, manual sync, export, empty-set candidate path (branch `feat/project-configuration-workbench-file-config-ops`).
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-candidate-activation.md`: Issue #232 Candidate activation — Config set assignment, expected-current-version CAS, stale-base safety, and Working configuration promotion (branch `feat/project-configuration-workbench-candidate-activation`).

@@ -15,6 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
+- `exec-plans/completed/2026-08-07-project-configuration-workbench-structured-edit.md`：Issue #233 源码上下文中的结构化 DTS 编辑会话——类型化检查器、会话变更坞、经既有变更请求提交流、权限锁定（分支 `feat/project-configuration-workbench-structured-edit`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-activity-timeline.md`：Issue #239 上下文项目活动时间线——命令栏入口、项目范围服务器审计投影、目标恢复、toast + 刷新、PCW-D11/D15（分支 `feat/project-configuration-workbench-activity-timeline`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-file-config-ops.md`：Issue #236 上下文检查器中的文件与配置集操作——创建/配置、成员角色/顺序、未编组、手动同步、导出、空集候选路径（分支 `feat/project-configuration-workbench-file-config-ops`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-candidate-activation.md`：Issue #232 候选激活——配置集指派、expected-current-version CAS、过期基安全，以及工作配置晋升（分支 `feat/project-configuration-workbench-candidate-activation`）。

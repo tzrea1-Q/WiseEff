@@ -177,6 +177,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PROJ-CONFIG-EDIT-001",
+    workflow: "C",
+    title: "Structured DTS edit sessions in the configuration workbench open a typed property editor, accumulate session changes with shared markers, and validate/submit selected edits through the existing change-request flow while the source canvas stays read-only.",
+    required: false
+  },
+  {
     id: "PROJ-CONFIG-ACTIVITY-001",
     workflow: "C",
     title: "Contextual Activity inspector replaces permanent audit banner: scoped server audit projection, product-language events, target restore, toast + refresh, and resilient loading states.",

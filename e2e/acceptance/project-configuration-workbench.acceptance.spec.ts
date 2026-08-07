@@ -169,7 +169,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       });
       expect(inspectorOverlay?.position).toMatch(/absolute|fixed/);
       await page.getByRole("button", { name: "任务", exact: true }).click();
-      await expect(page.getByRole("region", { name: "配置任务" })).toContainText("任务证据");
+      await expect(page.getByRole("region", { name: "配置任务" })).toContainText(/没有本轮更改|任务证据|会话变更/);
       await page.getByRole("button", { name: "任务", exact: true }).click();
       await page.getByRole("button", { name: "检查器", exact: true }).click();
 
@@ -187,7 +187,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await tabletInspectorToggle.click();
       await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
       await tabletTaskToggle.click();
-      await expect(page.getByRole("region", { name: "配置任务" })).toContainText("任务证据");
+      await expect(page.getByRole("region", { name: "配置任务" })).toContainText(/没有本轮更改|任务证据|会话变更/);
       const tabletOverflow = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth
@@ -775,6 +775,163 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     }
   });
 
+  test("edits a property through typed inspector, session dock, and submitStructuredEdits", async ({
+    page,
+    request
+  }, testInfo) => {
+    // @acceptance PROJ-CONFIG-EDIT-001
+    // @operation PROJ-CONFIG-EDIT-001
+    // Live submit asserts against the shared acceptance/CI DB that keeps flat
+    // `project_parameter_values` (`WISEEFF_SEED_LEGACY_FLAT_IDENTITY=1`,
+    // `WISEEFF_LOCAL_POST_CUTOVER=0`) — same host as PARAM-DTS-EDIT-002.
+    // Local post-cutover DBs retire that table; permission denial / submit-failure
+    // draft retention is covered by ProjectConfigurationWorkbench component tests.
+    const suffix = randomUUID();
+    const configSetName = `structured-edit-${suffix}`;
+    const primaryFileName = `acceptance-structured-edit-${suffix}.dts`;
+    const sample = `/dts-v1/;
+/ {
+	board {
+		model = "EditV1";
+		compatible = "wiseeff,edit";
+	};
+};
+`;
+
+    try {
+      const upload = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: primaryFileName,
+          contentBase64: Buffer.from(sample, "utf8").toString("base64")
+        }
+      });
+      expect(upload.ok()).toBe(true);
+      const uploadBody = (await upload.json()) as {
+        item: { id: string; fileName: string };
+        version: { id: string; versionNumber: number };
+      };
+
+      const structureResponse = await request.get(
+        apiRoute(
+          `/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/versions/${uploadBody.version.id}/structure`
+        ),
+        { headers: adminHeaders() }
+      );
+      expect(structureResponse.ok()).toBe(true);
+      const structureBody = (await structureResponse.json()) as {
+        nodes: Array<{ nodePath: string; properties: Array<{ name: string; rawText: string }> }>;
+      };
+      const board = structureBody.nodes.find((node) => node.nodePath === "board");
+      expect(board?.properties.some((property) => property.name === "model")).toBe(true);
+
+      const createConfigSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(),
+        data: { name: configSetName, description: "Structured edit acceptance" }
+      });
+      expect(createConfigSet.status()).toBe(201);
+      const configSetBody = (await createConfigSet.json()) as { item: { id: string; name: string } };
+      const configSetId = configSetBody.item.id;
+
+      const addMember = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
+        { headers: adminHeaders(), data: { fileId: uploadBody.item.id, role: "base", sortOrder: 0 } }
+      );
+      expect(addMember.ok()).toBe(true);
+
+      await signInBrowserAsRole(page, "admin");
+      await page.goto(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(uploadBody.item.id)}`
+      );
+      await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
+      await expect(page.getByLabel("只读 DTS 源码").locator('[contenteditable="true"]')).toHaveCount(0);
+
+      await page.getByRole("treeitem", { name: "节点 board" }).click();
+      await page.getByRole("treeitem", { name: "属性 board/model" }).click();
+      const inspector = page.getByRole("complementary", { name: "配置检查器" });
+      await expect(inspector).toBeVisible();
+      await expect(inspector).toContainText("可编辑");
+      await expect(inspector).toContainText("变更原因");
+      const stringInput = inspector.getByRole("textbox", { name: "字符串 1" });
+      await expect(stringInput).toBeEnabled();
+      await stringInput.fill("EditV2");
+
+      const tasks = page.getByRole("region", { name: "配置任务" });
+      await expect(tasks).toBeVisible();
+      await expect(tasks).toContainText("会话变更");
+      await expect(tasks.getByRole("checkbox", { name: /board\/model/ })).toBeChecked();
+      await expect(page.getByRole("treeitem", { name: "属性 board/model" })).toHaveAttribute(
+        "data-property-identity",
+        "board::model"
+      );
+      await expect(page.locator('[data-session-gutter="board::model"]')).toHaveCount(1);
+
+      await tasks.getByLabel("变更原因").fill("acceptance structured edit");
+      await tasks.getByRole("button", { name: "校验所选" }).click();
+      await expect(tasks.getByRole("status")).toContainText(/校验通过/);
+
+      const submitResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url().includes("/dts-structured-edits/submit") && response.request().method() === "POST"
+      );
+      await tasks.getByRole("button", { name: /提交所选/ }).click();
+      const submitResponse = await submitResponsePromise;
+      expect(submitResponse.ok()).toBe(true);
+      const submitBody = (await submitResponse.json()) as {
+        item: { id: string; items: Array<{ targetValue: string }> };
+      };
+      expect(submitBody.item.items[0]?.targetValue).toMatch(/EditV2/);
+      await expect(tasks.getByRole("status").filter({ hasText: /已提交变更请求/ })).toBeVisible();
+
+      const evidencePath = await writeOperationJsonArtifact(
+        testInfo,
+        "project-configuration-workbench-structured-edit.json",
+        {
+          route: page.url(),
+          configSetId,
+          fileId: uploadBody.item.id,
+          versionId: uploadBody.version.id,
+          submissionId: submitBody.item.id,
+          targetValue: submitBody.item.items[0]?.targetValue
+        }
+      );
+      await recordOperationEvidence({
+        operationId: "PROJ-CONFIG-EDIT-001",
+        title: "configuration workbench structured edit session",
+        status: "passed",
+        role: "Admin",
+        route: `/parameter-admin/projects/${projectId}/configuration`,
+        page,
+        testInfo,
+        assertions: ["ui", "api", "screenshot"],
+        artifacts: [evidencePath],
+        api: [
+          summarizeApiResponse(structureResponse, {
+            method: "GET",
+            path: `/api/v1/projects/${projectId}/parameter-files/${uploadBody.item.id}/versions/${uploadBody.version.id}/structure`,
+            responseSummary: "structure loaded"
+          }),
+          summarizeApiResponse(submitResponse, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/dts-structured-edits/submit`,
+            responseSummary: `submission=${submitBody.item.id}`
+          })
+        ],
+        notes:
+          "Typed property edit entered the session dock with shared markers; subset validate/submit reused submitStructuredEdits while the source canvas stayed read-only."
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        configSetNames: [configSetName],
+        fileNames: [primaryFileName]
+      });
+    }
+  });
+
+
+
   test("opens Activity timeline from the command bar and restores or soft-fails targets", async ({
     page,
     request
@@ -1332,6 +1489,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       });
     }
   });
+
 
 
 });

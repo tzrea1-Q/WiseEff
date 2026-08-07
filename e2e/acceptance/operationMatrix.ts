@@ -389,6 +389,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "screenshot"]
   },
   {
+    id: "PROJ-CONFIG-EDIT-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Select an editable property into the typed inspector, accumulate session-changes with shared tree/gutter identity, validate and submit a selected subset through submitStructuredEdits on the shared pre-cutover acceptance DB, while the source canvas stays read-only. Permission denial and submit-failure draft retention are proven by component tests.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-EDIT-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
+  {
     id: "PROJ-CONFIG-ACTIVITY-001",
     priority: "P1",
     area: "parameters",
