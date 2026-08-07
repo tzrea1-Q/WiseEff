@@ -25,7 +25,6 @@ import {
   ProjectPrimaryDtsViewer,
   type DtsViewerFocusSpan
 } from "@/components/parameter-topology/ProjectPrimaryDtsViewer";
-import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
   buildUnifiedDiff,
   canvasModeQueryValue,
