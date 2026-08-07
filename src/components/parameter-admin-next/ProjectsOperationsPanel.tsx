@@ -557,6 +557,7 @@ export function ProjectsOperationsPanel({
           onNavigate={onNavigate}
           dtsRepository={dtsRepo}
           fileRepository={fileRepository}
+          currentUserId={state.currentUserId}
           canEdit
           canEditCritical
           canAdmin={canAdmin}

@@ -8,10 +8,40 @@ import {
   ProjectConfigurationWorkbench,
   type ProjectConfigurationWorkbenchProps
 } from "./ProjectConfigurationWorkbench";
+import {
+  readSessionDraftStore,
+  SESSION_DRAFT_STORAGE_KEY,
+  upsertSessionDraftBucket
+} from "./sessionDraftStorage";
 
 afterEach(() => {
   cleanup();
+  localStorage.removeItem(SESSION_DRAFT_STORAGE_KEY);
 });
+
+function createMemoryStorage(seed: Record<string, string> = {}): Storage {
+  const map = new Map<string, string>(Object.entries(seed));
+  return {
+    get length() {
+      return map.size;
+    },
+    clear() {
+      map.clear();
+    },
+    getItem(key: string) {
+      return map.has(key) ? map.get(key)! : null;
+    },
+    key(index: number) {
+      return Array.from(map.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      map.delete(key);
+    },
+    setItem(key: string, value: string) {
+      map.set(key, value);
+    }
+  };
+}
 
 const PROJECT = {
   id: "project-1",
@@ -191,6 +221,9 @@ function renderWorkbench(options: {
   canEdit?: boolean;
   canEditCritical?: boolean;
   canAdmin?: boolean;
+  currentUserId?: string;
+  organizationId?: string;
+  draftStorage?: ProjectConfigurationWorkbenchProps["draftStorage"];
 } = {}) {
   const onNavigate = options.onNavigate ?? vi.fn();
   const sharedProps = {
@@ -200,7 +233,10 @@ function renderWorkbench(options: {
     ...(options.canEdit === undefined ? {} : { canEdit: options.canEdit }),
     ...(options.canEditCritical === undefined ? {} : { canEditCritical: options.canEditCritical }),
     ...(options.canAdmin === undefined ? {} : { canAdmin: options.canAdmin }),
-    ...(options.listAuditEvents ? { listAuditEvents: options.listAuditEvents } : {})
+    ...(options.listAuditEvents ? { listAuditEvents: options.listAuditEvents } : {}),
+    ...(options.currentUserId === undefined ? {} : { currentUserId: options.currentUserId }),
+    ...(options.organizationId === undefined ? {} : { organizationId: options.organizationId }),
+    ...(options.draftStorage ? { draftStorage: options.draftStorage } : {})
   };
   if (options.syncSearch) {
     function Harness() {
@@ -717,6 +753,348 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(within(tasks).getByRole("checkbox", { name: /board\/model/ })).toBeInTheDocument();
     expect(within(inspector).getByLabelText("字符串 1")).toHaveValue("Aurora-X");
   });
+
+  it("persists and restores compatible session drafts after remount with the same storage scope", async () => {
+    const draftStorage = createMemoryStorage();
+    const dtsRepository = createDtsRepository({
+      getStructure: vi.fn(async () => BOARD_STRUCTURE)
+    });
+    renderWorkbench({
+      dtsRepository,
+      draftStorage,
+      currentUserId: "user-a",
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    fireEvent.change(within(inspector).getByLabelText("字符串 1"), {
+      target: { value: "Aurora-Recovered" }
+    });
+    const tasks = await screen.findByRole("region", { name: "配置任务" });
+    fireEvent.change(within(tasks).getByLabelText("变更原因"), {
+      target: { value: "recover me" }
+    });
+    await waitFor(() => {
+      expect(readSessionDraftStore(draftStorage).buckets).toHaveLength(1);
+    });
+    cleanup();
+
+    renderWorkbench({
+      dtsRepository,
+      draftStorage,
+      currentUserId: "user-a",
+      canEdit: true,
+      canEditCritical: true
+    });
+    const restoredTasks = await screen.findByRole("region", { name: "配置任务" });
+    expect(within(restoredTasks).getByRole("checkbox", { name: /board\/model/ })).toBeChecked();
+    expect(within(restoredTasks).getByLabelText("变更原因")).toHaveValue("recover me");
+    expect(restoredTasks).toHaveTextContent("Aurora-Recovered");
+  });
+
+  it("ignores late draft recovery from a previous scope generation", async () => {
+    const draftStorage = createMemoryStorage();
+    upsertSessionDraftBucket(
+      {
+        scope: {
+          userId: "user-a",
+          organizationId: "org-1",
+          projectId: PROJECT.id,
+          configSetId: "cs-default",
+          fileId: "file-board",
+          baseVersionId: "version-board-12"
+        },
+        drafts: {
+          "file-board::board::model": {
+            rawText: '"Late-Async"',
+            normalizedValue: "Late-Async",
+            valid: true
+          }
+        },
+        selectedKeys: ["file-board::board::model"],
+        reason: "should not apply after scope switch",
+        updatedAt: "2026-08-07T10:00:00.000Z"
+      },
+      draftStorage
+    );
+
+    renderWorkbench({
+      dtsRepository: createDtsRepository({ getStructure: vi.fn(async () => BOARD_STRUCTURE) }),
+      draftStorage,
+      currentUserId: "user-a",
+      syncSearch: true,
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    expect(await screen.findByRole("region", { name: "配置任务" })).toHaveTextContent("Late-Async");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "配置集" }), {
+      target: { value: "cs-alpha" }
+    });
+    await screen.findByRole("heading", { name: "alpha.dts" });
+    await waitFor(() => {
+      expect(screen.queryByText("Late-Async")).not.toBeInTheDocument();
+      expect(screen.queryByDisplayValue("should not apply after scope switch")).not.toBeInTheDocument();
+    });
+  });
+
+  it("locks the typed editor while recovered drafts are stale-base until reconfirm", async () => {
+    const draftStorage = createMemoryStorage();
+    let boardVersionId = "version-board-12";
+    const listConfigSetFiles = vi.fn(async (_projectId: string, configSetId: string) => [
+      {
+        configSetId,
+        fileId: "file-board",
+        fileName: "aurora-board.dts",
+        format: "dts",
+        role: "base",
+        sortOrder: 0,
+        currentVersionId: boardVersionId,
+        currentVersionNumber: boardVersionId === "version-board-13" ? 13 : 12
+      },
+      {
+        configSetId,
+        fileId: "file-overlay",
+        fileName: "charging-overlay.dtsi",
+        format: "dts",
+        role: "overlay",
+        sortOrder: 1,
+        currentVersionId: "version-overlay-4",
+        currentVersionNumber: 4
+      }
+    ]);
+    renderWorkbench({
+      dtsRepository: createDtsRepository({
+        listConfigSetFiles,
+        getStructure: vi.fn(async () => BOARD_STRUCTURE)
+      }),
+      draftStorage,
+      currentUserId: "user-a",
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    fireEvent.change(
+      within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
+      { target: { value: "Aurora-Stale-Lock" } }
+    );
+    await waitFor(() => expect(readSessionDraftStore(draftStorage).buckets).toHaveLength(1));
+    cleanup();
+
+    boardVersionId = "version-board-13";
+    renderWorkbench({
+      dtsRepository: createDtsRepository({
+        listConfigSetFiles,
+        getStructure: vi.fn(async () => BOARD_STRUCTURE)
+      }),
+      draftStorage,
+      currentUserId: "user-a",
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(inspector).toHaveTextContent(/基线版本已变更：会话草稿仅可检查或复制/);
+    expect(within(inspector).getByLabelText("字符串 1")).toBeDisabled();
+  });
+
+  it("marks recovered drafts stale when baseVersionId changes and blocks validate/submit", async () => {
+    const draftStorage = createMemoryStorage();
+    let boardVersionId = "version-board-12";
+    const listConfigSetFiles = vi.fn(async (_projectId: string, configSetId: string) => [
+      {
+        configSetId,
+        fileId: "file-board",
+        fileName: "aurora-board.dts",
+        format: "dts",
+        role: "base",
+        sortOrder: 0,
+        currentVersionId: boardVersionId,
+        currentVersionNumber: boardVersionId === "version-board-13" ? 13 : 12
+      },
+      {
+        configSetId,
+        fileId: "file-overlay",
+        fileName: "charging-overlay.dtsi",
+        format: "dts",
+        role: "overlay",
+        sortOrder: 1,
+        currentVersionId: "version-overlay-4",
+        currentVersionNumber: 4
+      }
+    ]);
+    const getStructure = vi.fn(async () => BOARD_STRUCTURE);
+    const submitStructuredEdits = vi.fn();
+
+    renderWorkbench({
+      dtsRepository: createDtsRepository({ listConfigSetFiles, getStructure, submitStructuredEdits }),
+      draftStorage,
+      currentUserId: "user-a",
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    fireEvent.change(
+      within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
+      { target: { value: "Aurora-Stale" } }
+    );
+    await waitFor(() => expect(readSessionDraftStore(draftStorage).buckets).toHaveLength(1));
+    cleanup();
+
+    boardVersionId = "version-board-13";
+    renderWorkbench({
+      dtsRepository: createDtsRepository({ listConfigSetFiles, getStructure, submitStructuredEdits }),
+      draftStorage,
+      currentUserId: "user-a",
+      canEdit: true,
+      canEditCritical: true
+    });
+    const tasks = await screen.findByRole("region", { name: "配置任务" });
+    expect(tasks).toHaveTextContent(/基线版本已变更/);
+    expect(within(tasks).getByRole("checkbox", { name: /board\/model/ })).toBeInTheDocument();
+    expect(within(tasks).getByRole("button", { name: "校验所选" })).toBeDisabled();
+    expect(within(tasks).getByRole("button", { name: /提交所选/ })).toBeDisabled();
+    expect(submitStructuredEdits).not.toHaveBeenCalled();
+  });
+
+  it("reconfirm against current base re-enables the dirty validate/submit path", async () => {
+    const draftStorage = createMemoryStorage();
+    let boardVersionId = "version-board-12";
+    const listConfigSetFiles = vi.fn(async (_projectId: string, configSetId: string) => [
+      {
+        configSetId,
+        fileId: "file-board",
+        fileName: "aurora-board.dts",
+        format: "dts",
+        role: "base",
+        sortOrder: 0,
+        currentVersionId: boardVersionId,
+        currentVersionNumber: boardVersionId === "version-board-13" ? 13 : 12
+      }
+    ]);
+    const getStructure = vi.fn(async () => BOARD_STRUCTURE);
+
+    renderWorkbench({
+      dtsRepository: createDtsRepository({ listConfigSetFiles, getStructure }),
+      draftStorage,
+      currentUserId: "user-a",
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    fireEvent.change(
+      within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
+      { target: { value: "Aurora-Reconfirm" } }
+    );
+    await waitFor(() => expect(readSessionDraftStore(draftStorage).buckets).toHaveLength(1));
+    cleanup();
+
+    boardVersionId = "version-board-13";
+    renderWorkbench({
+      dtsRepository: createDtsRepository({ listConfigSetFiles, getStructure }),
+      draftStorage,
+      currentUserId: "user-a",
+      canEdit: true,
+      canEditCritical: true
+    });
+    const tasks = await screen.findByRole("region", { name: "配置任务" });
+    fireEvent.click(within(tasks).getByRole("button", { name: "基于当前基线继续编辑" }));
+    await waitFor(() => {
+      expect(within(tasks).getByRole("button", { name: "校验所选" })).not.toBeDisabled();
+      expect(within(tasks).getByRole("button", { name: /提交所选/ })).not.toBeDisabled();
+    });
+    expect(readSessionDraftStore(draftStorage).buckets[0]?.scope.baseVersionId).toBe("version-board-13");
+    fireEvent.click(within(tasks).getByRole("button", { name: "校验所选" }));
+    expect(within(tasks).getByText(/校验通过：1 项/)).toBeInTheDocument();
+  });
+
+  it("asks before leaving with dirty drafts and discard clears storage then navigates", async () => {
+    const draftStorage = createMemoryStorage();
+    const { onNavigate } = renderWorkbench({
+      dtsRepository: createDtsRepository({
+        getStructure: vi.fn(async () => BOARD_STRUCTURE)
+      }),
+      draftStorage,
+      currentUserId: "user-a",
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    fireEvent.change(
+      within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
+      { target: { value: "Aurora-Leave" } }
+    );
+    await waitFor(() => expect(readSessionDraftStore(draftStorage).buckets).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole("button", { name: /项目清单/ }));
+    const leaveDialog = await screen.findByRole("dialog", { name: "离开配置工作台" });
+    fireEvent.click(within(leaveDialog).getByRole("button", { name: "留在本页" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "离开配置工作台" })).not.toBeInTheDocument()
+    );
+    expect(onNavigate).not.toHaveBeenCalledWith("/parameter-admin/projects");
+    expect(readSessionDraftStore(draftStorage).buckets).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /项目清单/ }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "离开配置工作台" })).getByRole("button", {
+        name: "丢弃并离开"
+      })
+    );
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects");
+    expect(draftStorage.getItem(SESSION_DRAFT_STORAGE_KEY)).toBeNull();
+  });
+
+  it("does not restore session drafts for a different currentUserId", async () => {
+    const draftStorage = createMemoryStorage();
+    const dtsRepository = createDtsRepository({
+      getStructure: vi.fn(async () => BOARD_STRUCTURE)
+    });
+    renderWorkbench({
+      dtsRepository,
+      draftStorage,
+      currentUserId: "user-a",
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    fireEvent.change(
+      within(await screen.findByRole("complementary", { name: "配置检查器" })).getByLabelText("字符串 1"),
+      { target: { value: "Aurora-UserA" } }
+    );
+    await waitFor(() => expect(readSessionDraftStore(draftStorage).buckets).toHaveLength(1));
+    cleanup();
+
+    renderWorkbench({
+      dtsRepository,
+      draftStorage,
+      currentUserId: "user-b",
+      canEdit: true,
+      canEditCritical: true
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    await waitFor(() => {
+      expect(screen.queryByRole("checkbox", { name: /board\/model/ })).not.toBeInTheDocument();
+    });
+    expect(readSessionDraftStore(draftStorage).buckets).toHaveLength(1);
+  });
+
   it("loads nested structure under the selected member and focuses source spans from tree selection", async () => {
     const getStructure = vi.fn(async () => ({
       nodes: [

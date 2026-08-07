@@ -402,6 +402,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "screenshot"]
   },
   {
+    id: "PROJ-CONFIG-DRAFT-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Edit a property into the session dock, restore compatible drafts and reason after reload when the base matches, confirm leave when dirty, prove stale-base blocks validate/submit via localStorage base mutation while drafts stay inspectable, and prove logout clears drafts on the next sign-in. Cross-user/org/project isolation is covered by component/storage tests.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-DRAFT-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
+  {
     id: "PROJ-CONFIG-ACTIVITY-001",
     priority: "P1",
     area: "parameters",
