@@ -15,6 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
+- `exec-plans/completed/2026-08-07-project-configuration-workbench-activity-timeline.md`：Issue #239 上下文项目活动时间线——命令栏入口、项目范围服务器审计投影、目标恢复、toast + 刷新、PCW-D11/D15（分支 `feat/project-configuration-workbench-activity-timeline`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-candidate-activation.md`：Issue #232 候选激活——配置集指派、expected-current-version CAS、过期基安全，以及工作配置晋升（分支 `feat/project-configuration-workbench-candidate-activation`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-candidate-upload.md`：Issue #231 候选文件版本生命周期——上传、解析、影响审查与放弃，且不激活工作配置（分支 `feat/project-configuration-workbench-candidate-upload`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-inspector-history.md`：Issue #230 上下文检查器、不可变文件历史、源码历史/对比模式与 PCW-D15 叠层常驻规则（分支 `feat/project-configuration-workbench-inspector-history`）。

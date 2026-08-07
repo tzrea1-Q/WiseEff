@@ -30,11 +30,18 @@ describe("workbenchInspectorModel", () => {
     expect(resolveInspectorLevel({ fileSelected: true, nodePath: null, propertyName: null })).toBe("file");
     expect(resolveInspectorLevel({ fileSelected: true, nodePath: "board", propertyName: null })).toBe("node");
     expect(resolveInspectorLevel({ fileSelected: true, nodePath: "board", propertyName: "model" })).toBe("property");
+    expect(inspectorBackTarget("activity")).toMatchObject({
+      clearActivity: true,
+      clearFile: false,
+      clearNode: false,
+      clearProperty: false
+    });
     expect(inspectorBackTarget("property")).toEqual({
       level: "node",
       clearNode: false,
       clearProperty: true,
-      clearFile: false
+      clearFile: false,
+      clearActivity: true
     });
     expect(inspectorBackTarget("node").clearNode).toBe(true);
     expect(inspectorBackTarget("file").clearFile).toBe(false);

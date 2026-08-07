@@ -71,7 +71,13 @@ const kindLabels: Record<string, string> = {
   "debug-snapshot-rollback": "快照回滚",
   "agent-action": "Agent 操作",
   export: "导出",
-  "rollback-undo": "撤销操作"
+  "rollback-undo": "撤销操作",
+  "parameter-file-upload": "参数文件上传",
+  "parameter-file-candidate-create": "创建候选文件版本",
+  "parameter-file-candidate-abandon": "放弃候选文件版本",
+  "parameter-file-candidate-recompute": "重算候选影响",
+  baseline: "发布基线",
+  "file-conflict-resolved": "冲突裁决"
 };
 
 const actionLabels: Record<string, string> = {
@@ -79,7 +85,15 @@ const actionLabels: Record<string, string> = {
   advance: "推进审阅",
   reject: "打回变更",
   submit: "提交变更",
-  apply: "应用导入"
+  apply: "应用导入",
+  create: "创建",
+  abandon: "放弃",
+  recompute: "重算影响",
+  upload: "上传",
+  sync: "同步",
+  release: "发布",
+  restore: "恢复",
+  resolve: "裁决"
 };
 
 function asString(value: unknown) {
