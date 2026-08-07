@@ -176,6 +176,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title: "Candidate file version upload, impact review, parse-failure diagnostics, and abandon leave Working configuration and Config set membership unchanged.",
     required: false
   },
+  {
+    id: "PROJ-CONFIG-ACTIVATE-001",
+    workflow: "C",
+    title: "Candidate activation with expected-current-version CAS, new-file Config set/role intent, stale-base safety, impact confirmation, and Working configuration promotion.",
+    required: false
+  },
 
   {
     id: "PARAM-ADMIN-DIALOG-001",

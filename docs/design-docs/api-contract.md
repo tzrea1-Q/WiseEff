@@ -215,8 +215,9 @@ View routes require `canViewParameters`; upload, version upload, sync, and confl
 | `GET` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId` | Read one candidate lifecycle DTO. |
 | `GET` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/impact` | Read candidate impact evidence (`textDiff`, `structuralDiff`, diagnostics, coverage, conflicts, blockers). |
 | `GET` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content` | Download candidate bytes. |
-| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/abandon` | Abandon ready/blocked/failed candidates without changing Working configuration. |
-| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/recompute` | Recompute impact for ready/blocked/failed candidates when external blockers change. |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/abandon` | Abandon ready/blocked/failed/stale candidates without changing Working configuration. |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/recompute` | Recompute impact for ready/blocked/failed/stale candidates; stale recomputation rebases against the current active version. |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/activate` | Activate a ready candidate with `expectedCurrentVersionId` CAS. New files require `configSetId` + `role`. Stale base returns `409` with `reason: stale-base`, marks the candidate `stale`, and preserves Working configuration. Success returns `{ item, file, version }` and audits activation. |
 | `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/sync` | Diff the current or requested version against DB and upsert `file_sync` drafts. Returns `{ item: syncSummary }`. |
 | `GET` | `/api/v1/projects/:projectId/parameter-file-conflicts` | List open file/UI draft conflicts for the project. |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve` | Resolve one conflict. Body: `{ "resolution": "file" \| "ui" }`. |
