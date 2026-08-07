@@ -3,12 +3,15 @@ import { Activity, ChevronLeft, ChevronRight, FileCode2, FolderTree, Info, Lock,
 
 import type {
   ConfigSetRole,
+  DtsBaselineMemberComparison,
+  DtsCompareBaselineResult,
   DtsConfigSet,
   DtsConfigSetMemberFile,
   DtsExportConfigSetResult,
   DtsReleaseBaseline,
   DtsReleaseReadiness,
   DtsReleaseReadinessIssue,
+  DtsRestorePreviewResult,
   DtsSearchHit,
   DtsSourceLocator,
   DtsStructuralNode,
@@ -44,8 +47,13 @@ import { WorkbenchConflictArbitrationDock } from "./WorkbenchConflictArbitration
 import {
   WorkbenchReleaseReadinessIssues,
   WorkbenchReleaseReadinessSummary,
-  workbenchReadinessAllowsCreate
+  workbenchReadinessAllowsCreate,
+  workbenchReadinessAllowsRelease
 } from "./WorkbenchReleaseReadiness";
+import {
+  WorkbenchBaselineDock,
+  formatRestorePreviewDescription
+} from "./WorkbenchBaselineDock";
 import {
   isCriticalDtsNodePath
 } from "@/components/parameters/DtsStructureBrowserPanel";
@@ -185,6 +193,7 @@ type WorkbenchPathPatch = {
   sourceMode?: string | null;
   version?: string | null;
   candidate?: string | null;
+  baseline?: string | null;
   inspector?: string | null;
 };
 
@@ -202,6 +211,7 @@ function formatWorkbenchPath(projectId: string, search: string, patch: Workbench
   setOrDelete("sourceMode", patch.sourceMode);
   setOrDelete("version", patch.version);
   setOrDelete("candidate", patch.candidate);
+  setOrDelete("baseline", patch.baseline);
   if (patch.inspector === undefined) {
     params.delete("inspector");
   } else {
@@ -321,6 +331,16 @@ export function ProjectConfigurationWorkbench({
   const [createBaselineOpen, setCreateBaselineOpen] = useState(false);
   const [newBaselineName, setNewBaselineName] = useState("");
   const [baselineActionError, setBaselineActionError] = useState("");
+  const [selectedBaselineId, setSelectedBaselineId] = useState<string | null>(null);
+  const [baselinePinnedMembers, setBaselinePinnedMembers] = useState<
+    Array<{ fileId: string; fileVersionId: string; versionNumber: number }>
+  >([]);
+  const [baselineCompare, setBaselineCompare] = useState<DtsCompareBaselineResult | null>(null);
+  const [baselineCompareAgainst, setBaselineCompareAgainst] = useState<"working" | "released">("working");
+  const [restorePreview, setRestorePreview] = useState<DtsRestorePreviewResult | null>(null);
+  const [releaseBaselineOpen, setReleaseBaselineOpen] = useState(false);
+  const [restoreBaselineOpen, setRestoreBaselineOpen] = useState(false);
+  const [workingReturnPath, setWorkingReturnPath] = useState<string | null>(null);
   const [source, setSource] = useState("");
   const [configSetsLoading, setConfigSetsLoading] = useState(true);
   const [filesLoading, setFilesLoading] = useState(true);
@@ -1106,6 +1126,40 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [baselines]);
 
   useEffect(() => {
+    const requested = queryValue(search, "baseline");
+    if (requested && baselines.some((item) => item.id === requested)) {
+      setSelectedBaselineId(requested);
+      return;
+    }
+    if (!requested) {
+      setSelectedBaselineId((current) =>
+        current && baselines.some((item) => item.id === current) ? current : null
+      );
+    }
+  }, [baselines, search]);
+
+  useEffect(() => {
+    if (!selectedBaselineId || !selectedConfigSet) {
+      setBaselinePinnedMembers([]);
+      return;
+    }
+    let cancelled = false;
+    void dtsRepository
+      .getBaseline(project.id, selectedBaselineId)
+      .then((result) => {
+        if (cancelled) return;
+        setBaselinePinnedMembers(result.members);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBaselinePinnedMembers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dtsRepository, project.id, selectedBaselineId, selectedConfigSet]);
+
+  useEffect(() => {
     const available = ungroupedFiles[0]?.id ?? "";
     setMemberFileId((current) => (current && ungroupedFiles.some((item) => item.id === current) ? current : available));
   }, [ungroupedFiles]);
@@ -1503,11 +1557,23 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       }
 
       if (resolved.kind === "baseline") {
-        setActivityMissingNotice(
-          resolved.missing
-            ? resolved.missingReason ?? "发布基线已不存在；事件仍可作为只读证据。"
-            : "已定位到发布基线身份；基线对比入口尚未接入，事件仍可作为只读证据。"
-        );
+        if (resolved.missing) {
+          setActivityMissingNotice(resolved.missingReason ?? "发布基线已不存在；事件仍可作为只读证据。");
+          return;
+        }
+        if (resolved.baselineId && selectedConfigSet) {
+          setActivityMissingNotice("");
+          setSelectedBaselineId(resolved.baselineId);
+          setInspectorOpen(true);
+          onNavigate(
+            formatWorkbenchPath(project.id, search, {
+              configSet: selectedConfigSet.id,
+              file: selectedMember?.fileId ?? null,
+              baseline: resolved.baselineId,
+              inspector: null
+            })
+          );
+        }
         return;
       }
 
@@ -1808,6 +1874,237 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     project.id,
     selectedConfigSet,
     sessionDraftsDirty
+  ]);
+
+  const selectWorkbenchBaseline = useCallback(
+    (baselineId: string) => {
+      if (!selectedConfigSet) return;
+      setSelectedBaselineId(baselineId);
+      setBaselineCompare(null);
+      setInspectorOpen(true);
+      onNavigate(
+        formatWorkbenchPath(project.id, search, {
+          configSet: selectedConfigSet.id,
+          file: selectedMember?.fileId ?? null,
+          baseline: baselineId,
+          sourceMode: canvasModeQueryValue(canvasMode),
+          version: historyVersionId,
+          candidate: candidateId
+        })
+      );
+    },
+    [
+      candidateId,
+      canvasMode,
+      historyVersionId,
+      onNavigate,
+      project.id,
+      search,
+      selectedConfigSet,
+      selectedMember?.fileId
+    ]
+  );
+
+  const compareWorkbenchBaseline = useCallback(
+    async (against: "working" | "released") => {
+      if (!selectedConfigSet || !selectedBaselineId) return;
+      setBaselineActionError("");
+      setWorkingReturnPath(
+        formatWorkbenchPath(project.id, search, {
+          configSet: selectedConfigSet.id,
+          file: selectedMember?.fileId ?? null,
+          node: selectedNodePath,
+          property: selectedPropertyName,
+          sourceMode: null,
+          version: null,
+          candidate: null,
+          baseline: selectedBaselineId
+        })
+      );
+      const result = await dtsRepository.compareBaseline(project.id, selectedBaselineId, { against });
+      setBaselineCompare(result);
+      setBaselineCompareAgainst(against);
+      const firstDrift = result.members.find(
+        (member) => member.status === "version_changed" && member.baselineVersionId
+      );
+      if (firstDrift?.baselineVersionId && firstDrift.fileId) {
+        onNavigate(
+          formatWorkbenchPath(project.id, search, {
+            configSet: selectedConfigSet.id,
+            file: firstDrift.fileId,
+            sourceMode: "unified-diff",
+            version: firstDrift.baselineVersionId,
+            baseline: selectedBaselineId,
+            node: null,
+            property: null,
+            candidate: null
+          })
+        );
+      }
+      notifyMutation(
+        against === "released" ? "已对比基线与已发布 tip。" : "已对比基线与 Working 配置。"
+      );
+    },
+    [
+      dtsRepository,
+      notifyMutation,
+      onNavigate,
+      project.id,
+      search,
+      selectedBaselineId,
+      selectedConfigSet,
+      selectedMember?.fileId,
+      selectedNodePath,
+      selectedPropertyName
+    ]
+  );
+
+  const exitBaselineCompare = useCallback(() => {
+    setBaselineCompare(null);
+    if (workingReturnPath) {
+      onNavigate(workingReturnPath);
+      setWorkingReturnPath(null);
+      return;
+    }
+    if (!selectedConfigSet) return;
+    onNavigate(
+      formatWorkbenchPath(project.id, search, {
+        configSet: selectedConfigSet.id,
+        file: selectedMember?.fileId ?? null,
+        sourceMode: null,
+        version: null,
+        baseline: selectedBaselineId,
+        candidate: null
+      })
+    );
+  }, [
+    onNavigate,
+    project.id,
+    search,
+    selectedBaselineId,
+    selectedConfigSet,
+    selectedMember?.fileId,
+    workingReturnPath
+  ]);
+
+  const selectBaselineCompareMember = useCallback(
+    (member: DtsBaselineMemberComparison) => {
+      if (!selectedConfigSet || !member.baselineVersionId) return;
+      onNavigate(
+        formatWorkbenchPath(project.id, search, {
+          configSet: selectedConfigSet.id,
+          file: member.fileId,
+          sourceMode: canvasMode === "side-by-side" ? "side-by-side" : "unified-diff",
+          version: member.baselineVersionId,
+          baseline: selectedBaselineId,
+          node: null,
+          property: null,
+          candidate: null
+        })
+      );
+    },
+    [canvasMode, onNavigate, project.id, search, selectedBaselineId, selectedConfigSet]
+  );
+
+  const releaseWorkbenchBaseline = useCallback(async () => {
+    if (!canAdmin || !selectedConfigSet || !selectedBaselineId) return;
+    setBaselineActionError("");
+    const readiness = await dtsRepository.getReleaseReadiness(project.id, selectedConfigSet.id, {
+      acknowledgedWarningIds: [...acknowledgedWarningIds]
+    });
+    setReleaseReadiness(readiness);
+    if (!workbenchReadinessAllowsRelease(readiness, sessionDraftsDirty)) {
+      setBaselineActionError(
+        sessionDraftsDirty
+          ? "还有未保存的本机会话变更，不能发布基线。"
+          : readiness.unavailableReason ?? "发布就绪门禁阻止发布基线。"
+      );
+      return;
+    }
+    const unacked = readiness.warnings.filter(
+      (item) => item.acknowledgementRequired && !acknowledgedWarningIds.has(item.id)
+    );
+    if (unacked.length > 0) {
+      setBaselineActionError("请先在 Issues 坞确认策略允许的警告，再发布。");
+      setTasksOpen(true);
+      return;
+    }
+    const result = await dtsRepository.releaseBaseline(project.id, selectedBaselineId, {
+      gateToken: readiness.gateToken,
+      acknowledgedWarningIds: [...acknowledgedWarningIds]
+    });
+    setBaselines((current) =>
+      current.map((item) => {
+        if (item.id === result.item.id) return result.item;
+        if (item.configSetId === selectedConfigSet.id && item.status === "released") {
+          return { ...item, status: "historical" };
+        }
+        return item;
+      })
+    );
+    setReleaseBaselineOpen(false);
+    setReadinessRetry((value) => value + 1);
+    setBaselinesRetry((value) => value + 1);
+    notifyMutation(`已发布基线「${result.item.name}」。`);
+  }, [
+    acknowledgedWarningIds,
+    canAdmin,
+    dtsRepository,
+    notifyMutation,
+    project.id,
+    selectedBaselineId,
+    selectedConfigSet,
+    sessionDraftsDirty
+  ]);
+
+  const openRestoreWorkbenchBaseline = useCallback(async () => {
+    if (!selectedBaselineId) return;
+    setBaselineActionError("");
+    const preview = await dtsRepository.previewRestoreBaseline(project.id, selectedBaselineId);
+    setRestorePreview(preview);
+    setRestoreBaselineOpen(true);
+  }, [dtsRepository, project.id, selectedBaselineId]);
+
+  const restoreWorkbenchBaseline = useCallback(async () => {
+    if (!canAdmin || !selectedConfigSet || !selectedBaselineId) return;
+    setBaselineActionError("");
+    const tipBefore = releasedBaseline?.id;
+    const result = await dtsRepository.rollbackBaseline(project.id, selectedBaselineId);
+    setRestoreBaselineOpen(false);
+    setRestorePreview(null);
+    setMembersRetry((value) => value + 1);
+    setBaselinesRetry((value) => value + 1);
+    setReadinessRetry((value) => value + 1);
+    setSourceRetry((value) => value + 1);
+    onNavigate(
+      formatWorkbenchPath(project.id, search, {
+        configSet: selectedConfigSet.id,
+        file: selectedMember?.fileId ?? null,
+        sourceMode: null,
+        version: null,
+        baseline: selectedBaselineId,
+        candidate: null
+      })
+    );
+    const tipAfter = (await dtsRepository.listBaselines(project.id, selectedConfigSet.id)).find(
+      (item) => item.status === "released"
+    )?.id;
+    notifyMutation(
+      tipBefore && tipAfter && tipBefore === tipAfter
+        ? `已恢复基线成员（${result.restored} 项）；已发布 tip 未变。`
+        : `已恢复基线成员（${result.restored} 项）。`
+    );
+  }, [
+    canAdmin,
+    dtsRepository,
+    notifyMutation,
+    onNavigate,
+    project.id,
+    releasedBaseline?.id,
+    search,
+    selectedBaselineId,
+    selectedConfigSet,
+    selectedMember?.fileId
   ]);
 
   const handleSelectReadinessIssue = useCallback(
@@ -2967,6 +3264,41 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                   </button>
                 </div>
               </div>
+              <WorkbenchBaselineDock
+                baselines={baselines}
+                releasedTipId={releasedBaseline?.id}
+                selectedBaselineId={selectedBaselineId}
+                loading={baselinesLoading}
+                error={baselinesError}
+                compareMembers={baselineCompare?.members ?? null}
+                compareAgainst={baselineCompareAgainst}
+                pinnedMembers={baselinePinnedMembers}
+                canAdmin={canAdmin}
+                canRelease={workbenchReadinessAllowsRelease(releaseReadiness, sessionDraftsDirty)}
+                canRestore={canAdmin && Boolean(selectedBaselineId)}
+                releaseBlockedReason={
+                  sessionDraftsDirty
+                    ? "还有未保存的本机会话变更，不能发布"
+                    : !releaseReadiness?.canRelease
+                      ? "发布就绪门禁阻止发布"
+                      : undefined
+                }
+                comparing={Boolean(baselineCompare) || canvasMode === "unified-diff" || canvasMode === "side-by-side"}
+                onSelectBaseline={selectWorkbenchBaseline}
+                onRetry={() => setBaselinesRetry((value) => value + 1)}
+                onCompare={(against) => {
+                  void runAction("compare-baseline", () => compareWorkbenchBaseline(against));
+                }}
+                onOpenRelease={() => {
+                  setBaselineActionError("");
+                  setReleaseBaselineOpen(true);
+                }}
+                onOpenRestore={() => {
+                  void runAction("preview-restore-baseline", openRestoreWorkbenchBaseline);
+                }}
+                onExitCompare={exitBaselineCompare}
+                onSelectCompareMember={selectBaselineCompareMember}
+              />
               <dl>
                 <div>
                   <dt>检查层级</dt>
@@ -3887,6 +4219,69 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
         }}
         onConfirm={() => {
           void runAction("create-baseline", createWorkbenchBaseline);
+        }}
+      />
+
+      <ConfirmDialog
+        open={releaseBaselineOpen}
+        title="发布基线确认"
+        description={
+          <div>
+            <p>
+              将把选中草稿发布为配置集当前 tip，并把先前 tip 标记为历史。发布会写入审计并刷新
+              working-versus-released drift。
+            </p>
+            {releaseReadiness?.warnings
+              .filter((item) => item.acknowledgementRequired)
+              .map((item) => (
+                <p key={item.id} role="note">
+                  警告：{item.message}
+                  {acknowledgedWarningIds.has(item.id) ? "（已确认）" : "（待确认）"}
+                </p>
+              ))}
+            {baselineActionError ? <p role="alert">{baselineActionError}</p> : null}
+          </div>
+        }
+        confirmLabel="确认发布"
+        cancelLabel="取消"
+        pending={pendingAction === "release-baseline"}
+        pendingLabel="发布中…"
+        tone="danger"
+        onCancel={() => {
+          if (pendingAction) return;
+          setReleaseBaselineOpen(false);
+          setBaselineActionError("");
+        }}
+        onConfirm={() => {
+          void runAction("release-baseline", releaseWorkbenchBaseline);
+        }}
+      />
+
+      <ConfirmDialog
+        open={restoreBaselineOpen}
+        title="恢复基线确认"
+        description={
+          restorePreview && selectedBaselineId
+            ? formatRestorePreviewDescription(
+                baselines.find((item) => item.id === selectedBaselineId)?.name ?? selectedBaselineId,
+                restorePreview.members,
+                restorePreview.releasedBaselineUnchanged
+              )
+            : "正在准备恢复预览…"
+        }
+        confirmLabel="确认恢复"
+        cancelLabel="取消"
+        pending={pendingAction === "restore-baseline"}
+        pendingLabel="恢复中…"
+        tone="danger"
+        onCancel={() => {
+          if (pendingAction) return;
+          setRestoreBaselineOpen(false);
+          setRestorePreview(null);
+          setBaselineActionError("");
+        }}
+        onConfirm={() => {
+          void runAction("restore-baseline", restoreWorkbenchBaseline);
         }}
       />
 

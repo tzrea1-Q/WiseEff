@@ -226,7 +226,7 @@ export type FileConfigSetMembershipDto = {
   configSetSortOrder: number;
 };
 
-export type BaselineStatus = "draft" | "released";
+export type BaselineStatus = "draft" | "released" | "historical";
 
 export type ReleaseBaselineDto = {
   id: string;

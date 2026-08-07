@@ -114,7 +114,7 @@
 | --- | --- |
 | `DtsConfigSet` | 项目级可构建单元（`dts_config_set`）：`name`（项目内唯一）、可选 `description`、可选 `derived_from_id`（板级变体血缘）。 |
 | `ProjectParameterFile`（扩展） | 新增 `config_set_id`、`config_set_role`（`base`\|`overlay`\|`charging`\|`thermal`\|`misc`）、`config_set_sort_order`。一个文件同一时间至多属于一个配置集。 |
-| `ReleaseBaseline` | 配置集的具名不可变快照（`dts_release_baseline`）：`status`（`draft`\|`released`）、可选 `notes`、`created_by`。 |
+| `ReleaseBaseline` | 配置集的具名不可变快照（`dts_release_baseline`）：`status`（`draft`\|`released`\|`historical`）、可选 `notes`、`created_by`。每个配置集至多一个 `released` tip；发布时旧 tip 变为 `historical`。 |
 | `ReleaseBaselineMember` | 快照时刻钉住的每个成员 `(file_id, file_version_id, version_number)`（`dts_release_baseline_members`）。钉住只引用既有不可变文件版本，从不复制对象存储字节。 |
 
 规则：

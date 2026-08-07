@@ -75,7 +75,7 @@ A `DtsConfigSet` is the top-level buildable unit above individual files: a proje
 | --- | --- |
 | `DtsConfigSet` | A project-scoped buildable unit (`dts_config_set`): `name` (unique per project), optional `description`, optional `derived_from_id` for board-variant lineage. |
 | `ProjectParameterFile` (extended) | Adds `config_set_id`, `config_set_role` (`base`\|`overlay`\|`charging`\|`thermal`\|`misc`), and `config_set_sort_order`. A file belongs to at most one config set at a time. |
-| `ReleaseBaseline` | A named, immutable snapshot of a config set (`dts_release_baseline`): `status` (`draft`\|`released`), optional `notes`, `created_by`. |
+| `ReleaseBaseline` | A named, immutable snapshot of a config set (`dts_release_baseline`): `status` (`draft`\|`released`\|`historical`), optional `notes`, `created_by`. At most one `released` tip per config set; prior tips become `historical` on release. |
 | `ReleaseBaselineMember` | One pinned `(file_id, file_version_id, version_number)` row per config-set member at snapshot time (`dts_release_baseline_members`). Pinning references an existing immutable file version; it never copies object-store bytes. |
 
 Rules:

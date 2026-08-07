@@ -1,5 +1,6 @@
 import type {
   AddConfigSetFileInput,
+  CompareBaselineOptions,
   CreateBaselineInput,
   CreateConfigSetInput,
   DtsConfigSet,
@@ -459,6 +460,19 @@ export function createMockDtsStructuredRepository(
       return state.baselines.filter((item) => item.configSetId === configSetId).map((item) => ({ ...item }));
     },
 
+    async getBaseline(_requestedProjectId, baselineId) {
+      const baseline = requireBaseline(baselineId);
+      const members = state.memberships
+        .filter((item) => item.configSetId === baseline.configSetId)
+        .map((item, index) => ({
+          baselineId: baseline.id,
+          fileId: item.fileId,
+          fileVersionId: versionId,
+          versionNumber: index + 1
+        }));
+      return { item: { ...baseline }, members };
+    },
+
     async getReleaseReadiness(_requestedProjectId, configSetId, options) {
       requireConfigSet(configSetId);
       const members = state.memberships.filter((item) => item.configSetId === configSetId);
@@ -532,8 +546,12 @@ export function createMockDtsStructuredRepository(
       return { ...baseline };
     },
 
-    async compareBaseline(_requestedProjectId, baselineId) {
+    async compareBaseline(_requestedProjectId, baselineId, options?: CompareBaselineOptions) {
       const baseline = requireBaseline(baselineId);
+      const against = options?.against ?? "working";
+      const tip = state.baselines.find(
+        (item) => item.configSetId === baseline.configSetId && item.status === "released"
+      );
       const members = state.memberships
         .filter((membership) => membership.configSetId === baseline.configSetId)
         .map((membership) => ({
@@ -555,6 +573,8 @@ export function createMockDtsStructuredRepository(
 
       return {
         baselineId: baseline.id,
+        against,
+        againstBaselineId: against === "released" ? tip?.id : undefined,
         members:
           members.length > 0
             ? members
@@ -573,6 +593,32 @@ export function createMockDtsStructuredRepository(
                   ]
                 }
               ]
+      };
+    },
+
+    async previewRestoreBaseline(_requestedProjectId, baselineId) {
+      const baseline = requireBaseline(baselineId);
+      const tip = state.baselines.find(
+        (item) => item.configSetId === baseline.configSetId && item.status === "released"
+      );
+      const members = state.memberships
+        .filter((item) => item.configSetId === baseline.configSetId)
+        .map((item, index) => ({
+          fileId: item.fileId,
+          fileName: item.fileId === fileId ? DEFAULT_FILE_NAME : item.fileId,
+          fromVersionId: `${versionId}-current`,
+          fromVersionNumber: index + 2,
+          toVersionId: versionId,
+          toVersionNumber: index + 1,
+          action: "rollback-pointer" as const
+        }));
+      return {
+        baselineId: baseline.id,
+        configSetId: baseline.configSetId,
+        releasedBaselineId: tip?.id,
+        releasedBaselineUnchanged: true as const,
+        members,
+        driftedCount: members.length
       };
     },
 
@@ -597,7 +643,13 @@ export function createMockDtsStructuredRepository(
         throw new Error("Baseline release is blocked by release readiness.");
       }
       const released: DtsReleaseBaseline = { ...baseline, status: "released" };
-      state.baselines = state.baselines.map((item) => (item.id === baselineId ? released : item));
+      state.baselines = state.baselines.map((item) => {
+        if (item.id === baselineId) return released;
+        if (item.configSetId === baseline.configSetId && item.status === "released") {
+          return { ...item, status: "historical" };
+        }
+        return item;
+      });
       return {
         item: { ...released },
         gate: {

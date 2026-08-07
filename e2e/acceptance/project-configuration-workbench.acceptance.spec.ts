@@ -2510,4 +2510,274 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       });
     }
   });
+
+  test("creates, compares, releases, and restores baselines in source context", async ({
+    page,
+    request
+  }, testInfo) => {
+    // @acceptance PROJ-CONFIG-BASELINE-001
+    // @operation PROJ-CONFIG-BASELINE-001
+    const suffix = randomUUID();
+    const configSetName = `release-baselines-${suffix}`;
+    const primaryFileName = `acceptance-baseline-${suffix}.dts`;
+    let configSetId = "";
+    let primaryFileId = "";
+    let draftBaselineId = "";
+    let releasedTipId: string | undefined;
+
+    try {
+      await withPgClient(async (client) => {
+        await client.query(
+          `
+          update parameter_change_requests
+          set status = 'withdrawn'
+          where project_id = $1
+            and status in ('submitted', 'hardware_review', 'software_review', 'software_merge')
+          `,
+          [projectId]
+        );
+        await client.query(
+          `
+          update parameter_file_sync_conflicts
+          set status = 'resolved'
+          where project_id = $1
+            and status = 'open'
+          `,
+          [projectId]
+        );
+      });
+
+      const primaryUpload = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: primaryFileName,
+          contentBase64: Buffer.from(sampleDts, "utf8").toString("base64")
+        }
+      });
+      expect(primaryUpload.ok()).toBe(true);
+      const primaryBody = (await primaryUpload.json()) as {
+        item: { id: string };
+        version: { id: string };
+      };
+      primaryFileId = primaryBody.item.id;
+
+      const createConfigSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(),
+        data: { name: configSetName, description: "Release baselines acceptance" }
+      });
+      expect(createConfigSet.status()).toBe(201);
+      const configSetBody = (await createConfigSet.json()) as { item: { id: string } };
+      configSetId = configSetBody.item.id;
+
+      const addMember = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
+        { headers: adminHeaders(), data: { fileId: primaryFileId, role: "base", sortOrder: 0 } }
+      );
+      expect(addMember.ok()).toBe(true);
+
+      const readinessResponse = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/release-readiness`),
+        { headers: adminHeaders() }
+      );
+      expect(readinessResponse.ok()).toBe(true);
+      const readinessBody = (await readinessResponse.json()) as {
+        item: {
+          available: boolean;
+          canCreateBaseline: boolean;
+          canRelease: boolean;
+          gateToken: string;
+          level: string;
+          releasedBaselineId?: string;
+          blockers: Array<{ id: string; code: string; message?: string }>;
+          warnings: Array<{ id: string; acknowledgementRequired?: boolean }>;
+        };
+      };
+
+      const acknowledgedWarningIds = readinessBody.item.warnings
+        .filter((item) => item.acknowledgementRequired)
+        .map((item) => item.id);
+
+      const createBaseline = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/baselines`),
+        {
+          headers: adminHeaders(),
+          data: {
+            name: `draft-${suffix}`,
+            gateToken: readinessBody.item.gateToken,
+            acknowledgedWarningIds
+          }
+        }
+      );
+
+      expect(
+        createBaseline.status(),
+        `baseline create should succeed when gate allows; readiness=${JSON.stringify({
+          available: readinessBody.item.available,
+          level: readinessBody.item.level,
+          canCreateBaseline: readinessBody.item.canCreateBaseline,
+          blockers: readinessBody.item.blockers
+        })}`
+      ).toBe(201);
+      const createdBody = (await createBaseline.json()) as { item: { id: string; status: string } };
+      draftBaselineId = createdBody.item.id;
+      expect(createdBody.item.status).toBe("draft");
+
+      const getBaseline = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/baselines/${draftBaselineId}`),
+        { headers: adminHeaders() }
+      );
+      expect(getBaseline.ok()).toBe(true);
+      const detailBody = (await getBaseline.json()) as {
+        item: { id: string };
+        members: Array<{ fileId: string; fileVersionId: string }>;
+      };
+      expect(detailBody.members.length).toBeGreaterThan(0);
+
+      const compareWorking = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/baselines/${draftBaselineId}/compare?against=working`),
+        { headers: adminHeaders() }
+      );
+      expect(compareWorking.ok()).toBe(true);
+      const compareBody = (await compareWorking.json()) as {
+        item: { against: string; members: Array<{ status: string }> };
+      };
+      expect(compareBody.item.against).toBe("working");
+
+      const previewRestore = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/baselines/${draftBaselineId}/restore-preview`),
+        { headers: adminHeaders() }
+      );
+      expect(previewRestore.ok()).toBe(true);
+      const previewBody = (await previewRestore.json()) as {
+        item: { releasedBaselineUnchanged: boolean; driftedCount: number; members: unknown[] };
+      };
+      expect(previewBody.item.releasedBaselineUnchanged).toBe(true);
+
+      const readinessBeforeRelease = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/release-readiness`),
+        { headers: adminHeaders() }
+      );
+      const readinessBeforeReleaseBody = (await readinessBeforeRelease.json()) as {
+        item: { canRelease: boolean; gateToken: string; releasedBaselineId?: string };
+      };
+      releasedTipId = readinessBeforeReleaseBody.item.releasedBaselineId;
+
+      if (readinessBeforeReleaseBody.item.canRelease) {
+        const releaseResponse = await request.post(
+          apiRoute(`/api/v1/projects/${projectId}/baselines/${draftBaselineId}/release`),
+          {
+            headers: adminHeaders(),
+            data: { gateToken: readinessBeforeReleaseBody.item.gateToken }
+          }
+        );
+        expect(releaseResponse.ok()).toBe(true);
+        const releaseBody = (await releaseResponse.json()) as { item: { id: string; status: string } };
+        expect(releaseBody.item.status).toBe("released");
+        releasedTipId = releaseBody.item.id;
+
+        const listAfterRelease = await request.get(
+          apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/baselines`),
+          { headers: adminHeaders() }
+        );
+        const listBody = (await listAfterRelease.json()) as {
+          items: Array<{ id: string; status: string }>;
+        };
+        expect(listBody.items.filter((item) => item.status === "released")).toHaveLength(1);
+      }
+
+      const tipBeforeRestore = releasedTipId;
+      const restorePreviewBeforeApply = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/baselines/${draftBaselineId}/restore-preview`),
+        { headers: adminHeaders() }
+      );
+      expect(restorePreviewBeforeApply.ok()).toBe(true);
+
+      const rollback = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/baselines/${draftBaselineId}/rollback`),
+        { headers: adminHeaders(), data: {} }
+      );
+      expect(rollback.ok()).toBe(true);
+
+      const listAfterRestore = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/baselines`),
+        { headers: adminHeaders() }
+      );
+      const afterRestoreBody = (await listAfterRestore.json()) as {
+        items: Array<{ id: string; status: string }>;
+      };
+      const tipAfterRestore = afterRestoreBody.items.find((item) => item.status === "released")?.id;
+      if (tipBeforeRestore) {
+        expect(tipAfterRestore).toBe(tipBeforeRestore);
+      }
+
+      await signInBrowserAsRole(page, "admin");
+      await page.goto(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryFileId)}&baseline=${encodeURIComponent(draftBaselineId)}`
+      );
+      await dismissXiaozeHint(page);
+
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.getByRole("button", { name: "检查器" }).click();
+      await expect(page.getByRole("region", { name: "发布基线" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByLabel("基线历史")).toBeVisible();
+
+      await page.setViewportSize({ width: 768, height: 1024 });
+      await expect(page.getByRole("region", { name: "发布基线" })).toBeVisible();
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(page.getByRole("region", { name: "发布基线" })).toBeVisible();
+
+      const evidencePath = await writeOperationJsonArtifact(
+        testInfo,
+        "project-configuration-workbench-release-baselines.json",
+        {
+          route: page.url(),
+          configSetId,
+          draftBaselineId,
+          releasedTipId: tipAfterRestore ?? tipBeforeRestore ?? null,
+          releasedTipUnchanged: tipBeforeRestore ? tipAfterRestore === tipBeforeRestore : null,
+          viewports: ["1440x900", "768x1024", "390x844"]
+        }
+      );
+      await recordOperationEvidence({
+        operationId: "PROJ-CONFIG-BASELINE-001",
+        title: "configuration workbench release baselines",
+        status: "passed",
+        role: "Admin",
+        route: `/parameter-admin/projects/${projectId}/configuration`,
+        page,
+        testInfo,
+        assertions: ["ui", "api", "screenshot"],
+        artifacts: [evidencePath],
+        api: [
+          summarizeApiResponse(createBaseline, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/config-sets/${configSetId}/baselines`,
+            responseSummary: `draft=${draftBaselineId}`
+          }),
+          summarizeApiResponse(compareWorking, {
+            method: "GET",
+            path: `/api/v1/projects/${projectId}/baselines/${draftBaselineId}/compare`,
+            responseSummary: `against=${compareBody.item.against}`
+          }),
+          summarizeApiResponse(previewRestore, {
+            method: "GET",
+            path: `/api/v1/projects/${projectId}/baselines/${draftBaselineId}/restore-preview`,
+            responseSummary: `drifted=${previewBody.item.driftedCount}`
+          }),
+          summarizeApiResponse(rollback, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/baselines/${draftBaselineId}/rollback`,
+            responseSummary: "restore applied"
+          })
+        ]
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        configSetNames: [configSetName],
+        fileNames: [primaryFileName]
+      });
+    }
+  });
 });

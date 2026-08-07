@@ -13,7 +13,7 @@ type ReleaseBaselineRow = {
   config_set_id: string;
   name: string;
   notes: string | null;
-  status: "draft" | "released";
+  status: "draft" | "released" | "historical";
   created_by_user_id: string | null;
   created_at: string | Date;
 };
@@ -217,7 +217,7 @@ export async function listConfigSetMemberFiles(
 
 export async function updateBaselineStatus(
   db: Queryable,
-  input: { baselineId: string; status: "draft" | "released" }
+  input: { baselineId: string; status: "draft" | "released" | "historical" }
 ): Promise<ReleaseBaselineDto> {
   const result = await db.query<ReleaseBaselineRow>(
     `
@@ -230,4 +230,23 @@ export async function updateBaselineStatus(
   );
 
   return toReleaseBaselineDto(result.rows[0]);
+}
+
+/** Demote every currently released tip in the config set except the kept baseline. */
+export async function demoteReleasedBaselinesExcept(
+  db: Queryable,
+  input: { configSetId: string; keepBaselineId: string }
+): Promise<number> {
+  const result = await db.query<{ id: string }>(
+    `
+    update dts_release_baseline
+    set status = 'historical'
+    where config_set_id = $1
+      and status = 'released'
+      and id <> $2
+    returning id
+    `,
+    [input.configSetId, input.keepBaselineId]
+  );
+  return result.rowCount ?? result.rows.length;
 }

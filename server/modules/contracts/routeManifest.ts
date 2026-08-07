@@ -111,6 +111,41 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameters.getReleaseBaseline",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/baselines/:baselineId",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.compareReleaseBaseline",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/baselines/:baselineId/compare",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.previewRestoreReleaseBaseline",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/baselines/:baselineId/restore-preview",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.rollbackReleaseBaseline",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/baselines/:baselineId/rollback",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.releaseReleaseBaseline",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/baselines/:baselineId/release",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameters.getParameterFileStructure",
     method: "GET",
     path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure",

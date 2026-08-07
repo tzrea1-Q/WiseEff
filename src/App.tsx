@@ -3559,11 +3559,13 @@ type ParameterReviewRow =
   | { kind: "change"; request: ChangeRequest };
 
 function getParameterInitializationReviewStatusLabel(status: ProjectParameterInitializationReview["status"]) {
-  return {
-    pending: "待审阅",
-    approved: "已通过",
-    rejected: "已驳回"
-  }[status];
+  return (
+    {
+      pending: "待审阅",
+      approved: "已通过",
+      rejected: "已驳回"
+    }[status] ?? (typeof status === "string" && status.trim() ? status : "未知")
+  );
 }
 
 type VerticalTimelineItem = {
@@ -3582,7 +3584,7 @@ function getUserName(users: PrototypeState["users"], userId?: string) {
 }
 
 function formatWorkflowDisplayText(text: string) {
-  return text
+  return String(text ?? "")
     .replaceAll("Committer", "MDE")
     .replaceAll("User", "开发人员");
 }
@@ -6004,7 +6006,12 @@ function MetricCard({ title, value, trend, tone }: { title: string; value: strin
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return <UiBadge className="status-badge" variant="secondary"><span />{formatWorkflowDisplayText(status)}</UiBadge>;
+  return (
+    <UiBadge className="status-badge" variant="secondary">
+      <span />
+      {formatWorkflowDisplayText(status || "未知")}
+    </UiBadge>
+  );
 }
 
 function SectionLabel({ icon, label }: { icon: ReactNode; label: string }) {

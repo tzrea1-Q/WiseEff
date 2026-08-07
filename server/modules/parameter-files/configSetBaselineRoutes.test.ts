@@ -55,6 +55,7 @@ vi.mock("./baselineService", () => ({
   listBaselines: vi.fn(),
   getBaseline: vi.fn(),
   compareBaseline: vi.fn(),
+  previewRestoreBaseline: vi.fn(),
   rollbackToBaseline: vi.fn(),
   releaseBaseline: vi.fn()
 }));
@@ -362,8 +363,55 @@ describe("config set and baseline routes", () => {
       db,
       expect.objectContaining({ organization: expect.objectContaining({ id: "org-1" }) }),
       "bl-1",
-      { objectStore }
+      { objectStore },
+      { against: "working" }
     );
+  });
+
+  it("GET compare accepts against=released", async () => {
+    const db = makeDb();
+    const objectStore = makeObjectStore();
+    const comparison = {
+      baselineId: "bl-1",
+      against: "released" as const,
+      againstBaselineId: "bl-tip",
+      members: [{ fileId: "file-1", status: "unchanged" as const }]
+    };
+    vi.mocked(baselineService.compareBaseline).mockResolvedValue(comparison);
+
+    const response = await requestJson<{ item: typeof comparison }>(
+      makeServer({ db, objectStore }),
+      "/api/v1/projects/project-1/baselines/bl-1/compare?against=released"
+    );
+
+    expect(response.status).toBe(200);
+    expect(baselineService.compareBaseline).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ organization: expect.objectContaining({ id: "org-1" }) }),
+      "bl-1",
+      { objectStore },
+      { against: "released" }
+    );
+  });
+
+  it("GET restore-preview returns blast radius without applying", async () => {
+    const db = makeDb();
+    const preview = {
+      baselineId: "bl-1",
+      configSetId: "cs-1",
+      releasedBaselineUnchanged: true as const,
+      members: [],
+      driftedCount: 0
+    };
+    vi.mocked(baselineService.previewRestoreBaseline).mockResolvedValue(preview);
+
+    const response = await requestJson<{ item: typeof preview }>(
+      makeServer({ db }),
+      "/api/v1/projects/project-1/baselines/bl-1/restore-preview"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item).toEqual(preview);
   });
 
   it("POST /api/v1/projects/:projectId/baselines/:baselineId/rollback returns 200 with rollback summary", async () => {

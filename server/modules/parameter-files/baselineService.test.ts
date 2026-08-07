@@ -9,6 +9,7 @@ import {
   createBaseline,
   getBaseline,
   listBaselines,
+  previewRestoreBaseline,
   releaseBaseline,
   rollbackToBaseline
 } from "./baselineService";
@@ -647,6 +648,7 @@ describe("releaseBaseline", () => {
       [fileVersionRow()],
       [],
       [configSetRow()],
+      [], // demote previous released tips
       [baselineRow({ status: "released" })],
       []
     ]);
@@ -664,8 +666,16 @@ describe("releaseBaseline", () => {
     expect(result.gate.ok).toBe(true);
     expect(result.gate.requiresConfirmation).toBe(false);
 
+    const demoteUpdate = txCalls.find(
+      (call) => call.text.includes("status = 'historical'") || call.text.includes("status = 'historical'")
+    );
+    expect(demoteUpdate || txCalls.some((call) => call.text.includes("historical"))).toBeTruthy();
+
     const statusUpdate = txCalls.find(
-      (call) => call.text.includes("update dts_release_baseline") && call.text.includes("status")
+      (call) =>
+        call.text.includes("update dts_release_baseline") &&
+        call.text.includes("status") &&
+        call.values.includes("released")
     );
     expect(statusUpdate).toBeTruthy();
     expect(statusUpdate?.values).toEqual(expect.arrayContaining(["released", "baseline-1"]));
@@ -678,5 +688,99 @@ describe("releaseBaseline", () => {
     );
     expect(releasedAudit).toBeTruthy();
     expect(releasedAudit?.values[10]).toBe("baseline-1");
+  });
+
+  it("demotes the previous released tip to historical when releasing a new tip", async () => {
+    const validator = createStubDtcValidator(() => ({
+      ok: true,
+      mode: "block",
+      compiler: "dtc",
+      diagnostics: []
+    }));
+
+    const { db, txCalls } = createFakeDb([
+      [baselineRow({ id: "baseline-2", name: "next" })],
+      [configSetRow()],
+      [memberFileRow()],
+      [fileRow()],
+      [fileVersionRow()],
+      [],
+      [configSetRow()],
+      [{ id: "baseline-1" }],
+      [baselineRow({ id: "baseline-2", name: "next", status: "released" })],
+      []
+    ]);
+
+    const result = await releaseBaseline(
+      db,
+      adminAuth(),
+      "baseline-2",
+      { objectStore: fakeObjectStore({ "sk-1": "/dts-v1/; / { };" }), validator },
+      { requestId: "req-2" },
+      { gateToken: "test-gate-token" }
+    );
+
+    expect(result.baseline.status).toBe("released");
+    const demote = txCalls.find((call) => call.text.includes("historical"));
+    expect(demote).toBeTruthy();
+    expect(demote?.values).toEqual(expect.arrayContaining(["dcs-1", "baseline-2"]));
+  });
+});
+
+describe("previewRestoreBaseline", () => {
+  it("returns drifted member blast radius without mutating files or released tip", async () => {
+    const { db, txCalls } = createFakeDb([
+      [baselineRow()],
+      [baselineMemberRow(), baselineMemberRow({ id: "bm-2", file_id: "file-2", file_version_id: "fv-2", version_number: 1 })],
+      [baselineRow({ status: "released" })],
+      [fileRow()],
+      [fileVersionRow()],
+      [
+        fileRow({
+          id: "file-2",
+          file_name: "board-a.overlay.dts",
+          current_version_id: "fv-2-new",
+          current_version_number: 2
+        })
+      ],
+      [fileVersionRow({ id: "fv-2", file_id: "file-2", storage_key: "sk-2" })]
+    ]);
+
+    const result = await previewRestoreBaseline(db, adminAuth(), "baseline-1");
+
+    expect(result.releasedBaselineUnchanged).toBe(true);
+    expect(result.driftedCount).toBe(1);
+    expect(result.members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileId: "file-1",
+          action: "noop"
+        }),
+        expect.objectContaining({
+          fileId: "file-2",
+          action: "rollback-pointer",
+          fromVersionId: "fv-2-new",
+          toVersionId: "fv-2"
+        })
+      ])
+    );
+    expect(txCalls.find((call) => call.text.includes("insert into"))).toBeFalsy();
+  });
+});
+
+describe("compareBaseline against released", () => {
+  it("compares a draft baseline to the current released tip members", async () => {
+    const { db } = createFakeDb([
+      [baselineRow({ id: "baseline-draft", status: "draft" })],
+      [baselineMemberRow({ baseline_id: "baseline-draft", file_version_id: "fv-new", version_number: 2 })],
+      [baselineRow({ id: "baseline-1", status: "released" })],
+      [baselineMemberRow()],
+      [memberFileRow()]
+    ]);
+
+    const result = await compareBaseline(db, adminAuth(), "baseline-draft", {}, { against: "released" });
+    expect(result.against).toBe("released");
+    expect(result.againstBaselineId).toBe("baseline-1");
+    expect(result.members[0]?.status).toBe("version_changed");
   });
 });

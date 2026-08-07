@@ -26,7 +26,10 @@ export function uniqueFilterValues<TData>(rows: readonly TData[], getValue: (row
   return Array.from(
     new Set(
       rows
-        .map((row) => getValue(row).trim())
+        .map((row) => {
+          const value = getValue(row);
+          return typeof value === "string" ? value.trim() : "";
+        })
         .filter(Boolean)
     )
   );
