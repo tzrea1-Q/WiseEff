@@ -348,4 +348,183 @@ describe.skipIf(!databaseAvailable)("parameter file integration", () => {
     );
     expect(mergedValue.rows[0]?.current_value).toBe("85");
   });
+
+  it("enriches open conflicts, audits resolve reason, and supports bulk preview/resolve", async () => {
+    const { resolveParameterFileConflict, previewBulkConflictResolution, resolveConflictsBulk } =
+      await import("./conflictService");
+    const { insertFileSyncConflict, listOpenConflicts } = await import("../parameters/repository");
+
+    const auth = makeAuth();
+    const objectStore = createMemoryObjectStore();
+    const server = makeServer(db!, objectStore);
+
+    await db!.query(
+      `
+      insert into parameter_definitions (
+        id, organization_id, name, description, explanation, config_format,
+        module, default_range, unit, risk
+      )
+      values (
+        'pd-pf-int-b', 'org-pf-int', 'temp_min', 'min temperature', 'battery min temperature',
+        'ENV:TEMP_MIN=number', 'battery', '0-120', 'C', 'High'
+      )
+      on conflict (id) do update set name = excluded.name
+      `
+    );
+    await db!.query(
+      `
+      insert into project_parameter_values (
+        id, organization_id, project_id, parameter_definition_id,
+        current_value, recommended_value, value_version, updated_by_user_id
+      )
+      values (
+        'ppv-pf-int-b', 'org-pf-int', 'project-pf-int', 'pd-pf-int-b',
+        '10', '10', 1, 'user-pf-int'
+      )
+      on conflict (id) do update set current_value = excluded.current_value
+      `
+    );
+
+    async function seedOpenConflict(input: {
+      fileName: string;
+      valueId: string;
+      definitionId: string;
+      fileValue: string;
+      uiValue: string;
+    }) {
+      await db!.query(`delete from parameter_file_sync_conflicts where project_parameter_value_id = $1`, [
+        input.valueId
+      ]);
+      await db!.query(`delete from parameter_drafts where project_parameter_value_id = $1`, [input.valueId]);
+
+      const bytes = Buffer.from(JSON.stringify({ battery: { value: Number(input.fileValue) } }), "utf8");
+      const upload = await requestJson<{ item: { id: string }; version: { id: string; versionNumber: number } }>(
+        server,
+        "/api/v1/projects/project-pf-int/parameter-files",
+        {
+          method: "POST",
+          body: JSON.stringify({ fileName: input.fileName, contentBase64: bytes.toString("base64") })
+        }
+      );
+      expect(upload.status).toBe(201);
+
+      // Unique (project, value, user) — file_sync and UI drafts must belong to different users.
+      await db!.query(
+        `
+        insert into users (id, organization_id, name, email, title, is_active)
+        values ('user-pf-int-hw', 'org-pf-int', 'HW Reviewer', 'hw-pf-int@example.com', 'Hardware User', true)
+        on conflict (id) do update set organization_id = excluded.organization_id
+        `
+      );
+      const fileDraftId = `file-draft-${input.valueId}-${randomUUID()}`;
+      const uiDraftId = `ui-draft-${input.valueId}-${randomUUID()}`;
+      await db!.query(
+        `
+        insert into parameter_drafts (
+          id, organization_id, project_id, project_parameter_value_id, user_id,
+          target_value, reason, origin, origin_file_version_id
+        )
+        values
+          ($1, 'org-pf-int', 'project-pf-int', $3, 'user-pf-int', $4, 'integration file draft', 'file_sync', $5),
+          ($2, 'org-pf-int', 'project-pf-int', $3, 'user-pf-int-hw', $6, 'integration ui draft', 'manual', null)
+        `,
+        [fileDraftId, uiDraftId, input.valueId, input.fileValue, upload.body.version.id, input.uiValue]
+      );
+
+      const conflict = await insertFileSyncConflict(db!, {
+        id: randomUUID(),
+        organizationId: "org-pf-int",
+        projectId: "project-pf-int",
+        projectParameterValueId: input.valueId,
+        parameterDefinitionId: input.definitionId,
+        fileVersionId: upload.body.version.id,
+        fileDraftId,
+        uiDraftId,
+        fileValue: input.fileValue,
+        uiDraftValue: input.uiValue
+      });
+
+      const [enriched] = await listOpenConflicts(db!, {
+        organizationId: "org-pf-int",
+        conflictId: conflict.id
+      });
+      expect(enriched).toBeTruthy();
+      return { conflict: enriched!, versionNumber: upload.body.version.versionNumber };
+    }
+
+    const first = await seedOpenConflict({
+      fileName: `conflict-a-${randomUUID()}.json`,
+      valueId: "ppv-pf-int",
+      definitionId: "pd-pf-int",
+      fileValue: "85",
+      uiValue: "90"
+    });
+    expect(first.conflict.baseValue).toBe("80");
+    expect(first.conflict.parameterName).toBe("temp_max");
+    expect(first.conflict.fileVersionLabel).toBe(`v${first.versionNumber}`);
+    expect(first.conflict.fileVersionNumber).toBe(first.versionNumber);
+
+    const resolved = await resolveParameterFileConflict(db!, auth, {
+      conflictId: first.conflict.id,
+      resolution: "file",
+      reason: "  integration keep file  "
+    });
+    expect(resolved.status).toBe("resolved_file");
+
+    const audits = await db!.query<{ kind: string; metadata: Record<string, unknown> }>(
+      `
+      select kind, metadata
+      from audit_events
+      where organization_id = 'org-pf-int'
+        and project_id = 'project-pf-int'
+        and kind = 'parameter-file-conflict-resolve'
+      order by created_at desc
+      limit 5
+      `
+    );
+    expect(audits.rows[0]?.metadata).toMatchObject({
+      resolution: "file",
+      reason: "integration keep file"
+    });
+
+    const second = await seedOpenConflict({
+      fileName: `conflict-b-${randomUUID()}.json`,
+      valueId: "ppv-pf-int",
+      definitionId: "pd-pf-int",
+      fileValue: "88",
+      uiValue: "91"
+    });
+    const third = await seedOpenConflict({
+      fileName: `conflict-c-${randomUUID()}.json`,
+      valueId: "ppv-pf-int-b",
+      definitionId: "pd-pf-int-b",
+      fileValue: "12",
+      uiValue: "8"
+    });
+
+    const preview = await previewBulkConflictResolution(db!, auth, {
+      projectId: "project-pf-int",
+      resolution: "ui",
+      conflictIds: [second.conflict.id, third.conflict.id, "missing"]
+    });
+    expect(preview.eligible.map((item) => item.id).sort()).toEqual(
+      [second.conflict.id, third.conflict.id].sort()
+    );
+    expect(preview.ineligible.some((item) => item.reason === "not_found")).toBe(true);
+    expect(preview.impact.eligibleCount).toBe(2);
+
+    const bulk = await resolveConflictsBulk(db!, auth, {
+      projectId: "project-pf-int",
+      resolution: "ui",
+      conflictIds: [second.conflict.id, third.conflict.id],
+      reason: "integration bulk keep ui"
+    });
+    expect(bulk.resolved).toHaveLength(2);
+
+    const remaining = await listOpenConflicts(db!, {
+      organizationId: "org-pf-int",
+      projectId: "project-pf-int"
+    });
+    expect(remaining).toHaveLength(0);
+  });
 });

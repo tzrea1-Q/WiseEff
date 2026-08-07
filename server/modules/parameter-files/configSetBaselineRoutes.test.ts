@@ -34,7 +34,9 @@ vi.mock("./syncService", () => ({
 }));
 
 vi.mock("./conflictService", () => ({
-  resolveParameterFileConflict: vi.fn()
+  resolveParameterFileConflict: vi.fn(),
+  previewBulkConflictResolution: vi.fn(),
+  resolveConflictsBulk: vi.fn()
 }));
 
 vi.mock("./configSetService", () => ({

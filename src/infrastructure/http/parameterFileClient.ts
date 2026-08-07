@@ -8,11 +8,15 @@ import type {
   IngestDriverSummary,
   ParameterFileCandidate,
   ParameterFileCandidateImpact,
-  ParameterFileConflictResolution,
+  ParameterFileConflictBulkPreview,
+  ParameterFileConflictBulkResolveResult,
   ParameterFileRepository,
   ParameterFileSyncConflict,
+  PreviewBulkConflictResolutionInput,
   ProjectParameterFile,
   ProjectParameterFileVersion,
+  ResolveConflictsBulkInput,
+  ResolveParameterFileConflictInput,
   UploadParameterFileInput
 } from "@/application/ports/ParameterFileRepository";
 import { createApiClient } from "./apiClient";
@@ -62,6 +66,14 @@ function routeProjectConflicts(projectId: string) {
 
 function routeResolveConflict(projectId: string, conflictId: string) {
   return `${routeProjectConflicts(projectId)}/${encodeURIComponent(conflictId)}/resolve`;
+}
+
+function routeBulkConflictPreview(projectId: string) {
+  return `${routeProjectConflicts(projectId)}/bulk-preview`;
+}
+
+function routeBulkConflictResolve(projectId: string) {
+  return `${routeProjectConflicts(projectId)}/bulk-resolve`;
 }
 
 function routeProjectCandidates(projectId: string) {
@@ -119,9 +131,32 @@ export function createParameterFileClient(client: ApiClient = createDefaultApiCl
       const response = await client.get<ItemsEnvelope<ParameterFileSyncConflict>>(routeProjectConflicts(projectId));
       return response.items;
     },
-    async resolveConflict(projectId: string, conflictId: string, resolution: ParameterFileConflictResolution) {
-      const response = await client.post<ItemEnvelope<ParameterFileSyncConflict>>(routeResolveConflict(projectId, conflictId), { resolution });
+    async resolveConflict(projectId: string, conflictId: string, input: ResolveParameterFileConflictInput) {
+      const body: ResolveParameterFileConflictInput = {
+        resolution: input.resolution,
+        ...(input.reason ? { reason: input.reason } : {})
+      };
+      const response = await client.post<ItemEnvelope<ParameterFileSyncConflict>>(
+        routeResolveConflict(projectId, conflictId),
+        body
+      );
       return response.item;
+    },
+    async previewBulkConflictResolution(projectId: string, input: PreviewBulkConflictResolutionInput) {
+      const response = await client.post<ParameterFileConflictBulkPreview>(routeBulkConflictPreview(projectId), input);
+      return response;
+    },
+    async resolveConflictsBulk(projectId: string, input: ResolveConflictsBulkInput) {
+      const body: ResolveConflictsBulkInput = {
+        resolution: input.resolution,
+        conflictIds: input.conflictIds,
+        ...(input.reason ? { reason: input.reason } : {})
+      };
+      const response = await client.post<ParameterFileConflictBulkResolveResult>(
+        routeBulkConflictResolve(projectId),
+        body
+      );
+      return response;
     },
     async listCandidates(projectId, options) {
       const query = new URLSearchParams();

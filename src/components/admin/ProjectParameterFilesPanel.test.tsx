@@ -20,8 +20,10 @@ function createStubRepository(overrides: Partial<ParameterFileRepository> = {}):
     syncFile: vi.fn(),
     listConflicts: vi.fn().mockResolvedValue([]),
     resolveConflict: vi.fn(),
+    previewBulkConflictResolution: vi.fn(),
+    resolveConflictsBulk: vi.fn(),
     ...overrides
-  };
+  } as ParameterFileRepository;
 }
 
 describe("ProjectParameterFilesPanel", () => {

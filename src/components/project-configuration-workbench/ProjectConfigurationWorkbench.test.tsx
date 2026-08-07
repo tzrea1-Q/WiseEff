@@ -199,6 +199,8 @@ function createFileRepository(
     syncFile: vi.fn(),
     listConflicts: vi.fn(async () => []),
     resolveConflict: vi.fn(),
+    previewBulkConflictResolution: vi.fn(),
+    resolveConflictsBulk: vi.fn(),
     listCandidates: vi.fn(async () => []),
     createCandidate: vi.fn(),
     getCandidate: vi.fn(),
@@ -2152,13 +2154,20 @@ describe("ProjectConfigurationWorkbench", () => {
         projectParameterValueId: "ppv-1",
         parameterDefinitionId: "def-1",
         parameterName: "model",
+        parameterModule: "Board",
         fileVersionId: "version-board-12",
         fileDraftId: "fd-1",
         uiDraftId: "ud-1",
         fileValue: "Aurora",
         uiDraftValue: "Other",
+        baseValue: "Legacy",
         status: "open" as const,
-        createdAt: "2026-08-07T12:00:00.000Z"
+        createdAt: "2026-08-07T12:00:00.000Z",
+        fileVersionLabel: "v12",
+        fileId: "file-board",
+        fileName: "aurora-board.dts",
+        nodePath: "board",
+        propertyName: "model"
       }
     ]);
 
@@ -2184,7 +2193,13 @@ describe("ProjectConfigurationWorkbench", () => {
     const tasks = await screen.findByRole("region", { name: "配置任务" });
     expect(tasks).toHaveTextContent("aurora-board.dts");
     expect(tasks).toHaveTextContent("已创建 2 条草稿");
-    expect(tasks).toHaveTextContent("冲突 1");
+    expect(taskToggle).toHaveTextContent("冲突");
+    expect(taskToggle).toHaveTextContent("1");
+    expect(within(tasks).getByLabelText("冲突仲裁")).toBeInTheDocument();
+    expect(within(tasks).getByRole("button", { name: "使用文件值" })).toBeInTheDocument();
+    expect(within(tasks).getByRole("button", { name: "保留界面值" })).toBeInTheDocument();
+    expect(within(tasks).getByText("基线值")).toBeInTheDocument();
+    expect(tasks).not.toHaveTextContent("旧冲突视图");
   });
 
   it("exports the selected Config set from the command context", async () => {
@@ -2270,6 +2285,105 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getAllByRole("button", { name: "上传候选" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "上传候选" })[0]).toBeEnabled();
     expect(screen.getByRole("group", { name: "未编组项目文件" })).toHaveTextContent("编入");
+  });
+
+
+
+  it("loads open conflicts on mount so the task count stays current", async () => {
+    const listConflicts = vi.fn(async () => [
+      {
+        id: "conflict-mount",
+        organizationId: "org-1",
+        projectId: PROJECT.id,
+        projectParameterValueId: "ppv-1",
+        parameterDefinitionId: "def-1",
+        parameterName: "model",
+        fileVersionId: "version-board-12",
+        fileDraftId: "fd-1",
+        uiDraftId: "ud-1",
+        fileValue: "Aurora",
+        uiDraftValue: "Other",
+        baseValue: "Legacy",
+        status: "open" as const,
+        createdAt: "2026-08-07T12:00:00.000Z",
+        fileId: "file-board",
+        fileName: "aurora-board.dts",
+        nodePath: "board",
+        propertyName: "model"
+      }
+    ]);
+
+    renderWorkbench({
+      search: "?configSet=cs-default&file=file-board",
+      fileRepository: createFileRepository({ listConflicts })
+    });
+
+    await waitFor(() => expect(listConflicts).toHaveBeenCalledWith(PROJECT.id));
+    const taskToggle = await screen.findByRole("button", { name: "任务" });
+    expect(taskToggle).toHaveTextContent("冲突");
+    expect(taskToggle).toHaveTextContent("1");
+  });
+
+  it("opens the Conflicts task dock from a conflict activity event", async () => {
+    const listConflicts = vi.fn(async () => [
+      {
+        id: "conflict-activity",
+        organizationId: "org-1",
+        projectId: PROJECT.id,
+        projectParameterValueId: "ppv-1",
+        parameterDefinitionId: "def-1",
+        parameterName: "model",
+        fileVersionId: "version-board-12",
+        fileDraftId: "fd-1",
+        uiDraftId: "ud-1",
+        fileValue: "Aurora",
+        uiDraftValue: "Other",
+        baseValue: "Legacy",
+        status: "open" as const,
+        createdAt: "2026-08-07T12:00:00.000Z",
+        fileId: "file-board",
+        fileName: "aurora-board.dts",
+        nodePath: "board",
+        propertyName: "model"
+      }
+    ]);
+    const listAuditEvents = vi.fn(async () => ({
+      items: [
+        {
+          id: "evt-conflict",
+          organizationId: "org-chargelab",
+          projectId: PROJECT.id,
+          actorUserId: "user-ada",
+          actorType: "user" as const,
+          actorName: "Ada Admin",
+          app: "parameters",
+          kind: "parameter-file-conflict-open",
+          action: "resolve",
+          severity: "High" as const,
+          targetType: "parameter-file-conflict",
+          targetId: "conflict-activity",
+          metadata: { fileId: "file-board", fileName: "aurora-board.dts", parameterName: "model" },
+          traceId: "trace-conflict",
+          createdAt: "2026-08-07T04:03:00.000Z"
+        }
+      ],
+      nextCursor: null
+    }));
+
+    renderWorkbench({
+      search: "?configSet=cs-default&file=file-board",
+      listAuditEvents,
+      fileRepository: createFileRepository({ listConflicts })
+    });
+
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(screen.getByRole("button", { name: "活动" }));
+    await screen.findByLabelText("项目活动事件");
+    fireEvent.click(screen.getByRole("button", { name: /裁决 · 文件冲突 · aurora-board\.dts/i }));
+
+    const tasks = await screen.findByRole("region", { name: "配置任务" });
+    expect(within(tasks).getByLabelText("冲突仲裁")).toBeInTheDocument();
+    expect(screen.queryByText(/冲突裁决面板尚未接入/)).not.toBeInTheDocument();
   });
 
 });

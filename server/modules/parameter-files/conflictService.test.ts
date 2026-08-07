@@ -4,7 +4,12 @@ import type { AuthContext } from "../auth/types";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { resetParameterIdentityCutoverCache } from "../parameters/cutoverAwareIdentity";
-import { detectFileUiDraftConflict, resolveParameterFileConflict } from "./conflictService";
+import {
+  detectFileUiDraftConflict,
+  previewBulkConflictResolution,
+  resolveConflictsBulk,
+  resolveParameterFileConflict
+} from "./conflictService";
 
 type QueryCall = {
   text: string;
@@ -212,5 +217,218 @@ describe("parameter file conflict service", () => {
         { conflictId: "conflict-1", resolution: "ui" }
       )
     ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter review permission is required.", 403));
+  });
+
+  it("puts trimmed resolve reason into audit metadata and omits blank reason", async () => {
+    const openConflict = {
+      id: "conflict-1",
+      organization_id: "org-1",
+      project_id: "project-1",
+      project_parameter_value_id: "ppv-1",
+      parameter_definition_id: "pd-1",
+      file_version_id: "version-1",
+      file_draft_id: "draft-file",
+      ui_draft_id: "draft-ui",
+      file_value: "85",
+      ui_draft_value: "82",
+      status: "open",
+      resolved_by_user_id: null,
+      resolved_at: null,
+      created_at: "2026-07-11T10:02:00.000Z"
+    };
+    const resolvedConflict = {
+      ...openConflict,
+      status: "resolved_file",
+      resolved_by_user_id: "reviewer-1",
+      resolved_at: "2026-07-11T10:03:00.000Z"
+    };
+
+    const withReason = createFakeDb([[openConflict], [resolvedConflict], [], []]);
+    await resolveParameterFileConflict(withReason.db, reviewerAuth(), {
+      conflictId: "conflict-1",
+      resolution: "file",
+      reason: "  keep file after review  "
+    });
+    const auditWithReason = withReason.txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(JSON.parse(String(auditWithReason?.values[11]))).toMatchObject({
+      resolution: "file",
+      reason: "keep file after review"
+    });
+
+    const blankReason = createFakeDb([[openConflict], [resolvedConflict], [], []]);
+    await resolveParameterFileConflict(blankReason.db, reviewerAuth(), {
+      conflictId: "conflict-1",
+      resolution: "file",
+      reason: "   "
+    });
+    const auditBlank = blankReason.txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(JSON.parse(String(auditBlank?.values[11]))).not.toHaveProperty("reason");
+  });
+
+  it("previewBulkConflictResolution classifies eligible and ineligible conflicts", async () => {
+    const openRow = {
+      id: "conflict-open",
+      organization_id: "org-1",
+      project_id: "project-1",
+      project_parameter_value_id: "ppv-1",
+      parameter_definition_id: "pd-1",
+      file_version_id: "version-1",
+      file_draft_id: "draft-file",
+      ui_draft_id: "draft-ui",
+      file_value: "85",
+      ui_draft_value: "82",
+      status: "open",
+      resolved_by_user_id: null,
+      resolved_at: null,
+      created_at: "2026-07-11T10:02:00.000Z",
+      parameter_name: "temp_max",
+      file_id: "file-1"
+    };
+    const resolvedSameProject = {
+      ...openRow,
+      id: "conflict-resolved",
+      status: "resolved_file",
+      resolved_by_user_id: "reviewer-1",
+      resolved_at: "2026-07-11T10:03:00.000Z",
+      parameter_name: "temp_max",
+      file_id: "file-1"
+    };
+    const otherProject = {
+      ...openRow,
+      id: "conflict-other-project",
+      project_id: "project-2",
+      parameter_name: "other",
+      file_id: "file-2"
+    };
+
+    const { db } = createFakeDb([
+      [openRow],
+      [resolvedSameProject, otherProject]
+    ]);
+
+    const preview = await previewBulkConflictResolution(db, reviewerAuth(), {
+      projectId: "project-1",
+      resolution: "file",
+      conflictIds: ["conflict-open", "conflict-resolved", "conflict-other-project", "conflict-missing"]
+    });
+
+    expect(preview.resolution).toBe("file");
+    expect(preview.eligible).toHaveLength(1);
+    expect(preview.eligible[0]?.id).toBe("conflict-open");
+    expect(preview.ineligible).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reason: "already_resolved" }),
+        expect.objectContaining({ reason: "wrong_project" }),
+        expect.objectContaining({ reason: "not_found" })
+      ])
+    );
+    expect(preview.ineligible).toHaveLength(3);
+    expect(preview.impact).toEqual({
+      eligibleCount: 1,
+      ineligibleCount: 3,
+      parameterNames: ["temp_max"],
+      fileIds: ["file-1"]
+    });
+  });
+
+  it("previewBulkConflictResolution without conflictIds previews all open project conflicts", async () => {
+    const { db } = createFakeDb([
+      [
+        {
+          id: "conflict-a",
+          organization_id: "org-1",
+          project_id: "project-1",
+          project_parameter_value_id: "ppv-1",
+          parameter_definition_id: "pd-1",
+          file_version_id: "version-1",
+          file_draft_id: "draft-file",
+          ui_draft_id: "draft-ui",
+          file_value: "85",
+          ui_draft_value: "82",
+          status: "open",
+          resolved_by_user_id: null,
+          resolved_at: null,
+          created_at: "2026-07-11T10:02:00.000Z",
+          parameter_name: "temp_max",
+          file_id: "file-1"
+        },
+        {
+          id: "conflict-b",
+          organization_id: "org-1",
+          project_id: "project-1",
+          project_parameter_value_id: "ppv-2",
+          parameter_definition_id: "pd-2",
+          file_version_id: "version-1",
+          file_draft_id: "draft-file-b",
+          ui_draft_id: "draft-ui-b",
+          file_value: "10",
+          ui_draft_value: "11",
+          status: "open",
+          resolved_by_user_id: null,
+          resolved_at: null,
+          created_at: "2026-07-11T10:02:00.000Z",
+          parameter_name: "temp_min",
+          file_id: "file-1"
+        }
+      ]
+    ]);
+
+    const preview = await previewBulkConflictResolution(db, reviewerAuth(), {
+      projectId: "project-1",
+      resolution: "ui"
+    });
+
+    expect(preview.eligible).toHaveLength(2);
+    expect(preview.ineligible).toEqual([]);
+    expect(preview.impact.eligibleCount).toBe(2);
+    expect(preview.impact.parameterNames.sort()).toEqual(["temp_max", "temp_min"]);
+  });
+
+  it("resolveConflictsBulk resolves eligible conflicts and skips ineligible ones", async () => {
+    const openRow = {
+      id: "conflict-open",
+      organization_id: "org-1",
+      project_id: "project-1",
+      project_parameter_value_id: "ppv-1",
+      parameter_definition_id: "pd-1",
+      file_version_id: "version-1",
+      file_draft_id: "draft-file",
+      ui_draft_id: "draft-ui",
+      file_value: "85",
+      ui_draft_value: "82",
+      status: "open",
+      resolved_by_user_id: null,
+      resolved_at: null,
+      created_at: "2026-07-11T10:02:00.000Z"
+    };
+    const resolvedRow = {
+      ...openRow,
+      status: "resolved_file",
+      resolved_by_user_id: "reviewer-1",
+      resolved_at: "2026-07-11T10:03:00.000Z"
+    };
+
+    // preview lookups + one resolve transaction (list open by id, update, delete draft, audit)
+    const { db } = createFakeDb([
+      [openRow],
+      [],
+      [openRow],
+      [resolvedRow],
+      [],
+      []
+    ]);
+
+    const result = await resolveConflictsBulk(db, reviewerAuth(), {
+      projectId: "project-1",
+      resolution: "file",
+      conflictIds: ["conflict-open", "conflict-missing"],
+      reason: "bulk keep file"
+    });
+
+    expect(result.resolved).toHaveLength(1);
+    expect(result.resolved[0]?.id).toBe("conflict-open");
+    expect(result.skipped).toEqual([
+      expect.objectContaining({ reason: "not_found" })
+    ]);
   });
 });

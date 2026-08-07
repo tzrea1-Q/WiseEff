@@ -1863,8 +1863,10 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
       syncFile: vi.fn(),
       listConflicts: vi.fn().mockResolvedValue([]),
       resolveConflict: vi.fn(),
+      previewBulkConflictResolution: vi.fn(),
+      resolveConflictsBulk: vi.fn(),
       ...overrides
-    };
+    } as import("@/application/ports/ParameterFileRepository").ParameterFileRepository;
   }
 
   it("opens config sets by URL and keeps the project after reload-style remount", async () => {
@@ -2086,8 +2088,10 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
       syncFile: vi.fn(),
       listConflicts: vi.fn().mockResolvedValue([]),
       resolveConflict: vi.fn(),
+      previewBulkConflictResolution: vi.fn(),
+      resolveConflictsBulk: vi.fn(),
       ...overrides
-    };
+    } as import("@/application/ports/ParameterFileRepository").ParameterFileRepository;
   }
 
   it("browses the source DTS structure by project route", async () => {
@@ -2293,7 +2297,7 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
       })
     );
     await waitFor(() =>
-      expect(resolveConflict).toHaveBeenCalledWith(projectId(), "conflict-1", "file")
+      expect(resolveConflict).toHaveBeenCalledWith(projectId(), "conflict-1", { resolution: "file" })
     );
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveAttribute(
       "data-audit-kind",

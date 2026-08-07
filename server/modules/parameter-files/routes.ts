@@ -8,7 +8,7 @@ import { submitStructuredEdits } from "../parameters/service";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
-import { resolveParameterFileConflict } from "./conflictService";
+import { resolveConflictsBulk, previewBulkConflictResolution, resolveParameterFileConflict } from "./conflictService";
 import {
   getFileVersionById,
   getProjectParameterFileById,
@@ -121,7 +121,19 @@ const syncFileBodySchema = z.object({
 });
 
 const resolveConflictBodySchema = z.object({
-  resolution: z.enum(["file", "ui"])
+  resolution: z.enum(["file", "ui"]),
+  reason: z.string().trim().max(2000).optional()
+});
+
+const bulkConflictPreviewBodySchema = z.object({
+  resolution: z.enum(["file", "ui"]),
+  conflictIds: z.array(z.string().min(1)).optional()
+});
+
+const bulkConflictResolveBodySchema = z.object({
+  resolution: z.enum(["file", "ui"]),
+  conflictIds: z.array(z.string().min(1)).min(1),
+  reason: z.string().trim().max(2000).optional()
 });
 
 function requireDb(db: Database | undefined) {
@@ -439,10 +451,50 @@ export function registerParameterFileRoutes(
     const body = parseWithSchema(resolveConflictBodySchema, request.body, "Invalid parameter file conflict resolve payload.");
     const item = await resolveParameterFileConflict(db, auth, {
       conflictId: params.conflictId,
-      resolution: body.resolution
+      resolution: body.resolution,
+      reason: body.reason
     });
 
     return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-file-conflicts/bulk-preview", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const body = parseWithSchema(
+      bulkConflictPreviewBodySchema,
+      request.body,
+      "Invalid parameter file conflict bulk preview payload."
+    );
+    const preview = await previewBulkConflictResolution(db, auth, {
+      projectId: params.projectId,
+      resolution: body.resolution,
+      conflictIds: body.conflictIds
+    });
+
+    return { status: 200, body: preview };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-file-conflicts/bulk-resolve", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const body = parseWithSchema(
+      bulkConflictResolveBodySchema,
+      request.body,
+      "Invalid parameter file conflict bulk resolve payload."
+    );
+    const result = await resolveConflictsBulk(db, auth, {
+      projectId: params.projectId,
+      resolution: body.resolution,
+      conflictIds: body.conflictIds,
+      reason: body.reason
+    });
+
+    return { status: 200, body: result };
   });
 
   router.get("/api/v1/projects/:projectId/config-sets", async (request) => {

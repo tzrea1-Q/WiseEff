@@ -38,7 +38,7 @@ describe("createParameterFileClient", () => {
     await client.uploadFile("project/1", { fileName: "config.json", contentBase64: "eyJrZXkiOiJ2YWx1ZSJ9" });
     await client.uploadVersion("project/1", "file/1", { fileName: "config.json", contentBase64: "eyJuZXciOiJ2ZXJzaW9uIn0=" });
     await client.syncFile("project/1", "file/1");
-    await client.resolveConflict("project/1", "conflict/1", "file");
+    await client.resolveConflict("project/1", "conflict/1", { resolution: "file" });
 
     expect(post).toHaveBeenNthCalledWith(
       1,
@@ -55,6 +55,53 @@ describe("createParameterFileClient", () => {
       4,
       "/api/v1/projects/project%2F1/parameter-file-conflicts/conflict%2F1/resolve",
       { resolution: "file" }
+    );
+  });
+
+  it("posts optional reason and bulk conflict preview/resolve payloads", async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({ item: { id: "conflict-1", status: "resolved_ui" } })
+      .mockResolvedValueOnce({
+        resolution: "file",
+        eligible: [{ id: "conflict-1" }],
+        ineligible: [{ conflict: { id: "conflict-2" }, reason: "already_resolved" }],
+        impact: { eligibleCount: 1, ineligibleCount: 1, parameterNames: ["p"], fileIds: ["f"] }
+      })
+      .mockResolvedValueOnce({
+        resolved: [{ id: "conflict-1", status: "resolved_file" }],
+        skipped: [{ conflict: { id: "conflict-2" }, reason: "already_resolved" }]
+      });
+    const client = createParameterFileClient({ post } as never);
+
+    await client.resolveConflict("project/1", "conflict/1", {
+      resolution: "ui",
+      reason: "lab measurement"
+    });
+    await client.previewBulkConflictResolution("project/1", {
+      resolution: "file",
+      conflictIds: ["conflict/1", "conflict/2"]
+    });
+    await client.resolveConflictsBulk("project/1", {
+      resolution: "file",
+      conflictIds: ["conflict/1", "conflict/2"],
+      reason: "bulk file"
+    });
+
+    expect(post).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/projects/project%2F1/parameter-file-conflicts/conflict%2F1/resolve",
+      { resolution: "ui", reason: "lab measurement" }
+    );
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/projects/project%2F1/parameter-file-conflicts/bulk-preview",
+      { resolution: "file", conflictIds: ["conflict/1", "conflict/2"] }
+    );
+    expect(post).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/projects/project%2F1/parameter-file-conflicts/bulk-resolve",
+      { resolution: "file", conflictIds: ["conflict/1", "conflict/2"], reason: "bulk file" }
     );
   });
 

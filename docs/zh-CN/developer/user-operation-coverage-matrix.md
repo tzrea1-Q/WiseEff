@@ -42,6 +42,7 @@
 - `PROJ-CONFIG-ACTIVITY-001`：Admin 在同一规范路由打开活动检查器、阅读项目范围审计投影、恢复可定位目标或优雅失败，并验证 toast + 刷新且无常驻审计横幅；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-ACTIVATE-001`：Admin 在同一规范路由验证既有/新文件候选激活、影响确认、过期基 CAS 与不可激活状态；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-OPS-001`：Admin 在同一规范路由验证配置集创建/配置、成员增删（角色/顺序/确认框）、未编组可见性与编入、手动同步任务证据、命令栏导出、空集上传/编入路径（不自动激活）以及非管理员只读保留；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
+- `PROJ-CONFIG-CONFLICT-001`：Admin 在同一规范路由验证源码定位三方冲突裁决（两侧等权、确认+可选审计原因、队列前进）、合格批量预览/裁决、开放冲突阻断候选激活，以及空队列时冲突坞保持折叠；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PARAM-ADMIN-DIALOG-001`：Admin 打开项目编辑、项目删除与治理确认框，检查焦点进入、Tab 受限、叠层 Escape、焦点归还与按下在内松开在外；共享弹窗原语的单元测试加 playwright-cli 证据先行。
 - `PARAM-ASSIGNEE-001/002`：Software User 在 `/parameters` 的 binding-centric 提交面板中看到三类项目作用域候选人；默认值非空，候选集合精确排除 inactive、guest、仅 Admin 与角色不匹配用户。自动化归属 `e2e/acceptance/parameter-topology.acceptance.spec.ts`。
 - `PFB-SUBMIT-001`：Admin 在 `/parameters` 通过侧边栏提交产品反馈，断言覆盖 UI、API、DB、audit 和截图证据（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。

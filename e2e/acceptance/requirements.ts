@@ -208,6 +208,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   },
 
   {
+    id: "PROJ-CONFIG-CONFLICT-001",
+    workflow: "C",
+    title: "Source-located three-way conflict arbitration in the project configuration workbench: equal-weight file and UI outcomes with confirm plus optional audit reason, queue advance in source context, eligible bulk resolve with impact preview, open conflicts block candidate activation, and an empty queue keeps the Conflicts dock collapsed.",
+    required: false
+  },
+
+  {
     id: "PARAM-ADMIN-DIALOG-001",
     workflow: "C",
     title: "Param-admin dialogs trap focus, restore focus to the trigger, close only the top-most dialog on Escape, ignore press-inside/release-outside, and keep their styling through the portal.",
