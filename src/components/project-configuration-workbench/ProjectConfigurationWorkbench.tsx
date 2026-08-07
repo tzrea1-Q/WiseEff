@@ -1850,8 +1850,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
         !selectedMember ||
         !selectedStructureNode ||
         !selectedStructureProperty ||
-        editorLocked ||
-        draftRecoveryStatus === "stale-base"
+        editorLocked
       ) {
         return;
       }
@@ -1881,7 +1880,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       setValidateStatus("");
     },
     [
-      draftRecoveryStatus,
       editorLocked,
       selectedMember,
       selectedStructureNode,
