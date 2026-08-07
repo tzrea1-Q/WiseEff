@@ -12,6 +12,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Current Active Plan
 
+- `exec-plans/active/2026-08-07-project-configuration-workbench-source-nav.md`: Issue #229 source-located DTS navigation — structural spans, unified search, URL deep links, and workbench source sync (branch `feat/project-configuration-workbench-source-nav`).
 - `exec-plans/active/development-roadmap.md`: M0-M5 productization sequence and post-M5 planning horizon.
 - `exec-plans/completed/2026-08-06-project-configuration-workbench-readonly.md`: Issue #228 Phase 1 read-only tracer — development-flagged canonical route, deterministic Config set context, member/ungrouped source tree, active source loading through existing ports, and source-dominant responsive shell (branch `feat/project-configuration-workbench-readonly`).
 - `exec-plans/active/2026-05-29-wiseeff-m5-2-staging-pilot-evidence-execution.md`: M5.2 staging pilot evidence execution plan.
