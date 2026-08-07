@@ -123,7 +123,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page.getByRole("group", { name: "未编组项目文件" })).toContainText(looseFileName);
       await expect(page.getByText("工作配置", { exact: true })).toBeVisible();
       await expect(page.getByText("发布基线：尚未发布")).toBeVisible();
-      await expect(page.getByRole("button", { name: "上传候选" })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "上传候选" })).toBeEnabled();
       await expect(page.getByRole("button", { name: "创建基线" })).toBeDisabled();
       await expect(page.getByRole("main", { name: "只读 DTS 源码" })).toContainText("Configuration tracer");
       expect(memberRequests.some((url) => url.includes(`/config-sets/${configSetId}/files`))).toBe(true);
@@ -719,7 +719,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(inspector).toContainText("结构差异");
       await expect(inspector).toContainText("文本差异");
       await page.getByRole("button", { name: "放弃候选" }).click();
-      await expect(page.getByText(/候选已放弃|工作配置/)).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: "候选已放弃" })).toBeVisible();
 
       const abandonFail = await request.post(
         apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${failBody.item.id}/abandon`),
