@@ -588,4 +588,187 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     }
   });
 
+  test("uploads candidate, reviews impact, fails parse, and abandons without activation", async ({ page, request }, testInfo) => {
+    // @acceptance PROJ-CONFIG-CANDIDATE-001
+    // @operation PROJ-CONFIG-CANDIDATE-001
+    const suffix = randomUUID();
+    const configSetName = `candidate-upload-${suffix}`;
+    const primaryFileName = `acceptance-candidate-${suffix}.dts`;
+    const v1Dts = `/dts-v1/;
+/ {
+	board {
+		model = "CandV1";
+		compatible = "wiseeff,cand";
+	};
+};
+`;
+    const v2Dts = `/dts-v1/;
+/ {
+	board {
+		model = "CandV2";
+		compatible = "wiseeff,cand";
+	};
+};
+`;
+
+    try {
+      const uploadV1 = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: primaryFileName,
+          contentBase64: Buffer.from(v1Dts, "utf8").toString("base64")
+        }
+      });
+      expect(uploadV1.ok()).toBe(true);
+      const v1Body = (await uploadV1.json()) as {
+        item: { id: string; fileName: string; currentVersionId?: string };
+        version: { id: string; versionNumber: number };
+      };
+
+      const createConfigSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(),
+        data: { name: configSetName, description: "Candidate upload acceptance" }
+      });
+      expect(createConfigSet.status()).toBe(201);
+      const configSetBody = (await createConfigSet.json()) as { item: { id: string; name: string } };
+      const configSetId = configSetBody.item.id;
+
+      const addMember = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
+        { headers: adminHeaders(), data: { fileId: v1Body.item.id, role: "base", sortOrder: 0 } }
+      );
+      expect(addMember.ok()).toBe(true);
+
+      const createCandidate = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),
+        {
+          headers: adminHeaders(),
+          data: {
+            fileName: primaryFileName,
+            fileId: v1Body.item.id,
+            contentBase64: Buffer.from(v2Dts, "utf8").toString("base64")
+          }
+        }
+      );
+      expect(createCandidate.status()).toBe(201);
+      const candidateBody = (await createCandidate.json()) as {
+        item: { id: string; status: string; baseVersionId?: string };
+      };
+      expect(["ready", "blocked"]).toContain(candidateBody.item.status);
+      expect(candidateBody.item.baseVersionId).toBe(v1Body.version.id);
+
+      const impactResponse = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${candidateBody.item.id}/impact`),
+        { headers: adminHeaders() }
+      );
+      expect(impactResponse.ok()).toBe(true);
+      const impactBody = (await impactResponse.json()) as {
+        impact: { textDiff?: string; structuralDiff?: unknown[] };
+      };
+      expect(impactBody.impact.textDiff).toContain("CandV2");
+
+      const filesAfter = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders()
+      });
+      expect(filesAfter.ok()).toBe(true);
+      const filesBody = (await filesAfter.json()) as {
+        items: Array<{ id: string; currentVersionId?: string }>;
+      };
+      const fileAfter = filesBody.items.find((item) => item.id === v1Body.item.id);
+      expect(fileAfter?.currentVersionId).toBe(v1Body.version.id);
+
+      const membersAfter = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
+        { headers: adminHeaders() }
+      );
+      expect(membersAfter.ok()).toBe(true);
+      const membersBody = (await membersAfter.json()) as {
+        items: Array<{ fileId: string }>;
+      };
+      expect(membersBody.items.some((item) => item.fileId === v1Body.item.id)).toBe(true);
+
+      const failCandidate = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),
+        {
+          headers: adminHeaders(),
+          data: {
+            fileName: `acceptance-candidate-fail-${suffix}.json`,
+            contentBase64: Buffer.from("{not-json", "utf8").toString("base64")
+          }
+        }
+      );
+      expect(failCandidate.status()).toBe(201);
+      const failBody = (await failCandidate.json()) as {
+        item: { id: string; status: string; diagnostics: Array<{ code: string }> };
+      };
+      expect(failBody.item.status).toBe("failed");
+      expect(failBody.item.diagnostics.some((item) => item.code === "parse-failed")).toBe(true);
+
+      await signInBrowserAsRole(page, "admin");
+      await page.goto(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(v1Body.item.id)}&sourceMode=candidate&candidate=${encodeURIComponent(candidateBody.item.id)}`
+      );
+      await expect(page.getByLabel("候选只读源码模式")).toBeVisible();
+      await expect(page.getByLabel("配置身份")).toContainText(candidateBody.item.status);
+      const inspectorToggle = page.getByRole("button", { name: "检查器" });
+      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") {
+        await inspectorToggle.click();
+      }
+      const inspector = page.getByRole("complementary", { name: "配置检查器" });
+      await expect(inspector).toBeVisible();
+      await expect(inspector).toContainText("结构差异");
+      await expect(inspector).toContainText("文本差异");
+      await page.getByRole("button", { name: "放弃候选" }).click();
+      await expect(page.getByText(/候选已放弃|工作配置/)).toBeVisible();
+
+      const abandonFail = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${failBody.item.id}/abandon`),
+        { headers: adminHeaders(), data: {} }
+      );
+      expect(abandonFail.ok()).toBe(true);
+
+      const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-candidate.json", {
+        route: page.url(),
+        configSetId,
+        fileId: v1Body.item.id,
+        activeVersionId: v1Body.version.id,
+        candidateId: candidateBody.item.id,
+        candidateStatus: candidateBody.item.status,
+        failedCandidateId: failBody.item.id
+      });
+      await recordOperationEvidence({
+        operationId: "PROJ-CONFIG-CANDIDATE-001",
+        title: "configuration workbench candidate upload impact abandon",
+        status: "passed",
+        role: "Admin",
+        route: `/parameter-admin/projects/${projectId}/configuration`,
+        page,
+        testInfo,
+        assertions: ["ui", "api", "screenshot"],
+        artifacts: [evidencePath],
+        api: [
+          summarizeApiResponse(createCandidate, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/parameter-file-candidates`,
+            responseSummary: `status=${candidateBody.item.status}`
+          }),
+          summarizeApiResponse(impactResponse, {
+            method: "GET",
+            path: `/api/v1/projects/${projectId}/parameter-file-candidates/${candidateBody.item.id}/impact`,
+            responseSummary: "impact loaded"
+          })
+        ],
+        notes: "Candidate upload, impact review, parse failure, and abandon were exercised without changing active version or config-set membership."
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        configSetNames: [configSetName],
+        fileNames: [primaryFileName, `acceptance-candidate-fail-${suffix}.json`]
+      });
+    }
+  });
+
+
 });
