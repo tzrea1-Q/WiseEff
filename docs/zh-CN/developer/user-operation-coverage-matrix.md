@@ -34,6 +34,7 @@
 - `PROJ-OPS-002`：Admin 在 1440×900 / 768×1024 / 390×844 三档视口走完四个项目视图，确认没有内容截断、没有横向溢出、视图导航条位置稳定；证据见 `work/ui-checks/project-operations-dialog/final/`。
 - `PROJ-OPS-003`：Admin 发布并回滚基线、移除配置集成员、裁决文件冲突，每个动作都经过确认框；面板与页面测试加 playwright-cli 证据先行，API mode 的治理 e2e 待补基线种子数据。
 - `PROJ-CONFIG-READ-001`：Admin 在开发开关启用的 API mode 中从项目清单进入 `/parameter-admin/projects/:projectId/configuration`，验证配置集解析、成员/未编组树、活跃 DTS 源码、发布身份、恢复状态和三视口布局；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
+- `PROJ-CONFIG-SOURCE-001`：Admin 在同一规范路由验证结构 span 聚焦、按文件分组统一搜索、跨文件跳转保留配置集、`node`/`property`/`sourceMode` 深链恢复、树/源码独立重试与键盘导航；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PARAM-ADMIN-DIALOG-001`：Admin 打开项目编辑、项目删除与治理确认框，检查焦点进入、Tab 受限、叠层 Escape、焦点归还与按下在内松开在外；共享弹窗原语的单元测试加 playwright-cli 证据先行。
 - `PARAM-ASSIGNEE-001/002`：Software User 在 `/parameters` 的 binding-centric 提交面板中看到三类项目作用域候选人；默认值非空，候选集合精确排除 inactive、guest、仅 Admin 与角色不匹配用户。自动化归属 `e2e/acceptance/parameter-topology.acceptance.spec.ts`。
 - `PFB-SUBMIT-001`：Admin 在 `/parameters` 通过侧边栏提交产品反馈，断言覆盖 UI、API、DB、audit 和截图证据（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。

@@ -241,4 +241,170 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       });
     }
   });
+
+  test("navigates source-located structure spans, search, and deep links in API mode", async ({ page, request }, testInfo) => {
+    // @acceptance PROJ-CONFIG-SOURCE-001
+    // @operation PROJ-CONFIG-SOURCE-001
+    const suffix = randomUUID();
+    const configSetName = `source-nav-${suffix}`;
+    const primaryFileName = `acceptance-source-nav-${suffix}.dts`;
+    const overlayFileName = `acceptance-source-overlay-${suffix}.dts`;
+    const primaryDts = `/dts-v1/;
+/ {
+	board {
+		model = "SourceNav";
+		compatible = "wiseeff,source-nav";
+	};
+};
+`;
+    const overlayNode = `source_nav_charger_${suffix.slice(0, 8)}`;
+    const overlayDts = `/dts-v1/;
+/ {
+	${overlayNode} {
+		status = "okay";
+	};
+};
+`;
+
+    try {
+      const primaryUpload = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: primaryFileName,
+          contentBase64: Buffer.from(primaryDts, "utf8").toString("base64")
+        }
+      });
+      expect(primaryUpload.ok()).toBe(true);
+      const primaryBody = (await primaryUpload.json()) as {
+        item: { id: string; fileName: string };
+        version: { id: string; versionNumber: number };
+      };
+
+      const overlayUpload = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: overlayFileName,
+          contentBase64: Buffer.from(overlayDts, "utf8").toString("base64")
+        }
+      });
+      expect(overlayUpload.ok()).toBe(true);
+      const overlayBody = (await overlayUpload.json()) as {
+        item: { id: string; fileName: string };
+        version: { id: string; versionNumber: number };
+      };
+
+      const createConfigSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(),
+        data: { name: configSetName, description: "Source navigation acceptance" }
+      });
+      expect(createConfigSet.status()).toBe(201);
+      const configSetBody = (await createConfigSet.json()) as { item: { id: string; name: string } };
+      const configSetId = configSetBody.item.id;
+
+      for (const [fileId, role, sortOrder] of [
+        [primaryBody.item.id, "base", 0],
+        [overlayBody.item.id, "overlay", 1]
+      ] as const) {
+        const addMember = await request.post(
+          apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
+          { headers: adminHeaders(), data: { fileId, role, sortOrder } }
+        );
+        expect(addMember.ok()).toBe(true);
+      }
+
+      const structureResponse = await request.get(
+        apiRoute(
+          `/api/v1/projects/${projectId}/parameter-files/${primaryBody.item.id}/versions/${primaryBody.version.id}/structure`
+        ),
+        { headers: adminHeaders() }
+      );
+      expect(structureResponse.ok()).toBe(true);
+      const structureBody = (await structureResponse.json()) as {
+        nodes: Array<{ nodePath: string; source?: { startLine: number; endLine: number }; properties: Array<{ name: string; source?: unknown }> }>;
+      };
+      const board = structureBody.nodes.find((node) => node.nodePath === "board");
+      expect(board?.source?.startLine).toBeGreaterThanOrEqual(1);
+      expect(board?.properties.some((property) => property.name === "model" && property.source)).toBe(true);
+
+      const searchResponse = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/dts-search?q=${encodeURIComponent(primaryFileName)}`),
+        { headers: adminHeaders() }
+      );
+      expect(searchResponse.ok()).toBe(true);
+      const searchBody = (await searchResponse.json()) as {
+        hits: Array<{ fileName: string; nodePath: string; source?: { startLine: number } }>;
+      };
+      expect(searchBody.hits.some((hit) => hit.fileName === primaryFileName)).toBe(true);
+
+      await signInBrowserAsRole(page, "admin");
+      await dismissXiaozeHint(page);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}`
+      );
+      await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
+
+      await page.getByRole("treeitem", { name: "节点 board" }).click();
+      await expect(page).toHaveURL(new RegExp(`node=board`));
+      await expect(page.locator('[data-focused="true"]').first()).toBeVisible();
+
+      await page.getByRole("treeitem", { name: "属性 board/model" }).click();
+      await expect(page).toHaveURL(new RegExp(`property=model`));
+
+      await page.getByRole("searchbox", { name: "统一搜索查询" }).fill(overlayNode);
+      await page.getByRole("button", { name: "搜索", exact: true }).click();
+      const results = page.getByLabel("搜索结果");
+      await expect(results).toContainText(overlayFileName);
+      await results.getByRole("button", { name: new RegExp(overlayNode) }).click();
+      await expect(page).toHaveURL(new RegExp(`file=${overlayBody.item.id}`));
+      await expect(page).toHaveURL(new RegExp(`configSet=${configSetId}`));
+      await expect(page.getByRole("heading", { name: overlayFileName })).toBeVisible();
+
+      await page.goto(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}&node=board&property=model&sourceMode=structured`
+      );
+      await expect(page.getByRole("treeitem", { name: "属性 board/model" })).toHaveAttribute("aria-selected", "true");
+
+      const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-source-nav.json", {
+        route: page.url(),
+        configSetId,
+        primaryFileId: primaryBody.item.id,
+        overlayFileId: overlayBody.item.id,
+        structureNodePaths: structureBody.nodes.map((node) => node.nodePath),
+        searchHitCount: searchBody.hits.length
+      });
+      await recordOperationEvidence({
+        operationId: "PROJ-CONFIG-SOURCE-001",
+        title: "source-located configuration workbench navigation",
+        status: "passed",
+        role: "Admin",
+        route: `/parameter-admin/projects/${projectId}/configuration`,
+        page,
+        testInfo,
+        assertions: ["ui", "api", "screenshot"],
+        artifacts: [evidencePath],
+        api: [
+          summarizeApiResponse(structureResponse, {
+            method: "GET",
+            path: `/api/v1/projects/${projectId}/parameter-files/${primaryBody.item.id}/versions/${primaryBody.version.id}/structure`,
+            responseSummary: `nodes=${structureBody.nodes.length}; boardSpan=${Boolean(board?.source)}`
+          }),
+          summarizeApiResponse(searchResponse, {
+            method: "GET",
+            path: `/api/v1/projects/${projectId}/dts-search`,
+            responseSummary: `hits=${searchBody.hits.length}`
+          })
+        ],
+        notes: "Structure spans, unified search grouped by file, cross-file navigation, and URL deep links were exercised on the flagged configuration workbench."
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        configSetNames: [configSetName],
+        fileNames: [primaryFileName, overlayFileName]
+      });
+    }
+  });
+
 });

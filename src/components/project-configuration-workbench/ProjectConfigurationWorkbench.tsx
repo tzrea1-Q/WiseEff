@@ -420,8 +420,14 @@ export function ProjectConfigurationWorkbench({
       setSelectedPropertyName(null);
       return;
     }
+    // Wait for structure before invalidating URL node/property so deep links survive loading.
+    if (structureLoading || (structureNodes.length === 0 && !structureError)) {
+      setSelectedNodePath(requestedNode);
+      setSelectedPropertyName(requestedProperty);
+      return;
+    }
     const exists = structureNodes.some((node) => node.nodePath === requestedNode);
-    if (!exists && structureNodes.length > 0) {
+    if (!exists) {
       setSelectedNodePath(null);
       setSelectedPropertyName(null);
       return;
@@ -434,7 +440,7 @@ export function ProjectConfigurationWorkbench({
     } else {
       setSelectedPropertyName(null);
     }
-  }, [search, structureNodes]);
+  }, [search, structureError, structureLoading, structureNodes]);
 
   useEffect(() => {
     setFocusLineOverride(null);

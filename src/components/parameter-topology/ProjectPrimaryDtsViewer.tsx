@@ -227,6 +227,7 @@ export function ProjectPrimaryDtsViewer({
               }}
               className={lineClassName}
               data-line={lineNumber}
+              data-focused={isFocused ? "true" : undefined}
             >
               <span className="project-primary-dts-viewer__line-number" aria-hidden="true">
                 {lineNumber}

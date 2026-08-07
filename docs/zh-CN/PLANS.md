@@ -15,7 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- `exec-plans/active/2026-08-07-project-configuration-workbench-source-nav.md`：Issue #229 源码定位 DTS 导航——结构 span、统一搜索、URL 深链与工作台源码同步（分支 `feat/project-configuration-workbench-source-nav`）。
+- `exec-plans/completed/2026-08-07-project-configuration-workbench-source-nav.md`：Issue #229 源码定位 DTS 导航——结构 span、统一搜索、URL 深链与工作台源码同步（分支 `feat/project-configuration-workbench-source-nav`）。
 - `exec-plans/completed/2026-08-06-project-configuration-workbench-readonly.md`：Issue #228 Phase 1 只读 tracer——开发开关后的规范路由、确定性配置集上下文、成员/未编组源码树、经既有 ports 加载活跃源码，以及源码主导响应式外壳（分支 `feat/project-configuration-workbench-readonly`）。
 - 当前活跃计划清单以英文版 `docs/PLANS.md` 为准。`2026-07-16-parameter-topology-round4-review-blockers.md` 为第四轮 Review 阻断修复：真实 dt-validate schema、可运维 stage→finalize、精确锁定 merge 回写、matcher/review 作用域、manifest 门禁、全局规格 hotspot、未匹配创建+不匹配审计、acceptance/浏览器证据（分支 `fix/parameter-topology-round4-review-blockers`）。`2026-07-16-parameter-topology-round5-review-blockers.md` 为第五轮：不可变 base binding、真 fail-closed writeback、stage/finalize phase 审计、租户 resolve、createSpec 草稿→激活、acceptance fixture 诚实化（分支 `fix/parameter-topology-round5-review-blockers`）。TD-042 仍为 BLOCKER。
 - `exec-plans/active/2026-07-16-parameter-topology-round6-review-blockers.md`：第六轮 Review 阻断——历史 scope 校正、无损规格 ID、全局规格激活权限、完整 valueShape、真实 merge 验收、cleanup 租户隔离、稳定 test:all（分支 `fix/parameter-topology-round6-review-blockers`）。TD-042 仍为 BLOCKER。

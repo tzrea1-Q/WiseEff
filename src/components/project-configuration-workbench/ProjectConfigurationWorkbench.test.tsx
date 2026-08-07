@@ -441,6 +441,9 @@ describe("ProjectConfigurationWorkbench", () => {
     await waitFor(() =>
       expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("property=model"))).toBe(true)
     );
+    await waitFor(() =>
+      expect(document.querySelector('[data-focused="true"]')).not.toBeNull()
+    );
   });
 
   it("groups unified search hits by file and navigates across members while preserving config set", async () => {
@@ -542,10 +545,8 @@ describe("ProjectConfigurationWorkbench", () => {
       search: "?configSet=cs-default&file=file-board&node=board&property=model&sourceMode=structured",
       dtsRepository: createDtsRepository({ getStructure })
     });
-    expect(await screen.findByRole("treeitem", { name: "属性 board/model" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+    const propertyItem = await screen.findByRole("treeitem", { name: "属性 board/model" });
+    await waitFor(() => expect(propertyItem).toHaveAttribute("aria-selected", "true"));
     fireEvent.click(screen.getByRole("button", { name: "检查器" }));
     expect(screen.getByText(/源码模式：structured/)).toBeInTheDocument();
   });
@@ -579,6 +580,20 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试结构树" }));
     expect(await screen.findByRole("treeitem", { name: "节点 board" })).toBeInTheDocument();
     expect(getStructure).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses Alt keyboard helpers for search focus and next match without requiring meta/ctrl", async () => {
+    renderWorkbench();
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const search = screen.getByRole("searchbox", { name: "统一搜索查询" });
+    fireEvent.keyDown(window, { key: "f", altKey: true });
+    expect(search).toHaveFocus();
+    fireEvent.change(search, { target: { value: "Aurora" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    fireEvent.keyDown(window, { key: "n", altKey: true });
+    // Next-match token is accepted without throwing; browser shortcuts remain untouched for ctrl/meta.
+    fireEvent.keyDown(window, { key: "f", ctrlKey: true });
+    expect(search).toHaveFocus();
   });
 
 });

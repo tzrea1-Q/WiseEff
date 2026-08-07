@@ -239,8 +239,10 @@ Audit actions: `parameter-file-upload`, `parameter-file-sync`, `parameter-file-c
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure` | Read the persisted structural model for one file version from `dts_*` (no re-parse). Returns `{ nodes }`; each node includes typed `properties` (`valueType`, `rawText`, `normalizedValue`) and `phandleRefs`. Requires `parameter:view`. |
-| `GET` | `/api/v1/projects/:projectId/dts-search` | Search current file versions' `dts_*` rows. Query: `q` (required), `by` = `path`\|`address`\|`label`\|`compatible`\|`value` (default `path`). Returns `{ hits }`. Requires `parameter:view`. |
+| `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure` | Read the persisted structural model for one file version from `dts_*` (no re-parse). Returns `{ nodes }`; each node includes typed `properties` (`valueType`, `rawText`, `normalizedValue`), `phandleRefs`, and optional `source` locators (`startOffset`/`endOffset`/`startLine`/`startColumn`/`endLine`/`endColumn`) persisted at ingest. Requires `parameter:view`. |
+| `GET` | `/api/v1/projects/:projectId/dts-search` | Search current file versions' `dts_*` rows. Query: `q` (required), optional `by` = `path`\|`address`\|`label`\|`compatible`\|`value`\|`file` (omit `by` to search all dimensions including file name). Returns `{ hits }` with optional `source` locators. Requires `parameter:view`. |
+Structural source locators are persisted by migration `0092_dts_structural_spans.sql` on `dts_nodes` / `dts_properties` and returned on structure/search reads without re-parse.
+
 | `POST` | `/api/v1/projects/:projectId/dts-structured-edits/submit` | Submit one or more structured DTS property edits as a parameter submission round. Body: `{ edits: [{ fileId, nodePath, propertyName, rawText, reason? }], reason?, assignees? }`. Maps each edit to a `project_parameter_value` via `source_file_name`/`source_node_path`, creates drafts, and submits CRs whose `targetValue` is `rawText` (not `normalizedValue`). Returns `201 { item }` (submission round with CR items). Requires `parameter:edit`; sensitive-node rules apply (`parameter:edit-critical` for critical paths; agent writes to critical nodes denied). Audit: `parameter-structured-edit-submit`. |
 
 ### Change-request impact extensions (P3)

@@ -1,10 +1,10 @@
 # 项目配置工作台源码定位导航（#229）
 
-> 状态：**进行中**
+> 状态：**已完成**
 > 日期：2026-08-07
 > 分支：`feat/project-configuration-workbench-source-nav`
 > Issue：[#229](https://github.com/tzrea1-Q/WiseEff/issues/229)，父 Issue [#227](https://github.com/tzrea1-Q/WiseEff/issues/227)
-> English: [English](../../../exec-plans/active/2026-08-07-project-configuration-workbench-source-nav.md)
+> English: [English](../../../exec-plans/completed/2026-08-07-project-configuration-workbench-source-nav.md)
 > 设计：[项目配置工作台](../../design-docs/2026-08-06-project-configuration-workbench-design.md)
 > 起点：`86428500`
 
@@ -70,30 +70,30 @@
 
 ### B. 结构读与 FE ports 暴露 spans
 
-- [ ] Red/Green：扩展 DTO、zod、FE port、read SELECT、HTTP client、mock teaching nodes。
+- [x] Red/Green：扩展 DTO、zod、FE port、read SELECT、HTTP client、mock teaching nodes。
 
 ### C. 登记契约
 
-- [ ] 在 routeManifest / schemaRegistry / OpenAPI 登记 structure + dts-search（含 span 字段）。
+- [x] 在 routeManifest / schemaRegistry / OpenAPI 登记 structure + dts-search（含 span 字段）。
 
 ### D. 搜索定位器 + 文件名 + 全维度
 
-- [ ] Red/Green：hits 带定位器；文件名匹配；省略 `by`=全部；mock 对齐。
+- [x] Red/Green：hits 带定位器；文件名匹配；省略 `by`=全部；mock 对齐。
 
 ### E. 源码 viewer focus span
 
-- [ ] Red/Green：扩展或包装 `ProjectPrimaryDtsViewer` 支持多行 focus span；保留 find-next。
+- [x] Red/Green：扩展或包装 `ProjectPrimaryDtsViewer` 支持多行 focus span；保留 find-next。
 
 ### F. 工作台接线
 
-- [ ] Red/Green：`getStructure` 嵌套树、PrimaryDtsViewer、URL 深链、按文件分组统一搜索、滚动同步、独立重试、键盘。
+- [x] Red/Green：`getStructure` 嵌套树、PrimaryDtsViewer、URL 深链、按文件分组统一搜索、滚动同步、独立重试、键盘。
 
 ### G. 验收 + 文档 + 收尾
 
-- [ ] 登记 `PROJ-CONFIG-SOURCE-001`（覆盖图、requirements、operationMatrix、e2e）。
-- [ ] 更新 FRONTEND、api-contract（及必要时 env）、双语计划。
-- [ ] 跑验证矩阵、三视口 UI 证据、相对 `86428500` 的 Standards/Spec 评审并修复。
-- [ ] 门禁通过后将计划移入 `completed/` 并勾选任务。
+- [x] 登记 `PROJ-CONFIG-SOURCE-001`（覆盖图、requirements、operationMatrix、e2e）。
+- [x] 更新 FRONTEND、api-contract（及必要时 env）、双语计划。
+- [x] 跑验证矩阵、三视口 UI 证据、相对 `86428500` 的 Standards/Spec 评审并修复。
+- [x] 门禁通过后将计划移入 `completed/` 并勾选任务。
 
 ## 浏览器验收映射
 
@@ -144,8 +144,8 @@ npm run build
 
 ## 文档更新门禁
 
-- [ ] 每个 `Update` 行已交付（适用时双语）。
-- [ ] 每个 `Review` 行已更新或在此记录为未变并附具体证据。
-- [ ] 验收需求/操作覆盖与证据归属在完成前已登记。
-- [ ] `npm run docs:check` 通过。
-- [ ] 无遗留 #229 验收项；后续属于 #227 后续子 Issue。
+- [x] 每个 `Update` 行已交付（适用时双语）。
+- [x] 每个 `Review` 行已更新或在此记录为未变并附具体证据。
+- [x] 验收需求/操作覆盖与证据归属在完成前已登记。
+- [x] `npm run docs:check` 通过。
+- [x] 无遗留 #229 验收项；后续属于 #227 后续子 Issue。

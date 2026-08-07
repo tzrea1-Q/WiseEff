@@ -4,9 +4,28 @@ import { createDtsStructuredClient } from "./dtsStructuredClient";
 
 describe("createDtsStructuredClient", () => {
   it("maps structure and search endpoints with path encoding and unwraps hits", async () => {
+    const locator = {
+      startOffset: 10,
+      endOffset: 20,
+      startLine: 2,
+      startColumn: 1,
+      endLine: 2,
+      endColumn: 11
+    };
     const get = vi
       .fn()
-      .mockResolvedValueOnce({ nodes: [] })
+      .mockResolvedValueOnce({
+        nodes: [
+          {
+            nodePath: "board",
+            name: "board",
+            labels: [],
+            properties: [],
+            phandleRefs: [],
+            source: locator
+          }
+        ]
+      })
       .mockResolvedValueOnce({
         hits: [
           {
@@ -14,13 +33,22 @@ describe("createDtsStructuredClient", () => {
             fileName: "board.dts",
             versionId: "version/1",
             nodePath: "amba/i2c@XXXX0000/chip@6E",
-            snippet: "chip@6E"
+            snippet: "chip@6E",
+            source: locator
           }
         ]
       });
     const client = createDtsStructuredClient({ get } as never);
 
-    await client.getStructure("project/1", "file/with spaces", "version/1");
+    const structure = await client.getStructure("project/1", "file/with spaces", "version/1");
+    expect(structure.nodes[0]?.source).toEqual({
+      startOffset: 10,
+      endOffset: 20,
+      startLine: 2,
+      startColumn: 1,
+      endLine: 2,
+      endColumn: 11
+    });
     const searchResult = await client.search("project/1", { q: "chip@6E", by: "path" });
 
     expect(get).toHaveBeenNthCalledWith(
@@ -37,9 +65,30 @@ describe("createDtsStructuredClient", () => {
         fileName: "board.dts",
         versionId: "version/1",
         nodePath: "amba/i2c@XXXX0000/chip@6E",
-        snippet: "chip@6E"
+        snippet: "chip@6E",
+        source: {
+          startOffset: 10,
+          endOffset: 20,
+          startLine: 2,
+          startColumn: 1,
+          endLine: 2,
+          endColumn: 11
+        }
       }
     ]);
+  });
+
+  it("omits by for all-dimension search and supports by=file", async () => {
+    const get = vi.fn().mockResolvedValue({ hits: [] });
+    const client = createDtsStructuredClient({ get } as never);
+
+    await client.search("project/1", { q: "board" });
+    expect(get).toHaveBeenLastCalledWith("/api/v1/projects/project%2F1/dts-search?q=board");
+
+    await client.search("project/1", { q: "board.dts", by: "file" });
+    expect(get).toHaveBeenLastCalledWith(
+      "/api/v1/projects/project%2F1/dts-search?q=board.dts&by=file"
+    );
   });
 
   it("maps search by=address query param", async () => {

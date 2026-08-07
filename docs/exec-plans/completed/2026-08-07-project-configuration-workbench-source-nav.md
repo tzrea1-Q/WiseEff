@@ -1,10 +1,10 @@
 # Project configuration workbench source-located navigation (#229)
 
-> Status: **Active**
+> Status: **Completed**
 > Date: 2026-08-07
 > Branch: `feat/project-configuration-workbench-source-nav`
 > Issue: [#229](https://github.com/tzrea1-Q/WiseEff/issues/229), child of [#227](https://github.com/tzrea1-Q/WiseEff/issues/227)
-> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-07-project-configuration-workbench-source-nav.md)
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-08-07-project-configuration-workbench-source-nav.md)
 > Design: [Project configuration workbench](../../design-docs/2026-08-06-project-configuration-workbench-design.md)
 > Starts at: `86428500`
 
@@ -70,30 +70,30 @@ The branch starts at `86428500` (merge of PR #242 / read-only workbench).
 
 ### B. Expose spans on structural read + FE ports
 
-- [ ] Red/Green: extend `Structural*Dto`, zod schemas, FE port types, read repository SELECT, HTTP client, and mock teaching nodes with spans.
+- [x] Red/Green: extend `Structural*Dto`, zod schemas, FE port types, read repository SELECT, HTTP client, and mock teaching nodes with spans.
 
 ### C. Register contracts
 
-- [ ] Register structure + dts-search in routeManifest / schemaRegistry / OpenAPI with span fields.
+- [x] Register structure + dts-search in routeManifest / schemaRegistry / OpenAPI with span fields.
 
 ### D. Search locators + filename + all dimensions
 
-- [ ] Red/Green: search hits carry locators; filename match; optional `by` omit = all; mock parity.
+- [x] Red/Green: search hits carry locators; filename match; optional `by` omit = all; mock parity.
 
 ### E. Source viewer focus span
 
-- [ ] Red/Green: extend or wrap `ProjectPrimaryDtsViewer` for multi-line focus span highlight; keep find-next.
+- [x] Red/Green: extend or wrap `ProjectPrimaryDtsViewer` for multi-line focus span highlight; keep find-next.
 
 ### F. Workbench wiring
 
-- [ ] Red/Green: `getStructure` nested tree, PrimaryDtsViewer, URL deep links, unified search grouped by file, scroll sync, independent retries, keyboard.
+- [x] Red/Green: `getStructure` nested tree, PrimaryDtsViewer, URL deep links, unified search grouped by file, scroll sync, independent retries, keyboard.
 
 ### G. Acceptance + docs + completion
 
-- [ ] Register `PROJ-CONFIG-SOURCE-001` in EN/ZH coverage maps, `requirements.ts`, `operationMatrix.ts`, and e2e.
-- [ ] Update FRONTEND, api-contract (and env if needed), bilingual plans.
-- [ ] Run verification matrix, three-viewport UI evidence, Standards vs Spec review vs `86428500`, fix findings.
-- [ ] Move plans to `completed/` and flip checkboxes after gates pass.
+- [x] Register `PROJ-CONFIG-SOURCE-001` in EN/ZH coverage maps, `requirements.ts`, `operationMatrix.ts`, and e2e.
+- [x] Update FRONTEND, api-contract (and env if needed), bilingual plans.
+- [x] Run verification matrix, three-viewport UI evidence, Standards vs Spec review vs `86428500`, fix findings.
+- [x] Move plans to `completed/` and flip checkboxes after gates pass.
 
 ## Browser acceptance mapping
 
@@ -144,8 +144,11 @@ Review gate: two parallel generalPurpose reviews (Standards vs Spec) against fix
 
 ## Documentation Update Gate
 
-- [ ] Every `Update` row is delivered in English and Chinese where applicable.
-- [ ] Every `Review` row is either updated or recorded here as unchanged with concrete evidence.
-- [ ] Acceptance requirement/operation coverage and evidence ownership are registered before completion.
-- [ ] `npm run docs:check` passes.
-- [ ] No deferred #229 acceptance remains; follow-ups belong to later child issues of #227.
+- [x] Every `Update` row is delivered in English and Chinese where applicable.
+- [x] Every `Review` row is either updated or recorded here as unchanged with concrete evidence.
+- [x] Acceptance requirement/operation coverage and evidence ownership are registered before completion.
+- [x] `npm run docs:check` passes.
+- [x] No deferred #229 acceptance remains; follow-ups belong to later child issues of #227.
+
+Review evidence for unchanged rows: `AGENTS.md`, `ARCHITECTURE.md`, `CONTEXT.md`, ADR set, `docs/RELIABILITY.md`, and `docs/SECURITY.md` were checked against the delivered source-nav boundary; no architecture/security/reliability map change was required beyond the structural span lift already documented in FRONTEND/api-contract/OpenAPI/db-schema and acceptance maps.
+Browser evidence is retained under `work/ui-checks/project-configuration-workbench-source-nav/` (`workbench-1440x900.png`, `workbench-768x1024.png`, `workbench-390x844.png`, matching snapshots, overflow JSON, and empty `console-errors.json`).
