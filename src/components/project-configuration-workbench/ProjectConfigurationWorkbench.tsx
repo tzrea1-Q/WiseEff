@@ -12,6 +12,7 @@ import type {
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
 import type {
+  ParameterFileCandidate,
   ParameterFileRepository,
   ProjectParameterFile,
   ProjectParameterFileVersion
@@ -76,6 +77,7 @@ type WorkbenchPathPatch = {
   property?: string | null;
   sourceMode?: string | null;
   version?: string | null;
+  candidate?: string | null;
 };
 
 function formatWorkbenchPath(projectId: string, search: string, patch: WorkbenchPathPatch) {
@@ -91,6 +93,7 @@ function formatWorkbenchPath(projectId: string, search: string, patch: Workbench
   setOrDelete("property", patch.property);
   setOrDelete("sourceMode", patch.sourceMode);
   setOrDelete("version", patch.version);
+  setOrDelete("candidate", patch.candidate);
   return `/parameter-admin/projects/${encodeURIComponent(projectId)}/configuration?${params.toString()}`;
 }
 
@@ -210,6 +213,13 @@ export function ProjectConfigurationWorkbench({
   const [modeSourceLoading, setModeSourceLoading] = useState(false);
   const [modeSourceError, setModeSourceError] = useState("");
   const [downloadMessage, setDownloadMessage] = useState("");
+  const [activeCandidate, setActiveCandidate] = useState<ParameterFileCandidate | null>(null);
+  const [candidateSource, setCandidateSource] = useState("");
+  const [candidateLoading, setCandidateLoading] = useState(false);
+  const [candidateError, setCandidateError] = useState("");
+  const [candidateActionMessage, setCandidateActionMessage] = useState("");
+  const [uploadingCandidate, setUploadingCandidate] = useState(false);
+  const candidateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [lastVisibleLine, setLastVisibleLine] = useState<number | null>(null);
   const [restoredScrollLine, setRestoredScrollLine] = useState<number | null>(null);
   const workingSnapshotRef = useRef<{
@@ -392,6 +402,7 @@ export function ProjectConfigurationWorkbench({
   }, [search, selectedMembers]);
 
   const canvasMode: WorkbenchCanvasMode = parseCanvasMode(queryValue(search, "sourceMode"));
+  const candidateId = queryValue(search, "candidate");
   const historyVersionId = queryValue(search, "version");
 
   const derivedInspectorLevel = resolveInspectorLevel({
@@ -536,6 +547,41 @@ export function ProjectConfigurationWorkbench({
       cancelled = true;
     };
   }, [canvasMode, fileRepository, historyVersionId, project.id, selectedMember, source]);
+
+  useEffect(() => {
+    if (canvasMode !== "candidate" || !candidateId) {
+      if (canvasMode !== "candidate") {
+        setCandidateSource("");
+        setCandidateLoading(false);
+      }
+      return;
+    }
+    let cancelled = false;
+    setCandidateLoading(true);
+    setCandidateError("");
+    void (async () => {
+      try {
+        const [candidate, downloaded] = await Promise.all([
+          fileRepository.getCandidate(project.id, candidateId),
+          fileRepository.downloadCandidate(project.id, candidateId)
+        ]);
+        if (cancelled) return;
+        setActiveCandidate(candidate);
+        setCandidateSource(decodeSourceBytes(downloaded.bytes));
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setActiveCandidate(null);
+          setCandidateSource("");
+          setCandidateError(error instanceof Error ? error.message : "候选加载失败。");
+        }
+      } finally {
+        if (!cancelled) setCandidateLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [candidateId, canvasMode, fileRepository, project.id]);
 
   useEffect(() => {
     if (configSetsLoading || !selectedConfigSet) return;
@@ -905,7 +951,8 @@ export function ProjectConfigurationWorkbench({
           node: selectedNodePath,
           property: selectedPropertyName,
           sourceMode: canvasModeQueryValue(mode),
-          version: versionId
+          version: versionId,
+          candidate: null
         })
       );
     },
@@ -936,7 +983,8 @@ export function ProjectConfigurationWorkbench({
         node: snapshot?.nodePath ?? selectedNodePath,
         property: snapshot?.propertyName ?? selectedPropertyName,
         sourceMode: null,
-        version: null
+        version: null,
+        candidate: null
       })
     );
     window.setTimeout(() => {
@@ -1034,7 +1082,10 @@ export function ProjectConfigurationWorkbench({
               : selectedMember?.currentVersionId ?? "无"}
           </span>
           <span className="configuration-workbench__identity-chip" data-identity="candidate">
-            候选文件版本：尚未上传
+            候选文件版本：
+            {activeCandidate && activeCandidate.status !== "abandoned"
+              ? `${activeCandidate.fileName} · ${activeCandidate.status}`
+              : "尚未上传"}
           </span>
           <span className="configuration-workbench__identity-chip" data-identity="release-baseline">
             发布基线：{baselinesLoading ? "加载中…" : baselinesError ? "不可用" : releasedBaseline?.name ?? "尚未发布"}
@@ -1058,8 +1109,71 @@ export function ProjectConfigurationWorkbench({
               检查器
             </button>
           ) : null}
-          <button className="button subtle" type="button" disabled title="候选上传将在后续阶段提供">
-            上传候选
+          <input
+            ref={candidateFileInputRef}
+            type="file"
+            accept=".dts,.dtsi,.json,text/plain,application/json"
+            hidden
+            aria-hidden="true"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (!file || !selectedConfigSet) return;
+              setUploadingCandidate(true);
+              setCandidateActionMessage("");
+              setCandidateError("");
+              void (async () => {
+                try {
+                  const contentBase64 = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onerror = () => reject(reader.error ?? new Error("Failed to read candidate file."));
+                    reader.onload = () => {
+                      const result = String(reader.result ?? "");
+                      const marker = "base64,";
+                      const index = result.indexOf(marker);
+                      resolve(index >= 0 ? result.slice(index + marker.length) : result);
+                    };
+                    reader.readAsDataURL(file);
+                  });
+                  const candidate = await fileRepository.createCandidate(project.id, {
+                    fileName: file.name,
+                    contentBase64,
+                    fileId: selectedMember?.fileId
+                  });
+                  setActiveCandidate(candidate);
+                  setInspectorOpen(true);
+                  onNavigate(
+                    formatWorkbenchPath(project.id, search, {
+                      configSet: selectedConfigSet.id,
+                      file: selectedMember?.fileId ?? null,
+                      sourceMode: "candidate",
+                      candidate: candidate.id,
+                      version: null,
+                      node: null,
+                      property: null
+                    })
+                  );
+                  setCandidateActionMessage(
+                    candidate.status === "failed"
+                      ? "候选解析失败，活跃源码未改动；可查看诊断后放弃。"
+                      : "候选已创建，工作配置与活跃版本未改动。"
+                  );
+                } catch (error: unknown) {
+                  setCandidateError(error instanceof Error ? error.message : "候选上传失败。");
+                } finally {
+                  setUploadingCandidate(false);
+                }
+              })();
+            }}
+          />
+          <button
+            className="button subtle"
+            type="button"
+            disabled={uploadingCandidate || !selectedConfigSet}
+            title="上传创建候选文件版本，不会激活工作配置"
+            onClick={() => candidateFileInputRef.current?.click()}
+          >
+            {uploadingCandidate ? "上传中…" : "上传候选"}
           </button>
           <button className="button subtle" type="button" disabled title="发布就绪度尚未接入，不能创建基线">
             创建基线
@@ -1332,21 +1446,31 @@ export function ProjectConfigurationWorkbench({
                       ? "工作配置"
                       : canvasMode === "history"
                         ? "历史只读源码"
-                        : "只读对比"}
+                        : canvasMode === "candidate"
+                          ? "候选只读源码"
+                          : "只读对比"}
                   </span>
                   <h2>{selectedMember.fileName}</h2>
                 </div>
                 <div className="configuration-workbench__version-identity">
-                  <span>{canvasMode === "working" ? "活跃文件版本" : "对照文件版本"}</span>
+                  <span>
+                    {canvasMode === "working"
+                      ? "活跃文件版本"
+                      : canvasMode === "candidate"
+                        ? "候选文件版本"
+                        : "对照文件版本"}
+                  </span>
                   <strong className="mono">
                     {canvasMode === "working"
                       ? selectedMember.currentVersionId ?? "缺失"
-                      : historyVersionId ?? "缺失"}
+                      : canvasMode === "candidate"
+                        ? activeCandidate?.id ?? candidateId ?? "缺失"
+                        : historyVersionId ?? "缺失"}
                   </strong>
                 </div>
                 {canvasMode !== "working" ? (
                   <div className="configuration-workbench__mode-actions">
-                    {canvasMode !== "side-by-side" ? (
+                    {canvasMode !== "candidate" && canvasMode !== "side-by-side" ? (
                       <button
                         className="button subtle"
                         type="button"
@@ -1355,7 +1479,7 @@ export function ProjectConfigurationWorkbench({
                         并排对比
                       </button>
                     ) : null}
-                    {canvasMode !== "unified-diff" ? (
+                    {canvasMode !== "candidate" && canvasMode !== "unified-diff" ? (
                       <button
                         className="button subtle"
                         type="button"
@@ -1368,9 +1492,19 @@ export function ProjectConfigurationWorkbench({
                       className="button subtle"
                       type="button"
                       onClick={exitSpecialCanvasMode}
-                      aria-label={canvasMode === "history" ? "退出历史源码" : "退出对比"}
+                      aria-label={
+                        canvasMode === "history"
+                          ? "退出历史源码"
+                          : canvasMode === "candidate"
+                            ? "退出候选源码"
+                            : "退出对比"
+                      }
                     >
-                      {canvasMode === "history" ? "退出历史源码" : "退出对比"}
+                      {canvasMode === "history"
+                        ? "退出历史源码"
+                        : canvasMode === "candidate"
+                          ? "退出候选源码"
+                          : "退出对比"}
                     </button>
                   </div>
                 ) : null}
@@ -1381,11 +1515,31 @@ export function ProjectConfigurationWorkbench({
                 className="configuration-workbench__mode-banner"
                 role="status"
                 aria-label={
-                  canvasMode === "history" ? "历史只读源码模式" : "只读对比模式"
+                  canvasMode === "history"
+                    ? "历史只读源码模式"
+                    : canvasMode === "candidate"
+                      ? "候选只读源码模式"
+                      : "只读对比模式"
                 }
               >
-                当前为{canvasMode === "history" ? "历史只读源码" : "只读对比"}模式，不能编辑，也不会改变工作配置。
+                当前为
+                {canvasMode === "history"
+                  ? "历史只读源码"
+                  : canvasMode === "candidate"
+                    ? "候选只读源码"
+                    : "只读对比"}
+                模式，不能编辑，也不会改变工作配置。
               </p>
+            ) : null}
+            {candidateActionMessage ? (
+              <p className="configuration-workbench__mode-banner" role="status">
+                {candidateActionMessage}
+              </p>
+            ) : null}
+            {candidateError ? (
+              <div className="configuration-workbench__setup-state" role="alert">
+                {candidateError}
+              </div>
             ) : null}
             {sourceLoading || modeSourceLoading ? (
               <div className="configuration-workbench__source-state" role="status">
@@ -1478,6 +1632,23 @@ export function ProjectConfigurationWorkbench({
                 focusLine={focusLineOverride}
                 onVisibleLineChange={handleVisibleLineChange}
               />
+            ) : null}
+            {!candidateLoading &&
+            canvasMode === "candidate" &&
+            candidateSource ? (
+              <ProjectPrimaryDtsViewer
+                className="configuration-workbench__code"
+                fileName={activeCandidate?.fileName ?? selectedMember?.fileName ?? "candidate.dts"}
+                versionNumber={0}
+                text={candidateSource}
+                focusLine={focusLineOverride}
+                onVisibleLineChange={handleVisibleLineChange}
+              />
+            ) : null}
+            {canvasMode === "candidate" && candidateLoading ? (
+              <div className="configuration-workbench__source-state" role="status">
+                正在加载候选源码…
+              </div>
             ) : null}
             {!modeSourceLoading &&
             !modeSourceError &&
@@ -1580,8 +1751,148 @@ export function ProjectConfigurationWorkbench({
                 </div>
                 <div>
                   <dt>候选文件版本</dt>
-                  <dd>尚未上传</dd>
+                  <dd>
+                    {activeCandidate && activeCandidate.status !== "abandoned"
+                      ? `${activeCandidate.fileName} · ${activeCandidate.status}`
+                      : "尚未上传"}
+                  </dd>
                 </div>
+                {activeCandidate && canvasMode === "candidate" ? (
+                  <>
+                    <div>
+                      <dt>候选身份</dt>
+                      <dd className="mono">{activeCandidate.id}</dd>
+                    </div>
+                    <div>
+                      <dt>对照活跃版本</dt>
+                      <dd className="mono">{activeCandidate.baseVersionId ?? "新文件候选"}</dd>
+                    </div>
+                    <div>
+                      <dt>诊断</dt>
+                      <dd>
+                        {(activeCandidate.diagnostics?.length ?? 0) === 0
+                          ? "无"
+                          : activeCandidate.diagnostics.map((item) => (
+                              <div key={`${item.code}-${item.message}`}>
+                                [{item.severity}] {item.code}: {item.message}
+                              </div>
+                            ))}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>阻断</dt>
+                      <dd>
+                        {(activeCandidate.blockers?.length ?? 0) === 0
+                          ? "无"
+                          : activeCandidate.blockers.map((item) => (
+                              <div key={`${item.code}-${item.message}`}>
+                                {item.code}: {item.message}
+                              </div>
+                            ))}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>结构差异</dt>
+                      <dd>
+                        {(activeCandidate.impact.structuralDiff?.length ?? 0) === 0
+                          ? "无"
+                          : `${activeCandidate.impact.structuralDiff?.length} 项`}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>覆盖/映射</dt>
+                      <dd>
+                        {activeCandidate.impact.coverage
+                          ? `已注册 ${activeCandidate.impact.coverage.matchedRegisteredCount} · 未注册 ${activeCandidate.impact.coverage.newUnregisteredCount}`
+                          : "不适用"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>冲突证据</dt>
+                      <dd>
+                        {(activeCandidate.impact.conflicts?.length ?? 0) === 0
+                          ? "无开放冲突"
+                          : activeCandidate.impact.conflicts?.map((item) => (
+                              <div key={item.id} className="mono">
+                                {item.id}
+                                {item.parameterName ? ` · ${item.parameterName}` : ""}
+                              </div>
+                            ))}
+                      </dd>
+                    </div>
+                    {activeCandidate.impact.textDiff ? (
+                      <div>
+                        <dt>文本差异</dt>
+                        <dd>
+                          <pre className="configuration-workbench__diff-view mono" tabIndex={0}>
+                            {activeCandidate.impact.textDiff}
+                          </pre>
+                        </dd>
+                      </div>
+                    ) : null}
+                    <div className="configuration-workbench__inspector-actions">
+                      {activeCandidate.status === "blocked" ? (
+                        <button
+                          className="button subtle"
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              try {
+                                const updated = await fileRepository.recomputeCandidate(
+                                  project.id,
+                                  activeCandidate.id
+                                );
+                                setActiveCandidate(updated);
+                                setCandidateActionMessage("已按当前阻断条件重算候选影响。");
+                              } catch (error: unknown) {
+                                setCandidateError(
+                                  error instanceof Error ? error.message : "候选重算失败。"
+                                );
+                              }
+                            })();
+                          }}
+                        >
+                          重算影响
+                        </button>
+                      ) : null}
+                      {["ready", "blocked", "failed"].includes(activeCandidate.status) ? (
+                        <button
+                          className="button subtle"
+                          type="button"
+                          onClick={() => {
+                            void (async () => {
+                              try {
+                                const abandoned = await fileRepository.abandonCandidate(
+                                  project.id,
+                                  activeCandidate.id
+                                );
+                                setActiveCandidate(abandoned);
+                                setCandidateActionMessage("候选已放弃；工作配置与配置集成员未改动。");
+                                if (selectedConfigSet) {
+                                  onNavigate(
+                                    formatWorkbenchPath(project.id, search, {
+                                      configSet: selectedConfigSet.id,
+                                      file: selectedMember?.fileId ?? null,
+                                      sourceMode: null,
+                                      candidate: null,
+                                      version: null
+                                    })
+                                  );
+                                }
+                              } catch (error: unknown) {
+                                setCandidateError(
+                                  error instanceof Error ? error.message : "放弃候选失败。"
+                                );
+                              }
+                            })();
+                          }}
+                        >
+                          放弃候选
+                        </button>
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
                 {inspectorLevel === "config-set" ? (
                   <>
                     <div>

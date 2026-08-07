@@ -19,8 +19,10 @@ describe("workbenchInspectorModel", () => {
     expect(parseCanvasMode("history")).toBe("history");
     expect(parseCanvasMode("unified-diff")).toBe("unified-diff");
     expect(parseCanvasMode("side-by-side")).toBe("side-by-side");
+    expect(parseCanvasMode("candidate")).toBe("candidate");
     expect(canvasModeQueryValue("working")).toBeNull();
     expect(canvasModeQueryValue("history")).toBe("history");
+    expect(canvasModeQueryValue("candidate")).toBe("candidate");
   });
 
   it("resolves inspector level and back targets without clearing file on config-set back", () => {
