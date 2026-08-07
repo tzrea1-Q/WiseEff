@@ -1,10 +1,10 @@
 # 项目配置工作台活动时间线（#239）
 
-> 状态：**进行中**
+> 状态：**已完成**
 > 日期：2026-08-07
 > 分支：`feat/project-configuration-workbench-activity-timeline`
 > Issue：[#239](https://github.com/tzrea1-Q/WiseEff/issues/239)，父议题 [#227](https://github.com/tzrea1-Q/WiseEff/issues/227)
-> English：[English](../../../exec-plans/active/2026-08-07-project-configuration-workbench-activity-timeline.md)
+> English：[English](../../../exec-plans/completed/2026-08-07-project-configuration-workbench-activity-timeline.md)
 > 设计：[项目配置工作台](../../design-docs/2026-08-06-project-configuration-workbench-design.md)（PCW-D11）
 > 起点：`4f1c25b9c41f6b52bac06fc16488b81e6f5d5b39`
 

@@ -1,11 +1,11 @@
 # Project configuration workbench activity timeline (#239)
 
-> Status: **Active**
+> Status: **Completed**
 > Date: 2026-08-07
 > Branch: `feat/project-configuration-workbench-activity-timeline`
 > Issue: [#239](https://github.com/tzrea1-Q/WiseEff/issues/239), child of [#227](https://github.com/tzrea1-Q/WiseEff/issues/227)
 > Blocked by: [#230](https://github.com/tzrea1-Q/WiseEff/issues/230) (merged; latest main includes candidate upload #231)
-> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-07-project-configuration-workbench-activity-timeline.md)
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-08-07-project-configuration-workbench-activity-timeline.md)
 > Design: [Project configuration workbench](../../design-docs/2026-08-06-project-configuration-workbench-design.md) (PCW-D11)
 > Starts at: `4f1c25b9c41f6b52bac06fc16488b81e6f5d5b39`
 > Worktree: `/Users/tzrea1/Develop/_codex_worktrees/WiseEff-activity-timeline`
@@ -71,10 +71,10 @@ Work in isolated worktree. Commit/push feature branch, open PR Related to #239, 
 
 ### C. Acceptance + docs + completion
 
-- [ ] Register `PROJ-CONFIG-ACTIVITY-001`.
-- [ ] Update FRONTEND (and ZH).
-- [ ] Verification matrix + UI evidence + Standards/Spec review.
-- [ ] Move plans to `completed/`.
+- [x] Register `PROJ-CONFIG-ACTIVITY-001`.
+- [x] Update FRONTEND (and ZH).
+- [x] Verification matrix + UI evidence + Standards/Spec review.
+- [x] Move plans to `completed/`.
 
 ## Browser acceptance mapping
 
@@ -111,7 +111,12 @@ npm run build
 
 ## Documentation Update Gate
 
-- [ ] Every `Update` row delivered EN+ZH where applicable.
-- [ ] Every `Review` row updated or recorded unchanged with evidence.
-- [ ] Acceptance coverage registered.
-- [ ] `npm run docs:check` passes.
+- [x] Every `Update` row delivered EN+ZH where applicable.
+- [x] Every `Review` row updated or recorded unchanged with evidence.
+- [x] Acceptance coverage registered.
+- [x] `npm run docs:check` passes.
+
+
+Review evidence for unchanged rows: API contract / OpenAPI / db-schema unchanged (reused `GET /api/v1/audit-events`). `AGENTS.md`, `ARCHITECTURE.md`, `CONTEXT.md`, reliability/security docs unchanged beyond FRONTEND and acceptance maps. Environment docs unchanged beyond existing workbench flag.
+
+Browser evidence retained under `work/ui-checks/project-configuration-workbench-activity-timeline/` (acceptance PNG + viewport captures; `console-errors.json`). E2E `PROJ-CONFIG-ACTIVITY-001` passed locally.
