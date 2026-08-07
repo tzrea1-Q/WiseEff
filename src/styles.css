@@ -26379,12 +26379,87 @@ button.dts-topology-navigator__disclosure:focus-visible {
 
 .configuration-workbench__ungrouped-file {
   display: grid;
+  gap: 4px;
   padding: 5px 2px;
   font-size: 10px;
 }
 
 .configuration-workbench__ungrouped-file small {
   font-size: 9px;
+}
+
+.configuration-workbench__ungrouped-file .button {
+  justify-self: start;
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 10px;
+}
+
+.configuration-workbench__create-config {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: end;
+  max-width: 280px;
+}
+
+.configuration-workbench__create-config label {
+  display: grid;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--app-muted);
+}
+
+.configuration-workbench__create-config input {
+  min-width: 120px;
+  min-height: 28px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.configuration-workbench__ops-banner {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--outline);
+}
+
+.configuration-workbench__member-ops {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.configuration-workbench__member-ops ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.configuration-workbench__member-ops li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.configuration-workbench__member-form {
+  display: grid;
+  gap: 6px;
+}
+
+.configuration-workbench__member-form label {
+  display: grid;
+  gap: 2px;
+  font-size: 11px;
+}
+
+.configuration-workbench__empty-hint {
+  font-size: 12px;
+  color: var(--app-muted);
 }
 
 .configuration-workbench__source {

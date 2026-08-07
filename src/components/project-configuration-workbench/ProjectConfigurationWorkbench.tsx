@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Activity, ChevronLeft, ChevronRight, FileCode2, FolderTree, Info, Lock, PanelRight, Rows3, Search, TriangleAlert } from "lucide-react";
 
 import type {
   ConfigSetRole,
   DtsConfigSet,
   DtsConfigSetMemberFile,
+  DtsExportConfigSetResult,
   DtsReleaseBaseline,
   DtsSearchHit,
   DtsSourceLocator,
@@ -12,16 +13,18 @@ import type {
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
 import type {
+  FileSyncSummary,
   ParameterFileCandidate,
   ParameterFileRepository,
+  ParameterFileSyncConflict,
   ProjectParameterFile,
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
   ProjectPrimaryDtsViewer,
   type DtsViewerFocusSpan
 } from "@/components/parameter-topology/ProjectPrimaryDtsViewer";
-import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
   GovernanceToast,
   useGovernanceToast
@@ -80,8 +83,12 @@ export type ProjectConfigurationWorkbenchProps = {
   canEdit?: boolean;
   /** When false, regulator/thermal critical nodes stay readable but write stays locked. Defaults to true. */
   canEditCritical?: boolean;
+  /** When false, mutations are denied but read context stays visible. Defaults true for back-compat. */
+  canAdmin?: boolean;
   listAuditEvents?: (params?: ListAuditEventsParams) => Promise<AuditEventListResponse>;
 };
+
+const CONFIG_SET_ROLES: ConfigSetRole[] = ["base", "overlay", "charging", "thermal", "misc"];
 
 const ROLE_LABELS: Record<ConfigSetRole, string> = {
   base: "基础",
@@ -90,6 +97,51 @@ const ROLE_LABELS: Record<ConfigSetRole, string> = {
   thermal: "温控",
   misc: "其他"
 };
+
+type PendingConfirmation = {
+  key: string;
+  title: string;
+  description: ReactNode;
+  confirmLabel: string;
+  pendingLabel: string;
+  tone: "primary" | "danger";
+  run: () => Promise<void>;
+};
+
+function downloadExportBundle(
+  configSetName: string,
+  result: Pick<DtsExportConfigSetResult, "manifest" | "files">
+) {
+  const filesPayload = result.files.map((file) => `// ${file.name}\n${file.content}`).join("\n\n");
+  const payload = [
+    "// wiseeff-config-set-export-manifest.json",
+    JSON.stringify(result.manifest, null, 2),
+    "",
+    "// wiseeff-config-set-export-files",
+    filesPayload
+  ].join("\n");
+  const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${configSetName || "config-set"}-export.txt`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function formatSyncSummary(result: FileSyncSummary): string {
+  if (typeof result.draftsCreated === "number") {
+    return `同步成功，已创建 ${result.draftsCreated} 条草稿。`;
+  }
+  return "同步成功。";
+}
+
+function defaultRoleForFile(file: ProjectParameterFile, hasMembers: boolean): ConfigSetRole {
+  if (file.format === "json") return "misc";
+  return hasMembers ? "overlay" : "base";
+}
 
 function queryValue(search: string, name: string) {
   return new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get(name);
@@ -222,6 +274,7 @@ export function ProjectConfigurationWorkbench({
   fileRepository,
   canEdit = true,
   canEditCritical = true,
+  canAdmin = true,
   listAuditEvents
 }: ProjectConfigurationWorkbenchProps) {
   const listProjectActivity = useCallback(
@@ -316,6 +369,18 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const [suppressScrollSync, setSuppressScrollSync] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const treeRegionRef = useRef<HTMLElement | null>(null);
+  const [newConfigSetName, setNewConfigSetName] = useState("");
+  const [configSetNameError, setConfigSetNameError] = useState("");
+  const [opsError, setOpsError] = useState("");
+  const [opsMessage, setOpsMessage] = useState("");
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
+  const [memberFileId, setMemberFileId] = useState("");
+  const [memberRole, setMemberRole] = useState<ConfigSetRole>("base");
+  const [memberSortOrder, setMemberSortOrder] = useState(0);
+  const [syncEvidence, setSyncEvidence] = useState("");
+  const [syncConflicts, setSyncConflicts] = useState<ParameterFileSyncConflict[]>([]);
+  const [exportEvidence, setExportEvidence] = useState("");
   const sourceRegionRef = useRef<HTMLElement | null>(null);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
   const scrollSyncTimerRef = useRef<number | null>(null);
@@ -945,6 +1010,191 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     return [...released].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
   }, [baselines]);
 
+  useEffect(() => {
+    const available = ungroupedFiles[0]?.id ?? "";
+    setMemberFileId((current) => (current && ungroupedFiles.some((item) => item.id === current) ? current : available));
+  }, [ungroupedFiles]);
+
+  useEffect(() => {
+    setMemberSortOrder(selectedMembers.length);
+  }, [selectedMembers.length]);
+
+  const runAction = useCallback(async (key: string, action: () => Promise<void>) => {
+    setPendingAction(key);
+    try {
+      await action();
+    } finally {
+      setPendingAction(null);
+    }
+  }, []);
+
+  const createConfigSet = useCallback(async () => {
+    if (!canAdmin) return;
+    const name = newConfigSetName.trim();
+    if (!name) {
+      setConfigSetNameError("请先填写配置集名称。");
+      return;
+    }
+    if (configSets.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
+      setConfigSetNameError(`已存在名为「${name}」的配置集。`);
+      return;
+    }
+    setConfigSetNameError("");
+    setOpsError("");
+    try {
+      const created = await dtsRepository.createConfigSet(project.id, { name });
+      setConfigSets((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setNewConfigSetName("");
+      setMembers([]);
+      setInspectorLevelOverride("config-set");
+      setInspectorOpen(true);
+      onNavigate(
+        formatWorkbenchPath(project.id, search, {
+          configSet: created.id,
+          file: null,
+          node: null,
+          property: null,
+          sourceMode: null,
+          version: null,
+          candidate: null
+        })
+      );
+      setOpsMessage(`已创建配置集「${created.name}」。`);
+    } catch (error: unknown) {
+      setOpsError(error instanceof Error ? error.message : "创建配置集失败。");
+    }
+  }, [canAdmin, configSets, dtsRepository, newConfigSetName, onNavigate, project.id, search]);
+
+  const addMemberToConfigSet = useCallback(
+    async (fileId: string, role: ConfigSetRole, sortOrder: number) => {
+      if (!canAdmin || !selectedConfigSet) return;
+      setOpsError("");
+      try {
+        const membership = await dtsRepository.addConfigSetFile(project.id, selectedConfigSet.id, {
+          fileId,
+          role,
+          sortOrder
+        });
+        const file = projectFiles.find((item) => item.id === fileId);
+        setMembers((current) => [
+          ...current.filter((item) => item.fileId !== membership.fileId),
+          {
+            ...membership,
+            fileName: file?.fileName ?? membership.fileId,
+            format: file?.format ?? "dts",
+            currentVersionId: file?.currentVersionId,
+            currentVersionNumber: file?.currentVersionNumber
+          }
+        ]);
+        setOpsMessage(`已将「${file?.fileName ?? fileId}」编入配置集（${ROLE_LABELS[role]} · 顺序 ${sortOrder}）。`);
+        setInspectorLevelOverride("config-set");
+        setInspectorOpen(true);
+        setMembersRetry((value) => value + 1);
+      } catch (error: unknown) {
+        setOpsError(error instanceof Error ? error.message : "添加成员失败。");
+      }
+    },
+    [canAdmin, dtsRepository, project.id, projectFiles, selectedConfigSet]
+  );
+
+  const assignUngroupedFile = useCallback(
+    async (file: ProjectParameterFile) => {
+      const role = defaultRoleForFile(file, selectedMembers.length > 0);
+      await addMemberToConfigSet(file.id, role, selectedMembers.length);
+    },
+    [addMemberToConfigSet, selectedMembers.length]
+  );
+
+  const removeMemberFromConfigSet = useCallback(
+    async (fileId: string) => {
+      if (!canAdmin || !selectedConfigSet) return;
+      setOpsError("");
+      try {
+        await dtsRepository.removeConfigSetFile(project.id, selectedConfigSet.id, fileId);
+        setMembers((current) => current.filter((item) => item.fileId !== fileId));
+        setOpsMessage("已从配置集移除成员文件。");
+        if (selectedMember?.fileId === fileId) {
+          onNavigate(
+            formatWorkbenchPath(project.id, search, {
+              configSet: selectedConfigSet.id,
+              file: null,
+              node: null,
+              property: null,
+              sourceMode: null,
+              version: null
+            })
+          );
+        }
+        setMembersRetry((value) => value + 1);
+      } catch (error: unknown) {
+        setOpsError(error instanceof Error ? error.message : "移除成员失败。");
+      }
+    },
+    [canAdmin, dtsRepository, onNavigate, project.id, search, selectedConfigSet, selectedMember?.fileId]
+  );
+
+  const requestRemoveMember = useCallback(
+    (member: DtsConfigSetMemberFile) => {
+      if (!canAdmin || !selectedConfigSet) return;
+      setConfirmation({
+        key: `remove-member-${member.fileId}`,
+        title: "移除配置集成员",
+        description: (
+          <p>
+            将把 <code>{member.fileName}</code>（角色：
+            {ROLE_LABELS[member.role] ?? member.role}）从配置集「{selectedConfigSet.name}」中移除。该文件本身不会被删除，但基于此配置集的后续基线与导出将不再包含它。
+          </p>
+        ),
+        confirmLabel: "确认移除",
+        pendingLabel: "移除中…",
+        tone: "danger",
+        run: () => removeMemberFromConfigSet(member.fileId)
+      });
+    },
+    [canAdmin, removeMemberFromConfigSet, selectedConfigSet]
+  );
+
+  const syncSelectedFile = useCallback(async () => {
+    if (!canAdmin || !selectedMember) return;
+    setOpsError("");
+    try {
+      const summary = await fileRepository.syncFile(project.id, selectedMember.fileId);
+      const evidence = `${selectedMember.fileName}：${formatSyncSummary(summary)}`;
+      setSyncEvidence(evidence);
+      setOpsMessage(evidence);
+      setTasksOpen(true);
+      const [files, conflicts] = await Promise.all([
+        fileRepository.listFiles(project.id),
+        fileRepository.listConflicts(project.id)
+      ]);
+      setProjectFiles(files);
+      setSyncConflicts(conflicts.filter((item) => item.status === "open"));
+      setMembersRetry((value) => value + 1);
+      setFilesRetry((value) => value + 1);
+    } catch (error: unknown) {
+      setOpsError(error instanceof Error ? error.message : "手动同步失败。");
+    }
+  }, [canAdmin, fileRepository, project.id, selectedMember]);
+
+  const exportSelectedConfigSet = useCallback(async () => {
+    if (!canAdmin || !selectedConfigSet) return;
+    setOpsError("");
+    try {
+      const result = await dtsRepository.exportConfigSet(project.id, selectedConfigSet.id);
+      downloadExportBundle(selectedConfigSet.name, result);
+      const memberCount = result.manifest.members.length;
+      const validation = result.manifest.validation
+        ? `校验 ${result.manifest.validation.ok ? "通过" : "未通过"}（${result.manifest.validation.mode}）`
+        : "无校验元数据";
+      const evidence = `已导出配置集「${selectedConfigSet.name}」：${memberCount} 个成员，含角色/顺序；${validation}。`;
+      setExportEvidence(evidence);
+      setOpsMessage(evidence);
+      setTasksOpen(true);
+    } catch (error: unknown) {
+      setOpsError(error instanceof Error ? error.message : "导出配置集失败。");
+    }
+  }, [canAdmin, dtsRepository, project.id, selectedConfigSet]);
+
   const selectConfigSet = useCallback(
     (configSetId: string) => {
       setInspectorLevelOverride("config-set");
@@ -1536,6 +1786,32 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
             ))}
           </select>
         </label>
+        {canAdmin ? (
+          <div className="configuration-workbench__create-config" aria-label="创建配置集">
+            <label>
+              配置集名称
+              <input
+                type="text"
+                value={newConfigSetName}
+                aria-invalid={configSetNameError ? "true" : "false"}
+                aria-describedby={configSetNameError ? "workbench-config-set-name-error" : undefined}
+                onChange={(event) => {
+                  setNewConfigSetName(event.target.value);
+                  setConfigSetNameError("");
+                }}
+                placeholder="board-a"
+              />
+            </label>
+            <button
+              className="button subtle"
+              type="button"
+              disabled={pendingAction !== null}
+              onClick={() => void runAction("create-config-set", createConfigSet)}
+            >
+              {pendingAction === "create-config-set" ? "创建中…" : "创建配置集"}
+            </button>
+          </div>
+        ) : null}
         <div className="configuration-workbench__identities" aria-label="配置身份">
           <span className="configuration-workbench__working">工作配置</span>
           <span className="configuration-workbench__identity-chip" data-identity="file-version">
@@ -1643,17 +1919,48 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
           <button
             className="button subtle"
             type="button"
-            disabled={uploadingCandidate || !selectedConfigSet}
+            disabled={uploadingCandidate || !selectedConfigSet || !canAdmin}
             title="上传创建候选文件版本，不会激活工作配置"
             onClick={() => candidateFileInputRef.current?.click()}
           >
             {uploadingCandidate ? "上传中…" : "上传候选"}
           </button>
+          {canAdmin && selectedConfigSet ? (
+            <button
+              className="button subtle"
+              type="button"
+              disabled={pendingAction !== null}
+              onClick={() => void runAction("export-config-set", exportSelectedConfigSet)}
+            >
+              {pendingAction === "export-config-set" ? "导出中…" : "导出配置集"}
+            </button>
+          ) : null}
           <button className="button subtle" type="button" disabled title="发布就绪度尚未接入，不能创建基线">
             创建基线
           </button>
         </div>
       </header>
+
+      {configSetNameError ? (
+        <p className="field-error configuration-workbench__ops-banner" id="workbench-config-set-name-error" role="alert">
+          {configSetNameError}
+        </p>
+      ) : null}
+      {opsError ? (
+        <p className="configuration-workbench__ops-banner" role="alert">
+          {opsError}
+        </p>
+      ) : null}
+      {opsMessage ? (
+        <p className="configuration-workbench__ops-banner" role="status">
+          {opsMessage}
+        </p>
+      ) : null}
+      {!canAdmin ? (
+        <p className="configuration-workbench__ops-banner" role="note">
+          仅管理员可变更配置集成员、同步或导出。只读上下文仍可查看。
+        </p>
+      ) : null}
 
       {narrowViewport ? (
         <nav className="configuration-workbench__mobile-tools" aria-label="工作台区域">
@@ -1691,10 +1998,21 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       ) : !selectedConfigSet ? (
         <div className="configuration-workbench__setup-state" role="status">
           <strong>项目还没有配置集</strong>
-          <p>请先回到旧项目运营入口完成项目配置初始化。上传文件不会在本阶段自动建立工作配置。</p>
-          <button className="button subtle" type="button" onClick={() => onNavigate(`/parameter-admin/projects/${encodeURIComponent(project.id)}/config-sets`)}>
-            打开旧配置集管理
-          </button>
+          {canAdmin ? (
+            <>
+              <p>
+                在命令栏填写名称即可创建配置集。上传文件或候选不会自动激活工作配置；创建后需明确把文件编入成员。
+              </p>
+              <p className="configuration-workbench__empty-hint">上传不会自动激活工作配置。</p>
+            </>
+          ) : (
+            <>
+              <p>当前账号无法创建配置集。只读上下文仍可查看；请联系管理员完成初始化。</p>
+              <button className="button subtle" type="button" onClick={() => onNavigate(`/parameter-admin/projects/${encodeURIComponent(project.id)}/config-sets`)}>
+                打开旧配置集管理
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <div className="configuration-workbench__body" ref={workbenchBodyRef} aria-label="工作台主体">
@@ -1799,7 +2117,19 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
               {!membersLoading && !membersError && selectedMembers.length === 0 ? (
                 <div className="configuration-workbench__empty">
                   <strong>当前配置集没有成员文件</strong>
-                  <p>可上传候选文件版本；激活新文件时需显式选择配置集成员角色，上传本身不会改变工作配置。</p>
+                  <p>
+                    从下方未编组文件编入成员，或上传候选后再明确分配。上传候选不会自动激活工作配置。
+                  </p>
+                  {canAdmin ? (
+                    <button
+                      className="button subtle"
+                      type="button"
+                      disabled={uploadingCandidate}
+                      onClick={() => candidateFileInputRef.current?.click()}
+                    >
+                      {uploadingCandidate ? "上传中…" : "上传候选"}
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
               <div role="tree" aria-label={`${selectedConfigSet.name} 成员文件`} className="configuration-workbench__member-tree">
@@ -1909,7 +2239,18 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                 {ungroupedFiles.map((item) => (
                   <div key={item.id} className="configuration-workbench__ungrouped-file">
                     <span>{item.fileName}</span>
-                    <small>不参与当前工作配置</small>
+                    <small>不参与当前工作配置与发布就绪度</small>
+                    {canAdmin && selectedConfigSet ? (
+                      <button
+                        className="button subtle"
+                        type="button"
+                        aria-label={`编入 ${item.fileName}`}
+                        disabled={pendingAction !== null}
+                        onClick={() => void runAction(`assign-${item.id}`, () => assignUngroupedFile(item))}
+                      >
+                        编入当前配置集
+                      </button>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -2486,6 +2827,90 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                       <dt>成员数</dt>
                       <dd>{selectedMembers.length}</dd>
                     </div>
+                    <section className="configuration-workbench__member-ops" aria-label="成员管理">
+                      <strong>成员管理</strong>
+                      {selectedMembers.length === 0 ? (
+                        <p>尚无成员。从下方未编组文件编入，或使用表单添加。</p>
+                      ) : (
+                        <ul>
+                          {selectedMembers.map((member) => (
+                            <li key={member.fileId}>
+                              <span>
+                                {member.fileName} · {ROLE_LABELS[member.role]} · 顺序 {member.sortOrder}
+                              </span>
+                              {canAdmin ? (
+                                <button
+                                  className="button subtle"
+                                  type="button"
+                                  aria-label={`移除 ${member.fileName}`}
+                                  disabled={pendingAction !== null}
+                                  onClick={() => requestRemoveMember(member)}
+                                >
+                                  移除
+                                </button>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {canAdmin ? (
+                        <div className="configuration-workbench__member-form">
+                          <label>
+                            文件
+                            <select
+                              aria-label="待编入文件"
+                              value={memberFileId}
+                              onChange={(event) => setMemberFileId(event.target.value)}
+                            >
+                              {ungroupedFiles.length === 0 ? (
+                                <option value="">无未编组文件</option>
+                              ) : (
+                                ungroupedFiles.map((file) => (
+                                  <option key={file.id} value={file.id}>
+                                    {file.fileName}
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          </label>
+                          <label>
+                            角色
+                            <select
+                              aria-label="成员角色"
+                              value={memberRole}
+                              onChange={(event) => setMemberRole(event.target.value as ConfigSetRole)}
+                            >
+                              {CONFIG_SET_ROLES.map((role) => (
+                                <option key={role} value={role}>
+                                  {ROLE_LABELS[role]}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            顺序
+                            <input
+                              type="number"
+                              aria-label="成员顺序"
+                              value={memberSortOrder}
+                              onChange={(event) => setMemberSortOrder(Number(event.target.value) || 0)}
+                            />
+                          </label>
+                          <button
+                            className="button subtle"
+                            type="button"
+                            disabled={!memberFileId || pendingAction !== null}
+                            onClick={() =>
+                              void runAction("add-member", () =>
+                                addMemberToConfigSet(memberFileId, memberRole, memberSortOrder)
+                              )
+                            }
+                          >
+                            添加成员
+                          </button>
+                        </div>
+                      ) : null}
+                    </section>
                   </>
                 ) : null}
                 {inspectorLevel === "file" && selectedMember ? (
@@ -2502,6 +2927,26 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                       <dt>活跃文件版本</dt>
                       <dd className="mono">{selectedMember.currentVersionId ?? "缺失"}</dd>
                     </div>
+                    {canAdmin ? (
+                      <div className="configuration-workbench__inspector-actions">
+                        <button
+                          className="button subtle"
+                          type="button"
+                          disabled={pendingAction !== null}
+                          onClick={() => void runAction("sync-file", syncSelectedFile)}
+                        >
+                          {pendingAction === "sync-file" ? "同步中…" : "手动同步"}
+                        </button>
+                        <button
+                          className="button subtle"
+                          type="button"
+                          disabled={pendingAction !== null}
+                          onClick={() => requestRemoveMember(selectedMember)}
+                        >
+                          从配置集移除
+                        </button>
+                      </div>
+                    ) : null}
                   </>
                 ) : null}
                 {inspectorLevel === "node" && selectedStructureNode ? (
@@ -2702,7 +3147,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
               ) : null}
               <p className="configuration-workbench__read-only-note">
                 {canEdit
-                  ? "源码画布保持只读；整文件替换请走候选文件版本。属性改动在类型化检查器中编辑，并进入会话变更坞提交。候选激活需确认影响范围。"
+                  ? "源码画布保持只读；整文件替换请走候选文件版本。属性改动在类型化检查器中编辑，并进入会话变更坞提交。候选激活需确认影响范围；配置集创建/成员管理、手动同步与导出同样可用。"
                   : "当前检查器为只读上下文。画布模式：" +
                     canvasMode +
                     "。缺少参数修改权限时仍可浏览结构与源码。"}
@@ -2828,9 +3273,9 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
 
       <footer className={tasksOpen ? "configuration-workbench__tasks is-open" : "configuration-workbench__tasks"}>
         <button className="button subtle configuration-workbench__task-toggle" type="button" aria-label="任务" aria-expanded={tasksOpen} onClick={() => setTasksOpen((open) => !open)}>
-          <span>本轮更改 <strong>{sessionDraftRows.length}</strong></span>
+          <span>本轮更改 <strong>{sessionDraftRows.length + (syncEvidence || exportEvidence ? 1 : 0)}</strong></span>
           <span>校验问题 <strong>{sessionDraftRows.filter((row) => row.valid === false).length}</strong></span>
-          <span>冲突 <strong>0</strong></span>
+          <span>冲突 <strong>{syncConflicts.length}</strong></span>
           <span>{tasksOpen ? "收起" : "展开任务"}</span>
         </button>
         {tasksOpen ? (
@@ -2910,9 +3355,39 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
             {submitError ? (
               <p role="alert">{submitError}</p>
             ) : null}
+            <strong>任务证据</strong>
+            {syncEvidence ? <p role="status">{syncEvidence}</p> : null}
+            {exportEvidence ? <p role="status">{exportEvidence}</p> : null}
+            {syncConflicts.length > 0 ? (
+              <p role="status">冲突 {syncConflicts.length}：同步后已刷新冲突列表，可在旧冲突视图继续仲裁。</p>
+            ) : null}
+            {!syncEvidence && !exportEvidence && syncConflicts.length === 0 ? (
+              <p>暂无同步或导出证据。手动同步与配置集导出结果会显示在这里。</p>
+            ) : null}
           </div>
         ) : null}
       </footer>
+
+      <ConfirmDialog
+        open={Boolean(confirmation)}
+        title={confirmation?.title ?? ""}
+        description={confirmation?.description ?? null}
+        confirmLabel={confirmation?.confirmLabel ?? "确认"}
+        pending={pendingAction === confirmation?.key}
+        pendingLabel={confirmation?.pendingLabel}
+        tone={confirmation?.tone ?? "primary"}
+        onCancel={() => {
+          if (pendingAction) return;
+          setConfirmation(null);
+        }}
+        onConfirm={() => {
+          if (!confirmation) return;
+          void runAction(confirmation.key, async () => {
+            await confirmation.run();
+            setConfirmation(null);
+          });
+        }}
+      />
       <GovernanceToast message={toastMessage} />
     </section>
   );
