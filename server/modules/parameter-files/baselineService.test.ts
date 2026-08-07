@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
@@ -12,6 +12,22 @@ import {
   releaseBaseline,
   rollbackToBaseline
 } from "./baselineService";
+
+vi.mock("./releaseReadinessService", () => ({
+  assertReleaseGateAllows: vi.fn(async (_db, _auth, input: { configSetId: string }) => ({
+    available: true,
+    level: "ready",
+    blockers: [],
+    warnings: [],
+    gateToken: "test-gate-token",
+    evaluatedAt: "2026-08-07T00:00:00.000Z",
+    configSetId: input.configSetId,
+    projectId: "project-1",
+    canCreateBaseline: true,
+    canRelease: true
+  })),
+  evaluateReleaseReadiness: vi.fn()
+}));
 
 type QueryCall = {
   text: string;
@@ -586,7 +602,6 @@ describe("releaseBaseline", () => {
     const { db, txCalls } = createFakeDb([
       [baselineRow()],
       [configSetRow()],
-      [], // getLatestConfigRevision → no revision; skip singleton/blocking gate
       [memberFileRow()],
       [fileRow()],
       [fileVersionRow()],
@@ -599,7 +614,8 @@ describe("releaseBaseline", () => {
         adminAuth(),
         "baseline-1",
         { objectStore: fakeObjectStore({ "sk-1": "/dts-v1/; / { };" }), validator },
-        { requestId: "req-1" }
+        { requestId: "req-1" },
+        { gateToken: "test-gate-token" }
       )
     ).rejects.toMatchObject({
       code: "CONFLICT",
@@ -626,7 +642,6 @@ describe("releaseBaseline", () => {
     const { db, txCalls } = createFakeDb([
       [baselineRow()],
       [configSetRow()],
-      [], // getLatestConfigRevision → no revision; skip singleton/blocking gate
       [memberFileRow()],
       [fileRow()],
       [fileVersionRow()],
@@ -641,7 +656,8 @@ describe("releaseBaseline", () => {
       adminAuth(),
       "baseline-1",
       { objectStore: fakeObjectStore({ "sk-1": "/dts-v1/; / { };" }), validator },
-      { requestId: "req-1" }
+      { requestId: "req-1" },
+      { gateToken: "test-gate-token" }
     );
 
     expect(result.baseline.status).toBe("released");

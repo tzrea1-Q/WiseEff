@@ -59,6 +59,23 @@ describe("M5 OpenAPI contract", () => {
     ]?.get?.operationId).toBe("parameters.listConfigSetFiles");
   });
 
+  it("publishes the Config set release-readiness endpoint", () => {
+    expect(routeManifest).toContainEqual({
+      id: "parameters.getConfigSetReleaseReadiness",
+      method: "GET",
+      path: "/api/v1/projects/:projectId/config-sets/:configSetId/release-readiness",
+      module: "parameters",
+      stability: "mvp"
+    });
+    expect(schemaRegistry["parameters.getConfigSetReleaseReadiness"]).toMatchObject({
+      responseBody: "ConfigSetReleaseReadinessResponse",
+      additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+    });
+    expect(buildOpenApiDocument().paths[
+      "/api/v1/projects/{projectId}/config-sets/{configSetId}/release-readiness"
+    ]?.get?.operationId).toBe("parameters.getConfigSetReleaseReadiness");
+  });
+
   it("publishes user governance API routes as commercial-readiness contracts", () => {
     expect(routeManifest).toEqual(
       expect.arrayContaining([

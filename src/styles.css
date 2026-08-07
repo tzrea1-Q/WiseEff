@@ -26003,6 +26003,48 @@ button.dts-topology-navigator__disclosure:focus-visible {
   outline-offset: 1px;
 }
 
+
+.configuration-workbench__readiness {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  max-width: min(360px, 40vw);
+  min-width: 0;
+  font-size: 12px;
+}
+
+.configuration-workbench__readiness-summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.configuration-workbench__readiness.is-blocked strong,
+.configuration-workbench__readiness.is-unavailable {
+  color: var(--danger, #b42318);
+}
+
+.configuration-workbench__local-session {
+  color: var(--warning, #b54708);
+}
+
+.configuration-workbench__readiness-issue-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.configuration-workbench__readiness-issue {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  width: 100%;
+}
+
 .configuration-workbench__command {
   display: flex;
   align-items: center;

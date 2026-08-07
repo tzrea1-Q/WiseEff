@@ -26,6 +26,18 @@ function createRepository(overrides: Partial<DtsStructuredRepository> = {}): Dts
     removeConfigSetFile: vi.fn(),
     listBaselines: vi.fn().mockResolvedValue([]),
     createBaseline: vi.fn(),
+    getReleaseReadiness: vi.fn(async () => ({
+      available: true,
+      level: "ready",
+      blockers: [],
+      warnings: [],
+      gateToken: "gate-token-test",
+      evaluatedAt: "2026-08-07T00:00:00.000Z",
+      configSetId: "cs-1",
+      projectId: "project-1",
+      canCreateBaseline: true,
+      canRelease: true
+    })),
     compareBaseline: vi.fn(),
     rollbackBaseline: vi.fn(),
     releaseBaseline: vi.fn(),

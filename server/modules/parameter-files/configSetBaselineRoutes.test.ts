@@ -11,6 +11,7 @@ import { registerParameterFileRoutes } from "./routes";
 import * as baselineService from "./baselineService";
 import * as configSetService from "./configSetService";
 import * as exportService from "./exportService";
+import * as releaseReadinessService from "./releaseReadinessService";
 
 vi.mock("./service", () => ({
   uploadProjectParameterFile: vi.fn(),
@@ -56,6 +57,10 @@ vi.mock("./baselineService", () => ({
   compareBaseline: vi.fn(),
   rollbackToBaseline: vi.fn(),
   releaseBaseline: vi.fn()
+}));
+
+vi.mock("./releaseReadinessService", () => ({
+  evaluateReleaseReadiness: vi.fn()
 }));
 
 vi.mock("./exportService", () => ({
@@ -253,14 +258,20 @@ describe("config set and baseline routes", () => {
 
   it("POST /api/v1/projects/:projectId/config-sets/:configSetId/baselines returns 201 with baseline dto", async () => {
     const db = makeDb();
+    const objectStore = makeObjectStore();
     vi.mocked(baselineService.createBaseline).mockResolvedValue(baseline);
 
     const response = await requestJson<{ item: typeof baseline }>(
-      makeServer({ db }),
+      makeServer({ db, objectStore }),
       "/api/v1/projects/project-1/config-sets/cs-1/baselines",
       {
         method: "POST",
-        body: JSON.stringify({ name: "v1.0", notes: "Initial baseline" })
+        body: JSON.stringify({
+          name: "v1.0",
+          notes: "Initial baseline",
+          gateToken: "gate-token-1",
+          acknowledgedWarningIds: ["warn-1"]
+        })
       }
     );
 
@@ -269,8 +280,47 @@ describe("config set and baseline routes", () => {
     expect(baselineService.createBaseline).toHaveBeenCalledWith(
       db,
       expect.objectContaining({ organization: expect.objectContaining({ id: "org-1" }) }),
-      { configSetId: "cs-1", name: "v1.0", notes: "Initial baseline" },
-      { requestId: "test-request" }
+      {
+        configSetId: "cs-1",
+        name: "v1.0",
+        notes: "Initial baseline",
+        gateToken: "gate-token-1",
+        acknowledgedWarningIds: ["warn-1"]
+      },
+      { requestId: "test-request" },
+      expect.objectContaining({ objectStore: expect.anything() })
+    );
+  });
+
+  it("GET /api/v1/projects/:projectId/config-sets/:configSetId/release-readiness returns authoritative gate", async () => {
+    const db = makeDb();
+    const objectStore = makeObjectStore();
+    const readiness = {
+      available: true,
+      level: "ready" as const,
+      blockers: [],
+      warnings: [],
+      gateToken: "gate-token-1",
+      evaluatedAt: "2026-08-07T00:00:00.000Z",
+      configSetId: "cs-1",
+      projectId: "project-1",
+      canCreateBaseline: true,
+      canRelease: true
+    };
+    vi.mocked(releaseReadinessService.evaluateReleaseReadiness).mockResolvedValue(readiness);
+
+    const response = await requestJson<{ item: typeof readiness }>(
+      makeServer({ db, objectStore }),
+      "/api/v1/projects/project-1/config-sets/cs-1/release-readiness"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item).toEqual(readiness);
+    expect(releaseReadinessService.evaluateReleaseReadiness).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ organization: expect.objectContaining({ id: "org-1" }) }),
+      { configSetId: "cs-1", acknowledgedWarningIds: undefined },
+      expect.objectContaining({ objectStore: expect.anything() })
     );
   });
 
@@ -353,7 +403,7 @@ describe("config set and baseline routes", () => {
     const response = await requestJson<{ item: typeof releasedBaseline; gate: typeof gate }>(
       makeServer({ db, objectStore }),
       "/api/v1/projects/project-1/baselines/bl-1/release",
-      { method: "POST", body: JSON.stringify({}) }
+      { method: "POST", body: JSON.stringify({ gateToken: "gate-token-1", acknowledgedWarningIds: ["warn-1"] }) }
     );
 
     expect(response.status).toBe(200);
@@ -364,7 +414,8 @@ describe("config set and baseline routes", () => {
       expect.objectContaining({ organization: expect.objectContaining({ id: "org-1" }) }),
       "bl-1",
       { objectStore, validator: undefined },
-      { requestId: "test-request" }
+      { requestId: "test-request" },
+      { gateToken: "gate-token-1", acknowledgedWarningIds: ["warn-1"] }
     );
   });
 
@@ -446,7 +497,7 @@ describe("config set and baseline routes", () => {
     const response = await requestJson<{ error: { code: string; details: { diagnostics: typeof diagnostics } } }>(
       makeServer({ db, objectStore }),
       "/api/v1/projects/project-1/baselines/bl-1/release",
-      { method: "POST", body: JSON.stringify({}) }
+      { method: "POST", body: JSON.stringify({ gateToken: "gate-token-1" }) }
     );
 
     expect(response.status).toBe(409);

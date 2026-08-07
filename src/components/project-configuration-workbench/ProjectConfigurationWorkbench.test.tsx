@@ -129,6 +129,18 @@ function createDtsRepository(
         : []
     ),
     createBaseline: vi.fn(),
+    getReleaseReadiness: vi.fn(async () => ({
+      available: true,
+      level: "ready" as const,
+      blockers: [],
+      warnings: [],
+      gateToken: "gate-token-test",
+      evaluatedAt: "2026-08-07T00:00:00.000Z",
+      configSetId: "cs-default",
+      projectId: PROJECT.id,
+      canCreateBaseline: true,
+      canRelease: true
+    })),
     compareBaseline: vi.fn(),
     rollbackBaseline: vi.fn(),
     releaseBaseline: vi.fn(),
@@ -367,7 +379,8 @@ describe("ProjectConfigurationWorkbench", () => {
       )
     );
     expect(screen.getByRole("button", { name: "上传候选" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "创建基线" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "创建基线" })).toBeEnabled();
+    expect(await screen.findByLabelText("发布就绪")).toHaveAttribute("data-level", "ready");
   });
 
   it("lets a valid URL-selected Config set win and keeps source selection shareable", async () => {
@@ -457,7 +470,7 @@ describe("ProjectConfigurationWorkbench", () => {
       });
     renderWorkbench({ fileRepository: createFileRepository({ downloadVersion }) });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("source unavailable");
+    expect(await screen.findByText("source unavailable")).toBeInTheDocument();
     expect(screen.getByRole("treeitem", { name: /aurora-board\.dts/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试源码" }));
 
@@ -2048,7 +2061,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByText(/上传不会自动激活/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("请先填写配置集名称");
+    expect(await screen.findByText(/请先填写配置集名称/)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("配置集名称"), { target: { value: "board-a" } });
     fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
@@ -2061,7 +2074,7 @@ describe("ProjectConfigurationWorkbench", () => {
 
     fireEvent.change(screen.getByLabelText("配置集名称"), { target: { value: "Board-A" } });
     fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent('已存在名为「Board-A」的配置集');
+    expect(await screen.findByText(/已存在名为「Board-A」的配置集/)).toBeInTheDocument();
   });
 
   it("adds and removes Config set members with role, sortOrder, and blast-radius confirmation", async () => {

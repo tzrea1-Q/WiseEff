@@ -12,6 +12,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Current Active Plan
 
+- `exec-plans/completed/2026-08-07-project-configuration-workbench-release-readiness.md`: Issue #237 Server-owned Release readiness and source remediation — command-bar summary, Issues task dock, fail-closed baseline create/release with gate token (branch `feat/project-configuration-workbench-release-readiness`).
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-conflict-arbitration.md`: Issue #235 Source-located three-way conflict arbitration — task-dock Conflicts, equal-weight outcomes, optional audit reason, eligible bulk with impact preview, activation blockers (branch `feat/project-configuration-workbench-conflict-arbitration`; closes TD-058).
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-session-drafts.md`: Issue #234 recoverable session drafts and stale-base protection for Structured DTS edit sessions — scoped local persistence, restore after nav/refresh, leave confirmation, logout clear (branch `feat/project-configuration-workbench-session-drafts`).
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-structured-edit.md`: Issue #233 Structured DTS edit sessions in source context — typed inspector, session-changes dock, subset submit via existing CR flow, permission lock (branch `feat/project-configuration-workbench-structured-edit`).

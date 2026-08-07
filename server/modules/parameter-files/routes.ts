@@ -22,6 +22,7 @@ import {
   releaseBaseline,
   rollbackToBaseline
 } from "./baselineService";
+import { evaluateReleaseReadiness } from "./releaseReadinessService";
 import {
   addConfigSetFile,
   createConfigSet,
@@ -36,6 +37,7 @@ import {
   createBaselineBody,
   createConfigSetBody,
   dtsSearchQuerySchema,
+  releaseBaselineBody,
   submitStructuredEditsBodySchema
 } from "./schemas";
 import { getProjectParameterFileContent, uploadProjectParameterFile } from "./service";
@@ -587,6 +589,24 @@ export function registerParameterFileRoutes(
     return { status: 200, body: { items } };
   });
 
+  router.get("/api/v1/projects/:projectId/config-sets/:configSetId/release-readiness", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithConfigSetIdSchema, request.params);
+    const acknowledgedRaw = firstQueryValue(request.query.acknowledgedWarningIds);
+    const acknowledgedWarningIds = acknowledgedRaw
+      ? acknowledgedRaw.split(",").map((item) => item.trim()).filter(Boolean)
+      : undefined;
+    const item = await evaluateReleaseReadiness(
+      db,
+      auth,
+      { configSetId: params.configSetId, acknowledgedWarningIds },
+      validationDeps()
+    );
+    return { status: 200, body: { item } };
+  });
+
   router.post("/api/v1/projects/:projectId/config-sets/:configSetId/baselines", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -599,9 +619,12 @@ export function registerParameterFileRoutes(
       {
         configSetId: params.configSetId,
         name: body.name.trim(),
-        notes: body.notes
+        notes: body.notes,
+        gateToken: body.gateToken,
+        acknowledgedWarningIds: body.acknowledgedWarningIds
       },
-      { requestId: request.requestId }
+      { requestId: request.requestId },
+      validationDeps()
     );
 
     return { status: 201, body: { item } };
@@ -634,9 +657,15 @@ export function registerParameterFileRoutes(
     const auth = await options.getCurrentAuthContext(request);
     requireCanAdmin(auth);
     const params = parseWithSchema(paramsWithBaselineIdSchema, request.params);
-    const result = await releaseBaseline(db, auth, params.baselineId, validationDeps(), {
-      requestId: request.requestId
-    });
+    const body = parseWithSchema(releaseBaselineBody, request.body ?? {}, "Invalid release baseline payload.");
+    const result = await releaseBaseline(
+      db,
+      auth,
+      params.baselineId,
+      validationDeps(),
+      { requestId: request.requestId },
+      { gateToken: body.gateToken, acknowledgedWarningIds: body.acknowledgedWarningIds }
+    );
 
     return { status: 200, body: { item: result.baseline, gate: result.gate } };
   });

@@ -7,6 +7,8 @@ import type {
   DtsConfigSetMemberFile,
   DtsExportConfigSetResult,
   DtsReleaseBaseline,
+  DtsReleaseReadiness,
+  DtsReleaseReadinessIssue,
   DtsSearchHit,
   DtsSourceLocator,
   DtsStructuralNode,
@@ -39,6 +41,11 @@ import {
   type WorkbenchActivityRow
 } from "./workbenchActivityModel";
 import { WorkbenchConflictArbitrationDock } from "./WorkbenchConflictArbitrationDock";
+import {
+  WorkbenchReleaseReadinessIssues,
+  WorkbenchReleaseReadinessSummary,
+  workbenchReadinessAllowsCreate
+} from "./WorkbenchReleaseReadiness";
 import {
   isCriticalDtsNodePath
 } from "@/components/parameters/DtsStructureBrowserPanel";
@@ -306,6 +313,14 @@ export function ProjectConfigurationWorkbench({
   const [projectFiles, setProjectFiles] = useState<ProjectParameterFile[]>([]);
   const [members, setMembers] = useState<DtsConfigSetMemberFile[]>([]);
   const [baselines, setBaselines] = useState<DtsReleaseBaseline[]>([]);
+  const [releaseReadiness, setReleaseReadiness] = useState<DtsReleaseReadiness | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
+  const [readinessError, setReadinessError] = useState("");
+  const [readinessRetry, setReadinessRetry] = useState(0);
+  const [acknowledgedWarningIds, setAcknowledgedWarningIds] = useState<Set<string>>(() => new Set());
+  const [createBaselineOpen, setCreateBaselineOpen] = useState(false);
+  const [newBaselineName, setNewBaselineName] = useState("");
+  const [baselineActionError, setBaselineActionError] = useState("");
   const [source, setSource] = useState("");
   const [configSetsLoading, setConfigSetsLoading] = useState(true);
   const [filesLoading, setFilesLoading] = useState(true);
@@ -550,6 +565,37 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       cancelled = true;
     };
   }, [baselinesRetry, dtsRepository, project.id, selectedConfigSet]);
+
+  useEffect(() => {
+    if (!selectedConfigSet || !canAdmin) {
+      setReleaseReadiness(null);
+      setReadinessLoading(false);
+      setReadinessError("");
+      return;
+    }
+    let cancelled = false;
+    setReadinessLoading(true);
+    setReadinessError("");
+    void dtsRepository
+      .getReleaseReadiness(project.id, selectedConfigSet.id, {
+        acknowledgedWarningIds: [...acknowledgedWarningIds]
+      })
+      .then((item) => {
+        if (!cancelled) setReleaseReadiness(item);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setReleaseReadiness(null);
+          setReadinessError(error instanceof Error ? error.message : "发布就绪加载失败。");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setReadinessLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [acknowledgedWarningIds, canAdmin, dtsRepository, project.id, readinessRetry, selectedConfigSet]);
 
   const selectedMembers = useMemo(() => {
     if (!selectedConfigSet) return [];
@@ -1722,6 +1768,65 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const sessionDraftsDirty =
     Object.keys(sessionDrafts).length > 0 || sessionDraftRows.length > 0;
 
+  const createWorkbenchBaseline = useCallback(async () => {
+    if (!canAdmin || !selectedConfigSet) return;
+    const name = newBaselineName.trim();
+    if (!name) {
+      setBaselineActionError("请先填写基线名称。");
+      return;
+    }
+    setBaselineActionError("");
+    const readiness = await dtsRepository.getReleaseReadiness(project.id, selectedConfigSet.id, {
+      acknowledgedWarningIds: [...acknowledgedWarningIds]
+    });
+    setReleaseReadiness(readiness);
+    if (!workbenchReadinessAllowsCreate(readiness, sessionDraftsDirty)) {
+      setBaselineActionError(
+        sessionDraftsDirty
+          ? "还有未保存的本机会话变更，不能创建基线。"
+          : readiness.unavailableReason ?? "发布就绪门禁阻止创建基线。"
+      );
+      return;
+    }
+    const created = await dtsRepository.createBaseline(project.id, selectedConfigSet.id, {
+      name,
+      gateToken: readiness.gateToken,
+      acknowledgedWarningIds: [...acknowledgedWarningIds]
+    });
+    setBaselines((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+    setNewBaselineName("");
+    setCreateBaselineOpen(false);
+    setReadinessRetry((value) => value + 1);
+    setBaselinesRetry((value) => value + 1);
+    notifyMutation(`已创建基线「${created.name}」。`);
+  }, [
+    acknowledgedWarningIds,
+    canAdmin,
+    dtsRepository,
+    newBaselineName,
+    notifyMutation,
+    project.id,
+    selectedConfigSet,
+    sessionDraftsDirty
+  ]);
+
+  const handleSelectReadinessIssue = useCallback(
+    (issue: DtsReleaseReadinessIssue) => {
+      setTasksOpen(true);
+      if (issue.target?.fileId) {
+        selectStructureTarget(
+          issue.target.fileId,
+          issue.target.nodePath ?? null,
+          issue.target.propertyName ?? null
+        );
+        if (issue.target.source?.startLine) {
+          setFocusLineOverride(issue.target.source.startLine);
+        }
+      }
+    },
+    [selectStructureTarget]
+  );
+
   useEffect(() => {
     const generation = ++draftRecoveryGenerationRef.current;
     let cancelled = false;
@@ -2103,6 +2208,18 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
           ) : null}
         </div>
         <div className="configuration-workbench__unavailable-actions" aria-label="后续阶段操作">
+          {canAdmin ? (
+            <WorkbenchReleaseReadinessSummary
+              readiness={releaseReadiness}
+              loading={readinessLoading}
+              error={readinessError}
+              localSessionDirty={sessionDraftsDirty}
+              onRetry={() => setReadinessRetry((value) => value + 1)}
+              onOpenIssues={() => {
+                setTasksOpen(true);
+              }}
+            />
+          ) : null}
           {!narrowViewport ? (
             <>
               <button
@@ -2202,9 +2319,36 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
               {pendingAction === "export-config-set" ? "导出中…" : "导出配置集"}
             </button>
           ) : null}
-          <button className="button subtle" type="button" disabled title="发布就绪度尚未接入，不能创建基线">
-            创建基线
-          </button>
+          {canAdmin && selectedConfigSet ? (
+            <button
+              className="button subtle"
+              type="button"
+              disabled={
+                pendingAction !== null ||
+                !workbenchReadinessAllowsCreate(releaseReadiness, sessionDraftsDirty) ||
+                readinessLoading
+              }
+              title={
+                sessionDraftsDirty
+                  ? "还有未保存的本机会话变更，不能创建基线"
+                  : !releaseReadiness?.available
+                    ? "发布就绪不可用，不能创建基线"
+                    : !releaseReadiness.canCreateBaseline
+                      ? "发布就绪门禁阻止创建基线"
+                      : "创建发布基线快照"
+              }
+              onClick={() => {
+                setBaselineActionError("");
+                setCreateBaselineOpen(true);
+              }}
+            >
+              创建基线
+            </button>
+          ) : (
+            <button className="button subtle" type="button" disabled title="需要管理员权限才能创建基线">
+              创建基线
+            </button>
+          )}
         </div>
       </header>
 
@@ -3545,6 +3689,10 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
           <span>本轮更改 <strong>{sessionDraftRows.length + (syncEvidence || exportEvidence ? 1 : 0)}</strong></span>
           <span>校验问题 <strong>{sessionDraftRows.filter((row) => row.valid === false).length}</strong></span>
           <span>冲突 <strong>{syncConflicts.length}</strong></span>
+          <span>
+            就绪问题{" "}
+            <strong>{(releaseReadiness?.blockers.length ?? 0) + (releaseReadiness?.warnings.length ?? 0)}</strong>
+          </span>
           <span>{tasksOpen ? "收起" : "展开任务"}</span>
         </button>
         {tasksOpen ? (
@@ -3684,12 +3832,63 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                 }}
               />
             ) : null}
+            {canAdmin ? (
+              <WorkbenchReleaseReadinessIssues
+                readiness={releaseReadiness}
+                acknowledgedWarningIds={acknowledgedWarningIds}
+                onAcknowledgeWarning={(issueId) => {
+                  setAcknowledgedWarningIds((current) => {
+                    const next = new Set(current);
+                    if (next.has(issueId)) next.delete(issueId);
+                    else next.add(issueId);
+                    return next;
+                  });
+                }}
+                onSelectIssue={handleSelectReadinessIssue}
+                onRetry={() => setReadinessRetry((value) => value + 1)}
+              />
+            ) : null}
             {!syncEvidence && !exportEvidence && syncConflicts.length === 0 ? (
               <p>暂无同步或导出证据。手动同步与配置集导出结果会显示在这里。</p>
             ) : null}
           </div>
         ) : null}
       </footer>
+
+      <ConfirmDialog
+        open={createBaselineOpen}
+        title="创建发布基线"
+        description={
+          <div>
+            <p>将按当前配置集成员版本创建快照。创建不上传文件，也不改变工作配置。</p>
+            {sessionDraftsDirty ? (
+              <p role="alert">还有未保存的本机会话变更；请先提交或丢弃后再创建基线。</p>
+            ) : null}
+            {baselineActionError ? <p role="alert">{baselineActionError}</p> : null}
+            <label>
+              <span>基线名称</span>
+              <input
+                aria-label="基线名称"
+                value={newBaselineName}
+                onChange={(event) => setNewBaselineName(event.target.value)}
+              />
+            </label>
+          </div>
+        }
+        confirmLabel="创建基线"
+        cancelLabel="取消"
+        pending={pendingAction === "create-baseline"}
+        pendingLabel="创建中…"
+        tone="primary"
+        onCancel={() => {
+          if (pendingAction) return;
+          setCreateBaselineOpen(false);
+          setBaselineActionError("");
+        }}
+        onConfirm={() => {
+          void runAction("create-baseline", createWorkbenchBaseline);
+        }}
+      />
 
       <ConfirmDialog
         open={leaveConfirmOpen}

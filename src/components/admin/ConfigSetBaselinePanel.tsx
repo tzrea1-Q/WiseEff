@@ -357,7 +357,15 @@ export function ConfigSetBaselinePanel({
     setBaselineNameError("");
     setError("");
     try {
-      const created = await repository.createBaseline(projectId, selectedConfigSetId, { name });
+      const readiness = await repository.getReleaseReadiness(projectId, selectedConfigSetId);
+      if (!readiness.available || !readiness.canCreateBaseline) {
+        setError(readiness.unavailableReason ?? "发布就绪门禁阻止创建基线。");
+        return;
+      }
+      const created = await repository.createBaseline(projectId, selectedConfigSetId, {
+        name,
+        gateToken: readiness.gateToken
+      });
       setBaselines((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       setNewBaselineName("");
     } catch (createError) {
@@ -366,12 +374,19 @@ export function ConfigSetBaselinePanel({
   };
 
   const releaseBaseline = async (baselineId: string) => {
-    if (!canAdmin) {
+    if (!canAdmin || !selectedConfigSetId) {
       return;
     }
     setError("");
     try {
-      const result = await repository.releaseBaseline(projectId, baselineId);
+      const readiness = await repository.getReleaseReadiness(projectId, selectedConfigSetId);
+      if (!readiness.available || !readiness.canRelease) {
+        setError(readiness.unavailableReason ?? "发布就绪门禁阻止发布基线。");
+        return;
+      }
+      const result = await repository.releaseBaseline(projectId, baselineId, {
+        gateToken: readiness.gateToken
+      });
       setGateResult(result.gate);
       setBaselines((current) => current.map((item) => (item.id === baselineId ? result.item : item)));
       onAudit?.({

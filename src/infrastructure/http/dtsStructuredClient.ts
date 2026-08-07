@@ -9,13 +9,15 @@ import type {
   DtsExportConfigSetResult,
   DtsReleaseBaseline,
   DtsReleaseBaselineResult,
+  DtsReleaseReadiness,
   DtsRollbackBaselineResult,
   DtsSearchQuery,
   DtsSearchResult,
   DtsStructureResult,
   DtsStructuredRepository,
   DtsStructuredSubmissionRound,
-  DtsSubmitStructuredEditsInput
+  DtsSubmitStructuredEditsInput,
+  ReleaseBaselineInput
 } from "@/application/ports/DtsStructuredRepository";
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
@@ -56,6 +58,10 @@ function routeConfigSetFile(projectId: string, configSetId: string, fileId: stri
 
 function routeBaselines(projectId: string, configSetId: string) {
   return `${routeConfigSets(projectId)}/${encodeURIComponent(configSetId)}/baselines`;
+}
+
+function routeReleaseReadiness(projectId: string, configSetId: string) {
+  return `${routeConfigSets(projectId)}/${encodeURIComponent(configSetId)}/release-readiness`;
 }
 
 function routeBaselineCompare(projectId: string, baselineId: string) {
@@ -112,6 +118,17 @@ export function createDtsStructuredClient(client: ApiClient = createDefaultApiCl
       const response = await client.get<ItemsEnvelope<DtsReleaseBaseline>>(routeBaselines(projectId, configSetId));
       return response.items;
     },
+    async getReleaseReadiness(projectId, configSetId, options) {
+      const query = new URLSearchParams();
+      if (options?.acknowledgedWarningIds?.length) {
+        query.set("acknowledgedWarningIds", options.acknowledgedWarningIds.join(","));
+      }
+      const suffix = query.toString() ? `?${query.toString()}` : "";
+      const response = await client.get<ItemEnvelope<DtsReleaseReadiness>>(
+        `${routeReleaseReadiness(projectId, configSetId)}${suffix}`
+      );
+      return response.item;
+    },
     async createBaseline(projectId, configSetId, input: CreateBaselineInput) {
       const response = await client.post<ItemEnvelope<DtsReleaseBaseline>>(routeBaselines(projectId, configSetId), input);
       return response.item;
@@ -124,8 +141,8 @@ export function createDtsStructuredClient(client: ApiClient = createDefaultApiCl
       const response = await client.post<ItemEnvelope<DtsRollbackBaselineResult>>(routeBaselineRollback(projectId, baselineId), {});
       return response.item;
     },
-    async releaseBaseline(projectId, baselineId) {
-      const response = await client.post<ReleaseEnvelope>(routeBaselineRelease(projectId, baselineId), {});
+    async releaseBaseline(projectId, baselineId, input: ReleaseBaselineInput) {
+      const response = await client.post<ReleaseEnvelope>(routeBaselineRelease(projectId, baselineId), input);
       return { item: response.item, gate: response.gate };
     },
     async exportConfigSet(projectId, configSetId) {
