@@ -363,6 +363,20 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "screenshot"]
   },
   {
+    id: "PROJ-CONFIG-INSPECT-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Inspect config-set/file/node/property context, walk inspector back while preserving source, browse immutable file history with download, enter history/diff source modes with restore, and verify overlay vs persistent inspector layout.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-INSPECT-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
+
+  {
     id: "PARAM-ADMIN-DIALOG-001",
     priority: "P1",
     area: "parameters",

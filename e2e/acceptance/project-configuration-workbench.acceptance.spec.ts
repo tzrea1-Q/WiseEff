@@ -407,4 +407,176 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     }
   });
 
+  test("inspects context, file history, and source modes in API mode", async ({ page, request }, testInfo) => {
+    // @acceptance PROJ-CONFIG-INSPECT-001
+    // @operation PROJ-CONFIG-INSPECT-001
+    const suffix = randomUUID();
+    const configSetName = `inspect-history-${suffix}`;
+    const primaryFileName = `acceptance-inspect-${suffix}.dts`;
+    const v1Dts = `/dts-v1/;
+/ {
+	board {
+		model = "InspectV1";
+		compatible = "wiseeff,inspect";
+	};
+};
+`;
+    const v2Dts = `/dts-v1/;
+/ {
+	board {
+		model = "InspectV2";
+		compatible = "wiseeff,inspect";
+	};
+};
+`;
+
+    try {
+      const uploadV1 = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: primaryFileName,
+          contentBase64: Buffer.from(v1Dts, "utf8").toString("base64")
+        }
+      });
+      expect(uploadV1.ok()).toBe(true);
+      const v1Body = (await uploadV1.json()) as {
+        item: { id: string; fileName: string };
+        version: { id: string; versionNumber: number };
+      };
+
+      const uploadV2 = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-files/${v1Body.item.id}/versions`),
+        {
+          headers: adminHeaders(),
+          data: {
+            fileName: primaryFileName,
+            contentBase64: Buffer.from(v2Dts, "utf8").toString("base64")
+          }
+        }
+      );
+      expect(uploadV2.ok()).toBe(true);
+      const v2Body = (await uploadV2.json()) as {
+        item: { id: string; versionNumber: number };
+      };
+
+      const versionsResponse = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-files/${v1Body.item.id}/versions`),
+        { headers: adminHeaders() }
+      );
+      expect(versionsResponse.ok()).toBe(true);
+      const versionsBody = (await versionsResponse.json()) as {
+        items: Array<{ id: string; versionNumber: number }>;
+      };
+      expect(versionsBody.items.length).toBeGreaterThanOrEqual(2);
+
+      const createConfigSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(),
+        data: { name: configSetName, description: "Inspector history acceptance" }
+      });
+      expect(createConfigSet.status()).toBe(201);
+      const configSetBody = (await createConfigSet.json()) as { item: { id: string; name: string } };
+      const configSetId = configSetBody.item.id;
+
+      const addMember = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
+        { headers: adminHeaders(), data: { fileId: v1Body.item.id, role: "base", sortOrder: 0 } }
+      );
+      expect(addMember.ok()).toBe(true);
+
+      await signInBrowserAsRole(page, "admin");
+      await page.goto(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(v1Body.item.id)}`
+      );
+      await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
+      await expect(page.getByLabelText("配置身份")).toContainText("工作配置");
+      await expect(page.getByLabelText("配置身份")).toContainText("候选文件版本");
+      await expect(page.getByLabelText("配置身份")).toContainText("发布基线");
+
+      await page.getByRole("button", { name: "检查器" }).click();
+      const inspector = page.getByRole("complementary", { name: "配置检查器" });
+      await expect(inspector).toBeVisible();
+      await expect(inspector).toContainText("文件格式");
+      await expect(inspector.getByLabelText("不可变版本历史")).toBeVisible();
+      await expect(inspector).toContainText(`版本 ${v1Body.version.versionNumber}`);
+
+      await page.getByRole("treeitem", { name: "节点 board" }).click();
+      await expect(inspector).toContainText("节点路径");
+      await expect(inspector).toContainText("只读");
+
+      await page.getByRole("treeitem", { name: "属性 board/model" }).click();
+      await expect(inspector).toContainText("属性名");
+      await expect(inspector).toContainText("InspectV2");
+
+      await page.getByRole("button", { name: "检查器返回" }).click();
+      await expect(inspector).toContainText("节点路径");
+      await page.getByRole("button", { name: "检查器返回" }).click();
+      await expect(inspector).toContainText("文件格式");
+      await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
+
+      const historyVersion = versionsBody.items.find((item) => item.id === v1Body.version.id) ?? versionsBody.items.at(-1);
+      expect(historyVersion).toBeTruthy();
+      await page
+        .getByRole("button", { name: `查看版本 ${historyVersion!.versionNumber} 历史源码` })
+        .click();
+      await expect(page).toHaveURL(/sourceMode=history/);
+      await expect(page.getByLabelText("历史只读源码模式")).toBeVisible();
+      await expect(page.getByText(/model = "InspectV1"/)).toBeVisible();
+
+      const downloadPromise = page.waitForEvent("download");
+      await page.getByRole("button", { name: `下载版本 ${historyVersion!.versionNumber}` }).click();
+      const download = await downloadPromise;
+      expect(download.suggestedFilename()).toContain(primaryFileName);
+
+      await page.getByRole("button", { name: "统一差异" }).click();
+      await expect(page).toHaveURL(/sourceMode=unified-diff/);
+      await expect(page.getByLabelText("统一差异对比")).toBeVisible();
+
+      await page.getByRole("button", { name: "并排对比" }).click();
+      await expect(page).toHaveURL(/sourceMode=side-by-side/);
+      await expect(page.getByLabelText("并排差异对比")).toBeVisible();
+
+      await page.getByRole("button", { name: "退出对比" }).click();
+      await expect(page).not.toHaveURL(/sourceMode=/);
+      await expect(page.getByText(/model = "InspectV2"/)).toBeVisible();
+
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await expect(inspector).toHaveAttribute("data-layout", /overlay|persistent/);
+
+      const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-inspect.json", {
+        route: page.url(),
+        configSetId,
+        fileId: v1Body.item.id,
+        activeVersionId: v2Body.item.id,
+        historyVersionId: historyVersion!.id,
+        versionCount: versionsBody.items.length
+      });
+      await recordOperationEvidence({
+        operationId: "PROJ-CONFIG-INSPECT-001",
+        title: "configuration workbench inspector and file history",
+        status: "passed",
+        role: "Admin",
+        route: `/parameter-admin/projects/${projectId}/configuration`,
+        page,
+        testInfo,
+        assertions: ["ui", "api", "screenshot"],
+        artifacts: [evidencePath],
+        api: [
+          summarizeApiResponse(versionsResponse, {
+            method: "GET",
+            path: `/api/v1/projects/${projectId}/parameter-files/${v1Body.item.id}/versions`,
+            responseSummary: `versions=${versionsBody.items.length}`
+          })
+        ],
+        notes: "Inspector levels, back stack, immutable history download, and history/diff source modes with restore were exercised on the flagged configuration workbench."
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        configSetNames: [configSetName],
+        fileNames: [primaryFileName]
+      });
+    }
+  });
+
 });

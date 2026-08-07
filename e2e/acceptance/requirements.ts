@@ -165,6 +165,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PROJ-CONFIG-INSPECT-001",
+    workflow: "C",
+    title: "Context inspector and file-history source modes provide leveled inspection, immutable history download, labeled read-only canvas modes with restore, and PCW-D15 overlay persistence.",
+    required: false
+  },
+
+  {
     id: "PARAM-ADMIN-DIALOG-001",
     workflow: "C",
     title: "Param-admin dialogs trap focus, restore focus to the trigger, close only the top-most dialog on Escape, ignore press-inside/release-outside, and keep their styling through the portal.",
