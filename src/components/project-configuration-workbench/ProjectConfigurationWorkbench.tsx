@@ -66,6 +66,13 @@ import {
   sessionDraftKey,
   type SessionPropertyDraft
 } from "./sessionDrafts";
+import {
+  findRecoverableSessionDraft,
+  formatSessionDraftCopyText,
+  removeSessionDraftBucket,
+  upsertSessionDraftBucket,
+  type SessionDraftScope
+} from "./sessionDraftStorage";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
@@ -87,6 +94,12 @@ export type ProjectConfigurationWorkbenchProps = {
   /** When false, mutations are denied but read context stays visible. Defaults true for back-compat. */
   canAdmin?: boolean;
   listAuditEvents?: (params?: ListAuditEventsParams) => Promise<AuditEventListResponse>;
+  /** Authenticated user for draft scoping. Defaults to "local-user" for back-compat tests. */
+  currentUserId?: string;
+  /** Optional org override; prefer selectedConfigSet.organizationId at runtime. */
+  organizationId?: string;
+  /** Injectable storage for recoverable session drafts (tests / non-DOM). */
+  draftStorage?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
 };
 
 const CONFIG_SET_ROLES: ConfigSetRole[] = ["base", "overlay", "charging", "thermal", "misc"];
@@ -276,7 +289,10 @@ export function ProjectConfigurationWorkbench({
   canEdit = true,
   canEditCritical = true,
   canAdmin = true,
-  listAuditEvents
+  listAuditEvents,
+  currentUserId = "local-user",
+  organizationId,
+  draftStorage
 }: ProjectConfigurationWorkbenchProps) {
   const listProjectActivity = useCallback(
     (params?: ListAuditEventsParams) =>
@@ -352,6 +368,16 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const [submitStatus, setSubmitStatus] = useState("");
   const [validateStatus, setValidateStatus] = useState("");
   const [submittingEdits, setSubmittingEdits] = useState(false);
+  const [draftRecoveryStatus, setDraftRecoveryStatus] = useState<"none" | "compatible" | "stale-base">(
+    "none"
+  );
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [draftCopyStatus, setDraftCopyStatus] = useState("");
+  const draftRecoveryGenerationRef = useRef(0);
+  const draftPersistScopeRef = useRef<SessionDraftScope | null>(null);
+  const draftPersistEnabledRef = useRef(false);
+  const draftCopyFallbackRef = useRef<HTMLTextAreaElement | null>(null);
+  const sessionDraftStorage = draftStorage ?? localStorage;
   const [narrowViewport, setNarrowViewport] = useState(false);
   const [structureNodes, setStructureNodes] = useState<DtsStructuralNode[]>([]);
   const [structureLoading, setStructureLoading] = useState(false);
@@ -1610,15 +1636,22 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [selectedMember, sessionDrafts, structureNodes]);
 
   useEffect(() => {
+    // While structure is still loading, rows are empty — do not prune restored selection.
+    if (sessionDraftRows.length === 0) {
+      return;
+    }
     setSelectedDraftKeys((current) => {
       const valid = new Set(sessionDraftRows.map((row) => row.key));
+      if (current.size === 0 && Object.keys(sessionDrafts).length > 0) {
+        return valid;
+      }
       const next = new Set<string>();
       for (const key of current) {
         if (valid.has(key)) next.add(key);
       }
       return next;
     });
-  }, [sessionDraftRows]);
+  }, [sessionDraftRows, sessionDrafts]);
 
   const sessionChangeMarkers = useMemo(
     () =>
@@ -1643,7 +1676,8 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     Boolean(selectedStructureNode) &&
     !canEditCritical &&
     isCriticalDtsNodePath(selectedStructureNode!.nodePath);
-  const editorLocked = !canEdit || criticalLocked;
+  const staleDraftLocked = draftRecoveryStatus === "stale-base";
+  const editorLocked = !canEdit || criticalLocked || staleDraftLocked;
 
   const activePropertyDraftKey =
     selectedMember && selectedStructureNode && selectedStructureProperty
@@ -1657,14 +1691,197 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     ? sessionDrafts[activePropertyDraftKey]
     : undefined;
 
+  const resolvedOrganizationId = organizationId ?? selectedConfigSet?.organizationId ?? null;
+  const sessionDraftScope = useMemo<SessionDraftScope | null>(() => {
+    if (
+      !currentUserId ||
+      !resolvedOrganizationId ||
+      !selectedConfigSet?.id ||
+      !selectedMember?.fileId ||
+      !selectedMember.currentVersionId
+    ) {
+      return null;
+    }
+    return {
+      userId: currentUserId,
+      organizationId: resolvedOrganizationId,
+      projectId: project.id,
+      configSetId: selectedConfigSet.id,
+      fileId: selectedMember.fileId,
+      baseVersionId: selectedMember.currentVersionId
+    };
+  }, [
+    currentUserId,
+    project.id,
+    resolvedOrganizationId,
+    selectedConfigSet?.id,
+    selectedMember?.currentVersionId,
+    selectedMember?.fileId
+  ]);
+
+  const sessionDraftsDirty =
+    Object.keys(sessionDrafts).length > 0 || sessionDraftRows.length > 0;
+
   useEffect(() => {
-    setSessionDrafts({});
-    setSelectedDraftKeys(new Set());
+    const generation = ++draftRecoveryGenerationRef.current;
+    let cancelled = false;
+    draftPersistEnabledRef.current = false;
     setSubmitError("");
     setSubmitStatus("");
     setValidateStatus("");
+    setDraftCopyStatus("");
+
+    if (!sessionDraftScope) {
+      setSessionDrafts({});
+      setSelectedDraftKeys(new Set());
+      setSubmitReason("");
+      setDraftRecoveryStatus("none");
+      draftPersistScopeRef.current = null;
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void Promise.resolve().then(() => {
+      if (cancelled || generation !== draftRecoveryGenerationRef.current) return;
+      const recovered = findRecoverableSessionDraft(sessionDraftScope, sessionDraftStorage);
+      if (cancelled || generation !== draftRecoveryGenerationRef.current) return;
+      if (recovered) {
+        const draftKeys = Object.keys(recovered.bucket.drafts);
+        const restoredSelected =
+          recovered.bucket.selectedKeys.length > 0
+            ? recovered.bucket.selectedKeys
+            : draftKeys;
+        setSessionDrafts(recovered.bucket.drafts);
+        setSelectedDraftKeys(new Set(restoredSelected));
+        setSubmitReason(recovered.bucket.reason);
+        setDraftRecoveryStatus(recovered.classification);
+        draftPersistScopeRef.current = recovered.bucket.scope;
+        if (draftKeys.length > 0) {
+          setTasksOpen(true);
+        }
+      } else {
+        setSessionDrafts({});
+        setSelectedDraftKeys(new Set());
+        setSubmitReason("");
+        setDraftRecoveryStatus("none");
+        draftPersistScopeRef.current = sessionDraftScope;
+      }
+      queueMicrotask(() => {
+        if (cancelled || generation !== draftRecoveryGenerationRef.current) return;
+        draftPersistEnabledRef.current = true;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      draftPersistEnabledRef.current = false;
+    };
+  }, [sessionDraftScope, sessionDraftStorage]);
+
+  useEffect(() => {
+    if (!draftPersistEnabledRef.current) return;
+    const persistScope = draftPersistScopeRef.current ?? sessionDraftScope;
+    if (!persistScope) return;
+    const draftKeys = Object.keys(sessionDrafts);
+    if (draftKeys.length === 0) {
+      removeSessionDraftBucket(persistScope, sessionDraftStorage);
+      return;
+    }
+    const selected =
+      selectedDraftKeys.size > 0 ? Array.from(selectedDraftKeys) : draftKeys;
+    upsertSessionDraftBucket(
+      {
+        scope: persistScope,
+        drafts: sessionDrafts,
+        selectedKeys: selected,
+        reason: submitReason,
+        updatedAt: new Date().toISOString()
+      },
+      sessionDraftStorage
+    );
+  }, [
+    selectedDraftKeys,
+    sessionDraftScope,
+    sessionDraftStorage,
+    sessionDrafts,
+    submitReason
+  ]);
+
+  const handleCopySessionDrafts = useCallback(async () => {
+    const persistScope = draftPersistScopeRef.current ?? sessionDraftScope;
+    if (!persistScope || Object.keys(sessionDrafts).length === 0) return;
+    const text = formatSessionDraftCopyText({
+      scope: persistScope,
+      drafts: sessionDrafts,
+      selectedKeys: Array.from(selectedDraftKeys),
+      reason: submitReason,
+      updatedAt: new Date().toISOString()
+    });
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        setDraftCopyStatus("草稿已复制到剪贴板。");
+        return;
+      }
+    } catch {
+      // fall through to textarea selection
+    }
+    const fallback = draftCopyFallbackRef.current;
+    if (fallback) {
+      fallback.value = text;
+      fallback.focus();
+      fallback.select();
+      setDraftCopyStatus("请使用系统复制快捷键复制已选中的草稿文本。");
+    } else {
+      setDraftCopyStatus("无法自动复制，请手动记录草稿内容。");
+    }
+  }, [selectedDraftKeys, sessionDraftScope, sessionDrafts, submitReason]);
+
+  const handleReconfirmStaleDrafts = useCallback(() => {
+    if (!sessionDraftScope || Object.keys(sessionDrafts).length === 0) return;
+    const nextBucket = {
+      scope: sessionDraftScope,
+      drafts: sessionDrafts,
+      selectedKeys: Array.from(selectedDraftKeys),
+      reason: submitReason,
+      updatedAt: new Date().toISOString()
+    };
+    upsertSessionDraftBucket(nextBucket, sessionDraftStorage);
+    draftPersistScopeRef.current = sessionDraftScope;
+    setDraftRecoveryStatus("none");
+    setSubmitError("");
+    setValidateStatus("");
+    setSubmitStatus("已基于当前基线继续编辑；请重新校验后再提交。");
+    setTasksOpen(true);
+  }, [
+    selectedDraftKeys,
+    sessionDraftScope,
+    sessionDraftStorage,
+    sessionDrafts,
+    submitReason
+  ]);
+
+  const handleLeaveWorkbench = useCallback(() => {
+    if (sessionDraftsDirty) {
+      setLeaveConfirmOpen(true);
+      return;
+    }
+    onNavigate("/parameter-admin/projects");
+  }, [onNavigate, sessionDraftsDirty]);
+
+  const handleDiscardAndLeave = useCallback(() => {
+    const persistScope = draftPersistScopeRef.current ?? sessionDraftScope;
+    if (persistScope) {
+      removeSessionDraftBucket(persistScope, sessionDraftStorage);
+    }
+    setSessionDrafts({});
+    setSelectedDraftKeys(new Set());
     setSubmitReason("");
-  }, [selectedMember?.fileId]);
+    setDraftRecoveryStatus("none");
+    setLeaveConfirmOpen(false);
+    onNavigate("/parameter-admin/projects");
+  }, [onNavigate, sessionDraftScope, sessionDraftStorage]);
 
   const handleStructuredValueChange = useCallback(
     (next: StructuredValueChange) => {
@@ -1710,6 +1927,11 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   );
 
   const handleValidateSelected = useCallback(() => {
+    if (draftRecoveryStatus === "stale-base") {
+      setValidateStatus("基线版本已变更：会话草稿仅可检查或复制，请先基于当前基线继续编辑后再校验。");
+      setSubmitError("");
+      return;
+    }
     const selected = sessionDraftRows.filter((row) => selectedDraftKeys.has(row.key));
     if (selected.length === 0) {
       setValidateStatus("请先勾选要校验的会话变更。");
@@ -1722,10 +1944,15 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     }
     setValidateStatus(`校验通过：${selected.length} 项`);
     setSubmitError("");
-  }, [selectedDraftKeys, sessionDraftRows]);
+  }, [draftRecoveryStatus, selectedDraftKeys, sessionDraftRows]);
 
   const handleSubmitSelected = useCallback(async () => {
     if (!selectedMember || !canEdit || submittingEdits) return;
+    if (draftRecoveryStatus === "stale-base") {
+      setSubmitError("基线版本已变更：无法对过期草稿提交变更请求。请先基于当前基线继续编辑。");
+      setValidateStatus("");
+      return;
+    }
     const reason = submitReason.trim();
     if (!reason) {
       setSubmitError("提交变更请求前请填写变更原因。");
@@ -1775,6 +2002,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     }
   }, [
     canEdit,
+    draftRecoveryStatus,
     dtsRepository,
     project.id,
     selectedDraftKeys,
@@ -1800,7 +2028,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
         <button
           type="button"
           className="button subtle configuration-workbench__back"
-          onClick={() => onNavigate("/parameter-admin/projects")}
+          onClick={handleLeaveWorkbench}
         >
           <ChevronLeft size={16} aria-hidden="true" />
           项目清单
@@ -3105,9 +3333,11 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                         <p className="configuration-workbench__locked" role="note">
                           <Lock size={16} strokeWidth={2} aria-hidden="true" />
                           <span>
-                            {criticalLocked
-                              ? "这是安全关键节点，你的角色没有修改它的权限。当前取值可以查看，但不能编辑或提交。"
-                              : "你的角色没有修改参数的权限。当前取值可以查看，但不能编辑或提交。"}
+                            {staleDraftLocked
+                              ? "基线版本已变更：会话草稿仅可检查或复制。请先基于当前基线继续编辑，再修改取值。"
+                              : criticalLocked
+                                ? "这是安全关键节点，你的角色没有修改它的权限。当前取值可以查看，但不能编辑或提交。"
+                                : "你的角色没有修改参数的权限。当前取值可以查看，但不能编辑或提交。"}
                           </span>
                         </p>
                       ) : null}
@@ -3324,6 +3554,38 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
               <p>没有本轮更改。从结构树或源码定位选中属性后，用类型化编辑器写入本地会话变更。</p>
             ) : (
               <>
+                {draftRecoveryStatus === "stale-base" ? (
+                  <div className="configuration-workbench__stale-draft" role="status">
+                    <p>
+                      基线版本已变更。这些会话草稿仍可检查与复制，但在基于当前基线继续编辑之前不能校验或提交。
+                    </p>
+                    <div className="configuration-workbench__task-actions">
+                      <button
+                        className="button subtle"
+                        type="button"
+                        onClick={() => void handleCopySessionDrafts()}
+                      >
+                        复制草稿
+                      </button>
+                      <button
+                        className="button primary"
+                        type="button"
+                        onClick={handleReconfirmStaleDrafts}
+                      >
+                        基于当前基线继续编辑
+                      </button>
+                    </div>
+                    <textarea
+                      ref={draftCopyFallbackRef}
+                      aria-hidden="true"
+                      tabIndex={-1}
+                      readOnly
+                      className="configuration-workbench__draft-copy-fallback"
+                      style={{ position: "absolute", left: "-9999px", height: 1, width: 1, opacity: 0 }}
+                    />
+                    {draftCopyStatus ? <p role="status">{draftCopyStatus}</p> : null}
+                  </div>
+                ) : null}
                 <ul className="configuration-workbench__session-changes" aria-label="会话变更列表">
                   {sessionDraftRows.map((row) => {
                     const checked = selectedDraftKeys.has(row.key);
@@ -3370,7 +3632,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                     className="button subtle"
                     type="button"
                     onClick={handleValidateSelected}
-                    disabled={!canEdit || sessionDraftRows.length === 0}
+                    disabled={!canEdit || sessionDraftRows.length === 0 || draftRecoveryStatus === "stale-base"}
                   >
                     校验所选
                   </button>
@@ -3378,7 +3640,12 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                     className="button primary"
                     type="button"
                     onClick={() => void handleSubmitSelected()}
-                    disabled={!canEdit || submittingEdits || selectedDraftKeys.size === 0}
+                    disabled={
+                      !canEdit ||
+                      submittingEdits ||
+                      selectedDraftKeys.size === 0 ||
+                      draftRecoveryStatus === "stale-base"
+                    }
                   >
                     {submittingEdits ? "提交中…" : `提交所选（${selectedDraftKeys.size}）`}
                   </button>
@@ -3423,6 +3690,21 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
           </div>
         ) : null}
       </footer>
+
+      <ConfirmDialog
+        open={leaveConfirmOpen}
+        title="离开配置工作台"
+        description={
+          <p>
+            还有未提交的会话变更。离开将丢弃本机可恢复草稿；若仅想稍后继续，请留在本页或先复制草稿。
+          </p>
+        }
+        confirmLabel="丢弃并离开"
+        cancelLabel="留在本页"
+        tone="danger"
+        onCancel={() => setLeaveConfirmOpen(false)}
+        onConfirm={handleDiscardAndLeave}
+      />
 
       <ConfirmDialog
         open={Boolean(confirmation)}

@@ -183,6 +183,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PROJ-CONFIG-DRAFT-001",
+    workflow: "C",
+    title: "Recoverable configuration-workbench session drafts are scoped by user/org/project/config/file/base, restore after reload when the base matches, remain inspectable but block validate/submit when the base is stale, clear on logout, and prove cross-user isolation in component tests where full browser coverage is heavy.",
+    required: false
+  },
+  {
     id: "PROJ-CONFIG-ACTIVITY-001",
     workflow: "C",
     title: "Contextual Activity inspector replaces permanent audit banner: scoped server audit projection, product-language events, target restore, toast + refresh, and resilient loading states.",
