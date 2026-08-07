@@ -223,6 +223,7 @@ import {
   type RegisterLocalAccountResponseDto,
   type UpdateCurrentUserProfileInput
 } from "@/infrastructure/http/authClient";
+import { clearSessionDraftsForLogout } from "@/components/project-configuration-workbench/sessionDraftStorage";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { createMockParameterRepository } from "@/infrastructure/mock/mockParameterRepository";
 import { createMockRuntimeState, type MockRuntimeState } from "@/infrastructure/mock/mockState";
@@ -2542,6 +2543,7 @@ function AppShell({
       // always clear the local session and return to the login screen.
     }
     clearLocalAuthToken();
+    clearSessionDraftsForLogout();
     setApiAuthStatus("unauthenticated");
     setApiAuthError("");
     dispatch({ type: "ADD_NOTIFICATION", message: "已退出登录" });
