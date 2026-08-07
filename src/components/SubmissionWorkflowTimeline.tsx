@@ -4,7 +4,7 @@ import type { SubmissionWorkflowStageDetail } from "@/domain/parameters/submissi
 import { SUBMISSION_TIMELINE_STEPS } from "@/parameterSubmissionTimeline";
 
 function formatWorkflowDisplayText(text: string) {
-  return text
+  return String(text ?? "")
     .replaceAll("Committer", "MDE")
     .replaceAll("User", "开发人员");
 }
