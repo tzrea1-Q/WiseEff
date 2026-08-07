@@ -176,6 +176,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title: "Candidate file version upload, impact review, parse-failure diagnostics, and abandon leave Working configuration and Config set membership unchanged.",
     required: false
   },
+  {
+    id: "PROJ-CONFIG-ACTIVITY-001",
+    workflow: "C",
+    title: "Contextual Activity inspector replaces permanent audit banner: scoped server audit projection, product-language events, target restore, toast + refresh, and resilient loading states.",
+    required: false
+  },
 
   {
     id: "PARAM-ADMIN-DIALOG-001",

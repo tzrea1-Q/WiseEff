@@ -1,6 +1,6 @@
 export type WorkbenchCanvasMode = "working" | "history" | "unified-diff" | "side-by-side" | "candidate";
 
-export type InspectorLevel = "config-set" | "file" | "node" | "property";
+export type InspectorLevel = "config-set" | "file" | "node" | "property" | "activity";
 
 export function parseCanvasMode(raw: string | null | undefined): WorkbenchCanvasMode {
   switch (raw) {
@@ -44,16 +44,37 @@ export function inspectorBackTarget(level: InspectorLevel): {
   clearNode: boolean;
   clearProperty: boolean;
   clearFile: boolean;
+  clearActivity: boolean;
 } {
   switch (level) {
+    case "activity":
+      return {
+        level: "config-set",
+        clearNode: false,
+        clearProperty: false,
+        clearFile: false,
+        clearActivity: true
+      };
     case "property":
-      return { level: "node", clearNode: false, clearProperty: true, clearFile: false };
+      return { level: "node", clearNode: false, clearProperty: true, clearFile: false, clearActivity: true };
     case "node":
-      return { level: "file", clearNode: true, clearProperty: true, clearFile: false };
+      return { level: "file", clearNode: true, clearProperty: true, clearFile: false, clearActivity: true };
     case "file":
-      return { level: "config-set", clearNode: true, clearProperty: true, clearFile: false };
+      return {
+        level: "config-set",
+        clearNode: true,
+        clearProperty: true,
+        clearFile: false,
+        clearActivity: true
+      };
     default:
-      return { level: "config-set", clearNode: false, clearProperty: false, clearFile: false };
+      return {
+        level: "config-set",
+        clearNode: false,
+        clearProperty: false,
+        clearFile: false,
+        clearActivity: true
+      };
   }
 }
 
