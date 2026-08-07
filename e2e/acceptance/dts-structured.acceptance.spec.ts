@@ -428,11 +428,26 @@ test.describe("DTS structured product browser acceptance", () => {
       );
       expect(addPeer.ok()).toBe(true);
 
+      const readinessResponse = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/release-readiness`),
+        { headers: adminHeaders() }
+      );
+      expect(readinessResponse.ok()).toBe(true);
+      const readinessBody = (await readinessResponse.json()) as {
+        item: { available: boolean; canCreateBaseline: boolean; gateToken: string; level: string };
+      };
+      expect(readinessBody.item.gateToken).toBeTruthy();
+      expect(readinessBody.item.available && readinessBody.item.canCreateBaseline).toBe(true);
+
       const baselineResponse = await request.post(
         apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/baselines`),
         {
           headers: adminHeaders(),
-          data: { name: baselineName, notes: descriptionPrefix }
+          data: {
+            name: baselineName,
+            notes: descriptionPrefix,
+            gateToken: readinessBody.item.gateToken
+          }
         }
       );
       expect(baselineResponse.status()).toBe(201);
