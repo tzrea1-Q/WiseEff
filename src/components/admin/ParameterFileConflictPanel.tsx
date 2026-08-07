@@ -103,7 +103,10 @@ export function ParameterFileConflictPanel({
     setResolvingConflictId(conflictId);
     setError("");
     try {
-      const resolved = await repository.resolveConflict(projectId, conflictId, resolution);
+      const resolved = await repository.resolveConflict(projectId, conflictId, {
+        resolution,
+        ...(reason ? { reason } : {})
+      });
       setConflicts((current) => {
         const next = current.map((item) => (item.id === conflictId ? resolved : item));
         onOpenConflictCountChangeRef.current?.(next.filter((item) => item.status === "open").length);

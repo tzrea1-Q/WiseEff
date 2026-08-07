@@ -757,6 +757,15 @@ export type ParameterDraftWithOrigin = {
   updatedAt: string;
 };
 
+type FileSyncConflictSourceLocator = {
+  startOffset: number;
+  endOffset: number;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+};
+
 type FileSyncConflictRow = {
   id: string;
   organization_id: string;
@@ -772,6 +781,23 @@ type FileSyncConflictRow = {
   resolved_by_user_id: string | null;
   resolved_at: string | Date | null;
   created_at: string | Date;
+  base_value?: string | null;
+  parameter_name?: string | null;
+  parameter_module?: string | null;
+  file_version_number?: number | string | null;
+  file_version_created_at?: string | Date | null;
+  file_draft_updated_at?: string | Date | null;
+  ui_draft_updated_at?: string | Date | null;
+  file_id?: string | null;
+  file_name?: string | null;
+  config_set_id?: string | null;
+  source_node_path?: string | null;
+  source_start_offset?: number | null;
+  source_end_offset?: number | null;
+  source_start_line?: number | null;
+  source_start_column?: number | null;
+  source_end_line?: number | null;
+  source_end_column?: number | null;
 };
 
 export type FileSyncConflictRecord = {
@@ -789,6 +815,21 @@ export type FileSyncConflictRecord = {
   resolvedByUserId?: string;
   resolvedAt?: string;
   createdAt: string;
+  baseValue?: string;
+  parameterName?: string;
+  parameterModule?: string;
+  fileVersionNumber?: number;
+  fileVersionLabel?: string;
+  fileVersionCreatedAt?: string;
+  fileDraftUpdatedAt?: string;
+  uiDraftUpdatedAt?: string;
+  fileId?: string;
+  fileName?: string;
+  configSetId?: string;
+  nodePath?: string;
+  propertyName?: string;
+  sourceNodePath?: string;
+  source?: FileSyncConflictSourceLocator;
 };
 
 type SubmissionRoundRow = {
@@ -1176,7 +1217,55 @@ function toDraftWithOrigin(row: DraftRow): ParameterDraftWithOrigin {
   };
 }
 
+function splitSourceNodePath(sourceNodePath: string | null | undefined): {
+  nodePath?: string;
+  propertyName?: string;
+} {
+  if (!sourceNodePath) {
+    return {};
+  }
+  const separator = sourceNodePath.lastIndexOf("/");
+  if (separator <= 0 || separator === sourceNodePath.length - 1) {
+    return { nodePath: sourceNodePath };
+  }
+  return {
+    nodePath: sourceNodePath.slice(0, separator),
+    propertyName: sourceNodePath.slice(separator + 1)
+  };
+}
+
+function toFileSyncConflictSource(
+  row: FileSyncConflictRow
+): FileSyncConflictSourceLocator | undefined {
+  if (
+    row.source_start_offset == null ||
+    row.source_end_offset == null ||
+    row.source_start_line == null ||
+    row.source_start_column == null ||
+    row.source_end_line == null ||
+    row.source_end_column == null
+  ) {
+    return undefined;
+  }
+  return {
+    startOffset: Number(row.source_start_offset),
+    endOffset: Number(row.source_end_offset),
+    startLine: Number(row.source_start_line),
+    startColumn: Number(row.source_start_column),
+    endLine: Number(row.source_end_line),
+    endColumn: Number(row.source_end_column)
+  };
+}
+
 function toFileSyncConflictRecord(row: FileSyncConflictRow): FileSyncConflictRecord {
+  const sourceNodePath = row.source_node_path ?? undefined;
+  const { nodePath, propertyName } = splitSourceNodePath(sourceNodePath);
+  const fileVersionNumber =
+    row.file_version_number == null || row.file_version_number === ""
+      ? undefined
+      : Number(row.file_version_number);
+  const source = toFileSyncConflictSource(row);
+
   return {
     id: row.id,
     organizationId: row.organization_id,
@@ -1191,7 +1280,29 @@ function toFileSyncConflictRecord(row: FileSyncConflictRow): FileSyncConflictRec
     status: row.status,
     resolvedByUserId: row.resolved_by_user_id ?? undefined,
     resolvedAt: row.resolved_at ? dateTimeToIso(row.resolved_at) : undefined,
-    createdAt: dateTimeToIso(row.created_at)
+    createdAt: dateTimeToIso(row.created_at),
+    baseValue: row.base_value ?? undefined,
+    parameterName: row.parameter_name ?? undefined,
+    parameterModule: row.parameter_module ?? undefined,
+    fileVersionNumber: Number.isFinite(fileVersionNumber) ? fileVersionNumber : undefined,
+    fileVersionLabel:
+      Number.isFinite(fileVersionNumber) && fileVersionNumber != null
+        ? `v${fileVersionNumber}`
+        : undefined,
+    fileVersionCreatedAt: row.file_version_created_at
+      ? dateTimeToIso(row.file_version_created_at)
+      : undefined,
+    fileDraftUpdatedAt: row.file_draft_updated_at
+      ? dateTimeToIso(row.file_draft_updated_at)
+      : undefined,
+    uiDraftUpdatedAt: row.ui_draft_updated_at ? dateTimeToIso(row.ui_draft_updated_at) : undefined,
+    fileId: row.file_id ?? undefined,
+    fileName: row.file_name ?? undefined,
+    configSetId: row.config_set_id ?? undefined,
+    nodePath,
+    propertyName,
+    sourceNodePath,
+    source
   };
 }
 
@@ -2710,30 +2821,133 @@ export async function listOpenConflicts(
   query: { organizationId: string; projectParameterValueId?: string; projectId?: string; conflictId?: string }
 ) {
   const values: unknown[] = [query.organizationId];
-  const where = ["organization_id = $1", "status = 'open'"];
+  const where = ["c.organization_id = $1", "c.status = 'open'"];
   if (query.projectParameterValueId) {
     addCondition(
       where,
       values,
-      (placeholder) => `project_parameter_value_id = ${placeholder}`,
+      (placeholder) => `c.project_parameter_value_id = ${placeholder}`,
       query.projectParameterValueId
     );
   }
   if (query.projectId) {
-    addCondition(where, values, (placeholder) => `project_id = ${placeholder}`, query.projectId);
+    addCondition(where, values, (placeholder) => `c.project_id = ${placeholder}`, query.projectId);
   }
   if (query.conflictId) {
-    addCondition(where, values, (placeholder) => `id = ${placeholder}`, query.conflictId);
+    addCondition(where, values, (placeholder) => `c.id = ${placeholder}`, query.conflictId);
   }
 
   const result = await db.query<FileSyncConflictRow>(
     `
-    select *
-    from parameter_file_sync_conflicts
+    select
+      c.*,
+      ppv.current_value as base_value,
+      ppv.source_node_path as source_node_path,
+      pd.name as parameter_name,
+      pd.module as parameter_module,
+      fv.version_number as file_version_number,
+      fv.created_at as file_version_created_at,
+      fd.updated_at as file_draft_updated_at,
+      ud.updated_at as ui_draft_updated_at,
+      pf.id as file_id,
+      pf.file_name as file_name,
+      pf.config_set_id as config_set_id,
+      src.source_start_offset,
+      src.source_end_offset,
+      src.source_start_line,
+      src.source_start_column,
+      src.source_end_line,
+      src.source_end_column
+    from parameter_file_sync_conflicts c
+    left join project_parameter_values ppv on ppv.id = c.project_parameter_value_id
+    left join parameter_definitions pd on pd.id = c.parameter_definition_id
+    left join project_parameter_file_versions fv on fv.id = c.file_version_id
+    left join project_parameter_files pf on pf.id = fv.file_id
+    left join parameter_drafts fd on fd.id = c.file_draft_id
+    left join parameter_drafts ud on ud.id = c.ui_draft_id
+    left join lateral (
+      select
+        dp.start_offset as source_start_offset,
+        dp.end_offset as source_end_offset,
+        dp.start_line as source_start_line,
+        dp.start_column as source_start_column,
+        dp.end_line as source_end_line,
+        dp.end_column as source_end_column
+      from dts_nodes dn
+      inner join dts_properties dp on dp.node_id = dn.id
+      where dn.file_version_id = c.file_version_id
+        and ppv.source_node_path is not null
+        and (dn.node_path || '/' || dp.name) = ppv.source_node_path
+      limit 1
+    ) src on true
     where ${where.join("\n      and ")}
-    order by created_at desc, id desc
+    order by c.created_at desc, c.id desc
     `,
     values
+  );
+
+  return result.rows.map(toFileSyncConflictRecord);
+}
+
+/**
+ * Lookup conflicts by id without requiring open status (used for bulk ineligibility reasons).
+ * Enrichment joins are included so ineligible rows can still surface names/file ids when present.
+ */
+export async function listFileSyncConflictsByIds(
+  db: Queryable,
+  query: { organizationId: string; conflictIds: string[] }
+) {
+  if (query.conflictIds.length === 0) {
+    return [];
+  }
+
+  const result = await db.query<FileSyncConflictRow>(
+    `
+    select
+      c.*,
+      ppv.current_value as base_value,
+      ppv.source_node_path as source_node_path,
+      pd.name as parameter_name,
+      pd.module as parameter_module,
+      fv.version_number as file_version_number,
+      fv.created_at as file_version_created_at,
+      fd.updated_at as file_draft_updated_at,
+      ud.updated_at as ui_draft_updated_at,
+      pf.id as file_id,
+      pf.file_name as file_name,
+      pf.config_set_id as config_set_id,
+      src.source_start_offset,
+      src.source_end_offset,
+      src.source_start_line,
+      src.source_start_column,
+      src.source_end_line,
+      src.source_end_column
+    from parameter_file_sync_conflicts c
+    left join project_parameter_values ppv on ppv.id = c.project_parameter_value_id
+    left join parameter_definitions pd on pd.id = c.parameter_definition_id
+    left join project_parameter_file_versions fv on fv.id = c.file_version_id
+    left join project_parameter_files pf on pf.id = fv.file_id
+    left join parameter_drafts fd on fd.id = c.file_draft_id
+    left join parameter_drafts ud on ud.id = c.ui_draft_id
+    left join lateral (
+      select
+        dp.start_offset as source_start_offset,
+        dp.end_offset as source_end_offset,
+        dp.start_line as source_start_line,
+        dp.start_column as source_start_column,
+        dp.end_line as source_end_line,
+        dp.end_column as source_end_column
+      from dts_nodes dn
+      inner join dts_properties dp on dp.node_id = dn.id
+      where dn.file_version_id = c.file_version_id
+        and ppv.source_node_path is not null
+        and (dn.node_path || '/' || dp.name) = ppv.source_node_path
+      limit 1
+    ) src on true
+    where c.organization_id = $1
+      and c.id = any($2::text[])
+    `,
+    [query.organizationId, query.conflictIds]
   );
 
   return result.rows.map(toFileSyncConflictRecord);

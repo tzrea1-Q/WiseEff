@@ -9,6 +9,7 @@ import { requestJson } from "../../test/testClient";
 import { registerParameterFileRoutes } from "./routes";
 import * as service from "./service";
 import * as configSetService from "./configSetService";
+import * as conflictService from "./conflictService";
 
 vi.mock("./service", () => ({
   uploadProjectParameterFile: vi.fn(),
@@ -32,7 +33,9 @@ vi.mock("./syncService", () => ({
 }));
 
 vi.mock("./conflictService", () => ({
-  resolveParameterFileConflict: vi.fn()
+  resolveParameterFileConflict: vi.fn(),
+  previewBulkConflictResolution: vi.fn(),
+  resolveConflictsBulk: vi.fn()
 }));
 
 vi.mock("./configSetService", () => ({
@@ -160,6 +163,74 @@ describe("parameter file routes", () => {
         bytes
       },
       { requestId: "test-request" }
+    );
+  });
+
+  it("POST resolve accepts optional reason", async () => {
+    const db = makeDb();
+    const item = { id: "conflict-1", status: "resolved_file" };
+    vi.mocked(conflictService.resolveParameterFileConflict).mockResolvedValue(item as never);
+
+    const response = await requestJson<{ item: typeof item }>(
+      makeServer({ db }),
+      "/api/v1/projects/project-1/parameter-file-conflicts/conflict-1/resolve",
+      {
+        method: "POST",
+        body: JSON.stringify({ resolution: "file", reason: "keep file" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item).toEqual(item);
+    expect(conflictService.resolveParameterFileConflict).toHaveBeenCalledWith(
+      db,
+      expect.any(Object),
+      { conflictId: "conflict-1", resolution: "file", reason: "keep file" }
+    );
+  });
+
+  it("POST bulk-preview and bulk-resolve wire conflict service", async () => {
+    const db = makeDb();
+    const preview = {
+      resolution: "ui" as const,
+      eligible: [{ id: "conflict-1" }],
+      ineligible: [],
+      impact: { eligibleCount: 1, ineligibleCount: 0, parameterNames: ["temp_max"], fileIds: ["file-1"] }
+    };
+    const bulk = { resolved: [{ id: "conflict-1" }], skipped: [] };
+    vi.mocked(conflictService.previewBulkConflictResolution).mockResolvedValue(preview as never);
+    vi.mocked(conflictService.resolveConflictsBulk).mockResolvedValue(bulk as never);
+
+    const previewResponse = await requestJson<typeof preview>(
+      makeServer({ db }),
+      "/api/v1/projects/project-1/parameter-file-conflicts/bulk-preview",
+      {
+        method: "POST",
+        body: JSON.stringify({ resolution: "ui", conflictIds: ["conflict-1"] })
+      }
+    );
+    expect(previewResponse.status).toBe(200);
+    expect(previewResponse.body).toEqual(preview);
+    expect(conflictService.previewBulkConflictResolution).toHaveBeenCalledWith(
+      db,
+      expect.any(Object),
+      { projectId: "project-1", resolution: "ui", conflictIds: ["conflict-1"] }
+    );
+
+    const resolveResponse = await requestJson<typeof bulk>(
+      makeServer({ db }),
+      "/api/v1/projects/project-1/parameter-file-conflicts/bulk-resolve",
+      {
+        method: "POST",
+        body: JSON.stringify({ resolution: "ui", conflictIds: ["conflict-1"], reason: "batch" })
+      }
+    );
+    expect(resolveResponse.status).toBe(200);
+    expect(resolveResponse.body).toEqual(bulk);
+    expect(conflictService.resolveConflictsBulk).toHaveBeenCalledWith(
+      db,
+      expect.any(Object),
+      { projectId: "project-1", resolution: "ui", conflictIds: ["conflict-1"], reason: "batch" }
     );
   });
 });

@@ -48,6 +48,16 @@ export type FileSyncSummary = {
 
 export type ParameterFileConflictStatus = "open" | "resolved_file" | "resolved_ui";
 
+/** Source span for locating a conflict in DTS/text (mirrors server FileSyncConflictSourceLocator). */
+export type ParameterFileConflictSourceLocator = {
+  startOffset: number;
+  endOffset: number;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+};
+
 export type ParameterFileSyncConflict = {
   id: string;
   organizationId: string;
@@ -65,6 +75,21 @@ export type ParameterFileSyncConflict = {
   resolvedByUserId?: string;
   resolvedAt?: string;
   createdAt: string;
+  /** Shared base / committed value before file sync and UI draft diverged. */
+  baseValue?: string;
+  fileVersionNumber?: number;
+  /** Human-readable version label (e.g. `v12`). */
+  fileVersionLabel?: string;
+  fileVersionCreatedAt?: string;
+  fileDraftUpdatedAt?: string;
+  uiDraftUpdatedAt?: string;
+  fileId?: string;
+  fileName?: string;
+  configSetId?: string;
+  nodePath?: string;
+  propertyName?: string;
+  sourceNodePath?: string;
+  source?: ParameterFileConflictSourceLocator;
 };
 
 export type DownloadParameterFileVersionResult = {
@@ -74,6 +99,50 @@ export type DownloadParameterFileVersionResult = {
 };
 
 export type ParameterFileConflictResolution = "file" | "ui";
+
+export type ResolveParameterFileConflictInput = {
+  resolution: ParameterFileConflictResolution;
+  reason?: string;
+};
+
+export type ParameterFileConflictBulkIneligibleReason =
+  | "not_found"
+  | "already_resolved"
+  | "wrong_project"
+  | "missing_values";
+
+export type ParameterFileConflictBulkIneligible = {
+  conflict: Pick<ParameterFileSyncConflict, "id"> & Partial<ParameterFileSyncConflict>;
+  reason: ParameterFileConflictBulkIneligibleReason;
+};
+
+export type ParameterFileConflictBulkPreview = {
+  resolution: ParameterFileConflictResolution;
+  eligible: ParameterFileSyncConflict[];
+  ineligible: ParameterFileConflictBulkIneligible[];
+  impact: {
+    eligibleCount: number;
+    ineligibleCount: number;
+    parameterNames: string[];
+    fileIds: string[];
+  };
+};
+
+export type ParameterFileConflictBulkResolveResult = {
+  resolved: ParameterFileSyncConflict[];
+  skipped: ParameterFileConflictBulkIneligible[];
+};
+
+export type PreviewBulkConflictResolutionInput = {
+  resolution: ParameterFileConflictResolution;
+  conflictIds?: string[];
+};
+
+export type ResolveConflictsBulkInput = {
+  resolution: ParameterFileConflictResolution;
+  conflictIds: string[];
+  reason?: string;
+};
 
 /** One-shot DTS upload comparison against registered drivers (ADR-0007). */
 export type IngestDriverSummary = {
@@ -204,7 +273,19 @@ export interface ParameterFileRepository {
   downloadVersion(projectId: string, fileId: string, versionId: string): Promise<DownloadParameterFileVersionResult>;
   syncFile(projectId: string, fileId: string): Promise<FileSyncSummary>;
   listConflicts(projectId: string): Promise<ParameterFileSyncConflict[]>;
-  resolveConflict(projectId: string, conflictId: string, resolution: ParameterFileConflictResolution): Promise<ParameterFileSyncConflict>;
+  resolveConflict(
+    projectId: string,
+    conflictId: string,
+    input: ResolveParameterFileConflictInput
+  ): Promise<ParameterFileSyncConflict>;
+  previewBulkConflictResolution(
+    projectId: string,
+    input: PreviewBulkConflictResolutionInput
+  ): Promise<ParameterFileConflictBulkPreview>;
+  resolveConflictsBulk(
+    projectId: string,
+    input: ResolveConflictsBulkInput
+  ): Promise<ParameterFileConflictBulkResolveResult>;
   listCandidates(projectId: string, options?: { fileId?: string; includeAbandoned?: boolean }): Promise<ParameterFileCandidate[]>;
   createCandidate(projectId: string, input: CreateParameterFileCandidateInput): Promise<ParameterFileCandidate>;
   getCandidate(projectId: string, candidateId: string): Promise<ParameterFileCandidate>;

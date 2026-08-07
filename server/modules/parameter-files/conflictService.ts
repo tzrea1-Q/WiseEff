@@ -5,8 +5,10 @@ import type { AuthContext } from "../auth/types";
 import {
   insertFileSyncConflict,
   listDraftsForParameterValue,
+  listFileSyncConflictsByIds,
   listOpenConflicts,
-  resolveConflict
+  resolveConflict,
+  type FileSyncConflictRecord
 } from "../parameters/repository";
 import { canReviewParameters } from "../parameters/policy";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -68,6 +70,56 @@ export async function detectFileUiDraftConflict(
 export type ResolveParameterFileConflictInput = {
   conflictId: string;
   resolution: "file" | "ui";
+  reason?: string;
+};
+
+function normalizeConflictReason(reason: string | undefined): string | undefined {
+  const trimmed = reason?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/**
+ * Eligibility for bulk arbitration (TD-058):
+ * - Eligible: open conflicts in the target project that have both fileValue and uiDraftValue
+ *   (all current open file↔ui sync conflicts qualify).
+ * - Ineligible when requested by id: missing, already resolved, or wrong project.
+ */
+function isEligibleOpenConflict(conflict: FileSyncConflictRecord, projectId: string): boolean {
+  return (
+    conflict.projectId === projectId &&
+    conflict.status === "open" &&
+    Boolean(conflict.fileValue) &&
+    Boolean(conflict.uiDraftValue)
+  );
+}
+
+function buildBulkImpact(eligible: FileSyncConflictRecord[]) {
+  const parameterNames = [
+    ...new Set(eligible.map((conflict) => conflict.parameterName).filter((name): name is string => Boolean(name)))
+  ];
+  const fileIds = [
+    ...new Set(eligible.map((conflict) => conflict.fileId).filter((fileId): fileId is string => Boolean(fileId)))
+  ];
+  return {
+    eligibleCount: eligible.length,
+    ineligibleCount: 0,
+    parameterNames,
+    fileIds
+  };
+}
+
+export type BulkConflictIneligibleReason = "not_found" | "already_resolved" | "wrong_project" | "missing_values";
+
+export type BulkConflictPreviewResult = {
+  resolution: "file" | "ui";
+  eligible: FileSyncConflictRecord[];
+  ineligible: Array<{ conflict: Pick<FileSyncConflictRecord, "id"> & Partial<FileSyncConflictRecord>; reason: BulkConflictIneligibleReason }>;
+  impact: {
+    eligibleCount: number;
+    ineligibleCount: number;
+    parameterNames: string[];
+    fileIds: string[];
+  };
 };
 
 export async function resolveParameterFileConflict(
@@ -78,6 +130,8 @@ export async function resolveParameterFileConflict(
   if (!canReviewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter review permission is required.", 403);
   }
+
+  const reason = normalizeConflictReason(input.reason);
 
   return db.transaction(async (tx) => {
     const [conflict] = await listOpenConflicts(tx, {
@@ -129,11 +183,129 @@ export async function resolveParameterFileConflict(
         resolution: input.resolution,
         fileDraftId: resolved.fileDraftId,
         uiDraftId: resolved.uiDraftId,
-        projectParameterValueId: resolved.projectParameterValueId
+        projectParameterValueId: resolved.projectParameterValueId,
+        ...(reason ? { reason } : {})
       },
       traceId: randomUUID()
     });
 
     return resolved;
   });
+}
+
+export async function previewBulkConflictResolution(
+  db: Queryable,
+  auth: AuthContext,
+  input: {
+    projectId: string;
+    resolution: "file" | "ui";
+    conflictIds?: string[];
+  }
+): Promise<BulkConflictPreviewResult> {
+  if (!canReviewParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter review permission is required.", 403);
+  }
+
+  const openConflicts = await listOpenConflicts(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId
+  });
+
+  if (input.conflictIds === undefined) {
+    const eligible = openConflicts.filter((conflict) => isEligibleOpenConflict(conflict, input.projectId));
+    const impact = buildBulkImpact(eligible);
+    return {
+      resolution: input.resolution,
+      eligible,
+      ineligible: [],
+      impact: {
+        ...impact,
+        ineligibleCount: 0
+      }
+    };
+  }
+
+  const openById = new Map(openConflicts.map((conflict) => [conflict.id, conflict]));
+  const missingIds = input.conflictIds.filter((id) => !openById.has(id));
+  const lookedUp =
+    missingIds.length > 0
+      ? await listFileSyncConflictsByIds(db, {
+          organizationId: auth.organization.id,
+          conflictIds: missingIds
+        })
+      : [];
+  const lookedUpById = new Map(lookedUp.map((conflict) => [conflict.id, conflict]));
+
+  const eligible: FileSyncConflictRecord[] = [];
+  const ineligible: BulkConflictPreviewResult["ineligible"] = [];
+
+  for (const conflictId of input.conflictIds) {
+    const open = openById.get(conflictId);
+    if (open && isEligibleOpenConflict(open, input.projectId)) {
+      eligible.push(open);
+      continue;
+    }
+
+    const found = open ?? lookedUpById.get(conflictId);
+    if (!found) {
+      ineligible.push({ conflict: { id: conflictId }, reason: "not_found" });
+      continue;
+    }
+    if (found.projectId !== input.projectId) {
+      ineligible.push({ conflict: found, reason: "wrong_project" });
+      continue;
+    }
+    if (found.status !== "open") {
+      ineligible.push({ conflict: found, reason: "already_resolved" });
+      continue;
+    }
+    ineligible.push({ conflict: found, reason: "missing_values" });
+  }
+
+  const impact = buildBulkImpact(eligible);
+  return {
+    resolution: input.resolution,
+    eligible,
+    ineligible,
+    impact: {
+      ...impact,
+      ineligibleCount: ineligible.length
+    }
+  };
+}
+
+export async function resolveConflictsBulk(
+  db: Database,
+  auth: AuthContext,
+  input: {
+    projectId: string;
+    resolution: "file" | "ui";
+    conflictIds: string[];
+    reason?: string;
+  }
+) {
+  if (!canReviewParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter review permission is required.", 403);
+  }
+
+  const preview = await previewBulkConflictResolution(db, auth, {
+    projectId: input.projectId,
+    resolution: input.resolution,
+    conflictIds: input.conflictIds
+  });
+
+  const resolved: FileSyncConflictRecord[] = [];
+  for (const conflict of preview.eligible) {
+    const item = await resolveParameterFileConflict(db, auth, {
+      conflictId: conflict.id,
+      resolution: input.resolution,
+      reason: input.reason
+    });
+    resolved.push(item);
+  }
+
+  return {
+    resolved,
+    skipped: preview.ineligible
+  };
 }

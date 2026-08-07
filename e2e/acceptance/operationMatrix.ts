@@ -442,6 +442,20 @@ export const acceptanceOperations: AcceptanceOperation[] = [
   },
 
   {
+    id: "PROJ-CONFIG-CONFLICT-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Open source-located three-way Conflicts arbitration from the workbench task dock; resolve with equal-weight file and UI outcomes plus optional audit reason; advance the queue in source context; preview and apply eligible bulk resolution; prove open conflicts block candidate activation; keep the dock collapsed when the queue is empty.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-CONFLICT-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
+
+  {
     id: "PARAM-ADMIN-DIALOG-001",
     priority: "P1",
     area: "parameters",

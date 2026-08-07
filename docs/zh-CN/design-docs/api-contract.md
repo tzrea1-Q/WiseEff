@@ -403,8 +403,10 @@ Admin 项目摘要（`GET/POST /api/v1/parameters/admin/projects`）同时返回
 | `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/recompute` | 重算 ready/blocked/failed/stale 候选影响；stale 会按当前活跃版本重定基。 |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/activate` | 以 `expectedCurrentVersionId` CAS 激活 ready 候选。新文件必须提供 `configSetId` + `role`。基过期返回 `409`（`reason: stale-base`），候选标为 `stale` 且保留工作配置。成功返回 `{ item, file, version }` 并审计。 |
 | `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/sync` | 对当前或指定版本与 DB diff 并 upsert `file_sync` 草稿。返回 `{ item: syncSummary }`。 |
-| `GET` | `/api/v1/projects/:projectId/parameter-file-conflicts` | 列出项目内 open 冲突。 |
-| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve` | 裁决冲突。请求体：`{ "resolution": "file" \| "ui" }`。 |
+| `GET` | `/api/v1/projects/:projectId/parameter-file-conflicts` | 列出项目内 open 冲突。每条含 `baseValue`、`parameterName` / `parameterModule`、可读 `fileVersionLabel`（及版本号/时间）、来源身份（`fileId`、`fileName`、`configSetId`、`nodePath`、`propertyName`，可选 `source` 定位）。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve` | 裁决冲突。请求体：`{ "resolution": "file" \| "ui", "reason?" }`。可选 `reason` 去空白后写入 `parameter-file-conflict-resolve` 审计 metadata。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/bulk-preview` | 批量裁决影响预览。请求体：`{ "resolution": "file" \| "ui", "conflictIds?" }`；省略 `conflictIds` 时预览项目全部 open 冲突。返回 `{ resolution, eligible, ineligible, impact }`。不合格原因：`not_found`、`already_resolved`、`wrong_project`、`missing_values`。 |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/bulk-resolve` | 仅对合格冲突 ID 应用同一裁决。请求体：`{ "resolution": "file" \| "ui", "conflictIds", "reason?" }`。返回 `{ resolved, skipped }`。 |
 
 上传请求体：
 

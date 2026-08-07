@@ -219,8 +219,10 @@ View routes require `canViewParameters`; upload, version upload, sync, and confl
 | `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/recompute` | Recompute impact for ready/blocked/failed/stale candidates; stale recomputation rebases against the current active version. |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/activate` | Activate a ready candidate with `expectedCurrentVersionId` CAS. New files require `configSetId` + `role`. Stale base returns `409` with `reason: stale-base`, marks the candidate `stale`, and preserves Working configuration. Success returns `{ item, file, version }` and audits activation. |
 | `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/sync` | Diff the current or requested version against DB and upsert `file_sync` drafts. Returns `{ item: syncSummary }`. |
-| `GET` | `/api/v1/projects/:projectId/parameter-file-conflicts` | List open file/UI draft conflicts for the project. |
-| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve` | Resolve one conflict. Body: `{ "resolution": "file" \| "ui" }`. |
+| `GET` | `/api/v1/projects/:projectId/parameter-file-conflicts` | List open file/UI draft conflicts for the project. Each item is enriched with `baseValue`, `parameterName` / `parameterModule`, human `fileVersionLabel` (and `fileVersionNumber` / times), source identities (`fileId`, `fileName`, `configSetId`, `nodePath`, `propertyName`, optional `source` locator). |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve` | Resolve one conflict. Body: `{ "resolution": "file" \| "ui", "reason?" }`. Optional trimmed `reason` is stored on `parameter-file-conflict-resolve` audit metadata. |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/bulk-preview` | Preview eligible bulk arbitration. Body: `{ "resolution": "file" \| "ui", "conflictIds?" }`. Omitting `conflictIds` previews all open project conflicts. Returns `{ resolution, eligible, ineligible, impact }` (`impact` summarizes eligible/ineligible counts, parameter names, file ids). Ineligible reasons: `not_found`, `already_resolved`, `wrong_project`, `missing_values`. |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/bulk-resolve` | Apply one resolution to eligible conflict ids only. Body: `{ "resolution": "file" \| "ui", "conflictIds", "reason?" }`. Returns `{ resolved, skipped }` where `skipped` mirrors ineligible preview rows. |
 
 Upload body:
 

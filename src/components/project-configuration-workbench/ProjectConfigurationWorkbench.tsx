@@ -38,6 +38,7 @@ import {
   workbenchActivityApps,
   type WorkbenchActivityRow
 } from "./workbenchActivityModel";
+import { WorkbenchConflictArbitrationDock } from "./WorkbenchConflictArbitrationDock";
 import {
   isCriticalDtsNodePath
 } from "@/components/parameters/DtsStructureBrowserPanel";
@@ -438,6 +439,25 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       })
       .finally(() => {
         if (!cancelled) setFilesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fileRepository, filesRetry, project.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fileRepository
+      .listConflicts(project.id)
+      .then((items) => {
+        if (!cancelled) {
+          setSyncConflicts(items.filter((item) => item.status === "open"));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSyncConflicts([]);
+        }
       });
     return () => {
       cancelled = true;
@@ -1417,9 +1437,23 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       }
 
       if (resolved.kind === "conflict") {
-        setActivityMissingNotice(
-          "已定位到冲突证据；冲突裁决面板尚未接入本工作台（#236），事件仍可读。"
-        );
+        setTasksOpen(true);
+        setActivityMissingNotice("");
+        void fileRepository
+          .listConflicts(project.id)
+          .then((items) => {
+            setSyncConflicts(items.filter((item) => item.status === "open"));
+          })
+          .catch(() => {
+            /* keep prior conflict list */
+          });
+        if (resolved.fileId) {
+          selectStructureTarget(
+            resolved.fileId,
+            resolved.nodePath ?? null,
+            resolved.propertyName ?? null
+          );
+        }
         return;
       }
 
@@ -1447,12 +1481,14 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       activityEvents,
       baselines,
       candidateId,
+      fileRepository,
       knownCandidateIds,
       configSets,
       onNavigate,
       project.id,
       projectFiles,
       search,
+      selectStructureTarget,
       selectedConfigSet,
       selectedMember?.fileId,
       structureNodes
@@ -3359,7 +3395,24 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
             {syncEvidence ? <p role="status">{syncEvidence}</p> : null}
             {exportEvidence ? <p role="status">{exportEvidence}</p> : null}
             {syncConflicts.length > 0 ? (
-              <p role="status">冲突 {syncConflicts.length}：同步后已刷新冲突列表，可在旧冲突视图继续仲裁。</p>
+              <WorkbenchConflictArbitrationDock
+                projectId={project.id}
+                repository={fileRepository}
+                conflicts={syncConflicts}
+                onConflictsChange={setSyncConflicts}
+                onQueueEmpty={() => setTasksOpen(false)}
+                onLocateConflict={(conflict) => {
+                  if (!conflict.fileId) return;
+                  selectStructureTarget(
+                    conflict.fileId,
+                    conflict.nodePath ?? conflict.sourceNodePath ?? null,
+                    conflict.propertyName ?? null
+                  );
+                  if (conflict.source?.startLine) {
+                    setFocusLineOverride(conflict.source.startLine);
+                  }
+                }}
+              />
             ) : null}
             {!syncEvidence && !exportEvidence && syncConflicts.length === 0 ? (
               <p>暂无同步或导出证据。手动同步与配置集导出结果会显示在这里。</p>

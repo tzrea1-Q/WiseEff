@@ -12,6 +12,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Current Active Plan
 
+- `exec-plans/completed/2026-08-07-project-configuration-workbench-conflict-arbitration.md`: Issue #235 Source-located three-way conflict arbitration — task-dock Conflicts, equal-weight outcomes, optional audit reason, eligible bulk with impact preview, activation blockers (branch `feat/project-configuration-workbench-conflict-arbitration`; closes TD-058).
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-structured-edit.md`: Issue #233 Structured DTS edit sessions in source context — typed inspector, session-changes dock, subset submit via existing CR flow, permission lock (branch `feat/project-configuration-workbench-structured-edit`).
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-activity-timeline.md`: Issue #239 contextual project Activity timeline replacing permanent audit banner — command-bar entry, scoped server audit projection, target restore, toast + refresh, PCW-D11/D15 (branch `feat/project-configuration-workbench-activity-timeline`).
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-file-config-ops.md`: Issue #236 File and Config set operations in contextual inspectors — create/configure, members/roles/order, ungrouped, manual sync, export, empty-set candidate path (branch `feat/project-configuration-workbench-file-config-ops`).

@@ -74,14 +74,60 @@ describe("createMockParameterFileRepository (ParameterFileRepository contract)",
       projectId: PROJECT_ID,
       status: "open",
       fileValue: expect.any(String),
-      uiDraftValue: expect.any(String)
+      uiDraftValue: expect.any(String),
+      baseValue: expect.any(String),
+      fileVersionLabel: expect.stringMatching(/^v\d+$/),
+      source: expect.objectContaining({
+        startLine: expect.any(Number),
+        startColumn: expect.any(Number),
+        endLine: expect.any(Number),
+        endColumn: expect.any(Number)
+      })
     });
 
-    const resolved = await repo.resolveConflict(PROJECT_ID, conflicts[0].id, "file");
+    const resolved = await repo.resolveConflict(PROJECT_ID, conflicts[0].id, {
+      resolution: "file",
+      reason: "prefer file after lab check"
+    });
     expect(resolved.status).toBe("resolved_file");
 
     const remaining = await repo.listConflicts(PROJECT_ID);
     expect(remaining.find((item) => item.id === conflicts[0].id)).toBeUndefined();
+  });
+
+  it("previewBulkConflictResolution and resolveConflictsBulk apply only to eligible ids", async () => {
+    const repo = createRepo();
+    const open = await repo.listConflicts(PROJECT_ID);
+    expect(open.length).toBeGreaterThan(0);
+    const conflictId = open[0].id;
+
+    const preview = await repo.previewBulkConflictResolution(PROJECT_ID, {
+      resolution: "ui",
+      conflictIds: [conflictId, "missing-conflict"]
+    });
+    expect(preview.resolution).toBe("ui");
+    expect(preview.eligible.map((item) => item.id)).toEqual([conflictId]);
+    expect(preview.ineligible).toEqual([
+      expect.objectContaining({ conflict: { id: "missing-conflict" }, reason: "not_found" })
+    ]);
+    expect(preview.impact).toMatchObject({
+      eligibleCount: 1,
+      ineligibleCount: 1,
+      parameterNames: expect.arrayContaining([expect.any(String)]),
+      fileIds: expect.arrayContaining([expect.any(String)])
+    });
+
+    const result = await repo.resolveConflictsBulk(PROJECT_ID, {
+      resolution: "ui",
+      conflictIds: [conflictId, "missing-conflict"],
+      reason: "bulk keep UI"
+    });
+    expect(result.resolved).toHaveLength(1);
+    expect(result.resolved[0]).toMatchObject({ id: conflictId, status: "resolved_ui" });
+    expect(result.skipped).toEqual([
+      expect.objectContaining({ conflict: { id: "missing-conflict" }, reason: "not_found" })
+    ]);
+    expect(await repo.listConflicts(PROJECT_ID)).toEqual([]);
   });
 
   it("createCandidate stages content without changing currentVersionId", async () => {

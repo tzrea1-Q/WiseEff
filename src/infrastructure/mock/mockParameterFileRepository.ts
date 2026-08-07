@@ -6,11 +6,15 @@ import type {
   DownloadParameterFileVersionResult,
   FileSyncSummary,
   ParameterFileCandidate,
-  ParameterFileConflictResolution,
+  ParameterFileConflictBulkIneligible,
+  ParameterFileConflictBulkPreview,
   ParameterFileRepository,
   ParameterFileSyncConflict,
+  PreviewBulkConflictResolutionInput,
   ProjectParameterFile,
   ProjectParameterFileVersion,
+  ResolveConflictsBulkInput,
+  ResolveParameterFileConflictInput,
   UploadParameterFileInput
 } from "@/application/ports/ParameterFileRepository";
 
@@ -79,7 +83,27 @@ function seedStore(): Store {
     fileValue: "true",
     uiDraftValue: "false",
     status: "open",
-    createdAt: MOCK_NOW
+    createdAt: MOCK_NOW,
+    baseValue: "false",
+    fileVersionNumber: 1,
+    fileVersionLabel: "v1",
+    fileVersionCreatedAt: MOCK_NOW,
+    fileDraftUpdatedAt: MOCK_NOW,
+    uiDraftUpdatedAt: MOCK_NOW,
+    fileId: DEFAULT_FILE_ID,
+    fileName: DEFAULT_FILE_NAME,
+    configSetId: "config-set-teaching",
+    nodePath: "/soc/demo_bool",
+    propertyName: "weak_source_sleep_enabled",
+    sourceNodePath: "/soc/demo_bool/weak_source_sleep_enabled",
+    source: {
+      startOffset: 42,
+      endOffset: 46,
+      startLine: 10,
+      startColumn: 4,
+      endLine: 10,
+      endColumn: 8
+    }
   };
 
   return {
@@ -118,6 +142,120 @@ function ensureProjectFiles(store: Store, projectId: string): ProjectParameterFi
     }
   }
   return seeded;
+}
+
+function ensureProjectConflicts(store: Store, projectId: string): ParameterFileSyncConflict[] {
+  ensureProjectFiles(store, projectId);
+  const conflicts = store.conflictsByProject.get(projectId);
+  if (conflicts) {
+    return conflicts;
+  }
+  const seeded = (store.conflictsByProject.get(DEFAULT_PROJECT_ID) ?? []).map((conflict) => ({
+    ...conflict,
+    id: `${conflict.id}-${projectId}`,
+    projectId
+  }));
+  store.conflictsByProject.set(projectId, seeded);
+  return seeded;
+}
+
+function isEligibleOpenConflict(conflict: ParameterFileSyncConflict, projectId: string): boolean {
+  return (
+    conflict.projectId === projectId &&
+    conflict.status === "open" &&
+    Boolean(conflict.fileValue) &&
+    Boolean(conflict.uiDraftValue)
+  );
+}
+
+function buildBulkImpact(eligible: ParameterFileSyncConflict[]) {
+  const parameterNames = [
+    ...new Set(eligible.map((conflict) => conflict.parameterName).filter((name): name is string => Boolean(name)))
+  ];
+  const fileIds = [
+    ...new Set(eligible.map((conflict) => conflict.fileId).filter((fileId): fileId is string => Boolean(fileId)))
+  ];
+  return {
+    eligibleCount: eligible.length,
+    ineligibleCount: 0,
+    parameterNames,
+    fileIds
+  };
+}
+
+function previewBulkConflicts(
+  store: Store,
+  projectId: string,
+  input: PreviewBulkConflictResolutionInput
+): ParameterFileConflictBulkPreview {
+  const projectConflicts = ensureProjectConflicts(store, projectId);
+  const openConflicts = projectConflicts.filter((item) => item.status === "open");
+
+  if (input.conflictIds === undefined) {
+    const eligible = openConflicts.filter((conflict) => isEligibleOpenConflict(conflict, projectId));
+    const impact = buildBulkImpact(eligible);
+    return {
+      resolution: input.resolution,
+      eligible: eligible.map((item) => ({ ...item })),
+      ineligible: [],
+      impact: { ...impact, ineligibleCount: 0 }
+    };
+  }
+
+  const byId = new Map(projectConflicts.map((conflict) => [conflict.id, conflict]));
+  const eligible: ParameterFileSyncConflict[] = [];
+  const ineligible: ParameterFileConflictBulkIneligible[] = [];
+
+  for (const conflictId of input.conflictIds) {
+    const open = openConflicts.find((item) => item.id === conflictId);
+    if (open && isEligibleOpenConflict(open, projectId)) {
+      eligible.push(open);
+      continue;
+    }
+
+    const found = open ?? byId.get(conflictId);
+    if (!found) {
+      ineligible.push({ conflict: { id: conflictId }, reason: "not_found" });
+      continue;
+    }
+    if (found.projectId !== projectId) {
+      ineligible.push({ conflict: { ...found }, reason: "wrong_project" });
+      continue;
+    }
+    if (found.status !== "open") {
+      ineligible.push({ conflict: { ...found }, reason: "already_resolved" });
+      continue;
+    }
+    ineligible.push({ conflict: { ...found }, reason: "missing_values" });
+  }
+
+  const impact = buildBulkImpact(eligible);
+  return {
+    resolution: input.resolution,
+    eligible: eligible.map((item) => ({ ...item })),
+    ineligible,
+    impact: {
+      ...impact,
+      ineligibleCount: ineligible.length
+    }
+  };
+}
+
+function resolveOpenConflict(
+  store: Store,
+  projectId: string,
+  conflictId: string,
+  resolution: ResolveParameterFileConflictInput["resolution"]
+): ParameterFileSyncConflict {
+  const conflicts = ensureProjectConflicts(store, projectId);
+  const conflict = conflicts.find((item) => item.id === conflictId);
+  if (!conflict || conflict.status !== "open") {
+    throw new Error(`Open conflict not found: ${conflictId}`);
+  }
+  conflict.status = resolution === "file" ? "resolved_file" : "resolved_ui";
+  conflict.resolvedAt = MOCK_NOW;
+  conflict.resolvedByUserId = "user-teaching";
+  return { ...conflict };
 }
 
 /**
@@ -232,30 +370,32 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
     },
 
     async listConflicts(projectId) {
-      ensureProjectFiles(store, projectId);
-      const conflicts = store.conflictsByProject.get(projectId);
-      if (!conflicts) {
-        const seeded = (store.conflictsByProject.get(DEFAULT_PROJECT_ID) ?? []).map((conflict) => ({
-          ...conflict,
-          id: `${conflict.id}-${projectId}`,
-          projectId
-        }));
-        store.conflictsByProject.set(projectId, seeded);
-        return seeded.filter((item) => item.status === "open").map((item) => ({ ...item }));
-      }
-      return conflicts.filter((item) => item.status === "open").map((item) => ({ ...item }));
+      return ensureProjectConflicts(store, projectId)
+        .filter((item) => item.status === "open")
+        .map((item) => ({ ...item }));
     },
 
-    async resolveConflict(projectId, conflictId, resolution: ParameterFileConflictResolution) {
-      const conflicts = store.conflictsByProject.get(projectId) ?? [];
-      const conflict = conflicts.find((item) => item.id === conflictId);
-      if (!conflict || conflict.status !== "open") {
-        throw new Error(`Open conflict not found: ${conflictId}`);
+    async resolveConflict(projectId, conflictId, input: ResolveParameterFileConflictInput) {
+      return resolveOpenConflict(store, projectId, conflictId, input.resolution);
+    },
+
+    async previewBulkConflictResolution(projectId, input: PreviewBulkConflictResolutionInput) {
+      return previewBulkConflicts(store, projectId, input);
+    },
+
+    async resolveConflictsBulk(projectId, input: ResolveConflictsBulkInput) {
+      const preview = previewBulkConflicts(store, projectId, {
+        resolution: input.resolution,
+        conflictIds: input.conflictIds
+      });
+      const resolved: ParameterFileSyncConflict[] = [];
+      for (const conflict of preview.eligible) {
+        resolved.push(resolveOpenConflict(store, projectId, conflict.id, input.resolution));
       }
-      conflict.status = resolution === "file" ? "resolved_file" : "resolved_ui";
-      conflict.resolvedAt = MOCK_NOW;
-      conflict.resolvedByUserId = "user-teaching";
-      return { ...conflict };
+      return {
+        resolved,
+        skipped: preview.ineligible
+      };
     },
 
     async listCandidates(projectId, options) {

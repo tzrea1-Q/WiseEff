@@ -33,12 +33,12 @@
 - **TD-053（overlay 停用无接班约束、superseded 无组织侧呈现）：** 停用会直接撤走解析覆盖；被平台晋升后置为 `superseded` 的组织行在其自身治理界面没有定义好的呈现方式。见 D5、D8。
 - **TD-056（参数文件版本无法回滚、操作人只有 ID）：** 版本历史已补齐版本号、来源、时间、操作人与逐版本下载（POD-C6），但没有「回滚到该版本」：`ParameterFileRepository` 缺少把某版本设为当前版本的操作；操作人展示的是原始用户 ID，因为端口只带 `createdByUserId`。下一步：在参数文件 API 与端口上补 promote/rollback 版本操作，并把用户 ID 解析成显示名，同轮扩展版本列表。
 - **TD-057（项目运营页缺少真实配置修订来源）：** 为落实 POD-C1，`ConfigSetBaselinePanel` 不再校验凭空构造的 `revision-teaching-1`，因此项目运营页暂不提供「校验修订」：该页没有任何地方选择配置修订，mock `getTopology` 也只是回显传入的 revision key。影响：修订门禁（含发布前 `requiresConfirmation` 拦截）只能在参数工作台触发，而不是在真正发布基线的界面。下一步：通过拓扑接缝给配置集视图接入真实修订列表/选择，再按该 ID 恢复门禁入口。
-- **TD-058（冲突裁决没有批量处理，来源版本仍是内部 ID）：** 冲突裁决按 POD-G6 补齐了对称权重、出现时间、来源文件版本、开放数量与可填原因，但仍是一条一条确认：面板没有多选，也没有「文件侧全部保留」这类动作，`ParameterFileRepository.resolveSyncConflict` 只支持单条；来源版本展示的是原始 `fileVersionId`，因为冲突载荷里没有版本号。影响：一次涉及多参数的文件同步要点很多次确认，来源版本读起来像内部 ID。下一步：在参数文件 API 与端口上补批量裁决操作，用一个确认框说明整体影响范围，并在冲突载荷里带上可读的版本标识。
 - **TD-059（其余弹窗尚未迁到共享原语）：** `ModalDialog` / `ConfirmDialog`（`src/components/common/`）已承载弹窗契约——焦点陷阱与归还、背景 `inert`、只有最上层响应 Escape、遮罩关闭成对判定、统一 z-index 刻度——但目前只有 `ProjectAdminFormDialog`、`DeleteProjectDialog` 与治理确认框接入，其他参数后台、工作台与调试弹窗仍各自处理 keydown 与遮罩点击。影响：POD-F1–F5 记录的焦点、层叠与关闭故障在未迁移的弹窗上依然存在，并且容易再长出一套偏离契约的实现。下一步：各自按计划迁移，先从 `ParameterSpecDetailDialog`（`2026-08-03-parameter-spec-editor-fidelity.md` 第 19–23 项）开始。
 - **TD-055（产品作用域策略目标面未建）：** 定义编辑器与 `PATCH /api/v2/parameter-specs/:specId` 已按 SE-D1 移除 `policyTarget` 写入；`parameter_policy_targets` 表与三处只读 join 仍在，但无生产写入。初始化仍优先 `policyTarget ?? schemaDefault`。后续要么建产品作用域治理面，要么用 ADR 正式退役表与读者。
 
 ## 近期关闭项
 
+- **TD-058（冲突裁决批量处理与可读版本标签）：** 已于 2026-08-07 经 #235（`feat/project-configuration-workbench-conflict-arbitration`）关闭。冲突列表 DTO 含 `baseValue` 与可读 `fileVersionLabel`；裁决可写 `reason` 进审计；`bulk-preview` / `bulk-resolve` 落地 API/端口/工作台冲突坞并带影响预览；验收 `PROJ-CONFIG-CONFLICT-001`。详见英文版 Completed 表。
 - **TD-015（节点调试快照回滚 UI）：** 已于 2026-08-05 在 `feat/node-debugging-ui-closure`（C2）关闭。会话事件 hydrate、回滚 UI 与高风险写确认已落地。详见英文版 Completed 表。
 - **TD-060（项目参数初始化）：** 已于 2026-08-05 在 `feat/project-parameter-initialization`（C1）关闭。迁移 `0091` + draft/review API；语义 binding 合并/物化；Port/HTTP/mock；API hydrate + 锁；设计修订告别扁平 `recommendedValue` SSOT。详见英文版 Completed 表。
 - **TD-061（参数后台审计提示）：** 已于 2026-08-05 在 `feat/parameter-admin-audit-hints`（C3）关闭。去掉 `PUSH_AUDIT_HINT`；后台最近审计条为 `listAuditEvents` 投影。详见英文版 Completed 表。

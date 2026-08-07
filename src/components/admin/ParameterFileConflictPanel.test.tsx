@@ -20,8 +20,10 @@ function createStubRepository(overrides: Partial<ParameterFileRepository> = {}):
     syncFile: vi.fn(),
     listConflicts: vi.fn().mockResolvedValue([]),
     resolveConflict: vi.fn(),
+    previewBulkConflictResolution: vi.fn(),
+    resolveConflictsBulk: vi.fn(),
     ...overrides
-  };
+  } as ParameterFileRepository;
 }
 
 function openConflict(
@@ -208,7 +210,7 @@ describe("ParameterFileConflictPanel", () => {
     fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认裁决" }));
 
     await waitFor(() => {
-      expect(repository.resolveConflict).toHaveBeenCalledWith("atlas", "conflict-3", "file");
+      expect(repository.resolveConflict).toHaveBeenCalledWith("atlas", "conflict-3", { resolution: "file" });
     });
     expect(createParameterFileClient).not.toHaveBeenCalled();
   });
@@ -273,5 +275,9 @@ describe("ParameterFileConflictPanel", () => {
         expect.objectContaining({ resolution: "ui", reason: "以硬件实测值为准" })
       )
     );
+    expect(repository.resolveConflict).toHaveBeenCalledWith("atlas", "conflict-9", {
+      resolution: "ui",
+      reason: "以硬件实测值为准"
+    });
   });
 });
