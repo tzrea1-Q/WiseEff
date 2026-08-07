@@ -41,6 +41,7 @@ import {
 import { getProjectParameterFileContent, uploadProjectParameterFile } from "./service";
 import {
   abandonCandidate,
+  activateCandidate,
   createCandidate,
   getCandidate,
   getCandidateContent,
@@ -52,6 +53,7 @@ import { searchProjectDts } from "./dtsSearchService";
 import { getParameterFileVersionStructure } from "./structuralReadService";
 import { syncFileVersion } from "./syncService";
 import type { ParameterFileFormat, ProjectParameterFileCandidateDto } from "./types";
+import { configSetRoleSchema } from "./schemas";
 
 function firstQueryValue(value: string | string[] | undefined) {
   if (Array.isArray(value)) {
@@ -102,6 +104,12 @@ const createCandidateBodySchema = z.object({
   fileName: z.string().min(1),
   contentBase64: z.string().min(1),
   fileId: z.string().min(1).optional()
+});
+
+const activateCandidateBodySchema = z.object({
+  expectedCurrentVersionId: z.string().min(1).nullable().optional(),
+  configSetId: z.string().min(1).optional(),
+  role: configSetRoleSchema.optional()
 });
 
 const paramsWithCandidateIdSchema = paramsWithProjectIdSchema.extend({
@@ -703,5 +711,35 @@ export function registerParameterFileRoutes(
       { requestId: request.requestId }
     );
     return { status: 200, body: { item: toPublicCandidate(item) } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/activate", async (request) => {
+    const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
+    const body = parseWithSchema(activateCandidateBodySchema, request.body ?? {}, "Invalid candidate activation payload.");
+    const result = await activateCandidate(
+      db,
+      objectStore,
+      auth,
+      {
+        projectId: params.projectId,
+        candidateId: params.candidateId,
+        expectedCurrentVersionId: body.expectedCurrentVersionId,
+        configSetId: body.configSetId,
+        role: body.role
+      },
+      { requestId: request.requestId }
+    );
+    return {
+      status: 200,
+      body: {
+        item: toPublicCandidate(result.candidate),
+        file: result.file,
+        version: result.version
+      }
+    };
   });
 }

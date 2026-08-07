@@ -57,14 +57,16 @@ export type InsertFileVersionInput = {
   createdByUserId?: string;
 };
 
-/** Staged candidate lifecycle states (ADR-0018). Activation states belong to #232. */
+/** Staged candidate lifecycle states (ADR-0018 / #232). */
 export type CandidateStatus =
   | "uploading"
   | "parsing"
   | "ready"
   | "blocked"
   | "failed"
-  | "abandoned";
+  | "abandoned"
+  | "stale"
+  | "active";
 
 export type CandidateDiagnosticSeverity = "error" | "warning" | "info";
 
@@ -136,6 +138,9 @@ export type ProjectParameterFileCandidateDto = {
   createdByUserId?: string;
   abandonedAt?: string;
   abandonedByUserId?: string;
+  activatedAt?: string;
+  activatedByUserId?: string;
+  activatedVersionId?: string;
 };
 
 export type InsertParameterFileCandidateInput = {

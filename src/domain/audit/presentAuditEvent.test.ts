@@ -63,4 +63,17 @@ describe("presentAuditEvent", () => {
       newValue: "3200"
     });
   });
+
+  it("labels parameter-file and candidate kinds in product language", () => {
+    const presentation = presentAuditEvent({
+      ...baseEvent,
+      kind: "parameter-file-candidate-create",
+      action: "create",
+      targetType: "project-parameter-file-candidate",
+      targetId: "cand-1",
+      metadata: { fileName: "board.dts", status: "ready" }
+    });
+    expect(presentation.kindLabel).toBe("创建候选文件版本");
+    expect(presentation.headline).toContain("创建");
+  });
 });

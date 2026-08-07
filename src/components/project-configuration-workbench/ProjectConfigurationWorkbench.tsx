@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, FileCode2, FolderTree, Info, Lock, PanelRight, Rows3, Search, TriangleAlert } from "lucide-react";
+import { Activity, ChevronLeft, ChevronRight, FileCode2, FolderTree, Info, Lock, PanelRight, Rows3, Search, TriangleAlert } from "lucide-react";
 
 import type {
   ConfigSetRole,
@@ -21,6 +21,20 @@ import {
   ProjectPrimaryDtsViewer,
   type DtsViewerFocusSpan
 } from "@/components/parameter-topology/ProjectPrimaryDtsViewer";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import {
+  GovernanceToast,
+  useGovernanceToast
+} from "@/components/parameter-admin-next/useGovernanceToast";
+import { mapApiAuditEventToView } from "@/domain/audit/mapAuditEventView";
+import type { AuditEventListResponse, AuditEventView, ListAuditEventsParams } from "@/domain/audit/types";
+import { createAuditClient } from "@/infrastructure/http/auditClient";
+import {
+  presentWorkbenchActivity,
+  resolveWorkbenchActivityTarget,
+  workbenchActivityApps,
+  type WorkbenchActivityRow
+} from "./workbenchActivityModel";
 import {
   isCriticalDtsNodePath
 } from "@/components/parameters/DtsStructureBrowserPanel";
@@ -66,6 +80,7 @@ export type ProjectConfigurationWorkbenchProps = {
   canEdit?: boolean;
   /** When false, regulator/thermal critical nodes stay readable but write stays locked. Defaults to true. */
   canEditCritical?: boolean;
+  listAuditEvents?: (params?: ListAuditEventsParams) => Promise<AuditEventListResponse>;
 };
 
 const ROLE_LABELS: Record<ConfigSetRole, string> = {
@@ -97,6 +112,7 @@ type WorkbenchPathPatch = {
   sourceMode?: string | null;
   version?: string | null;
   candidate?: string | null;
+  inspector?: string | null;
 };
 
 function formatWorkbenchPath(projectId: string, search: string, patch: WorkbenchPathPatch) {
@@ -113,6 +129,11 @@ function formatWorkbenchPath(projectId: string, search: string, patch: Workbench
   setOrDelete("sourceMode", patch.sourceMode);
   setOrDelete("version", patch.version);
   setOrDelete("candidate", patch.candidate);
+  if (patch.inspector === undefined) {
+    params.delete("inspector");
+  } else {
+    setOrDelete("inspector", patch.inspector);
+  }
   return `/parameter-admin/projects/${encodeURIComponent(projectId)}/configuration?${params.toString()}`;
 }
 
@@ -200,8 +221,17 @@ export function ProjectConfigurationWorkbench({
   dtsRepository,
   fileRepository,
   canEdit = true,
-  canEditCritical = true
+  canEditCritical = true,
+  listAuditEvents
 }: ProjectConfigurationWorkbenchProps) {
+  const listProjectActivity = useCallback(
+    (params?: ListAuditEventsParams) =>
+      listAuditEvents
+        ? listAuditEvents(params)
+        : createAuditClient().listAuditEvents(params),
+    [listAuditEvents]
+  );
+  const { message: toastMessage, showToast } = useGovernanceToast();
   const [configSets, setConfigSets] = useState<DtsConfigSet[]>([]);
   const [projectFiles, setProjectFiles] = useState<ProjectParameterFile[]>([]);
   const [members, setMembers] = useState<DtsConfigSetMemberFile[]>([]);
@@ -238,8 +268,18 @@ export function ProjectConfigurationWorkbench({
   const [candidateSource, setCandidateSource] = useState("");
   const [candidateLoading, setCandidateLoading] = useState(false);
   const [candidateError, setCandidateError] = useState("");
-  const [candidateActionMessage, setCandidateActionMessage] = useState("");
   const [uploadingCandidate, setUploadingCandidate] = useState(false);
+  const [activityEvents, setActivityEvents] = useState<AuditEventView[]>([]);
+  const [activityRows, setActivityRows] = useState<WorkbenchActivityRow[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState("");
+  const [activityMissingNotice, setActivityMissingNotice] = useState("");
+  const [activityRefreshToken, setActivityRefreshToken] = useState(0);
+  const [knownCandidateIds, setKnownCandidateIds] = useState<string[]>([]);
+const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
+  const [activatingCandidate, setActivatingCandidate] = useState(false);
+  const [activateRole, setActivateRole] = useState<ConfigSetRole>("overlay");
+  const [activateError, setActivateError] = useState("");
   const candidateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [lastVisibleLine, setLastVisibleLine] = useState<number | null>(null);
   const [restoredScrollLine, setRestoredScrollLine] = useState<number | null>(null);
@@ -439,19 +479,28 @@ export function ProjectConfigurationWorkbench({
     propertyName: selectedPropertyName
   });
   const inspectorLevel: InspectorLevel =
-    inspectorLevelOverride &&
-    // Allow temporary config-set focus while a file remains selected in the source canvas.
-    (inspectorLevelOverride === "config-set" ||
-      inspectorLevelOverride === derivedInspectorLevel ||
-      (inspectorLevelOverride === "file" && derivedInspectorLevel !== "config-set") ||
-      (inspectorLevelOverride === "node" &&
-        (derivedInspectorLevel === "node" || derivedInspectorLevel === "property")))
-      ? inspectorLevelOverride
-      : derivedInspectorLevel;
+    inspectorLevelOverride === "activity"
+      ? "activity"
+      : inspectorLevelOverride &&
+          // Allow temporary config-set focus while a file remains selected in the source canvas.
+          (inspectorLevelOverride === "config-set" ||
+            inspectorLevelOverride === derivedInspectorLevel ||
+            (inspectorLevelOverride === "file" && derivedInspectorLevel !== "config-set") ||
+            (inspectorLevelOverride === "node" &&
+              (derivedInspectorLevel === "node" || derivedInspectorLevel === "property")))
+        ? inspectorLevelOverride
+        : derivedInspectorLevel;
 
   useEffect(() => {
     setInspectorLevelOverride(null);
   }, [selectedMember?.fileId, selectedNodePath, selectedPropertyName]);
+
+  useEffect(() => {
+    if (queryValue(search, "inspector") === "activity") {
+      setInspectorLevelOverride("activity");
+      setInspectorOpen(true);
+    }
+  }, [search]);
 
   useEffect(() => {
     if (selectedNodePath || selectedPropertyName) {
@@ -937,6 +986,24 @@ export function ProjectConfigurationWorkbench({
   const handleInspectorBack = useCallback(() => {
     if (!selectedConfigSet) return;
     const target = inspectorBackTarget(inspectorLevel);
+    setActivityMissingNotice("");
+    if (inspectorLevel === "activity") {
+      setInspectorLevelOverride(derivedInspectorLevel === "config-set" ? null : derivedInspectorLevel);
+      setInspectorOpen(true);
+      onNavigate(
+        formatWorkbenchPath(project.id, search, {
+          configSet: selectedConfigSet.id,
+          file: selectedMember?.fileId ?? queryValue(search, "file"),
+          node: selectedNodePath,
+          property: selectedPropertyName,
+          sourceMode: canvasModeQueryValue(canvasMode),
+          version: historyVersionId,
+          candidate: candidateId,
+          inspector: null
+        })
+      );
+      return;
+    }
     setInspectorLevelOverride(target.level);
     setInspectorOpen(true);
     const nextNode = target.clearNode ? null : selectedNodePath;
@@ -955,6 +1022,8 @@ export function ProjectConfigurationWorkbench({
     );
   }, [
     canvasMode,
+    candidateId,
+    derivedInspectorLevel,
     historyVersionId,
     inspectorLevel,
     onNavigate,
@@ -965,6 +1034,188 @@ export function ProjectConfigurationWorkbench({
     selectedNodePath,
     selectedPropertyName
   ]);
+
+  const refreshActivityTimeline = useCallback(async () => {
+    setActivityLoading(true);
+    setActivityError("");
+    try {
+      const [response, candidates] = await Promise.all([
+        listProjectActivity({
+          projectId: project.id,
+          apps: workbenchActivityApps(),
+          limit: 40
+        }),
+        fileRepository.listCandidates(project.id, { includeAbandoned: false }).catch(() => [])
+      ]);
+      const views = response.items.map(mapApiAuditEventToView);
+      setActivityEvents(views);
+      setActivityRows(views.map(presentWorkbenchActivity));
+      setKnownCandidateIds(candidates.map((item) => item.id));
+    } catch (error: unknown) {
+      setActivityError(error instanceof Error ? error.message : "加载项目活动失败");
+      setActivityEvents([]);
+      setActivityRows([]);
+    } finally {
+      setActivityLoading(false);
+    }
+  }, [fileRepository, listProjectActivity, project.id]);
+
+  useEffect(() => {
+    if (inspectorLevel !== "activity" || !inspectorOpen) return;
+    void refreshActivityTimeline();
+  }, [inspectorLevel, inspectorOpen, refreshActivityTimeline, activityRefreshToken]);
+
+  const openActivityInspector = useCallback(() => {
+    if (!selectedConfigSet) return;
+    setActivityMissingNotice("");
+    setInspectorLevelOverride("activity");
+    setInspectorOpen(true);
+    onNavigate(
+      formatWorkbenchPath(project.id, search, {
+        configSet: selectedConfigSet.id,
+        file: selectedMember?.fileId ?? queryValue(search, "file"),
+        node: selectedNodePath,
+        property: selectedPropertyName,
+        sourceMode: canvasModeQueryValue(canvasMode),
+        version: historyVersionId,
+        candidate: candidateId,
+        inspector: "activity"
+      })
+    );
+  }, [
+    canvasMode,
+    candidateId,
+    historyVersionId,
+    onNavigate,
+    project.id,
+    search,
+    selectedConfigSet,
+    selectedMember?.fileId,
+    selectedNodePath,
+    selectedPropertyName
+  ]);
+
+  const handleActivityEventSelect = useCallback(
+    (eventId: string) => {
+      if (!selectedConfigSet) return;
+      const event = activityEvents.find((item) => item.id === eventId);
+      if (!event) return;
+      const catalog = {
+        configSetIds: new Set(configSets.map((item) => item.id)),
+        fileIds: new Set(projectFiles.map((item) => item.id)),
+        candidateIds: new Set(
+          [
+            ...knownCandidateIds,
+            activeCandidate?.id,
+            candidateId
+          ].filter((value): value is string => Boolean(value))
+        ),
+        baselineIds: new Set(baselines.map((item) => item.id)),
+        knownNodePathsByFileId: new Map([
+          [selectedMember?.fileId ?? "", new Set(structureNodes.map((node) => node.nodePath))]
+        ])
+      };
+      const resolved = resolveWorkbenchActivityTarget(event, catalog);
+      if (resolved.missing) {
+        setActivityMissingNotice(resolved.missingReason ?? "该活动目标已不可用。");
+        return;
+      }
+      setActivityMissingNotice("");
+      setInspectorLevelOverride(null);
+      setInspectorOpen(true);
+
+      if (resolved.kind === "config-set" && resolved.configSetId) {
+        onNavigate(
+          formatWorkbenchPath(project.id, search, {
+            configSet: resolved.configSetId,
+            file: null,
+            node: null,
+            property: null,
+            sourceMode: null,
+            version: null,
+            candidate: null,
+            inspector: null
+          })
+        );
+        setInspectorLevelOverride("config-set");
+        return;
+      }
+
+      if (resolved.kind === "candidate" && resolved.candidateId) {
+        onNavigate(
+          formatWorkbenchPath(project.id, search, {
+            configSet: selectedConfigSet.id,
+            file: resolved.fileId ?? selectedMember?.fileId ?? null,
+            node: null,
+            property: null,
+            sourceMode: "candidate",
+            version: null,
+            candidate: resolved.candidateId,
+            inspector: null
+          })
+        );
+        return;
+      }
+
+      if (resolved.kind === "baseline") {
+        setActivityMissingNotice(
+          resolved.missing
+            ? resolved.missingReason ?? "发布基线已不存在；事件仍可作为只读证据。"
+            : "已定位到发布基线身份；基线对比入口尚未接入，事件仍可作为只读证据。"
+        );
+        return;
+      }
+
+      if (resolved.kind === "conflict") {
+        setActivityMissingNotice(
+          "已定位到冲突证据；冲突裁决面板尚未接入本工作台（#236），事件仍可读。"
+        );
+        return;
+      }
+
+      if (resolved.fileId) {
+        if (resolved.nodePath) setSelectedNodePath(resolved.nodePath);
+        else setSelectedNodePath(null);
+        if (resolved.propertyName) setSelectedPropertyName(resolved.propertyName);
+        else setSelectedPropertyName(null);
+        onNavigate(
+          formatWorkbenchPath(project.id, search, {
+            configSet: selectedConfigSet.id,
+            file: resolved.fileId,
+            node: resolved.nodePath ?? null,
+            property: resolved.propertyName ?? null,
+            sourceMode: null,
+            version: null,
+            candidate: null,
+            inspector: null
+          })
+        );
+      }
+    },
+    [
+      activeCandidate?.id,
+      activityEvents,
+      baselines,
+      candidateId,
+      knownCandidateIds,
+      configSets,
+      onNavigate,
+      project.id,
+      projectFiles,
+      search,
+      selectedConfigSet,
+      selectedMember?.fileId,
+      structureNodes
+    ]
+  );
+
+  const notifyMutation = useCallback(
+    (message: string) => {
+      showToast(message);
+      setActivityRefreshToken((value) => value + 1);
+    },
+    [showToast]
+  );
 
   const enterCanvasMode = useCallback(
     (mode: WorkbenchCanvasMode, versionId: string | null) => {
@@ -1310,16 +1561,28 @@ export function ProjectConfigurationWorkbench({
         </div>
         <div className="configuration-workbench__unavailable-actions" aria-label="后续阶段操作">
           {!narrowViewport ? (
-            <button
-              className="button subtle configuration-workbench__inspector-toggle"
-              type="button"
-              aria-label="检查器"
-              aria-expanded={inspectorOpen}
-              onClick={() => setInspectorOpen((open) => !open)}
-            >
-              <PanelRight size={16} aria-hidden="true" />
-              检查器
-            </button>
+            <>
+              <button
+                className="button subtle configuration-workbench__activity-toggle"
+                type="button"
+                aria-label="活动"
+                aria-pressed={inspectorOpen && inspectorLevel === "activity"}
+                onClick={openActivityInspector}
+              >
+                <Activity size={16} aria-hidden="true" />
+                活动
+              </button>
+              <button
+                className="button subtle configuration-workbench__inspector-toggle"
+                type="button"
+                aria-label="检查器"
+                aria-expanded={inspectorOpen}
+                onClick={() => setInspectorOpen((open) => !open)}
+              >
+                <PanelRight size={16} aria-hidden="true" />
+                检查器
+              </button>
+            </>
           ) : null}
           <input
             ref={candidateFileInputRef}
@@ -1332,7 +1595,6 @@ export function ProjectConfigurationWorkbench({
               event.target.value = "";
               if (!file || !selectedConfigSet) return;
               setUploadingCandidate(true);
-              setCandidateActionMessage("");
               setCandidateError("");
               void (async () => {
                 try {
@@ -1365,7 +1627,7 @@ export function ProjectConfigurationWorkbench({
                       property: null
                     })
                   );
-                  setCandidateActionMessage(
+                  notifyMutation(
                     candidate.status === "failed"
                       ? "候选解析失败，活跃源码未改动；可查看诊断后放弃。"
                       : "候选已创建，工作配置与活跃版本未改动。"
@@ -1398,6 +1660,10 @@ export function ProjectConfigurationWorkbench({
           <button className="button subtle configuration-workbench__mobile-tool" type="button" aria-label="源结构" aria-expanded={treeOpen} onClick={() => setTreeOpen((open) => !open)}>
             <FolderTree size={16} aria-hidden="true" />
             源结构
+          </button>
+          <button className="button subtle configuration-workbench__mobile-tool" type="button" aria-label="活动" aria-pressed={inspectorOpen && inspectorLevel === "activity"} onClick={openActivityInspector}>
+            <Activity size={16} aria-hidden="true" />
+            活动
           </button>
           <button className="button subtle configuration-workbench__mobile-tool" type="button" aria-label="检查器" aria-expanded={inspectorOpen} onClick={() => setInspectorOpen((open) => !open)}>
             <PanelRight size={16} aria-hidden="true" />
@@ -1533,7 +1799,7 @@ export function ProjectConfigurationWorkbench({
               {!membersLoading && !membersError && selectedMembers.length === 0 ? (
                 <div className="configuration-workbench__empty">
                   <strong>当前配置集没有成员文件</strong>
-                  <p>候选上传与明确激活将在后续阶段提供；本阶段不会改变工作配置。</p>
+                  <p>可上传候选文件版本；激活新文件时需显式选择配置集成员角色，上传本身不会改变工作配置。</p>
                 </div>
               ) : null}
               <div role="tree" aria-label={`${selectedConfigSet.name} 成员文件`} className="configuration-workbench__member-tree">
@@ -1754,11 +2020,6 @@ export function ProjectConfigurationWorkbench({
                 模式，不能编辑，也不会改变工作配置。
               </p>
             ) : null}
-            {candidateActionMessage ? (
-              <p className="configuration-workbench__mode-banner" role="status">
-                {candidateActionMessage}
-              </p>
-            ) : null}
             {candidateError ? (
               <div className="configuration-workbench__setup-state" role="alert">
                 {candidateError}
@@ -1922,13 +2183,15 @@ export function ProjectConfigurationWorkbench({
                 <div>
                   <span>检查器</span>
                   <strong>
-                    {inspectorLevel === "property"
-                      ? selectedPropertyName
-                      : inspectorLevel === "node"
-                        ? selectedNodePath
-                        : inspectorLevel === "file"
-                          ? selectedMember?.fileName
-                          : selectedConfigSet.name}
+                    {inspectorLevel === "activity"
+                      ? "项目活动"
+                      : inspectorLevel === "property"
+                        ? selectedPropertyName
+                        : inspectorLevel === "node"
+                          ? selectedNodePath
+                          : inspectorLevel === "file"
+                            ? selectedMember?.fileName
+                            : selectedConfigSet.name}
                   </strong>
                 </div>
                 <div className="configuration-workbench__inspector-actions">
@@ -1962,7 +2225,9 @@ export function ProjectConfigurationWorkbench({
                         ? "文件"
                         : inspectorLevel === "node"
                           ? "节点"
-                          : "属性"}
+                          : inspectorLevel === "activity"
+                            ? "活动"
+                            : "属性"}
                   </dd>
                 </div>
                 <div>
@@ -2055,7 +2320,7 @@ export function ProjectConfigurationWorkbench({
                       </div>
                     ) : null}
                     <div className="configuration-workbench__inspector-actions">
-                      {activeCandidate.status === "blocked" ? (
+                      {activeCandidate.status === "blocked" || activeCandidate.status === "stale" ? (
                         <button
                           className="button subtle"
                           type="button"
@@ -2067,7 +2332,11 @@ export function ProjectConfigurationWorkbench({
                                   activeCandidate.id
                                 );
                                 setActiveCandidate(updated);
-                                setCandidateActionMessage("已按当前阻断条件重算候选影响。");
+                                notifyMutation(
+                                  updated.status === "ready"
+                                    ? "已按当前基重算候选影响，可再次审查后激活。"
+                                    : "已按当前阻断条件重算候选影响。"
+                                );
                               } catch (error: unknown) {
                                 setCandidateError(
                                   error instanceof Error ? error.message : "候选重算失败。"
@@ -2079,7 +2348,21 @@ export function ProjectConfigurationWorkbench({
                           重算影响
                         </button>
                       ) : null}
-                      {["ready", "blocked", "failed"].includes(activeCandidate.status) ? (
+                      {activeCandidate.status === "ready" ? (
+                        <button
+                          className="button primary"
+                          type="button"
+                          data-testid="activate-candidate"
+                          onClick={() => {
+                            setActivateError("");
+                            setActivateRole("overlay");
+                            setActivateConfirmOpen(true);
+                          }}
+                        >
+                          激活候选
+                        </button>
+                      ) : null}
+                      {["ready", "blocked", "failed", "stale"].includes(activeCandidate.status) ? (
                         <button
                           className="button subtle"
                           type="button"
@@ -2091,7 +2374,7 @@ export function ProjectConfigurationWorkbench({
                                   activeCandidate.id
                                 );
                                 setActiveCandidate(abandoned);
-                                setCandidateActionMessage("候选已放弃；工作配置与配置集成员未改动。");
+                                notifyMutation("候选已放弃；工作配置与配置集成员未改动。");
                                 if (selectedConfigSet) {
                                   onNavigate(
                                     formatWorkbenchPath(project.id, search, {
@@ -2115,6 +2398,78 @@ export function ProjectConfigurationWorkbench({
                         </button>
                       ) : null}
                     </div>
+                  </>
+                ) : null}
+                {inspectorLevel === "activity" ? (
+                  <>
+                    <div>
+                      <dt>活动时间线</dt>
+                      <dd>当前组织与项目范围内的服务器审计投影</dd>
+                    </div>
+                    {activityMissingNotice ? (
+                      <div>
+                        <dt>目标状态</dt>
+                        <dd>
+                          <p role="status" aria-label="活动目标不可用">
+                            {activityMissingNotice}
+                          </p>
+                        </dd>
+                      </div>
+                    ) : null}
+                    {activityLoading ? (
+                      <div>
+                        <dt>加载</dt>
+                        <dd role="status">正在加载项目活动…</dd>
+                      </div>
+                    ) : null}
+                    {activityError ? (
+                      <div>
+                        <dt>失败</dt>
+                        <dd>
+                          <p role="alert">{activityError}</p>
+                          <button
+                            className="button subtle"
+                            type="button"
+                            onClick={() => setActivityRefreshToken((value) => value + 1)}
+                          >
+                            重试活动
+                          </button>
+                        </dd>
+                      </div>
+                    ) : null}
+                    {!activityLoading && !activityError && activityRows.length === 0 ? (
+                      <div>
+                        <dt>空态</dt>
+                        <dd role="status">暂无项目活动记录</dd>
+                      </div>
+                    ) : null}
+                    {!activityLoading && activityRows.length > 0 ? (
+                      <div>
+                        <dt>事件</dt>
+                        <dd>
+                          <ul className="configuration-workbench__activity-list" aria-label="项目活动事件">
+                            {activityRows.map((row) => (
+                              <li key={row.id}>
+                                <button
+                                  type="button"
+                                  className="button subtle configuration-workbench__activity-item"
+                                  aria-label={`${row.action} · ${row.targetLabel}`}
+                                  onClick={() => handleActivityEventSelect(row.id)}
+                                >
+                                  <span className="configuration-workbench__activity-action">
+                                    {row.action}
+                                  </span>
+                                  <span className="configuration-workbench__activity-meta">
+                                    {row.actor} · {row.targetLabel} · {row.outcome} · {row.timeLabel}
+                                  </span>
+                                  <time dateTime={row.createdAtIso || undefined}>{row.absoluteTime}</time>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </dd>
+                      </div>
+                    ) : null}
                   </>
                 ) : null}
                 {inspectorLevel === "config-set" ? (
@@ -2347,7 +2702,7 @@ export function ProjectConfigurationWorkbench({
               ) : null}
               <p className="configuration-workbench__read-only-note">
                 {canEdit
-                  ? "源码画布保持只读；整文件替换请走候选文件版本。属性改动在类型化检查器中编辑，并进入会话变更坞提交。"
+                  ? "源码画布保持只读；整文件替换请走候选文件版本。属性改动在类型化检查器中编辑，并进入会话变更坞提交。候选激活需确认影响范围。"
                   : "当前检查器为只读上下文。画布模式：" +
                     canvasMode +
                     "。缺少参数修改权限时仍可浏览结构与源码。"}
@@ -2356,6 +2711,120 @@ export function ProjectConfigurationWorkbench({
           ) : null}
         </div>
       )}
+
+      <ConfirmDialog
+        open={activateConfirmOpen && activeCandidate?.status === "ready"}
+        title="确认激活候选"
+        description={
+          <div>
+            <p>
+              将把候选 <code>{activeCandidate?.fileName}</code> 晋升为工作配置的活跃版本。此操作会改变后续基线可发布内容。
+            </p>
+            <ul>
+              <li>
+                对照活跃版本：{" "}
+                <code className="mono">{activeCandidate?.baseVersionId ?? "新文件（无基）"}</code>
+              </li>
+              <li>结构差异：{(activeCandidate?.impact.structuralDiff?.length ?? 0) || 0} 项</li>
+              <li>
+                覆盖/映射：
+                {activeCandidate?.impact.coverage
+                  ? `已注册 ${activeCandidate.impact.coverage.matchedRegisteredCount} · 未注册 ${activeCandidate.impact.coverage.newUnregisteredCount}`
+                  : "不适用"}
+              </li>
+              <li>阻断：{(activeCandidate?.blockers?.length ?? 0) === 0 ? "无" : activeCandidate?.blockers.length}</li>
+            </ul>
+            {activeCandidate?.impact.textDiff ? (
+              <pre className="configuration-workbench__diff-view mono" tabIndex={0}>
+                {activeCandidate.impact.textDiff}
+              </pre>
+            ) : null}
+          </div>
+        }
+        confirmLabel="确认激活"
+        tone="primary"
+        pending={activatingCandidate}
+        pendingLabel="激活中…"
+        error={activateError}
+        acknowledgement="我已审查影响范围，并确认对照的是当前活跃基版本。"
+        extra={
+          !activeCandidate?.fileId ? (
+            <label className="configuration-workbench__activate-role">
+              <span>新文件成员角色</span>
+              <select
+                value={activateRole}
+                disabled={activatingCandidate}
+                onChange={(event) => setActivateRole(event.target.value as ConfigSetRole)}
+              >
+                {(Object.keys(ROLE_LABELS) as ConfigSetRole[]).map((role) => (
+                  <option key={role} value={role}>
+                    {ROLE_LABELS[role]}
+                  </option>
+                ))}
+              </select>
+              <small>将加入配置集 {selectedConfigSet?.name ?? "（未选择）"}，不会隐式创建其他成员关系。</small>
+            </label>
+          ) : null
+        }
+        onCancel={() => {
+          if (!activatingCandidate) {
+            setActivateConfirmOpen(false);
+            setActivateError("");
+          }
+        }}
+        onConfirm={() => {
+          if (!activeCandidate || activeCandidate.status !== "ready") return;
+          void (async () => {
+            setActivatingCandidate(true);
+            setActivateError("");
+            setCandidateError("");
+            try {
+              if (!activeCandidate.fileId && !selectedConfigSet) {
+                throw new Error("激活新文件需要已选择的配置集。");
+              }
+              const result = await fileRepository.activateCandidate(project.id, activeCandidate.id, {
+                expectedCurrentVersionId: activeCandidate.baseVersionId ?? null,
+                configSetId: activeCandidate.fileId ? undefined : selectedConfigSet?.id,
+                role: activeCandidate.fileId ? undefined : activateRole
+              });
+              setActiveCandidate(result.item);
+              notifyMutation("候选已激活；工作源码、成员与历史已刷新。");
+              setActivateConfirmOpen(false);
+              setFilesRetry((value) => value + 1);
+              setMembersRetry((value) => value + 1);
+              setSourceRetry((value) => value + 1);
+              setBaselinesRetry((value) => value + 1);
+              if (selectedConfigSet) {
+                onNavigate(
+                  formatWorkbenchPath(project.id, search, {
+                    configSet: selectedConfigSet.id,
+                    file: result.file.id,
+                    sourceMode: null,
+                    candidate: null,
+                    version: null
+                  })
+                );
+              }
+            } catch (error: unknown) {
+              const message = error instanceof Error ? error.message : "激活候选失败。";
+              setActivateError(message);
+              setCandidateError(message);
+              if (/stale/i.test(message)) {
+                try {
+                  const refreshed = await fileRepository.getCandidate(project.id, activeCandidate.id);
+                  setActiveCandidate(refreshed);
+                  setActivateConfirmOpen(false);
+                  notifyMutation("基版本已变更，候选已标为过期；请重算影响后再激活。");
+                } catch {
+                  // keep prior candidate state
+                }
+              }
+            } finally {
+              setActivatingCandidate(false);
+            }
+          })();
+        }}
+      />
 
       <footer className={tasksOpen ? "configuration-workbench__tasks is-open" : "configuration-workbench__tasks"}>
         <button className="button subtle configuration-workbench__task-toggle" type="button" aria-label="任务" aria-expanded={tasksOpen} onClick={() => setTasksOpen((open) => !open)}>
@@ -2444,6 +2913,7 @@ export function ProjectConfigurationWorkbench({
           </div>
         ) : null}
       </footer>
+      <GovernanceToast message={toastMessage} />
     </section>
   );
 }

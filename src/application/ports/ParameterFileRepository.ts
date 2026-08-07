@@ -100,7 +100,9 @@ export type ParameterFileCandidateStatus =
   | "ready"
   | "blocked"
   | "failed"
-  | "abandoned";
+  | "abandoned"
+  | "stale"
+  | "active";
 
 export type ParameterFileCandidateDiagnostic = {
   severity: "error" | "warning" | "info";
@@ -160,12 +162,27 @@ export type ParameterFileCandidate = {
   createdByUserId?: string;
   abandonedAt?: string;
   abandonedByUserId?: string;
+  activatedAt?: string;
+  activatedByUserId?: string;
+  activatedVersionId?: string;
 };
 
 export type CreateParameterFileCandidateInput = {
   fileName: string;
   contentBase64: string;
   fileId?: string;
+};
+
+export type ActivateParameterFileCandidateInput = {
+  expectedCurrentVersionId?: string | null;
+  configSetId?: string;
+  role?: "base" | "overlay" | "charging" | "thermal" | "misc";
+};
+
+export type ActivateParameterFileCandidateResult = {
+  item: ParameterFileCandidate;
+  file: ProjectParameterFile;
+  version: ProjectParameterFileVersion;
 };
 
 export type DownloadParameterFileCandidateResult = {
@@ -195,4 +212,9 @@ export interface ParameterFileRepository {
   downloadCandidate(projectId: string, candidateId: string): Promise<DownloadParameterFileCandidateResult>;
   abandonCandidate(projectId: string, candidateId: string): Promise<ParameterFileCandidate>;
   recomputeCandidate(projectId: string, candidateId: string): Promise<ParameterFileCandidate>;
+  activateCandidate(
+    projectId: string,
+    candidateId: string,
+    input: ActivateParameterFileCandidateInput
+  ): Promise<ActivateParameterFileCandidateResult>;
 }
