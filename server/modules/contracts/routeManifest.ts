@@ -111,6 +111,55 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameters.listParameterFileCandidates",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.createParameterFileCandidate",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.getParameterFileCandidate",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.getParameterFileCandidateImpact",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/impact",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.getParameterFileCandidateContent",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.abandonParameterFileCandidate",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/abandon",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.recomputeParameterFileCandidate",
+    method: "POST",
+    path: "/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/recompute",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameters.searchDts",
     method: "GET",
     path: "/api/v1/projects/:projectId/dts-search",

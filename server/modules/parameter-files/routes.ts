@@ -39,10 +39,19 @@ import {
   submitStructuredEditsBodySchema
 } from "./schemas";
 import { getProjectParameterFileContent, uploadProjectParameterFile } from "./service";
+import {
+  abandonCandidate,
+  createCandidate,
+  getCandidate,
+  getCandidateContent,
+  getCandidateImpact,
+  listCandidates,
+  recomputeCandidateImpact
+} from "./candidateService";
 import { searchProjectDts } from "./dtsSearchService";
 import { getParameterFileVersionStructure } from "./structuralReadService";
 import { syncFileVersion } from "./syncService";
-import type { ParameterFileFormat } from "./types";
+import type { ParameterFileFormat, ProjectParameterFileCandidateDto } from "./types";
 
 function firstQueryValue(value: string | string[] | undefined) {
   if (Array.isArray(value)) {
@@ -87,6 +96,16 @@ const uploadBodySchema = z.object({
 const uploadVersionBodySchema = z.object({
   fileName: z.string().min(1).optional(),
   contentBase64: z.string().min(1)
+});
+
+const createCandidateBodySchema = z.object({
+  fileName: z.string().min(1),
+  contentBase64: z.string().min(1),
+  fileId: z.string().min(1).optional()
+});
+
+const paramsWithCandidateIdSchema = paramsWithProjectIdSchema.extend({
+  candidateId: z.string().min(1)
 });
 
 const syncFileBodySchema = z.object({
@@ -138,6 +157,11 @@ function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
   }
+}
+
+function toPublicCandidate(candidate: ProjectParameterFileCandidateDto) {
+  const { storageKey: _storageKey, ...publicCandidate } = candidate;
+  return publicCandidate;
 }
 
 function decodeContentBase64(contentBase64: string) {
@@ -567,5 +591,117 @@ export function registerParameterFileRoutes(
     });
 
     return { status: 200, body: result };
+  });
+
+  router.get("/api/v1/projects/:projectId/parameter-file-candidates", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const fileId = firstQueryValue(request.query.fileId);
+    const includeAbandoned = firstQueryValue(request.query.includeAbandoned) === "true";
+    const items = await listCandidates(db, auth, {
+      projectId: params.projectId,
+      fileId: fileId || undefined,
+      includeAbandoned
+    });
+    return { status: 200, body: { items: items.map(toPublicCandidate) } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-file-candidates", async (request) => {
+    const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const body = parseWithSchema(createCandidateBodySchema, request.body, "Invalid candidate upload payload.");
+    const item = await createCandidate(
+      db,
+      objectStore,
+      auth,
+      {
+        projectId: params.projectId,
+        fileName: body.fileName.trim(),
+        bytes: decodeContentBase64(body.contentBase64),
+        fileId: body.fileId
+      },
+      { requestId: request.requestId }
+    );
+    return { status: 201, body: { item: toPublicCandidate(item) } };
+  });
+
+  router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
+    const item = await getCandidate(db, auth, {
+      projectId: params.projectId,
+      candidateId: params.candidateId
+    });
+    return { status: 200, body: { item: toPublicCandidate(item) } };
+  });
+
+  router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/impact", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
+    const result = await getCandidateImpact(db, auth, {
+      projectId: params.projectId,
+      candidateId: params.candidateId
+    });
+    return {
+      status: 200,
+      body: { item: toPublicCandidate(result.candidate), impact: result.impact }
+    };
+  });
+
+  router.get("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content", async (request) => {
+    const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
+    const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
+    const result = await getCandidateContent(db, objectStore, auth, {
+      projectId: params.projectId,
+      candidateId: params.candidateId
+    });
+    return {
+      status: 200,
+      bytes: result.bytes,
+      contentType: result.contentType,
+      fileName: result.candidate.fileName
+    };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/abandon", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
+    const item = await abandonCandidate(
+      db,
+      auth,
+      { projectId: params.projectId, candidateId: params.candidateId },
+      { requestId: request.requestId }
+    );
+    return { status: 200, body: { item: toPublicCandidate(item) } };
+  });
+
+  router.post("/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/recompute", async (request) => {
+    const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithCandidateIdSchema, request.params);
+    const item = await recomputeCandidateImpact(
+      db,
+      objectStore,
+      auth,
+      { projectId: params.projectId, candidateId: params.candidateId },
+      { requestId: request.requestId }
+    );
+    return { status: 200, body: { item: toPublicCandidate(item) } };
   });
 }

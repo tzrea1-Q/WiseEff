@@ -221,3 +221,38 @@ describe("0047 DTS phandle target delete migration", () => {
     expect(sql).toContain("on delete set null");
   });
 });
+
+const candidateMigrationPath = path.join(
+  root,
+  "server",
+  "migrations",
+  "0093_project_parameter_file_candidates.sql"
+);
+
+describe("0093_project_parameter_file_candidates migration", () => {
+  it("defines candidate staging table with lifecycle states and no active-version staging", () => {
+    const sql = readFileSync(candidateMigrationPath, "utf8");
+
+    expect(sql).toContain("create table if not exists project_parameter_file_candidates");
+    expect(sql).toContain("organization_id");
+    expect(sql).toContain("project_id");
+    expect(sql).toContain("file_id");
+    expect(sql).toContain("file_name");
+    expect(sql).toContain("format");
+    expect(sql).toContain("status");
+    expect(sql).toContain("'uploading'");
+    expect(sql).toContain("'parsing'");
+    expect(sql).toContain("'ready'");
+    expect(sql).toContain("'blocked'");
+    expect(sql).toContain("'failed'");
+    expect(sql).toContain("'abandoned'");
+    expect(sql).toContain("base_version_id");
+    expect(sql).toContain("storage_key");
+    expect(sql).toContain("diagnostics");
+    expect(sql).toContain("impact");
+    expect(sql).toContain("blockers");
+    expect(sql).toContain("project_parameter_file_candidates_project_idx");
+    expect(sql).not.toContain("current_version_id");
+    expect(sql).not.toMatch(/update\s+project_parameter_files/i);
+  });
+});

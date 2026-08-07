@@ -137,6 +137,51 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "StructuralReadResponse",
     additionalResponses: { "404": "ErrorResponse" }
   },
+  "parameters.listParameterFileCandidates": {
+    summary: "List staged parameter-file candidates for a project",
+    tags: ["parameters"],
+    responseBody: "ParameterFileCandidateListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameters.createParameterFileCandidate": {
+    summary: "Upload a staged candidate file version without activating Working configuration",
+    tags: ["parameters"],
+    requestBody: "CreateParameterFileCandidateRequest",
+    responseBody: "ParameterFileCandidateResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameters.getParameterFileCandidate": {
+    summary: "Read one staged parameter-file candidate",
+    tags: ["parameters"],
+    responseBody: "ParameterFileCandidateResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameters.getParameterFileCandidateImpact": {
+    summary: "Read candidate impact evidence (diff, diagnostics, coverage, conflicts, blockers)",
+    tags: ["parameters"],
+    responseBody: "ParameterFileCandidateImpactResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameters.getParameterFileCandidateContent": {
+    summary: "Download staged candidate file bytes",
+    tags: ["parameters"],
+    responseBody: "ParameterFileCandidateContent",
+    responseMedia: "binary",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameters.abandonParameterFileCandidate": {
+    summary: "Abandon a ready, blocked, or failed candidate without changing Working configuration",
+    tags: ["parameters"],
+    responseBody: "ParameterFileCandidateResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "parameters.recomputeParameterFileCandidate": {
+    summary: "Recompute candidate impact when external blockers change",
+    tags: ["parameters"],
+    responseBody: "ParameterFileCandidateResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameters.searchDts": {
     summary: "Search project DTS structure by path/address/label/compatible/value/file (omit by for all)",
     tags: ["parameters"],

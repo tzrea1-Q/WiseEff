@@ -57,6 +57,118 @@ export type InsertFileVersionInput = {
   createdByUserId?: string;
 };
 
+/** Staged candidate lifecycle states (ADR-0018). Activation states belong to #232. */
+export type CandidateStatus =
+  | "uploading"
+  | "parsing"
+  | "ready"
+  | "blocked"
+  | "failed"
+  | "abandoned";
+
+export type CandidateDiagnosticSeverity = "error" | "warning" | "info";
+
+export type CandidateDiagnostic = {
+  severity: CandidateDiagnosticSeverity;
+  code: string;
+  message: string;
+  line?: number;
+};
+
+export type CandidateBlocker = {
+  code: string;
+  message: string;
+};
+
+export type CandidateStructuralChange =
+  | { kind: "node_added" | "node_removed"; nodePath: string }
+  | {
+      kind: "prop_added" | "prop_removed" | "prop_changed";
+      nodePath: string;
+      prop: string;
+      before?: string;
+      after?: string;
+    };
+
+export type CandidateCoverageEffect = {
+  matchedRegistered: string[];
+  newUnregistered: string[];
+  matchedRegisteredCount: number;
+  newUnregisteredCount: number;
+};
+
+export type CandidateConflictEvidence = {
+  id: string;
+  parameterName?: string;
+  parameterModule?: string;
+  status: string;
+  fileValue?: string;
+  uiDraftValue?: string;
+};
+
+export type CandidateImpact = {
+  textDiff?: string;
+  structuralDiff?: CandidateStructuralChange[];
+  diagnostics?: CandidateDiagnostic[];
+  coverage?: CandidateCoverageEffect;
+  conflicts?: CandidateConflictEvidence[];
+  blockers?: CandidateBlocker[];
+};
+
+export type ProjectParameterFileCandidateDto = {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  fileId?: string;
+  fileName: string;
+  format: ParameterFileFormat;
+  status: CandidateStatus;
+  baseVersionId?: string;
+  storageKey?: string;
+  checksum?: string;
+  sizeBytes?: number;
+  parsedIndex: ParsedIndex;
+  diagnostics: CandidateDiagnostic[];
+  impact: CandidateImpact;
+  blockers: CandidateBlocker[];
+  createdAt: string;
+  updatedAt: string;
+  createdByUserId?: string;
+  abandonedAt?: string;
+  abandonedByUserId?: string;
+};
+
+export type InsertParameterFileCandidateInput = {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  fileId?: string;
+  fileName: string;
+  format: ParameterFileFormat;
+  status: CandidateStatus;
+  baseVersionId?: string;
+  storageKey?: string;
+  checksum?: string;
+  sizeBytes?: number;
+  parsedIndex?: ParsedIndex;
+  diagnostics?: CandidateDiagnostic[];
+  impact?: CandidateImpact;
+  blockers?: CandidateBlocker[];
+  createdByUserId?: string;
+};
+
+export type UpdateParameterFileCandidateParseResultInput = {
+  candidateId: string;
+  status: CandidateStatus;
+  storageKey?: string;
+  checksum?: string;
+  sizeBytes?: number;
+  parsedIndex?: ParsedIndex;
+  diagnostics?: CandidateDiagnostic[];
+  impact?: CandidateImpact;
+  blockers?: CandidateBlocker[];
+};
+
 export type ConfigSetRole = "base" | "overlay" | "charging" | "thermal" | "misc";
 
 export type ConfigSetDto = {
