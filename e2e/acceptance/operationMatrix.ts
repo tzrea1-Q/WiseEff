@@ -389,6 +389,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "screenshot"]
   },
   {
+    id: "PROJ-CONFIG-ACTIVITY-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Open Activity from the command bar, read scoped server audit events in product language, restore targetable workbench context or fail gracefully, and keep toast + timeline refresh without a permanent audit banner.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-ACTIVITY-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
+  {
     id: "PROJ-CONFIG-ACTIVATE-001",
     priority: "P1",
     area: "parameters",

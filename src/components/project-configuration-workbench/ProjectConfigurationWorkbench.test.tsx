@@ -183,6 +183,7 @@ function renderWorkbench(options: {
   onNavigate?: ReturnType<typeof vi.fn>;
   dtsRepository?: DtsStructuredRepository;
   fileRepository?: ParameterFileRepository;
+  listAuditEvents?: ProjectConfigurationWorkbenchProps["listAuditEvents"];
   syncSearch?: boolean;
   canAdmin?: boolean;
 } = {}) {
@@ -203,6 +204,7 @@ function renderWorkbench(options: {
           dtsRepository={options.dtsRepository ?? createDtsRepository()}
           fileRepository={options.fileRepository ?? createFileRepository()}
           {...(canAdmin === undefined ? {} : { canAdmin })}
+          {...(options.listAuditEvents ? { listAuditEvents: options.listAuditEvents } : {})}
         />
       );
     }
@@ -217,6 +219,7 @@ function renderWorkbench(options: {
       dtsRepository={options.dtsRepository ?? createDtsRepository()}
       fileRepository={options.fileRepository ?? createFileRepository()}
       {...(canAdmin === undefined ? {} : { canAdmin })}
+      {...(options.listAuditEvents ? { listAuditEvents: options.listAuditEvents } : {})}
     />
   );
   return { onNavigate };
@@ -1166,6 +1169,189 @@ describe("ProjectConfigurationWorkbench", () => {
       expect(screen.queryByTestId("activate-candidate")).not.toBeInTheDocument();
     }
   });
+
+  it("opens Activity from the command bar without a permanent audit banner above source", async () => {
+    const listAuditEvents = vi.fn(async () => ({
+      items: [
+        {
+          id: "evt-activity-1",
+          organizationId: "org-chargelab",
+          projectId: PROJECT.id,
+          actorUserId: "user-ada",
+          actorType: "user" as const,
+          actorName: "Ada Admin",
+          app: "parameters",
+          kind: "parameter-file-candidate-create",
+          action: "create",
+          severity: "Medium" as const,
+          targetType: "project-parameter-file-candidate",
+          targetId: "cand-1",
+          metadata: {
+            fileName: "aurora-board.dts",
+            fileId: "file-board",
+            status: "ready"
+          },
+          traceId: "trace-activity-1",
+          createdAt: "2026-08-07T04:00:00.000Z"
+        }
+      ],
+      nextCursor: null
+    }));
+
+    renderWorkbench({
+      search: "?configSet=cs-default&file=file-board",
+      listAuditEvents
+    });
+
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    expect(screen.queryByLabelText("治理审计")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "活动" }));
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(inspector).toHaveTextContent("项目活动");
+    await waitFor(() => expect(listAuditEvents).toHaveBeenCalled());
+    expect(listAuditEvents.mock.calls[0]?.[0]).toMatchObject({
+      projectId: PROJECT.id,
+      apps: expect.arrayContaining(["parameters", "parameter-management", "parameter-admin"])
+    });
+    expect(inspector).toHaveTextContent("Ada Admin");
+    expect(inspector).toHaveTextContent("创建");
+    expect(inspector).toHaveTextContent("候选文件版本");
+    expect(inspector).toHaveTextContent("成功");
+  });
+
+
+  it("restores file context from a targetable activity event and fails gracefully when missing", async () => {
+    const listAuditEvents = vi.fn(async () => ({
+      items: [
+        {
+          id: "evt-file",
+          organizationId: "org-chargelab",
+          projectId: PROJECT.id,
+          actorUserId: "user-ada",
+          actorType: "user" as const,
+          actorName: "Ada Admin",
+          app: "parameters",
+          kind: "parameter-file-upload",
+          action: "upload",
+          severity: "Low" as const,
+          targetType: "project-parameter-file",
+          targetId: "file-overlay",
+          metadata: { fileName: "charging-overlay.dtsi" },
+          traceId: "trace-file",
+          createdAt: "2026-08-07T04:01:00.000Z"
+        },
+        {
+          id: "evt-missing",
+          organizationId: "org-chargelab",
+          projectId: PROJECT.id,
+          actorUserId: "user-ada",
+          actorType: "user" as const,
+          actorName: "Ada Admin",
+          app: "parameters",
+          kind: "parameter-file-candidate-create",
+          action: "create",
+          severity: "Medium" as const,
+          targetType: "project-parameter-file-candidate",
+          targetId: "cand-gone",
+          metadata: { fileName: "gone.dts", fileId: "file-board", status: "ready" },
+          traceId: "trace-missing",
+          createdAt: "2026-08-07T04:02:00.000Z"
+        }
+      ],
+      nextCursor: null
+    }));
+    const onNavigate = vi.fn();
+
+    renderWorkbench({
+      search: "?configSet=cs-default&file=file-board",
+      onNavigate,
+      listAuditEvents,
+      syncSearch: true
+    });
+
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(screen.getByRole("button", { name: "活动" }));
+    await screen.findByLabelText("项目活动事件");
+
+    fireEvent.click(screen.getByRole("button", { name: /上传 · 参数文件 · charging-overlay\.dtsi/i }));
+    await waitFor(() =>
+      expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("file=file-overlay"))).toBe(true)
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "活动" }));
+    await screen.findByLabelText("项目活动事件");
+    fireEvent.click(screen.getByRole("button", { name: /创建 · 候选文件版本 · gone\.dts/i }));
+    expect(await screen.findByRole("status", { name: "活动目标不可用" })).toHaveTextContent(/候选/);
+    expect(screen.getByRole("main", { name: "只读 DTS 源码" })).toBeInTheDocument();
+  });
+
+
+  it("shows mutation toasts and refreshes the activity timeline from server evidence", async () => {
+    const listAuditEvents = vi.fn(async () => ({ items: [], nextCursor: null }));
+    const createCandidate = vi.fn(async () => ({
+      id: "cand-1",
+      projectId: PROJECT.id,
+      fileId: "file-board",
+      fileName: "aurora-board.dts",
+      format: "dts" as const,
+      status: "ready" as const,
+      sizeBytes: 32,
+      createdAt: "2026-08-07T05:00:00.000Z",
+      updatedAt: "2026-08-07T05:00:00.000Z",
+      diagnostics: [],
+      blockers: [],
+      impact: {
+        textDiff: "--- a\n+++ b\n",
+        structuralDiff: [],
+        conflicts: [],
+        blockers: []
+      }
+    }));
+
+    renderWorkbench({
+      search: "?configSet=cs-default&file=file-board",
+      listAuditEvents,
+      fileRepository: createFileRepository({ createCandidate })
+    });
+
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(screen.getByRole("button", { name: "活动" }));
+    await waitFor(() => expect(listAuditEvents).toHaveBeenCalledTimes(1));
+
+    const uploadInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['/dts-v1/;\n/ { model = "Cand"; };\n'], "aurora-board.dts", {
+      type: "text/plain"
+    });
+    Object.defineProperty(uploadInput, "files", { configurable: true, value: [file] });
+    fireEvent.change(uploadInput);
+
+    await waitFor(() => expect(createCandidate).toHaveBeenCalled());
+    expect(await screen.findByText("候选已创建，工作配置与活跃版本未改动。")).toBeInTheDocument();
+    await waitFor(() => expect(listAuditEvents.mock.calls.length).toBeGreaterThan(1));
+  });
+
+
+  it("keeps the workbench when activity loading fails and preserves PCW-D15 layout attribute", async () => {
+    const listAuditEvents = vi.fn(async () => {
+      throw new Error("audit unavailable");
+    });
+
+    renderWorkbench({
+      search: "?configSet=cs-default&file=file-board",
+      listAuditEvents
+    });
+
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(screen.getByRole("button", { name: "活动" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/audit unavailable|活动|失败/i);
+    expect(screen.getByRole("main", { name: "只读 DTS 源码" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveAttribute("data-layout");
+  });
+
+
+
+
 
   it("creates a Config set from the empty project path with name validation and duplicate handling", async () => {
     const created = {

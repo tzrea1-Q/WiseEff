@@ -26802,6 +26802,33 @@ button.dts-topology-navigator__disclosure:focus-visible {
   font-weight: 700;
 }
 
+.configuration-workbench__activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.configuration-workbench__activity-item {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 8px 10px;
+  justify-content: start;
+}
+
+.configuration-workbench__activity-action {
+  font-weight: 700;
+}
+
+.configuration-workbench__activity-meta {
+  color: var(--app-muted);
+  font-weight: 500;
+  font-size: 10px;
+}
+
 .configuration-workbench__read-only-note {
   margin: auto 12px 12px;
   padding: 10px;
