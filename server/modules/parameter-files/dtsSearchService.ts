@@ -6,7 +6,7 @@ export type SearchProjectDtsInput = {
   organizationId: string;
   projectId: string;
   q: string;
-  by: DtsSearchBy;
+  by?: DtsSearchBy;
 };
 
 /** Project-scoped DTS structured search over dts_* tables only. */

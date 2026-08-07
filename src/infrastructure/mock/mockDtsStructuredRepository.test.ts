@@ -12,14 +12,16 @@ describe("createMockDtsStructuredRepository (DtsStructuredRepository contract)",
     return createMockDtsStructuredRepository();
   }
 
-  it("getStructure returns teaching fixture-derived nodes with path, bool, and phandle refs", async () => {
+  it("getStructure returns teaching fixture-derived nodes with path, bool, phandle refs, and source locators", async () => {
     const repo = createRepo();
     const { nodes } = await repo.getStructure(PROJECT_ID, FILE_ID, VERSION_ID);
+
     const anyIds = await repo.getStructure("any-project", "any-file", "any-version");
     expect(anyIds.nodes.length).toBe(nodes.length);
     expect(anyIds.nodes.some((item) => item.nodePath === "demo_regulator")).toBe(true);
 
     const chip = nodes.find((node) => node.nodePath === "amba/i2c@XXXX0000/chip@6E");
+    expect(chip?.source?.startOffset).toBeLessThan(chip!.source!.endOffset);
     expect(chip).toMatchObject({
       name: "chip",
       unitAddress: "6E",
@@ -224,4 +226,17 @@ describe("createMockDtsStructuredRepository (DtsStructuredRepository contract)",
     expect(again.id).not.toBe(round.id);
     expect(again.items[0]?.targetValue).toBe("<99>");
   });
+  it("search matches file names, returns source locators, and searches all dimensions when by is omitted", async () => {
+    const repo = createMockDtsStructuredRepository();
+    const byFile = await repo.search(PROJECT_ID, { q: "atlas-board", by: "file" });
+    expect(byFile.hits.length).toBeGreaterThan(0);
+    expect(byFile.hits[0]?.fileName).toContain("atlas-board");
+
+    const byPath = await repo.search(PROJECT_ID, { q: "chip@6E", by: "path" });
+    expect(byPath.hits[0]?.source?.startOffset).toBeLessThan(byPath.hits[0]!.source!.endOffset);
+
+    const all = await repo.search(PROJECT_ID, { q: "atlas-board" });
+    expect(all.hits.some((hit) => hit.fileName.includes("atlas-board"))).toBe(true);
+  });
+
 });

@@ -103,6 +103,20 @@ export const routeManifest = [
     module: "parameters",
     stability: "mvp"
   },
+  {
+    id: "parameters.getParameterFileStructure",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters.searchDts",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/dts-search",
+    module: "parameters",
+    stability: "mvp"
+  },
   { id: "parameters.listProjectModules", method: "GET", path: "/api/v1/projects/:projectId/modules", module: "parameters", stability: "mvp" },
   { id: "parameters.listModules", method: "GET", path: "/api/v1/parameter-modules", module: "parameters", stability: "mvp" },
   { id: "parameters.createModule", method: "POST", path: "/api/v1/parameter-modules", module: "parameters", stability: "mvp" },

@@ -814,6 +814,102 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/parameter-files/{fileId}/versions/{versionId}/structure": {
+      "get": {
+        "operationId": "parameters.getParameterFileStructure",
+        "summary": "Read structured DTS nodes/properties for a file version (includes source locators)",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StructuralReadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/dts-search": {
+      "get": {
+        "operationId": "parameters.searchDts",
+        "summary": "Search project DTS structure by path/address/label/compatible/value/file (omit by for all)",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DtsSearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/modules": {
       "get": {
         "operationId": "parameters.listProjectModules",
@@ -6506,6 +6602,14 @@
       "ConfigSetMemberFileListResponse": {
         "type": "object",
         "x-wiseeff-schema": "ConfigSetMemberFileListResponse"
+      },
+      "StructuralReadResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "StructuralReadResponse"
+      },
+      "DtsSearchResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DtsSearchResponse"
       },
       "ProjectModuleListResponse": {
         "type": "object",

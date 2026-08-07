@@ -56,6 +56,12 @@ describe.skipIf(!databaseAvailable)("readDtsStructuralModel", () => {
     expect(chip!.name).toBe("chip");
     expect(chip!.unitAddress).toBe("6E");
     expect(chip!.compatible).toBe("vendor,chip123");
+    expect(chip!.source).toBeDefined();
+    expect(chip!.source!.startOffset).toBeLessThan(chip!.source!.endOffset);
+    expect(chip!.source!.startLine).toBeGreaterThanOrEqual(1);
+    const chipReg = chip!.properties.find((p) => p.name === "reg");
+    expect(chipReg?.source).toBeDefined();
+    expect(chipReg!.source!.startOffset).toBeLessThan(chipReg!.source!.endOffset);
 
     const battery0 = nodes.find((n) => n.nodePath === "demo_multi_instance/battery_checker@0");
     expect(battery0).toBeDefined();
