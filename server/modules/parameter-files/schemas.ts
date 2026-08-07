@@ -66,11 +66,21 @@ export const dtsValueTypeSchema = z.enum([
   "empty"
 ]);
 
+export const sourceLocatorSchema = z.object({
+  startOffset: z.number().int().nonnegative(),
+  endOffset: z.number().int().nonnegative(),
+  startLine: z.number().int().positive(),
+  startColumn: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+  endColumn: z.number().int().positive()
+});
+
 export const structuralPropertySchema = z.object({
   name: nonEmptyString,
   valueType: dtsValueTypeSchema,
   rawText: z.string(),
-  normalizedValue: z.string()
+  normalizedValue: z.string(),
+  source: sourceLocatorSchema.optional()
 });
 
 export const structuralPhandleRefSchema = z.object({
@@ -88,7 +98,8 @@ export const structuralNodeSchema = z.object({
   compatible: z.string().min(1).optional(),
   status: z.string().min(1).optional(),
   properties: z.array(structuralPropertySchema),
-  phandleRefs: z.array(structuralPhandleRefSchema)
+  phandleRefs: z.array(structuralPhandleRefSchema),
+  source: sourceLocatorSchema.optional()
 });
 
 export const structuralReadResponseSchema = z.object({
@@ -97,13 +108,14 @@ export const structuralReadResponseSchema = z.object({
 
 export type StructuralReadResponse = z.infer<typeof structuralReadResponseSchema>;
 
-export const dtsSearchBySchema = z.enum(["path", "address", "label", "compatible", "value"]);
+export const dtsSearchBySchema = z.enum(["path", "address", "label", "compatible", "value", "file"]);
 
 export type DtsSearchBy = z.infer<typeof dtsSearchBySchema>;
 
 export const dtsSearchQuerySchema = z.object({
   q: z.string(),
-  by: dtsSearchBySchema.default("path")
+  // Omit `by` to search all dimensions (path/address/label/compatible/value/file).
+  by: dtsSearchBySchema.optional()
 });
 
 export const dtsSearchHitSchema = z.object({
@@ -112,7 +124,8 @@ export const dtsSearchHitSchema = z.object({
   versionId: nonEmptyString,
   nodePath: z.string(),
   propertyName: nonEmptyString.optional(),
-  snippet: z.string().optional()
+  snippet: z.string().optional(),
+  source: sourceLocatorSchema.optional()
 });
 
 export const dtsSearchResponseSchema = z.object({

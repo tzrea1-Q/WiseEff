@@ -12,6 +12,7 @@ import {
   type DtsPropertyCst,
   type DtsSourceChainEntry,
 } from "../dts";
+import { offsetToLineColumn } from "../dts/offsetToLineColumn";
 import type { LogicalNodeCandidate, LogicalNodeSnapshot } from "../dts/identity";
 import {
   matchDriver,
@@ -75,22 +76,10 @@ import type {
   PersistedPropertyOccurrence,
 } from "./types";
 
+export { offsetToLineColumn };
+
 const schemasRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../schemas/dts");
 
-export function offsetToLineColumn(source: string, offset: number): LineColumn {
-  let line = 1;
-  let column = 1;
-  const end = Math.min(Math.max(offset, 0), source.length);
-  for (let i = 0; i < end; i += 1) {
-    if (source[i] === "\n") {
-      line += 1;
-      column = 1;
-    } else {
-      column += 1;
-    }
-  }
-  return { line, column };
-}
 
 function contentHash(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");

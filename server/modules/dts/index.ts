@@ -43,3 +43,4 @@ export type {
   DtsSpan,
   DtsValue,
 } from "./types";
+export { offsetToLineColumn, type LineColumn } from "./offsetToLineColumn";

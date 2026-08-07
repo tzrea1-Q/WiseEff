@@ -26137,18 +26137,26 @@ button.dts-topology-navigator__disclosure:focus-visible {
 .configuration-workbench__body {
   position: relative;
   display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
 .configuration-workbench__tree {
+  position: relative;
+  z-index: 1;
   display: flex;
-  flex: 0 0 214px;
+  flex: 0 0 clamp(240px, 18vw, 280px);
   flex-direction: column;
+  width: clamp(240px, 18vw, 280px);
+  max-width: 280px;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--surface-bright);
   border-right: 1px solid var(--outline);
 }
@@ -26224,9 +26232,94 @@ button.dts-topology-navigator__disclosure:focus-visible {
   color: var(--app-muted);
 }
 
+
+.configuration-workbench__search {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+.configuration-workbench__search label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+}
+.configuration-workbench__search input {
+  width: 100%;
+}
+.configuration-workbench__search-results {
+  max-height: 10rem;
+  overflow: auto;
+  padding: 0.4rem 0.7rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+.configuration-workbench__search-group {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.55rem;
+}
+.configuration-workbench__search-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+.configuration-workbench__search-group button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  display: grid;
+  gap: 0.1rem;
+}
+.configuration-workbench__member-block {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.configuration-workbench__node-tree,
+.configuration-workbench__node-block {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.configuration-workbench__node-tree {
+  padding: 0.15rem 0 0.35rem;
+}
+/* Override .param-admin-shell .button { display: inline-flex } — otherwise
+   long node paths size the grid track to max-content and paint under source. */
+.configuration-workbench__tree .configuration-workbench__node,
+.configuration-workbench__tree .configuration-workbench__property {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  justify-content: flex-start;
+  overflow: hidden;
+  font-size: 0.78rem;
+}
+.configuration-workbench__tree .configuration-workbench__node code,
+.configuration-workbench__tree .configuration-workbench__property code {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.configuration-workbench__node.is-selected,
+.configuration-workbench__property.is-selected {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
 .configuration-workbench__member-tree {
   display: grid;
   gap: 2px;
+  min-width: 0;
+  max-width: 100%;
   padding: 6px;
 }
 
@@ -26304,11 +26397,15 @@ button.dts-topology-navigator__disclosure:focus-visible {
   --configuration-source-text-secondary: #b9cae2;
   --configuration-source-line-number: #60738e;
 
+  position: relative;
+  z-index: 0;
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0%;
   flex-direction: column;
+  width: auto;
   min-width: 0;
   min-height: 0;
+  margin: 0;
   overflow: hidden;
   color: var(--configuration-source-text);
   background: var(--configuration-source-surface);
@@ -26361,11 +26458,60 @@ button.dts-topology-navigator__disclosure:focus-visible {
   min-width: 0;
   min-height: 0;
   margin: 0;
-  padding: 10px 0 20px;
-  overflow: auto;
+  padding: 0;
+  overflow: hidden;
   color: var(--configuration-source-text);
   font: 12px/21px "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   tab-size: 2;
+}
+
+/* ProjectPrimaryDtsViewer defaults to a light modal-like card (max-height + radius).
+   Inside the configuration workbench it must be a full-bleed source canvas. */
+.configuration-workbench__source .project-primary-dts-viewer {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.configuration-workbench__source .project-primary-dts-viewer__body {
+  flex: 1 1 auto;
+  max-height: none;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 10px 0 20px;
+  overflow: auto;
+  color: var(--configuration-source-text);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.configuration-workbench__source .project-primary-dts-viewer__line-number {
+  color: var(--configuration-source-line-number);
+  background: transparent;
+  border-right-color: var(--configuration-source-outline);
+}
+
+.configuration-workbench__source .project-primary-dts-viewer__line.is-focused {
+  background: rgba(125, 164, 216, 0.14);
+  border-left-color: #7da4d8;
+}
+
+.configuration-workbench__source .project-primary-dts-viewer__line-text {
+  color: var(--configuration-source-text);
 }
 
 .configuration-workbench__code code {

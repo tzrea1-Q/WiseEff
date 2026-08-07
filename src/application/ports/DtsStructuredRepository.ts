@@ -7,11 +7,21 @@ export type DtsValueType =
   | "bool"
   | "empty";
 
+export type DtsSourceLocator = {
+  startOffset: number;
+  endOffset: number;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+};
+
 export type DtsStructuralProperty = {
   name: string;
   valueType: DtsValueType;
   rawText: string;
   normalizedValue: string;
+  source?: DtsSourceLocator;
 };
 
 export type DtsStructuralPhandleRef = {
@@ -29,13 +39,14 @@ export type DtsStructuralNode = {
   status?: string;
   properties: DtsStructuralProperty[];
   phandleRefs: DtsStructuralPhandleRef[];
+  source?: DtsSourceLocator;
 };
 
 export type DtsStructureResult = {
   nodes: DtsStructuralNode[];
 };
 
-export type DtsSearchBy = "path" | "address" | "label" | "compatible" | "value";
+export type DtsSearchBy = "path" | "address" | "label" | "compatible" | "value" | "file";
 
 export type DtsSearchQuery = {
   q: string;
@@ -49,6 +60,7 @@ export type DtsSearchHit = {
   nodePath: string;
   propertyName?: string;
   snippet?: string;
+  source?: DtsSourceLocator;
 };
 
 export type DtsSearchResult = {

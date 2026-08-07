@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
+import { offsetToLineColumn } from "../dts/offsetToLineColumn";
 import type { ResolvedDts, ResolvedNode } from "../dts/resolver";
 
 export type StructuralInsertCounts = {
@@ -13,6 +14,7 @@ export async function replaceDtsStructuralModel(
   db: Queryable,
   fileVersionId: string,
   resolved: ResolvedDts,
+  source: string,
 ): Promise<StructuralInsertCounts> {
   // `resolved_target_node_id` is intentionally not ON DELETE CASCADE because a
   // dangling resolved reference should never be hidden. Remove both outgoing
@@ -56,9 +58,11 @@ export async function replaceDtsStructuralModel(
       `
       insert into dts_nodes (
         id, file_version_id, parent_id, name, unit_address, labels, ref_target,
-        is_overlay_root, node_path, compatible, status, sort_order
+        is_overlay_root, node_path, compatible, status, sort_order,
+        start_offset, end_offset, start_line, start_column, end_line, end_column
       ) values (
-        $1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12
+        $1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12,
+        $13, $14, $15, $16, $17, $18
       )
       `,
       [
@@ -74,6 +78,7 @@ export async function replaceDtsStructuralModel(
         node.compatible ?? null,
         node.status ?? null,
         nodeOrder++,
+        ...sourceLocatorParams(source, node.cst.span.start, node.cst.span.end),
       ],
     );
 
@@ -83,8 +88,9 @@ export async function replaceDtsStructuralModel(
       await db.query(
         `
         insert into dts_properties (
-          id, node_id, name, value_type, raw_text, normalized_value, sort_order
-        ) values ($1, $2, $3, $4, $5, $6, $7)
+          id, node_id, name, value_type, raw_text, normalized_value, sort_order,
+          start_offset, end_offset, start_line, start_column, end_line, end_column
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         `,
         [
           propId,
@@ -94,6 +100,7 @@ export async function replaceDtsStructuralModel(
           prop.rawText,
           prop.normalizedValue,
           propOrder++,
+          ...sourceLocatorParams(source, prop.cst.span.start, prop.cst.span.end),
         ],
       );
       propertyCount += 1;
@@ -129,4 +136,14 @@ function findLabelNodeId(
   const hit = nodes.find((n) => n.labels.includes(label) || n.nodePath === label || n.name === label);
   if (!hit) return null;
   return pathToId.get(hit.nodePath) ?? null;
+}
+
+function sourceLocatorParams(
+  source: string,
+  startOffset: number,
+  endOffset: number,
+): [number, number, number, number, number, number] {
+  const start = offsetToLineColumn(source, startOffset);
+  const end = offsetToLineColumn(source, endOffset);
+  return [startOffset, endOffset, start.line, start.column, end.line, end.column];
 }

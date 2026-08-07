@@ -86,6 +86,14 @@ const hitsBody = {
       versionId: "ver-1",
       nodePath: "amba/i2c@XXXX0000/chip@6E",
       snippet: "amba/i2c@XXXX0000/chip@6E",
+      source: {
+        startOffset: 10,
+        endOffset: 40,
+        startLine: 1,
+        startColumn: 1,
+        endLine: 3,
+        endColumn: 2,
+      },
     },
   ],
 };
@@ -111,6 +119,24 @@ describe("dts search routes", () => {
       projectId: "project-1",
       q: "chip@6E",
       by: "path",
+    });
+  });
+
+  it("GET /api/v1/projects/:projectId/dts-search omits by for all-dimension search", async () => {
+    const db = makeDb();
+    vi.mocked(dtsSearchService.searchProjectDts).mockResolvedValue(hitsBody);
+
+    const response = await requestJson<typeof hitsBody>(
+      makeServer({ db, auth: makeViewOnlyAuth() }),
+      "/api/v1/projects/project-1/dts-search?q=sample",
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.hits[0]?.source?.startLine).toBe(1);
+    expect(dtsSearchService.searchProjectDts).toHaveBeenCalledWith(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      q: "sample",
     });
   });
 

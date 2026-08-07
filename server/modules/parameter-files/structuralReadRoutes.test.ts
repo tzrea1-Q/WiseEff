@@ -109,7 +109,28 @@ const structureBody = {
       nodePath: "demo_bool",
       name: "demo_bool",
       labels: ["demo_bool"],
-      properties: [{ name: "weak_source_sleep_enabled", valueType: "bool", rawText: "", normalizedValue: "true" }],
+      properties: [{
+        name: "weak_source_sleep_enabled",
+        valueType: "bool",
+        rawText: "",
+        normalizedValue: "true",
+        source: {
+          startOffset: 20,
+          endOffset: 28,
+          startLine: 2,
+          startColumn: 3,
+          endLine: 2,
+          endColumn: 11
+        }
+      }],
+      source: {
+        startOffset: 10,
+        endOffset: 40,
+        startLine: 1,
+        startColumn: 1,
+        endLine: 3,
+        endColumn: 2
+      },
       phandleRefs: [],
     },
   ],
@@ -132,6 +153,14 @@ describe("structured read routes", () => {
     );
 
     expect(response.status).toBe(200);
+    expect((response.body as { nodes: Array<{ source?: unknown }> }).nodes[0]?.source).toEqual({
+      startOffset: 10,
+      endOffset: 40,
+      startLine: 1,
+      startColumn: 1,
+      endLine: 3,
+      endColumn: 2
+    });
     expect(response.body).toEqual(structureBody);
     expect(structuralReadService.getParameterFileVersionStructure).toHaveBeenCalledWith(db, "ver-1");
   });

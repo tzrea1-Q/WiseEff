@@ -1,16 +1,27 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+export type DtsViewerFocusSpan = {
+  startLine: number;
+  endLine: number;
+  startColumn?: number;
+  endColumn?: number;
+};
+
 export type ProjectPrimaryDtsViewerProps = {
   fileName: string;
   versionNumber: number;
   text: string;
   /** 1-based line to scroll into view and highlight; null clears highlight */
   focusLine?: number | null;
+  /** Multi-line source locator highlight; wins over focusLine when both are set */
+  focusSpan?: DtsViewerFocusSpan | null;
   /** Controlled find query from workbench search box (optional) */
   findQuery?: string;
   /** Bumps to advance to next find match */
   findNextToken?: number;
   onFindStatusChange?: (status: { matchCount: number; activeIndex: number }) => void;
+  /** Fires with the nearest 1-based line when the source pane scrolls (does not steal focus) */
+  onVisibleLineChange?: (line: number) => void;
   className?: string;
 };
 
@@ -89,13 +100,16 @@ export function ProjectPrimaryDtsViewer({
   versionNumber,
   text,
   focusLine = null,
+  focusSpan = null,
   findQuery = "",
   findNextToken = 0,
   onFindStatusChange,
+  onVisibleLineChange,
   className
 }: ProjectPrimaryDtsViewerProps) {
   const lines = useMemo(() => text.split("\n"), [text]);
   const lineRefs = useRef(new Map<number, HTMLDivElement>());
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const findMatches = useMemo(
     () => collectFindMatches(lines, findQuery),
     [findQuery, lines]
@@ -120,12 +134,47 @@ export function ProjectPrimaryDtsViewer({
     });
   }, [activeMatchIndex, findMatches.length, onFindStatusChange]);
 
+  const effectiveFocusStart =
+    focusSpan && focusSpan.startLine >= 1
+      ? focusSpan.startLine
+      : focusLine != null && focusLine >= 1
+        ? focusLine
+        : null;
+  const effectiveFocusEnd =
+    focusSpan && focusSpan.endLine >= 1
+      ? Math.max(focusSpan.endLine, focusSpan.startLine)
+      : effectiveFocusStart;
+
   useEffect(() => {
-    if (focusLine == null || focusLine < 1) {
+    if (effectiveFocusStart == null) {
       return;
     }
-    lineRefs.current.get(focusLine)?.scrollIntoView({ block: "center" });
-  }, [focusLine, text]);
+    lineRefs.current.get(effectiveFocusStart)?.scrollIntoView({ block: "center" });
+  }, [effectiveFocusStart, effectiveFocusEnd, text]);
+
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body || !onVisibleLineChange) {
+      return;
+    }
+    const handleScroll = () => {
+      const bodyTop = body.getBoundingClientRect().top;
+      let nearest: number | null = null;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      for (const [lineNumber, element] of lineRefs.current.entries()) {
+        const distance = Math.abs(element.getBoundingClientRect().top - bodyTop);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = lineNumber;
+        }
+      }
+      if (nearest != null) {
+        onVisibleLineChange(nearest);
+      }
+    };
+    body.addEventListener("scroll", handleScroll, { passive: true });
+    return () => body.removeEventListener("scroll", handleScroll);
+  }, [onVisibleLineChange, text]);
 
   useEffect(() => {
     if (findMatches.length === 0) {
@@ -143,10 +192,14 @@ export function ProjectPrimaryDtsViewer({
 
   return (
     <section className={rootClassName} aria-label={`${fileName} · v${versionNumber}`}>
-      <div className="project-primary-dts-viewer__body" aria-label="DTS 源码">
+      <div ref={bodyRef} className="project-primary-dts-viewer__body" aria-label="DTS 源码" tabIndex={0}>
         {lines.map((line, index) => {
           const lineNumber = index + 1;
-          const isFocused = focusLine === lineNumber;
+          const isFocused =
+            effectiveFocusStart != null &&
+            effectiveFocusEnd != null &&
+            lineNumber >= effectiveFocusStart &&
+            lineNumber <= effectiveFocusEnd;
           const lineClassName = [
             "project-primary-dts-viewer__line",
             isFocused ? "is-focused" : ""
@@ -174,6 +227,7 @@ export function ProjectPrimaryDtsViewer({
               }}
               className={lineClassName}
               data-line={lineNumber}
+              data-focused={isFocused ? "true" : undefined}
             >
               <span className="project-primary-dts-viewer__line-number" aria-hidden="true">
                 {lineNumber}

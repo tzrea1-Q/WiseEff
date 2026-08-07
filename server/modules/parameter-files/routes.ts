@@ -339,7 +339,7 @@ export function registerParameterFileRoutes(
       organizationId: auth.organization.id,
       projectId: params.projectId,
       q: query.q,
-      by: query.by ?? "path"
+      ...(query.by ? { by: query.by } : {}),
     });
 
     return { status: 200, body };

@@ -8,6 +8,7 @@ import type {
   DtsReleaseBaseline,
   DtsSearchBy,
   DtsSearchHit,
+  DtsSourceLocator,
   DtsStructuralNode,
   DtsStructuredRepository,
   DtsSubmitStructuredEditsInput
@@ -20,9 +21,40 @@ const DEFAULT_FILE_NAME = "atlas-board.dts";
 const DEFAULT_VERSION_ID = "version-teaching-1";
 const DEFAULT_ORG_ID = "org-teaching";
 
+
+function loc(
+  startOffset: number,
+  endOffset: number,
+  startLine: number,
+  startColumn: number,
+  endLine: number,
+  endColumn: number
+): DtsSourceLocator {
+  return { startOffset, endOffset, startLine, startColumn, endLine, endColumn };
+}
+
+function assignTeachingSpans(nodes: DtsStructuralNode[]): DtsStructuralNode[] {
+  let cursor = 1;
+  return nodes.map((node, nodeIndex) => {
+    const nodeStart = cursor;
+    cursor += 40 + nodeIndex;
+    const nodeEnd = cursor;
+    const source = loc(nodeStart, nodeEnd, nodeIndex + 1, 1, nodeIndex + 1, 20);
+    const properties = node.properties.map((property, propIndex) => {
+      const start = nodeEnd + propIndex * 8 + 1;
+      const end = start + 6;
+      return {
+        ...property,
+        source: loc(start, end, nodeIndex + 1, 3 + propIndex, nodeIndex + 1, 9 + propIndex)
+      };
+    });
+    return { ...node, source, properties };
+  });
+}
+
 /** Teaching-fixture-derived structured nodes (frontend-owned; does not import server fixtures). */
 export function createTeachingStructureNodes(): DtsStructuralNode[] {
-  return [
+  return assignTeachingSpans([
     {
       nodePath: "amba",
       name: "amba",
@@ -127,15 +159,19 @@ export function createTeachingStructureNodes(): DtsStructuralNode[] {
       ],
       phandleRefs: []
     }
-  ];
+  ]);
 }
 
 function cloneNodes(nodes: DtsStructuralNode[]): DtsStructuralNode[] {
   return nodes.map((node) => ({
     ...node,
     labels: [...node.labels],
-    properties: node.properties.map((property) => ({ ...property })),
-    phandleRefs: node.phandleRefs.map((ref) => ({ ...ref }))
+    properties: node.properties.map((property) => ({
+      ...property,
+      ...(property.source ? { source: { ...property.source } } : {})
+    })),
+    phandleRefs: node.phandleRefs.map((ref) => ({ ...ref })),
+    ...(node.source ? { source: { ...node.source } } : {})
   }));
 }
 
@@ -146,56 +182,101 @@ function includesIgnoreCase(haystack: string, needle: string) {
 function searchNodes(
   nodes: DtsStructuralNode[],
   q: string,
-  by: DtsSearchBy,
+  by: DtsSearchBy | undefined,
   meta: { fileId: string; fileName: string; versionId: string }
 ): DtsSearchHit[] {
   if (!q.trim()) {
     return [];
   }
 
+  const dimensions: DtsSearchBy[] = by
+    ? [by]
+    : ["file", "path", "address", "label", "compatible", "value"];
   const hits: DtsSearchHit[] = [];
+  const seen = new Set<string>();
   const base = { fileId: meta.fileId, fileName: meta.fileName, versionId: meta.versionId };
 
-  for (const node of nodes) {
-    if (by === "path" && includesIgnoreCase(node.nodePath, q)) {
-      hits.push({ ...base, nodePath: node.nodePath, snippet: node.nodePath });
-      continue;
-    }
+  const push = (hit: DtsSearchHit) => {
+    const key = `${hit.nodePath}\0${hit.propertyName ?? ""}\0${hit.snippet ?? ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    hits.push(hit);
+  };
 
-    if (
-      by === "address" &&
-      ((node.unitAddress && includesIgnoreCase(node.unitAddress, q)) ||
-        includesIgnoreCase(node.nodePath, `@${q}`) ||
-        (node.nodePath.includes("@") && includesIgnoreCase(node.nodePath.split("@").pop() ?? "", q)))
-    ) {
-      hits.push({
-        ...base,
-        nodePath: node.nodePath,
-        snippet: node.unitAddress ? `@${node.unitAddress}` : node.nodePath
-      });
-      continue;
-    }
-
-    if (by === "label" && node.labels.some((label) => includesIgnoreCase(label, q))) {
-      hits.push({ ...base, nodePath: node.nodePath, snippet: node.labels.join(", ") });
-      continue;
-    }
-
-    if (by === "compatible" && node.compatible && includesIgnoreCase(node.compatible, q)) {
-      hits.push({ ...base, nodePath: node.nodePath, snippet: node.compatible });
-      continue;
-    }
-
-    if (by === "value") {
-      for (const property of node.properties) {
-        if (includesIgnoreCase(property.normalizedValue, q) || includesIgnoreCase(property.name, q)) {
-          hits.push({
+  for (const dimension of dimensions) {
+    if (dimension === "file") {
+      if (includesIgnoreCase(meta.fileName, q)) {
+        const root = nodes.find((node) => !node.nodePath.includes("/")) ?? nodes[0];
+        if (root) {
+          push({
             ...base,
-            nodePath: node.nodePath,
-            propertyName: property.name,
-            snippet: `${property.name}=${property.normalizedValue}`
+            nodePath: root.nodePath,
+            snippet: meta.fileName,
+            ...(root.source ? { source: root.source } : {})
           });
-          break;
+        }
+      }
+      continue;
+    }
+
+    for (const node of nodes) {
+      if (dimension === "path" && includesIgnoreCase(node.nodePath, q)) {
+        push({
+          ...base,
+          nodePath: node.nodePath,
+          snippet: node.nodePath,
+          ...(node.source ? { source: node.source } : {})
+        });
+        continue;
+      }
+
+      if (
+        dimension === "address" &&
+        ((node.unitAddress && includesIgnoreCase(node.unitAddress, q)) ||
+          includesIgnoreCase(node.nodePath, `@${q}`) ||
+          (node.nodePath.includes("@") && includesIgnoreCase(node.nodePath.split("@").pop() ?? "", q)))
+      ) {
+        push({
+          ...base,
+          nodePath: node.nodePath,
+          snippet: node.unitAddress ? `@${node.unitAddress}` : node.nodePath,
+          ...(node.source ? { source: node.source } : {})
+        });
+        continue;
+      }
+
+      if (dimension === "label" && node.labels.some((label) => includesIgnoreCase(label, q))) {
+        push({
+          ...base,
+          nodePath: node.nodePath,
+          snippet: node.labels.join(", "),
+          ...(node.source ? { source: node.source } : {})
+        });
+        continue;
+      }
+
+      if (dimension === "compatible" && node.compatible && includesIgnoreCase(node.compatible, q)) {
+        push({
+          ...base,
+          nodePath: node.nodePath,
+          snippet: node.compatible,
+          ...(node.source ? { source: node.source } : {})
+        });
+        continue;
+      }
+
+      if (dimension === "value") {
+        for (const property of node.properties) {
+          if (includesIgnoreCase(property.normalizedValue, q) || includesIgnoreCase(property.name, q)) {
+            push({
+              ...base,
+              nodePath: node.nodePath,
+              propertyName: property.name,
+              snippet: `${property.name}=${property.normalizedValue}`,
+              ...(property.source ? { source: property.source } : {})
+            });
+            break;
+          }
         }
       }
     }
@@ -301,9 +382,8 @@ export function createMockDtsStructuredRepository(
     },
 
     async search(_requestedProjectId, query) {
-      const by = query.by ?? "path";
       return {
-        hits: searchNodes(state.nodes, query.q, by, {
+        hits: searchNodes(state.nodes, query.q, query.by, {
           fileId,
           fileName: DEFAULT_FILE_NAME,
           versionId

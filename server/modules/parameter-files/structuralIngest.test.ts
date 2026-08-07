@@ -105,4 +105,65 @@ describe.skipIf(!databaseAvailable)("ingestDtsFileVersion", () => {
     );
     expect(refreshedNodes.rows[0]?.count).toBe(counts.nodes);
   });
+  it("persists source spans for nodes and properties from CST locators", async () => {
+    const source = `/dts-v1/;\n\n/ {\n  demo {\n    temp = <85>;\n  };\n};\n`;
+    const versionId = randomUUID();
+    await db!.query(
+      `insert into project_parameter_file_versions (
+         id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin
+       ) values ($1, 'file-struct', 1, 'k', 'c', 1, '{}'::jsonb, 'upload')`,
+      [versionId],
+    );
+
+    await ingestDtsFileVersion(db!, versionId, source);
+
+    const node = await db!.query<{
+      node_path: string;
+      start_offset: number | null;
+      end_offset: number | null;
+      start_line: number | null;
+      start_column: number | null;
+      end_line: number | null;
+      end_column: number | null;
+    }>(
+      `select node_path, start_offset, end_offset, start_line, start_column, end_line, end_column
+       from dts_nodes
+       where file_version_id = $1 and node_path = 'demo'`,
+      [versionId],
+    );
+    expect(node.rows).toHaveLength(1);
+    const demo = node.rows[0]!;
+    expect(demo.start_offset).not.toBeNull();
+    expect(demo.end_offset).not.toBeNull();
+    expect(demo.start_offset!).toBeLessThan(demo.end_offset!);
+    expect(demo.start_line).toBeGreaterThanOrEqual(1);
+    expect(demo.start_column).toBeGreaterThanOrEqual(1);
+    expect(demo.end_line).toBeGreaterThanOrEqual(demo.start_line!);
+    expect(source.slice(demo.start_offset!, demo.end_offset!)).toContain("demo");
+
+    const prop = await db!.query<{
+      name: string;
+      start_offset: number | null;
+      end_offset: number | null;
+      start_line: number | null;
+      start_column: number | null;
+      end_line: number | null;
+      end_column: number | null;
+    }>(
+      `select p.name, p.start_offset, p.end_offset, p.start_line, p.start_column, p.end_line, p.end_column
+       from dts_properties p
+       join dts_nodes n on n.id = p.node_id
+       where n.file_version_id = $1 and n.node_path = 'demo' and p.name = 'temp'`,
+      [versionId],
+    );
+    expect(prop.rows).toHaveLength(1);
+    const temp = prop.rows[0]!;
+    expect(temp.start_offset).not.toBeNull();
+    expect(temp.end_offset).not.toBeNull();
+    expect(temp.start_offset!).toBeLessThan(temp.end_offset!);
+    // Property CST spans cover the value expression (matching topology occurrence locators).
+    expect(source.slice(temp.start_offset!, temp.end_offset!)).toContain("85");
+    expect(temp.start_line).toBeGreaterThanOrEqual(1);
+    expect(temp.start_column).toBeGreaterThanOrEqual(1);
+  });
 });

@@ -159,6 +159,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PROJ-CONFIG-SOURCE-001",
+    workflow: "C",
+    title: "Source-located configuration workbench navigation exposes structural spans, unified search grouped by file, URL deep links, scroll sync, and independent structure/source retries.",
+    required: false
+  },
+  {
     id: "PARAM-ADMIN-DIALOG-001",
     workflow: "C",
     title: "Param-admin dialogs trap focus, restore focus to the trigger, close only the top-most dialog on Escape, ignore press-inside/release-outside, and keep their styling through the portal.",

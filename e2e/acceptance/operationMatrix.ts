@@ -350,6 +350,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "screenshot"]
   },
   {
+    id: "PROJ-CONFIG-SOURCE-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Select structure nodes/properties to focus source spans, run unified search grouped by file with cross-file navigation, restore node/property/sourceMode deep links, and retry failed structure reads independently.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-SOURCE-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
+  {
     id: "PARAM-ADMIN-DIALOG-001",
     priority: "P1",
     area: "parameters",

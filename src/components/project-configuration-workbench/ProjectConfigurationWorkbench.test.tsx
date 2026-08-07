@@ -167,10 +167,11 @@ function createFileRepository(
 
 function renderWorkbench(options: {
   search?: string;
+  onNavigate?: ReturnType<typeof vi.fn>;
   dtsRepository?: DtsStructuredRepository;
   fileRepository?: ParameterFileRepository;
 } = {}) {
-  const onNavigate = vi.fn();
+  const onNavigate = options.onNavigate ?? vi.fn();
   render(
     <ProjectConfigurationWorkbench
       project={PROJECT}
@@ -389,4 +390,210 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.click(taskToggle);
     expect(screen.getByRole("region", { name: "配置任务" })).toHaveTextContent("本阶段为只读查看");
   });
+  it("loads nested structure under the selected member and focuses source spans from tree selection", async () => {
+    const getStructure = vi.fn(async () => ({
+      nodes: [
+        {
+          nodePath: "board",
+          name: "board",
+          labels: ["board"],
+          properties: [
+            {
+              name: "model",
+              valueType: "string-list" as const,
+              rawText: '"Aurora"',
+              normalizedValue: "Aurora",
+              source: {
+                startOffset: 20,
+                endOffset: 28,
+                startLine: 2,
+                startColumn: 3,
+                endLine: 2,
+                endColumn: 11
+              }
+            }
+          ],
+          phandleRefs: [],
+          source: {
+            startOffset: 10,
+            endOffset: 40,
+            startLine: 1,
+            startColumn: 1,
+            endLine: 3,
+            endColumn: 2
+          }
+        }
+      ]
+    }));
+    const onNavigate = vi.fn();
+    renderWorkbench({
+      onNavigate,
+      dtsRepository: createDtsRepository({ getStructure })
+    });
+
+    expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
+    await waitFor(() => expect(getStructure).toHaveBeenCalledWith(PROJECT.id, "file-board", "version-board-12"));
+    fireEvent.click(await screen.findByRole("treeitem", { name: "节点 board" }));
+    await waitFor(() =>
+      expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("node=board"))).toBe(true)
+    );
+    fireEvent.click(await screen.findByRole("treeitem", { name: "属性 board/model" }));
+    await waitFor(() =>
+      expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("property=model"))).toBe(true)
+    );
+    await waitFor(() =>
+      expect(document.querySelector('[data-focused="true"]')).not.toBeNull()
+    );
+  });
+
+  it("groups unified search hits by file and navigates across members while preserving config set", async () => {
+    const search = vi.fn(async () => ({
+      hits: [
+        {
+          fileId: "file-overlay",
+          fileName: "charging-overlay.dtsi",
+          versionId: "version-overlay-4",
+          nodePath: "charger",
+          snippet: "charger",
+          source: {
+            startOffset: 1,
+            endOffset: 8,
+            startLine: 1,
+            startColumn: 1,
+            endLine: 1,
+            endColumn: 8
+          }
+        },
+        {
+          fileId: "file-board",
+          fileName: "aurora-board.dts",
+          versionId: "version-board-12",
+          nodePath: "board",
+          propertyName: "model",
+          snippet: "model=Aurora",
+          source: {
+            startOffset: 20,
+            endOffset: 28,
+            startLine: 2,
+            startColumn: 3,
+            endLine: 2,
+            endColumn: 11
+          }
+        }
+      ]
+    }));
+    const onNavigate = vi.fn();
+    renderWorkbench({
+      onNavigate,
+      dtsRepository: createDtsRepository({ search })
+    });
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "统一搜索查询" }), {
+      target: { value: "board" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+
+    const results = await screen.findByLabelText("搜索结果");
+    expect(results).toHaveTextContent("charging-overlay.dtsi");
+    expect(results).toHaveTextContent("aurora-board.dts");
+    await waitFor(() => expect(search).toHaveBeenCalledWith(PROJECT.id, { q: "board" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /charger/ }));
+    await waitFor(() => {
+      const urls = onNavigate.mock.calls.map((call) => String(call[0]));
+      expect(urls.some((url) => url.includes("configSet=cs-default") && url.includes("file=file-overlay") && url.includes("node=charger"))).toBe(true);
+    });
+  });
+
+  it("restores node and property deep links from the URL", async () => {
+    const getStructure = vi.fn(async () => ({
+      nodes: [
+        {
+          nodePath: "board",
+          name: "board",
+          labels: [],
+          properties: [
+            {
+              name: "model",
+              valueType: "string-list" as const,
+              rawText: '"Aurora"',
+              normalizedValue: "Aurora",
+              source: {
+                startOffset: 20,
+                endOffset: 28,
+                startLine: 2,
+                startColumn: 3,
+                endLine: 2,
+                endColumn: 11
+              }
+            }
+          ],
+          phandleRefs: [],
+          source: {
+            startOffset: 10,
+            endOffset: 40,
+            startLine: 1,
+            startColumn: 1,
+            endLine: 3,
+            endColumn: 2
+          }
+        }
+      ]
+    }));
+    renderWorkbench({
+      search: "?configSet=cs-default&file=file-board&node=board&property=model&sourceMode=structured",
+      dtsRepository: createDtsRepository({ getStructure })
+    });
+    const propertyItem = await screen.findByRole("treeitem", { name: "属性 board/model" });
+    await waitFor(() => expect(propertyItem).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(screen.getByRole("button", { name: "检查器" }));
+    expect(screen.getByText(/源码模式：structured/)).toBeInTheDocument();
+  });
+
+  it("retries only the structure tree when structure loading fails", async () => {
+    const getStructure = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("structure unavailable"))
+      .mockResolvedValueOnce({
+        nodes: [
+          {
+            nodePath: "board",
+            name: "board",
+            labels: [],
+            properties: [],
+            phandleRefs: [],
+            source: {
+              startOffset: 1,
+              endOffset: 5,
+              startLine: 1,
+              startColumn: 1,
+              endLine: 1,
+              endColumn: 5
+            }
+          }
+        ]
+      });
+    renderWorkbench({ dtsRepository: createDtsRepository({ getStructure }) });
+    expect(await screen.findByText("structure unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试结构树" }));
+    expect(await screen.findByRole("treeitem", { name: "节点 board" })).toBeInTheDocument();
+    expect(getStructure).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses Alt keyboard helpers for search focus and next match without requiring meta/ctrl", async () => {
+    renderWorkbench();
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const search = screen.getByRole("searchbox", { name: "统一搜索查询" });
+    fireEvent.keyDown(window, { key: "f", altKey: true });
+    expect(search).toHaveFocus();
+    fireEvent.change(search, { target: { value: "Aurora" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    fireEvent.keyDown(window, { key: "n", altKey: true });
+    // Next-match token is accepted without throwing; browser shortcuts remain untouched for ctrl/meta.
+    fireEvent.keyDown(window, { key: "f", ctrlKey: true });
+    expect(search).toHaveFocus();
+  });
+
 });

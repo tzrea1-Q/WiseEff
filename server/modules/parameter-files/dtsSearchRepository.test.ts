@@ -178,4 +178,51 @@ describe.skipIf(!databaseAvailable)("searchDtsStructuralModel", () => {
     });
     expect(staleHit.hits).toEqual([]);
   });
+
+  it("matches file names, attaches source locators, and searches all dimensions when by is omitted", async () => {
+    const byFile = await searchDtsStructuralModel(db!, {
+      organizationId: "org-dts-search",
+      projectId: "proj-dts-search",
+      q: "teaching-sample",
+      by: "file",
+    });
+    expect(byFile.hits.length).toBeGreaterThan(0);
+    expect(byFile.hits.every((hit) => hit.fileName === "teaching-sample.dts")).toBe(true);
+
+    const byPath = await searchDtsStructuralModel(db!, {
+      organizationId: "org-dts-search",
+      projectId: "proj-dts-search",
+      q: "chip@6E",
+      by: "path",
+    });
+    const chip = byPath.hits.find((hit) => hit.nodePath === "amba/i2c@XXXX0000/chip@6E");
+    expect(chip?.source).toBeDefined();
+    expect(chip!.source!.startOffset).toBeLessThan(chip!.source!.endOffset);
+
+    const byValue = await searchDtsStructuralModel(db!, {
+      organizationId: "org-dts-search",
+      projectId: "proj-dts-search",
+      q: "weak_source_sleep_enabled",
+      by: "value",
+    });
+    const propHit = byValue.hits.find((hit) => hit.propertyName === "weak_source_sleep_enabled");
+    expect(propHit?.source).toBeDefined();
+
+    const all = await searchDtsStructuralModel(db!, {
+      organizationId: "org-dts-search",
+      projectId: "proj-dts-search",
+      q: "teaching-sample",
+    });
+    expect(all.hits.some((hit) => hit.snippet === "teaching-sample.dts" || hit.fileName.includes("teaching-sample"))).toBe(
+      true,
+    );
+
+    const allChip = await searchDtsStructuralModel(db!, {
+      organizationId: "org-dts-search",
+      projectId: "proj-dts-search",
+      q: "chip@6E",
+    });
+    expect(allChip.hits.some((hit) => hit.nodePath === "amba/i2c@XXXX0000/chip@6E")).toBe(true);
+  });
+
 });

@@ -1,11 +1,21 @@
 import type { Queryable } from "../../shared/database/client";
 import type { DtsValueType } from "../dts/types";
 
+export type DtsSourceLocatorDto = {
+  startOffset: number;
+  endOffset: number;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+};
+
 export type StructuralPropertyDto = {
   name: string;
   valueType: DtsValueType;
   rawText: string;
   normalizedValue: string;
+  source?: DtsSourceLocatorDto;
 };
 
 export type StructuralPhandleRefDto = {
@@ -23,6 +33,7 @@ export type StructuralNodeDto = {
   status?: string;
   properties: StructuralPropertyDto[];
   phandleRefs: StructuralPhandleRefDto[];
+  source?: DtsSourceLocatorDto;
 };
 
 export type StructuralReadResult = {
@@ -38,6 +49,12 @@ type NodeRow = {
   compatible: string | null;
   status: string | null;
   sort_order: number | string;
+  start_offset: number | null;
+  end_offset: number | null;
+  start_line: number | null;
+  start_column: number | null;
+  end_line: number | null;
+  end_column: number | null;
 };
 
 type PropertyRow = {
@@ -48,6 +65,12 @@ type PropertyRow = {
   raw_text: string;
   normalized_value: unknown;
   sort_order: number | string;
+  start_offset: number | null;
+  end_offset: number | null;
+  start_line: number | null;
+  start_column: number | null;
+  end_line: number | null;
+  end_column: number | null;
 };
 
 type PhandleRefRow = {
@@ -80,6 +103,35 @@ function normalizeNormalizedValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+
+function mapSourceLocator(row: {
+  start_offset: number | null;
+  end_offset: number | null;
+  start_line: number | null;
+  start_column: number | null;
+  end_line: number | null;
+  end_column: number | null;
+}): DtsSourceLocatorDto | undefined {
+  if (
+    row.start_offset == null ||
+    row.end_offset == null ||
+    row.start_line == null ||
+    row.start_column == null ||
+    row.end_line == null ||
+    row.end_column == null
+  ) {
+    return undefined;
+  }
+  return {
+    startOffset: row.start_offset,
+    endOffset: row.end_offset,
+    startLine: row.start_line,
+    startColumn: row.start_column,
+    endLine: row.end_line,
+    endColumn: row.end_column,
+  };
+}
+
 /** Assemble structured DTS model from dts_* tables for a file version (no re-parse). */
 export async function readDtsStructuralModel(
   db: Queryable,
@@ -87,7 +139,8 @@ export async function readDtsStructuralModel(
 ): Promise<StructuralReadResult> {
   const nodesResult = await db.query<NodeRow>(
     `
-    select id, name, unit_address, labels, node_path, compatible, status, sort_order
+    select id, name, unit_address, labels, node_path, compatible, status, sort_order,
+           start_offset, end_offset, start_line, start_column, end_line, end_column
     from dts_nodes
     where file_version_id = $1
     order by sort_order asc, id asc
@@ -97,7 +150,8 @@ export async function readDtsStructuralModel(
 
   const propertiesResult = await db.query<PropertyRow>(
     `
-    select p.id, p.node_id, p.name, p.value_type, p.raw_text, p.normalized_value, p.sort_order
+    select p.id, p.node_id, p.name, p.value_type, p.raw_text, p.normalized_value, p.sort_order,
+           p.start_offset, p.end_offset, p.start_line, p.start_column, p.end_line, p.end_column
     from dts_properties p
     join dts_nodes n on n.id = p.node_id
     where n.file_version_id = $1
@@ -127,11 +181,13 @@ export async function readDtsStructuralModel(
   const propertiesByNode = new Map<string, StructuralPropertyDto[]>();
   for (const row of propertiesResult.rows) {
     const list = propertiesByNode.get(row.node_id) ?? [];
+    const source = mapSourceLocator(row);
     list.push({
       name: row.name,
       valueType: row.value_type as DtsValueType,
       rawText: row.raw_text,
       normalizedValue: normalizeNormalizedValue(row.normalized_value),
+      ...(source ? { source } : {}),
     });
     propertiesByNode.set(row.node_id, list);
   }
@@ -147,16 +203,20 @@ export async function readDtsStructuralModel(
     phandlesByNode.set(row.node_id, list);
   }
 
-  const nodes: StructuralNodeDto[] = nodesResult.rows.map((row) => ({
-    nodePath: row.node_path,
-    name: row.name,
-    ...(row.unit_address != null ? { unitAddress: row.unit_address } : {}),
-    labels: parseLabels(row.labels),
-    ...(row.compatible != null ? { compatible: row.compatible } : {}),
-    ...(row.status != null ? { status: row.status } : {}),
-    properties: propertiesByNode.get(row.id) ?? [],
-    phandleRefs: phandlesByNode.get(row.id) ?? [],
-  }));
+  const nodes: StructuralNodeDto[] = nodesResult.rows.map((row) => {
+    const source = mapSourceLocator(row);
+    return {
+      nodePath: row.node_path,
+      name: row.name,
+      ...(row.unit_address != null ? { unitAddress: row.unit_address } : {}),
+      labels: parseLabels(row.labels),
+      ...(row.compatible != null ? { compatible: row.compatible } : {}),
+      ...(row.status != null ? { status: row.status } : {}),
+      properties: propertiesByNode.get(row.id) ?? [],
+      phandleRefs: phandlesByNode.get(row.id) ?? [],
+      ...(source ? { source } : {}),
+    };
+  });
 
   return { nodes };
 }

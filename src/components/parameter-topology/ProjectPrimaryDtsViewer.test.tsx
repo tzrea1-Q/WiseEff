@@ -26,6 +26,22 @@ describe("ProjectPrimaryDtsViewer", () => {
         focusLine={2}
       />
     );
-    expect(container.querySelector('[data-line="2"]')).toHaveClass("is-focused");
+    expect(container.querySelector('[data-line="2"]')).toHaveAttribute("data-focused", "true");
+  });
+
+  it("highlights a multi-line focusSpan and keeps find-next available", () => {
+    const { container } = render(
+      <ProjectPrimaryDtsViewer
+        fileName="aurora-board.dts"
+        versionNumber={1}
+        text={"alpha\nbeta\ngamma\ndelta"}
+        focusSpan={{ startLine: 2, endLine: 3 }}
+        findQuery="a"
+      />
+    );
+    expect(container.querySelector('[data-line="2"]')).toHaveAttribute("data-focused", "true");
+    expect(container.querySelector('[data-line="3"]')).toHaveClass("is-focused");
+    expect(container.querySelector('[data-line="1"]')).not.toHaveClass("is-focused");
+    expect(container.querySelectorAll("mark.project-primary-dts-viewer__find-match").length).toBeGreaterThan(0);
   });
 });

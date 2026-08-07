@@ -131,6 +131,19 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ConfigSetMemberFileListResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "parameters.getParameterFileStructure": {
+    summary: "Read structured DTS nodes/properties for a file version (includes source locators)",
+    tags: ["parameters"],
+    responseBody: "StructuralReadResponse",
+    additionalResponses: { "404": "ErrorResponse" }
+  },
+  "parameters.searchDts": {
+    summary: "Search project DTS structure by path/address/label/compatible/value/file (omit by for all)",
+    tags: ["parameters"],
+    responseBody: "DtsSearchResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+
   "parameters.listProjectModules": {
     summary: "List project modules",
     tags: ["parameters"],
