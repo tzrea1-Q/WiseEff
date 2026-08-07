@@ -814,6 +814,57 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/config-sets/{configSetId}/release-readiness": {
+      "get": {
+        "operationId": "parameters.getConfigSetReleaseReadiness",
+        "summary": "Evaluate server-owned release readiness for a Config set (gate token + ordered blockers/warnings)",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "configSetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigSetReleaseReadinessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/parameter-files/{fileId}/versions/{versionId}/structure": {
       "get": {
         "operationId": "parameters.getParameterFileStructure",
@@ -6949,6 +7000,10 @@
       "ConfigSetMemberFileListResponse": {
         "type": "object",
         "x-wiseeff-schema": "ConfigSetMemberFileListResponse"
+      },
+      "ConfigSetReleaseReadinessResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ConfigSetReleaseReadinessResponse"
       },
       "StructuralReadResponse": {
         "type": "object",
