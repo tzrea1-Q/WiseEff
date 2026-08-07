@@ -162,6 +162,13 @@ function createFileRepository(
     syncFile: vi.fn(),
     listConflicts: vi.fn(async () => []),
     resolveConflict: vi.fn(),
+    listCandidates: vi.fn(async () => []),
+    createCandidate: vi.fn(),
+    getCandidate: vi.fn(),
+    getCandidateImpact: vi.fn(),
+    downloadCandidate: vi.fn(),
+    abandonCandidate: vi.fn(),
+    recomputeCandidate: vi.fn(),
     ...overrides
   } as ParameterFileRepository;
 }
@@ -223,7 +230,7 @@ describe("ProjectConfigurationWorkbench", () => {
         "/parameter-admin/projects/project-1/configuration?configSet=cs-default&file=file-board"
       )
     );
-    expect(screen.getByRole("button", { name: "上传候选" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "上传候选" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "创建基线" })).toBeDisabled();
   });
 
@@ -945,6 +952,82 @@ describe("ProjectConfigurationWorkbench", () => {
         )
       ).toBe(true);
     });
+  });
+
+  it("uploads a candidate, shows impact evidence, and abandons without activating", async () => {
+    const candidate = {
+      id: "cand-1",
+      projectId: PROJECT.id,
+      fileId: "file-board",
+      fileName: "aurora-board.dts",
+      format: "dts" as const,
+      status: "ready" as const,
+      baseVersionId: "version-board-12",
+      diagnostics: [],
+      blockers: [],
+      impact: {
+        textDiff: "--- active\n+++ candidate\n+model = \"Cand\";",
+        structuralDiff: [{ kind: "prop_changed" as const, nodePath: "/board", prop: "model", before: "Aurora", after: "Cand" }],
+        diagnostics: [],
+        blockers: [],
+        conflicts: [],
+        coverage: {
+          matchedRegistered: ["wiseeff,cand"],
+          newUnregistered: [],
+          matchedRegisteredCount: 1,
+          newUnregisteredCount: 0
+        }
+      },
+      createdAt: "2026-08-07T00:00:00.000Z",
+      updatedAt: "2026-08-07T00:00:00.000Z"
+    };
+    const createCandidate = vi.fn(async () => candidate);
+    const getCandidate = vi.fn(async () => candidate);
+    const downloadCandidate = vi.fn(async () => ({
+      contentType: "text/plain",
+      fileName: "aurora-board.dts",
+      bytes: new TextEncoder().encode('/dts-v1/;\n/ { model = "Cand"; };\n')
+    }));
+    const abandonCandidate = vi.fn(async () => ({ ...candidate, status: "abandoned" as const }));
+
+    const { onNavigate } = renderWorkbench({
+      syncSearch: true,
+      fileRepository: createFileRepository({
+        createCandidate,
+        getCandidate,
+        downloadCandidate,
+        abandonCandidate
+      })
+    });
+
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const uploadInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(uploadInput).toBeTruthy();
+    const file = new File(['/dts-v1/;\n/ { model = "Cand"; };\n'], "aurora-board.dts", {
+      type: "text/plain"
+    });
+    Object.defineProperty(uploadInput, "files", {
+      configurable: true,
+      value: [file]
+    });
+    fireEvent.change(uploadInput);
+
+    await waitFor(() => expect(createCandidate).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("sourceMode=candidate"))).toBe(true)
+    );
+    expect(await screen.findByLabelText("候选只读源码模式")).toBeInTheDocument();
+    expect(screen.getByLabelText("配置身份")).toHaveTextContent("ready");
+    const inspectorToggle = screen.getByRole("button", { name: "检查器" });
+    if (inspectorToggle.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(inspectorToggle);
+    }
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    expect(inspector).toHaveTextContent("结构差异");
+    expect(inspector).toHaveTextContent("覆盖/映射");
+    expect(inspector).toHaveTextContent("文本差异");
+    fireEvent.click(screen.getByRole("button", { name: "放弃候选" }));
+    await waitFor(() => expect(abandonCandidate).toHaveBeenCalledWith(PROJECT.id, "cand-1"));
   });
 
 });

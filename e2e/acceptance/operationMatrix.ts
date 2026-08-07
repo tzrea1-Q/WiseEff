@@ -375,6 +375,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
     assertions: ["ui", "api", "screenshot"]
   },
+  {
+    id: "PROJ-CONFIG-CANDIDATE-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Upload a candidate file version, review impact evidence in candidate source/inspector, observe parse-failure diagnostics with abandon, and confirm active version plus Config set membership stay unchanged.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-CANDIDATE-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
 
   {
     id: "PARAM-ADMIN-DIALOG-001",

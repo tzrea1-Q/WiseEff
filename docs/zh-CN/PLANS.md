@@ -15,6 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
+- `exec-plans/completed/2026-08-07-project-configuration-workbench-candidate-upload.md`：Issue #231 候选文件版本生命周期——上传、解析、影响审查与放弃，且不激活工作配置（分支 `feat/project-configuration-workbench-candidate-upload`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-inspector-history.md`：Issue #230 上下文检查器、不可变文件历史、源码历史/对比模式与 PCW-D15 叠层常驻规则（分支 `feat/project-configuration-workbench-inspector-history`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-source-nav.md`：Issue #229 源码定位 DTS 导航——结构 span、统一搜索、URL 深链与工作台源码同步（分支 `feat/project-configuration-workbench-source-nav`）。
 - `exec-plans/completed/2026-08-06-project-configuration-workbench-readonly.md`：Issue #228 Phase 1 只读 tracer——开发开关后的规范路由、确定性配置集上下文、成员/未编组源码树、经既有 ports 加载活跃源码，以及源码主导响应式外壳（分支 `feat/project-configuration-workbench-readonly`）。

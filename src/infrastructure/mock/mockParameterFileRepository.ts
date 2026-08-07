@@ -1,6 +1,9 @@
 import type {
+  CreateParameterFileCandidateInput,
+  DownloadParameterFileCandidateResult,
   DownloadParameterFileVersionResult,
   FileSyncSummary,
+  ParameterFileCandidate,
   ParameterFileConflictResolution,
   ParameterFileRepository,
   ParameterFileSyncConflict,
@@ -22,6 +25,8 @@ type Store = {
   versionsByFile: Map<string, ProjectParameterFileVersion[]>;
   contentByVersion: Map<string, Uint8Array>;
   conflictsByProject: Map<string, ParameterFileSyncConflict[]>;
+  candidatesByProject: Map<string, ParameterFileCandidate[]>;
+  contentByCandidate: Map<string, Uint8Array>;
 };
 
 function decodeBase64(contentBase64: string): Uint8Array {
@@ -79,7 +84,9 @@ function seedStore(): Store {
     filesByProject: new Map([[DEFAULT_PROJECT_ID, [file]]]),
     versionsByFile: new Map([[DEFAULT_FILE_ID, [version]]]),
     contentByVersion: new Map([[DEFAULT_VERSION_ID, new TextEncoder().encode("/ { };\n")]]),
-    conflictsByProject: new Map([[DEFAULT_PROJECT_ID, [conflict]]])
+    conflictsByProject: new Map([[DEFAULT_PROJECT_ID, [conflict]]]),
+    candidatesByProject: new Map(),
+    contentByCandidate: new Map()
   };
 }
 
@@ -247,6 +254,123 @@ export function createMockParameterFileRepository(): ParameterFileRepository {
       conflict.resolvedAt = MOCK_NOW;
       conflict.resolvedByUserId = "user-teaching";
       return { ...conflict };
+    },
+
+    async listCandidates(projectId, options) {
+      const items = store.candidatesByProject.get(projectId) ?? [];
+      return items
+        .filter((item) => (options?.fileId ? item.fileId === options.fileId : true))
+        .filter((item) => (options?.includeAbandoned ? true : item.status !== "abandoned"))
+        .map((item) => ({ ...item, diagnostics: [...item.diagnostics], blockers: [...item.blockers], impact: { ...item.impact } }));
+    },
+
+    async createCandidate(projectId, input: CreateParameterFileCandidateInput) {
+      uploadCounter += 1;
+      const bytes = decodeBase64(input.contentBase64);
+      const source = new TextDecoder().decode(bytes);
+      const files = ensureProjectFiles(store, projectId);
+      const file = input.fileId
+        ? files.find((item) => item.id === input.fileId)
+        : files.find((item) => item.fileName === input.fileName);
+      const format = input.fileName.toLowerCase().endsWith(".json") ? "json" : "dts";
+      let status: ParameterFileCandidate["status"] = "ready";
+      const diagnostics: ParameterFileCandidate["diagnostics"] = [];
+      if (format === "json") {
+        try {
+          JSON.parse(source);
+        } catch (error) {
+          status = "failed";
+          diagnostics.push({
+            severity: "error",
+            code: "parse-failed",
+            message: error instanceof Error ? error.message : "parse failed"
+          });
+        }
+      }
+      const candidate: ParameterFileCandidate = {
+        id: `candidate-mock-${uploadCounter}`,
+        projectId,
+        fileId: file?.id,
+        fileName: file?.fileName ?? input.fileName,
+        format,
+        status,
+        baseVersionId: file?.currentVersionId,
+        checksum: `mock-cand-${uploadCounter}`,
+        sizeBytes: bytes.byteLength,
+        diagnostics,
+        impact: {
+          textDiff: `--- active\n+++ candidate\n+uploaded`,
+          structuralDiff: [],
+          diagnostics,
+          blockers: [],
+          conflicts: [],
+          coverage: {
+            matchedRegistered: [],
+            newUnregistered: [],
+            matchedRegisteredCount: 0,
+            newUnregisteredCount: 0
+          }
+        },
+        blockers: [],
+        createdAt: MOCK_NOW,
+        updatedAt: MOCK_NOW
+      };
+      const list = store.candidatesByProject.get(projectId) ?? [];
+      list.unshift(candidate);
+      store.candidatesByProject.set(projectId, list);
+      store.contentByCandidate.set(candidate.id, bytes);
+      return { ...candidate, diagnostics: [...diagnostics], impact: { ...candidate.impact } };
+    },
+
+    async getCandidate(projectId, candidateId) {
+      const candidate = (store.candidatesByProject.get(projectId) ?? []).find((item) => item.id === candidateId);
+      if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+      return { ...candidate, diagnostics: [...candidate.diagnostics], impact: { ...candidate.impact } };
+    },
+
+    async getCandidateImpact(projectId, candidateId) {
+      const candidate = (store.candidatesByProject.get(projectId) ?? []).find((item) => item.id === candidateId);
+      if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+      const item = { ...candidate, diagnostics: [...candidate.diagnostics], impact: { ...candidate.impact } };
+      return { item, impact: { ...item.impact } };
+    },
+
+    async downloadCandidate(projectId, candidateId): Promise<DownloadParameterFileCandidateResult> {
+      const candidate = (store.candidatesByProject.get(projectId) ?? []).find((item) => item.id === candidateId);
+      if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+      const bytes = store.contentByCandidate.get(candidateId) ?? new Uint8Array();
+      return {
+        contentType: "application/octet-stream",
+        fileName: candidate.fileName,
+        bytes: new Uint8Array(bytes)
+      };
+    },
+
+    async abandonCandidate(projectId, candidateId) {
+      const list = store.candidatesByProject.get(projectId) ?? [];
+      const candidate = list.find((item) => item.id === candidateId);
+      if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+      if (!["ready", "blocked", "failed"].includes(candidate.status)) {
+        throw new Error(`Cannot abandon candidate in status ${candidate.status}`);
+      }
+      candidate.status = "abandoned";
+      candidate.abandonedAt = MOCK_NOW;
+      candidate.updatedAt = MOCK_NOW;
+      return { ...candidate };
+    },
+
+    async recomputeCandidate(projectId, candidateId) {
+      const list = store.candidatesByProject.get(projectId) ?? [];
+      const candidate = list.find((item) => item.id === candidateId);
+      if (!candidate) throw new Error(`Candidate not found: ${candidateId}`);
+      if (!["ready", "blocked", "failed"].includes(candidate.status)) {
+        throw new Error(`Cannot recompute candidate in status ${candidate.status}`);
+      }
+      candidate.updatedAt = MOCK_NOW;
+      if (candidate.status === "blocked" && (candidate.blockers?.length ?? 0) === 0) {
+        candidate.status = "ready";
+      }
+      return { ...candidate };
     }
   };
 }

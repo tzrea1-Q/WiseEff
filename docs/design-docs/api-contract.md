@@ -20,7 +20,7 @@ Rules:
 
 - Auth and users: `/me`, user listing, user creation, activation, role replacement.
 - Projects and modules: project metadata and module lookup.
-- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), **project parameter initialization** (`/parameters/projects/:projectId/initialization*`, `/parameters/admin/initialization-reviews*`), per-project parameter file hosting with sync and conflict resolution (`/projects/:projectId/parameter-files*`), structured DTS read/search (`.../structure`, `/projects/:projectId/dts-search`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
+- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`), org module tree CRUD (`/parameter-modules`), **project parameter initialization** (`/parameters/projects/:projectId/initialization*`, `/parameters/admin/initialization-reviews*`), per-project parameter file hosting with sync, conflict resolution, and staged candidates (`/projects/:projectId/parameter-files*`, `/projects/:projectId/parameter-file-candidates*`), structured DTS read/search (`.../structure`, `/projects/:projectId/dts-search`), and per-project DTS config sets, release baselines, validation gate, and lossless export (`/projects/:projectId/config-sets*`, `/projects/:projectId/baselines/:baselineId/*`).
 - Semantic parameter topology (v2): parameter specs, spec review tasks, source/effective topology, project bindings, identity mapping tasks, and fail-closed config-revision validate under `/api/v2/*` (see below). Legacy flat parameter IDs are retired at cutover with `410 legacy-parameter-id-retired`.
 - Logs: upload/file records, analysis records, runs, rerun, archive, feedback.
 - Product feedback: Internal Beta sidebar feedback submission, admin triage, and attachment content.
@@ -210,6 +210,13 @@ View routes require `canViewParameters`; upload, version upload, sync, and confl
 | `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | Upload the next file version. Returns `201 { item }` (version DTO) plus optional `unsupportedConstructs` / `driverSummary` as above. |
 | `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions` | List version history for one file. |
 | `GET` | `/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/content` | Download raw file bytes for one version. |
+| `GET` | `/api/v1/projects/:projectId/parameter-file-candidates` | List staged candidates (`?fileId=&includeAbandoned=`). Returns `{ items }` without storage keys. |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates` | Create a staged candidate (`fileName`, `contentBase64`, optional `fileId`). Never changes active version or config-set membership. Returns `201 { item }`. |
+| `GET` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId` | Read one candidate lifecycle DTO. |
+| `GET` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/impact` | Read candidate impact evidence (`textDiff`, `structuralDiff`, diagnostics, coverage, conflicts, blockers). |
+| `GET` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/content` | Download candidate bytes. |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/abandon` | Abandon ready/blocked/failed candidates without changing Working configuration. |
+| `POST` | `/api/v1/projects/:projectId/parameter-file-candidates/:candidateId/recompute` | Recompute impact for ready/blocked/failed candidates when external blockers change. |
 | `POST` | `/api/v1/projects/:projectId/parameter-files/:fileId/sync` | Diff the current or requested version against DB and upsert `file_sync` drafts. Returns `{ item: syncSummary }`. |
 | `GET` | `/api/v1/projects/:projectId/parameter-file-conflicts` | List open file/UI draft conflicts for the project. |
 | `POST` | `/api/v1/projects/:projectId/parameter-file-conflicts/:conflictId/resolve` | Resolve one conflict. Body: `{ "resolution": "file" \| "ui" }`. |

@@ -83,4 +83,19 @@ describe("createMockParameterFileRepository (ParameterFileRepository contract)",
     const remaining = await repo.listConflicts(PROJECT_ID);
     expect(remaining.find((item) => item.id === conflicts[0].id)).toBeUndefined();
   });
+
+  it("createCandidate stages content without changing currentVersionId", async () => {
+    const repo = createRepo();
+    const before = (await repo.listFiles(PROJECT_ID))[0];
+    const candidate = await repo.createCandidate(PROJECT_ID, {
+      fileName: before.fileName,
+      fileId: before.id,
+      contentBase64: btoa("/dts-v1/;\n/ { model = \"Cand\"; };\n")
+    });
+    expect(candidate.status).toBe("ready");
+    const after = (await repo.listFiles(PROJECT_ID)).find((item) => item.id === before.id);
+    expect(after?.currentVersionId).toBe(before.currentVersionId);
+    const abandoned = await repo.abandonCandidate(PROJECT_ID, candidate.id);
+    expect(abandoned.status).toBe("abandoned");
+  });
 });

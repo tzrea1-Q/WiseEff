@@ -94,6 +94,87 @@ export type UploadParameterFileVersionResult = {
   driverSummary?: IngestDriverSummary;
 };
 
+export type ParameterFileCandidateStatus =
+  | "uploading"
+  | "parsing"
+  | "ready"
+  | "blocked"
+  | "failed"
+  | "abandoned";
+
+export type ParameterFileCandidateDiagnostic = {
+  severity: "error" | "warning" | "info";
+  code: string;
+  message: string;
+  line?: number;
+};
+
+export type ParameterFileCandidateBlocker = {
+  code: string;
+  message: string;
+};
+
+export type ParameterFileCandidateStructuralChange =
+  | { kind: "node_added" | "node_removed"; nodePath: string }
+  | {
+      kind: "prop_added" | "prop_removed" | "prop_changed";
+      nodePath: string;
+      prop: string;
+      before?: string;
+      after?: string;
+    };
+
+export type ParameterFileCandidateImpact = {
+  textDiff?: string;
+  structuralDiff?: ParameterFileCandidateStructuralChange[];
+  diagnostics?: ParameterFileCandidateDiagnostic[];
+  coverage?: IngestDriverSummary;
+  conflicts?: Array<{
+    id: string;
+    parameterName?: string;
+    parameterModule?: string;
+    status: string;
+    fileValue?: string;
+    uiDraftValue?: string;
+  }>;
+  blockers?: ParameterFileCandidateBlocker[];
+};
+
+export type ParameterFileCandidate = {
+  id: string;
+  organizationId?: string;
+  projectId: string;
+  fileId?: string;
+  fileName: string;
+  format: ParameterFileFormat;
+  status: ParameterFileCandidateStatus;
+  baseVersionId?: string;
+  checksum?: string;
+  sizeBytes?: number;
+  parsedIndex?: ParameterFileParsedIndex;
+  diagnostics: ParameterFileCandidateDiagnostic[];
+  impact: ParameterFileCandidateImpact;
+  blockers: ParameterFileCandidateBlocker[];
+  createdAt: string;
+  updatedAt: string;
+  createdByUserId?: string;
+  abandonedAt?: string;
+  abandonedByUserId?: string;
+};
+
+export type CreateParameterFileCandidateInput = {
+  fileName: string;
+  contentBase64: string;
+  fileId?: string;
+};
+
+export type DownloadParameterFileCandidateResult = {
+  contentType: string;
+  fileName?: string;
+  bytes: Uint8Array;
+};
+
+
 export interface ParameterFileRepository {
   listFiles(projectId: string): Promise<ProjectParameterFile[]>;
   uploadFile(projectId: string, input: UploadParameterFileInput): Promise<UploadParameterFileResult>;
@@ -107,4 +188,11 @@ export interface ParameterFileRepository {
   syncFile(projectId: string, fileId: string): Promise<FileSyncSummary>;
   listConflicts(projectId: string): Promise<ParameterFileSyncConflict[]>;
   resolveConflict(projectId: string, conflictId: string, resolution: ParameterFileConflictResolution): Promise<ParameterFileSyncConflict>;
+  listCandidates(projectId: string, options?: { fileId?: string; includeAbandoned?: boolean }): Promise<ParameterFileCandidate[]>;
+  createCandidate(projectId: string, input: CreateParameterFileCandidateInput): Promise<ParameterFileCandidate>;
+  getCandidate(projectId: string, candidateId: string): Promise<ParameterFileCandidate>;
+  getCandidateImpact(projectId: string, candidateId: string): Promise<{ item: ParameterFileCandidate; impact: ParameterFileCandidateImpact }>;
+  downloadCandidate(projectId: string, candidateId: string): Promise<DownloadParameterFileCandidateResult>;
+  abandonCandidate(projectId: string, candidateId: string): Promise<ParameterFileCandidate>;
+  recomputeCandidate(projectId: string, candidateId: string): Promise<ParameterFileCandidate>;
 }

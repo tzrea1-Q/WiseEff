@@ -170,6 +170,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title: "Context inspector and file-history source modes provide leveled inspection, immutable history download, labeled read-only canvas modes with restore, and PCW-D15 overlay persistence.",
     required: false
   },
+  {
+    id: "PROJ-CONFIG-CANDIDATE-001",
+    workflow: "C",
+    title: "Candidate file version upload, impact review, parse-failure diagnostics, and abandon leave Working configuration and Config set membership unchanged.",
+    required: false
+  },
 
   {
     id: "PARAM-ADMIN-DIALOG-001",

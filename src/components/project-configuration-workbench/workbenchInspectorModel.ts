@@ -1,4 +1,4 @@
-export type WorkbenchCanvasMode = "working" | "history" | "unified-diff" | "side-by-side";
+export type WorkbenchCanvasMode = "working" | "history" | "unified-diff" | "side-by-side" | "candidate";
 
 export type InspectorLevel = "config-set" | "file" | "node" | "property";
 
@@ -10,6 +10,8 @@ export function parseCanvasMode(raw: string | null | undefined): WorkbenchCanvas
       return "unified-diff";
     case "side-by-side":
       return "side-by-side";
+    case "candidate":
+      return "candidate";
     case "working":
     case "structured":
     case "raw":
