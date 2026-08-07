@@ -58,12 +58,17 @@ describe("createParameterFileClient", () => {
     );
   });
 
-  it("maps candidate create/impact/abandon endpoints", async () => {
+  it("maps candidate create/impact/abandon/activate endpoints", async () => {
     const get = vi.fn().mockResolvedValueOnce({ item: { id: "cand-1" }, impact: { textDiff: "x" } });
     const post = vi
       .fn()
       .mockResolvedValueOnce({ item: { id: "cand-1", status: "ready" } })
-      .mockResolvedValueOnce({ item: { id: "cand-1", status: "abandoned" } });
+      .mockResolvedValueOnce({ item: { id: "cand-1", status: "abandoned" } })
+      .mockResolvedValueOnce({
+        item: { id: "cand-2", status: "active" },
+        file: { id: "file-1" },
+        version: { id: "ver-2" }
+      });
     const client = createParameterFileClient({ get, post } as never);
 
     await client.createCandidate("project/1", {
@@ -73,6 +78,11 @@ describe("createParameterFileClient", () => {
     });
     await client.getCandidateImpact("project/1", "cand/1");
     await client.abandonCandidate("project/1", "cand/1");
+    await client.activateCandidate("project/1", "cand/2", {
+      expectedCurrentVersionId: "ver/1",
+      configSetId: "set/1",
+      role: "overlay"
+    });
 
     expect(post).toHaveBeenNthCalledWith(
       1,
@@ -84,6 +94,11 @@ describe("createParameterFileClient", () => {
       2,
       "/api/v1/projects/project%2F1/parameter-file-candidates/cand%2F1/abandon",
       {}
+    );
+    expect(post).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/projects/project%2F1/parameter-file-candidates/cand%2F2/activate",
+      { expectedCurrentVersionId: "ver/1", configSetId: "set/1", role: "overlay" }
     );
   });
 });

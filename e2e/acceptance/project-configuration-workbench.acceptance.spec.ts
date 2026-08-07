@@ -911,4 +911,212 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     }
   });
 
+
+  test("activates existing- and new-file candidates with CAS stale safety", async ({ page, request }, testInfo) => {
+    // @acceptance PROJ-CONFIG-ACTIVATE-001
+    // @operation PROJ-CONFIG-ACTIVATE-001
+    const suffix = randomUUID();
+    const configSetName = `candidate-activate-${suffix}`;
+    const primaryFileName = `acceptance-activate-${suffix}.dts`;
+    const newFileName = `acceptance-activate-new-${suffix}.dts`;
+    const v1Dts = `/dts-v1/;
+/ {
+	board {
+		model = "ActV1";
+		compatible = "wiseeff,act";
+	};
+};
+`;
+    const v2Dts = `/dts-v1/;
+/ {
+	board {
+		model = "ActV2";
+		compatible = "wiseeff,act";
+	};
+};
+`;
+    const newDts = `/dts-v1/;
+/ {
+	overlay {
+		model = "NewAct";
+		compatible = "wiseeff,act";
+	};
+};
+`;
+
+    try {
+      const uploadV1 = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: primaryFileName,
+          contentBase64: Buffer.from(v1Dts, "utf8").toString("base64")
+        }
+      });
+      expect(uploadV1.ok()).toBe(true);
+      const v1Body = (await uploadV1.json()) as { item: { id: string }; version: { id: string } };
+
+      const createSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(),
+        data: { name: configSetName, description: "candidate activation acceptance" }
+      });
+      expect(createSet.ok()).toBe(true);
+      const setBody = (await createSet.json()) as { item: { id: string } };
+      const configSetId = setBody.item.id;
+
+      const addMember = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`), {
+        headers: adminHeaders(),
+        data: { fileId: v1Body.item.id, role: "base", sortOrder: 0 }
+      });
+      expect(addMember.ok()).toBe(true);
+
+      const createExisting = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: primaryFileName,
+          fileId: v1Body.item.id,
+          contentBase64: Buffer.from(v2Dts, "utf8").toString("base64")
+        }
+      });
+      expect(createExisting.ok()).toBe(true);
+      const existingCandidate = (await createExisting.json()) as { item: { id: string; status: string; baseVersionId?: string } };
+      expect(existingCandidate.item.status).toBe("ready");
+
+      const staleRace = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files/${v1Body.item.id}/versions`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: primaryFileName,
+          contentBase64: Buffer.from(v1Dts.replace("ActV1", "ActRace"), "utf8").toString("base64")
+        }
+      });
+      expect(staleRace.ok()).toBe(true);
+      const racedBody = (await staleRace.json()) as { item: { id: string } };
+
+      const staleActivate = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${existingCandidate.item.id}/activate`),
+        {
+          headers: adminHeaders(),
+          data: { expectedCurrentVersionId: existingCandidate.item.baseVersionId ?? v1Body.version.id }
+        }
+      );
+      expect(staleActivate.status()).toBe(409);
+      const staleJson = (await staleActivate.json()) as {
+        error?: { details?: { reason?: string; candidate?: { status?: string } } };
+      };
+      expect(staleJson.error?.details?.reason).toBe("stale-base");
+      expect(staleJson.error?.details?.candidate?.status).toBe("stale");
+
+      const fileAfterStale = await request.get(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders()
+      });
+      expect(fileAfterStale.ok()).toBe(true);
+      const filesAfterStale = (await fileAfterStale.json()) as { items: Array<{ id: string; currentVersionId?: string }> };
+      const primaryAfterStale = filesAfterStale.items.find((item) => item.id === v1Body.item.id);
+      expect(primaryAfterStale?.currentVersionId).toBe(racedBody.item.id);
+
+      const recompute = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${existingCandidate.item.id}/recompute`),
+        { headers: adminHeaders(), data: {} }
+      );
+      expect(recompute.ok()).toBe(true);
+      const recomputed = (await recompute.json()) as { item: { status: string; baseVersionId?: string } };
+      expect(["ready", "blocked"]).toContain(recomputed.item.status);
+
+      if (recomputed.item.status === "ready") {
+        const activateExisting = await request.post(
+          apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${existingCandidate.item.id}/activate`),
+          {
+            headers: adminHeaders(),
+            data: { expectedCurrentVersionId: recomputed.item.baseVersionId ?? racedBody.item.id }
+          }
+        );
+        expect(activateExisting.ok()).toBe(true);
+        const activatedExisting = (await activateExisting.json()) as {
+          item: { status: string };
+          file: { currentVersionId: string };
+          version: { id: string };
+        };
+        expect(activatedExisting.item.status).toBe("active");
+        expect(activatedExisting.file.currentVersionId).toBe(activatedExisting.version.id);
+        expect(activatedExisting.version.id).not.toBe(racedBody.item.id);
+      }
+
+      const createNew = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: newFileName,
+          contentBase64: Buffer.from(newDts, "utf8").toString("base64")
+        }
+      });
+      expect(createNew.ok()).toBe(true);
+      const newCandidate = (await createNew.json()) as { item: { id: string; status: string; fileId?: string } };
+      expect(newCandidate.item.status).toBe("ready");
+      expect(newCandidate.item.fileId).toBeFalsy();
+
+      const missingIntent = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${newCandidate.item.id}/activate`),
+        { headers: adminHeaders(), data: { expectedCurrentVersionId: null } }
+      );
+      expect(missingIntent.status()).toBe(400);
+
+      const activateNew = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${newCandidate.item.id}/activate`),
+        {
+          headers: adminHeaders(),
+          data: { expectedCurrentVersionId: null, configSetId, role: "overlay" }
+        }
+      );
+      expect(activateNew.ok()).toBe(true);
+      const activatedNew = (await activateNew.json()) as {
+        item: { status: string; fileId?: string };
+        file: { id: string; fileName: string };
+      };
+      expect(activatedNew.item.status).toBe("active");
+      expect(activatedNew.file.fileName).toBe(newFileName);
+
+      await page.goto(`/parameter-admin/projects/${projectId}/configuration?configSet=${configSetId}`);
+      await expect(page.getByRole("heading", { name: /配置工作台|Configuration/i }).or(page.locator(".configuration-workbench")).first()).toBeVisible({
+        timeout: 30_000
+      });
+
+      const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-activate.json", {
+        route: page.url(),
+        configSetId,
+        existingCandidateId: existingCandidate.item.id,
+        newCandidateId: newCandidate.item.id,
+        racedVersionId: racedBody.item.id
+      });
+      await recordOperationEvidence({
+        operationId: "PROJ-CONFIG-ACTIVATE-001",
+        title: "configuration workbench candidate activation CAS and new-file membership",
+        status: "passed",
+        role: "Admin",
+        route: `/parameter-admin/projects/${projectId}/configuration`,
+        page,
+        testInfo,
+        assertions: ["ui", "api", "screenshot"],
+        artifacts: [evidencePath],
+        api: [
+          summarizeApiResponse(staleActivate, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/parameter-file-candidates/${existingCandidate.item.id}/activate`,
+            responseSummary: "stale-base 409"
+          }),
+          summarizeApiResponse(activateNew, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/parameter-file-candidates/${newCandidate.item.id}/activate`,
+            responseSummary: "new-file activated"
+          })
+        ],
+        notes: "Existing-file stale CAS preserved Working configuration; new-file activation required explicit Config set role."
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        configSetNames: [configSetName],
+        fileNames: [primaryFileName, newFileName]
+      });
+    }
+  });
+
 });

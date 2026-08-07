@@ -401,6 +401,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
     assertions: ["ui", "api", "screenshot"]
   },
+  {
+    id: "PROJ-CONFIG-ACTIVATE-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Activate ready existing-file and new-file candidates with impact confirmation and expected-current-version CAS; prove stale-base preserves Working configuration and requires recompute; never activate blocked/failed/abandoned/stale.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-ACTIVATE-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
 
   {
     id: "PARAM-ADMIN-DIALOG-001",

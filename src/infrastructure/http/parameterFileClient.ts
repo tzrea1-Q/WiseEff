@@ -1,4 +1,6 @@
 import type {
+  ActivateParameterFileCandidateInput,
+  ActivateParameterFileCandidateResult,
   CreateParameterFileCandidateInput,
   DownloadParameterFileCandidateResult,
   DownloadParameterFileVersionResult,
@@ -169,6 +171,18 @@ export function createParameterFileClient(client: ApiClient = createDefaultApiCl
         {}
       );
       return response.item;
+    },
+    async activateCandidate(
+      projectId,
+      candidateId,
+      input: ActivateParameterFileCandidateInput
+    ): Promise<ActivateParameterFileCandidateResult> {
+      const response = await client.post<{
+        item: ParameterFileCandidate;
+        file: ProjectParameterFile;
+        version: ProjectParameterFileVersion;
+      }>(`${routeCandidate(projectId, candidateId)}/activate`, input);
+      return { item: response.item, file: response.file, version: response.version };
     }
   };
 }

@@ -141,7 +141,7 @@ const OVERLAY_ROLES = new Set<ConfigSetRole>(["overlay", "charging", "thermal", 
  * complete config-set manifest is available (base entry + every member has a current version).
  * Isolated DTS uploads without config-set membership are skipped.
  */
-async function maybeIngestSemanticConfigRevision(
+export async function maybeIngestSemanticConfigRevision(
   db: Queryable,
   objectStore: ObjectStore,
   auth: AuthContext,

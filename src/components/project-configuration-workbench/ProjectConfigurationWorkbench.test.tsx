@@ -1,13 +1,14 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DtsStructuredRepository } from "@/application/ports/DtsStructuredRepository";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
-import {
-  ProjectConfigurationWorkbench,
-  type ProjectConfigurationWorkbenchProps
-} from "./ProjectConfigurationWorkbench";
+import { ProjectConfigurationWorkbench } from "./ProjectConfigurationWorkbench";
+
+afterEach(() => {
+  cleanup();
+});
 
 const PROJECT = {
   id: "project-1",
@@ -172,6 +173,7 @@ function createFileRepository(
     downloadCandidate: vi.fn(),
     abandonCandidate: vi.fn(),
     recomputeCandidate: vi.fn(),
+    activateCandidate: vi.fn(),
     ...overrides
   } as ParameterFileRepository;
 }
@@ -1036,6 +1038,134 @@ describe("ProjectConfigurationWorkbench", () => {
     await waitFor(() => expect(abandonCandidate).toHaveBeenCalledWith(PROJECT.id, "cand-1"));
   });
 
+  it("activates a ready candidate after impact confirmation and refreshes without full reset", async () => {
+    const candidate = {
+      id: "cand-ready",
+      projectId: PROJECT.id,
+      fileId: "file-board",
+      fileName: "aurora-board.dts",
+      format: "dts" as const,
+      status: "ready" as const,
+      baseVersionId: "version-board-12",
+      diagnostics: [],
+      blockers: [],
+      impact: {
+        textDiff: "--- active\n+++ candidate\n+model = \"Act\";",
+        structuralDiff: [{ kind: "prop_changed" as const, nodePath: "/board", prop: "model", before: "Aurora", after: "Act" }],
+        diagnostics: [],
+        blockers: [],
+        conflicts: [],
+        coverage: {
+          matchedRegistered: ["wiseeff,cand"],
+          newUnregistered: [],
+          matchedRegisteredCount: 1,
+          newUnregisteredCount: 0
+        }
+      },
+      createdAt: "2026-08-07T00:00:00.000Z",
+      updatedAt: "2026-08-07T00:00:00.000Z"
+    };
+    const activateCandidate = vi.fn(async () => ({
+      item: { ...candidate, status: "active" as const, activatedVersionId: "version-board-13" },
+      file: {
+        id: "file-board",
+        projectId: PROJECT.id,
+        fileName: "aurora-board.dts",
+        format: "dts" as const,
+        enabled: true,
+        currentVersionId: "version-board-13",
+        currentVersionNumber: 13,
+        updatedAt: "2026-08-07T01:00:00.000Z"
+      },
+      version: {
+        id: "version-board-13",
+        fileId: "file-board",
+        versionNumber: 13,
+        checksum: "act",
+        sizeBytes: 32,
+        origin: "upload" as const,
+        createdAt: "2026-08-07T01:00:00.000Z"
+      }
+    }));
+    const getCandidate = vi.fn(async () => candidate);
+    const downloadCandidate = vi.fn(async () => ({
+      contentType: "text/plain",
+      fileName: "aurora-board.dts",
+      bytes: new TextEncoder().encode('/dts-v1/;\n/ { model = "Act"; };\n')
+    }));
+
+    const { onNavigate } = renderWorkbench({
+      syncSearch: true,
+      search: "?configSet=cs-default&file=file-board&sourceMode=candidate&candidate=cand-ready",
+      fileRepository: createFileRepository({
+        getCandidate,
+        downloadCandidate,
+        activateCandidate
+      })
+    });
+
+    expect(await screen.findByLabelText("候选只读源码模式")).toBeInTheDocument();
+    const inspectorToggle = screen.getByRole("button", { name: "检查器" });
+    if (inspectorToggle.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(inspectorToggle);
+    }
+    const activateButton = await screen.findByTestId("activate-candidate");
+    expect(activateButton).toBeEnabled();
+    fireEvent.click(activateButton);
+    expect(await screen.findByRole("heading", { name: "确认激活候选" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "确认激活" }));
+    await waitFor(() =>
+      expect(activateCandidate).toHaveBeenCalledWith(PROJECT.id, "cand-ready", {
+        expectedCurrentVersionId: "version-board-12",
+        configSetId: undefined,
+        role: undefined
+      })
+    );
+    await waitFor(() =>
+      expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("file=file-board"))).toBe(true)
+    );
+    expect(screen.queryByTestId("activate-candidate")).not.toBeInTheDocument();
+  });
+
+  it("does not offer activate for blocked, failed, abandoned, or stale candidates", async () => {
+    for (const status of ["blocked", "failed", "abandoned", "stale"] as const) {
+      cleanup();
+      const candidate = {
+        id: `cand-${status}`,
+        projectId: PROJECT.id,
+        fileId: "file-board",
+        fileName: "aurora-board.dts",
+        format: "dts" as const,
+        status,
+        baseVersionId: "version-board-12",
+        diagnostics: [],
+        blockers: status === "blocked" ? [{ code: "open-conflict", message: "conflict" }] : [],
+        impact: { textDiff: "", structuralDiff: [], diagnostics: [], blockers: [], conflicts: [] },
+        createdAt: "2026-08-07T00:00:00.000Z",
+        updatedAt: "2026-08-07T00:00:00.000Z"
+      };
+      renderWorkbench({
+        search: `?configSet=cs-default&file=file-board&sourceMode=candidate&candidate=cand-${status}`,
+        fileRepository: createFileRepository({
+          getCandidate: vi.fn(async () => candidate),
+          downloadCandidate: vi.fn(async () => ({
+            contentType: "text/plain",
+            fileName: "aurora-board.dts",
+            bytes: new TextEncoder().encode("/dts-v1/;\n/ { };\n")
+          }))
+        })
+      });
+      await screen.findByLabelText("候选只读源码模式");
+      const inspectorToggle = screen.getByRole("button", { name: "检查器" });
+      if (inspectorToggle.getAttribute("aria-expanded") !== "true") {
+        fireEvent.click(inspectorToggle);
+      }
+      await screen.findByRole("complementary", { name: "配置检查器" });
+      expect(screen.queryByTestId("activate-candidate")).not.toBeInTheDocument();
+    }
+  });
+
   it("opens Activity from the command bar without a permanent audit banner above source", async () => {
     const listAuditEvents = vi.fn(async () => ({
       items: [
@@ -1085,6 +1215,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(inspector).toHaveTextContent("候选文件版本");
     expect(inspector).toHaveTextContent("成功");
   });
+
 
   it("restores file context from a targetable activity event and fails gracefully when missing", async () => {
     const listAuditEvents = vi.fn(async () => ({
@@ -1151,6 +1282,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByRole("main", { name: "只读 DTS 源码" })).toBeInTheDocument();
   });
 
+
   it("shows mutation toasts and refreshes the activity timeline from server evidence", async () => {
     const listAuditEvents = vi.fn(async () => ({ items: [], nextCursor: null }));
     const createCandidate = vi.fn(async () => ({
@@ -1195,6 +1327,7 @@ describe("ProjectConfigurationWorkbench", () => {
     await waitFor(() => expect(listAuditEvents.mock.calls.length).toBeGreaterThan(1));
   });
 
+
   it("keeps the workbench when activity loading fails and preserves PCW-D15 layout attribute", async () => {
     const listAuditEvents = vi.fn(async () => {
       throw new Error("audit unavailable");
@@ -1211,6 +1344,8 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.getByRole("main", { name: "只读 DTS 源码" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveAttribute("data-layout");
   });
+
+
 
 
 
