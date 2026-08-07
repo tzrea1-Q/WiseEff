@@ -256,3 +256,22 @@ describe("0093_project_parameter_file_candidates migration", () => {
     expect(sql).not.toMatch(/update\s+project_parameter_files/i);
   });
 });
+
+const candidateActivationMigrationPath = path.join(
+  root,
+  "server",
+  "migrations",
+  "0094_project_parameter_file_candidate_activation.sql"
+);
+
+describe("0094_project_parameter_file_candidate_activation migration", () => {
+  it("extends candidate statuses with stale and active plus activation audit columns", () => {
+    const sql = readFileSync(candidateActivationMigrationPath, "utf8");
+    expect(sql).toContain("'stale'");
+    expect(sql).toContain("'active'");
+    expect(sql).toContain("activated_at");
+    expect(sql).toContain("activated_by_user_id");
+    expect(sql).toContain("activated_version_id");
+    expect(sql).toContain("project_parameter_file_candidates_status_check");
+  });
+});

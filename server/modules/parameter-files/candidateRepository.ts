@@ -32,6 +32,9 @@ type CandidateRow = {
   updated_at: string | Date;
   abandoned_at: string | Date | null;
   abandoned_by_user_id: string | null;
+  activated_at: string | Date | null;
+  activated_by_user_id: string | null;
+  activated_version_id: string | null;
 };
 
 function dateTimeToIso(value: string | Date) {
@@ -59,7 +62,10 @@ function toCandidateDto(row: CandidateRow): ProjectParameterFileCandidateDto {
     updatedAt: dateTimeToIso(row.updated_at),
     createdByUserId: row.created_by_user_id ?? undefined,
     abandonedAt: row.abandoned_at ? dateTimeToIso(row.abandoned_at) : undefined,
-    abandonedByUserId: row.abandoned_by_user_id ?? undefined
+    abandonedByUserId: row.abandoned_by_user_id ?? undefined,
+    activatedAt: row.activated_at ? dateTimeToIso(row.activated_at) : undefined,
+    activatedByUserId: row.activated_by_user_id ?? undefined,
+    activatedVersionId: row.activated_version_id ?? undefined
   };
 }
 
@@ -67,7 +73,7 @@ const candidateSelect = `
   id, organization_id, project_id, file_id, file_name, format, status,
   base_version_id, storage_key, checksum, size_bytes, parsed_index,
   diagnostics, impact, blockers, created_by_user_id, created_at, updated_at,
-  abandoned_at, abandoned_by_user_id
+  abandoned_at, abandoned_by_user_id, activated_at, activated_by_user_id, activated_version_id
 `;
 
 export async function insertParameterFileCandidate(
@@ -156,7 +162,7 @@ export async function listParameterFileCandidates(
 
 export async function updateParameterFileCandidateParseResult(
   db: Queryable,
-  input: UpdateParameterFileCandidateParseResultInput
+  input: UpdateParameterFileCandidateParseResultInput & { baseVersionId?: string | null; fileId?: string }
 ): Promise<ProjectParameterFileCandidateDto | null> {
   const result = await db.query<CandidateRow>(
     `
@@ -169,6 +175,8 @@ export async function updateParameterFileCandidateParseResult(
         diagnostics = coalesce($7::jsonb, diagnostics),
         impact = coalesce($8::jsonb, impact),
         blockers = coalesce($9::jsonb, blockers),
+        base_version_id = coalesce($10, base_version_id),
+        file_id = coalesce($11, file_id),
         updated_at = now()
     where id = $1
     returning ${candidateSelect}
@@ -182,7 +190,9 @@ export async function updateParameterFileCandidateParseResult(
       input.parsedIndex == null ? null : JSON.stringify(input.parsedIndex),
       input.diagnostics == null ? null : JSON.stringify(input.diagnostics),
       input.impact == null ? null : JSON.stringify(input.impact),
-      input.blockers == null ? null : JSON.stringify(input.blockers)
+      input.blockers == null ? null : JSON.stringify(input.blockers),
+      input.baseVersionId === undefined ? null : input.baseVersionId,
+      input.fileId ?? null
     ]
   );
   const row = result.rows[0];
@@ -201,10 +211,65 @@ export async function abandonParameterFileCandidate(
         abandoned_by_user_id = $2,
         updated_at = now()
     where id = $1
-      and status in ('ready', 'blocked', 'failed')
+      and status in ('ready', 'blocked', 'failed', 'stale')
     returning ${candidateSelect}
     `,
     [input.candidateId, input.abandonedByUserId]
+  );
+  const row = result.rows[0];
+  return row ? toCandidateDto(row) : null;
+}
+
+export async function markParameterFileCandidateStale(
+  db: Queryable,
+  input: { candidateId: string }
+): Promise<ProjectParameterFileCandidateDto | null> {
+  const result = await db.query<CandidateRow>(
+    `
+    update project_parameter_file_candidates
+    set status = 'stale',
+        updated_at = now()
+    where id = $1
+      and status = 'ready'
+    returning ${candidateSelect}
+    `,
+    [input.candidateId]
+  );
+  const row = result.rows[0];
+  return row ? toCandidateDto(row) : null;
+}
+
+export async function markParameterFileCandidateActive(
+  db: Queryable,
+  input: {
+    candidateId: string;
+    activatedByUserId: string;
+    activatedVersionId: string;
+    fileId: string;
+    baseVersionId?: string | null;
+  }
+): Promise<ProjectParameterFileCandidateDto | null> {
+  const result = await db.query<CandidateRow>(
+    `
+    update project_parameter_file_candidates
+    set status = 'active',
+        file_id = $2,
+        base_version_id = coalesce($3, base_version_id),
+        activated_at = now(),
+        activated_by_user_id = $4,
+        activated_version_id = $5,
+        updated_at = now()
+    where id = $1
+      and status = 'ready'
+    returning ${candidateSelect}
+    `,
+    [
+      input.candidateId,
+      input.fileId,
+      input.baseVersionId ?? null,
+      input.activatedByUserId,
+      input.activatedVersionId
+    ]
   );
   const row = result.rows[0];
   return row ? toCandidateDto(row) : null;
