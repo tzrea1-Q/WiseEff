@@ -1,11 +1,11 @@
 # Project configuration workbench candidate upload (#231)
 
-> Status: **Active**
+> Status: **Completed**
 > Date: 2026-08-07
 > Branch: `feat/project-configuration-workbench-candidate-upload`
 > Issue: [#231](https://github.com/tzrea1-Q/WiseEff/issues/231), child of [#227](https://github.com/tzrea1-Q/WiseEff/issues/227)
 > Blocked by: [#230](https://github.com/tzrea1-Q/WiseEff/issues/230) (merged at `24aabb4c5c824c9b871cc16194b3c1aebda6917d`)
-> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-08-07-project-configuration-workbench-candidate-upload.md)
+> Chinese: [Chinese](../../zh-CN/exec-plans/completed/2026-08-07-project-configuration-workbench-candidate-upload.md)
 > Design: [Project configuration workbench](../../design-docs/2026-08-06-project-configuration-workbench-design.md) · [ADR-0018](../../adr/0018-uploaded-file-versions-are-staged-before-activation.md)
 > Starts at: `24aabb4c5c824c9b871cc16194b3c1aebda6917d`
 
@@ -58,40 +58,40 @@ The branch starts at `24aabb4c5c824c9b871cc16194b3c1aebda6917d` (merge of PR #24
 
 ### 0. Register plan
 
-- [ ] Create bilingual active plans and add them to EN/ZH `PLANS.md` Current Active Plan lists.
-- [ ] Claim issue #231 (`gh issue edit 231 --add-assignee @me`).
-- [ ] Lock the TDD seams above.
+- [x] Create bilingual active plans and add them to EN/ZH `PLANS.md` Current Active Plan lists.
+- [x] Claim issue #231 (`gh issue edit 231 --add-assignee @me`).
+- [x] Lock the TDD seams above.
 
 ### A. Persistence + public contracts
 
-- [ ] Red: migration defines `project_parameter_file_candidates` with lifecycle states and no active-version staging.
-- [ ] Red/Green: repository insert/get/list/update status; public DTO/schemas.
+- [x] Red: migration defines `project_parameter_file_candidates` with lifecycle states and no active-version staging.
+- [x] Red/Green: repository insert/get/list/update status; public DTO/schemas.
 
 ### B. Service + routes (create / impact / abandon / recompute)
 
-- [ ] Red/Green: `createCandidate` stores bytes, parses, computes impact → ready/blocked/failed; never sets active version or membership.
-- [ ] Red/Green: `getCandidate` / `getCandidateImpact` / `abandonCandidate` / recompute for blocked.
-- [ ] Authz + audit on write paths.
+- [x] Red/Green: `createCandidate` stores bytes, parses, computes impact → ready/blocked/failed; never sets active version or membership.
+- [x] Red/Green: `getCandidate` / `getCandidateImpact` / `abandonCandidate` / recompute for blocked.
+- [x] Authz + audit on write paths.
 
 ### C. Application ports + mock/HTTP parity
 
-- [ ] Extend `ParameterFileRepository` with candidate operations; mock + HTTP client parity tests.
+- [x] Extend `ParameterFileRepository` with candidate operations; mock + HTTP client parity tests.
 
 ### D. Non-activation invariant
 
-- [ ] Integration tests: upload/inspect/abandon leave `current_version_id` and config-set membership unchanged.
+- [x] Integration tests: upload/inspect/abandon leave `current_version_id` and config-set membership unchanged.
 
 ### E. Workbench UI
 
-- [ ] Wire upload control; candidate source mode + inspector; impact evidence; fail diagnostics; abandon; identity chips.
+- [x] Wire upload control; candidate source mode + inspector; impact evidence; fail diagnostics; abandon; identity chips.
 
 ### F. Acceptance + docs + completion
 
-- [ ] Register `PROJ-CONFIG-CANDIDATE-001` in EN/ZH coverage maps, `requirements.ts`, `operationMatrix.ts`, and e2e.
-- [ ] Update FRONTEND/API (and ZH) as needed; generated artifacts if contracts change.
-- [ ] Verification matrix + three-viewport UI evidence under `work/ui-checks/project-configuration-workbench-candidate-upload/`.
-- [ ] Dual-axis Standards vs Spec review vs `24aabb4c`; fix; re-run impacted tests.
-- [ ] Move plans to `completed/` and flip checkboxes after gates pass.
+- [x] Register `PROJ-CONFIG-CANDIDATE-001` in EN/ZH coverage maps, `requirements.ts`, `operationMatrix.ts`, and e2e.
+- [x] Update FRONTEND/API (and ZH) as needed; generated artifacts if contracts change.
+- [x] Verification matrix + three-viewport UI evidence under `work/ui-checks/project-configuration-workbench-candidate-upload/`.
+- [x] Dual-axis Standards vs Spec review vs `24aabb4c`; fix; re-run impacted tests.
+- [x] Move plans to `completed/` and flip checkboxes after gates pass.
 
 ## Browser acceptance mapping
 
@@ -140,12 +140,12 @@ Review gate: Standards vs Spec against `24aabb4c5c824c9b871cc16194b3c1aebda6917d
 
 ## Documentation Update Gate
 
-- [ ] Every `Update` row is delivered in English and Chinese where applicable.
-- [ ] Every `Review` row is either updated or recorded here as unchanged with concrete evidence.
-- [ ] Acceptance requirement/operation coverage and evidence ownership are registered before completion.
-- [ ] `npm run docs:check` passes.
-- [ ] No deferred #231 acceptance remains; follow-ups belong to later child issues of #227 (#232+).
+- [x] Every `Update` row is delivered in English and Chinese where applicable.
+- [x] Every `Review` row is either updated or recorded here as unchanged with concrete evidence.
+- [x] Acceptance requirement/operation coverage and evidence ownership are registered before completion.
+- [x] `npm run docs:check` passes.
+- [x] No deferred #231 acceptance remains; follow-ups belong to later child issues of #227 (#232+).
 
 ## Outcomes / Residual risk
 
-_To be filled at completion._
+Delivered candidate persistence (`0093`), service/routes, ParameterFileRepository ports, workbench upload/source/inspector, `PROJ-CONFIG-CANDIDATE-001`, and docs/OpenAPI. Activation remains #232. Live playwright-cli viewport screenshots remain local under ignored `work/ui-checks/` (markdown notes present); e2e acceptance captures screenshots when run.

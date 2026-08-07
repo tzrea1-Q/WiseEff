@@ -1,11 +1,11 @@
 # 项目配置工作台候选文件上传（#231）
 
-> 状态：**进行中**
+> 状态：**已完成**
 > 日期：2026-08-07
 > 分支：`feat/project-configuration-workbench-candidate-upload`
 > Issue：[#231](https://github.com/tzrea1-Q/WiseEff/issues/231)，父级 [#227](https://github.com/tzrea1-Q/WiseEff/issues/227)
 > 阻塞于：[#230](https://github.com/tzrea1-Q/WiseEff/issues/230)（已合入 `24aabb4c5c824c9b871cc16194b3c1aebda6917d`）
-> English: [English](../../../exec-plans/active/2026-08-07-project-configuration-workbench-candidate-upload.md)
+> English: [English](../../../exec-plans/completed/2026-08-07-project-configuration-workbench-candidate-upload.md)
 > 设计：[项目配置工作台](../../design-docs/2026-08-06-project-configuration-workbench-design.md) · [ADR-0018](../../../adr/0018-uploaded-file-versions-are-staged-before-activation.md)
 > 起点：`24aabb4c5c824c9b871cc16194b3c1aebda6917d`
 
@@ -54,9 +54,9 @@
 
 ### 0. 注册计划
 
-- [ ] 创建双语活跃计划并写入 EN/ZH `PLANS.md`。
-- [ ] 认领 #231。
-- [ ] 锁定上述 TDD 接缝。
+- [x] 创建双语活跃计划并写入 EN/ZH `PLANS.md`。
+- [x] 认领 #231。
+- [x] 锁定上述 TDD 接缝。
 
 ### A–F
 
@@ -72,4 +72,4 @@
 
 ## 结果 / 残留风险
 
-_完成时填写。_
+已交付候选持久化（`0093`）、服务/路由、ParameterFileRepository 端口、工作台上传/源码/检查器、`PROJ-CONFIG-CANDIDATE-001` 与文档/OpenAPI。激活留给 #232。playwright-cli 视口证据在本地 ignored `work/ui-checks/`（含 markdown 说明）；e2e 验收运行时会截图。
