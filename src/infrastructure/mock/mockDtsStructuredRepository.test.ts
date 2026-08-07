@@ -157,13 +157,19 @@ describe("createMockDtsStructuredRepository (DtsStructuredRepository contract)",
     const configSet = await repo.createConfigSet(PROJECT_ID, { name: "board-b" });
     await repo.addConfigSetFile(PROJECT_ID, configSet.id, { fileId: FILE_ID, role: "base" });
 
-    const baseline = await repo.createBaseline(PROJECT_ID, configSet.id, { name: "v1.0", notes: "initial" });
+    const readiness = await repo.getReleaseReadiness(PROJECT_ID, configSet.id);
+    const baseline = await repo.createBaseline(PROJECT_ID, configSet.id, {
+      name: "v1.0",
+      notes: "initial",
+      gateToken: readiness.gateToken
+    });
     expect(baseline).toMatchObject({ configSetId: configSet.id, name: "v1.0", status: "draft" });
 
     const listed = await repo.listBaselines(PROJECT_ID, configSet.id);
     expect(listed.some((item) => item.id === baseline.id)).toBe(true);
 
-    const released = await repo.releaseBaseline(PROJECT_ID, baseline.id);
+    const releaseGate = await repo.getReleaseReadiness(PROJECT_ID, configSet.id);
+    const released = await repo.releaseBaseline(PROJECT_ID, baseline.id, { gateToken: releaseGate.gateToken });
     expect(released.item.status).toBe("released");
     expect(released.gate).toMatchObject({
       ok: expect.any(Boolean),

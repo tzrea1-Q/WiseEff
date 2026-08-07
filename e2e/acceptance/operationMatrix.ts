@@ -467,6 +467,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
     assertions: ["ui", "api", "screenshot"]
   },
+  {
+    id: "PROJ-CONFIG-READINESS-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Inspect the server-owned release readiness summary in the command bar; open Issues dock remediations; prove create/release stay fail-closed when blocked, unavailable, stale, or local session dirty; confirm the UI does not invent permission from client counts.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-READINESS-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
 
   {
     id: "PARAM-ADMIN-DIALOG-001",

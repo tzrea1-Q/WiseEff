@@ -213,6 +213,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title: "Source-located three-way conflict arbitration in the project configuration workbench: equal-weight file and UI outcomes with confirm plus optional audit reason, queue advance in source context, eligible bulk resolve with impact preview, open conflicts block candidate activation, and an empty queue keeps the Conflicts dock collapsed.",
     required: false
   },
+  {
+    id: "PROJ-CONFIG-READINESS-001",
+    workflow: "C",
+    title: "Server-owned release readiness for the selected Config set: command-bar summary, Issues task dock with ordered blockers/warnings and remediation locators, fail-closed baseline create/release when blocked/unavailable/stale or local session dirty, and no client-side reconstruction of release permission from unrelated counts.",
+    required: false
+  },
 
   {
     id: "PARAM-ADMIN-DIALOG-001",

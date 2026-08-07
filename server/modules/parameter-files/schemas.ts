@@ -53,7 +53,14 @@ export const addConfigSetFileBody = z.object({
 
 export const createBaselineBody = z.object({
   name: nonEmptyString,
-  notes: z.string().optional()
+  notes: z.string().optional(),
+  gateToken: nonEmptyString,
+  acknowledgedWarningIds: z.array(nonEmptyString).optional()
+});
+
+export const releaseBaselineBody = z.object({
+  gateToken: nonEmptyString,
+  acknowledgedWarningIds: z.array(nonEmptyString).optional()
 });
 
 export const dtsValueTypeSchema = z.enum([

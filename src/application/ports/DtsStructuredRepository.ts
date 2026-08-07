@@ -122,6 +122,62 @@ export type DtsReleaseBaseline = {
 export type CreateBaselineInput = {
   name: string;
   notes?: string;
+  gateToken: string;
+  acknowledgedWarningIds?: string[];
+};
+
+export type ReleaseBaselineInput = {
+  gateToken: string;
+  acknowledgedWarningIds?: string[];
+};
+
+export type DtsReleaseReadinessLevel = "blocked" | "warning" | "ready" | "in-sync";
+
+export type DtsReleaseReadinessRemediationKind =
+  | "assign-member-version"
+  | "resolve-conflict"
+  | "complete-pending-change"
+  | "fix-validation"
+  | "resolve-governance-task"
+  | "acknowledge-warning"
+  | "retry-evaluation";
+
+export type DtsReleaseReadinessIssue = {
+  id: string;
+  severity: "blocker" | "warning";
+  code: string;
+  message: string;
+  target?: {
+    fileId?: string;
+    fileName?: string;
+    nodePath?: string;
+    propertyName?: string;
+    source?: DtsSourceLocator;
+    conflictId?: string;
+    changeRequestId?: string;
+    configRevisionId?: string;
+  };
+  remediation: {
+    kind: DtsReleaseReadinessRemediationKind;
+    label: string;
+  };
+  acknowledgementRequired?: boolean;
+  acknowledged?: boolean;
+};
+
+export type DtsReleaseReadiness = {
+  available: boolean;
+  level: DtsReleaseReadinessLevel;
+  blockers: DtsReleaseReadinessIssue[];
+  warnings: DtsReleaseReadinessIssue[];
+  gateToken: string;
+  evaluatedAt: string;
+  configSetId: string;
+  projectId: string;
+  releasedBaselineId?: string;
+  canCreateBaseline: boolean;
+  canRelease: boolean;
+  unavailableReason?: string;
 };
 
 export type DtsStructuralChange =
@@ -263,10 +319,19 @@ export interface DtsStructuredRepository {
   removeConfigSetFile(projectId: string, configSetId: string, fileId: string): Promise<void>;
 
   listBaselines(projectId: string, configSetId: string): Promise<DtsReleaseBaseline[]>;
+  getReleaseReadiness(
+    projectId: string,
+    configSetId: string,
+    options?: { acknowledgedWarningIds?: string[] }
+  ): Promise<DtsReleaseReadiness>;
   createBaseline(projectId: string, configSetId: string, input: CreateBaselineInput): Promise<DtsReleaseBaseline>;
   compareBaseline(projectId: string, baselineId: string): Promise<DtsCompareBaselineResult>;
   rollbackBaseline(projectId: string, baselineId: string): Promise<DtsRollbackBaselineResult>;
-  releaseBaseline(projectId: string, baselineId: string): Promise<DtsReleaseBaselineResult>;
+  releaseBaseline(
+    projectId: string,
+    baselineId: string,
+    input: ReleaseBaselineInput
+  ): Promise<DtsReleaseBaselineResult>;
 
   exportConfigSet(projectId: string, configSetId: string): Promise<DtsExportConfigSetResult>;
 

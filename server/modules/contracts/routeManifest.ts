@@ -104,6 +104,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameters.getConfigSetReleaseReadiness",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/config-sets/:configSetId/release-readiness",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameters.getParameterFileStructure",
     method: "GET",
     path: "/api/v1/projects/:projectId/parameter-files/:fileId/versions/:versionId/structure",

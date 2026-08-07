@@ -6,12 +6,14 @@ import type {
   DtsConfigSetFile,
   DtsExportConfigSetResult,
   DtsReleaseBaseline,
+  DtsReleaseReadiness,
   DtsSearchBy,
   DtsSearchHit,
   DtsSourceLocator,
   DtsStructuralNode,
   DtsStructuredRepository,
-  DtsSubmitStructuredEditsInput
+  DtsSubmitStructuredEditsInput,
+  ReleaseBaselineInput
 } from "@/application/ports/DtsStructuredRepository";
 
 const MOCK_NOW = "2026-07-14T10:00:00.000Z";
@@ -457,8 +459,66 @@ export function createMockDtsStructuredRepository(
       return state.baselines.filter((item) => item.configSetId === configSetId).map((item) => ({ ...item }));
     },
 
+    async getReleaseReadiness(_requestedProjectId, configSetId, options) {
+      requireConfigSet(configSetId);
+      const members = state.memberships.filter((item) => item.configSetId === configSetId);
+      const blockers = members.length === 0
+        ? [
+            {
+              id: `missing-primary-version:${configSetId}`,
+              severity: "blocker" as const,
+              code: "missing-primary-version",
+              message: "Config set has no primary (base) member version to snapshot.",
+              remediation: {
+                kind: "assign-member-version" as const,
+                label: "Assign a base member with an active version"
+              }
+            }
+          ]
+        : [];
+      const warnings = (options?.acknowledgedWarningIds ?? []).includes("mock-toolchain-warning")
+        ? [
+            {
+              id: "mock-toolchain-warning",
+              severity: "warning" as const,
+              code: "toolchain-warning",
+              message: "Mock toolchain warning acknowledged.",
+              remediation: { kind: "acknowledge-warning" as const, label: "Review and acknowledge this warning" },
+              acknowledgementRequired: true,
+              acknowledged: true
+            }
+          ]
+        : [];
+      const level = blockers.length > 0 ? "blocked" : warnings.length > 0 ? "ready" : "ready";
+      const readiness: DtsReleaseReadiness = {
+        available: true,
+        level,
+        blockers,
+        warnings,
+        gateToken: `mock-gate:${configSetId}:${blockers.length}:${warnings.map((item) => item.id).join(",")}`,
+        evaluatedAt: MOCK_NOW,
+        configSetId,
+        projectId: DEFAULT_PROJECT_ID,
+        canCreateBaseline: blockers.length === 0,
+        canRelease: blockers.length === 0
+      };
+      return readiness;
+    },
+
     async createBaseline(_requestedProjectId, configSetId, input: CreateBaselineInput) {
       requireConfigSet(configSetId);
+      if (!input.gateToken) {
+        throw new Error("Release readiness gate token is required.");
+      }
+      const readiness = await this.getReleaseReadiness(_requestedProjectId, configSetId, {
+        acknowledgedWarningIds: input.acknowledgedWarningIds
+      });
+      if (readiness.gateToken !== input.gateToken) {
+        throw new Error("Release readiness gate token is stale.");
+      }
+      if (!readiness.canCreateBaseline) {
+        throw new Error("Baseline creation is blocked by release readiness.");
+      }
       const baseline: DtsReleaseBaseline = {
         id: nextId("mock-bl"),
         organizationId: DEFAULT_ORG_ID,
@@ -522,8 +582,20 @@ export function createMockDtsStructuredRepository(
       return { baselineId: baseline.id, restored };
     },
 
-    async releaseBaseline(_requestedProjectId, baselineId) {
+    async releaseBaseline(_requestedProjectId, baselineId, input: ReleaseBaselineInput) {
       const baseline = requireBaseline(baselineId);
+      if (!input.gateToken) {
+        throw new Error("Release readiness gate token is required.");
+      }
+      const readiness = await this.getReleaseReadiness(_requestedProjectId, baseline.configSetId, {
+        acknowledgedWarningIds: input.acknowledgedWarningIds
+      });
+      if (readiness.gateToken !== input.gateToken) {
+        throw new Error("Release readiness gate token is stale.");
+      }
+      if (!readiness.canRelease) {
+        throw new Error("Baseline release is blocked by release readiness.");
+      }
       const released: DtsReleaseBaseline = { ...baseline, status: "released" };
       state.baselines = state.baselines.map((item) => (item.id === baselineId ? released : item));
       return {

@@ -170,7 +170,21 @@ describe("createDtsStructuredClient", () => {
     const get = vi
       .fn()
       .mockResolvedValueOnce({ items: [{ id: "bl-1" }] })
-      .mockResolvedValueOnce({ item: { baselineId: "bl/1", members: [] } });
+      .mockResolvedValueOnce({ item: { baselineId: "bl/1", members: [] } })
+      .mockResolvedValueOnce({
+        item: {
+          available: true,
+          level: "ready",
+          blockers: [],
+          warnings: [],
+          gateToken: "gate-1",
+          evaluatedAt: "2026-08-07T00:00:00.000Z",
+          configSetId: "cs/1",
+          projectId: "project/1",
+          canCreateBaseline: true,
+          canRelease: true
+        }
+      });
     const post = vi
       .fn()
       .mockResolvedValueOnce({ item: { id: "bl-new", name: "v1", status: "draft" } })
@@ -184,7 +198,7 @@ describe("createDtsStructuredClient", () => {
     const listed = await client.listBaselines("project/1", "cs/1");
     expect(listed).toEqual([{ id: "bl-1" }]);
 
-    const created = await client.createBaseline("project/1", "cs/1", { name: "v1" });
+    const created = await client.createBaseline("project/1", "cs/1", { name: "v1", gateToken: "gate-1" });
     expect(created).toEqual({ id: "bl-new", name: "v1", status: "draft" });
 
     const compared = await client.compareBaseline("project/1", "bl/1");
@@ -193,17 +207,24 @@ describe("createDtsStructuredClient", () => {
     const rollback = await client.rollbackBaseline("project/1", "bl/1");
     expect(rollback).toEqual({ baselineId: "bl/1", restored: 2 });
 
-    const released = await client.releaseBaseline("project/1", "bl/1");
+    const released = await client.releaseBaseline("project/1", "bl/1", { gateToken: "gate-1" });
     expect(released.item.status).toBe("released");
     expect(released.gate.ok).toBe(true);
 
+    const readiness = await client.getReleaseReadiness("project/1", "cs/1");
+    expect(readiness.gateToken).toBe("gate-1");
+
     expect(get).toHaveBeenNthCalledWith(1, "/api/v1/projects/project%2F1/config-sets/cs%2F1/baselines");
     expect(post).toHaveBeenNthCalledWith(1, "/api/v1/projects/project%2F1/config-sets/cs%2F1/baselines", {
-      name: "v1"
+      name: "v1",
+      gateToken: "gate-1"
     });
     expect(get).toHaveBeenNthCalledWith(2, "/api/v1/projects/project%2F1/baselines/bl%2F1/compare");
     expect(post).toHaveBeenNthCalledWith(2, "/api/v1/projects/project%2F1/baselines/bl%2F1/rollback", {});
-    expect(post).toHaveBeenNthCalledWith(3, "/api/v1/projects/project%2F1/baselines/bl%2F1/release", {});
+    expect(post).toHaveBeenNthCalledWith(3, "/api/v1/projects/project%2F1/baselines/bl%2F1/release", {
+      gateToken: "gate-1"
+    });
+    expect(get).toHaveBeenNthCalledWith(3, "/api/v1/projects/project%2F1/config-sets/cs%2F1/release-readiness");
   });
 
   it("maps submitStructuredEdits to POST dts-structured-edits/submit and unwraps round item", async () => {

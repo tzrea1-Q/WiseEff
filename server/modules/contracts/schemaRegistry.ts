@@ -131,6 +131,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ConfigSetMemberFileListResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "parameters.getConfigSetReleaseReadiness": {
+    summary: "Evaluate server-owned release readiness for a Config set (gate token + ordered blockers/warnings)",
+    tags: ["parameters"],
+    responseBody: "ConfigSetReleaseReadinessResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "parameters.getParameterFileStructure": {
     summary: "Read structured DTS nodes/properties for a file version (includes source locators)",
     tags: ["parameters"],

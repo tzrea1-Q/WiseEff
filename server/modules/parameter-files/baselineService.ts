@@ -19,16 +19,17 @@ import {
   updateBaselineStatus
 } from "./baselineRepository";
 import { getConfigSetById } from "./configSetRepository";
-import {
-  countBlockingIdentityMappingTasksForRevision,
-  syncSingletonCardinalityBlockingTasks
-} from "../parameter-topology/bindingService";
-import { getLatestConfigRevision } from "../parameter-topology/repository";
 import { getFileVersionById, getProjectParameterFileById, insertFileVersion, setCurrentVersion } from "./repository";
 import type { ReleaseBaselineDto, ReleaseBaselineMemberDto } from "./types";
 import { runValidationGate, type ValidationGateDeps, type ValidationGateResult } from "./validationGate";
+import { assertReleaseGateAllows, type EvaluateReleaseReadinessDeps } from "./releaseReadinessService";
 
 export type BaselineServiceContext = AuditCorrelationContext;
+
+export type BaselineGateInput = {
+  gateToken?: string;
+  acknowledgedWarningIds?: string[];
+};
 
 export type BaselineMemberCompareStatus = "unchanged" | "version_changed" | "file_added" | "file_removed";
 
@@ -92,10 +93,23 @@ async function writeBaselineAudit(
 export async function createBaseline(
   db: Database,
   auth: AuthContext,
-  input: { configSetId: string; name: string; notes?: string },
-  context: BaselineServiceContext = {}
+  input: { configSetId: string; name: string; notes?: string } & BaselineGateInput,
+  context: BaselineServiceContext = {},
+  readinessDeps: EvaluateReleaseReadinessDeps = {}
 ): Promise<ReleaseBaselineDto> {
   requireParameterFileAdmin(auth);
+
+  await assertReleaseGateAllows(
+    db,
+    auth,
+    {
+      configSetId: input.configSetId,
+      gateToken: input.gateToken,
+      acknowledgedWarningIds: input.acknowledgedWarningIds,
+      action: "create"
+    },
+    readinessDeps
+  );
 
   return db.transaction(async (tx) => {
     const configSet = await getConfigSetById(tx, {
@@ -495,7 +509,8 @@ export async function releaseBaseline(
   auth: AuthContext,
   baselineId: string,
   deps: ReleaseBaselineDeps,
-  context: BaselineServiceContext = {}
+  context: BaselineServiceContext = {},
+  gateInput: BaselineGateInput = {}
 ): Promise<ReleaseBaselineResult> {
   requireParameterFileAdmin(auth);
 
@@ -513,36 +528,18 @@ export async function releaseBaseline(
       configSetId: baseline.configSetId
     });
   }
-  const revision = configSet.projectId
-    ? await getLatestConfigRevision(db, {
-        organizationId: auth.organization.id,
-        projectId: configSet.projectId,
-        configSetId: baseline.configSetId
-      })
-    : null;
-  if (revision) {
-    await syncSingletonCardinalityBlockingTasks(db, {
-      organizationId: auth.organization.id,
-      projectId: revision.projectId,
-      configRevisionId: revision.id
-    });
-    const blockingTaskCount = await countBlockingIdentityMappingTasksForRevision(db, {
-      organizationId: auth.organization.id,
-      configRevisionId: revision.id
-    });
-    if (blockingTaskCount > 0) {
-      throw new ApiError(
-        "CONFLICT",
-        "Release baseline is blocked by unresolved identity/cardinality tasks.",
-        409,
-        {
-          code: "revision-blocking-tasks",
-          configRevisionId: revision.id,
-          blockingTaskCount
-        }
-      );
-    }
-  }
+
+  await assertReleaseGateAllows(
+    db,
+    auth,
+    {
+      configSetId: baseline.configSetId,
+      gateToken: gateInput.gateToken,
+      acknowledgedWarningIds: gateInput.acknowledgedWarningIds,
+      action: "release"
+    },
+    { objectStore: deps.objectStore, validator: deps.validator, toolchain: deps.toolchain }
+  );
 
   const gate = await runValidationGate(
     db,

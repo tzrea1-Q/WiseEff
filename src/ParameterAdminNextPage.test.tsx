@@ -1786,6 +1786,18 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
         }
       ]),
       createBaseline: vi.fn(),
+      getReleaseReadiness: vi.fn().mockResolvedValue({
+        available: true,
+        level: "ready",
+        blockers: [],
+        warnings: [],
+        gateToken: "gate-token-admin",
+        evaluatedAt: "2026-08-07T00:00:00.000Z",
+        configSetId: "cs-default",
+        projectId: projectId(),
+        canCreateBaseline: true,
+        canRelease: true
+      }),
       compareBaseline: vi.fn().mockResolvedValue({
         baselineId: "bl-1",
         members: [
@@ -1950,7 +1962,11 @@ describe("ParameterAdminNextPage · project config sets, baselines, and validati
         name: "确认发布"
       })
     );
-    await waitFor(() => expect(dts.releaseBaseline).toHaveBeenCalledWith(projectId(), "bl-1"));
+    await waitFor(() =>
+      expect(dts.releaseBaseline).toHaveBeenCalledWith(projectId(), "bl-1", {
+        gateToken: "gate-token-admin"
+      })
+    );
     expect(screen.getByRole("status", { name: "治理审计" })).toHaveAttribute(
       "data-audit-kind",
       "baseline-released"
@@ -2036,6 +2052,18 @@ describe("ParameterAdminNextPage · project structure and conflict adjudication"
       addConfigSetFile: vi.fn(),
       removeConfigSetFile: vi.fn(),
       listBaselines: vi.fn().mockResolvedValue([]),
+      getReleaseReadiness: vi.fn().mockResolvedValue({
+        available: true,
+        level: "ready",
+        blockers: [],
+        warnings: [],
+        gateToken: "gate-token-structure",
+        evaluatedAt: "2026-08-07T00:00:00.000Z",
+        configSetId: "cs-default",
+        projectId: projectId(),
+        canCreateBaseline: true,
+        canRelease: true
+      }),
       createBaseline: vi.fn(),
       compareBaseline: vi.fn(),
       rollbackBaseline: vi.fn(),

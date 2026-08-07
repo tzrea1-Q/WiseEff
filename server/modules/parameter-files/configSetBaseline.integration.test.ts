@@ -15,6 +15,7 @@ import {
   releaseBaseline,
   rollbackToBaseline
 } from "./baselineService";
+import { evaluateReleaseReadiness } from "./releaseReadinessService";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { createStubDtcValidator } from "./dtcValidator";
 import { exportConfigSet } from "./exportService";
@@ -115,6 +116,26 @@ describe.skipIf(!databaseAvailable)("DTS config set / baseline / gate integratio
     await db?.rollback();
   });
 
+  async function readyGate(
+    configSetId: string,
+    deps: { objectStore: ObjectStore; validator?: ReturnType<typeof createStubDtcValidator> } = {
+      objectStore
+    },
+    acknowledgedWarningIds?: string[]
+  ) {
+    return evaluateReleaseReadiness(
+      db!,
+      auth,
+      { configSetId, acknowledgedWarningIds },
+      {
+        objectStore: deps.objectStore,
+        validator: deps.validator,
+        pendingChangeCount: 0,
+        openConflicts: []
+      }
+    );
+  }
+
   it("build → baseline → writeback → compare (version_changed + structural diff) → rollback", async () => {
     const boardUpload1 = await uploadProjectParameterFile(db!, objectStore, auth, {
       projectId: "project-csb-int",
@@ -154,10 +175,37 @@ describe.skipIf(!databaseAvailable)("DTS config set / baseline / gate integratio
     });
     expect(boardUpload2.version.versionNumber).toBe(2);
 
-    const baseline = await createBaseline(db!, auth, {
-      configSetId: configSet.id,
-      name: "release-1.0"
+    const gate = await readyGate(configSet.id, {
+      objectStore,
+      validator: createStubDtcValidator(() => ({
+        ok: true,
+        mode: "block",
+        compiler: "dtc",
+        diagnostics: []
+      }))
     });
+    expect(gate.canCreateBaseline).toBe(true);
+    const baseline = await createBaseline(
+      db!,
+      auth,
+      {
+        configSetId: configSet.id,
+        name: "release-1.0",
+        gateToken: gate.gateToken
+      },
+      {},
+      {
+        objectStore,
+        validator: createStubDtcValidator(() => ({
+          ok: true,
+          mode: "block",
+          compiler: "dtc",
+          diagnostics: []
+        })),
+        pendingChangeCount: 0,
+        openConflicts: []
+      }
+    );
     expect(baseline.status).toBe("draft");
 
     // 再回写 (post-baseline): single_value 99 → 150. Overlay is left untouched.
@@ -219,10 +267,44 @@ describe.skipIf(!databaseAvailable)("DTS config set / baseline / gate integratio
       sortOrder: 0
     });
 
-    const baseline = await createBaseline(db!, auth, {
-      configSetId: configSet.id,
-      name: "release-1.0"
+    const createGate = await readyGate(configSet.id, {
+      objectStore,
+      validator: createStubDtcValidator(() => ({
+        ok: true,
+        mode: "block",
+        compiler: "dtc",
+        diagnostics: []
+      }))
     });
+    expect(createGate.level === "ready" || createGate.level === "in-sync" || createGate.canCreateBaseline).toBe(true);
+    const baseline = await createBaseline(
+      db!,
+      auth,
+      {
+        configSetId: configSet.id,
+        name: "release-1.0",
+        gateToken: createGate.gateToken
+      },
+      {},
+      {
+        objectStore,
+        validator: createStubDtcValidator(() => ({
+          ok: true,
+          mode: "block",
+          compiler: "dtc",
+          diagnostics: []
+        })),
+        pendingChangeCount: 0,
+        openConflicts: [],
+        validationGate: {
+          ok: true,
+          mode: "block",
+          requiresConfirmation: false,
+          diagnostics: [],
+          compiler: "dtc"
+        }
+      }
+    );
 
     const blockingValidator = createStubDtcValidator(() => ({
       ok: false,
@@ -231,31 +313,64 @@ describe.skipIf(!databaseAvailable)("DTS config set / baseline / gate integratio
       diagnostics: [{ file: "board.dts", line: 12, severity: "error", message: "syntax error" }]
     }));
 
+    const blockedReadiness = await readyGate(configSet.id, { objectStore, validator: blockingValidator });
+    expect(blockedReadiness.level).toBe("blocked");
+    expect(blockedReadiness.blockers.some((item) => item.code === "hard-validation-error")).toBe(true);
     await expect(
-      releaseBaseline(db!, auth, baseline.id, { objectStore, validator: blockingValidator })
+      releaseBaseline(
+        db!,
+        auth,
+        baseline.id,
+        { objectStore, validator: blockingValidator },
+        {},
+        { gateToken: blockedReadiness.gateToken }
+      )
     ).rejects.toMatchObject({
       code: "CONFLICT",
       status: 409,
-      details: {
-        code: "dts-validation-failed",
-        diagnostics: [{ file: "board.dts", line: 12, severity: "error", message: "syntax error" }]
-      }
+      details: { code: "readiness-blocked" }
     });
 
     const warnValidator = createStubDtcValidator(() => ({
       ok: true,
       mode: "warn",
       compiler: "dtc",
-      diagnostics: [{ file: "board.dts", line: 12, severity: "error", message: "syntax error" }]
+      diagnostics: [{ file: "board.dts", line: 12, severity: "warning", message: "advisory" }]
     }));
 
     vi.stubEnv("DTS_VALIDATION_MODE", "warn");
+    const warningReadiness = await evaluateReleaseReadiness(
+      db!,
+      auth,
+      { configSetId: configSet.id },
+      {
+        objectStore,
+        validator: warnValidator,
+        pendingChangeCount: 0,
+        openConflicts: [],
+        validationGate: {
+          ok: true,
+          mode: "warn",
+          requiresConfirmation: true,
+          diagnostics: [{ file: "board.dts", severity: "warning", message: "advisory" }],
+          compiler: "dtc"
+        }
+      }
+    );
+    expect(warningReadiness.level).toBe("warning");
     await expect(
-      releaseBaseline(db!, auth, baseline.id, { objectStore, validator: warnValidator })
+      releaseBaseline(
+        db!,
+        auth,
+        baseline.id,
+        { objectStore, validator: warnValidator },
+        {},
+        { gateToken: warningReadiness.gateToken }
+      )
     ).rejects.toMatchObject({
       code: "CONFLICT",
       status: 409,
-      details: { code: "dts-release-mode-required", mode: "warn" }
+      details: { code: "readiness-blocked" }
     });
     vi.unstubAllEnvs();
 
@@ -265,11 +380,37 @@ describe.skipIf(!databaseAvailable)("DTS config set / baseline / gate integratio
       compiler: "dtc",
       diagnostics: []
     }));
+    const passGate = await evaluateReleaseReadiness(
+      db!,
+      auth,
+      { configSetId: configSet.id },
+      {
+        objectStore,
+        validator: passValidator,
+        pendingChangeCount: 0,
+        openConflicts: [],
+        validationGate: {
+          ok: true,
+          mode: "block",
+          requiresConfirmation: false,
+          diagnostics: [],
+          compiler: "dtc"
+        }
+      }
+    );
+    expect(passGate.canRelease).toBe(true);
 
-    const released = await releaseBaseline(db!, auth, baseline.id, {
-      objectStore,
-      validator: passValidator
-    });
+    const released = await releaseBaseline(
+      db!,
+      auth,
+      baseline.id,
+      {
+        objectStore,
+        validator: passValidator
+      },
+      {},
+      { gateToken: passGate.gateToken }
+    );
 
     expect(released.baseline.status).toBe("released");
     expect(released.gate).toMatchObject({
@@ -296,10 +437,44 @@ describe.skipIf(!databaseAvailable)("DTS config set / baseline / gate integratio
       role: "base",
       sortOrder: 0
     });
-    const baseline = await createBaseline(db!, auth, {
-      configSetId: configSet.id,
-      name: "blocked-release"
+    const createGate = await readyGate(configSet.id, {
+      objectStore,
+      validator: createStubDtcValidator(() => ({
+        ok: true,
+        mode: "block",
+        compiler: "dtc",
+        diagnostics: []
+      }))
     });
+    expect(createGate.canCreateBaseline).toBe(true);
+    const baseline = await createBaseline(
+      db!,
+      auth,
+      {
+        configSetId: configSet.id,
+        name: "blocked-release",
+        gateToken: createGate.gateToken
+      },
+      {},
+      {
+        objectStore,
+        validator: createStubDtcValidator(() => ({
+          ok: true,
+          mode: "block",
+          compiler: "dtc",
+          diagnostics: []
+        })),
+        pendingChangeCount: 0,
+        openConflicts: [],
+        validationGate: {
+          ok: true,
+          mode: "block",
+          requiresConfirmation: false,
+          diagnostics: [],
+          compiler: "dtc"
+        }
+      }
+    );
     await db!.query(
       `
       insert into dts_config_revisions (
@@ -326,16 +501,21 @@ describe.skipIf(!databaseAvailable)("DTS config set / baseline / gate integratio
       diagnostics: []
     }));
 
+    const blocked = await readyGate(configSet.id, { objectStore, validator: passValidator });
+    expect(blocked.blockers.some((item) => item.code === "publish-blocking-governance")).toBe(true);
     await expect(
-      releaseBaseline(db!, auth, baseline.id, { objectStore, validator: passValidator })
+      releaseBaseline(
+        db!,
+        auth,
+        baseline.id,
+        { objectStore, validator: passValidator },
+        {},
+        { gateToken: blocked.gateToken }
+      )
     ).rejects.toMatchObject({
       code: "CONFLICT",
       status: 409,
-      details: {
-        code: "revision-blocking-tasks",
-        configRevisionId: "revision-blocked-release",
-        blockingTaskCount: 1
-      }
+      details: { code: "readiness-blocked" }
     });
   });
 

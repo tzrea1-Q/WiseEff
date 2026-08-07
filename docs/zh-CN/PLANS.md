@@ -15,6 +15,7 @@
 
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
+- `exec-plans/completed/2026-08-07-project-configuration-workbench-release-readiness.md`：Issue #237 服务端发布就绪与源码 remediation——命令栏摘要、Issues 任务坞、带 gate token 的失败关闭基线创建/发布（分支 `feat/project-configuration-workbench-release-readiness`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-conflict-arbitration.md`：Issue #235 源码定位三方冲突仲裁——任务坞 Conflicts、等权结果、可选审计原因、合格批量影响预览、激活阻断（分支 `feat/project-configuration-workbench-conflict-arbitration`；关闭 TD-058）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-session-drafts.md`：Issue #234 结构化 DTS 编辑会话的可恢复草稿与过期基保护——作用域本地持久化、导航/刷新恢复、离开确认、登出清空（分支 `feat/project-configuration-workbench-session-drafts`）。
 - `exec-plans/completed/2026-08-07-project-configuration-workbench-structured-edit.md`：Issue #233 源码上下文中的结构化 DTS 编辑会话——类型化检查器、会话变更坞、经既有变更请求提交流、权限锁定（分支 `feat/project-configuration-workbench-structured-edit`）。

@@ -457,10 +457,11 @@ Migration `0092_dts_structural_spans.sql` 在 `dts_nodes` / `dts_properties` 上
 | `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/files` | 把参数文件加入配置集成员。请求体：`{ fileId, role, sortOrder? }`（`role` 为 `base`\|`overlay`\|`charging`\|`thermal`\|`misc`）。返回 `201 { item }`；文件已属于另一配置集报 `409`。 |
 | `DELETE` | `/api/v1/projects/:projectId/config-sets/:configSetId/files/:fileId` | 从配置集移除文件。返回 `200 {}`。 |
 | `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/baselines` | 列出配置集的基线。 |
-| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/baselines` | 把配置集当前所有成员版本快照为新的 `draft` 基线。请求体：`{ name, notes? }`。返回 `201 { item }`；成员无当前版本或基线重名报 `409`。 |
+| `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/release-readiness` | 配置集的服务端发布就绪结果。可选查询参数 `acknowledgedWarningIds`（逗号分隔）。返回 `200 { item }`，含 `available`、`level`（`blocked`\|`warning`\|`ready`\|`in-sync`）、有序 `blockers`/`warnings`（稳定目标、remediation、可选确认）、`gateToken`，以及权威的 `canCreateBaseline`/`canRelease`。仅 Admin；前端不得用客户端计数重建权限。 |
+| `POST` | `/api/v1/projects/:projectId/config-sets/:configSetId/baselines` | 把配置集当前所有成员版本快照为新的 `draft` 基线。请求体：`{ name, notes?, gateToken, acknowledgedWarningIds? }`。返回 `201 { item }`；缺少/过期 `gateToken`、就绪阻断、成员无当前版本或基线重名报 `409`。 |
 | `GET` | `/api/v1/projects/:projectId/baselines/:baselineId/compare` | 对比基线钉住的版本与配置集当前版本。返回 `200 { item: { baselineId, members } }`；每个成员为 `unchanged`\|`version_changed`\|`file_added`\|`file_removed`；`version_changed` 的 dts 成员附带节点/属性级、类型感知的 `structuralDiff`。 |
 | `POST` | `/api/v1/projects/:projectId/baselines/:baselineId/rollback` | 原子地把每个已漂移成员指回钉住版本（不删历史；漂移成员会得到一个新的 `origin=rollback` 版本）。返回 `200 { item: { baselineId, restored } }`。 |
-| `POST` | `/api/v1/projects/:projectId/baselines/:baselineId/release` | 对当前成员内容运行校验门禁，门禁放行后把基线标记 `released`。返回 `200 { item: baseline, gate }`。**门禁阻断 → `409`**，`error.details = { code: 'dts-validation-failed', diagnostics, mode, compiler }`。 |
+| `POST` | `/api/v1/projects/:projectId/baselines/:baselineId/release` | 重新评估发布就绪（要求匹配的 `gateToken`），对当前成员内容运行校验门禁，门禁放行后把基线标记 `released`。请求体：`{ gateToken, acknowledgedWarningIds? }`。返回 `200 { item: baseline, gate }`。过期/阻断就绪或校验失败 → `409`。 |
 | `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/export` | 导出无损 bundle：每个 dts 成员为 `serializeDts(parseDts(源))`。返回 `200 { manifest, files }`；`manifest.validation` 携带导出时刻的门禁结果（导出不会因门禁失败而阻断，这一点与 release 不同）。 |
 
 校验门禁结果结构（`gate` / `manifest.validation`）：

@@ -76,6 +76,18 @@ function createRepository(overrides: Partial<DtsStructuredRepository> = {}): Dts
     })),
     removeConfigSetFile: vi.fn().mockResolvedValue(undefined),
     listBaselines: vi.fn().mockResolvedValue([baseline()]),
+    getReleaseReadiness: vi.fn().mockResolvedValue({
+      available: true,
+      level: "ready",
+      blockers: [],
+      warnings: [],
+      gateToken: "gate-token-1",
+      evaluatedAt: "2026-08-07T00:00:00.000Z",
+      configSetId: "cs-1",
+      projectId: PROJECT_ID,
+      canCreateBaseline: true,
+      canRelease: true
+    }),
     createBaseline: vi.fn().mockResolvedValue(baseline({ id: "bl-new", name: "v2-draft" })),
     compareBaseline: vi.fn(),
     rollbackBaseline: vi.fn(),
@@ -233,7 +245,10 @@ describe("ConfigSetBaselinePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "创建基线" }));
 
     await waitFor(() =>
-      expect(repository.createBaseline).toHaveBeenCalledWith(PROJECT_ID, "cs-1", { name: "v2-draft" })
+      expect(repository.createBaseline).toHaveBeenCalledWith(PROJECT_ID, "cs-1", {
+        name: "v2-draft",
+        gateToken: "gate-token-1"
+      })
     );
     expect(await screen.findByText("v2-draft")).toBeInTheDocument();
   });
@@ -261,7 +276,11 @@ describe("ConfigSetBaselinePanel", () => {
     expect(repository.releaseBaseline).not.toHaveBeenCalled();
     fireEvent.click(within(confirmDialog).getByRole("button", { name: "确认发布" }));
 
-    await waitFor(() => expect(repository.releaseBaseline).toHaveBeenCalledWith(PROJECT_ID, "bl-1"));
+    await waitFor(() =>
+      expect(repository.releaseBaseline).toHaveBeenCalledWith(PROJECT_ID, "bl-1", {
+        gateToken: "gate-token-1"
+      })
+    );
     const gateRegion = await screen.findByRole("status", { name: "校验门禁结果" });
     expect(gateRegion).toHaveAttribute("data-ok", "false");
     expect(within(gateRegion).getByText(/修订校验未通过/)).toBeInTheDocument();
@@ -317,7 +336,11 @@ describe("ConfigSetBaselinePanel", () => {
     expect(confirm).toBeEnabled();
     fireEvent.click(confirm);
 
-    await waitFor(() => expect(repository.releaseBaseline).toHaveBeenCalledWith(PROJECT_ID, "bl-1"));
+    await waitFor(() =>
+      expect(repository.releaseBaseline).toHaveBeenCalledWith(PROJECT_ID, "bl-1", {
+        gateToken: "gate-token-1"
+      })
+    );
   });
 
   it("confirms a rollback and states that it overwrites later changes", async () => {
