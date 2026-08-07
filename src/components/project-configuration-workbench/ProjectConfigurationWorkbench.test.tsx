@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -179,8 +179,10 @@ function renderWorkbench(options: {
   dtsRepository?: DtsStructuredRepository;
   fileRepository?: ParameterFileRepository;
   syncSearch?: boolean;
+  canAdmin?: boolean;
 } = {}) {
   const onNavigate = options.onNavigate ?? vi.fn();
+  const canAdmin = options.canAdmin;
   if (options.syncSearch) {
     function Harness() {
       const [search, setSearch] = useState(options.search ?? "");
@@ -195,6 +197,7 @@ function renderWorkbench(options: {
           }}
           dtsRepository={options.dtsRepository ?? createDtsRepository()}
           fileRepository={options.fileRepository ?? createFileRepository()}
+          {...(canAdmin === undefined ? {} : { canAdmin })}
         />
       );
     }
@@ -208,6 +211,7 @@ function renderWorkbench(options: {
       onNavigate={onNavigate}
       dtsRepository={options.dtsRepository ?? createDtsRepository()}
       fileRepository={options.fileRepository ?? createFileRepository()}
+      {...(canAdmin === undefined ? {} : { canAdmin })}
     />
   );
   return { onNavigate };
@@ -417,7 +421,7 @@ describe("ProjectConfigurationWorkbench", () => {
     fireEvent.click(inspectorToggle);
     expect(screen.getByRole("complementary", { name: "配置检查器" })).toBeInTheDocument();
     fireEvent.click(taskToggle);
-    expect(screen.getByRole("region", { name: "配置任务" })).toHaveTextContent("本阶段为只读查看");
+    expect(screen.getByRole("region", { name: "配置任务" })).toHaveTextContent("任务证据");
   });
   it("loads nested structure under the selected member and focuses source spans from tree selection", async () => {
     const getStructure = vi.fn(async () => ({
@@ -1028,6 +1032,250 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(inspector).toHaveTextContent("文本差异");
     fireEvent.click(screen.getByRole("button", { name: "放弃候选" }));
     await waitFor(() => expect(abandonCandidate).toHaveBeenCalledWith(PROJECT.id, "cand-1"));
+  });
+
+  it("creates a Config set from the empty project path with name validation and duplicate handling", async () => {
+    const created = {
+      id: "cs-board-a",
+      organizationId: "org-1",
+      projectId: PROJECT.id,
+      name: "board-a",
+      createdAt: "2026-08-07T12:00:00.000Z",
+      updatedAt: "2026-08-07T12:00:00.000Z"
+    };
+    let configSets: Array<typeof created> = [];
+    const createConfigSet = vi.fn(async (_projectId: string, input: { name: string }) => {
+      const next = { ...created, name: input.name };
+      configSets = [next, ...configSets];
+      return next;
+    });
+    const listConfigSets = vi.fn(async () => configSets);
+    const { onNavigate } = renderWorkbench({
+      dtsRepository: createDtsRepository({
+        listConfigSets,
+        createConfigSet,
+        listConfigSetFiles: vi.fn(async () => [])
+      })
+    });
+
+    expect(await screen.findByText("项目还没有配置集")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开旧配置集管理" })).not.toBeInTheDocument();
+    expect(screen.getByText(/上传不会自动激活/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("请先填写配置集名称");
+
+    fireEvent.change(screen.getByLabelText("配置集名称"), { target: { value: "board-a" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
+    await waitFor(() => expect(createConfigSet).toHaveBeenCalledWith(PROJECT.id, { name: "board-a" }));
+    await waitFor(() =>
+      expect(onNavigate).toHaveBeenCalledWith(
+        expect.stringContaining("configSet=cs-board-a")
+      )
+    );
+
+    fireEvent.change(screen.getByLabelText("配置集名称"), { target: { value: "Board-A" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent('已存在名为「Board-A」的配置集');
+  });
+
+  it("adds and removes Config set members with role, sortOrder, and blast-radius confirmation", async () => {
+    const members = [
+      {
+        configSetId: "cs-default",
+        fileId: "file-board",
+        fileName: "aurora-board.dts",
+        format: "dts" as const,
+        role: "base" as const,
+        sortOrder: 0,
+        currentVersionId: "version-board-12",
+        currentVersionNumber: 12
+      }
+    ];
+    const addConfigSetFile = vi.fn(async (_projectId: string, configSetId: string, input: { fileId: string; role: string; sortOrder?: number }) => {
+      const added = {
+        configSetId,
+        fileId: input.fileId,
+        fileName: "notes.json",
+        format: "json" as const,
+        role: input.role as "misc",
+        sortOrder: input.sortOrder ?? 1,
+        currentVersionId: "version-loose-1",
+        currentVersionNumber: 1
+      };
+      members.push(added);
+      return added;
+    });
+    const removeConfigSetFile = vi.fn(async (_projectId: string, _configSetId: string, fileId: string) => {
+      const index = members.findIndex((item) => item.fileId === fileId);
+      if (index >= 0) members.splice(index, 1);
+    });
+    const listConfigSetFiles = vi.fn(async () => [...members]);
+
+    renderWorkbench({
+      syncSearch: true,
+      dtsRepository: createDtsRepository({
+        listConfigSetFiles,
+        addConfigSetFile,
+        removeConfigSetFile
+      })
+    });
+
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const ungrouped = screen.getByRole("group", { name: "未编组项目文件" });
+    expect(ungrouped).toHaveTextContent("notes.json");
+    expect(ungrouped).toHaveTextContent("不参与当前工作配置");
+
+    fireEvent.click(screen.getByRole("button", { name: "编入 notes.json" }));
+    await waitFor(() =>
+      expect(addConfigSetFile).toHaveBeenCalledWith(PROJECT.id, "cs-default", {
+        fileId: "file-loose",
+        role: "misc",
+        sortOrder: 1
+      })
+    );
+    await waitFor(() => expect(screen.getByRole("treeitem", { name: /notes\.json/ })).toBeInTheDocument());
+
+    const inspectorToggle = screen.getByRole("button", { name: "检查器" });
+    if (inspectorToggle.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(inspectorToggle);
+    }
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    if (within(inspector).queryByRole("button", { name: "检查器返回" })) {
+      fireEvent.click(within(inspector).getByRole("button", { name: "检查器返回" }));
+    }
+    expect(inspector).toHaveTextContent("成员管理");
+
+    fireEvent.click(within(inspector).getByRole("button", { name: "移除 aurora-board.dts" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("后续基线与导出将不再包含它");
+    fireEvent.click(screen.getByRole("button", { name: "确认移除" }));
+    await waitFor(() =>
+      expect(removeConfigSetFile).toHaveBeenCalledWith(PROJECT.id, "cs-default", "file-board")
+    );
+  });
+
+  it("runs manual sync from the file inspector and surfaces evidence in the task dock", async () => {
+    const syncFile = vi.fn(async () => ({
+      draftsCreated: 2,
+      unchanged: 1,
+      unmatched: 0,
+      skipped: false
+    }));
+    const listConflicts = vi.fn(async () => [
+      {
+        id: "conflict-1",
+        organizationId: "org-1",
+        projectId: PROJECT.id,
+        projectParameterValueId: "ppv-1",
+        parameterDefinitionId: "def-1",
+        parameterName: "model",
+        fileVersionId: "version-board-12",
+        fileDraftId: "fd-1",
+        uiDraftId: "ud-1",
+        fileValue: "Aurora",
+        uiDraftValue: "Other",
+        status: "open" as const,
+        createdAt: "2026-08-07T12:00:00.000Z"
+      }
+    ]);
+
+    renderWorkbench({
+      syncSearch: true,
+      fileRepository: createFileRepository({ syncFile, listConflicts })
+    });
+
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const inspectorToggle = screen.getByRole("button", { name: "检查器" });
+    if (inspectorToggle.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(inspectorToggle);
+    }
+    const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
+    fireEvent.click(within(inspector).getByRole("button", { name: "手动同步" }));
+    await waitFor(() => expect(syncFile).toHaveBeenCalledWith(PROJECT.id, "file-board"));
+    await waitFor(() => expect(listConflicts).toHaveBeenCalledWith(PROJECT.id));
+
+    const taskToggle = screen.getByRole("button", { name: "任务" });
+    if (taskToggle.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(taskToggle);
+    }
+    const tasks = await screen.findByRole("region", { name: "配置任务" });
+    expect(tasks).toHaveTextContent("aurora-board.dts");
+    expect(tasks).toHaveTextContent("已创建 2 条草稿");
+    expect(tasks).toHaveTextContent("冲突 1");
+  });
+
+  it("exports the selected Config set from the command context", async () => {
+    const exportConfigSet = vi.fn(async () => ({
+      manifest: {
+        configSetId: "cs-default",
+        name: "default",
+        projectId: PROJECT.id,
+        exportedAt: "2026-08-07T12:00:00.000Z",
+        validation: { ok: true, mode: "warn" as const, compiler: "dtc" as const, requiresConfirmation: false },
+        members: [
+          {
+            fileId: "file-board",
+            fileName: "aurora-board.dts",
+            role: "base" as const,
+            sortOrder: 0,
+            versionNumber: 12,
+            format: "dts" as const
+          }
+        ]
+      },
+      files: [{ name: "aurora-board.dts", format: "dts" as const, content: '/dts-v1/;\n/ { model = "Aurora"; };\n' }]
+    }));
+    const createObjectURL = vi.fn(() => "blob:export");
+    const revokeObjectURL = vi.fn();
+    const clickSpy = vi.fn();
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tagName: string) => {
+      const element = originalCreateElement(tagName);
+      if (tagName === "a") {
+        Object.defineProperty(element, "click", { value: clickSpy });
+      }
+      return element;
+    });
+
+    renderWorkbench({
+      dtsRepository: createDtsRepository({ exportConfigSet })
+    });
+
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    fireEvent.click(screen.getByRole("button", { name: "导出配置集" }));
+    await waitFor(() => expect(exportConfigSet).toHaveBeenCalledWith(PROJECT.id, "cs-default"));
+    expect(createObjectURL).toHaveBeenCalled();
+    expect(clickSpy).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps read context visible and denies mutations when canAdmin is false", async () => {
+    renderWorkbench({ canAdmin: false });
+
+    expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "未编组项目文件" })).toHaveTextContent("notes.json");
+    expect(screen.getByText(/仅管理员可变更配置集成员、同步或导出/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "创建配置集" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "导出配置集" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编入 notes.json" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "手动同步" })).not.toBeInTheDocument();
+  });
+
+  it("shows a focused upload and assignment path for an empty Config set", async () => {
+    renderWorkbench({
+      dtsRepository: createDtsRepository({
+        listConfigSetFiles: vi.fn(async () => [])
+      })
+    });
+
+    expect(await screen.findByText("当前配置集没有成员文件")).toBeInTheDocument();
+    expect(screen.getByText(/上传候选不会自动激活工作配置/)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "上传候选" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "上传候选" })[0]).toBeEnabled();
+    expect(screen.getByRole("group", { name: "未编组项目文件" })).toHaveTextContent("编入");
   });
 
 });

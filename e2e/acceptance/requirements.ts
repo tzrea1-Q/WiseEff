@@ -176,6 +176,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     title: "Candidate file version upload, impact review, parse-failure diagnostics, and abandon leave Working configuration and Config set membership unchanged.",
     required: false
   },
+  {
+    id: "PROJ-CONFIG-OPS-001",
+    workflow: "C",
+    title: "Admin creates and configures Config sets, adds or removes members with role and order plus blast-radius confirmation, sees ungrouped files outside Working/Release, runs manual sync with task evidence, exports from the command context, and empty sets show a focused upload/assignment path without auto-activation; non-admin denial keeps read context.",
+    required: false
+  },
 
   {
     id: "PARAM-ADMIN-DIALOG-001",

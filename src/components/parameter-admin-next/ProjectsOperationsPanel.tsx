@@ -554,6 +554,7 @@ export function ProjectsOperationsPanel({
           onNavigate={onNavigate}
           dtsRepository={dtsRepo}
           fileRepository={fileRepository}
+          canAdmin
         />
       ) : null}
 

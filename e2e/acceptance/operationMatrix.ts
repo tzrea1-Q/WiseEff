@@ -388,6 +388,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
     assertions: ["ui", "api", "screenshot"]
   },
+  {
+    id: "PROJ-CONFIG-OPS-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/configuration",
+    roles: ["Admin"],
+    action:
+      "Create/configure a Config set with validation and duplicate-name handling, add/remove members with role and sortOrder plus ConfirmDialog blast-radius, keep ungrouped files outside Working/Release until assigned, run manual sync with task-dock evidence, export from the command context, and exercise empty-set upload/assignment without auto-activation plus non-admin denial with read context retained.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-CONFIG-OPS-001"],
+    specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
 
   {
     id: "PARAM-ADMIN-DIALOG-001",

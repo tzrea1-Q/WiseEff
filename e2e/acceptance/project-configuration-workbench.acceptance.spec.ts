@@ -164,7 +164,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       });
       expect(inspectorOverlay?.position).toMatch(/absolute|fixed/);
       await page.getByRole("button", { name: "任务", exact: true }).click();
-      await expect(page.getByRole("region", { name: "配置任务" })).toContainText("本阶段为只读查看");
+      await expect(page.getByRole("region", { name: "配置任务" })).toContainText("任务证据");
       await page.getByRole("button", { name: "任务", exact: true }).click();
       await page.getByRole("button", { name: "检查器", exact: true }).click();
 
@@ -182,7 +182,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await tabletInspectorToggle.click();
       await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
       await tabletTaskToggle.click();
-      await expect(page.getByRole("region", { name: "配置任务" })).toContainText("本阶段为只读查看");
+      await expect(page.getByRole("region", { name: "配置任务" })).toContainText("任务证据");
       const tabletOverflow = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth
@@ -766,6 +766,169 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         projectId,
         configSetNames: [configSetName],
         fileNames: [primaryFileName, `acceptance-candidate-fail-${suffix}.json`]
+      });
+    }
+  });
+
+  test("creates Config set, manages members, syncs, and exports from the workbench", async ({ page, request }, testInfo) => {
+    // @acceptance PROJ-CONFIG-OPS-001
+    // @operation PROJ-CONFIG-OPS-001
+    const suffix = randomUUID();
+    const configSetName = `file-config-ops-${suffix}`;
+    const primaryFileName = `acceptance-ops-primary-${suffix}.dts`;
+    const looseFileName = `acceptance-ops-loose-${suffix}.json`;
+
+    try {
+      const primaryUpload = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: primaryFileName,
+          contentBase64: Buffer.from(sampleDts, "utf8").toString("base64")
+        }
+      });
+      expect(primaryUpload.ok()).toBe(true);
+      const primaryBody = (await primaryUpload.json()) as {
+        item: { id: string; fileName: string };
+        version: { id: string; versionNumber: number };
+      };
+      const looseUpload = await request.post(apiRoute(`/api/v1/projects/${projectId}/parameter-files`), {
+        headers: adminHeaders(),
+        data: {
+          fileName: looseFileName,
+          contentBase64: Buffer.from('{"notes":"ungrouped-ops"}\n', "utf8").toString("base64")
+        }
+      });
+      expect(looseUpload.ok()).toBe(true);
+      const looseBody = (await looseUpload.json()) as { item: { id: string; fileName: string } };
+
+      const createConfigSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(),
+        data: { name: configSetName, description: "File config ops acceptance" }
+      });
+      expect(createConfigSet.status()).toBe(201);
+      const configSetBody = (await createConfigSet.json()) as { item: { id: string; name: string } };
+      const configSetId = configSetBody.item.id;
+
+      const addMember = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/files`),
+        { headers: adminHeaders(), data: { fileId: primaryBody.item.id, role: "base", sortOrder: 0 } }
+      );
+      expect(addMember.ok()).toBe(true);
+
+      const duplicateCreate = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
+        headers: adminHeaders(),
+        data: { name: configSetName }
+      });
+      expect([400, 409]).toContain(duplicateCreate.status());
+
+      const exportResponse = await request.get(
+        apiRoute(`/api/v1/projects/${projectId}/config-sets/${configSetId}/export`),
+        { headers: adminHeaders() }
+      );
+      expect(exportResponse.ok()).toBe(true);
+      const exportBody = (await exportResponse.json()) as {
+        manifest: {
+          members: Array<{ fileId: string; role: string; sortOrder: number }>;
+          validation?: { ok: boolean };
+        };
+        files: Array<{ name: string; content: string }>;
+      };
+      expect(exportBody.manifest.members.some((item) => item.fileId === primaryBody.item.id)).toBe(true);
+      expect(exportBody.files.length).toBeGreaterThan(0);
+
+      const syncResponse = await request.post(
+        apiRoute(`/api/v1/projects/${projectId}/parameter-files/${primaryBody.item.id}/sync`),
+        { headers: adminHeaders(), data: {} }
+      );
+      expect(syncResponse.ok()).toBe(true);
+
+      await signInBrowserAsRole(page, "admin");
+      await page.goto(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}`
+      );
+      await dismissXiaozeHint(page);
+      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
+      const ungrouped = page.getByRole("group", { name: "未编组项目文件" });
+      await expect(ungrouped).toContainText(looseFileName);
+      await expect(ungrouped).toContainText("不参与当前工作配置");
+
+      await page.getByRole("button", { name: `编入 ${looseFileName}` }).click();
+      await expect(page.getByRole("treeitem", { name: new RegExp(looseFileName) })).toBeVisible({ timeout: 15_000 });
+
+      const inspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
+      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") {
+        await inspectorToggle.click();
+      }
+      const inspector = page.getByRole("complementary", { name: "配置检查器" });
+      await expect(inspector).toBeVisible();
+      const back = inspector.getByRole("button", { name: "检查器返回" });
+      if (await back.isVisible().catch(() => false)) {
+        await back.click();
+      }
+      await expect(inspector).toContainText("成员管理");
+      await inspector.getByRole("button", { name: `移除 ${looseFileName}` }).click();
+      await expect(page.getByRole("dialog")).toContainText("后续基线与导出将不再包含它");
+      await page.getByRole("button", { name: "确认移除" }).click();
+      await expect(ungrouped).toContainText(looseFileName);
+
+      if ((await inspectorToggle.getAttribute("aria-expanded")) !== "true") {
+        await inspectorToggle.click();
+      }
+      await page.getByRole("treeitem", { name: new RegExp(primaryFileName) }).click();
+      await expect(inspector.getByRole("button", { name: "手动同步" })).toBeVisible();
+      await inspector.getByRole("button", { name: "手动同步" }).click();
+      await expect(page.getByRole("region", { name: "配置任务" })).toContainText(primaryFileName);
+
+      await page.getByRole("button", { name: "导出配置集" }).click();
+      await expect(page.getByRole("status").filter({ hasText: "已导出配置集" })).toBeVisible({ timeout: 15_000 });
+
+      await page.getByLabel("配置集名称").fill(configSetName);
+      await page.getByRole("button", { name: "创建配置集" }).click();
+      await expect(page.getByRole("alert").filter({ hasText: "已存在名为" })).toBeVisible();
+
+      const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-file-config-ops.json", {
+        route: page.url(),
+        configSetId,
+        primaryFileId: primaryBody.item.id,
+        looseFileId: looseBody.item.id,
+        exportMembers: exportBody.manifest.members.length
+      });
+      await recordOperationEvidence({
+        operationId: "PROJ-CONFIG-OPS-001",
+        title: "configuration workbench file and config-set operations",
+        status: "passed",
+        role: "Admin",
+        route: `/parameter-admin/projects/${projectId}/configuration`,
+        page,
+        testInfo,
+        assertions: ["ui", "api", "screenshot"],
+        artifacts: [evidencePath],
+        api: [
+          summarizeApiResponse(createConfigSet, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/config-sets`,
+            responseSummary: `id=${configSetId}`
+          }),
+          summarizeApiResponse(exportResponse, {
+            method: "GET",
+            path: `/api/v1/projects/${projectId}/config-sets/${configSetId}/export`,
+            responseSummary: `members=${exportBody.manifest.members.length}`
+          }),
+          summarizeApiResponse(syncResponse, {
+            method: "POST",
+            path: `/api/v1/projects/${projectId}/parameter-files/${primaryBody.item.id}/sync`,
+            responseSummary: "sync ok"
+          })
+        ],
+        notes: "Workbench create validation, member assign/remove with confirmation, ungrouped visibility, manual sync evidence, and export were exercised through ports-backed UI."
+      });
+    } finally {
+      await cleanupSemanticAcceptanceArtifacts({
+        organizationId,
+        projectId,
+        configSetNames: [configSetName],
+        fileNames: [primaryFileName, looseFileName]
       });
     }
   });
