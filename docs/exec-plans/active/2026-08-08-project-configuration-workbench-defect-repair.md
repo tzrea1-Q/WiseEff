@@ -1,6 +1,6 @@
 # Project configuration workbench defect repair
 
-> Status: **Active** — Batch 0 implemented on `fix/project-configuration-workbench-defects`; Batches 1–3 pending
+> Status: **Active** — Batches 0–3 + CW-T1 implemented on `fix/project-configuration-workbench-defects`; awaiting parent review / PR
 > Date: 2026-08-08
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md`](../../zh-CN/exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md)
 > Locked design: [`docs/design-docs/2026-08-06-project-configuration-workbench-design.md`](../../design-docs/2026-08-06-project-configuration-workbench-design.md)
@@ -131,26 +131,26 @@ The headroom matters as much as the fit: it is what lets a longer project name o
 ### Batch 1 — command bar
 
 5. [x] Settle CW-DEC-1 – CW-DEC-4 and record them in this plan (2026-08-08).
-6. [ ] CW-A1 / CW-D4: move config-set creation into a `+ 新建` entry on the config-set select backed by a `ModalDialog`, and delete `__create-config` from the command bar. This also removes CW-D4 at its source, because the element carrying the missing `order` no longer exists in the bar.
-7. [ ] CW-D1: keep the Working-configuration chip and fold candidate/baseline behind it; `__identities` must never combine `overflow: visible` with `nowrap` under a shrinkable width.
-8. [ ] CW-D2 / CW-D5: render project identity as one ellipsised line with code and status in a tooltip, replacing the `grid-template-columns: auto auto` that collapses when narrow and disperses when wide.
-9. [ ] CW-D3 groundwork: split the action cluster into primary (readiness, 检查器, 上传候选) and a 更多 menu (活动, 导出配置集, 创建基线).
-10. [ ] Re-measure the command bar against the width budget above at 1440/1024/768/390 and confirm the headroom is real, not estimated.
+6. [x] CW-A1 / CW-D4: move config-set creation into a `+ 新建` entry on the config-set select backed by a `ModalDialog`, and delete `__create-config` from the command bar. This also removes CW-D4 at its source, because the element carrying the missing `order` no longer exists in the bar.
+7. [x] CW-D1: keep the Working-configuration chip and fold candidate/baseline behind it; `__identities` must never combine `overflow: visible` with `nowrap` under a shrinkable width.
+8. [x] CW-D2 / CW-D5: render project identity as one ellipsised line with code and status in a tooltip, replacing the `grid-template-columns: auto auto` that collapses when narrow and disperses when wide.
+9. [x] CW-D3 groundwork: split the action cluster into primary (readiness, 检查器, 上传候选) and a 更多 menu (活动, 导出配置集, 创建基线).
+10. [x] Re-measure the command bar against the width budget above at 1440/1024/768/390 and confirm the headroom is real, not estimated.
 
 ### Batch 2 — responsive
 
-11. [ ] CW-D3: stop equal-flex distribution of the action row below the width where labels stay on one line; adopt the Batch 1 primary/secondary split.
-12. [ ] CW-D8: keep the Xiaoze launcher clear of the source canvas at 390px and fix the source-header wrapping.
+11. [x] CW-D3: stop equal-flex distribution of the action row below the width where labels stay on one line; adopt the Batch 1 primary/secondary split.
+12. [x] CW-D8: keep the Xiaoze launcher clear of the source canvas at 390px and fix the source-header wrapping.
 
 ### Batch 3 — source tree
 
-13. [ ] CW-D6: compact the search block so the tree keeps the majority of the panel.
-14. [ ] CW-D7: render the node list as an indented hierarchy showing each node's own segment, with the full path available on demand.
+13. [x] CW-D6: compact the search block so the tree keeps the majority of the panel.
+14. [x] CW-D7: render the node list as an indented hierarchy showing each node's own segment, with the full path available on demand.
 
 ### Cross-cutting
 
-15. [ ] CW-T1: replace the page-level overflow assertion with an element-level check that fails on intersecting sibling rectangles and on children exceeding their container, then confirm it fails against current `main` and passes after Batches 1–3.
-16. [ ] playwright-cli evidence at 1440×900 / 768×1024 / 390×844 with 0 console errors.
+15. [x] CW-T1: replace the page-level overflow assertion with an element-level check that fails on intersecting sibling rectangles and on children exceeding their container, then confirm it fails against current `main` and passes after Batches 1–3.
+16. [x] playwright-cli evidence at 1440×900 / 768×1024 / 390×844 with 0 console errors.
 
 ## Key seams (starting points)
 

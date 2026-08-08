@@ -134,9 +134,12 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page.getByRole("treeitem", { name: new RegExp(primaryFileName) })).toBeVisible();
       await expect(page.getByRole("group", { name: "未编组项目文件" })).toContainText(looseFileName);
       await expect(page.getByText("工作配置", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: /版本/ }).click();
       await expect(page.getByText("发布基线：尚未发布")).toBeVisible();
       await expect(page.getByRole("button", { name: "上传候选" })).toBeEnabled();
-      await expect(page.getByRole("button", { name: "创建基线" })).toBeDisabled();
+      await page.getByRole("button", { name: "更多" }).click();
+      await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeDisabled();
+      await page.keyboard.press("Escape");
       await expect(page.getByRole("main", { name: "只读 DTS 源码" })).toContainText("Configuration tracer");
       expect(memberRequests.some((url) => url.includes(`/config-sets/${configSetId}/files`))).toBe(true);
 
@@ -146,24 +149,53 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         const inspector = document.querySelector(".configuration-workbench__inspector");
         const source = document.querySelector(".configuration-workbench__source");
         const mobileTools = document.querySelector(".configuration-workbench__mobile-tools");
+        const command = document.querySelector(".configuration-workbench__command");
         const rect = (el: Element | null) => {
           if (!el) return null;
           const box = el.getBoundingClientRect();
           return { width: box.width, height: box.height, x: box.x };
         };
+        const commandChildren = command
+          ? Array.from(command.children).filter((el) => {
+              const box = el.getBoundingClientRect();
+              return box.width > 4 && box.height > 4;
+            })
+          : [];
+        const overlaps: Array<{ a: string; b: string; ox: number; oy: number }> = [];
+        for (let i = 0; i < commandChildren.length; i += 1) {
+          for (let j = i + 1; j < commandChildren.length; j += 1) {
+            const a = commandChildren[i]!;
+            const b = commandChildren[j]!;
+            if (a.contains(b) || b.contains(a)) continue;
+            const ar = a.getBoundingClientRect();
+            const br = b.getBoundingClientRect();
+            const ox = Math.min(ar.right, br.right) - Math.max(ar.left, br.left);
+            const oy = Math.min(ar.bottom, br.bottom) - Math.max(ar.top, br.top);
+            if (ox > 2 && oy > 2) {
+              overlaps.push({
+                a: (a.className || a.tagName).toString().slice(0, 48),
+                b: (b.className || b.tagName).toString().slice(0, 48),
+                ox: Math.round(ox),
+                oy: Math.round(oy)
+              });
+            }
+          }
+        }
         return {
           dock: rect(dock),
           inspectorBefore: rect(inspector),
           source: rect(source),
           mobileToolsDisplay: mobileTools ? getComputedStyle(mobileTools).display : null,
           scrollWidth: document.documentElement.scrollWidth,
-          clientWidth: document.documentElement.clientWidth
+          clientWidth: document.documentElement.clientWidth,
+          commandOverlaps: overlaps
         };
       });
       expect(desktopShell.mobileToolsDisplay).toBeNull();
       expect(desktopShell.dock?.height).toBe(44);
       expect(desktopShell.source?.width ?? 0).toBeGreaterThan(600);
       expect(desktopShell.scrollWidth).toBeLessThanOrEqual(desktopShell.clientWidth);
+      expect(desktopShell.commandOverlaps).toEqual([]);
 
       await page.getByRole("button", { name: "检查器", exact: true }).click();
       await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
@@ -1244,7 +1276,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page.getByRole("heading", { name: primaryFileName })).toBeVisible();
       await expect(page.getByLabel("治理审计")).toHaveCount(0);
 
-      await page.getByRole("button", { name: "活动" }).click();
+      await page.getByRole("button", { name: "更多" }).click();
+      await page.getByRole("menuitem", { name: "活动" }).click();
       const inspector = page.getByRole("complementary", { name: "配置检查器" });
       await expect(inspector).toContainText("项目活动");
       await expect(inspector.getByLabel("项目活动事件")).toBeVisible();
@@ -1616,9 +1649,12 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await inspector.getByRole("button", { name: "手动同步" }).click();
       await expect(page.getByRole("region", { name: "配置任务" })).toContainText(primaryFileName);
 
-      await page.getByRole("button", { name: "导出配置集" }).click();
+      await page.getByRole("button", { name: "更多" }).click();
+      await page.getByRole("menuitem", { name: "导出配置集" }).click();
       await expect(page.locator(".configuration-workbench__ops-banner").filter({ hasText: "已导出配置集" })).toBeVisible({ timeout: 15_000 });
 
+      await page.getByRole("combobox", { name: "配置集" }).selectOption("__create_config_set__");
+      await expect(page.getByRole("heading", { name: "新建配置集" })).toBeVisible();
       await page.getByLabel("配置集名称").fill(configSetName);
       await page.getByRole("button", { name: "创建配置集" }).click();
       await expect(page.getByRole("alert").filter({ hasText: "已存在名为" })).toBeVisible();
@@ -2426,11 +2462,13 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await readinessSummary.getByRole("button").first().click();
       await expect(page.getByRole("region", { name: "发布就绪问题" })).toBeVisible();
 
-      const createButton = page.getByRole("button", { name: "创建基线" });
+      await page.getByRole("button", { name: "更多" }).click();
+      const createButton = page.getByRole("menuitem", { name: "创建基线" });
       await expect(createButton).toBeVisible();
       if (!readinessBody.item.available || !readinessBody.item.canCreateBaseline || readinessBody.item.level === "blocked") {
         await expect(createButton).toBeDisabled();
       }
+      await page.keyboard.press("Escape");
 
       const desktopOverflow = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,

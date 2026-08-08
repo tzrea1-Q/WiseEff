@@ -225,6 +225,23 @@ function createFileRepository(
   } as ParameterFileRepository;
 }
 
+async function openWorkbenchMoreMenu() {
+  fireEvent.click(screen.getByRole("button", { name: "更多" }));
+  return screen.findByRole("menu", { name: "更多操作" });
+}
+
+async function openWorkbenchVersionDetails() {
+  fireEvent.click(screen.getByRole("button", { name: /版本/ }));
+  return screen.findByText(/发布基线：/);
+}
+
+async function openCreateConfigSetDialog() {
+  fireEvent.change(screen.getByRole("combobox", { name: "配置集" }), {
+    target: { value: "__create_config_set__" }
+  });
+  return screen.findByRole("heading", { name: "新建配置集" });
+}
+
 function renderWorkbench(options: {
   search?: string;
   onNavigate?: ReturnType<typeof vi.fn>;
@@ -368,6 +385,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "配置集" })).toHaveValue("cs-default");
     expect(screen.getByText("工作配置")).toBeInTheDocument();
+    await openWorkbenchVersionDetails();
     expect(screen.getByText(/发布基线：seed-v1/)).toBeInTheDocument();
     expect(screen.getByRole("treeitem", { name: /aurora-board\.dts.*基础.*v12/ })).toBeInTheDocument();
     expect(screen.getAllByText("version-board-12").length).toBeGreaterThanOrEqual(2);
@@ -379,7 +397,8 @@ describe("ProjectConfigurationWorkbench", () => {
       )
     );
     expect(screen.getByRole("button", { name: "上传候选" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "创建基线" })).toBeEnabled();
+    await openWorkbenchMoreMenu();
+    expect(screen.getByRole("menuitem", { name: "创建基线" })).toBeEnabled();
     expect(await screen.findByLabelText("发布就绪")).toHaveAttribute("data-level", "ready");
   });
 
@@ -541,6 +560,7 @@ describe("ProjectConfigurationWorkbench", () => {
     renderWorkbench({ dtsRepository: createDtsRepository({ listBaselines }) });
 
     expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
+    await openWorkbenchVersionDetails();
     expect(screen.getByText(/发布基线：不可用/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试发布基线" }));
 
@@ -1708,6 +1728,7 @@ describe("ProjectConfigurationWorkbench", () => {
       expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("sourceMode=candidate"))).toBe(true)
     );
     expect(await screen.findByLabelText("候选只读源码模式")).toBeInTheDocument();
+    await openWorkbenchVersionDetails();
     expect(screen.getByLabelText("配置身份")).toHaveTextContent("ready");
     const inspectorToggle = screen.getByRole("button", { name: "检查器" });
     if (inspectorToggle.getAttribute("aria-expanded") !== "true") {
@@ -1912,7 +1933,8 @@ describe("ProjectConfigurationWorkbench", () => {
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     expect(screen.queryByLabelText("治理审计")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "活动" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "活动" }));
     const inspector = await screen.findByRole("complementary", { name: "配置检查器" });
     expect(inspector).toHaveTextContent("项目活动");
     await waitFor(() => expect(listAuditEvents).toHaveBeenCalled());
@@ -1977,7 +1999,8 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "活动" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "活动" }));
     await screen.findByLabelText("项目活动事件");
 
     fireEvent.click(screen.getByRole("button", { name: /上传 · 参数文件 · charging-overlay\.dtsi/i }));
@@ -1985,7 +2008,8 @@ describe("ProjectConfigurationWorkbench", () => {
       expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("file=file-overlay"))).toBe(true)
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "活动" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "活动" }));
     await screen.findByLabelText("项目活动事件");
     fireEvent.click(screen.getByRole("button", { name: /创建 · 候选文件版本 · gone\.dts/i }));
     expect(await screen.findByRole("status", { name: "活动目标不可用" })).toHaveTextContent(/候选/);
@@ -2022,7 +2046,8 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "活动" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "活动" }));
     await waitFor(() => expect(listAuditEvents).toHaveBeenCalledTimes(1));
 
     const uploadInput = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -2049,7 +2074,8 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "活动" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "活动" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/audit unavailable|活动|失败/i);
     expect(screen.getByRole("main", { name: "只读 DTS 源码" })).toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "配置检查器" })).toHaveAttribute("data-layout");
@@ -2087,6 +2113,7 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(screen.queryByRole("button", { name: "打开旧配置集管理" })).not.toBeInTheDocument();
     expect(screen.getByText(/上传不会自动激活/)).toBeInTheDocument();
 
+    await openCreateConfigSetDialog();
     fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
     expect(await screen.findByText(/请先填写配置集名称/)).toBeInTheDocument();
 
@@ -2099,6 +2126,7 @@ describe("ProjectConfigurationWorkbench", () => {
       )
     );
 
+    await openCreateConfigSetDialog();
     fireEvent.change(screen.getByLabelText("配置集名称"), { target: { value: "Board-A" } });
     fireEvent.click(screen.getByRole("button", { name: "创建配置集" }));
     expect(await screen.findByText(/已存在名为「Board-A」的配置集/)).toBeInTheDocument();
@@ -2282,7 +2310,8 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "导出配置集" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "导出配置集" }));
     await waitFor(() => expect(exportConfigSet).toHaveBeenCalledWith(PROJECT.id, "cs-default"));
     expect(createObjectURL).toHaveBeenCalled();
     expect(blobSpy).toHaveBeenCalled();
@@ -2307,8 +2336,9 @@ describe("ProjectConfigurationWorkbench", () => {
     expect(await screen.findByRole("heading", { name: "aurora-board.dts" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "未编组项目文件" })).toHaveTextContent("notes.json");
     expect(screen.getByText(/仅管理员可变更配置集成员、同步或导出/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "创建配置集" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "导出配置集" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /\+ 新建配置集/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    expect(screen.queryByRole("menuitem", { name: "导出配置集" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "编入 notes.json" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "手动同步" })).not.toBeInTheDocument();
   });
@@ -2417,7 +2447,8 @@ describe("ProjectConfigurationWorkbench", () => {
     });
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("button", { name: "活动" }));
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "活动" }));
     await screen.findByLabelText("项目活动事件");
     fireEvent.click(screen.getByRole("button", { name: /裁决 · 文件冲突 · aurora-board\.dts/i }));
 
