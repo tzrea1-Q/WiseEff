@@ -1,6 +1,6 @@
 # 项目配置工作台缺陷修复
 
-> 状态：**进行中** — 2026-08-08 记录问题；尚未开始实施
+> 状态：**进行中** — 批次 0 已在 `fix/project-configuration-workbench-defects` 落地；批次 1–3 待实施
 > 日期：2026-08-08
 > English: [`docs/exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md`](../../../exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md)
 > 已锁定的设计：[`docs/zh-CN/design-docs/2026-08-06-project-configuration-workbench-design.md`](../../design-docs/2026-08-06-project-configuration-workbench-design.md)
@@ -123,10 +123,10 @@ CW-B1/CW-B2 的证据，取自本地种子数据库的实时调用：
 
 ### 批次 0 — 阻断
 
-1. [ ] CW-B1：把 `listOpenConflicts` 的查询指向切换后的结构（经由 `parameter_file_sync_conflicts.project_parameter_binding_id` 关联 `project_parameter_bindings`），并确认 `base_value` / `source_node_path` 这两项富化字段在切换后有真实来源，否则从 DTO 中移除并同步更新其消费方。
-2. [ ] CW-T2：新增一个针对已迁移结构执行真实 SQL 的仓储测试（不使用 `vi.mock`），使该查询无法再与实际表结构漂移；并验证六个调用点全部可用。
-3. [ ] CW-B2：停止把原始异常文本作为产品阻断项呈现。基础设施故障应上报为"就绪度不可用"，与"存在未解决冲突"区分开，并且不得给出通向空任务坞的处置建议。
-4. [ ] 端到端验证：对无冲突的种子项目，`release-readiness` 返回非阻断级别，且「创建基线」变为可用。
+1. [x] CW-B1：把 `listOpenConflicts` 的查询指向切换后的结构（经由 `parameter_file_sync_conflicts.project_parameter_binding_id` 关联 `project_parameter_bindings`），并确认 `base_value` / `source_node_path` 这两项富化字段在切换后有真实来源，否则从 DTO 中移除并同步更新其消费方。
+2. [x] CW-T2：新增一个针对已迁移结构执行真实 SQL 的仓储测试（不使用 `vi.mock`），使该查询无法再与实际表结构漂移；并验证六个调用点全部可用。
+3. [x] CW-B2：停止把原始异常文本作为产品阻断项呈现。基础设施故障应上报为"就绪度不可用"，与"存在未解决冲突"区分开，并且不得给出通向空任务坞的处置建议。
+4. [x] 端到端验证：对无冲突的种子项目，`release-readiness` 返回非阻断级别，且「创建基线」变为可用。
 
 ### 批次 1 — 命令栏
 

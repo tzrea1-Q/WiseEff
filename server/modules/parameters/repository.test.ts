@@ -1525,8 +1525,9 @@ describe("parameter repository", () => {
     expect(calls[0].text).toContain("insert into parameter_file_sync_conflicts");
     expect(calls[1].text).toContain("parameter_file_sync_conflicts");
     expect(calls[1].text).toContain("status = 'open'");
-    expect(calls[1].text).toContain("project_parameter_values");
-    expect(calls[1].text).toContain("parameter_definitions");
+    expect(calls[1].text).toContain("project_parameter_bindings");
+    expect(calls[1].text).not.toContain("project_parameter_values");
+    expect(calls[1].text).not.toContain("parameter_definitions");
     expect(calls[1].text).toContain("project_parameter_file_versions");
     expect(calls[2].text).toContain("status = 'open'");
     expect(calls[3].text).toContain("update parameter_file_sync_conflicts");
@@ -1543,8 +1544,10 @@ describe("parameter repository", () => {
           id: "conflict-1",
           organization_id: "org-chargelab",
           project_id: "project-1",
-          project_parameter_value_id: "param-1",
-          parameter_definition_id: "definition-1",
+          project_parameter_value_id: "binding-1",
+          parameter_definition_id: "spec-1",
+          project_parameter_binding_id: "binding-1",
+          parameter_spec_id: "spec-1",
           file_version_id: "version-1",
           file_draft_id: "draft-file",
           ui_draft_id: "draft-ui",
@@ -1580,9 +1583,10 @@ describe("parameter repository", () => {
       projectId: "project-1"
     });
 
-    expect(calls[0].text).toContain("left join project_parameter_values");
-    expect(calls[0].text).toContain("dts_properties");
-    expect(calls[0].text).toContain("node_path || '/' ||");
+    expect(calls[0].text).toContain("left join project_parameter_bindings");
+    expect(calls[0].text).toContain("dts_property_occurrences");
+    expect(calls[0].text).not.toContain("project_parameter_values");
+    expect(calls[0].text).not.toContain("parameter_definitions");
     expect(conflict).toMatchObject({
       id: "conflict-1",
       baseValue: "80",

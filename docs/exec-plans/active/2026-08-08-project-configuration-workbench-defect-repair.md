@@ -1,6 +1,6 @@
 # Project configuration workbench defect repair
 
-> Status: **Active** — findings recorded 2026-08-08; implementation not started
+> Status: **Active** — Batch 0 implemented on `fix/project-configuration-workbench-defects`; Batches 1–3 pending
 > Date: 2026-08-08
 > Chinese: [`docs/zh-CN/exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md`](../../zh-CN/exec-plans/active/2026-08-08-project-configuration-workbench-defect-repair.md)
 > Locked design: [`docs/design-docs/2026-08-06-project-configuration-workbench-design.md`](../../design-docs/2026-08-06-project-configuration-workbench-design.md)
@@ -123,10 +123,10 @@ The headroom matters as much as the fit: it is what lets a longer project name o
 
 ### Batch 0 — blocking
 
-1. [ ] CW-B1: repoint the `listOpenConflicts` query at the post-cutover schema (`project_parameter_bindings` via `parameter_file_sync_conflicts.project_parameter_binding_id`), and confirm the `base_value` / `source_node_path` enrichment has a real post-cutover source or is removed from the DTO with its consumers updated.
-2. [ ] CW-T2: add a repository test that executes the real SQL against the migrated schema (no `vi.mock`) so the query cannot drift from the tables again; verify all six call sites still resolve.
-3. [ ] CW-B2: stop surfacing raw exception text as a product blocker. Infrastructure failure should be reported as an unavailable readiness signal, distinct from "there are open conflicts", and must not offer a remediation that leads to an empty dock.
-4. [ ] Verify end to end that `release-readiness` returns an unblocked level for a seeded project with no conflicts, and that 创建基线 becomes enabled.
+1. [x] CW-B1: repoint the `listOpenConflicts` query at the post-cutover schema (`project_parameter_bindings` via `parameter_file_sync_conflicts.project_parameter_binding_id`), and confirm the `base_value` / `source_node_path` enrichment has a real post-cutover source or is removed from the DTO with its consumers updated.
+2. [x] CW-T2: add a repository test that executes the real SQL against the migrated schema (no `vi.mock`) so the query cannot drift from the tables again; verify all six call sites still resolve.
+3. [x] CW-B2: stop surfacing raw exception text as a product blocker. Infrastructure failure should be reported as an unavailable readiness signal, distinct from "there are open conflicts", and must not offer a remediation that leads to an empty dock.
+4. [x] Verify end to end that `release-readiness` returns an unblocked level for a seeded project with no conflicts, and that 创建基线 becomes enabled.
 
 ### Batch 1 — command bar
 

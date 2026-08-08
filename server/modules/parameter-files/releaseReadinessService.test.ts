@@ -251,6 +251,35 @@ describe("evaluateReleaseReadiness", () => {
     expect(result.releasedBaselineId).toBe("bl-released");
   });
 
+  it("treats conflict-lookup infrastructure failure as readiness unavailable, not open-conflict", async () => {
+    listConflictsMock.mockRejectedValue(new Error('relation "project_parameter_values" does not exist'));
+
+    const result = await evaluateReleaseReadiness(createFakeDb(), adminAuth(), { configSetId: "cs-1" }, {
+      pendingChangeCount: 0,
+      validationGate: {
+        ok: true,
+        mode: "block",
+        requiresConfirmation: false,
+        diagnostics: [],
+        compiler: "dtc"
+      }
+    });
+
+    expect(result.available).toBe(false);
+    expect(result.canCreateBaseline).toBe(false);
+    expect(result.canRelease).toBe(false);
+    expect(result.unavailableReason).toBe("Release readiness could not load open conflicts.");
+    expect(result.blockers).toEqual([
+      expect.objectContaining({
+        code: "readiness-unavailable",
+        message: "Release readiness could not load open conflicts.",
+        remediation: { kind: "retry-evaluation", label: "Retry readiness evaluation" }
+      })
+    ]);
+    expect(result.blockers.some((item) => item.code === "open-conflict")).toBe(false);
+    expect(JSON.stringify(result)).not.toContain("project_parameter_values");
+  });
+
   it("orders blockers for missing member version, conflicts, pending changes, and governance", async () => {
     listMembersMock.mockResolvedValue([
       {
