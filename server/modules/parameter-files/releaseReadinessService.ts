@@ -235,8 +235,8 @@ export async function evaluateReleaseReadiness(
   let members;
   try {
     members = await listConfigSetMemberFiles(db, input.configSetId);
-  } catch (error) {
-    return unavailable(error instanceof Error ? error.message : "Failed to load config set members.");
+  } catch {
+    return unavailable("Release readiness could not load config set members.");
   }
 
   const blockers: ReleaseReadinessIssue[] = [];
@@ -283,15 +283,9 @@ export async function evaluateReleaseReadiness(
         organizationId: auth.organization.id,
         projectId: configSet.projectId
       });
-    } catch (error) {
-      blockers.push({
-        id: issueId("open-conflict", input.configSetId),
-        severity: "blocker",
-        code: "open-conflict",
-        message: error instanceof Error ? error.message : "Failed to load open conflicts.",
-        remediation: { kind: "resolve-conflict", label: "Resolve conflict in the Conflicts task dock" }
-      });
-      openConflicts = [];
+    } catch {
+      // Infrastructure faults must not masquerade as open conflicts (CW-B2).
+      return unavailable("Release readiness could not load open conflicts.");
     }
   }
 
@@ -323,15 +317,8 @@ export async function evaluateReleaseReadiness(
         organizationId: auth.organization.id,
         projectId: configSet.projectId
       });
-    } catch (error) {
-      blockers.push({
-        id: issueId("pending-change-request", input.configSetId),
-        severity: "blocker",
-        code: "pending-change-request",
-        message: error instanceof Error ? error.message : "Failed to load pending changes.",
-        remediation: { kind: "complete-pending-change", label: "Close or merge pending change requests" }
-      });
-      pendingChangeCount = 0;
+    } catch {
+      return unavailable("Release readiness could not load pending change requests.");
     }
   }
   if (pendingChangeCount > 0) {

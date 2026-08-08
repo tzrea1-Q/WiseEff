@@ -770,8 +770,10 @@ type FileSyncConflictRow = {
   id: string;
   organization_id: string;
   project_id: string;
-  project_parameter_value_id: string;
-  parameter_definition_id: string;
+  project_parameter_value_id?: string | null;
+  parameter_definition_id?: string | null;
+  project_parameter_binding_id?: string | null;
+  parameter_spec_id?: string | null;
   file_version_id: string;
   file_draft_id: string;
   ui_draft_id: string;
@@ -1265,13 +1267,16 @@ function toFileSyncConflictRecord(row: FileSyncConflictRow): FileSyncConflictRec
       ? undefined
       : Number(row.file_version_number);
   const source = toFileSyncConflictSource(row);
+  const bindingId = row.project_parameter_binding_id ?? row.project_parameter_value_id ?? "";
+  const specId = row.parameter_spec_id ?? row.parameter_definition_id ?? "";
 
   return {
     id: row.id,
     organizationId: row.organization_id,
     projectId: row.project_id,
-    projectParameterValueId: row.project_parameter_value_id,
-    parameterDefinitionId: row.parameter_definition_id,
+    // Post-cutover DTO compatibility: binding/spec ids occupy the legacy field names.
+    projectParameterValueId: bindingId,
+    parameterDefinitionId: specId,
     fileVersionId: row.file_version_id,
     fileDraftId: row.file_draft_id,
     uiDraftId: row.ui_draft_id,
@@ -2787,64 +2792,61 @@ export async function insertFileSyncConflict(
     projectParameterBindingId?: string;
   }
 ) {
+  const bindingId = input.projectParameterBindingId ?? input.projectParameterValueId;
+  const parameterSpecId = input.parameterSpecId ?? input.parameterDefinitionId;
   const result = await db.query<FileSyncConflictRow>(
     `
     insert into parameter_file_sync_conflicts (
-      id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
+      id, organization_id, project_id,
       file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value, status,
       parameter_spec_id, project_parameter_binding_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'open', $11, $12)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, 'open', $9, $10)
     returning *
     `,
     [
       input.id,
       input.organizationId,
       input.projectId,
-      input.projectParameterValueId,
-      input.parameterDefinitionId,
       input.fileVersionId,
       input.fileDraftId,
       input.uiDraftId,
       input.fileValue,
       input.uiDraftValue,
-      input.parameterSpecId ?? null,
-      input.projectParameterBindingId ?? null
+      parameterSpecId,
+      bindingId
     ]
   );
 
   return toFileSyncConflictRecord(result.rows[0]);
 }
 
-export async function listOpenConflicts(
-  db: Queryable,
-  query: { organizationId: string; projectParameterValueId?: string; projectId?: string; conflictId?: string }
-) {
-  const values: unknown[] = [query.organizationId];
-  const where = ["c.organization_id = $1", "c.status = 'open'"];
-  if (query.projectParameterValueId) {
-    addCondition(
-      where,
-      values,
-      (placeholder) => `c.project_parameter_value_id = ${placeholder}`,
-      query.projectParameterValueId
-    );
-  }
-  if (query.projectId) {
-    addCondition(where, values, (placeholder) => `c.project_id = ${placeholder}`, query.projectId);
-  }
-  if (query.conflictId) {
-    addCondition(where, values, (placeholder) => `c.id = ${placeholder}`, query.conflictId);
-  }
-
-  const result = await db.query<FileSyncConflictRow>(
-    `
+/**
+ * Post-cutover enrichment for file↔UI sync conflicts.
+ * Joins bindings/specs/modules and occurrence spans; never touches renamed legacy PPV tables.
+ */
+const FILE_SYNC_CONFLICT_SELECT = `
     select
       c.*,
-      ppv.current_value as base_value,
-      ppv.source_node_path as source_node_path,
-      pd.name as parameter_name,
-      pd.module as parameter_module,
+      coalesce(c.project_parameter_binding_id, '') as project_parameter_value_id,
+      coalesce(c.parameter_spec_id, b.parameter_spec_id, '') as parameter_definition_id,
+      coalesce(bpr.raw_value, '') as base_value,
+      case
+        when lnr.node_locator is null then dps.property_key
+        when lnr.node_locator like '/%'
+          then ltrim(lnr.node_locator, '/') || '/' || dps.property_key
+        else lnr.node_locator || '/' || dps.property_key
+      end as source_node_path,
+      coalesce(
+        dps.property_key,
+        nullif(split_part(ps.specification_key, '/', 2), ''),
+        ps.specification_key
+      ) as parameter_name,
+      coalesce(
+        nullif(trim(binding_pm.name), ''),
+        nullif(split_part(ps.specification_key, '/', 1), ''),
+        ''
+      ) as parameter_module,
       fv.version_number as file_version_number,
       fv.created_at as file_version_created_at,
       fd.updated_at as file_draft_updated_at,
@@ -2859,27 +2861,77 @@ export async function listOpenConflicts(
       src.source_end_line,
       src.source_end_column
     from parameter_file_sync_conflicts c
-    left join project_parameter_values ppv on ppv.id = c.project_parameter_value_id
-    left join parameter_definitions pd on pd.id = c.parameter_definition_id
+    left join project_parameter_bindings b on b.id = c.project_parameter_binding_id
+    left join parameter_specs ps on ps.id = coalesce(c.parameter_spec_id, b.parameter_spec_id)
+    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    left join parameter_modules binding_pm on binding_pm.id = b.module_id
+    left join lateral (
+      select bpr.raw_value
+      from project_parameter_binding_revisions bpr
+      where bpr.binding_id = b.id
+      order by bpr.created_at desc
+      limit 1
+    ) bpr on true
+    left join lateral (
+      select lnr.node_locator
+      from dts_logical_node_revisions lnr
+      where lnr.logical_node_id = b.logical_node_id
+      order by lnr.config_revision_id desc
+      limit 1
+    ) lnr on true
     left join project_parameter_file_versions fv on fv.id = c.file_version_id
     left join project_parameter_files pf on pf.id = fv.file_id
     left join parameter_drafts fd on fd.id = c.file_draft_id
     left join parameter_drafts ud on ud.id = c.ui_draft_id
     left join lateral (
       select
-        dp.start_offset as source_start_offset,
-        dp.end_offset as source_end_offset,
-        dp.start_line as source_start_line,
-        dp.start_column as source_start_column,
-        dp.end_line as source_end_line,
-        dp.end_column as source_end_column
-      from dts_nodes dn
-      inner join dts_properties dp on dp.node_id = dn.id
-      where dn.file_version_id = c.file_version_id
-        and ppv.source_node_path is not null
-        and (dn.node_path || '/' || dp.name) = ppv.source_node_path
+        po.start_offset as source_start_offset,
+        po.end_offset as source_end_offset,
+        po.start_line as source_start_line,
+        po.start_column as source_start_column,
+        po.end_line as source_end_line,
+        po.end_column as source_end_column
+      from dts_property_occurrences po
+      inner join dts_occurrence_effects oe
+        on oe.property_occurrence_id = po.id
+      inner join dts_logical_node_revisions occ_lnr
+        on occ_lnr.id = oe.logical_node_revision_id
+      where po.file_version_id = c.file_version_id
+        and occ_lnr.logical_node_id = b.logical_node_id
+        and (
+          oe.property_name = dps.property_key
+          or (dps.property_key is null and oe.property_name is not null)
+        )
+      order by oe.source_order desc
       limit 1
     ) src on true
+`;
+
+export async function listOpenConflicts(
+  db: Queryable,
+  query: { organizationId: string; projectParameterValueId?: string; projectId?: string; conflictId?: string }
+) {
+  const values: unknown[] = [query.organizationId];
+  const where = ["c.organization_id = $1", "c.status = 'open'"];
+  if (query.projectParameterValueId) {
+    // Callers still pass the binding id under the legacy parameter name after cutover.
+    addCondition(
+      where,
+      values,
+      (placeholder) => `c.project_parameter_binding_id = ${placeholder}`,
+      query.projectParameterValueId
+    );
+  }
+  if (query.projectId) {
+    addCondition(where, values, (placeholder) => `c.project_id = ${placeholder}`, query.projectId);
+  }
+  if (query.conflictId) {
+    addCondition(where, values, (placeholder) => `c.id = ${placeholder}`, query.conflictId);
+  }
+
+  const result = await db.query<FileSyncConflictRow>(
+    `
+    ${FILE_SYNC_CONFLICT_SELECT}
     where ${where.join("\n      and ")}
     order by c.created_at desc, c.id desc
     `,
@@ -2903,47 +2955,7 @@ export async function listFileSyncConflictsByIds(
 
   const result = await db.query<FileSyncConflictRow>(
     `
-    select
-      c.*,
-      ppv.current_value as base_value,
-      ppv.source_node_path as source_node_path,
-      pd.name as parameter_name,
-      pd.module as parameter_module,
-      fv.version_number as file_version_number,
-      fv.created_at as file_version_created_at,
-      fd.updated_at as file_draft_updated_at,
-      ud.updated_at as ui_draft_updated_at,
-      pf.id as file_id,
-      pf.file_name as file_name,
-      pf.config_set_id as config_set_id,
-      src.source_start_offset,
-      src.source_end_offset,
-      src.source_start_line,
-      src.source_start_column,
-      src.source_end_line,
-      src.source_end_column
-    from parameter_file_sync_conflicts c
-    left join project_parameter_values ppv on ppv.id = c.project_parameter_value_id
-    left join parameter_definitions pd on pd.id = c.parameter_definition_id
-    left join project_parameter_file_versions fv on fv.id = c.file_version_id
-    left join project_parameter_files pf on pf.id = fv.file_id
-    left join parameter_drafts fd on fd.id = c.file_draft_id
-    left join parameter_drafts ud on ud.id = c.ui_draft_id
-    left join lateral (
-      select
-        dp.start_offset as source_start_offset,
-        dp.end_offset as source_end_offset,
-        dp.start_line as source_start_line,
-        dp.start_column as source_start_column,
-        dp.end_line as source_end_line,
-        dp.end_column as source_end_column
-      from dts_nodes dn
-      inner join dts_properties dp on dp.node_id = dn.id
-      where dn.file_version_id = c.file_version_id
-        and ppv.source_node_path is not null
-        and (dn.node_path || '/' || dp.name) = ppv.source_node_path
-      limit 1
-    ) src on true
+    ${FILE_SYNC_CONFLICT_SELECT}
     where c.organization_id = $1
       and c.id = any($2::text[])
     `,

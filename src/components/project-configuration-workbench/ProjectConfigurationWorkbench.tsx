@@ -26,6 +26,7 @@ import type {
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import {
   ProjectPrimaryDtsViewer,
   type DtsViewerFocusSpan
@@ -431,6 +432,10 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const treeRegionRef = useRef<HTMLElement | null>(null);
   const [newConfigSetName, setNewConfigSetName] = useState("");
   const [configSetNameError, setConfigSetNameError] = useState("");
+  const [createConfigSetOpen, setCreateConfigSetOpen] = useState(false);
+  const [identitiesExpanded, setIdentitiesExpanded] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const [opsError, setOpsError] = useState("");
   const [opsMessage, setOpsMessage] = useState("");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -457,6 +462,25 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     media.addEventListener("change", syncViewport);
     return () => media.removeEventListener("change", syncViewport);
   }, []);
+
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && moreMenuRef.current && !moreMenuRef.current.contains(target)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMoreMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [moreMenuOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1211,6 +1235,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       const created = await dtsRepository.createConfigSet(project.id, { name });
       setConfigSets((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       setNewConfigSetName("");
+      setCreateConfigSetOpen(false);
       setMembers([]);
       setInspectorLevelOverride("config-set");
       setInspectorOpen(true);
@@ -2452,73 +2477,83 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
           <ChevronLeft size={16} aria-hidden="true" />
           项目清单
         </button>
-        <div className="configuration-workbench__project">
+        <div
+          className="configuration-workbench__project"
+          title={`${project.code} · ${project.statusLabel}`}
+        >
           <strong>{project.name}</strong>
-          <span className="mono">{project.code}</span>
-          <span>{project.statusLabel}</span>
         </div>
         <label className="configuration-workbench__config-select">
           <span>配置集</span>
           <select
             aria-label="配置集"
             value={selectedConfigSet?.id ?? ""}
-            disabled={configSetsLoading || Boolean(configSetsError) || configSets.length === 0}
-            onChange={(event) => selectConfigSet(event.target.value)}
+            disabled={configSetsLoading || Boolean(configSetsError)}
+            onChange={(event) => {
+              const next = event.target.value;
+              if (next === "__create_config_set__") {
+                event.target.value = selectedConfigSet?.id ?? "";
+                setConfigSetNameError("");
+                setCreateConfigSetOpen(true);
+                return;
+              }
+              selectConfigSet(next);
+            }}
           >
+            {configSets.length === 0 ? (
+              <option value="" disabled>
+                {canAdmin ? "选择或新建配置集" : "暂无配置集"}
+              </option>
+            ) : null}
             {configSets.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
               </option>
             ))}
+            {canAdmin ? (
+              <option value="__create_config_set__">+ 新建配置集…</option>
+            ) : null}
           </select>
         </label>
-        {canAdmin ? (
-          <div className="configuration-workbench__create-config" aria-label="创建配置集">
-            <label>
-              配置集名称
-              <input
-                type="text"
-                value={newConfigSetName}
-                aria-invalid={configSetNameError ? "true" : "false"}
-                aria-describedby={configSetNameError ? "workbench-config-set-name-error" : undefined}
-                onChange={(event) => {
-                  setNewConfigSetName(event.target.value);
-                  setConfigSetNameError("");
-                }}
-                placeholder="board-a"
-              />
-            </label>
-            <button
-              className="button subtle"
-              type="button"
-              disabled={pendingAction !== null}
-              onClick={() => void runAction("create-config-set", createConfigSet)}
-            >
-              {pendingAction === "create-config-set" ? "创建中…" : "创建配置集"}
-            </button>
-          </div>
-        ) : null}
         <div className="configuration-workbench__identities" aria-label="配置身份">
           <span className="configuration-workbench__working">工作配置</span>
-          <span className="configuration-workbench__identity-chip" data-identity="file-version">
-            文件版本：
-            {selectedMember?.currentVersionNumber
-              ? `v${selectedMember.currentVersionNumber}`
-              : selectedMember?.currentVersionId ?? "无"}
-          </span>
-          <span className="configuration-workbench__identity-chip" data-identity="candidate">
-            候选文件版本：
-            {activeCandidate && activeCandidate.status !== "abandoned"
-              ? `${activeCandidate.fileName} · ${activeCandidate.status}`
-              : "尚未上传"}
-          </span>
-          <span className="configuration-workbench__identity-chip" data-identity="release-baseline">
-            发布基线：{baselinesLoading ? "加载中…" : baselinesError ? "不可用" : releasedBaseline?.name ?? "尚未发布"}
-          </span>
-          {baselinesError ? (
-            <button className="button subtle configuration-workbench__baseline-retry" type="button" onClick={() => setBaselinesRetry((value) => value + 1)}>
-              重试发布基线
-            </button>
+          <button
+            type="button"
+            className="button subtle configuration-workbench__identity-fold"
+            aria-expanded={identitiesExpanded}
+            aria-controls="workbench-identity-details"
+            onClick={() => setIdentitiesExpanded((open) => !open)}
+          >
+            版本{identitiesExpanded ? " ▴" : " ▾"}
+          </button>
+          {identitiesExpanded ? (
+            <div id="workbench-identity-details" className="configuration-workbench__identity-details">
+              <span className="configuration-workbench__identity-chip" data-identity="file-version">
+                文件版本：
+                {selectedMember?.currentVersionNumber
+                  ? `v${selectedMember.currentVersionNumber}`
+                  : selectedMember?.currentVersionId ?? "无"}
+              </span>
+              <span className="configuration-workbench__identity-chip" data-identity="candidate">
+                候选文件版本：
+                {activeCandidate && activeCandidate.status !== "abandoned"
+                  ? `${activeCandidate.fileName} · ${activeCandidate.status}`
+                  : "尚未上传"}
+              </span>
+              <span className="configuration-workbench__identity-chip" data-identity="release-baseline">
+                发布基线：
+                {baselinesLoading ? "加载中…" : baselinesError ? "不可用" : releasedBaseline?.name ?? "尚未发布"}
+              </span>
+              {baselinesError ? (
+                <button
+                  className="button subtle configuration-workbench__baseline-retry"
+                  type="button"
+                  onClick={() => setBaselinesRetry((value) => value + 1)}
+                >
+                  重试发布基线
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </div>
         <div className="configuration-workbench__unavailable-actions" aria-label="后续阶段操作">
@@ -2535,28 +2570,16 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
             />
           ) : null}
           {!narrowViewport ? (
-            <>
-              <button
-                className="button subtle configuration-workbench__activity-toggle"
-                type="button"
-                aria-label="活动"
-                aria-pressed={inspectorOpen && inspectorLevel === "activity"}
-                onClick={openActivityInspector}
-              >
-                <Activity size={16} aria-hidden="true" />
-                活动
-              </button>
-              <button
-                className="button subtle configuration-workbench__inspector-toggle"
-                type="button"
-                aria-label="检查器"
-                aria-expanded={inspectorOpen}
-                onClick={() => setInspectorOpen((open) => !open)}
-              >
-                <PanelRight size={16} aria-hidden="true" />
-                检查器
-              </button>
-            </>
+            <button
+              className="button subtle configuration-workbench__inspector-toggle"
+              type="button"
+              aria-label="检查器"
+              aria-expanded={inspectorOpen}
+              onClick={() => setInspectorOpen((open) => !open)}
+            >
+              <PanelRight size={16} aria-hidden="true" />
+              检查器
+            </button>
           ) : null}
           <input
             ref={candidateFileInputRef}
@@ -2623,54 +2646,154 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
           >
             {uploadingCandidate ? "上传中…" : "上传候选"}
           </button>
-          {canAdmin && selectedConfigSet ? (
+          <div className="dropdown-root configuration-workbench__more" ref={moreMenuRef}>
             <button
-              className="button subtle"
               type="button"
-              disabled={pendingAction !== null}
-              onClick={() => void runAction("export-config-set", exportSelectedConfigSet)}
-            >
-              {pendingAction === "export-config-set" ? "导出中…" : "导出配置集"}
-            </button>
-          ) : null}
-          {canAdmin && selectedConfigSet ? (
-            <button
               className="button subtle"
-              type="button"
-              disabled={
-                pendingAction !== null ||
-                !workbenchReadinessAllowsCreate(releaseReadiness, sessionDraftsDirty) ||
-                readinessLoading
-              }
-              title={
-                sessionDraftsDirty
-                  ? "还有未保存的本机会话变更，不能创建基线"
-                  : !releaseReadiness?.available
-                    ? "发布就绪不可用，不能创建基线"
-                    : !releaseReadiness.canCreateBaseline
-                      ? "发布就绪门禁阻止创建基线"
-                      : "创建发布基线快照"
-              }
-              onClick={() => {
-                setBaselineActionError("");
-                setCreateBaselineOpen(true);
-              }}
+              aria-expanded={moreMenuOpen}
+              aria-haspopup="menu"
+              aria-label="更多"
+              onClick={() => setMoreMenuOpen((open) => !open)}
             >
-              创建基线
+              更多{moreMenuOpen ? " ▴" : " ▾"}
             </button>
-          ) : (
-            <button className="button subtle" type="button" disabled title="需要管理员权限才能创建基线">
-              创建基线
-            </button>
-          )}
+            {moreMenuOpen ? (
+              <div className="dropdown-menu configuration-workbench__more-menu" role="menu" aria-label="更多操作">
+                {!narrowViewport ? (
+                  <button
+                    type="button"
+                    className="dropdown-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      openActivityInspector();
+                    }}
+                  >
+                    <Activity size={14} aria-hidden="true" />
+                    活动
+                  </button>
+                ) : null}
+                {canAdmin && selectedConfigSet ? (
+                  <button
+                    type="button"
+                    className="dropdown-item"
+                    role="menuitem"
+                    disabled={pendingAction !== null}
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      void runAction("export-config-set", exportSelectedConfigSet);
+                    }}
+                  >
+                    {pendingAction === "export-config-set" ? "导出中…" : "导出配置集"}
+                  </button>
+                ) : null}
+                {canAdmin && selectedConfigSet ? (
+                  <button
+                    type="button"
+                    className="dropdown-item"
+                    role="menuitem"
+                    disabled={
+                      pendingAction !== null ||
+                      !workbenchReadinessAllowsCreate(releaseReadiness, sessionDraftsDirty) ||
+                      readinessLoading
+                    }
+                    title={
+                      sessionDraftsDirty
+                        ? "还有未保存的本机会话变更，不能创建基线"
+                        : !releaseReadiness?.available
+                          ? "发布就绪不可用，不能创建基线"
+                          : !releaseReadiness.canCreateBaseline
+                            ? "发布就绪门禁阻止创建基线"
+                            : "创建发布基线快照"
+                    }
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      setBaselineActionError("");
+                      setCreateBaselineOpen(true);
+                    }}
+                  >
+                    创建基线
+                  </button>
+                ) : (
+                  <button type="button" className="dropdown-item" role="menuitem" disabled title="需要管理员权限才能创建基线">
+                    创建基线
+                  </button>
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 
-      {configSetNameError ? (
-        <p className="field-error configuration-workbench__ops-banner" id="workbench-config-set-name-error" role="alert">
-          {configSetNameError}
-        </p>
-      ) : null}
+      <ModalDialog
+        open={createConfigSetOpen}
+        onDismiss={pendingAction === "create-config-set" ? undefined : () => setCreateConfigSetOpen(false)}
+        className="submission-dialog configuration-workbench__create-config-dialog"
+        backdropClassName="param-admin-modal-backdrop"
+        describedBy
+      >
+        {({ titleId, descriptionId }) => (
+          <>
+            <div className="submission-dialog-head">
+              <div>
+                <h2 id={titleId}>新建配置集</h2>
+                <p id={descriptionId}>创建后需明确把文件编入成员；上传候选不会自动激活工作配置。</p>
+              </div>
+              <button
+                type="button"
+                className="audit-dialog-close-icon"
+                aria-label="关闭"
+                disabled={pendingAction === "create-config-set"}
+                onClick={() => setCreateConfigSetOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <form
+              className="configuration-workbench__create-config-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void runAction("create-config-set", createConfigSet);
+              }}
+            >
+              <label>
+                配置集名称
+                <input
+                  type="text"
+                  value={newConfigSetName}
+                  autoFocus
+                  aria-invalid={configSetNameError ? "true" : "false"}
+                  aria-describedby={configSetNameError ? "workbench-config-set-name-error" : undefined}
+                  onChange={(event) => {
+                    setNewConfigSetName(event.target.value);
+                    setConfigSetNameError("");
+                  }}
+                  placeholder="board-a"
+                />
+              </label>
+              {configSetNameError ? (
+                <p className="field-error" id="workbench-config-set-name-error" role="alert">
+                  {configSetNameError}
+                </p>
+              ) : null}
+              <div className="configuration-workbench__create-config-actions">
+                <button
+                  type="button"
+                  className="button subtle"
+                  disabled={pendingAction === "create-config-set"}
+                  onClick={() => setCreateConfigSetOpen(false)}
+                >
+                  取消
+                </button>
+                <button className="button" type="submit" disabled={pendingAction !== null}>
+                  {pendingAction === "create-config-set" ? "创建中…" : "创建配置集"}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+      </ModalDialog>
+
       {opsError ? (
         <p className="configuration-workbench__ops-banner" role="alert">
           {opsError}
@@ -2726,7 +2849,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
           {canAdmin ? (
             <>
               <p>
-                在命令栏填写名称即可创建配置集。上传文件或候选不会自动激活工作配置；创建后需明确把文件编入成员。
+                从配置集下拉框选择「+ 新建配置集…」即可创建。上传文件或候选不会自动激活工作配置；创建后需明确把文件编入成员。
               </p>
               <p className="configuration-workbench__empty-hint">上传不会自动激活工作配置。</p>
             </>
@@ -2757,46 +2880,45 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                   void runUnifiedSearch();
                 }}
               >
-                <label>
-                  <span>搜索</span>
-                  <input
-                    ref={searchInputRef}
-                    type="search"
-                    value={searchDraft}
-                    onChange={(event) => setSearchDraft(event.target.value)}
-                    placeholder="文件名 / 路径 / 属性…"
-                    aria-label="统一搜索查询"
-                  />
-                </label>
-                <button className="button subtle" type="submit" disabled={searchLoading}>
-                  <Search size={14} aria-hidden="true" />
-                  {searchLoading ? "搜索中…" : "搜索"}
-                </button>
-                <button
-                  className="button subtle"
-                  type="button"
-                  aria-label="下一个匹配"
-                  onClick={() => setFindNextToken((value) => value + 1)}
-                >
-                  下一个
-                </button>
-                <label>
-                  <span>行</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={lineJumpDraft}
-                    onChange={(event) => setLineJumpDraft(event.target.value)}
-                    aria-label="跳转到行号"
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        const line = Number(lineJumpDraft);
-                        if (Number.isFinite(line) && line >= 1) setFocusLineOverride(line);
-                      }
-                    }}
-                  />
-                </label>
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  value={searchDraft}
+                  onChange={(event) => setSearchDraft(event.target.value)}
+                  placeholder="文件名 / 路径 / 属性…"
+                  aria-label="统一搜索查询"
+                />
+                <div className="configuration-workbench__search-actions">
+                  <button className="button subtle" type="submit" disabled={searchLoading}>
+                    <Search size={14} aria-hidden="true" />
+                    {searchLoading ? "搜索中…" : "搜索"}
+                  </button>
+                  <button
+                    className="button subtle"
+                    type="button"
+                    aria-label="下一个匹配"
+                    onClick={() => setFindNextToken((value) => value + 1)}
+                  >
+                    下一个
+                  </button>
+                  <label className="configuration-workbench__line-jump">
+                    <span>行</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={lineJumpDraft}
+                      onChange={(event) => setLineJumpDraft(event.target.value)}
+                      aria-label="跳转到行号"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          const line = Number(lineJumpDraft);
+                          if (Number.isFinite(line) && line >= 1) setFocusLineOverride(line);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
               </form>
               {searchError ? (
                 <div role="alert" className="configuration-workbench__scoped-error">
@@ -2902,7 +3024,11 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                                       style={{ paddingInlineStart: `${12 + Math.max(node.depth, 0) * 12}px` }}
                                       onClick={() => selectStructureTarget(item.fileId, node.nodePath, null)}
                                     >
-                                      <code>{node.nodePath || "/"}</code>
+                                      <code title={node.nodePath || "/"}>
+                                        {node.nodePath.includes("/")
+                                          ? node.nodePath.slice(node.nodePath.lastIndexOf("/") + 1)
+                                          : node.nodePath || "/"}
+                                      </code>
                                     </button>
                                     {selectedNodePath === node.nodePath
                                       ? node.properties.map((property) => {
