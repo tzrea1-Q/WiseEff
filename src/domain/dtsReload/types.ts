@@ -50,9 +50,40 @@ export type DtsReloadRun = {
   completedAt: string | null;
 };
 
+export type ReloadConfigurationContract = {
+  destinationDirectory: string;
+  destinationFilename: string;
+  triggerNodePath: string;
+  triggerPayload: string;
+  kernelLogCommand: string;
+};
+
+export type OrganisationReloadConfiguration = ReloadConfigurationContract & {
+  scope: "organisation";
+  source: "seeded-default" | "organisation";
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+};
+
+export type DeviceReloadConfigurationOverride = ReloadConfigurationContract & {
+  scope: "device";
+  deviceId: string;
+  deviceName: string | null;
+  updatedAt: string;
+  updatedByUserId: string | null;
+};
+
+export type ReloadConfigurationAdminView = {
+  organisation: OrganisationReloadConfiguration;
+  deviceOverrides: DeviceReloadConfigurationOverride[];
+};
+
 export const dtsReloadBlockReasonLabels: Record<DtsReloadCandidateBlockReason, string> = {
   "no-node-path": "缺少绝对节点路径",
   "synthesised-anchor": "定位器是合成锚点，不能作为 target-path",
   "unsupported-value-shape": "当前仅支持单个 u32 cell",
   "no-baseline-value": "缺少库基线值"
 };
+
+/** Kernel log command allowlist prefixes — must stay aligned with server validation. */
+export const KERNEL_LOG_COMMAND_ALLOWLIST_PREFIXES = ["dmesg", "hilog", "cat /proc/kmsg"] as const;

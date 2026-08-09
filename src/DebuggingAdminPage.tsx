@@ -16,6 +16,8 @@ import {
   getBindingNodePathValidationError,
   normalizeBindingNodePath
 } from "@/domain/debugging/bindingNodePath";
+import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
+import { ReloadConfigurationAdminPanel } from "@/components/admin/ReloadConfigurationAdminPanel";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
@@ -75,10 +77,12 @@ export function DebuggingAdminPage({
   dispatch,
   runtimeMode = wiseEffRuntimeMode,
   debuggingAdminClient,
+  dtsReloadRepository = null,
   apiAuthPermissions = []
 }: PageProps & {
   runtimeMode?: WiseEffRuntimeMode;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
+  dtsReloadRepository?: DtsReloadRepository | null;
   apiAuthPermissions?: string[];
 }) {
   const [adminNodes, setAdminNodes] = useState<DebugNodeRegistryEntry[]>([]);
@@ -527,6 +531,12 @@ export function DebuggingAdminPage({
       <main className="param-admin-main">
         {adminError ? <p className="debug-admin-error" role="alert">{adminError}</p> : null}
         {isApiMode && !canEditAdminCatalog ? <p className="debug-admin-error">缺少 debugging:admin 权限，目录仅可查看。</p> : null}
+        <ReloadConfigurationAdminPanel
+          repository={isApiMode ? dtsReloadRepository : null}
+          devices={state.devices.map((device) => ({ id: device.id, name: device.name }))}
+          canEdit={canEditAdminCatalog}
+          unavailableReason={isApiMode ? undefined : "重载配置仅在 API 模式下可用。"}
+        />
         <DebugNodeLibraryTable
           nodes={library}
           moduleNodes={moduleNodes}

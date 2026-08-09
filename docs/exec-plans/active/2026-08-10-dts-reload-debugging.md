@@ -1,6 +1,6 @@
 # DTS reload debugging (#280 series)
 
-> Status: **Active** — ticket #281 skeleton in progress on `feat/dts-reload-run-skeleton`
+> Status: **Active** — #281 merged; #282 reload configuration on `feat/dts-reload-configuration`
 > Date: 2026-08-10
 > Parent: GitHub [#280](https://github.com/tzrea1-Q/WiseEff/issues/280)
 > Tickets: #281–#290
@@ -20,78 +20,68 @@ Ship DTS reload debugging so hardware engineers can validate candidate library p
 
 | Ticket | Scope |
 | --- | --- |
-| #281 | Reload run skeleton: one scalar u32 → validated downloadable overlay (this branch) |
-| #282–#289 | Bridge deploy, multi-parameter, kernel log, residue, restore, history, sensitive-node, etc. |
+| #281 | Reload run skeleton: one scalar u32 → validated downloadable overlay (merged) |
+| #282 | Reload configuration governance + resolution entry point (`feat/dts-reload-configuration`) |
+| #283–#289 | Bridge deploy, multi-parameter, kernel log, residue, restore, history, sensitive-node, etc. |
 | #290 | Series closeout / archive this plan |
 
 ## Git & PR Workflow
 
 | Role | Allowed |
 | --- | --- |
-| Implementation agent | Commit on `feat/dts-reload-run-skeleton`; no PR open/merge; no push to `main` |
+| Implementation agent | Commit on feature branch; no PR open/merge; no push to `main` |
 | Parent agent | Review, open PR, merge, sync local `main` |
-
-Branch: `feat/dts-reload-run-skeleton` from latest `main`.
 
 ## Locked decisions already recorded
 
 - Debug values never mutate the library — [ADR-0019](../../adr/0019-debug-values-never-mutate-the-parameter-library.md)
 - Glossary terms in [`CONTEXT.md`](../../../CONTEXT.md)
-- Permission: `debugging:dts-reload` (committer + admin)
+- Permission: `debugging:dts-reload` (committer + admin); configuration gated by `debugging:admin`
 - Overlay addresses nodes by absolute `target-path` inside `fragment@N`, never `&label`
 - Pre-flight uses the real pinned `dtc` / `fdtoverlay` toolchain
 - Mock mode: static unavailable only — no mock repository / fixtures / reducer actions
 - Degraded locator: refuse only when the parameter's own locator *is* a synthesised `/label` anchor, not when it is a descendant hanging under one
+- Kernel log command allowlist prefixes (server save + later bridge re-validate): `dmesg`, `hilog`, `cat /proc/kmsg`
 
-## #281 file map
+## #282 progress
 
-| Area | Paths |
-| --- | --- |
-| Overlay / preflight | `server/modules/dts-reload/{debugOverlay,preflight,baseSource,candidates,constraints}.*` |
-| Persistence | `server/migrations/0096_dts_reload_runs.sql`, `repository.ts`, `service.ts` |
-| HTTP | `routes.ts`, `schemas.ts`, `policy.ts`, `server/app.ts` |
-| Contract | `server/modules/contracts/{routeManifest,schemaRegistry}.ts`, `docs/generated/openapi.json` |
-| Frontend | `src/features/dts-reload/`, ports + HTTP client, `appConfig` / `routes` / `App` / `permissions` |
-| Docs | this plan, ADR-0019, CONTEXT glossary |
-
-## Verification (#281)
-
-```bash
-npm run test:server -- server/modules/dts-reload/
-npm run test:server
-npm test -- src/features/dts-reload/
-npm run contract:check
-npm run build
-# playwright-cli on /dts-reload at 1440×900 / 768×1024 / 390×844
-```
+- Migration `0097_dts_reload_configuration.sql` + `schemaMigration.test.ts` enablement list
+- Resolution entry point: `resolveReloadConfiguration(db, { organizationId, deviceId })`
+- Admin CRUD under `/api/v1/dts-reload/configuration*` with audit; panel on `/debugging-admin`
+- Contract registry + OpenAPI regenerated
+- Browser evidence: `work/ui-checks/282-reload-config-{desktop-1440,tablet-768,mobile-390}.png`
 
 ## Documentation Impact Matrix
 
 | Area | Action | Paths |
 | --- | --- | --- |
 | Planning | Update | This plan; stays in `active/` until #290 |
-| Domain / ADR | Update | `CONTEXT.md` glossary; `docs/adr/0019-…`; `docs/adr/README.md` |
-| Product specs | Review | Reload surface not yet in prototype-functional-spec — defer full product-spec update to later tickets that ship device deploy |
-| Architecture | Review | `ARCHITECTURE.md` — no structural rewrite for skeleton; revisit when bridge deploy lands |
-| Frontend | Review | `docs/FRONTEND.md` / zh-CN — page wiring is local; defer deep frontend doc until surface is complete |
+| Domain / ADR | Update | `CONTEXT.md` glossary (reload configuration allowlist note); ADR-0019 already landed with #281 |
+| Product specs | Review | Defer full product-spec update until device deploy tickets |
+| Architecture | Review | No structural rewrite; revisit when bridge deploy lands |
+| Frontend | Review | `/debugging-admin` panel wiring is local; defer deep FRONTEND.md until surface complete |
 | API / generated | Update | `docs/generated/openapi.json` via `npm run contract:openapi` |
-| Security | Review | Snapshot redefinition and sensitive-node extension belong to later tickets; skeleton only adds audit kinds |
-| Reliability / runbooks | No change | Device deploy not in #281 |
-| Quality / acceptance | Review | Add acceptance IDs when browser acceptance coverage is expanded (#290 or device tickets) |
-| Chinese companions | Review | ADR/CONTEXT are English; zh-CN companion for this plan optional until #290 archives |
+| Security | Review | Snapshot / sensitive-node belong to later tickets; this ticket adds configuration audit kinds |
+| Reliability / runbooks | No change | Device deploy not in #282 |
+| Quality / acceptance | Review | Browser evidence under `work/ui-checks/`; acceptance IDs deferred to #290 |
+| Chinese companions | Review | Optional until #290 archives |
 
 ## Documentation Update Gate
 
-- [x] ADR-0019 accepted and indexed
-- [x] CONTEXT glossary terms present
+- [x] CONTEXT glossary allowlist note present
 - [x] OpenAPI regenerated and `npm run contract:check` green
+- [x] Plan Documentation Impact Matrix / Update Gate retained
 - [ ] Deferred product/architecture/frontend doc rows either updated or carried to #290 / tech-debt with evidence
 - [ ] Plan moves to `completed/` only from #290
 
-## Success criteria for #281
+## Success criteria for #282
 
-- Engineer with `debugging:dts-reload` can list candidates, start one u32 run, preview overlay source, download `.dtbo`
-- Wrong path / misspelled property → blocked run with diagnostics
-- Library fingerprint unchanged
-- Mock mode shows static unavailable
-- Browser evidence under `work/ui-checks/`
+- [x] Org defaults + device overrides, device wins
+- [x] `debugging:admin` only
+- [x] Kernel log allowlist + absolute path validation
+- [x] Editable on `/debugging-admin`
+- [x] Audit on change
+- [x] Resolution never consults request body
+- [x] Seeded defaults for fresh org
+- [x] Routes + OpenAPI
+- [x] Mock not extended

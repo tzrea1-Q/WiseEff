@@ -1,5 +1,12 @@
 import type { DtsReloadRepository, StartDtsReloadRunInput } from "@/application/ports/DtsReloadRepository";
-import type { DtsReloadCandidate, DtsReloadRun } from "@/domain/dtsReload/types";
+import type {
+  DeviceReloadConfigurationOverride,
+  DtsReloadCandidate,
+  DtsReloadRun,
+  OrganisationReloadConfiguration,
+  ReloadConfigurationAdminView,
+  ReloadConfigurationContract
+} from "@/domain/dtsReload/types";
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
 import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
@@ -26,6 +33,14 @@ function runPath(runId: string) {
 
 function artifactPath(runId: string) {
   return `${runPath(runId)}/artifact`;
+}
+
+function configurationPath() {
+  return "/api/v1/dts-reload/configuration";
+}
+
+function deviceConfigurationPath(deviceId: string) {
+  return `${configurationPath()}/devices/${encodeURIComponent(deviceId)}`;
 }
 
 export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOptions = {}): DtsReloadRepository {
@@ -57,6 +72,29 @@ export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOp
         headers: { Accept: "application/octet-stream" }
       });
       return response.blob();
+    },
+
+    async getReloadConfiguration() {
+      const response = await apiClient.get<ItemEnvelope<ReloadConfigurationAdminView>>(configurationPath());
+      return response.item;
+    },
+
+    async updateOrganisationReloadConfiguration(contract: ReloadConfigurationContract) {
+      const response = await apiClient.put<ItemEnvelope<OrganisationReloadConfiguration>>(configurationPath(), contract);
+      return response.item;
+    },
+
+    async upsertDeviceReloadConfiguration(deviceId: string, contract: ReloadConfigurationContract) {
+      const response = await apiClient.put<ItemEnvelope<DeviceReloadConfigurationOverride>>(
+        deviceConfigurationPath(deviceId),
+        contract
+      );
+      return response.item;
+    },
+
+    async deleteDeviceReloadConfiguration(deviceId: string) {
+      const response = await apiClient.delete<ItemEnvelope<{ deviceId: string }>>(deviceConfigurationPath(deviceId));
+      return response.item;
     }
   };
 }

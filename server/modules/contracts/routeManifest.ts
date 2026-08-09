@@ -560,6 +560,34 @@ export const routeManifest = [
     module: "dts-reload",
     stability: "mvp"
   },
+  {
+    id: "dtsReload.getConfiguration",
+    method: "GET",
+    path: "/api/v1/dts-reload/configuration",
+    module: "dts-reload",
+    stability: "mvp"
+  },
+  {
+    id: "dtsReload.updateOrganisationConfiguration",
+    method: "PUT",
+    path: "/api/v1/dts-reload/configuration",
+    module: "dts-reload",
+    stability: "mvp"
+  },
+  {
+    id: "dtsReload.upsertDeviceConfiguration",
+    method: "PUT",
+    path: "/api/v1/dts-reload/configuration/devices/:deviceId",
+    module: "dts-reload",
+    stability: "mvp"
+  },
+  {
+    id: "dtsReload.deleteDeviceConfiguration",
+    method: "DELETE",
+    path: "/api/v1/dts-reload/configuration/devices/:deviceId",
+    module: "dts-reload",
+    stability: "mvp"
+  },
 
   { id: "jobs.get", method: "GET", path: "/api/v1/jobs/:jobId", module: "jobs", stability: "mvp" },
   { id: "jobs.events", method: "GET", path: "/api/v1/jobs/:jobId/events", module: "jobs", stability: "mvp" },

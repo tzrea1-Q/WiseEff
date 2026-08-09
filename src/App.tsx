@@ -2127,10 +2127,11 @@ function AppShell({
         {...props}
         runtimeMode={runtimeMode}
         debuggingAdminClient={debuggingAdminCatalogClient}
+        dtsReloadRepository={dtsReloadRepositoryClient}
         apiAuthPermissions={apiAuthPermissions}
       />
     ),
-    [apiAuthPermissions, debuggingAdminCatalogClient, runtimeMode]
+    [apiAuthPermissions, debuggingAdminCatalogClient, dtsReloadRepositoryClient, runtimeMode]
   );
   const LogsPageWithRuntime = useCallback(
     (props: PageProps) => <LogsPage {...props} logActions={runtimeMode === "api" ? props.logActions : undefined} />,

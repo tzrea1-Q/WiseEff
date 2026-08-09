@@ -1,4 +1,9 @@
-import type { DtsReloadCandidate, DtsReloadRun } from "@/domain/dtsReload/types";
+import type {
+  DtsReloadCandidate,
+  DtsReloadRun,
+  ReloadConfigurationAdminView,
+  ReloadConfigurationContract
+} from "@/domain/dtsReload/types";
 
 export type StartDtsReloadRunInput = {
   projectId: string;
@@ -11,4 +16,13 @@ export interface DtsReloadRepository {
   startRun(input: StartDtsReloadRunInput): Promise<DtsReloadRun>;
   getRun(runId: string): Promise<DtsReloadRun>;
   downloadArtifact(runId: string): Promise<Blob>;
+  getReloadConfiguration(): Promise<ReloadConfigurationAdminView>;
+  updateOrganisationReloadConfiguration(
+    contract: ReloadConfigurationContract
+  ): Promise<ReloadConfigurationAdminView["organisation"]>;
+  upsertDeviceReloadConfiguration(
+    deviceId: string,
+    contract: ReloadConfigurationContract
+  ): Promise<ReloadConfigurationAdminView["deviceOverrides"][number]>;
+  deleteDeviceReloadConfiguration(deviceId: string): Promise<{ deviceId: string }>;
 }

@@ -5592,6 +5592,168 @@
         }
       }
     },
+    "/api/v1/dts-reload/configuration": {
+      "get": {
+        "operationId": "dtsReload.getConfiguration",
+        "summary": "Get organisation reload configuration defaults and per-device overrides",
+        "tags": [
+          "dts-reload"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DtsReloadConfigurationAdminResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "put": {
+        "operationId": "dtsReload.updateOrganisationConfiguration",
+        "summary": "Update organisation reload configuration defaults",
+        "tags": [
+          "dts-reload"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DtsReloadConfigurationContractRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DtsReloadOrganisationConfigurationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/dts-reload/configuration/devices/{deviceId}": {
+      "put": {
+        "operationId": "dtsReload.upsertDeviceConfiguration",
+        "summary": "Create or replace a per-device reload configuration override",
+        "tags": [
+          "dts-reload"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DtsReloadConfigurationContractRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DtsReloadDeviceConfigurationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "dtsReload.deleteDeviceConfiguration",
+        "summary": "Remove a per-device reload configuration override",
+        "tags": [
+          "dts-reload"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DtsReloadDeviceConfigurationDeleteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/jobs/{jobId}": {
       "get": {
         "operationId": "jobs.get",
@@ -7947,6 +8109,26 @@
       "DtsReloadRunResponse": {
         "type": "object",
         "x-wiseeff-schema": "DtsReloadRunResponse"
+      },
+      "DtsReloadConfigurationAdminResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DtsReloadConfigurationAdminResponse"
+      },
+      "DtsReloadConfigurationContractRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DtsReloadConfigurationContractRequest"
+      },
+      "DtsReloadOrganisationConfigurationResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DtsReloadOrganisationConfigurationResponse"
+      },
+      "DtsReloadDeviceConfigurationResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DtsReloadDeviceConfigurationResponse"
+      },
+      "DtsReloadDeviceConfigurationDeleteResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DtsReloadDeviceConfigurationDeleteResponse"
       },
       "JobResponse": {
         "type": "object",
