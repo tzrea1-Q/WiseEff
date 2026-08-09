@@ -61,6 +61,8 @@ import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
 import { createHttpProductFeedbackRepository } from "@/infrastructure/http/productFeedbackClient";
+import { createHttpDtsReloadRepository } from "@/infrastructure/http/dtsReloadClient";
+import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import {
   createParameterRuntimeActions,
   type HydrateParameterRuntimeAction,
@@ -1916,6 +1918,7 @@ type AppProps = {
   parameterInitializationRepository?: ParameterInitializationRepository;
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
+  dtsReloadRepository?: DtsReloadRepository | null;
   runtimeMode?: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
 };
@@ -1931,6 +1934,7 @@ function App({
   parameterTopologyRepository,
   parameterInitializationRepository,
   productFeedbackRepository,
+  dtsReloadRepository,
   runtimeMode = wiseEffRuntimeMode,
   userGovernanceActions
 }: AppProps = {}) {
@@ -1948,6 +1952,7 @@ function App({
         parameterTopologyRepository={parameterTopologyRepository}
         parameterInitializationRepository={parameterInitializationRepository}
         productFeedbackRepository={productFeedbackRepository}
+        dtsReloadRepository={dtsReloadRepository}
         runtimeMode={runtimeMode}
         userGovernanceActions={userGovernanceActions}
       />
@@ -1966,6 +1971,7 @@ function AppShell({
   parameterTopologyRepository,
   parameterInitializationRepository,
   productFeedbackRepository,
+  dtsReloadRepository,
   runtimeMode,
   userGovernanceActions
 }: {
@@ -1979,6 +1985,7 @@ function AppShell({
   parameterTopologyRepository?: ParameterTopologyRepository;
   parameterInitializationRepository?: ParameterInitializationRepository;
   productFeedbackRepository?: ProductFeedbackRepository;
+  dtsReloadRepository?: DtsReloadRepository | null;
   runtimeMode: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
 }) {
@@ -2058,6 +2065,16 @@ function AppShell({
     () => productFeedbackRepository ?? (runtimeMode === "api" ? createHttpProductFeedbackRepository() : createMockProductFeedbackRepository()),
     [productFeedbackRepository, runtimeMode]
   );
+  const dtsReloadRepositoryClient = useMemo(
+    () =>
+      dtsReloadRepository !== undefined
+        ? dtsReloadRepository
+        : runtimeMode === "api"
+          ? createHttpDtsReloadRepository()
+          : null,
+    [dtsReloadRepository, runtimeMode]
+  );
+  const canStartDtsReload = runtimeMode === "api" && apiAuthPermissions.includes("debugging:dts-reload");
   const parameterInitializationRepositoryClient = useMemo(
     () => parameterInitializationRepository ?? resolveParameterInitializationRepository(runtimeMode),
     [parameterInitializationRepository, runtimeMode]
@@ -2638,6 +2655,8 @@ function AppShell({
                 parameterTopologyRepository={parameterTopologyRepositoryClient}
                 listParameterConfigSets={listParameterConfigSets}
                 productFeedbackRepository={productFeedbackRepositoryClient}
+                dtsReloadRepository={dtsReloadRepositoryClient}
+                canStartDtsReload={canStartDtsReload}
                 parameterInitializationRepository={parameterInitializationRepositoryClient}
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
@@ -2679,6 +2698,8 @@ function AppShell({
                 parameterTopologyRepository={parameterTopologyRepositoryClient}
                 listParameterConfigSets={listParameterConfigSets}
                 productFeedbackRepository={productFeedbackRepositoryClient}
+                dtsReloadRepository={dtsReloadRepositoryClient}
+                canStartDtsReload={canStartDtsReload}
                 parameterInitializationRepository={parameterInitializationRepositoryClient}
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}

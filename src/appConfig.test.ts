@@ -10,6 +10,7 @@ describe("WiseEff prototype configuration", () => {
       "/parameter-review",
       "/parameter-admin",
       "/node-debugging",
+      "/dts-reload",
       "/debugging-admin",
       "/log-dashboard",
       "/logs",

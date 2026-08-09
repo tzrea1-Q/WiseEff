@@ -788,6 +788,34 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
 
+  "dtsReload.listCandidates": {
+    summary: "List DTS reload debugging candidates for a project",
+    tags: ["dts-reload"],
+    responseBody: "DtsReloadCandidateListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "dtsReload.startRun": {
+    summary: "Start a DTS reload run for one scalar parameter (stops at validated overlay)",
+    tags: ["dts-reload"],
+    requestBody: "StartDtsReloadRunRequest",
+    responseBody: "DtsReloadRunResponse",
+    successStatus: 201,
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "dtsReload.getRun": {
+    summary: "Get a DTS reload run detail including overlay source",
+    tags: ["dts-reload"],
+    responseBody: "DtsReloadRunResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "dtsReload.downloadArtifact": {
+    summary: "Download the compiled debug overlay artifact for a validated reload run",
+    tags: ["dts-reload"],
+    responseBody: "BinaryAttachment",
+    responseMedia: "binary",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+
   "jobs.get": { summary: "Get job status", tags: ["jobs"], responseBody: "JobResponse" },
   "jobs.events": { summary: "List job events", tags: ["jobs"], responseBody: "JobEventListResponse" },
 

@@ -37,6 +37,7 @@ export type PageKey =
   | "log-admin"
   | "debugging"
   | "node-debugging"
+  | "dts-reload"
   | "debugging-admin"
   | "user-permissions"
   | "feedback-admin"
@@ -107,6 +108,15 @@ export const navigationItems: PageConfig[] = [
     icon: TerminalSquare,
     title: "节点调试平台",
     subtitle: "通过 HDC / ADB 读写设备节点，完成调试验证"
+  },
+  {
+    key: "dts-reload",
+    path: "/dts-reload",
+    label: "DTS 重载调试",
+    group: "调试平台",
+    icon: Settings2,
+    title: "DTS 重载调试",
+    subtitle: "从参数库生成并预检调试 overlay，下载编译产物"
   },
   {
     key: "debugging-admin",
@@ -337,6 +347,8 @@ export function getXiaozeContextSummary(path: string): string {
       return "参数调试工作区已下线，请使用节点调试或调试管理后台。";
     case "node-debugging":
       return "正在关注 HDC 连接状态、节点访问模式、待读写目标值和回读校验结果。";
+    case "dts-reload":
+      return "正在关注项目参数候选、调试值、overlay 预检结果和可下载产物。";
     case "parameter-admin":
       if (path === "/parameter-admin/projects" || path.startsWith("/parameter-admin/projects/")) {
         return "正在关注项目配置工作台：配置集、源码、候选、冲突裁决与发布基线。";

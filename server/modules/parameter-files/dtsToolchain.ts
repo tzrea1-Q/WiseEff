@@ -319,6 +319,27 @@ async function probeCommand(
   };
 }
 
+export type DtsToolchainProcessResult = ProcessResult;
+
+/**
+ * Run one device-tree binary in a restricted subprocess (PATH-only env, hard timeout).
+ * Exported so other modules that drive `dtc` / `fdtoverlay` directly do not re-implement
+ * process spawning, timeout kill, and output capture.
+ */
+export function runDtsToolchainCommand(
+  command: string,
+  args: string[],
+  options: { cwd: string; timeoutMs: number; spawnFn?: SpawnFn }
+): Promise<DtsToolchainProcessResult> {
+  return runProcess(
+    options.spawnFn ?? nodeSpawn,
+    command,
+    args,
+    { cwd: options.cwd, env: minimalEnv() },
+    options.timeoutMs
+  );
+}
+
 export async function probeDtsToolchain(
   spawnFn: SpawnFn = nodeSpawn,
   options: ResolveDtsToolchainCommandsOptions = {}
