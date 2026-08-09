@@ -72,19 +72,12 @@ import {
   type WorkbenchCanvasMode
 } from "./workbenchInspectorModel";
 import {
-  aggregateSessionDraftSubset,
-  clearSubmittedDrafts,
-  listSessionDraftRows,
-  sessionDraftKey,
-  type SessionPropertyDraft
+  sessionDraftKey
 } from "@/application/project-configuration/sessionDrafts";
 import {
-  findRecoverableSessionDraft,
-  formatSessionDraftCopyText,
-  removeSessionDraftBucket,
-  upsertSessionDraftBucket,
   type SessionDraftScope
 } from "@/application/project-configuration/sessionDraftStorage";
+import { useStructuredEditSession } from "@/application/project-configuration/useStructuredEditSession";
 import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
 
 export type ProjectConfigurationWorkbenchProject = {
@@ -380,23 +373,27 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     sourceMode: string | null;
   } | null>(null);
   const [tasksOpen, setTasksOpen] = useState(false);
-  const [sessionDrafts, setSessionDrafts] = useState<Record<string, SessionPropertyDraft>>({});
-  const [selectedDraftKeys, setSelectedDraftKeys] = useState<Set<string>>(new Set());
-  const [submitReason, setSubmitReason] = useState("");
-  const [submitError, setSubmitError] = useState("");
-  const [submitStatus, setSubmitStatus] = useState("");
-  const [validateStatus, setValidateStatus] = useState("");
-  const [submittingEdits, setSubmittingEdits] = useState(false);
-  const [draftRecoveryStatus, setDraftRecoveryStatus] = useState<"none" | "compatible" | "stale-base">(
-    "none"
-  );
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [draftCopyStatus, setDraftCopyStatus] = useState("");
-  const draftRecoveryGenerationRef = useRef(0);
-  const draftPersistScopeRef = useRef<SessionDraftScope | null>(null);
-  const draftPersistEnabledRef = useRef(false);
   const draftCopyFallbackRef = useRef<HTMLTextAreaElement | null>(null);
   const sessionDraftStorage = draftStorage ?? localStorage;
+  const {
+    session: structuredEditSession,
+    drafts: sessionDrafts,
+    selectedKeys: selectedDraftKeys,
+    reason: submitReason,
+    recoveryStatus: draftRecoveryStatus,
+    validateStatus,
+    submitError,
+    submitStatus,
+    submitting: submittingEdits,
+    rows: sessionDraftRows,
+    isDirty: sessionDraftsDirty,
+    isStaleBase: staleDraftLocked
+  } = useStructuredEditSession({
+    storage: sessionDraftStorage,
+    onDraftsRecovered: () => setTasksOpen(true)
+  });
   const [narrowViewport, setNarrowViewport] = useState(false);
   const [structureNodes, setStructureNodes] = useState<DtsStructuralNode[]>([]);
   const [structureLoading, setStructureLoading] = useState(false);
@@ -1778,32 +1775,13 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     return selectedStructureNode.properties.find((item) => item.name === selectedPropertyName) ?? null;
   }, [selectedPropertyName, selectedStructureNode]);
 
-  const sessionDraftRows = useMemo(() => {
-    if (!selectedMember) return [];
-    return listSessionDraftRows({
-      fileId: selectedMember.fileId,
-      nodes: structureNodes,
-      drafts: sessionDrafts
-    });
-  }, [selectedMember, sessionDrafts, structureNodes]);
-
   useEffect(() => {
-    // While structure is still loading, rows are empty — do not prune restored selection.
-    if (sessionDraftRows.length === 0) {
+    if (selectedMember?.fileId) {
+      structuredEditSession.setStructure(structureNodes, selectedMember.fileId);
       return;
     }
-    setSelectedDraftKeys((current) => {
-      const valid = new Set(sessionDraftRows.map((row) => row.key));
-      if (current.size === 0 && Object.keys(sessionDrafts).length > 0) {
-        return valid;
-      }
-      const next = new Set<string>();
-      for (const key of current) {
-        if (valid.has(key)) next.add(key);
-      }
-      return next;
-    });
-  }, [sessionDraftRows, sessionDrafts]);
+    structuredEditSession.setStructure([], "");
+  }, [selectedMember?.fileId, structureNodes, structuredEditSession]);
 
   const sessionChangeMarkers = useMemo(
     () =>
@@ -1828,7 +1806,6 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     Boolean(selectedStructureNode) &&
     !canEditCritical &&
     isCriticalDtsNodePath(selectedStructureNode!.nodePath);
-  const staleDraftLocked = draftRecoveryStatus === "stale-base";
   const editorLocked = !canEdit || criticalLocked || staleDraftLocked;
 
   const activePropertyDraftKey =
@@ -1871,8 +1848,9 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     selectedMember?.fileId
   ]);
 
-  const sessionDraftsDirty =
-    Object.keys(sessionDrafts).length > 0 || sessionDraftRows.length > 0;
+  useEffect(() => {
+    void structuredEditSession.hydrate(sessionDraftScope);
+  }, [sessionDraftScope, structuredEditSession]);
 
   const createWorkbenchBaseline = useCallback(async () => {
     if (!canAdmin || !selectedConfigSet) return;
@@ -2164,102 +2142,9 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     [selectStructureTarget]
   );
 
-  useEffect(() => {
-    const generation = ++draftRecoveryGenerationRef.current;
-    let cancelled = false;
-    draftPersistEnabledRef.current = false;
-    setSubmitError("");
-    setSubmitStatus("");
-    setValidateStatus("");
-    setDraftCopyStatus("");
-
-    if (!sessionDraftScope) {
-      setSessionDrafts({});
-      setSelectedDraftKeys(new Set());
-      setSubmitReason("");
-      setDraftRecoveryStatus("none");
-      draftPersistScopeRef.current = null;
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    void Promise.resolve().then(() => {
-      if (cancelled || generation !== draftRecoveryGenerationRef.current) return;
-      const recovered = findRecoverableSessionDraft(sessionDraftScope, sessionDraftStorage);
-      if (cancelled || generation !== draftRecoveryGenerationRef.current) return;
-      if (recovered) {
-        const draftKeys = Object.keys(recovered.bucket.drafts);
-        const restoredSelected =
-          recovered.bucket.selectedKeys.length > 0
-            ? recovered.bucket.selectedKeys
-            : draftKeys;
-        setSessionDrafts(recovered.bucket.drafts);
-        setSelectedDraftKeys(new Set(restoredSelected));
-        setSubmitReason(recovered.bucket.reason);
-        setDraftRecoveryStatus(recovered.classification);
-        draftPersistScopeRef.current = recovered.bucket.scope;
-        if (draftKeys.length > 0) {
-          setTasksOpen(true);
-        }
-      } else {
-        setSessionDrafts({});
-        setSelectedDraftKeys(new Set());
-        setSubmitReason("");
-        setDraftRecoveryStatus("none");
-        draftPersistScopeRef.current = sessionDraftScope;
-      }
-      queueMicrotask(() => {
-        if (cancelled || generation !== draftRecoveryGenerationRef.current) return;
-        draftPersistEnabledRef.current = true;
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      draftPersistEnabledRef.current = false;
-    };
-  }, [sessionDraftScope, sessionDraftStorage]);
-
-  useEffect(() => {
-    if (!draftPersistEnabledRef.current) return;
-    const persistScope = draftPersistScopeRef.current ?? sessionDraftScope;
-    if (!persistScope) return;
-    const draftKeys = Object.keys(sessionDrafts);
-    if (draftKeys.length === 0) {
-      removeSessionDraftBucket(persistScope, sessionDraftStorage);
-      return;
-    }
-    const selected =
-      selectedDraftKeys.size > 0 ? Array.from(selectedDraftKeys) : draftKeys;
-    upsertSessionDraftBucket(
-      {
-        scope: persistScope,
-        drafts: sessionDrafts,
-        selectedKeys: selected,
-        reason: submitReason,
-        updatedAt: new Date().toISOString()
-      },
-      sessionDraftStorage
-    );
-  }, [
-    selectedDraftKeys,
-    sessionDraftScope,
-    sessionDraftStorage,
-    sessionDrafts,
-    submitReason
-  ]);
-
   const handleCopySessionDrafts = useCallback(async () => {
-    const persistScope = draftPersistScopeRef.current ?? sessionDraftScope;
-    if (!persistScope || Object.keys(sessionDrafts).length === 0) return;
-    const text = formatSessionDraftCopyText({
-      scope: persistScope,
-      drafts: sessionDrafts,
-      selectedKeys: Array.from(selectedDraftKeys),
-      reason: submitReason,
-      updatedAt: new Date().toISOString()
-    });
+    const text = structuredEditSession.copyText();
+    if (!text) return;
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
@@ -2278,31 +2163,12 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
     } else {
       setDraftCopyStatus("无法自动复制，请手动记录草稿内容。");
     }
-  }, [selectedDraftKeys, sessionDraftScope, sessionDrafts, submitReason]);
+  }, [structuredEditSession]);
 
   const handleReconfirmStaleDrafts = useCallback(() => {
-    if (!sessionDraftScope || Object.keys(sessionDrafts).length === 0) return;
-    const nextBucket = {
-      scope: sessionDraftScope,
-      drafts: sessionDrafts,
-      selectedKeys: Array.from(selectedDraftKeys),
-      reason: submitReason,
-      updatedAt: new Date().toISOString()
-    };
-    upsertSessionDraftBucket(nextBucket, sessionDraftStorage);
-    draftPersistScopeRef.current = sessionDraftScope;
-    setDraftRecoveryStatus("none");
-    setSubmitError("");
-    setValidateStatus("");
-    setSubmitStatus("已基于当前基线继续编辑；请重新校验后再提交。");
+    structuredEditSession.recover();
     setTasksOpen(true);
-  }, [
-    selectedDraftKeys,
-    sessionDraftScope,
-    sessionDraftStorage,
-    sessionDrafts,
-    submitReason
-  ]);
+  }, [structuredEditSession]);
 
   const handleLeaveWorkbench = useCallback(() => {
     if (sessionDraftsDirty) {
@@ -2313,17 +2179,10 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [onNavigate, sessionDraftsDirty]);
 
   const handleDiscardAndLeave = useCallback(() => {
-    const persistScope = draftPersistScopeRef.current ?? sessionDraftScope;
-    if (persistScope) {
-      removeSessionDraftBucket(persistScope, sessionDraftStorage);
-    }
-    setSessionDrafts({});
-    setSelectedDraftKeys(new Set());
-    setSubmitReason("");
-    setDraftRecoveryStatus("none");
+    structuredEditSession.discard();
     setLeaveConfirmOpen(false);
     onNavigate("/parameter-admin/projects");
-  }, [onNavigate, sessionDraftScope, sessionDraftStorage]);
+  }, [onNavigate, structuredEditSession]);
 
   const handleStructuredValueChange = useCallback(
     (next: StructuredValueChange) => {
@@ -2335,124 +2194,52 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       ) {
         return;
       }
-      const key = sessionDraftKey({
-        fileId: selectedMember.fileId,
-        nodePath: selectedStructureNode.nodePath,
-        propertyName: selectedStructureProperty.name
-      });
-      setSessionDrafts((current) => ({
-        ...current,
-        [key]: {
+      structuredEditSession.change(
+        {
+          fileId: selectedMember.fileId,
+          nodePath: selectedStructureNode.nodePath,
+          propertyName: selectedStructureProperty.name
+        },
+        {
           rawText: next.rawText,
           normalizedValue: next.normalizedValue,
           valid: next.valid,
           ...(next.error ? { error: next.error } : {}),
           ...(typeof next.present === "boolean" ? { present: next.present } : {})
         }
-      }));
-      setSelectedDraftKeys((current) => {
-        const nextKeys = new Set(current);
-        nextKeys.add(key);
-        return nextKeys;
-      });
+      );
       setTasksOpen(true);
-      setSubmitError("");
-      setSubmitStatus("");
-      setValidateStatus("");
     },
     [
       editorLocked,
       selectedMember,
       selectedStructureNode,
-      selectedStructureProperty
+      selectedStructureProperty,
+      structuredEditSession
     ]
   );
 
   const handleValidateSelected = useCallback(() => {
-    if (draftRecoveryStatus === "stale-base") {
-      setValidateStatus("基线版本已变更：会话草稿仅可检查或复制，请先基于当前基线继续编辑后再校验。");
-      setSubmitError("");
-      return;
-    }
-    const selected = sessionDraftRows.filter((row) => selectedDraftKeys.has(row.key));
-    if (selected.length === 0) {
-      setValidateStatus("请先勾选要校验的会话变更。");
-      return;
-    }
-    const invalid = selected.filter((row) => row.valid === false);
-    if (invalid.length > 0) {
-      setValidateStatus(`校验未通过：${invalid.map((row) => `${row.nodePath}/${row.propertyName}`).join("、")}`);
-      return;
-    }
-    setValidateStatus(`校验通过：${selected.length} 项`);
-    setSubmitError("");
-  }, [draftRecoveryStatus, selectedDraftKeys, sessionDraftRows]);
+    structuredEditSession.validate();
+  }, [structuredEditSession]);
 
   const handleSubmitSelected = useCallback(async () => {
     if (!selectedMember || !canEdit || submittingEdits) return;
-    if (draftRecoveryStatus === "stale-base") {
-      setSubmitError("基线版本已变更：无法对过期草稿提交变更请求。请先基于当前基线继续编辑。");
-      setValidateStatus("");
-      return;
-    }
-    const reason = submitReason.trim();
-    if (!reason) {
-      setSubmitError("提交变更请求前请填写变更原因。");
-      return;
-    }
-    const selected = sessionDraftRows.filter((row) => selectedDraftKeys.has(row.key));
-    if (selected.length === 0) {
-      setSubmitError("请先勾选要提交的会话变更。");
-      return;
-    }
-    const invalid = selected.filter((row) => row.valid === false);
-    if (invalid.length > 0) {
-      setSubmitError(`仍有未通过校验的变更：${invalid.map((row) => `${row.nodePath}/${row.propertyName}`).join("、")}`);
-      return;
-    }
-    const aggregate = aggregateSessionDraftSubset({
-      fileId: selectedMember.fileId,
-      fileName: selectedMember.fileName,
-      rows: sessionDraftRows,
-      selectedKeys: selectedDraftKeys,
-      reason
-    });
-    if (aggregate.edits.length === 0) {
-      setSubmitError("没有可提交的变更。");
-      return;
-    }
-    setSubmittingEdits(true);
-    setSubmitError("");
-    setSubmitStatus("");
     try {
-      const round = await dtsRepository.submitStructuredEdits(project.id, {
-        edits: aggregate.edits,
-        reason
+      await structuredEditSession.submit({
+        projectId: project.id,
+        fileId: selectedMember.fileId,
+        fileName: selectedMember.fileName,
+        dtsRepository
       });
-      const submittedKeys = selected.map((row) => row.key);
-      setSessionDrafts((current) => clearSubmittedDrafts(current, submittedKeys));
-      setSubmitStatus(`已提交变更请求 ${round.id}`);
-      setValidateStatus("");
       setMembersRetry((value) => value + 1);
       setStructureRetry((value) => value + 1);
       setSourceRetry((value) => value + 1);
       setFilesRetry((value) => value + 1);
-    } catch (error: unknown) {
-      setSubmitError(error instanceof Error ? error.message : "提交变更请求失败。");
-    } finally {
-      setSubmittingEdits(false);
+    } catch {
+      // submitError is projected from the session snapshot
     }
-  }, [
-    canEdit,
-    draftRecoveryStatus,
-    dtsRepository,
-    project.id,
-    selectedDraftKeys,
-    selectedMember,
-    sessionDraftRows,
-    submitReason,
-    submittingEdits
-  ]);
+  }, [canEdit, dtsRepository, project.id, selectedMember, structuredEditSession, submittingEdits]);
 
   const unifiedDiffText = useMemo(() => {
     if (canvasMode !== "unified-diff" || !historySource) return "";
@@ -4171,12 +3958,10 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                             data-property-identity={row.identity}
                             aria-label={`${row.nodePath}/${row.propertyName}`}
                             onChange={() => {
-                              setSelectedDraftKeys((current) => {
-                                const next = new Set(current);
-                                if (next.has(row.key)) next.delete(row.key);
-                                else next.add(row.key);
-                                return next;
-                              });
+                              const next = new Set(selectedDraftKeys);
+                              if (next.has(row.key)) next.delete(row.key);
+                              else next.add(row.key);
+                              structuredEditSession.selectSubset(next);
                             }}
                           />
                           <span>
@@ -4195,7 +3980,7 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                   <textarea
                     aria-label="变更原因"
                     value={submitReason}
-                    onChange={(event) => setSubmitReason(event.target.value)}
+                    onChange={(event) => structuredEditSession.setReason(event.target.value)}
                     rows={2}
                     disabled={!canEdit}
                   />
