@@ -3,11 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ConfigSetRole,
   DtsBaselineMemberComparison,
-  DtsConfigSet,
   DtsConfigSetMemberFile,
   DtsReleaseReadinessIssue,
   DtsSearchHit,
-  DtsStructuralNode,
   DtsStructuredRepository
 } from "@/application/ports/DtsStructuredRepository";
 import type {
@@ -70,6 +68,7 @@ import { useReleaseBaselineSession } from "@/application/project-configuration/u
 import { useConflictLocateFacade } from "@/application/project-configuration/useConflictLocateFacade";
 import { useConfigSetOpsSession } from "@/application/project-configuration/useConfigSetOpsSession";
 import { useWorkbenchNavigationSession } from "@/application/project-configuration/useWorkbenchNavigationSession";
+import { useWorkbenchWorkspaceLoadSession } from "@/application/project-configuration/useWorkbenchWorkspaceLoadSession";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
@@ -115,9 +114,30 @@ export function ProjectConfigurationWorkbench({
   draftStorage
 }: ProjectConfigurationWorkbenchProps) {
   const { message: toastMessage, showToast } = useGovernanceToast();
-  const [configSets, setConfigSets] = useState<DtsConfigSet[]>([]);
-  const [projectFiles, setProjectFiles] = useState<ProjectParameterFile[]>([]);
-  const [members, setMembers] = useState<DtsConfigSetMemberFile[]>([]);
+  const {
+    session: workspaceLoadSession,
+    configSets,
+    projectFiles,
+    members,
+    membersBoundConfigSetId,
+    source,
+    configSetsLoading,
+    filesLoading,
+    membersLoading,
+    sourceLoading,
+    configSetsError,
+    filesError,
+    membersError,
+    sourceError,
+    configRetry,
+    filesRetry,
+    membersRetry,
+    sourceRetry,
+    structureNodes,
+    structureLoading,
+    structureError,
+    structureRetry
+  } = useWorkbenchWorkspaceLoadSession();
   const {
     session: releaseBaselineSession,
     baselines,
@@ -140,21 +160,8 @@ export function ProjectConfigurationWorkbench({
   const [releaseBaselineOpen, setReleaseBaselineOpen] = useState(false);
   const [restoreBaselineOpen, setRestoreBaselineOpen] = useState(false);
   const [workingReturnPath, setWorkingReturnPath] = useState<string | null>(null);
-  const [source, setSource] = useState("");
-  const [configSetsLoading, setConfigSetsLoading] = useState(true);
-  const [filesLoading, setFilesLoading] = useState(true);
-  const [membersLoading, setMembersLoading] = useState(false);
-  const [sourceLoading, setSourceLoading] = useState(false);
-  const [configSetsError, setConfigSetsError] = useState("");
-  const [filesError, setFilesError] = useState("");
-  const [membersError, setMembersError] = useState("");
-  const [sourceError, setSourceError] = useState("");
-  const [configRetry, setConfigRetry] = useState(0);
-  const [filesRetry, setFilesRetry] = useState(0);
-  const [membersRetry, setMembersRetry] = useState(0);
   const [baselinesRetry, setBaselinesRetry] = useState(0);
   const [readinessRetry, setReadinessRetry] = useState(0);
-  const [sourceRetry, setSourceRetry] = useState(0);
   const [treeOpen, setTreeOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorPersistent, setInspectorPersistent] = useState(false);
@@ -223,10 +230,6 @@ export function ProjectConfigurationWorkbench({
     onDraftsRecovered: () => setTasksOpen(true)
   });
   const [narrowViewport, setNarrowViewport] = useState(false);
-  const [structureNodes, setStructureNodes] = useState<DtsStructuralNode[]>([]);
-  const [structureLoading, setStructureLoading] = useState(false);
-  const [structureError, setStructureError] = useState("");
-  const [structureRetry, setStructureRetry] = useState(0);
   const [findNextToken, setFindNextToken] = useState(0);
   const [focusLineOverride, setFocusLineOverride] = useState<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -277,50 +280,12 @@ export function ProjectConfigurationWorkbench({
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setConfigSetsLoading(true);
-    setConfigSetsError("");
-    void dtsRepository
-      .listConfigSets(project.id)
-      .then((items) => {
-        if (!cancelled) setConfigSets(items);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setConfigSets([]);
-          setConfigSetsError(error instanceof Error ? error.message : "配置集加载失败。");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setConfigSetsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [configRetry, dtsRepository, project.id]);
+    void workspaceLoadSession.loadConfigSets(project.id, dtsRepository);
+  }, [configRetry, dtsRepository, project.id, workspaceLoadSession]);
 
   useEffect(() => {
-    let cancelled = false;
-    setFilesLoading(true);
-    setFilesError("");
-    void fileRepository
-      .listFiles(project.id)
-      .then((items) => {
-        if (!cancelled) setProjectFiles(items);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setProjectFiles([]);
-          setFilesError(error instanceof Error ? error.message : "项目文件加载失败。");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setFilesLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fileRepository, filesRetry, project.id]);
+    void workspaceLoadSession.loadProjectFiles(project.id, fileRepository);
+  }, [fileRepository, filesRetry, project.id, workspaceLoadSession]);
 
   useEffect(() => {
     void conflictLocateFacade.load(project.id, fileRepository);
@@ -332,32 +297,8 @@ export function ProjectConfigurationWorkbench({
   );
 
   useEffect(() => {
-    if (!selectedConfigSet) {
-      setMembers([]);
-      setMembersLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setMembersLoading(true);
-    setMembersError("");
-    void dtsRepository
-      .listConfigSetFiles(project.id, selectedConfigSet.id)
-      .then((items) => {
-        if (!cancelled) setMembers(items);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setMembers([]);
-          setMembersError(error instanceof Error ? error.message : "配置集成员加载失败。");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setMembersLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [dtsRepository, membersRetry, project.id, selectedConfigSet]);
+    void workspaceLoadSession.loadMembers(project.id, selectedConfigSet?.id ?? null, dtsRepository);
+  }, [dtsRepository, membersRetry, project.id, selectedConfigSet, workspaceLoadSession]);
 
   useEffect(() => {
     void releaseBaselineSession.loadBaselines(
@@ -402,6 +343,10 @@ export function ProjectConfigurationWorkbench({
       });
   }, [members, projectFiles, selectedConfigSet]);
 
+  const membersListLoading =
+    membersLoading ||
+    (selectedConfigSet != null && membersBoundConfigSetId !== selectedConfigSet.id);
+
   const selectedMember = useMemo(
     () =>
       navigationSession.resolveSelectedMember(
@@ -411,7 +356,7 @@ export function ProjectConfigurationWorkbench({
           configSets,
           selectedMembers,
           projectFiles,
-          membersLoading,
+          membersLoading: membersListLoading,
           membersError
         },
         selectedConfigSet
@@ -419,7 +364,7 @@ export function ProjectConfigurationWorkbench({
     [
       configSets,
       membersError,
-      membersLoading,
+      membersListLoading,
       navigationSession,
       project.id,
       projectFiles,
@@ -627,7 +572,7 @@ export function ProjectConfigurationWorkbench({
     const path = navigationSession.applyFileUrl({
       projectId: project.id,
       search,
-      membersLoading,
+      membersLoading: membersListLoading,
       filesLoading,
       selectedConfigSet,
       selectedMemberFileId,
@@ -637,7 +582,7 @@ export function ProjectConfigurationWorkbench({
     if (path) onNavigate(path);
   }, [
     filesLoading,
-    membersLoading,
+    membersListLoading,
     navigationSession,
     onNavigate,
     project.id,
@@ -649,62 +594,36 @@ export function ProjectConfigurationWorkbench({
   ]);
 
   useEffect(() => {
-    if (!selectedMemberFileId || !selectedMemberVersionId) {
-      setSource("");
-      setSourceError("");
-      setSourceLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setSourceLoading(true);
-    setSourceError("");
-    void fileRepository
-      .downloadVersion(project.id, selectedMemberFileId, selectedMemberVersionId)
-      .then((result) => {
-        if (!cancelled) setSource(new TextDecoder().decode(result.bytes));
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setSource("");
-          setSourceError(error instanceof Error ? error.message : "源码加载失败。");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setSourceLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fileRepository, project.id, selectedMemberFileId, selectedMemberVersionId, sourceRetry]);
+    void workspaceLoadSession.loadSource(
+      project.id,
+      selectedMemberFileId,
+      selectedMemberVersionId,
+      fileRepository
+    );
+  }, [
+    fileRepository,
+    project.id,
+    selectedMemberFileId,
+    selectedMemberVersionId,
+    sourceRetry,
+    workspaceLoadSession
+  ]);
 
   useEffect(() => {
-    if (!selectedMemberFileId || !selectedMemberVersionId) {
-      setStructureNodes([]);
-      setStructureError("");
-      setStructureLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setStructureLoading(true);
-    setStructureError("");
-    void dtsRepository
-      .getStructure(project.id, selectedMemberFileId, selectedMemberVersionId)
-      .then((result) => {
-        if (!cancelled) setStructureNodes(result.nodes);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setStructureNodes([]);
-          setStructureError(error instanceof Error ? error.message : "结构树加载失败。");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setStructureLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [dtsRepository, project.id, selectedMemberFileId, selectedMemberVersionId, structureRetry]);
+    void workspaceLoadSession.loadStructure(
+      project.id,
+      selectedMemberFileId,
+      selectedMemberVersionId,
+      dtsRepository
+    );
+  }, [
+    dtsRepository,
+    project.id,
+    selectedMemberFileId,
+    selectedMemberVersionId,
+    structureRetry,
+    workspaceLoadSession
+  ]);
 
   useEffect(() => {
     navigationSession.applyNodePropertyFromUrl({
@@ -914,8 +833,11 @@ export function ProjectConfigurationWorkbench({
       if (!result.ok) {
         return result.kind === "validation" ? result.message : undefined;
       }
-      setConfigSets((current) => [result.item, ...current.filter((item) => item.id !== result.item.id)]);
-      setMembers([]);
+      workspaceLoadSession.setConfigSets([
+        result.item,
+        ...configSets.filter((item) => item.id !== result.item.id)
+      ]);
+      workspaceLoadSession.setMembers([], result.item.id);
       setInspectorLevelOverride("config-set");
       setInspectorOpen(true);
       onNavigate(
@@ -931,7 +853,7 @@ export function ProjectConfigurationWorkbench({
       );
       return null;
     },
-    [canAdmin, configSetOpsSession, configSets, dtsRepository, onNavigate, project.id, search]
+    [canAdmin, configSetOpsSession, configSets, dtsRepository, onNavigate, project.id, search, workspaceLoadSession]
   );
 
   const submitCreateConfigSet = useCallback(
@@ -956,8 +878,8 @@ export function ProjectConfigurationWorkbench({
         dtsRepository
       );
       if (!result.ok) return;
-      setMembers((current) => [
-        ...current.filter((item) => item.fileId !== result.membership.fileId),
+      workspaceLoadSession.setMembers([
+        ...members.filter((item) => item.fileId !== result.membership.fileId),
         {
           ...result.membership,
           fileName: result.fileName,
@@ -968,9 +890,18 @@ export function ProjectConfigurationWorkbench({
       ]);
       setInspectorLevelOverride("config-set");
       setInspectorOpen(true);
-      setMembersRetry((value) => value + 1);
+      workspaceLoadSession.retryMembers();
     },
-    [canAdmin, configSetOpsSession, dtsRepository, project.id, projectFiles, selectedConfigSet]
+    [
+      canAdmin,
+      configSetOpsSession,
+      dtsRepository,
+      members,
+      project.id,
+      projectFiles,
+      selectedConfigSet,
+      workspaceLoadSession
+    ]
   );
 
   const assignUngroupedFile = useCallback(
@@ -991,7 +922,7 @@ export function ProjectConfigurationWorkbench({
         dtsRepository
       );
       if (!result.ok) return;
-      setMembers((current) => current.filter((item) => item.fileId !== fileId));
+      workspaceLoadSession.setMembers(members.filter((item) => item.fileId !== fileId));
       if (selectedMember?.fileId === fileId) {
         onNavigate(
           formatWorkbenchPath(project.id, search, {
@@ -1004,17 +935,19 @@ export function ProjectConfigurationWorkbench({
           })
         );
       }
-      setMembersRetry((value) => value + 1);
+      workspaceLoadSession.retryMembers();
     },
     [
       canAdmin,
       configSetOpsSession,
       dtsRepository,
+      members,
       onNavigate,
       project.id,
       search,
       selectedConfigSet,
-      selectedMember?.fileId
+      selectedMember?.fileId,
+      workspaceLoadSession
     ]
   );
 
@@ -1049,11 +982,11 @@ export function ProjectConfigurationWorkbench({
     if (!result.ok) return;
     setSyncEvidence(result.evidence);
     setTasksOpen(true);
-    setProjectFiles(result.files);
+    workspaceLoadSession.setProjectFiles(result.files);
     conflictLocateFacade.setOpenConflicts(result.conflicts);
-    setMembersRetry((value) => value + 1);
-    setFilesRetry((value) => value + 1);
-  }, [canAdmin, configSetOpsSession, conflictLocateFacade, fileRepository, project.id, selectedMember]);
+    workspaceLoadSession.retryMembers();
+    workspaceLoadSession.retryFiles();
+  }, [canAdmin, configSetOpsSession, conflictLocateFacade, fileRepository, project.id, selectedMember, workspaceLoadSession]);
 
   const exportSelectedConfigSet = useCallback(async () => {
     if (!canAdmin || !selectedConfigSet) return;
@@ -1761,10 +1694,10 @@ export function ProjectConfigurationWorkbench({
       dtsRepository
     );
     setRestoreBaselineOpen(false);
-    setMembersRetry((value) => value + 1);
+    workspaceLoadSession.retryMembers();
     setBaselinesRetry((value) => value + 1);
     setReadinessRetry((value) => value + 1);
-    setSourceRetry((value) => value + 1);
+    workspaceLoadSession.retrySource();
     onNavigate(
       formatWorkbenchPath(project.id, search, {
         configSet: selectedConfigSet.id,
@@ -1790,7 +1723,8 @@ export function ProjectConfigurationWorkbench({
     search,
     selectedBaselineId,
     selectedConfigSet,
-    selectedMember?.fileId
+    selectedMember?.fileId,
+    workspaceLoadSession
   ]);
 
   const handleSelectReadinessIssue = useCallback(
@@ -1900,14 +1834,14 @@ export function ProjectConfigurationWorkbench({
         fileName: selectedMember.fileName,
         dtsRepository
       });
-      setMembersRetry((value) => value + 1);
-      setStructureRetry((value) => value + 1);
-      setSourceRetry((value) => value + 1);
-      setFilesRetry((value) => value + 1);
+      workspaceLoadSession.retryMembers();
+      workspaceLoadSession.retryStructure();
+      workspaceLoadSession.retrySource();
+      workspaceLoadSession.retryFiles();
     } catch {
       // submitError is projected from the session snapshot
     }
-  }, [canEdit, dtsRepository, project.id, selectedMember, structuredEditSession, submittingEdits]);
+  }, [canEdit, dtsRepository, project.id, selectedMember, structuredEditSession, submittingEdits, workspaceLoadSession]);
 
   const unifiedDiffText = useMemo(() => {
     if (canvasMode !== "unified-diff" || !historySource) return "";
@@ -1980,7 +1914,7 @@ export function ProjectConfigurationWorkbench({
         <div className="configuration-workbench__setup-state" role="alert">
           <strong>配置集加载失败</strong>
           <p>{configSetsError}</p>
-          <button className="button subtle" type="button" onClick={() => setConfigRetry((value) => value + 1)}>
+          <button className="button subtle" type="button" onClick={() => workspaceLoadSession.retryConfigSets()}>
             重试配置集
           </button>
         </div>
@@ -2015,15 +1949,15 @@ export function ProjectConfigurationWorkbench({
             searchError={searchError}
             searchHits={searchHits}
             onSearchHit={handleSearchHit}
-            membersLoading={membersLoading}
+            membersLoading={membersListLoading}
             membersError={membersError}
-            onMembersRetry={() => setMembersRetry((value) => value + 1)}
+            onMembersRetry={() => workspaceLoadSession.retryMembers()}
             selectedMembers={selectedMembers}
             selectedMember={selectedMember ?? null}
             onSelectMember={selectMember}
             structureLoading={structureLoading}
             structureError={structureError}
-            onStructureRetry={() => setStructureRetry((value) => value + 1)}
+            onStructureRetry={() => workspaceLoadSession.retryStructure()}
             structureNodes={structureNodes}
             selectedNodePath={selectedNodePath}
             selectedPropertyName={selectedPropertyName}
@@ -2034,7 +1968,7 @@ export function ProjectConfigurationWorkbench({
             onUploadCandidate={() => candidateFileInputRef.current?.click()}
             filesLoading={filesLoading}
             filesError={filesError}
-            onFilesRetry={() => setFilesRetry((value) => value + 1)}
+            onFilesRetry={() => workspaceLoadSession.retryFiles()}
             ungroupedFiles={ungroupedFiles}
             pendingAction={pendingAction}
             onAssignUngroupedFile={(item) => void runAction(`assign-${item.id}`, () => assignUngroupedFile(item))}
@@ -2056,7 +1990,7 @@ export function ProjectConfigurationWorkbench({
             modeSourceLoading={modeSourceLoading}
             sourceError={sourceError}
             modeSourceError={modeSourceError}
-            onSourceRetry={() => setSourceRetry((value) => value + 1)}
+            onSourceRetry={() => workspaceLoadSession.retrySource()}
             onClearModeSourceError={() => setModeSourceError("")}
             source={source}
             historySource={historySource}
@@ -2218,9 +2152,9 @@ export function ProjectConfigurationWorkbench({
               );
               notifyMutation("候选已激活；工作源码、成员与历史已刷新。");
               setActivateConfirmOpen(false);
-              setFilesRetry((value) => value + 1);
-              setMembersRetry((value) => value + 1);
-              setSourceRetry((value) => value + 1);
+              workspaceLoadSession.retryFiles();
+              workspaceLoadSession.retryMembers();
+              workspaceLoadSession.retrySource();
               setBaselinesRetry((value) => value + 1);
               if (selectedConfigSet) {
                 onNavigate(
