@@ -35,6 +35,8 @@ describe("isSupportedReloadValueShape", () => {
     expect(isSupportedReloadValueShape({ kind: "cells", bits: 32, cellsPerGroup: 2 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "cells", bits: 8, cellsPerGroup: 1 })).toBe(false);
     expect(isSupportedReloadValueShape({ kind: "string-list" })).toBe(false);
+    expect(isSupportedReloadValueShape({ kind: "cells", bits: 32 })).toBe(false);
+    expect(isSupportedReloadValueShape({ kind: "u32-array", bits: 32, cellsPerGroup: 1 })).toBe(false);
     expect(isSupportedReloadValueShape(null)).toBe(false);
   });
 });

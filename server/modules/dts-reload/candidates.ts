@@ -24,9 +24,10 @@ export type CandidateValueShape = {
  */
 export function isSupportedReloadValueShape(valueShape: CandidateValueShape): boolean {
   if (!valueShape || typeof valueShape !== "object") return false;
-  if (valueShape.kind !== "cells" && valueShape.kind !== "u32-array") return false;
-  if (valueShape.bits !== undefined && valueShape.bits !== 32) return false;
-  if (valueShape.cellsPerGroup !== undefined && valueShape.cellsPerGroup !== 1) return false;
+  if (valueShape.kind !== "cells") return false;
+  if (valueShape.bits !== 32) return false;
+  if (valueShape.cellsPerGroup !== 1) return false;
+  if (valueShape.groups !== undefined && valueShape.groups !== 1) return false;
   return true;
 }
 

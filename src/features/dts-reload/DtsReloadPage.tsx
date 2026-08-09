@@ -22,6 +22,47 @@ function constraintSummary(constraints: Record<string, unknown>): string {
   return parts.length > 0 ? parts.join(" · ") : "—";
 }
 
+function parseSingleU32Cell(raw: string): number | null {
+  const trimmed = raw.trim();
+  const match = /^<\s*(0x[0-9a-fA-F]+|\d+)\s*>$/.exec(trimmed) ?? /^(0x[0-9a-fA-F]+|\d+)$/.exec(trimmed);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function validateDebugValueAgainstConstraints(
+  raw: string,
+  constraints: Record<string, unknown>
+): string | null {
+  const numeric = parseSingleU32Cell(raw);
+  if (numeric === null) {
+    return "调试值必须是单个 u32 cell，例如 <7000> 或 <0x1770>。";
+  }
+  if (typeof constraints.min === "number" && numeric < constraints.min) {
+    return `调试值低于声明的最小值 ${constraints.min}。`;
+  }
+  if (typeof constraints.max === "number" && numeric > constraints.max) {
+    return `调试值超过声明的最大值 ${constraints.max}。`;
+  }
+  return null;
+}
+
+function readRunIdFromSearch(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("run") || null;
+}
+
+function writeRunIdToSearch(runId: string | null) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (runId) {
+    url.searchParams.set("run", runId);
+  } else {
+    url.searchParams.delete("run");
+  }
+  window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+}
+
 export function DtsReloadPage({
   projects,
   initialProjectId,
@@ -54,12 +95,24 @@ export function DtsReloadPage({
     setErrorMessage("");
     void repository
       .listCandidates(projectId)
-      .then((result) => {
+      .then(async (result) => {
         if (cancelled) return;
         setCandidates(result.items);
         const firstDebuggable = result.items.find((item) => item.debuggable);
         setSelectedBindingId(firstDebuggable?.bindingId ?? result.items[0]?.bindingId ?? null);
         setDebugValue(firstDebuggable?.baselineValue ?? "");
+        const existingRunId = readRunIdFromSearch();
+        if (existingRunId) {
+          try {
+            const existing = await repository.getRun(existingRunId);
+            if (!cancelled && existing.projectId === projectId) {
+              setRun(existing);
+              return;
+            }
+          } catch {
+            writeRunIdToSearch(null);
+          }
+        }
         setRun(null);
       })
       .catch((error: unknown) => {
@@ -103,6 +156,11 @@ export function DtsReloadPage({
 
   const onStart = async () => {
     if (!selected || !canStartRun) return;
+    const constraintError = validateDebugValueAgainstConstraints(debugValue, selected.constraints);
+    if (constraintError) {
+      setErrorMessage(constraintError);
+      return;
+    }
     setStarting(true);
     setErrorMessage("");
     try {
@@ -112,6 +170,7 @@ export function DtsReloadPage({
         debugValue
       });
       setRun(started);
+      writeRunIdToSearch(started.id);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "启动重载运行失败。");
     } finally {
@@ -175,7 +234,7 @@ export function DtsReloadPage({
 
       {!canStartRun ? (
         <p role="status" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
-          缺少 debugging:dts-reload 权限。服务器也会拒绝无权限请求。
+          当前账号没有 DTS 重载调试权限。服务器也会拒绝无权限请求。
         </p>
       ) : null}
 

@@ -99,6 +99,12 @@ describe("DtsReloadPage", () => {
 
     const debugInput = screen.getByLabelText("调试值");
     await user.clear(debugInput);
+    await user.type(debugInput, "<99999>");
+    await user.click(screen.getByRole("button", { name: "启动重载运行" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/最大值/);
+    expect(repository.startRun).not.toHaveBeenCalled();
+
+    await user.clear(debugInput);
     await user.type(debugInput, "<7000>");
     await user.click(screen.getByRole("button", { name: "启动重载运行" }));
 

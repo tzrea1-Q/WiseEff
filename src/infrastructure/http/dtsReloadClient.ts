@@ -31,7 +31,6 @@ function artifactPath(runId: string) {
 export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOptions = {}): DtsReloadRepository {
   const baseUrl = options.baseUrl ?? resolveWiseEffApiBaseUrl();
   const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl, fetchImpl: options.fetchImpl });
-  const fetchImpl = options.fetchImpl ?? fetch;
 
   return {
     async listCandidates(projectId: string) {
@@ -53,12 +52,10 @@ export function createHttpDtsReloadRepository(options: HttpDtsReloadRepositoryOp
     },
 
     async downloadArtifact(runId: string) {
-      const response = await fetchImpl(`${baseUrl}${artifactPath(runId)}`, {
-        credentials: "include"
+      const response = await apiClient.raw(artifactPath(runId), {
+        method: "GET",
+        headers: { Accept: "application/octet-stream" }
       });
-      if (!response.ok) {
-        throw new Error(`Failed to download overlay artifact (${response.status}).`);
-      }
       return response.blob();
     }
   };
