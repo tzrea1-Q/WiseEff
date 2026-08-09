@@ -49,7 +49,6 @@ import { WorkbenchTaskDock } from "./WorkbenchTaskDock";
 import {
   ROLE_LABELS,
   decodeSourceBytes,
-  defaultConfigSet,
   defaultRoleForFile,
   downloadExportBundle,
   formatWorkbenchPath,
@@ -70,6 +69,7 @@ import { useCandidateVersionFlow } from "@/application/project-configuration/use
 import { useReleaseBaselineSession } from "@/application/project-configuration/useReleaseBaselineSession";
 import { useConflictLocateFacade } from "@/application/project-configuration/useConflictLocateFacade";
 import { useConfigSetOpsSession } from "@/application/project-configuration/useConfigSetOpsSession";
+import { useWorkbenchNavigationSession } from "@/application/project-configuration/useWorkbenchNavigationSession";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
@@ -227,16 +227,8 @@ export function ProjectConfigurationWorkbench({
   const [structureLoading, setStructureLoading] = useState(false);
   const [structureError, setStructureError] = useState("");
   const [structureRetry, setStructureRetry] = useState(0);
-  const [selectedNodePath, setSelectedNodePath] = useState<string | null>(null);
-  const [selectedPropertyName, setSelectedPropertyName] = useState<string | null>(null);
-  const [searchDraft, setSearchDraft] = useState("");
-  const [searchHits, setSearchHits] = useState<DtsSearchHit[]>([]);
-  const [searchError, setSearchError] = useState("");
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [findQuery, setFindQuery] = useState("");
   const [findNextToken, setFindNextToken] = useState(0);
   const [focusLineOverride, setFocusLineOverride] = useState<number | null>(null);
-  const [suppressScrollSync, setSuppressScrollSync] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const treeRegionRef = useRef<HTMLElement | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -254,6 +246,18 @@ export function ProjectConfigurationWorkbench({
     lastError: opsError,
     lastMessage: opsMessage
   } = useConfigSetOpsSession();
+  const {
+    session: navigationSession,
+    selectedNodePath,
+    selectedPropertyName,
+    searchDraft,
+    searchHits,
+    searchError,
+    searchLoading,
+    findQuery,
+    pendingFocusLine,
+    suppressScrollSync
+  } = useWorkbenchNavigationSession();
   const [exportEvidence, setExportEvidence] = useState("");
   const sourceRegionRef = useRef<HTMLElement | null>(null);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
@@ -322,10 +326,10 @@ export function ProjectConfigurationWorkbench({
     void conflictLocateFacade.load(project.id, fileRepository);
   }, [conflictLocateFacade, fileRepository, filesRetry, project.id]);
 
-  const selectedConfigSet = useMemo(() => {
-    const requested = queryValue(search, "configSet");
-    return configSets.find((item) => item.id === requested) ?? defaultConfigSet(configSets);
-  }, [configSets, search]);
+  const selectedConfigSet = useMemo(
+    () => navigationSession.resolveSelectedConfigSet({ search, configSets }),
+    [configSets, navigationSession, search]
+  );
 
   useEffect(() => {
     if (!selectedConfigSet) {
@@ -398,36 +402,32 @@ export function ProjectConfigurationWorkbench({
       });
   }, [members, projectFiles, selectedConfigSet]);
 
-  const selectedMember = useMemo((): DtsConfigSetMemberFile | null => {
-    const requested = queryValue(search, "file");
-    if (requested) {
-      const memberHit = selectedMembers.find((item) => item.fileId === requested);
-      if (memberHit) return memberHit;
-      // Wait for Config set members before synthesizing a non-member locate target,
-      // otherwise the canvas heading appears while the member tree is still empty.
-      if (!membersLoading && !membersError) {
-        const projectHit = projectFiles.find((file) => file.id === requested);
-        if (projectHit) {
-          return {
-            configSetId: selectedConfigSet?.id ?? "",
-            fileId: projectHit.id,
-            fileName: projectHit.fileName,
-            format: projectHit.format,
-            role: "misc",
-            sortOrder: -1,
-            currentVersionId: projectHit.currentVersionId,
-            currentVersionNumber: projectHit.currentVersionNumber
-          };
-        }
-      }
-    }
-    return (
-      selectedMembers.find((item) => item.format === "dts" && item.currentVersionId) ??
-      selectedMembers.find((item) => item.currentVersionId) ??
-      selectedMembers[0] ??
-      null
-    );
-  }, [membersError, membersLoading, projectFiles, search, selectedConfigSet?.id, selectedMembers]);
+  const selectedMember = useMemo(
+    () =>
+      navigationSession.resolveSelectedMember(
+        {
+          search,
+          projectId: project.id,
+          configSets,
+          selectedMembers,
+          projectFiles,
+          membersLoading,
+          membersError
+        },
+        selectedConfigSet
+      ),
+    [
+      configSets,
+      membersError,
+      membersLoading,
+      navigationSession,
+      project.id,
+      projectFiles,
+      search,
+      selectedConfigSet,
+      selectedMembers
+    ]
+  );
 
   const selectedMemberFileId = selectedMember?.fileId ?? null;
   const selectedMemberVersionId = selectedMember?.currentVersionId ?? null;
@@ -614,41 +614,31 @@ export function ProjectConfigurationWorkbench({
   }, [candidateFlow, candidateId, canvasMode, fileRepository, project.id]);
 
   useEffect(() => {
-    if (configSetsLoading || !selectedConfigSet) return;
-    if (queryValue(search, "configSet") !== selectedConfigSet.id) {
-      onNavigate(
-        formatWorkbenchPath(project.id, search, {
-          configSet: selectedConfigSet.id,
-          file: null,
-          node: null,
-          property: null
-        })
-      );
-    }
-  }, [configSetsLoading, onNavigate, project.id, search, selectedConfigSet]);
+    const path = navigationSession.applyConfigSetUrl({
+      projectId: project.id,
+      search,
+      configSetsLoading,
+      selectedConfigSet
+    });
+    if (path) onNavigate(path);
+  }, [configSetsLoading, navigationSession, onNavigate, project.id, search, selectedConfigSet]);
 
   useEffect(() => {
-    if (membersLoading || filesLoading || !selectedConfigSet || !selectedMemberFileId) return;
-    const requested = queryValue(search, "file");
-    if (requested) {
-      const knownMember = selectedMembers.some((item) => item.fileId === requested);
-      const knownProjectFile = projectFiles.some((file) => file.id === requested);
-      // Preserve explicit file= targets that exist in the project, even when they are
-      // not Config set members (conflict locate / activity deep links).
-      if (knownMember || knownProjectFile) return;
-    }
-    if (requested === selectedMemberFileId) return;
-    onNavigate(
-      formatWorkbenchPath(project.id, search, {
-        configSet: selectedConfigSet.id,
-        file: selectedMemberFileId,
-        node: null,
-        property: null
-      })
-    );
+    const path = navigationSession.applyFileUrl({
+      projectId: project.id,
+      search,
+      membersLoading,
+      filesLoading,
+      selectedConfigSet,
+      selectedMemberFileId,
+      selectedMembers,
+      projectFiles
+    });
+    if (path) onNavigate(path);
   }, [
     filesLoading,
     membersLoading,
+    navigationSession,
     onNavigate,
     project.id,
     projectFiles,
@@ -717,34 +707,18 @@ export function ProjectConfigurationWorkbench({
   }, [dtsRepository, project.id, selectedMemberFileId, selectedMemberVersionId, structureRetry]);
 
   useEffect(() => {
-    const requestedNode = queryValue(search, "node");
-    const requestedProperty = queryValue(search, "property");
-    if (!requestedNode) {
-      setSelectedNodePath(null);
-      setSelectedPropertyName(null);
-      return;
-    }
-    // Wait for structure before invalidating URL node/property so deep links survive loading.
-    if (structureLoading || (structureNodes.length === 0 && !structureError)) {
-      setSelectedNodePath(requestedNode);
-      setSelectedPropertyName(requestedProperty);
-      return;
-    }
-    const exists = structureNodes.some((node) => node.nodePath === requestedNode);
-    if (!exists) {
-      setSelectedNodePath(null);
-      setSelectedPropertyName(null);
-      return;
-    }
-    setSelectedNodePath(requestedNode);
-    if (requestedProperty) {
-      const node = structureNodes.find((item) => item.nodePath === requestedNode);
-      const propertyExists = node?.properties.some((property) => property.name === requestedProperty);
-      setSelectedPropertyName(propertyExists ? requestedProperty : null);
-    } else {
-      setSelectedPropertyName(null);
-    }
-  }, [search, structureError, structureLoading, structureNodes]);
+    navigationSession.applyNodePropertyFromUrl({
+      search,
+      structureNodes,
+      structureLoading,
+      structureError
+    });
+  }, [navigationSession, search, structureError, structureLoading, structureNodes]);
+
+  useEffect(() => {
+    const line = navigationSession.consumePendingFocusLine();
+    if (line != null) setFocusLineOverride(line);
+  }, [navigationSession, pendingFocusLine]);
 
   useEffect(() => {
     const consumed = conflictLocateFacade.consumeLocateTargetIfMatched({
@@ -790,66 +764,38 @@ export function ProjectConfigurationWorkbench({
   const selectStructureTarget = useCallback(
     (fileId: string, nodePath: string | null, propertyName: string | null = null) => {
       if (!selectedConfigSet) return;
-      setSuppressScrollSync(true);
-      setSelectedNodePath(nodePath);
-      setSelectedPropertyName(propertyName);
       setInspectorLevelOverride(null);
       onNavigate(
-        formatWorkbenchPath(project.id, search, {
-          configSet: selectedConfigSet.id,
-          file: fileId,
-          node: nodePath,
-          property: propertyName,
+        navigationSession.selectStructureTarget(project.id, search, {
+          configSetId: selectedConfigSet.id,
+          fileId,
+          nodePath,
+          propertyName,
           sourceMode: canvasModeQueryValue(canvasMode),
-          version: historyVersionId
+          versionId: historyVersionId
         })
       );
-      window.setTimeout(() => setSuppressScrollSync(false), 250);
     },
-    [canvasMode, historyVersionId, onNavigate, project.id, search, selectedConfigSet]
+    [canvasMode, historyVersionId, navigationSession, onNavigate, project.id, search, selectedConfigSet]
   );
 
   const runUnifiedSearch = useCallback(async () => {
-    const q = searchDraft.trim();
-    if (!q) {
-      setSearchHits([]);
-      setSearchError("");
-      return;
-    }
-    setSearchLoading(true);
-    setSearchError("");
-    try {
-      const result = await dtsRepository.search(project.id, { q });
-      setSearchHits(result.hits);
-      setFindQuery(q);
-    } catch (error: unknown) {
-      setSearchHits([]);
-      setSearchError(error instanceof Error ? error.message : "搜索失败。");
-    } finally {
-      setSearchLoading(false);
-    }
-  }, [dtsRepository, project.id, searchDraft]);
+    await navigationSession.runSearch(project.id, dtsRepository);
+  }, [dtsRepository, navigationSession, project.id]);
 
   const handleSearchHit = useCallback(
     (hit: DtsSearchHit) => {
       if (!selectedConfigSet) return;
-      setSuppressScrollSync(true);
       onNavigate(
-        formatWorkbenchPath(project.id, search, {
-          configSet: selectedConfigSet.id,
-          file: hit.fileId,
-          node: hit.nodePath,
-          property: hit.propertyName ?? null,
+        navigationSession.selectSearchHit(project.id, search, {
+          configSetId: selectedConfigSet.id,
+          hit,
           sourceMode: canvasModeQueryValue(canvasMode),
-          version: historyVersionId
+          versionId: historyVersionId
         })
       );
-      if (hit.source) {
-        setFocusLineOverride(hit.source.startLine);
-      }
-      window.setTimeout(() => setSuppressScrollSync(false), 250);
     },
-    [canvasMode, historyVersionId, onNavigate, project.id, search, selectedConfigSet]
+    [canvasMode, historyVersionId, navigationSession, onNavigate, project.id, search, selectedConfigSet]
   );
 
   const handleVisibleLineChange = useCallback(
@@ -863,11 +809,10 @@ export function ProjectConfigurationWorkbench({
         const nearest = nearestNodeForLine(structureNodes, line);
         if (!nearest || nearest.nodePath === selectedNodePath) return;
         // Update tree selection without stealing focus or rewriting URL on every scroll tick.
-        setSelectedNodePath(nearest.nodePath);
-        setSelectedPropertyName(null);
+        navigationSession.setStructureSelection(nearest.nodePath, null);
       }, 80);
     },
-    [canvasMode, selectedMember, selectedNodePath, structureNodes, suppressScrollSync]
+    [canvasMode, navigationSession, selectedMember, selectedNodePath, structureNodes, suppressScrollSync]
   );
 
   useEffect(() => {
@@ -1128,37 +1073,36 @@ export function ProjectConfigurationWorkbench({
     (configSetId: string) => {
       setInspectorLevelOverride("config-set");
       setInspectorOpen(true);
-      onNavigate(
-        formatWorkbenchPath(project.id, search, {
-          configSet: configSetId,
-          file: null,
-          node: null,
-          property: null,
-          sourceMode: null,
-          version: null
-        })
-      );
+      onNavigate(navigationSession.selectConfigSet(project.id, search, configSetId));
     },
-    [onNavigate, project.id, search]
+    [navigationSession, onNavigate, project.id, search]
   );
 
   const selectMember = useCallback(
     (fileId: string) => {
       if (!selectedConfigSet) return;
       setInspectorLevelOverride("file");
-      const switchingFile = selectedMember?.fileId !== fileId;
       onNavigate(
-        formatWorkbenchPath(project.id, search, {
-          configSet: selectedConfigSet.id,
-          file: fileId,
-          node: null,
-          property: null,
-          sourceMode: switchingFile ? null : canvasModeQueryValue(canvasMode),
-          version: switchingFile || canvasMode === "working" ? null : historyVersionId
+        navigationSession.selectMember(project.id, search, {
+          configSetId: selectedConfigSet.id,
+          fileId,
+          currentFileId: selectedMember?.fileId ?? null,
+          sourceMode: canvasModeQueryValue(canvasMode),
+          versionId: historyVersionId,
+          workingMode: canvasMode === "working"
         })
       );
     },
-    [canvasMode, historyVersionId, onNavigate, project.id, search, selectedConfigSet, selectedMember?.fileId]
+    [
+      canvasMode,
+      historyVersionId,
+      navigationSession,
+      onNavigate,
+      project.id,
+      search,
+      selectedConfigSet,
+      selectedMember?.fileId
+    ]
   );
 
   const refreshActivityTimeline = useCallback(async () => {
@@ -1323,10 +1267,10 @@ export function ProjectConfigurationWorkbench({
       }
 
       if (resolved.fileId) {
-        if (resolved.nodePath) setSelectedNodePath(resolved.nodePath);
-        else setSelectedNodePath(null);
-        if (resolved.propertyName) setSelectedPropertyName(resolved.propertyName);
-        else setSelectedPropertyName(null);
+        navigationSession.setStructureSelection(
+          resolved.nodePath ?? null,
+          resolved.propertyName ?? null
+        );
         onNavigate(
           formatWorkbenchPath(project.id, search, {
             configSet: selectedConfigSet.id,
@@ -1349,6 +1293,7 @@ export function ProjectConfigurationWorkbench({
       conflictLocateFacade,
       fileRepository,
       knownCandidateIds,
+      navigationSession,
       configSets,
       onNavigate,
       project.id,
@@ -1456,7 +1401,7 @@ export function ProjectConfigurationWorkbench({
     const restoreLine = snapshot?.scrollLine ?? lastVisibleLine;
     setRestoredScrollLine(restoreLine);
     if (restoreLine != null) setFocusLineOverride(restoreLine);
-    setSuppressScrollSync(true);
+    navigationSession.beginSuppressScrollSync(300);
     onNavigate(
       formatWorkbenchPath(project.id, search, {
         configSet: selectedConfigSet.id,
@@ -1470,11 +1415,11 @@ export function ProjectConfigurationWorkbench({
     );
     window.setTimeout(() => {
       if (restoreLine != null) setFocusLineOverride(restoreLine);
-      setSuppressScrollSync(false);
       setRestoredScrollLine(null);
     }, 300);
   }, [
     lastVisibleLine,
+    navigationSession,
     onNavigate,
     project.id,
     search,
@@ -2064,7 +2009,7 @@ export function ProjectConfigurationWorkbench({
             selectedConfigSet={selectedConfigSet}
             searchInputRef={searchInputRef}
             searchDraft={searchDraft}
-            onSearchDraftChange={setSearchDraft}
+            onSearchDraftChange={(value) => navigationSession.setSearchDraft(value)}
             onSearchSubmit={() => void runUnifiedSearch()}
             searchLoading={searchLoading}
             searchError={searchError}
