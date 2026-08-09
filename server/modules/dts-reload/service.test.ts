@@ -62,6 +62,7 @@ function candidateRow(overrides: Record<string, unknown> = {}) {
     display_name: "Watchdog",
     module_name: "charger",
     node_path: "/amba/i2c@FDF5E000/sc8562@6E",
+    config_revision_id: "rev-1",
     baseline_value: "<6000>",
     value_shape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 },
     unit: "ms",
@@ -143,7 +144,7 @@ function blockedOrValidatedInsert(status: "blocked" | "validated"): QueuedResult
         id: call.values[0],
         organization_id: "org-1",
         project_id: "project-1",
-        config_revision_id: null,
+        config_revision_id: call.values[3],
         status,
         failure_code: call.values[5],
         steps: typeof call.values[6] === "string" ? JSON.parse(call.values[6] as string) : call.values[6],
@@ -233,6 +234,7 @@ describe("startReloadRun", () => {
       ...fingerprintParts(),
       [{ id: "cs-1" }],
       [{ file_name: "board.dts", role: "base", sort_order: 0, storage_key: baseKey, format: "dts" }],
+      ...fingerprintParts(),
       blockedOrValidatedInsert("validated"),
       [],
       [
@@ -244,8 +246,7 @@ describe("startReloadRun", () => {
           debug_value: "<7000>",
           sort_order: 0
         }
-      ],
-      ...fingerprintParts()
+      ]
     ]);
 
     const result = await startReloadRun(db, objectStore, auth(), {
@@ -255,6 +256,7 @@ describe("startReloadRun", () => {
     });
 
     expect(result.status).toBe("validated");
+    expect(result.configRevisionId).toBe("rev-1");
     expect(result.overlaySource).toContain('target-path = "/amba/i2c@FDF5E000/sc8562@6E"');
     expect(result.overlaySource).not.toMatch(/^&/m);
     expect(result.overlaySource).toContain("watchdog_time = <7000>");
@@ -275,6 +277,7 @@ describe("startReloadRun", () => {
       ...fingerprintParts(),
       [{ id: "cs-1" }],
       [{ file_name: "board.dts", role: "base", sort_order: 0, storage_key: baseKey, format: "dts" }],
+      ...fingerprintParts(),
       blockedOrValidatedInsert("blocked"),
       [],
       [
@@ -286,8 +289,7 @@ describe("startReloadRun", () => {
           debug_value: "<7000>",
           sort_order: 0
         }
-      ],
-      ...fingerprintParts()
+      ]
     ]);
 
     const result = await startReloadRun(db, objectStore, auth(), {
@@ -316,6 +318,7 @@ describe("startReloadRun", () => {
       ...fingerprintParts(),
       [{ id: "cs-1" }],
       [{ file_name: "board.dts", role: "base", sort_order: 0, storage_key: baseKey, format: "dts" }],
+      ...fingerprintParts(),
       blockedOrValidatedInsert("blocked"),
       [],
       [
@@ -327,8 +330,7 @@ describe("startReloadRun", () => {
           debug_value: "<7000>",
           sort_order: 0
         }
-      ],
-      ...fingerprintParts()
+      ]
     ]);
 
     const result = await startReloadRun(db, objectStore, auth(), {

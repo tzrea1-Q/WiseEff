@@ -12,6 +12,8 @@ export type ReloadCandidateRow = {
   display_name: string;
   module_name: string;
   node_path: string | null;
+  /** Config revision the baseline binding revision and node locator were taken from. */
+  config_revision_id: string | null;
   baseline_value: string | null;
   value_shape: unknown;
   unit: string | null;
@@ -161,6 +163,7 @@ export async function listReloadCandidateRows(
       coalesce(psv.display_name, dps.property_key, ps.specification_key) as display_name,
       coalesce(asub.display_name, pm.name, '') as module_name,
       lnr.node_locator as node_path,
+      br.config_revision_id as config_revision_id,
       br.raw_value as baseline_value,
       psv.value_shape as value_shape,
       psv.unit as unit,
@@ -182,7 +185,7 @@ export async function listReloadCandidateRows(
       select node_locator
       from dts_logical_node_revisions
       where logical_node_id = b.logical_node_id
-      order by config_revision_id desc
+        and config_revision_id = br.config_revision_id
       limit 1
     ) lnr on true
     where b.organization_id = $1
@@ -216,6 +219,7 @@ export async function getReloadCandidateRow(
       coalesce(psv.display_name, dps.property_key, ps.specification_key) as display_name,
       coalesce(asub.display_name, pm.name, '') as module_name,
       lnr.node_locator as node_path,
+      br.config_revision_id as config_revision_id,
       br.raw_value as baseline_value,
       psv.value_shape as value_shape,
       psv.unit as unit,
@@ -237,7 +241,7 @@ export async function getReloadCandidateRow(
       select node_locator
       from dts_logical_node_revisions
       where logical_node_id = b.logical_node_id
-      order by config_revision_id desc
+        and config_revision_id = br.config_revision_id
       limit 1
     ) lnr on true
     where b.organization_id = $1

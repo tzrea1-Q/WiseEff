@@ -240,9 +240,11 @@ export async function startReloadRun(
   } catch (error) {
     const failureCode = error instanceof ApiError ? String(error.details?.code ?? "reload-base-missing") : "reload-base-missing";
     const message = error instanceof Error ? error.message : "Failed to build base device tree.";
+    await assertLibraryUntouched(db, input.projectId, auth.organization.id, beforeFingerprint);
     const persisted = await persistRunOutcome(db, objectStore, auth, {
       runId,
       projectId: input.projectId,
+      configRevisionId: row.config_revision_id,
       candidate,
       debugValue: input.debugValue,
       status: "blocked",
@@ -267,12 +269,12 @@ export async function startReloadRun(
           propertyKey: candidate.propertyKey,
           baselineValue: candidate.baselineValue,
           debugValue: input.debugValue,
-          failureCode
+          failureCode,
+          configRevisionId: row.config_revision_id
         }
       },
       context
     );
-    await assertLibraryUntouched(db, input.projectId, auth.organization.id, beforeFingerprint);
     return persisted;
   }
 
@@ -290,9 +292,14 @@ export async function startReloadRun(
   const status = preflight.ok ? "validated" : "blocked";
   const failureCode = preflight.ok ? null : (preflight.diagnostics[0]?.code ?? "overlay-not-applicable");
 
+  // Library fingerprint check runs before persistence so a concurrent library edit cannot
+  // leave a completed run behind a 500 that falsely claims this path mutated the library.
+  await assertLibraryUntouched(db, input.projectId, auth.organization.id, beforeFingerprint);
+
   const persisted = await persistRunOutcome(db, objectStore, auth, {
     runId,
     projectId: input.projectId,
+    configRevisionId: row.config_revision_id,
     candidate,
     debugValue: input.debugValue,
     status,
@@ -320,6 +327,7 @@ export async function startReloadRun(
         baselineValue: candidate.baselineValue,
         debugValue: input.debugValue,
         failureCode,
+        configRevisionId: row.config_revision_id,
         overlaySourceSha256: persisted.overlaySourceSha256,
         artifactSha256: persisted.artifact?.sha256 ?? null
       }
@@ -327,7 +335,6 @@ export async function startReloadRun(
     context
   );
 
-  await assertLibraryUntouched(db, input.projectId, auth.organization.id, beforeFingerprint);
   return persisted;
 }
 
@@ -338,6 +345,7 @@ async function persistRunOutcome(
   input: {
     runId: string;
     projectId: string;
+    configRevisionId: string | null;
     candidate: ReloadCandidateDto;
     debugValue: string;
     status: "blocked" | "validated";
@@ -378,7 +386,7 @@ async function persistRunOutcome(
       id: input.runId,
       organizationId: auth.organization.id,
       projectId: input.projectId,
-      configRevisionId: null,
+      configRevisionId: input.configRevisionId,
       status: input.status,
       failureCode: input.failureCode,
       steps: input.steps,
@@ -426,10 +434,10 @@ async function assertLibraryUntouched(
     after.workingFileVersionTip !== before.workingFileVersionTip
   ) {
     throw new ApiError(
-      "INTERNAL_ERROR",
-      "A reload run mutated parameter library data; the run was aborted.",
-      500,
-      { code: "reload-library-mutation", before, after }
+      "CONFLICT",
+      "The parameter library changed while the reload run was in progress. Retry the run.",
+      409,
+      { code: "reload-library-changed", before, after }
     );
   }
 }
