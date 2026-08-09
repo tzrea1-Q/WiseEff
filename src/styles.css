@@ -26743,6 +26743,11 @@ button.dts-topology-navigator__disclosure:focus-visible {
   overflow: visible;
 }
 
+.configuration-workbench__inspector-body :is(button, a, input, select, textarea, [role="button"]) {
+  scroll-margin-top: 64px;
+  scroll-margin-bottom: 24px;
+}
+
 .configuration-workbench__inspector-actions {
   display: inline-flex;
   align-items: center;

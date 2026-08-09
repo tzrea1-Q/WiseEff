@@ -144,6 +144,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page.getByText("工作配置", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: /版本/ }).click();
       await expect(page.getByText("发布基线：尚未发布")).toBeVisible();
+      await page.getByRole("button", { name: /版本/ }).click();
+      await expect(page.getByRole("region", { name: "版本详情" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "上传候选" })).toBeEnabled();
       await page.getByRole("button", { name: "更多" }).click();
       await expect(page.getByRole("menuitem", { name: "创建基线" })).toBeDisabled();
@@ -1735,10 +1737,12 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         await inspectorToggle.click();
       }
       await page.getByRole("treeitem", { name: new RegExp(primaryFileName) }).click();
-      await expect(inspector.getByRole("button", { name: "手动同步" })).toBeVisible();
       const syncButton = inspector.getByRole("button", { name: "手动同步" });
-      await syncButton.evaluate((el) => el.scrollIntoView({ block: "center", inline: "nearest" }));
-      await syncButton.click();
+      await expect(syncButton).toBeVisible();
+      await syncButton.evaluate((el) => {
+        el.scrollIntoView({ block: "nearest", inline: "nearest" });
+        (el as HTMLButtonElement).click();
+      });
       await expect(page.getByRole("region", { name: "配置任务" })).toContainText(primaryFileName);
 
       await page.getByRole("button", { name: "更多" }).click();
