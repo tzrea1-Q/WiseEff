@@ -17,13 +17,11 @@ import {
   GovernanceToast,
   useGovernanceToast
 } from "@/components/parameter-admin-next/useGovernanceToast";
-import { mapApiAuditEventToView } from "@/domain/audit/mapAuditEventView";
-import type { AuditEventListResponse, AuditEventView, ListAuditEventsParams } from "@/domain/audit/types";
+import type { AuditEventListResponse, ListAuditEventsParams } from "@/domain/audit/types";
 import {
   presentWorkbenchActivity,
   resolveWorkbenchActivityTarget,
-  workbenchActivityApps,
-  type WorkbenchActivityRow
+  workbenchActivityApps
 } from "./workbenchActivityModel";
 import { WorkbenchCommandBar } from "./WorkbenchCommandBar";
 import { WorkbenchBaselineDialogs } from "./WorkbenchBaselineDialogs";
@@ -69,6 +67,7 @@ import { useConfigSetOpsSession } from "@/application/project-configuration/useC
 import { useWorkbenchNavigationSession } from "@/application/project-configuration/useWorkbenchNavigationSession";
 import { useWorkbenchWorkspaceLoadSession } from "@/application/project-configuration/useWorkbenchWorkspaceLoadSession";
 import { useWorkbenchCanvasHistorySession } from "@/application/project-configuration/useWorkbenchCanvasHistorySession";
+import { useWorkbenchActivitySession } from "@/application/project-configuration/useWorkbenchActivitySession";
 
 export type ProjectConfigurationWorkbenchProject = {
   id: string;
@@ -185,13 +184,19 @@ export function ProjectConfigurationWorkbench({
     canRecompute,
     canAbandon
   } = useCandidateVersionFlow();
-  const [activityEvents, setActivityEvents] = useState<AuditEventView[]>([]);
-  const [activityRows, setActivityRows] = useState<WorkbenchActivityRow[]>([]);
-  const [activityLoading, setActivityLoading] = useState(false);
-  const [activityError, setActivityError] = useState("");
-  const [activityMissingNotice, setActivityMissingNotice] = useState("");
-  const [activityRefreshToken, setActivityRefreshToken] = useState(0);
-  const [knownCandidateIds, setKnownCandidateIds] = useState<string[]>([]);
+  const {
+    session: activitySession,
+    activityEvents,
+    activityLoading,
+    activityError,
+    activityMissingNotice,
+    activityRefreshToken,
+    knownCandidateIds
+  } = useWorkbenchActivitySession();
+  const activityRows = useMemo(
+    () => activityEvents.map(presentWorkbenchActivity),
+    [activityEvents]
+  );
   const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const candidateFileInputRef = useRef<HTMLInputElement | null>(null);
   const [lastVisibleLine, setLastVisibleLine] = useState<number | null>(null);
@@ -1029,29 +1034,13 @@ export function ProjectConfigurationWorkbench({
   );
 
   const refreshActivityTimeline = useCallback(async () => {
-    setActivityLoading(true);
-    setActivityError("");
-    try {
-      const [response, candidates] = await Promise.all([
-        listAuditEvents({
-          projectId: project.id,
-          apps: workbenchActivityApps(),
-          limit: 40
-        }),
-        fileRepository.listCandidates(project.id, { includeAbandoned: false }).catch(() => [])
-      ]);
-      const views = response.items.map(mapApiAuditEventToView);
-      setActivityEvents(views);
-      setActivityRows(views.map(presentWorkbenchActivity));
-      setKnownCandidateIds(candidates.map((item) => item.id));
-    } catch (error: unknown) {
-      setActivityError(error instanceof Error ? error.message : "加载项目活动失败");
-      setActivityEvents([]);
-      setActivityRows([]);
-    } finally {
-      setActivityLoading(false);
-    }
-  }, [fileRepository, listAuditEvents, project.id]);
+    await activitySession.refresh(
+      project.id,
+      workbenchActivityApps(),
+      listAuditEvents,
+      fileRepository
+    );
+  }, [activitySession, fileRepository, listAuditEvents, project.id]);
 
   useEffect(() => {
     if (inspectorLevel !== "activity" || !inspectorOpen) return;
@@ -1060,7 +1049,7 @@ export function ProjectConfigurationWorkbench({
 
   const openActivityInspector = useCallback(() => {
     if (!selectedConfigSet) return;
-    setActivityMissingNotice("");
+    activitySession.setMissingNotice("");
     setInspectorLevelOverride("activity");
     setInspectorOpen(true);
     onNavigate(
@@ -1076,6 +1065,7 @@ export function ProjectConfigurationWorkbench({
       })
     );
   }, [
+    activitySession,
     canvasMode,
     candidateId,
     historyVersionId,
@@ -1110,10 +1100,10 @@ export function ProjectConfigurationWorkbench({
       };
       const resolved = resolveWorkbenchActivityTarget(event, catalog);
       if (resolved.missing) {
-        setActivityMissingNotice(resolved.missingReason ?? "该活动目标已不可用。");
+        activitySession.setMissingNotice(resolved.missingReason ?? "该活动目标已不可用。");
         return;
       }
-      setActivityMissingNotice("");
+      activitySession.setMissingNotice("");
       setInspectorLevelOverride(null);
       setInspectorOpen(true);
 
@@ -1152,11 +1142,13 @@ export function ProjectConfigurationWorkbench({
 
       if (resolved.kind === "baseline") {
         if (resolved.missing) {
-          setActivityMissingNotice(resolved.missingReason ?? "发布基线已不存在；事件仍可作为只读证据。");
+          activitySession.setMissingNotice(
+            resolved.missingReason ?? "发布基线已不存在；事件仍可作为只读证据。"
+          );
           return;
         }
         if (resolved.baselineId && selectedConfigSet) {
-          setActivityMissingNotice("");
+          activitySession.setMissingNotice("");
           releaseBaselineSession.selectBaseline(resolved.baselineId);
           setInspectorOpen(true);
           onNavigate(
@@ -1173,7 +1165,7 @@ export function ProjectConfigurationWorkbench({
 
       if (resolved.kind === "conflict") {
         setTasksOpen(true);
-        setActivityMissingNotice("");
+        activitySession.setMissingNotice("");
         void conflictLocateFacade.openArbitration(project.id, fileRepository, {
           fileId: resolved.fileId,
           nodePath: resolved.nodePath ?? null,
@@ -1211,6 +1203,7 @@ export function ProjectConfigurationWorkbench({
     [
       activeCandidate?.id,
       activityEvents,
+      activitySession,
       baselines,
       candidateId,
       conflictLocateFacade,
@@ -1233,9 +1226,9 @@ export function ProjectConfigurationWorkbench({
   const notifyMutation = useCallback(
     (message: string) => {
       showToast(message);
-      setActivityRefreshToken((value) => value + 1);
+      activitySession.bumpRefresh();
     },
-    [showToast]
+    [activitySession, showToast]
   );
 
   const handleCandidateFileChange = useCallback(
@@ -2081,7 +2074,7 @@ export function ProjectConfigurationWorkbench({
               activityLoading={activityLoading}
               activityError={activityError}
               activityRows={activityRows}
-              onActivityRetry={() => setActivityRefreshToken((value) => value + 1)}
+              onActivityRetry={() => activitySession.bumpRefresh()}
               onActivityEventSelect={handleActivityEventSelect}
               selectedMembers={selectedMembers}
               pendingAction={pendingAction}
