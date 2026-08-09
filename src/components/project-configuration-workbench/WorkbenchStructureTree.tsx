@@ -70,10 +70,11 @@ export function WorkbenchStructureTree({
   const renderBranch = (branch: WorkbenchStructureTreeNode[], level: number): ReactNode =>
     branch.map((treeNode) => {
       const hasChildren = treeNode.children.length > 0;
-      const expanded = hasChildren && expandedIds.has(treeNode.id);
-      const nodeSelected = selectedNodePath === treeNode.id && !selectedPropertyName;
-      const showProperties = selectedNodePath === treeNode.id;
       const propertyCount = treeNode.node.properties.length;
+      const canExpand = hasChildren || propertyCount > 0;
+      const expanded = canExpand && expandedIds.has(treeNode.id);
+      const nodeSelected = selectedNodePath === treeNode.id && !selectedPropertyName;
+      const showProperties = expanded && propertyCount > 0;
       const pathLabel = treeNode.node.nodePath || "/";
 
       return (
@@ -81,7 +82,7 @@ export function WorkbenchStructureTree({
           <div
             role="treeitem"
             aria-level={level}
-            aria-expanded={hasChildren ? expanded : undefined}
+            aria-expanded={canExpand ? expanded : undefined}
             aria-selected={nodeSelected}
             aria-label={`节点 ${pathLabel}`}
             tabIndex={-1}
@@ -94,7 +95,7 @@ export function WorkbenchStructureTree({
               }
             }}
           >
-            {hasChildren ? (
+            {canExpand ? (
               <button
                 type="button"
                 tabIndex={-1}
@@ -126,12 +127,12 @@ export function WorkbenchStructureTree({
               ) : null}
             </span>
           </div>
-          {expanded ? (
+          {expanded && hasChildren ? (
             <ul role="group" className="dts-topology-navigator__group">
               {renderBranch(treeNode.children, level + 1)}
             </ul>
           ) : null}
-          {showProperties && propertyCount > 0 ? (
+          {showProperties ? (
             <ul
               role="group"
               className="dts-topology-navigator__group configuration-workbench__structure-property-group"

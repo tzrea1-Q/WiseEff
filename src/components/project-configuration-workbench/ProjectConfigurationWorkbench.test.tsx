@@ -634,8 +634,8 @@ describe("ProjectConfigurationWorkbench", () => {
 
     fireEvent.change(screen.getByLabelText("统一搜索查询"), { target: { value: "model" } });
     fireEvent.click(screen.getByRole("button", { name: "搜索" }));
-    await screen.findByLabelText("搜索结果");
-    fireEvent.click(screen.getByRole("button", { name: /board/ }));
+    const results = await screen.findByLabelText("搜索结果");
+    fireEvent.click(within(results).getByRole("button", { name: /board/ }));
     expect(screen.queryByRole("complementary", { name: "配置检查器" })).not.toBeInTheDocument();
   });
 

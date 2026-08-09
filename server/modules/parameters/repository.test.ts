@@ -1526,8 +1526,8 @@ describe("parameter repository", () => {
     expect(calls[1].text).toContain("parameter_file_sync_conflicts");
     expect(calls[1].text).toContain("status = 'open'");
     expect(calls[1].text).toContain("project_parameter_bindings");
-    expect(calls[1].text).not.toContain("project_parameter_values");
-    expect(calls[1].text).not.toContain("parameter_definitions");
+    expect(calls[1].text).toContain("project_parameter_values");
+    expect(calls[1].text).toContain("parameter_definitions");
     expect(calls[1].text).toContain("project_parameter_file_versions");
     expect(calls[2].text).toContain("status = 'open'");
     expect(calls[3].text).toContain("update parameter_file_sync_conflicts");
@@ -1585,8 +1585,8 @@ describe("parameter repository", () => {
 
     expect(calls[0].text).toContain("left join project_parameter_bindings");
     expect(calls[0].text).toContain("dts_property_occurrences");
-    expect(calls[0].text).not.toContain("project_parameter_values");
-    expect(calls[0].text).not.toContain("parameter_definitions");
+    expect(calls[0].text).toContain("project_parameter_values");
+    expect(calls[0].text).toContain("parameter_definitions");
     expect(conflict).toMatchObject({
       id: "conflict-1",
       baseValue: "80",

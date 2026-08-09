@@ -87,7 +87,8 @@ export function workbenchIdsToExpandUpToDepth(
   if (maxVisibleDepth <= 1) return expanded;
   const walk = (branch: WorkbenchStructureTreeNode[], level: number) => {
     for (const node of branch) {
-      if (node.children.length === 0) continue;
+      const canExpand = node.children.length > 0 || node.node.properties.length > 0;
+      if (!canExpand) continue;
       if (level < maxVisibleDepth) {
         expanded.add(node.id);
         walk(node.children, level + 1);
@@ -107,7 +108,9 @@ export function workbenchExpansionPath(
   let current = selectedNodePath ? byId.get(selectedNodePath) : undefined;
   while (current && !seen.has(current.id)) {
     seen.add(current.id);
-    if (current.children.length > 0) expanded.push(current.id);
+    if (current.children.length > 0 || current.node.properties.length > 0) {
+      expanded.push(current.id);
+    }
     current = current.parentId ? byId.get(current.parentId) : undefined;
   }
   return expanded;

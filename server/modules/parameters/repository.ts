@@ -2830,21 +2830,23 @@ const FILE_SYNC_CONFLICT_SELECT = `
       c.*,
       coalesce(c.project_parameter_binding_id, '') as project_parameter_value_id,
       coalesce(c.parameter_spec_id, b.parameter_spec_id, '') as parameter_definition_id,
-      coalesce(bpr.raw_value, '') as base_value,
+      coalesce(bpr.raw_value, ppv.current_value, '') as base_value,
       case
-        when lnr.node_locator is null then dps.property_key
+        when lnr.node_locator is null then coalesce(dps.property_key, pd.name)
         when lnr.node_locator like '/%'
-          then ltrim(lnr.node_locator, '/') || '/' || dps.property_key
-        else lnr.node_locator || '/' || dps.property_key
+          then ltrim(lnr.node_locator, '/') || '/' || coalesce(dps.property_key, pd.name)
+        else lnr.node_locator || '/' || coalesce(dps.property_key, pd.name)
       end as source_node_path,
       coalesce(
         dps.property_key,
         nullif(split_part(ps.specification_key, '/', 2), ''),
-        ps.specification_key
+        ps.specification_key,
+        pd.name
       ) as parameter_name,
       coalesce(
         nullif(trim(binding_pm.name), ''),
         nullif(split_part(ps.specification_key, '/', 1), ''),
+        pd.module,
         ''
       ) as parameter_module,
       fv.version_number as file_version_number,
@@ -2861,7 +2863,10 @@ const FILE_SYNC_CONFLICT_SELECT = `
       src.source_end_line,
       src.source_end_column
     from parameter_file_sync_conflicts c
-    left join project_parameter_bindings b on b.id = c.project_parameter_binding_id
+    left join project_parameter_bindings b
+      on b.id = coalesce(c.project_parameter_binding_id, c.project_parameter_value_id)
+    left join project_parameter_values ppv on ppv.id = c.project_parameter_value_id
+    left join parameter_definitions pd on pd.id = c.parameter_definition_id
     left join parameter_specs ps on ps.id = coalesce(c.parameter_spec_id, b.parameter_spec_id)
     left join dts_property_specs dps on dps.parameter_spec_id = ps.id
     left join parameter_modules binding_pm on binding_pm.id = b.module_id
