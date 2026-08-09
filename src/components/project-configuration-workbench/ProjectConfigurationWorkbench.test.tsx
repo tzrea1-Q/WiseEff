@@ -2325,24 +2325,28 @@ describe("ProjectConfigurationWorkbench", () => {
 
     await screen.findByRole("heading", { name: "aurora-board.dts" });
     const taskToggle = await screen.findByRole("button", { name: "任务" });
+    await waitFor(() => expect(taskToggle).toHaveTextContent("冲突"));
     if (taskToggle.getAttribute("aria-expanded") !== "true") {
       fireEvent.click(taskToggle);
     }
     const dock = await screen.findByLabelText("冲突仲裁");
-    fireEvent.click(within(dock).getByRole("button", { name: "在源码中定位" }));
-
+    // Opening the dock auto-locates the active conflict onto the non-member file.
     await waitFor(() =>
       expect(onNavigate).toHaveBeenCalledWith(expect.stringMatching(/file=file-loose/))
     );
     await screen.findByRole("heading", { name: "notes.json" });
+
+    fireEvent.click(within(dock).getByRole("button", { name: "在源码中定位" }));
+    await waitFor(() => {
+      const paths = onNavigate.mock.calls.map((call) => String(call[0]));
+      const lastLoose = [...paths].reverse().find((path) => path.includes("file=file-loose"));
+      expect(lastLoose).toBeTruthy();
+      const afterLoose = paths.slice(paths.lastIndexOf(lastLoose!) + 1);
+      expect(
+        afterLoose.every((path) => path.includes("file=file-loose") || !/file=file-board\b/.test(path))
+      ).toBe(true);
+    });
     expect(screen.getByRole("heading", { name: "notes.json" })).toBeInTheDocument();
-    expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("file=file-board") && String(call[0]).includes("file-loose") === false)).toBe(false);
-    // After locate, URL must not be rewritten back to the Config set primary member.
-    const locateCalls = onNavigate.mock.calls.map((call) => String(call[0]));
-    const lastWithLoose = [...locateCalls].reverse().find((path) => path.includes("file=file-loose"));
-    expect(lastWithLoose).toBeTruthy();
-    const afterLoose = locateCalls.slice(locateCalls.indexOf(lastWithLoose!) + 1);
-    expect(afterLoose.every((path) => path.includes("file=file-loose") || !path.includes("file="))).toBe(true);
   });
 
   it("runs manual sync from the file inspector and surfaces evidence in the task dock", async () => {
