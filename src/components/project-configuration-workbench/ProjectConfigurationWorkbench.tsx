@@ -16,7 +16,6 @@ import type {
 import type {
   FileSyncSummary,
   ParameterFileRepository,
-  ParameterFileSyncConflict,
   ProjectParameterFile,
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
@@ -75,6 +74,7 @@ import {
 import { useStructuredEditSession } from "@/application/project-configuration/useStructuredEditSession";
 import { useCandidateVersionFlow } from "@/application/project-configuration/useCandidateVersionFlow";
 import { useReleaseBaselineSession } from "@/application/project-configuration/useReleaseBaselineSession";
+import { useConflictLocateFacade } from "@/application/project-configuration/useConflictLocateFacade";
 import { WorkbenchStructureTree } from "./WorkbenchStructureTree";
 
 export type ProjectConfigurationWorkbenchProject = {
@@ -413,12 +413,6 @@ export function ProjectConfigurationWorkbench({
   const [findQuery, setFindQuery] = useState("");
   const [findNextToken, setFindNextToken] = useState(0);
   const [focusLineOverride, setFocusLineOverride] = useState<number | null>(null);
-  const pendingLocateFocusRef = useRef<{
-    fileId: string;
-    nodePath: string | null;
-    propertyName: string | null;
-    line: number;
-  } | null>(null);
   const [suppressScrollSync, setSuppressScrollSync] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const treeRegionRef = useRef<HTMLElement | null>(null);
@@ -436,7 +430,10 @@ export function ProjectConfigurationWorkbench({
   const [memberRole, setMemberRole] = useState<ConfigSetRole>("base");
   const [memberSortOrder, setMemberSortOrder] = useState(0);
   const [syncEvidence, setSyncEvidence] = useState("");
-  const [syncConflicts, setSyncConflicts] = useState<ParameterFileSyncConflict[]>([]);
+  const {
+    facade: conflictLocateFacade,
+    conflicts: syncConflicts
+  } = useConflictLocateFacade();
   const [exportEvidence, setExportEvidence] = useState("");
   const sourceRegionRef = useRef<HTMLElement | null>(null);
   const workbenchBodyRef = useRef<HTMLDivElement | null>(null);
@@ -521,23 +518,8 @@ export function ProjectConfigurationWorkbench({
   }, [fileRepository, filesRetry, project.id]);
 
   useEffect(() => {
-    let cancelled = false;
-    void fileRepository
-      .listConflicts(project.id)
-      .then((items) => {
-        if (!cancelled) {
-          setSyncConflicts(items.filter((item) => item.status === "open"));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setSyncConflicts([]);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fileRepository, filesRetry, project.id]);
+    void conflictLocateFacade.load(project.id, fileRepository);
+  }, [conflictLocateFacade, fileRepository, filesRetry, project.id]);
 
   const selectedConfigSet = useMemo(() => {
     const requested = queryValue(search, "configSet");
@@ -964,20 +946,24 @@ export function ProjectConfigurationWorkbench({
   }, [search, structureError, structureLoading, structureNodes]);
 
   useEffect(() => {
-    const pending = pendingLocateFocusRef.current;
-    if (pending) {
-      const matched =
-        selectedMember?.fileId === pending.fileId &&
-        selectedNodePath === pending.nodePath &&
-        selectedPropertyName === pending.propertyName;
-      if (matched) {
-        pendingLocateFocusRef.current = null;
-        setFocusLineOverride(pending.line);
-      }
+    const consumed = conflictLocateFacade.consumeLocateTargetIfMatched({
+      fileId: selectedMember?.fileId ?? null,
+      nodePath: selectedNodePath,
+      propertyName: selectedPropertyName
+    });
+    if (consumed?.focusLine != null) {
+      setFocusLineOverride(consumed.focusLine);
       return;
     }
-    setFocusLineOverride(null);
-  }, [selectedNodePath, selectedPropertyName, selectedMember?.fileId]);
+    if (!conflictLocateFacade.locateTarget) {
+      setFocusLineOverride(null);
+    }
+  }, [
+    conflictLocateFacade,
+    selectedNodePath,
+    selectedPropertyName,
+    selectedMember?.fileId
+  ]);
 
   const focusSpan = useMemo(() => {
     if (!selectedNodePath) return null;
@@ -1312,13 +1298,13 @@ export function ProjectConfigurationWorkbench({
         fileRepository.listConflicts(project.id)
       ]);
       setProjectFiles(files);
-      setSyncConflicts(conflicts.filter((item) => item.status === "open"));
+      conflictLocateFacade.setOpenConflicts(conflicts);
       setMembersRetry((value) => value + 1);
       setFilesRetry((value) => value + 1);
     } catch (error: unknown) {
       setOpsError(error instanceof Error ? error.message : "手动同步失败。");
     }
-  }, [canAdmin, fileRepository, project.id, selectedMember]);
+  }, [canAdmin, conflictLocateFacade, fileRepository, project.id, selectedMember]);
 
   const exportSelectedConfigSet = useCallback(async () => {
     if (!canAdmin || !selectedConfigSet) return;
@@ -1522,14 +1508,11 @@ export function ProjectConfigurationWorkbench({
       if (resolved.kind === "conflict") {
         setTasksOpen(true);
         setActivityMissingNotice("");
-        void fileRepository
-          .listConflicts(project.id)
-          .then((items) => {
-            setSyncConflicts(items.filter((item) => item.status === "open"));
-          })
-          .catch(() => {
-            /* keep prior conflict list */
-          });
+        void conflictLocateFacade.openArbitration(project.id, fileRepository, {
+          fileId: resolved.fileId,
+          nodePath: resolved.nodePath ?? null,
+          propertyName: resolved.propertyName ?? null
+        });
         if (resolved.fileId) {
           selectStructureTarget(
             resolved.fileId,
@@ -1564,12 +1547,14 @@ export function ProjectConfigurationWorkbench({
       activityEvents,
       baselines,
       candidateId,
+      conflictLocateFacade,
       fileRepository,
       knownCandidateIds,
       configSets,
       onNavigate,
       project.id,
       projectFiles,
+      releaseBaselineSession,
       search,
       selectStructureTarget,
       selectedConfigSet,
@@ -3870,23 +3855,12 @@ export function ProjectConfigurationWorkbench({
                 projectId={project.id}
                 repository={fileRepository}
                 conflicts={syncConflicts}
-                onConflictsChange={setSyncConflicts}
+                onConflictsChange={(next) => conflictLocateFacade.setOpenConflicts(next)}
                 onQueueEmpty={() => setTasksOpen(false)}
                 onLocateConflict={(conflict) => {
-                  if (!conflict.fileId) return;
-                  const nodePath = conflict.nodePath ?? conflict.sourceNodePath ?? null;
-                  const propertyName = conflict.propertyName ?? null;
-                  if (conflict.source?.startLine) {
-                    pendingLocateFocusRef.current = {
-                      fileId: conflict.fileId,
-                      nodePath,
-                      propertyName,
-                      line: conflict.source.startLine
-                    };
-                  } else {
-                    pendingLocateFocusRef.current = null;
-                  }
-                  selectStructureTarget(conflict.fileId, nodePath, propertyName);
+                  const target = conflictLocateFacade.locate(conflict);
+                  if (!target) return;
+                  selectStructureTarget(target.fileId, target.nodePath, target.propertyName);
                 }}
               />
             ) : null}
