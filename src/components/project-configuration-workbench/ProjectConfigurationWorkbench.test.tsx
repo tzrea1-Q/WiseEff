@@ -2275,6 +2275,76 @@ describe("ProjectConfigurationWorkbench", () => {
     );
   });
 
+  it("keeps conflict locate on a non-member project file instead of rewriting to the primary member", async () => {
+    const onNavigate = vi.fn();
+    const listConflicts = vi.fn(async () => [
+      {
+        id: "conflict-loose",
+        organizationId: "org-1",
+        projectId: PROJECT.id,
+        projectParameterValueId: "ppv-loose",
+        parameterDefinitionId: "def-loose",
+        parameterName: "note",
+        fileVersionId: "version-loose-1",
+        fileDraftId: "fd-loose",
+        uiDraftId: "ud-loose",
+        fileValue: "from-file",
+        uiDraftValue: "from-ui",
+        baseValue: "base",
+        status: "open" as const,
+        createdAt: "2026-08-07T12:00:00.000Z",
+        fileVersionLabel: "v1",
+        fileId: "file-loose",
+        fileName: "notes.json",
+        nodePath: null,
+        propertyName: null,
+        source: {
+          startOffset: 0,
+          endOffset: 8,
+          startLine: 1,
+          startColumn: 1,
+          endLine: 1,
+          endColumn: 9
+        }
+      }
+    ]);
+    const downloadVersion = vi.fn(async (_projectId: string, fileId: string) => ({
+      contentType: "application/json",
+      fileName: fileId === "file-loose" ? "notes.json" : "aurora-board.dts",
+      bytes: new TextEncoder().encode(
+        fileId === "file-loose" ? '{"notes":"ungrouped"}\n' : '/dts-v1/;\n/ { model = "Aurora"; };\n'
+      )
+    }));
+
+    renderWorkbench({
+      syncSearch: true,
+      search: "?configSet=cs-default&file=file-board",
+      onNavigate,
+      fileRepository: createFileRepository({ listConflicts, downloadVersion })
+    });
+
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const taskToggle = await screen.findByRole("button", { name: "任务" });
+    if (taskToggle.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(taskToggle);
+    }
+    const dock = await screen.findByLabelText("冲突仲裁");
+    fireEvent.click(within(dock).getByRole("button", { name: "在源码中定位" }));
+
+    await waitFor(() =>
+      expect(onNavigate).toHaveBeenCalledWith(expect.stringMatching(/file=file-loose/))
+    );
+    await screen.findByRole("heading", { name: "notes.json" });
+    expect(screen.getByRole("heading", { name: "notes.json" })).toBeInTheDocument();
+    expect(onNavigate.mock.calls.some((call) => String(call[0]).includes("file=file-board") && String(call[0]).includes("file-loose") === false)).toBe(false);
+    // After locate, URL must not be rewritten back to the Config set primary member.
+    const locateCalls = onNavigate.mock.calls.map((call) => String(call[0]));
+    const lastWithLoose = [...locateCalls].reverse().find((path) => path.includes("file=file-loose"));
+    expect(lastWithLoose).toBeTruthy();
+    const afterLoose = locateCalls.slice(locateCalls.indexOf(lastWithLoose!) + 1);
+    expect(afterLoose.every((path) => path.includes("file=file-loose") || !path.includes("file="))).toBe(true);
+  });
+
   it("runs manual sync from the file inspector and surfaces evidence in the task dock", async () => {
     const syncFile = vi.fn(async () => ({
       draftsCreated: 2,

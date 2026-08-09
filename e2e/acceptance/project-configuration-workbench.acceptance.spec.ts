@@ -2294,6 +2294,15 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       expect(Math.abs((fileBtnBox?.height ?? 0) - (uiBtnBox?.height ?? 0))).toBeLessThan(4);
 
       await conflictDock.getByRole("button", { name: "在源码中定位" }).click();
+      await expect(page).toHaveURL(
+        new RegExp(`file=(${blockConflict.fileId}|${queueConflict.fileId})`)
+      );
+      await expect(
+        page.getByRole("heading", {
+          name: new RegExp(`${conflictFileBlock}|${conflictFileQueue}`)
+        })
+      ).toBeVisible();
+      await expect(page.getByRole("heading", { name: primaryFileName })).toHaveCount(0);
       await expect(conflictDock.getByText(/1\s*\/\s*2/)).toBeVisible();
 
       const firstName = ((await conflictDock.locator("strong").first().textContent()) ?? "").trim();

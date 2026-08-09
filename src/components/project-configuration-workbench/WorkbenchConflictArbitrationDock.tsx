@@ -510,6 +510,7 @@ export function WorkbenchConflictArbitrationDock({
           }
         }}
         onConfirm={() => {
+          if (!bulkPreview || bulkPreview.impact.eligibleCount <= 0) return;
           void confirmBulkResolve();
         }}
       />
