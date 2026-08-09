@@ -418,6 +418,12 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findNextToken, setFindNextToken] = useState(0);
   const [focusLineOverride, setFocusLineOverride] = useState<number | null>(null);
+  const pendingLocateFocusRef = useRef<{
+    fileId: string;
+    nodePath: string | null;
+    propertyName: string | null;
+    line: number;
+  } | null>(null);
   const [suppressScrollSync, setSuppressScrollSync] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const treeRegionRef = useRef<HTMLElement | null>(null);
@@ -648,16 +654,36 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
       });
   }, [members, projectFiles, selectedConfigSet]);
 
-  const selectedMember = useMemo(() => {
+  const selectedMember = useMemo((): DtsConfigSetMemberFile | null => {
     const requested = queryValue(search, "file");
+    if (requested) {
+      const memberHit = selectedMembers.find((item) => item.fileId === requested);
+      if (memberHit) return memberHit;
+      // Wait for Config set members before synthesizing a non-member locate target,
+      // otherwise the canvas heading appears while the member tree is still empty.
+      if (!membersLoading && !membersError) {
+        const projectHit = projectFiles.find((file) => file.id === requested);
+        if (projectHit) {
+          return {
+            configSetId: selectedConfigSet?.id ?? "",
+            fileId: projectHit.id,
+            fileName: projectHit.fileName,
+            format: projectHit.format,
+            role: "misc",
+            sortOrder: -1,
+            currentVersionId: projectHit.currentVersionId,
+            currentVersionNumber: projectHit.currentVersionNumber
+          };
+        }
+      }
+    }
     return (
-      selectedMembers.find((item) => item.fileId === requested) ??
       selectedMembers.find((item) => item.format === "dts" && item.currentVersionId) ??
       selectedMembers.find((item) => item.currentVersionId) ??
       selectedMembers[0] ??
       null
     );
-  }, [search, selectedMembers]);
+  }, [membersError, membersLoading, projectFiles, search, selectedConfigSet?.id, selectedMembers]);
 
   const selectedMemberFileId = selectedMember?.fileId ?? null;
   const selectedMemberVersionId = selectedMember?.currentVersionId ?? null;
@@ -881,18 +907,35 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [configSetsLoading, onNavigate, project.id, search, selectedConfigSet]);
 
   useEffect(() => {
-    if (membersLoading || !selectedConfigSet || !selectedMemberFileId) return;
-    if (queryValue(search, "file") !== selectedMemberFileId) {
-      onNavigate(
-        formatWorkbenchPath(project.id, search, {
-          configSet: selectedConfigSet.id,
-          file: selectedMemberFileId,
-          node: null,
-          property: null
-        })
-      );
+    if (membersLoading || filesLoading || !selectedConfigSet || !selectedMemberFileId) return;
+    const requested = queryValue(search, "file");
+    if (requested) {
+      const knownMember = selectedMembers.some((item) => item.fileId === requested);
+      const knownProjectFile = projectFiles.some((file) => file.id === requested);
+      // Preserve explicit file= targets that exist in the project, even when they are
+      // not Config set members (conflict locate / activity deep links).
+      if (knownMember || knownProjectFile) return;
     }
-  }, [membersLoading, onNavigate, project.id, search, selectedConfigSet, selectedMemberFileId]);
+    if (requested === selectedMemberFileId) return;
+    onNavigate(
+      formatWorkbenchPath(project.id, search, {
+        configSet: selectedConfigSet.id,
+        file: selectedMemberFileId,
+        node: null,
+        property: null
+      })
+    );
+  }, [
+    filesLoading,
+    membersLoading,
+    onNavigate,
+    project.id,
+    projectFiles,
+    search,
+    selectedConfigSet,
+    selectedMemberFileId,
+    selectedMembers
+  ]);
 
   useEffect(() => {
     if (!selectedMemberFileId || !selectedMemberVersionId) {
@@ -983,6 +1026,18 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
   }, [search, structureError, structureLoading, structureNodes]);
 
   useEffect(() => {
+    const pending = pendingLocateFocusRef.current;
+    if (pending) {
+      const matched =
+        selectedMember?.fileId === pending.fileId &&
+        selectedNodePath === pending.nodePath &&
+        selectedPropertyName === pending.propertyName;
+      if (matched) {
+        pendingLocateFocusRef.current = null;
+        setFocusLineOverride(pending.line);
+      }
+      return;
+    }
     setFocusLineOverride(null);
   }, [selectedNodePath, selectedPropertyName, selectedMember?.fileId]);
 
@@ -4198,14 +4253,19 @@ const [activateConfirmOpen, setActivateConfirmOpen] = useState(false);
                 onQueueEmpty={() => setTasksOpen(false)}
                 onLocateConflict={(conflict) => {
                   if (!conflict.fileId) return;
-                  selectStructureTarget(
-                    conflict.fileId,
-                    conflict.nodePath ?? conflict.sourceNodePath ?? null,
-                    conflict.propertyName ?? null
-                  );
+                  const nodePath = conflict.nodePath ?? conflict.sourceNodePath ?? null;
+                  const propertyName = conflict.propertyName ?? null;
                   if (conflict.source?.startLine) {
-                    setFocusLineOverride(conflict.source.startLine);
+                    pendingLocateFocusRef.current = {
+                      fileId: conflict.fileId,
+                      nodePath,
+                      propertyName,
+                      line: conflict.source.startLine
+                    };
+                  } else {
+                    pendingLocateFocusRef.current = null;
                   }
+                  selectStructureTarget(conflict.fileId, nodePath, propertyName);
                 }}
               />
             ) : null}

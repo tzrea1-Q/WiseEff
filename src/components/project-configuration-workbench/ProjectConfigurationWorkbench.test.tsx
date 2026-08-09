@@ -1713,7 +1713,7 @@ describe("ProjectConfigurationWorkbench", () => {
       syncSearch: true
     });
     await screen.findByRole("heading", { name: "aurora-board.dts" });
-    fireEvent.click(screen.getByRole("treeitem", { name: /charging-overlay\.dtsi/ }));
+    fireEvent.click(await screen.findByRole("treeitem", { name: /charging-overlay\.dtsi/ }));
     await waitFor(() => {
       const urls = onNavigate.mock.calls.map((call) => String(call[0]));
       expect(
@@ -2273,6 +2273,80 @@ describe("ProjectConfigurationWorkbench", () => {
     await waitFor(() =>
       expect(removeConfigSetFile).toHaveBeenCalledWith(PROJECT.id, "cs-default", "file-board")
     );
+  });
+
+  it("keeps conflict locate on a non-member project file instead of rewriting to the primary member", async () => {
+    const onNavigate = vi.fn();
+    const listConflicts = vi.fn(async () => [
+      {
+        id: "conflict-loose",
+        organizationId: "org-1",
+        projectId: PROJECT.id,
+        projectParameterValueId: "ppv-loose",
+        parameterDefinitionId: "def-loose",
+        parameterName: "note",
+        fileVersionId: "version-loose-1",
+        fileDraftId: "fd-loose",
+        uiDraftId: "ud-loose",
+        fileValue: "from-file",
+        uiDraftValue: "from-ui",
+        baseValue: "base",
+        status: "open" as const,
+        createdAt: "2026-08-07T12:00:00.000Z",
+        fileVersionLabel: "v1",
+        fileId: "file-loose",
+        fileName: "notes.json",
+        nodePath: null,
+        propertyName: null,
+        source: {
+          startOffset: 0,
+          endOffset: 8,
+          startLine: 1,
+          startColumn: 1,
+          endLine: 1,
+          endColumn: 9
+        }
+      }
+    ]);
+    const downloadVersion = vi.fn(async (_projectId: string, fileId: string) => ({
+      contentType: "application/json",
+      fileName: fileId === "file-loose" ? "notes.json" : "aurora-board.dts",
+      bytes: new TextEncoder().encode(
+        fileId === "file-loose" ? '{"notes":"ungrouped"}\n' : '/dts-v1/;\n/ { model = "Aurora"; };\n'
+      )
+    }));
+
+    renderWorkbench({
+      syncSearch: true,
+      search: "?configSet=cs-default&file=file-board",
+      onNavigate,
+      fileRepository: createFileRepository({ listConflicts, downloadVersion })
+    });
+
+    await screen.findByRole("heading", { name: "aurora-board.dts" });
+    const taskToggle = await screen.findByRole("button", { name: "任务" });
+    await waitFor(() => expect(taskToggle).toHaveTextContent("冲突"));
+    if (taskToggle.getAttribute("aria-expanded") !== "true") {
+      fireEvent.click(taskToggle);
+    }
+    const dock = await screen.findByLabelText("冲突仲裁");
+    // Opening the dock auto-locates the active conflict onto the non-member file.
+    await waitFor(() =>
+      expect(onNavigate).toHaveBeenCalledWith(expect.stringMatching(/file=file-loose/))
+    );
+    await screen.findByRole("heading", { name: "notes.json" });
+
+    fireEvent.click(within(dock).getByRole("button", { name: "在源码中定位" }));
+    await waitFor(() => {
+      const paths = onNavigate.mock.calls.map((call) => String(call[0]));
+      const lastLoose = [...paths].reverse().find((path) => path.includes("file=file-loose"));
+      expect(lastLoose).toBeTruthy();
+      const afterLoose = paths.slice(paths.lastIndexOf(lastLoose!) + 1);
+      expect(
+        afterLoose.every((path) => path.includes("file=file-loose") || !/file=file-board\b/.test(path))
+      ).toBe(true);
+    });
+    expect(screen.getByRole("heading", { name: "notes.json" })).toBeInTheDocument();
   });
 
   it("runs manual sync from the file inspector and surfaces evidence in the task dock", async () => {
