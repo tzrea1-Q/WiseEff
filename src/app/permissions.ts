@@ -25,6 +25,7 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   "log-admin": "admin",
   debugging: "hardware-user",
   "node-debugging": "hardware-user",
+  "dts-reload": "hardware-committer",
   "debugging-admin": "admin",
   "user-permissions": "admin",
   "feedback-admin": "admin",

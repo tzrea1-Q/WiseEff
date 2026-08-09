@@ -23,6 +23,7 @@ import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingR
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
+import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterInitializationRepository } from "@/application/ports/ParameterInitializationRepository";
 import type { AppAction } from "@/App";
@@ -37,6 +38,7 @@ import { PlatformConsolePage } from "@/PlatformConsolePage";
 import { ParameterAdminNextPage } from "@/ParameterAdminNextPage";
 import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
 import { FeedbackAdminPage } from "@/features/product-feedback/FeedbackAdminPage";
+import { DtsReloadPage } from "@/features/dts-reload/DtsReloadPage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import { UserPermissionsPage } from "@/UserPermissionsPage";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
@@ -76,6 +78,8 @@ export type PageProps = {
   parameterTopologyRepository?: ParameterTopologyRepository;
   listParameterConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   productFeedbackRepository?: ProductFeedbackRepository;
+  dtsReloadRepository?: DtsReloadRepository | null;
+  canStartDtsReload?: boolean;
   parameterInitializationRepository?: ParameterInitializationRepository;
   userGovernanceActions?: UserGovernanceActions;
   runtimeMode?: WiseEffRuntimeMode;
@@ -113,6 +117,8 @@ export function PageRouter({
   parameterTopologyRepository,
   listParameterConfigSets,
   productFeedbackRepository,
+  dtsReloadRepository = null,
+  canStartDtsReload = false,
   parameterInitializationRepository,
   userGovernanceActions,
   runtimeMode,
@@ -260,6 +266,20 @@ export function PageRouter({
           state={state}
           debuggingActions={runtimeMode === "api" ? debuggingActions : undefined}
           runtimeReady={runtimeMode === "api" ? debuggingRuntimeReady : true}
+        />
+      );
+    case "dts-reload":
+      return (
+        <DtsReloadPage
+          projects={state.configDraft.projects.map((project) => ({ id: project.id, name: project.name }))}
+          initialProjectId={state.activeProjectId}
+          repository={runtimeMode === "api" ? dtsReloadRepository ?? null : null}
+          canStartRun={runtimeMode === "api" && canStartDtsReload}
+          unavailableReason={
+            runtimeMode === "api"
+              ? undefined
+              : "该页面仅在 API 模式下可用。Mock 运行时不提供 DTS 重载调试。"
+          }
         />
       );
     case "debugging-admin":

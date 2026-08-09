@@ -1,0 +1,58 @@
+export type DtsReloadCandidateBlockReason =
+  | "no-node-path"
+  | "synthesised-anchor"
+  | "unsupported-value-shape"
+  | "no-baseline-value";
+
+export type DtsReloadCandidate = {
+  bindingId: string;
+  projectId: string;
+  propertyKey: string;
+  displayName: string;
+  module: string;
+  nodePath: string | null;
+  baselineValue: string | null;
+  valueShapeKind: string | null;
+  unit: string | null;
+  constraints: Record<string, unknown>;
+  debuggable: boolean;
+  blockReason?: DtsReloadCandidateBlockReason;
+};
+
+export type DtsReloadRunStatus = "pending" | "blocked" | "validated";
+
+export type DtsReloadRun = {
+  id: string;
+  projectId: string;
+  configRevisionId: string | null;
+  status: DtsReloadRunStatus;
+  failureCode: string | null;
+  targets: Array<{
+    bindingId: string;
+    nodePath: string;
+    propertyKey: string;
+    baselineValue: string | null;
+    debugValue: string;
+  }>;
+  steps: Array<{ step: string; outcome: "passed" | "failed" | "skipped" }>;
+  diagnostics: Array<{
+    stage: string;
+    code: string;
+    message: string;
+    nodePath?: string;
+    propertyName?: string;
+  }>;
+  toolVersions: { dtc: string | null; fdtoverlay: string | null };
+  overlaySource: string | null;
+  overlaySourceSha256: string | null;
+  artifact: { fileName: string; sha256: string; sizeBytes: number } | null;
+  createdAt: string;
+  completedAt: string | null;
+};
+
+export const dtsReloadBlockReasonLabels: Record<DtsReloadCandidateBlockReason, string> = {
+  "no-node-path": "缺少绝对节点路径",
+  "synthesised-anchor": "定位器是合成锚点，不能作为 target-path",
+  "unsupported-value-shape": "当前仅支持单个 u32 cell",
+  "no-baseline-value": "缺少库基线值"
+};

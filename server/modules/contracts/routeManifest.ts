@@ -9,6 +9,7 @@ export type RouteModule =
   | "parameter-modules"
   | "logs"
   | "product-feedback"
+  | "dts-reload"
   | "jobs"
   | "debugging"
   | "operations"
@@ -528,6 +529,35 @@ export const routeManifest = [
     method: "GET",
     path: "/api/v1/product-feedback/:id/attachments/:attachmentId/content",
     module: "product-feedback",
+    stability: "mvp"
+  },
+
+  {
+    id: "dtsReload.listCandidates",
+    method: "GET",
+    path: "/api/v1/dts-reload/projects/:projectId/candidates",
+    module: "dts-reload",
+    stability: "mvp"
+  },
+  {
+    id: "dtsReload.startRun",
+    method: "POST",
+    path: "/api/v1/dts-reload/projects/:projectId/runs",
+    module: "dts-reload",
+    stability: "mvp"
+  },
+  {
+    id: "dtsReload.getRun",
+    method: "GET",
+    path: "/api/v1/dts-reload/runs/:runId",
+    module: "dts-reload",
+    stability: "mvp"
+  },
+  {
+    id: "dtsReload.downloadArtifact",
+    method: "GET",
+    path: "/api/v1/dts-reload/runs/:runId/artifact",
+    module: "dts-reload",
     stability: "mvp"
   },
 

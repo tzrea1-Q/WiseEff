@@ -5406,6 +5406,192 @@
         }
       }
     },
+    "/api/v1/dts-reload/projects/{projectId}/candidates": {
+      "get": {
+        "operationId": "dtsReload.listCandidates",
+        "summary": "List DTS reload debugging candidates for a project",
+        "tags": [
+          "dts-reload"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DtsReloadCandidateListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/dts-reload/projects/{projectId}/runs": {
+      "post": {
+        "operationId": "dtsReload.startRun",
+        "summary": "Start a DTS reload run for one scalar parameter (stops at validated overlay)",
+        "tags": [
+          "dts-reload"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartDtsReloadRunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DtsReloadRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/dts-reload/runs/{runId}": {
+      "get": {
+        "operationId": "dtsReload.getRun",
+        "summary": "Get a DTS reload run detail including overlay source",
+        "tags": [
+          "dts-reload"
+        ],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DtsReloadRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/dts-reload/runs/{runId}/artifact": {
+      "get": {
+        "operationId": "dtsReload.downloadArtifact",
+        "summary": "Download the compiled debug overlay artifact for a validated reload run",
+        "tags": [
+          "dts-reload"
+        ],
+        "parameters": [
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/jobs/{jobId}": {
       "get": {
         "operationId": "jobs.get",
@@ -7749,6 +7935,18 @@
         "type": "string",
         "format": "binary",
         "x-wiseeff-schema": "BinaryAttachment"
+      },
+      "DtsReloadCandidateListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DtsReloadCandidateListResponse"
+      },
+      "StartDtsReloadRunRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "StartDtsReloadRunRequest"
+      },
+      "DtsReloadRunResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DtsReloadRunResponse"
       },
       "JobResponse": {
         "type": "object",

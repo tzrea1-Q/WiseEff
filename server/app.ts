@@ -35,6 +35,7 @@ import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard
 import { registerParameterSpecRoutes } from "./modules/parameter-specs/routes";
 import { registerParameterModuleRoutes } from "./modules/parameter-modules/routes";
 import { registerParameterTopologyRoutes } from "./modules/parameter-topology/routes";
+import { registerDtsReloadRoutes } from "./modules/dts-reload/routes";
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
 import { registerUserRoutes } from "./modules/users/routes";
 import { createHttpServer } from "./shared/http/server";
@@ -163,6 +164,11 @@ export function createWiseEffServer(
     getCurrentAuthContext: authResolver
   });
   registerProductFeedbackRoutes(router, {
+    db: options.db,
+    objectStore: options.objectStore,
+    getCurrentAuthContext: authResolver
+  });
+  registerDtsReloadRoutes(router, {
     db: options.db,
     objectStore: options.objectStore,
     getCurrentAuthContext: authResolver

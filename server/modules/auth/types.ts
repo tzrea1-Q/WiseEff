@@ -16,6 +16,7 @@ export type BackendPermission =
   | "debugging:read"
   | "debugging:write"
   | "debugging:rollback"
+  | "debugging:dts-reload"
   | "debugging:admin"
   | "logs:view"
   | "logs:upload"

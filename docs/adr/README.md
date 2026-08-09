@@ -28,3 +28,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0016](0016-cell-arrays-are-governed-by-column-width-only.md) | Cell arrays are governed by column width only; row count is not a governed fact |
 | [0017](0017-definition-identity-is-correctable.md) | Definition identity is correctable and `parameter_specs.id` is a surrogate |
 | [0018](0018-uploaded-file-versions-are-staged-before-activation.md) | Uploaded file versions are staged before activation |
+| [0019](0019-debug-values-never-mutate-the-parameter-library.md) | Debug values never mutate the parameter library |
